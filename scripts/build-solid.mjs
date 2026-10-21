@@ -1,4 +1,4 @@
-// Bundles crates/corten/js/solid.js (Solid + SolidIsland) into crates/corten/js/dist/solid.js, which
+// Bundles crates/corten/js/solid.js (Solid + mount) into crates/corten/js/dist/solid.js, which
 // the corten crate embeds. "corten" stays an import, resolved by the page's import map.
 import { build } from "esbuild";
 import { readFileSync, statSync } from "node:fs";

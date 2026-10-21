@@ -28,10 +28,11 @@
 //! and a CSP nonce, a cross-site write check, error pages, versioned static files, health checks,
 //! compression (feature `compress`), and live reload under `corten dev`.
 //!
-//! Modules: [`view`] (markup), [`route`] (typed links), [`island`] (typed `data-ref` names),
-//! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`]. Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid
-//! for stateful islands), `types` (TypeScript declarations from Rust types), `agent` (MCP
-//! tools), `compress`, `log` (a log subscriber in [`App::serve`]).
+//! Modules: [`view`] (markup), [`island`] (components with a script), [`route`] (typed links),
+//! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`].
+//! Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid for
+//! stateful islands), `types` (TypeScript declarations from Rust types), `agent` (MCP tools),
+//! `compress`, `log` (a log subscriber in [`App::serve`]).
 
 // So the code `html!` generates (`::corten::view::...`) also compiles inside this crate.
 extern crate self as corten;
@@ -84,7 +85,7 @@ pub use axum;
 pub use corten_macros::Fields;
 pub use form::Errors;
 pub use html::{escape, find_islands};
-pub use island::Refs;
+pub use island::{island, Island};
 pub use meta::Meta;
 pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
 pub use route::{Href, Route};
@@ -92,8 +93,6 @@ pub use view::{component, html, raw, Render};
 
 /// What most files need: `use corten::prelude::*;`.
 pub mod prelude {
-    #[cfg(feature = "json")]
-    pub use crate::Props;
     pub use crate::{
         axum::{
             extract::{Form, Path, Query, State},
@@ -102,15 +101,9 @@ pub mod prelude {
         },
         component, html,
         i18n::Messages as _,
-        raw, App, Document, Errors, Fields, Meta, Mode, Refs, Render, Req, Result, Route,
+        island, raw, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
     };
 }
-
-/// `<script type="application/json" data-props>` with `value` as JSON, inside the island it
-/// belongs to; the island reads it with `this.props()`. In markup: `{Props(&grid)}`. `<` is
-/// written as `\u003c`, so no value can close the script element.
-#[cfg(feature = "json")]
-pub struct Props<'a, T: serde::Serialize>(pub &'a T);
 
 /// The runtime source, embedded so apps never copy it.
 pub const RUNTIME_JS: &str = include_str!("../js/corten.js");

@@ -27,6 +27,29 @@ try {
   await page.waitForFunction((b) => JSON.stringify([...document.querySelectorAll('[data-ref="price"]')].map((c) => c.textContent)) !== b, JSON.stringify(before), { timeout: 4000 }).catch(() => {});
   check("live patches update prices", JSON.stringify(await prices()) !== JSON.stringify(before), `${before.join(", ")} -> ${(await prices()).join(", ")}`);
 
+  // An island action with per-element state: on:click={Pause} runs the script's pause().
+  check("an island's script reveals its controls", await page.isVisible("button.pause"));
+  await page.click("button.pause");
+  const paused = await prices();
+  await page.waitForTimeout(2500);
+  check(
+    "an action changes the island's state (pause holds the prices)",
+    (await page.getAttribute("button.pause", "aria-pressed")) === "true" && JSON.stringify(await prices()) === JSON.stringify(paused),
+  );
+  await page.click("button.pause");
+  // The page's prices by card id, and the feed's.
+  const shown = () => page.$$eval('[data-ref="price"]', (cells) => JSON.stringify(cells.map((c) => [c.getAttribute("data-id"), c.textContent]).sort()));
+  const latest = async () => {
+    const snap = await (await fetch(`${base}/feed/cards`, { headers: { accept: "application/json" } })).json();
+    return JSON.stringify(snap.rows.map((/** @type {{ id: string, price: string }} */ r) => [r.id, r.price]).sort());
+  };
+  let resumed = false;
+  for (let i = 0; i < 20 && !resumed; i += 1) {
+    resumed = (await shown()) === (await latest());
+    if (!resumed) await page.waitForTimeout(150);
+  }
+  check("resuming shows the latest prices", resumed && (await page.getAttribute("button.pause", "aria-pressed")) === "false");
+
   // A marker on window survives client navigations and patches, and disappears on a full load.
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
   await page.selectOption("select[name=id]", "c2");

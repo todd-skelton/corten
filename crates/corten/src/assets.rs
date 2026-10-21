@@ -3,7 +3,8 @@
 //! [`Assets::load`] reads a directory into memory at startup and hashes it. Every URL carries the
 //! hash, so browsers, CDNs and the service worker may cache the files forever, and a deploy
 //! that changes any file changes every URL. The version is a directory prefix, not a per-file
-//! name, so island modules keep importing each other with relative paths.
+//! name, so island modules keep importing each other with relative paths. Island scripts
+//! (`#[island]`, compiled into the binary) are served from `islands/{tag}.js` in the same version.
 //!
 //! During a rolling deploy a page from the old version can ask a new server for an old URL. It
 //! gets the current file with `Cache-Control: no-cache`, so nothing caches the mismatch.
@@ -25,7 +26,7 @@ use axum::{
     Router,
 };
 
-use crate::fnv;
+use crate::{fnv, island::Island};
 
 /// Cache header for a URL that can never change.
 pub(crate) const IMMUTABLE: HeaderValue = HeaderValue::from_static("public, max-age=31536000, immutable");
@@ -46,21 +47,48 @@ pub struct Assets {
     prefix: String,
     islands_dir: String,
     files: HashMap<String, File>,
+    /// Tags with a module at `islands/{tag}.js`.
+    islands: std::collections::HashSet<String>,
 }
 
 impl Assets {
     /// Reads every file under `dir` and serves them at `{mount}/{version}/...` (`mount` is
     /// usually `/assets`). Island modules belong in `dir/islands/`.
     pub fn load(dir: impl AsRef<Path>, mount: &str) -> io::Result<Self> {
+        Self::build(Some(dir.as_ref()), &[], mount)
+    }
+
+    /// The files under `dir` (when given) and each island's script at `islands/{tag}.js`, served
+    /// at `{mount}/{version}/...`. Two scripts for one tag are an error.
+    pub fn build(dir: Option<&Path>, islands: &[Island], mount: &str) -> io::Result<Self> {
         let mount = mount.trim_end_matches('/');
         assert!(mount.starts_with('/'), "the assets mount is an absolute path, like /assets");
         let mut paths = Vec::new();
-        collect(dir.as_ref(), dir.as_ref(), &mut paths)?;
-        paths.sort();
+        if let Some(dir) = dir {
+            collect(dir, dir, &mut paths)?;
+        }
+        let mut sources = Vec::with_capacity(paths.len() + islands.len());
+        for (url, path) in paths {
+            sources.push((url, std::fs::read(&path)?));
+        }
+        for island in islands {
+            let url = format!("islands/{}.js", island.tag);
+            if sources.iter().any(|(u, _)| *u == url) {
+                let message = format!("two scripts for <{}>: {url} is already there when adding {}", island.tag, island.file);
+                return Err(io::Error::new(io::ErrorKind::AlreadyExists, message));
+            }
+            sources.push((url, island.script.as_bytes().to_vec()));
+        }
+        sources.sort_by(|a, b| a.0.cmp(&b.0));
         let mut files = HashMap::new();
         let mut digest = fnv::OFFSET;
-        for (url, path) in paths {
-            let body = std::fs::read(&path)?;
+        let islands = sources
+            .iter()
+            .filter_map(|(url, _)| url.strip_prefix("islands/")?.strip_suffix(".js"))
+            .filter(|tag| !tag.contains('/'))
+            .map(str::to_string)
+            .collect();
+        for (url, body) in sources {
             let hash = fnv::hash(&body);
             digest = fnv::extend(digest, url.as_bytes());
             digest = fnv::extend(digest, &hash.to_le_bytes());
@@ -73,7 +101,7 @@ impl Assets {
         }
         let version = format!("{:012x}", digest >> 16);
         let prefix = format!("{mount}/{version}/");
-        Ok(Assets { islands_dir: format!("{prefix}islands/"), mount: mount.into(), version, prefix, files })
+        Ok(Assets { islands_dir: format!("{prefix}islands/"), mount: mount.into(), version, prefix, files, islands })
     }
 
     /// The URL for `path` (relative to the directory, like `style.css`). A typo is a bug, so a
@@ -96,6 +124,12 @@ impl Assets {
     /// `{mount}/`, the prefix every version shares.
     pub fn mount_prefix(&self) -> String {
         format!("{}/", self.mount)
+    }
+
+    /// True when there is a module for the island `tag` (an `#[island]` script, or a file in
+    /// `islands/`).
+    pub fn has_island(&self, tag: &str) -> bool {
+        self.islands.contains(tag)
     }
 
     /// Where island modules are served from: `{prefix}islands/`.
@@ -237,6 +271,22 @@ mod tests {
         assert_eq!(get(traversal).await.unwrap().status(), StatusCode::NOT_FOUND, "only loaded files are served");
         let dotfile = format!("/assets/{}/.env", assets.version());
         assert_eq!(get(dotfile).await.unwrap().status(), StatusCode::NOT_FOUND, "dotfiles are skipped");
+    }
+
+    const SCRIPT: Island = Island { tag: "x-y", script: "export default 2", file: "x_y.js", refs: &[], actions: &[], props: &[] };
+
+    #[test]
+    fn island_scripts_are_files_of_the_same_version() {
+        let root = dir("islands", &[("style.css", "a{}")]);
+        let plain = Assets::load(&root, "/assets").unwrap();
+        let with = Assets::build(Some(&root), &[SCRIPT], "/assets").unwrap();
+        assert!(with.has_island("x-y") && with.contains("islands/x-y.js") && !plain.has_island("x-y"));
+        assert_ne!(plain.version(), with.version(), "a script change is a new version");
+        let only = Assets::build(None, &[SCRIPT], "/assets").unwrap();
+        assert!(only.has_island("x-y"), "an app needs no static directory for its islands");
+        let clash = dir("clash", &[("islands/x-y.js", "export default 1")]);
+        let error = Assets::build(Some(&clash), &[SCRIPT], "/assets").err().expect("one tag, two scripts");
+        assert!(error.to_string().contains("two scripts for <x-y>"), "{error}");
     }
 
     #[test]

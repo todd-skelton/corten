@@ -10,9 +10,11 @@ reason that a smaller change cannot meet.
    dependencies there; it must build for native and agent clients.
 2. Server feed (replay, live streams, followers): `crates/corten-feed`.
 3. Pages, request modes, patches, islands, the runtime, `App` defaults: `crates/corten`.
-   Markup is `html!` and `#[component]`, links are `#[derive(Route)]` structs, island refs are
-   `#[derive(Refs)]` enums and text is `messages!` (`crates/corten-macros`, no dependencies: keep it
-   on `proc_macro` alone). Never write a URL, `data-ref` or message key as a string in a view.
+   Markup is `html!` and `#[component]`, links are `#[derive(Route)]` structs, behavior is an
+   `#[island]` (its script next to it; `ref={Name}` and `on:event={Action}` in its markup) and
+   text is `messages!` (`crates/corten-macros`, no dependencies: keep it on `proc_macro` alone).
+   Never write a URL, `data-ref`, `data-on` or message key as a string in a view. Islands have
+   one pattern, `island(tag, { state, connect, actions })`; do not add built-in client behaviors.
    A compile-time guarantee gets a `compile_fail` doctest next to the feature. A change to what `html!` generates needs the item page's
    `render_cost` test before and after (`CORTEN_FIXTURE=bench/fullstack/fixtures/items.json`,
    release build) so rendering does not get slower unnoticed.
@@ -22,9 +24,9 @@ reason that a smaller change cannot meet.
 6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`,
    and production modules (security, assets, PWA, head tags, compression) by
    `examples/item-page/smoke.mjs`. Add the check with the behavior.
-7. Types across seams: never hand-write a type the server already defines. Islands import the
-   declarations `corten::types` generates (`examples/*/types/app.d.ts`, rewritten by the
-   `island_types_match_the_server` test); a typing guarantee gets an `@ts-expect-error` line in
+7. Types across seams: never hand-write a type the server already defines. Islands are checked
+   against the declarations `corten::types` generates (`examples/*/types/app.d.ts`, rewritten by
+   the `island_types_match_the_server` test); a typing guarantee gets an `@ts-expect-error` line in
    `scripts/typecheck-fixture.js`.
 8. `bench/` is not part of the workspace. Its apps are built only by `bench/fullstack` scripts.
 

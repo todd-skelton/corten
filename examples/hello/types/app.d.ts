@@ -12,5 +12,16 @@ export interface Card {
   price_cents: number;
 }
 
-/** The data-ref names of <live-prices>. */
-export type LivePricesRef = "price";
+declare global {
+  /** The app's islands, from its #[island] components: what island("tag", ...) is checked against. */
+  interface CortenIslands {
+    /** `<live-prices>`: live_prices.js */
+    "live-prices": {
+      props: { feed: string; };
+      refs: { pauseButton: "button"; price: "td"; };
+      actions: { pause: { on: "click"; el: "button" }; };
+    };
+  }
+}
+
+export {};

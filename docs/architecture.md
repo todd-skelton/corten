@@ -68,11 +68,11 @@ definition:
 | Seam | Source of truth | Checked by |
 |---|---|---|
 | Rust to markup | page struct and component props | `html!` and `#[component]` are Rust: a missing field or prop is a compile error |
-| Markup to island props | the props struct (`corten::Props`) | `corten::types` writes `types/app.d.ts`; `Island<P>` makes `this.props()` a `P`; `tsc --checkJs` (strict) |
+| Markup to island props | the `#[prop]` parameters of an `#[island]` | `corten::types` writes `types/app.d.ts` with each island's props; `island("tag", ...)` types `props` from it; `tsc --checkJs` (strict) |
 | Feed rows to island | the row struct | the same declarations; `subscribe<Row>` types the snapshot and every patch |
 | Form fields to handler | the input struct | `#[derive(Fields)]`: views print `Input::FIELDS.email` and errors use it, so a renamed field is a compile error |
 | Links to routes | the route struct (`#[derive(Route)]`) | the router mounts `Route::PATH`; a path parameter without a field, or a link missing a field, does not compile |
-| Views to island refs | the refs enum (`#[derive(Refs)]`) | `html!` refuses a ref inside another island's element; `Types::refs` writes the names as a union, so `this.ref` and `this.on` are checked by `tsc` |
+| Island markup to its script | `ref={Name}` and `on:event={Name}` in the `#[island]`'s own `html!` | the names exist only in that component (another one, or a string, does not compile); `Types::islands` writes the element each ref is on and each action's events, so `refs.rows` is an `HTMLTableSectionElement`, a missing, extra or misspelled action fails `tsc`, and so does a ref the markup lacks |
 | Text to catalogs | the default locale's catalog (`messages!`) | every locale must have the same keys and arguments; a key is a method and an argument a parameter, so a misspelling does not compile |
 | Agent arguments and results | the tool's input and output structs | schemas generated from them; arguments are deserialized before the handler runs |
 | Screen JSON to native and agents | the page struct | `Types::json_schema` gives JSON Schema for code generators |
@@ -84,8 +84,11 @@ fails `npm run check`. An island or subscription that names no type gets `unknow
 `@ts-expect-error` lines that must stay errors.
 
 Not checked: `data-*` attributes an island reads through `dataset` (strings on both sides), that
-a handler is mounted at every route struct's `PATH` (the router's tests cover that), and logic an
-island repeats from Rust (the listing sort rule in the item page).
+a ref inside an `if` is present when the script reads it (`refs.name` throws when it is not; the
+type says it is always there), that a handler is mounted at every route struct's `PATH` (the
+router's tests cover that), that every island a page renders is listed in `App::islands` (an
+unlisted one is not preloaded and its module 404s in the browser console), and logic an island
+repeats from Rust (the listing sort rule in the item page).
 
 ## Rules that keep surfaces from drifting
 
@@ -114,7 +117,7 @@ library. Measured against a production marketplace app:
 | Shell data on client navigation | Framework: `App::context`, shell key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the shell went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
 | Which nav items show for which roles | App | Roles and permissions are the app's model; the shell view decides. |
 | Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
-| Types across the server/browser seam | Framework: `corten::types` (TypeScript from the Rust types), `Island<P>`, `subscribe<Row>`, `#[derive(Fields)]` | The framework defines the seams (props, feeds, form posts, tools), so it is the only layer that can type both ends. |
+| Types across the server/browser seam | Framework: `corten::types` (TypeScript from the Rust types), `#[island]` and `island()`, `subscribe<Row>`, `#[derive(Fields)]` | The framework defines the seams (props, feeds, form posts, tools), so it is the only layer that can type both ends. |
 | Response compression | Framework: `corten::compress` | The framework serves the runtime and assets and knows they never change (compress once, best level) and that pages are generated per request (fastest level that pays). A generic layer re-compresses static files on every request at a level tuned for neither. |
 | Validation rules and messages | App | Domain rules; messages come from the app's catalog. |
 | Push notifications | Framework: `Pwa::import_script` only | The framework writes the service worker, so the app needs a way in. VAPID, encryption, subscription storage and sending are a library (`web-push`) plus the app's tables. |

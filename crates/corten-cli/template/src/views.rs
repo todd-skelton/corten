@@ -31,18 +31,18 @@ pub fn home(name: &str) -> impl Render {
             <button>"Greet me"</button>
         </form>
         <Greeting name={name} />
-        <click-counter>
-            <button type="button" data-ref={ClickCounterRef::Button}>"Clicked 0 times"</button>
-        </click-counter>
+        <ClickCounter />
     }
 }
 
-/// The elements `<click-counter>` finds (static/islands/click-counter.js). `html!` refuses them
-/// inside any other island.
-#[derive(Clone, Copy, Refs)]
-#[island("click-counter")]
-pub enum ClickCounterRef {
-    Button,
+/// A button that counts its clicks in the browser. The markup is here; `click_counter.js`, next
+/// to this file, adds the behavior. `on:click={Count}` runs its `count` action and `ref={Total}`
+/// is the element it updates.
+#[island]
+pub fn ClickCounter() -> impl Render {
+    html! {
+        <button type="button" on:click={Count}>"Clicks: "<output ref={Total}>"0"</output></button>
+    }
 }
 
 /// Inside the page, and on its own as the form's patch (the runtime swaps it in by `id`).

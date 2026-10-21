@@ -1,23 +1,25 @@
 //! TypeScript declarations for the data islands read, generated from the Rust types (feature
 //! `types`), so island code is type-checked against the server.
 //!
-//! Every value that crosses into the browser as JSON is a Rust type: an island's props
-//! ([`crate::Props`]), a feed's rows, a screen's data. Derive `schemars::JsonSchema` on them next
-//! to `Serialize` (the app depends on `schemars = "1"` as it does on `serde`), list them once,
+//! Every value that crosses into the browser as JSON is a Rust type: an island's `#[prop]`s, a
+//! feed's rows, a screen's data. Derive `schemars::JsonSchema` on them next to `Serialize` (the
+//! app depends on `schemars = "1"` as it does on `serde`), list them and the app's islands once,
 //! and keep the generated file in sync from a test:
 //!
 //! ```ignore
 //! #[test]
 //! fn island_types_match_the_server() {
-//!     corten::types::Types::new().add::<Card>().add::<GridProps>().sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
+//!     corten::types::Types::new().add::<Card>().islands(views::ISLANDS).sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
 //! }
 //! ```
 //!
 //! `sync` rewrites the file when the Rust types changed and fails the test, so CI (which runs on
-//! a clean checkout) fails until the new file is committed. Islands import the types in JSDoc
-//! (`/** @typedef {import("../../types/app").Card} Card */`, `/** @extends {Island<GridProps>} */`)
-//! and `tsc --checkJs` checks them, so a renamed or retyped field breaks the island's build, not
-//! the page in production. The file holds types only; the browser never loads it.
+//! a clean checkout) fails until the new file is committed. For islands the file declares the
+//! global `CortenIslands`: each island's props, the elements its refs are on and its actions'
+//! events, as the markup declares them. `island("tag", ...)` is checked against it with no import,
+//! and other types are imported in JSDoc (`/** @typedef {import("../types/app").Card} Card */`).
+//! `tsc --checkJs` then fails on a renamed or retyped field, ref or action, not the page in
+//! production. The file holds types only; the browser never loads it.
 //!
 //! Types describe the JSON as the server writes it (`skip_serializing_if` fields are optional,
 //! `Option` is `T | null`). [`Types::json_schema`] gives the same definitions as JSON Schema,
@@ -32,8 +34,8 @@ use serde_json::{Map, Value};
 pub struct Types {
     generator: SchemaGenerator,
     roots: BTreeMap<String, Value>,
-    /// Refs enums: name to (island tag, names).
-    refs: BTreeMap<String, (&'static str, &'static [&'static str])>,
+    /// Each island's entry in `CortenIslands`, by tag.
+    islands: BTreeMap<&'static str, String>,
 }
 
 impl Default for Types {
@@ -47,7 +49,7 @@ impl Types {
         Types {
             generator: SchemaSettings::draft2020_12().for_serialize().into_generator(),
             roots: BTreeMap::new(),
-            refs: BTreeMap::new(),
+            islands: BTreeMap::new(),
         }
     }
 
@@ -61,10 +63,52 @@ impl Types {
         self
     }
 
-    /// Adds an island's `data-ref` names (a [`crate::island::Refs`] enum) as a string union under
-    /// the enum's name, for `@extends {Island<Props, ListingSortRef>}`.
-    pub fn refs<R: crate::island::Refs>(mut self) -> Self {
-        self.refs.insert(R::TYPE.to_string(), (R::ISLAND, R::NAMES));
+    /// Adds the app's islands (`#[island]` components' `ISLAND`) to `CortenIslands`, with the
+    /// types of their props.
+    pub fn islands(mut self, islands: &[crate::Island]) -> Self {
+        let tags = |tags: &[&str]| union(tags.iter().map(|t| format!("{t:?}")).collect());
+        for island in islands {
+            let mut entry = format!(
+                "    /** `<{}>`: {} */
+    {:?}: {{
+      props: {{",
+                island.tag, island.file, island.tag
+            );
+            for prop in island.props {
+                let schema = (prop.ts)(&mut self.generator);
+                let _ = write!(entry, " {}: {};", prop.name, ts(&schema, "      "));
+            }
+            entry.push_str(if island.props.is_empty() {
+                "};
+      refs: {"
+            } else {
+                " };
+      refs: {"
+            });
+            for r in island.refs {
+                let _ = write!(entry, " {}: {};", r.name, tags(r.tags));
+            }
+            entry.push_str(if island.refs.is_empty() {
+                "};
+      actions: {"
+            } else {
+                " };
+      actions: {"
+            });
+            for a in island.actions {
+                let _ = write!(entry, " {}: {{ on: {}; el: {} }};", a.name, tags(a.events), tags(a.tags));
+            }
+            entry.push_str(if island.actions.is_empty() {
+                "};
+    };
+"
+            } else {
+                " };
+    };
+"
+            });
+            self.islands.insert(island.tag, entry);
+        }
         self
     }
 
@@ -102,14 +146,16 @@ impl Types {
             }
             blocks.insert(name, block);
         }
-        for (name, (island, names)) in &self.refs {
-            let union: Vec<String> = names.iter().map(|n| format!("{n:?}")).collect();
-            let block = format!("/** The data-ref names of <{island}>. */\nexport type {name} = {};\n", union.join(" | "));
-            blocks.insert(name.clone(), block);
-        }
         for block in blocks.values() {
             out.push('\n');
             out.push_str(block);
+        }
+        if !self.islands.is_empty() {
+            out.push_str("\ndeclare global {\n  /** The app's islands, from its #[island] components: what island(\"tag\", ...) is checked against. */\n  interface CortenIslands {\n");
+            for entry in self.islands.values() {
+                out.push_str(entry);
+            }
+            out.push_str("  }\n}\n\nexport {};\n");
         }
         out
     }
@@ -331,24 +377,32 @@ export type Kind = "single" | "sealed_box";
         assert!(Types::new().add::<Card>().json_schema()["$defs"]["Kind"]["enum"].is_array());
     }
 
-    #[derive(crate::island::Refs)]
-    #[island("listing-sort")]
+    #[crate::island]
     #[allow(dead_code)]
-    enum ListingSortRef {
-        Toggle,
-        SortRows,
+    fn PriceBoard<'a>(title: &'a str, #[prop] card: &'a Card) -> impl crate::Render {
+        crate::html! { <h2 ref={Title} on:click={Pick}>{title}</h2><template ref={Rest}></template> }
     }
 
     #[test]
-    fn island_refs_become_a_union_of_names() {
-        let ts = Types::new().add::<Kind>().refs::<ListingSortRef>().typescript();
-        assert!(
-            ts.contains(
-                "\n/** The data-ref names of <listing-sort>. */\nexport type ListingSortRef = \"toggle\" | \"sort-rows\";\n"
-            ),
-            "{ts}"
-        );
-        assert!(ts.find("export type Kind").unwrap() < ts.find("export type ListingSortRef").unwrap(), "in name order");
+    fn islands_declare_their_props_refs_and_actions() {
+        let ts = Types::new().add::<Kind>().islands(&[PriceBoard::ISLAND]).typescript();
+        let expected = r#"
+declare global {
+  /** The app's islands, from its #[island] components: what island("tag", ...) is checked against. */
+  interface CortenIslands {
+    /** `<price-board>`: price_board.js */
+    "price-board": {
+      props: { card: Card; };
+      refs: { title: "h2"; rest: "template"; };
+      actions: { pick: { on: "click"; el: "h2" }; };
+    };
+  }
+}
+
+export {};
+"#;
+        assert!(ts.ends_with(expected), "{ts}");
+        assert!(ts.contains("export interface Card {"), "a prop's type is declared with the rest: {ts}");
     }
 
     #[test]

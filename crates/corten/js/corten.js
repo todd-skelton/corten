@@ -5,7 +5,8 @@
 // 1. Same-origin navigations: fetch the next page with `corten: nav` and swap it into <main>.
 // 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id.
 // 3. <corten-live src>: apply fragments streamed as server-sent `patch` events.
-// 4. Islands: an undefined <tag-name> loads `{islands dir}/tag-name.js` and defines its default export.
+// 4. Islands: an undefined <tag-name> loads `{islands dir}/tag-name.js` (the script of an #[island]
+//    component) and defines its `island()`; `on:event={Action}` markup runs its actions.
 // 5. subscribe(): live rows from a corten::feed (snapshot + ordered patches) for islands that keep state.
 // 6. Hover prefetch of same-origin links, the page's head tags on navigation, `aria-current` on
 //    shell links with `data-nav`, and the service worker when the shell names one (corten::pwa).
@@ -23,124 +24,157 @@ const loading = new Map();
 const islandStyles = new CSSStyleSheet();
 document.adoptedStyleSheets = [...document.adoptedStyleSheets, islandStyles];
 
+/** Every element whose class island() made. */
+const islandClasses = new WeakSet();
+
 /**
- * Base class for islands. Write `setup()`; it runs when the element connects. When the element
- * leaves the page (a navigation swapped it out), everything registered with `on`, `subscribe`
- * and `cleanup` is torn down, and `setup()` runs again if it comes back.
- *
- * `P` is the type of the island's props and `R` the union of its `data-ref` names, both imported
- * from the declarations corten::types generates from Rust (a props struct, a `#[derive(Refs)]`
- * enum): tag the subclass with JSDoc `extends {Island<GridProps, GridRef>}`. An island that names
- * no refs can use none, so every `this.ref` and `this.on` name is checked against the server.
- * @template [P=unknown]
- * @template {string} [R=never]
+ * The behavior of an `#[island]` component, in the script next to it:
+ * `island("offer-list", { state() {}, connect(ctx) {}, actions: { showAll(ctx) {} } })`.
+ * `on:click={ShowAll}` in the markup runs `actions.showAll`; `ref={Rows}` is `ctx.refs.rows`.
+ * Types (checked against the Rust markup) and docs: islands.d.ts.
+ * @template {keyof CortenIslands} T
+ * @template [S=undefined]
+ * @param {T} tag
+ * @param {CortenSpec<CortenIslands[T], S>} spec
+ * @returns {{ new (): HTMLElement, tag: T }}
  */
-export class Island extends HTMLElement {
-  #ready = false;
-  /** @type {AbortController | null} */
-  #life = null;
-  /** @type {{ value: P } | null} */
-  #props = null;
+export function island(tag, spec) {
+  const { state, connect } = spec;
+  const actions = /** @type {Record<string, (ctx: any) => void>} */ (/** @type {any} */ (spec).actions ?? {});
+  const made = class extends HTMLElement {
+    static tag = tag;
+    /** @type {AbortController | null} */
+    #life = null;
+    /** @type {Set<string>} */
+    #listening = new Set();
+    /** @type {any} */
+    #context = null;
 
-  connectedCallback() {
-    if (this.#ready) return;
-    this.#ready = true;
-    this.#life = new AbortController();
-    this.setup();
-  }
-
-  disconnectedCallback() {
-    // A move within the page disconnects and reconnects in one task; only tear down real removals.
-    queueMicrotask(() => {
-      if (this.isConnected || !this.#ready) return;
-      this.#ready = false;
-      this.#life?.abort();
-      this.#life = null;
-    });
-  }
-
-  setup() {}
-
-  /** Aborted when the island leaves the page. */
-  get signal() {
-    if (!this.#life) throw new Error(`<${this.localName}> is not connected`);
-    return this.#life.signal;
-  }
-
-  /**
-   * Runs `fn` when the island leaves the page.
-   * @param {() => void} fn
-   */
-  cleanup(fn) {
-    this.signal.addEventListener("abort", fn, { once: true });
-  }
-
-  /**
-   * The first descendant with `data-ref="name"`. Throws when it is missing, so a template
-   * change that breaks an island fails loudly.
-   * @template {Element} [T=HTMLElement]
-   * @param {R} name
-   * @returns {T}
-   */
-  ref(name) {
-    const el = this.querySelector(`[data-ref="${name}"]`);
-    if (!el) throw new Error(`<${this.localName}> has no element with data-ref="${name}"`);
-    return /** @type {T} */ (/** @type {unknown} */ (el));
-  }
-
-  /**
-   * Every descendant with `data-ref="name"`, in document order (possibly none).
-   * @template {Element} [T=HTMLElement]
-   * @param {R} name
-   * @returns {T[]}
-   */
-  refs(name) {
-    return /** @type {T[]} */ (Array.from(this.querySelectorAll(`[data-ref="${name}"]`)));
-  }
-
-  /**
-   * The JSON the server printed in this island with `corten::Props` (a child
-   * `<script type="application/json" data-props>`). Read once, then cached. Throws when missing.
-   * Its type is the island's `P`, so the island is checked against the Rust struct. An island
-   * that names no `P` gets `unknown` (JavaScript would otherwise default it to `any`), so
-   * nothing is read from props unchecked.
-   * @returns {unknown extends P ? unknown : P}
-   */
-  props() {
-    if (this.#props === null) {
-      const script = this.querySelector(":scope > script[data-props]");
-      if (!script) throw new Error(`<${this.localName}> has no corten::Props script`);
-      this.#props = { value: JSON.parse(script.textContent ?? "null") };
+    connectedCallback() {
+      if (this.#life) return;
+      const life = (this.#life = new AbortController());
+      this.#listening = new Set();
+      this.#context = {
+        el: this,
+        refs: refs(this, false),
+        all: refs(this, true),
+        props: readProps(this),
+        state: this.#context ? this.#context.state : state?.(),
+        signal: life.signal,
+      };
+      wire(this);
+      const stop = connect?.(this.#context);
+      if (typeof stop === "function") life.signal.addEventListener("abort", stop, { once: true });
     }
-    return /** @type {any} */ (this.#props.value);
-  }
 
-  /**
-   * Listens for `type` on descendants with `data-ref="name"`, including ones added later.
-   * @param {string} type
-   * @param {R} name
-   * @param {(target: HTMLElement, event: Event) => void} handler
-   */
-  on(type, name, handler) {
-    this.addEventListener(
-      type,
-      (event) => {
-        const target = /** @type {Element} */ (event.target).closest(`[data-ref="${name}"]`);
-        if (target instanceof HTMLElement && this.contains(target)) handler(target, event);
+    disconnectedCallback() {
+      // A move within the page disconnects and reconnects in one task; only tear down real removals.
+      queueMicrotask(() => {
+        if (this.isConnected || !this.#life) return;
+        this.#life.abort();
+        this.#life = null;
+      });
+    }
+
+    /**
+     * Starts delegating `type` events to actions (once per type).
+     * @param {string} type
+     */
+    listen(type) {
+      if (!this.#life || this.#listening.has(type)) return;
+      this.#listening.add(type);
+      // Bubbling events in the bubble phase, so actions run innermost first, like event
+      // handlers; events that do not bubble (focus, mouseenter) reach the element only by capture.
+      const options = { signal: this.#life.signal };
+      this.addEventListener(type, (event) => event.bubbles && this.#run(event), options);
+      this.addEventListener(type, (event) => !event.bubbles && this.#run(event), { ...options, capture: true });
+    }
+
+    /** @param {Event} event */
+    #run(event) {
+      const start = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null;
+      for (let node = start; node; node = node.parentElement) {
+        const on = node.getAttribute("data-on");
+        if (on && owner(node) === this) {
+          for (const pair of on.split(" ")) {
+            const colon = pair.indexOf(":");
+            if (pair.slice(0, colon) !== event.type) continue;
+            const name = pair.slice(colon + 1);
+            const action = actions[name];
+            if (!action) {
+              console.error(`corten: <${tag}> has no action ${name} (data-on="${on}")`);
+              continue;
+            }
+            const ctx = Object.create(this.#context);
+            ctx.target = node;
+            ctx.event = event;
+            action(ctx);
+          }
+        }
+        if (node === this || event.cancelBubble) return;
+      }
+    }
+  };
+  islandClasses.add(made);
+  return made;
+}
+
+/**
+ * The island an element belongs to: the closest custom element around it. An island's markup
+ * ends where another custom element starts, so nested islands keep their own refs and actions.
+ * @param {Element} el
+ * @returns {Element | null}
+ */
+function owner(el) {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    if (node.localName.includes("-")) return node;
+  }
+  return null;
+}
+
+/**
+ * Makes each island listen for the events of the `data-on` elements in `root`: on connect, and
+ * for markup a patch adds later.
+ * @param {Element} root
+ */
+function wire(root) {
+  const marked = Array.from(root.querySelectorAll("[data-on]"));
+  if (root.hasAttribute("data-on")) marked.unshift(root);
+  for (const el of marked) {
+    const host = /** @type {any} */ (owner(el));
+    if (!host || !islandClasses.has(host.constructor)) continue;
+    for (const pair of /** @type {string} */ (el.getAttribute("data-on")).split(" ")) host.listen(pair.slice(0, pair.indexOf(":")));
+  }
+}
+
+/**
+ * `refs` (the first match, which must exist) or `all` (every match) of an island.
+ * @param {Element} host
+ * @param {boolean} many
+ */
+function refs(host, many) {
+  return new Proxy(
+    {},
+    {
+      get(_, name) {
+        if (typeof name !== "string") return undefined;
+        const mine = Array.from(host.querySelectorAll(`[data-ref="${name}"]`)).filter((el) => owner(el) === host);
+        if (many) return mine;
+        if (!mine[0]) throw new Error(`corten: <${host.localName}> has no element with ref={${name[0].toUpperCase()}${name.slice(1)}} (data-ref="${name}")`);
+        return mine[0];
       },
-      { signal: this.signal },
-    );
-  }
+    },
+  );
+}
 
-  /**
-   * `subscribe()` for as long as the island is on the page.
-   * @template [Row=unknown]
-   * @param {string} url
-   * @param {FeedHandlers<Row>} handlers
-   */
-  subscribe(url, handlers) {
-    this.cleanup(subscribe(url, handlers));
-  }
+/**
+ * The `#[prop]` JSON the server printed as the island's first child, read when it connects (so a
+ * script that replaces the children, as Solid does, still has it).
+ * @param {Element} host
+ */
+function readProps(host) {
+  const script = host.querySelector(":scope > script[data-props]");
+  return script ? JSON.parse(script.textContent ?? "{}") : {};
 }
 
 /**
@@ -259,10 +293,12 @@ function define(tag) {
     const url = `${islandsDir}${tag}.js`;
     pending = import(url).then(
       (module) => {
-        if (!customElements.get(tag)) customElements.define(tag, module.default);
+        const made = module.default;
+        if (made?.tag !== tag) throw new Error(`${url} must end with export default island("${tag}", { ... })`);
+        if (!customElements.get(tag)) customElements.define(tag, made);
       },
-      (error) => console.error(`corten: <${tag}> needs an island module at ${url}`, error),
-    );
+      (error) => console.error(`corten: <${tag}> has no island module at ${url}; list the #[island] in App::islands`, error),
+    ).catch((error) => console.error(`corten: ${error.message}`));
     loading.set(tag, pending);
   }
   return pending;
@@ -282,8 +318,10 @@ function parse(html) {
 export function patch(html) {
   for (const el of Array.from(parse(html).children)) {
     const target = el.id ? document.getElementById(el.id) : null;
-    if (target) target.replaceWith(el);
-    else console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
+    if (target) {
+      target.replaceWith(el);
+      wire(el);
+    } else console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
   }
   return upgrade(document.body);
 }

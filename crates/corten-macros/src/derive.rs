@@ -159,25 +159,6 @@ pub fn named_fields(body: &Group) -> Result<Vec<Field>, Error> {
     Ok(fields)
 }
 
-/// The variants of an enum whose variants all carry no data.
-pub fn unit_variants(body: &Group, derive: &str) -> Result<Vec<Ident>, Error> {
-    let mut variants = Vec::new();
-    for variant in split(body.stream(), ',') {
-        let mut j = 0;
-        while is_punct(variant.get(j), '#') {
-            j += 2;
-        }
-        match (variant.get(j), variant.get(j + 1)) {
-            (Some(TokenTree::Ident(id)), None) => variants.push(id.clone()),
-            (Some(TokenTree::Ident(id)), Some(_)) => {
-                return err(id.span(), format!("{derive}: variants carry no data and no explicit value"))
-            }
-            (other, _) => return err(other.map_or(body.span(), TokenTree::span), "expected a variant"),
-        }
-    }
-    Ok(variants)
-}
-
 pub fn string(text: &str) -> TokenTree {
     TokenTree::Literal(Literal::string(text))
 }

@@ -82,9 +82,10 @@ async fn a_bare_router_renders_in_the_default_shell_without_a_policy() {
     assert!(body.starts_with(r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">"#), "{body}");
     assert!(body.contains(r#"<title>A &amp; B</title><meta name="description" content="About A" data-corten-head>"#));
     assert!(body.contains(&format!(r#"<script type="module" src="{}"></script>"#, runtime_path())));
-    assert!(body.contains(r#"<link rel="modulepreload" href="/assets/islands/sort-table.js">"#));
-    assert!(body.contains("<style>sort-table{display:contents}</style>"));
-    assert!(!body.contains("islands/corten-live.js"), "built-in elements are not preloaded");
+    assert!(
+        !body.contains("modulepreload") && !body.contains("display:contents"),
+        "a custom element that is not one of the app's islands is left alone"
+    );
     assert!(body.contains("<p>&lt;script&gt;</p>"), "page text is escaped");
     assert!(!body.contains("nonce"), "no policy, no nonce");
 }
@@ -155,24 +156,6 @@ fn finds_custom_elements_once_in_order() {
     assert_eq!(find_islands("<my-big-el data-x-y=\"a-b\"></my-big-el><x--><a-1>"), vec!["my-big-el", "x--", "a-1"]);
 }
 
-#[cfg(feature = "json")]
-#[test]
-fn props_script_cannot_be_closed_by_a_value() {
-    let value = serde_json::json!({ "title": "</script><script>alert(1)</script>", "n": 1 });
-    let tag = Props(&value).to_html();
-    assert_eq!(
-        tag,
-        r#"<script type="application/json" data-props>{"n":1,"title":"\u003c/script>\u003cscript>alert(1)\u003c/script>"}</script>"#
-    );
-    let json = tag.strip_prefix(r#"<script type="application/json" data-props>"#).unwrap().strip_suffix("</script>").unwrap();
-    assert_eq!(serde_json::from_str::<serde_json::Value>(json).unwrap(), value, "JSON.parse gets the original value back");
-    let view = html! { <grid-view>{Props(&value)}</grid-view> };
-    assert!(
-        view.to_html().starts_with(r#"<grid-view><script type="application/json" data-props>{"#),
-        "props are not escaped twice"
-    );
-}
-
 #[cfg(feature = "solid")]
 #[tokio::test]
 async fn solid_feature_adds_the_import_map_entry_and_route() {
@@ -201,7 +184,6 @@ async fn the_app_puts_the_nonce_on_inline_tags_and_in_the_csp() {
     let csp = headers["content-security-policy"].to_str().unwrap();
     let nonce = csp.split("'nonce-").nth(1).unwrap().split('\'').next().unwrap();
     assert!(body.contains(&format!(r#"<script type="importmap" nonce="{nonce}">"#)));
-    assert!(body.contains(&format!(r#"<style nonce="{nonce}">sort-table"#)));
     assert_eq!(headers["x-content-type-options"], "nosniff");
     assert_eq!(headers["cross-origin-opener-policy"], "same-origin");
     let (_, again, _) = call(app(routes(), None), "GET", None).await;

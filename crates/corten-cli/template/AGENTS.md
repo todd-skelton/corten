@@ -9,7 +9,9 @@ custom-element islands. Run `corten dev` while working and `corten check` before
    when `req.mode == Mode::Action` and the whole page otherwise, so it works without JavaScript.
    Each patched element has an `id`, and the page renders the same component.
 3. Field names come from `#[derive(Fields)]` (`Form::FIELDS.name`), never typed as strings.
-4. Islands are `static/islands/<tag-name>.js`, one per file, default export extends `Island`.
-   They add behavior to server-rendered markup; they do not build HTML. User-facing text stays in
-   the Rust views.
+4. Behavior in the browser is an `#[island]` component: its markup names elements with
+   `ref={Name}` and events with `on:click={Action}`, and the script next to it (`snake_name.js`,
+   `export default island("kebab-name", { actions: { action(ctx) {} } })`) implements them. List
+   each island in `App::islands`. Scripts add behavior to server-rendered markup; they do not
+   build HTML, and user-facing text stays in the Rust views.
 5. Everything works without JavaScript: links are links and forms post.

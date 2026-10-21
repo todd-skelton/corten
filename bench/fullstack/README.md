@@ -93,6 +93,10 @@ gave Corten 499 req/s, p99 960 ms (r1: 226) and Leptos 272 req/s, p99 2.2 s (r1:
 Corten's JavaScript is the runtime (`corten.js`), the two islands this page uses and the app's
 `app.js`, and that includes the service worker registration and prefetching.
 
+Since this run the runtime gained typed seams and `#[island]` actions. Re-measured the same way
+on 2026-10-21 (Corten only, one run): 21.0 / 7.6 KB before the island change, **22.3 / 8.0 KB**
+after it (4 files); HTML 10.8 / 2.3 KB.
+
 ### Browser, median of 10 (p90 in parentheses where it matters)
 
 Each cold load starts on a page from another origin, as when arriving from a search result.

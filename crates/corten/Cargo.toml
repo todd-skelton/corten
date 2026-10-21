@@ -30,7 +30,7 @@ zstd = { version = "0.14", default-features = false, optional = true }
 default = ["log"]
 # App::serve prints logs (errors, startup, shutdown) to stderr unless the app set a subscriber.
 log = ["dep:tracing-subscriber"]
-# corten::Props: typed JSON from the template to an island (`this.props()` in the browser).
+# Island #[prop]s (JSON from the markup to the script) and JSON screens for data clients.
 json = ["dep:serde", "dep:serde_json"]
 # corten::types: TypeScript declarations for islands, generated from the Rust types (schemars).
 types = ["json", "dep:schemars"]

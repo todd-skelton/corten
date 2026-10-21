@@ -1,33 +1,22 @@
 //! The item page's markup. Each piece a patch replaces (the alert form, the alert message) is a
-//! component the page uses too, so the page and the patch cannot drift.
-use corten::prelude::*;
+//! component the page uses too, so the page and the patch cannot drift. The two islands live in
+//! `views/`, each Rust file next to its script.
+use corten::{Island, prelude::*};
 
 use crate::{
-    model::{AlertInput, ItemView, Listing, Offer, sort_listings},
+    model::{AlertInput, ItemView, Listing, sort_listings},
     routes,
     text::Msg,
 };
 
-/// The elements `<listing-sort>` finds. `corten::types` writes them as a TypeScript union for
-/// `static/islands/listing-sort.js`, and `html!` refuses them inside any other island.
-#[derive(Clone, Copy, Refs)]
-#[island("listing-sort")]
-pub enum ListingSortRef {
-    Toggle,
-    Rows,
-}
+mod listing_sort;
+mod offer_list;
 
-/// The elements `<offer-list>` finds.
-#[derive(Clone, Copy, Refs)]
-#[island("offer-list")]
-pub enum OfferListRef {
-    Rows,
-    Rest,
-    More,
-}
+pub use listing_sort::ListingSort;
+pub use offer_list::OfferList;
 
-/// Offers shown before "Show all"; the rest ship in a <template> for the offer-list island.
-const OFFERS_SHOWN: usize = 5;
+/// Every island the app renders, for `App::islands` and the generated types.
+pub const ISLANDS: &[Island] = &[ListingSort::ISLAND, OfferList::ISLAND];
 
 /// The item page borrows the item: rendering copies no strings out of it.
 pub struct ItemPage<'a> {
@@ -53,8 +42,6 @@ impl<'a> ItemPage<'a> {
 
     pub fn view(self) -> impl Render + 'a {
         let ItemPage { t, item, listings, message, form } = self;
-        let shown = item.offers.len().min(OFFERS_SHOWN);
-        let (offers, rest) = item.offers.split_at(shown);
         html! {
             <article class="item">
                 <nav class="crumbs">for c in &item.categories { <a href={routes::Category { slug: &c.slug }}>{c.name}</a> }</nav>
@@ -76,29 +63,8 @@ impl<'a> ItemPage<'a> {
                         None => <span>{t.item_no_listings()}</span>,
                     }
                 </section>
-                <section class="listings">
-                    <listing-sort data-order="asc">
-                        <h2>{t.item_listings()}</h2>
-                        <button type="button" class="sort" data-ref={ListingSortRef::Toggle} data-asc={t.item_sort_asc()} data-desc={t.item_sort_desc()}>{t.item_sort_asc()}</button>
-                        <table>
-                            <thead><tr><th>{t.table_seller()}</th><th>{t.table_condition()}</th><th>{t.table_ships_from()}</th><th>{t.table_qty()}</th><th>{t.table_price()}</th></tr></thead>
-                            <tbody data-ref={ListingSortRef::Rows}>for l in listings { <ListingRow l={l} /> }</tbody>
-                        </table>
-                    </listing-sort>
-                </section>
-                <section class="offers">
-                    <offer-list>
-                        <h2>{t.item_offers()}</h2>
-                        <table>
-                            <thead><tr><th>{t.table_buyer()}</th><th>{t.table_condition()}</th><th>{t.table_qty()}</th><th>{t.table_price()}</th></tr></thead>
-                            <tbody data-ref={OfferListRef::Rows}>for o in offers { <OfferRow o={o} /> }</tbody>
-                        </table>
-                        if !rest.is_empty() {
-                            <template data-ref={OfferListRef::Rest}>for o in rest { <OfferRow o={o} /> }</template>
-                            <button type="button" class="more" data-ref={OfferListRef::More}>{t.item_show_all_offers(item.offers.len())}</button>
-                        }
-                    </offer-list>
-                </section>
+                <section class="listings"><ListingSort t={t} listings={&listings} /></section>
+                <section class="offers"><OfferList t={t} offers={&item.offers} /></section>
                 <section class="alert">
                     <h2>{t.alert_title()}</h2>
                     <AlertForm t={t} form={form} />
@@ -125,21 +91,6 @@ impl<'a> ItemPage<'a> {
             </article>
         }
     }
-}
-
-#[component]
-fn ListingRow(l: &Listing) -> impl Render {
-    html! {
-        <tr data-price={l.price_value}>
-            <td>{l.seller}if let Some(rating) = &l.rating { " · "{rating}" ★ ("{l.reviews}")" }</td>
-            <td>{l.condition}</td><td>{l.ships_from}</td><td>{l.quantity}</td><td class="price">{l.price}</td>
-        </tr>
-    }
-}
-
-#[component]
-fn OfferRow(o: &Offer) -> impl Render {
-    html! { <tr><td>{o.buyer}</td><td>{o.condition}</td><td>{o.quantity}</td><td class="price">{o.price}</td></tr> }
 }
 
 /// The price-alert form's values and errors. The item page shows the form; a submit that fails

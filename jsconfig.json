@@ -12,5 +12,12 @@
     "types": [],
     "paths": { "corten": ["./crates/corten/js/corten.js"], "corten/solid": ["./crates/corten/js/solid.js"] }
   },
-  "include": ["crates/corten/js/*.js", "examples/*/static/**/*.js", "scripts/typecheck-fixture.js"]
+  "include": [
+    "crates/corten/js/*.js",
+    "crates/corten/js/*.d.ts",
+    "examples/*/src/**/*.js",
+    "examples/*/static/**/*.js",
+    "examples/*/types/*.d.ts",
+    "scripts/typecheck-fixture.js"
+  ]
 }

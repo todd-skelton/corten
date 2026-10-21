@@ -9,6 +9,13 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     if let Some(token) = args.into_iter().next() {
         return err(token.span(), "#[component] takes no arguments");
     }
+    build(item, false)
+}
+
+/// `#[component]`, or with `island`, `#[island]`: the same struct, wrapped in the island's tag,
+/// with the island's names in scope and its description next to it (see `crate::island`).
+pub fn build(item: TokenStream, island: bool) -> Result<TokenStream, Error> {
+    let what = if island { "#[island]" } else { "#[component]" };
     let tokens: Vec<TokenTree> = item.into_iter().collect();
     let mut i = 0;
     let mut attrs = Vec::new();
@@ -35,7 +42,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     }
     let span = tokens.get(i).map_or(Span::call_site(), TokenTree::span);
     if !is_ident(tokens.get(i), "fn") {
-        return err(span, "#[component] goes on a function: #[component] fn Card(title: &str) -> impl Render { html! { ... } }");
+        return err(span, format!("{what} goes on a function: {what} fn Card(title: &str) -> impl Render {{ html! {{ ... }} }}"));
     }
     i += 1;
     let name = match tokens.get(i) {
@@ -92,14 +99,33 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         i += 1;
     };
 
+    if island && generics.len() > 2 {
+        for param in split(stream(generics[1..generics.len() - 1].iter().cloned()), ',') {
+            if !is_punct(param.first(), '\'') {
+                return err(
+                    param[0].span(),
+                    "an #[island] takes lifetime parameters only, so Component::ISLAND names one island",
+                );
+            }
+        }
+    }
     let mut fields = TokenStream::new();
     let mut lets = TokenStream::new();
     let mut elided = false;
+    let mut props = Vec::new();
     for param in split(params.stream(), ',') {
         let mut p = 0;
         let mut field_attrs = Vec::new();
+        let mut is_prop = false;
         while is_punct(param.get(p), '#') {
-            field_attrs.extend(param[p..p + 2].iter().cloned());
+            if crate::island::is_prop(&param[p..p + 2]) {
+                if !island {
+                    return err(param[p].span(), "#[prop] sends a parameter to an island's script; use it in an #[island]");
+                }
+                is_prop = true;
+            } else {
+                field_attrs.extend(param[p..p + 2].iter().cloned());
+            }
             p += 2;
         }
         if is_ident(param.get(p), "mut") {
@@ -109,6 +135,9 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             let span = param.first().map_or(params.span(), TokenTree::span);
             return err(span, "component parameters are `name: Type`");
         };
+        if is_prop {
+            props.push(crate::island::Prop { field: field.clone(), ty: param[p + 2..].to_vec() });
+        }
         let ty = name_elided_lifetimes(param[p + 2..].to_vec(), &mut elided);
         fields.extend(stream(field_attrs));
         fields.extend(stream(vis.iter().cloned()));
@@ -132,6 +161,11 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         generics = named;
     }
     let (impl_generics, type_generics) = split_generics(&generics);
+    let parts = if island {
+        Some(crate::island::parts(&name, &body.stream(), &props, impl_generics.clone(), type_generics.clone())?)
+    } else {
+        None
+    };
     let mut out = stream(attrs);
     out.extend(stream(vis));
     out.extend(q(
@@ -139,14 +173,21 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         &[TokenTree::Ident(name.clone()).into(), stream(generics.clone()), stream(where_clause.clone())],
     ));
     out.extend([TokenTree::Group(Group::new(Delimiter::Brace, fields))]);
+    let (scope, open, close, items) = match parts {
+        Some(p) => (p.scope, p.open, p.close, p.items),
+        None => Default::default(),
+    };
     let render = q(
         "fn render(&self, __corten_component_out: &mut ::std::string::String) {
             #[allow(unused_imports)]
             use ::corten::view::__private::{ParamCopy as _, ParamRef as _};
+            __A2
             __A0
-            ::corten::view::Render::render(&__A1, __corten_component_out)
+            __A3
+            ::corten::view::Render::render(&__A1, __corten_component_out);
+            __A4
         }",
-        &[lets, TokenTree::Group(body).into()],
+        &[lets, TokenTree::Group(body).into(), scope, open, close],
     );
     out.extend(q(
         "#[automatically_derived] impl __A0 ::corten::view::Render for __A1 __A2 __A3",
@@ -158,6 +199,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         ],
     ));
     out.extend([TokenTree::Group(Group::new(Delimiter::Brace, render))]);
+    out.extend(items);
     Ok(out)
 }
 

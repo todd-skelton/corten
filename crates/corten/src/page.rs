@@ -447,7 +447,9 @@ impl Req {
         out.push_str(&self.shared.head_extra);
         let _ = write!(out, r#"<script type="importmap"{nonce}>{}</script>"#, crate::import_map());
         let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
-        let islands = find_islands(main);
+        let mut islands = find_islands(main);
+        // Only the app's islands: any other custom element is someone else's to define and style.
+        islands.retain(|tag| self.shared.assets.as_ref().is_some_and(|a| a.has_island(tag)));
         for tag in &islands {
             let _ = write!(out, r#"<link rel="modulepreload" href="{dir}{tag}.js">"#);
         }
@@ -602,34 +604,4 @@ pub(crate) fn html_response(status: StatusCode, body: String, kind: HeaderName) 
         body,
     )
         .into_response()
-}
-
-/// `<script type="application/json" data-props>`: typed data for the island it sits in, read in
-/// the browser with `this.props()`. `{Props(&grid)}` inside the island's element.
-#[cfg(feature = "json")]
-impl<T: serde::Serialize> Render for crate::Props<'_, T> {
-    fn render(&self, out: &mut String) {
-        /// Streams serde_json's output into the page, writing `<` as `\u003c` (it only occurs inside
-        /// JSON strings), so no value can close the script element.
-        struct Escaped<'a>(&'a mut String);
-        impl std::io::Write for Escaped<'_> {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                // serde_json writes whole UTF-8 sequences per call.
-                let text = std::str::from_utf8(buf).map_err(std::io::Error::other)?;
-                for (i, part) in text.split('<').enumerate() {
-                    if i > 0 {
-                        self.0.push_str("\\u003c");
-                    }
-                    self.0.push_str(part);
-                }
-                Ok(buf.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        out.push_str(r#"<script type="application/json" data-props>"#);
-        serde_json::to_writer(Escaped(out), self.0).expect("island props serialize");
-        out.push_str("</script>");
-    }
 }

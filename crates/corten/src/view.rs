@@ -13,7 +13,7 @@
 //!     html! {
 //!         <tr class={highlight.then_some("hot")}>
 //!             <td>{card.name}</td>
-//!             <td data-ref="price" data-id={card.id}>{card.price}</td>
+//!             <td class="price" data-id={card.id}>{card.price}</td>
 //!         </tr>
 //!     }
 //! }
@@ -38,6 +38,8 @@
 //!   true and nothing when false; `None` leaves the attribute out. `{..attrs}` spreads an
 //!   [`Attrs`] value (`<input {..errors.aria(field)}>`).
 //! - `for`, `if`/`else`, `match` and `let` are written as in Rust, with markup in their braces.
+//! - Inside an [`island`](crate::island) component, `ref={Name}` names an element for the
+//!   island's script and `on:click={Action}` runs one of its actions.
 //! - A view owns what it uses and renders once, so it can be returned from a function and markup
 //!   can move or match the values it captured.
 //! - `<Card title="x" compact>children</Card>` builds the struct `Card` (from [`component`] or

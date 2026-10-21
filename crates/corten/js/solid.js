@@ -2,10 +2,11 @@
 // corten/solid: render an island with Solid. Served prebuilt by the corten crate (feature "solid") at
 // /corten/solid.js; `npm run build:solid` regenerates js/dist/solid.js from this file.
 //
-//   import { SolidIsland, h, createSignal } from "corten/solid";
-//   export default class StockBadge extends SolidIsland {
-//     view() { const [n, setN] = createSignal(0); return h("button", { onClick: () => setN(n() + 1) }, () => n()); }
-//   }
+//   import { island } from "corten";
+//   import { mount, h, createSignal } from "corten/solid";
+//   export default island("stock-badge", {
+//     connect: ({ el }) => mount(el, () => { const [n, setN] = createSignal(0); return h("button", { onClick: () => setN(n() + 1) }, () => n()); }),
+//   });
 //
 // Rules (h has no compiler, so reactivity is explicit):
 // 1. A value that changes is passed as a function: `h("td", () => row().price)`, `{ class: () => ... }`.
@@ -18,7 +19,6 @@
 // 5. Render lists with `each(list, (item, index) => h(...))`, never `h(For, ...)`. h builds lazily, so
 //    under a bare For each item would be built by the parent's effect, and the next list change
 //    would dispose the item's signals and handlers while its DOM stays on screen.
-import { Island } from "corten";
 import { render } from "solid-js/web";
 import { For, untrack } from "solid-js";
 import h from "solid-js/h";
@@ -59,27 +59,17 @@ export function each(list, render) {
 }
 
 /**
- * An island rendered with Solid. Write `view(server)`; it runs inside a Solid root when the
- * island connects and is disposed when the island leaves the page. `server` holds the nodes the
- * server rendered inside the element, so the view can keep showing them until its data is ready
- * (`when(loaded, view, () => server)`); empty the array once they are gone (`server.length = 0`)
- * so they can be collected. `P` is the props type, as for `Island`.
- * @template [P=unknown]
- * @extends {Island<P>}
+ * Renders `view(server)` with Solid in an island's element and returns the function that disposes
+ * it, so `connect` can return it: `connect: ({ el, props }) => mount(el, (server) => h(Grid, props))`.
+ * `server` holds the nodes the server rendered inside the element, so the view can keep showing
+ * them until its data is ready (`when(loaded, view, () => server)`); empty the array once they are
+ * gone (`server.length = 0`) so they can be collected. Props are read before the nodes go.
+ * @param {HTMLElement} el
+ * @param {(server: Node[]) => any} view
+ * @returns {() => void}
  */
-export class SolidIsland extends Island {
-  setup() {
-    if (this.querySelector(":scope > script[data-props]")) this.props(); // read before the nodes go
-    const server = Array.from(this.childNodes);
-    this.replaceChildren();
-    this.cleanup(render(() => this.view(server), this));
-  }
-
-  /**
-   * @param {Node[]} server
-   * @returns {any}
-   */
-  view(server) {
-    throw new Error(`<${this.localName}> extends SolidIsland and must define view()`);
-  }
+export function mount(el, view) {
+  const server = Array.from(el.childNodes);
+  el.replaceChildren();
+  return render(() => view(server), el);
 }

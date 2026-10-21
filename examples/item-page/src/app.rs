@@ -37,6 +37,7 @@ pub fn app(source: Source) -> App {
     App::new(routes(source.clone()).route(routes::Mcp::PATH, tools(source, tokens).route()))
         .shell(views::shell)
         .messages::<Msg>()
+        .islands(views::ISLANDS)
         .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(routes::Mcp::PATH))
 }
 
@@ -225,19 +226,16 @@ mod tests {
         let (_, _, html) = send(req).await;
         assert!(html.contains(r#"<html lang="fr">"#) && html.contains("Voir les 7 offres") && html.contains("<h2>Annonces</h2>"));
         assert!(html.contains(r#"<form method="post" action="/items/item_9" data-patch>"#));
-        assert!(html.contains(r#"<button type="button" class="sort" data-ref="toggle""#));
+        assert!(html.contains(r#"<listing-sort><h2>Annonces</h2><button type="button" class="sort" data-on="click:toggle">"#));
         let (status, _, body) = send(Request::get("/categories/promo").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("<h1>Category promo</h1>") && body.contains(r#"<a href="/">Back to popular items</a>"#));
     }
 
-    /// The islands import these declarations, so `npm run check` checks every ref they use.
+    /// The islands' scripts are checked against these declarations by `npm run check`.
     #[test]
     fn island_types_match_the_server() {
-        corten::types::Types::new()
-            .refs::<views::ListingSortRef>()
-            .refs::<views::OfferListRef>()
-            .sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
+        corten::types::Types::new().islands(views::ISLANDS).sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 
     #[tokio::test]

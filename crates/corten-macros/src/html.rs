@@ -70,6 +70,11 @@ enum Attr {
     Static(String, String),
     Expr(String, TokenStream),
     Spread(TokenStream),
+    /// `ref={Rows}`: prints `data-ref="rows"`.
+    Ref(TokenStream),
+    /// `on:click={ShowAll}`: the event and the action. All of an element's print as one
+    /// `data-on="click:showAll"`.
+    On(String, TokenStream),
 }
 
 struct Cursor {
@@ -278,6 +283,28 @@ impl Cursor {
                 }
                 Some(TokenTree::Ident(_)) => {
                     let name = self.attr_name()?;
+                    if name == "data-ref" || name == "data-on" {
+                        return err(span, "data-ref and data-on are printed from names: write ref={Rows} or on:click={ShowAll} in an #[island] component");
+                    }
+                    if name == "ref" || name.starts_with("on:") {
+                        let braced = is_punct(self.peek(), '=')
+                            && matches!(self.peek2(), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace);
+                        if !braced {
+                            return err(
+                                span,
+                                format!(
+                                    "{name} takes a name of the island's script in braces: ref={{Rows}}, on:click={{ShowAll}}"
+                                ),
+                            );
+                        }
+                        self.next();
+                        let (_, expr) = self.value(false)?;
+                        attrs.push(match name.strip_prefix("on:") {
+                            Some(event) => Attr::On(event.to_string(), expr),
+                            None => Attr::Ref(expr),
+                        });
+                        continue;
+                    }
                     if is_punct(self.peek(), '=') {
                         self.next();
                         match self.value(false)? {
@@ -467,8 +494,9 @@ impl Cursor {
 struct Gen {
     out: TokenStream,
     text: String,
-    /// The custom elements (islands) around the current node, innermost last.
-    islands: Vec<String>,
+    /// Type checks that print nothing (`ref={Rows}` is a ref of this island), emitted before the
+    /// writes so they do not split runs of static markup.
+    checks: TokenStream,
 }
 
 impl Gen {
@@ -486,11 +514,31 @@ impl Gen {
 
     fn finish(mut self) -> TokenStream {
         self.flush();
-        self.out
+        let mut out = self.checks;
+        out.extend(self.out);
+        out
+    }
+
+    /// Prints an island name (`ref={Rows}`, `on:click={ShowAll}`). A bare name is known now, so
+    /// it is static markup, and its type is checked apart; anything else is written at run time.
+    fn island_name(&mut self, expr: &TokenStream, check: &str, write: &str) {
+        let mut tokens: Vec<TokenTree> = expr.clone().into_iter().collect();
+        if let [TokenTree::Group(g)] = tokens.as_slice() {
+            if g.delimiter() == Delimiter::Parenthesis {
+                tokens = g.stream().into_iter().collect();
+            }
+        }
+        match tokens.as_slice() {
+            [TokenTree::Ident(name)] if name.to_string().starts_with(|c: char| c.is_ascii_uppercase()) => {
+                self.text.push_str(&crate::island::camel(&name.to_string()));
+                self.checks.extend(q(check, std::slice::from_ref(expr)));
+            }
+            _ => self.code(q(write, std::slice::from_ref(expr))),
+        }
     }
 
     fn body(&self, nodes: &[Node], raw: bool) -> TokenTree {
-        let mut gen = Gen { islands: self.islands.clone(), ..Gen::default() };
+        let mut gen = Gen::default();
         gen.nodes(nodes, raw);
         TokenTree::Group(Group::new(Delimiter::Brace, gen.finish()))
     }
@@ -513,6 +561,7 @@ impl Gen {
             Node::Element { name, attrs, children } => {
                 self.text.push('<');
                 self.text.push_str(name);
+                let mut actions_printed = false;
                 for attr in attrs {
                     match attr {
                         Attr::Bare(attr) => {
@@ -522,17 +571,44 @@ impl Gen {
                         Attr::Static(attr, value) => {
                             self.text.push_str(&format!(" {attr}=\"{}\"", escape(value)));
                         }
-                        Attr::Expr(attr, expr) => {
-                            if attr == "data-ref" && !self.islands.is_empty() {
-                                if let Some(check) = ref_check(expr, &self.islands) {
-                                    self.code(check);
-                                }
-                            }
-                            self.code(q(
-                                "(&::corten::view::__private::Attr(&(__A0))).__attr(__A1, __OUT);",
-                                &[expr.clone(), literal(&format!(" {attr}"))],
-                            ))
+                        Attr::Ref(expr) => {
+                            self.text.push_str(" data-ref=\"");
+                            self.island_name(
+                                expr,
+                                "::corten::island::__private::check_ref(&__A0);",
+                                "__OUT.push_str(::corten::island::__private::ref_name(&__A0));",
+                            );
+                            self.text.push('"');
                         }
+                        Attr::On(..) if actions_printed => {}
+                        Attr::On(..) => {
+                            actions_printed = true;
+                            self.text.push_str(" data-on=\"");
+                            for (i, (event, expr)) in attrs
+                                .iter()
+                                .filter_map(|a| match a {
+                                    Attr::On(event, expr) => Some((event, expr)),
+                                    _ => None,
+                                })
+                                .enumerate()
+                            {
+                                if i > 0 {
+                                    self.text.push(' ');
+                                }
+                                self.text.push_str(event);
+                                self.text.push(':');
+                                self.island_name(
+                                    expr,
+                                    "::corten::island::__private::check_action(&__A0);",
+                                    "__OUT.push_str(::corten::island::__private::action_name(&__A0));",
+                                );
+                            }
+                            self.text.push('"');
+                        }
+                        Attr::Expr(attr, expr) => self.code(q(
+                            "(&::corten::view::__private::Attr(&(__A0))).__attr(__A1, __OUT);",
+                            &[expr.clone(), literal(&format!(" {attr}"))],
+                        )),
                         Attr::Spread(expr) => {
                             self.code(q("::corten::view::Attrs::render_attrs(&(__A0), __OUT);", std::slice::from_ref(expr)))
                         }
@@ -540,14 +616,7 @@ impl Gen {
                 }
                 self.text.push('>');
                 if !VOID.contains(&name.as_str()) {
-                    let island = name.contains('-');
-                    if island {
-                        self.islands.push(name.clone());
-                    }
                     self.nodes(children, RAW_TEXT.contains(&name.as_str()));
-                    if island {
-                        self.islands.pop();
-                    }
                     self.text.push_str(&format!("</{name}>"));
                 }
             }
@@ -587,54 +656,4 @@ impl Gen {
             }
         }
     }
-}
-
-/// For `data-ref={ListingSortRef::Rows}` inside `<listing-sort>`: a constant that fails to compile
-/// unless `ListingSortRef` is the refs enum of one of the islands around it. Only a path whose last
-/// two segments look like `Type::Variant` is checked; anything else is printed as given.
-fn ref_check(expr: &TokenStream, islands: &[String]) -> Option<TokenStream> {
-    let mut tokens: Vec<TokenTree> = expr.clone().into_iter().collect();
-    // Attribute expressions arrive wrapped in parentheses.
-    if let [TokenTree::Group(g)] = tokens.as_slice() {
-        if g.delimiter() == Delimiter::Parenthesis {
-            tokens = g.stream().into_iter().collect();
-        }
-    }
-    let mut idents = Vec::new();
-    for (i, token) in tokens.iter().enumerate() {
-        match token {
-            TokenTree::Ident(id) => idents.push((i, id.to_string())),
-            TokenTree::Punct(p) if p.as_char() == ':' => {}
-            _ => return None,
-        }
-    }
-    let [.., (_, ty), (last, variant)] = idents.as_slice() else { return None };
-    let camel = |s: &str| s.starts_with(|c: char| c.is_ascii_uppercase()) && s.chars().any(|c| c.is_ascii_lowercase());
-    if !camel(ty) || !camel(variant) {
-        return None;
-    }
-    // Everything before the last `::` is the enum's path.
-    let path: TokenStream = tokens[..*last - 2].iter().cloned().collect();
-    let mut names = TokenStream::new();
-    for island in islands {
-        names.extend(q("__A0,", &[literal(island)]));
-    }
-    let span = tokens[0].span();
-    Some(respan(q("const _: () = ::corten::island::__private::check_ref::<__A0>(&[__A1]);", &[path, names]), span))
-}
-
-fn respan(tokens: TokenStream, span: Span) -> TokenStream {
-    tokens
-        .into_iter()
-        .map(|mut token| {
-            if let TokenTree::Group(g) = &token {
-                let mut copy = Group::new(g.delimiter(), respan(g.stream(), span));
-                copy.set_span(span);
-                token = TokenTree::Group(copy);
-            } else {
-                token.set_span(span);
-            }
-            token
-        })
-        .collect()
 }

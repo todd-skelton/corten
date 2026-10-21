@@ -1,7 +1,6 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
 //! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(Route)]` (see
-//! `corten::route`), `#[derive(Refs)]` (see `corten::island`) and `messages!` (see
-//! `corten::i18n`).
+//! `corten::route`), `#[island]` (see `corten::island`) and `messages!` (see `corten::i18n`).
 //!
 //! Written against `proc_macro` alone (no `syn` or `quote`), so the crate has no dependencies
 //! and builds in about a second.
@@ -9,9 +8,9 @@
 mod component;
 mod derive;
 mod html;
+mod island;
 mod json;
 mod messages;
-mod refs;
 mod route;
 mod tokens;
 
@@ -35,10 +34,13 @@ pub fn derive_route(input: TokenStream) -> TokenStream {
     route::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
-/// An island's `data-ref` names as an enum. Documented at `corten::island`.
-#[proc_macro_derive(Refs, attributes(island))]
-pub fn derive_refs(input: TokenStream) -> TokenStream {
-    refs::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+/// A component with behavior in a script next to it. Documented at `corten::island`.
+#[proc_macro_attribute]
+pub fn island(args: TokenStream, item: TokenStream) -> TokenStream {
+    if let Some(token) = args.into_iter().next() {
+        return tokens::compile_error(token.span(), "#[island] takes no arguments: the tag and script come from the name");
+    }
+    component::build(item, true).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// Message catalogs checked and compiled into a type. Documented at `corten::i18n`.

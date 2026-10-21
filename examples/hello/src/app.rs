@@ -33,7 +33,7 @@ impl Market {
 
 /// The app: routes, the shell, and who is signed in. Everything else is Corten's defaults.
 pub fn app(market: Market) -> App {
-    App::new(routes(market)).shell(shell).context(|headers| {
+    App::new(routes(market)).shell(shell).islands(&[LivePrices::ISLAND]).context(|headers| {
         // A real app reads its session here; the example trusts a cookie, which is fine for a
         // demo and nothing else.
         let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
@@ -79,13 +79,6 @@ fn routes(market: Market) -> Router {
         .route(url::Cards::PATH, get(|State(m): State<Market>| async move { m.cards.snapshot() }))
         .route(url::CardsLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.cards.live(since) }))
         .with_state(market)
-}
-
-/// The elements `<live-prices>` finds: one price cell per card.
-#[derive(Clone, Copy, Refs)]
-#[island("live-prices")]
-pub enum LivePricesRef {
-    Price,
 }
 
 /// Who is looking: the shell's context.
@@ -194,21 +187,29 @@ fn home_view(home: &Home) -> impl Render {
     let f = WatchForm::FIELDS;
     html! {
         <h1>"Watchlist"</h1>
-        <live-prices data-src={url::Cards}>
-            <table class="cards">
-                <thead><tr><th>"Card"</th><th>"Price"</th></tr></thead>
-                <tbody>
-                    for card in &home.cards {
-                        <tr><td>{card.name}</td><td data-ref={LivePricesRef::Price} data-id={card.id}>{card.price}</td></tr>
-                    }
-                </tbody>
-            </table>
-        </live-prices>
+        <LivePrices cards={&home.cards} feed={url::Cards::PATH} />
         <form method="post" action={url::Watch} data-patch>
             <label>"Card "<select name={f.id}>for card in &home.cards { <option value={card.id}>{card.name}</option> }</select></label>
             <button>"Watch"</button>
         </form>
         <WatchMessage message={&home.message} />
+    }
+}
+
+/// The prices, rendered here first and then kept current by `live_prices.js` from the feed. The
+/// pause button shows only when the script runs, since nothing updates without it.
+#[island]
+fn LivePrices<'a>(cards: &'a [Card], #[prop] feed: &'a str) -> impl Render {
+    html! {
+        <button type="button" class="pause" ref={PauseButton} on:click={Pause} aria-pressed="false" hidden>"Pause updates"</button>
+        <table class="cards">
+            <thead><tr><th>"Card"</th><th>"Price"</th></tr></thead>
+            <tbody>
+                for card in cards {
+                    <tr><td>{card.name}</td><td ref={Price} data-id={card.id}>{card.price}</td></tr>
+                }
+            </tbody>
+        </table>
     }
 }
 
@@ -278,12 +279,12 @@ mod tests {
         req.body(Body::from("id=c2")).unwrap()
     }
 
-    /// Islands import these declarations, so `npm run check` checks them against the Rust types.
+    /// The island's script is checked against these declarations by `npm run check`.
     #[test]
     fn island_types_match_the_server() {
         corten::types::Types::new()
             .add::<Card>()
-            .refs::<LivePricesRef>()
+            .islands(&[LivePrices::ISLAND])
             .sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 

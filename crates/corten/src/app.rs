@@ -40,8 +40,9 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 /// - the shell around every page ([`crate::default_shell`] until [`App::shell`]);
 /// - error pages for failed requests and unknown URLs, in the request's mode, with the error
 ///   shown under `corten dev`;
-/// - the files in `static/` (or `STATIC_DIR`) at content-versioned, immutable URLs, island
-///   modules in `static/islands/` found and preloaded per page;
+/// - the files in `static/` (or `STATIC_DIR`) and the scripts of the app's islands
+///   ([`App::islands`]) at content-versioned, immutable URLs, each island's preloaded on the
+///   pages that render it;
 /// - `/health/live` and `/health/ready`, the runtime at a versioned URL;
 /// - compression of pages and static files (feature `compress`);
 /// - under `corten dev` (`CORTEN_DEV=1`): open pages reload when the server restarts.
@@ -65,6 +66,7 @@ pub struct App {
     ready: Option<ReadyFn>,
     locales: Option<&'static [&'static str]>,
     dev: Option<bool>,
+    islands: Vec<crate::Island>,
 }
 
 impl App {
@@ -81,7 +83,15 @@ impl App {
             ready: None,
             locales: None,
             dev: None,
+            islands: Vec::new(),
         }
+    }
+
+    /// The app's islands (`#[island]` components): `.islands(&[OfferList::ISLAND, ListingSort::ISLAND])`.
+    /// Their scripts are served with the static files and preloaded on the pages that use them.
+    pub fn islands(mut self, islands: &[crate::Island]) -> Self {
+        self.islands.extend_from_slice(islands);
+        self
     }
 
     /// The app's messages (a type from [`crate::i18n::messages!`]): the shell's `doc.lang()` is
@@ -194,7 +204,7 @@ impl App {
                 "corten: the shell takes Option<{expected_name}> but App::context gives Option<{given_name}>"
             );
         }
-        let assets = load_assets(self.static_dir).map(Arc::new);
+        let assets = load_assets(self.static_dir, &self.islands).map(Arc::new);
         let mut head = String::new();
         let mut routes = self.routes.merge(crate::routes());
         let mut offline = None;
@@ -275,15 +285,18 @@ impl App {
     }
 }
 
-fn load_assets(dir: Option<PathBuf>) -> Option<Assets> {
+fn load_assets(dir: Option<PathBuf>, islands: &[crate::Island]) -> Option<Assets> {
     let explicit = dir.is_some() || std::env::var_os("STATIC_DIR").is_some();
     let dir = dir.or_else(|| std::env::var_os("STATIC_DIR").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("static"));
     if !dir.is_dir() {
         assert!(!explicit, "corten: the static directory {} does not exist", dir.display());
-        return None;
+        if islands.is_empty() {
+            return None;
+        }
     }
-    match Assets::load(&dir, "/assets") {
+    let found = dir.is_dir().then_some(dir.as_path());
+    match Assets::build(found, islands, "/assets") {
         Ok(assets) => Some(assets),
-        Err(error) => panic!("corten: could not read the static directory {}: {error}", dir.display()),
+        Err(error) => panic!("corten: could not load the static files in {} and the islands: {error}", dir.display()),
     }
 }

@@ -5,8 +5,9 @@ needs it and none of the weight where it does not.
 
 - Pages are HTML from the server, written in `html!`, a JSX-like macro that compiles to string
   writes. Components are plain functions. A misspelled prop or field is a compile error.
-- The browser gets a small runtime (5.5 KB compressed) that swaps pages on navigation, patches
-  fragments after form posts and loads islands: custom elements for the parts that need code.
+- The browser gets a small runtime (6.3 KB compressed) that swaps pages on navigation, patches
+  fragments after form posts and loads islands: components whose behavior is a short script
+  next to their Rust markup.
 - Live data is numbered patches over server-sent events, resumable after a reconnect or a
   failover. Islands with heavy client state can render with Solid.
 - No WASM, no bundler, no JavaScript toolchain in the app. One binary and a `static/`
@@ -97,7 +98,7 @@ Handlers are plain axum handlers. `App` adds everything a production app needs a
 | Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`: shells, handlers (`req.context::<C>()`) and error pages see it |
 | Error pages | 404, 405 and 500 inside the shell, in the request's mode (page, swap or JSON); the error is logged, never shown | `.error_page(\|status\| (title, view))` |
 | Security | CSP with a per-request nonce, nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods | `.policy(Policy::new()...)` |
-| Static files | `static/` (or `STATIC_DIR`) at content-hashed, immutable URLs; islands in `static/islands/` preloaded per page | `.assets(dir)` |
+| Static files | `static/` (or `STATIC_DIR`) and island scripts at content-hashed, immutable URLs; each island preloaded on the pages that render it | `.assets(dir)`, `.islands(&[..])` |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Shutdown | Ctrl-C and `SIGTERM` end live streams, then the server | |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
@@ -127,7 +128,7 @@ render of the same call site.
 component renders inside a page and on its own as a patch, and the two cannot drift. A view owns
 what it captures and renders once, so it can be returned from a function.
 
-## Typed links, refs and messages
+## Typed links and messages
 
 The three strings that usually drift between files are Rust types, checked when the app compiles.
 
@@ -135,10 +136,6 @@ The three strings that usually drift between files are Rust types, checked when 
 #[derive(Route)]
 #[route("/items/{id}")]
 pub struct ItemRoute<'a> { pub id: &'a str, pub tab: Option<&'a str> }   // tab is a query parameter
-
-#[derive(Clone, Copy, Refs)]
-#[island("offer-list")]
-pub enum OfferListRef { Rows, Rest, More }                                 // data-ref="rows" ...
 
 corten::i18n::messages! {
     pub struct Msg { "en" => "locales/en.json", "fr" => "locales/fr.json" }
@@ -149,17 +146,13 @@ Router::new().route(ItemRoute::PATH, get(show));                            // t
 let t: Msg = req.t();
 html! {
     <a href={ItemRoute { id: &item.id, tab: None }}>{item.title}</a>       // /items/a%20b
-    <offer-list>
-        <tbody data-ref={OfferListRef::Rows}>...</tbody>
-        <button data-ref={OfferListRef::More}>{t.item_show_all_offers(item.offers.len())}</button>
-    </offer-list>
+    <p>{t.item_show_all_offers(item.offers.len())}</p>
 }
 ```
 
 | What | Fails to compile when |
 |---|---|
 | `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
-| `#[derive(Refs)]` | a ref is used inside another island's element, or the variant does not exist; `Types::refs::<OfferListRef>()` writes the names as a TypeScript union, so `this.ref("row")` fails `npm run check` |
 | `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument |
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
@@ -202,34 +195,66 @@ In the form, `<input name={f.email} {..errors.aria(f.email)}>` sets `aria-invali
 
 ## Islands
 
-An island is a custom element around server-rendered markup. One file per island in
-`static/islands/`: the file name is the tag name and the default export extends `Island`.
-Corten finds islands in the rendered page and preloads exactly those modules; there is nothing to
-register.
+An island is a component with behavior. Its markup is Rust like every other view; its behavior
+is a script in the file next to it. The markup names what the script touches: `ref={Rows}` is an
+element the script uses, `on:click={ShowAll}` runs one of its actions. Everything else in the
+script is plain JavaScript.
 
-```js
-import { Island } from "corten";
-
-export default class ClickCounter extends Island {
-  setup() {
-    let clicks = 0;
-    // The element with data-ref="button" inside this island; a missing ref throws.
-    this.on("click", "button", (button) => { button.textContent = `Clicked ${++clicks} times`; });
-  }
+```rust
+// src/views/offer_list.rs
+#[island]
+pub fn OfferList<'a>(t: Msg, offers: &'a [Offer]) -> impl Render {
+    let (first, rest) = offers.split_at(offers.len().min(5));
+    html! {
+        <table><tbody ref={Rows}>for o in first { <OfferRow o={o} /> }</tbody></table>
+        if !rest.is_empty() {
+            <template ref={Rest}>for o in rest { <OfferRow o={o} /> }</template>
+            <button type="button" on:click={ShowAll}>{t.item_show_all_offers(offers.len())}</button>
+        }
+    }
 }
 ```
 
-Name the elements an island uses with a `#[derive(Refs)]` enum (see Typed links, refs and
-messages) and declare it in the island: `/** @extends {Island<unknown, OfferListRef>} */`. An
-island that declares no refs can use none.
+```js
+// src/views/offer_list.js
+import { island } from "corten";
+
+export default island("offer-list", {
+  actions: {
+    showAll({ refs, target }) {
+      refs.rows.append(refs.rest.content);
+      refs.rest.remove();
+      target.remove();
+    },
+  },
+});
+```
+
+| In the markup | In the script |
+|---|---|
+| `ref={Rows}` on a `<tbody>` | `refs.rows`, an `HTMLTableSectionElement` (`all.rows` for every one) |
+| `on:click={ShowAll}` on a `<button>` | `actions.showAll(ctx)`, with `ctx.target` the button and `ctx.event` the click |
+| a parameter marked `#[prop]` (feature `json`) | `props.name`, typed from the Rust type |
+| the component, `<OfferList ... />` | `<offer-list>` around the markup; `state()` per element, `connect(ctx)` when it joins the page |
+
+The component renders inside its tag (its name in kebab-case) and works without the script. The
+script is compiled into the binary; list the island once, `App::new(routes).islands(&[OfferList::ISLAND])`,
+and Corten serves it at a versioned URL and preloads it on the pages that render it. The
+generated declarations (`Types::islands`, below) describe each island's markup, so
+`island("offer-list", ...)` is type-checked with no imports: a ref the markup does not have, a
+missing or misspelled action, or `.content` on a `<tbody>` fails `npm run check`. In Rust, a
+ref or action outside its island, or as a string, does not compile.
+
+`ref` and `on:` are the only island syntax, and there are no built-in client behaviors to learn:
+showing, toggling or reordering is an action of a few lines in the island's script.
 
 For screens whose state lives in the browser (a grid of thousands of live rows):
 
 | Piece | Server | Browser |
 |---|---|---|
-| Typed props | `{Props(&grid)}` in the markup (feature `json`) | `this.props()` |
-| Live rows | `corten::feed::Feed<Row>`: `write(\|tx\| ...)`, `snapshot()`, `live(since)` (feature `feed`) | `this.subscribe(url, { snapshot, patch, status })` |
-| Rendering | serves Solid as `corten/solid` (feature `solid`) | `class X extends SolidIsland { view(server) { ... } }` |
+| Typed props | `#[prop] grid: &GridProps` (feature `json`) | `props.grid` |
+| Live rows | `corten::feed::Feed<Row>`: `write(\|tx\| ...)`, `snapshot()`, `live(since)` (feature `feed`) | `connect: ({ props }) => subscribe(props.feed, { snapshot, patch, status })` |
+| Rendering | serves Solid as `corten/solid` (feature `solid`) | `connect: ({ el }) => mount(el, (server) => h(Grid, ...))` |
 
 Feed guarantees: every `write` is one numbered patch carrying the final value of each row it
 touched, encoded once and sent as the same bytes to every subscriber. A subscriber gets the
@@ -248,10 +273,10 @@ checked on the other side.
 |---|---|
 | Handler to markup | `html!` is Rust: a missing field or prop is a compile error |
 | Links to routes | `#[derive(Route)]`: the router and every link use the same struct |
-| Views to islands | `#[derive(Refs)]`: `html!` checks the island, `Types::refs` types `this.ref` and `this.on` |
+| Views to islands | `#[island]`: refs and actions are names from the island's own markup; `Types::islands` types `refs`, `props` and every action in its script |
 | Text to catalogs | `messages!`: every locale has every key with the same arguments |
 | Form to handler | `#[derive(Fields)]` names; serde parses the post |
-| Server to island | `corten::types::Types::new().add::<Row>().sync(path)` in a test writes TypeScript declarations and fails while they are stale; `npm run check` then fails in every island that reads an old name |
+| Server to island | `corten::types::Types::new().add::<Row>().islands(ISLANDS).sync(path)` in a test writes TypeScript declarations and fails while they are stale; `npm run check` then fails in every island that reads an old name |
 | Server to agent | tool input and output schemas generated from the structs (feature `agent`) |
 
 Untyped props and rows are `unknown`, not `any`. The full table, and what is not checked, is
@@ -268,10 +293,13 @@ app. Measured on one machine, one run per phase; full tables and method in
 | Rendered pages per second, no database, 64 users | **3,355** | 440 | 224 | 173 | 137 | 52 |
 | Cold start to first page | **184 ms** | 220 ms | 425 ms | 1,035 ms | 496 ms | 1,679 ms |
 | Memory after first request | **1.6 MiB** | 1.7 MiB | 23.5 MiB | 33.0 MiB | 26.4 MiB | 49.2 MiB |
-| JavaScript the page loads, gzip | **6.2 KB** | 7.0 KB + 287 KB WASM | 37.0 KB | 99.2 KB | 108.6 KB | 136.1 KB |
+| JavaScript the page loads, gzip | **8.0 KB**¹ | 7.0 KB + 287 KB WASM | 37.0 KB | 99.2 KB | 108.6 KB | 136.1 KB |
 
 With a database fetch on every request both Rust apps are bound by parsing the API response and
 measure about equal, around 3x the fastest JavaScript framework.
+
+¹ Re-measured after the typed seams and `#[island]` changes with the benchmark's `bytes.mjs`
+method (the full run measured 6.2 KB before them); the other columns are from the full run.
 
 ## Choices
 
@@ -290,11 +318,11 @@ measure about equal, around 3x the fastest JavaScript framework.
 ## Rules
 
 1. HTML comes from the server, in `html!`. Islands never build markup from strings; they move,
-   show or hide server-rendered nodes. Extra rows ship in `<template data-ref>`.
+   show or hide server-rendered nodes. Extra rows ship in a `<template ref={Rest}>`.
 2. A fragment that can be patched is a component, rendered by the page and by the patch, so the
    two cannot drift.
-3. Islands find elements with `this.ref("name")` and listen with `this.on(event, "name",
-   handler)`. State lives in the DOM (`data-*`).
+3. An island's script reaches the page only through the names its markup gives it: `refs`,
+   `all` and actions run by `on:event`. Per-element state is `state()` or the DOM itself.
 4. User-facing text lives in views or the view model, never in island code.
 5. Everything works without JavaScript: links are links and forms post.
 6. A page another surface reads derives `Serialize`, and its fields are its whole view model
@@ -305,7 +333,7 @@ measure about equal, around 3x the fastest JavaScript framework.
 ```text
 crates/
   corten/            The framework on axum: App, Req, html!, components, the runtime (js/corten.js)
-  corten-macros/     html!, #[component], messages!, derives (Fields, Route, Refs), on proc_macro alone (no syn)
+  corten-macros/     html!, #[component], #[island], messages!, derives (Fields, Route), on proc_macro alone (no syn)
   corten-cli/        The corten command, standard library only
   corten-feed/       Live feeds: rows, numbered patches, replay, resume
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
