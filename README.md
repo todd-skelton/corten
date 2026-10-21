@@ -32,18 +32,21 @@ crates/
   corten-feed/       Server side of a live feed: rows, numbered patches, replay, resume, follow a log
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
   corten-cluster/    One feed across instances: Postgres outbox, leased relay to NATS JetStream, idempotent writes, idle feeds unloaded
+  corten-macros/     #[derive(Fields)], on proc_macro alone (no syn)
 examples/hello/      One screen that uses every piece; scripts/smoke.mjs tests it in a browser
 examples/item-page/  A marketplace item page with every production module on; smoke.mjs tests it
 examples/cluster/    A listings feed on corten-cluster, plus the failover benchmark (bench/, results/)
 docs/architecture.md How web, native and agent surfaces share one server
-scripts/             build-solid.mjs (regenerates js/dist/solid.js), smoke.mjs
+scripts/             build-solid.mjs (regenerates js/dist/solid.js), smoke.mjs, typecheck-fixture.js (proves the typed seams)
 bench/fullstack/     The same item page in six frameworks, and the scripts that compare them
 ```
 
-Dependencies: `askama`, `axum`, `futures-util`, `getrandom` (CSP nonces), `tokio` (signals
-only) and `tracing`. Feature `json` adds `serde` and `serde_json`; `feed` adds `corten-feed`;
-`agent` needs only `json`; `solid` adds nothing on the server. Apps need no JavaScript
-dependencies and no bundler; `package.json` is tooling for the framework itself.
+Dependencies: `askama`, `axum`, `futures-util`, `getrandom` (CSP nonces), `memchr` (already in
+axum's tree), `tokio` (signals only), `tracing` and `corten-macros` (no dependencies of its own).
+Feature `json` adds `serde` and `serde_json`; `types` adds `schemars`; `agent` needs `types`;
+`compress` adds `zstd`, `brotli` and `flate2`; `feed` adds `corten-feed`; `solid` adds nothing
+on the server. Apps need no JavaScript dependencies and no bundler; `package.json` is tooling
+for the framework itself (TypeScript checks the islands without emitting anything).
 
 ## Production modules
 
@@ -58,7 +61,9 @@ All in the `corten` crate; `examples/item-page/src/app.rs` switches every one on
 | `i18n` | `Catalog` (JSON messages, missing keys visible) and `Locales::negotiate(Accept-Language)`. Numbers, money and dates are formatted by the app into its view model with a CLDR library such as ICU4X; a partial table in the framework would print wrong output without failing. |
 | `form` | `Errors` (first message per field, `aria(field)` for `aria-invalid`/`aria-describedby`) and `req.invalid(&errors, &form_fragment, page_fn)`: 422 as a patch, as `{"errors": ...}` for JSON clients, or as the full page without JavaScript. The runtime focuses the first invalid field. Rules stay in the app; `Errors` converts into an agent `ToolError`. |
 | `seo` | `sitemap`, `sitemap_index`, `robots`. |
-| `agent` | `Tools`: the app's actions as Model Context Protocol tools over HTTP POST (`tools/list`, `tools/call`), with the app's own auth. |
+| `agent` | `Tools`: the app's actions as Model Context Protocol tools over HTTP POST (`tools/list`, `tools/call`). A tool is `(caller, Input) -> Output`; input and output schemas are generated from the structs, and `Tools::auth` runs once per call with the app's own check. |
+| `compress` | `compress::apply(router)`: pages, patches and JSON compressed per request (zstd 1, else brotli 2, else gzip 1); the runtime, Solid and assets compressed once at brotli 11 and gzip 9, each coding with its own ETag. Streams, images and small bodies pass through. |
+| `types` | `Types::new().add::<Row>().sync(path)` in a test: TypeScript declarations for islands from the Rust types (see Types across seams). |
 | crate root | `Shell::Context` (see below), `error_pages::<Shell, _>` (404/403/500 in the request's mode), `health(ready)` (`/health/live`, `/health/ready`), `shutdown_signal()` (Ctrl-C and SIGTERM; ends live streams so shutdown finishes). |
 
 ## How a request works
@@ -102,9 +107,39 @@ swaps `<main>`. So the shell gets its data one way and the framework keeps it ho
 
 ```rust
 if let Err(errors) = check(&input) {
-    return req.invalid(&errors, &AlertForm::new(&input, &errors), || async { Ok(ItemPage::load(..).await?) }).await;
+    // The page is loaded only for a browser without JavaScript; it may borrow what it loads.
+    return req.invalid(&errors, &AlertForm::new(&input, &errors), || async { req.page(&ItemPage::new(&load(..).await?)) }).await;
 }
 ```
+
+## Types across seams
+
+Every value that crosses from Rust to the browser or to an agent has one definition, in Rust,
+and the other side is checked against it automatically:
+
+```rust
+#[derive(Serialize, JsonSchema)]          // a feed row or island props
+pub struct Card { pub id: String, pub price_cents: u32, pub price: String }
+
+#[derive(Deserialize, Fields)]            // a form; templates print AlertInput::FIELDS.email
+pub struct AlertInput { pub email: String, pub target_price: String }
+
+#[test]                                   // writes types/app.d.ts, fails while it is stale
+fn island_types_match_the_server() {
+    corten::types::Types::new().add::<Card>().sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
+}
+```
+
+```js
+/** @typedef {import("../../types/app").Card} Card */
+/** @extends {Island<Card>} */                         // this.props() is a Card
+export default class Prices extends Island { setup() { this.subscribe(src, { /** @param {Card[]} rows */ snapshot: (rows) => {}, patch: (changes) => {} }); } }
+```
+
+A field renamed in Rust fails `cargo test` until the declarations are regenerated, then fails
+`npm run check` in every island that still reads the old name. Untyped props and rows are
+`unknown`, not `any`. Agent tool schemas come from the tool's structs. The full table, and what
+is not checked, is in [docs/architecture.md](docs/architecture.md#types-across-seams).
 
 ## Rules
 
@@ -144,8 +179,8 @@ events under target `corten::feed`; exporting them is the platform's job. With `
 ask the hub for a feed per request (`hub.feed(key)`): feeds unused for `Options::idle_unload`
 (10 minutes by default) are dropped and load again from the replay log, so one feed per entity
 is affordable. Rules for stateful islands: data rules in a plain
-`*.model.js` module, shared shapes in a `*.types.js` JSDoc file checked against the Rust struct,
-apply patches once per animation frame, render long lists as a window.
+`*.model.js` module, row and props types imported from the generated declarations (never
+written by hand), apply patches once per animation frame, render long lists as a window.
 
 ## Checks
 

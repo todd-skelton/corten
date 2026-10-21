@@ -115,6 +115,29 @@ that switch, so the run above is the realistic one. Serving identical bytes with
 header from `about:blank`, five loads each: first subresource request at 6-18 ms without it and
 76-100 ms with it. Corten keeps the header: it stops other sites' windows from reaching the page.
 
+### After the type and performance pass (before/after, Corten only)
+
+`ab.mjs` runs the image the tables above were measured with (`cb-corten`) and the current build
+(`cb-corten-next`) one at a time on one CPU, items from memory, alternating, two rounds each
+(`results/ab-r1`, `results/ab-r2`; the r2 build also has the faster island scan). "browser" sends
+`Accept-Encoding: gzip, deflate, br, zstd` as Chrome, Edge, Firefox and current Safari do, so
+compression is measured; the tables above sent `identity`. Measured, Docker Desktop with other
+containers running, so throughput at 64 users moved by up to 25% between rounds of the same image.
+
+| Accept-Encoding | Load | Before | After |
+|---|---|---|---|
+| identity | 300/s: CPU, p50 | 15-16%, 0.88 ms | 12%, 0.77 ms |
+| identity | 64 users: req/s (4 runs) | 1,993-3,045 (median 2,700) | 2,702-3,488 (median 3,400) |
+| browser | 300/s: CPU, p50 | 31-33%, 1.45 ms | 15%, 0.87 ms |
+| browser | 64 users: req/s, p99 | 635-789, 145-169 ms | 1,835-2,401, 63-79 ms |
+| browser | bytes per response | 2,800 (brotli 4) | 3,070 (zstd 1) |
+
+What changed: pages compressed with zstd 1 (brotli 2, gzip 1 as fallbacks) by `corten::compress`
+instead of tower-http's defaults (brotli 4 here), the runtime and assets compressed once at brotli
+11, the item page borrowing the cached item instead of cloning it (about 40-50 µs per request
+in `render_cost`), and the island scan looking for dashes instead of every tag (21 µs to 2.4 µs
+on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
+
 ### Summary
 
 1. Cold start and memory: Corten starts as fast as an empty container (184 ms median vs 210 ms

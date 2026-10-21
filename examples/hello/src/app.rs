@@ -22,6 +22,7 @@ use corten::{
     security::cookie::{self, SetCookie},
     Head, Mode, Page, Template,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub type Req = corten::Req<Shell>;
@@ -75,7 +76,7 @@ async fn sign_in(req: Req) -> corten::Result {
 
 /// A feed row. `price` is the display text, kept with the cents so every surface shows the
 /// same string and no client re-implements the formatting.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Card {
     pub id: String,
     pub name: String,
@@ -225,6 +226,12 @@ mod tests {
             req = req.header("accept", accept);
         }
         req.body(Body::from("id=c2")).unwrap()
+    }
+
+    /// Islands import these declarations, so `npm run check` checks them against the Rust types.
+    #[test]
+    fn island_types_match_the_server() {
+        corten::types::Types::new().add::<Card>().sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 
     #[tokio::test]

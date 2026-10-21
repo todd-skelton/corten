@@ -9,7 +9,7 @@
 //! [`crate::Head::nonce`] gives it to the shell for any inline script the app adds. Nothing else
 //! inline runs, so an HTML injection cannot execute script even if a template escapes wrongly.
 
-use std::{fmt::Write as _, sync::Arc};
+use std::{cell::RefCell, sync::Arc};
 
 use axum::{
     extract::Request,
@@ -27,13 +27,28 @@ pub struct Nonce(pub Arc<str>);
 impl Nonce {
     /// 128 random bits from the operating system, hex encoded (hex is valid base64 text).
     pub fn generate() -> Self {
-        let mut bytes = [0u8; 16];
-        getrandom::fill(&mut bytes).expect("the OS random source is available");
-        let mut text = String::with_capacity(32);
-        for b in bytes {
-            let _ = write!(text, "{b:02x}");
+        // One system call per 64 nonces: each thread reads 1 KiB of OS randomness and hands it out
+        // 16 bytes at a time, never twice. The bytes are as unpredictable as a fresh read.
+        thread_local! {
+            static POOL: RefCell<([u8; 1024], usize)> = const { RefCell::new(([0; 1024], 1024)) };
         }
-        Nonce(text.into())
+        let bytes: [u8; 16] = POOL.with_borrow_mut(|(pool, used)| {
+            if *used == pool.len() {
+                getrandom::fill(pool).expect("the OS random source is available");
+                *used = 0;
+            }
+            let bytes = pool[*used..*used + 16].try_into().expect("16 bytes");
+            pool[*used..*used + 16].fill(0);
+            *used += 16;
+            bytes
+        });
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut text = [0u8; 32];
+        for (i, b) in bytes.iter().enumerate() {
+            text[2 * i] = HEX[(b >> 4) as usize];
+            text[2 * i + 1] = HEX[(b & 15) as usize];
+        }
+        Nonce(std::str::from_utf8(&text).expect("hex is ASCII").into())
     }
 }
 
@@ -166,13 +181,30 @@ impl Policy {
     /// Wraps every route of `router`: writes from other sites get 403, every response gets the
     /// headers, and handlers see the request's [`Nonce`].
     pub fn apply<S: Clone + Send + Sync + 'static>(self, router: Router<S>) -> Router<S> {
-        let policy = Arc::new(self);
+        // The header is the same text around each nonce, so split it once here.
+        let csp_parts = self.csp("\0").split('\0').map(str::to_string).collect();
+        let policy = Arc::new(Applied { policy: self, csp_parts });
         router.layer(middleware::from_fn(move |req: Request, next: Next| {
             let policy = policy.clone();
             async move { policy.handle(req, next).await }
         }))
     }
+}
 
+/// A policy in use, with its CSP header split around the nonce.
+struct Applied {
+    policy: Policy,
+    csp_parts: Vec<String>,
+}
+
+impl std::ops::Deref for Applied {
+    type Target = Policy;
+    fn deref(&self) -> &Policy {
+        &self.policy
+    }
+}
+
+impl Applied {
     async fn handle(&self, mut req: Request, next: Next) -> Response {
         if !self.same_origin(req.method(), req.headers()) {
             return (StatusCode::FORBIDDEN, "Cross-site request refused.").into_response();
@@ -183,7 +215,7 @@ impl Policy {
         let headers = res.headers_mut();
         let csp_header =
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
-        if let Ok(value) = HeaderValue::try_from(self.csp(&nonce.0)) {
+        if let Ok(value) = HeaderValue::try_from(self.csp_parts.join(&*nonce.0)) {
             headers.insert(csp_header, value);
         }
         headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
@@ -196,7 +228,9 @@ impl Policy {
         }
         res
     }
+}
 
+impl Policy {
     /// CSRF check for writes. Every current browser sends `Sec-Fetch-Site`, which page script
     /// cannot set: `same-origin` is accepted as is (so a proxy that rewrites `Host` cannot break
     /// writes) and anything cross-site is refused. Older browsers send only `Origin`, which must
@@ -399,10 +433,10 @@ mod tests {
 
     #[test]
     fn nonces_are_unique_hex() {
-        let (a, b) = (Nonce::generate(), Nonce::generate());
-        assert_ne!(a.0, b.0);
-        assert_eq!(a.0.len(), 32);
-        assert!(a.0.bytes().all(|c| c.is_ascii_hexdigit()));
+        // More than one pool's worth, so a refill is crossed.
+        let nonces: std::collections::HashSet<String> = (0..200).map(|_| Nonce::generate().0.to_string()).collect();
+        assert_eq!(nonces.len(), 200);
+        assert!(nonces.iter().all(|n| n.len() == 32 && n.bytes().all(|c| c.is_ascii_hexdigit())));
     }
 
     #[test]

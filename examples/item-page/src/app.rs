@@ -18,12 +18,11 @@ use corten::{
     seo::{self, SitemapUrl},
     Errors, Head, Meta, Mode, Page, Template,
 };
-use serde::Deserialize;
-use serde_json::json;
-use tower_http::compression::CompressionLayer;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    model::{alert_set, check_alert, sort_listings, ItemView, Listing, Offer},
+    model::{alert_set, check_alert, sort_listings, AlertInput, ItemView, Listing, Offer},
     source::Source,
 };
 
@@ -58,6 +57,12 @@ impl App {
 }
 
 pub fn router(app: App) -> Router {
+    // Outermost, so it sees every response, error pages included. Event streams and images
+    // pass through; clients that do not ask for compression (the load generator) get identity.
+    corten::compress::apply(routes(app))
+}
+
+fn routes(app: App) -> Router {
     let assets = assets();
     let pwa = Pwa::new(
         Manifest::new("Card Market", "Card Market")
@@ -85,9 +90,7 @@ pub fn router(app: App) -> Router {
         .merge(pwa.routes())
         .merge(corten::health(|| async { true }))
         .merge(corten::routes());
-    // Compression skips event streams and images by default; responses to clients that do not
-    // ask for it (the load generator) are sent as is.
-    Policy::new().apply(corten::error_pages::<Shell, _>(routes)).layer(CompressionLayer::new())
+    Policy::new().apply(corten::error_pages::<Shell, _>(routes))
 }
 
 pub struct Shell;
@@ -118,20 +121,21 @@ impl corten::Shell for Shell {
 /// Offers shown before "Show all"; the rest ship in a <template> for the offer-list island.
 const OFFERS_SHOWN: usize = 5;
 
+/// The item page borrows the item: rendering copies no strings out of it.
 #[derive(Template)]
 #[template(path = "item.html")]
-pub struct ItemPage {
+pub struct ItemPage<'a> {
     t: &'static Catalog,
-    item: ItemView,
-    listings: Vec<Listing>,
+    item: &'a ItemView,
+    listings: Vec<&'a Listing>,
     message: String,
-    form: AlertFormView,
+    form: AlertFormView<'a>,
 }
 
-impl ItemPage {
-    pub fn new(t: &'static Catalog, item: ItemView, message: String) -> Self {
+impl<'a> ItemPage<'a> {
+    pub fn new(t: &'static Catalog, item: &'a ItemView, message: String) -> Self {
         let listings = sort_listings(&item.listings, false);
-        let form = AlertFormView { id: item.id.clone(), title: item.title.clone(), ..AlertFormView::default() };
+        let form = AlertFormView { id: &item.id, title: &item.title, ..AlertFormView::default() };
         ItemPage { t, item, listings, message, form }
     }
 
@@ -144,7 +148,7 @@ impl ItemPage {
     }
 }
 
-impl Page for ItemPage {
+impl Page for ItemPage<'_> {
     fn title(&self) -> String {
         format!("{} | Card Market", self.item.title)
     }
@@ -155,21 +159,21 @@ impl Page for ItemPage {
 }
 
 /// The price-alert form's values and errors. The item page includes the form; a submit that
-/// fails validation patches it on its own.
+/// fails validation patches it on its own. Field names come from `AlertInput::FIELDS`.
 #[derive(Clone, Default)]
-pub struct AlertFormView {
-    id: String,
-    title: String,
-    email: String,
-    target_price: String,
+pub struct AlertFormView<'a> {
+    id: &'a str,
+    title: &'a str,
+    email: &'a str,
+    target_price: &'a str,
     errors: Errors,
 }
 
 #[derive(Template)]
 #[template(path = "alert_form.html")]
-pub struct AlertForm {
+pub struct AlertForm<'a> {
     t: &'static Catalog,
-    form: AlertFormView,
+    form: AlertFormView<'a>,
 }
 
 /// The price-alert result. Rendered inside the item page and on its own as a patch.
@@ -238,16 +242,9 @@ async fn sitemap() -> axum::response::Response {
 
 async fn show(req: Req, headers: HeaderMap, State(app): State<App>, Path(id): Path<String>) -> corten::Result {
     match app.source.item(&id).await? {
-        Some(item) => req.page(&ItemPage::new(catalog(&headers), item, String::new())),
+        Some(item) => req.page(&ItemPage::new(catalog(&headers), &item, String::new())),
         None => req.page_with_status(StatusCode::NOT_FOUND, &NotFound),
     }
-}
-
-#[derive(Deserialize)]
-pub struct AlertInput {
-    title: String,
-    email: String,
-    target_price: String,
 }
 
 async fn create_alert(
@@ -262,15 +259,14 @@ async fn create_alert(
         Ok(price) => price,
         Err(errors) => {
             let view =
-                AlertFormView { id: id.clone(), title: form.title, email: form.email, target_price: form.target_price, errors };
+                AlertFormView { id: &id, title: &form.title, email: &form.email, target_price: &form.target_price, errors };
             let fragment = AlertForm { t, form: view.clone() };
             // Without JavaScript the whole page comes back, with the form showing the errors.
-            return req
-                .invalid(&fragment.form.errors, &fragment, || async move {
-                    let item = app.source.item(&id).await?.ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?;
-                    Ok(ItemPage { form: view, ..ItemPage::new(t, item, String::new()) })
-                })
-                .await;
+            let page = || async {
+                let item = app.source.item(&id).await?.ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?;
+                req.page(&ItemPage { form: view.clone(), ..ItemPage::new(t, &item, String::new()) })
+            };
+            return req.invalid(&view.errors, &fragment, page).await;
         }
     };
     let message = alert_set(&form.title, &form.email, price);
@@ -279,70 +275,71 @@ async fn create_alert(
     }
     // Without JavaScript the browser posted a plain form: answer with the whole page.
     match app.source.item(&id).await? {
-        Some(item) => req.page(&ItemPage::new(t, item, message)),
+        Some(item) => req.page(&ItemPage::new(t, &item, message)),
         None => req.page_with_status(StatusCode::NOT_FOUND, &NotFound),
     }
 }
 
+/// Which item, for `items.get`.
+#[derive(Deserialize, JsonSchema)]
+struct ItemId {
+    /// Item id, like item_17.
+    id: String,
+}
+
+/// A price alert as an agent asks for it: the form's fields (same names, same rules) plus the item.
+#[derive(Deserialize, JsonSchema)]
+struct CreateAlert {
+    /// Item id, like item_17.
+    id: String,
+    /// Where to send the alert.
+    #[schemars(email)]
+    email: String,
+    /// Decimal dollars, like 4.50.
+    target_price: String,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct AlertSet {
+    message: String,
+}
+
 /// The same read and write the page offers, as MCP tools. Agents authenticate with a bearer
-/// token (`AGENT_TOKENS`, comma separated), never with the browser's cookies.
+/// token (`AGENT_TOKENS`, comma separated), never with the browser's cookies. Input and output
+/// schemas come from the structs above.
 fn tools(app: App) -> Tools {
-    let authorized = {
-        let tokens = app.tokens.clone();
-        move |headers: &HeaderMap| {
-            let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
-            token.is_some_and(|t| tokens.iter().any(|known| known == t))
-        }
-    };
-    let read_auth = authorized.clone();
+    let tokens = app.tokens.clone();
     let read_app = app.clone();
     Tools::new("card-market-item-page", env!("CARGO_PKG_VERSION"))
+        .auth(move |headers| {
+            let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
+            match token {
+                Some(token) if tokens.iter().any(|known| known == token) => Ok(()),
+                _ => Err(ToolError::Unauthorized),
+            }
+        })
         .read_tool(
             "items.get",
             "Item detail: title, market summary, listings sorted by price, and buy offers.",
-            json!({ "type": "object", "properties": { "id": { "type": "string", "description": "Item id, like item_17" } }, "required": ["id"] }),
-            move |headers, args| {
-                let (app, authorized) = (read_app.clone(), read_auth.clone());
+            move |(), input: ItemId| {
+                let app = read_app.clone();
                 async move {
-                    if !authorized(&headers) {
-                        return Err(ToolError::Unauthorized);
-                    }
-                    let id = args["id"].as_str().ok_or_else(|| ToolError::Invalid("id must be a string".into()))?;
-                    let item = app.source.item(id).await.map_err(|e| ToolError::Internal(e.into()))?;
-                    let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {id}")))?;
-                    Ok(serde_json::to_value(&item)?)
+                    let item = app.source.item(&input.id).await.map_err(ToolError::internal)?;
+                    let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
+                    Ok(ItemView::clone(&item))
                 }
             },
         )
         .tool(
             "alerts.create",
             "Email the user when the item's lowest price drops below a target.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "id": { "type": "string" },
-                    "email": { "type": "string", "format": "email" },
-                    "target_price": { "type": "string", "description": "Decimal dollars, like 4.50" }
-                },
-                "required": ["id", "email", "target_price"]
-            }),
-            move |headers, args| {
-                let (app, authorized) = (app.clone(), authorized.clone());
+            move |(), input: CreateAlert| {
+                let app = app.clone();
                 async move {
-                    if !authorized(&headers) {
-                        return Err(ToolError::Unauthorized);
-                    }
-                    #[derive(Deserialize)]
-                    struct Input {
-                        id: String,
-                        email: String,
-                        target_price: String,
-                    }
-                    let input: Input = serde_json::from_value(args)?;
                     let price = check_alert(locales().default_catalog(), &input.email, &input.target_price)?;
-                    let item = app.source.item(&input.id).await.map_err(|e| ToolError::Internal(e.into()))?;
+                    let item = app.source.item(&input.id).await.map_err(ToolError::internal)?;
                     let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
-                    Ok(json!({ "message": alert_set(&item.title, &input.email, price) }))
+                    Ok(AlertSet { message: alert_set(&item.title, &input.email, price) })
                 }
             },
         )
@@ -352,6 +349,7 @@ fn tools(app: App) -> Tools {
 mod tests {
     use axum::{body::Body, http::Request};
     use http_body_util::BodyExt;
+    use serde_json::json;
     use tower::ServiceExt;
 
     use super::*;
@@ -452,6 +450,72 @@ mod tests {
         assert!(body.contains("<html") && body.contains("Show all 7 offers") && body.contains("target_price-error"));
     }
 
+    /// Where the time for one item page goes. Release build, benchmark fixture:
+    /// `CORTEN_FIXTURE=/path/items.json cargo test --release -p item-page -- --ignored render_cost --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn render_cost() {
+        use std::time::Instant;
+        let path = std::env::var("CORTEN_FIXTURE").expect("CORTEN_FIXTURE");
+        let source = Source::fixture(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let ids: Vec<String> = (1..=500).map(|n| format!("item_{n}")).collect();
+        let router = router(App::new(source.clone(), concat!(env!("CARGO_MANIFEST_DIR"), "/static")).unwrap());
+        let t = locales().default_catalog();
+        let rounds = 20;
+        let n = (rounds * ids.len()) as f64;
+        let per = |start: Instant| start.elapsed().as_secs_f64() * 1e6 / n;
+        let mut items = Vec::new();
+        for id in &ids {
+            items.push(source.item(id).await.unwrap().unwrap());
+        }
+        let start = Instant::now();
+        for _ in 0..rounds {
+            for item in &items {
+                std::hint::black_box(ItemPage::new(t, item, String::new()));
+            }
+        }
+        let build = per(start);
+        let start = Instant::now();
+        let mut bytes = 0;
+        for _ in 0..rounds {
+            for item in &items {
+                bytes += std::hint::black_box(ItemPage::new(t, item, String::new()).render().unwrap()).len();
+            }
+        }
+        let render = per(start);
+        let main = ItemPage::new(t, &items[0], String::new()).render().unwrap();
+        let start = Instant::now();
+        for _ in 0..rounds * ids.len() {
+            std::hint::black_box(corten::find_islands(std::hint::black_box(&main)));
+        }
+        println!(
+            "build view: {build:.1} us, build + render main: {render:.1} us ({} bytes avg), find islands: {:.1} us",
+            bytes / (rounds * ids.len()),
+            per(start)
+        );
+        for (label, mode, encoding) in [
+            ("navigation, identity", Some("nav"), "identity"),
+            ("document, identity", None, "identity"),
+            ("document, zstd", None, "gzip, deflate, br, zstd"),
+            ("document, br", None, "gzip, deflate, br"),
+            ("document, gzip", None, "gzip"),
+        ] {
+            let start = Instant::now();
+            let mut size = 0;
+            for _ in 0..rounds {
+                for id in &ids {
+                    let mut req = Request::get(format!("/items/{id}")).header("accept-encoding", encoding);
+                    if let Some(mode) = mode {
+                        req = req.header("corten", mode);
+                    }
+                    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+                    size += std::hint::black_box(res.into_body().collect().await.unwrap().to_bytes()).len();
+                }
+            }
+            println!("full request, {label}: {:.1} us, {} bytes avg", per(start), size / (rounds * ids.len()));
+        }
+    }
+
     #[tokio::test]
     async fn pwa_offline_health_and_seo_routes_answer() {
         let (_, headers, manifest) = send(Request::get("/manifest.webmanifest").body(Body::empty()).unwrap()).await;
@@ -494,6 +558,18 @@ mod tests {
         let res: serde_json::Value = serde_json::from_str(&send(call(Some("dev-token"), bad)).await.2).unwrap();
         assert_eq!(res["result"]["isError"], true);
         assert_eq!(res["result"]["content"][0]["text"], "invalid arguments: email: Enter a valid email address.");
+        let list = json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/list" });
+        let res: serde_json::Value = serde_json::from_str(&send(call(None, list)).await.2).unwrap();
+        let create = &res["result"]["tools"][0];
+        assert_eq!(create["name"], "alerts.create");
+        assert_eq!(create["inputSchema"]["properties"]["email"]["format"], "email");
+        let fields: Vec<&str> =
+            create["inputSchema"]["required"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(
+            fields.contains(&AlertInput::FIELDS.email) && fields.contains(&AlertInput::FIELDS.target_price),
+            "the tool takes the form's fields under the same names, so validation errors name them right: {fields:?}"
+        );
+        assert_eq!(res["result"]["tools"][1]["outputSchema"]["properties"]["listings"]["type"], "array");
         let read = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "items.get", "arguments": { "id": "item_9" } } });
         let (_, _, body) = send(call(Some("dev-token"), read)).await;
         let res: serde_json::Value = serde_json::from_str(&body).unwrap();

@@ -1,0 +1,230 @@
+//! `#[derive(Fields)]`, re-exported as `corten::Fields`. See its documentation there.
+//!
+//! Parsed with `proc_macro` alone (no `syn`): the input is a struct with named fields, and the
+//! only attributes read are serde's `rename_all`, `rename`, `skip` and `flatten`.
+
+use proc_macro::{Delimiter, Group, Spacing, TokenStream, TokenTree};
+
+/// Field names of a form input struct as constants: `Input::FIELDS.email` is `"email"`, with
+/// serde's `rename` and `rename_all` applied. Templates print them for `name=` and handlers
+/// pass them to `Errors`, so a renamed or misspelled field is a compile error.
+#[proc_macro_derive(Fields, attributes(serde))]
+pub fn derive_fields(input: TokenStream) -> TokenStream {
+    match fields(input) {
+        Ok(code) => code.parse().expect("generated code parses"),
+        Err(message) => format!("::core::compile_error!({message:?});").parse().expect("compile_error parses"),
+    }
+}
+
+fn fields(input: TokenStream) -> Result<String, String> {
+    let tokens: Vec<TokenTree> = input.into_iter().collect();
+    let mut rename_all = None;
+    let mut visibility = String::new();
+    let mut i = 0;
+    let name = loop {
+        match tokens.get(i) {
+            Some(TokenTree::Punct(p)) if p.as_char() == '#' => {
+                if let Some(TokenTree::Group(group)) = tokens.get(i + 1) {
+                    for (key, value) in serde_args(group)? {
+                        if key == "rename_all" {
+                            rename_all = Some(value.ok_or("Fields: rename_all needs a value, like rename_all = \"camelCase\"")?);
+                        }
+                    }
+                }
+                i += 2;
+            }
+            Some(TokenTree::Ident(id)) if id.to_string() == "pub" => {
+                visibility = "pub".into();
+                if let Some(TokenTree::Group(g)) = tokens.get(i + 1) {
+                    if g.delimiter() == Delimiter::Parenthesis {
+                        visibility = format!("pub({})", g.stream());
+                        i += 1;
+                    }
+                }
+                i += 1;
+            }
+            Some(TokenTree::Ident(id)) if id.to_string() == "struct" => match tokens.get(i + 1) {
+                Some(TokenTree::Ident(name)) => {
+                    i += 2;
+                    break name.to_string();
+                }
+                _ => return Err("Fields: expected a struct name".into()),
+            },
+            Some(TokenTree::Ident(id)) if id.to_string() == "enum" || id.to_string() == "union" => {
+                return Err("Fields can only be derived for a struct with named fields".into())
+            }
+            Some(_) => i += 1,
+            None => return Err("Fields: expected a struct".into()),
+        }
+    };
+    let body = match tokens.get(i) {
+        Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace => g,
+        Some(TokenTree::Punct(p)) if p.as_char() == '<' => return Err("Fields: generic structs are not supported".into()),
+        _ => return Err("Fields can only be derived for a struct with named fields".into()),
+    };
+    let mut names = Vec::new();
+    for field in split_fields(body.stream()) {
+        let mut rename = None;
+        let mut skip = false;
+        let mut ident = None;
+        let mut j = 0;
+        while j < field.len() {
+            match &field[j] {
+                TokenTree::Punct(p) if p.as_char() == '#' => {
+                    if let Some(TokenTree::Group(group)) = field.get(j + 1) {
+                        for (key, value) in serde_args(group)? {
+                            match key.as_str() {
+                                "rename" => {
+                                    rename = Some(
+                                        value
+                                            .ok_or("Fields: use rename = \"name\"; rename(deserialize = ..) is not supported")?,
+                                    )
+                                }
+                                "skip" | "skip_deserializing" => skip = true,
+                                "flatten" => {
+                                    return Err(
+                                        "Fields: #[serde(flatten)] is not supported; list the fields in the form struct".into()
+                                    )
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    j += 2;
+                }
+                TokenTree::Ident(id) if id.to_string() == "pub" => {
+                    j += 1;
+                    if matches!(field.get(j), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis) {
+                        j += 1;
+                    }
+                }
+                TokenTree::Ident(id) => {
+                    ident = Some(id.to_string());
+                    break;
+                }
+                _ => j += 1,
+            }
+        }
+        let Some(ident) = ident else { continue };
+        if skip {
+            continue;
+        }
+        let bare = ident.strip_prefix("r#").unwrap_or(&ident).to_string();
+        let wire = match (rename, &rename_all) {
+            (Some(name), _) => name,
+            (None, Some(rule)) => apply_rule(&bare, rule)?,
+            (None, None) => bare.clone(),
+        };
+        names.push((ident, wire));
+    }
+    let fields_type = format!("{name}Fields");
+    let mut out = format!(
+        "/// Form field names of [`{name}`], from `#[derive(Fields)]`.\n#[derive(Clone, Copy, Debug)]\n#[allow(dead_code)]\n{visibility} struct {fields_type} {{\n"
+    );
+    for (ident, _) in &names {
+        out += &format!("    pub {ident}: &'static str,\n");
+    }
+    out += &format!("}}\n#[allow(dead_code)]\nimpl {name} {{\n    /// Each field's name as the form posts it.\n    pub const FIELDS: {fields_type} = {fields_type} {{\n");
+    for (ident, wire) in &names {
+        out += &format!("        {ident}: {wire:?},\n");
+    }
+    out += "    };\n}\n";
+    Ok(out)
+}
+
+/// Splits a brace group's tokens at top-level commas. Commas inside `<..>` belong to a type.
+fn split_fields(stream: TokenStream) -> Vec<Vec<TokenTree>> {
+    let mut fields = vec![Vec::new()];
+    let mut depth = 0i32;
+    let mut previous_dash = false;
+    for token in stream {
+        if let TokenTree::Punct(p) = &token {
+            match p.as_char() {
+                '<' => depth += 1,
+                // `->` in a fn pointer type is not a closing angle bracket.
+                '>' if !previous_dash => depth -= 1,
+                ',' if depth == 0 => {
+                    fields.push(Vec::new());
+                    previous_dash = false;
+                    continue;
+                }
+                _ => {}
+            }
+            previous_dash = p.as_char() == '-' && p.spacing() == Spacing::Joint;
+        } else {
+            previous_dash = false;
+        }
+        fields.last_mut().expect("never empty").push(token);
+    }
+    fields.retain(|f| !f.is_empty());
+    fields
+}
+
+/// `key` or `key = "value"` pairs of a `#[serde(...)]` attribute group; other attributes yield nothing.
+fn serde_args(attribute: &Group) -> Result<Vec<(String, Option<String>)>, String> {
+    let tokens: Vec<TokenTree> = attribute.stream().into_iter().collect();
+    let (Some(TokenTree::Ident(path)), Some(TokenTree::Group(args))) = (tokens.first(), tokens.get(1)) else {
+        return Ok(Vec::new());
+    };
+    if path.to_string() != "serde" {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    let args: Vec<TokenTree> = args.stream().into_iter().collect();
+    let mut k = 0;
+    while k < args.len() {
+        if let TokenTree::Ident(key) = &args[k] {
+            let key = key.to_string();
+            match (args.get(k + 1), args.get(k + 2)) {
+                (Some(TokenTree::Punct(eq)), Some(TokenTree::Literal(value))) if eq.as_char() == '=' => {
+                    out.push((key, Some(unquote(&value.to_string())?)));
+                    k += 3;
+                }
+                (Some(TokenTree::Group(_)), _) => {
+                    out.push((key, None));
+                    k += 2;
+                }
+                _ => {
+                    out.push((key, None));
+                    k += 1;
+                }
+            }
+        } else {
+            k += 1;
+        }
+    }
+    Ok(out)
+}
+
+fn unquote(literal: &str) -> Result<String, String> {
+    literal
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .filter(|s| !s.contains('\\'))
+        .map(str::to_string)
+        .ok_or_else(|| format!("Fields: expected a plain string literal, found {literal}"))
+}
+
+/// serde's `rename_all` rules, applied to a snake_case field name.
+fn apply_rule(field: &str, rule: &str) -> Result<String, String> {
+    let words: Vec<&str> = field.split('_').filter(|w| !w.is_empty()).collect();
+    let capitalized = |w: &str| {
+        let mut c = w.chars();
+        c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+    };
+    Ok(match rule {
+        "lowercase" => field.to_lowercase(),
+        "UPPERCASE" => field.to_uppercase(),
+        "snake_case" => field.to_string(),
+        "SCREAMING_SNAKE_CASE" => field.to_uppercase(),
+        "kebab-case" => field.replace('_', "-"),
+        "SCREAMING-KEBAB-CASE" => field.replace('_', "-").to_uppercase(),
+        "PascalCase" => words.iter().map(|w| capitalized(w)).collect(),
+        "camelCase" => {
+            let pascal: String = words.iter().map(|w| capitalized(w)).collect();
+            let mut c = pascal.chars();
+            c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default()
+        }
+        other => return Err(format!("Fields: unknown rename_all rule {other:?}")),
+    })
+}

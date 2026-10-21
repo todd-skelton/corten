@@ -1,7 +1,7 @@
 // @ts-check
 import { Island } from "corten";
 
-/** @typedef {{ id: string, name: string, price_cents: number, price: string }} Card Same fields as `Card` in src/app.rs. */
+/** @typedef {import("../../types/app").Card} Card Generated from `Card` in src/app.rs. */
 
 /** Keeps the server-rendered prices current from the feed at `data-src`. */
 export default class LivePrices extends Island {

@@ -1,0 +1,9 @@
+{
+ "ab-app": {
+  "samples": 83,
+  "cpuAvgPct": 103,
+  "cpuMaxPct": 107.14,
+  "memAvgMiB": 18.6,
+  "memMaxMiB": 19.3
+ }
+}

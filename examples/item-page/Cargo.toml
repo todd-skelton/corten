@@ -6,13 +6,13 @@ publish = false
 description = "A marketplace item detail page on Corten, with the production pieces on: CSP, versioned assets, PWA, i18n, MCP tools."
 
 [dependencies]
-corten = { path = "../../crates/corten", features = ["json", "agent"] }
+corten = { path = "../../crates/corten", features = ["json", "agent", "compress"] }
 askama = "0.16"
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
-tower-http = { version = "0.6", features = ["compression-gzip", "compression-br"] }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
+schemars = "1.2"
 serde_json = { version = "1", features = ["raw_value"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 

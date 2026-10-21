@@ -8,7 +8,7 @@ use crate::model::ItemView;
 #[derive(Clone)]
 pub enum Source {
     Api { client: reqwest::Client, base: Arc<str> },
-    Fixture(Arc<HashMap<String, ItemView>>),
+    Fixture(Arc<HashMap<String, Arc<ItemView>>>),
 }
 
 impl Source {
@@ -28,13 +28,13 @@ impl Source {
         let mut items = HashMap::with_capacity(raw.len());
         for (id, value) in raw {
             let value: serde_json::Value = serde_json::from_str(value.get())?;
-            items.insert(id, ItemView::from_api(&value));
+            items.insert(id, Arc::new(ItemView::from_api(&value)));
         }
         Ok(Source::Fixture(Arc::new(items)))
     }
 
-    /// `None` when there is no such item.
-    pub async fn item(&self, id: &str) -> Result<Option<ItemView>, reqwest::Error> {
+    /// `None` when there is no such item. Shared, so a page borrows from it instead of copying.
+    pub async fn item(&self, id: &str) -> Result<Option<Arc<ItemView>>, reqwest::Error> {
         match self {
             Source::Fixture(items) => Ok(items.get(id).cloned()),
             Source::Api { client, base } => {
@@ -43,7 +43,7 @@ impl Source {
                     return Ok(None);
                 }
                 let value: serde_json::Value = res.error_for_status()?.json().await?;
-                Ok(Some(ItemView::from_api(&value)))
+                Ok(Some(Arc::new(ItemView::from_api(&value))))
             }
         }
     }

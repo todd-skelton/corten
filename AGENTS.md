@@ -12,9 +12,13 @@ reason that a smaller change cannot meet.
 3. Pages, request modes, patches, islands, the runtime: `crates/corten`.
 4. Never edit `crates/corten/js/dist/solid.js` by hand; run `npm run build:solid`.
 5. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`,
-   and production modules (security, assets, PWA, head tags) by `examples/item-page/smoke.mjs`.
-   Add the check with the behavior.
-6. `bench/` is not part of the workspace. Its apps are built only by `bench/fullstack` scripts.
+   and production modules (security, assets, PWA, head tags, compression) by
+   `examples/item-page/smoke.mjs`. Add the check with the behavior.
+6. Types across seams: never hand-write a type the server already defines. Islands import the
+   declarations `corten::types` generates (`examples/*/types/app.d.ts`, rewritten by the
+   `island_types_match_the_server` test); a typing guarantee gets an `@ts-expect-error` line in
+   `scripts/typecheck-fixture.js`.
+7. `bench/` is not part of the workspace. Its apps are built only by `bench/fullstack` scripts.
 
 ## Checks (all must pass before you report done)
 

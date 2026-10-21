@@ -29,6 +29,13 @@
 //! - [`form`]: validation errors that reach every surface ([`Req::invalid`]).
 //! - [`i18n`]: message catalogs and `Accept-Language` negotiation.
 //! - [`seo`]: `robots.txt` and sitemaps. [`error_pages`]: failed requests render in the shell.
+//! - [`Fields`]: form field names as constants, so templates, handlers and errors agree.
+//!
+//! Opt-in for production and other surfaces:
+//!
+//! - `compress`: [`compress`], responses compressed per request, static files once.
+//! - `types`: [`types`], TypeScript declarations for islands generated from the Rust types.
+//! - `agent`: [`agent`], the app's actions as MCP tools with schemas from their Rust types.
 //!
 //! Other surfaces (native screens, agents) reuse the same server: see `docs/architecture.md`.
 
@@ -37,6 +44,8 @@ pub use corten_feed as feed;
 #[cfg(feature = "agent")]
 pub mod agent;
 pub mod assets;
+#[cfg(feature = "compress")]
+pub mod compress;
 pub mod form;
 mod html;
 pub mod i18n;
@@ -44,6 +53,8 @@ pub mod meta;
 pub mod pwa;
 pub mod security;
 pub mod seo;
+#[cfg(feature = "types")]
+pub mod types;
 
 use std::{
     convert::Infallible,
@@ -66,6 +77,12 @@ use axum::{
     routing::get,
     Router,
 };
+/// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
+/// gives `AlertInput::FIELDS.email == "email"` (serde `rename` and `rename_all` applied). Print
+/// them in the form template (`name="{{ AlertInput::FIELDS.email }}"`) and pass them to
+/// [`Errors::add`], and a renamed or misspelled field fails to compile instead of posting a
+/// field the handler never reads.
+pub use corten_macros::Fields;
 use futures_util::{Stream, StreamExt};
 
 pub use form::Errors;
@@ -453,13 +470,14 @@ impl<S: Shell> Req<S> {
     /// - [`Mode::Action`]: `form`, the form fragment re-rendered with the errors, as a patch. The
     ///   runtime then moves focus to the first field marked `aria-invalid="true"`.
     /// - [`Mode::Data`] (feature `json`): `{"errors": {"field": "message"}}`.
-    /// - Otherwise (no JavaScript): `page()`, the whole page with the form showing the errors.
-    ///   It is only called here, so an action never loads data for a page it does not send.
-    pub async fn invalid<P, F, Fut>(&self, errors: &Errors, form: &impl Template, page: F) -> Result
+    /// - Otherwise (no JavaScript): `page()`, usually `req.page(&page)` for the whole page with
+    ///   the form showing the errors; a success status becomes 422. It is only called here, so an
+    ///   action never loads data for a page it does not send, and the page may borrow what the
+    ///   closure loads.
+    pub async fn invalid<F, Fut>(&self, errors: &Errors, form: &impl Template, page: F) -> Result
     where
-        P: Page,
         F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<P>>,
+        Fut: Future<Output = Result>,
     {
         let status = StatusCode::UNPROCESSABLE_ENTITY;
         match self.mode {
@@ -471,7 +489,11 @@ impl<S: Shell> Req<S> {
             }
             _ => {
                 let _ = errors;
-                self.page_with_status(status, &page().await?)
+                let mut res = page().await?;
+                if res.status().is_success() {
+                    *res.status_mut() = status;
+                }
+                Ok(res)
             }
         }
     }
@@ -539,21 +561,50 @@ where
 /// Routes the runtime at [`runtime_path`] (and Solid at [`solid_path`] with the `solid`
 /// feature), versioned and cached forever. Merge into the app router.
 pub fn routes<St: Clone + Send + Sync + 'static>() -> Router<St> {
-    let router = Router::new().route(runtime_path(), get(|| async { js(RUNTIME_JS) }));
+    let router = Router::new().route(runtime_path(), get(|headers: HeaderMap| async move { RUNTIME.respond(&headers) }));
     #[cfg(feature = "solid")]
-    let router = router.route(solid_path(), get(|| async { js(SOLID_JS) }));
+    let router = router.route(solid_path(), get(|headers: HeaderMap| async move { SOLID.respond(&headers) }));
     router
 }
 
-fn js(source: &'static str) -> Response {
-    (
-        [
-            (header::CONTENT_TYPE, HeaderValue::from_static("text/javascript; charset=utf-8")),
-            (header::CACHE_CONTROL, assets::IMMUTABLE),
-        ],
-        source,
-    )
-        .into_response()
+const JS: &str = "text/javascript; charset=utf-8";
+
+/// A script Corten serves from memory, at a versioned URL.
+struct Script {
+    source: &'static str,
+    #[cfg(feature = "compress")]
+    packed: std::sync::OnceLock<compress::Precompressed>,
+}
+
+static RUNTIME: Script = Script::new(RUNTIME_JS);
+#[cfg(feature = "solid")]
+static SOLID: Script = Script::new(SOLID_JS);
+
+impl Script {
+    const fn new(source: &'static str) -> Self {
+        Script {
+            source,
+            #[cfg(feature = "compress")]
+            packed: std::sync::OnceLock::new(),
+        }
+    }
+
+    fn respond(&self, headers: &HeaderMap) -> Response {
+        let head = [(header::CONTENT_TYPE, HeaderValue::from_static(JS)), (header::CACHE_CONTROL, assets::IMMUTABLE)];
+        #[cfg(feature = "compress")]
+        {
+            let packed = self.packed.get_or_init(|| compress::Precompressed::new(self.source.as_bytes().into(), JS));
+            let (body, coding) = packed.pick(headers);
+            let mut res = (head, body).into_response();
+            compress::encoded_headers(res.headers_mut(), JS, coding);
+            res
+        }
+        #[cfg(not(feature = "compress"))]
+        {
+            let _ = headers;
+            (head, self.source).into_response()
+        }
+    }
 }
 
 /// `GET /health/live` (the process answers) and `GET /health/ready` (`ready` says it can serve:

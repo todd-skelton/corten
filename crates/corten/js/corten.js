@@ -27,13 +27,17 @@ document.adoptedStyleSheets = [...document.adoptedStyleSheets, islandStyles];
  * Base class for islands. Write `setup()`; it runs when the element connects. When the element
  * leaves the page (a navigation swapped it out), everything registered with `on`, `subscribe`
  * and `cleanup` is torn down, and `setup()` runs again if it comes back.
+ *
+ * `P` is the type of the island's props, imported from the declarations corten::types generates
+ * from the Rust struct: tag the subclass with JSDoc `extends {Island<import("../../types/app").GridProps>}`.
+ * @template [P=unknown]
  */
 export class Island extends HTMLElement {
   #ready = false;
   /** @type {AbortController | null} */
   #life = null;
-  /** @type {unknown} */
-  #props = undefined;
+  /** @type {{ value: P } | null} */
+  #props = null;
 
   connectedCallback() {
     if (this.#ready) return;
@@ -84,16 +88,18 @@ export class Island extends HTMLElement {
   /**
    * The JSON the server printed in this island with `corten::Props` (a child
    * `<script type="application/json" data-props>`). Read once, then cached. Throws when missing.
-   * Give the result a JSDoc `@type` where it is read, so the island is type-checked against it.
-   * @returns {any}
+   * Its type is the island's `P`, so the island is checked against the Rust struct. An island
+   * that names no `P` gets `unknown` (JavaScript would otherwise default it to `any`), so
+   * nothing is read from props unchecked.
+   * @returns {unknown extends P ? unknown : P}
    */
   props() {
-    if (this.#props === undefined) {
+    if (this.#props === null) {
       const script = this.querySelector(":scope > script[data-props]");
       if (!script) throw new Error(`<${this.localName}> has no corten::Props script`);
-      this.#props = JSON.parse(script.textContent ?? "null");
+      this.#props = { value: JSON.parse(script.textContent ?? "null") };
     }
-    return this.#props;
+    return /** @type {any} */ (this.#props.value);
   }
 
   /**
@@ -115,7 +121,7 @@ export class Island extends HTMLElement {
 
   /**
    * `subscribe()` for as long as the island is on the page.
-   * @template Row
+   * @template [Row=unknown]
    * @param {string} url
    * @param {FeedHandlers<Row>} handlers
    */
@@ -140,8 +146,9 @@ export class Island extends HTMLElement {
 /**
  * Live rows from a `corten::feed` at `url`: calls `snapshot` with every row, then `patch` with each
  * later write in order. Reconnects resume where they stopped; a gap, an unknown cursor or a client
- * that fell behind loads a new snapshot. Returns a function that stops the subscription.
- * @template Row
+ * that fell behind loads a new snapshot. Returns a function that stops the subscription. `Row` is
+ * the feed's row type from the generated declarations; without one, rows are `unknown`.
+ * @template [Row=unknown]
  * @param {string} url
  * @param {FeedHandlers<Row>} handlers
  * @returns {() => void}

@@ -1,27 +1,28 @@
 //! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts.
-use corten::{i18n::Catalog, Errors};
+use corten::{i18n::Catalog, Errors, Fields};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Category {
     pub name: String,
     pub slug: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Field {
     pub name: String,
     pub value: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Summary {
     pub lowest: Option<String>,
     pub count: i64,
     pub quantity: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Listing {
     pub id: String,
     pub seller: String,
@@ -34,7 +35,7 @@ pub struct Listing {
     pub price_value: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Offer {
     pub id: String,
     pub buyer: String,
@@ -43,7 +44,7 @@ pub struct Offer {
     pub price: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ContentLine {
     pub id: String,
     pub item_id: String,
@@ -51,7 +52,7 @@ pub struct ContentLine {
     pub quantity: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ItemView {
     pub id: String,
     pub title: String,
@@ -69,8 +70,9 @@ pub struct ItemView {
     pub included_in: Vec<ContentLine>,
 }
 
-pub fn sort_listings(listings: &[Listing], descending: bool) -> Vec<Listing> {
-    let mut sorted = listings.to_vec();
+/// The listings by price, borrowed: sorting a page's rows copies no strings.
+pub fn sort_listings(listings: &[Listing], descending: bool) -> Vec<&Listing> {
+    let mut sorted: Vec<&Listing> = listings.iter().collect();
     sorted.sort_by(|a, b| a.price_value.partial_cmp(&b.price_value).unwrap_or(std::cmp::Ordering::Equal));
     if descending {
         sorted.reverse();
@@ -78,16 +80,25 @@ pub fn sort_listings(listings: &[Listing], descending: bool) -> Vec<Listing> {
     sorted
 }
 
-/// The price-alert rules, shared by the form and the agent tool. Messages come from the catalog.
+/// The price-alert form as it posts. `Fields` gives the template and the rules the field names.
+#[derive(Deserialize, Fields)]
+pub struct AlertInput {
+    pub title: String,
+    pub email: String,
+    pub target_price: String,
+}
+
+/// The price-alert rules, shared by the form and the agent tool. Messages come from the catalog;
+/// field names come from the form, and the agent tool's input uses the same names.
 pub fn check_alert(t: &Catalog, email: &str, target: &str) -> Result<f64, Errors> {
     let mut errors = Errors::new();
     if !email.contains('@') {
-        errors.add("email", t.t("alert.invalid_email"));
+        errors.add(AlertInput::FIELDS.email, t.t("alert.invalid_email"));
     }
     let price: f64 = target.trim().parse().unwrap_or(f64::NAN);
     // NaN (unparseable input) and infinity are not prices.
     if !price.is_finite() || price <= 0.0 {
-        errors.add("target_price", t.t("alert.invalid_price"));
+        errors.add(AlertInput::FIELDS.target_price, t.t("alert.invalid_price"));
     }
     errors.into_result(price)
 }

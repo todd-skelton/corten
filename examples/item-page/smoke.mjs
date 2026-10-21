@@ -106,6 +106,42 @@ try {
   const other = errors.filter((e) => !/Content Security Policy|Refused to|ERR_INTERNET_DISCONNECTED|Failed to load resource|net::ERR/.test(e));
   check("no other console errors", other.length === 0, other.join(" | "));
 
+  // Compression, as a real browser negotiates it: pages per request, the runtime once at brotli 11.
+  // A context without the service worker, whose cache would answer instead of the network.
+  const plain = await (await browser.newContext({ serviceWorkers: "block" })).newPage();
+  await plain.goto(`${base}/items/item_5`);
+  const encodings = await plain.evaluate(async () => {
+    const runtime = /** @type {HTMLScriptElement} */ (document.querySelector('script[type="module"][src*="/corten/"]')).src;
+    const entries = () => /** @type {PerformanceResourceTiming[]} */ (performance.getEntriesByType("resource"));
+    await fetch(runtime, { cache: "no-store" });
+    await new Promise((r) => setTimeout(r, 1500)); // the first request starts brotli 11 in the background
+    const res = await fetch(runtime, { cache: "no-store" });
+    const text = await res.text();
+    const timing = entries().filter((e) => e.name === runtime).at(-1);
+    return { runtime: text.includes("export class Island"), encoded: timing?.encodedBodySize ?? 0, decoded: timing?.decodedBodySize ?? 0 };
+  });
+  check(
+    "the browser gets the runtime compressed",
+    encodings.runtime && encodings.encoded > 0 && encodings.encoded < encodings.decoded / 2,
+    `${encodings.encoded} of ${encodings.decoded} bytes`,
+  );
+  const runtimeUrl = await page.evaluate(() => /** @type {HTMLScriptElement} */ (document.querySelector('script[type="module"][src*="/corten/"]')).src);
+  const runtimeBr = await fetch(runtimeUrl, { headers: { "accept-encoding": "br" } });
+  check("the runtime is sent as brotli", runtimeBr.headers.get("content-encoding") === "br" && (await runtimeBr.text()).includes("export class Island"));
+  const styleUrl = await page.evaluate(() => /** @type {HTMLLinkElement} */ (document.querySelector('link[rel="stylesheet"]')).href);
+  await fetch(styleUrl, { headers: { "accept-encoding": "br" } });
+  await page.waitForTimeout(500);
+  const style = await fetch(styleUrl, { headers: { "accept-encoding": "br" } });
+  check(
+    "assets are precompressed once, with their own ETag per coding",
+    style.headers.get("content-encoding") === "br" && /-br"$/.test(style.headers.get("etag") ?? ""),
+    `${style.headers.get("content-encoding")} ${style.headers.get("etag")}`,
+  );
+  const zstd = await fetch(`${base}/items/item_5`, { headers: { "accept-encoding": "zstd" } });
+  check("pages are compressed with zstd when the client accepts it", zstd.headers.get("content-encoding") === "zstd" && /accept-encoding/.test(zstd.headers.get("vary") ?? ""));
+  const br = await fetch(`${base}/items/item_5`, { headers: { "accept-encoding": "gzip, br" } });
+  check("pages fall back to brotli", br.headers.get("content-encoding") === "br" && (await br.text()).includes("Card Name 5"));
+
   const cross = await fetch(`${base}/items/item_5`, { method: "POST", headers: { "sec-fetch-site": "cross-site", "content-type": "application/x-www-form-urlencoded" }, body: "title=a&email=a@b.c&target_price=1" });
   check("cross-site form post is refused", cross.status === 403);
 } finally {

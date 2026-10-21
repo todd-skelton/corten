@@ -156,7 +156,8 @@ async fn page_answers_data_requests_with_the_document() {
 fn finds_custom_elements_once_in_order() {
     let html = r#"<div><offer-list a="1"><tr></tr></offer-list><listing-sort></listing-sort><offer-list></offer-list><corten-live></corten-live><h2-x>"#;
     assert_eq!(find_islands(html), vec!["offer-list", "listing-sort", "h2-x"]);
-    assert!(find_islands("<p>a &lt;b-c&gt; d</p><br><-x>").is_empty());
+    assert!(find_islands("<p>a &lt;b-c&gt; d</p><br><-x></x-y><p data-x-y=\"a-b\">well-known</p>").is_empty());
+    assert_eq!(find_islands("<my-big-el data-x-y=\"a-b\"></my-big-el><x--><a-1>"), vec!["my-big-el", "x--", "a-1"]);
 }
 
 #[cfg(feature = "json")]
@@ -295,7 +296,8 @@ fn invalid_router() -> Router {
         get(|req: Req<TestShell>| async move {
             let mut errors = Errors::new();
             errors.add("email", "Enter an email address.");
-            req.invalid(&errors, &AlertForm { errors: &errors }, || async { Ok(Demo { text: "page with errors".into() }) }).await
+            let page = || async { req.page(&Demo { text: "page with errors".into() }) };
+            req.invalid(&errors, &AlertForm { errors: &errors }, page).await
         }),
     )
 }
@@ -317,6 +319,44 @@ async fn invalid_input_answers_422_in_each_mode() {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(body, r#"{"errors":{"email":"Enter an email address."}}"#);
     }
+}
+
+#[derive(Fields)]
+#[allow(dead_code)]
+struct SignUp {
+    email: String,
+    #[serde(rename = "pw")]
+    password: String,
+    #[serde(skip)]
+    internal: u8,
+}
+
+#[derive(Fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[allow(dead_code)]
+pub(crate) struct Shipping {
+    pub street_line: String,
+    postal_code: Option<Vec<(u8, String)>>,
+    r#type: std::collections::HashMap<String, fn(u8) -> u8>,
+}
+
+#[derive(Template)]
+#[template(source = r#"<input name="{{ SignUp::FIELDS.email }}"{{ errors.aria(SignUp::FIELDS.email)|safe }}>"#, ext = "html")]
+struct SignUpForm<'a> {
+    errors: &'a Errors,
+}
+
+#[test]
+fn field_names_follow_serde_and_reach_templates() {
+    assert_eq!((SignUp::FIELDS.email, SignUp::FIELDS.password), ("email", "pw"));
+    assert_eq!(
+        (Shipping::FIELDS.street_line, Shipping::FIELDS.postal_code, Shipping::FIELDS.r#type),
+        ("streetLine", "postalCode", "type")
+    );
+    let mut errors = Errors::new();
+    errors.add(SignUp::FIELDS.email, "Enter an email address.");
+    let html = SignUpForm { errors: &errors }.render().unwrap();
+    assert_eq!(html, r#"<input name="email" aria-invalid="true" aria-describedby="email-error">"#);
 }
 
 #[tokio::test]

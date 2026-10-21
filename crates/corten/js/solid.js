@@ -63,7 +63,9 @@ export function each(list, render) {
  * island connects and is disposed when the island leaves the page. `server` holds the nodes the
  * server rendered inside the element, so the view can keep showing them until its data is ready
  * (`when(loaded, view, () => server)`); empty the array once they are gone (`server.length = 0`)
- * so they can be collected.
+ * so they can be collected. `P` is the props type, as for `Island`.
+ * @template [P=unknown]
+ * @extends {Island<P>}
  */
 export class SolidIsland extends Island {
   setup() {

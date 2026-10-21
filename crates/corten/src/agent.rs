@@ -1,16 +1,20 @@
 //! Agent tools over the Model Context Protocol (feature `agent`): one `POST` route that speaks
 //! JSON-RPC 2.0 as MCP's streamable HTTP transport defines it, answering with `application/json`.
 //!
-//! Tools are the app's actions with a name, a description and a JSON Schema for their input.
-//! A tool handler gets the request headers (to authenticate the agent the same way any other
-//! client is authenticated: a bearer token, never ambient cookies) and the arguments.
+//! A tool is one of the app's actions with a name, a description, a typed input and a typed
+//! output. Both derive `schemars::JsonSchema` (the app depends on `schemars = "1"`), so the
+//! `inputSchema` and `outputSchema` agents see are generated from the same structs the
+//! handler receives and returns, and cannot drift from them. A form's input struct can be the
+//! tool's input as is, so the browser and the agent share one definition and one set of rules.
+//!
+//! Agents authenticate the way any other client does: a bearer token, never ambient cookies.
+//! [`Tools::auth`] runs once per call, and its result is handed to the tool:
 //!
 //! ```ignore
 //! let tools = Tools::new("card-market", env!("CARGO_PKG_VERSION"))
-//!     .tool("inventory.adjust-item", "Change the quantity of an inventory item", schema, |headers, args| async move {
-//!         let user = auth::bearer(&headers)?;           // ToolError::Unauthorized when missing
-//!         let input: Adjust = serde_json::from_value(args)?;
-//!         Ok(json!({ "quantity": inventory::adjust(user, input).await? }))
+//!     .auth(|headers| auth::bearer(headers).ok_or(ToolError::Unauthorized))
+//!     .tool("inventory.adjust", "Change the quantity of an inventory item", |user: User, input: Adjust| async move {
+//!         Ok(Adjusted { quantity: inventory::adjust(&user, input).await? })
 //!     });
 //! let app = router.route("/mcp", tools.route());
 //! ```
@@ -27,6 +31,8 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{post, MethodRouter},
 };
+use schemars::{generate::SchemaSettings, JsonSchema};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
 
 /// Protocol revisions this server speaks, newest first.
@@ -45,6 +51,13 @@ pub enum ToolError {
     Internal(Box<dyn std::error::Error + Send + Sync>),
 }
 
+impl ToolError {
+    /// An unexpected failure (a database error, say): logged, and the agent sees "internal error".
+    pub fn internal(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        ToolError::Internal(error.into())
+    }
+}
+
 /// Validation errors go back to the agent as one message per field, so it can correct them.
 impl From<crate::Errors> for ToolError {
     fn from(errors: crate::Errors) -> Self {
@@ -58,62 +71,126 @@ impl From<serde_json::Error> for ToolError {
     }
 }
 
-type BoxFuture = Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send>>;
-type Handler = Arc<dyn Fn(HeaderMap, Value) -> BoxFuture + Send + Sync>;
+type BoxFuture<T> = Pin<Box<dyn Future<Output = Result<T, ToolError>> + Send>>;
+type Handler = Arc<dyn Fn(HeaderMap, Value) -> BoxFuture<Value> + Send + Sync>;
+type Auth<A> = Arc<dyn Fn(&HeaderMap) -> Result<A, ToolError> + Send + Sync>;
 
 struct Tool {
     description: String,
     input_schema: Value,
+    output_schema: Value,
     read_only: bool,
     handler: Handler,
 }
 
-/// The tools one MCP endpoint offers.
-#[derive(Clone)]
-pub struct Tools {
+/// The tools one MCP endpoint offers. `A` is what [`Tools::auth`] proves about the caller (a
+/// user, a scope); it is `()` until `auth` is set.
+pub struct Tools<A = ()> {
     name: String,
     version: String,
+    auth: Auth<A>,
     tools: Arc<BTreeMap<String, Tool>>,
 }
 
-impl Tools {
+impl<A> Clone for Tools<A> {
+    fn clone(&self) -> Self {
+        Tools { name: self.name.clone(), version: self.version.clone(), auth: self.auth.clone(), tools: self.tools.clone() }
+    }
+}
+
+impl Tools<()> {
+    /// An endpoint whose tools anyone may call, until [`Tools::auth`] says otherwise.
     pub fn new(name: &str, version: &str) -> Self {
-        Tools { name: name.into(), version: version.into(), tools: Arc::default() }
+        Tools { name: name.into(), version: version.into(), auth: Arc::new(|_| Ok(())), tools: Arc::default() }
     }
 
-    /// Adds a tool that changes data.
-    pub fn tool<F, Fut>(self, name: &str, description: &str, input_schema: Value, handler: F) -> Self
+    /// Checks every tool call before it runs: `Err(ToolError::Unauthorized)` answers 401, and
+    /// `Ok(caller)` is passed to the tool. Set it before adding tools.
+    pub fn auth<A, F>(self, auth: F) -> Tools<A>
     where
-        F: Fn(HeaderMap, Value) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Value, ToolError>> + Send + 'static,
+        F: Fn(&HeaderMap) -> Result<A, ToolError> + Send + Sync + 'static,
     {
-        self.add(name, description, input_schema, false, handler)
+        assert!(self.tools.is_empty(), "set Tools::auth before adding tools");
+        Tools { name: self.name, version: self.version, auth: Arc::new(auth), tools: self.tools }
+    }
+}
+
+/// JSON Schema for a tool's input (as the server reads it) or output (as it writes it). MCP
+/// requires an object at the top.
+fn schema<T: JsonSchema>(serialize: bool) -> Value {
+    let settings = SchemaSettings::draft2020_12();
+    let settings = if serialize { settings.for_serialize() } else { settings.for_deserialize() };
+    let mut schema = settings.into_generator().into_root_schema_for::<T>().to_value();
+    if let Some(map) = schema.as_object_mut() {
+        map.remove("$schema");
+        map.remove("title");
+    }
+    schema
+}
+
+impl<A: Send + 'static> Tools<A> {
+    /// Adds a tool that changes data.
+    pub fn tool<I, O, F, Fut>(self, name: &str, description: &str, handler: F) -> Self
+    where
+        I: DeserializeOwned + JsonSchema + Send + 'static,
+        O: Serialize + JsonSchema + 'static,
+        F: Fn(A, I) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<O, ToolError>> + Send + 'static,
+    {
+        self.add(name, description, false, handler)
     }
 
     /// Adds a tool that only reads (marked `readOnlyHint`, so clients may call it without asking).
-    pub fn read_tool<F, Fut>(self, name: &str, description: &str, input_schema: Value, handler: F) -> Self
+    pub fn read_tool<I, O, F, Fut>(self, name: &str, description: &str, handler: F) -> Self
     where
-        F: Fn(HeaderMap, Value) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Value, ToolError>> + Send + 'static,
+        I: DeserializeOwned + JsonSchema + Send + 'static,
+        O: Serialize + JsonSchema + 'static,
+        F: Fn(A, I) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<O, ToolError>> + Send + 'static,
     {
-        self.add(name, description, input_schema, true, handler)
+        self.add(name, description, true, handler)
     }
 
-    fn add<F, Fut>(mut self, name: &str, description: &str, input_schema: Value, read_only: bool, handler: F) -> Self
+    fn add<I, O, F, Fut>(mut self, name: &str, description: &str, read_only: bool, handler: F) -> Self
     where
-        F: Fn(HeaderMap, Value) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Value, ToolError>> + Send + 'static,
+        I: DeserializeOwned + JsonSchema + Send + 'static,
+        O: Serialize + JsonSchema + 'static,
+        F: Fn(A, I) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<O, ToolError>> + Send + 'static,
     {
-        assert!(input_schema.get("type") == Some(&json!("object")), "tool {name}: the input schema must be an object schema");
+        let input_schema = schema::<I>(false);
+        assert!(
+            input_schema.get("type") == Some(&json!("object")),
+            "tool {name}: the input must be a struct (MCP input schemas are objects)"
+        );
+        let output_schema = schema::<O>(true);
+        assert!(
+            output_schema.get("type") == Some(&json!("object")),
+            "tool {name}: the output must be a struct (MCP structured content is an object)"
+        );
+        let auth = self.auth.clone();
+        let handler = Arc::new(handler);
+        let handler: Handler = Arc::new(move |headers, args| {
+            let caller = auth(&headers);
+            let handler = handler.clone();
+            Box::pin(async move {
+                let caller = caller?;
+                let input: I = serde_json::from_value(args)?;
+                let output = handler(caller, input).await?;
+                serde_json::to_value(output).map_err(ToolError::internal)
+            })
+        });
         let tools = Arc::get_mut(&mut self.tools).expect("add tools before serving");
-        let handler: Handler = Arc::new(move |headers, args| Box::pin(handler(headers, args)));
-        let tool = Tool { description: description.into(), input_schema, read_only, handler };
+        let tool = Tool { description: description.into(), input_schema, output_schema, read_only, handler };
         assert!(tools.insert(name.into(), tool).is_none(), "tool {name} is defined twice");
         self
     }
 
     /// The `POST` route for the endpoint, usually mounted at `/mcp`.
-    pub fn route<S: Clone + Send + Sync + 'static>(self) -> MethodRouter<S> {
+    pub fn route<S: Clone + Send + Sync + 'static>(self) -> MethodRouter<S>
+    where
+        A: 'static,
+    {
         post(move |headers: HeaderMap, body: Bytes| {
             let tools = self.clone();
             async move { tools.handle(headers, &body).await }
@@ -174,6 +251,7 @@ impl Tools {
                     "name": name,
                     "description": tool.description,
                     "inputSchema": tool.input_schema,
+                    "outputSchema": tool.output_schema,
                     "annotations": { "readOnlyHint": tool.read_only },
                 })
             })
@@ -192,8 +270,7 @@ impl Tools {
         match (tool.handler)(headers, args).await {
             Ok(value) => {
                 let text = value.to_string();
-                let structured = if value.is_object() { value } else { json!({ "result": value }) };
-                Ok(json!({ "content": [{ "type": "text", "text": text }], "structuredContent": structured, "isError": false }))
+                Ok(json!({ "content": [{ "type": "text", "text": text }], "structuredContent": value, "isError": false }))
             }
             Err(ToolError::Unauthorized) => Err(CallError::Unauthorized),
             Err(ToolError::Invalid(message)) => Ok(failed(format!("invalid arguments: {message}"))),
@@ -226,32 +303,55 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
+    /// Change an item's quantity.
+    #[derive(serde::Deserialize, JsonSchema)]
+    struct Adjust {
+        id: String,
+        /// Added to the quantity; negative to remove.
+        delta: i64,
+        #[serde(default)]
+        note: Option<String>,
+    }
+
+    #[derive(Serialize, JsonSchema)]
+    struct Adjusted {
+        id: String,
+        quantity: i64,
+    }
+
+    #[derive(serde::Deserialize, JsonSchema)]
+    struct Nothing {}
+
+    #[derive(Serialize, JsonSchema)]
+    struct Pong {
+        pong: bool,
+    }
+
+    /// The caller, as the auth check proves it.
+    #[derive(Clone)]
+    struct Agent(String);
+
     fn app() -> Router {
-        let schema = json!({ "type": "object", "properties": { "id": { "type": "string" }, "delta": { "type": "integer" } }, "required": ["id", "delta"] });
         let tools = Tools::new("test", "1.0")
-            .tool("inventory.adjust", "Adjust quantity", schema, |headers, args| async move {
-                if headers.get("authorization").is_none() {
-                    return Err(ToolError::Unauthorized);
-                }
-                #[derive(serde::Deserialize)]
-                struct Adjust {
-                    id: String,
-                    delta: i64,
-                }
-                let input: Adjust = serde_json::from_value(args)?;
-                if input.id == "locked" {
-                    return Err(ToolError::Forbidden("item is locked".into()));
-                }
-                Ok(json!({ "id": input.id, "quantity": 10 + input.delta }))
+            .auth(|headers| {
+                let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
+                token.map(|t| Agent(t.to_string())).ok_or(ToolError::Unauthorized)
             })
-            .read_tool("ping", "Answers pong", json!({ "type": "object" }), |_, _| async { Ok(json!("pong")) });
+            .tool("inventory.adjust", "Adjust quantity", |agent: Agent, input: Adjust| async move {
+                if input.id == "locked" {
+                    return Err(ToolError::Forbidden(format!("{} may not change a locked item", agent.0)));
+                }
+                let _ = input.note;
+                Ok(Adjusted { id: input.id, quantity: 10 + input.delta })
+            })
+            .read_tool("ping", "Answers pong", |_: Agent, _: Nothing| async { Ok(Pong { pong: true }) });
         Router::new().route("/mcp", tools.route())
     }
 
     async fn rpc(body: Value, auth: bool) -> (StatusCode, Value) {
         let mut req = Request::post("/mcp").header("content-type", "application/json");
         if auth {
-            req = req.header("authorization", "Bearer t");
+            req = req.header("authorization", "Bearer ada");
         }
         let res = app().oneshot(req.body(Body::from(body.to_string())).unwrap()).await.unwrap();
         let status = res.status();
@@ -279,12 +379,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lists_and_calls_tools() {
+    async fn schemas_come_from_the_input_and_output_types() {
         let (_, res) = rpc(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }), false).await;
         let tools = res["result"]["tools"].as_array().unwrap();
         assert_eq!(tools.len(), 2);
         assert_eq!(tools[0]["name"], "inventory.adjust");
+        assert_eq!(
+            tools[0]["inputSchema"],
+            json!({
+                "description": "Change an item's quantity.",
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "delta": { "description": "Added to the quantity; negative to remove.", "type": "integer", "format": "int64" },
+                    "note": { "type": ["string", "null"], "default": null }
+                },
+                "required": ["id", "delta"]
+            })
+        );
+        assert_eq!(tools[0]["outputSchema"]["required"], json!(["id", "quantity"]));
         assert_eq!(tools[1]["annotations"]["readOnlyHint"], true);
+    }
+
+    #[tokio::test]
+    async fn calls_are_authorized_then_typed() {
         let call = |args: Value| json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": { "name": "inventory.adjust", "arguments": args } });
         let (_, res) = rpc(call(json!({ "id": "a", "delta": 2 })), true).await;
         assert_eq!(res["id"], 7);
@@ -293,10 +411,12 @@ mod tests {
         let (_, res) = rpc(call(json!({ "id": "a" })), true).await;
         assert_eq!(res["result"]["isError"], true);
         assert!(res["result"]["content"][0]["text"].as_str().unwrap().starts_with("invalid arguments: missing field `delta`"));
+        let (_, res) = rpc(call(json!({ "id": "a", "delta": "two" })), true).await;
+        assert!(res["result"]["content"][0]["text"].as_str().unwrap().starts_with("invalid arguments: invalid type"));
         let (_, res) = rpc(call(json!({ "id": "locked", "delta": 1 })), true).await;
-        assert_eq!(res["result"]["content"][0]["text"], "not allowed: item is locked");
-        let (status, res) = rpc(call(json!({ "id": "a", "delta": 1 })), false).await;
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(res["result"]["content"][0]["text"], "not allowed: ada may not change a locked item");
+        let (status, res) = rpc(call(json!({ "id": "a" })), false).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "auth runs before the input is read");
         assert_eq!(res["error"]["code"], -32001);
     }
 
@@ -312,5 +432,11 @@ mod tests {
         assert_eq!(body["error"]["code"], -32700);
         let (status, res) = rpc(json!([{ "jsonrpc": "2.0", "id": 1, "method": "ping" }]), false).await;
         assert_eq!((status, res["error"]["code"].clone()), (StatusCode::OK, json!(-32600)), "batches are refused, not accepted");
+    }
+
+    #[test]
+    #[should_panic(expected = "the input must be a struct")]
+    fn a_non_object_input_is_refused_at_startup() {
+        let _ = Tools::new("t", "1").tool("bad", "", |_: (), _: String| async { Ok(Pong { pong: true }) });
     }
 }

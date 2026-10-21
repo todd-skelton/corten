@@ -15,8 +15,9 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(not(feature = "compress"))]
+use axum::body::Bytes;
 use axum::{
-    body::Bytes,
     extract::Path as UrlPath,
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
@@ -30,9 +31,12 @@ use crate::fnv;
 pub(crate) const IMMUTABLE: HeaderValue = HeaderValue::from_static("public, max-age=31536000, immutable");
 
 struct File {
+    #[cfg(not(feature = "compress"))]
     body: Bytes,
+    #[cfg(feature = "compress")]
+    body: crate::compress::Precompressed,
     content_type: &'static str,
-    etag: HeaderValue,
+    hash: u64,
 }
 
 /// A directory of static files served under a versioned prefix. Load it once, at startup.
@@ -60,8 +64,12 @@ impl Assets {
             let hash = fnv::hash(&body);
             digest = fnv::extend(digest, url.as_bytes());
             digest = fnv::extend(digest, &hash.to_le_bytes());
-            let etag = HeaderValue::try_from(format!("\"{hash:016x}\"")).expect("hex is a valid header");
-            files.insert(url.clone(), File { body: body.into(), content_type: content_type(&url), etag });
+            let content_type = content_type(&url);
+            #[cfg(feature = "compress")]
+            let body = crate::compress::Precompressed::new(body.into(), content_type);
+            #[cfg(not(feature = "compress"))]
+            let body = body.into();
+            files.insert(url.clone(), File { body, content_type, hash });
         }
         let version = format!("{:012x}", digest >> 16);
         let prefix = format!("{mount}/{version}/");
@@ -116,19 +124,31 @@ impl Assets {
             return StatusCode::NOT_FOUND.into_response();
         };
         let cache = if version == self.version { IMMUTABLE } else { HeaderValue::from_static("no-cache") };
-        if headers.get(header::IF_NONE_MATCH).is_some_and(|tag| tag == file.etag) {
-            return (StatusCode::NOT_MODIFIED, [(header::ETAG, file.etag.clone()), (header::CACHE_CONTROL, cache)])
-                .into_response();
+        // Each coding of the file is a different representation, so it has its own tag.
+        #[cfg(feature = "compress")]
+        let (body, coding) = file.body.pick(headers);
+        #[cfg(feature = "compress")]
+        let etag = coding.map_or_else(|| format!("\"{:016x}\"", file.hash), |c| format!("\"{:016x}-{}\"", file.hash, c.tag()));
+        #[cfg(not(feature = "compress"))]
+        let (body, etag) = (file.body.clone(), format!("\"{:016x}\"", file.hash));
+        let etag = HeaderValue::try_from(etag).expect("hex is a valid header");
+        if headers.get(header::IF_NONE_MATCH).is_some_and(|tag| tag == etag) {
+            #[allow(unused_mut)]
+            let mut res = (StatusCode::NOT_MODIFIED, [(header::ETAG, etag), (header::CACHE_CONTROL, cache)]).into_response();
+            #[cfg(feature = "compress")]
+            crate::compress::encoded_headers(res.headers_mut(), file.content_type, None);
+            return res;
         }
-        (
-            [
-                (header::CONTENT_TYPE, HeaderValue::from_static(file.content_type)),
-                (header::CACHE_CONTROL, cache),
-                (header::ETAG, file.etag.clone()),
-            ],
-            file.body.clone(),
-        )
-            .into_response()
+        let head = [
+            (header::CONTENT_TYPE, HeaderValue::from_static(file.content_type)),
+            (header::CACHE_CONTROL, cache),
+            (header::ETAG, etag),
+        ];
+        #[allow(unused_mut)]
+        let mut res = (head, body).into_response();
+        #[cfg(feature = "compress")]
+        crate::compress::encoded_headers(res.headers_mut(), file.content_type, coding);
+        res
     }
 }
 

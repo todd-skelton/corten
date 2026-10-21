@@ -1,0 +1,9 @@
+[package]
+name = "corten-macros"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Derive macros for Corten. Written against proc_macro alone, so it adds no dependencies."
+
+[lib]
+proc-macro = true

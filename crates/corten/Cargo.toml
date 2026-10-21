@@ -8,24 +8,36 @@ description = "Server-rendered pages, fragment patches, small custom-element isl
 [dependencies]
 askama = "0.16"
 axum = "0.8"
+corten-macros = { path = "../corten-macros" }
 futures-util = { version = "0.3", default-features = false }
 getrandom = "0.3"
+memchr = "2"
 tokio = { version = "1", default-features = false, features = ["signal"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 corten-feed = { path = "../corten-feed", optional = true }
+schemars = { version = "1.2", optional = true }
+brotli = { version = "9", optional = true }
+flate2 = { version = "1", optional = true }
+zstd = { version = "0.14", default-features = false, optional = true }
 
-# All opt-in, so a page-only app keeps five direct dependencies.
+# All opt-in. corten-macros and memchr add no crates a page-only app does not already build
+# (askama and serde bring syn and quote; axum brings memchr).
 [features]
 # corten::Props: typed JSON from the template to an island (`this.props()` in the browser).
 json = ["dep:serde", "dep:serde_json"]
+# corten::types: TypeScript declarations for islands, generated from the Rust types (schemars).
+types = ["json", "dep:schemars"]
+# corten::compress: pages compressed per request (zstd, brotli, gzip), the runtime and assets
+# compressed once at the highest brotli and gzip levels.
+compress = ["dep:brotli", "dep:flate2", "dep:zstd"]
 # corten::feed: live data for islands (snapshot + ordered patches over server-sent events).
 feed = ["json", "dep:corten-feed"]
 # Serves Solid for islands at /corten/solid.js, imported as "corten/solid".
 solid = []
 # corten::agent: the app's actions as Model Context Protocol tools for AI agents.
-agent = ["json"]
+agent = ["types"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "time"] }
