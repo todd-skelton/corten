@@ -9,7 +9,7 @@ every platform has built in.
 
 | Contract | What it is | Web (today) | Native screen | Agent |
 |---|---|---|---|---|
-| Screen | a route whose page struct is its view model | HTML from the askama template | `Accept: application/json`, `{"title","data"}` from `req.screen` | the same JSON, as a read tool or resource |
+| Screen | a route whose page struct is its view model | HTML from the page's `html!` view | `Accept: application/json`, `{"title","data"}` from `req.screen` | the same JSON, as a read tool or resource |
 | Action | a `POST` route with typed form input | `<form data-patch>`, patch or redirect | the same `POST`, JSON screen back | the same `POST`, as a tool call |
 | Feed | keyed rows: snapshot plus numbered patches | `subscribe()` in `corten.js` | `corten_protocol::Replica` through UniFFI | `Replica`, or the raw SSE stream |
 
@@ -67,10 +67,10 @@ definition:
 
 | Seam | Source of truth | Checked by |
 |---|---|---|
-| Rust to template | page struct | askama, at compile time |
-| Template to island props | the props struct (`corten::Props`) | `corten::types` writes `types/app.d.ts`; `Island<P>` makes `this.props()` a `P`; `tsc --checkJs` (strict) |
+| Rust to markup | page struct and component props | `html!` and `#[component]` are Rust: a missing field or prop is a compile error |
+| Markup to island props | the props struct (`corten::Props`) | `corten::types` writes `types/app.d.ts`; `Island<P>` makes `this.props()` a `P`; `tsc --checkJs` (strict) |
 | Feed rows to island | the row struct | the same declarations; `subscribe<Row>` types the snapshot and every patch |
-| Form fields to handler | the input struct | `#[derive(Fields)]`: templates print `Input::FIELDS.email` and errors use it, so a renamed field is a compile error |
+| Form fields to handler | the input struct | `#[derive(Fields)]`: views print `Input::FIELDS.email` and errors use it, so a renamed field is a compile error |
 | Agent arguments and results | the tool's input and output structs | schemas generated from them; arguments are deserialized before the handler runs |
 | Screen JSON to native and agents | the page struct | `Types::json_schema` gives JSON Schema for code generators |
 
@@ -80,9 +80,9 @@ fails `npm run check`. An island or subscription that names no type gets `unknow
 `any`, so nothing is read unchecked. `scripts/typecheck-fixture.js` proves each of these with
 `@ts-expect-error` lines that must stay errors.
 
-Not checked: `data-ref` names between template and island (the island throws on first use), i18n
+Not checked: `data-ref` names between view and island (the island throws on first use), i18n
 keys (missing keys render visibly and `Catalog::missing_from` checks catalogs in a test) and
-URLs in templates (see open decisions).
+URLs in views (see open decisions).
 
 ## Rules that keep surfaces from drifting
 
@@ -108,8 +108,8 @@ library. Measured against a production marketplace app:
 | Need | Owner | Why |
 |---|---|---|
 | Pages, patches, islands, feeds across instances, CSP and CSRF, assets, head tags, PWA, catalog, sitemap, health, shutdown, agent tools | Framework | Built and tested earlier. |
-| Shell data on client navigation | Framework: `Shell::Context`, shell key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the shell went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
-| Which nav items show for which roles | App | Roles and permissions are the app's model; the shell template decides. |
+| Shell data on client navigation | Framework: `App::context`, shell key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the shell went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
+| Which nav items show for which roles | App | Roles and permissions are the app's model; the shell view decides. |
 | Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
 | Types across the server/browser seam | Framework: `corten::types` (TypeScript from the Rust types), `Island<P>`, `subscribe<Row>`, `#[derive(Fields)]` | The framework defines the seams (props, feeds, form posts, tools), so it is the only layer that can type both ends. |
 | Response compression | Framework: `corten::compress` | The framework serves the runtime and assets and knows they never change (compress once, best level) and that pages are generated per request (fastest level that pays). A generic layer re-compresses static files on every request at a level tuned for neither. |
@@ -130,6 +130,6 @@ library. Measured against a production marketplace app:
 1. Native navigation: Turbo Drive in shell pages versus a Turbo-compatible adapter in `corten.js`.
 2. Auth across surfaces: session cookies for web and native shells, tokens for native screens
    and agents, one permission check in handlers. Whatever is chosen, the app's middleware turns
-   it into the `Shell::Context` that shells and handlers read.
-3. Typed routes: URLs in templates are strings today. A route table that both axum and templates
+   it into the context (`App::context`) that shells and handlers read.
+3. Typed routes: URLs in views are strings today. A route table that both axum and views
    read would make a broken link a compile error; not built until a real app shows the need.

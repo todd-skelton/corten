@@ -1,22 +1,47 @@
-//! Per-page `<head>` tags: description, canonical URL, Open Graph, robots, JSON-LD.
+//! A page's title and `<head>` tags: description, canonical URL, Open Graph, robots, JSON-LD.
 //!
-//! A [`crate::Page`] returns them from `head()`. They are printed after `<title>` on a full
-//! document and sent with every navigation, where the runtime replaces the previous page's tags,
-//! so crawlers and link previews see the same tags however the page was reached.
+//! `req.page("About", view)` takes the title alone; `req.page(Meta::new(title).description(..), view)`
+//! adds tags. They are printed after `<title>` on a full document and sent with every navigation,
+//! where the runtime replaces the previous page's tags, so crawlers and link previews see the
+//! same tags however the page was reached.
 
 use std::fmt;
 
 use crate::escape;
 
-/// Head tags for one page. Every tag carries `data-corten-head` so the runtime can swap them.
+/// A page's title and head tags. Every tag carries `data-corten-head` so the runtime can swap them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Meta {
+    title: String,
     tags: String,
 }
 
+impl From<&str> for Meta {
+    fn from(title: &str) -> Self {
+        Meta::new(title)
+    }
+}
+
+impl From<String> for Meta {
+    fn from(title: String) -> Self {
+        Meta::new(title)
+    }
+}
+
 impl Meta {
-    pub fn new() -> Self {
-        Self::default()
+    /// A page titled `title` (escaped by Corten).
+    pub fn new(title: impl Into<String>) -> Self {
+        Meta { title: title.into(), tags: String::new() }
+    }
+
+    /// The text for `<title>`.
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    /// The tags, rendered.
+    pub fn tags(&self) -> &str {
+        &self.tags
     }
 
     /// `<meta name="description">`.
@@ -61,11 +86,13 @@ impl Meta {
         self
     }
 
+    /// True when there are no tags (the title does not count).
     pub fn is_empty(&self) -> bool {
         self.tags.is_empty()
     }
 }
 
+/// The tags (not the title).
 impl fmt::Display for Meta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.tags)
@@ -78,7 +105,7 @@ mod tests {
 
     #[test]
     fn tags_are_escaped_and_marked() {
-        let meta = Meta::new().description("Cards \"&\" <more>").canonical("/items/1").property("og:title", "A");
+        let meta = Meta::new("T").description("Cards \"&\" <more>").canonical("/items/1").property("og:title", "A");
         assert_eq!(
             meta.to_string(),
             concat!(
@@ -92,7 +119,7 @@ mod tests {
     #[cfg(feature = "json")]
     #[test]
     fn json_ld_cannot_close_its_script() {
-        let meta = Meta::new().json_ld(&serde_json::json!({ "name": "</script><script>alert(1)" }));
+        let meta = Meta::new("T").json_ld(&serde_json::json!({ "name": "</script><script>alert(1)" }));
         assert_eq!(
             meta.to_string(),
             r#"<script type="application/ld+json" data-corten-head>{"name":"\u003c/script>\u003cscript>alert(1)"}</script>"#

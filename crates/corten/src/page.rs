@@ -1,0 +1,626 @@
+//! Pages, patches and the shell: what a handler returns and how it reaches each kind of client.
+
+use std::{
+    any::Any,
+    convert::Infallible,
+    future::Future,
+    hash::{Hash, Hasher},
+    sync::{Arc, LazyLock},
+};
+
+use axum::{
+    extract::{FromRequestParts, Request},
+    http::{header, request::Parts, Extensions, HeaderMap, HeaderName, HeaderValue, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+
+use crate::{
+    assets::Assets,
+    find_islands,
+    security::Nonce,
+    view::{html, Render},
+    Error, Meta, Result,
+};
+
+/// Request header the runtime sets: `nav` for navigations, `action` for form submits.
+pub const MODE_HEADER: HeaderName = HeaderName::from_static("corten");
+const PAGE_HEADER: HeaderName = HeaderName::from_static("corten-page");
+const PATCH_HEADER: HeaderName = HeaderName::from_static("corten-patch");
+const LOCATION_HEADER: HeaderName = HeaderName::from_static("corten-location");
+const SHELL_HEADER: HeaderName = HeaderName::from_static("corten-shell");
+
+/// Responses depend on the mode header and, for [`Mode::Data`], on `Accept`.
+const VARY: &str = "corten, accept";
+
+/// How the client asked for this response.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    /// A normal browser request: first load, reload, or any request without JavaScript.
+    Document,
+    /// The runtime is navigating to a page and will swap it into `<main>`.
+    Navigation,
+    /// The runtime submitted a `<form data-patch>` and expects fragments back.
+    Action,
+    /// A client that renders by itself (a native screen, an agent) asked for
+    /// `Accept: application/json`. [`Req::screen`] answers with the page's data; [`Req::page`]
+    /// still answers with the HTML document.
+    Data,
+}
+
+fn mode_of(headers: &HeaderMap) -> Mode {
+    match headers.get(MODE_HEADER).map(HeaderValue::as_bytes) {
+        Some(b"nav") => Mode::Navigation,
+        Some(b"action") => Mode::Action,
+        _ if accepts_json(headers) => Mode::Data,
+        _ => Mode::Document,
+    }
+}
+
+/// True when the first media type in `Accept` is `application/json`. Browsers never send that
+/// for a navigation, so a document request cannot turn into data by accident.
+fn accepts_json(headers: &HeaderMap) -> bool {
+    let accept = headers.get(header::ACCEPT).and_then(|v| v.to_str().ok()).unwrap_or("");
+    accept.split(',').next().is_some_and(|first| first.split(';').next().unwrap_or("").trim() == "application/json")
+}
+
+/// The document around a page, given to the app's shell function (see [`crate::App::shell`]).
+///
+/// Print `{doc.head}` inside `<head>` before any other script and `{doc.main}` inside `<main>`.
+pub struct Document {
+    /// Title, the page's [`Meta`] tags, the runtime, island preloads, the manifest. Print it
+    /// before any other module script.
+    pub head: Head,
+    /// The page's HTML, already rendered.
+    pub main: Main,
+    lang: String,
+    path: String,
+    nonce: Option<Nonce>,
+    shared: Arc<Shared>,
+}
+
+impl Document {
+    /// The page title, as in `<title>`.
+    pub fn title(&self) -> &str {
+        &self.head.title
+    }
+
+    /// The request path, for links that mark the current section.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The negotiated locale (`"en"` without [`crate::App::locales`]), for `<html lang>`.
+    pub fn lang(&self) -> &str {
+        &self.lang
+    }
+
+    /// True when `href` is the current page, or with `section` any page under it: the rule the
+    /// runtime applies to `<a data-nav>` (`data-nav="section"`) after each navigation.
+    pub fn is_current(&self, href: &str, section: bool) -> bool {
+        is_current(&self.path, href, section)
+    }
+
+    /// `aria-current="page"` for a nav link when [`Document::is_current`]:
+    /// `<a href="/about" data-nav aria-current={doc.current("/about")}>`.
+    pub fn current(&self, href: &str) -> Option<&'static str> {
+        self.is_current(href, false).then_some("page")
+    }
+
+    /// This request's CSP nonce, for the shell's own inline scripts. Empty without a policy.
+    pub fn nonce(&self) -> &str {
+        self.nonce.as_ref().map_or("", |n| &n.0)
+    }
+
+    /// The versioned URL of a static file: `doc.asset("style.css")`. A missing file panics in
+    /// debug builds.
+    pub fn asset(&self, path: &str) -> String {
+        match &self.shared.assets {
+            Some(assets) => assets.url(path),
+            None => panic!("no static directory is loaded, so there is no {path:?}; see App::assets"),
+        }
+    }
+
+    /// True when the static directory has `path`.
+    pub fn has_asset(&self, path: &str) -> bool {
+        self.shared.assets.as_ref().is_some_and(|a| a.contains(path))
+    }
+}
+
+/// The tags Corten owns in `<head>`, rendered once per document.
+pub struct Head {
+    title: String,
+    html: String,
+}
+
+impl Render for Head {
+    fn render(&self, out: &mut String) {
+        out.push_str(&self.html)
+    }
+}
+
+/// The page's rendered HTML, for `<main>`.
+pub struct Main(String);
+
+impl Render for Main {
+    fn render(&self, out: &mut String) {
+        out.push_str(&self.0)
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn is_current_for_tests(path: &str, href: &str, section: bool) -> bool {
+    is_current(path, href, section)
+}
+
+fn is_current(path: &str, href: &str, section: bool) -> bool {
+    let href = href.split(['?', '#']).next().unwrap_or(href);
+    path == href || (section && path.strip_prefix(href.trim_end_matches('/')).is_some_and(|rest| rest.starts_with('/')))
+}
+
+/// The shell's per-request context, taken from the request extensions when the request arrives.
+pub(crate) struct Captured {
+    key: String,
+    context: Option<Box<dyn Any + Send + Sync>>,
+}
+
+type RenderShell = dyn Fn(Document, Option<&(dyn Any + Send + Sync)>) -> String + Send + Sync;
+type CaptureContext = dyn Fn(&Extensions) -> Option<(u64, Box<dyn Any + Send + Sync>)> + Send + Sync;
+
+/// A shell function with its context type erased.
+pub struct ShellFn {
+    render: Box<RenderShell>,
+    capture: Box<CaptureContext>,
+    /// The context type the shell takes, checked against [`crate::App::context`].
+    pub(crate) context_type: Option<(std::any::TypeId, &'static str)>,
+}
+
+/// A function that renders the document around every page. Implemented for
+/// `fn(Document) -> impl Render` and, for a shell that shows per-request data such as the
+/// signed-in user, `fn(Document, Option<C>) -> impl Render`, where `C` is whatever the app's
+/// middleware put in the request extensions (see [`crate::App::shell`]).
+pub trait IntoShell<Marker>: Send + Sync + 'static {
+    fn into_shell(self) -> ShellFn;
+}
+
+impl<F, V> IntoShell<fn(Document) -> V> for F
+where
+    F: Fn(Document) -> V + Send + Sync + 'static,
+    V: Render,
+{
+    fn into_shell(self) -> ShellFn {
+        ShellFn { render: Box::new(move |doc, _| self(doc).to_html()), capture: Box::new(|_| None), context_type: None }
+    }
+}
+
+impl<F, V, C> IntoShell<fn(Document, Option<C>) -> V> for F
+where
+    F: Fn(Document, Option<C>) -> V + Send + Sync + 'static,
+    V: Render,
+    C: Clone + Hash + Send + Sync + 'static,
+{
+    fn into_shell(self) -> ShellFn {
+        ShellFn {
+            render: Box::new(move |doc, context| {
+                let context = context.and_then(|c| c.downcast_ref::<C>()).cloned();
+                self(doc, context).to_html()
+            }),
+            capture: Box::new(|extensions| {
+                let context = extensions.get::<C>()?;
+                let mut hasher = std::hash::DefaultHasher::new();
+                context.hash(&mut hasher);
+                Some((hasher.finish(), Box::new(context.clone())))
+            }),
+            context_type: Some((std::any::TypeId::of::<C>(), std::any::type_name::<C>())),
+        }
+    }
+}
+
+/// The shell used when the app sets none: a plain document that links `style.css` when the
+/// static directory has one.
+pub fn default_shell(doc: Document) -> impl Render {
+    let style = doc.has_asset("style.css").then(|| doc.asset("style.css"));
+    html! {
+        <!DOCTYPE html>
+        <html lang={doc.lang()}>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                {doc.head}
+                if let Some(href) = &style { <link rel="stylesheet" href={href}> }
+            </head>
+            <body><main>{doc.main}</main></body>
+        </html>
+    }
+}
+
+/// The error page used when the app sets none.
+pub fn default_error_page(status: StatusCode) -> (Meta, impl Render) {
+    let (title, text) = match status {
+        StatusCode::NOT_FOUND => ("Not found", "There is nothing at this address."),
+        StatusCode::FORBIDDEN => ("Not allowed", "You do not have access to this page."),
+        StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
+        _ => ("Something went wrong", "Please try again."),
+    };
+    (Meta::from(title), html! { <h1>{title}</h1><p>{text}</p> })
+}
+
+pub(crate) type ErrorPage = dyn Fn(StatusCode) -> (Meta, String) + Send + Sync;
+
+/// Everything a request needs from the app: the shell, the error page, where islands live.
+pub(crate) struct Shared {
+    pub shell: ShellFn,
+    pub error_page: Box<ErrorPage>,
+    pub assets: Option<Arc<Assets>>,
+    pub islands_dir: String,
+    /// Extra `<head>` tags from the app's configuration (manifest link, theme color, service
+    /// worker), rendered once.
+    pub head_extra: String,
+    /// Hash of what the shell shows that a navigation cannot update: runtime and asset versions.
+    pub key_base: u64,
+    /// The PWA's offline page path; Corten answers it when the app has no route for it.
+    pub offline: Option<String>,
+    /// The app's message catalogs, negotiated per request by [`Req::t`].
+    pub locales: Option<crate::i18n::Locales>,
+    /// Dev mode: error pages show the error.
+    pub dev: bool,
+}
+
+impl Shared {
+    pub(crate) fn new(shell: ShellFn, error_page: Box<ErrorPage>, assets: Option<Arc<Assets>>, head_extra: String) -> Self {
+        let islands_dir = assets.as_ref().map_or_else(|| "/assets/islands/".to_string(), |a| a.islands_dir().to_string());
+        let mut hasher = std::hash::DefaultHasher::new();
+        crate::runtime_version().hash(&mut hasher);
+        islands_dir.hash(&mut hasher);
+        head_extra.hash(&mut hasher);
+        Shared {
+            shell,
+            error_page,
+            assets,
+            islands_dir,
+            head_extra,
+            key_base: hasher.finish(),
+            offline: None,
+            locales: None,
+            dev: false,
+        }
+    }
+}
+
+/// Used by handlers that run without an [`crate::App`] (unit tests of a bare router).
+static DEFAULT: LazyLock<Arc<Shared>> =
+    LazyLock::new(|| Arc::new(Shared::new(default_shell.into_shell(), error_page_fn(default_error_page), None, String::new())));
+
+pub(crate) fn error_page_fn<F, V>(page: F) -> Box<ErrorPage>
+where
+    F: Fn(StatusCode) -> (Meta, V) + Send + Sync + 'static,
+    V: Render,
+{
+    Box::new(move |status| {
+        let (meta, view) = page(status);
+        (meta.noindex(), view.to_html())
+    })
+}
+
+/// The request as a handler answers it: which [`Mode`] the client asked in, and the methods
+/// that build each kind of response. Every handler that returns HTML takes one.
+pub struct Req {
+    pub mode: Mode,
+    nonce: Option<Nonce>,
+    path: String,
+    accept_language: Option<HeaderValue>,
+    shared: Arc<Shared>,
+    captured: Captured,
+}
+
+impl<St: Send + Sync> FromRequestParts<St> for Req {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _: &St) -> std::result::Result<Self, Self::Rejection> {
+        let shared = parts.extensions.get::<Arc<Shared>>().unwrap_or(&DEFAULT).clone();
+        Ok(Req::new(&parts.headers, &parts.extensions, parts.uri.path(), shared))
+    }
+}
+
+impl Req {
+    pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, path: &str, shared: Arc<Shared>) -> Self {
+        let (hash, context) = match (shared.shell.capture)(extensions) {
+            Some((hash, context)) => (hash, Some(context)),
+            None => (0, None),
+        };
+        let key = format!("{:016x}", shared.key_base ^ hash.rotate_left(1));
+        Req {
+            mode: mode_of(headers),
+            nonce: extensions.get::<Nonce>().cloned(),
+            path: path.to_string(),
+            accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
+            shared,
+            captured: Captured { key, context },
+        }
+    }
+
+    /// The shell's context for this request (what the app's middleware inserted), if any:
+    /// `req.context::<Viewer>()`.
+    pub fn context<C: 'static>(&self) -> Option<&C> {
+        self.captured.context.as_ref()?.downcast_ref()
+    }
+
+    /// The request path.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The message catalog for this request's `Accept-Language`, from [`crate::App::locales`].
+    /// Panics when the app has no locales.
+    pub fn t(&self) -> &crate::i18n::Catalog {
+        let locales = self.shared.locales.as_ref().expect("corten: req.t() needs App::locales");
+        locales.negotiate(self.accept_language.as_ref().and_then(|v| v.to_str().ok()))
+    }
+
+    fn lang(&self) -> &str {
+        match &self.shared.locales {
+            Some(_) => self.t().locale(),
+            None => "en",
+        }
+    }
+
+    /// A page: the whole document for a browser, only the page for a client navigation. `meta`
+    /// is the title (`"About"`) or a [`Meta`] with the head tags.
+    pub fn page(&self, meta: impl Into<Meta>, view: impl Render) -> Result {
+        self.page_with_status(StatusCode::OK, meta, view)
+    }
+
+    pub fn page_with_status(&self, status: StatusCode, meta: impl Into<Meta>, view: impl Render) -> Result {
+        let meta = meta.into();
+        if matches!(self.mode, Mode::Navigation | Mode::Action) {
+            // The runtime swaps the page into <main>, so render it straight after the title.
+            let mut body = String::with_capacity(16 * 1024);
+            swap_prefix(&meta, &mut body);
+            view.render(&mut body);
+            return Ok(self.finish(html_response(status, body, PAGE_HEADER)));
+        }
+        Ok(self.respond(status, meta, view.to_html()))
+    }
+
+    /// The response for already-rendered `<main>` HTML.
+    fn respond(&self, status: StatusCode, meta: Meta, main: String) -> Response {
+        let body = match self.mode {
+            // The runtime swaps the page into <main> and the head tags into <head>; an action
+            // that answers with a page (a form with errors, say) is swapped the same way.
+            Mode::Navigation | Mode::Action => {
+                let mut body = String::with_capacity(main.len() + 256);
+                swap_prefix(&meta, &mut body);
+                body.push_str(&main);
+                body
+            }
+            Mode::Document | Mode::Data => {
+                let head = self.head(&meta, &main);
+                let doc = Document {
+                    head: Head { title: meta.title().to_string(), html: head },
+                    main: Main(main),
+                    lang: self.lang().to_string(),
+                    path: self.path.clone(),
+                    nonce: self.nonce.clone(),
+                    shared: self.shared.clone(),
+                };
+                let context = self.captured.context.as_deref();
+                (self.shared.shell.render)(doc, context.map(|c| c as &(dyn Any + Send + Sync)))
+            }
+        };
+        self.finish(html_response(status, body, PAGE_HEADER))
+    }
+
+    /// Adds the shell key, which tells the runtime whether the shell is still current.
+    fn finish(&self, mut res: Response) -> Response {
+        if let Ok(value) = HeaderValue::try_from(&self.captured.key) {
+            res.headers_mut().insert(SHELL_HEADER, value);
+        }
+        res
+    }
+
+    fn head(&self, meta: &Meta, main: &str) -> String {
+        use std::fmt::Write;
+        let nonce = match &self.nonce {
+            Some(n) => format!(r#" nonce="{}""#, n.0),
+            None => String::new(),
+        };
+        let mut out = String::with_capacity(1024);
+        out.push_str("<title>");
+        crate::view::escape_into(meta.title(), &mut out);
+        out.push_str("</title>");
+        out.push_str(meta.tags());
+        let dir = &self.shared.islands_dir;
+        let _ = write!(
+            out,
+            r#"<meta name="corten-islands" content="{dir}"><meta name="corten-shell" content="{}">"#,
+            self.captured.key
+        );
+        out.push_str(&self.shared.head_extra);
+        let _ = write!(out, r#"<script type="importmap"{nonce}>{}</script>"#, crate::import_map());
+        let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
+        let islands = find_islands(main);
+        for tag in &islands {
+            let _ = write!(out, r#"<link rel="modulepreload" href="{dir}{tag}.js">"#);
+        }
+        if !islands.is_empty() {
+            let _ = write!(out, "<style{nonce}>{}{{display:contents}}</style>", islands.join(","));
+        }
+        out
+    }
+
+    /// [`Req::page`] for a page other clients read too: a browser gets HTML as usual, and a
+    /// [`Mode::Data`] request gets `{"title": ..., "data": data}`. `data` is the screen's view
+    /// model, so a native screen or an agent sees exactly what the view shows; `view` is only
+    /// rendered for browsers.
+    #[cfg(feature = "json")]
+    pub fn screen<T: serde::Serialize>(&self, meta: impl Into<Meta>, data: &T, view: impl Render) -> Result {
+        self.screen_with_status(StatusCode::OK, meta, data, view)
+    }
+
+    #[cfg(feature = "json")]
+    pub fn screen_with_status<T: serde::Serialize>(
+        &self,
+        status: StatusCode,
+        meta: impl Into<Meta>,
+        data: &T,
+        view: impl Render,
+    ) -> Result {
+        let meta = meta.into();
+        if self.mode != Mode::Data {
+            return self.page_with_status(status, meta, view);
+        }
+        #[derive(serde::Serialize)]
+        struct Screen<'a, T> {
+            title: &'a str,
+            data: &'a T,
+        }
+        let body = serde_json::to_string(&Screen { title: meta.title(), data })?;
+        let headers = [
+            (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
+            (header::VARY, HeaderValue::from_static(VARY)),
+        ];
+        Ok((status, headers, body).into_response())
+    }
+
+    /// Answers a `<form data-patch>` submit with fragments. Every top-level element in `view`
+    /// must carry an `id`; the runtime replaces the element with that `id` on the page.
+    pub fn patch(&self, view: impl Render) -> Result {
+        self.patch_with_status(StatusCode::OK, view)
+    }
+
+    /// Same as [`Req::patch`] with another status.
+    pub fn patch_with_status(&self, status: StatusCode, view: impl Render) -> Result {
+        Ok(html_response(status, view.to_html(), PATCH_HEADER))
+    }
+
+    /// Answers a submit whose input failed validation, with 422 Unprocessable Content:
+    ///
+    /// - [`Mode::Action`]: `form`, the form re-rendered with the errors, as a patch. The runtime
+    ///   then moves focus to the first field marked `aria-invalid="true"`.
+    /// - [`Mode::Data`] (feature `json`): `{"errors": {"field": "message"}}`.
+    /// - Otherwise (no JavaScript): `page()`, usually `req.page(..)` for the whole page with the
+    ///   form showing the errors; a success status becomes 422. It is only called here, so an
+    ///   action never loads data for a page it does not send.
+    pub async fn invalid<F, Fut>(&self, errors: &crate::Errors, form: impl Render, page: F) -> Result
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result>,
+    {
+        let status = StatusCode::UNPROCESSABLE_ENTITY;
+        match self.mode {
+            Mode::Action => self.patch_with_status(status, form),
+            #[cfg(feature = "json")]
+            Mode::Data => {
+                let body = serde_json::to_string(&serde_json::json!({ "errors": errors }))?;
+                Ok((status, [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response())
+            }
+            _ => {
+                let _ = errors;
+                let mut res = page().await?;
+                if res.status().is_success() {
+                    *res.status_mut() = status;
+                }
+                Ok(res)
+            }
+        }
+    }
+
+    /// After a successful write, send the browser to `location` (post/redirect/get). Works with
+    /// and without JavaScript.
+    pub fn redirect(&self, location: &str) -> Result {
+        let value = HeaderValue::try_from(location).map_err(Error::new)?;
+        Ok(match self.mode {
+            Mode::Action => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, value)]).into_response(),
+            _ => (StatusCode::SEE_OTHER, [(header::LOCATION, value)]).into_response(),
+        })
+    }
+}
+
+/// Middleware the app installs: a failed request (an [`Error`] from a handler, or an empty error
+/// response such as axum's 404 for an unknown URL or 405 for a wrong method) renders the error
+/// page in the request's mode, and the PWA's offline path gets Corten's offline page when the app
+/// has no route for it.
+pub(crate) async fn render_errors(shared: Arc<Shared>, req: Request, next: Next) -> Response {
+    use axum::body::HttpBody;
+    let mode = mode_of(req.headers());
+    let offline = req.method() == axum::http::Method::GET && shared.offline.as_deref() == Some(req.uri().path());
+    let failed_req = (mode != Mode::Data).then(|| Req::new(req.headers(), req.extensions(), req.uri().path(), shared.clone()));
+    let res = next.run(req).await;
+    let status = res.status();
+    let failed = res.extensions().get::<crate::Failed>().cloned();
+    let allow = res.headers().get(header::ALLOW).cloned();
+    let empty_error = (status.is_client_error() || status.is_server_error()) && res.body().size_hint().exact() == Some(0);
+    if failed.is_none() && !empty_error {
+        return res;
+    }
+    let Some(req) = failed_req else {
+        let body = format!(r#"{{"error":{{"status":{}}}}}"#, status.as_u16());
+        return (status, [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response();
+    };
+    if offline && status == StatusCode::NOT_FOUND {
+        let view = html! { <h1>"You are offline"</h1><p>"Check your connection and try again."</p> };
+        return req.respond(StatusCode::OK, Meta::new("Offline").noindex(), view.to_html());
+    }
+    let (meta, mut main) = (shared.error_page)(status);
+    if let Some(crate::Failed(message)) = failed.filter(|_| shared.dev) {
+        // Dev mode only: the error itself, under the page the user would see.
+        let detail = html! { <pre class="corten-error">{message}</pre> };
+        detail.render(&mut main);
+    }
+    let mut res = req.respond(status, meta, main);
+    if let Some(allow) = allow {
+        res.headers_mut().insert(header::ALLOW, allow);
+    }
+    res
+}
+
+/// `<title>` and the head tags, which the runtime moves into `<head>` when it swaps a page.
+fn swap_prefix(meta: &Meta, out: &mut String) {
+    out.push_str("<title>");
+    crate::view::escape_into(meta.title(), out);
+    out.push_str("</title>");
+    out.push_str(meta.tags());
+}
+
+pub(crate) fn html_response(status: StatusCode, body: String, kind: HeaderName) -> Response {
+    (
+        status,
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8")),
+            (header::VARY, HeaderValue::from_static(VARY)),
+            (kind, HeaderValue::from_static("1")),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+/// `<script type="application/json" data-props>`: typed data for the island it sits in, read in
+/// the browser with `this.props()`. `{Props(&grid)}` inside the island's element.
+#[cfg(feature = "json")]
+impl<T: serde::Serialize> Render for crate::Props<'_, T> {
+    fn render(&self, out: &mut String) {
+        /// Streams serde_json's output into the page, writing `<` as `\u003c` (it only occurs inside
+        /// JSON strings), so no value can close the script element.
+        struct Escaped<'a>(&'a mut String);
+        impl std::io::Write for Escaped<'_> {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                // serde_json writes whole UTF-8 sequences per call.
+                let text = std::str::from_utf8(buf).map_err(std::io::Error::other)?;
+                for (i, part) in text.split('<').enumerate() {
+                    if i > 0 {
+                        self.0.push_str("\\u003c");
+                    }
+                    self.0.push_str(part);
+                }
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        out.push_str(r#"<script type="application/json" data-props>"#);
+        serde_json::to_writer(Escaped(out), self.0).expect("island props serialize");
+        out.push_str("</script>");
+    }
+}

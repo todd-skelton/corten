@@ -1,5 +1,5 @@
 //! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts.
-use corten::{i18n::Catalog, Errors, Fields};
+use corten::{Errors, Fields, i18n::Catalog};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

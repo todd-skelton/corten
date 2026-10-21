@@ -1,0 +1,80 @@
+{
+ "ssr": {
+  "fixture": {
+   "corten": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1149,
+     "idleMem": "9.992MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "p50": 0.6,
+     "p95": 0.7,
+     "p99": 0.8,
+     "failedPct": 0,
+     "cpuPct": 8.4,
+     "memMiB": 18.5,
+     "memMaxMiB": 19.2
+    },
+    "sat64": {
+     "rps": 8496,
+     "p50": 7.3,
+     "p95": 10.9,
+     "p99": 16.2,
+     "failedPct": 0,
+     "cpuPct": 99.3,
+     "memMiB": 18.5,
+     "memMaxMiB": 19.4
+    },
+    "sat256": {
+     "rps": 6087,
+     "p50": 36.6,
+     "p95": 87.9,
+     "p99": 131,
+     "failedPct": 0,
+     "cpuPct": 101.4,
+     "memMiB": 22.1,
+     "memMaxMiB": 23.1
+    }
+   },
+   "nextjs": {
+    "startup": null
+   },
+   "tanstack-start": {
+    "startup": null
+   },
+   "sveltekit": {
+    "startup": null
+   },
+   "react-router": {
+    "startup": null
+   },
+   "leptos": {
+    "startup": null
+   }
+  },
+  "api": {
+   "corten": {
+    "startup": null
+   },
+   "nextjs": {
+    "startup": null
+   },
+   "tanstack-start": {
+    "startup": null
+   },
+   "sveltekit": {
+    "startup": null
+   },
+   "react-router": {
+    "startup": null
+   },
+   "leptos": {
+    "startup": null
+   }
+  }
+ },
+ "coldStart": null,
+ "bytes": null,
+ "browser": {}
+}

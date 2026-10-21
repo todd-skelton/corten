@@ -1,0 +1,5 @@
+body { font: 16px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 40rem; padding: 1rem; }
+header { margin-bottom: 2rem; }
+header a { font-weight: 600; text-decoration: none; }
+form { display: flex; gap: .5rem; align-items: end; margin: 1rem 0; }
+form[aria-busy="true"] { opacity: .6; }

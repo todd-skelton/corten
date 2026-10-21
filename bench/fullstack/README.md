@@ -1,11 +1,11 @@
-# Full-stack comparison: a marketplace item page in six frameworks
+# Full-stack comparison: one marketplace item page in six frameworks
 
 The same item detail page (title, images, sorted listings table, offers with "show all", a
 price-alert form that posts and patches a message) built in:
 
 | App | Stack | Directory |
 |---|---|---|
-| corten | Corten 0.1 (Rust, axum + askama, custom-element islands) | [examples/item-page](../../examples/item-page) |
+| corten | Corten 0.1 (Rust, axum, `html!` views, custom-element islands) | [examples/item-page](../../examples/item-page) |
 | nextjs | Next.js 16.4.2, App Router, React Server Components, server action | [apps/nextjs](apps/nextjs) |
 | tanstack-start | TanStack Start 1.169.3, React 19, server functions, Nitro | [apps/tanstack-start](apps/tanstack-start) |
 | sveltekit | SvelteKit 3.1.0, Svelte 5.57, adapter-node 6, form action | [apps/sveltekit](apps/sveltekit) |
@@ -35,7 +35,7 @@ container was limited to one CPU.
 | react-router | 1,035 ms (800-1,264) | 33.0 MiB | 245 MB |
 | nextjs | 1,679 ms (1,345-2,096) | 49.2 MiB | 266 MB |
 
-Corten's start is indistinguishable from Docker's own overhead (the baseline): templates are
+Corten's start is indistinguishable from Docker's own overhead (the baseline): views are
 compiled into the binary and static files load in a few milliseconds.
 
 ### Server rendering without a database (items in memory, 1 CPU)
@@ -52,6 +52,13 @@ compiled into the binary and static files load in a few milliseconds.
 Every JavaScript app was CPU-bound below 300/s, so their fixed-rate rows show queueing (60 s is
 the load generator's timeout). Rendering this page, Corten serves 7.6x Leptos and 15-65x the
 JavaScript frameworks on the same CPU.
+
+These numbers were taken when Corten rendered with askama templates. After the switch to `html!`,
+Corten alone was run again twice back to back on 2026-10-21 (`results/askama-recheck/` with the
+old build, `results/html-macro/` with the new one): 64 users 8,496 req/s (askama) and 6,928
+(`html!`), 256 users 6,087 and 8,321, all 0% errors. The two swap places between columns, so
+the difference is noise; both runs are faster than r1 because nothing else was running. The other
+frameworks were not rerun, so the table keeps the r1 numbers.
 
 ### Server rendering with the item API (1 CPU)
 

@@ -1,9 +1,26 @@
-//! `#[derive(Fields)]`, re-exported as `corten::Fields`. See its documentation there.
+//! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
+//! `corten::view`) and `#[derive(Fields)]` (see `corten::Fields`).
 //!
-//! Parsed with `proc_macro` alone (no `syn`): the input is a struct with named fields, and the
-//! only attributes read are serde's `rename_all`, `rename`, `skip` and `flatten`.
+//! Written against `proc_macro` alone (no `syn` or `quote`), so the crate has no dependencies
+//! and builds in about a second.
+
+mod component;
+mod html;
+mod tokens;
 
 use proc_macro::{Delimiter, Group, Spacing, TokenStream, TokenTree};
+
+/// JSX-like markup compiled to string pushes. Documented at `corten::view`.
+#[proc_macro]
+pub fn html(input: TokenStream) -> TokenStream {
+    html::expand(input)
+}
+
+/// A function as a component struct. Documented at `corten::view::component`.
+#[proc_macro_attribute]
+pub fn component(args: TokenStream, item: TokenStream) -> TokenStream {
+    component::expand(args, item).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
 
 /// Field names of a form input struct as constants: `Input::FIELDS.email` is `"email"`, with
 /// serde's `rename` and `rename_all` applied. Templates print them for `name=` and handlers

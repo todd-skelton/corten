@@ -478,6 +478,15 @@ markCurrent();
 /** Resolves once the islands on the first page are defined. */
 export const ready = upgrade(document.body);
 
+// Under `corten dev` the server sends the time it started; after a restart (a rebuild) the stream
+// reconnects to a server that started later, and the page reloads.
+const devStart = document.querySelector('meta[name="corten-dev"]')?.getAttribute("content");
+if (devStart) {
+  new EventSource("/corten/dev").addEventListener("message", (event) => {
+    if (/** @type {MessageEvent} */ (event).data !== devStart) location.reload();
+  });
+}
+
 const worker = document.querySelector('meta[name="corten-sw"]')?.getAttribute("content");
 if (worker && "serviceWorker" in navigator) {
   addEventListener("load", () => {

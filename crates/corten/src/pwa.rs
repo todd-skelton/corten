@@ -1,15 +1,16 @@
 //! Installable app support: a web app manifest, a generated service worker and an offline page.
 //!
 //! ```ignore
-//! let pwa = Pwa::new(Manifest::new("Card Market", "Card Market").icon("/icon-192.png", "192x192", "image/png"))
-//!     .offline("/offline")
-//!     .assets(&assets)
-//!     .network_only("/api/");
-//! let app = router.merge(pwa.routes());
+//! App::new(routes).pwa(
+//!     Pwa::new(Manifest::new("Card Market", "Cards").icon("icons/192.png", "192x192").icon("icons/512.png", "512x512"))
+//!         .network_only("/api/"),
+//! )
 //! ```
 //!
-//! and `const SERVICE_WORKER: Option<&'static str> = Some(corten::pwa::WORKER_PATH);` on the
-//! [`crate::Shell`], plus `<link rel="manifest" href="/manifest.webmanifest">` in its template.
+//! [`crate::App::pwa`] serves the manifest and the worker, links the manifest in every page,
+//! registers the worker (not under `corten dev`), caches the static files, and answers
+//! `/offline` with a plain offline page unless the app routes it. Relative icon and script paths
+//! are files in the static directory.
 //!
 //! What the worker does, and why:
 //!
@@ -96,15 +97,16 @@ impl Manifest {
         self
     }
 
-    /// An icon: `("/icons/192.png", "192x192", "image/png")`. Add 192 and 512 at least.
-    pub fn icon(mut self, src: &str, sizes: &str, mime: &str) -> Self {
-        self.icons.push((src.into(), sizes.into(), mime.into(), None));
+    /// An icon: `("icons/192.png", "192x192")`, a file in the static directory (or an absolute
+    /// URL). The type comes from the extension. Add 192 and 512 at least.
+    pub fn icon(mut self, src: &str, sizes: &str) -> Self {
+        self.icons.push((src.into(), sizes.into(), image_type(src).into(), None));
         self
     }
 
     /// An icon with `"purpose": "maskable"` (the platform crops it to its own shape).
-    pub fn maskable_icon(mut self, src: &str, sizes: &str, mime: &str) -> Self {
-        self.icons.push((src.into(), sizes.into(), mime.into(), Some("maskable")));
+    pub fn maskable_icon(mut self, src: &str, sizes: &str) -> Self {
+        self.icons.push((src.into(), sizes.into(), image_type(src).into(), Some("maskable")));
         self
     }
 
@@ -188,12 +190,46 @@ impl Pwa {
     }
 
     /// A same-origin script the worker loads first with `importScripts`, for the app's own worker
-    /// code (a `push` handler, say). Pass a versioned URL (`assets.url("sw-push.js")`), so a new
-    /// version changes the worker and the browser installs it.
+    /// code (a `push` handler, say): a file in the static directory (`"sw-push.js"`), whose
+    /// versioned URL changes the worker when the file changes, or an absolute path.
     pub fn import_script(mut self, url: &str) -> Self {
-        assert!(url.starts_with('/') && !url.starts_with("//"), "a worker script must be a same-origin path: {url}");
+        assert!(!url.starts_with("//") && !url.contains("://"), "a worker script must be same-origin: {url}");
         self.imports.push(url.into());
         self
+    }
+
+    /// The theme color, if the manifest has one.
+    pub fn theme_color(&self) -> Option<&str> {
+        self.manifest.theme_color.as_deref()
+    }
+
+    /// The offline page's path.
+    pub fn offline_path(&self) -> &str {
+        &self.offline
+    }
+
+    /// Relative icon and script paths become versioned static file URLs, and the static files are
+    /// cached (see [`Pwa::assets`]). Panics when a named file is missing, so a typo fails at
+    /// startup.
+    pub fn resolve(mut self, assets: Option<&Assets>) -> Self {
+        let resolve = |path: &mut String| {
+            if path.starts_with('/') || path.contains("://") {
+                return;
+            }
+            let assets = assets.unwrap_or_else(|| panic!("corten: the PWA names {path:?} but there is no static directory"));
+            assert!(assets.contains(path), "corten: the PWA names {path:?}, which is not in the static directory");
+            *path = assets.url(path);
+        };
+        for icon in &mut self.manifest.icons {
+            resolve(&mut icon.0);
+        }
+        for import in &mut self.imports {
+            resolve(import);
+        }
+        match assets {
+            Some(assets) if self.version.is_empty() => self.assets(assets),
+            _ => self,
+        }
     }
 
     /// The deploy's asset version ([`crate::assets::Assets::version`]); part of the cache name.
@@ -248,6 +284,17 @@ impl Pwa {
                     async move { text(&worker, "text/javascript; charset=utf-8", "no-cache") }
                 }),
             )
+    }
+}
+
+fn image_type(path: &str) -> &'static str {
+    match path.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase()).as_deref() {
+        Some("svg") => "image/svg+xml",
+        Some("webp") => "image/webp",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("avif") => "image/avif",
+        Some("ico") => "image/x-icon",
+        _ => "image/png",
     }
 }
 
@@ -325,14 +372,14 @@ mod tests {
 
     #[test]
     fn manifest_is_json_with_icons() {
-        let m = Manifest::new("Card \"Market\"", "CS")
+        let m = Manifest::new("Card \"Market\"", "CM")
             .theme_color("#111")
-            .icon("/i/192.png", "192x192", "image/png")
-            .maskable_icon("/i/512.png", "512x512", "image/png");
+            .icon("/i/192.png", "192x192")
+            .maskable_icon("/i/512.png", "512x512");
         assert_eq!(
             m.to_json(),
             concat!(
-                r##"{"name":"Card \"Market\"","short_name":"CS","start_url":"/","scope":"/","display":"standalone","theme_color":"#111","##,
+                r##"{"name":"Card \"Market\"","short_name":"CM","start_url":"/","scope":"/","display":"standalone","theme_color":"#111","##,
                 r#""icons":[{"src":"/i/192.png","sizes":"192x192","type":"image/png"},"#,
                 r#"{"src":"/i/512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}"#
             )
@@ -356,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "same-origin path")]
+    #[should_panic(expected = "same-origin")]
     fn worker_scripts_are_same_origin() {
         let _ = Pwa::new(Manifest::new("A", "A")).import_script("https://cdn.example.com/x.js");
     }

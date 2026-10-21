@@ -3,17 +3,19 @@ name = "corten"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Server-rendered pages, fragment patches, small custom-element islands and live feeds for axum."
+description = "A full-stack Rust web framework: pages in html!, fragment patches, custom-element islands and live feeds, on axum."
+license = "MIT"
+repository = "https://github.com/todd-skelton/corten"
 
 [dependencies]
-askama = "0.16"
 axum = "0.8"
 corten-macros = { path = "../corten-macros" }
 futures-util = { version = "0.3", default-features = false }
 getrandom = "0.3"
 memchr = "2"
-tokio = { version = "1", default-features = false, features = ["signal"] }
+tokio = { version = "1", default-features = false, features = ["net", "signal"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 corten-feed = { path = "../corten-feed", optional = true }
@@ -22,9 +24,12 @@ brotli = { version = "9", optional = true }
 flate2 = { version = "1", optional = true }
 zstd = { version = "0.14", default-features = false, optional = true }
 
-# All opt-in. corten-macros and memchr add no crates a page-only app does not already build
-# (askama and serde bring syn and quote; axum brings memchr).
+# corten-macros has no dependencies and memchr is already in axum's tree. Everything else is
+# opt-in except `log`.
 [features]
+default = ["log"]
+# App::serve prints logs (errors, startup, shutdown) to stderr unless the app set a subscriber.
+log = ["dep:tracing-subscriber"]
 # corten::Props: typed JSON from the template to an island (`this.props()` in the browser).
 json = ["dep:serde", "dep:serde_json"]
 # corten::types: TypeScript declarations for islands, generated from the Rust types (schemars).

@@ -11,6 +11,6 @@ FROM debian:bookworm-slim
 WORKDIR /app
 COPY --from=build /out/server /app/server
 COPY examples/item-page/static /app/static
-ENV STATIC_DIR=/app/static PORT=8080
+ENV STATIC_DIR=/app/static HOST=0.0.0.0 PORT=8080
 EXPOSE 8080
 CMD ["/app/server"]

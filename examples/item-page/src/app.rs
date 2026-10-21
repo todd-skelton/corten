@@ -1,283 +1,100 @@
-//! A marketplace item detail page, with every production piece Corten offers switched on:
-//! security policy (CSP nonce, CSRF check), versioned assets, error pages, health, PWA,
-//! head tags, an i18n catalog, robots/sitemap, and the price-alert action as an MCP tool.
-use std::sync::{Arc, OnceLock};
+//! An item detail page with every production piece Corten offers switched on: security
+//! policy (CSP nonce, cross-site write check), versioned assets, error pages, health, PWA with
+//! push, head tags, an i18n catalog, robots/sitemap, compression, and the price-alert action as
+//! an MCP tool for agents.
+use std::sync::{Arc, LazyLock};
 
-use axum::{
-    extract::{Path, State},
-    http::{HeaderMap, StatusCode},
-    routing::get,
-    Form, Router,
-};
 use corten::{
+    Error,
     agent::{ToolError, Tools},
-    assets::Assets,
+    axum::http::StatusCode,
     i18n::{Catalog, Locales},
+    prelude::*,
     pwa::{Manifest, Pwa},
-    security::Policy,
     seo::{self, SitemapUrl},
-    Errors, Head, Meta, Mode, Page, Template,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    model::{alert_set, check_alert, sort_listings, AlertInput, ItemView, Listing, Offer},
+    model::{AlertInput, ItemView, alert_set, check_alert},
     source::Source,
+    views::{self, AlertForm, AlertFormView, AlertMessage, ItemPage},
 };
 
-pub type Req = corten::Req<Shell>;
+static LOCALES: LazyLock<Locales> =
+    LazyLock::new(|| Locales::new(Catalog::from_json("en", include_str!("../locales/en.json")).expect("en.json")));
 
-/// Static files are loaded once per process; the shell reads their versioned URLs from here.
-static ASSETS: OnceLock<Arc<Assets>> = OnceLock::new();
-static LOCALES: OnceLock<Locales> = OnceLock::new();
-
-fn assets() -> &'static Arc<Assets> {
-    ASSETS.get().expect("App::new loads the assets")
+/// The app, assembled: routes plus the shell, catalogs and PWA settings. Corten adds the rest.
+pub fn app(source: Source) -> App {
+    let tokens = std::env::var("AGENT_TOKENS").unwrap_or_else(|_| "dev-token".into());
+    let tokens: Arc<[String]> = tokens.split(',').map(str::to_string).collect();
+    let manifest = Manifest::new("Card Market", "Cards")
+        .description("Buy and sell trading cards")
+        .theme_color("#14213d")
+        .background_color("#ffffff")
+        .icon("icons/192.png", "192x192")
+        .icon("icons/512.png", "512x512")
+        .maskable_icon("icons/512.png", "512x512");
+    App::new(routes(source.clone()).route("/mcp", tools(source, tokens).route()))
+        .shell(views::shell)
+        .locales(LOCALES.clone())
+        .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only("/mcp"))
 }
 
-fn locales() -> &'static Locales {
-    LOCALES.get_or_init(|| Locales::new(Catalog::from_json("en", include_str!("../locales/en.json")).expect("en.json")))
-}
-
-#[derive(Clone)]
-pub struct App {
-    source: Source,
-    tokens: Arc<[String]>,
-}
-
-impl App {
-    pub fn new(source: Source, static_dir: &str) -> std::io::Result<Self> {
-        if ASSETS.get().is_none() {
-            let _ = ASSETS.set(Arc::new(Assets::load(static_dir, "/assets")?));
-        }
-        let tokens = std::env::var("AGENT_TOKENS").unwrap_or_else(|_| "dev-token".into());
-        Ok(App { source, tokens: tokens.split(',').map(str::to_string).collect() })
-    }
-}
-
-pub fn router(app: App) -> Router {
-    // Outermost, so it sees every response, error pages included. Event streams and images
-    // pass through; clients that do not ask for compression (the load generator) get identity.
-    corten::compress::apply(routes(app))
-}
-
-fn routes(app: App) -> Router {
-    let assets = assets();
-    let pwa = Pwa::new(
-        Manifest::new("Card Market", "Card Market")
-            .description("Buy and sell trading cards")
-            .theme_color("#14213d")
-            .background_color("#ffffff")
-            .icon(&assets.url("icons/192.png"), "192x192", "image/png")
-            .icon(&assets.url("icons/512.png"), "512x512", "image/png")
-            .maskable_icon(&assets.url("icons/512.png"), "512x512", "image/png"),
-    )
-    .offline("/offline")
-    .assets(assets)
-    .import_script(&assets.url("sw-push.js"))
-    .network_only("/mcp");
-    let routes = Router::new()
-        .route("/", get(home))
+fn routes(source: Source) -> Router {
+    Router::new()
+        .route("/", get(|req: Req| async move { req.page("Card Market", views::home()) }))
         .route("/items/{id}", get(show).post(create_alert))
-        .route("/offline", get(offline))
         .route("/robots.txt", get(|| async { seo::robots(&["/mcp"], Some("/sitemap.xml")) }))
         .route("/sitemap.xml", get(sitemap))
-        .route("/mcp", tools(app.clone()).route())
-        .fallback(not_found)
-        .with_state(app)
-        .merge(assets.routes())
-        .merge(pwa.routes())
-        .merge(corten::health(|| async { true }))
-        .merge(corten::routes());
-    Policy::new().apply(corten::error_pages::<Shell, _>(routes))
+        .with_state(source)
 }
 
-pub struct Shell;
-
-#[derive(Template)]
-#[template(path = "shell.html")]
-struct ShellTemplate<'a> {
-    head: &'a Head<'a>,
-    main: &'a str,
-    style: String,
-    script: String,
-}
-
-impl corten::Shell for Shell {
-    type Context = ();
-
-    const SERVICE_WORKER: Option<&'static str> = Some(corten::pwa::WORKER_PATH);
-
-    fn islands_dir() -> &'static str {
-        assets().islands_dir()
-    }
-
-    fn render(head: &Head<'_>, main: &str, _: Option<&()>) -> askama::Result<String> {
-        ShellTemplate { head, main, style: assets().url("style.css"), script: assets().url("app.js") }.render()
-    }
-}
-
-/// Offers shown before "Show all"; the rest ship in a <template> for the offer-list island.
-const OFFERS_SHOWN: usize = 5;
-
-/// The item page borrows the item: rendering copies no strings out of it.
-#[derive(Template)]
-#[template(path = "item.html")]
-pub struct ItemPage<'a> {
-    t: &'static Catalog,
-    item: &'a ItemView,
-    listings: Vec<&'a Listing>,
-    message: String,
-    form: AlertFormView<'a>,
-}
-
-impl<'a> ItemPage<'a> {
-    pub fn new(t: &'static Catalog, item: &'a ItemView, message: String) -> Self {
-        let listings = sort_listings(&item.listings, false);
-        let form = AlertFormView { id: &item.id, title: &item.title, ..AlertFormView::default() };
-        ItemPage { t, item, listings, message, form }
-    }
-
-    fn offers_shown(&self) -> &[Offer] {
-        &self.item.offers[..self.item.offers.len().min(OFFERS_SHOWN)]
-    }
-
-    fn offers_rest(&self) -> &[Offer] {
-        &self.item.offers[self.item.offers.len().min(OFFERS_SHOWN)..]
-    }
-}
-
-impl Page for ItemPage<'_> {
-    fn title(&self) -> String {
-        format!("{} | Card Market", self.item.title)
-    }
-
-    fn head(&self) -> Meta {
-        Meta::new().description(&self.item.description).canonical(&format!("/items/{}", self.item.id))
-    }
-}
-
-/// The price-alert form's values and errors. The item page includes the form; a submit that
-/// fails validation patches it on its own. Field names come from `AlertInput::FIELDS`.
-#[derive(Clone, Default)]
-pub struct AlertFormView<'a> {
-    id: &'a str,
-    title: &'a str,
-    email: &'a str,
-    target_price: &'a str,
-    errors: Errors,
-}
-
-#[derive(Template)]
-#[template(path = "alert_form.html")]
-pub struct AlertForm<'a> {
-    t: &'static Catalog,
-    form: AlertFormView<'a>,
-}
-
-/// The price-alert result. Rendered inside the item page and on its own as a patch.
-#[derive(Template)]
-#[template(path = "alert_message.html")]
-pub struct AlertMessage<'a> {
-    message: &'a str,
-}
-
-#[derive(Template)]
-#[template(path = "home.html")]
-pub struct Home;
-
-impl Page for Home {
-    fn title(&self) -> String {
-        "Card Market".into()
-    }
-}
-
-#[derive(Template)]
-#[template(source = "<h1>Not found</h1><p>Not found</p>", ext = "html")]
-pub struct NotFound;
-
-impl Page for NotFound {
-    fn title(&self) -> String {
-        "Not found".into()
-    }
-    fn head(&self) -> Meta {
-        Meta::new().noindex()
-    }
-}
-
-#[derive(Template)]
-#[template(source = "<h1>You are offline</h1><p>Check your connection and try again.</p>", ext = "html")]
-pub struct Offline;
-
-impl Page for Offline {
-    fn title(&self) -> String {
-        "Offline | Card Market".into()
-    }
-    fn head(&self) -> Meta {
-        Meta::new().noindex()
-    }
-}
-
-fn catalog(headers: &HeaderMap) -> &'static Catalog {
-    locales().negotiate(headers.get("accept-language").and_then(|v| v.to_str().ok()))
-}
-
-async fn home(req: Req) -> corten::Result {
-    req.page(&Home)
-}
-
-async fn offline(req: Req) -> corten::Result {
-    req.page(&Offline)
-}
-
-async fn not_found(req: Req) -> corten::Result {
-    req.page_with_status(StatusCode::NOT_FOUND, &NotFound)
-}
-
-async fn sitemap() -> axum::response::Response {
-    let urls: Vec<String> = (1..=50).map(|n| format!("https://example.com/items/item_{n}")).collect();
+async fn sitemap() -> corten::axum::response::Response {
+    let urls: Vec<String> = (1..=50).map(|n| format!("https://cards.example.com/items/item_{n}")).collect();
     seo::sitemap(urls.iter().map(|loc| SitemapUrl { loc, lastmod: None }))
 }
 
-async fn show(req: Req, headers: HeaderMap, State(app): State<App>, Path(id): Path<String>) -> corten::Result {
-    match app.source.item(&id).await? {
-        Some(item) => req.page(&ItemPage::new(catalog(&headers), &item, String::new())),
-        None => req.page_with_status(StatusCode::NOT_FOUND, &NotFound),
-    }
+fn not_found() -> Error {
+    Error::status(StatusCode::NOT_FOUND)
+}
+
+async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> corten::Result {
+    let item = source.item(&id).await?.ok_or_else(not_found)?;
+    let page = ItemPage::new(req.t(), &item, String::new());
+    req.page(page.meta(), page.view())
 }
 
 async fn create_alert(
     req: Req,
-    headers: HeaderMap,
-    State(app): State<App>,
+    State(source): State<Source>,
     Path(id): Path<String>,
     Form(form): Form<AlertInput>,
 ) -> corten::Result {
-    let t = catalog(&headers);
+    let t = req.t();
     let price = match check_alert(t, &form.email, &form.target_price) {
         Ok(price) => price,
         Err(errors) => {
             let view =
                 AlertFormView { id: &id, title: &form.title, email: &form.email, target_price: &form.target_price, errors };
-            let fragment = AlertForm { t, form: view.clone() };
             // Without JavaScript the whole page comes back, with the form showing the errors.
             let page = || async {
-                let item = app.source.item(&id).await?.ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?;
-                req.page(&ItemPage { form: view.clone(), ..ItemPage::new(t, &item, String::new()) })
+                let item = source.item(&id).await?.ok_or_else(not_found)?;
+                let page = ItemPage { form: view.clone(), ..ItemPage::new(t, &item, String::new()) };
+                req.page(page.meta(), page.view())
             };
-            return req.invalid(&view.errors, &fragment, page).await;
+            return req.invalid(&view.errors, AlertForm { t, form: view.clone() }, page).await;
         }
     };
     let message = alert_set(&form.title, &form.email, price);
     if req.mode == Mode::Action {
-        return req.patch(&AlertMessage { message: &message });
+        return req.patch(AlertMessage { message: &message });
     }
     // Without JavaScript the browser posted a plain form: answer with the whole page.
-    match app.source.item(&id).await? {
-        Some(item) => req.page(&ItemPage::new(t, &item, message)),
-        None => req.page_with_status(StatusCode::NOT_FOUND, &NotFound),
-    }
+    let item = source.item(&id).await?.ok_or_else(not_found)?;
+    let page = ItemPage::new(t, &item, message);
+    req.page(page.meta(), page.view())
 }
 
 /// Which item, for `items.get`.
@@ -307,9 +124,8 @@ struct AlertSet {
 /// The same read and write the page offers, as MCP tools. Agents authenticate with a bearer
 /// token (`AGENT_TOKENS`, comma separated), never with the browser's cookies. Input and output
 /// schemas come from the structs above.
-fn tools(app: App) -> Tools {
-    let tokens = app.tokens.clone();
-    let read_app = app.clone();
+fn tools(source: Source, tokens: Arc<[String]>) -> Tools {
+    let read_source = source.clone();
     Tools::new("card-market-item-page", env!("CARGO_PKG_VERSION"))
         .auth(move |headers| {
             let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
@@ -322,9 +138,9 @@ fn tools(app: App) -> Tools {
             "items.get",
             "Item detail: title, market summary, listings sorted by price, and buy offers.",
             move |(), input: ItemId| {
-                let app = read_app.clone();
+                let source = read_source.clone();
                 async move {
-                    let item = app.source.item(&input.id).await.map_err(ToolError::internal)?;
+                    let item = source.item(&input.id).await.map_err(ToolError::internal)?;
                     let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
                     Ok(ItemView::clone(&item))
                 }
@@ -334,10 +150,10 @@ fn tools(app: App) -> Tools {
             "alerts.create",
             "Email the user when the item's lowest price drops below a target.",
             move |(), input: CreateAlert| {
-                let app = app.clone();
+                let source = source.clone();
                 async move {
-                    let price = check_alert(locales().default_catalog(), &input.email, &input.target_price)?;
-                    let item = app.source.item(&input.id).await.map_err(ToolError::internal)?;
+                    let price = check_alert(LOCALES.default_catalog(), &input.email, &input.target_price)?;
+                    let item = source.item(&input.id).await.map_err(ToolError::internal)?;
                     let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
                     Ok(AlertSet { message: alert_set(&item.title, &input.email, price) })
                 }
@@ -347,7 +163,10 @@ fn tools(app: App) -> Tools {
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::Request};
+    use corten::axum::{
+        body::Body,
+        http::{HeaderMap, Request},
+    };
     use http_body_util::BodyExt;
     use serde_json::json;
     use tower::ServiceExt;
@@ -370,7 +189,7 @@ mod tests {
             "offer_demand_matches": offers
         });
         let source = Source::fixture(&json!({ "item_9": item }).to_string()).unwrap();
-        router(App::new(source, concat!(env!("CARGO_MANIFEST_DIR"), "/static")).unwrap())
+        super::app(source).router()
     }
 
     async fn send(req: Request<Body>) -> (StatusCode, HeaderMap, String) {
@@ -389,9 +208,9 @@ mod tests {
         assert_eq!(shown.matches("Buyer ").count(), 5);
         assert_eq!(rest.matches("Buyer ").count(), 2);
         assert!(html.contains("Show all 7 offers"), "catalog interpolation");
-        assert!(html.contains("<h1>Pika &#60;Promo&#62; &#38; &#34;Friends&#34;</h1>"));
+        assert!(html.contains("<h1>Pika &lt;Promo&gt; &amp; &quot;Friends&quot;</h1>"));
         assert!(html.contains(r#"<link rel="canonical" href="/items/item_9" data-corten-head>"#));
-        assert!(html.contains(&format!(r#"<link rel="modulepreload" href="{}listing-sort.js">"#, assets().islands_dir())));
+        assert!(html.contains(r#"/islands/listing-sort.js">"#));
         assert!(html.contains(r#"<link rel="manifest" href="/manifest.webmanifest">"#));
         assert!(!html.contains("[missing:"), "every catalog key exists");
     }
@@ -436,8 +255,11 @@ mod tests {
         let (status, headers, body) = send(post(Some("action"), None)).await;
         assert_eq!((status, &headers["corten-patch"]), (StatusCode::UNPROCESSABLE_ENTITY, &"1".parse().unwrap()));
         assert!(body.starts_with(r#"<div class="alert-form" id="alert-form">"#), "{body}");
-        assert!(body
-            .contains(r#"value="abc" inputmode="decimal" required aria-invalid="true" aria-describedby="target_price-error">"#));
+        assert!(
+            body.contains(
+                r#"value="abc" inputmode="decimal" required aria-invalid="true" aria-describedby="target_price-error">"#
+            )
+        );
         assert!(body.contains(r#"<p class="field-error" id="target_price-error">Enter a target price above zero.</p>"#));
         assert!(body.contains(r#"value="a@b.c" required>"#), "a valid field keeps its value and no error");
 
@@ -459,8 +281,8 @@ mod tests {
         let path = std::env::var("CORTEN_FIXTURE").expect("CORTEN_FIXTURE");
         let source = Source::fixture(&std::fs::read_to_string(path).unwrap()).unwrap();
         let ids: Vec<String> = (1..=500).map(|n| format!("item_{n}")).collect();
-        let router = router(App::new(source.clone(), concat!(env!("CARGO_MANIFEST_DIR"), "/static")).unwrap());
-        let t = locales().default_catalog();
+        let router = super::app(source.clone()).router();
+        let t = LOCALES.default_catalog();
         let rounds = 20;
         let n = (rounds * ids.len()) as f64;
         let per = |start: Instant| start.elapsed().as_secs_f64() * 1e6 / n;
@@ -479,11 +301,11 @@ mod tests {
         let mut bytes = 0;
         for _ in 0..rounds {
             for item in &items {
-                bytes += std::hint::black_box(ItemPage::new(t, item, String::new()).render().unwrap()).len();
+                bytes += std::hint::black_box(ItemPage::new(t, item, String::new()).view().to_html()).len();
             }
         }
         let render = per(start);
-        let main = ItemPage::new(t, &items[0], String::new()).render().unwrap();
+        let main = ItemPage::new(t, &items[0], String::new()).view().to_html();
         let start = Instant::now();
         for _ in 0..rounds * ids.len() {
             std::hint::black_box(corten::find_islands(std::hint::black_box(&main)));
@@ -522,10 +344,17 @@ mod tests {
         assert_eq!(headers["content-type"], "application/manifest+json");
         assert!(manifest.contains(r#""purpose":"maskable""#));
         let (_, _, worker) = send(Request::get("/service-worker.js").body(Body::empty()).unwrap()).await;
-        assert!(worker.contains(r#"const OFFLINE = "/offline";"#) && worker.contains(&assets().url("style.css")));
+        // A versioned static URL, /assets/{12 hex}/{file}, somewhere in the worker's lists.
+        let has = |text: &str, file: &str| {
+            text.split(['"', '[', ']', ',']).any(|part| {
+                part.starts_with("/assets/")
+                    && part.ends_with(&format!("/{file}"))
+                    && part.split('/').nth(2).is_some_and(|v| v.len() == 12)
+            })
+        };
+        assert!(worker.contains(r#"const OFFLINE = "/offline";"#) && has(&worker, "style.css"), "{worker}");
         assert!(
-            worker.starts_with("// Generated")
-                && worker.contains(&format!(r#"importScripts(...["{}"]);"#, assets().url("sw-push.js")))
+            worker.starts_with("// Generated") && worker.contains("importScripts(...[\"/assets/") && has(&worker, "sw-push.js")
         );
         let (status, _, offline) = send(Request::get("/offline").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);

@@ -1,20 +1,17 @@
 [package]
 name = "item-page"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
-description = "A marketplace item detail page on Corten, with the production pieces on: CSP, versioned assets, PWA, i18n, MCP tools."
+description = "A marketplace item page on Corten with the production pieces on: CSP, versioned assets, PWA, i18n, compression, MCP tools."
 
 [dependencies]
 corten = { path = "../../crates/corten", features = ["json", "agent", "compress"] }
-askama = "0.16"
-axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 schemars = "1.2"
 serde_json = { version = "1", features = ["raw_value"] }
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 
 [dev-dependencies]
 http-body-util = "0.1"

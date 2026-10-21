@@ -83,6 +83,11 @@ impl Assets {
         format!("{}{path}", self.prefix)
     }
 
+    /// True when the directory has `path` (relative, like `style.css`).
+    pub fn contains(&self, path: &str) -> bool {
+        self.files.contains_key(path)
+    }
+
     /// `{mount}/{version}/`.
     pub fn prefix(&self) -> &str {
         &self.prefix

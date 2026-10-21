@@ -6,16 +6,18 @@
 //! `{"errors": {"field": "message"}}`, and an agent tool gets the same messages
 //! (`ToolError::from(errors)`, feature `agent`).
 //!
-//! In the form template, mark each field and print its message with the id the field points at:
+//! In the form, mark each field and print its message, which the field points at:
 //!
-//! ```text
-//! <input name="email" {{ errors.aria("email")|safe }}>
-//! {% if let Some(message) = errors.get("email") %}<p id="email-error">{{ message }}</p>{% endif %}
+//! ```ignore
+//! html! {
+//!     <input name={f.email} value={input.email} {..errors.aria(f.email)}>
+//!     {errors.message(f.email)}
+//! }
 //! ```
 
 use std::fmt;
 
-use crate::escape;
+use crate::view::{escape_into, Attrs, Render};
 
 /// Field name to message, in the order they were added. A field keeps its first message.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -62,14 +64,49 @@ impl Errors {
         }
     }
 
-    /// ` aria-invalid="true" aria-describedby="{field}-error"` when `field` has an error, else
-    /// nothing. Print it with `|safe` inside the field's tag.
-    pub fn aria(&self, field: &str) -> String {
-        if self.has(field) {
-            let id = escape(field);
-            format!(r#" aria-invalid="true" aria-describedby="{id}-error""#)
-        } else {
-            String::new()
+    /// `aria-invalid="true" aria-describedby="{field}-error"` when `field` has an error, else
+    /// nothing: `<input name={f.email} {..errors.aria(f.email)}>`.
+    pub fn aria<'a>(&'a self, field: &'a str) -> Aria<'a> {
+        Aria { field, invalid: self.has(field) }
+    }
+
+    /// `<p class="field-error" id="{field}-error">message</p>` when `field` has an error, else
+    /// nothing: the element [`Errors::aria`] points at.
+    pub fn message<'a>(&'a self, field: &'a str) -> FieldMessage<'a> {
+        FieldMessage { field, message: self.get(field) }
+    }
+}
+
+/// The ARIA attributes of a form field, from [`Errors::aria`].
+pub struct Aria<'a> {
+    field: &'a str,
+    invalid: bool,
+}
+
+impl Attrs for Aria<'_> {
+    fn render_attrs(&self, out: &mut String) {
+        if self.invalid {
+            out.push_str(r#" aria-invalid="true" aria-describedby=""#);
+            escape_into(self.field, out);
+            out.push_str(r#"-error""#);
+        }
+    }
+}
+
+/// A field's error message, from [`Errors::message`].
+pub struct FieldMessage<'a> {
+    field: &'a str,
+    message: Option<&'a str>,
+}
+
+impl Render for FieldMessage<'_> {
+    fn render(&self, out: &mut String) {
+        if let Some(message) = self.message {
+            out.push_str(r#"<p class="field-error" id=""#);
+            escape_into(self.field, out);
+            out.push_str(r#"-error">"#);
+            escape_into(message, out);
+            out.push_str("</p>");
         }
     }
 }
@@ -113,8 +150,12 @@ mod tests {
         assert_eq!(e.get("email"), Some("Enter an email address."));
         assert_eq!(e.len(), 2);
         assert_eq!(e.to_string(), "email: Enter an email address.; price: Enter a price.");
-        assert_eq!(e.aria("price"), r#" aria-invalid="true" aria-describedby="price-error""#);
-        assert_eq!(e.aria("name"), "");
+        let mut out = String::new();
+        e.aria("price").render_attrs(&mut out);
+        e.aria("name").render_attrs(&mut out);
+        assert_eq!(out, r#" aria-invalid="true" aria-describedby="price-error""#);
+        assert_eq!(e.message("price").to_html(), r#"<p class="field-error" id="price-error">Enter a price.</p>"#);
+        assert_eq!(e.message("name").to_html(), "");
         assert!(e.clone().into_result(1).is_err());
         assert_eq!(Errors::new().into_result(1), Ok(1));
     }

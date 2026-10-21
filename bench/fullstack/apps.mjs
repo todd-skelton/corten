@@ -1,6 +1,6 @@
 // The apps under test: one image each, same page, same data, same port inside the container.
 export const apps = {
-  corten: { image: "cb-corten", port: 18410, label: "Corten 0.1 (Rust, axum + askama)" },
+  corten: { image: "cb-corten", port: 18410, label: "Corten 0.1 (Rust, axum, html! views)" },
   nextjs: { image: "cb-nextjs", port: 18411, label: "Next.js 16.4 (App Router, RSC)" },
   "tanstack-start": { image: "cb-tanstack-start", port: 18412, label: "TanStack Start 1.169 (React 19, Nitro)" },
   sveltekit: { image: "cb-sveltekit", port: 18413, label: "SvelteKit 3.1 (Svelte 5, adapter-node)" },

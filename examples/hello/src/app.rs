@@ -9,63 +9,82 @@
 //! | `POST /sign-in` | sets a cookie; the shell shows the viewer, and the runtime reloads the document |
 use std::time::Duration;
 
-use axum::{
-    extract::{Request, State as With},
-    http::header,
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
-    routing::{get, post},
-    Form, Router,
-};
 use corten::{
+    axum::{http::header, response::IntoResponse},
     feed::{Feed, Row, Since},
+    prelude::*,
     security::cookie::{self, SetCookie},
-    Head, Mode, Page, Template,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub type Req = corten::Req<Shell>;
-
 #[derive(Clone)]
-pub struct State {
+pub struct Market {
     pub cards: Feed<Card>,
 }
 
-impl State {
+impl Market {
     pub fn new() -> Self {
         let cards =
             [("c1", "Charizard ex", 12_999), ("c2", "Umbreon VMAX", 54_000), ("c3", "Pikachu with Grey Felt Hat", 31_050)];
-        State { cards: Feed::new(cards.map(|(id, name, cents)| Card::new(id, name, cents))) }
+        Market { cards: Feed::new(cards.map(|(id, name, cents)| Card::new(id, name, cents))) }
     }
 }
 
-pub fn router(state: State) -> Router {
+/// The app: routes, the shell, and who is signed in. Everything else is Corten's defaults.
+pub fn app(market: Market) -> App {
+    App::new(routes(market)).shell(shell).context(|headers| {
+        // A real app reads its session here; the example trusts a cookie, which is fine for a
+        // demo and nothing else.
+        let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
+        async move { viewer }
+    })
+}
+
+fn routes(market: Market) -> Router {
     Router::new()
         .route("/", get(home))
         .route("/watch", post(watch))
         .route("/about", get(about))
         .route("/sign-in", post(sign_in))
-        .route("/feed/cards", get(|With(s): With<State>| async move { s.cards.snapshot() }))
-        .route("/feed/cards/live", get(|With(s): With<State>, since: Since| async move { s.cards.live(since) }))
-        .merge(corten::routes())
-        .with_state(state)
-        .layer(middleware::from_fn(viewer))
+        .route("/feed/cards", get(|State(m): State<Market>| async move { m.cards.snapshot() }))
+        .route("/feed/cards/live", get(|State(m): State<Market>, since: Since| async move { m.cards.live(since) }))
+        .with_state(market)
 }
 
-/// Who is looking: the shell's context. A real app reads its session here; the example trusts a
-/// cookie, which is fine for a demo and nothing else.
+/// Who is looking: the shell's context.
 #[derive(Clone, Hash)]
 pub struct Viewer {
     pub name: String,
 }
 
-async fn viewer(mut req: Request, next: Next) -> Response {
-    if let Some(name) = cookie::get(req.headers(), "viewer").filter(|n| !n.is_empty()) {
-        let name = name.to_string();
-        req.extensions_mut().insert(Viewer { name });
+/// The document around every page. Client navigation swaps `<main>` only; signing in changes
+/// the viewer, which makes the runtime load the next page in full.
+fn shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
+    html! {
+        <!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                {doc.head}
+                <link rel="stylesheet" href={doc.asset("style.css")}>
+            </head>
+            <body>
+                <header class="site">
+                    <nav>
+                        <a href="/" data-nav aria-current={doc.current("/")}>"Watchlist"</a>
+                        <a href="/about" data-nav aria-current={doc.current("/about")}>"About"</a>
+                    </nav>
+                    match viewer {
+                        Some(viewer) => <span class="viewer">"Signed in as "{viewer.name}</span>,
+                        None => <form method="post" action="/sign-in" data-patch><button>"Sign in as Ada"</button></form>,
+                    }
+                </header>
+                <main>{doc.main}</main>
+            </body>
+        </html>
     }
-    next.run(req).await
 }
 
 async fn sign_in(req: Req) -> corten::Result {
@@ -122,96 +141,91 @@ pub async fn simulate_market(cards: Feed<Card>) {
     }
 }
 
-pub struct Shell;
-
-#[derive(Template)]
-#[template(path = "shell.html")]
-struct ShellTemplate<'a> {
-    head: &'a Head<'a>,
-    main: &'a str,
-    viewer: Option<&'a Viewer>,
-}
-
-impl corten::Shell for Shell {
-    type Context = Viewer;
-
-    fn render(head: &Head<'_>, main: &str, viewer: Option<&Viewer>) -> askama::Result<String> {
-        ShellTemplate { head, main, viewer }.render()
-    }
-}
-
-/// The watchlist screen. Its fields are the view model every surface reads.
-#[derive(Template, Serialize)]
-#[template(path = "home.html")]
+/// The watchlist screen's data: what the view shows, and what a data client gets.
+#[derive(Serialize)]
 pub struct Home {
     cards: Vec<Card>,
     message: String,
 }
 
 impl Home {
-    fn new(state: &State, message: String) -> Self {
-        Home { cards: state.cards.read(|rows| rows.values().cloned().collect()), message }
+    fn new(market: &Market, message: String) -> Self {
+        Home { cards: market.cards.read(|rows| rows.values().cloned().collect()), message }
     }
 }
 
-impl Page for Home {
-    fn title(&self) -> String {
-        "Watchlist | Corten".into()
+fn home_view(home: &Home) -> impl Render {
+    let f = WatchForm::FIELDS;
+    html! {
+        <h1>"Watchlist"</h1>
+        <live-prices data-src="/feed/cards">
+            <table class="cards">
+                <thead><tr><th>"Card"</th><th>"Price"</th></tr></thead>
+                <tbody>
+                    for card in &home.cards {
+                        <tr><td>{card.name}</td><td data-ref="price" data-id={card.id}>{card.price}</td></tr>
+                    }
+                </tbody>
+            </table>
+        </live-prices>
+        <form method="post" action="/watch" data-patch>
+            <label>"Card "<select name={f.id}>for card in &home.cards { <option value={card.id}>{card.name}</option> }</select></label>
+            <button>"Watch"</button>
+        </form>
+        <WatchMessage message={&home.message} />
     }
 }
 
 /// The watch result: rendered inside the home page, and on its own as a patch.
-#[derive(Template)]
-#[template(path = "watch_message.html")]
-struct WatchMessage<'a> {
-    message: &'a str,
+#[component]
+fn WatchMessage(message: &str) -> impl Render {
+    html! { <p class="watch-message" id="watch-message" aria-live="polite">{message}</p> }
 }
 
-#[derive(Template)]
-#[template(path = "about.html")]
-struct About;
+const HOME_TITLE: &str = "Watchlist | Corten";
 
-impl Page for About {
-    fn title(&self) -> String {
-        "About | Corten".into()
-    }
+async fn home(req: Req, State(market): State<Market>) -> corten::Result {
+    let home = Home::new(&market, String::new());
+    req.screen(HOME_TITLE, &home, home_view(&home))
 }
 
-async fn home(req: Req, With(state): With<State>) -> corten::Result {
-    req.screen(&Home::new(&state, String::new()))
-}
-
-#[derive(Deserialize)]
+#[derive(Deserialize, Fields)]
 struct WatchForm {
     id: String,
 }
 
-async fn watch(req: Req, With(state): With<State>, Form(form): Form<WatchForm>) -> corten::Result {
-    let message = state
+async fn watch(req: Req, State(market): State<Market>, Form(form): Form<WatchForm>) -> corten::Result {
+    let message = market
         .cards
         .read(|rows| rows.get(&form.id).map(|c| format!("Watching {} at {}.", c.name, c.price)))
         .unwrap_or_else(|| "That card is not on the list.".into());
     match req.mode {
-        Mode::Action => req.patch(&WatchMessage { message: &message }),
+        Mode::Action => req.patch(WatchMessage { message: &message }),
         // No JavaScript, or a native screen or agent: the whole screen with the message.
-        _ => req.screen(&Home::new(&state, message)),
+        _ => {
+            let home = Home::new(&market, message);
+            req.screen(HOME_TITLE, &home, home_view(&home))
+        }
     }
 }
 
 async fn about(req: Req) -> corten::Result {
-    req.page(&About)
+    req.page(
+        "About | Corten",
+        html! { <h1>"About"</h1><p>"Rendered on the server and swapped into the page by the runtime."</p> },
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::Request};
+    use corten::axum::{body::Body, http::Request};
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
     use super::*;
 
     async fn send(req: Request<Body>) -> (String, String) {
-        let res = router(State::new()).oneshot(req).await.unwrap();
+        let res = app(Market::new()).router().oneshot(req).await.unwrap();
         let kind = res.headers()["content-type"].to_str().unwrap().to_string();
         let body = res.into_body().collect().await.unwrap().to_bytes();
         (kind, String::from_utf8(body.to_vec()).unwrap())
@@ -238,7 +252,7 @@ mod tests {
     async fn home_renders_rows_and_island_for_browsers() {
         let (kind, body) = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(kind.starts_with("text/html"));
-        assert!(body.contains(r#"<link rel="modulepreload" href="/static/islands/live-prices.js">"#));
+        assert!(body.contains("/islands/live-prices.js\">"), "the island module is preloaded: {body}");
         assert!(body.contains(r#"<td data-ref="price" data-id="c1">$129.99</td>"#), "server renders prices first");
     }
 

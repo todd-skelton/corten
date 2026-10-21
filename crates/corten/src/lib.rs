@@ -1,48 +1,46 @@
-//! Corten: server-rendered pages, fragment patches and small custom-element islands on axum.
+//! Corten: a full-stack web framework for Rust. The server renders every screen with `html!`,
+//! the browser gets HTML plus a small runtime and custom-element islands, and live data flows as
+//! numbered patches over server-sent events.
 //!
-//! The server is the only place HTML is produced. A request arrives in one of three
-//! [`Mode`]s and a handler answers with [`Req::page`] or [`Req::patch`]:
+//! ```ignore
+//! use corten::prelude::*;
+//!
+//! #[tokio::main]
+//! async fn main() -> std::io::Result<()> {
+//!     App::new(Router::new().route("/", get(home))).serve().await
+//! }
+//!
+//! async fn home(req: Req) -> corten::Result {
+//!     req.page("Home", html! { <h1>"Hello"</h1> })
+//! }
+//! ```
+//!
+//! A request arrives in one of four [`Mode`]s and one handler answers all of them:
 //!
 //! | Mode | Sent by | Response |
 //! |---|---|---|
-//! | `Document` | the browser, first load or no JavaScript | the app [`Shell`] around the page |
+//! | `Document` | the browser, first load or no JavaScript | the app's shell around the page |
 //! | `Navigation` | the runtime, same-origin link click | `<title>` plus the page, swapped into `<main>` |
 //! | `Action` | the runtime, `<form data-patch>` submit | fragments that replace elements with the same `id` |
-//! | `Data` | a native screen, an agent or a test, with `Accept: application/json` | the page's data as JSON ([`Req::screen`], feature `json`) |
+//! | `Data` | a native screen, an agent or a test, with `Accept: application/json` | the screen's data as JSON ([`Req::screen`]) |
 //!
-//! The client runtime (`js/corten.js`, served at [`runtime_path`]) adds navigation, form
-//! patches, live patches over server-sent events and islands. See `README.md` for the rules.
+//! [`App`] puts the production pieces around the app's routes with defaults: security headers
+//! and a CSP nonce, a cross-site write check, error pages, versioned static files, health checks,
+//! compression (feature `compress`), and live reload under `corten dev`.
 //!
-//! Opt-in features for islands that keep client state:
-//!
-//! - `json`: [`props`], typed data from a template to its island (`this.props()`).
-//! - `feed`: [`feed::Feed`] (the `corten-feed` crate), live rows for an island (snapshot +
-//!   ordered patches over SSE), read in the browser with `subscribe()` from `corten`.
-//! - `solid`: serves Solid at `solid_path()` as `corten/solid`, so an island can render with it.
-//!
-//! Always available, for a production app:
-//!
-//! - [`security`]: CSP with a per-request nonce, hardening headers, CSRF check, cookie helpers.
-//! - [`assets`]: static files under a content-versioned, immutable URL prefix.
-//! - [`pwa`]: manifest, generated service worker and offline page.
-//! - [`meta`]: per-page head tags (description, canonical, Open Graph, JSON-LD).
-//! - [`form`]: validation errors that reach every surface ([`Req::invalid`]).
-//! - [`i18n`]: message catalogs and `Accept-Language` negotiation.
-//! - [`seo`]: `robots.txt` and sitemaps. [`error_pages`]: failed requests render in the shell.
-//! - [`Fields`]: form field names as constants, so templates, handlers and errors agree.
-//!
-//! Opt-in for production and other surfaces:
-//!
-//! - `compress`: [`compress`], responses compressed per request, static files once.
-//! - `types`: [`types`], TypeScript declarations for islands generated from the Rust types.
-//! - `agent`: [`agent`], the app's actions as MCP tools with schemas from their Rust types.
-//!
-//! Other surfaces (native screens, agents) reuse the same server: see `docs/architecture.md`.
+//! Modules: [`view`] (markup), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`i18n`],
+//! [`seo`]. Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid
+//! for stateful islands), `types` (TypeScript declarations from Rust types), `agent` (MCP
+//! tools), `compress`, `log` (a log subscriber in [`App::serve`]).
+
+// So the code `html!` generates (`::corten::view::...`) also compiles inside this crate.
+extern crate self as corten;
 
 #[cfg(feature = "feed")]
 pub use corten_feed as feed;
 #[cfg(feature = "agent")]
 pub mod agent;
+mod app;
 pub mod assets;
 #[cfg(feature = "compress")]
 pub mod compress;
@@ -50,26 +48,21 @@ pub mod form;
 mod html;
 pub mod i18n;
 pub mod meta;
+mod page;
 pub mod pwa;
 pub mod security;
 pub mod seo;
 #[cfg(feature = "types")]
 pub mod types;
+pub mod view;
 
 use std::{
     convert::Infallible,
-    fmt,
-    future::Future,
-    hash::{Hash, Hasher},
-    marker::PhantomData,
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
 };
 
-pub use askama::Template;
 use axum::{
-    extract::{FromRequestParts, Request},
-    http::{header, request::Parts, HeaderMap, HeaderName, HeaderValue, StatusCode},
-    middleware::Next,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
@@ -77,51 +70,41 @@ use axum::{
     routing::get,
     Router,
 };
-/// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
-/// gives `AlertInput::FIELDS.email == "email"` (serde `rename` and `rename_all` applied). Print
-/// them in the form template (`name="{{ AlertInput::FIELDS.email }}"`) and pass them to
-/// [`Errors::add`], and a renamed or misspelled field fails to compile instead of posting a
-/// field the handler never reads.
-pub use corten_macros::Fields;
 use futures_util::{Stream, StreamExt};
 
+pub use app::App;
+/// The axum version Corten is built on, so an app never depends on a second one.
+pub use axum;
+/// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
+/// gives `AlertInput::FIELDS.email == "email"` (serde `rename` and `rename_all` applied). Use them
+/// for `name=` in the form and in [`Errors::add`], and a renamed or misspelled field fails to
+/// compile instead of posting a field the handler never reads.
+pub use corten_macros::Fields;
 pub use form::Errors;
 pub use html::{escape, find_islands};
 pub use meta::Meta;
-use security::Nonce;
+pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
+pub use view::{component, html, raw, Render};
 
-/// Prints `value` as `<script type="application/json" data-props>` inside the island it belongs
-/// to; the island reads it with `this.props()`. In a template: `{{ corten::Props(self.grid())|safe }}`.
-/// `<` is written as `\u003c`, so no value can close the script element.
+/// What most files need: `use corten::prelude::*;`.
+pub mod prelude {
+    #[cfg(feature = "json")]
+    pub use crate::Props;
+    pub use crate::{
+        axum::{
+            extract::{Form, Path, Query, State},
+            routing::{delete, get, post, put},
+            Router,
+        },
+        component, html, raw, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result,
+    };
+}
+
+/// `<script type="application/json" data-props>` with `value` as JSON, inside the island it
+/// belongs to; the island reads it with `this.props()`. In markup: `{Props(&grid)}`. `<` is
+/// written as `\u003c`, so no value can close the script element.
 #[cfg(feature = "json")]
 pub struct Props<'a, T: serde::Serialize>(pub &'a T);
-
-#[cfg(feature = "json")]
-impl<T: serde::Serialize> fmt::Display for Props<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        /// Streams serde_json's output into the formatter, escaping `<`.
-        struct Out<'a, 'b>(&'a mut fmt::Formatter<'b>);
-        impl std::io::Write for Out<'_, '_> {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                // serde_json writes whole UTF-8 sequences per call.
-                let text = std::str::from_utf8(buf).map_err(std::io::Error::other)?;
-                for (i, part) in text.split('<').enumerate() {
-                    if i > 0 {
-                        self.0.write_str("\\u003c").map_err(std::io::Error::other)?;
-                    }
-                    self.0.write_str(part).map_err(std::io::Error::other)?;
-                }
-                Ok(buf.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        f.write_str(r#"<script type="application/json" data-props>"#)?;
-        serde_json::to_writer(Out(f), self.0).map_err(|_| fmt::Error)?;
-        f.write_str("</script>")
-    }
-}
 
 /// The runtime source, embedded so apps never copy it.
 pub const RUNTIME_JS: &str = include_str!("../js/corten.js");
@@ -172,382 +155,17 @@ pub fn solid_path() -> &'static str {
     &SOLID_URL
 }
 
-/// The import map: `corten`, plus `corten/solid` when that feature is on.
-fn write_import_map(f: &mut fmt::Formatter<'_>, nonce: &NonceAttr<'_>) -> fmt::Result {
-    write!(f, r#"<script type="importmap"{nonce}>{{"imports":{{"corten":"{}""#, runtime_path())?;
-    #[cfg(feature = "solid")]
-    write!(f, r#","corten/solid":"{}""#, solid_path())?;
-    f.write_str("}}</script>")
+/// The import map's JSON: `corten`, plus `corten/solid` when that feature is on.
+pub(crate) fn import_map() -> &'static str {
+    static MAP: LazyLock<String> = LazyLock::new(|| {
+        #[cfg(feature = "solid")]
+        let solid = format!(r#","corten/solid":"{}""#, solid_path());
+        #[cfg(not(feature = "solid"))]
+        let solid = "";
+        format!(r#"{{"imports":{{"corten":"{}"{solid}}}}}"#, runtime_path())
+    });
+    &MAP
 }
-
-/// ` nonce="..."` when the request has a CSP nonce, nothing otherwise.
-struct NonceAttr<'a>(Option<&'a str>);
-
-impl fmt::Display for NonceAttr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            Some(nonce) => write!(f, r#" nonce="{nonce}""#),
-            None => Ok(()),
-        }
-    }
-}
-
-/// Request header the runtime sets: `nav` for navigations, `action` for form submits.
-pub const MODE_HEADER: HeaderName = HeaderName::from_static("corten");
-const PAGE_HEADER: HeaderName = HeaderName::from_static("corten-page");
-const PATCH_HEADER: HeaderName = HeaderName::from_static("corten-patch");
-const LOCATION_HEADER: HeaderName = HeaderName::from_static("corten-location");
-const SHELL_HEADER: HeaderName = HeaderName::from_static("corten-shell");
-
-/// How the browser asked for this response.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
-    /// A normal browser request: first load, reload, or any request without JavaScript.
-    Document,
-    /// The runtime is navigating to a page and will swap it into `<main>`.
-    Navigation,
-    /// The runtime submitted a `<form data-patch>` and expects fragments back.
-    Action,
-    /// A client that renders by itself (a native screen, an agent) asked for
-    /// `Accept: application/json`. [`Req::screen`] answers with the page's data; [`Req::page`]
-    /// still answers with the HTML document.
-    Data,
-}
-
-/// A template that renders the contents of `<main>`.
-pub trait Page: Template {
-    /// Text for `<title>`. Escaped by Corten.
-    fn title(&self) -> String;
-
-    /// Description, canonical URL, Open Graph and other head tags for this page.
-    fn head(&self) -> Meta {
-        Meta::new()
-    }
-}
-
-/// The app-wide document around every page: `<html>`, `<head>`, site header, `<main>`.
-///
-/// Implement it with an askama template that prints `{{ head|safe }}` early in `<head>` (before
-/// any module script) and `{{ main|safe }}` inside `<main>`. An inline script of its own needs
-/// `nonce="{{ head.nonce() }}"` once [`security::Policy`] is on.
-///
-/// The shell sees one per-request value, [`Shell::Context`]: whatever the app's auth middleware
-/// put in the request extensions (`req.extensions_mut().insert(viewer)`), typically the signed-in
-/// user and what they may do. Navigation menus, the account link and role checks in the shell
-/// read it. Client navigation swaps only `<main>`, so the runtime reloads the whole document
-/// when the context changes (sign-in, sign-out, a new role) or a deploy changes the runtime or
-/// assets: every page response carries a key hashed from those, and a navigation whose key
-/// differs from the current page's is loaded in full.
-pub trait Shell: 'static {
-    /// Per-request data the shell renders (`()` when it needs none). Inserted into the request
-    /// extensions by the app's middleware, outside [`error_pages`] so error pages see it too.
-    type Context: Clone + Hash + Send + Sync + 'static;
-
-    /// Where island modules live. `<foo-bar>` loads `{islands_dir}foo-bar.js`. With
-    /// [`assets::Assets`], return its `islands_dir()`.
-    fn islands_dir() -> &'static str {
-        "/static/islands/"
-    }
-
-    /// The service worker to register ([`pwa::WORKER_PATH`]), if the app is installable.
-    const SERVICE_WORKER: Option<&'static str> = None;
-
-    /// `context` is `None` when no middleware inserted one (a signed-out visitor, say).
-    fn render(head: &Head<'_>, main: &str, context: Option<&Self::Context>) -> askama::Result<String>;
-
-    /// Title and `<main>` HTML for a request that failed with `status` (see [`error_pages`]).
-    fn error_page(status: StatusCode) -> (String, String) {
-        match status {
-            StatusCode::NOT_FOUND => ("Not found".into(), "<h1>Not found</h1><p>There is nothing at this address.</p>".into()),
-            StatusCode::FORBIDDEN => {
-                ("Not allowed".into(), "<h1>Not allowed</h1><p>You do not have access to this page.</p>".into())
-            }
-            _ => ("Something went wrong".into(), "<h1>Something went wrong</h1><p>Please try again.</p>".into()),
-        }
-    }
-}
-
-/// Tags Corten owns in `<head>`: title, the page's [`Meta`], import map, the runtime script,
-/// module preloads for the islands the page uses, and the rule that makes island wrappers
-/// layout-neutral. Print it with `|safe`, before any other module script.
-pub struct Head<'a> {
-    pub title: &'a str,
-    meta: &'a Meta,
-    nonce: Option<&'a str>,
-    islands_dir: &'a str,
-    islands: Vec<&'a str>,
-    service_worker: Option<&'a str>,
-    path: &'a str,
-    shell_key: &'a str,
-}
-
-impl Head<'_> {
-    /// This request's CSP nonce, for the shell's own inline scripts. Empty without a policy.
-    pub fn nonce(&self) -> &str {
-        self.nonce.unwrap_or("")
-    }
-
-    /// The request path, for shell links that mark the current section (`aria-current`). After
-    /// client navigation the runtime keeps `aria-current` right on links with `data-nav`.
-    pub fn path(&self) -> &str {
-        self.path
-    }
-
-    /// True when `href` is the current page, or with `section` any page under it. The same rule
-    /// the runtime applies to `<a data-nav>` (`data-nav="section"`) after navigation.
-    pub fn is_current(&self, href: &str, section: bool) -> bool {
-        is_current(self.path, href, section)
-    }
-}
-
-fn is_current(path: &str, href: &str, section: bool) -> bool {
-    let href = href.split(['?', '#']).next().unwrap_or(href);
-    path == href || (section && path.strip_prefix(href.trim_end_matches('/')).is_some_and(|rest| rest.starts_with('/')))
-}
-
-/// Hash of what the shell shows that client navigation cannot update: the runtime and asset
-/// versions and the shell's context.
-fn shell_key<S: Shell>(context: Option<&S::Context>) -> String {
-    // DefaultHasher::new() has fixed keys, so instances of one build agree. A new build may hash
-    // differently, which only costs one full page load after a deploy.
-    let mut hasher = std::hash::DefaultHasher::new();
-    runtime_version().hash(&mut hasher);
-    S::islands_dir().hash(&mut hasher);
-    context.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
-}
-
-impl fmt::Display for Head<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let nonce = NonceAttr(self.nonce);
-        write!(f, "<title>{}</title>{}", escape(self.title), self.meta)?;
-        write!(f, r#"<meta name="corten-islands" content="{}">"#, self.islands_dir)?;
-        write!(f, r#"<meta name="corten-shell" content="{}">"#, self.shell_key)?;
-        if let Some(worker) = self.service_worker {
-            write!(f, r#"<meta name="corten-sw" content="{worker}">"#)?;
-        }
-        write_import_map(f, &nonce)?;
-        write!(f, r#"<script type="module" src="{}"></script>"#, runtime_path())?;
-        for tag in &self.islands {
-            write!(f, r#"<link rel="modulepreload" href="{}{tag}.js">"#, self.islands_dir)?;
-        }
-        if !self.islands.is_empty() {
-            write!(f, "<style{nonce}>{}{{display:contents}}</style>", self.islands.join(","))?;
-        }
-        Ok(())
-    }
-}
-
-/// Extractor that tells a handler which [`Mode`] it is answering, and builds the response.
-///
-/// Apps alias it once: `pub type Req = corten::Req<Shell>;`
-pub struct Req<S: Shell> {
-    pub mode: Mode,
-    nonce: Option<Nonce>,
-    context: Option<S::Context>,
-    path: String,
-    shell: PhantomData<fn() -> S>,
-}
-
-impl<S: Shell, St: Send + Sync> FromRequestParts<St> for Req<S> {
-    type Rejection = Infallible;
-
-    async fn from_request_parts(parts: &mut Parts, _: &St) -> std::result::Result<Self, Self::Rejection> {
-        Ok(Req::from_parts(&parts.headers, &parts.extensions, parts.uri.path()))
-    }
-}
-
-fn mode_of(headers: &HeaderMap) -> Mode {
-    match headers.get(MODE_HEADER).map(HeaderValue::as_bytes) {
-        Some(b"nav") => Mode::Navigation,
-        Some(b"action") => Mode::Action,
-        _ if accepts_json(headers) => Mode::Data,
-        _ => Mode::Document,
-    }
-}
-
-/// True when the first media type in `Accept` is `application/json`. Browsers never send that
-/// for a navigation, so a document request cannot turn into data by accident.
-fn accepts_json(headers: &HeaderMap) -> bool {
-    let accept = headers.get(header::ACCEPT).and_then(|v| v.to_str().ok()).unwrap_or("");
-    accept.split(',').next().is_some_and(|first| first.split(';').next().unwrap_or("").trim() == "application/json")
-}
-
-impl<S: Shell> Req<S> {
-    fn from_parts(headers: &HeaderMap, extensions: &axum::http::Extensions, path: &str) -> Self {
-        Req {
-            mode: mode_of(headers),
-            nonce: extensions.get::<Nonce>().cloned(),
-            context: extensions.get::<S::Context>().cloned(),
-            path: path.to_string(),
-            shell: PhantomData,
-        }
-    }
-
-    /// The shell context the app's middleware put on this request, if any.
-    pub fn context(&self) -> Option<&S::Context> {
-        self.context.as_ref()
-    }
-
-    /// Renders `page` with status 200: the whole document, or only the page for a navigation.
-    pub fn page(&self, page: &impl Page) -> Result {
-        self.page_with_status(StatusCode::OK, page)
-    }
-
-    pub fn page_with_status(&self, status: StatusCode, page: &impl Page) -> Result {
-        let main = page.render()?;
-        self.main(status, &page.title(), &page.head(), &main)
-    }
-
-    /// The response for already-rendered `<main>` HTML.
-    fn main(&self, status: StatusCode, title: &str, meta: &Meta, main: &str) -> Result {
-        let key = shell_key::<S>(self.context.as_ref());
-        let body = match self.mode {
-            // The runtime swaps these into <main> and the head tags into <head>; an action that
-            // answers with a page (for example a form with errors) is swapped the same way.
-            Mode::Navigation | Mode::Action => format!("<title>{}</title>{meta}{main}", escape(title)),
-            Mode::Document | Mode::Data => {
-                let head = Head {
-                    title,
-                    meta,
-                    nonce: self.nonce.as_ref().map(|n| &*n.0),
-                    islands_dir: S::islands_dir(),
-                    islands: find_islands(main),
-                    service_worker: S::SERVICE_WORKER,
-                    path: &self.path,
-                    shell_key: &key,
-                };
-                S::render(&head, main, self.context.as_ref())?
-            }
-        };
-        let mut res = html_response(status, body, PAGE_HEADER);
-        if let Ok(value) = HeaderValue::try_from(key) {
-            res.headers_mut().insert(SHELL_HEADER, value);
-        }
-        Ok(res)
-    }
-
-    /// [`Req::page`] for a page that other surfaces read too: a browser gets HTML as usual, and a
-    /// [`Mode::Data`] request gets `{"title": ..., "data": <the page struct>}`. The struct is the
-    /// screen's view model, so a native screen or an agent sees exactly what the template sees,
-    /// and the template is never parsed for data.
-    #[cfg(feature = "json")]
-    pub fn screen<P: Page + serde::Serialize>(&self, page: &P) -> Result {
-        self.screen_with_status(StatusCode::OK, page)
-    }
-
-    #[cfg(feature = "json")]
-    pub fn screen_with_status<P: Page + serde::Serialize>(&self, status: StatusCode, page: &P) -> Result {
-        if self.mode != Mode::Data {
-            return self.page_with_status(status, page);
-        }
-        #[derive(serde::Serialize)]
-        struct Screen<'a, P> {
-            title: String,
-            data: &'a P,
-        }
-        let body = serde_json::to_string(&Screen { title: page.title(), data: page })?;
-        let headers = [
-            (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
-            (header::VARY, HeaderValue::from_static(VARY)),
-        ];
-        Ok((status, headers, body).into_response())
-    }
-
-    /// Answers a `<form data-patch>` submit. Every top-level element in `fragment` must carry an
-    /// `id`; the runtime replaces the element with that `id` on the page.
-    pub fn patch(&self, fragment: &impl Template) -> Result {
-        self.patch_with_status(StatusCode::OK, fragment)
-    }
-
-    /// Same as [`Req::patch`] with another status, for example 422 for validation errors.
-    pub fn patch_with_status(&self, status: StatusCode, fragment: &impl Template) -> Result {
-        Ok(html_response(status, fragment.render()?, PATCH_HEADER))
-    }
-
-    /// Answers a submit whose input failed validation, with 422 Unprocessable Content:
-    ///
-    /// - [`Mode::Action`]: `form`, the form fragment re-rendered with the errors, as a patch. The
-    ///   runtime then moves focus to the first field marked `aria-invalid="true"`.
-    /// - [`Mode::Data`] (feature `json`): `{"errors": {"field": "message"}}`.
-    /// - Otherwise (no JavaScript): `page()`, usually `req.page(&page)` for the whole page with
-    ///   the form showing the errors; a success status becomes 422. It is only called here, so an
-    ///   action never loads data for a page it does not send, and the page may borrow what the
-    ///   closure loads.
-    pub async fn invalid<F, Fut>(&self, errors: &Errors, form: &impl Template, page: F) -> Result
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result>,
-    {
-        let status = StatusCode::UNPROCESSABLE_ENTITY;
-        match self.mode {
-            Mode::Action => self.patch_with_status(status, form),
-            #[cfg(feature = "json")]
-            Mode::Data => {
-                let body = serde_json::to_string(&serde_json::json!({ "errors": errors }))?;
-                Ok((status, [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response())
-            }
-            _ => {
-                let _ = errors;
-                let mut res = page().await?;
-                if res.status().is_success() {
-                    *res.status_mut() = status;
-                }
-                Ok(res)
-            }
-        }
-    }
-
-    /// After a successful write, send the browser to `location` (post/redirect/get). Works with
-    /// and without JavaScript.
-    pub fn redirect(&self, location: &str) -> Result {
-        let value = HeaderValue::try_from(location).map_err(Error::new)?;
-        Ok(match self.mode {
-            Mode::Action => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, value)]).into_response(),
-            _ => (StatusCode::SEE_OTHER, [(header::LOCATION, value)]).into_response(),
-        })
-    }
-}
-
-/// Renders failed requests (an [`Error`] from a handler) with [`Shell::error_page`], in the same
-/// mode as the request: a full document, a page swap, or JSON for a data client. Apply it inside
-/// [`security::Policy::apply`] so the error page gets the nonce:
-/// `policy.apply(corten::error_pages::<Shell, _>(router))`.
-pub fn error_pages<S: Shell, St: Clone + Send + Sync + 'static>(router: Router<St>) -> Router<St> {
-    router.layer(axum::middleware::from_fn(render_errors::<S>))
-}
-
-async fn render_errors<S: Shell>(req: Request, next: Next) -> Response {
-    let req_for_page = Req::<S>::from_parts(req.headers(), req.extensions(), req.uri().path());
-    let res = next.run(req).await;
-    if res.extensions().get::<Failed>().is_none() {
-        return res;
-    }
-    let status = res.status();
-    let req = req_for_page;
-    if req.mode == Mode::Data {
-        let body = format!(r#"{{"error":{{"status":{}}}}}"#, status.as_u16());
-        return (status, [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response();
-    }
-    let (title, main) = S::error_page(status);
-    req.main(status, &title, &Meta::new().noindex(), &main).unwrap_or(res)
-}
-
-fn html_response(status: StatusCode, body: String, kind: HeaderName) -> Response {
-    (
-        status,
-        [
-            (header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8")),
-            (header::VARY, HeaderValue::from_static(VARY)),
-            (kind, HeaderValue::from_static("1")),
-        ],
-        body,
-    )
-        .into_response()
-}
-
-/// Responses depend on the mode header and, for [`Mode::Data`], on `Accept`.
-const VARY: &str = "corten, accept";
 
 /// Streams fragments to `<corten-live src="...">` as server-sent events. Each item is applied like a
 /// form patch: top-level elements replace the elements with the same `id`.
@@ -657,7 +275,8 @@ pub async fn shutdown_signal() {
 }
 
 /// An error that ends the request with a status (500 unless set). The message is logged with
-/// `tracing`, never sent to the browser; [`error_pages`] renders the page the user sees.
+/// `tracing` and never sent to the browser (except under `corten dev`); the app's error page is
+/// what the user sees.
 #[derive(Debug)]
 pub struct Error {
     status: StatusCode,
@@ -682,9 +301,10 @@ impl<E: std::error::Error + Send + Sync + 'static> From<E> for Error {
     }
 }
 
-/// Marks a response as a failure, so [`error_pages`] knows to render it.
-#[derive(Clone, Copy)]
-struct Failed;
+/// Marks a response as a failure, so the app renders its error page. Carries the message, which
+/// only an app in dev mode shows.
+#[derive(Clone)]
+pub(crate) struct Failed(pub Arc<str>);
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
@@ -694,7 +314,7 @@ impl IntoResponse for Error {
             tracing::debug!(status = self.status.as_u16(), error = %self.source, "corten: request refused");
         }
         let mut res = (self.status, self.status.canonical_reason().unwrap_or("Error")).into_response();
-        res.extensions_mut().insert(Failed);
+        res.extensions_mut().insert(Failed(Arc::from(self.source.to_string())));
         res
     }
 }
