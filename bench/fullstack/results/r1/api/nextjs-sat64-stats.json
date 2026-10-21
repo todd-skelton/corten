@@ -1,0 +1,16 @@
+{
+ "fsw-nextjs": {
+  "samples": 121,
+  "cpuAvgPct": 100.9,
+  "cpuMaxPct": 108.77,
+  "memAvgMiB": 461.2,
+  "memMaxMiB": 462.4
+ },
+ "rb-rust": {
+  "samples": 121,
+  "cpuAvgPct": 2,
+  "cpuMaxPct": 5.44,
+  "memAvgMiB": 32,
+  "memMaxMiB": 32.7
+ }
+}

@@ -1,0 +1,128 @@
+{
+ "corten": {
+  "html": {
+   "raw": 11262,
+   "gzip": 2350
+  },
+  "js": {
+   "raw": 17201,
+   "gzip": 6346,
+   "files": 4
+  },
+  "wasm": {
+   "raw": 0,
+   "gzip": 0,
+   "files": 0
+  },
+  "css": {
+   "raw": 2399,
+   "gzip": 946,
+   "files": 1
+  }
+ },
+ "nextjs": {
+  "html": {
+   "raw": 25902,
+   "gzip": 4891
+  },
+  "js": {
+   "raw": 467154,
+   "gzip": 139374,
+   "files": 7
+  },
+  "wasm": {
+   "raw": 0,
+   "gzip": 0,
+   "files": 0
+  },
+  "css": {
+   "raw": 1974,
+   "gzip": 817,
+   "files": 1
+  }
+ },
+ "tanstack-start": {
+  "html": {
+   "raw": 17608,
+   "gzip": 4347
+  },
+  "js": {
+   "raw": 349436,
+   "gzip": 111221,
+   "files": 3
+  },
+  "wasm": {
+   "raw": 0,
+   "gzip": 0,
+   "files": 0
+  },
+  "css": {
+   "raw": 1974,
+   "gzip": 817,
+   "files": 1
+  }
+ },
+ "sveltekit": {
+  "html": {
+   "raw": 16728,
+   "gzip": 3657
+  },
+  "js": {
+   "raw": 98623,
+   "gzip": 37875,
+   "files": 11
+  },
+  "wasm": {
+   "raw": 0,
+   "gzip": 0,
+   "files": 0
+  },
+  "css": {
+   "raw": 1974,
+   "gzip": 817,
+   "files": 1
+  }
+ },
+ "react-router": {
+  "html": {
+   "raw": 19960,
+   "gzip": 5007
+  },
+  "js": {
+   "raw": 318699,
+   "gzip": 101546,
+   "files": 4
+  },
+  "wasm": {
+   "raw": 0,
+   "gzip": 0,
+   "files": 0
+  },
+  "css": {
+   "raw": 1974,
+   "gzip": 817,
+   "files": 1
+  }
+ },
+ "leptos": {
+  "html": {
+   "raw": 18235,
+   "gzip": 3555
+  },
+  "js": {
+   "raw": 25351,
+   "gzip": 7124,
+   "files": 1
+  },
+  "wasm": {
+   "raw": 737163,
+   "gzip": 293576,
+   "files": 1
+  },
+  "css": {
+   "raw": 2041,
+   "gzip": 869,
+   "files": 1
+  }
+ }
+}

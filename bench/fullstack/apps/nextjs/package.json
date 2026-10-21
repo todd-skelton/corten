@@ -1,0 +1,19 @@
+{
+  "name": "item-page-nextjs",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "start": "node .next/standalone/server.js"
+  },
+  "dependencies": {
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "typescript": "5.9.3"
+  }
+}

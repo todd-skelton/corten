@@ -1,0 +1,65 @@
+{
+ "baseline": {
+  "firstOkMs": {
+   "median": 209.5,
+   "min": 129.2,
+   "max": 304.5
+  },
+  "memAfterFirstRequest": "496KiB",
+  "imageMB": 2
+ },
+ "corten": {
+  "firstOkMs": {
+   "median": 184.2,
+   "min": 137.7,
+   "max": 385.4
+  },
+  "memAfterFirstRequest": "1.594MiB",
+  "imageMB": 80
+ },
+ "nextjs": {
+  "firstOkMs": {
+   "median": 1678.5,
+   "min": 1344.8,
+   "max": 2095.7
+  },
+  "memAfterFirstRequest": "49.16MiB",
+  "imageMB": 266
+ },
+ "tanstack-start": {
+  "firstOkMs": {
+   "median": 496.3,
+   "min": 350.2,
+   "max": 1177.7
+  },
+  "memAfterFirstRequest": "26.44MiB",
+  "imageMB": 230
+ },
+ "sveltekit": {
+  "firstOkMs": {
+   "median": 425.2,
+   "min": 362.3,
+   "max": 545.9
+  },
+  "memAfterFirstRequest": "23.52MiB",
+  "imageMB": 231
+ },
+ "react-router": {
+  "firstOkMs": {
+   "median": 1035.1,
+   "min": 799.7,
+   "max": 1263.9
+  },
+  "memAfterFirstRequest": "32.98MiB",
+  "imageMB": 245
+ },
+ "leptos": {
+  "firstOkMs": {
+   "median": 219.5,
+   "min": 170.2,
+   "max": 346.6
+  },
+  "memAfterFirstRequest": "1.73MiB",
+  "imageMB": 85
+ }
+}

@@ -16,6 +16,24 @@ pub fn escape(text: &str) -> String {
     out
 }
 
+/// `text` as a JSON string literal, quotes included. `<` is escaped too, so the result is safe
+/// inside an inline `<script>`.
+pub(crate) fn json_string(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '<' => out.push_str("\\u003c"),
+            c if (c as u32) < 0x20 || c == '\u{2028}' || c == '\u{2029}' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// Custom element tag names in `html`, first occurrence order, without duplicates.
 ///
 /// Corten uses this to preload exactly the island modules a page renders, so pages never declare

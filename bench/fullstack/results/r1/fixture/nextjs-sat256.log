@@ -1,0 +1,89 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 5151   84.551117/s
+    checks_succeeded...: 98.83% 5091 out of 5151
+    checks_failed......: 1.16%  60 out of 5151
+
+    ✗ status 200
+      ↳  98% — ✓ 5091 / ✗ 60
+
+    HTTP
+    http_req_duration..............: avg=2.99s p(50)=1.6s  p(95)=3.64s p(99)=59.86s max=59.91s
+      { expected_response:true }...: avg=2.32s p(50)=1.59s p(95)=3.44s p(99)=29.82s max=58.92s
+    http_req_failed................: 1.16%  60 out of 5151
+    http_reqs......................: 5151   84.551117/s
+
+    EXECUTION
+    iteration_duration.............: avg=3s    p(50)=1.61s p(95)=3.64s p(99)=1m0s   max=1m0s  
+    iterations.....................: 5151   84.551117/s
+    vus............................: 48     min=48         max=256
+    vus_max........................: 256    min=256        max=256
+
+    NETWORK
+    data_received..................: 123 MB 2.0 MB/s
+    data_sent......................: 574 kB 9.4 kB/s
+
+
+
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_316\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_266\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_367\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_60\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_500\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_318\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_8\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_482\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_14\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_61\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_104\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_171\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_5\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_34\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_192\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_477\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_355\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_135\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_332\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_1\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_9\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_263\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_381\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_11\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_13\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_345\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_136\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_218\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_271\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_450\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_246\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_86\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_41\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_31\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_18\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_1\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_468\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_60\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_249\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_340\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_480\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_31\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_368\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_2\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_337\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_60\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_158\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_248\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_174\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_29\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_1\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_24\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_251\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_32\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_176\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_33\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_177\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_33\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_179\": request timeout"
+time="2026-10-21T04:59:29Z" level=warning msg="Request Failed" error="Get \"http://fsw-nextjs:8080/items/item_498\": request timeout"

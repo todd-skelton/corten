@@ -28,11 +28,17 @@
 //! so a cursor from one instance resumes on another. A follower that loads its rows after other
 //! instances served the feed calls [`Feed::backfill`] with the log's recent patches, so clients
 //! that move to it (their instance died) resume instead of loading a new snapshot.
+//!
+//! Authorization is the route's job: check that the user may read the feed before calling
+//! [`Feed::snapshot`] or [`Feed::live`]. A cursor only positions a client inside a feed it was
+//! already allowed to read, so cursors need no signature. Cap open streams per user with a
+//! [`Limiter`] and [`Feed::live_with`]. A page that follows several feeds opens one stream per
+//! feed; over HTTP/2 those share one connection.
 
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     convert::Infallible,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, LazyLock, Mutex, MutexGuard},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -46,9 +52,12 @@ use corten_protocol::{apply_ops, check_seq, Patch, SnapshotRef};
 pub use corten_protocol::{patch_json, Applied, ApplyError, Change, Cursor, Row, SyncReason};
 use futures_util::{stream, StreamExt};
 use serde::de::DeserializeOwned;
-use tokio::sync::broadcast::{
-    self,
-    error::{RecvError, TryRecvError},
+use tokio::sync::{
+    broadcast::{
+        self,
+        error::{RecvError, TryRecvError},
+    },
+    watch,
 };
 
 /// Patches kept for clients that reconnect or subscribe right after a snapshot...
@@ -68,6 +77,17 @@ const OPEN: &[u8] = b"retry: 1000\n\n";
 /// apart, so a client whose snapshot came from one instance can open its stream on another that
 /// has not caught up yet; the stream waits for it instead of forcing a resync.
 pub const AHEAD: u64 = 1_024;
+
+/// Set by [`drain`]; every live stream in the process watches it.
+static DRAINING: LazyLock<watch::Sender<bool>> = LazyLock::new(|| watch::channel(false).0);
+
+/// Ends every live stream in this process and refuses new ones (they end at once). Call it when
+/// the server starts shutting down: open streams would otherwise keep their connections, and a
+/// graceful shutdown, alive forever. Clients reconnect with their cursor and resume on another
+/// instance (or this one, after a restart) without a snapshot.
+pub fn drain() {
+    DRAINING.send_replace(true);
+}
 
 /// A keyed set of rows with numbered patches. Cheap to clone; clones share the rows.
 pub struct Feed<T: Row> {
@@ -273,6 +293,11 @@ impl<T: Row> Feed<T> {
 
     /// `GET {url}/live`: patches after the client's cursor, then new patches as they happen.
     pub fn live(&self, since: Since) -> Response {
+        self.live_with(since, ())
+    }
+
+    /// [`Feed::live`] that keeps `guard` (a [`Permit`], say) alive until the stream ends.
+    pub fn live_with(&self, since: Since, guard: impl Send + 'static) -> Response {
         let state = self.lock();
         let rx = self.inner.tx.subscribe();
         let last = state.seq;
@@ -306,8 +331,11 @@ impl<T: Row> Feed<T> {
             }
             Err(reason) => (sync_frame(reason), last, true),
         };
-        let rest = stream::unfold((rx, last, done), next_chunk);
-        let chunks = stream::iter([first]).chain(rest).map(Ok::<Bytes, Infallible>);
+        let rest = stream::unfold(StreamState { rx, last, done, drain: DRAINING.subscribe() }, next_chunk);
+        let chunks = stream::iter([first]).chain(rest).map(move |chunk| {
+            let _held = &guard;
+            Ok::<Bytes, Infallible>(chunk)
+        });
         (
             [
                 (header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream")),
@@ -319,22 +347,87 @@ impl<T: Row> Feed<T> {
     }
 }
 
-/// One live stream's position: its receiver, the last seq sent, and whether it has ended.
-type StreamState = (broadcast::Receiver<Arc<Batch>>, u64, bool);
+/// Caps how many live streams one key (a user, an account) holds open on this instance.
+/// Cheap to clone; clones share the counts.
+#[derive(Clone)]
+pub struct Limiter {
+    max: usize,
+    open: Arc<Mutex<HashMap<String, usize>>>,
+}
+
+impl Limiter {
+    pub fn new(max_per_key: usize) -> Self {
+        Limiter { max: max_per_key, open: Arc::default() }
+    }
+
+    /// A permit for one more stream, or `None` when `key` already has the maximum (answer 429).
+    pub fn acquire(&self, key: &str) -> Option<Permit> {
+        let mut open = self.open.lock().unwrap_or_else(|e| e.into_inner());
+        let count = open.entry(key.to_string()).or_insert(0);
+        if *count >= self.max {
+            return None;
+        }
+        *count += 1;
+        Some(Permit { key: key.to_string(), open: self.open.clone() })
+    }
+
+    /// Streams `key` has open.
+    pub fn open(&self, key: &str) -> usize {
+        self.open.lock().unwrap_or_else(|e| e.into_inner()).get(key).copied().unwrap_or(0)
+    }
+}
+
+/// One open stream for a key; released when dropped (the stream ended or the client left).
+pub struct Permit {
+    key: String,
+    open: Arc<Mutex<HashMap<String, usize>>>,
+}
+
+impl Drop for Permit {
+    fn drop(&mut self) {
+        let mut open = self.open.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(count) = open.get_mut(&self.key) {
+            *count -= 1;
+            if *count == 0 {
+                open.remove(&self.key);
+            }
+        }
+    }
+}
+
+/// One live stream's position: its receiver, the last seq sent, whether it has ended, and the
+/// process-wide drain signal.
+struct StreamState {
+    rx: broadcast::Receiver<Arc<Batch>>,
+    last: u64,
+    done: bool,
+    drain: watch::Receiver<bool>,
+}
 
 /// The next bytes for one live client: the next patch, plus any patches already waiting for it,
 /// so a client that fell behind catches up in one write. `None` ends the stream.
-async fn next_chunk((mut rx, last, done): StreamState) -> Option<(Bytes, StreamState)> {
-    if done {
+async fn next_chunk(mut s: StreamState) -> Option<(Bytes, StreamState)> {
+    if s.done || *s.drain.borrow() {
         return None;
     }
+    let last = s.last;
     let first = loop {
-        match tokio::time::timeout(KEEP_ALIVE, rx.recv()).await {
-            Err(_) => return Some((Bytes::from_static(b":\n\n"), (rx, last, false))),
-            Ok(Ok(b)) if b.ends => return Some((b.frame.clone(), (rx, last, true))),
+        let next = tokio::select! {
+            next = tokio::time::timeout(KEEP_ALIVE, s.rx.recv()) => next,
+            _ = s.drain.wait_for(|draining| *draining) => return None,
+        };
+        match next {
+            Err(_) => return Some((Bytes::from_static(b":\n\n"), s)),
+            Ok(Ok(b)) if b.ends => {
+                s.done = true;
+                return Some((b.frame.clone(), s));
+            }
             Ok(Ok(b)) if b.seq <= last => continue,
             Ok(Ok(b)) => break b,
-            Ok(Err(RecvError::Lagged(_))) => return Some((sync_frame(SyncReason::ReplayBackpressure), (rx, last, true))),
+            Ok(Err(RecvError::Lagged(_))) => {
+                s.done = true;
+                return Some((sync_frame(SyncReason::ReplayBackpressure), s));
+            }
             Ok(Err(RecvError::Closed)) => return None,
         }
     };
@@ -342,7 +435,7 @@ async fn next_chunk((mut rx, last, done): StreamState) -> Option<(Bytes, StreamS
     let mut more = Vec::new();
     let mut lagged = false;
     while more.len() < COALESCE {
-        match rx.try_recv() {
+        match s.rx.try_recv() {
             Ok(b) if b.ends => {
                 more.push(b);
                 lagged = true; // ends the stream after this chunk; the reset frame is already in it
@@ -361,7 +454,8 @@ async fn next_chunk((mut rx, last, done): StreamState) -> Option<(Bytes, StreamS
         }
     }
     if more.is_empty() && !lagged {
-        return Some((first.frame.clone(), (rx, last, false)));
+        s.last = last;
+        return Some((first.frame.clone(), s));
     }
     let mut chunk = first.frame.to_vec();
     for b in &more {
@@ -370,7 +464,9 @@ async fn next_chunk((mut rx, last, done): StreamState) -> Option<(Bytes, StreamS
     if lagged && !more.last().is_some_and(|b| b.ends) {
         chunk.extend_from_slice(&sync_frame(SyncReason::ReplayBackpressure));
     }
-    Some((chunk.into(), (rx, last, lagged)))
+    s.last = last;
+    s.done = lagged;
+    Some((chunk.into(), s))
 }
 
 fn sync_frame(reason: SyncReason) -> Bytes {
@@ -680,5 +776,20 @@ mod tests {
         let (from_a, from_late) = (read_events(&mut from_a, 3).await, read_events(&mut from_late, 3).await);
         assert!(from_late.starts_with("retry: 1000\n\nevent: patch\nid: g7-13\n"), "{from_late}");
         assert_eq!(from_late, from_a, "the late follower replays the same bytes");
+    }
+
+    #[tokio::test]
+    async fn a_limiter_caps_streams_per_key_until_they_end() {
+        let feed = feed();
+        let limiter = Limiter::new(2);
+        let first = feed.live_with(Since(None), limiter.acquire("u1").unwrap());
+        let second = limiter.acquire("u1").unwrap();
+        assert!(limiter.acquire("u1").is_none(), "third stream for u1 refused");
+        assert!(limiter.acquire("u2").is_some(), "other keys are independent");
+        assert_eq!(limiter.open("u1"), 2);
+        drop(second);
+        assert_eq!(limiter.open("u1"), 1);
+        drop(first);
+        assert_eq!(limiter.open("u1"), 0, "dropping the response body releases its permit");
     }
 }

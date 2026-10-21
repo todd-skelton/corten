@@ -1,0 +1,16 @@
+{
+ "fsw-leptos": {
+  "samples": 122,
+  "cpuAvgPct": 98.8,
+  "cpuMaxPct": 100.88,
+  "memAvgMiB": 55.8,
+  "memMaxMiB": 58.3
+ },
+ "rb-rust": {
+  "samples": 122,
+  "cpuAvgPct": 12.9,
+  "cpuMaxPct": 16.14,
+  "memAvgMiB": 37.4,
+  "memMaxMiB": 38.3
+ }
+}

@@ -7,11 +7,19 @@
 // 3. <corten-live src>: apply fragments streamed as server-sent `patch` events.
 // 4. Islands: an undefined <tag-name> loads `{islands dir}/tag-name.js` and defines its default export.
 // 5. subscribe(): live rows from a corten::feed (snapshot + ordered patches) for islands that keep state.
+// 6. Hover prefetch of same-origin links, the page's head tags on navigation, and the service
+//    worker when the shell names one (corten::pwa).
 // Without JavaScript, links and forms still work as plain HTML.
 
 const islandsDir = document.querySelector('meta[name="corten-islands"]')?.getAttribute("content") ?? "/static/islands/";
 /** @type {Map<string, Promise<void>>} */
 const loading = new Map();
+
+// Island wrappers are layout-neutral. The server prints this rule for the first page's islands;
+// islands that arrive later (navigation, patches) get it here. A constructed stylesheet is CSSOM,
+// so it works under a nonce-only CSP.
+const islandStyles = new CSSStyleSheet();
+document.adoptedStyleSheets = [...document.adoptedStyleSheets, islandStyles];
 
 /**
  * Base class for islands. Write `setup()`; it runs when the element connects. When the element
@@ -225,6 +233,7 @@ export function upgrade(root) {
 function define(tag) {
   let pending = loading.get(tag);
   if (!pending) {
+    islandStyles.insertRule(`${tag}{display:contents}`, islandStyles.cssRules.length);
     const url = `${islandsDir}${tag}.js`;
     pending = import(url).then(
       (module) => {
@@ -258,7 +267,7 @@ export function patch(html) {
 }
 
 /**
- * Swaps a page response (`<title>` followed by the page) into <main>.
+ * Swaps a page response (`<title>`, the page's head tags, then the page) into <main>.
  * @param {string} html
  */
 function swapPage(html) {
@@ -268,18 +277,75 @@ function swapPage(html) {
     document.title = title.textContent ?? "";
     title.remove();
   }
+  const tags = Array.from(content.querySelectorAll("[data-corten-head]"));
+  for (const old of Array.from(document.head.querySelectorAll("[data-corten-head]"))) old.remove();
+  document.head.append(...tags);
   const main = document.querySelector("main");
   if (!main) throw new Error("corten: the shell must render a <main> element");
   main.replaceChildren(content);
   return upgrade(main);
 }
 
+/** Navigation responses fetched ahead of a likely click, by URL without the hash. */
+/** @type {Map<string, { at: number, response: Promise<Response> }>} */
+const prefetched = new Map();
+const PREFETCH_FRESH_MS = 10_000;
+
+/** @param {URL} url */
+function pageKey(url) {
+  const key = new URL(url);
+  key.hash = "";
+  return key.href;
+}
+
+/** @param {EventTarget | null} target */
+function prefetch(target) {
+  const link = target instanceof Element ? target.closest("a[href]") : null;
+  if (!(link instanceof HTMLAnchorElement) || link.target || link.hasAttribute("download")) return;
+  if (link.closest("[data-reload], [data-no-prefetch]")) return;
+  const url = new URL(link.href, location.href);
+  if (url.origin !== location.origin || pageKey(url) === pageKey(new URL(location.href))) return;
+  const key = pageKey(url);
+  const hit = prefetched.get(key);
+  if (hit && performance.now() - hit.at < PREFETCH_FRESH_MS) return;
+  const response = fetch(key, { headers: { corten: "nav" }, priority: "low" });
+  response.catch(() => prefetched.delete(key));
+  prefetched.set(key, { at: performance.now(), response });
+}
+
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let hoverTimer;
+document.addEventListener("pointerover", (event) => {
+  clearTimeout(hoverTimer);
+  // A short dwell, so moving the pointer across a list does not fetch every link.
+  hoverTimer = setTimeout(() => prefetch(event.target), 65);
+});
+document.addEventListener("pointerout", () => clearTimeout(hoverTimer));
+document.addEventListener("touchstart", (event) => prefetch(event.target), { passive: true });
+
 /**
  * @param {URL} url
  * @param {AbortSignal} signal
  */
 async function visit(url, signal) {
-  const res = await fetch(url, { headers: { corten: "nav" }, signal });
+  const key = pageKey(url);
+  const hit = prefetched.get(key);
+  prefetched.delete(key);
+  /** @type {Response} */
+  let res;
+  try {
+    res =
+      hit && performance.now() - hit.at < PREFETCH_FRESH_MS
+        ? await hit.response.catch(() => fetch(url, { headers: { corten: "nav" }, signal }))
+        : await fetch(url, { headers: { corten: "nav" }, signal });
+  } catch (error) {
+    if (signal.aborted) throw error;
+    // Offline or the server is unreachable: load the URL as a normal navigation, which the
+    // service worker (if any) answers with the offline page, and the browser otherwise explains.
+    location.reload();
+    return;
+  }
+  signal.throwIfAborted();
   if (!res.headers.has("corten-page")) {
     location.reload();
     return;
@@ -318,6 +384,8 @@ document.addEventListener("submit", async (event) => {
   if (method === "GET") url.search = fields.toString();
   else init.body = form.enctype === "multipart/form-data" ? data : fields;
   form.setAttribute("aria-busy", "true");
+  // A write can change any page, so nothing fetched before it is reused.
+  if (method !== "GET") prefetched.clear();
   try {
     const res = await fetch(url, init);
     const location_ = res.headers.get("corten-location");
@@ -355,3 +423,10 @@ customElements.define(
 
 /** Resolves once the islands on the first page are defined. */
 export const ready = upgrade(document.body);
+
+const worker = document.querySelector('meta[name="corten-sw"]')?.getAttribute("content");
+if (worker && "serviceWorker" in navigator) {
+  addEventListener("load", () => {
+    navigator.serviceWorker.register(worker).catch((error) => console.error("corten: service worker registration failed", error));
+  });
+}

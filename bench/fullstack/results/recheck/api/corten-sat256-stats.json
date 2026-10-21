@@ -1,0 +1,16 @@
+{
+ "fsw-corten": {
+  "samples": 122,
+  "cpuAvgPct": 98.6,
+  "cpuMaxPct": 103.25,
+  "memAvgMiB": 59.1,
+  "memMaxMiB": 61.1
+ },
+ "rb-rust": {
+  "samples": 122,
+  "cpuAvgPct": 18.2,
+  "cpuMaxPct": 30.11,
+  "memAvgMiB": 38.1,
+  "memMaxMiB": 39.8
+ }
+}

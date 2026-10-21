@@ -11,8 +11,10 @@ reason that a smaller change cannot meet.
 2. Server feed (replay, live streams, followers): `crates/corten-feed`.
 3. Pages, request modes, patches, islands, the runtime: `crates/corten`.
 4. Never edit `crates/corten/js/dist/solid.js` by hand; run `npm run build:solid`.
-5. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`.
+5. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`,
+   and production modules (security, assets, PWA, head tags) by `examples/item-page/smoke.mjs`.
    Add the check with the behavior.
+6. `bench/` is not part of the workspace. Its apps are built only by `bench/fullstack` scripts.
 
 ## Checks (all must pass before you report done)
 
@@ -23,6 +25,10 @@ docker build -f examples/hello/Dockerfile -t corten-hello .
 docker run -d --name corten-hello -p 18480:8080 corten-hello
 npm run smoke -- http://localhost:18480
 docker rm -f corten-hello
+docker build -f examples/item-page/Dockerfile -t corten-item-page .
+docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -v "${PWD}/examples/item-page/fixtures:/fixtures:ro" corten-item-page
+node examples/item-page/smoke.mjs http://localhost:18481
+docker rm -f corten-item-page
 ```
 
 Rust tests run in Docker because the Windows host cannot link `windows-sys`. Run each command

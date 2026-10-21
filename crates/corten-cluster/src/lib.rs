@@ -126,8 +126,13 @@ impl<S: Source> Cluster<S> {
 
     /// `GET {url}/live`: [`Feed::live`], with the same errors as [`Cluster::snapshot`].
     pub async fn live(&self, key: &str, since: Since) -> Response {
+        self.live_with(key, since, ()).await
+    }
+
+    /// [`Cluster::live`] holding `guard` (a `corten_feed::Permit`) until the stream ends.
+    pub async fn live_with(&self, key: &str, since: Since, guard: impl Send + 'static) -> Response {
         match self.feed(key).await {
-            Ok(Some(feed)) => feed.live(since),
+            Ok(Some(feed)) => feed.live_with(since, guard),
             other => unavailable(key, other.err()),
         }
     }

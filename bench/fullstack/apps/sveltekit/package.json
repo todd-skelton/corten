@@ -1,0 +1,21 @@
+{
+  "name": "item-page-sveltekit",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  },
+  "scripts": {
+    "build": "vite build",
+    "start": "node build"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-node": "6.0.0",
+    "@sveltejs/kit": "3.1.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "24.19.2",
+    "svelte": "5.57.2",
+    "typescript": "6.0.3",
+    "vite": "8.3.4"
+  }
+}

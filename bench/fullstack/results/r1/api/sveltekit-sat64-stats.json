@@ -1,0 +1,16 @@
+{
+ "fsw-sveltekit": {
+  "samples": 121,
+  "cpuAvgPct": 100.3,
+  "cpuMaxPct": 105.93,
+  "memAvgMiB": 132.7,
+  "memMaxMiB": 134.1
+ },
+ "rb-rust": {
+  "samples": 121,
+  "cpuAvgPct": 5.7,
+  "cpuMaxPct": 14.02,
+  "memAvgMiB": 33.4,
+  "memMaxMiB": 34.2
+ }
+}

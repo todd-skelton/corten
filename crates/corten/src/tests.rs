@@ -14,6 +14,9 @@ impl Page for Demo {
     fn title(&self) -> String {
         "A & B".into()
     }
+    fn head(&self) -> Meta {
+        Meta::new().description("About A")
+    }
 }
 
 #[derive(Template)]
@@ -72,18 +75,22 @@ async fn document_wraps_page_in_shell_with_island_preloads() {
     let (status, headers, body) = call(page_router(), "GET", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers["vary"], "corten, accept");
-    assert!(body.starts_with("<html><head><title>A &amp; B</title>"));
+    assert!(
+        body.starts_with(r#"<html><head><title>A &amp; B</title><meta name="description" content="About A" data-corten-head>"#)
+    );
+    assert!(body.contains(&format!(r#"<script type="module" src="{}"></script>"#, runtime_path())));
     assert!(body.contains(r#"<link rel="modulepreload" href="/static/islands/sort-table.js">"#));
     assert!(body.contains("<style>sort-table{display:contents}</style>"));
     assert!(!body.contains("islands/corten-live.js"), "built-in elements are not preloaded");
     assert!(body.contains("<p>&#60;script&#62;</p>"), "askama escapes page text");
+    assert!(!body.contains("nonce"), "no policy, no nonce");
 }
 
 #[tokio::test]
-async fn navigation_returns_title_and_page_only() {
+async fn navigation_returns_title_head_tags_and_page_only() {
     let (_, headers, body) = call(page_router(), "GET", Some("nav")).await;
     assert_eq!(headers["corten-page"], "1");
-    assert!(body.starts_with("<title>A &amp; B</title><p>"));
+    assert!(body.starts_with(r#"<title>A &amp; B</title><meta name="description" content="About A" data-corten-head><p>"#));
     assert!(!body.contains("<html>"));
 }
 
@@ -146,10 +153,83 @@ fn props_script_cannot_be_closed_by_a_value() {
 #[tokio::test]
 async fn solid_feature_adds_the_import_map_entry_and_route() {
     let (_, _, body) = call(page_router(), "GET", None).await;
-    assert!(body.contains(
-        r#"<script type="importmap">{"imports":{"corten":"/corten/corten.js","corten/solid":"/corten/solid.js"}}</script>"#
-    ));
-    let res = routes::<()>().oneshot(Request::get(SOLID_PATH).body(Body::empty()).unwrap()).await.unwrap();
+    assert!(body.contains(&format!(
+        r#"<script type="importmap">{{"imports":{{"corten":"{}","corten/solid":"{}"}}}}</script>"#,
+        runtime_path(),
+        solid_path()
+    )));
+    let res = routes::<()>().oneshot(Request::get(solid_path()).body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(res.headers()["content-type"], "text/javascript; charset=utf-8");
+}
+
+#[tokio::test]
+async fn runtime_is_served_at_a_versioned_immutable_url() {
+    assert!(runtime_path().starts_with(&format!("/corten/{}/", runtime_version())));
+    let res = routes::<()>().oneshot(Request::get(runtime_path()).body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()["cache-control"], "public, max-age=31536000, immutable");
+}
+
+#[tokio::test]
+async fn policy_puts_the_nonce_on_inline_tags_and_in_the_csp() {
+    let router = security::Policy::new().apply(page_router());
+    let (_, headers, body) = call(router.clone(), "GET", None).await;
+    let csp = headers["content-security-policy"].to_str().unwrap();
+    let nonce = csp.split("'nonce-").nth(1).unwrap().split('\'').next().unwrap();
+    assert!(body.contains(&format!(r#"<script type="importmap" nonce="{nonce}">"#)));
+    assert!(body.contains(&format!(r#"<style nonce="{nonce}">sort-table"#)));
+    assert_eq!(headers["x-content-type-options"], "nosniff");
+    assert_eq!(headers["cross-origin-opener-policy"], "same-origin");
+    let (_, again, _) = call(router, "GET", None).await;
+    assert_ne!(again["content-security-policy"], headers["content-security-policy"], "a fresh nonce per request");
+    let (_, popups, _) = call(security::Policy::new().allow_popups().apply(page_router()), "GET", None).await;
+    assert_eq!(popups["cross-origin-opener-policy"], "same-origin-allow-popups");
+}
+
+#[tokio::test]
+async fn policy_refuses_cross_site_writes() {
+    let router = security::Policy::new().apply(page_router());
+    let req = |site: &'static str| {
+        Request::post("/").header("sec-fetch-site", site).header("corten", "action").body(Body::empty()).unwrap()
+    };
+    assert_eq!(router.clone().oneshot(req("cross-site")).await.unwrap().status(), StatusCode::FORBIDDEN);
+    assert_eq!(router.oneshot(req("same-origin")).await.unwrap().status(), StatusCode::OK);
+}
+
+fn failing_router() -> Router {
+    let router = Router::new()
+        .route("/", get(|| async { Err::<Response, _>(Error::new("database is down")) }))
+        .route("/missing", get(|| async { Err::<Response, _>(Error::status(StatusCode::NOT_FOUND)) }));
+    error_pages::<TestShell, _>(router)
+}
+
+#[tokio::test]
+async fn errors_render_in_the_shell_for_each_mode_without_leaking_the_message() {
+    let (status, headers, body) = call(failing_router(), "GET", None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"));
+    assert!(body.starts_with("<html><head><title>Something went wrong</title>"));
+    assert!(body.contains(r#"<meta name="robots" content="noindex" data-corten-head>"#));
+    assert!(!body.contains("database"), "the error message stays in the log");
+    let (_, headers, body) = call(failing_router(), "GET", Some("nav")).await;
+    assert_eq!(headers["corten-page"], "1");
+    assert!(body.starts_with("<title>Something went wrong</title>"));
+    let (_, headers, body) = call_with(failing_router(), "GET", None, Some("application/json")).await;
+    assert_eq!(headers["content-type"], "application/json");
+    assert_eq!(body, r#"{"error":{"status":500}}"#);
+    let res = failing_router().oneshot(Request::get("/missing").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert!(String::from_utf8_lossy(&body).contains("<title>Not found</title>"));
+}
+
+#[tokio::test]
+async fn health_reports_liveness_and_readiness() {
+    let router: Router = health(|| async { false });
+    let get = |uri: &'static str| router.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap());
+    assert_eq!(get("/health/live").await.unwrap().status(), StatusCode::OK);
+    let ready = get("/health/ready").await.unwrap();
+    assert_eq!(ready.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(ready.headers()["cache-control"], "no-store");
 }

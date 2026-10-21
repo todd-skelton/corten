@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "examples/*"]
+exclude = ["bench"]
 
 [profile.release]
 opt-level = 3

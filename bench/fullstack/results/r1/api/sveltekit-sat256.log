@@ -1,0 +1,81 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 8908   145.945685/s
+    checks_succeeded...: 99.41% 8856 out of 8908
+    checks_failed......: 0.58%  52 out of 8908
+
+    ✗ status 200
+      ↳  99% — ✓ 8856 / ✗ 52
+
+    HTTP
+    http_req_duration..............: avg=1.73s p(50)=1.01s p(95)=1.34s p(99)=41.24s max=59.88s
+      { expected_response:true }...: avg=1.39s p(50)=1.01s p(95)=1.32s p(99)=20.53s max=59.14s
+    http_req_failed................: 0.58%  52 out of 8908
+    http_reqs......................: 8908   145.945685/s
+
+    EXECUTION
+    iteration_duration.............: avg=1.73s p(50)=1.01s p(95)=1.34s p(99)=41.38s max=1m0s  
+    iterations.....................: 8908   145.945685/s
+    vus............................: 32     min=32         max=256
+    vus_max........................: 256    min=256        max=256
+
+    NETWORK
+    data_received..................: 136 MB 2.2 MB/s
+    data_sent......................: 1.0 MB 17 kB/s
+
+
+
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_350\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_20\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_129\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_451\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_57\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_137\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_434\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_158\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_10\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_384\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_2\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_423\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_304\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_119\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_394\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_37\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_351\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_488\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_279\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_15\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_63\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_113\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_195\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_35\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_428\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_80\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_95\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_14\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_121\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_328\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_23\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_7\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_37\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_99\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_129\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_433\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_1\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_47\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_140\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_1\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_99\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_167\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_481\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_97\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_50\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_164\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_107\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_83\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_282\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_91\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_388\": request timeout"
+time="2026-10-21T05:32:36Z" level=warning msg="Request Failed" error="Get \"http://fsw-sveltekit:8080/items/item_5\": request timeout"

@@ -1,0 +1,31 @@
+{
+  "item": {
+    "lowest": "lowest",
+    "listing_count": "{count} listings",
+    "available": "{count} available",
+    "no_listings": "No listings yet",
+    "listings": "Listings",
+    "sort_asc": "Price: low to high",
+    "sort_desc": "Price: high to low",
+    "offers": "Offers",
+    "show_all_offers": "Show all {count} offers",
+    "details": "Details",
+    "contents": "Contents",
+    "included_in": "Included in",
+    "image": "{title} image {n}"
+  },
+  "table": {
+    "seller": "Seller",
+    "buyer": "Buyer",
+    "condition": "Condition",
+    "ships_from": "Ships from",
+    "qty": "Qty",
+    "price": "Price"
+  },
+  "alert": {
+    "title": "Price alert",
+    "email": "Email",
+    "below": "Alert me below",
+    "submit": "Set alert"
+  }
+}
