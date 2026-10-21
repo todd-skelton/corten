@@ -1,0 +1,28 @@
+[package]
+name = "corten"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Server-rendered pages, fragment patches, small custom-element islands and live feeds for axum."
+
+[dependencies]
+askama = "0.16"
+axum = "0.8"
+futures-util = { version = "0.3", default-features = false }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+corten-feed = { path = "../corten-feed", optional = true }
+
+# All opt-in, so a page-only app keeps three dependencies.
+[features]
+# corten::Props: typed JSON from the template to an island (`this.props()` in the browser).
+json = ["dep:serde", "dep:serde_json"]
+# corten::feed: live data for islands (snapshot + ordered patches over server-sent events).
+feed = ["json", "dep:corten-feed"]
+# Serves Solid for islands at /corten/solid.js, imported as "corten/solid".
+solid = []
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

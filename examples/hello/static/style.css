@@ -1,0 +1,6 @@
+body { font: 16px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 40rem; padding: 1rem; }
+header.site { display: flex; gap: 1rem; margin-bottom: 1rem; }
+table.cards { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+table.cards td, table.cards th { border-bottom: 1px solid #ddd; padding: .4rem; text-align: left; }
+[data-ref="price"] { font-variant-numeric: tabular-nums; }
+form[aria-busy="true"] { opacity: .6; }

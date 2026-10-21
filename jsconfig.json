@@ -1,0 +1,16 @@
+{
+  "//": "Type-checks the runtime and example islands without a build step: npm run check",
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "strict": true,
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": [],
+    "paths": { "corten": ["./crates/corten/js/corten.js"], "corten/solid": ["./crates/corten/js/solid.js"] }
+  },
+  "include": ["crates/corten/js/*.js", "examples/*/static/**/*.js"]
+}
