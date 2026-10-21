@@ -71,6 +71,9 @@ definition:
 | Markup to island props | the props struct (`corten::Props`) | `corten::types` writes `types/app.d.ts`; `Island<P>` makes `this.props()` a `P`; `tsc --checkJs` (strict) |
 | Feed rows to island | the row struct | the same declarations; `subscribe<Row>` types the snapshot and every patch |
 | Form fields to handler | the input struct | `#[derive(Fields)]`: views print `Input::FIELDS.email` and errors use it, so a renamed field is a compile error |
+| Links to routes | the route struct (`#[derive(Route)]`) | the router mounts `Route::PATH`; a path parameter without a field, or a link missing a field, does not compile |
+| Views to island refs | the refs enum (`#[derive(Refs)]`) | `html!` refuses a ref inside another island's element; `Types::refs` writes the names as a union, so `this.ref` and `this.on` are checked by `tsc` |
+| Text to catalogs | the default locale's catalog (`messages!`) | every locale must have the same keys and arguments; a key is a method and an argument a parameter, so a misspelling does not compile |
 | Agent arguments and results | the tool's input and output structs | schemas generated from them; arguments are deserialized before the handler runs |
 | Screen JSON to native and agents | the page struct | `Types::json_schema` gives JSON Schema for code generators |
 
@@ -80,9 +83,9 @@ fails `npm run check`. An island or subscription that names no type gets `unknow
 `any`, so nothing is read unchecked. `scripts/typecheck-fixture.js` proves each of these with
 `@ts-expect-error` lines that must stay errors.
 
-Not checked: `data-ref` names between view and island (the island throws on first use), i18n
-keys (missing keys render visibly and `Catalog::missing_from` checks catalogs in a test) and
-URLs in views (see open decisions).
+Not checked: `data-*` attributes an island reads through `dataset` (strings on both sides), that
+a handler is mounted at every route struct's `PATH` (the router's tests cover that), and logic an
+island repeats from Rust (the listing sort rule in the item page).
 
 ## Rules that keep surfaces from drifting
 
@@ -131,5 +134,3 @@ library. Measured against a production marketplace app:
 2. Auth across surfaces: session cookies for web and native shells, tokens for native screens
    and agents, one permission check in handlers. Whatever is chosen, the app's middleware turns
    it into the context (`App::context`) that shells and handlers read.
-3. Typed routes: URLs in views are strings today. A route table that both axum and views
-   read would make a broken link a compile error; not built until a real app shows the need.

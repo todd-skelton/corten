@@ -467,6 +467,8 @@ impl Cursor {
 struct Gen {
     out: TokenStream,
     text: String,
+    /// The custom elements (islands) around the current node, innermost last.
+    islands: Vec<String>,
 }
 
 impl Gen {
@@ -487,8 +489,8 @@ impl Gen {
         self.out
     }
 
-    fn body(nodes: &[Node], raw: bool) -> TokenTree {
-        let mut gen = Gen::default();
+    fn body(&self, nodes: &[Node], raw: bool) -> TokenTree {
+        let mut gen = Gen { islands: self.islands.clone(), ..Gen::default() };
         gen.nodes(nodes, raw);
         TokenTree::Group(Group::new(Delimiter::Brace, gen.finish()))
     }
@@ -520,10 +522,17 @@ impl Gen {
                         Attr::Static(attr, value) => {
                             self.text.push_str(&format!(" {attr}=\"{}\"", escape(value)));
                         }
-                        Attr::Expr(attr, expr) => self.code(q(
-                            "(&::corten::view::__private::Attr(&(__A0))).__attr(__A1, __OUT);",
-                            &[expr.clone(), literal(&format!(" {attr}"))],
-                        )),
+                        Attr::Expr(attr, expr) => {
+                            if attr == "data-ref" && !self.islands.is_empty() {
+                                if let Some(check) = ref_check(expr, &self.islands) {
+                                    self.code(check);
+                                }
+                            }
+                            self.code(q(
+                                "(&::corten::view::__private::Attr(&(__A0))).__attr(__A1, __OUT);",
+                                &[expr.clone(), literal(&format!(" {attr}"))],
+                            ))
+                        }
                         Attr::Spread(expr) => {
                             self.code(q("::corten::view::Attrs::render_attrs(&(__A0), __OUT);", std::slice::from_ref(expr)))
                         }
@@ -531,7 +540,14 @@ impl Gen {
                 }
                 self.text.push('>');
                 if !VOID.contains(&name.as_str()) {
+                    let island = name.contains('-');
+                    if island {
+                        self.islands.push(name.clone());
+                    }
                     self.nodes(children, RAW_TEXT.contains(&name.as_str()));
+                    if island {
+                        self.islands.pop();
+                    }
                     self.text.push_str(&format!("</{name}>"));
                 }
             }
@@ -541,7 +557,7 @@ impl Gen {
                     fields.extend(q("__A0: __A1,", &[field.clone(), value.clone()]));
                 }
                 if let Some(children) = children {
-                    let body = stream([Gen::body(children, false)]);
+                    let body = stream([self.body(children, false)]);
                     fields.extend(q("children: ::corten::view::Html::child(|__OUT: &mut ::std::string::String| __A0),", &[body]));
                 }
                 let literal = stream([TokenTree::Group(Group::new(Delimiter::Brace, fields))]);
@@ -553,7 +569,7 @@ impl Gen {
                     for (pattern, body) in head[1..].iter().zip(bodies) {
                         inner.extend(pattern.clone());
                         inner.extend([
-                            Gen::body(body, raw),
+                            self.body(body, raw),
                             TokenTree::Punct(proc_macro::Punct::new(',', proc_macro::Spacing::Alone)),
                         ]);
                     }
@@ -564,11 +580,61 @@ impl Gen {
                     let mut tokens = TokenStream::new();
                     for (h, body) in head.iter().zip(bodies) {
                         tokens.extend(h.clone());
-                        tokens.extend([Gen::body(body, raw)]);
+                        tokens.extend([self.body(body, raw)]);
                     }
                     self.code(tokens);
                 }
             }
         }
     }
+}
+
+/// For `data-ref={ListingSortRef::Rows}` inside `<listing-sort>`: a constant that fails to compile
+/// unless `ListingSortRef` is the refs enum of one of the islands around it. Only a path whose last
+/// two segments look like `Type::Variant` is checked; anything else is printed as given.
+fn ref_check(expr: &TokenStream, islands: &[String]) -> Option<TokenStream> {
+    let mut tokens: Vec<TokenTree> = expr.clone().into_iter().collect();
+    // Attribute expressions arrive wrapped in parentheses.
+    if let [TokenTree::Group(g)] = tokens.as_slice() {
+        if g.delimiter() == Delimiter::Parenthesis {
+            tokens = g.stream().into_iter().collect();
+        }
+    }
+    let mut idents = Vec::new();
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            TokenTree::Ident(id) => idents.push((i, id.to_string())),
+            TokenTree::Punct(p) if p.as_char() == ':' => {}
+            _ => return None,
+        }
+    }
+    let [.., (_, ty), (last, variant)] = idents.as_slice() else { return None };
+    let camel = |s: &str| s.starts_with(|c: char| c.is_ascii_uppercase()) && s.chars().any(|c| c.is_ascii_lowercase());
+    if !camel(ty) || !camel(variant) {
+        return None;
+    }
+    // Everything before the last `::` is the enum's path.
+    let path: TokenStream = tokens[..*last - 2].iter().cloned().collect();
+    let mut names = TokenStream::new();
+    for island in islands {
+        names.extend(q("__A0,", &[literal(island)]));
+    }
+    let span = tokens[0].span();
+    Some(respan(q("const _: () = ::corten::island::__private::check_ref::<__A0>(&[__A1]);", &[path, names]), span))
+}
+
+fn respan(tokens: TokenStream, span: Span) -> TokenStream {
+    tokens
+        .into_iter()
+        .map(|mut token| {
+            if let TokenTree::Group(g) = &token {
+                let mut copy = Group::new(g.delimiter(), respan(g.stream(), span));
+                copy.set_span(span);
+                token = TokenTree::Group(copy);
+            } else {
+                token.set_span(span);
+            }
+            token
+        })
+        .collect()
 }

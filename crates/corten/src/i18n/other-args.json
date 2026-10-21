@@ -1,0 +1,8 @@
+{
+  "item": {
+    "listings": "Angebote",
+    "listing_count": "{total} Angebote",
+    "image": "{title} Bild {n}"
+  },
+  "brace": "{{Wort}} & mehr"
+}

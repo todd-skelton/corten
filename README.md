@@ -103,7 +103,7 @@ Handlers are plain axum handlers. `App` adds everything a production app needs a
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels (feature `compress`) | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
-| Languages | none | `.locales(locales)`: `req.t()` and `doc.lang()` follow `Accept-Language` |
+| Languages | none | `.messages::<Msg>()`: `req.t()`, `doc.t()` and `doc.lang()` follow `Accept-Language` |
 | Dev mode | when `CORTEN_DEV` is set (`corten dev` sets it): errors shown on the page, open pages reload after a rebuild | `.dev(bool)` |
 
 ## Views
@@ -126,6 +126,46 @@ render of the same call site.
 `#[component]` turns a function into a props struct and a `Render` impl, so the same
 component renders inside a page and on its own as a patch, and the two cannot drift. A view owns
 what it captures and renders once, so it can be returned from a function.
+
+## Typed links, refs and messages
+
+The three strings that usually drift between files are Rust types, checked when the app compiles.
+
+```rust
+#[derive(Route)]
+#[route("/items/{id}")]
+pub struct ItemRoute<'a> { pub id: &'a str, pub tab: Option<&'a str> }   // tab is a query parameter
+
+#[derive(Clone, Copy, Refs)]
+#[island("offer-list")]
+pub enum OfferListRef { Rows, Rest, More }                                 // data-ref="rows" ...
+
+corten::i18n::messages! {
+    pub struct Msg { "en" => "locales/en.json", "fr" => "locales/fr.json" }
+}
+
+Router::new().route(ItemRoute::PATH, get(show));                            // the path axum matches
+
+let t: Msg = req.t();
+html! {
+    <a href={ItemRoute { id: &item.id, tab: None }}>{item.title}</a>       // /items/a%20b
+    <offer-list>
+        <tbody data-ref={OfferListRef::Rows}>...</tbody>
+        <button data-ref={OfferListRef::More}>{t.item_show_all_offers(item.offers.len())}</button>
+    </offer-list>
+}
+```
+
+| What | Fails to compile when |
+|---|---|
+| `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
+| `#[derive(Refs)]` | a ref is used inside another island's element, or the variant does not exist; `Types::refs::<OfferListRef>()` writes the names as a TypeScript union, so `this.ref("row")` fails `npm run check` |
+| `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument |
+
+Routes write their URL straight into the page (path parameters percent-encoded, `None` query
+parameters left out). Messages are split into text and arguments when the crate compiles: one
+without arguments is a `&'static str`, one with arguments writes its pieces into the page,
+escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
 
 ## How a request works
 
@@ -179,6 +219,10 @@ export default class ClickCounter extends Island {
 }
 ```
 
+Name the elements an island uses with a `#[derive(Refs)]` enum (see Typed links, refs and
+messages) and declare it in the island: `/** @extends {Island<unknown, OfferListRef>} */`. An
+island that declares no refs can use none.
+
 For screens whose state lives in the browser (a grid of thousands of live rows):
 
 | Piece | Server | Browser |
@@ -203,6 +247,9 @@ checked on the other side.
 | Seam | How it is checked |
 |---|---|
 | Handler to markup | `html!` is Rust: a missing field or prop is a compile error |
+| Links to routes | `#[derive(Route)]`: the router and every link use the same struct |
+| Views to islands | `#[derive(Refs)]`: `html!` checks the island, `Types::refs` types `this.ref` and `this.on` |
+| Text to catalogs | `messages!`: every locale has every key with the same arguments |
 | Form to handler | `#[derive(Fields)]` names; serde parses the post |
 | Server to island | `corten::types::Types::new().add::<Row>().sync(path)` in a test writes TypeScript declarations and fails while they are stale; `npm run check` then fails in every island that reads an old name |
 | Server to agent | tool input and output schemas generated from the structs (feature `agent`) |
@@ -258,7 +305,7 @@ measure about equal, around 3x the fastest JavaScript framework.
 ```text
 crates/
   corten/            The framework on axum: App, Req, html!, components, the runtime (js/corten.js)
-  corten-macros/     html!, #[component], #[derive(Fields)], on proc_macro alone (no syn)
+  corten-macros/     html!, #[component], messages!, derives (Fields, Route, Refs), on proc_macro alone (no syn)
   corten-cli/        The corten command, standard library only
   corten-feed/       Live feeds: rows, numbered patches, replay, resume
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies

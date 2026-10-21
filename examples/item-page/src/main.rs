@@ -1,6 +1,8 @@
 mod app;
 mod model;
+mod routes;
 mod source;
+mod text;
 mod views;
 
 #[tokio::main]

@@ -29,5 +29,12 @@
     "submit": "Set alert",
     "invalid_email": "Enter a valid email address.",
     "invalid_price": "Enter a target price above zero."
+  },
+  "category": {
+    "title": "Category {name}",
+    "back": "Back to popular items"
+  },
+  "home": {
+    "title": "Popular items"
   }
 }

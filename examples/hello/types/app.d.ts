@@ -11,3 +11,6 @@ export interface Card {
   price: string;
   price_cents: number;
 }
+
+/** The data-ref names of <live-prices>. */
+export type LivePricesRef = "price";

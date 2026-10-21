@@ -32,9 +32,17 @@ pub fn home(name: &str) -> impl Render {
         </form>
         <Greeting name={name} />
         <click-counter>
-            <button type="button" data-ref="button">"Clicked 0 times"</button>
+            <button type="button" data-ref={ClickCounterRef::Button}>"Clicked 0 times"</button>
         </click-counter>
     }
+}
+
+/// The elements `<click-counter>` finds (static/islands/click-counter.js). `html!` refuses them
+/// inside any other island.
+#[derive(Clone, Copy, Refs)]
+#[island("click-counter")]
+pub enum ClickCounterRef {
+    Button,
 }
 
 /// Inside the page, and on its own as the form's patch (the runtime swaps it in by `id`).

@@ -1,0 +1,40 @@
+{
+  "item": {
+    "lowest": "le plus bas",
+    "listing_count": "{count} annonces",
+    "available": "{count} disponibles",
+    "no_listings": "Aucune annonce pour l'instant",
+    "listings": "Annonces",
+    "sort_asc": "Prix croissant",
+    "sort_desc": "Prix décroissant",
+    "offers": "Offres",
+    "show_all_offers": "Voir les {count} offres",
+    "details": "Détails",
+    "contents": "Contenu",
+    "included_in": "Inclus dans",
+    "image": "Image {n} de {title}"
+  },
+  "table": {
+    "seller": "Vendeur",
+    "buyer": "Acheteur",
+    "condition": "État",
+    "ships_from": "Expédié de",
+    "qty": "Qté",
+    "price": "Prix"
+  },
+  "alert": {
+    "title": "Alerte de prix",
+    "email": "E-mail",
+    "below": "M'alerter sous",
+    "submit": "Créer l'alerte",
+    "invalid_email": "Saisissez une adresse e-mail valide.",
+    "invalid_price": "Saisissez un prix cible supérieur à zéro."
+  },
+  "category": {
+    "title": "Catégorie {name}",
+    "back": "Retour aux articles populaires"
+  },
+  "home": {
+    "title": "Articles populaires"
+  }
+}

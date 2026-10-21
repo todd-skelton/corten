@@ -1,11 +1,18 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
-//! `corten::view`) and `#[derive(Fields)]` (see `corten::Fields`).
+//! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(Route)]` (see
+//! `corten::route`), `#[derive(Refs)]` (see `corten::island`) and `messages!` (see
+//! `corten::i18n`).
 //!
 //! Written against `proc_macro` alone (no `syn` or `quote`), so the crate has no dependencies
 //! and builds in about a second.
 
 mod component;
+mod derive;
 mod html;
+mod json;
+mod messages;
+mod refs;
+mod route;
 mod tokens;
 
 use proc_macro::{Delimiter, Group, Spacing, TokenStream, TokenTree};
@@ -20,6 +27,24 @@ pub fn html(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn component(args: TokenStream, item: TokenStream) -> TokenStream {
     component::expand(args, item).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// A struct whose fields are a URL's parameters. Documented at `corten::route`.
+#[proc_macro_derive(Route, attributes(route))]
+pub fn derive_route(input: TokenStream) -> TokenStream {
+    route::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// An island's `data-ref` names as an enum. Documented at `corten::island`.
+#[proc_macro_derive(Refs, attributes(island))]
+pub fn derive_refs(input: TokenStream) -> TokenStream {
+    refs::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// Message catalogs checked and compiled into a type. Documented at `corten::i18n`.
+#[proc_macro]
+pub fn messages(input: TokenStream) -> TokenStream {
+    messages::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// Field names of a form input struct as constants: `Input::FIELDS.email` is `"email"`, with

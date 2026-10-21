@@ -1,5 +1,7 @@
 //! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts.
-use corten::{Errors, Fields, i18n::Catalog};
+use corten::{Errors, Fields};
+
+use crate::text::Msg;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -90,15 +92,15 @@ pub struct AlertInput {
 
 /// The price-alert rules, shared by the form and the agent tool. Messages come from the catalog;
 /// field names come from the form, and the agent tool's input uses the same names.
-pub fn check_alert(t: &Catalog, email: &str, target: &str) -> Result<f64, Errors> {
+pub fn check_alert(t: Msg, email: &str, target: &str) -> Result<f64, Errors> {
     let mut errors = Errors::new();
     if !email.contains('@') {
-        errors.add(AlertInput::FIELDS.email, t.t("alert.invalid_email"));
+        errors.add(AlertInput::FIELDS.email, t.alert_invalid_email());
     }
     let price: f64 = target.trim().parse().unwrap_or(f64::NAN);
     // NaN (unparseable input) and infinity are not prices.
     if !price.is_finite() || price <= 0.0 {
-        errors.add(AlertInput::FIELDS.target_price, t.t("alert.invalid_price"));
+        errors.add(AlertInput::FIELDS.target_price, t.alert_invalid_price());
     }
     errors.into_result(price)
 }

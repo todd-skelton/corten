@@ -41,15 +41,51 @@ pub fn app(market: Market) -> App {
     })
 }
 
+/// Every URL the app serves and links to; links built from these cannot drift from the router.
+mod url {
+    use corten::Route;
+
+    #[derive(Route)]
+    #[route("/")]
+    pub struct Home;
+
+    #[derive(Route)]
+    #[route("/watch")]
+    pub struct Watch;
+
+    #[derive(Route)]
+    #[route("/about")]
+    pub struct About;
+
+    #[derive(Route)]
+    #[route("/sign-in")]
+    pub struct SignIn;
+
+    #[derive(Route)]
+    #[route("/feed/cards")]
+    pub struct Cards;
+
+    #[derive(Route)]
+    #[route("/feed/cards/live")]
+    pub struct CardsLive;
+}
+
 fn routes(market: Market) -> Router {
     Router::new()
-        .route("/", get(home))
-        .route("/watch", post(watch))
-        .route("/about", get(about))
-        .route("/sign-in", post(sign_in))
-        .route("/feed/cards", get(|State(m): State<Market>| async move { m.cards.snapshot() }))
-        .route("/feed/cards/live", get(|State(m): State<Market>, since: Since| async move { m.cards.live(since) }))
+        .route(url::Home::PATH, get(home))
+        .route(url::Watch::PATH, post(watch))
+        .route(url::About::PATH, get(about))
+        .route(url::SignIn::PATH, post(sign_in))
+        .route(url::Cards::PATH, get(|State(m): State<Market>| async move { m.cards.snapshot() }))
+        .route(url::CardsLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.cards.live(since) }))
         .with_state(market)
+}
+
+/// The elements `<live-prices>` finds: one price cell per card.
+#[derive(Clone, Copy, Refs)]
+#[island("live-prices")]
+pub enum LivePricesRef {
+    Price,
 }
 
 /// Who is looking: the shell's context.
@@ -73,12 +109,12 @@ fn shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
             <body>
                 <header class="site">
                     <nav>
-                        <a href="/" data-nav aria-current={doc.current("/")}>"Watchlist"</a>
-                        <a href="/about" data-nav aria-current={doc.current("/about")}>"About"</a>
+                        <a href={url::Home} data-nav aria-current={doc.current(&url::Home)}>"Watchlist"</a>
+                        <a href={url::About} data-nav aria-current={doc.current(&url::About)}>"About"</a>
                     </nav>
                     match viewer {
                         Some(viewer) => <span class="viewer">"Signed in as "{viewer.name}</span>,
-                        None => <form method="post" action="/sign-in" data-patch><button>"Sign in as Ada"</button></form>,
+                        None => <form method="post" action={url::SignIn} data-patch><button>"Sign in as Ada"</button></form>,
                     }
                 </header>
                 <main>{doc.main}</main>
@@ -88,7 +124,7 @@ fn shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
 }
 
 async fn sign_in(req: Req) -> corten::Result {
-    let mut res = req.redirect("/")?;
+    let mut res = req.redirect(&url::Home.href())?;
     res.headers_mut().append(header::SET_COOKIE, SetCookie::new("viewer", "Ada").header());
     Ok(res.into_response())
 }
@@ -158,17 +194,17 @@ fn home_view(home: &Home) -> impl Render {
     let f = WatchForm::FIELDS;
     html! {
         <h1>"Watchlist"</h1>
-        <live-prices data-src="/feed/cards">
+        <live-prices data-src={url::Cards}>
             <table class="cards">
                 <thead><tr><th>"Card"</th><th>"Price"</th></tr></thead>
                 <tbody>
                     for card in &home.cards {
-                        <tr><td>{card.name}</td><td data-ref="price" data-id={card.id}>{card.price}</td></tr>
+                        <tr><td>{card.name}</td><td data-ref={LivePricesRef::Price} data-id={card.id}>{card.price}</td></tr>
                     }
                 </tbody>
             </table>
         </live-prices>
-        <form method="post" action="/watch" data-patch>
+        <form method="post" action={url::Watch} data-patch>
             <label>"Card "<select name={f.id}>for card in &home.cards { <option value={card.id}>{card.name}</option> }</select></label>
             <button>"Watch"</button>
         </form>
@@ -245,7 +281,10 @@ mod tests {
     /// Islands import these declarations, so `npm run check` checks them against the Rust types.
     #[test]
     fn island_types_match_the_server() {
-        corten::types::Types::new().add::<Card>().sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
+        corten::types::Types::new()
+            .add::<Card>()
+            .refs::<LivePricesRef>()
+            .sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 
     #[tokio::test]

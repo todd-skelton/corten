@@ -10,8 +10,10 @@ reason that a smaller change cannot meet.
    dependencies there; it must build for native and agent clients.
 2. Server feed (replay, live streams, followers): `crates/corten-feed`.
 3. Pages, request modes, patches, islands, the runtime, `App` defaults: `crates/corten`.
-   Markup is `html!` and `#[component]` (`crates/corten-macros`, no dependencies: keep it on
-   `proc_macro` alone). A change to what `html!` generates needs the item page's
+   Markup is `html!` and `#[component]`, links are `#[derive(Route)]` structs, island refs are
+   `#[derive(Refs)]` enums and text is `messages!` (`crates/corten-macros`, no dependencies: keep it
+   on `proc_macro` alone). Never write a URL, `data-ref` or message key as a string in a view.
+   A compile-time guarantee gets a `compile_fail` doctest next to the feature. A change to what `html!` generates needs the item page's
    `render_cost` test before and after (`CORTEN_FIXTURE=bench/fullstack/fixtures/items.json`,
    release build) so rendering does not get slower unnoticed.
 4. The `corten` command: `crates/corten-cli`, standard library only. `template/` is the app

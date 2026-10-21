@@ -1,7 +1,12 @@
 // @ts-check
 import { Island } from "corten";
 
-/** "Show all offers": moves the server-rendered rows out of <template data-ref="rest">. */
+/** @typedef {import("../../types/app").OfferListRef} Ref Generated from `OfferListRef` in src/views.rs. */
+
+/**
+ * "Show all offers": moves the server-rendered rows out of the `Rest` template.
+ * @extends {Island<unknown, Ref>}
+ */
 export default class OfferList extends Island {
   setup() {
     this.on("click", "more", (button) => {

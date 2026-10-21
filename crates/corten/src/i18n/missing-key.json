@@ -1,0 +1,7 @@
+{
+  "item": {
+    "listings": "Angebote",
+    "listing_count": "{count} Angebote"
+  },
+  "brace": "{{Wort}} & mehr"
+}

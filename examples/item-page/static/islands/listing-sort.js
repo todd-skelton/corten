@@ -1,7 +1,12 @@
 // @ts-check
 import { Island } from "corten";
 
-/** Sorts the listing rows by data-price. Same rule as sort_listings in src/model.rs. */
+/** @typedef {import("../../types/app").ListingSortRef} Ref Generated from `ListingSortRef` in src/views.rs. */
+
+/**
+ * Sorts the listing rows by data-price. Same rule as sort_listings in src/model.rs.
+ * @extends {Island<unknown, Ref>}
+ */
 export default class ListingSort extends Island {
   setup() {
     this.on("click", "toggle", (button) => {

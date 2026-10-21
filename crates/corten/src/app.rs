@@ -63,7 +63,7 @@ pub struct App {
     static_dir: Option<PathBuf>,
     pwa: Option<Pwa>,
     ready: Option<ReadyFn>,
-    locales: Option<crate::i18n::Locales>,
+    locales: Option<&'static [&'static str]>,
     dev: Option<bool>,
 }
 
@@ -84,10 +84,10 @@ impl App {
         }
     }
 
-    /// The app's message catalogs: handlers read the one for the request's `Accept-Language`
-    /// with [`crate::Req::t`], and the shell's `doc.lang()` is its locale.
-    pub fn locales(mut self, locales: crate::i18n::Locales) -> Self {
-        self.locales = Some(locales);
+    /// The app's messages (a type from [`crate::i18n::messages!`]): the shell's `doc.lang()` is
+    /// the locale negotiated from `Accept-Language`, as `req.t()` and `doc.t()` pick it.
+    pub fn messages<M: crate::i18n::Messages>(mut self) -> Self {
+        self.locales = Some(M::LOCALES);
         self
     }
 

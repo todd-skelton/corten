@@ -2,13 +2,12 @@
 //! policy (CSP nonce, cross-site write check), versioned assets, error pages, health, PWA with
 //! push, head tags, an i18n catalog, robots/sitemap, compression, and the price-alert action as
 //! an MCP tool for agents.
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use corten::{
     Error,
     agent::{ToolError, Tools},
     axum::http::StatusCode,
-    i18n::{Catalog, Locales},
     prelude::*,
     pwa::{Manifest, Pwa},
     seo::{self, SitemapUrl},
@@ -18,12 +17,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     model::{AlertInput, ItemView, alert_set, check_alert},
+    routes,
     source::Source,
+    text::Msg,
     views::{self, AlertForm, AlertFormView, AlertMessage, ItemPage},
 };
-
-static LOCALES: LazyLock<Locales> =
-    LazyLock::new(|| Locales::new(Catalog::from_json("en", include_str!("../locales/en.json")).expect("en.json")));
 
 /// The app, assembled: routes plus the shell, catalogs and PWA settings. Corten adds the rest.
 pub fn app(source: Source) -> App {
@@ -36,28 +34,35 @@ pub fn app(source: Source) -> App {
         .icon("icons/192.png", "192x192")
         .icon("icons/512.png", "512x512")
         .maskable_icon("icons/512.png", "512x512");
-    App::new(routes(source.clone()).route("/mcp", tools(source, tokens).route()))
+    App::new(routes(source.clone()).route(routes::Mcp::PATH, tools(source, tokens).route()))
         .shell(views::shell)
-        .locales(LOCALES.clone())
-        .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only("/mcp"))
+        .messages::<Msg>()
+        .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(routes::Mcp::PATH))
 }
 
 fn routes(source: Source) -> Router {
     Router::new()
-        .route("/", get(|req: Req| async move { req.page("Card Market", views::home()) }))
-        .route("/items/{id}", get(show).post(create_alert))
-        .route("/robots.txt", get(|| async { seo::robots(&["/mcp"], Some("/sitemap.xml")) }))
-        .route("/sitemap.xml", get(sitemap))
+        .route(routes::Home::PATH, get(|req: Req| async move { req.page("Card Market", views::home(req.t())) }))
+        .route(routes::Item::PATH, get(show).post(create_alert))
+        .route(routes::Category::PATH, get(category))
+        .route(routes::Robots::PATH, get(|| async { seo::robots(&[routes::Mcp::PATH], Some(routes::Sitemap::PATH)) }))
+        .route(routes::Sitemap::PATH, get(sitemap))
         .with_state(source)
 }
 
 async fn sitemap() -> corten::axum::response::Response {
-    let urls: Vec<String> = (1..=50).map(|n| format!("https://cards.example.com/items/item_{n}")).collect();
+    let urls: Vec<String> =
+        (1..=50).map(|n| format!("https://cards.example.com{}", routes::Item { id: &format!("item_{n}") })).collect();
     seo::sitemap(urls.iter().map(|loc| SitemapUrl { loc, lastmod: None }))
 }
 
 fn not_found() -> Error {
     Error::status(StatusCode::NOT_FOUND)
+}
+
+async fn category(req: Req, Path(slug): Path<String>) -> corten::Result {
+    let t: Msg = req.t();
+    req.page(t.category_title(&slug).to_string(), views::category(t, &slug))
 }
 
 async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> corten::Result {
@@ -152,7 +157,7 @@ fn tools(source: Source, tokens: Arc<[String]>) -> Tools {
             move |(), input: CreateAlert| {
                 let source = source.clone();
                 async move {
-                    let price = check_alert(LOCALES.default_catalog(), &input.email, &input.target_price)?;
+                    let price = check_alert(Msg::default(), &input.email, &input.target_price)?;
                     let item = source.item(&input.id).await.map_err(ToolError::internal)?;
                     let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
                     Ok(AlertSet { message: alert_set(&item.title, &input.email, price) })
@@ -212,7 +217,27 @@ mod tests {
         assert!(html.contains(r#"<link rel="canonical" href="/items/item_9" data-corten-head>"#));
         assert!(html.contains(r#"/islands/listing-sort.js">"#));
         assert!(html.contains(r#"<link rel="manifest" href="/manifest.webmanifest">"#));
-        assert!(!html.contains("[missing:"), "every catalog key exists");
+    }
+
+    #[tokio::test]
+    async fn pages_follow_accept_language_and_links_come_from_routes() {
+        let req = Request::get("/items/item_9").header("accept-language", "fr-CA, en;q=0.5").body(Body::empty()).unwrap();
+        let (_, _, html) = send(req).await;
+        assert!(html.contains(r#"<html lang="fr">"#) && html.contains("Voir les 7 offres") && html.contains("<h2>Annonces</h2>"));
+        assert!(html.contains(r#"<form method="post" action="/items/item_9" data-patch>"#));
+        assert!(html.contains(r#"<button type="button" class="sort" data-ref="toggle""#));
+        let (status, _, body) = send(Request::get("/categories/promo").body(Body::empty()).unwrap()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("<h1>Category promo</h1>") && body.contains(r#"<a href="/">Back to popular items</a>"#));
+    }
+
+    /// The islands import these declarations, so `npm run check` checks every ref they use.
+    #[test]
+    fn island_types_match_the_server() {
+        corten::types::Types::new()
+            .refs::<views::ListingSortRef>()
+            .refs::<views::OfferListRef>()
+            .sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 
     #[tokio::test]
@@ -282,7 +307,7 @@ mod tests {
         let source = Source::fixture(&std::fs::read_to_string(path).unwrap()).unwrap();
         let ids: Vec<String> = (1..=500).map(|n| format!("item_{n}")).collect();
         let router = super::app(source.clone()).router();
-        let t = LOCALES.default_catalog();
+        let t = Msg::default();
         let rounds = 20;
         let n = (rounds * ids.len()) as f64;
         let per = |start: Instant| start.elapsed().as_secs_f64() * 1e6 / n;

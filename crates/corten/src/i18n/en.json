@@ -1,0 +1,8 @@
+{
+  "item": {
+    "listings": "Listings",
+    "listing_count": "{count} listings",
+    "image": "{title} image {n}"
+  },
+  "brace": "{{literal}} & more"
+}

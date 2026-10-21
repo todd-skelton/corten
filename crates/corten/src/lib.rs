@@ -28,8 +28,8 @@
 //! and a CSP nonce, a cross-site write check, error pages, versioned static files, health checks,
 //! compression (feature `compress`), and live reload under `corten dev`.
 //!
-//! Modules: [`view`] (markup), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`i18n`],
-//! [`seo`]. Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid
+//! Modules: [`view`] (markup), [`route`] (typed links), [`island`] (typed `data-ref` names),
+//! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`]. Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid
 //! for stateful islands), `types` (TypeScript declarations from Rust types), `agent` (MCP
 //! tools), `compress`, `log` (a log subscriber in [`App::serve`]).
 
@@ -47,9 +47,11 @@ pub mod compress;
 pub mod form;
 mod html;
 pub mod i18n;
+pub mod island;
 pub mod meta;
 mod page;
 pub mod pwa;
+pub mod route;
 pub mod security;
 pub mod seo;
 #[cfg(feature = "types")]
@@ -82,8 +84,10 @@ pub use axum;
 pub use corten_macros::Fields;
 pub use form::Errors;
 pub use html::{escape, find_islands};
+pub use island::Refs;
 pub use meta::Meta;
 pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
+pub use route::{Href, Route};
 pub use view::{component, html, raw, Render};
 
 /// What most files need: `use corten::prelude::*;`.
@@ -96,7 +100,9 @@ pub mod prelude {
             routing::{delete, get, post, put},
             Router,
         },
-        component, html, raw, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result,
+        component, html,
+        i18n::Messages as _,
+        raw, App, Document, Errors, Fields, Meta, Mode, Refs, Render, Req, Result, Route,
     };
 }
 

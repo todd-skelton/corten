@@ -4,6 +4,7 @@
 import { Island, subscribe } from "corten";
 
 /** @typedef {import("../examples/hello/types/app").Card} Card Generated from the Rust struct. */
+/** @typedef {import("../examples/item-page/types/app").OfferListRef} OfferListRef Generated from the Rust enum. */
 
 /** @extends {Island<Card>} */
 export class Typed extends Island {
@@ -43,3 +44,23 @@ subscribe("/feed/cards", {
   },
   patch: () => {},
 });
+
+/** @extends {Island<unknown, OfferListRef>} */
+export class WithRefs extends Island {
+  setup() {
+    this.ref("rows");
+    this.refs("more");
+    this.on("click", "rest", () => {});
+    // @ts-expect-error A data-ref name the island's Rust enum does not have.
+    this.ref("row");
+    // @ts-expect-error Event handlers are checked against the same names.
+    this.on("click", "mor", () => {});
+  }
+}
+
+export class WithoutRefs extends Island {
+  setup() {
+    // @ts-expect-error An island that declares no refs can use none.
+    this.ref("rows");
+  }
+}

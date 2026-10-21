@@ -28,9 +28,12 @@ document.adoptedStyleSheets = [...document.adoptedStyleSheets, islandStyles];
  * leaves the page (a navigation swapped it out), everything registered with `on`, `subscribe`
  * and `cleanup` is torn down, and `setup()` runs again if it comes back.
  *
- * `P` is the type of the island's props, imported from the declarations corten::types generates
- * from the Rust struct: tag the subclass with JSDoc `extends {Island<import("../../types/app").GridProps>}`.
+ * `P` is the type of the island's props and `R` the union of its `data-ref` names, both imported
+ * from the declarations corten::types generates from Rust (a props struct, a `#[derive(Refs)]`
+ * enum): tag the subclass with JSDoc `extends {Island<GridProps, GridRef>}`. An island that names
+ * no refs can use none, so every `this.ref` and `this.on` name is checked against the server.
  * @template [P=unknown]
+ * @template {string} [R=never]
  */
 export class Island extends HTMLElement {
   #ready = false;
@@ -76,13 +79,23 @@ export class Island extends HTMLElement {
    * The first descendant with `data-ref="name"`. Throws when it is missing, so a template
    * change that breaks an island fails loudly.
    * @template {Element} [T=HTMLElement]
-   * @param {string} name
+   * @param {R} name
    * @returns {T}
    */
   ref(name) {
     const el = this.querySelector(`[data-ref="${name}"]`);
     if (!el) throw new Error(`<${this.localName}> has no element with data-ref="${name}"`);
     return /** @type {T} */ (/** @type {unknown} */ (el));
+  }
+
+  /**
+   * Every descendant with `data-ref="name"`, in document order (possibly none).
+   * @template {Element} [T=HTMLElement]
+   * @param {R} name
+   * @returns {T[]}
+   */
+  refs(name) {
+    return /** @type {T[]} */ (Array.from(this.querySelectorAll(`[data-ref="${name}"]`)));
   }
 
   /**
@@ -105,7 +118,7 @@ export class Island extends HTMLElement {
   /**
    * Listens for `type` on descendants with `data-ref="name"`, including ones added later.
    * @param {string} type
-   * @param {string} name
+   * @param {R} name
    * @param {(target: HTMLElement, event: Event) => void} handler
    */
   on(type, name, handler) {

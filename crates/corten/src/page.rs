@@ -73,7 +73,7 @@ pub struct Document {
     pub head: Head,
     /// The page's HTML, already rendered.
     pub main: Main,
-    lang: String,
+    lang: &'static str,
     path: String,
     nonce: Option<Nonce>,
     shared: Arc<Shared>,
@@ -90,21 +90,27 @@ impl Document {
         &self.path
     }
 
-    /// The negotiated locale (`"en"` without [`crate::App::locales`]), for `<html lang>`.
+    /// The negotiated locale (`"en"` without [`crate::App::messages`]), for `<html lang>`.
     pub fn lang(&self) -> &str {
-        &self.lang
+        self.lang
     }
 
-    /// True when `href` is the current page, or with `section` any page under it: the rule the
-    /// runtime applies to `<a data-nav>` (`data-nav="section"`) after each navigation.
-    pub fn is_current(&self, href: &str, section: bool) -> bool {
-        is_current(&self.path, href, section)
+    /// True when `href` (a path or a typed route) is the current page, or with `section` any page
+    /// under it: the rule the runtime applies to `<a data-nav>` (`data-nav="section"`) after each
+    /// navigation.
+    pub fn is_current(&self, href: &(impl crate::route::Href + ?Sized), section: bool) -> bool {
+        href.with_href(|href| is_current(&self.path, href, section))
     }
 
     /// `aria-current="page"` for a nav link when [`Document::is_current`]:
-    /// `<a href="/about" data-nav aria-current={doc.current("/about")}>`.
-    pub fn current(&self, href: &str) -> Option<&'static str> {
+    /// `<a href={About} data-nav aria-current={doc.current(&About)}>`.
+    pub fn current(&self, href: &(impl crate::route::Href + ?Sized)) -> Option<&'static str> {
         self.is_current(href, false).then_some("page")
+    }
+
+    /// The app's messages in this document's locale, for text in the shell.
+    pub fn t<M: crate::i18n::Messages>(&self) -> M {
+        M::for_locale(self.lang)
     }
 
     /// This request's CSP nonce, for the shell's own inline scripts. Empty without a policy.
@@ -261,7 +267,7 @@ pub(crate) struct Shared {
     /// The PWA's offline page path; Corten answers it when the app has no route for it.
     pub offline: Option<String>,
     /// The app's message catalogs, negotiated per request by [`Req::t`].
-    pub locales: Option<crate::i18n::Locales>,
+    pub locales: Option<&'static [&'static str]>,
     /// Dev mode: error pages show the error.
     pub dev: bool,
 }
@@ -350,16 +356,19 @@ impl Req {
         &self.path
     }
 
-    /// The message catalog for this request's `Accept-Language`, from [`crate::App::locales`].
-    /// Panics when the app has no locales.
-    pub fn t(&self) -> &crate::i18n::Catalog {
-        let locales = self.shared.locales.as_ref().expect("corten: req.t() needs App::locales");
-        locales.negotiate(self.accept_language.as_ref().and_then(|v| v.to_str().ok()))
+    /// The app's messages (from [`crate::i18n::messages!`]) in the best locale for this request's
+    /// `Accept-Language`: `let t: Msg = req.t();`.
+    pub fn t<M: crate::i18n::Messages>(&self) -> M {
+        M::negotiate(self.accept_language())
     }
 
-    fn lang(&self) -> &str {
-        match &self.shared.locales {
-            Some(_) => self.t().locale(),
+    fn accept_language(&self) -> Option<&str> {
+        self.accept_language.as_ref().and_then(|v| v.to_str().ok())
+    }
+
+    fn lang(&self) -> &'static str {
+        match self.shared.locales {
+            Some(locales) => locales[crate::i18n::negotiate(locales, self.accept_language())],
             None => "en",
         }
     }
@@ -398,7 +407,7 @@ impl Req {
                 let doc = Document {
                     head: Head { title: meta.title().to_string(), html: head },
                     main: Main(main),
-                    lang: self.lang().to_string(),
+                    lang: self.lang(),
                     path: self.path.clone(),
                     nonce: self.nonce.clone(),
                     shared: self.shared.clone(),

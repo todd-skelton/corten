@@ -199,7 +199,7 @@ fn name_elided_lifetimes(tokens: Vec<TokenTree>, elided: &mut bool) -> TokenStre
 }
 
 /// Splits tokens at top-level `sep`; `<..>` nests (`->` does not close it).
-fn split(tokens: TokenStream, sep: char) -> Vec<Vec<TokenTree>> {
+pub(crate) fn split(tokens: TokenStream, sep: char) -> Vec<Vec<TokenTree>> {
     let mut parts = vec![Vec::new()];
     let mut depth = 0i32;
     let mut previous_dash = false;
@@ -227,7 +227,7 @@ fn split(tokens: TokenStream, sep: char) -> Vec<Vec<TokenTree>> {
 
 /// `<'a, T: Render = Foo, const N: usize>` gives the impl list without defaults
 /// (`<'a, T: Render, const N: usize>`) and the type's arguments (`<'a, T, N>`).
-fn split_generics(generics: &[TokenTree]) -> (TokenStream, TokenStream) {
+pub(crate) fn split_generics(generics: &[TokenTree]) -> (TokenStream, TokenStream) {
     if generics.len() < 2 {
         return (TokenStream::new(), TokenStream::new());
     }
