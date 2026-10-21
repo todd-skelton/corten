@@ -72,5 +72,3 @@ backend.
 2. Auth across surfaces: session cookies for web and native shells, tokens for native screens
    and agents, one permission check in handlers.
 3. Action schemas for agents: derive from the `Form` types (`schemars`) or declare them by hand.
-4. Multi-instance feeds: extract the Postgres outbox to NATS JetStream relay from the benchmark
-   branch into `corten-cluster`, with a relay lease and idempotency keys.

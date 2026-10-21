@@ -7,7 +7,7 @@ the same routes (see [docs/architecture.md](docs/architecture.md)). Web is the f
 
 Status: 0.1, not on crates.io or npm.
 
-License: not chosen yet. Until a license file is added, all rights are reserved.
+License: [MIT](LICENSE).
 
 ## Name
 
@@ -28,7 +28,9 @@ crates/
     js/solid.js      SolidIsland, h, when, each; bundled into js/dist/solid.js (feature "solid")
   corten-feed/       Server side of a live feed: rows, numbered patches, replay, resume, follow a log
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
+  corten-cluster/    One feed across instances: Postgres outbox, leased relay to NATS JetStream, idempotent writes
 examples/hello/      One screen that uses every piece; scripts/smoke.mjs tests it in a browser
+examples/cluster/    A listings feed on corten-cluster, plus the failover benchmark (bench/, results/)
 docs/architecture.md How web, native and agent surfaces share one server
 scripts/             build-solid.mjs (regenerates js/dist/solid.js), smoke.mjs
 ```
@@ -113,6 +115,22 @@ npm run smoke -- http://localhost:18480
 npm run build:solid
 ```
 
+`corten-cluster`'s integration tests need Postgres and NATS and are skipped without them:
+
+```powershell
+docker network create corten-test
+docker run -d --name ct-pg --network corten-test -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=corten postgres:16-alpine
+docker run -d --name ct-nats --network corten-test nats:2-alpine -js
+docker run --rm --network corten-test -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -e CORTEN_TEST_DATABASE_URL=postgres://postgres:postgres@ct-pg/corten -e CORTEN_TEST_NATS_URL=nats://ct-nats:4222 -w /src rust:1-bookworm cargo test -p corten-cluster -- --test-threads=1
+```
+
+The failover benchmark (two instances behind nginx, each killed and restarted under load, 200
+SSE clients plus a real browser): `docker build -f examples/cluster/Dockerfile -t corten-cluster .`
+then `node examples/cluster/bench/run.mjs out=failover-r1.json`. Last result (Docker Desktop,
+one run, 50 writes/s): 777,600 of 777,600 patches delivered, 0 lost, 0 out of order, 0 resyncs,
+relay takeover 215 ms, 0 duplicate commits with idempotent retries. Details in
+`examples/cluster/results/`.
+
 ## Limits
 
 1. Client navigation needs the Navigation API (Chrome, Edge, Firefox 147+, Safari 26.2+); older
@@ -121,5 +139,5 @@ npm run build:solid
 3. Scripts inside swapped pages do not run. Put behavior in islands.
 4. No offline mode and no client-side routing. A screen that needs offline or a camera is a
    native screen (see the architecture doc).
-5. One process per feed unless the app follows a shared log; the Postgres outbox to NATS relay
-   that does this was proven in the benchmark branch and is not extracted yet.
+5. A feed's write rate is bounded by Postgres commit latency on its feed row (every write takes
+   the next sequence number). Split hot data into several feeds.
