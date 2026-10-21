@@ -72,7 +72,9 @@ definition:
 | Feed rows to island | the row struct | the same declarations; `subscribe<Row>` types the snapshot and every patch |
 | Form fields to handler | the input struct | `#[derive(Fields)]`: views print `Input::FIELDS.email` and errors use it, so a renamed field is a compile error |
 | Links to routes | the route struct (`#[derive(Route)]`) | the router mounts `Route::PATH`; a path parameter without a field, or a link missing a field, does not compile |
-| Island markup to its script | `ref={Name}` and `on:event={Name}` in the `#[island]`'s own `html!` | the names exist only in that component (another one, or a string, does not compile); `Types::islands` writes the element each ref is on and each action's events, so `refs.rows` is an `HTMLTableSectionElement`, a missing, extra or misspelled action fails `tsc`, and so does a ref the markup lacks |
+| Island markup to its script | `ref={Name}` and `on:event={Name}` in the `#[island]`'s own `html!` | the names exist only in that component (another one, or a string, does not compile); `Types::components` writes the element each ref is on and each action's events, so `refs.rows` is an `HTMLTableSectionElement`, a missing, extra or misspelled action fails `tsc`, and so does a ref the markup lacks |
+| Markup to stylesheet | the component's CSS file (`#[component(css)]`) | each class is a constant only that component (and helpers that name it, `css = Owner`) can use; a class the file lacks, or one written as text, does not compile; an unused class is a dead-code warning; a rule that does not start inside the component does not compile |
+| Views to tokens | the token file (`tokens!`) | scales are enums, utilities take them per breakpoint, and a theme that overrides a token its scale lacks does not compile |
 | Text to catalogs | the default locale's catalog (`messages!`) | every locale must have the same keys and arguments; a key is a method and an argument a parameter, so a misspelling does not compile |
 | Agent arguments and results | the tool's input and output structs | schemas generated from them; arguments are deserialized before the handler runs |
 | Screen JSON to native and agents | the page struct | `Types::json_schema` gives JSON Schema for code generators |
@@ -86,9 +88,10 @@ fails `npm run check`. An island or subscription that names no type gets `unknow
 Not checked: `data-*` attributes an island reads through `dataset` (strings on both sides), that
 a ref inside an `if` is present when the script reads it (`refs.name` throws when it is not; the
 type says it is always there), that a handler is mounted at every route struct's `PATH` (the
-router's tests cover that), that every island a page renders is listed in `App::islands` (an
-unlisted one is not preloaded and its module 404s in the browser console), and logic an island
-repeats from Rust (the listing sort rule in the item page).
+router's tests cover that), that every component a page renders is listed in
+`App::components` (checked at run time, only under `corten dev` in debug builds: the page fails
+and names it), that a CSS custom property a stylesheet reads exists (a misspelled `var()` falls
+back silently), and logic an island repeats from Rust (the listing sort rule in the item page).
 
 ## Rules that keep surfaces from drifting
 
@@ -128,7 +131,10 @@ library. Measured against a production marketplace app:
 | Shared stream per URL across islands in one page | Not built | Tried and reverted: two islands on one URL is rare, and sharing couples their lifecycles and replay (a late joiner needs its own snapshot). Revisit if a page needs it. |
 | Per-user filtering of live data | App | A per-user feed plus route authorization; the framework cannot know who may see a row. |
 | Number, money, date formatting | App (ICU4X or similar) | Removed from the framework: it covered en-US only and would print wrong output for other locales without failing. |
-| Design tokens | Build tooling | One source to CSS, Swift and Kotlin is a build step, not runtime. |
+| Component stylesheets | Framework: `#[component(css)]`, `App::components` | Scoping class names and checking the markup against them needs the macro that compiles the markup; joining and serving the files needs the asset pipeline. |
+| Design tokens to CSS and Rust | Framework: `tokens!` | Utilities are typed in views and their classes must exist in the served CSS, so both come from the one macro, at compile time. The token file format is plain JSON (scales, themes, breakpoints, utilities). |
+| Design tokens to Swift and Kotlin | Build tooling | Same JSON, other languages; a build step per platform, not part of the server. |
+| A component library (buttons, dialogs, menus) | App or a library crate | Look and domain vary per product. The framework gives the parts (scoped CSS, islands, `COMPONENTS` lists); it ships no widgets. |
 | Sessions and authentication | App | Only cookie helpers and the shell context hook are provided. |
 
 ## Open decisions

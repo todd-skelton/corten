@@ -4,7 +4,8 @@
 //! hash, so browsers, CDNs and the service worker may cache the files forever, and a deploy
 //! that changes any file changes every URL. The version is a directory prefix, not a per-file
 //! name, so island modules keep importing each other with relative paths. Island scripts
-//! (`#[island]`, compiled into the binary) are served from `islands/{tag}.js` in the same version.
+//! (`#[island]`, compiled into the binary) are served from `islands/{tag}.js` in the same version,
+//! and the components' stylesheets, joined in the order the app lists them, from `components.css`.
 //!
 //! During a rolling deploy a page from the old version can ask a new server for an old URL. It
 //! gets the current file with `Cache-Control: no-cache`, so nothing caches the mismatch.
@@ -26,7 +27,10 @@ use axum::{
     Router,
 };
 
-use crate::{fnv, island::Island};
+use crate::{fnv, Component};
+
+/// The file the components' stylesheets are joined into.
+pub const STYLESHEET: &str = "components.css";
 
 /// Cache header for a URL that can never change.
 pub(crate) const IMMUTABLE: HeaderValue = HeaderValue::from_static("public, max-age=31536000, immutable");
@@ -49,6 +53,8 @@ pub struct Assets {
     files: HashMap<String, File>,
     /// Tags with a module at `islands/{tag}.js`.
     islands: std::collections::HashSet<String>,
+    /// The joined component stylesheets' URL, when any component has one.
+    stylesheet: Option<String>,
 }
 
 impl Assets {
@@ -58,26 +64,61 @@ impl Assets {
         Self::build(Some(dir.as_ref()), &[], mount)
     }
 
-    /// The files under `dir` (when given) and each island's script at `islands/{tag}.js`, served
-    /// at `{mount}/{version}/...`. Two scripts for one tag are an error.
-    pub fn build(dir: Option<&Path>, islands: &[Island], mount: &str) -> io::Result<Self> {
+    /// The files under `dir` (when given), each island's script at `islands/{tag}.js` and the
+    /// components' stylesheets joined into `components.css`, served at `{mount}/{version}/...`.
+    /// A component listed twice counts once; two different components with one tag or one class
+    /// prefix (`ui::Card` and `admin::Card`) are an error.
+    pub fn build(dir: Option<&Path>, components: &[Component], mount: &str) -> io::Result<Self> {
         let mount = mount.trim_end_matches('/');
         assert!(mount.starts_with('/'), "the assets mount is an absolute path, like /assets");
         let mut paths = Vec::new();
         if let Some(dir) = dir {
             collect(dir, dir, &mut paths)?;
         }
-        let mut sources = Vec::with_capacity(paths.len() + islands.len());
+        let mut sources = Vec::with_capacity(paths.len() + components.len() + 1);
         for (url, path) in paths {
             sources.push((url, std::fs::read(&path)?));
         }
-        for island in islands {
-            let url = format!("islands/{}.js", island.tag);
-            if sources.iter().any(|(u, _)| *u == url) {
-                let message = format!("two scripts for <{}>: {url} is already there when adding {}", island.tag, island.file);
-                return Err(io::Error::new(io::ErrorKind::AlreadyExists, message));
+        let clash = |message: String| io::Error::new(io::ErrorKind::AlreadyExists, message);
+        let mut seen: Vec<&Component> = Vec::new();
+        let mut css = String::new();
+        for component in components {
+            if let Some(same) = seen.iter().find(|c| c.name == component.name) {
+                let script = |c: &Component| c.island.map(|i| i.script);
+                let style = |c: &Component| c.style.map(|s| s.css);
+                if script(same) == script(component) && style(same) == style(component) {
+                    continue;
+                }
             }
-            sources.push((url, island.script.as_bytes().to_vec()));
+            if let Some(island) = component.island {
+                let url = format!("islands/{}.js", island.tag);
+                if sources.iter().any(|(u, _)| *u == url) {
+                    return Err(clash(format!(
+                        "two scripts for <{}>: {url} is already there when adding {}",
+                        island.tag, island.file
+                    )));
+                }
+                sources.push((url, island.script.as_bytes().to_vec()));
+            }
+            if let Some(style) = component.style {
+                if let Some(other) = seen.iter().find(|c| c.style.is_some_and(|s| s.name == style.name)) {
+                    return Err(clash(format!(
+                        "{} and {} both style .{}__*: two components named {} in different modules need different names",
+                        other.name, component.name, style.name, component.name
+                    )));
+                }
+                if !css.is_empty() {
+                    css.push('\n');
+                }
+                css.push_str(style.css);
+            }
+            seen.push(component);
+        }
+        if !css.is_empty() {
+            if sources.iter().any(|(u, _)| u == STYLESHEET) {
+                return Err(clash(format!("the static directory has a {STYLESHEET}, the name of the components' stylesheet")));
+            }
+            sources.push((STYLESHEET.to_string(), css.into_bytes()));
         }
         sources.sort_by(|a, b| a.0.cmp(&b.0));
         let mut files = HashMap::new();
@@ -101,7 +142,13 @@ impl Assets {
         }
         let version = format!("{:012x}", digest >> 16);
         let prefix = format!("{mount}/{version}/");
-        Ok(Assets { islands_dir: format!("{prefix}islands/"), mount: mount.into(), version, prefix, files, islands })
+        let stylesheet = files.contains_key(STYLESHEET).then(|| format!("{prefix}{STYLESHEET}"));
+        Ok(Assets { islands_dir: format!("{prefix}islands/"), mount: mount.into(), version, prefix, files, islands, stylesheet })
+    }
+
+    /// The URL of the components' joined stylesheet, when a listed component has one.
+    pub fn stylesheet(&self) -> Option<&str> {
+        self.stylesheet.as_deref()
     }
 
     /// The URL for `path` (relative to the directory, like `style.css`). A typo is a bug, so a
@@ -273,7 +320,22 @@ mod tests {
         assert_eq!(get(dotfile).await.unwrap().status(), StatusCode::NOT_FOUND, "dotfiles are skipped");
     }
 
-    const SCRIPT: Island = Island { tag: "x-y", script: "export default 2", file: "x_y.js", refs: &[], actions: &[], props: &[] };
+    const SCRIPT: Component = Component {
+        name: "XY",
+        island: Some(crate::Island {
+            tag: "x-y",
+            script: "export default 2",
+            file: "x_y.js",
+            refs: &[],
+            actions: &[],
+            props: &[],
+        }),
+        style: None,
+    };
+
+    const fn styled(name: &'static str, prefix: &'static str, css: &'static str) -> Component {
+        Component { name, island: None, style: Some(crate::Style { name: prefix, file: "x.css", css, classes: &[] }) }
+    }
 
     #[test]
     fn island_scripts_are_files_of_the_same_version() {
@@ -284,9 +346,34 @@ mod tests {
         assert_ne!(plain.version(), with.version(), "a script change is a new version");
         let only = Assets::build(None, &[SCRIPT], "/assets").unwrap();
         assert!(only.has_island("x-y"), "an app needs no static directory for its islands");
+        assert!(only.stylesheet().is_none(), "no stylesheet without a styled component");
         let clash = dir("clash", &[("islands/x-y.js", "export default 1")]);
         let error = Assets::build(Some(&clash), &[SCRIPT], "/assets").err().expect("one tag, two scripts");
         assert!(error.to_string().contains("two scripts for <x-y>"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn component_stylesheets_are_one_file_in_the_order_listed() {
+        let tokens = styled("tokens.json", "tokens.json", ":root{--x:1}");
+        let card = styled("Card", "card", ".card__a{color:red}");
+        let assets = Arc::new(Assets::build(None, &[tokens, card, SCRIPT, card], "/assets").unwrap());
+        let url = assets.stylesheet().expect("a stylesheet").to_string();
+        assert_eq!(url, assets.url(STYLESHEET));
+        let app: Router = assets.routes();
+        let res = app.oneshot(axum::http::Request::get(url).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(res.headers()["content-type"], "text/css; charset=utf-8");
+        let body = http_body_util::BodyExt::collect(res.into_body()).await.unwrap().to_bytes();
+        assert_eq!(&body[..], b":root{--x:1}\n.card__a{color:red}", "listed twice, joined once");
+        let other = Assets::build(None, &[tokens, styled("Card", "card", ".card__a{color:blue}")], "/assets").unwrap();
+        assert_ne!(
+            other.version(),
+            Assets::build(None, &[tokens, card], "/assets").unwrap().version(),
+            "a style change is a new version"
+        );
+        let error = Assets::build(None, &[card, styled("admin::Card", "card", ".card__b{}")], "/assets")
+            .err()
+            .expect("one prefix, two components");
+        assert!(error.to_string().contains("both style .card__*"), "{error}");
     }
 
     #[test]

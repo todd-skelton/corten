@@ -1,5 +1,6 @@
 use corten::prelude::*;
 
+use super::Price;
 use crate::{model::Listing, text::Msg};
 
 /// The listings, cheapest first, with a button that flips the order in the browser
@@ -8,7 +9,7 @@ use crate::{model::Listing, text::Msg};
 pub fn ListingSort<'a>(t: Msg, listings: &'a [&'a Listing]) -> impl Render {
     html! {
         <h2>{t.item_listings()}</h2>
-        <button type="button" class="sort" on:click={Toggle}>
+        <button type="button" on:click={Toggle}>
             <span ref={Ascending}>{t.item_sort_asc()}</span>
             <span ref={Descending} hidden>{t.item_sort_desc()}</span>
         </button>
@@ -24,7 +25,7 @@ fn ListingRow(l: &Listing) -> impl Render {
     html! {
         <tr data-price={l.price_value}>
             <td>{l.seller}if let Some(rating) = &l.rating { " · "{rating}" ★ ("{l.reviews}")" }</td>
-            <td>{l.condition}</td><td>{l.ships_from}</td><td>{l.quantity}</td><td class="price">{l.price}</td>
+            <td>{l.condition}</td><td>{l.ships_from}</td><td>{l.quantity}</td><Price amount={&l.price} />
         </tr>
     }
 }

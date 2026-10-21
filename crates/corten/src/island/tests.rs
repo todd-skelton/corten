@@ -1,11 +1,11 @@
 use crate::{self as corten, view::Render};
 
-/// The script next to this file is `price_board.js`.
-#[corten::island]
+/// The script next to this file is `price_board.js`, its stylesheet `price_board.css`.
+#[corten::island(css)]
 fn PriceBoard<'a>(title: &'a str, prices: &'a [u32]) -> impl Render {
     corten::html! {
         <h2 ref={Title}>{title}</h2>
-        <ul>for p in prices { <li ref={Price} on:click={Pick}>{p}</li> }</ul>
+        <ul class={Cells}>for p in prices { <li ref={Price} on:click={Pick}>{p}</li> }</ul>
         <input ref={Filter} on:input={Narrow}>
     }
 }
@@ -15,9 +15,9 @@ fn an_island_renders_in_its_tag_with_names_from_its_markup() {
     let html = PriceBoard { title: "Prices", prices: &[3, 4] }.to_html();
     assert_eq!(
         html,
-        r#"<price-board><h2 data-ref="title">Prices</h2><ul><li data-ref="price" data-on="click:pick">3</li><li data-ref="price" data-on="click:pick">4</li></ul><input data-ref="filter" data-on="input:narrow"></price-board>"#
+        r#"<price-board><h2 data-ref="title">Prices</h2><ul class="price-board__cells"><li data-ref="price" data-on="click:pick">3</li><li data-ref="price" data-on="click:pick">4</li></ul><input data-ref="filter" data-on="input:narrow"></price-board>"#
     );
-    let island = PriceBoard::ISLAND;
+    let island = PriceBoard.island.unwrap();
     assert_eq!((island.tag, island.file), ("price-board", "price_board.js"));
     assert!(island.script.contains("island(\"price-board\""));
     let refs: Vec<_> = island.refs.iter().map(|r| (r.name, r.tags)).collect();
@@ -25,6 +25,8 @@ fn an_island_renders_in_its_tag_with_names_from_its_markup() {
     let actions: Vec<_> = island.actions.iter().map(|a| (a.name, a.events, a.tags)).collect();
     assert_eq!(actions, [("pick", &["click"][..], &["li"][..]), ("narrow", &["input"], &["input"])]);
     assert!(island.props.is_empty());
+    let style = PriceBoard.style.unwrap();
+    assert_eq!(style.css, "price-board h2{margin:0}.price-board__cells{display:flex}", "a rule may start at the island's tag");
 }
 
 /// `price_tag.js`.
@@ -42,7 +44,7 @@ fn props_are_one_json_object_that_cannot_close_its_script() {
         html,
         r#"<price-tag><script type="application/json" data-props>{"currency":"USD","cents":5}</script><span>Price</span></price-tag>"#
     );
-    assert_eq!(PriceTag::ISLAND.props.iter().map(|p| p.name).collect::<Vec<_>>(), ["currency", "cents"]);
+    assert_eq!(PriceTag.island.unwrap().props.iter().map(|p| p.name).collect::<Vec<_>>(), ["currency", "cents"]);
     let html = PriceTag { currency: "</script><script>alert(1)", cents: 0, label: "" }.to_html();
     let json = html.split_once("data-props>").unwrap().1.split_once("</script>").unwrap().0;
     assert_eq!(json, r#"{"currency":"\u003c/script>\u003cscript>alert(1)","cents":0}"#);
@@ -57,7 +59,7 @@ async fn an_app_serves_its_islands_and_preloads_them_where_they_render() {
     use tower::ServiceExt;
 
     let page = |req: crate::Req| async move { req.page("Prices", PriceBoard { title: "Prices", prices: &[1] }) };
-    let app = crate::App::new(Router::new().route("/", get(page))).dev(false).islands(&[PriceBoard::ISLAND]).router();
+    let app = crate::App::new(Router::new().route("/", get(page))).dev(false).components(&[PriceBoard]).router();
     let text = |res: axum::response::Response| async move {
         String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
     };
@@ -72,5 +74,5 @@ async fn an_app_serves_its_islands_and_preloads_them_where_they_render() {
     );
     let res = app.oneshot(Request::get(url).body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(res.headers()["cache-control"], "public, max-age=31536000, immutable");
-    assert_eq!(text(res).await, PriceBoard::ISLAND.script);
+    assert_eq!(text(res).await, PriceBoard.island.unwrap().script);
 }

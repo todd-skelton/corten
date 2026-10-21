@@ -40,9 +40,9 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 /// - the shell around every page ([`crate::default_shell`] until [`App::shell`]);
 /// - error pages for failed requests and unknown URLs, in the request's mode, with the error
 ///   shown under `corten dev`;
-/// - the files in `static/` (or `STATIC_DIR`) and the scripts of the app's islands
-///   ([`App::islands`]) at content-versioned, immutable URLs, each island's preloaded on the
-///   pages that render it;
+/// - the files in `static/` (or `STATIC_DIR`), the scripts of the app's islands and its
+///   components' stylesheets joined into one file ([`App::components`]), at content-versioned,
+///   immutable URLs, each island's script preloaded on the pages that render it;
 /// - `/health/live` and `/health/ready`, the runtime at a versioned URL;
 /// - compression of pages and static files (feature `compress`);
 /// - under `corten dev` (`CORTEN_DEV=1`): open pages reload when the server restarts.
@@ -66,7 +66,7 @@ pub struct App {
     ready: Option<ReadyFn>,
     locales: Option<&'static [&'static str]>,
     dev: Option<bool>,
-    islands: Vec<crate::Island>,
+    components: Vec<crate::Component>,
 }
 
 impl App {
@@ -83,14 +83,20 @@ impl App {
             ready: None,
             locales: None,
             dev: None,
-            islands: Vec::new(),
+            components: Vec::new(),
         }
     }
 
-    /// The app's islands (`#[island]` components): `.islands(&[OfferList::ISLAND, ListingSort::ISLAND])`.
-    /// Their scripts are served with the static files and preloaded on the pages that use them.
-    pub fn islands(mut self, islands: &[crate::Island]) -> Self {
-        self.islands.extend_from_slice(islands);
+    /// The app's components with a script or a stylesheet (`#[island]`, `#[component(css)]`,
+    /// `style::tokens!`), each listed by its constant: `.components(&[TOKENS, OfferList,
+    /// ListingSort])`, or a library's list, `.components(ui::COMPONENTS)`. Call it once per list;
+    /// the order is the stylesheets' order, so list tokens and libraries first.
+    ///
+    /// Scripts are served with the static files and preloaded on the pages that render them;
+    /// the stylesheets are one file, `components.css`, linked from every document's `<head>`.
+    /// A component listed twice counts once.
+    pub fn components(mut self, components: &[crate::Component]) -> Self {
+        self.components.extend_from_slice(components);
         self
     }
 
@@ -204,8 +210,11 @@ impl App {
                 "corten: the shell takes Option<{expected_name}> but App::context gives Option<{given_name}>"
             );
         }
-        let assets = load_assets(self.static_dir, &self.islands).map(Arc::new);
+        let assets = load_assets(self.static_dir, &self.components).map(Arc::new);
         let mut head = String::new();
+        if let Some(href) = assets.as_ref().and_then(|a| a.stylesheet()) {
+            head.push_str(&format!(r#"<link rel="stylesheet" href="{href}">"#));
+        }
         let mut routes = self.routes.merge(crate::routes());
         let mut offline = None;
         if let Some(pwa) = self.pwa {
@@ -246,6 +255,7 @@ impl App {
         shared.offline = offline;
         shared.locales = self.locales;
         shared.dev = dev;
+        shared.components = self.components.iter().map(|c| c.name).collect();
         let shared = Arc::new(shared);
         let context = self.context.map(|(f, _, _)| f);
         let routes = routes.layer(middleware::from_fn(move |mut req: Request, next: Next| {
@@ -285,18 +295,18 @@ impl App {
     }
 }
 
-fn load_assets(dir: Option<PathBuf>, islands: &[crate::Island]) -> Option<Assets> {
+fn load_assets(dir: Option<PathBuf>, components: &[crate::Component]) -> Option<Assets> {
     let explicit = dir.is_some() || std::env::var_os("STATIC_DIR").is_some();
     let dir = dir.or_else(|| std::env::var_os("STATIC_DIR").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("static"));
     if !dir.is_dir() {
         assert!(!explicit, "corten: the static directory {} does not exist", dir.display());
-        if islands.is_empty() {
+        if components.is_empty() {
             return None;
         }
     }
     let found = dir.is_dir().then_some(dir.as_path());
-    match Assets::build(found, islands, "/assets") {
+    match Assets::build(found, components, "/assets") {
         Ok(assets) => Some(assets),
-        Err(error) => panic!("corten: could not load the static files in {} and the islands: {error}", dir.display()),
+        Err(error) => panic!("corten: could not load the static files in {} and the components: {error}", dir.display()),
     }
 }

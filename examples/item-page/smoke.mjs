@@ -42,17 +42,39 @@ try {
     (await page.evaluate(() => getComputedStyle(/** @type {Element} */ (document.querySelector("listing-sort"))).display)) === "contents",
   );
 
-  const firstPrice = () => page.textContent(".listings tbody tr:first-child td.price");
+  // Styles: tokens, a component's scoped rules and a responsive utility, from components.css.
+  const styles = await page.evaluate(() => {
+    const css = (/** @type {string} */ selector) => getComputedStyle(/** @type {Element} */ (document.querySelector(selector)));
+    const root = document.documentElement;
+    const ink = () => getComputedStyle(root).getPropertyValue("--color-ink").trim();
+    const light = ink();
+    root.dataset.theme = "dark";
+    const dark = ink();
+    delete root.dataset.theme;
+    return {
+      accent: getComputedStyle(root).getPropertyValue("--color-accent").trim(),
+      price: css("listing-sort tbody td:last-child").fontVariantNumeric,
+      summary: css("article > section").flexDirection,
+      themes: [light, dark],
+    };
+  });
+  check("design tokens are custom properties", styles.accent === "#6b3fd4", styles.accent);
+  check("a component's scoped stylesheet applies", styles.price === "tabular-nums", styles.price);
+  check("a responsive utility applies at this width", styles.summary === "row", styles.summary);
+  check("a theme overrides tokens", styles.themes[0] === "#1d1b26" && styles.themes[1] === "#ecebf2", styles.themes.join(" "));
+
+  const firstPrice = () => page.textContent("listing-sort tbody tr:first-child td:last-child");
+  const sort = "listing-sort button";
   const before = await firstPrice();
-  await page.click("button.sort");
-  check("listing sort island reorders rows", (await firstPrice()) !== before && (await page.innerText("button.sort")) === "Price: high to low");
-  await page.click("button.sort");
-  check("a second click restores the server's order", (await firstPrice()) === before && (await page.innerText("button.sort")) === "Price: low to high");
-  const more = await page.$("button.more");
+  await page.click(sort);
+  check("listing sort island reorders rows", (await firstPrice()) !== before && (await page.innerText(sort)) === "Price: high to low");
+  await page.click(sort);
+  check("a second click restores the server's order", (await firstPrice()) === before && (await page.innerText(sort)) === "Price: low to high");
+  const more = await page.$("offer-list button");
   if (more) {
-    const rows = await page.$$eval(".offers tbody tr", (r) => r.length);
+    const rows = await page.$$eval("offer-list tbody tr", (r) => r.length);
     await more.click();
-    check("offer list island shows the rest", (await page.$$eval(".offers tbody tr", (r) => r.length)) > rows);
+    check("offer list island shows the rest", (await page.$$eval("offer-list tbody tr", (r) => r.length)) > rows);
   }
 
   await page.fill('input[name="email"]', "buyer@example.com");

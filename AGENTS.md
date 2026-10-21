@@ -15,6 +15,9 @@ reason that a smaller change cannot meet.
    text is `messages!` (`crates/corten-macros`, no dependencies: keep it on `proc_macro` alone).
    Never write a URL, `data-ref`, `data-on` or message key as a string in a view. Islands have
    one pattern, `island(tag, { state, connect, actions })`; do not add built-in client behaviors.
+   Styles are a CSS file per component (`#[component(css)]`, scoped at compile time, `class={Name}`)
+   and tokens from `tokens!`; never write one of a component's classes as a string, and keep
+   inline `style=` out (the CSP blocks it).
    A compile-time guarantee gets a `compile_fail` doctest next to the feature. A change to what `html!` generates needs the item page's
    `render_cost` test before and after (`CORTEN_FIXTURE=bench/fullstack/fixtures/items.json`,
    release build) so rendering does not get slower unnoticed.

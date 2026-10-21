@@ -1,0 +1,4 @@
+/* For the tests and examples in style.rs. */
+.list { display: flex; gap: 6px; list-style: none; padding: 0; }
+.badge { border: 1px solid var(--color-line); border-radius: 999px; padding: 2px 10px; }
+.badge.hot { border-color: var(--color-accent); }

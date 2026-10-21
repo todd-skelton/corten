@@ -605,6 +605,10 @@ impl Gen {
                             }
                             self.text.push('"');
                         }
+                        // Classes are a list (see `corten::style::ClassList`): `class={(Row, hot.then_some(Hot))}`.
+                        Attr::Expr(attr, expr) if attr == "class" => {
+                            self.code(q("::corten::style::__private::class_attr(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                        }
                         Attr::Expr(attr, expr) => self.code(q(
                             "(&::corten::view::__private::Attr(&(__A0))).__attr(__A1, __OUT);",
                             &[expr.clone(), literal(&format!(" {attr}"))],

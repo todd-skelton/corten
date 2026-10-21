@@ -3,6 +3,7 @@ mod model;
 mod routes;
 mod source;
 mod text;
+mod theme;
 mod views;
 
 #[tokio::main]

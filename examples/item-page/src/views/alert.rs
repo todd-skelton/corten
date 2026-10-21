@@ -1,0 +1,38 @@
+use corten::prelude::*;
+
+use crate::{model::AlertInput, routes, text::Msg};
+
+/// The price-alert form's values and errors. The item page shows the form; a submit that fails
+/// validation patches it on its own. Field names come from `AlertInput::FIELDS`.
+#[derive(Clone, Default)]
+pub struct AlertFormView<'a> {
+    pub id: &'a str,
+    pub title: &'a str,
+    pub email: &'a str,
+    pub target_price: &'a str,
+    pub errors: Errors,
+}
+
+#[component(css)]
+pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Render {
+    let f = AlertInput::FIELDS;
+    html! {
+        <div class={Form} id="alert-form">
+            <form method="post" action={routes::Item { id: form.id }} data-patch>
+                <input type="hidden" name={f.title} value={form.title}>
+                <label>{t.alert_email()}<input type="email" name={f.email} value={form.email} required {..form.errors.aria(f.email)}></label>
+                {form.errors.message(f.email)}
+                <label>{t.alert_below()}<input type="text" name={f.target_price} value={form.target_price} inputmode="decimal" required {..form.errors.aria(f.target_price)}></label>
+                {form.errors.message(f.target_price)}
+                <button type="submit">{t.alert_submit()}</button>
+            </form>
+        </div>
+    }
+}
+
+/// The price-alert result, inside the item page and on its own as a patch. It shares the
+/// form's stylesheet.
+#[component(css = AlertForm)]
+pub fn AlertMessage(message: &str) -> impl Render {
+    html! { <p class={Message} id="alert-message" aria-live="polite">{message}</p> }
+}

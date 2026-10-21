@@ -97,6 +97,12 @@ Since this run the runtime gained typed seams and `#[island]` actions. Re-measur
 on 2026-10-21 (Corten only, one run): 21.0 / 7.6 KB before the island change, **22.3 / 8.0 KB**
 after it (4 files); HTML 10.8 / 2.3 KB.
 
+Styles then moved into a CSS file per component and a token file (2026-10-21, Corten only, the
+files as served, gzip -9 in Node): CSS **4.7 / 1.6 KB in 2 files** (`style.css` 1.5 / 0.7,
+`components.css` 3.2 / 1.0), up from 2.5 / 1.0 KB in 1. The increase is what the example
+added, not scoping: the token file's dark and compact themes and responsive utility classes
+(1.1 KB raw of its 1.7 KB) and the longer scoped class names.
+
 ### Browser, median of 10 (p90 in parentheses where it matters)
 
 Each cold load starts on a page from another origin, as when arriving from a search result.

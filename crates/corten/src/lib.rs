@@ -28,7 +28,8 @@
 //! and a CSP nonce, a cross-site write check, error pages, versioned static files, health checks,
 //! compression (feature `compress`), and live reload under `corten dev`.
 //!
-//! Modules: [`view`] (markup), [`island`] (components with a script), [`route`] (typed links),
+//! Modules: [`view`] (markup), [`island`] (components with a script), [`style`] (component
+//! stylesheets and design tokens), [`route`] (typed links),
 //! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`].
 //! Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid for
 //! stateful islands), `types` (TypeScript declarations from Rust types), `agent` (MCP tools),
@@ -55,6 +56,7 @@ pub mod pwa;
 pub mod route;
 pub mod security;
 pub mod seo;
+pub mod style;
 #[cfg(feature = "types")]
 pub mod types;
 pub mod view;
@@ -89,7 +91,23 @@ pub use island::{island, Island};
 pub use meta::Meta;
 pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
 pub use route::{Href, Route};
+pub use style::Style;
 pub use view::{component, html, raw, Render};
+
+/// What a component sends to the browser: its island's script (`#[island]`) and its stylesheet
+/// (`#[component(css)]`), or the stylesheet of a token file (`style::tokens!`).
+///
+/// Each such component has one, named like the component (`OfferList`, a constant next to the
+/// struct `OfferList`). A library lists its own, `pub const COMPONENTS: &[Component] = &[Button,
+/// Dialog];`, and the app passes every list to [`App::components`]: the scripts are served and
+/// preloaded where they render, and the stylesheets are joined, in order, into one file.
+#[derive(Clone, Copy, Debug)]
+pub struct Component {
+    /// The component's Rust name, `"OfferList"`.
+    pub name: &'static str,
+    pub island: Option<Island>,
+    pub style: Option<Style>,
+}
 
 /// What most files need: `use corten::prelude::*;`.
 pub mod prelude {

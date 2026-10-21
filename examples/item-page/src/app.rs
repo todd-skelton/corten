@@ -20,7 +20,7 @@ use crate::{
     routes,
     source::Source,
     text::Msg,
-    views::{self, AlertForm, AlertFormView, AlertMessage, ItemPage},
+    views::{self, AlertForm, AlertFormView, AlertMessage, Home, ItemPage},
 };
 
 /// The app, assembled: routes plus the shell, catalogs and PWA settings. Corten adds the rest.
@@ -37,13 +37,13 @@ pub fn app(source: Source) -> App {
     App::new(routes(source.clone()).route(routes::Mcp::PATH, tools(source, tokens).route()))
         .shell(views::shell)
         .messages::<Msg>()
-        .islands(views::ISLANDS)
+        .components(views::COMPONENTS)
         .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(routes::Mcp::PATH))
 }
 
 fn routes(source: Source) -> Router {
     Router::new()
-        .route(routes::Home::PATH, get(|req: Req| async move { req.page("Card Market", views::home(req.t())) }))
+        .route(routes::Home::PATH, get(|req: Req| async move { req.page("Card Market", Home { t: req.t() }) }))
         .route(routes::Item::PATH, get(show).post(create_alert))
         .route(routes::Category::PATH, get(category))
         .route(routes::Robots::PATH, get(|| async { seo::robots(&[routes::Mcp::PATH], Some(routes::Sitemap::PATH)) }))
@@ -221,12 +221,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn styles_are_scoped_to_components_and_served_as_one_file_after_the_app_stylesheet() {
+        let (_, _, html) = send(Request::get("/items/item_9").body(Body::empty()).unwrap()).await;
+        assert!(
+            html.contains(r#"<section class="item-detail__panel item-detail__summary gap-5 direction-column sm:direction-row">"#),
+            "{html}"
+        );
+        assert!(html.contains(r#"<td class="price__amount">"#));
+        let link = |name: &str| html.find(&format!(r#"/{name}">"#)).unwrap_or_else(|| panic!("no {name} link"));
+        assert!(link("style.css") < link("components.css"), "components come after the app's element defaults");
+        let end = link("components.css") + "/components.css".len();
+        let href = html[..end].rsplit_once('"').unwrap().1.to_string();
+        assert!(href.starts_with("/assets/"), "{href}");
+        let (status, headers, css) = send(Request::get(&href).body(Body::empty()).unwrap()).await;
+        assert_eq!((status, &headers["content-type"]), (StatusCode::OK, &"text/css; charset=utf-8".parse().unwrap()));
+        assert!(css.starts_with(":root{--color-ink:#1d1b26;"), "tokens first: {css}");
+        assert!(css.contains(r#"[data-theme="dark"]{--color-ink:#ecebf2;"#) && css.contains("@media (min-width:40rem){"));
+        assert!(css.contains(".sm\\:direction-row{flex-direction:row}"));
+        assert!(css.contains(".item-detail__crumbs a{color:var(--color-muted);") && css.contains(".alert-form__message{"));
+        assert_eq!(crate::theme::Space::_5.var(), "var(--space-5)");
+    }
+
+    #[tokio::test]
     async fn pages_follow_accept_language_and_links_come_from_routes() {
         let req = Request::get("/items/item_9").header("accept-language", "fr-CA, en;q=0.5").body(Body::empty()).unwrap();
         let (_, _, html) = send(req).await;
         assert!(html.contains(r#"<html lang="fr">"#) && html.contains("Voir les 7 offres") && html.contains("<h2>Annonces</h2>"));
         assert!(html.contains(r#"<form method="post" action="/items/item_9" data-patch>"#));
-        assert!(html.contains(r#"<listing-sort><h2>Annonces</h2><button type="button" class="sort" data-on="click:toggle">"#));
+        assert!(html.contains(r#"<listing-sort><h2>Annonces</h2><button type="button" data-on="click:toggle">"#));
         let (status, _, body) = send(Request::get("/categories/promo").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("<h1>Category promo</h1>") && body.contains(r#"<a href="/">Back to popular items</a>"#));
@@ -235,7 +257,7 @@ mod tests {
     /// The islands' scripts are checked against these declarations by `npm run check`.
     #[test]
     fn island_types_match_the_server() {
-        corten::types::Types::new().islands(views::ISLANDS).sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
+        corten::types::Types::new().components(views::COMPONENTS).sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 
     #[tokio::test]
@@ -251,7 +273,7 @@ mod tests {
         assert_eq!(headers["corten-patch"], "1");
         assert_eq!(
             body,
-            r#"<p class="alert-message" id="alert-message" aria-live="polite">Alert set: we will email a@b.c when Pika drops below $2.00.</p>"#
+            r#"<p class="alert-form__message" id="alert-message" aria-live="polite">Alert set: we will email a@b.c when Pika drops below $2.00.</p>"#
         );
         let cross = Request::post("/items/item_9")
             .header("content-type", "application/x-www-form-urlencoded")
@@ -277,7 +299,7 @@ mod tests {
         };
         let (status, headers, body) = send(post(Some("action"), None)).await;
         assert_eq!((status, &headers["corten-patch"]), (StatusCode::UNPROCESSABLE_ENTITY, &"1".parse().unwrap()));
-        assert!(body.starts_with(r#"<div class="alert-form" id="alert-form">"#), "{body}");
+        assert!(body.starts_with(r#"<div class="alert-form__form" id="alert-form">"#), "{body}");
         assert!(
             body.contains(
                 r#"value="abc" inputmode="decimal" required aria-invalid="true" aria-describedby="target_price-error">"#

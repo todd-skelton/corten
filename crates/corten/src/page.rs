@@ -232,8 +232,8 @@ pub fn default_shell(doc: Document) -> impl Render {
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                {doc.head}
                 if let Some(href) = &style { <link rel="stylesheet" href={href}> }
+                {doc.head}
             </head>
             <body><main>{doc.main}</main></body>
         </html>
@@ -270,6 +270,8 @@ pub(crate) struct Shared {
     pub locales: Option<&'static [&'static str]>,
     /// Dev mode: error pages show the error.
     pub dev: bool,
+    /// The names of the components the app lists (`App::components`).
+    pub components: std::collections::HashSet<&'static str>,
 }
 
 impl Shared {
@@ -289,6 +291,7 @@ impl Shared {
             offline: None,
             locales: None,
             dev: false,
+            components: Default::default(),
         }
     }
 }
@@ -385,10 +388,40 @@ impl Req {
             // The runtime swaps the page into <main>, so render it straight after the title.
             let mut body = String::with_capacity(16 * 1024);
             swap_prefix(&meta, &mut body);
-            view.render(&mut body);
+            self.render_into(view, &mut body)?;
             return Ok(self.finish(html_response(status, body, PAGE_HEADER)));
         }
-        Ok(self.respond(status, meta, view.to_html()))
+        let mut main = String::new();
+        self.render_into(view, &mut main)?;
+        Ok(self.respond(status, meta, main))
+    }
+
+    /// Renders `view`. Under `corten dev`, a component with a script or stylesheet that the app
+    /// does not list is an error, since its script or stylesheet would not be served (debug
+    /// builds of the app record what renders; release builds do not).
+    fn render_into(&self, view: impl Render, out: &mut String) -> Result<()> {
+        if !self.shared.dev {
+            // An empty buffer: to_html sizes it from earlier renders of the same view.
+            if out.capacity() == 0 {
+                *out = view.to_html();
+            } else {
+                view.render(out);
+            }
+            return Ok(());
+        }
+        let ((), used) = crate::style::collect(|| view.render(out));
+        if let Some(missing) = used.iter().find(|c| !self.shared.components.contains(c.name)) {
+            let what = match (missing.island.is_some(), missing.style.is_some()) {
+                (true, true) => "script and stylesheet are",
+                (true, false) => "script is",
+                _ => "stylesheet is",
+            };
+            return Err(Error::new(format!(
+                "the page renders {name}, which the app does not list, so its {what} not served: add {name} to App::components",
+                name = missing.name
+            )));
+        }
+        Ok(())
     }
 
     /// The response for already-rendered `<main>` HTML.
@@ -501,7 +534,9 @@ impl Req {
 
     /// Same as [`Req::patch`] with another status.
     pub fn patch_with_status(&self, status: StatusCode, view: impl Render) -> Result {
-        Ok(html_response(status, view.to_html(), PATCH_HEADER))
+        let mut body = String::new();
+        self.render_into(view, &mut body)?;
+        Ok(html_response(status, body, PATCH_HEADER))
     }
 
     /// Answers a submit whose input failed validation, with 422 Unprocessable Content:

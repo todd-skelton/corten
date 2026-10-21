@@ -11,7 +11,11 @@ custom-element islands. Run `corten dev` while working and `corten check` before
 3. Field names come from `#[derive(Fields)]` (`Form::FIELDS.name`), never typed as strings.
 4. Behavior in the browser is an `#[island]` component: its markup names elements with
    `ref={Name}` and events with `on:click={Action}`, and the script next to it (`snake_name.js`,
-   `export default island("kebab-name", { actions: { action(ctx) {} } })`) implements them. List
-   each island in `App::islands`. Scripts add behavior to server-rendered markup; they do not
-   build HTML, and user-facing text stays in the Rust views.
-5. Everything works without JavaScript: links are links and forms post.
+   `export default island("kebab-name", { actions: { action(ctx) {} } })`) implements them.
+   Scripts add behavior to server-rendered markup; they do not build HTML, and user-facing text
+   stays in the Rust views.
+5. A component's styles are `snake_name.css` next to it, with `#[component(css)]` (or
+   `#[island(css)]`): every rule starts at one of the file's classes, and the markup names them
+   as constants, `class={Title}`, never as strings. `static/style.css` is only element defaults
+   and the shell. List every island and styled component once in `App::components`.
+6. Everything works without JavaScript: links are links and forms post.

@@ -33,7 +33,7 @@ impl Market {
 
 /// The app: routes, the shell, and who is signed in. Everything else is Corten's defaults.
 pub fn app(market: Market) -> App {
-    App::new(routes(market)).shell(shell).islands(&[LivePrices::ISLAND]).context(|headers| {
+    App::new(routes(market)).shell(shell).components(&[LivePrices]).context(|headers| {
         // A real app reads its session here; the example trusts a cookie, which is fine for a
         // demo and nothing else.
         let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
@@ -96,8 +96,8 @@ fn shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                {doc.head}
                 <link rel="stylesheet" href={doc.asset("style.css")}>
+                {doc.head}
             </head>
             <body>
                 <header class="site">
@@ -284,7 +284,7 @@ mod tests {
     fn island_types_match_the_server() {
         corten::types::Types::new()
             .add::<Card>()
-            .islands(&[LivePrices::ISLAND])
+            .components(&[LivePrices])
             .sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 

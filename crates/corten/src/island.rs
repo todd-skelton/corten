@@ -37,8 +37,10 @@
 //!   script. They exist only inside this component: `html!` prints no other name, and no string.
 //! - Parameters marked `#[prop]` reach the script as `props`, as JSON (feature `json`).
 //! - The script is `offer_list.js` (the name in snake_case) in the component's directory, compiled
-//!   into the binary. List the island once, `App::islands(&[OfferList::ISLAND])`, and Corten serves
-//!   it at a versioned URL and preloads it on pages that render the tag.
+//!   into the binary. The component has a constant with its name, `OfferList`; list it once,
+//!   `App::components(&[OfferList])`, and Corten serves the script at a versioned URL and
+//!   preloads it on pages that render the tag. `#[island(css)]` adds a stylesheet
+//!   ([`crate::style`]).
 //! - `corten::types::Types::islands` writes what the markup declares, so `tsc --checkJs` fails
 //!   when the script reads a ref the markup does not have, calls an element method the element
 //!   does not have (`refs.rest` is an `HTMLTemplateElement`), or misses or misspells an action.
@@ -60,8 +62,9 @@
 //!     html,
 //!     r#"<price-board><ul data-ref="items"><li>2</li><li>1</li></ul><button type="button" data-on="click:pick keydown:pick">Pick</button></price-board>"#
 //! );
-//! assert_eq!(PriceBoard::ISLAND.tag, "price-board");
-//! assert_eq!(PriceBoard::ISLAND.actions[0].events, &["click", "keydown"]);
+//! let island = PriceBoard.island.unwrap();
+//! assert_eq!(island.tag, "price-board");
+//! assert_eq!(island.actions[0].events, &["click", "keydown"]);
 //! ```
 //!
 //! A ref or action is a name, never a string:
@@ -96,7 +99,7 @@
 //! }
 //! ```
 //!
-//! and one name is either a ref or an action:
+//! and one name is either a ref, an action or a class of the island's stylesheet:
 //!
 //! ```compile_fail
 //! use corten::prelude::*;
@@ -110,7 +113,7 @@
 /// A component with behavior in a script next to it. See [the module](self).
 pub use corten_macros::island;
 
-/// What the server knows about one island, from `#[island]`: `Component::ISLAND`.
+/// What the server knows about one island, from `#[island]`: `OfferList.island`.
 #[derive(Clone, Copy, Debug)]
 pub struct Island {
     /// The custom element's name: `"offer-list"`.

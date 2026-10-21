@@ -38,6 +38,9 @@
 //!   true and nothing when false; `None` leaves the attribute out. `{..attrs}` spreads an
 //!   [`Attrs`] value (`<input {..errors.aria(field)}>`).
 //! - `for`, `if`/`else`, `match` and `let` are written as in Rust, with markup in their braces.
+//! - `class={..}` takes a list: a class constant of the component's stylesheet (`class={Title}`,
+//!   see [`crate::style`]), utility classes, text, an `Option` of one, or a tuple of them, joined
+//!   with spaces; an empty list leaves the attribute out.
 //! - Inside an [`island`](crate::island) component, `ref={Name}` names an element for the
 //!   island's script and `on:click={Action}` runs one of its actions.
 //! - A view owns what it uses and renders once, so it can be returned from a function and markup
@@ -75,6 +78,10 @@ pub use corten_macros::html;
 ///
 /// Parameters that are `Copy` (references, numbers, `bool`) arrive with their declared type;
 /// others arrive by reference. The function body runs when the component renders.
+///
+/// `#[component(css)]` gives the component the stylesheet named after it, next to it
+/// (`panel.css`), and `#[component(css = Panel)]` shares another component's; see
+/// [`crate::style`].
 pub use corten_macros::component;
 
 /// Something that writes HTML. Strings and numbers escape themselves; views from `html!` write

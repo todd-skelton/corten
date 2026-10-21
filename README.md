@@ -80,7 +80,7 @@ fn shell(doc: Document) -> impl Render {
     html! {
         <!DOCTYPE html>
         <html lang={doc.lang()}>
-            <head><meta charset="utf-8">{doc.head}<link rel="stylesheet" href={doc.asset("style.css")}></head>
+            <head><meta charset="utf-8"><link rel="stylesheet" href={doc.asset("style.css")}>{doc.head}</head>
             <body><main>{doc.main}</main></body>
         </html>
     }
@@ -98,7 +98,7 @@ Handlers are plain axum handlers. `App` adds everything a production app needs a
 | Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`: shells, handlers (`req.context::<C>()`) and error pages see it |
 | Error pages | 404, 405 and 500 inside the shell, in the request's mode (page, swap or JSON); the error is logged, never shown | `.error_page(\|status\| (title, view))` |
 | Security | CSP with a per-request nonce, nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods | `.policy(Policy::new()...)` |
-| Static files | `static/` (or `STATIC_DIR`) and island scripts at content-hashed, immutable URLs; each island preloaded on the pages that render it | `.assets(dir)`, `.islands(&[..])` |
+| Static files | `static/` (or `STATIC_DIR`), island scripts and the components' stylesheets (one file) at content-hashed, immutable URLs; each island preloaded on the pages that render it | `.assets(dir)`, `.components(&[..])` |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Shutdown | Ctrl-C and `SIGTERM` end live streams, then the server | |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
@@ -238,9 +238,9 @@ export default island("offer-list", {
 | the component, `<OfferList ... />` | `<offer-list>` around the markup; `state()` per element, `connect(ctx)` when it joins the page |
 
 The component renders inside its tag (its name in kebab-case) and works without the script. The
-script is compiled into the binary; list the island once, `App::new(routes).islands(&[OfferList::ISLAND])`,
+script is compiled into the binary; list the island once, `App::new(routes).components(&[OfferList])`,
 and Corten serves it at a versioned URL and preloads it on the pages that render it. The
-generated declarations (`Types::islands`, below) describe each island's markup, so
+generated declarations (`Types::components`, below) describe each island's markup, so
 `island("offer-list", ...)` is type-checked with no imports: a ref the markup does not have, a
 missing or misspelled action, or `.content` on a `<tbody>` fails `npm run check`. In Rust, a
 ref or action outside its island, or as a string, does not compile.
@@ -264,6 +264,46 @@ runs one feed across instances (Postgres outbox, a leased relay to NATS JetStrea
 failover benchmark, 777,600 of 777,600 patches arrived with both instances killed and restarted
 under load (measured, one run, `examples/cluster/results/`).
 
+## Styles
+
+Each component's styles are a CSS file next to it, scoped to it at compile time; design tokens
+are one JSON file; both reach the browser as one cached stylesheet. There is no CSS build step.
+
+```css
+/* src/views/offer_list.css */
+.table { font-variant-numeric: tabular-nums; }
+.row:hover { background: var(--color-surface-2); }
+.row.selected { outline: 2px solid var(--color-accent); }
+```
+
+```rust
+#[island(css)]  // or #[component(css)] for markup without a script
+pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Render {
+    html! {
+        <table class={Table}>
+            for o in offers { <tr class={(Row, (selected == Some(&o.id)).then_some(Selected))}>...</tr> }
+        </table>
+    }
+}
+```
+
+| You write | Corten checks or generates |
+|---|---|
+| `offer_list.css` next to `OfferList` | every class prefixed, `.offer-list__row`; a rule that does not start at one of the file's classes (or the island's tag) does not compile, so a component cannot style what it does not render |
+| `class={Row}`, `class={[Row, Selected]}` | static markup, `class="offer-list__row"`; a class the file lacks, another component's class, or one of the file's classes written as text (`class="row"`) does not compile |
+| `class={(Row, cond.then_some(Selected), extra)}` | joined when the page renders; `None` adds nothing, an empty list leaves the attribute out |
+| a class nothing uses | `warning: constant Hot is never used` (an error under `-D warnings`) |
+| `#[component(css = OfferList)]` | a helper in the same module shares the stylesheet, and its uses count |
+| `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed responsive utilities: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
+| `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
+
+Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks the
+class, so adding a variant without a rule does not compile. A component library is a crate that
+exports `pub const COMPONENTS: &[Component]`; the app passes it to `App::components`.
+`static/style.css` holds what belongs to no component: element defaults, fonts and the shell.
+Link it before `{doc.head}` so component rules win ties. Inline `style=` stays blocked by the
+CSP; one-off values come from the token utilities instead.
+
 ## Types across seams
 
 Every value that crosses from Rust to the browser or to an agent is defined once, in Rust, and
@@ -273,10 +313,12 @@ checked on the other side.
 |---|---|
 | Handler to markup | `html!` is Rust: a missing field or prop is a compile error |
 | Links to routes | `#[derive(Route)]`: the router and every link use the same struct |
-| Views to islands | `#[island]`: refs and actions are names from the island's own markup; `Types::islands` types `refs`, `props` and every action in its script |
+| Views to islands | `#[island]`: refs and actions are names from the island's own markup; `Types::components` types `refs`, `props` and every action in its script |
+| Markup to stylesheet | `#[component(css)]`: `class={Name}` is a constant from the component's own CSS file |
+| Tokens to views | `tokens!`: scales are enums and utilities take them, per breakpoint |
 | Text to catalogs | `messages!`: every locale has every key with the same arguments |
 | Form to handler | `#[derive(Fields)]` names; serde parses the post |
-| Server to island | `corten::types::Types::new().add::<Row>().islands(ISLANDS).sync(path)` in a test writes TypeScript declarations and fails while they are stale; `npm run check` then fails in every island that reads an old name |
+| Server to island | `corten::types::Types::new().add::<Row>().components(COMPONENTS).sync(path)` in a test writes TypeScript declarations and fails while they are stale; `npm run check` then fails in every island that reads an old name |
 | Server to agent | tool input and output schemas generated from the structs (feature `agent`) |
 
 Untyped props and rows are `unknown`, not `any`. The full table, and what is not checked, is
@@ -314,6 +356,11 @@ method (the full run measured 6.2 KB before them); the other columns are from th
    response buffer.
 4. **Custom elements, not a client framework, by default.** Islands use the platform; Solid is
    opt-in for the screens that need fine-grained reactive state.
+5. **Plain CSS files, scoped by the compiler, not utility classes or CSS-in-Rust.** Utility
+   frameworks put unchecked strings in every view and need a scanner and a build step; CSS in
+   Rust needs inline styles the CSP blocks, or a runtime. A CSS file per component keeps the
+   language designers know, and the macro makes its class names typed. Tokens cover the
+   one-off values (spacing, direction per breakpoint) utilities are good at.
 
 ## Rules
 
@@ -333,7 +380,7 @@ method (the full run measured 6.2 KB before them); the other columns are from th
 ```text
 crates/
   corten/            The framework on axum: App, Req, html!, components, the runtime (js/corten.js)
-  corten-macros/     html!, #[component], #[island], messages!, derives (Fields, Route), on proc_macro alone (no syn)
+  corten-macros/     html!, #[component], #[island], messages!, tokens!, derives (Fields, Route), on proc_macro alone (no syn)
   corten-cli/        The corten command, standard library only
   corten-feed/       Live feeds: rows, numbered patches, replay, resume
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
@@ -364,6 +411,12 @@ the framework itself.
 6. A feed's write rate is bounded by Postgres commit latency on its feed row. Split hot data into
    several feeds.
 7. `html!` views render once and own what they capture; read from `req` before building the view.
+8. Component stylesheets support plain CSS with nesting and `@media`, `@supports`, `@container`,
+   `@layer`, `@keyframes` and `@font-face`; `@import` and escaped class names are not supported.
+   Keyframe names are not scoped. Every listed component's CSS is in the one file, whether or not
+   a page uses it: the item page's `components.css` (tokens, two themes, utilities and five
+   components) is 3.2 KB, 822 bytes brotli (measured). A large library adds to every first load
+   until the file is split per route, which is not built.
 
 ## Working on Corten
 

@@ -13,5 +13,5 @@ docker build -t {{name}} . && docker run -p 8080:8080 {{name}}
 |---|---|
 | `src/main.rs` | routes and handlers |
 | `src/views.rs` | the shell and pages, in `html!` |
-| `src/click_counter.js` | the script of the `ClickCounter` island, next to its component |
-| `static/` | CSS, images; served at versioned URLs |
+| `src/click_counter.js`, `.css` | the `ClickCounter` island's script and stylesheet, next to its component |
+| `static/` | the app's own CSS (element defaults, the shell), images; served at versioned URLs |

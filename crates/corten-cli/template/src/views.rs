@@ -10,8 +10,8 @@ pub fn shell(doc: Document) -> impl Render {
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                {doc.head}
                 <link rel="stylesheet" href={doc.asset("style.css")}>
+                {doc.head}
             </head>
             <body>
                 <header><a href="/">"{{name}}"</a></header>
@@ -36,12 +36,13 @@ pub fn home(name: &str) -> impl Render {
 }
 
 /// A button that counts its clicks in the browser. The markup is here; `click_counter.js`, next
-/// to this file, adds the behavior. `on:click={Count}` runs its `count` action and `ref={Total}`
-/// is the element it updates.
-#[island]
+/// to this file, adds the behavior, and `click_counter.css` its look. `on:click={Count}` runs
+/// its `count` action, `ref={Total}` is the element it updates and `class={Button}` is the
+/// stylesheet's `.button`, scoped to this component.
+#[island(css)]
 pub fn ClickCounter() -> impl Render {
     html! {
-        <button type="button" on:click={Count}>"Clicks: "<output ref={Total}>"0"</output></button>
+        <button type="button" class={Button} on:click={Count}>"Clicks: "<output ref={Total}>"0"</output></button>
     }
 }
 

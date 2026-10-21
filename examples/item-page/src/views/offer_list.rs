@@ -1,5 +1,6 @@
 use corten::prelude::*;
 
+use super::Price;
 use crate::{model::Offer, text::Msg};
 
 /// Offers shown before "Show all".
@@ -18,12 +19,12 @@ pub fn OfferList<'a>(t: Msg, offers: &'a [Offer]) -> impl Render {
         </table>
         if !rest.is_empty() {
             <template ref={Rest}>for o in rest { <OfferRow o={o} /> }</template>
-            <button type="button" class="more" on:click={ShowAll}>{t.item_show_all_offers(offers.len())}</button>
+            <button type="button" on:click={ShowAll}>{t.item_show_all_offers(offers.len())}</button>
         }
     }
 }
 
 #[component]
 fn OfferRow(o: &Offer) -> impl Render {
-    html! { <tr><td>{o.buyer}</td><td>{o.condition}</td><td>{o.quantity}</td><td class="price">{o.price}</td></tr> }
+    html! { <tr><td>{o.buyer}</td><td>{o.condition}</td><td>{o.quantity}</td><Price amount={&o.price} /></tr> }
 }

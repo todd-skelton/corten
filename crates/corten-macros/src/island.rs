@@ -3,7 +3,7 @@
 //! The component's markup names the elements and events its script uses: `ref={Rows}` and
 //! `on:click={ShowAll}`. This macro collects those names from the component's own `html!`, turns
 //! them into enums (so `html!` can only print names the island has), and describes the island in
-//! a constant, `Component::ISLAND`: its tag, its script (`include_str!` of the `.js` file with
+//! the component's constant (`OfferList.island`): its tag, its script (`include_str!` of the `.js` file with
 //! the component's snake_case name), and each name with the elements and events it is used on.
 //! `corten::types` turns that description into the declarations `island("tag", ...)` is checked
 //! against.
@@ -38,8 +38,12 @@ pub struct Parts {
     pub open: TokenStream,
     /// Printed after the body: the end tag.
     pub close: TokenStream,
-    /// Items next to the component: the name enums and `ISLAND`.
+    /// Items next to the component: the name enums.
     pub items: TokenStream,
+    /// `::corten::island::Island { .. }`, for the component's `Component` constant.
+    pub island: TokenStream,
+    /// The Rust names of the refs and actions.
+    pub names: Vec<String>,
 }
 
 /// A prop: a parameter marked `#[prop]`, sent to the script as JSON.
@@ -48,13 +52,7 @@ pub struct Prop {
     pub ty: Vec<TokenTree>,
 }
 
-pub fn parts(
-    name: &Ident,
-    body: &TokenStream,
-    props: &[Prop],
-    impl_generics: TokenStream,
-    type_generics: TokenStream,
-) -> Result<Parts, Error> {
+pub fn parts(name: &Ident, body: &TokenStream, props: &[Prop]) -> Result<Parts, Error> {
     let component = name.to_string();
     let tag = kebab(&component);
     if !tag.contains('-') {
@@ -129,38 +127,25 @@ pub fn parts(
         ));
     }
     let script = format!("{}.js", snake(&component));
-    let doc = format!(" The `<{tag}>` island: its script is `{script}`, next to this component's source file.");
-    items.extend(q(
-        "impl __A0 __A1 __A2 {
-            #[doc = __A3]
-            pub const ISLAND: ::corten::island::Island = ::corten::island::Island {
-                tag: __A4,
-                script: ::core::include_str!(__A5),
-                file: __A5,
-                refs: &[__A6],
-                actions: &[__A7],
-                props: &[__A8],
-            };
+    let island = q(
+        "::corten::island::Island {
+            tag: __A0,
+            script: ::core::include_str!(__A1),
+            file: __A1,
+            refs: &[__A2],
+            actions: &[__A3],
+            props: &[__A4],
         }",
-        &[
-            impl_generics,
-            TokenTree::Ident(name.clone()).into(),
-            type_generics,
-            literal(&doc),
-            literal(&tag),
-            literal(&script),
-            describe(&names.refs),
-            describe(&names.actions),
-            prop_list,
-        ],
-    ));
+        &[literal(&tag), literal(&script), describe(&names.refs), describe(&names.actions), prop_list],
+    );
 
     let mut open = q("__corten_component_out.push_str(__A0);", &[literal(&format!("<{tag}>"))]);
     if !props.is_empty() {
         open.extend(q("::corten::island::__private::props(__corten_component_out, &[__A0]);", &[prop_values]));
     }
     let close = q("__corten_component_out.push_str(__A0);", &[literal(&format!("</{tag}>"))]);
-    Ok(Parts { scope: uses, open, close, items })
+    let names = names.refs.iter().chain(&names.actions).map(|n| n.ident.to_string()).collect();
+    Ok(Parts { scope: uses, open, close, items, island, names })
 }
 
 fn strings(list: &[String]) -> TokenStream {

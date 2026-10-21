@@ -16,7 +16,7 @@ fn app() -> App {
         .route("/greet", post(greet));
     App::new(routes)
         .shell(views::shell)
-        .islands(&[views::ClickCounter::ISLAND])
+        .components(&[views::ClickCounter])
 }
 
 async fn home(req: Req) -> corten::Result {

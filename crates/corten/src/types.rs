@@ -3,13 +3,13 @@
 //!
 //! Every value that crosses into the browser as JSON is a Rust type: an island's `#[prop]`s, a
 //! feed's rows, a screen's data. Derive `schemars::JsonSchema` on them next to `Serialize` (the
-//! app depends on `schemars = "1"` as it does on `serde`), list them and the app's islands once,
+//! app depends on `schemars = "1"` as it does on `serde`), list them and the app's components once,
 //! and keep the generated file in sync from a test:
 //!
 //! ```ignore
 //! #[test]
 //! fn island_types_match_the_server() {
-//!     corten::types::Types::new().add::<Card>().islands(views::ISLANDS).sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
+//!     corten::types::Types::new().add::<Card>().components(views::COMPONENTS).sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
 //! }
 //! ```
 //!
@@ -63,11 +63,11 @@ impl Types {
         self
     }
 
-    /// Adds the app's islands (`#[island]` components' `ISLAND`) to `CortenIslands`, with the
-    /// types of their props.
-    pub fn islands(mut self, islands: &[crate::Island]) -> Self {
+    /// Adds the islands among the app's components (the list it gives `App::components`) to
+    /// `CortenIslands`, with the types of their props.
+    pub fn components(mut self, components: &[crate::Component]) -> Self {
         let tags = |tags: &[&str]| union(tags.iter().map(|t| format!("{t:?}")).collect());
-        for island in islands {
+        for island in components.iter().filter_map(|c| c.island) {
             let mut entry = format!(
                 "    /** `<{}>`: {} */
     {:?}: {{
@@ -385,7 +385,7 @@ export type Kind = "single" | "sealed_box";
 
     #[test]
     fn islands_declare_their_props_refs_and_actions() {
-        let ts = Types::new().add::<Kind>().islands(&[PriceBoard::ISLAND]).typescript();
+        let ts = Types::new().add::<Kind>().components(&[PriceBoard]).typescript();
         let expected = r#"
 declare global {
   /** The app's islands, from its #[island] components: what island("tag", ...) is checked against. */
