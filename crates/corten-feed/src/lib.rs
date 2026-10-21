@@ -86,6 +86,7 @@ static DRAINING: LazyLock<watch::Sender<bool>> = LazyLock::new(|| watch::channel
 /// graceful shutdown, alive forever. Clients reconnect with their cursor and resume on another
 /// instance (or this one, after a restart) without a snapshot.
 pub fn drain() {
+    tracing::info!(target: "corten::feed", "ending live streams for shutdown");
     DRAINING.send_replace(true);
 }
 
@@ -365,6 +366,7 @@ impl Limiter {
         let mut open = self.open.lock().unwrap_or_else(|e| e.into_inner());
         let count = open.entry(key.to_string()).or_insert(0);
         if *count >= self.max {
+            tracing::debug!(target: "corten::feed", key, max = self.max, "live stream refused: limit reached");
             return None;
         }
         *count += 1;
@@ -469,7 +471,11 @@ async fn next_chunk(mut s: StreamState) -> Option<(Bytes, StreamState)> {
     Some((chunk.into(), s))
 }
 
+/// Also the feed's one observable event: a client sent back for a fresh snapshot. Logged with
+/// `tracing` (target `corten::feed`, field `reason`), so an app's subscriber can count it; a rising
+/// rate means a replay log too small for the write rate or clients that cannot keep up.
 fn sync_frame(reason: SyncReason) -> Bytes {
+    tracing::debug!(target: "corten::feed", reason = reason.as_str(), "client resyncs from a snapshot");
     Bytes::from(format!("event: sync\ndata: {{\"reason\":\"{}\"}}\n\n", reason.as_str()))
 }
 

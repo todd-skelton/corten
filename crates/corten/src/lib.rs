@@ -26,7 +26,8 @@
 //! - [`assets`]: static files under a content-versioned, immutable URL prefix.
 //! - [`pwa`]: manifest, generated service worker and offline page.
 //! - [`meta`]: per-page head tags (description, canonical, Open Graph, JSON-LD).
-//! - [`i18n`]: message catalogs, `Accept-Language` negotiation, money/number/date formatting.
+//! - [`form`]: validation errors that reach every surface ([`Req::invalid`]).
+//! - [`i18n`]: message catalogs and `Accept-Language` negotiation.
 //! - [`seo`]: `robots.txt` and sitemaps. [`error_pages`]: failed requests render in the shell.
 //!
 //! Other surfaces (native screens, agents) reuse the same server: see `docs/architecture.md`.
@@ -36,6 +37,7 @@ pub use corten_feed as feed;
 #[cfg(feature = "agent")]
 pub mod agent;
 pub mod assets;
+pub mod form;
 mod html;
 pub mod i18n;
 pub mod meta;
@@ -43,7 +45,14 @@ pub mod pwa;
 pub mod security;
 pub mod seo;
 
-use std::{convert::Infallible, fmt, marker::PhantomData, sync::LazyLock};
+use std::{
+    convert::Infallible,
+    fmt,
+    future::Future,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    sync::LazyLock,
+};
 
 pub use askama::Template;
 use axum::{
@@ -59,6 +68,7 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 
+pub use form::Errors;
 pub use html::{escape, find_islands};
 pub use meta::Meta;
 use security::Nonce;
@@ -170,6 +180,7 @@ pub const MODE_HEADER: HeaderName = HeaderName::from_static("corten");
 const PAGE_HEADER: HeaderName = HeaderName::from_static("corten-page");
 const PATCH_HEADER: HeaderName = HeaderName::from_static("corten-patch");
 const LOCATION_HEADER: HeaderName = HeaderName::from_static("corten-location");
+const SHELL_HEADER: HeaderName = HeaderName::from_static("corten-shell");
 
 /// How the browser asked for this response.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -202,7 +213,19 @@ pub trait Page: Template {
 /// Implement it with an askama template that prints `{{ head|safe }}` early in `<head>` (before
 /// any module script) and `{{ main|safe }}` inside `<main>`. An inline script of its own needs
 /// `nonce="{{ head.nonce() }}"` once [`security::Policy`] is on.
+///
+/// The shell sees one per-request value, [`Shell::Context`]: whatever the app's auth middleware
+/// put in the request extensions (`req.extensions_mut().insert(viewer)`), typically the signed-in
+/// user and what they may do. Navigation menus, the account link and role checks in the shell
+/// read it. Client navigation swaps only `<main>`, so the runtime reloads the whole document
+/// when the context changes (sign-in, sign-out, a new role) or a deploy changes the runtime or
+/// assets: every page response carries a key hashed from those, and a navigation whose key
+/// differs from the current page's is loaded in full.
 pub trait Shell: 'static {
+    /// Per-request data the shell renders (`()` when it needs none). Inserted into the request
+    /// extensions by the app's middleware, outside [`error_pages`] so error pages see it too.
+    type Context: Clone + Hash + Send + Sync + 'static;
+
     /// Where island modules live. `<foo-bar>` loads `{islands_dir}foo-bar.js`. With
     /// [`assets::Assets`], return its `islands_dir()`.
     fn islands_dir() -> &'static str {
@@ -212,7 +235,8 @@ pub trait Shell: 'static {
     /// The service worker to register ([`pwa::WORKER_PATH`]), if the app is installable.
     const SERVICE_WORKER: Option<&'static str> = None;
 
-    fn render(head: &Head<'_>, main: &str) -> askama::Result<String>;
+    /// `context` is `None` when no middleware inserted one (a signed-out visitor, say).
+    fn render(head: &Head<'_>, main: &str, context: Option<&Self::Context>) -> askama::Result<String>;
 
     /// Title and `<main>` HTML for a request that failed with `status` (see [`error_pages`]).
     fn error_page(status: StatusCode) -> (String, String) {
@@ -236,6 +260,8 @@ pub struct Head<'a> {
     islands_dir: &'a str,
     islands: Vec<&'a str>,
     service_worker: Option<&'a str>,
+    path: &'a str,
+    shell_key: &'a str,
 }
 
 impl Head<'_> {
@@ -243,6 +269,35 @@ impl Head<'_> {
     pub fn nonce(&self) -> &str {
         self.nonce.unwrap_or("")
     }
+
+    /// The request path, for shell links that mark the current section (`aria-current`). After
+    /// client navigation the runtime keeps `aria-current` right on links with `data-nav`.
+    pub fn path(&self) -> &str {
+        self.path
+    }
+
+    /// True when `href` is the current page, or with `section` any page under it. The same rule
+    /// the runtime applies to `<a data-nav>` (`data-nav="section"`) after navigation.
+    pub fn is_current(&self, href: &str, section: bool) -> bool {
+        is_current(self.path, href, section)
+    }
+}
+
+fn is_current(path: &str, href: &str, section: bool) -> bool {
+    let href = href.split(['?', '#']).next().unwrap_or(href);
+    path == href || (section && path.strip_prefix(href.trim_end_matches('/')).is_some_and(|rest| rest.starts_with('/')))
+}
+
+/// Hash of what the shell shows that client navigation cannot update: the runtime and asset
+/// versions and the shell's context.
+fn shell_key<S: Shell>(context: Option<&S::Context>) -> String {
+    // DefaultHasher::new() has fixed keys, so instances of one build agree. A new build may hash
+    // differently, which only costs one full page load after a deploy.
+    let mut hasher = std::hash::DefaultHasher::new();
+    runtime_version().hash(&mut hasher);
+    S::islands_dir().hash(&mut hasher);
+    context.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 impl fmt::Display for Head<'_> {
@@ -250,6 +305,7 @@ impl fmt::Display for Head<'_> {
         let nonce = NonceAttr(self.nonce);
         write!(f, "<title>{}</title>{}", escape(self.title), self.meta)?;
         write!(f, r#"<meta name="corten-islands" content="{}">"#, self.islands_dir)?;
+        write!(f, r#"<meta name="corten-shell" content="{}">"#, self.shell_key)?;
         if let Some(worker) = self.service_worker {
             write!(f, r#"<meta name="corten-sw" content="{worker}">"#)?;
         }
@@ -271,6 +327,8 @@ impl fmt::Display for Head<'_> {
 pub struct Req<S: Shell> {
     pub mode: Mode,
     nonce: Option<Nonce>,
+    context: Option<S::Context>,
+    path: String,
     shell: PhantomData<fn() -> S>,
 }
 
@@ -278,7 +336,7 @@ impl<S: Shell, St: Send + Sync> FromRequestParts<St> for Req<S> {
     type Rejection = Infallible;
 
     async fn from_request_parts(parts: &mut Parts, _: &St) -> std::result::Result<Self, Self::Rejection> {
-        Ok(Req { mode: mode_of(&parts.headers), nonce: parts.extensions.get::<Nonce>().cloned(), shell: PhantomData })
+        Ok(Req::from_parts(&parts.headers, &parts.extensions, parts.uri.path()))
     }
 }
 
@@ -299,6 +357,21 @@ fn accepts_json(headers: &HeaderMap) -> bool {
 }
 
 impl<S: Shell> Req<S> {
+    fn from_parts(headers: &HeaderMap, extensions: &axum::http::Extensions, path: &str) -> Self {
+        Req {
+            mode: mode_of(headers),
+            nonce: extensions.get::<Nonce>().cloned(),
+            context: extensions.get::<S::Context>().cloned(),
+            path: path.to_string(),
+            shell: PhantomData,
+        }
+    }
+
+    /// The shell context the app's middleware put on this request, if any.
+    pub fn context(&self) -> Option<&S::Context> {
+        self.context.as_ref()
+    }
+
     /// Renders `page` with status 200: the whole document, or only the page for a navigation.
     pub fn page(&self, page: &impl Page) -> Result {
         self.page_with_status(StatusCode::OK, page)
@@ -311,6 +384,7 @@ impl<S: Shell> Req<S> {
 
     /// The response for already-rendered `<main>` HTML.
     fn main(&self, status: StatusCode, title: &str, meta: &Meta, main: &str) -> Result {
+        let key = shell_key::<S>(self.context.as_ref());
         let body = match self.mode {
             // The runtime swaps these into <main> and the head tags into <head>; an action that
             // answers with a page (for example a form with errors) is swapped the same way.
@@ -323,11 +397,17 @@ impl<S: Shell> Req<S> {
                     islands_dir: S::islands_dir(),
                     islands: find_islands(main),
                     service_worker: S::SERVICE_WORKER,
+                    path: &self.path,
+                    shell_key: &key,
                 };
-                S::render(&head, main)?
+                S::render(&head, main, self.context.as_ref())?
             }
         };
-        Ok(html_response(status, body, PAGE_HEADER))
+        let mut res = html_response(status, body, PAGE_HEADER);
+        if let Ok(value) = HeaderValue::try_from(key) {
+            res.headers_mut().insert(SHELL_HEADER, value);
+        }
+        Ok(res)
     }
 
     /// [`Req::page`] for a page that other surfaces read too: a browser gets HTML as usual, and a
@@ -368,6 +448,34 @@ impl<S: Shell> Req<S> {
         Ok(html_response(status, fragment.render()?, PATCH_HEADER))
     }
 
+    /// Answers a submit whose input failed validation, with 422 Unprocessable Content:
+    ///
+    /// - [`Mode::Action`]: `form`, the form fragment re-rendered with the errors, as a patch. The
+    ///   runtime then moves focus to the first field marked `aria-invalid="true"`.
+    /// - [`Mode::Data`] (feature `json`): `{"errors": {"field": "message"}}`.
+    /// - Otherwise (no JavaScript): `page()`, the whole page with the form showing the errors.
+    ///   It is only called here, so an action never loads data for a page it does not send.
+    pub async fn invalid<P, F, Fut>(&self, errors: &Errors, form: &impl Template, page: F) -> Result
+    where
+        P: Page,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<P>>,
+    {
+        let status = StatusCode::UNPROCESSABLE_ENTITY;
+        match self.mode {
+            Mode::Action => self.patch_with_status(status, form),
+            #[cfg(feature = "json")]
+            Mode::Data => {
+                let body = serde_json::to_string(&serde_json::json!({ "errors": errors }))?;
+                Ok((status, [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response())
+            }
+            _ => {
+                let _ = errors;
+                self.page_with_status(status, &page().await?)
+            }
+        }
+    }
+
     /// After a successful write, send the browser to `location` (post/redirect/get). Works with
     /// and without JavaScript.
     pub fn redirect(&self, location: &str) -> Result {
@@ -388,19 +496,18 @@ pub fn error_pages<S: Shell, St: Clone + Send + Sync + 'static>(router: Router<S
 }
 
 async fn render_errors<S: Shell>(req: Request, next: Next) -> Response {
-    let mode = mode_of(req.headers());
-    let nonce = req.extensions().get::<Nonce>().cloned();
+    let req_for_page = Req::<S>::from_parts(req.headers(), req.extensions(), req.uri().path());
     let res = next.run(req).await;
     if res.extensions().get::<Failed>().is_none() {
         return res;
     }
     let status = res.status();
-    if mode == Mode::Data {
+    let req = req_for_page;
+    if req.mode == Mode::Data {
         let body = format!(r#"{{"error":{{"status":{}}}}}"#, status.as_u16());
         return (status, [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response();
     }
     let (title, main) = S::error_page(status);
-    let req = Req::<S> { mode, nonce, shell: PhantomData };
     req.main(status, &title, &Meta::new().noindex(), &main).unwrap_or(res)
 }
 

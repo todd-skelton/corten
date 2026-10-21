@@ -26,6 +26,8 @@
     "title": "Price alert",
     "email": "Email",
     "below": "Alert me below",
-    "submit": "Set alert"
+    "submit": "Set alert",
+    "invalid_email": "Enter a valid email address.",
+    "invalid_price": "Enter a target price above zero."
   }
 }

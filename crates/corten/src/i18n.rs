@@ -1,4 +1,4 @@
-//! Message catalogs and number, money and date formatting for server-rendered text.
+//! Message catalogs and locale negotiation for server-rendered text.
 //!
 //! A [`Catalog`] maps keys to messages with `{token}` placeholders. A missing key renders as
 //! `[missing:{locale}:{key}]` so it is visible on the page and easy to find in a test, and
@@ -10,8 +10,10 @@
 //! <p>{{ t.msg("item.available").arg("count", item.quantity) }}</p>
 //! ```
 //!
-//! Formatting follows `en-US` (`Intl.NumberFormat("en-US")` output), which is what the app
-//! ships today; other locales fall back to it.
+//! Numbers, money and dates are formatted by the app into its view models (README rule 7), with
+//! the negotiated locale: `catalog.locale()` is a BCP 47 tag to hand to a CLDR library such as
+//! ICU4X (`icu` crate). Corten carries no locale data, because correct formatting for every
+//! locale needs all of it, and a partial table prints wrong numbers without an error.
 
 use std::{borrow::Cow, collections::HashMap, fmt::Display};
 
@@ -189,114 +191,6 @@ impl Locales {
     }
 }
 
-/// Digits after the decimal point for an ISO 4217 code.
-pub fn currency_exponent(code: &str) -> u32 {
-    match code {
-        "JPY" | "KRW" | "VND" | "CLP" | "ISK" | "UGX" | "XAF" | "XOF" | "PYG" => 0,
-        "BHD" | "KWD" | "JOD" | "OMR" | "TND" | "LYD" | "IQD" => 3,
-        _ => 2,
-    }
-}
-
-/// `1234567` -> `1,234,567`.
-pub fn format_number(n: i64) -> String {
-    let digits = format_unsigned(n.unsigned_abs());
-    if n < 0 {
-        format!("-{digits}")
-    } else {
-        digits
-    }
-}
-
-fn format_unsigned(n: u64) -> String {
-    let digits = n.to_string();
-    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
-}
-
-/// Money from minor units, as `Intl.NumberFormat("en-US", { style: "currency" })` prints it:
-/// `format_money(123456, "USD")` is `$1,234.56`; `format_money(-5, "EUR")` is `-€0.05`.
-pub fn format_money(minor: i64, currency: &str) -> String {
-    let exp = currency_exponent(currency);
-    let scale = 10i64.pow(exp);
-    let magnitude = minor.unsigned_abs();
-    let scale = scale as u64;
-    let whole = format_unsigned(magnitude / scale);
-    let fraction = if exp == 0 { String::new() } else { format!(".{:0width$}", magnitude % scale, width = exp as usize) };
-    let sign = if minor < 0 { "-" } else { "" };
-    match currency {
-        "USD" => format!("{sign}${whole}{fraction}"),
-        "EUR" => format!("{sign}€{whole}{fraction}"),
-        "GBP" => format!("{sign}£{whole}{fraction}"),
-        "JPY" => format!("{sign}¥{whole}{fraction}"),
-        "CAD" => format!("{sign}CA${whole}{fraction}"),
-        "AUD" => format!("{sign}A${whole}{fraction}"),
-        other => format!("{sign}{other}\u{a0}{whole}{fraction}"),
-    }
-}
-
-/// Parses a decimal amount (`"12.5"`, as the API sends it) into minor units, exactly.
-pub fn parse_minor(amount: &str, currency: &str) -> Option<i64> {
-    let exp = currency_exponent(currency) as usize;
-    let amount = amount.trim();
-    let (negative, amount) = match amount.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, amount),
-    };
-    let (whole, fraction) = amount.split_once('.').unwrap_or((amount, ""));
-    if whole.is_empty() && fraction.is_empty()
-        || fraction.len() > exp
-        || !whole.bytes().chain(fraction.bytes()).all(|b| b.is_ascii_digit())
-    {
-        return None;
-    }
-    let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().ok()? };
-    let fraction: i64 = format!("{fraction:0<exp$}").parse().unwrap_or(0);
-    let minor = whole.checked_mul(10i64.pow(exp as u32))?.checked_add(fraction)?;
-    Some(if negative { -minor } else { minor })
-}
-
-/// Basis points as a percent with up to two decimals: `1250` is `12.5%`, `500` is `5%`.
-pub fn format_bps_percent(bps: i64) -> String {
-    let sign = if bps < 0 { "-" } else { "" };
-    let bps = bps.unsigned_abs();
-    let fraction = format!("{:02}", bps % 100);
-    let fraction = fraction.trim_end_matches('0');
-    if fraction.is_empty() {
-        format!("{sign}{}%", bps / 100)
-    } else {
-        format!("{sign}{}.{fraction}%", bps / 100)
-    }
-}
-
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/// Year, month (1-12) and day for a count of days since 1970-01-01 (proleptic Gregorian).
-pub fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (yoe + era * 400 + i64::from(month <= 2), month, day)
-}
-
-/// A UTC date as `Oct 20, 2026` (`dateStyle: "medium"`), shifted by `offset_minutes` first.
-pub fn format_date(unix_seconds: i64, offset_minutes: i32) -> String {
-    let local = unix_seconds.saturating_add(i64::from(offset_minutes) * 60);
-    let (y, m, d) = civil_from_days(local.div_euclid(86_400));
-    format!("{} {d}, {y}", MONTHS[m as usize - 1])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,37 +226,5 @@ mod tests {
         assert_eq!(locales.negotiate(Some("de")).locale(), "en");
         assert_eq!(locales.negotiate(Some("fr;q=0")).locale(), "en", "q=0 means not acceptable");
         assert_eq!(locales.negotiate(None).locale(), "en");
-    }
-
-    #[test]
-    fn money_matches_intl_en_us() {
-        assert_eq!(format_money(123_456, "USD"), "$1,234.56");
-        assert_eq!(format_money(5, "USD"), "$0.05");
-        assert_eq!(format_money(-5, "EUR"), "-€0.05");
-        assert_eq!(format_money(1500, "JPY"), "¥1,500");
-        assert_eq!(format_money(1000, "CHF"), "CHF\u{a0}10.00");
-        assert_eq!(format_money(i64::MIN, "JPY"), "-¥9,223,372,036,854,775,808", "no overflow at the extremes");
-        assert_eq!(parse_minor("12.5", "USD"), Some(1250));
-        assert_eq!(parse_minor("0.27", "USD"), Some(27));
-        assert_eq!(parse_minor("-3", "USD"), Some(-300));
-        assert_eq!(parse_minor("1.005", "USD"), None, "more precision than the currency has");
-        assert_eq!(parse_minor("1e3", "USD"), None);
-        assert_eq!(parse_minor("", "USD"), None);
-        assert_eq!(parse_minor("99999999999999999999", "USD"), None);
-    }
-
-    #[test]
-    fn numbers_percent_and_dates() {
-        assert_eq!(format_number(0), "0");
-        assert_eq!(format_number(-1_234_567), "-1,234,567");
-        assert_eq!(format_number(i64::MIN), "-9,223,372,036,854,775,808");
-        assert_eq!(format_bps_percent(1250), "12.5%");
-        assert_eq!(format_bps_percent(500), "5%");
-        assert_eq!(format_bps_percent(1), "0.01%");
-        assert_eq!(format_bps_percent(-25), "-0.25%");
-        assert_eq!(format_date(0, 0), "Jan 1, 1970");
-        assert_eq!(format_date(1_792_454_400, 0), "Oct 20, 2026");
-        assert_eq!(format_date(1_792_454_400, -300), "Oct 19, 2026", "Chicago is behind UTC");
-        assert_eq!(format_date(951_782_400, 0), "Feb 29, 2000");
     }
 }

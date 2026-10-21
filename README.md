@@ -31,7 +31,7 @@ crates/
     js/solid.js      SolidIsland, h, when, each; bundled into js/dist/solid.js (feature "solid")
   corten-feed/       Server side of a live feed: rows, numbered patches, replay, resume, follow a log
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
-  corten-cluster/    One feed across instances: Postgres outbox, leased relay to NATS JetStream, idempotent writes
+  corten-cluster/    One feed across instances: Postgres outbox, leased relay to NATS JetStream, idempotent writes, idle feeds unloaded
 examples/hello/      One screen that uses every piece; scripts/smoke.mjs tests it in a browser
 examples/item-page/  A marketplace item page with every production module on; smoke.mjs tests it
 examples/cluster/    A listings feed on corten-cluster, plus the failover benchmark (bench/, results/)
@@ -54,11 +54,12 @@ All in the `corten` crate; `examples/item-page/src/app.rs` switches every one on
 | `security` | `Policy`: CSP with a per-request nonce (`head.nonce()`), nosniff, referrer, frame and opener headers, optional HSTS, `allow_popups` for sign-in or payment popups, and a same-origin check on unsafe methods (`Sec-Fetch-Site`, then `Origin` against `Host`; `allow_origin` for proxies). `cookie::get`, `cookie::SetCookie` (HttpOnly, Secure, Lax by default). Sessions stay in the app. |
 | `assets` | `Assets::load(dir, "/assets")`: files in memory, URLs `/assets/{content-hash}/...` served immutable with an ETag; the islands directory is versioned the same way. |
 | `meta` | `Page::head() -> Meta`: description, canonical, noindex, Open Graph, links, JSON-LD. Client navigation swaps these tags too. |
-| `pwa` | `Manifest` and `Pwa`: `/manifest.webmanifest` and a generated `/service-worker.js`: precache, network-first navigation with an offline page, cache-first only for immutable versioned files. |
-| `i18n` | `Catalog` (JSON messages, missing keys visible), `Locales::negotiate(Accept-Language)`, number, money (integer minor units), percent and date formatting. Formatting is en-US only so far. |
+| `pwa` | `Manifest` and `Pwa`: `/manifest.webmanifest` and a generated `/service-worker.js`: precache, network-first navigation with an offline page, cache-first only for immutable versioned files. `import_script(url)` adds the app's own worker code (a `push` handler); VAPID keys, subscriptions and sending stay in the app. |
+| `i18n` | `Catalog` (JSON messages, missing keys visible) and `Locales::negotiate(Accept-Language)`. Numbers, money and dates are formatted by the app into its view model with a CLDR library such as ICU4X; a partial table in the framework would print wrong output without failing. |
+| `form` | `Errors` (first message per field, `aria(field)` for `aria-invalid`/`aria-describedby`) and `req.invalid(&errors, &form_fragment, page_fn)`: 422 as a patch, as `{"errors": ...}` for JSON clients, or as the full page without JavaScript. The runtime focuses the first invalid field. Rules stay in the app; `Errors` converts into an agent `ToolError`. |
 | `seo` | `sitemap`, `sitemap_index`, `robots`. |
 | `agent` | `Tools`: the app's actions as Model Context Protocol tools over HTTP POST (`tools/list`, `tools/call`), with the app's own auth. |
-| crate root | `error_pages::<Shell, _>` (404/403/500 in the request's mode), `health(ready)` (`/health/live`, `/health/ready`), `shutdown_signal()` (Ctrl-C and SIGTERM; ends live streams so shutdown finishes). |
+| crate root | `Shell::Context` (see below), `error_pages::<Shell, _>` (404/403/500 in the request's mode), `health(ready)` (`/health/live`, `/health/ready`), `shutdown_signal()` (Ctrl-C and SIGTERM; ends live streams so shutdown finishes). |
 
 ## How a request works
 
@@ -81,6 +82,27 @@ async fn watch(req: Req, With(state): With<State>, Form(form): Form<WatchForm>) 
         Mode::Action => req.patch(&WatchMessage { message: &message }),
         _ => req.screen(&Home::new(&state, message)), // no JavaScript, native, agent
     }
+}
+```
+
+## Shell and forms
+
+The shell (header, navigation, who is signed in) renders on full loads only; client navigation
+swaps `<main>`. So the shell gets its data one way and the framework keeps it honest:
+
+1. `Shell::Context` is the app's type for what the shell shows (a viewer, roles). App
+   middleware inserts it into request extensions; `Shell::render(head, main, context)` and
+   handlers (`req.context()`) both see it, error pages included.
+2. Every page carries a shell key: a hash of the context and the deploy. When a navigation or an
+   action answers with a different key (sign-in, role change, new release), the runtime reloads
+   the document instead of swapping, so the shell is never stale.
+3. Links marked `data-nav` get `aria-current="page"` on the server (`head.is_current(href,
+   section)`) and after every swap; `data-nav="section"` also matches pages under the link.
+   Which links appear for which roles is the shell template's decision.
+
+```rust
+if let Err(errors) = check(&input) {
+    return req.invalid(&errors, &AlertForm::new(&input, &errors), || async { Ok(ItemPage::load(..).await?) }).await;
 }
 ```
 
@@ -117,7 +139,11 @@ touched, encoded once and sent as the same bytes to every subscriber. A subscrib
 snapshot and then each later patch exactly once, in order. Reconnects resume from
 `Last-Event-ID`; an unknown or expired cursor, a client too far behind, or a gap ends in a fresh
 snapshot. Several server instances can follow one log (`Feed::follow`, `apply`, `backfill`,
-`reset`) and accept each other's cursors. Rules for stateful islands: data rules in a plain
+`reset`) and accept each other's cursors. Resyncs, limiter refusals and drains are `tracing`
+events under target `corten::feed`; exporting them is the platform's job. With `corten-cluster`,
+ask the hub for a feed per request (`hub.feed(key)`): feeds unused for `Options::idle_unload`
+(10 minutes by default) are dropped and load again from the replay log, so one feed per entity
+is affordable. Rules for stateful islands: data rules in a plain
 `*.model.js` module, shared shapes in a `*.types.js` JSDoc file checked against the Rust struct,
 apply patches once per animation frame, render long lists as a window.
 
@@ -163,5 +189,7 @@ relay takeover 215 ms, 0 duplicate commits with idempotent retries. Details in
    the architecture doc).
 5. Hover and touch prefetch reuses a fetched page for up to 10 seconds (cleared after any form
    post). A page that must never be stale should not be reached by a plain link.
-6. A feed's write rate is bounded by Postgres commit latency on its feed row (every write takes
+6. A change of shell context or a deploy turns the next navigation into a full page load (by
+   design, see Shell and forms).
+7. A feed's write rate is bounded by Postgres commit latency on its feed row (every write takes
    the next sequence number). Split hot data into several feeds.

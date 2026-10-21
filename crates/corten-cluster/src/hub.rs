@@ -10,11 +10,15 @@
 //! A load also reads the feed's last `REPLAY` patches from the outbox into the replay log, so an
 //! instance that loads a feed late (it just restarted, and its peer died) still resumes the cursors
 //! clients bring from that peer instead of sending all of them back for a snapshot.
+//!
+//! A feed nobody has read for `Options::idle_unload` (no live stream open, no snapshot asked
+//! for) is dropped, so one feed per entity (an item's live price, an order's status) does not
+//! keep every entity ever viewed in memory. The next request loads it again, replay log included.
 
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, MutexGuard},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use async_nats::jetstream::{
@@ -50,11 +54,13 @@ pub(crate) struct Hub<S: Source> {
     source: S,
     options: Arc<Options>,
     slots: Mutex<HashMap<String, Slot<S::Row>>>,
+    /// Ready feeds with no subscribers, and since when. Locked after `slots`.
+    idle: Mutex<HashMap<String, Instant>>,
 }
 
 impl<S: Source> Hub<S> {
     pub fn new(pool: PgPool, source: S, options: Arc<Options>) -> Arc<Self> {
-        Arc::new(Hub { pool, source, options, slots: Mutex::new(HashMap::new()) })
+        Arc::new(Hub { pool, source, options, slots: Mutex::new(HashMap::new()), idle: Mutex::new(HashMap::new()) })
     }
 
     fn slots(&self) -> MutexGuard<'_, HashMap<String, Slot<S::Row>>> {
@@ -71,7 +77,10 @@ impl<S: Source> Hub<S> {
             let next = {
                 let mut slots = self.slots();
                 match slots.get(key) {
-                    Some(Slot::Ready(feed)) | Some(Slot::Loading { current: Some(feed), .. }) => return Ok(Some(feed.clone())),
+                    Some(Slot::Ready(feed)) | Some(Slot::Loading { current: Some(feed), .. }) => {
+                        self.idle.lock().unwrap_or_else(|e| e.into_inner()).remove(key);
+                        return Ok(Some(feed.clone()));
+                    }
                     Some(Slot::Loading { done, .. }) => Next::Wait(done.subscribe()),
                     None => {
                         let (done, _) = watch::channel(false);
@@ -208,6 +217,32 @@ impl<S: Source> Hub<S> {
         }
     }
 
+    /// Drops ready feeds that have had no subscribers and no reads for `after`. A feed is marked
+    /// idle on the first sweep that finds it unused and dropped on a later one, so it goes between
+    /// `after` and `after` plus one sweep period after its last use.
+    pub fn unload_idle(&self, after: Duration) -> usize {
+        let now = Instant::now();
+        let mut slots = self.slots();
+        let mut idle = self.idle.lock().unwrap_or_else(|e| e.into_inner());
+        idle.retain(|key, _| matches!(slots.get(key), Some(Slot::Ready(_))));
+        let mut unload = Vec::new();
+        for (key, slot) in slots.iter() {
+            let Slot::Ready(feed) = slot else { continue };
+            if feed.subscribers() > 0 {
+                idle.remove(key);
+            } else if idle.get(key).is_some_and(|since| now.duration_since(*since) >= after) {
+                unload.push(key.clone());
+            } else {
+                idle.entry(key.clone()).or_insert(now);
+            }
+        }
+        for key in &unload {
+            slots.remove(key);
+            idle.remove(key);
+        }
+        unload.len()
+    }
+
     pub fn stats(&self) -> Vec<(String, u64, usize)> {
         let slots = self.slots();
         let mut out: Vec<_> = slots
@@ -280,4 +315,14 @@ async fn subscribe(js: &jetstream::Context, options: &Options) -> Result<jetstre
         .create_consumer(OrderedConfig { filter_subject: subjects, deliver_policy: DeliverPolicy::New, ..Default::default() })
         .await?;
     Ok(consumer.messages().await?)
+}
+
+/// Unloads idle feeds every half `after`, for as long as the process runs.
+pub(crate) async fn unload_idle<S: Source>(hub: Arc<Hub<S>>, after: Duration) {
+    let mut tick = tokio::time::interval((after / 2).max(Duration::from_millis(10)));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tick.tick().await;
+        hub.unload_idle(after);
+    }
 }

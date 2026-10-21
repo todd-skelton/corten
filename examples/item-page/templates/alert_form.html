@@ -1,0 +1,10 @@
+<div class="alert-form" id="alert-form">
+      <form method="post" action="/items/{{ form.id }}" data-patch>
+        <input type="hidden" name="title" value="{{ form.title }}">
+        <label>{{ t.t("alert.email") }}<input type="email" name="email" value="{{ form.email }}" required{{ form.errors.aria("email")|safe }}></label>
+        {%- if let Some(message) = form.errors.get("email") %}<p class="field-error" id="email-error">{{ message }}</p>{% endif %}
+        <label>{{ t.t("alert.below") }}<input type="text" name="target_price" value="{{ form.target_price }}" inputmode="decimal" required{{ form.errors.aria("target_price")|safe }}></label>
+        {%- if let Some(message) = form.errors.get("target_price") %}<p class="field-error" id="target_price-error">{{ message }}</p>{% endif %}
+        <button type="submit">{{ t.t("alert.submit") }}</button>
+      </form>
+    </div>

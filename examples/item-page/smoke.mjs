@@ -54,6 +54,12 @@ try {
   }
 
   await page.fill('input[name="email"]', "buyer@example.com");
+  await page.fill('input[name="target_price"]', "abc");
+  await page.click('form[data-patch] button[type="submit"]');
+  await page.waitForSelector("#target_price-error", { timeout: 5000 }).catch(() => {});
+  check("an invalid field shows its error from the server", ((await page.textContent("#target_price-error").catch(() => "")) ?? "").includes("above zero"));
+  check("focus moves to the invalid field", await page.evaluate(() => document.activeElement?.getAttribute("name") === "target_price"));
+  check("valid input survives the error patch", (await page.inputValue('input[name="email"]')) === "buyer@example.com");
   await page.fill('input[name="target_price"]', "4.5");
   await page.click('form[data-patch] button[type="submit"]');
   await page.waitForFunction(() => /Alert set/.test(document.getElementById("alert-message")?.textContent ?? ""));
@@ -66,6 +72,25 @@ try {
   check("service worker is registered and active", registration === `${base}/service-worker.js`);
   const manifest = await page.evaluate(async () => (await fetch("/manifest.webmanifest")).json());
   check("manifest is installable (name, 192 and 512 icons)", manifest.name === "Card Market" && manifest.icons.some((i) => i.sizes === "512x512"));
+
+  // Push: the app's worker script (Pwa::import_script) handles a push sent through DevTools.
+  await context.grantPermissions(["notifications"], { origin: base });
+  const cdp = await context.newCDPSession(page);
+  /** @type {string | null} */
+  let registrationId = null;
+  cdp.on("ServiceWorker.workerRegistrationUpdated", ({ registrations }) => {
+    for (const r of registrations) if (r.scopeURL === `${base}/` && !r.isDeleted) registrationId = r.registrationId;
+  });
+  await cdp.send("ServiceWorker.enable");
+  for (let i = 0; i < 50 && registrationId === null; i += 1) await page.waitForTimeout(100);
+  if (registrationId !== null) {
+    const data = JSON.stringify({ title: "Price drop", body: "Card Name 5 is below $4.50", url: "/items/item_5" });
+    await cdp.send("ServiceWorker.deliverPushMessage", { origin: base, registrationId, data });
+  }
+  const shown = await page
+    .waitForFunction(async () => (await (await navigator.serviceWorker.ready).getNotifications()).some((n) => n.title === "Price drop"), null, { timeout: 5000 })
+    .then(() => true, () => false);
+  check("a push message shows a notification", shown, registrationId === null ? "no registration id" : "");
 
   // Offline: a fresh navigation through the runtime falls back to the worker's offline page.
   await page.reload();

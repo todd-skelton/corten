@@ -72,28 +72,36 @@ backend.
 5. A new surface ships with a test that drives the example through it, like `scripts/smoke.mjs`
    does for the web.
 
-## What a production marketplace app still needs
+## What belongs in the framework
 
-Measured against a production marketplace app. Everything else it needs (pages, forms with
-patches, islands, live feeds across instances, CSP and CSRF, versioned assets, head tags, PWA,
-i18n catalog, sitemap, health, graceful shutdown, agent tools) exists and is tested.
+The test for each candidate feature: the framework takes it only when the framework creates the
+problem (client navigation, generated files, its own transports) or is the only layer that can
+see it. Anything that depends on the app's domain, data or vendors stays out, even if every app
+needs one, because a framework version would be either partial or a wrapper that hides the real
+library. Measured against a production marketplace app:
 
-1. Realtime beyond one keyed feed: multi-topic subscriptions on one connection, entity and
-   summary streams, and per-user filtering. Today an app opens one `Feed` per topic.
-2. Shell navigation built from contributions with permissions and roles. Today the app's shell
-   template renders its own navigation.
-3. A design-token pipeline (one source, CSS now, Swift and Kotlin later).
-4. Web push notifications (subscription storage, VAPID, service worker `push` handler).
-5. Form validation helpers: field errors rendered next to inputs from one typed error value.
-   Today an action returns `patch_with_status(422, ...)` with a fragment the app writes.
-6. Observability beyond `tracing`: request metrics, trace propagation, an OpenTelemetry layer.
-7. Number, money and date formatting for locales other than en-US.
-8. Authentication and sessions are the app's (only cookie helpers are provided); auth across
-   web, native and agents is an open decision below.
+| Need | Owner | Why |
+|---|---|---|
+| Pages, patches, islands, feeds across instances, CSP and CSRF, assets, head tags, PWA, catalog, sitemap, health, shutdown, agent tools | Framework | Built and tested earlier. |
+| Shell data on client navigation | Framework: `Shell::Context`, shell key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the shell went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
+| Which nav items show for which roles | App | Roles and permissions are the app's model; the shell template decides. |
+| Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
+| Validation rules and messages | App | Domain rules; messages come from the app's catalog. |
+| Push notifications | Framework: `Pwa::import_script` only | The framework writes the service worker, so the app needs a way in. VAPID, encryption, subscription storage and sending are a library (`web-push`) plus the app's tables. |
+| Feed diagnostics | Framework: `tracing` events, target `corten::feed` | Resyncs, limiter refusals and drains happen inside the feed. |
+| Metrics export, trace propagation, OpenTelemetry | Platform | A `tracing` subscriber layer chosen per deployment. |
+| Entity and summary streams | Framework: idle unload in `corten-cluster` | One feed per entity is the model; unloading unused feeds keeps memory bounded. |
+| Several topics on one connection | Not built | HTTP/2 already shares one connection across streams. Multiplexing would add a second protocol and break per-stream resume and backpressure for a saving that only matters on HTTP/1.1. |
+| Shared stream per URL across islands in one page | Not built | Tried and reverted: two islands on one URL is rare, and sharing couples their lifecycles and replay (a late joiner needs its own snapshot). Revisit if a page needs it. |
+| Per-user filtering of live data | App | A per-user feed plus route authorization; the framework cannot know who may see a row. |
+| Number, money, date formatting | App (ICU4X or similar) | Removed from the framework: it covered en-US only and would print wrong output for other locales without failing. |
+| Design tokens | Build tooling | One source to CSS, Swift and Kotlin is a build step, not runtime. |
+| Sessions and authentication | App | Only cookie helpers and the shell context hook are provided. |
 
 ## Open decisions
 
 1. Native navigation: Turbo Drive in shell pages versus a Turbo-compatible adapter in `corten.js`.
 2. Auth across surfaces: session cookies for web and native shells, tokens for native screens
-   and agents, one permission check in handlers.
+   and agents, one permission check in handlers. Whatever is chosen, the app's middleware turns
+   it into the `Shell::Context` that shells and handlers read.
 3. Action schemas for agents: derive from the `Form` types (`schemars`) or declare them by hand.

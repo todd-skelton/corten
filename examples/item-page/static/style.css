@@ -25,6 +25,8 @@ button[type="submit"] { background: var(--accent); color: #fff; }
 .alert-form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .alert-form input { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
 .alert-message { min-height: 1.2em; color: var(--accent); }
+.field-error { flex-basis: 100%; margin: 0; color: #b42318; font-size: 13px; }
+.alert-form input[aria-invalid="true"] { border-color: #b42318; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
 dt { color: var(--muted); }
 dd { margin: 0; }

@@ -45,6 +45,13 @@ pub enum ToolError {
     Internal(Box<dyn std::error::Error + Send + Sync>),
 }
 
+/// Validation errors go back to the agent as one message per field, so it can correct them.
+impl From<crate::Errors> for ToolError {
+    fn from(errors: crate::Errors) -> Self {
+        ToolError::Invalid(errors.to_string())
+    }
+}
+
 impl From<serde_json::Error> for ToolError {
     fn from(error: serde_json::Error) -> Self {
         ToolError::Invalid(error.to_string())

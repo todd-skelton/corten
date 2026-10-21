@@ -16,14 +16,14 @@ use corten::{
     pwa::{Manifest, Pwa},
     security::Policy,
     seo::{self, SitemapUrl},
-    Head, Meta, Mode, Page, Template,
+    Errors, Head, Meta, Mode, Page, Template,
 };
 use serde::Deserialize;
 use serde_json::json;
 use tower_http::compression::CompressionLayer;
 
 use crate::{
-    model::{alert_message, sort_listings, ItemView, Listing, Offer},
+    model::{alert_set, check_alert, sort_listings, ItemView, Listing, Offer},
     source::Source,
 };
 
@@ -70,6 +70,7 @@ pub fn router(app: App) -> Router {
     )
     .offline("/offline")
     .assets(assets)
+    .import_script(&assets.url("sw-push.js"))
     .network_only("/mcp");
     let routes = Router::new()
         .route("/", get(home))
@@ -101,13 +102,15 @@ struct ShellTemplate<'a> {
 }
 
 impl corten::Shell for Shell {
+    type Context = ();
+
     const SERVICE_WORKER: Option<&'static str> = Some(corten::pwa::WORKER_PATH);
 
     fn islands_dir() -> &'static str {
         assets().islands_dir()
     }
 
-    fn render(head: &Head<'_>, main: &str) -> askama::Result<String> {
+    fn render(head: &Head<'_>, main: &str, _: Option<&()>) -> askama::Result<String> {
         ShellTemplate { head, main, style: assets().url("style.css"), script: assets().url("app.js") }.render()
     }
 }
@@ -122,12 +125,14 @@ pub struct ItemPage {
     item: ItemView,
     listings: Vec<Listing>,
     message: String,
+    form: AlertFormView,
 }
 
 impl ItemPage {
     pub fn new(t: &'static Catalog, item: ItemView, message: String) -> Self {
         let listings = sort_listings(&item.listings, false);
-        ItemPage { t, item, listings, message }
+        let form = AlertFormView { id: item.id.clone(), title: item.title.clone(), ..AlertFormView::default() };
+        ItemPage { t, item, listings, message, form }
     }
 
     fn offers_shown(&self) -> &[Offer] {
@@ -147,6 +152,24 @@ impl Page for ItemPage {
     fn head(&self) -> Meta {
         Meta::new().description(&self.item.description).canonical(&format!("/items/{}", self.item.id))
     }
+}
+
+/// The price-alert form's values and errors. The item page includes the form; a submit that
+/// fails validation patches it on its own.
+#[derive(Clone, Default)]
+pub struct AlertFormView {
+    id: String,
+    title: String,
+    email: String,
+    target_price: String,
+    errors: Errors,
+}
+
+#[derive(Template)]
+#[template(path = "alert_form.html")]
+pub struct AlertForm {
+    t: &'static Catalog,
+    form: AlertFormView,
 }
 
 /// The price-alert result. Rendered inside the item page and on its own as a patch.
@@ -221,7 +244,7 @@ async fn show(req: Req, headers: HeaderMap, State(app): State<App>, Path(id): Pa
 }
 
 #[derive(Deserialize)]
-pub struct AlertForm {
+pub struct AlertInput {
     title: String,
     email: String,
     target_price: String,
@@ -232,15 +255,31 @@ async fn create_alert(
     headers: HeaderMap,
     State(app): State<App>,
     Path(id): Path<String>,
-    Form(form): Form<AlertForm>,
+    Form(form): Form<AlertInput>,
 ) -> corten::Result {
-    let message = alert_message(&form.title, &form.email, &form.target_price);
+    let t = catalog(&headers);
+    let price = match check_alert(t, &form.email, &form.target_price) {
+        Ok(price) => price,
+        Err(errors) => {
+            let view =
+                AlertFormView { id: id.clone(), title: form.title, email: form.email, target_price: form.target_price, errors };
+            let fragment = AlertForm { t, form: view.clone() };
+            // Without JavaScript the whole page comes back, with the form showing the errors.
+            return req
+                .invalid(&fragment.form.errors, &fragment, || async move {
+                    let item = app.source.item(&id).await?.ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?;
+                    Ok(ItemPage { form: view, ..ItemPage::new(t, item, String::new()) })
+                })
+                .await;
+        }
+    };
+    let message = alert_set(&form.title, &form.email, price);
     if req.mode == Mode::Action {
         return req.patch(&AlertMessage { message: &message });
     }
     // Without JavaScript the browser posted a plain form: answer with the whole page.
     match app.source.item(&id).await? {
-        Some(item) => req.page(&ItemPage::new(catalog(&headers), item, message)),
+        Some(item) => req.page(&ItemPage::new(t, item, message)),
         None => req.page_with_status(StatusCode::NOT_FOUND, &NotFound),
     }
 }
@@ -300,9 +339,10 @@ fn tools(app: App) -> Tools {
                         target_price: String,
                     }
                     let input: Input = serde_json::from_value(args)?;
+                    let price = check_alert(locales().default_catalog(), &input.email, &input.target_price)?;
                     let item = app.source.item(&input.id).await.map_err(|e| ToolError::Internal(e.into()))?;
                     let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
-                    Ok(json!({ "message": alert_message(&item.title, &input.email, &input.target_price) }))
+                    Ok(json!({ "message": alert_set(&item.title, &input.email, price) }))
                 }
             },
         )
@@ -382,12 +422,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_invalid_alert_is_422_with_field_errors_on_every_surface() {
+        let post = |mode: Option<&str>, accept: Option<&str>| {
+            let mut req = Request::post("/items/item_9")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("sec-fetch-site", "same-origin");
+            if let Some(mode) = mode {
+                req = req.header("corten", mode);
+            }
+            if let Some(accept) = accept {
+                req = req.header("accept", accept);
+            }
+            req.body(Body::from("title=Pika&email=a%40b.c&target_price=abc")).unwrap()
+        };
+        let (status, headers, body) = send(post(Some("action"), None)).await;
+        assert_eq!((status, &headers["corten-patch"]), (StatusCode::UNPROCESSABLE_ENTITY, &"1".parse().unwrap()));
+        assert!(body.starts_with(r#"<div class="alert-form" id="alert-form">"#), "{body}");
+        assert!(body
+            .contains(r#"value="abc" inputmode="decimal" required aria-invalid="true" aria-describedby="target_price-error">"#));
+        assert!(body.contains(r#"<p class="field-error" id="target_price-error">Enter a target price above zero.</p>"#));
+        assert!(body.contains(r#"value="a@b.c" required>"#), "a valid field keeps its value and no error");
+
+        let (status, _, body) = send(post(None, Some("application/json"))).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body, r#"{"errors":{"target_price":"Enter a target price above zero."}}"#);
+
+        let (status, _, body) = send(post(None, None)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(body.contains("<html") && body.contains("Show all 7 offers") && body.contains("target_price-error"));
+    }
+
+    #[tokio::test]
     async fn pwa_offline_health_and_seo_routes_answer() {
         let (_, headers, manifest) = send(Request::get("/manifest.webmanifest").body(Body::empty()).unwrap()).await;
         assert_eq!(headers["content-type"], "application/manifest+json");
         assert!(manifest.contains(r#""purpose":"maskable""#));
         let (_, _, worker) = send(Request::get("/service-worker.js").body(Body::empty()).unwrap()).await;
         assert!(worker.contains(r#"const OFFLINE = "/offline";"#) && worker.contains(&assets().url("style.css")));
+        assert!(
+            worker.starts_with("// Generated")
+                && worker.contains(&format!(r#"importScripts(...["{}"]);"#, assets().url("sw-push.js")))
+        );
         let (status, _, offline) = send(Request::get("/offline").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
         assert!(offline.contains("You are offline"));
@@ -415,6 +490,10 @@ mod tests {
             "Alert set: we will email a@b.c when Pika <Promo> & \"Friends\" drops below $1.00."
         );
         assert_eq!(send(call(Some("wrong"), alert)).await.0, StatusCode::UNAUTHORIZED);
+        let bad = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "alerts.create", "arguments": { "id": "item_9", "email": "nope", "target_price": "1" } } });
+        let res: serde_json::Value = serde_json::from_str(&send(call(Some("dev-token"), bad)).await.2).unwrap();
+        assert_eq!(res["result"]["isError"], true);
+        assert_eq!(res["result"]["content"][0]["text"], "invalid arguments: email: Enter a valid email address.");
         let read = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "items.get", "arguments": { "id": "item_9" } } });
         let (_, _, body) = send(call(Some("dev-token"), read)).await;
         let res: serde_json::Value = serde_json::from_str(&body).unwrap();

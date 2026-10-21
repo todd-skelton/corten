@@ -30,13 +30,17 @@ try {
   // A marker on window survives client navigations and patches, and disappears on a full load.
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
   await page.selectOption("select[name=id]", "c2");
-  await page.click("form[data-patch] button");
+  await page.click("main form[data-patch] button");
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Umbreon"));
   check("form patch replaces the message by id", true);
   check("form patch keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
 
+  const current = () => page.$$eval("a[data-nav][aria-current=page]", (links) => links.map((l) => l.getAttribute("href")).join());
+  check("the shell marks the current link", (await current()) === "/");
   await page.click('header a[href="/about"]');
   await page.waitForFunction(() => document.title === "About | Corten");
+  check("client navigation moves aria-current in the shell", (await current()) === "/about");
+  check("main is not left busy", (await page.getAttribute("main", "aria-busy")) === null);
   check("client navigation swaps <main>", (await page.textContent("main h1")) === "About");
   check("client navigation keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
   check("navigation updates the URL", new URL(page.url()).pathname === "/about");
@@ -47,6 +51,17 @@ try {
   check("back navigation restores the watchlist and resubscribes", (await page.getAttribute("live-prices", "data-status")) === "live");
   check("no console errors", errors.length === 0, errors.join(" | "));
 
+  // Signing in changes the shell's context, so the redirect loads the whole document.
+  await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 2));
+  await page.click("header form[data-patch] button");
+  await page.waitForSelector("header .viewer", { timeout: 5000 }).catch(() => {});
+  check("signing in shows the viewer in the shell", ((await page.textContent("header")) ?? "").includes("Signed in as Ada"));
+  check("a new shell context loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
+  await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 3));
+  await page.click('header a[href="/about"]');
+  await page.waitForFunction(() => document.title === "About | Corten");
+  check("same context: navigation swaps again", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 3));
+
   const data = await page.request.get(base, { headers: { accept: "application/json" } });
   const json = await data.json();
   check("same URL as JSON for data clients", json.title === "Watchlist | Corten" && json.data.cards.length === 3);
@@ -55,7 +70,7 @@ try {
   const plain = await noJs.newPage();
   await plain.goto(base);
   await plain.selectOption("select[name=id]", "c3");
-  await Promise.all([plain.waitForNavigation(), plain.click("form button")]);
+  await Promise.all([plain.waitForNavigation(), plain.click("main form button")]);
   check("without JavaScript the form posts and renders the page", ((await plain.textContent("#watch-message")) ?? "").startsWith("Watching Pikachu"));
   check("without JavaScript prices are server-rendered", (await plain.$$('[data-ref="price"]')).length === 3);
   await noJs.close();

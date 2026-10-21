@@ -1,4 +1,5 @@
 //! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts.
+use corten::{i18n::Catalog, Errors};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -77,15 +78,21 @@ pub fn sort_listings(listings: &[Listing], descending: bool) -> Vec<Listing> {
     sorted
 }
 
-pub fn alert_message(title: &str, email: &str, target: &str) -> String {
-    let price: f64 = target.trim().parse().unwrap_or(f64::NAN);
+/// The price-alert rules, shared by the form and the agent tool. Messages come from the catalog.
+pub fn check_alert(t: &Catalog, email: &str, target: &str) -> Result<f64, Errors> {
+    let mut errors = Errors::new();
     if !email.contains('@') {
-        return "Enter a valid email address.".to_string();
+        errors.add("email", t.t("alert.invalid_email"));
     }
-    // NaN (unparseable input) is not above zero either.
-    if price.is_nan() || price <= 0.0 {
-        return "Enter a target price above zero.".to_string();
+    let price: f64 = target.trim().parse().unwrap_or(f64::NAN);
+    // NaN (unparseable input) and infinity are not prices.
+    if !price.is_finite() || price <= 0.0 {
+        errors.add("target_price", t.t("alert.invalid_price"));
     }
+    errors.into_result(price)
+}
+
+pub fn alert_set(title: &str, email: &str, price: f64) -> String {
     format!("Alert set: we will email {email} when {title} drops below ${price:.2}.")
 }
 

@@ -25,11 +25,34 @@ struct Msg {
     text: &'static str,
 }
 
+/// The signed-in user, as an app's auth middleware would insert it.
+#[derive(Clone, Hash)]
+struct Viewer(&'static str);
+
 struct TestShell;
 impl Shell for TestShell {
-    fn render(head: &Head<'_>, main: &str) -> askama::Result<String> {
-        Ok(format!("<html><head>{head}</head><body><main>{main}</main></body></html>"))
+    type Context = Viewer;
+    fn render(head: &Head<'_>, main: &str, viewer: Option<&Viewer>) -> askama::Result<String> {
+        let who = viewer.map_or("guest", |v| v.0);
+        let current = if head.is_current("/", false) { " aria-current=\"page\"" } else { "" };
+        Ok(format!(
+            "<html><head>{head}</head><body><header><a href=\"/\"{current}>{who}</a></header><main>{main}</main></body></html>"
+        ))
     }
+}
+
+/// `router` with `viewer` inserted into every request, as auth middleware would.
+fn signed_in(router: Router, viewer: &'static str) -> Router {
+    router.layer(axum::middleware::from_fn(move |mut req: Request<Body>, next: axum::middleware::Next| async move {
+        req.extensions_mut().insert(Viewer(viewer));
+        next.run(req).await
+    }))
+}
+
+fn meta_content<'a>(html: &'a str, name: &str) -> &'a str {
+    let prefix = format!(r#"<meta name="{name}" content=""#);
+    let start = html.find(&prefix).expect("meta tag") + prefix.len();
+    &html[start..start + html[start..].find('"').unwrap()]
 }
 
 async fn call(router: Router, method: &str, mode: Option<&str>) -> (StatusCode, axum::http::HeaderMap, String) {
@@ -232,4 +255,79 @@ async fn health_reports_liveness_and_readiness() {
     let ready = get("/health/ready").await.unwrap();
     assert_eq!(ready.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(ready.headers()["cache-control"], "no-store");
+}
+
+#[tokio::test]
+async fn the_shell_sees_the_context_and_its_key_follows_it() {
+    let (_, headers, guest) = call(page_router(), "GET", None).await;
+    assert!(guest.contains(r#"<a href="/" aria-current="page">guest</a>"#));
+    let key = meta_content(&guest, "corten-shell");
+    assert_eq!(headers["corten-shell"], key, "the document and its header agree");
+
+    let (_, _, ada) = call(signed_in(page_router(), "ada"), "GET", None).await;
+    assert!(ada.contains(">ada</a>"));
+    assert_ne!(meta_content(&ada, "corten-shell"), key, "signing in changes the key");
+
+    let (_, nav, body) = call(signed_in(page_router(), "ada"), "GET", Some("nav")).await;
+    assert_eq!(nav["corten-shell"], meta_content(&ada, "corten-shell"), "navigations carry the key");
+    assert!(!body.contains("<header>"), "a navigation sends only the page");
+}
+
+#[test]
+fn current_links_match_the_page_or_its_section() {
+    assert!(is_current("/sell", "/sell", false));
+    assert!(is_current("/sell", "/sell?tab=2", false));
+    assert!(!is_current("/sell/listings", "/sell", false));
+    assert!(is_current("/sell/listings", "/sell", true));
+    assert!(is_current("/sell/listings", "/sell/", true));
+    assert!(!is_current("/seller", "/sell", true));
+}
+
+#[derive(Template)]
+#[template(source = r#"<form id="f"><input name="email"{{ errors.aria("email")|safe }}></form>"#, ext = "html")]
+struct AlertForm<'a> {
+    errors: &'a Errors,
+}
+
+fn invalid_router() -> Router {
+    Router::new().route(
+        "/",
+        get(|req: Req<TestShell>| async move {
+            let mut errors = Errors::new();
+            errors.add("email", "Enter an email address.");
+            req.invalid(&errors, &AlertForm { errors: &errors }, || async { Ok(Demo { text: "page with errors".into() }) }).await
+        }),
+    )
+}
+
+#[tokio::test]
+async fn invalid_input_answers_422_in_each_mode() {
+    let (status, headers, body) = call(invalid_router(), "GET", Some("action")).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(headers["corten-patch"], "1");
+    assert_eq!(body, r#"<form id="f"><input name="email" aria-invalid="true" aria-describedby="email-error"></form>"#);
+
+    let (status, _, body) = call(invalid_router(), "GET", None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body.contains("<p>page with errors</p>") && body.contains("<html>"), "no JavaScript: the whole page");
+
+    #[cfg(feature = "json")]
+    {
+        let (status, _, body) = call_with(invalid_router(), "GET", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body, r#"{"errors":{"email":"Enter an email address."}}"#);
+    }
+}
+
+#[tokio::test]
+async fn error_pages_see_the_context() {
+    let router = signed_in(
+        error_pages::<TestShell, _>(
+            Router::new().route("/", get(|| async { Err::<Response, _>(Error::status(StatusCode::FORBIDDEN)) })),
+        ),
+        "ada",
+    );
+    let (status, _, body) = call(router, "GET", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(body.contains(">ada</a>") && body.contains("Not allowed"));
 }

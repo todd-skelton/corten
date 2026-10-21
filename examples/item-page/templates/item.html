@@ -53,14 +53,7 @@
   </section>
   <section class="alert">
     <h2>{{ t.t("alert.title") }}</h2>
-    <div class="alert-form">
-      <form method="post" action="/items/{{ item.id }}" data-patch>
-        <input type="hidden" name="title" value="{{ item.title }}">
-        <label>{{ t.t("alert.email") }}<input type="email" name="email" required></label>
-        <label>{{ t.t("alert.below") }}<input type="text" name="target_price" inputmode="decimal" required></label>
-        <button type="submit">{{ t.t("alert.submit") }}</button>
-      </form>
-    </div>
+    {% include "alert_form.html" %}
     {% include "alert_message.html" %}
   </section>
   <section class="details">

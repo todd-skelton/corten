@@ -175,3 +175,35 @@ async fn the_relay_lease_moves_on_when_its_holder_dies_or_stalls() {
     assert!(died.elapsed() < lease, "taken after the holder died: {:?}", died.elapsed());
     store::release(&mut x).await.unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unused_feed_is_unloaded_and_loads_again_with_its_replay_log() {
+    let Some((db, nats)) = urls() else { return eprintln!("skipped: set CORTEN_TEST_DATABASE_URL and CORTEN_TEST_NATS_URL") };
+    let pool = pool(&db).await;
+    let feed = key("idle");
+    new_feed(&pool, &feed).await;
+    let options = Options { instance: "idle".into(), idle_unload: Some(Duration::from_millis(200)), ..Options::default() };
+    let cluster = Cluster::start(pool.clone(), async_nats::connect(&nats).await.unwrap(), Items, options).await.unwrap();
+    let loaded = cluster.feed(&feed).await.unwrap().unwrap();
+    for n in 1..=3 {
+        set(&pool, &feed, n, None).await;
+    }
+    eventually("seq 3", || loaded.seq() == 3).await;
+    let generation = loaded.generation().to_string();
+
+    // A live stream keeps it loaded.
+    let stream = loaded.live(Since(Some(corten_feed::Cursor::new(&generation, 3))));
+    drop(loaded);
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(cluster.stats().iter().any(|(k, _, subscribers)| k == &feed && *subscribers == 1), "kept while streamed");
+
+    // Without one it goes, and the next request loads it with the patches a cursor needs.
+    drop(stream);
+    eventually("unloaded", || !cluster.stats().iter().any(|(k, _, _)| k == &feed)).await;
+    let again = cluster.feed(&feed).await.unwrap().unwrap();
+    assert_eq!((again.seq(), again.generation()), (3, generation.as_str()));
+    let body = again.live(Since(Some(corten_feed::Cursor::new(&generation, 1)))).into_body();
+    let first = futures_util::StreamExt::next(&mut body.into_data_stream()).await.unwrap().unwrap();
+    let text = String::from_utf8(first.to_vec()).unwrap();
+    assert!(text.contains(&format!("id: {generation}-2\n")) && !text.contains("event: sync"), "{text}");
+}

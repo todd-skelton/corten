@@ -7,8 +7,10 @@
 // 3. <corten-live src>: apply fragments streamed as server-sent `patch` events.
 // 4. Islands: an undefined <tag-name> loads `{islands dir}/tag-name.js` and defines its default export.
 // 5. subscribe(): live rows from a corten::feed (snapshot + ordered patches) for islands that keep state.
-// 6. Hover prefetch of same-origin links, the page's head tags on navigation, and the service
-//    worker when the shell names one (corten::pwa).
+// 6. Hover prefetch of same-origin links, the page's head tags on navigation, `aria-current` on
+//    shell links with `data-nav`, and the service worker when the shell names one (corten::pwa).
+// 7. A page response whose shell key differs from this page's (the user signed in or out, or a
+//    deploy changed the runtime or assets) is loaded in full instead of swapped.
 // Without JavaScript, links and forms still work as plain HTML.
 
 const islandsDir = document.querySelector('meta[name="corten-islands"]')?.getAttribute("content") ?? "/static/islands/";
@@ -283,7 +285,42 @@ function swapPage(html) {
   const main = document.querySelector("main");
   if (!main) throw new Error("corten: the shell must render a <main> element");
   main.replaceChildren(content);
+  markCurrent();
   return upgrade(main);
+}
+
+/**
+ * Sets `aria-current="page"` on `<a data-nav>` links to this page (`data-nav="section"`: to this
+ * page or any page under it) and removes it from the rest. The shell is not re-rendered by
+ * client navigation, so its menu would otherwise keep pointing at the first page.
+ */
+function markCurrent() {
+  const here = location.pathname;
+  for (const link of Array.from(document.querySelectorAll("a[href][data-nav]"))) {
+    const path = new URL(/** @type {HTMLAnchorElement} */ (link).href).pathname;
+    const base = path.replace(/\/+$/, "");
+    const current = here === path || (link.getAttribute("data-nav") === "section" && here.startsWith(`${base}/`));
+    if (current) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+}
+
+/** The shell key the server printed for this document. */
+const shellKey = document.querySelector('meta[name="corten-shell"]')?.getAttribute("content") ?? null;
+
+/**
+ * True when a page response belongs to another shell: the document must be loaded in full.
+ * @param {Response} res
+ */
+function shellChanged(res) {
+  const key = res.headers.get("corten-shell");
+  return key !== null && shellKey !== null && key !== shellKey;
+}
+
+/** Moves focus to the first field the server marked invalid. */
+function focusInvalid() {
+  const field = document.querySelector('main [aria-invalid="true"]');
+  if (field instanceof HTMLElement) field.focus();
 }
 
 /** Navigation responses fetched ahead of a likely click, by URL without the hash. */
@@ -333,6 +370,8 @@ async function visit(url, signal) {
   prefetched.delete(key);
   /** @type {Response} */
   let res;
+  const main = document.querySelector("main");
+  main?.setAttribute("aria-busy", "true");
   try {
     res =
       hit && performance.now() - hit.at < PREFETCH_FRESH_MS
@@ -344,9 +383,11 @@ async function visit(url, signal) {
     // service worker (if any) answers with the offline page, and the browser otherwise explains.
     location.reload();
     return;
+  } finally {
+    main?.removeAttribute("aria-busy");
   }
   signal.throwIfAborted();
-  if (!res.headers.has("corten-page")) {
+  if (!res.headers.has("corten-page") || shellChanged(res)) {
     location.reload();
     return;
   }
@@ -394,8 +435,12 @@ document.addEventListener("submit", async (event) => {
       else location.assign(location_);
     } else if (res.headers.has("corten-patch")) {
       await patch(await res.text());
+      if (res.status === 422) focusInvalid();
+    } else if (res.headers.has("corten-page") && shellChanged(res)) {
+      location.reload();
     } else if (res.headers.has("corten-page")) {
       await swapPage(await res.text());
+      if (res.status === 422) focusInvalid();
     } else {
       form.dispatchEvent(new CustomEvent("corten:error", { bubbles: true, detail: { status: res.status } }));
     }
@@ -420,6 +465,8 @@ customElements.define(
     }
   },
 );
+
+markCurrent();
 
 /** Resolves once the islands on the first page are defined. */
 export const ready = upgrade(document.body);

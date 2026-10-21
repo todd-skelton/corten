@@ -70,6 +70,9 @@ pub struct Options {
     pub max_age: Duration,
     /// JetStream drops a republished patch within this window.
     pub duplicate_window: Duration,
+    /// A loaded feed with no live stream and no read for this long is dropped from memory and
+    /// loaded again on its next request. `None` keeps every feed loaded (a fixed, small set).
+    pub idle_unload: Option<Duration>,
 }
 
 impl Default for Options {
@@ -81,6 +84,7 @@ impl Default for Options {
             lease: Duration::from_secs(2),
             max_age: Duration::from_secs(3600),
             duplicate_window: Duration::from_secs(120),
+            idle_unload: Some(Duration::from_secs(600)),
         }
     }
 }
@@ -106,12 +110,17 @@ impl<S: Source> Cluster<S> {
         let options = Arc::new(options);
         let hub = hub::Hub::new(pool.clone(), source, options.clone());
         hub::start(hub.clone(), js.clone()).await?;
+        if let Some(after) = options.idle_unload {
+            tokio::spawn(hub::unload_idle(hub.clone(), after));
+        }
         let relay_active = Arc::new(AtomicBool::new(false));
         tokio::spawn(relay::run(pool, js, options, relay_active.clone()));
         Ok(Cluster { hub, relay_active })
     }
 
-    /// The feed for `key`, loaded on first use. `None` when no such feed exists.
+    /// The feed for `key`, loaded on first use. `None` when no such feed exists. Ask again per
+    /// request rather than keeping the handle: an idle feed is unloaded (`Options::idle_unload`),
+    /// and a kept handle would stop receiving patches.
     pub async fn feed(&self, key: &str) -> Result<Option<Feed<S::Row>>, Error> {
         self.hub.feed(key).await
     }

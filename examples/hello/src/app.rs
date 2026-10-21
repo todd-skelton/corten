@@ -6,15 +6,20 @@
 //! | `POST /watch` | form patch with JavaScript, full page without, JSON for data clients |
 //! | `GET /feed/cards`, `/feed/cards/live` | the live feed `<live-prices>` subscribes to |
 //! | `GET /about` | a plain page, reached by client navigation |
+//! | `POST /sign-in` | sets a cookie; the shell shows the viewer, and the runtime reloads the document |
 use std::time::Duration;
 
 use axum::{
-    extract::State as With,
+    extract::{Request, State as With},
+    http::header,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Form, Router,
 };
 use corten::{
     feed::{Feed, Row, Since},
+    security::cookie::{self, SetCookie},
     Head, Mode, Page, Template,
 };
 use serde::{Deserialize, Serialize};
@@ -39,10 +44,33 @@ pub fn router(state: State) -> Router {
         .route("/", get(home))
         .route("/watch", post(watch))
         .route("/about", get(about))
+        .route("/sign-in", post(sign_in))
         .route("/feed/cards", get(|With(s): With<State>| async move { s.cards.snapshot() }))
         .route("/feed/cards/live", get(|With(s): With<State>, since: Since| async move { s.cards.live(since) }))
         .merge(corten::routes())
         .with_state(state)
+        .layer(middleware::from_fn(viewer))
+}
+
+/// Who is looking: the shell's context. A real app reads its session here; the example trusts a
+/// cookie, which is fine for a demo and nothing else.
+#[derive(Clone, Hash)]
+pub struct Viewer {
+    pub name: String,
+}
+
+async fn viewer(mut req: Request, next: Next) -> Response {
+    if let Some(name) = cookie::get(req.headers(), "viewer").filter(|n| !n.is_empty()) {
+        let name = name.to_string();
+        req.extensions_mut().insert(Viewer { name });
+    }
+    next.run(req).await
+}
+
+async fn sign_in(req: Req) -> corten::Result {
+    let mut res = req.redirect("/")?;
+    res.headers_mut().append(header::SET_COOKIE, SetCookie::new("viewer", "Ada").header());
+    Ok(res.into_response())
 }
 
 /// A feed row. `price` is the display text, kept with the cents so every surface shows the
@@ -100,11 +128,14 @@ pub struct Shell;
 struct ShellTemplate<'a> {
     head: &'a Head<'a>,
     main: &'a str,
+    viewer: Option<&'a Viewer>,
 }
 
 impl corten::Shell for Shell {
-    fn render(head: &Head<'_>, main: &str) -> askama::Result<String> {
-        ShellTemplate { head, main }.render()
+    type Context = Viewer;
+
+    fn render(head: &Head<'_>, main: &str, viewer: Option<&Viewer>) -> askama::Result<String> {
+        ShellTemplate { head, main, viewer }.render()
     }
 }
 
@@ -202,6 +233,17 @@ mod tests {
         assert!(kind.starts_with("text/html"));
         assert!(body.contains(r#"<link rel="modulepreload" href="/static/islands/live-prices.js">"#));
         assert!(body.contains(r#"<td data-ref="price" data-id="c1">$129.99</td>"#), "server renders prices first");
+    }
+
+    #[tokio::test]
+    async fn the_shell_marks_the_current_link_and_shows_the_viewer() {
+        let (_, guest) = send(Request::get("/about").body(Body::empty()).unwrap()).await;
+        assert!(guest.contains(r#"<a href="/about" data-nav aria-current="page">About</a>"#), "{guest}");
+        assert!(guest.contains(r#"<a href="/" data-nav>Watchlist</a>"#));
+        assert!(guest.contains("Sign in as Ada"));
+        let signed_in = Request::get("/").header("cookie", "viewer=Ada").body(Body::empty()).unwrap();
+        let (_, ada) = send(signed_in).await;
+        assert!(ada.contains("Signed in as Ada") && !ada.contains("Sign in as Ada"));
     }
 
     #[tokio::test]
