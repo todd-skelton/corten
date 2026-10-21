@@ -5,7 +5,9 @@ plus a ~200-line runtime and custom-element islands, and live data flows as numb
 over server-sent events. The same server is built to answer native screens and AI agents from
 the same routes (see [docs/architecture.md](docs/architecture.md)). Web is the first surface.
 
-Status: 0.1, unpublished.
+Status: 0.1, not on crates.io or npm.
+
+License: not chosen yet. Until a license file is added, all rights are reserved.
 
 ## Name
 
