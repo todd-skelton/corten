@@ -584,9 +584,12 @@ function keep(root, fresh, sent) {
     // put it into another row's field.
     const to = now !== undefined && now !== (sent?.has(f) ? sent.get(f) : stateOf(f, true)) && counterpart(root, fresh, f, true);
     if (!to || to.localName !== f.localName) continue;
-    // A select's `value` is its chosen option (the first, for a multiple select).
     const field = /** @type {HTMLInputElement} */ (f);
-    if (/^(checkbox|radio)$/.test(field.type)) /** @type {HTMLInputElement} */ (to).checked = field.checked;
+    if (f instanceof HTMLSelectElement) {
+      // Every chosen option, by value, so a multiple select keeps them all.
+      const chosen = new Set(Array.from(f.selectedOptions, (o) => o.value));
+      for (const o of Array.from(/** @type {HTMLSelectElement} */ (to).options)) o.selected = chosen.has(o.value);
+    } else if (/^(checkbox|radio)$/.test(field.type)) /** @type {HTMLInputElement} */ (to).checked = field.checked;
     else /** @type {HTMLInputElement} */ (to).value = field.value;
   }
   root.replaceWith(fresh);

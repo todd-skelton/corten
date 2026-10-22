@@ -183,16 +183,17 @@ try {
   await page.evaluate(() =>
     document.querySelector("main")?.insertAdjacentHTML(
       "beforeend",
-      '<form id="kept"><input name="q" value="a"><input name="r" value="a"><input type="checkbox" name="c" value="1"><select name="s"><option value="1">1</option><option value="2">2</option></select><select name="t"><option value="1">1</option><option value="2">2</option></select><p><button type="button">Go</button></p></form>',
+      '<form id="kept"><input name="q" value="a"><input name="r" value="a"><input type="checkbox" name="c" value="1"><select name="s"><option value="1">1</option><option value="2">2</option></select><select name="t"><option value="1">1</option><option value="2">2</option></select><select name="m" multiple><option value="1">1</option><option value="2">2</option><option value="3">3</option></select><p><button type="button">Go</button></p></form>',
     ),
   );
+  await page.selectOption("#kept [name=m]", ["1", "3"]);
   await page.fill("#kept [name=q]", "typed");
   await page.check("#kept [name=c]");
   await page.selectOption("#kept [name=s]", "2");
   await page.focus("#kept [name=q]");
   await page.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("#kept [name=q]")).setSelectionRange(1, 3));
   const fresh =
-    '<form id="kept" class="new"><input name="q" value="b"><input name="r" value="b"><input type="checkbox" name="c" value="1"><select name="s"><option value="1">1</option><option value="2">2</option></select><select name="t"><option value="1">1</option><option value="2" selected>2</option></select><p><button type="button">Go</button></p></form>';
+    '<form id="kept" class="new"><input name="q" value="b"><input name="r" value="b"><input type="checkbox" name="c" value="1"><select name="s"><option value="1">1</option><option value="2">2</option></select><select name="t"><option value="1">1</option><option value="2" selected>2</option></select><select name="m" multiple><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select><p><button type="button">Go</button></p></form>';
   const afterLive = await page.evaluate(async (html) => {
     const { patch } = await import("corten");
     await patch(html);
@@ -204,13 +205,14 @@ try {
       c: /** @type {HTMLInputElement} */ (document.querySelector("#kept [name=c]")).checked,
       s: /** @type {HTMLSelectElement} */ (document.querySelector("#kept [name=s]")).value,
       t: /** @type {HTMLSelectElement} */ (document.querySelector("#kept [name=t]")).value,
+      m: Array.from(/** @type {HTMLSelectElement} */ (document.querySelector("#kept [name=m]")).selectedOptions, (o) => o.value).join(),
       focused: document.activeElement === q,
       selection: [q.selectionStart, q.selectionEnd],
     };
   }, fresh);
   check(
     "a patch keeps edited fields, focus and selection, and applies the rest",
-    afterLive.server === "new" && afterLive.q === "typed" && afterLive.r === "b" && afterLive.c && afterLive.s === "2" && afterLive.t === "2" && afterLive.focused && afterLive.selection.join() === "1,3",
+    afterLive.server === "new" && afterLive.q === "typed" && afterLive.r === "b" && afterLive.c && afterLive.s === "2" && afterLive.t === "2" && afterLive.m === "1,3" && afterLive.focused && afterLive.selection.join() === "1,3",
     JSON.stringify(afterLive),
   );
   await page.focus("#kept button");
