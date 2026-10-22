@@ -34,7 +34,7 @@ tested in Chromium only.
 cargo install --git https://github.com/todd-skelton/corten corten-cli
 corten new my-app
 cd my-app
-corten dev        # http://localhost:3000, rebuilds on save, open pages reload
+corten dev    # serves http://localhost:3000 and reloads on save
 ```
 
 `corten new` writes a working app: a page, a form that patches part of the page, an island, a
@@ -58,7 +58,10 @@ struct Greet;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let routes = Router::new().route(Home::PATH, get(home)).route(Greet::PATH, post(greet));
+    let routes = Router::new()
+        .route(Home::PATH, get(home))
+        .route(Greet::PATH, post(greet));
+
     App::new(routes).serve().await
 }
 
@@ -68,7 +71,9 @@ async fn home(req: Req) -> corten::Result {
 
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
     match req.mode {
+        // With JavaScript: send only the greeting, swapped in by its id.
         Mode::Action => req.patch(Greeting { name: &form.name }),
+        // Without: the whole page.
         _ => req.page("Home", page(&form.name)),
     }
 }
@@ -90,10 +95,16 @@ fn page(name: &str) -> impl Render + '_ {
     }
 }
 
-/// Rendered inside the page, and on its own as the form's patch, so the two cannot drift.
+/// Rendered by the page and by the patch, so the two cannot drift.
 #[component]
 fn Greeting(name: &str) -> impl Render {
-    html! { <p id="greeting" aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
+    html! {
+        <p id="greeting" aria-live="polite">
+            if !name.is_empty() {
+                "Hello, " {name} "!"
+            }
+        </p>
+    }
 }
 ```
 
@@ -104,7 +115,14 @@ names what the script may touch, and the script sits in the file next to it.
 // src/click_counter.rs
 #[island]
 pub fn ClickCounter() -> impl Render {
-    html! { <button type="button" on:click={Count}>"Clicks: "<output ref={Total}>"0"</output></button> }
+    html! {
+        // on:click runs the script's `count` action;
+        // ref={Total} is the element it reads as `refs.total`.
+        <button type="button" on:click={Count}>
+            "Clicks: "
+            <output ref={Total}>"0"</output>
+        </button>
+    }
 }
 ```
 
@@ -116,7 +134,8 @@ export default island("click-counter", {
   state: () => ({ count: 0 }),
   actions: {
     count({ state, refs }) {
-      refs.total.value = String(++state.count);
+      state.count += 1;
+      refs.total.value = String(state.count);
     },
   },
 });
