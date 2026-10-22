@@ -73,19 +73,32 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
             <section class={Panel}>
                 <h2>{t.item_details()}</h2>
                 <p>{item.description}</p>
-                <dl>for f in &item.fields { <dt>{f.name}</dt><dd>{f.value}</dd> }</dl>
+                <dl>
+                    for f in &item.fields {
+                        <dt>{f.name}</dt>
+                        <dd>{f.value}</dd>
+                    }
+                </dl>
                 <ul class={Chips}>for tag in &item.tags { <li>{tag}</li> }</ul>
             </section>
             if !item.contents.is_empty() {
                 <section class={Panel}>
                     <h2>{t.item_contents()}</h2>
-                    <ul>for c in &item.contents { <li><a href={routes::Item { id: &c.item_id }}>{c.title}</a>" × "{c.quantity}</li> }</ul>
+                    <ul>
+                        for c in &item.contents {
+                            <li><a href={routes::Item { id: &c.item_id }}>{c.title}</a>" × "{c.quantity}</li>
+                        }
+                    </ul>
                 </section>
             }
             if !item.included_in.is_empty() {
                 <section class={Panel}>
                     <h2>{t.item_included_in()}</h2>
-                    <ul>for c in &item.included_in { <li><a href={routes::Item { id: &c.item_id }}>{c.title}</a>" × "{c.quantity}</li> }</ul>
+                    <ul>
+                        for c in &item.included_in {
+                            <li><a href={routes::Item { id: &c.item_id }}>{c.title}</a>" × "{c.quantity}</li>
+                        }
+                    </ul>
                 </section>
             }
         </article>

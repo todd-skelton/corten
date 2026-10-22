@@ -207,7 +207,10 @@ mod tests {
         assert_eq!(fr.item_image("<Pika>", 2).to_string(), "Image 2 de <Pika>", "arguments may be in another order");
         assert_eq!(en.item_image("<Pika>", 2).to_html(), "&lt;Pika&gt; image 2", "escaped in a page");
         assert_eq!(en.brace().to_html(), "{literal} &amp; more", "the message's own text is escaped too");
-        let view = crate::html! { <img alt={fr.item_image("A & B", 1)}><p>{en.item_listing_count(1)}</p> };
+        let view = crate::html! {
+            <img alt={fr.item_image("A & B", 1)}>
+            <p>{en.item_listing_count(1)}</p>
+        };
         assert_eq!(view.to_html(), r#"<img alt="Image 1 de A &amp; B"><p>1 listings</p>"#);
         assert_eq!(Msg::for_locale("FR"), fr);
         assert_eq!(Msg::default().locale(), "en");

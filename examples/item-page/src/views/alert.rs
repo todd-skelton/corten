@@ -28,9 +28,21 @@ pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Render {
         <div class={Form} id={AlertFormId}>
             <form method="post" action={routes::Item { id: form.id }} data-patch>
                 <input type="hidden" name={f.title} value={form.title}>
-                <label>{t.alert_email()}<input type="email" name={f.email} value={form.email} required {..form.errors.aria(f.email)}></label>
+                <label>
+                    {t.alert_email()}<input type="email" name={f.email} value={form.email} required {..form.errors.aria(f.email)}>
+                </label>
                 {form.errors.message(f.email)}
-                <label>{t.alert_below()}<input type="text" name={f.target_price} value={form.target_price} inputmode="decimal" required {..form.errors.aria(f.target_price)}></label>
+                <label>
+                    {t.alert_below()}
+                    <input
+                        type="text"
+                        name={f.target_price}
+                        value={form.target_price}
+                        inputmode="decimal"
+                        required
+                        {..form.errors.aria(f.target_price)}
+                    >
+                </label>
                 {form.errors.message(f.target_price)}
                 <button type="submit">{t.alert_submit()}</button>
             </form>

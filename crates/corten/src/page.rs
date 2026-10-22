@@ -267,7 +267,13 @@ pub fn default_error_page(status: StatusCode) -> (Meta, impl Render) {
         StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
         _ => ("Something went wrong", "Please try again."),
     };
-    (Meta::from(title), html! { <h1>{title}</h1><p>{text}</p> })
+    (
+        Meta::from(title),
+        html! {
+            <h1>{title}</h1>
+            <p>{text}</p>
+        },
+    )
 }
 
 pub(crate) type ErrorPage = dyn Fn(StatusCode) -> (Meta, String) + Send + Sync;
@@ -660,7 +666,10 @@ pub(crate) async fn render_errors(
     }
     let req = failed_req;
     if offline && status == StatusCode::NOT_FOUND {
-        let view = html! { <h1>"You are offline"</h1><p>"Check your connection and try again."</p> };
+        let view = html! {
+            <h1>"You are offline"</h1>
+            <p>"Check your connection and try again."</p>
+        };
         return req.respond(StatusCode::OK, Meta::new("Offline").noindex(), view.to_html());
     }
     let (meta, mut main) = (shared.error_page)(status);

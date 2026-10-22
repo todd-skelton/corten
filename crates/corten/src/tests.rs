@@ -8,7 +8,11 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 fn demo(text: &str) -> impl Render + '_ {
-    html! { <p>{text}</p><sort-table><b>"x"</b></sort-table><corten-live src="/x"></corten-live> }
+    html! {
+        <p>{text}</p>
+        <sort-table><b>"x"</b></sort-table>
+        <corten-live src="/x"></corten-live>
+    }
 }
 
 fn demo_meta() -> Meta {
@@ -22,7 +26,13 @@ struct Viewer(&'static str);
 fn test_shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
     let who = viewer.map_or("guest", |v| v.0);
     html! {
-        <html><head>{doc.head}</head><body><header><a href={Root} aria-current={doc.current(&Root)}>{who}</a></header><main>{doc.main}</main></body></html>
+        <html>
+            <head>{doc.head}</head>
+            <body>
+                <header><a href={Root} aria-current={doc.current(&Root)}>{who}</a></header>
+                <main>{doc.main}</main>
+            </body>
+        </html>
     }
 }
 

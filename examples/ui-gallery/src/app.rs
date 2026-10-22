@@ -86,7 +86,13 @@ async fn menu_action(req: Req, text: &'static str) -> corten::Result {
 }
 
 async fn help(req: Req) -> corten::Result {
-    req.page("Help | corten-ui", html! { <h1>"Help"</h1><p><a href={url::Home { tab: None }}>"Back"</a></p> })
+    req.page(
+        "Help | corten-ui",
+        html! {
+            <h1>"Help"</h1>
+            <p><a href={url::Home { tab: None }}>"Back"</a></p>
+        },
+    )
 }
 
 #[cfg(test)]

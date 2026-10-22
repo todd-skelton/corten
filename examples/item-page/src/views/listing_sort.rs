@@ -35,8 +35,14 @@ pub fn ListingSort<'a>(t: Msg, listings: &'a [&'a Listing]) -> impl Render {
 fn ListingRow(l: &Listing) -> impl Render {
     html! {
         <tr data-price={l.price_value}>
-            <td>{l.seller}if let Some(rating) = &l.rating { " · "{rating}" ★ ("{l.reviews}")" }</td>
-            <td>{l.condition}</td><td>{l.ships_from}</td><td>{l.quantity}</td><Price amount={&l.price} />
+            <td>
+                {l.seller}
+                if let Some(rating) = &l.rating { " · "{rating}" ★ ("{l.reviews}")" }
+            </td>
+            <td>{l.condition}</td>
+            <td>{l.ships_from}</td>
+            <td>{l.quantity}</td>
+            <Price amount={&l.price} />
         </tr>
     }
 }

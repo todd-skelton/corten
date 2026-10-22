@@ -38,18 +38,26 @@ pub fn Gallery<'a>(tab: usize, result: &'a str) -> impl Render {
         <h1>"corten-ui"</h1>
         <form method="post" action={url::Order} data-patch>
             <Field id="qty" label="Quantity"><NumberField field={&qty} /></Field>
-            <Field id="price" label="Price"><span class={Currency}>"$"</span><NumberField field={&price} /></Field>
+            <Field id="price" label="Price">
+                <span class={Currency}>"$"</span>
+                <NumberField field={&price} />
+            </Field>
             <Field id="color" label="Color"><ComboBox field={&color} /></Field>
             <button>"Order"</button>
         </form>
         <OrderResult text={result} />
         // Built in the markup, so the panels' views live until the group has rendered them.
         <div class={Book}>
-            <TabGroup id="book" label="Market" selected={tab} tabs={&[
-                Tab { label: &"Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None }) },
-                Tab { label: &"Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]) }) },
-                Tab { label: &"Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]) }) },
-            ]} />
+            <TabGroup
+                id="book"
+                label="Market"
+                selected={tab}
+                tabs={&[
+                    Tab { label: &"Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None }) },
+                    Tab { label: &"Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]) }) },
+                    Tab { label: &"Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]) }) },
+                ]}
+            />
         </div>
         <div class={Actions}><MenuButton id="actions" label={&"Actions"} items={&items} /></div>
         <MenuResult text="" />

@@ -38,5 +38,12 @@ pub fn OfferList<'a>(t: Msg, offers: &'a [Offer]) -> impl Render {
 
 #[component]
 fn OfferRow(o: &Offer) -> impl Render {
-    html! { <tr><td>{o.buyer}</td><td>{o.condition}</td><td>{o.quantity}</td><Price amount={&o.price} /></tr> }
+    html! {
+        <tr>
+            <td>{o.buyer}</td>
+            <td>{o.condition}</td>
+            <td>{o.quantity}</td>
+            <Price amount={&o.price} />
+        </tr>
+    }
 }

@@ -13,7 +13,10 @@ impl fmt::Display for Price {
 #[test]
 fn text_and_expressions_are_escaped_and_static_markup_is_kept() {
     let name = "Pika <Promo> & \"Friends\"";
-    let view = html! { <h1 class="title">"Tom & Jerry's"</h1><p>{name}" · "{42}{-7i64}{'<'}</p> };
+    let view = html! {
+        <h1 class="title">"Tom & Jerry's"</h1>
+        <p>{name}" · "{42}{-7i64}{'<'}</p>
+    };
     assert_eq!(
         view.to_html(),
         "<h1 class=\"title\">Tom &amp; Jerry&#39;s</h1><p>Pika &lt;Promo&gt; &amp; &quot;Friends&quot; · 42-7&lt;</p>"
@@ -31,7 +34,17 @@ fn attributes_take_text_numbers_bools_options_and_display() {
     let id = "a\"b";
     let none: Option<&str> = None;
     let view = html! {
-        <input type="text" name={id} value={12} required disabled={false} checked={true} title={none} placeholder={Some("x")} data-p={Price(1)}>
+        <input
+            type="text"
+            name={id}
+            value={12}
+            required
+            disabled={false}
+            checked={true}
+            title={none}
+            placeholder={Some("x")}
+            data-p={Price(1)}
+        >
     };
     assert_eq!(
         view.to_html(),
@@ -65,7 +78,9 @@ fn void_elements_doctype_fragments_and_raw_text() {
     let view = html! {
         <!DOCTYPE html>
         <>
-            <br><img src="/a.png" alt=""/><div/>
+            <br>
+            <img src="/a.png" alt="" />
+            <div />
             <style>"a > b { color: red }"</style>
         </>
     };
@@ -80,7 +95,12 @@ fn Badge(label: &str, count: usize, hot: bool) -> impl Render {
 
 #[component]
 fn Panel<'a, C: Render>(title: &'a str, owned: String, children: C) -> impl Render {
-    html! { <section data-owned={owned}><h2>{title}</h2>{children}</section> }
+    html! {
+        <section data-owned={owned}>
+            <h2>{title}</h2>
+            {children}
+        </section>
+    }
 }
 
 mod ui {
@@ -135,7 +155,10 @@ fn views_own_and_move_what_they_capture() {
     let viewer: Option<String> = Some("Ada".into());
     let names = vec![String::from("a"), String::from("b")];
     let view = html! {
-        match viewer { Some(name) => <b>{name}</b>, None => "guest" }
+        match viewer {
+            Some(name) => <b>{name}</b>,
+            None => "guest"
+        }
         for name in names { <i>{name}</i> }
     };
     assert_eq!(view.to_html(), "<b>Ada</b><i>a</i><i>b</i>");

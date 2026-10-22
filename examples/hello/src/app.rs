@@ -217,7 +217,9 @@ fn home_view(home: &Home) -> impl Render {
         <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} />
         <corten-live src={url::Trades}><LastTrade text={&home.last_trade} /></corten-live>
         <form method="post" action={url::Watch} data-patch>
-            <label>"Stock "<select name={f.id}>for stock in &home.stocks { <option value={stock.id}>{stock.name}</option> }</select></label>
+            <label>
+                "Stock "<select name={f.id}>for stock in &home.stocks { <option value={stock.id}>{stock.name}</option> }</select>
+            </label>
             <button>"Watch"</button>
         </form>
         <WatchMessage message={&home.message} />
@@ -236,7 +238,12 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str) -> impl Render {
                 "Pause updates"
             </button>
             <table class={Table}>
-                <thead><tr><th>"Stock"</th><th>"Price"</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>"Stock"</th>
+                        <th>"Price"</th>
+                    </tr>
+                </thead>
                 <tbody>
                     for stock in stocks {
                         <tr>
@@ -300,7 +307,10 @@ async fn watch(req: Req, State(market): State<Market>, Form(form): Form<WatchFor
 async fn about(req: Req) -> corten::Result {
     req.page(
         "About | Corten",
-        html! { <h1>"About"</h1><p>"Rendered on the server and swapped into the page by the runtime."</p> },
+        html! {
+            <h1>"About"</h1>
+            <p>"Rendered on the server and swapped into the page by the runtime."</p>
+        },
     )
 }
 
