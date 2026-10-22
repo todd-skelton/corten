@@ -61,7 +61,8 @@ framework's shape, and what it does not do yet.
    modules, so this needs a person faster than the network.
 5. Offline is a fallback page plus cached versioned files, not offline data.
 6. Hover and touch prefetch reuses a fetched page for up to 10 seconds (cleared after any form
-   post).
+   post). It keeps the 8 newest and cancels the bodies of the rest, so hovering does not hold
+   pages for the whole session; with the browser's data saver on it fetches nothing.
 7. A feed's write rate is bounded by Postgres commit latency on its feed row. Split hot data into
    several feeds.
 8. `html!` views render once and own what they capture; read from `req` before building the view.

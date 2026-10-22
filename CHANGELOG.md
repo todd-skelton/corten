@@ -68,6 +68,12 @@ Corten is pre-1.0, so any minor version may change the API.
 6. `examples/item-page` mounts its MCP endpoint with `App::api`; its smoke test calls it from a
    page on another origin.
 
+### Fixed
+
+1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
+   now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
+   the browser's data saver is on.
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

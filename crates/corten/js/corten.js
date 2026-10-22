@@ -633,10 +633,20 @@ function focusInvalid() {
   if (field instanceof HTMLElement) field.focus();
 }
 
-/** Navigation responses fetched ahead of a likely click, by URL without the hash. */
-/** @type {Map<string, { at: number, response: Promise<Response> }>} */
+/**
+ * Navigation responses fetched ahead of a likely click, by URL without the hash, oldest first.
+ * At most `PREFETCH_MAX`: a page hovered and never followed is dropped (its body cancelled) once
+ * newer ones push it out or it goes stale, so a long session does not hold every page it hovered.
+ * @type {Map<string, { at: number, response: Promise<Response> }>}
+ */
 const prefetched = new Map();
 const PREFETCH_FRESH_MS = 10_000;
+const PREFETCH_MAX = 8;
+
+/** @param {{ response: Promise<Response> } | undefined} entry */
+function discard(entry) {
+  entry?.response.then((res) => res.body?.cancel()).catch(() => {});
+}
 
 /** @param {URL} url */
 function pageKey(url) {
@@ -653,11 +663,21 @@ function prefetch(target) {
   const url = new URL(link.href, location.href);
   if (url.origin !== location.origin || pageKey(url) === pageKey(new URL(location.href))) return;
   const key = pageKey(url);
+  // The user asked the browser to save data.
+  if (/** @type {any} */ (navigator).connection?.saveData) return;
+  const now = performance.now();
   const hit = prefetched.get(key);
-  if (hit && performance.now() - hit.at < PREFETCH_FRESH_MS) return;
+  if (hit && now - hit.at < PREFETCH_FRESH_MS) return;
+  prefetched.delete(key);
+  discard(hit);
+  for (const [old, entry] of prefetched) {
+    if (prefetched.size < PREFETCH_MAX && now - entry.at < PREFETCH_FRESH_MS) break;
+    prefetched.delete(old);
+    discard(entry);
+  }
   const response = fetch(key, { headers: { corten: "nav" }, priority: "low" });
   response.catch(() => prefetched.delete(key));
-  prefetched.set(key, { at: performance.now(), response });
+  prefetched.set(key, { at: now, response });
 }
 
 /** @type {ReturnType<typeof setTimeout> | undefined} */
@@ -678,13 +698,15 @@ async function visit(url, signal) {
   const key = pageKey(url);
   const hit = prefetched.get(key);
   prefetched.delete(key);
+  const fresh = hit && performance.now() - hit.at < PREFETCH_FRESH_MS;
+  if (!fresh) discard(hit);
   /** @type {Response} */
   let res;
   const main = document.querySelector("main");
   main?.setAttribute("aria-busy", "true");
   try {
     res =
-      hit && performance.now() - hit.at < PREFETCH_FRESH_MS
+      hit && fresh
         ? await hit.response.catch(() => fetch(url, { headers: { corten: "nav" }, signal }))
         : await fetch(url, { headers: { corten: "nav" }, signal });
   } catch (error) {
@@ -757,7 +779,10 @@ document.addEventListener("submit", async (event) => {
   else init.body = form.enctype === "multipart/form-data" ? data : fields;
   form.setAttribute("aria-busy", "true");
   // A write can change any page, so nothing fetched before it is reused.
-  if (method !== "GET") prefetched.clear();
+  if (method !== "GET") {
+    for (const entry of prefetched.values()) discard(entry);
+    prefetched.clear();
+  }
   try {
     const res = await fetch(url, init);
     const location_ = res.headers.get("corten-location");

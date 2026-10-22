@@ -200,6 +200,42 @@ try {
   await page.waitForTimeout(300);
   check("data-no-prefetch: hovering the link fetches nothing", afterOptOut === 0 && navRequests.length === 1, `${afterOptOut} then ${navRequests.join()}`);
 
+  // The prefetch cache keeps the 8 newest pages: after hovering 9 links, following the newest
+  // reuses its prefetch and following the oldest fetches it again. The links sit in the shell,
+  // which navigation keeps.
+  await page.evaluate(() =>
+    document.querySelector("header nav")?.insertAdjacentHTML("beforeend", Array.from({ length: 9 }, (_, i) => `<a class="hovered" href="/about?p=${i}">${i}</a>`).join(" ")),
+  );
+  for (let i = 0; i < 9; i += 1) {
+    await page.hover(`header a.hovered[href="/about?p=${i}"]`);
+    await page.waitForTimeout(150);
+  }
+  const hoveredCount = navRequests.length;
+  await page.click('header a.hovered[href="/about?p=8"]');
+  await page.waitForFunction(() => location.search === "?p=8");
+  const afterNewest = navRequests.length;
+  await page.click('header a.hovered[href="/about?p=0"]');
+  await page.waitForFunction(() => location.search === "?p=0");
+  check(
+    "prefetch keeps the 8 newest pages: the newest is reused, the oldest is fetched again",
+    hoveredCount === 10 && afterNewest === 10 && navRequests.length === 11,
+    `${hoveredCount}, ${afterNewest}, ${navRequests.length}`,
+  );
+  await page.evaluate(() => document.querySelectorAll("header a.hovered").forEach((a) => a.remove()));
+
+  // With the browser's data saver on, hovering fetches nothing.
+  const saver = await browser.newContext();
+  await saver.addInitScript(() => Object.defineProperty(Navigator.prototype, "connection", { get: () => ({ saveData: true }) }));
+  const saving = await saver.newPage();
+  /** @type {string[]} */
+  const savingRequests = [];
+  saving.on("request", (request) => request.headers()["corten"] === "nav" && savingRequests.push(request.url()));
+  await saving.goto(`${base}/about`);
+  await saving.hover('header a[href="/"]');
+  await saving.waitForTimeout(300);
+  check("data saver: hovering a link fetches nothing", savingRequests.length === 0, savingRequests.join());
+  await saver.close();
+
   // data-reload: the link loads the whole document instead of swapping <main>.
   await page.evaluate(() => {
     (/** @type {any} */ (window)).__marker = 4;
