@@ -75,7 +75,7 @@ try {
   );
   await page.click(`${live} button`);
   // The page's prices by stock id, and the feed's.
-  const shown = () => page.$$eval('[data-ref="price"]', (cells) => JSON.stringify(cells.map((c) => [c.getAttribute("data-id"), c.textContent]).sort()));
+  const shown = () => page.$$eval('[data-ref="price"]', (cells) => JSON.stringify(cells.map((c) => [c.getAttribute("data-key"), c.textContent]).sort()));
   const latest = async () => {
     const snap = await (await fetch(`${base}/feed/stocks`, { headers: { accept: "application/json" } })).json();
     return JSON.stringify(snap.rows.map((/** @type {{ id: string, price: string }} */ r) => [r.id, r.price]).sort());

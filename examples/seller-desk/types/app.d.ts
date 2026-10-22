@@ -6,16 +6,3 @@ export interface Level {
   id: string;
   qty: number;
 }
-
-/** The app's typed events (#[event]), dispatched by scripts and listened for with on:Name. */
-declare module "corten/events" {
-  /** The `row-toggled` event, from #[event] RowToggled. */
-  export class RowToggled extends Event {
-    constructor(init: { id: string; selected: boolean; shift: boolean });
-    readonly id: string;
-    readonly selected: boolean;
-    readonly shift: boolean;
-  }
-}
-
-export {};

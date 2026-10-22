@@ -1,13 +1,18 @@
 use corten::prelude::*;
 
-use super::{BulkBar, ConfirmDialog, InventoryRow, Line, RowToggled};
+use super::{BulkBar, ConfirmDialog, InventoryRow, Line};
 use crate::app::{ArchiveInput, url};
 
 /// Every item, with selection (click, shift-click for a range, select all), a filter, sortable
 /// columns, inline price edits, a confirm dialog for archiving, and live stock levels.
+///
+/// The rows have no handlers of their own: one handler on the `<tbody>` gets the checkbox that
+/// was clicked (`select.closest()`), so 500 rows cost one `data-on`.
 #[component(css, js)]
 pub fn InventoryGrid<'a>(lines: &'a [Line<'a>]) -> impl Render {
     let (body, row, select, all, qty, count, bar, dialog, form, ids, empty) = refs();
+    // What the selection handlers update, built once and passed as one argument.
+    let sel = js::Selection { rows: row, boxes: select, all, count, bar };
     let f = ArchiveInput::FIELDS;
     html! {
         <section class={Grid} on:connect={js::live(qty, url::Levels, signal)}>
@@ -16,13 +21,13 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>]) -> impl Render {
                     type="search"
                     placeholder="Filter by name or set"
                     aria-label="Filter"
-                    on:input={js::filter(target, row, empty, select, all, count, bar)}
+                    on:input={js::filter(target, empty, sel)}
                 >
                 <BulkBar
                     count={count}
                     bar={bar}
                     on:archive={js::confirm(dialog)}
-                    on:clear={js::clear(scope, select, row, all, count, bar)}
+                    on:clear={js::clear(scope, sel)}
                 />
             </div>
             <table class={Table}>
@@ -33,7 +38,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>]) -> impl Render {
                                 ref={all}
                                 type="checkbox"
                                 aria-label="Select all"
-                                on:change={js::selectAll(scope, row, select, all, count, bar)}
+                                on:change={js::selectAll(scope, sel)}
                             >
                         </th>
                         <th><button type="button" on:click={js::sort(target, body, 1)}>"Name"</button></th>
@@ -43,7 +48,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>]) -> impl Render {
                         <th><button type="button" on:click={js::sort(target, body, 5)}>"Price"</button></th>
                     </tr>
                 </thead>
-                <tbody ref={body} on:RowToggled={js::toggled(event, scope, row, select, all, count, bar)}>
+                <tbody ref={body} on:click={js::toggle(event, select.closest(), scope, sel)}>
                     for line in lines {
                         <InventoryRow line={line} row={row} select={select} qty={qty} />
                     }
@@ -57,7 +62,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>]) -> impl Render {
                 dialog={dialog}
                 title="Archive the selected items?"
                 confirm="Archive"
-                on:confirm={js::archive(scope, select, row, all, form, ids, count, bar)}
+                on:confirm={js::archive(scope, form, ids, sel)}
             >
                 <p>"Archived items leave the grid. Their listings end."</p>
             </ConfirmDialog>

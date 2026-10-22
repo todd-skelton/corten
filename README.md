@@ -11,7 +11,7 @@ server-sent events. One handler serves the browser, native apps and AI agents.
 
 - **Fast on the server.** 3,355 rendered pages a second where Next.js 16 does 52, and a 184 ms
   cold start (measured, [below](#performance)).
-- **Light in the browser.** A 3.7 KB (brotli) runtime; the benchmark item page loads about 5 KB of
+- **Light in the browser.** A 4.1 KB (brotli) runtime; the benchmark item page loads about 5 KB of
   JavaScript (gzip). No WASM, no virtual DOM, no hydration.
 - **Typed end to end.** Routes, form fields, CSS classes, handler calls and the elements they
   take, events and messages are Rust types. TypeScript types for scripts are generated from Rust.
@@ -194,7 +194,7 @@ app, measured on one machine. Method, every table and the caveats are in
 
 With a database fetch on every request both Rust apps are bound by parsing the API response and
 measure about equal, around 3x the fastest JavaScript framework. The JavaScript figure was
-re-measured on 2026-10-21, before handlers replaced islands; the handler runtime adds 0.43 KB
+re-measured on 2026-10-21, before handlers replaced islands; the handler runtime adds 0.88 KB
 gzip and the item page's two scripts 0.04 KB (file sizes, not a new run). The other rows are
 from the full run.
 

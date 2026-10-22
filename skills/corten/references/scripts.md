@@ -62,13 +62,28 @@ export function showAll(rows, rest, button) {
    shows it.
 9. List the component in `App::components`.
 
+## Lists and large components
+
+1. One handler for a list: put it on the container with `row.closest()`, the element with ref
+   `row` around the event's target: `<tbody on:click={js::toggle(event, select.closest(), sel)}>`.
+   Rows then need no handlers (a row component can be plain `#[component]`).
+2. Elements several handlers need: a `@typedef {object} Selection` with `@property` lines in the
+   script becomes `js::Selection { rows: row, count }`; build it once, pass it as one argument.
+3. Rows a feed updates by id: `key={item.id}` on the cells, a `Map<string, HTMLTableCellElement>`
+   parameter, `cells.get(row.id)`. Do not read `data-*` attributes for this.
+4. A value borrowed from one the view owns: compute it inside `html!` with `let`.
+5. Rows a write removes: `req.patch(html! { for id in &done { {Remove(("row-", id.as_str()))} } })`
+   (`corten::view::Remove`).
+
 ## A child that reports to its parent
 
 A handler prop: the child takes `on_confirm: Handler<'a>` and puts it on an element with
 `on:click={on_confirm}`; the parent writes `<ConfirmButton on:confirm={js::submit(form)} />`.
 The handler keeps the parent's refs.
 
-A typed event, when several parents listen or the child decides when it fires:
+A typed event, when several parents listen or the child decides when it fires (a handler
+parameter typed with the imported class only takes that event; keep the `#[event]` type in scope
+in the component's module):
 
 ```rust
 #[event]

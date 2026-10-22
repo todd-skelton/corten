@@ -9,7 +9,7 @@ import { state, subscribe } from "corten";
 const prices = (root) => state(root, () => ({ paused: false, latest: /** @type {Map<string, Stock>} */ (new Map()) }));
 
 /**
- * @param {HTMLElement} root @param {HTMLButtonElement} pause @param {HTMLTableCellElement[]} cells
+ * @param {HTMLElement} root @param {HTMLButtonElement} pause @param {Map<string, HTMLTableCellElement>} cells
  * @param {string} feed @param {AbortSignal} signal
  */
 export function watch(root, pause, cells, feed, signal) {
@@ -36,7 +36,7 @@ export function watch(root, pause, cells, feed, signal) {
   );
 }
 
-/** @param {HTMLElement} root @param {HTMLButtonElement} button @param {HTMLTableCellElement[]} cells */
+/** @param {HTMLElement} root @param {HTMLButtonElement} button @param {Map<string, HTMLTableCellElement>} cells */
 export function pause(root, button, cells) {
   const s = prices(root);
   s.paused = !s.paused;
@@ -44,8 +44,8 @@ export function pause(root, button, cells) {
   if (!s.paused) for (const stock of s.latest.values()) paint(cells, stock);
 }
 
-/** @param {HTMLTableCellElement[]} cells @param {Stock} stock */
+/** @param {Map<string, HTMLTableCellElement>} cells @param {Stock} stock */
 function paint(cells, stock) {
-  const cell = cells.find((c) => c.dataset.id === stock.id);
+  const cell = cells.get(stock.id);
   if (cell && cell.textContent !== stock.price) cell.textContent = stock.price;
 }

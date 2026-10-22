@@ -16,6 +16,7 @@
     "crates/corten/js/*.js",
     "crates/corten/js/*.d.ts",
     "crates/corten/src/**/*.js",
+    "crates/corten/src/**/*.d.ts",
     "crates/corten-ui/src/*.js",
     "examples/*/src/**/*.js",
     "examples/*/static/**/*.js",

@@ -57,6 +57,58 @@
 //! - [`script!`] declares a module shared by several components, and [`event`] a typed DOM
 //!   event a script dispatches and markup listens for (`on:RowToggled={..}`).
 //!
+//! Lists and larger components:
+//!
+//! - **One handler for a list.** `row.closest()` is the element with ref `row` around the event's
+//!   target, so `<tbody on:click={js::pick(row.closest())}>` handles a click on any row; the
+//!   handler runs only for clicks inside one.
+//! - **Groups.** A `@typedef` in the script whose properties include elements becomes a struct,
+//!   `js::Selection { rows: row, count }`, built once in the component and passed as one
+//!   argument wherever the handlers need the same elements.
+//! - **Keys.** `key={item.id}` on the elements of a ref makes a parameter typed
+//!   `Map<string, HTMLTableCellElement>` get them by key, for rows a feed updates by id.
+//! - **Typed events.** A parameter typed with a class imported from `"corten/events"` takes only
+//!   the `event` of an `on:` for that `#[event]` type (which must be in scope in the
+//!   component's module).
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[corten::script::event]
+//! pub struct RowToggled {
+//!     pub id: String,
+//!     pub selected: bool,
+//! }
+//!
+//! // stock_grid.js:
+//! //   /** @typedef {object} Selection @property {HTMLTableRowElement[]} rows @property {HTMLOutputElement} count */
+//! //   export function toggle(row, sel)     row: HTMLTableRowElement, sel: Selection
+//! //   export function toggled(event, sel)  event: RowToggled (from "corten/events")
+//! //   export function show(cells, id)      cells: Map<string, HTMLTableCellElement>, id: string
+//! #[component(js)]
+//! fn StockGrid<'a>(rows: &'a [(&'a str, u32)]) -> impl Render {
+//!     let (row, count, qty) = refs();
+//!     let sel = js::Selection { rows: row, count };
+//!     html! {
+//!         <table>
+//!             <tbody on:click={js::toggle(row.closest(), sel)} on:RowToggled={js::toggled(event, sel)}>
+//!                 for (id, n) in rows.iter() {
+//!                     <tr ref={row}><td ref={qty} key={*id}>{*n}</td></tr>
+//!                 }
+//!             </tbody>
+//!             <caption><output ref={count}>"0"</output></caption>
+//!             <tfoot on:connect={js::show(qty, "a")}></tfoot>
+//!         </table>
+//!     }
+//! }
+//!
+//! # fn main() {
+//! let html = StockGrid { rows: &[("a", 1)] }.to_html();
+//! assert!(html.contains(r#"data-on="click:stock_grid.toggle(^row,{rows:*row,count:@count})"#));
+//! assert!(html.contains(r#"<td data-ref="qty" data-key="a">1</td>"#));
+//! # }
+//! ```
+//!
 //! The browser gets plain HTML: `data-ref="save"` and `data-on="click:cart_line.enable(@save)"`.
 //! One listener per event type on the document runs the handlers; nothing runs per element until
 //! an event reaches it.
@@ -117,6 +169,57 @@
 //! fn CartLine<'a>(name: &'a str, quantity: u32) -> impl Render {
 //!     html! { <li><button data-on="click:cart_line.enable(@save)"></button></li> }
 //! }
+//! ```
+//!
+//! A typed event's handler on another event (`toggled` takes a `RowToggled`, a click is a
+//! `MouseEvent`):
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[corten::script::event]
+//! pub struct RowToggled {
+//!     pub id: String,
+//!     pub selected: bool,
+//! }
+//!
+//! #[component(js)]
+//! fn StockGrid() -> impl Render {
+//!     let (row, count) = refs();
+//!     let sel = js::Selection { rows: row, count };
+//!     html! {
+//!         <table>
+//!             <tbody on:click={js::toggled(event, sel)}><tr ref={row}></tr></tbody>
+//!             <caption><output ref={count}></output></caption>
+//!         </table>
+//!     }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! A group field on the wrong element (`count` is an `<output>`):
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[corten::script::event]
+//! pub struct RowToggled {
+//!     pub id: String,
+//!     pub selected: bool,
+//! }
+//!
+//! #[component(js)]
+//! fn StockGrid() -> impl Render {
+//!     let (row, count) = refs();
+//!     let sel = js::Selection { rows: row, count };
+//!     html! {
+//!         <table>
+//!             <tbody on:click={js::toggle(row.closest(), sel)}><tr ref={row}></tr></tbody>
+//!             <caption><span ref={count}></span></caption>
+//!         </table>
+//!     }
+//! }
+//! # fn main() {}
 //! ```
 //!
 //! and refs outside a component's body:
@@ -200,6 +303,57 @@ impl<T> std::fmt::Debug for Ref<T> {
         write!(f, "Ref({}/{})", self.scope, self.name)
     }
 }
+
+impl<T> Ref<T> {
+    /// The element with this ref that holds the event's target, like the DOM's
+    /// `event.target.closest(..)`: one handler on a list's container gets the row that was
+    /// clicked. A handler with a `closest()` argument runs only for events inside such an
+    /// element, so it also says which clicks it is for.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// // stock_grid.js: export function pick(row), row an HTMLTableRowElement. Its other handlers
+    /// // take a RowToggled from "corten/events", so the #[event] type is in scope here.
+    /// #[corten::script::event]
+    /// pub struct RowToggled {
+    ///     pub id: String,
+    ///     pub selected: bool,
+    /// }
+    ///
+    /// #[component(js)]
+    /// fn StockGrid<'a>(ids: &'a [&'a str]) -> impl Render {
+    ///     let row = refs();
+    ///     html! {
+    ///         <table>
+    ///             <tbody on:click={js::pick(row.closest())}>
+    ///                 for id in ids.iter() { <tr ref={row}><td>{id}</td></tr> }
+    ///             </tbody>
+    ///         </table>
+    ///     }
+    /// }
+    ///
+    /// # fn main() {
+    /// let html = StockGrid { ids: &["a", "b"] }.to_html();
+    /// assert!(html.contains(r#"<tbody data-on="click:stock_grid.pick(^row)">"#));
+    /// assert!(html.contains(r#"<tr data-ref="row"><td>a</td></tr>"#));
+    /// # }
+    /// ```
+    pub const fn closest(self) -> Closest<T> {
+        Closest(self)
+    }
+}
+
+/// What [`Ref::closest`] returns: the element with the ref around the event's target.
+pub struct Closest<T>(Ref<T>);
+
+impl<T> Clone for Closest<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for Closest<T> {}
 
 /// `let (rows, rest) = refs();` at the top of a component's body names the elements its script
 /// uses. `#[component]` replaces the call with each ref; anywhere else it does not compile.
@@ -412,10 +566,13 @@ pub mod ts {
     pub enum Boolean {}
     /// `AbortSignal`: the `signal` keyword.
     pub enum AbortSignal {}
-    /// Any other type: a JSON value (feature `json`), or `event` for a typed event.
+    /// Any other type: a JSON value (feature `json`).
     pub enum Any {}
     /// An array of elements: `HTMLTableRowElement[]`, a ref put on elements in a loop.
     pub struct Array<T>(std::marker::PhantomData<T>);
+    /// Elements by their `key`: `Map<string, HTMLTableCellElement>`, a ref put with
+    /// `key={item.id}` on elements in a loop.
+    pub struct Map<T>(std::marker::PhantomData<T>);
 }
 
 thread_local! {
@@ -503,8 +660,24 @@ pub mod __private {
         (A, B, C, D, E),
         (A, B, C, D, E, F),
         (A, B, C, D, E, F, G),
-        (A, B, C, D, E, F, G, H)
+        (A, B, C, D, E, F, G, H),
+        (A, B, C, D, E, F, G, H, I),
+        (A, B, C, D, E, F, G, H, I, J),
+        (A, B, C, D, E, F, G, H, I, J, K),
+        (A, B, C, D, E, F, G, H, I, J, K, L)
     );
+
+    /// One field of a group (a JSDoc `@typedef` the markup builds as a Rust struct):
+    /// `name:` and the argument, after a comma unless it is the first.
+    #[inline]
+    pub fn group_field<A: Arg<P>, P>(first: bool, name: &str, arg: &A, ctx: &Ctx, out: &mut String) {
+        if !first {
+            out.push(',');
+        }
+        out.push_str(name);
+        out.push(':');
+        arg.write_arg(ctx, out);
+    }
 
     /// A call of one handler: `module.name(args)`.
     pub struct Call<A> {
@@ -608,21 +781,36 @@ pub mod __private {
     }
 
     /// `event` in an `on:` handler: the event, of type `E`.
-    pub struct EventKw<E>(PhantomData<E>);
+    pub struct EventKw<E>(PhantomData<fn() -> E>);
     impl<E> EventKw<E> {
         pub const NEW: Self = EventKw(PhantomData);
     }
+    impl<E> Clone for EventKw<E> {
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    impl<E> Copy for EventKw<E> {}
     /// `target`: the element with the `on:`, of interface `T`.
-    pub struct TargetKw<T>(PhantomData<T>);
+    pub struct TargetKw<T>(PhantomData<fn() -> T>);
     impl<T> TargetKw<T> {
         pub const NEW: Self = TargetKw(PhantomData);
     }
+    impl<T> Clone for TargetKw<T> {
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    impl<T> Copy for TargetKw<T> {}
     /// `signal`: aborts when the element with the `on:` leaves the page.
+    #[derive(Clone, Copy)]
     pub struct SignalKw;
     /// `scope`: the root element of the component that made the handler.
+    #[derive(Clone, Copy)]
     pub struct ScopeKw;
 
-    /// What a parameter type gets for a ref: the first element (`@`) or every one (`*`).
+    /// What a parameter type gets for a ref: the first element (`@`), every one (`*`), or every
+    /// one by its key (`#`).
     pub trait RefParam<T> {
         const SIGIL: &'static str;
     }
@@ -632,6 +820,14 @@ pub mod __private {
     impl<T: el::SubOf<P>, P: el::Elem> RefParam<T> for ts::Array<P> {
         const SIGIL: &'static str = "*";
     }
+    impl<T: el::SubOf<P>, P: el::Elem> RefParam<T> for ts::Map<P> {
+        const SIGIL: &'static str = "#";
+    }
+
+    /// A parameter type one element of interface `T` fits.
+    pub trait OneParam<T> {}
+    impl<T: el::SubOf<P>, P: el::Elem> OneParam<T> for P {}
+    impl<T> OneParam<T> for ts::Any {}
     impl<T> RefParam<T> for ts::Any {
         const SIGIL: &'static str = "@";
     }
@@ -648,12 +844,19 @@ pub mod __private {
             out.push_str(self.name);
         }
     }
-    impl<T, P: RefParam<T>> Arg<P> for TargetKw<T> {
+    impl<T, P: OneParam<T>> Arg<P> for Closest<T> {
+        fn write_arg(&self, ctx: &Ctx, out: &mut String) {
+            out.push('^');
+            qualified(out, self.0.scope, ctx.current);
+            out.push_str(self.0.name);
+        }
+    }
+    impl<T, P: OneParam<T>> Arg<P> for TargetKw<T> {
         fn write_arg(&self, _: &Ctx, out: &mut String) {
             out.push_str("$t");
         }
     }
-    impl<P: RefParam<el::HTMLElement>> Arg<P> for ScopeKw {
+    impl<P: OneParam<el::HTMLElement>> Arg<P> for ScopeKw {
         fn write_arg(&self, ctx: &Ctx, out: &mut String) {
             out.push_str("$c");
             if let Some(home) = ctx.home {

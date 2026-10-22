@@ -241,7 +241,7 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str) -> impl Render {
                     for stock in stocks {
                         <tr>
                             <td>{stock.name}</td>
-                            <td ref={price} class={Amount} data-id={stock.id}>{stock.price}</td>
+                            <td ref={price} class={Amount} key={stock.id}>{stock.price}</td>
                         </tr>
                     }
                 </tbody>
@@ -334,9 +334,9 @@ mod tests {
         let (kind, body) = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/scripts/live_prices.js\">"), "the script module is preloaded: {body}");
-        assert!(body.contains(r#"data-on="connect:live_prices.watch($c,@pause,*price,&quot;/feed/stocks&quot;,$s)""#), "{body}");
+        assert!(body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,&quot;/feed/stocks&quot;,$s)""#), "{body}");
         assert!(
-            body.contains(r#"<td data-ref="price" class="live-prices__amount" data-id="s1">$129.99</td>"#),
+            body.contains(r#"<td data-ref="price" class="live-prices__amount" data-key="s1">$129.99</td>"#),
             "server renders prices first: {body}"
         );
         assert!(body.contains(

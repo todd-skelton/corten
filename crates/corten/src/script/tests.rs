@@ -136,6 +136,44 @@ fn shared_modules_and_events_are_components() {
     assert_eq!(html, r#"<p data-on="click:shared.log(&quot;hi&quot;,2,true)">x</p>"#);
 }
 
+// The module docs' script, shared here.
+script::script!(mod js = "../stock_grid.js");
+
+/// A list with one handler on its container (`closest`), a group of refs, keyed cells and a
+/// typed event's handler.
+#[component]
+fn StockGrid<'a>(rows: &'a [(&'a str, u32)]) -> impl Render {
+    let (row, count, qty) = refs();
+    let sel = js::Selection { rows: row, count };
+    html! {
+        <table>
+            <tbody on:click={js::toggle(row.closest(), sel)} on:RowToggled={js::toggled(event, sel)}>
+                for (id, n) in rows.iter() {
+                    <tr ref={row} id={*id}><td ref={qty} key={*id}>{*n}</td></tr>
+                }
+            </tbody>
+            <caption><output ref={count}>"0"</output></caption>
+            <tfoot on:connect={js::show(qty, "a")}></tfoot>
+        </table>
+    }
+}
+
+#[test]
+fn closest_groups_keyed_refs_and_typed_event_handlers_are_written_compactly() {
+    let html = StockGrid { rows: &[("a", 1), ("b", 2)] }.to_html();
+    assert_eq!(
+        html,
+        concat!(
+            r#"<table data-scope="stock-grid"><tbody data-on="click:stock_grid.toggle(^row,{rows:*row,count:@count}) "#,
+            r#"row-toggled:stock_grid.toggled($e,{rows:*row,count:@count})">"#,
+            r#"<tr data-ref="row" id="a"><td data-ref="qty" data-key="a">1</td></tr>"#,
+            r#"<tr data-ref="row" id="b"><td data-ref="qty" data-key="b">2</td></tr></tbody>"#,
+            r#"<caption><output data-ref="count">0</output></caption>"#,
+            r#"<tfoot data-on="connect:stock_grid.show(#qty,&quot;a&quot;)"></tfoot></table>"#,
+        )
+    );
+}
+
 #[test]
 fn rendering_collects_the_modules_a_page_uses() {
     let (_, modules) = script::collect(|| (Form {}.to_html(), LineItem { name: "x", quantity: 1 }.to_html()));

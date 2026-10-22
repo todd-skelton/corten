@@ -71,8 +71,10 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     let mut out = q("#[allow(dead_code)]", &[]);
     out.extend(item);
     out.extend(q(
-        "impl ::corten::script::DomEvent for __A0 { const NAME: &'static str = __A1; }",
-        &[TokenTree::Ident(name.clone()).into(), literal(&dom)],
+        "impl ::corten::script::DomEvent for __A0 { const NAME: &'static str = __A1; }
+        impl ::corten::script::ev::EventType for __A0 { const TS: &'static str = __A2; }
+        impl ::corten::script::ev::SubOf<__A0> for __A0 {}",
+        &[TokenTree::Ident(name.clone()).into(), literal(&dom), literal(&name.to_string())],
     ));
     out.extend(q(
         "#[doc = __A0] #[allow(non_upper_case_globals, dead_code)]",

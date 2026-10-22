@@ -4,6 +4,10 @@
 //! function `name(a, b)` that returns the call the markup puts on an element, and each parameter's
 //! JSDoc type (`@param {HTMLButtonElement} button`) becomes the bound on its argument, so
 //! `js::enable(rows)` with `rows` on a `<tbody>` does not compile.
+//!
+//! A `@typedef` of elements (a group, `@typedef {object} Selection` with `@property` lines)
+//! becomes a Rust struct `js::Selection { .. }` the markup builds and passes as one argument, and
+//! a class imported from `"corten/events"` is the Rust `#[event]` type of the same name.
 
 use std::path::Path;
 
@@ -24,36 +28,61 @@ pub struct Handler {
     pub doc: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Param {
     /// A type Corten checks: a path under `::corten::script` (`el::HTMLButtonElement`).
     Checked(String),
-    /// Any other JSDoc type: a JSON value, a keyword or a ref.
+    /// A group, a `@typedef` of the same script: the struct `js::Name`.
+    Group(String),
+    /// A typed event imported from `corten/events`: the Rust `#[event]` type in the component's
+    /// module.
+    Event(String),
+    /// Any other JSDoc type: a JSON value.
     Any,
+}
+
+/// A `@typedef` whose properties include elements: one argument made of several.
+#[derive(Debug)]
+pub struct ArgGroup {
+    pub name: String,
+    pub fields: Vec<(String, Param)>,
+    pub doc: String,
 }
 
 /// A script file and its handlers.
 pub struct Module {
-    /// Its name in the page, the file's stem: `cart_line`.
+    /// Its name in the page: the file's stem, after the crate's prefix (`ui.combo_box`).
     pub name: String,
     pub file: String,
     pub path: String,
     pub handlers: Vec<Handler>,
+    pub groups: Vec<ArgGroup>,
 }
 
 impl Module {
     pub fn read(path: &Path, span: Span) -> Result<Module, Error> {
         let source = std::fs::read_to_string(path).map_err(|e| (span, format!("cannot read {}: {e}", path.display())))?;
         let file = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-        let name = file.strip_suffix(".js").unwrap_or(&file).to_string();
-        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        let stem = file.strip_suffix(".js").unwrap_or(&file).to_string();
+        let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if !plain(&stem) {
             return err(
                 span,
                 format!("{file}: a script's name is letters, digits, _ and -, since the page names its module by it"),
             );
         }
-        let handlers = parse(&source).map_err(|(line, message)| (span, format!("{file}:{line}: {message}")))?;
-        Ok(Module { name, file, path: path.display().to_string(), handlers })
+        let name = match prefix() {
+            Some(prefix) if !plain(&prefix) => {
+                return err(
+                    span,
+                    format!("[package.metadata.corten] scripts = \"{prefix}\": a prefix is letters, digits, _ and -"),
+                )
+            }
+            Some(prefix) => format!("{prefix}.{stem}"),
+            None => stem,
+        };
+        let (handlers, groups) = parse(&source).map_err(|(line, message)| (span, format!("{file}:{line}: {message}")))?;
+        Ok(Module { name, file, path: path.display().to_string(), handlers, groups })
     }
 
     /// `::corten::script::Script { .. }`.
@@ -73,6 +102,9 @@ impl Module {
     /// marked rendered when a handler renders (a component's own script is its component's).
     pub fn module(&self, vis: TokenStream, ident: Ident, owner: TokenStream, items: TokenStream) -> TokenStream {
         let mut fns = items;
+        for g in &self.groups {
+            fns.extend(group(g, &self.file));
+        }
         for h in &self.handlers {
             let mut generics = TokenStream::new();
             let mut params = TokenStream::new();
@@ -81,10 +113,7 @@ impl Module {
             for (i, (name, param)) in h.params.iter().enumerate() {
                 let ty: TokenStream = TokenTree::Ident(Ident::new(&format!("A{i}"), Span::call_site())).into();
                 let arg: TokenStream = TokenTree::Ident(rust_ident(name, i)).into();
-                let path: TokenStream = match param {
-                    Param::Checked(path) => format!("::corten::script::{path}").parse().expect("a type path parses"),
-                    Param::Any => q("::corten::script::ts::Any", &[]),
-                };
+                let path = param_path(param);
                 generics.extend(q("__A0: ::corten::script::Arg<__A1>,", &[ty.clone(), path.clone()]));
                 args.extend(q(
                     "::corten::script::__private::Typed::<__A0, __A1>::new(__A2),",
@@ -121,6 +150,79 @@ impl Module {
     }
 }
 
+/// The Rust type a parameter's argument is checked against.
+fn param_path(param: &Param) -> TokenStream {
+    match param {
+        Param::Checked(path) => format!("::corten::script::{path}").parse().expect("a type path parses"),
+        Param::Group(name) => TokenTree::Ident(Ident::new(&format!("__{name}Group"), Span::call_site())).into(),
+        // The `#[event]` type, in the module of the component or `script!` that reads the script.
+        Param::Event(class) => format!("super::{class}").parse().expect("a type path parses"),
+        Param::Any => q("::corten::script::ts::Any", &[]),
+    }
+}
+
+/// A group: `pub struct Selection<A0: Arg<..>, ..> { pub rows: A0, .. }`, a marker type its
+/// handlers' parameters name, and how it is written: `{rows:*row,all:@all}`.
+fn group(g: &ArgGroup, file: &str) -> TokenStream {
+    let name: TokenStream = TokenTree::Ident(Ident::new(&g.name, Span::call_site())).into();
+    let marker = param_path(&Param::Group(g.name.clone()));
+    let mut bounded = TokenStream::new();
+    let mut plain = TokenStream::new();
+    let mut fields = TokenStream::new();
+    let mut writes = TokenStream::new();
+    for (i, (field, param)) in g.fields.iter().enumerate() {
+        let ty: TokenStream = TokenTree::Ident(Ident::new(&format!("A{i}"), Span::call_site())).into();
+        let path = param_path(param);
+        let ident: TokenStream = TokenTree::Ident(rust_ident(field, i)).into();
+        bounded.extend(q("__A0: ::corten::script::Arg<__A1>,", &[ty.clone(), path.clone()]));
+        plain.extend(q("__A0,", std::slice::from_ref(&ty)));
+        fields.extend(q("pub __A0: __A1,", &[ident.clone(), ty.clone()]));
+        writes.extend(q(
+            "::corten::script::__private::group_field::<__A0, __A1>(__A2, __A3, &self.__A4, ctx, out);",
+            &[ty, path, q(if i == 0 { "true" } else { "false" }, &[]), literal(field), ident],
+        ));
+    }
+    let doc =
+        if g.doc.is_empty() { format!(" `{}` in {file}: one argument made of several.", g.name) } else { format!(" {}", g.doc) };
+    q(
+        "#[doc = __A0] #[derive(Clone, Copy)] pub struct __A1<__A2> { __A3 }
+        #[doc(hidden)] pub enum __A4 {}
+        impl<__A2> ::corten::script::Arg<__A4> for __A1<__A5> {
+            fn write_arg(&self, ctx: &::corten::script::__private::Ctx, out: &mut ::std::string::String) {
+                out.push('{');
+                __A6
+                out.push('}');
+            }
+        }",
+        &[literal(&doc), name, bounded, fields, marker, plain, writes],
+    )
+}
+
+/// `[package.metadata.corten] scripts = "ui"` in the crate's Cargo.toml: a library's prefix for
+/// the names it puts in the page, its scripts (`ui.combo_box`) and its components' roots
+/// (`data-scope="ui-combo-box"`), so they never meet an app's.
+pub fn prefix() -> Option<String> {
+    let dir = std::env::var("CARGO_MANIFEST_DIR").ok()?;
+    let manifest = std::fs::read_to_string(Path::new(&dir).join("Cargo.toml")).ok()?;
+    let mut in_section = false;
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_section = line == "[package.metadata.corten]";
+            continue;
+        }
+        if !in_section {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            if key.trim() == "scripts" {
+                return Some(value.trim().trim_matches('"').to_string());
+            }
+        }
+    }
+    None
+}
+
 /// A JavaScript name as a Rust identifier: as is, raw for a Rust keyword, `a{i}` otherwise.
 fn rust_ident(name: &str, i: usize) -> Ident {
     const KEYWORDS: &[&str] = &[
@@ -142,11 +244,28 @@ fn rust_ident(name: &str, i: usize) -> Ident {
     }
 }
 
-/// The handlers of a script: every top-level `export function`, with its JSDoc. Errors carry
-/// the 1-based line.
-pub fn parse(source: &str) -> Result<Vec<Handler>, (usize, String)> {
+/// The handlers of a script, every top-level `export function` with its JSDoc, and its groups.
+/// Errors carry the 1-based line.
+pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, String)> {
     let lines: Vec<&str> = source.lines().collect();
-    let mut handlers: Vec<Handler> = Vec::new();
+    // Raw JSDoc types first: a typedef may come after the handler that uses it.
+    /// An export: its name, its parameters' names and JSDoc types, its description.
+    struct Raw {
+        name: String,
+        params: Vec<(String, String)>,
+        doc: String,
+    }
+    /// A `@typedef`: its name, type, `@property` lines, description and line.
+    struct Typedef {
+        name: String,
+        ty: String,
+        props: Vec<(String, String)>,
+        doc: String,
+        line: usize,
+    }
+    let mut raw: Vec<Raw> = Vec::new();
+    let mut typedefs: Vec<Typedef> = Vec::new();
+    let mut events: Vec<(String, String)> = Vec::new();
     let mut doc: Option<String> = None;
     let mut i = 0;
     while i < lines.len() {
@@ -166,7 +285,43 @@ pub fn parse(source: &str) -> Result<Vec<Handler>, (usize, String)> {
                     return Err((start + 1, "unclosed /** comment".into()));
                 }
             }
-            doc = Some(block);
+            if let Some((name, ty)) = tag_type(&block, "@typedef") {
+                match ty.strip_prefix("import(\"corten/events\").") {
+                    Some(class) => events.push((name, class.trim().to_string())),
+                    None => typedefs.push(Typedef {
+                        name,
+                        ty,
+                        props: tag_types(&block, "@property"),
+                        doc: description(&block),
+                        line: start + 1,
+                    }),
+                }
+                doc = None;
+            } else {
+                doc = Some(block);
+            }
+            i += 1;
+            continue;
+        }
+        if trimmed.starts_with("import ") || trimmed.starts_with("import{") {
+            let start = i;
+            let mut statement = trimmed.to_string();
+            while !statement.contains(" from ") && !statement.ends_with(';') && i + 1 < lines.len() {
+                i += 1;
+                statement.push(' ');
+                statement.push_str(lines[i].trim());
+            }
+            if statement.contains("\"corten/events\"") || statement.contains("'corten/events'") {
+                let names = statement.split_once('{').and_then(|(_, rest)| rest.split_once('}')).map(|(names, _)| names);
+                let Some(names) = names else {
+                    return Err((start + 1, "import typed events by name: import { RowToggled } from \"corten/events\";".into()));
+                };
+                for name in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+                    let (class, local) = name.split_once(" as ").map_or((name, name), |(c, l)| (c.trim(), l.trim()));
+                    events.push((local.to_string(), class.to_string()));
+                }
+            }
+            doc = None;
             i += 1;
             continue;
         }
@@ -193,11 +348,11 @@ pub fn parse(source: &str) -> Result<Vec<Handler>, (usize, String)> {
             let (name, params) = head.split_once('(').ok_or((start + 1, "expected ( after the function name".to_string()))?;
             let name = name.trim().trim_start_matches('*').trim();
             let params = &params[..params.find(')').unwrap_or(params.len())];
-            if handlers.iter().any(|h| h.name == name) {
+            if raw.iter().any(|h| h.name == name) {
                 return Err((start + 1, format!("{name} is exported twice")));
             }
             let jsdoc = doc.take().unwrap_or_default();
-            let types = param_types(&jsdoc);
+            let types = tag_types(&jsdoc, "@param");
             let mut list = Vec::new();
             for param in params.split(',').map(str::trim).filter(|p| !p.is_empty()) {
                 if !param.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$') {
@@ -214,9 +369,9 @@ pub fn parse(source: &str) -> Result<Vec<Handler>, (usize, String)> {
                         ),
                     ));
                 };
-                list.push((param.to_string(), param_type(ty)));
+                list.push((param.to_string(), ty.clone()));
             }
-            handlers.push(Handler { name: name.to_string(), params: list, doc: description(&jsdoc) });
+            raw.push(Raw { name: name.to_string(), params: list, doc: description(&jsdoc) });
             i += 1;
             continue;
         }
@@ -225,15 +380,100 @@ pub fn parse(source: &str) -> Result<Vec<Handler>, (usize, String)> {
         }
         i += 1;
     }
-    Ok(handlers)
+
+    // A typedef is a group when one of its properties is something only the browser has (an
+    // element, an event, a signal); one of plain values stays a JSON value.
+    let event_of = |ty: &str| events.iter().find(|(local, _)| local == ty).map(|(_, class)| class.clone());
+    let plain_type = |ty: &str| match param_type(ty) {
+        Param::Any => event_of(ty.trim()).map_or(Param::Any, Param::Event),
+        other => other,
+    };
+    let mut groups = Vec::new();
+    for Typedef { name, ty, mut props, doc, line } in typedefs {
+        if let Some(fields) = object_literal(&ty) {
+            props = fields;
+        } else if !matches!(ty.as_str(), "object" | "Object") {
+            continue;
+        }
+        let fields: Vec<(String, Param)> = props.iter().map(|(n, t)| (n.clone(), plain_type(t))).collect();
+        if !fields.iter().any(|(_, p)| browser_only(p)) {
+            continue;
+        }
+        for (field, _) in &fields {
+            if !field.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                || !field.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            {
+                return Err((line, format!("{name}: a group's properties are plain names, and {field} is not")));
+            }
+        }
+        groups.push(ArgGroup { name, fields, doc });
+    }
+    let mut handlers = Vec::new();
+    for Raw { name, params, doc } in raw {
+        let mut list = Vec::new();
+        for (param, ty) in params {
+            let ty = ty.trim().to_string();
+            let resolved = if groups.iter().any(|g| g.name == ty) { Param::Group(ty) } else { plain_type(&ty) };
+            list.push((param, resolved));
+        }
+        handlers.push(Handler { name, params: list, doc });
+    }
+    Ok((handlers, groups))
 }
 
-/// `@param {Type} name` pairs of a JSDoc block, as (name, type).
-fn param_types(jsdoc: &str) -> Vec<(String, String)> {
+/// True for a type only the browser can supply: an element (or several), an event, a signal.
+fn browser_only(param: &Param) -> bool {
+    match param {
+        Param::Checked(path) => {
+            path.starts_with("el::")
+                || path.starts_with("ev::")
+                || path.starts_with("ts::Array")
+                || path.starts_with("ts::Map")
+                || path == "ts::AbortSignal"
+        }
+        Param::Event(_) | Param::Group(_) => true,
+        Param::Any => false,
+    }
+}
+
+/// `{ rows: HTMLTableRowElement[], all: HTMLInputElement }` as (name, type) pairs.
+fn object_literal(ty: &str) -> Option<Vec<(String, String)>> {
+    let inner = ty.trim().strip_prefix('{')?.strip_suffix('}')?;
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0;
+    let bytes: Vec<char> = inner.chars().collect();
+    let mut parts = Vec::new();
+    for (j, c) in bytes.iter().enumerate() {
+        match c {
+            '{' | '<' | '(' | '[' => depth += 1,
+            '}' | '>' | ')' | ']' => depth -= 1,
+            ',' | ';' if depth == 0 => {
+                parts.push(bytes[start..j].iter().collect::<String>());
+                start = j + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(bytes[start..].iter().collect::<String>());
+    for part in parts.iter().map(|p| p.trim()).filter(|p| !p.is_empty()) {
+        let (name, ty) = part.split_once(':')?;
+        out.push((name.trim().trim_end_matches('?').to_string(), ty.trim().to_string()));
+    }
+    Some(out)
+}
+
+/// The `{Type} name` after `tag` in a JSDoc block, once: `@typedef {object} Selection`.
+fn tag_type(jsdoc: &str, tag: &str) -> Option<(String, String)> {
+    tag_types(jsdoc, tag).into_iter().next()
+}
+
+/// `@param {Type} name` (or another `tag`'s) pairs of a JSDoc block, as (name, type).
+fn tag_types(jsdoc: &str, tag: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut rest = jsdoc;
-    while let Some(at) = rest.find("@param") {
-        rest = &rest[at + 6..];
+    while let Some(at) = rest.find(tag) {
+        rest = &rest[at + tag.len()..];
         let Some(open) = rest.find('{') else { break };
         if !rest[..open].trim().is_empty() {
             continue;
@@ -282,6 +522,13 @@ fn description(jsdoc: &str) -> String {
 fn param_type(ty: &str) -> Param {
     let ty = ty.trim().trim_start_matches('(').trim_end_matches(')').trim();
     let element = |t: &str| dom::ELEMENTS.contains(&t);
+    if let Some(value) = ty.strip_prefix("Map<").and_then(|t| t.strip_suffix('>')).and_then(|t| t.trim().strip_prefix("string,"))
+    {
+        return match common(value.trim(), element) {
+            Some(e) => Param::Checked(format!("ts::Map<::corten::script::el::{e}>")),
+            None => Param::Any,
+        };
+    }
     let item = ty.strip_suffix("[]").or_else(|| ty.strip_prefix("Array<").and_then(|t| t.strip_suffix('>')));
     if let Some(item) = item {
         let item = item.trim().trim_start_matches('(').trim_end_matches(')').trim();
@@ -376,7 +623,8 @@ export async function watch(cells, stock, signal, url) {}
 
 function helper() {}
 "#;
-        let handlers = parse(source).unwrap();
+        let (handlers, groups) = parse(source).unwrap();
+        assert!(groups.is_empty());
         assert_eq!(handlers.len(), 2);
         assert_eq!(handlers[0].name, "showAll");
         assert_eq!(handlers[0].doc, "Moves the rest into the table.");
@@ -385,7 +633,7 @@ function helper() {}
             .flat_map(|h| h.params.iter())
             .map(|(n, p)| match p {
                 Param::Checked(t) => format!("{n}:{t}"),
-                Param::Any => format!("{n}:any"),
+                other => format!("{n}:{other:?}"),
             })
             .collect();
         assert_eq!(
@@ -395,7 +643,7 @@ function helper() {}
                 "rest:el::HTMLTemplateElement",
                 "event:ev::MouseEvent",
                 "cells:ts::Array<::corten::script::el::HTMLTableCellElement>",
-                "stock:any",
+                "stock:Any",
                 "signal:ts::AbortSignal",
                 "url:ts::String",
             ]
@@ -407,7 +655,49 @@ function helper() {}
         assert!(parse("export function f(a) {}").unwrap_err().1.contains("give a a type"));
         assert!(parse("export const x = 1;").unwrap_err().1.contains("exports only functions"));
         assert!(parse("/** @param {Element} a */\nexport function f({ a }) {}").unwrap_err().1.contains("plain names"));
-        let union = parse("/** @param {HTMLAnchorElement | HTMLButtonElement} tab */\nexport function f(tab) {}").unwrap();
+        let (union, _) = parse("/** @param {HTMLAnchorElement | HTMLButtonElement} tab */\nexport function f(tab) {}").unwrap();
         assert!(matches!(&union[0].params[0].1, Param::Checked(t) if t == "el::HTMLElement"));
+    }
+
+    #[test]
+    fn typedefs_of_elements_are_groups_and_imported_events_are_rust_types() {
+        let source = r#"import { state } from "corten";
+import { RowToggled, Saved as Done } from "corten/events";
+/** @typedef {import("corten/events").Cleared} Cleared */
+
+/**
+ * The grid's selection controls.
+ * @typedef {object} Selection
+ * @property {HTMLTableRowElement[]} rows
+ * @property {HTMLInputElement} all
+ */
+
+/** @typedef {{ count: HTMLOutputElement; label: string }} Counter */
+/** @typedef {{ id: string, qty: number }} Level */
+
+/** @param {RowToggled} event @param {Selection} sel @param {Counter} c @param {Level} level @param {Done} done @param {Cleared} cleared */
+export function toggled(event, sel, c, level, done, cleared) {}
+"#;
+        let (handlers, groups) = parse(source).unwrap();
+        let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+        assert_eq!(names, ["Selection", "Counter"], "a typedef of plain values stays JSON");
+        assert_eq!(groups[0].doc, "The grid's selection controls.");
+        assert_eq!(
+            groups[0].fields[0],
+            ("rows".into(), Param::Checked("ts::Array<::corten::script::el::HTMLTableRowElement>".into()))
+        );
+        assert_eq!(groups[1].fields[1], ("label".into(), Param::Checked("ts::String".into())));
+        let params: Vec<&Param> = handlers[0].params.iter().map(|(_, p)| p).collect();
+        assert_eq!(
+            params,
+            [
+                &Param::Event("RowToggled".into()),
+                &Param::Group("Selection".into()),
+                &Param::Group("Counter".into()),
+                &Param::Any,
+                &Param::Event("Saved".into()),
+                &Param::Event("Cleared".into()),
+            ]
+        );
     }
 }

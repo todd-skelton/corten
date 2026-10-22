@@ -24,7 +24,7 @@
 //! role and state, which are the accessibility contract and so cannot drift from what assistive
 //! technology announces: `.field [role=option][aria-selected=true]`, `.field [role=tab][aria-selected=true]`,
 //! `.field button:disabled`. Each component's docs list its parts. Each component's root is a
-//! `div` (`[data-scope=number-field]`) that holds its parts; the wrapper lays it out, as the
+//! `div` (`[data-scope=ui-number-field]`) that holds its parts; the wrapper lays it out, as the
 //! flex container itself or with `display: contents` so the parts join the wrapper's layout
 //! (`order` places an adornment between them). Popups (`[popover]`) are in the top layer, and the script makes the control
 //! that opens each one its anchor; the design system places it with CSS anchor positioning,

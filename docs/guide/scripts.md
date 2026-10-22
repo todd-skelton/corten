@@ -46,8 +46,10 @@ export function showAll(rows, rest, button) {
 | In the markup | In the script |
 |---|---|
 | `#[component(js)]` on `OfferList` | `offer_list.js` next to it; `js::showAll` is its `export function showAll` |
-| `let (rows, rest) = refs();`, `ref={rows}` on a `<tbody>` | a parameter `@param {HTMLTableSectionElement} rows` (`HTMLTableSectionElement[]`: every element with the ref) |
+| `let (rows, rest) = refs();`, `ref={rows}` on a `<tbody>` | a parameter `@param {HTMLTableSectionElement} rows` (`HTMLTableSectionElement[]`: every element with the ref; `Map<string, ..>`: every one by its `key={..}`) |
 | `on:click={js::showAll(..)}` | runs `showAll` on a click on that element |
+| `row.closest()` | the element with ref `row` around the event's target (the handler runs only inside one) |
+| `js::Selection { rows: row, count }` | a `@typedef` of elements: one object argument |
 | `event`, `target`, `signal`, `scope` | the event (`MouseEvent` for a click), the element with the `on:`, an `AbortSignal` that aborts when it leaves the page, the component's root element |
 | a Rust value: `&str`, a number, `bool`, a typed route, any `Serialize` (feature `json`) | the JSON value |
 | `on:connect={..}` | runs when the element joins the page (first load, navigation, patch, a script's insert) |
@@ -126,13 +128,95 @@ row.dispatchEvent(new RowToggled({ id, selected: true }));
 ```
 
 The class bubbles and carries the fields; `Types::components` declares it with the fields' types
-(see [Type safety](type-safety.md)). List the event in `App::components` like a component.
+(see [Type safety](type-safety.md)). List the event in `App::components` like a component. A
+handler parameter typed with a class imported from `"corten/events"` takes only the `event` of
+an `on:` for that type, a compile error otherwise; the `#[event]` type is in scope in the
+component's module.
+
+## Lists and larger components
+
+A grid of 500 rows with a handler on every checkbox prints 500 handler calls. Four tools keep a
+large component small and its handlers short.
+
+**One handler for the list.** `row.closest()` is the element with ref `row` that holds the
+event's target, like the DOM's `event.target.closest(..)`. Put the handler on the container; it
+runs only for events inside such an element:
+
+```rust,ignore
+<tbody on:click={js::toggle(event, select.closest(), sel)}>
+    for line in lines {
+        <tr ref={row}><td><input ref={select} type="checkbox" value={line.id}></td>..</tr>
+    }
+</tbody>
+```
+
+The rows need no handler of their own, so a row component can be markup only.
+
+**Groups.** When several handlers need the same elements, describe them once in the script with
+a `@typedef`. Each one with an element among its properties becomes a struct in `js`, checked
+field by field, built once and passed as one argument:
+
+```js
+/**
+ * @typedef {object} Selection
+ * @property {HTMLTableRowElement[]} rows
+ * @property {HTMLInputElement[]} boxes
+ * @property {HTMLOutputElement} count
+ */
+
+/** @param {MouseEvent} event @param {HTMLInputElement} box @param {Selection} sel */
+export function toggle(event, box, sel) { .. }
+```
+
+```rust,ignore
+let sel = js::Selection { rows: row, boxes: select, count };
+// on:click={js::toggle(event, select.closest(), sel)}, on:change={js::selectAll(sel)}, ..
+```
+
+The page gets `{rows:*row,boxes:*select,count:@count}`; the script gets an object.
+
+**Keys.** `key={item.id}` on the elements of a ref (`data-key` in the page) lets a parameter
+typed `Map<string, HTMLTableCellElement>` get them by key, so rows from a [feed](live-data.md)
+find their cells without reading attributes:
+
+```rust,ignore
+<td ref={qty} key={item.id}>{line.qty}</td>
+// on:connect={js::live(qty, url::Levels, signal)}, live(cells, feed, signal) with cells.get(level.id)
+```
+
+**Values the markup owns.** `html!` owns what it captures, so a value borrowed from one of them
+is computed inside the markup, with `let`:
+
+```rust,ignore
+let saved = cents.map(money);
+html! {
+    let shown = saved.as_deref().unwrap_or(typed);
+    <input value={shown}>
+}
+```
+
+A patch removes rows as well as replacing them: `req.patch(html! { for id in &done { {Remove(("row-", id.as_str()))} } })`
+(`corten::view::Remove`, a `<template id data-remove>` the runtime applies).
 
 ## Shared scripts
 
 Handlers several components use live in a module of their own:
 `script!(pub mod validity = "validity.js");` declares `validity::check(..)` and the constant
 `validity::COMPONENT` to list.
+
+## Libraries
+
+A crate of components for other apps prefixes the names it puts in the page, so they never meet
+an app's own: `[package.metadata.corten] scripts = "ui"` in its `Cargo.toml` makes its scripts
+`ui.combo_box.js` and its roots `data-scope="ui-combo-box"`. `corten-ui` does this.
+
+## When handlers run
+
+A handler runs while its event is dispatched, so it can call `event.preventDefault()`. Markup
+the runtime inserts (a navigation, a patch, a live fragment) waits for the modules its handlers
+name, and modules named inside a `<template>` load with the page. On the first page, an event
+that arrives before its module is loaded gets the browser's default and no handler, as without
+JavaScript. `on:connect` waits for its module instead.
 
 ## State
 

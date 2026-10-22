@@ -28,6 +28,16 @@ Corten is pre-1.0, so any minor version may change the API.
    listener per event type on the document and runs `on:connect` when markup joins the page.
 6. `examples/seller-desk`: a client-heavy screen (selection with ranges, filter, sort, inline
    edits, a confirm dialog, live stock levels) on handlers, with a browser test and timings.
+7. For lists and large components: `ref.closest()` (the element with the ref around the event's
+   target, so one handler on a container serves every row), groups (a `@typedef` of elements in
+   the script becomes a struct `js::Name { .. }` passed as one argument), keyed refs
+   (`key={item.id}` and a `Map<string, HTMLElement>` parameter), and handlers take up to 12
+   arguments. `corten::script::el` is in the prelude.
+8. A handler parameter typed with a class imported from `"corten/events"` is checked against the
+   `#[event]` type when the crate compiles.
+9. `corten::view::Remove(id)`: a patch that removes an element.
+10. `[package.metadata.corten] scripts = "prefix"`: a library's scripts and component roots are
+    named `prefix.name` and `prefix-name`. `corten-ui` uses `ui`.
 
 ### Removed
 
@@ -39,20 +49,23 @@ Corten is pre-1.0, so any minor version may change the API.
 
 ### Changed
 
-1. Every JSON failure has one shape, `{"error":{"status":404,"message":"Not Found"}}`. A data
+1. A handler never runs after its event: markup a navigation or patch inserts waits for the
+   modules its handlers name, and an event that comes before its module on the first page gets
+   the browser's default instead of a late handler. `patch()` returns a promise.
+2. Every JSON failure has one shape, `{"error":{"status":404,"message":"Not Found"}}`. A data
    request's error now carries `message`, and an extractor's rejection is that JSON instead of
    plain text. `req.invalid` answers a data request with
    `{"error":{"status":422,"message":...,"fields":{...}}}` instead of `{"errors":{...}}`.
-2. The CSP nonce is made only when a document asks for it; other responses get the same policy
+3. The CSP nonce is made only when a document asks for it; other responses get the same policy
    without a nonce source. `Policy::apply` no longer puts a `Nonce` in the request extensions:
    take `nonce: Nonce` as an extractor instead of `Extension<Nonce>`.
-3. `App::context` no longer runs for static files, the runtime, the PWA files and the health
+4. `App::context` no longer runs for static files, the runtime, the PWA files and the health
    checks.
-4. `App` is one middleware instead of three (security, compression, errors). Measured with
+5. `App` is one middleware instead of three (security, compression, errors). Measured with
    callgrind, a small JSON handler costs 27,584 instructions a request instead of 36,324, a
    small page 31,742 instead of 41,280, and a JSON 404 19,892 instead of 26,930
    (`docs/guide/app.md`, the request path).
-5. `examples/item-page` mounts its MCP endpoint with `App::api`; its smoke test calls it from a
+6. `examples/item-page` mounts its MCP endpoint with `App::api`; its smoke test calls it from a
    page on another origin.
 
 ### Documentation

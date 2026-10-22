@@ -42,11 +42,13 @@ try {
   const count = () => page.textContent("output");
   await time("toggle one row", () => /** @type {HTMLInputElement} */ (document.querySelectorAll("tbody input[type=checkbox]")[3]).click());
   check("a row's click selects it and the grid counts it", (await count()) === "1" && (await page.isVisible("[role=group]")));
+  await page.click("tbody tr:nth-child(6) td:nth-child(2)");
+  check("a click outside a checkbox is not the handler's (ref.closest() finds none)", (await count()) === "1", await count());
   await time("shift-click a 200-row range", () => {
     const box = /** @type {HTMLInputElement} */ (document.querySelectorAll("tbody input[type=checkbox]")[203]);
     box.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true }));
   });
-  check("shift-click selects the range (typed event carries shift)", (await count()) === "201", await count());
+  check("shift-click selects the range (one handler on the table body)", (await count()) === "201", await count());
   await time("select all", () => /** @type {HTMLInputElement} */ (document.querySelector("thead input[type=checkbox]")).click());
   check("select all selects every row", (await count()) === String(nav.rows), await count());
   await page.click("[role=group] button:nth-of-type(2)");
@@ -58,7 +60,8 @@ try {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   const visible = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).length);
-  check("filter hides rows that do not match", visible === Math.ceil(nav.rows / 5), String(visible));
+  const jungle = await page.$$eval("tbody tr", (rows) => rows.filter((r) => r.cells[2].textContent === "Jungle").length);
+  check("filter hides rows that do not match", visible === jungle && visible > 0, `${visible} of ${jungle}`);
   await page.click("thead input[type=checkbox]");
   check("select all with a filter selects only the visible rows", (await count()) === String(visible), await count());
   await page.click("[role=group] button:nth-of-type(2)");
@@ -101,11 +104,15 @@ try {
   await page.click("dialog button[value=confirm]");
   await page.waitForFunction(() => /Archived/.test(document.getElementById("desk-status")?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
   check("confirming archives the rows", (await page.textContent("#desk-status")) === "Archived 2 items.", await page.textContent("#desk-status"));
-  check("the archived rows are gone and the selection is clear", (await page.$$eval(ids.map((id) => `#${id}`).join(","), (rows) => rows.every((r) => r.hidden))) && (await count()) === "0");
+  const left = await page.$$eval(ids.map((id) => `#${id}`).join(","), (rows) => rows.length);
+  check("the patch removed the archived rows and the selection is clear", left === 0 && (await count()) === "0", `${left} left`);
+  await page.click("tbody tr:nth-child(1) input[type=checkbox]");
+  check("the rows that moved up still select", (await count()) === "1");
+  await page.click("[role=group] button:nth-of-type(2)");
   check("the dialog closed", !(await page.isVisible("dialog[open]")));
 
   // Live levels: the feed changes some stock cells.
-  const levels = () => page.$$eval("tbody td[data-id]", (cells) => cells.map((c) => c.textContent).join());
+  const levels = () => page.$$eval("tbody td[data-key]", (cells) => cells.map((c) => c.textContent).join());
   const first = await levels();
   await page.waitForTimeout(1200);
   check("live levels update stock cells", (await levels()) !== first);

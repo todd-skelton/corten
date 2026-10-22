@@ -4,7 +4,7 @@
 //! |---|---|
 //! | `GET /` | the inventory grid: selection, shift-click ranges, select all, filter, sort, inline price edits, a confirm dialog, live stock levels |
 //! | `POST /items/{id}/price` | a price cell's form: the cell as a patch, or 422 with the error |
-//! | `POST /archive` | the selected rows, archived: their rows as patches and a status line |
+//! | `POST /archive` | the selected rows, archived: a patch that removes their rows, and a status line |
 //! | `GET /feed/levels`, `/feed/levels/live` | stock levels, the feed the grid subscribes to |
 use std::{
     collections::HashMap,
@@ -16,6 +16,7 @@ use corten::{
     axum::http::StatusCode,
     feed::{Feed, Row, Since},
     prelude::*,
+    view::Remove,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -180,7 +181,7 @@ async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveIn
         return req.redirect(&url::Home);
     }
     req.patch(html! {
-        for id in &done { <tr id={("row-", id.as_str())} hidden></tr> }
+        for id in &done { {Remove(("row-", id.as_str()))} }
         <StatusLine text={&format!("Archived {} item{}.", done.len(), if done.len() == 1 { "" } else { "s" })} />
     })
 }
@@ -249,10 +250,15 @@ mod tests {
         let desk = Desk::new(20);
         let (status, html) = send(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(html.matches(r#"data-scope="inventory-row""#).count(), 20, "{html}");
-        assert!(html.contains("/scripts/inventory_grid.js\">") && html.contains("/scripts/inventory_row.js\">"), "{html}");
-        assert!(html.contains(r#"data-on="row-toggled:inventory_grid.toggled($e,$c,*row,*select,@all,@count,@bar)""#), "{html}");
-        assert!(html.contains(r#"data-ref="inventory-grid/row""#), "a parent's ref inside a child is qualified: {html}");
+        assert_eq!(html.matches(r#"<tr data-ref="row""#).count(), 20, "{html}");
+        assert!(html.contains("/scripts/inventory_grid.js\">") && html.contains("/scripts/price_cell.js\">"), "{html}");
+        let sel = "{rows:*row,boxes:*select,all:@all,count:@count,bar:@bar}";
+        assert!(
+            html.contains(&format!(r#"data-on="click:inventory_grid.toggle($e,^select,$c,{sel})""#)),
+            "one handler for every row: {html}"
+        );
+        assert!(html.contains(r#"<td data-ref="qty" data-key="i00003">"#), "stock cells are keyed by item: {html}");
+        assert!(html.contains(r#"data-on="connect:inventory_grid.live(#qty,"#), "{html}");
     }
 
     #[tokio::test]
@@ -271,10 +277,15 @@ mod tests {
     async fn archiving_hides_the_rows_and_says_how_many() {
         let desk = Desk::new(5);
         let (_, html) = send(&desk, post("/archive", "ids=i00001%2Ci00003")).await;
-        assert!(html.contains(r#"<tr id="row-i00001" hidden></tr><tr id="row-i00003" hidden></tr>"#), "{html}");
+        assert!(
+            html.contains(
+                r#"<template id="row-i00001" data-remove></template><template id="row-i00003" data-remove></template>"#
+            ),
+            "{html}"
+        );
         assert!(html.contains("Archived 2 items."), "{html}");
         let (_, page) = send(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
-        assert_eq!(page.matches(r#"data-scope="inventory-row""#).count(), 3);
+        assert_eq!(page.matches(r#"<tr data-ref="row""#).count(), 3);
     }
 
     /// Server cost of the desk at a realistic size: `cargo test -p seller-desk --release -- --ignored --nocapture`.

@@ -20,7 +20,7 @@ struct Form {
 #[test]
 fn every_component_has_its_script_and_no_css() {
     let names: Vec<_> = COMPONENTS.iter().map(|c| c.script.expect("a script").name).collect();
-    assert_eq!(names, ["number_field", "combo_box", "tab_group", "menu_button"]);
+    assert_eq!(names, ["ui.number_field", "ui.combo_box", "ui.tab_group", "ui.menu_button"]);
     for c in COMPONENTS {
         let script = c.script.unwrap();
         assert!(c.style.is_none(), "{} ships no CSS", c.name);
@@ -35,17 +35,17 @@ fn the_combo_box_value_is_a_native_select_and_the_input_waits_for_the_script() {
     let html = ComboBox { field: &field }.to_html();
     assert!(
         html.starts_with(
-            r#"<div data-scope="combo-box" data-on="connect:combo_box.connect($c,@select,@input,@popup,@list,@empty)">"#
+            r#"<div data-scope="ui-combo-box" data-on="connect:ui.combo_box.connect($c,@select,@input,@popup,@list,@empty)">"#
         ),
         "{html}"
     );
     assert!(
-        html.contains(r#"<select data-ref="select" id="pick" name="pick" required data-on="invalid:combo_box.invalid($e,$c)"><option value="">Choose</option>"#),
+        html.contains(r#"<select data-ref="select" id="pick" name="pick" required data-on="invalid:ui.combo_box.invalid($e,$c)"><option value="">Choose</option>"#),
         "{html}"
     );
     assert!(html.contains(r#"<option value="b">Beta &lt;b&gt;</option>"#), "labels are escaped: {html}");
     assert!(
-        html.contains(r#" hidden data-on="input:combo_box.filter($c) keydown:combo_box.key($e,$c)"#),
+        html.contains(r#" hidden data-on="input:ui.combo_box.filter($c) keydown:ui.combo_box.key($e,$c)"#),
         "the text input shows only with the script: {html}"
     );
     assert!(!html.contains(r#"value="Alpha""#), "no value, no text");
@@ -66,7 +66,7 @@ fn tabs_without_links_are_buttons_and_hide_the_other_panels() {
     );
     assert!(html.contains(r#"<a data-ref="tab" role="tab" id="t-tab-1" href="/items/x?tab=two""#), "{html}");
     assert!(
-        html.contains(r#"data-on="click:tab_group.choose($e,$t,*tab,*panel) keydown:tab_group.step($e,$t,*tab,*panel)""#),
+        html.contains(r#"data-on="click:ui.tab_group.choose($e,$t,*tab,*panel) keydown:ui.tab_group.step($e,$t,*tab,*panel)""#),
         "{html}"
     );
     assert!(
@@ -83,9 +83,9 @@ fn tabs_without_links_are_buttons_and_hide_the_other_panels() {
 fn a_number_field_disables_the_button_at_each_bound() {
     let at_max = Number { value: Some(5.0), min: Some(0.0), max: Some(5.0), ..Number::new("n", Form::FIELDS.n, "Less", "More") };
     let html = NumberField { field: &at_max }.to_html();
-    assert!(html.contains(r#"aria-label="Less" tabindex="-1" data-on="pointerdown:number_field.press($e,$t,@input,-1) click:number_field.click(@input,-1)">"#), "{html}");
+    assert!(html.contains(r#"aria-label="Less" tabindex="-1" data-on="pointerdown:ui.number_field.press($e,$t,@input,-1) click:ui.number_field.click(@input,-1)">"#), "{html}");
     assert!(
-        html.contains(r#"aria-label="More" tabindex="-1" disabled data-on="pointerdown:number_field.press($e,$t,@input,1)"#),
+        html.contains(r#"aria-label="More" tabindex="-1" disabled data-on="pointerdown:ui.number_field.press($e,$t,@input,1)"#),
         "{html}"
     );
     let off = Number { disabled: true, ..Number::new("n", Form::FIELDS.n, "Less", "More") };
@@ -100,11 +100,11 @@ fn a_menu_button_lists_links_and_actions() {
     let items = [MenuItem { label: &"Out", link: &Out, post: true }];
     let html = MenuButton { id: "m", label: &"Menu", items: &items }.to_html();
     assert!(
-        html.starts_with(r#"<div data-scope="menu-button" data-on="connect:menu_button.connect(@trigger,@menu,*item)">"#),
+        html.starts_with(r#"<div data-scope="ui-menu-button" data-on="connect:ui.menu_button.connect(@trigger,@menu,*item)">"#),
         "{html}"
     );
     assert!(
-        html.contains(r#"<button data-ref="item" role="menuitem" data-on="click:menu_button.used(@menu)">Out</button>"#),
+        html.contains(r#"<button data-ref="item" role="menuitem" data-on="click:ui.menu_button.used(@menu)">Out</button>"#),
         "{html}"
     );
 }

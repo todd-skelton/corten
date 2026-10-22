@@ -54,15 +54,19 @@ framework's shape, and what it does not do yet.
 3. `<script>` tags inside swapped pages do not run. Put behavior in a component's script.
 4. Handlers run from one listener per event type on the document, so a third-party listener that
    stops an event before it reaches the document stops its handlers too, as in any delegating
-   framework. A handler whose module is still loading runs after the event, too late to call
-   `preventDefault()`; the page preloads the modules its markup names, so this needs a person
-   faster than the network.
+   framework. Markup the runtime inserts (a navigation, a patch) waits for the modules its
+   handlers name, so those handlers always run while their event is dispatched. On the first
+   page, an event that arrives before its module (a click while the page still loads) gets the
+   browser's default and no handler, as it would without JavaScript; the page preloads its
+   modules, so this needs a person faster than the network.
 5. Offline is a fallback page plus cached versioned files, not offline data.
 6. Hover and touch prefetch reuses a fetched page for up to 10 seconds (cleared after any form
    post).
 7. A feed's write rate is bounded by Postgres commit latency on its feed row. Split hot data into
    several feeds.
 8. `html!` views render once and own what they capture; read from `req` before building the view.
+   A value borrowed from one the view owns is computed inside the markup:
+   `html! { let shown = saved.as_deref().unwrap_or(typed); <input value={shown}> }`.
 9. Component stylesheets support plain CSS with nesting and `@media`, `@supports`, `@container`,
    `@layer`, `@keyframes` and `@font-face`; `@import` and escaped class names are not supported.
    Keyframe names are not scoped. Every listed component's CSS is in the one file, whether or not
@@ -72,5 +76,6 @@ framework's shape, and what it does not do yet.
 10. `corten-ui` is tested in Chromium only. Its popups are placed by the design system's CSS with
    anchor positioning (Baseline since January 2026); a browser without it shows them where
    `popover` puts them by default, centered. Tabs are horizontal.
-    Its script names are not prefixed (`combo_box`, `tab_group`), so an app component with the
-    same script name is a startup error.
+    Its names in the page are prefixed (`ui.combo_box.js`, `data-scope="ui-combo-box"`) through
+    `[package.metadata.corten] scripts = "ui"`, so an app's own components never collide with
+    them. Two of an app's own scripts with one file name are a startup error that names both.

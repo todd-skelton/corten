@@ -130,7 +130,7 @@ pub mod prelude {
         component, html,
         i18n::Messages as _,
         raw,
-        script::{refs, Handler, Ref},
+        script::{el, refs, Handler, Ref},
         Api, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
     };
 }

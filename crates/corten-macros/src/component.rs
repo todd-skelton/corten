@@ -189,7 +189,10 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
 
     // Refs (`let (rows, rest) = refs();`) and the scope they belong to: the component's one root
     // element, marked `data-scope` by its html!.
-    let scope_name = crate::names::kebab(&name.to_string());
+    let scope_name = match crate::script::prefix() {
+        Some(prefix) => format!("{prefix}-{}", crate::names::kebab(&name.to_string())),
+        None => crate::names::kebab(&name.to_string()),
+    };
     let (body, has_refs) = refs(&body, &scope_name)?;
     let scoped = has_refs || mentions(&body.stream(), "scope");
     let body = if scoped { mark_root(&body, &scope_name)? } else { body };

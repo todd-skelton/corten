@@ -1,5 +1,5 @@
 //! The desk's views. Each component's script and stylesheet are next to it in `views/`.
-use corten::{Component, prelude::*, script::event};
+use corten::{Component, prelude::*};
 
 use crate::app::Item;
 
@@ -15,17 +15,8 @@ pub use inventory_grid::InventoryGrid;
 pub use inventory_row::InventoryRow;
 pub use price_cell::PriceCell;
 
-/// What the app lists in `App::components`: the scripts, the stylesheets and the typed events.
-pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell, RowToggled];
-
-/// A row's checkbox changed: the row tells the grid, which keeps the selection.
-#[event]
-pub struct RowToggled {
-    pub id: String,
-    pub selected: bool,
-    /// Shift was held: select the range from the last toggled row.
-    pub shift: bool,
-}
+/// What the app lists in `App::components`: the scripts and the stylesheets.
+pub const COMPONENTS: &[Component] = &[InventoryGrid, PriceCell];
 
 /// An item and its stock level, as a row shows them.
 pub struct Line<'a> {

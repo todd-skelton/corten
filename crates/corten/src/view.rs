@@ -138,6 +138,30 @@ impl<F: FnOnce(&mut String)> Render for Html<F> {
     }
 }
 
+/// In a patch, removes the element with this id: `<template id="row-7" data-remove></template>`.
+/// The id is any attribute value, so `Remove(("row-", id))` names the same element as the
+/// markup's `id={("row-", id)}`.
+///
+/// ```
+/// use corten::{prelude::*, view::Remove};
+///
+/// let archived = ["7", "9"];
+/// let patch = html! { for id in archived { {Remove(("row-", id))} } };
+/// assert_eq!(
+///     patch.to_html(),
+///     r#"<template id="row-7" data-remove></template><template id="row-9" data-remove></template>"#
+/// );
+/// ```
+pub struct Remove<T>(pub T);
+
+impl<T: AttrValue> Render for Remove<T> {
+    fn render(&self, out: &mut String) {
+        out.push_str("<template");
+        self.0.write_attr(" id", out);
+        out.push_str(" data-remove></template>");
+    }
+}
+
 /// Trusted HTML, written without escaping. Only for markup the app produced itself.
 pub struct Raw<T>(pub T);
 

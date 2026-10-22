@@ -339,7 +339,11 @@ impl Cursor {
                     props.push((stream([TokenTree::Ident(field)]), value));
                 }
                 Some(TokenTree::Ident(_)) => {
-                    let name = self.attr_name()?;
+                    let mut name = self.attr_name()?;
+                    // `key={item.id}` names an element in a keyed ref (a handler's `Map`).
+                    if name == "key" {
+                        name = "data-key".into();
+                    }
                     if name == "data-ref" || name == "data-on" || name == "data-scope" {
                         return err(span, "data-ref, data-on and data-scope are printed by Corten: write ref={rows} (with let (rows) = refs();) or on:click={js::show(rows)}");
                     }

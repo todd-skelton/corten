@@ -114,7 +114,7 @@ mod tests {
     #[tokio::test]
     async fn the_page_preloads_the_scripts_it_uses_and_selects_the_tab_in_the_url() {
         let page = send(Request::get("/?tab=offers").body(Body::empty()).unwrap()).await;
-        for name in ["number_field", "combo_box", "tab_group", "menu_button"] {
+        for name in ["ui.number_field", "ui.combo_box", "ui.tab_group", "ui.menu_button"] {
             assert!(page.contains(&format!("/scripts/{name}.js\">")), "{name} is preloaded: {page}");
         }
         assert!(

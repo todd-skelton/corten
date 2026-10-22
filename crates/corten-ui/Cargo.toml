@@ -7,6 +7,11 @@ description = "Headless Corten components for the widgets the browser has no ele
 license = "MIT"
 repository = "https://github.com/todd-skelton/corten"
 
+# The names this crate's components put in the page start with "ui" (ui.combo_box.js,
+# data-scope="ui-combo-box"), so an app's own ComboBox never collides with them.
+[package.metadata.corten]
+scripts = "ui"
+
 # Only corten, without its default features: the components need no JSON, no logging and no CSS.
 [dependencies]
 corten = { path = "../corten", default-features = false }
