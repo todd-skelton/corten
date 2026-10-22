@@ -440,7 +440,7 @@ mod tests {
         let fields: Vec<&str> =
             create["inputSchema"]["required"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
         assert!(
-            fields.contains(&AlertInput::FIELDS.email) && fields.contains(&AlertInput::FIELDS.target_price),
+            fields.contains(&AlertInput::FIELDS.email.as_str()) && fields.contains(&AlertInput::FIELDS.target_price.as_str()),
             "the tool takes the form's fields under the same names, so validation errors name them right: {fields:?}"
         );
         assert_eq!(res["result"]["tools"][1]["outputSchema"]["properties"]["listings"]["type"], "array");

@@ -311,7 +311,7 @@ function define(tag) {
         if (made?.tag !== tag) throw new Error(`${url} must end with export default island("${tag}", { ... })`);
         if (!customElements.get(tag)) customElements.define(tag, made);
       },
-      (error) => console.error(`corten: <${tag}> has no island module at ${url}; list the #[island] in App::islands`, error),
+      (error) => console.error(`corten: <${tag}> has no island module at ${url}; list the #[island] in App::components`, error),
     ).catch((error) => console.error(`corten: ${error.message}`));
     loading.set(tag, pending);
   }

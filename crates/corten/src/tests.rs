@@ -22,9 +22,17 @@ struct Viewer(&'static str);
 fn test_shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
     let who = viewer.map_or("guest", |v| v.0);
     html! {
-        <html><head>{doc.head}</head><body><header><a href="/" aria-current={doc.current("/")}>{who}</a></header><main>{doc.main}</main></body></html>
+        <html><head>{doc.head}</head><body><header><a href={Root} aria-current={doc.current(&Root)}>{who}</a></header><main>{doc.main}</main></body></html>
     }
 }
+
+#[derive(crate::Route)]
+#[route("/")]
+struct Root;
+
+#[derive(crate::Route)]
+#[route("/done")]
+struct Done;
 
 fn meta_content<'a>(html: &'a str, name: &str) -> &'a str {
     let prefix = format!(r#"<meta name="{name}" content=""#);
@@ -63,7 +71,7 @@ fn routes() -> Router {
             if req.mode == Mode::Action {
                 req.patch(html! { <p id="msg">"saved"</p> })
             } else {
-                req.redirect("/done")
+                req.redirect(&Done)
             }
         }),
     )
@@ -230,6 +238,28 @@ async fn errors_render_in_the_shell_for_each_mode_without_leaking_the_message() 
 }
 
 #[tokio::test]
+async fn an_extractor_rejection_gets_the_error_page_in_a_browser_and_its_text_in_dev() {
+    let routes =
+        || Router::new().route("/n/{n}", get(|axum::extract::Path(n): axum::extract::Path<u32>| async move { n.to_string() }));
+    let html = Some("text/html,application/xhtml+xml");
+    let (status, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", None, html).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"));
+    assert!(body.starts_with("<html><head><title>") && !body.contains("parse"), "{body}");
+    let (_, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", Some("nav"), None).await;
+    assert_eq!(headers["corten-page"], "1", "a navigation swaps the error page in: {body}");
+    let (_, _, body) = call_with(App::new(routes()).dev(true).router(), "GET", "/n/abc", None, html).await;
+    assert!(body.contains(r#"<pre class="corten-error">Invalid URL"#), "{body}");
+    let (status, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", None, Some("application/json")).await;
+    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::BAD_REQUEST, "text/plain; charset=utf-8"));
+    assert!(body.starts_with("Invalid URL"), "a data client gets the text: {body}");
+    let (_, _, body) = call_with(app(routes(), None), "GET", "/n/abc", None, None).await;
+    assert!(body.starts_with("Invalid URL"), "so does a client that does not ask for HTML: {body}");
+    let (_, _, body) = call_with(app(routes(), None), "GET", "/n/7", None, None).await;
+    assert_eq!(body, "7", "a plain-text success is left alone");
+}
+
+#[tokio::test]
 async fn dev_mode_shows_errors_and_reloads_pages_when_the_server_restarts() {
     let dev = || App::new(failing().route("/ok", get(|req: Req| async move { req.page("ok", html! { "ok" }) }))).dev(true);
     let (_, _, body) = call(dev().router(), "GET", None).await;
@@ -327,7 +357,8 @@ fn current_links_match_the_page_or_its_section() {
 }
 
 fn alert_form(errors: &Errors) -> impl Render + '_ {
-    html! { <form id="f"><input name="email" {..errors.aria("email")}>{errors.message("email")}</form> }
+    let f = SignUp::FIELDS;
+    html! { <form id="f"><input name={f.email} {..errors.aria(f.email)}>{errors.message(f.email)}</form> }
 }
 
 fn invalid_routes() -> Router {
@@ -335,7 +366,7 @@ fn invalid_routes() -> Router {
         "/",
         get(|req: Req| async move {
             let mut errors = Errors::new();
-            errors.add("email", "Enter an email address.");
+            errors.add(SignUp::FIELDS.email, "Enter an email address.");
             let page = || async { req.page("Alert", html! { <p>"page with errors"</p> }) };
             req.invalid(&errors, alert_form(&errors), page).await
         }),
@@ -385,11 +416,9 @@ pub(crate) struct Shipping {
 
 #[test]
 fn field_names_follow_serde_and_reach_markup() {
-    assert_eq!((SignUp::FIELDS.email, SignUp::FIELDS.password), ("email", "pw"));
-    assert_eq!(
-        (Shipping::FIELDS.street_line, Shipping::FIELDS.postal_code, Shipping::FIELDS.r#type),
-        ("streetLine", "postalCode", "type")
-    );
+    assert_eq!((SignUp::FIELDS.email.as_str(), SignUp::FIELDS.password.as_str()), ("email", "pw"));
+    let f = Shipping::FIELDS;
+    assert_eq!((f.street_line.as_str(), f.postal_code.as_str(), f.r#type.as_str()), ("streetLine", "postalCode", "type"));
     let mut errors = Errors::new();
     errors.add(SignUp::FIELDS.email, "Enter an email address.");
     let f = SignUp::FIELDS;

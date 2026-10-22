@@ -70,8 +70,8 @@ definition:
 | Rust to markup | page struct and component props | `html!` and `#[component]` are Rust: a missing field or prop is a compile error |
 | Markup to island props | the `#[prop]` parameters of an `#[island]` | `corten::types` writes `types/app.d.ts` with each island's props; `island("tag", ...)` types `props` from it; `tsc --checkJs` (strict) |
 | Feed rows to island | the row struct | the same declarations; `subscribe<Row>` types the snapshot and every patch |
-| Form fields to handler | the input struct | `#[derive(Fields)]`: views print `Input::FIELDS.email` and errors use it, so a renamed field is a compile error |
-| Links to routes | the route struct (`#[derive(Route)]`) | the router mounts `Route::PATH`; a path parameter without a field, or a link missing a field, does not compile |
+| Form fields to handler | the input struct | `#[derive(Fields)]`: views print `Input::FIELDS.email`, a `FieldName`, and `Errors` takes only that, so a renamed field is a compile error |
+| Links to routes | the route struct (`#[derive(Route)]`) | the router mounts `Route::PATH`; a path parameter without a field, a link missing a field, or a redirect or current-page check given a path as text does not compile |
 | Island markup to its script | `ref={Name}` and `on:event={Name}` in the `#[island]`'s own `html!` | the names exist only in that component (another one, or a string, does not compile); `Types::components` writes the element each ref is on and each action's events, so `refs.rows` is an `HTMLTableSectionElement`, a missing, extra or misspelled action fails `tsc`, and so does a ref the markup lacks |
 | Markup to stylesheet | the component's CSS file (`#[component(css)]`) | each class is a constant only that component (and helpers that name it, `css = Owner`) can use; a class the file lacks, or one written as text, does not compile; an unused class is a dead-code warning; a rule that does not start inside the component does not compile |
 | Views to tokens | the token file (`tokens!`) | scales are enums, utilities take them per breakpoint, and a theme that overrides a token its scale lacks does not compile |

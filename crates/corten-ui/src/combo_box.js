@@ -11,7 +11,7 @@ import { island } from "corten";
 export default island("combo-box", {
   /** @returns {State} */
   state: () => ({ shown: [], active: -1 }),
-  connect({ refs, signal }) {
+  connect({ refs }) {
     const { select, input, popup, list } = refs;
     // The app's <label for> follows the control that shows.
     const id = select.id;
@@ -30,9 +30,7 @@ export default island("combo-box", {
       list.append(el);
     }
     mark(refs);
-    const follow = () => popup.matches(":popover-open") && place(popup, input);
-    addEventListener("resize", follow, { signal });
-    addEventListener("scroll", follow, { signal, capture: true, passive: true });
+    anchor(popup, input);
   },
   actions: {
     filter({ refs, state }) {
@@ -132,7 +130,6 @@ function open(parts, state, typed) {
   empty.hidden = state.shown.length > 0;
   if (!popup.matches(":popover-open")) popup.showPopover();
   input.setAttribute("aria-expanded", "true");
-  place(popup, input);
   const selected = state.shown.findIndex((el) => el.getAttribute("aria-selected") === "true");
   highlight(parts, state, typed && query !== "" ? (state.shown.length ? 0 : -1) : selected);
 }
@@ -198,18 +195,14 @@ function mark(parts) {
 }
 
 /**
- * Places a popover (fixed, in the top layer) under its anchor, or above it when only there is
- * room, and sets --anchor-width for the design system's CSS. A copy is in menu_button.js.
+ * Makes `el` the popup's anchor, so the design system places the popup with CSS anchor
+ * positioning (`position-area`, `anchor-size()`): the browser keeps it in place on scroll and
+ * resize, with no script.
  * @param {HTMLElement} popup
- * @param {HTMLElement} anchor
+ * @param {HTMLElement} el
  */
-function place(popup, anchor) {
-  const a = anchor.getBoundingClientRect();
-  popup.style.setProperty("--anchor-width", `${a.width}px`);
-  popup.style.inset = "auto";
-  const height = popup.offsetHeight;
-  const below = innerHeight - a.bottom;
-  const top = below >= height || below >= a.top ? a.bottom : a.top - height;
-  popup.style.top = `${Math.max(0, top)}px`;
-  popup.style.left = `${Math.max(0, Math.min(a.left, innerWidth - popup.offsetWidth))}px`;
+function anchor(popup, el) {
+  const name = `--${CSS.escape(el.id)}`;
+  el.style.setProperty("anchor-name", name);
+  popup.style.setProperty("position-anchor", name);
 }

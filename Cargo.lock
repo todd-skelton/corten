@@ -790,6 +790,7 @@ name = "hello"
 version = "0.1.0"
 dependencies = [
  "corten",
+ "futures-util",
  "http-body-util",
  "schemars",
  "serde",

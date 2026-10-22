@@ -8,7 +8,9 @@ custom-element islands. Run `corten dev` while working and `corten check` before
 2. A form that updates part of a page has `data-patch`; its handler answers `req.patch(view)`
    when `req.mode == Mode::Action` and the whole page otherwise, so it works without JavaScript.
    Each patched element has an `id`, and the page renders the same component.
-3. Field names come from `#[derive(Fields)]` (`Form::FIELDS.name`), never typed as strings.
+3. URLs are `#[derive(Route)]` types (`href={Home}`, `Router::new().route(Home::PATH, ..)`,
+   `req.redirect(&Home)`) and field names come from `#[derive(Fields)]` (`Form::FIELDS.name`);
+   neither is ever typed as a string.
 4. Behavior in the browser is an `#[island]` component: its markup names elements with
    `ref={Name}` and events with `on:click={Action}`, and the script next to it (`snake_name.js`,
    `export default island("kebab-name", { actions: { action(ctx) {} } })`) implements them.

@@ -95,7 +95,7 @@ impl Document {
         self.lang
     }
 
-    /// True when `href` (a path or a typed route) is the current page, or with `section` any page
+    /// True when `href` (a typed route) is the current page, or with `section` any page
     /// under it: the rule the runtime applies to `<a data-nav>` (`data-nav="section"`) after each
     /// navigation.
     pub fn is_current(&self, href: &(impl crate::route::Href + ?Sized), section: bool) -> bool {
@@ -118,12 +118,20 @@ impl Document {
         self.nonce.as_ref().map_or("", |n| &n.0)
     }
 
-    /// The versioned URL of a static file: `doc.asset("style.css")`. A missing file panics in
-    /// debug builds.
+    /// The versioned URL of a static file: `doc.asset("style.css")`. A missing file is a bug:
+    /// it panics in debug builds, and in release the error is logged and the page still renders
+    /// (with a link that 404s) rather than failing every request.
     pub fn asset(&self, path: &str) -> String {
         match &self.shared.assets {
             Some(assets) => assets.url(path),
-            None => panic!("no static directory is loaded, so there is no {path:?}; see App::assets"),
+            None => {
+                let message = format!("corten: no static directory is loaded, so there is no {path:?}; see App::assets");
+                if cfg!(debug_assertions) {
+                    panic!("{message}");
+                }
+                tracing::error!("{message}");
+                format!("/{path}")
+            }
         }
     }
 
@@ -579,10 +587,10 @@ impl Req {
         }
     }
 
-    /// After a successful write, send the browser to `location` (post/redirect/get). Works with
-    /// and without JavaScript.
-    pub fn redirect(&self, location: &str) -> Result {
-        let value = HeaderValue::try_from(location).map_err(Error::new)?;
+    /// After a successful write, send the browser to `to` (post/redirect/get): a typed route, or
+    /// an `axum::http::Uri` to leave the app. Works with and without JavaScript.
+    pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> Result {
+        let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         Ok(match self.mode {
             Mode::Action => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, value)]).into_response(),
             _ => (StatusCode::SEE_OTHER, [(header::LOCATION, value)]).into_response(),
@@ -604,6 +612,9 @@ pub(crate) async fn render_errors(
     use axum::body::HttpBody;
     let mode = mode_of(req.headers());
     let offline = req.method() == axum::http::Method::GET && shared.offline.as_deref() == Some(req.uri().path());
+    // A browser: the runtime, or a document request that asks for HTML (a health probe or a
+    // webhook sender does not).
+    let browser = matches!(mode, Mode::Navigation | Mode::Action) || (mode == Mode::Document && accepts_html(req.headers()));
     let failed_req = (mode != Mode::Data).then(|| Req::new(req.headers(), req.extensions(), req.uri().path(), shared.clone()));
     let res = match deadline {
         None => next.run(req).await,
@@ -620,11 +631,22 @@ pub(crate) async fn render_errors(
         }
     };
     let status = res.status();
-    let failed = res.extensions().get::<crate::Failed>().cloned();
+    let mut failed = res.extensions().get::<crate::Failed>().cloned();
     let allow = res.headers().get(header::ALLOW).cloned();
-    let empty_error = (status.is_client_error() || status.is_server_error()) && res.body().size_hint().exact() == Some(0);
-    if failed.is_none() && !empty_error {
+    let error = status.is_client_error() || status.is_server_error();
+    let empty_error = error && res.body().size_hint().exact() == Some(0);
+    // An extractor's rejection (a form field missing, a path segment that does not parse) is
+    // plain text written for a developer. A browser gets the error page instead, with the text
+    // under it in dev mode; any other client (data, probes, webhooks) still gets the text.
+    let rejection = error && failed.is_none() && browser && is_plain_text(res.headers());
+    if failed.is_none() && !empty_error && !rejection {
         return res;
+    }
+    if rejection {
+        let text = axum::body::to_bytes(res.into_body(), 16 * 1024).await.unwrap_or_default();
+        let text = String::from_utf8_lossy(&text);
+        tracing::debug!(status = status.as_u16(), "corten: request rejected: {text}");
+        failed = Some(crate::Failed(Arc::from(text.as_ref())));
     }
     let Some(req) = failed_req else {
         let body = format!(r#"{{"error":{{"status":{}}}}}"#, status.as_u16());
@@ -645,6 +667,14 @@ pub(crate) async fn render_errors(
         res.headers_mut().insert(header::ALLOW, allow);
     }
     res
+}
+
+fn accepts_html(headers: &HeaderMap) -> bool {
+    headers.get(header::ACCEPT).and_then(|v| v.to_str().ok()).is_some_and(|v| v.contains("text/html"))
+}
+
+fn is_plain_text(headers: &HeaderMap) -> bool {
+    headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("text/plain"))
 }
 
 /// `fut`'s output, or `None` once it has waited `limit`. The timer starts the first time `fut` is

@@ -82,11 +82,11 @@ pub use app::App;
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 /// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
-/// gives `AlertInput::FIELDS.email == "email"` (serde `rename` and `rename_all` applied). Use them
-/// for `name=` in the form and in [`Errors::add`], and a renamed or misspelled field fails to
-/// compile instead of posting a field the handler never reads.
+/// gives `AlertInput::FIELDS.email`, the [`FieldName`] `"email"` (serde `rename` and `rename_all`
+/// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled
+/// field fails to compile instead of posting a field the handler never reads.
 pub use corten_macros::Fields;
-pub use form::Errors;
+pub use form::{Errors, FieldName};
 pub use html::{escape, find_islands};
 pub use island::{island, Island};
 pub use meta::Meta;

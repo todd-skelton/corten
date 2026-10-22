@@ -152,9 +152,14 @@ impl Assets {
     }
 
     /// The URL for `path` (relative to the directory, like `style.css`). A typo is a bug, so a
-    /// missing file panics in debug builds.
+    /// missing file panics in debug builds and is logged in release.
     pub fn url(&self, path: &str) -> String {
-        debug_assert!(self.files.contains_key(path), "no static file {path:?}");
+        if !self.files.contains_key(path) {
+            if cfg!(debug_assertions) {
+                panic!("corten: no static file {path:?}");
+            }
+            tracing::error!("corten: no static file {path:?}");
+        }
         format!("{}{path}", self.prefix)
     }
 

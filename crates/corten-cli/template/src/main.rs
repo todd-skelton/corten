@@ -8,12 +8,22 @@ async fn main() -> std::io::Result<()> {
     app().serve().await
 }
 
+/// Every URL the app serves. Views link to these types, so a link cannot point at a route that
+/// does not exist, and changing a path here changes every link to it.
+#[derive(Route)]
+#[route("/")]
+pub struct Home;
+
+#[derive(Route)]
+#[route("/greet")]
+pub struct Greet;
+
 /// The routes and the shell. Security headers, error pages, static files, health checks,
 /// compression and live reload are Corten's defaults; see `App` to change them.
 fn app() -> App {
     let routes = Router::new()
-        .route("/", get(home))
-        .route("/greet", post(greet));
+        .route(Home::PATH, get(home))
+        .route(Greet::PATH, post(greet));
     App::new(routes)
         .shell(views::shell)
         .components(&[views::ClickCounter])

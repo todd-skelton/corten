@@ -351,7 +351,7 @@ pub trait AttrValue {
     fn write_attr(&self, name: &str, out: &mut String);
 }
 
-fn quoted(name: &str, value: &(impl Render + ?Sized), out: &mut String) {
+pub(crate) fn quoted(name: &str, value: &(impl Render + ?Sized), out: &mut String) {
     out.push_str(name);
     out.push_str("=\"");
     value.render(out);

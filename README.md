@@ -73,16 +73,24 @@ The CLI is a convenience over cargo, not a build system: an app is an ordinary c
 ```rust
 use corten::prelude::*;
 
+#[derive(Route)]
+#[route("/")]
+struct Home;
+
+#[derive(Route)]
+#[route("/greet")]
+struct Greet;
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let routes = Router::new().route("/", get(home)).route("/greet", post(greet));
+    let routes = Router::new().route(Home::PATH, get(home)).route(Greet::PATH, post(greet));
     App::new(routes).shell(shell).serve().await
 }
 
 async fn home(req: Req) -> corten::Result {
     req.page("Home", html! {
         <h1>"Welcome"</h1>
-        <form method="post" action="/greet" data-patch>
+        <form method="post" action={Greet} data-patch>
             <input name={GreetForm::FIELDS.name} required>
             <button>"Greet me"</button>
         </form>
@@ -198,7 +206,7 @@ escaped, with no lookup and no intermediate string. Editing a catalog rebuilds t
 | `GET`, no `corten` header | first load, reload, no JavaScript | `req.page(meta, view)`: the shell around the page | renders HTML |
 | `GET` with `corten: nav` | runtime, same-origin link or back/forward | the same call: `<title>`, head tags and the page only | swaps `<main>` |
 | `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch(view)` | replaces each element by `id` |
-| `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(url)` | renders the page |
+| `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(&route)` | renders the page |
 | any, `Accept: application/json` | native screen, agent, test | `req.screen(meta, &data, view)`: `{"title", "data"}` | renders natively, or reasons over it |
 | SSE | `<corten-live src>` | `corten::live(stream_of_views)` | applies each like a patch |
 | `GET {feed}`, `{feed}/live` | an island's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |
@@ -210,8 +218,8 @@ the shell is never stale.
 
 ## Forms
 
-`#[derive(Fields)]` gives a form struct its field names as constants, so markup and validation
-cannot misspell them. Validation stays in the app; `Errors` carries the first message per field.
+`#[derive(Fields)]` gives a form struct its field names as `FieldName` constants, so markup and
+validation cannot misspell them: `Errors` takes nothing else. Validation stays in the app; `Errors` carries the first message per field.
 
 ```rust
 if let Err(errors) = check(&input) {
@@ -367,7 +375,7 @@ no CSS.
 | `NumberField` | a native `<input type="number">` (arrow keys, `min`, `max`, `step`, `required`) | step buttons with press and hold, Page Up and Down, Home and End, the step's decimals |
 | `ComboBox` | a native `<select>`, which keeps the value | a text input that filters a listbox (ARIA 1.2 combobox), validation reported on the input |
 | `TabGroup` | tabs that are typed links to the page with that tab selected | roving focus, arrow keys, switching in place with the address following |
-| `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, placement, `aria-expanded` |
+| `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, `aria-expanded`, the button as the menu's CSS anchor |
 
 ```rust
 let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };
@@ -394,12 +402,12 @@ checked on the other side.
 | Seam | How it is checked |
 |---|---|
 | Handler to markup | `html!` is Rust: a missing field or prop is a compile error |
-| Links to routes | `#[derive(Route)]`: the router and every link use the same struct |
+| Links to routes | `#[derive(Route)]`: the router, every link, `req.redirect` and `doc.current` use the same struct; a path as text does not compile (a URL outside the app is an explicit `Uri`) |
 | Views to islands | `#[island]`: refs and actions are names from the island's own markup; `Types::components` types `refs`, `props` and every action in its script |
 | Markup to stylesheet | `#[component(css)]`: `class={Name}` is a constant from the component's own CSS file |
 | Tokens to views | `tokens!`: scales are enums and utilities take them, per breakpoint |
 | Text to catalogs | `messages!`: every locale has every key with the same arguments |
-| Form to handler | `#[derive(Fields)]` names; serde parses the post |
+| Form to handler | `#[derive(Fields)]` names are `FieldName`s, the only key `name=`, `Errors` and corten-ui's fields take; serde parses the post |
 | Server to island | `corten::types::Types::new().add::<Row>().components(COMPONENTS).sync(path)` in a test writes TypeScript declarations and fails while they are stale; `npm run check` then fails in every island that reads an old name |
 | Server to agent | tool input and output schemas generated from the structs (feature `agent`) |
 
@@ -417,13 +425,14 @@ app. Measured on one machine, one run per phase; full tables and method in
 | Rendered pages per second, no database, 64 users | **3,355** | 440 | 224 | 173 | 137 | 52 |
 | Cold start to first page | **184 ms** | 220 ms | 425 ms | 1,035 ms | 496 ms | 1,679 ms |
 | Memory after first request | **1.6 MiB** | 1.7 MiB | 23.5 MiB | 33.0 MiB | 26.4 MiB | 49.2 MiB |
-| JavaScript the page loads, gzip | **8.0 KB**¹ | 7.0 KB + 287 KB WASM | 37.0 KB | 99.2 KB | 108.6 KB | 136.1 KB |
+| JavaScript the page loads, gzip | **4.5 KB**¹ | 7.0 KB + 287 KB WASM | 37.0 KB | 99.2 KB | 108.6 KB | 136.1 KB |
 
 With a database fetch on every request both Rust apps are bound by parsing the API response and
 measure about equal, around 3x the fastest JavaScript framework.
 
-¹ Re-measured after the typed seams and `#[island]` changes with the benchmark's `bytes.mjs`
-method (the full run measured 6.2 KB before them); the other columns are from the full run.
+¹ Re-measured on 2026-10-21 with the benchmark's `bytes.mjs` method after the runtime was served
+minified (10.5 KB raw in 4 files, `/items/item_5`, Corten only, one run; the full run measured
+6.2 KB before the typed seams and `#[island]` changes); the other columns are from the full run.
 
 ## Choices
 
@@ -503,8 +512,9 @@ the framework itself.
    a page uses it: the item page's `components.css` (tokens, two themes, utilities and five
    components) is 3.2 KB, 822 bytes brotli (measured). A large library adds to every first load
    until the file is split per route, which is not built.
-9. `corten-ui` is tested in Chromium only. Its popups are placed by script under their anchor, or
-   above it when only there is room; there is no other collision handling. Tabs are horizontal.
+9. `corten-ui` is tested in Chromium only. Its popups are placed by the design system's CSS with
+   anchor positioning (Baseline since January 2026); a browser without it shows them where
+   `popover` puts them by default, centered. Tabs are horizontal.
    Its tags are not prefixed (`<combo-box>`, `<tab-group>`), so an app island with the same
    name is a startup error.
 

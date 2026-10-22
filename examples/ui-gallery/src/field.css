@@ -7,7 +7,8 @@
 .control button { font: inherit; min-width: 36px; height: 36px; border: 1px solid GrayText; border-radius: 6px; background: none; }
 .control button:disabled { opacity: 0.4; }
 .control [role="combobox"] { width: 18rem; }
-.control [popover] { min-width: var(--anchor-width); max-height: 14rem; overflow: auto; margin: 4px 0 0; padding: 4px; border: 1px solid GrayText; border-radius: 6px; }
+/* Under the input (the script names it the popup's anchor), above it when there is no room. */
+.control [popover] { inset: auto; position-area: block-end span-inline-end; position-try-fallbacks: flip-block; min-width: anchor-size(width); max-height: 14rem; overflow: auto; margin: 4px 0; padding: 4px; border: 1px solid GrayText; border-radius: 6px; }
 .control [role="option"] { padding: 4px 8px; border-radius: 4px; cursor: pointer; }
 .control [role="option"][aria-selected="true"] { font-weight: 600; }
 .control [role="option"][data-highlighted] { background: Highlight; color: HighlightText; }

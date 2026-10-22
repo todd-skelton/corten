@@ -81,7 +81,7 @@ async fn order(req: Req, Form(form): Form<OrderForm>) -> corten::Result {
 async fn menu_action(req: Req, text: &'static str) -> corten::Result {
     match req.mode {
         Mode::Action => req.patch(MenuResult { text }),
-        _ => req.redirect(&url::Home { tab: None }.href()),
+        _ => req.redirect(&url::Home { tab: None }),
     }
 }
 

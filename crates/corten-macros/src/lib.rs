@@ -58,9 +58,10 @@ pub fn messages(input: TokenStream) -> TokenStream {
     messages::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
-/// Field names of a form input struct as constants: `Input::FIELDS.email` is `"email"`, with
-/// serde's `rename` and `rename_all` applied. Templates print them for `name=` and handlers
-/// pass them to `Errors`, so a renamed or misspelled field is a compile error.
+/// Field names of a form input struct as constants: `Input::FIELDS.email` is the
+/// `corten::form::FieldName` `"email"`, with serde's `rename` and `rename_all` applied. Templates
+/// print them for `name=` and handlers pass them to `Errors`, so a renamed or misspelled field is a
+/// compile error.
 #[proc_macro_derive(Fields, attributes(serde))]
 pub fn derive_fields(input: TokenStream) -> TokenStream {
     match fields(input) {
@@ -175,11 +176,11 @@ fn fields(input: TokenStream) -> Result<String, String> {
         "/// Form field names of [`{name}`], from `#[derive(Fields)]`.\n#[derive(Clone, Copy, Debug)]\n#[allow(dead_code)]\n{visibility} struct {fields_type} {{\n"
     );
     for (ident, _) in &names {
-        out += &format!("    pub {ident}: &'static str,\n");
+        out += &format!("    pub {ident}: ::corten::form::FieldName,\n");
     }
     out += &format!("}}\n#[allow(dead_code)]\nimpl {name} {{\n    /// Each field's name as the form posts it.\n    pub const FIELDS: {fields_type} = {fields_type} {{\n");
     for (ident, wire) in &names {
-        out += &format!("        {ident}: {wire:?},\n");
+        out += &format!("        {ident}: ::corten::form::FieldName::__new({wire:?}),\n");
     }
     out += "    };\n}\n";
     Ok(out)

@@ -5,9 +5,10 @@
 //! | `GET /` | `req.screen`: HTML for browsers, `{"title","data"}` for `Accept: application/json` |
 //! | `POST /watch` | form patch with JavaScript, full page without, JSON for data clients |
 //! | `GET /feed/stocks`, `/feed/stocks/live` | the live feed `<live-prices>` subscribes to |
+//! | `GET /live/trades` | fragments streamed to `<corten-live>`: the last trade, no script of its own |
 //! | `GET /about` | a plain page, reached by client navigation |
 //! | `POST /sign-in` | sets a cookie; the shell shows the viewer, and the runtime reloads the document |
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use corten::{
     axum::{http::header, response::IntoResponse},
@@ -17,16 +18,22 @@ use corten::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
 
 #[derive(Clone)]
 pub struct Market {
     pub stocks: Feed<Stock>,
+    /// The last trade, as text: what `<corten-live>` shows.
+    pub trades: Arc<watch::Sender<String>>,
 }
 
 impl Market {
     pub fn new() -> Self {
         let stocks = [("s1", "Acme Corp", 12_999), ("s2", "Globex", 54_000), ("s3", "Initech", 31_050)];
-        Market { stocks: Feed::new(stocks.map(|(id, name, cents)| Stock::new(id, name, cents))) }
+        Market {
+            stocks: Feed::new(stocks.map(|(id, name, cents)| Stock::new(id, name, cents))),
+            trades: Arc::new(watch::Sender::new("No trades yet.".into())),
+        }
     }
 }
 
@@ -67,6 +74,10 @@ mod url {
     #[derive(Route)]
     #[route("/feed/stocks/live")]
     pub struct StocksLive;
+
+    #[derive(Route)]
+    #[route("/live/trades")]
+    pub struct Trades;
 }
 
 fn routes(market: Market) -> Router {
@@ -77,6 +88,7 @@ fn routes(market: Market) -> Router {
         .route(url::SignIn::PATH, post(sign_in))
         .route(url::Stocks::PATH, get(|State(m): State<Market>| async move { m.stocks.snapshot() }))
         .route(url::StocksLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }))
+        .route(url::Trades::PATH, get(trades))
         .with_state(market)
 }
 
@@ -99,13 +111,13 @@ fn shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
                 {doc.head}
             </head>
             <body>
-                <header class="site">
+                <header>
                     <nav>
                         <a href={url::Home} data-nav aria-current={doc.current(&url::Home)}>"Watchlist"</a>
                         <a href={url::About} data-nav aria-current={doc.current(&url::About)}>"About"</a>
                     </nav>
                     match viewer {
-                        Some(viewer) => <span class="viewer">"Signed in as "{viewer.name}</span>,
+                        Some(viewer) => <span>"Signed in as "{viewer.name}</span>,
                         None => <form method="post" action={url::SignIn} data-patch><button>"Sign in as Ada"</button></form>,
                     }
                 </header>
@@ -116,7 +128,7 @@ fn shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
 }
 
 async fn sign_in(req: Req) -> corten::Result {
-    let mut res = req.redirect(&url::Home.href())?;
+    let mut res = req.redirect(&url::Home)?;
     res.headers_mut().append(header::SET_COOKIE, SetCookie::new("viewer", "Ada").header());
     Ok(res.into_response())
 }
@@ -152,8 +164,8 @@ fn format_price(cents: u32) -> String {
     format!("${}.{:02}", cents / 100, cents % 100)
 }
 
-/// Moves one price per second, so the live island has something to show.
-pub async fn simulate_market(stocks: Feed<Stock>) {
+/// Moves one price per second, so the live island and the last trade have something to show.
+pub async fn simulate_market(market: Market) {
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut n = 0u64;
     loop {
@@ -161,24 +173,40 @@ pub async fn simulate_market(stocks: Feed<Stock>) {
         let id = format!("s{}", n % 3 + 1);
         let delta = [125i64, -50, 200, -150][(n % 4) as usize];
         n = n.wrapping_add(1);
-        stocks.write(|tx| {
-            if let Some(stock) = tx.get_mut(&id) {
-                stock.set_price((stock.price_cents as i64 + delta).max(100) as u32);
-            }
+        let trade = market.stocks.write(|tx| {
+            let stock = tx.get_mut(&id)?;
+            stock.set_price((stock.price_cents as i64 + delta).max(100) as u32);
+            Some(format!("Last trade: {} at {}.", stock.name, stock.price))
         });
+        if let Some(trade) = trade {
+            market.trades.send_replace(trade);
+        }
     }
+}
+
+/// The last trade as each one happens, for `<corten-live src>`: every item is a fragment the
+/// runtime swaps in by `id`, like a form's patch.
+async fn trades(State(market): State<Market>) -> impl IntoResponse {
+    let next = market.trades.subscribe();
+    corten::live(futures_util::stream::unfold(next, |mut next| async move {
+        next.changed().await.ok()?;
+        let html = LastTrade { text: &next.borrow_and_update() }.to_html();
+        Some((html, next))
+    }))
 }
 
 /// The watchlist screen's data: what the view shows, and what a data client gets.
 #[derive(Serialize)]
 pub struct Home {
     stocks: Vec<Stock>,
+    last_trade: String,
     message: String,
 }
 
 impl Home {
     fn new(market: &Market, message: String) -> Self {
-        Home { stocks: market.stocks.read(|rows| rows.values().cloned().collect()), message }
+        let stocks = market.stocks.read(|rows| rows.values().cloned().collect());
+        Home { stocks, last_trade: market.trades.borrow().clone(), message }
     }
 }
 
@@ -187,6 +215,7 @@ fn home_view(home: &Home) -> impl Render {
     html! {
         <h1>"Watchlist"</h1>
         <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} />
+        <corten-live src={url::Trades}><LastTrade text={&home.last_trade} /></corten-live>
         <form method="post" action={url::Watch} data-patch>
             <label>"Stock "<select name={f.id}>for stock in &home.stocks { <option value={stock.id}>{stock.name}</option> }</select></label>
             <button>"Watch"</button>
@@ -196,16 +225,17 @@ fn home_view(home: &Home) -> impl Render {
 }
 
 /// The prices, rendered here first and then kept current by `live_prices.js` from the feed. The
-/// pause button shows only when the script runs, since nothing updates without it.
-#[island]
+/// pause button shows only when the script runs, since nothing updates without it. Styled by
+/// `live_prices.css`.
+#[island(css)]
 fn LivePrices<'a>(stocks: &'a [Stock], #[prop] feed: &'a str) -> impl Render {
     html! {
-        <button type="button" class="pause" ref={PauseButton} on:click={Pause} aria-pressed="false" hidden>"Pause updates"</button>
-        <table class="stocks">
+        <button type="button" ref={PauseButton} on:click={Pause} aria-pressed="false" hidden>"Pause updates"</button>
+        <table class={Table}>
             <thead><tr><th>"Stock"</th><th>"Price"</th></tr></thead>
             <tbody>
                 for stock in stocks {
-                    <tr><td>{stock.name}</td><td ref={Price} data-id={stock.id}>{stock.price}</td></tr>
+                    <tr><td>{stock.name}</td><td class={Amount} ref={Price} data-id={stock.id}>{stock.price}</td></tr>
                 }
             </tbody>
         </table>
@@ -215,7 +245,14 @@ fn LivePrices<'a>(stocks: &'a [Stock], #[prop] feed: &'a str) -> impl Render {
 /// The watch result: rendered inside the home page, and on its own as a patch.
 #[component]
 fn WatchMessage(message: &str) -> impl Render {
-    html! { <p class="watch-message" id="watch-message" aria-live="polite">{message}</p> }
+    html! { <p id="watch-message" aria-live="polite">{message}</p> }
+}
+
+/// The last trade: rendered inside the home page, then replaced by each fragment `/live/trades`
+/// streams.
+#[component]
+fn LastTrade(text: &str) -> impl Render {
+    html! { <p id="last-trade" aria-live="polite">{text}</p> }
 }
 
 const HOME_TITLE: &str = "Watchlist | Corten";
@@ -292,7 +329,13 @@ mod tests {
         let (kind, body) = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/islands/live-prices.js\">"), "the island module is preloaded: {body}");
-        assert!(body.contains(r#"<td data-ref="price" data-id="s1">$129.99</td>"#), "server renders prices first");
+        assert!(
+            body.contains(r#"<td class="live-prices__amount" data-ref="price" data-id="s1">$129.99</td>"#),
+            "server renders prices first: {body}"
+        );
+        assert!(body.contains(
+            r#"<corten-live src="/live/trades"><p id="last-trade" aria-live="polite">No trades yet.</p></corten-live>"#
+        ));
     }
 
     #[tokio::test]
@@ -316,7 +359,7 @@ mod tests {
     #[tokio::test]
     async fn one_watch_handler_serves_every_surface() {
         let (_, patch) = send(watch_request(Some("action"), None)).await;
-        assert_eq!(patch, r#"<p class="watch-message" id="watch-message" aria-live="polite">Watching Globex at $540.00.</p>"#);
+        assert_eq!(patch, r#"<p id="watch-message" aria-live="polite">Watching Globex at $540.00.</p>"#);
         let (kind, page) = send(watch_request(None, None)).await;
         assert!(kind.starts_with("text/html") && page.contains("<html") && page.contains("Watching Globex"));
         let (kind, data) = send(watch_request(None, Some("application/json"))).await;

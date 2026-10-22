@@ -25,8 +25,11 @@
 //! technology announces: `.field [role=option][aria-selected=true]`, `.field [role=tab][aria-selected=true]`,
 //! `.field button:disabled`. Each component's docs list its parts. The island's tag is
 //! `display: contents`, so its parts are laid out by the wrapper (`order` places an adornment
-//! between them). Popups (`[popover]`) are in the top layer, placed under their anchor by the
-//! script, with `--anchor-width` set to the anchor's width. Two rules the design system keeps:
+//! between them). Popups (`[popover]`) are in the top layer, and the script makes the control
+//! that opens each one its anchor; the design system places it with CSS anchor positioning,
+//! which the browser keeps in place on scroll and resize without script:
+//! `inset: auto; position-area: block-end span-inline-end; position-try-fallbacks: flip-block;
+//! min-width: anchor-size(width)`. Two rules the design system keeps:
 //! the app's base CSS has `[hidden] { display: none !important }` (parts are hidden with the
 //! `hidden` attribute, which a role's `display` would otherwise override), and a popup's
 //! `display` is set under `:popover-open` only, or it shows while closed.

@@ -1,4 +1,4 @@
-use corten::{prelude::*, view::Attrs};
+use corten::{prelude::*, view::Attrs, FieldName};
 
 /// One option of a [`ComboBox`].
 #[derive(Clone, Copy)]
@@ -12,15 +12,15 @@ pub struct Choice<'a> {
 /// A combobox's field and options. Start from [`Picker::new`] and set what differs:
 ///
 /// ```ignore
-/// let color = Picker { value: Some(&item.color), required: true, ..Picker::new("color", "color", t.choose_color(), t.no_match(), &colors) };
+/// let color = Picker { value: Some(&item.color), required: true, ..Picker::new("color", f.color, t.choose_color(), t.no_match(), &colors) };
 /// html! { <ComboBox field={&color} /> }
 /// ```
 pub struct Picker<'a> {
     /// The `id` the app's `<label for>` points at. It names the `<select>` until the script
     /// runs and the text input after, so the label always labels the control that shows.
     pub id: &'a str,
-    /// The form field's name, on the `<select>`.
-    pub name: &'a str,
+    /// The form field's name, on the `<select>`: `Input::FIELDS.color`.
+    pub name: FieldName,
     /// The selected option's value.
     pub value: Option<&'a str>,
     /// Shown when nothing is selected: the select's empty first option and the input's
@@ -39,7 +39,7 @@ static NO_ATTRS: [(&str, bool); 0] = [];
 
 impl<'a> Picker<'a> {
     /// A field with nothing selected, optional and enabled.
-    pub fn new(id: &'a str, name: &'a str, placeholder: &'a str, empty: &'a str, options: &'a [Choice<'a>]) -> Self {
+    pub fn new(id: &'a str, name: FieldName, placeholder: &'a str, empty: &'a str, options: &'a [Choice<'a>]) -> Self {
         Picker { id, name, value: None, placeholder, empty, options, required: false, disabled: false, attrs: &NO_ATTRS }
     }
 }
@@ -55,7 +55,7 @@ impl<'a> Picker<'a> {
 /// emptied field, or restores the text.
 ///
 /// Parts: `select`; `input[role=combobox]` (`[aria-expanded=true]` when open);
-/// `[popover]`, the popup, placed under the input with `--anchor-width`;
+/// `[popover]`, the popup, whose anchor is the input (place it with `position-area`);
 /// `[role=listbox]` and `[role=option]` (`[aria-selected=true]` for the value,
 /// `[data-highlighted]` for the one Enter would pick, `[aria-disabled=true]`); `[role=status]`
 /// for the no-match text.
@@ -64,8 +64,11 @@ impl<'a> Picker<'a> {
 /// use corten::prelude::*;
 /// use corten_ui::{Choice, ComboBox, Picker};
 ///
+/// #[derive(Fields)]
+/// struct Order { color: String }
+///
 /// let colors = [Choice { value: "salt", label: "Salt & Pepper" }, Choice { value: "sand", label: "Desert Sand" }];
-/// let field = Picker { value: Some("sand"), ..Picker::new("color", "color", "Choose a color", "No matches", &colors) };
+/// let field = Picker { value: Some("sand"), ..Picker::new("color", Order::FIELDS.color, "Choose a color", "No matches", &colors) };
 /// let html = ComboBox { field: &field }.to_html();
 /// assert!(html.contains(r#"<select id="color" name="color""#));
 /// assert!(html.contains(r#"<option value="sand" selected>Desert Sand</option>"#));

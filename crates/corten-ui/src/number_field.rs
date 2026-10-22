@@ -1,16 +1,16 @@
-use corten::{prelude::*, view::Attrs};
+use corten::{prelude::*, view::Attrs, FieldName};
 
 /// A number field's input and buttons. Start from [`Number::new`] and set what differs:
 ///
 /// ```ignore
-/// let qty = Number { value: Some(1.0), min: Some(1.0), max: Some(99.0), ..Number::new("qty", "qty", t.fewer(), t.more()) };
+/// let qty = Number { value: Some(1.0), min: Some(1.0), max: Some(99.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };
 /// html! { <NumberField field={&qty} /> }
 /// ```
 pub struct Number<'a> {
     /// The input's `id`, for the app's `<label for>`.
     pub id: &'a str,
-    /// The form field's name.
-    pub name: &'a str,
+    /// The form field's name: `Input::FIELDS.qty`.
+    pub name: FieldName,
     pub value: Option<f64>,
     pub min: Option<f64>,
     pub max: Option<f64>,
@@ -39,7 +39,7 @@ static NO_ATTRS: [(&str, bool); 0] = [];
 
 impl<'a> Number<'a> {
     /// A field with no value, no bounds, a step of 1 and buttons showing − and +.
-    pub fn new(id: &'a str, name: &'a str, decrease: &'a str, increase: &'a str) -> Self {
+    pub fn new(id: &'a str, name: FieldName, decrease: &'a str, increase: &'a str) -> Self {
         Number {
             id,
             name,
@@ -83,7 +83,10 @@ fn decimals(step: f64) -> usize {
 /// use corten::prelude::*;
 /// use corten_ui::{Number, NumberField};
 ///
-/// let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", "qty", "Fewer", "More") };
+/// #[derive(Fields)]
+/// struct Order { qty: u32 }
+///
+/// let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", Order::FIELDS.qty, "Fewer", "More") };
 /// let html = NumberField { field: &qty }.to_html();
 /// assert!(html.starts_with(r#"<number-field><button type="button" aria-controls="qty" aria-label="Fewer" tabindex="-1" disabled"#));
 /// assert!(html.contains(r#"<input type="number" inputmode="decimal" id="qty" name="qty" value="1" min="1" step="1""#));
@@ -113,7 +116,12 @@ mod tests {
         assert_eq!(decimals(1.0), 0);
         assert_eq!(decimals(0.25), 2);
         assert_eq!(decimals(0.01), 2);
-        let price = Number { value: Some(12.5), step: 0.01, ..Number::new("p", "p", "Less", "More") };
+        #[derive(Fields)]
+        #[allow(dead_code)]
+        struct Form {
+            p: f64,
+        }
+        let price = Number { value: Some(12.5), step: 0.01, ..Number::new("p", Form::FIELDS.p, "Less", "More") };
         assert!(NumberField { field: &price }.to_html().contains(r#"value="12.50""#));
     }
 }

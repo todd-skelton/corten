@@ -86,8 +86,15 @@ try {
   await color.click();
   await page.locator('combo-box [role="option"]', { hasText: "Salt & Pepper Gray" }).click();
   check("a click picks", (await page.locator("combo-box select").inputValue()) === "gray" && (await color.inputValue()) === "Salt & Pepper Gray");
-  const placed = await popup.evaluate((p) => p.style.top !== "");
-  check("the popup is placed under the input", placed);
+  // Open, then measure: CSS anchor positioning puts the list under the input, at least as wide.
+  await color.press("ArrowDown");
+  const listBox = await page.evaluate(() => {
+    const input = document.querySelector('combo-box [role="combobox"]')?.getBoundingClientRect();
+    const list = document.querySelector("combo-box [popover]")?.getBoundingClientRect();
+    return input && list && { gap: list.top - input.bottom, left: list.left - input.left, wider: list.width >= input.width - 1 };
+  });
+  check("the popup is anchored under the input (CSS anchor positioning)", !!listBox && listBox.gap >= 0 && listBox.gap <= 8 && Math.abs(listBox.left) <= 1 && listBox.wider, JSON.stringify(listBox));
+  await color.press("Escape");
   await color.fill("");
   await page.keyboard.press("Tab");
   check("emptying the field clears the value", (await page.locator("combo-box select").inputValue()) === "");
@@ -127,6 +134,12 @@ try {
   await expanded("true");
   check("the button opens the menu", (await trigger.getAttribute("aria-expanded")) === "true");
   check("focus moves to the first item", (await page.evaluate(() => document.activeElement?.textContent)) === "Help");
+  const menuBox = await page.evaluate(() => {
+    const button = document.querySelector("#actions-button")?.getBoundingClientRect();
+    const menu = document.querySelector("#actions")?.getBoundingClientRect();
+    return button && menu && { gap: menu.top - button.bottom, left: menu.left - button.left };
+  });
+  check("the menu is anchored under its button", !!menuBox && menuBox.gap >= 0 && menuBox.gap <= 8 && Math.abs(menuBox.left) <= 1, JSON.stringify(menuBox));
   await page.keyboard.press("ArrowDown");
   check("Arrow Down moves", (await page.evaluate(() => document.activeElement?.textContent)) === "Archive");
   await page.keyboard.press("w");

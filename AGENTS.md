@@ -41,8 +41,8 @@ convenience. And a nicer API that slows every page loses.
 5. Edit the runtime in `crates/corten/js/corten.js` and `solid.js`; the crate embeds their
    minified builds in `js/dist/`, which only `npm run build:js` writes (`npm run check` fails
    when they are stale).
-6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`,
-   and production modules (security, assets, PWA, head tags, compression) by
+6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`
+   (live reload under `corten dev` by `scripts/smoke-dev.mjs`), and production modules (security, assets, PWA, head tags, compression) by
    `examples/item-page/smoke.mjs`. Add the check with the behavior.
 7. Types across seams: never hand-write a type the server already defines. Islands are checked
    against the declarations `corten::types` generates (`examples/*/types/app.d.ts`, rewritten by
@@ -65,6 +65,9 @@ docker build -f examples/hello/Dockerfile -t corten-hello .
 docker run -d --name corten-hello -p 18480:8080 corten-hello
 npm run smoke -- http://localhost:18480
 docker rm -f corten-hello
+docker run -d --name corten-hello-dev -p 18483:8080 -e CORTEN_DEV=1 corten-hello
+node scripts/smoke-dev.mjs http://localhost:18483 corten-hello-dev
+docker rm -f corten-hello-dev
 docker build -f examples/item-page/Dockerfile -t corten-item-page .
 docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -v "${PWD}/examples/item-page/fixtures:/fixtures:ro" corten-item-page
 node examples/item-page/smoke.mjs http://localhost:18481

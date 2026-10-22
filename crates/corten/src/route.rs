@@ -8,7 +8,7 @@
 //!
 //! Router::new().route(ItemRoute::PATH, get(show));               // the same path axum matches
 //! html! { <a href={ItemRoute { id: &item.id, tab: None }}>{item.title}</a> }
-//! req.redirect(&ItemRoute { id, tab: Some("offers") }.href())    // "/items/x?tab=offers"
+//! req.redirect(&ItemRoute { id, tab: Some("offers") })            // "/items/x?tab=offers"
 //! ```
 //!
 //! Fields named in the path fill it, percent-encoded (`{*rest}` keeps its slashes); every other
@@ -43,7 +43,14 @@
 //! struct ItemRoute<'a> { slug: &'a str }
 //! ```
 //!
-//! Nor does a link that leaves a parameter out:
+//! Nor does a link that leaves a parameter out, or a redirect to a path typed as text:
+//!
+//! ```compile_fail
+//! fn done(req: corten::Req) -> corten::Result {
+//!     req.redirect("/done")
+//! }
+//! ```
+//!
 //!
 //! ```compile_fail
 //! use corten::prelude::*;
@@ -77,22 +84,18 @@ pub trait Route {
     }
 }
 
-/// Something that names a URL: a path string or a typed route. Used by
+/// Where a redirect or a current-page check points: a typed route, or an `axum::http::Uri` for a
+/// URL the app does not route (a payment page, a sign-in provider). Text is neither, so a path
+/// typed as a string does not compile. Used by [`crate::Req::redirect`] and
 /// [`crate::Document::current`].
 pub trait Href {
-    /// Calls `f` with the URL; a string is passed through without copying.
+    /// Calls `f` with the URL.
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T;
 }
 
-impl Href for str {
+impl Href for axum::http::Uri {
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
-        f(self)
-    }
-}
-
-impl Href for String {
-    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
-        f(self)
+        f(&self.to_string())
     }
 }
 

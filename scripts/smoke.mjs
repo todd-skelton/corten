@@ -26,19 +26,33 @@ try {
       }
     };
   });
-  const openFeeds = () =>
-    page.evaluate(() => (/** @type {any} */ (window)).__sources.filter((/** @type {EventSource} */ s) => s.url.includes("/feed/") && s.readyState !== EventSource.CLOSED).length);
-  // The next /watch post waits this long before reaching the server.
+  /** @param {string} part */
+  const openStreams = (part) =>
+    page.evaluate((p) => (/** @type {any} */ (window)).__sources.filter((/** @type {EventSource} */ s) => s.url.includes(p) && s.readyState !== EventSource.CLOSED).length, part);
+  const openFeeds = () => openStreams("/feed/");
+  // The next /watch post waits this long before reaching the server, or fails as if offline.
   let delayWatch = 0;
+  let failWatch = false;
   /** @type {string[]} */
   const abandoned = [];
   await page.route("**/watch", async (route) => {
     const wait = delayWatch;
     delayWatch = 0;
+    if (failWatch) {
+      failWatch = false;
+      return route.abort("internetdisconnected");
+    }
     if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
     await route.continue().catch(() => {});
   });
-  page.on("requestfailed", (request) => request.url().endsWith("/watch") && abandoned.push(request.failure()?.errorText ?? ""));
+  // Navigation requests the runtime sends (`corten: nav`), prefetches included.
+  /** @type {string[]} */
+  const navRequests = [];
+  page.on("request", (request) => request.headers()["corten"] === "nav" && navRequests.push(request.url()));
+  page.on("requestfailed", (request) => {
+    const error = request.failure()?.errorText ?? "";
+    if (request.url().endsWith("/watch") && !error.includes("DISCONNECTED")) abandoned.push(error);
+  });
 
   await page.goto(base);
   await page.waitForFunction(() => !!customElements.get("live-prices"));
@@ -52,15 +66,15 @@ try {
   check("live patches update prices", JSON.stringify(await prices()) !== JSON.stringify(before), `${before.join(", ")} -> ${(await prices()).join(", ")}`);
 
   // An island action with per-element state: on:click={Pause} runs the script's pause().
-  check("an island's script reveals its controls", await page.isVisible("button.pause"));
-  await page.click("button.pause");
+  check("an island's script reveals its controls", await page.isVisible("live-prices button"));
+  await page.click("live-prices button");
   const paused = await prices();
   await page.waitForTimeout(2500);
   check(
     "an action changes the island's state (pause holds the prices)",
-    (await page.getAttribute("button.pause", "aria-pressed")) === "true" && JSON.stringify(await prices()) === JSON.stringify(paused),
+    (await page.getAttribute("live-prices button", "aria-pressed")) === "true" && JSON.stringify(await prices()) === JSON.stringify(paused),
   );
-  await page.click("button.pause");
+  await page.click("live-prices button");
   // The page's prices by stock id, and the feed's.
   const shown = () => page.$$eval('[data-ref="price"]', (cells) => JSON.stringify(cells.map((c) => [c.getAttribute("data-id"), c.textContent]).sort()));
   const latest = async () => {
@@ -72,7 +86,7 @@ try {
     resumed = (await shown()) === (await latest());
     if (!resumed) await page.waitForTimeout(150);
   }
-  check("resuming shows the latest prices", resumed && (await page.getAttribute("button.pause", "aria-pressed")) === "false");
+  check("resuming shows the latest prices", resumed && (await page.getAttribute("live-prices button", "aria-pressed")) === "false");
 
   // A marker on window survives client navigations and patches, and disappears on a full load.
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
@@ -81,6 +95,35 @@ try {
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Globex"));
   check("form patch replaces the message by id", true);
   check("form patch keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
+
+  // <corten-live src>: the server streams fragments and the runtime swaps them in by id.
+  const firstTrade = await page.textContent("#last-trade");
+  await page.waitForFunction((t) => document.getElementById("last-trade")?.textContent !== t, firstTrade, { timeout: 4000 }).catch(() => {});
+  check("<corten-live> swaps in the fragments the server streams", ((await page.textContent("#last-trade")) ?? "").startsWith("Last trade: "), `${firstTrade} -> ${await page.textContent("#last-trade")}`);
+
+  // A submit the network fails: the form stays, and the page hears about it.
+  const failed = page.evaluate(
+    () => new Promise((resolve) => document.addEventListener("corten:error", (e) => resolve(/** @type {CustomEvent} */ (e).detail.status), { once: true })),
+  );
+  failWatch = true;
+  const messageBefore = await page.textContent("#watch-message");
+  await page.click("main form[data-patch] button");
+  check("a submit the network fails dispatches corten:error with status 0", (await failed) === 0);
+  check(
+    "a failed submit leaves the page and the form as they were",
+    (await page.textContent("#watch-message")) === messageBefore && (await page.getAttribute("main form[data-patch]", "aria-busy")) === null,
+  );
+
+  // A submit button's formaction and formmethod win over the form's, as in a plain post.
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      '<form id="via-button" method="get" action="/nowhere" data-patch><input type="hidden" name="id" value="s1"><button formmethod="post" formaction="/watch">Watch</button></form>',
+    ),
+  );
+  await page.click("#via-button button");
+  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Acme Corp"), null, { timeout: 4000 }).catch(() => {});
+  check("a submit button's formaction and formmethod are used", ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Acme Corp"));
 
   // The latest submit wins: a slow earlier reply never overwrites a later one.
   delayWatch = 1200;
@@ -108,6 +151,7 @@ try {
   await page.waitForTimeout(1600);
   check("navigating away abandons a pending submit", abandoned.length === 2, abandoned.join());
   check("the feed stream closes when its island leaves the page", (await openFeeds()) === 0);
+  check("the <corten-live> stream closes when it leaves the page", (await openStreams("/live/trades")) === 0);
   check("client navigation moves aria-current in the shell", (await current()) === "/about");
   check("main is not left busy", (await page.getAttribute("main", "aria-busy")) === null);
   check("client navigation swaps <main>", (await page.textContent("main h1")) === "About");
@@ -118,18 +162,75 @@ try {
   await page.waitForFunction(() => document.title === "Watchlist | Corten");
   await page.waitForSelector('live-prices[data-status="live"]', { timeout: 5000 }).catch(() => {});
   check("back navigation restores the watchlist and resubscribes", (await page.getAttribute("live-prices", "data-status")) === "live");
-  check("no console errors", errors.length === 0, errors.join(" | "));
+  // The submit failed on purpose above; the browser logs that request.
+  const unexpected = errors.filter((e) => !e.includes("ERR_INTERNET_DISCONNECTED"));
+  check("no console errors", unexpected.length === 0, unexpected.join(" | "));
+  errors.length = 0;
 
   // Signing in changes the shell's context, so the redirect loads the whole document.
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 2));
   await page.click("header form[data-patch] button");
-  await page.waitForSelector("header .viewer", { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelector("header")?.textContent?.includes("Signed in as Ada"), null, { timeout: 5000 }).catch(() => {});
   check("signing in shows the viewer in the shell", ((await page.textContent("header")) ?? "").includes("Signed in as Ada"));
   check("a new shell context loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 3));
   await page.click('header a[href="/about"]');
   await page.waitForFunction(() => document.title === "About | Corten");
   check("same context: navigation swaps again", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 3));
+
+  // data-nav="section": current on its page and every page under it.
+  await page.evaluate(() => document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>'));
+  await page.click('header a[href="/"]:not(#section-link)');
+  await page.waitForFunction(() => document.title === "Watchlist | Corten");
+  await page.click('header a[href="/about"]');
+  await page.waitForFunction(() => document.title === "About | Corten");
+  check(
+    'data-nav="section" marks the link on pages under it',
+    (await page.getAttribute("#section-link", "aria-current")) === "page" && (await page.getAttribute('header a[href="/"]:not(#section-link)', "aria-current")) === null,
+  );
+
+  // data-no-prefetch: hovering does not fetch; an ordinary link does (the control).
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML("beforeend", '<p><a id="no-prefetch" href="/" data-no-prefetch>Home</a> <a id="prefetch" href="/?from=hover">Home</a></p>'),
+  );
+  navRequests.length = 0;
+  await page.hover("#no-prefetch");
+  await page.waitForTimeout(300);
+  const afterOptOut = navRequests.length;
+  await page.hover("#prefetch");
+  await page.waitForTimeout(300);
+  check("data-no-prefetch: hovering the link fetches nothing", afterOptOut === 0 && navRequests.length === 1, `${afterOptOut} then ${navRequests.join()}`);
+
+  // data-reload: the link loads the whole document instead of swapping <main>.
+  await page.evaluate(() => {
+    (/** @type {any} */ (window)).__marker = 4;
+    document.querySelector("main")?.insertAdjacentHTML("beforeend", '<a id="reload-link" href="/" data-reload>Home</a>');
+  });
+  await page.click("#reload-link");
+  await page.waitForFunction(() => document.title === "Watchlist | Corten");
+  check("data-reload loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
+
+  // A multipart form is sent as FormData. /watch reads a URL-encoded form, so axum rejects it with
+  // plain text, which a browser never sees: it gets the app's error page.
+  await page.waitForFunction(() => !!customElements.get("live-prices"));
+  /** @type {string[]} */
+  const types = [];
+  const onRequest = (/** @type {import("@playwright/test").Request} */ r) => r.url().endsWith("/watch") && types.push(r.headers()["content-type"] ?? "");
+  page.on("request", onRequest);
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      '<form id="multipart" method="post" action="/watch" enctype="multipart/form-data" data-patch><input type="hidden" name="id" value="s1"><button>Watch</button></form>',
+    ),
+  );
+  await page.click("#multipart button");
+  await page.waitForFunction(() => document.title !== "Watchlist | Corten", null, { timeout: 4000 }).catch(() => {});
+  page.off("request", onRequest);
+  check("a multipart form is posted as multipart/form-data", types.length === 1 && types[0].startsWith("multipart/form-data"), types.join());
+  check("a request the server rejects shows the app's error page", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong");
+
+  // The multipart post was answered 415 on purpose; the browser logs that as a failed resource.
+  check("no console errors after the injected forms", errors.every((e) => e.includes("415")), errors.join(" | "));
 
   const data = await page.request.get(base, { headers: { accept: "application/json" } });
   const json = await data.json();

@@ -2,18 +2,19 @@
 import { island } from "corten";
 
 // MenuButton (menu_button.rs). The browser opens and dismisses the menu (popover,
-// popovertarget); this adds the menu keys, focus, aria-expanded and placement.
+// popovertarget); this adds the menu keys, focus and aria-expanded, and names the button as the
+// menu's anchor, so the design system places the menu with CSS anchor positioning.
 
 /** @typedef {{ trigger: HTMLButtonElement, menu: HTMLDivElement }} Parts */
 
 export default island("menu-button", {
   state: () => ({ /** The item to focus when the menu opens: first (0) or last (-1). */ start: 0 }),
-  connect({ refs, all, signal }) {
+  connect({ refs, all }) {
     // Without this script Tab reaches each item; with it, the arrow keys do.
     for (const item of all.item) item.tabIndex = -1;
-    const follow = () => refs.menu.matches(":popover-open") && place(refs.menu, refs.trigger);
-    addEventListener("resize", follow, { signal });
-    addEventListener("scroll", follow, { signal, capture: true, passive: true });
+    const name = `--${CSS.escape(refs.trigger.id)}`;
+    refs.trigger.style.setProperty("anchor-name", name);
+    refs.menu.style.setProperty("position-anchor", name);
   },
   actions: {
     open({ refs, state, event }) {
@@ -26,7 +27,6 @@ export default island("menu-button", {
       const open = /** @type {ToggleEvent} */ (event).newState === "open";
       refs.trigger.setAttribute("aria-expanded", String(open));
       if (open) {
-        place(refs.menu, refs.trigger);
         all.item.at(state.start)?.focus();
         state.start = 0;
       } else if (refs.menu.contains(document.activeElement)) {
@@ -68,21 +68,4 @@ function typeahead(items, at, key) {
     if (items[n].textContent?.trim().toLocaleLowerCase().startsWith(letter)) return n;
   }
   return at;
-}
-
-/**
- * Places a popover (fixed, in the top layer) under its anchor, or above it when only there is
- * room, and sets --anchor-width for the design system's CSS. A copy is in combo_box.js.
- * @param {HTMLElement} popup
- * @param {HTMLElement} anchor
- */
-function place(popup, anchor) {
-  const a = anchor.getBoundingClientRect();
-  popup.style.setProperty("--anchor-width", `${a.width}px`);
-  popup.style.inset = "auto";
-  const height = popup.offsetHeight;
-  const below = innerHeight - a.bottom;
-  const top = below >= height || below >= a.top ? a.bottom : a.top - height;
-  popup.style.top = `${Math.max(0, top)}px`;
-  popup.style.left = `${Math.max(0, Math.min(a.left, innerWidth - popup.offsetWidth))}px`;
 }

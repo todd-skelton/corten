@@ -19,11 +19,12 @@ pub struct MenuItem<'a> {
 /// or a click outside, and its items work before the script (`menu_button.js`) loads. The
 /// script adds the keys (Arrow Down or Up on the button opens the menu at the first or last
 /// item; in the menu the arrow keys, Home, End and typing a letter move, Escape and Tab close),
-/// moves focus into the menu and back to the button, keeps `aria-expanded`, places the menu
-/// under the button, and closes it when an item is used.
+/// moves focus into the menu and back to the button, keeps `aria-expanded`, makes the button the
+/// menu's CSS anchor, and closes the menu when an item is used.
 ///
 /// Parts: `button[aria-haspopup=menu]` (`[aria-expanded=true]` when open); `[role=menu]`,
-/// the popover, with `--anchor-width`; `[role=menuitem]`, an `a` or a `button` in a form.
+/// the popover, whose anchor is the button (place it with `position-area`); `[role=menuitem]`, an
+/// `a` or a `button` in a form.
 ///
 /// ```
 /// use corten::prelude::*;

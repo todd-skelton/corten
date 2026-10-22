@@ -1,6 +1,6 @@
 use corten::prelude::*;
 
-use crate::GreetForm;
+use crate::{Greet, GreetForm, Home};
 
 /// The document around every page. Client navigation swaps `<main>`.
 pub fn shell(doc: Document) -> impl Render {
@@ -14,7 +14,7 @@ pub fn shell(doc: Document) -> impl Render {
                 {doc.head}
             </head>
             <body>
-                <header><a href="/">"{{name}}"</a></header>
+                <header><a href={Home}>"{{name}}"</a></header>
                 <main>{doc.main}</main>
             </body>
         </html>
@@ -26,7 +26,7 @@ pub fn home(name: &str) -> impl Render {
     html! {
         <h1>"Welcome to Corten"</h1>
         <p>"This page is rendered on the server. Edit " <code>"src/views.rs"</code> " and save: the page reloads."</p>
-        <form method="post" action="/greet" data-patch>
+        <form method="post" action={Greet} data-patch>
             <label>"Your name " <input name={f.name} value={name} required></label>
             <button>"Greet me"</button>
         </form>
