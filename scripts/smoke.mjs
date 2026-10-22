@@ -177,6 +177,29 @@ try {
   await page.waitForFunction(() => document.title === "About | Corten");
   check("same context: navigation swaps again", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 3));
 
+  // A <corten-live> whose stream finishes (here one fragment, then `end`) applies it and stays
+  // closed: no reconnect after the browser's retry delay (about 3 s in Chromium).
+  let onceRequests = 0;
+  await page.route("**/live/once", (route) => {
+    onceRequests += 1;
+    return route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: 'event: patch\ndata: <p id="once">Ready</p>\n\nevent: end\ndata: end\n\n',
+    });
+  });
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML("beforeend", '<corten-live id="once-live" src="/live/once"><p id="once">Waiting</p></corten-live>'),
+  );
+  await page.waitForFunction(() => document.querySelector("#once")?.textContent === "Ready", null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(4500);
+  check(
+    "a <corten-live> stream that ends is applied once and not reopened",
+    (await page.textContent("#once")) === "Ready" && onceRequests === 1 && (await openStreams("/live/once")) === 0,
+    `${await page.textContent("#once")}, ${onceRequests} requests`,
+  );
+  await page.evaluate(() => document.querySelector("#once-live")?.remove());
+
   // A patch replaces markup but keeps what the user is doing: edited fields keep their state,
   // untouched ones take the server's, and focus and caret stay put (here a <corten-live> style
   // patch, with no form sent).

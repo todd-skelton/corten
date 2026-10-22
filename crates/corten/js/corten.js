@@ -7,7 +7,7 @@
 // 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id (a
 //    `<template id data-remove>` removes its element). The latest submit of a form wins; a
 //    navigation abandons pending ones.
-// 3. <corten-live src>: apply fragments streamed as server-sent `patch` events.
+// 3. <corten-live src>: apply fragments streamed as server-sent `patch` events, until an `end`.
 // 4. Handlers: `data-on="click:cart_line.confirm($e,@dialog)"` (what `on:click={js::confirm(event, dialog)}`
 //    prints) runs the export `confirm` of `{scripts dir}/cart_line.js` with the event and the
 //    element with `data-ref="dialog"` in the same component. One listener per event type on the
@@ -863,6 +863,8 @@ customElements.define(
         const html = /** @type {MessageEvent} */ (event).data;
         this.applied = this.applied.then(() => patch(html)).catch(reportError);
       });
+      // The server's stream finished: stay as it is instead of reconnecting.
+      this.source.addEventListener("end", () => this.source?.close());
     }
     disconnectedCallback() {
       this.source?.close();

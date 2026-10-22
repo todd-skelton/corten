@@ -9,7 +9,9 @@ Corten has two ways to keep a page current, both over server-sent events.
 For server-rendered parts that change (a status line, a notification count), stream views:
 `corten::live(stream)` turns a stream of rendered HTML into server-sent events, and
 `<corten-live src>` swaps each fragment into the page by `id`, like a form's patch. No script of
-your own; the stream closes when the element leaves the page.
+your own; the stream closes when the element leaves the page. When the stream ends the element
+stays as it is instead of reconnecting, so a stream of one fragment is a slow part of a page sent
+when it is ready. A server shutting down ends its streams first, and those browsers reconnect.
 
 ```rust,ignore
 // the route: each item replaces the element with the same id

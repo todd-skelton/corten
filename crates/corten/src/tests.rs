@@ -93,6 +93,16 @@ fn app(routes: Router, viewer: Option<&'static str>) -> Router {
 }
 
 #[tokio::test]
+async fn a_live_stream_that_finishes_tells_the_element_to_stop() {
+    let router = Router::new()
+        .route("/", get(|| async { crate::live(futures_util::stream::iter([String::from(r#"<p id="late">Ready</p>"#)])) }));
+    let (status, headers, body) = call(router, "GET", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["content-type"], "text/event-stream");
+    assert_eq!(body, "event: patch\ndata: <p id=\"late\">Ready</p>\n\nevent: end\ndata: end\n\n");
+}
+
+#[tokio::test]
 async fn a_bare_router_renders_in_the_default_shell_without_a_policy() {
     let (status, headers, body) = call(routes(), "GET", None).await;
     assert_eq!(status, StatusCode::OK);

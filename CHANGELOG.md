@@ -86,6 +86,13 @@ Corten is pre-1.0, so any minor version may change the API.
    matching element. An invalid answer focuses its field only if the user has not moved on.
 3. An integer handler argument past 2^53 reached the browser as a different number. Debug
    builds and tests now stop on it (pass such a value as a string).
+4. A multiple select the user edited kept only its first choice when a patch replaced it; it
+   keeps them all.
+5. `<corten-live>` reconnected to a stream that had ended, so a finished stream was requested
+   again every few seconds. `corten::live` now ends with an `end` event and the element closes.
+   Shutdown ends open `corten::live` streams first, as it does feed streams: `docker stop` on the
+   hello example with one stream open took 4,059 ms before and 965 ms after (measured, one run
+   each; 637 to 929 ms with no stream).
 
 ### Documentation
 

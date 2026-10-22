@@ -30,6 +30,18 @@ framework's shape, and what it does not do yet.
    Rust needs inline styles the CSP blocks, or a runtime. A CSS file per component keeps the
    language designers know, and the macro makes its class names typed. Tokens cover the
    one-off values (spacing, direction per breakpoint) utilities are good at.
+7. **A page is sent whole, not streamed in parts.** Streaming a slow section later in the same
+   response sends the status and headers before that section exists, so a failure in it can no
+   longer become an error page or a redirect; placing it out of order needs a script, so
+   without JavaScript it lands at the end of the page; and with the data fetched together
+   (`tokio::join!`) and rendering in microseconds, the most it saves is the slowest source's
+   wait. A part that is slow and optional is a `<corten-live>` whose stream sends it when it is
+   ready and ends.
+8. **Static file names are checked when the shell renders, not when it compiles.** The static
+   directory is chosen at run time (`App::assets`, `STATIC_DIR`), so a compile-time check would
+   look in the wrong place for some apps, and an app names only a few files, all in its shell.
+   `doc.asset("style.css")` panics on a missing file in debug builds, so `corten dev` and the
+   page test `corten new` writes find a typo on the first render.
 
 ## Rules
 

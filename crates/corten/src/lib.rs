@@ -199,11 +199,26 @@ pub(crate) fn import_map(events: Option<&str>) -> String {
 
 /// Streams fragments to `<corten-live src="...">` as server-sent events. Each item is applied like a
 /// form patch: top-level elements replace the elements with the same `id`.
+///
+/// When `fragments` ends, the element closes its connection instead of reconnecting, so a stream
+/// of one item is a part of the page sent when it is ready. When the server shuts down the stream
+/// ends without that, and the browser reconnects (to another instance, or this one restarted).
 pub fn live<S>(fragments: S) -> Sse<impl Stream<Item = std::result::Result<Event, Infallible>>>
 where
     S: Stream<Item = String> + Send + 'static,
 {
-    Sse::new(fragments.map(|html| Ok(Event::default().event("patch").data(html)))).keep_alive(KeepAlive::default())
+    let patches = fragments.map(|html| Event::default().event("patch").data(html));
+    // An event with no data is never dispatched, so `end` carries some.
+    let end = futures_util::stream::once(async { Event::default().event("end").data("end") });
+    Sse::new(patches.chain(end).map(Ok).take_until(draining())).keep_alive(KeepAlive::default())
+}
+
+/// Set when the process starts shutting down; open live streams end on it.
+static DRAINING: LazyLock<tokio::sync::watch::Sender<bool>> = LazyLock::new(|| tokio::sync::watch::channel(false).0);
+
+/// Resolves once [`shutdown_signal`] has fired.
+async fn draining() {
+    let _ = DRAINING.subscribe().wait_for(|draining| *draining).await;
 }
 
 /// Routes the runtime at [`runtime_path`] (and Solid at [`solid_path`] with the `solid`
@@ -281,8 +296,8 @@ where
 pub type Result<T = Response> = std::result::Result<T, Error>;
 
 /// Resolves when the process is asked to stop (Ctrl-C, or `SIGTERM` from a container runtime),
-/// after ending every live feed stream (feature `feed`) so a graceful shutdown is not held open
-/// by them. Pass it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`.
+/// after ending every open [`live`] stream and live feed stream (feature `feed`) so a graceful
+/// shutdown is not held open by them. Pass it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`.
 pub async fn shutdown_signal() {
     let interrupt = async {
         let _ = tokio::signal::ctrl_c().await;
@@ -300,6 +315,7 @@ pub async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
     futures_util::future::select(std::pin::pin!(interrupt), std::pin::pin!(terminate)).await;
     tracing::info!("corten: shutting down");
+    DRAINING.send_replace(true);
     #[cfg(feature = "feed")]
     corten_feed::drain();
 }
