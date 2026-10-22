@@ -1,6 +1,6 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
 //! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(Route)]` (see
-//! `corten::route`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
+//! `corten::route`), `#[derive(Id)]` (see `corten::view::Id`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
 //! `tokens!` and component stylesheets (see `corten::style`).
 //!
 //! Written against `proc_macro` alone (no `syn` or `quote`), so the crate has no dependencies
@@ -11,6 +11,7 @@ mod derive;
 mod dom;
 mod event;
 mod html;
+mod id;
 mod json;
 mod messages;
 mod names;
@@ -38,6 +39,12 @@ pub fn component(args: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(Route, attributes(route))]
 pub fn derive_route(input: TokenStream) -> TokenStream {
     route::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// An element id as a type. Documented at `corten::view::Id`.
+#[proc_macro_derive(Id)]
+pub fn derive_id(input: TokenStream) -> TokenStream {
+    id::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// A struct as a typed DOM event. Documented at `corten::script`.

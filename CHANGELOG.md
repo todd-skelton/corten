@@ -38,6 +38,9 @@ Corten is pre-1.0, so any minor version may change the API.
 9. `corten::view::Remove(id)`: a patch that removes an element.
 10. `[package.metadata.corten] scripts = "prefix"`: a library's scripts and component roots are
     named `prefix.name` and `prefix-name`. `corten-ui` uses `ui`.
+11. `#[derive(Id)]` (in the prelude): an element id as a type, `struct RowId<'a>(&'a str)` is
+    `row-{key}`, so the markup and the patch that replaces or removes the element cannot drift.
+    `Remove` takes one. Two ids with the same name in one program fail to build.
 
 ### Removed
 

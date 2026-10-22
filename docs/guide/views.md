@@ -23,7 +23,7 @@ what it captures and renders once, so it can be returned from a function.
 
 ## Typed links and messages
 
-The three strings that usually drift between files are Rust types, checked when the app compiles.
+The strings that usually drift between files are Rust types, checked when the app compiles.
 
 ```rust,ignore
 #[derive(Route)]
@@ -36,17 +36,29 @@ corten::i18n::messages! {
 
 Router::new().route(ItemRoute::PATH, get(show));                            // the path axum matches
 
+#[derive(Id)]
+pub struct OfferId<'a>(pub &'a str);                                          // offer-{key}
+
 let t: Msg = req.t();
 html! {
     <a href={ItemRoute { id: &item.id, tab: None }}>{item.title}</a>       // /items/a%20b
     <p>{t.item_show_all_offers(item.offers.len())}</p>
+    <li id={OfferId(&offer.id)}>{offer.seller}</li>                         // a patch's target
 }
+req.patch(html! { {Remove(OfferId(&sold.id))} })                             // the same id
 ```
 
 | What | Fails to compile when |
 |---|---|
 | `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
 | `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument |
+| `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol); the struct holds more than one key |
+
+An id is the type's name without `Id`, in kebab case (`OfferId` is `offer-`, then the key; a
+unit struct, `StatusId`, is just `status`). Use one for every element a patch replaces or
+removes, and for `for`, `popovertarget` or `commandfor` across components. Its name is a linker
+symbol, so two copies of one library in a program (two versions) that both define an id do
+not link.
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
 parameters left out). Messages are split into text and arguments when the crate compiles: one

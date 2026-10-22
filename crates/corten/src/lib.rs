@@ -131,6 +131,7 @@ pub mod prelude {
         i18n::Messages as _,
         raw,
         script::{el, refs, Handler, Ref},
+        view::Id,
         Api, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
     };
 }

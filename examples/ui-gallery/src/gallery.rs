@@ -59,11 +59,17 @@ pub fn Gallery<'a>(tab: usize, result: &'a str) -> impl Render {
 /// The order's outcome: in the page, and on its own as the form's patch.
 #[component]
 pub fn OrderResult<'a>(text: &'a str) -> impl Render {
-    html! { <p id="result" role="status">{text}</p> }
+    html! { <p id={ResultId} role="status">{text}</p> }
 }
+
+#[derive(Id)]
+struct ResultId;
 
 /// What the last menu action did.
 #[component]
 pub fn MenuResult<'a>(text: &'a str) -> impl Render {
-    html! { <p id="menu-result" role="status">{text}</p> }
+    html! { <p id={MenuResultId} role="status">{text}</p> }
 }
+
+#[derive(Id)]
+struct MenuResultId;

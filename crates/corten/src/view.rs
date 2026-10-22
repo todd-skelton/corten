@@ -138,27 +138,101 @@ impl<F: FnOnce(&mut String)> Render for Html<F> {
     }
 }
 
-/// In a patch, removes the element with this id: `<template id="row-7" data-remove></template>`.
-/// The id is any attribute value, so `Remove(("row-", id))` names the same element as the
-/// markup's `id={("row-", id)}`.
+/// An element id as a type, from `#[derive(Id)]`: the markup that renders an element and the
+/// patch that replaces or removes it name it the same way, so they cannot drift.
+///
+/// A unit struct is one element; a struct holding a key is one per key. The id is the type's
+/// name without a trailing `Id`, in kebab case, then the key (a library's ids start with its
+/// prefix, `ui-`). Ids print with `id={..}`, and anywhere an attribute names an element:
+/// `for`, `popovertarget`, `commandfor`, `aria-controls`.
 ///
 /// ```
-/// use corten::{prelude::*, view::Remove};
+/// use corten::{prelude::*, view::{Id, Remove}};
+///
+/// #[derive(Id)]
+/// struct RowId<'a>(&'a str);
+///
+/// #[derive(Id)]
+/// struct DeskStatusId;
+///
+/// let row = html! { <tr id={RowId("i7")}><td>"Lamp"</td></tr> };
+/// assert_eq!(row.to_html(), r#"<tr id="row-i7"><td>Lamp</td></tr>"#);
+/// let status = html! { <p id={DeskStatusId} role="status">"Saved"</p> };
+/// assert_eq!(status.to_html(), r#"<p id="desk-status" role="status">Saved</p>"#);
+/// assert_eq!(html! { {Remove(RowId("i7"))} }.to_html(), r#"<template id="row-i7" data-remove></template>"#);
+/// ```
+///
+/// Two ids with the same name in one program fail to build (each name is a linker symbol):
+///
+/// ```compile_fail
+/// mod grid {
+///     #[derive(corten::view::Id)]
+///     pub struct RowId<'a>(pub &'a str);
+/// }
+/// mod list {
+///     #[derive(corten::view::Id)]
+///     pub struct RowId<'a>(pub &'a str);
+/// }
+/// fn main() {}
+/// ```
+///
+/// An id holds one key, or none:
+///
+/// ```compile_fail
+/// #[derive(corten::view::Id)]
+/// struct CellId<'a> { row: &'a str, column: u8 }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not an element id",
+    label = "an element id is a `#[derive(Id)]` type, like `RowId(&item.id)`"
+)]
+pub trait Id {
+    /// The id without its key: `"row"`.
+    const NAME: &'static str;
+    /// Writes the id (escaped for an attribute).
+    fn write_id(&self, out: &mut String);
+}
+
+pub use corten_macros::Id;
+
+impl<T: Id + ?Sized> Id for &T {
+    const NAME: &'static str = T::NAME;
+    fn write_id(&self, out: &mut String) {
+        (**self).write_id(out)
+    }
+}
+
+/// In a patch, removes the element with this id: `<template id="row-7" data-remove></template>`.
+/// It takes an [`Id`], the type the element's markup prints its id with.
+///
+/// ```
+/// use corten::{prelude::*, view::{Id, Remove}};
+///
+/// #[derive(Id)]
+/// struct RowId<'a>(&'a str);
 ///
 /// let archived = ["7", "9"];
-/// let patch = html! { for id in archived { {Remove(("row-", id))} } };
+/// let patch = html! { for id in archived { {Remove(RowId(id))} } };
 /// assert_eq!(
 ///     patch.to_html(),
 ///     r#"<template id="row-7" data-remove></template><template id="row-9" data-remove></template>"#
 /// );
 /// ```
+///
+/// An id written as text does not compile:
+///
+/// ```compile_fail
+/// use corten::{prelude::*, view::Remove};
+///
+/// let patch = html! { {Remove(("row-", "7"))} };
+/// ```
 pub struct Remove<T>(pub T);
 
-impl<T: AttrValue> Render for Remove<T> {
+impl<T: Id> Render for Remove<T> {
     fn render(&self, out: &mut String) {
-        out.push_str("<template");
-        self.0.write_attr(" id", out);
-        out.push_str(" data-remove></template>");
+        out.push_str("<template id=\"");
+        self.0.write_id(out);
+        out.push_str("\" data-remove></template>");
     }
 }
 

@@ -13,11 +13,19 @@ pub struct AlertFormView<'a> {
     pub errors: Errors,
 }
 
+/// The form's id: a submit that fails validation replaces it.
+#[derive(Id)]
+pub struct AlertFormId;
+
+/// The result's id: a submit that succeeds replaces it.
+#[derive(Id)]
+pub struct AlertMessageId;
+
 #[component(css)]
 pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Render {
     let f = AlertInput::FIELDS;
     html! {
-        <div class={Form} id="alert-form">
+        <div class={Form} id={AlertFormId}>
             <form method="post" action={routes::Item { id: form.id }} data-patch>
                 <input type="hidden" name={f.title} value={form.title}>
                 <label>{t.alert_email()}<input type="email" name={f.email} value={form.email} required {..form.errors.aria(f.email)}></label>
@@ -34,5 +42,5 @@ pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Render {
 /// form's stylesheet.
 #[component(css = AlertForm)]
 pub fn AlertMessage(message: &str) -> impl Render {
-    html! { <p class={Message} id="alert-message" aria-live="polite">{message}</p> }
+    html! { <p class={Message} id={AlertMessageId} aria-live="polite">{message}</p> }
 }

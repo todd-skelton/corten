@@ -50,11 +50,15 @@ pub fn ClickCounter() -> impl Render {
     }
 }
 
+/// The greeting's id, so the page and the patch that replaces it name it the same way.
+#[derive(Id)]
+pub struct GreetingId;
+
 /// Inside the page, and on its own as the form's patch (the runtime swaps it in by `id`).
 #[component]
 pub fn Greeting(name: &str) -> impl Render {
     html! {
-        <p id="greeting" aria-live="polite">
+        <p id={GreetingId} aria-live="polite">
             if !name.is_empty() { "Hello, "{name}"!" }
         </p>
     }

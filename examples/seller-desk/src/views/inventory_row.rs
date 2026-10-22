@@ -2,6 +2,10 @@ use corten::prelude::*;
 
 use super::{Line, PriceCell};
 
+/// A row's id, `row-{item id}`: the archive patch removes rows by it.
+#[derive(Id)]
+pub struct RowId<'a>(pub &'a str);
+
 /// One item: markup only. The grid's refs (`row`, `select`, `qty`) go on this row's
 /// elements, so the grid's handlers get every row and checkbox, and every stock cell by its
 /// item's id (`key`).
@@ -14,7 +18,7 @@ pub fn InventoryRow<'a>(
 ) -> impl Render {
     let item = line.item;
     html! {
-        <tr ref={row} id={("row-", item.id.as_str())}>
+        <tr ref={row} id={RowId(&item.id)}>
             <td>
                 <input ref={select} type="checkbox" value={item.id} aria-label={("Select ", item.name.as_str())}>
             </td>

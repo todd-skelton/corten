@@ -72,8 +72,9 @@ export function showAll(rows, rest, button) {
 3. Rows a feed updates by id: `key={item.id}` on the cells, a `Map<string, HTMLTableCellElement>`
    parameter, `cells.get(row.id)`. Do not read `data-*` attributes for this.
 4. A value borrowed from one the view owns: compute it inside `html!` with `let`.
-5. Rows a write removes: `req.patch(html! { for id in &done { {Remove(("row-", id.as_str()))} } })`
-   (`corten::view::Remove`).
+5. Rows a write removes: `req.patch(html! { for id in &done { {Remove(RowId(id))} } })`
+   (`corten::view::Remove`), with `#[derive(Id)] struct RowId<'a>(&'a str);` and
+   `<tr id={RowId(&item.id)}>` on the row.
 
 ## A child that reports to its parent
 

@@ -195,8 +195,10 @@ html! {
 }
 ```
 
-A patch removes rows as well as replacing them: `req.patch(html! { for id in &done { {Remove(("row-", id.as_str()))} } })`
-(`corten::view::Remove`, a `<template id data-remove>` the runtime applies).
+A patch removes rows as well as replacing them: `req.patch(html! { for id in &done { {Remove(RowId(id))} } })`
+(`corten::view::Remove`, a `<template id data-remove>` the runtime applies). `RowId` is the
+`#[derive(Id)]` the row prints its id with ([typed ids](views.md#typed-links-and-messages)), so
+the two cannot drift.
 
 ## Shared scripts
 

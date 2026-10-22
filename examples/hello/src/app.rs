@@ -250,17 +250,24 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str) -> impl Render {
     }
 }
 
+/// The watch result's id: the patch that answers the form replaces it.
+#[derive(Id)]
+struct WatchMessageId;
+
 /// The watch result: rendered inside the home page, and on its own as a patch.
 #[component]
 fn WatchMessage(message: &str) -> impl Render {
-    html! { <p id="watch-message" aria-live="polite">{message}</p> }
+    html! { <p id={WatchMessageId} aria-live="polite">{message}</p> }
 }
 
 /// The last trade: rendered inside the home page, then replaced by each fragment `/live/trades`
 /// streams.
+#[derive(Id)]
+struct LastTradeId;
+
 #[component]
 fn LastTrade(text: &str) -> impl Render {
-    html! { <p id="last-trade" aria-live="polite">{text}</p> }
+    html! { <p id={LastTradeId} aria-live="polite">{text}</p> }
 }
 
 const HOME_TITLE: &str = "Watchlist | Corten";

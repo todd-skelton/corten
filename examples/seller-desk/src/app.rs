@@ -21,7 +21,7 @@ use corten::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::views::{self, Line, PriceCell, StatusLine};
+use crate::views::{self, Line, PriceCell, RowId, StatusLine};
 
 /// An item a seller lists.
 #[derive(Clone, Debug)]
@@ -181,7 +181,7 @@ async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveIn
         return req.redirect(&url::Home);
     }
     req.patch(html! {
-        for id in &done { {Remove(("row-", id.as_str()))} }
+        for id in &done { {Remove(RowId(id))} }
         <StatusLine text={&format!("Archived {} item{}.", done.len(), if done.len() == 1 { "" } else { "s" })} />
     })
 }

@@ -26,7 +26,8 @@ convenience. And a nicer API that slows every page loses.
    `#[component(js)]` (plain `export function`s with JSDoc in the script next to it, called from
    its markup: `let save = refs();`, `ref={save}`, `on:click={js::enable(save)}`) and text is
    `messages!` (`crates/corten-macros`, no dependencies: keep it on `proc_macro` alone). Never
-   write a URL, `data-ref`, `data-on`, `data-scope` or message key as a string in a view.
+   write a URL, `data-ref`, `data-on`, `data-scope` or message key as a string in a view, and give
+   an element a patch replaces or removes a `#[derive(Id)]` id.
    Behavior has one pattern, a function the markup calls; do not add built-in client behaviors
    or a second component model. Cleanup is the `signal` keyword alone (an `AbortSignal`): runtime APIs that start lasting work take
    `{ signal }` and return nothing, and nothing hands back a stop function. On the server, work

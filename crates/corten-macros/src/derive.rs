@@ -19,9 +19,16 @@ pub struct Item {
     pub where_clause: TokenStream,
     /// The braces of a struct with named fields or of an enum; `None` for a unit struct.
     pub body: Option<Group>,
+    /// The fields of a tuple struct, for derives that accept one.
+    pub tuple: Option<Group>,
 }
 
 pub fn parse(input: TokenStream, derive: &str) -> Result<Item, Error> {
+    parse_item(input, derive, false)
+}
+
+/// [`parse`], also accepting a tuple struct (its fields in [`Item::tuple`]).
+pub fn parse_item(input: TokenStream, derive: &str, tuple_ok: bool) -> Result<Item, Error> {
     let tokens: Vec<TokenTree> = input.into_iter().collect();
     let mut attrs = Vec::new();
     let mut i = 0;
@@ -70,6 +77,7 @@ pub fn parse(input: TokenStream, derive: &str) -> Result<Item, Error> {
     let (impl_generics, type_generics) = split_generics(&generics);
     let mut where_clause = TokenStream::new();
     let mut body = None;
+    let mut tuple = None;
     while let Some(token) = tokens.get(i) {
         match token {
             TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => {
@@ -77,14 +85,19 @@ pub fn parse(input: TokenStream, derive: &str) -> Result<Item, Error> {
                 break;
             }
             TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis && where_clause.is_empty() => {
-                return err(g.span(), format!("{derive} needs named fields (`struct X {{ a: T }}`) or a unit struct"));
+                if !tuple_ok {
+                    return err(g.span(), format!("{derive} needs named fields (`struct X {{ a: T }}`) or a unit struct"));
+                }
+                tuple = Some(g.clone());
+                i += 1;
+                continue;
             }
             TokenTree::Punct(p) if p.as_char() == ';' => break,
             other => where_clause.extend([other.clone()]),
         }
         i += 1;
     }
-    Ok(Item { attrs, is_enum, name, impl_generics, type_generics, where_clause, body })
+    Ok(Item { attrs, is_enum, name, impl_generics, type_generics, where_clause, body, tuple })
 }
 
 impl Item {

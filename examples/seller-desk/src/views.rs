@@ -12,7 +12,7 @@ mod price_cell;
 pub use bulk_bar::BulkBar;
 pub use confirm_dialog::ConfirmDialog;
 pub use inventory_grid::InventoryGrid;
-pub use inventory_row::InventoryRow;
+pub use inventory_row::{InventoryRow, RowId};
 pub use price_cell::PriceCell;
 
 /// What the app lists in `App::components`: the scripts and the stylesheets.
@@ -49,10 +49,14 @@ pub fn desk<'a>(lines: &'a [Line<'a>]) -> impl Render + 'a {
     }
 }
 
+/// The status line's id: bulk actions patch it.
+#[derive(Id)]
+pub struct DeskStatusId;
+
 /// What the last bulk action did; the server patches it by `id`.
 #[component]
 pub fn StatusLine<'a>(text: &'a str) -> impl Render {
-    html! { <p id="desk-status" role="status">{text}</p> }
+    html! { <p id={DeskStatusId} role="status">{text}</p> }
 }
 
 /// `1234` as `$12.34`.
