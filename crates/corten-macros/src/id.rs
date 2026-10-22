@@ -4,7 +4,8 @@
 //! `struct DeskStatusId;` is `desk-status`; `struct RowId<'a>(&'a str);` is `row-` and its key.
 //! The name is the type's, without a trailing `Id`, in kebab case (after the library prefix,
 //! `ui-`, in a crate that sets one). Each name is also an exported symbol, so two ids with the same
-//! name in one program fail to build.
+//! name in one program fail to build. A library's symbol (a crate with a prefix) also carries its
+//! version, so two semver-incompatible versions of one library still link together.
 
 use proc_macro::{TokenStream, TokenTree};
 
@@ -60,7 +61,11 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     ));
     // One symbol per name: a second id with the same name is a duplicate symbol, in this crate or
     // in any other linked into the program.
-    let symbol: String = name.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    let mut symbol = name.clone();
+    if crate::script::prefix().is_some() {
+        symbol = format!("{symbol}__{}", std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
+    }
+    let symbol: String = symbol.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
     out.extend(q(
         "const _: () = { #[unsafe(export_name = __A0)] #[used] static __CORTEN_ID: u8 = 0; };",
         &[string(&format!("corten_id__{symbol}")).into()],

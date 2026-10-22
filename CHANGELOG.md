@@ -40,7 +40,8 @@ Corten is pre-1.0, so any minor version may change the API.
     named `prefix.name` and `prefix-name`. `corten-ui` uses `ui`.
 11. `#[derive(Id)]` (in the prelude): an element id as a type, `struct RowId<'a>(&'a str)` is
     `row-{key}`, so the markup and the patch that replaces or removes the element cannot drift.
-    `Remove` takes one. Two ids with the same name in one program fail to build.
+    `Remove` takes one. Two ids with the same name in one program fail to build (two versions
+    of one library excepted).
 12. `corten fmt [--check] [path ..]` lays out the markup inside `html!` (rustfmt leaves macro
     bodies alone) at rustfmt's `max_width`. It never joins lines the author split and only changes
     whitespace: a body whose tokens would change is left as written, with a warning.

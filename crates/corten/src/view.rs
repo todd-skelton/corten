@@ -162,7 +162,10 @@ impl<F: FnOnce(&mut String)> Render for Html<F> {
 /// assert_eq!(html! { {Remove(RowId("i7"))} }.to_html(), r#"<template id="row-i7" data-remove></template>"#);
 /// ```
 ///
-/// Two ids with the same name in one program fail to build (each name is a linker symbol):
+/// Two ids with the same name in one program fail to build (each name is a linker symbol). A
+/// library's ids (a crate with `[package.metadata.corten] scripts = "prefix"`) are told apart by
+/// version too, so two incompatible versions of one library still build together. Their ids are
+/// the same in the page, so render only one of them on a page.
 ///
 /// ```compile_fail
 /// mod grid {
