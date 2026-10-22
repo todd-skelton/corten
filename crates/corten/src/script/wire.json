@@ -1,0 +1,342 @@
+{
+  "//": "The data-on wire format, shared by both sides: script/tests.rs checks that handlers write each attr (HTML-unescaped; corten-ui's tests check the cases it writes), and scripts/wire.mjs that the runtime's parser (crates/corten/js/on.js) reads it as parsed.",
+  "cases": [
+    {
+      "name": "a ref",
+      "attr": "input:line_item.enable(@save)",
+      "parsed": [
+        {
+          "type": "input",
+          "module": "line_item",
+          "name": "enable",
+          "args": [
+            {
+              "kind": "@",
+              "owner": null,
+              "name": "save"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a string with a quote",
+      "attr": "click:line_item.confirm($e,@dialog,\"a\\\"b\")",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "line_item",
+          "name": "confirm",
+          "args": [
+            {
+              "kind": "$e",
+              "owner": null
+            },
+            {
+              "kind": "@",
+              "owner": null,
+              "name": "dialog"
+            },
+            {
+              "kind": "v",
+              "value": "a\"b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "every element of a ref, and a typed event",
+      "attr": "row-toggled:row_list.count($e,*row)",
+      "parsed": [
+        {
+          "type": "row-toggled",
+          "module": "row_list",
+          "name": "count",
+          "args": [
+            {
+              "kind": "$e",
+              "owner": null
+            },
+            {
+              "kind": "*",
+              "owner": null,
+              "name": "row"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the element with the handler",
+      "attr": "click:row_list.toggle($t,\"x\")",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "row_list",
+          "name": "toggle",
+          "args": [
+            {
+              "kind": "$t",
+              "owner": null
+            },
+            {
+              "kind": "v",
+              "value": "x"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "two handlers, a parent's ref and scope",
+      "attr": "input:field.trim($t) change:form.enable(@form/save,$c/form)",
+      "parsed": [
+        {
+          "type": "input",
+          "module": "field",
+          "name": "trim",
+          "args": [
+            {
+              "kind": "$t",
+              "owner": null
+            }
+          ]
+        },
+        {
+          "type": "change",
+          "module": "form",
+          "name": "enable",
+          "args": [
+            {
+              "kind": "@",
+              "owner": "form",
+              "name": "save"
+            },
+            {
+              "kind": "$c",
+              "owner": "form"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a string, a number and a boolean",
+      "attr": "click:shared.log(\"hi\",2,true)",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "shared",
+          "name": "log",
+          "args": [
+            {
+              "kind": "v",
+              "value": "hi"
+            },
+            {
+              "kind": "v",
+              "value": 2
+            },
+            {
+              "kind": "v",
+              "value": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the separators in a string, a negative float, false",
+      "attr": "click:shared.log(\"),{\\\"x\\\":1}\\\\ \\u2028 <&'> é 🦀 ,a:b\",-1.5,false)",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "shared",
+          "name": "log",
+          "args": [
+            {
+              "kind": "v",
+              "value": "),{\"x\":1}\\   <&'> é 🦀 ,a:b"
+            },
+            {
+              "kind": "v",
+              "value": -1.5
+            },
+            {
+              "kind": "v",
+              "value": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NaN is null",
+      "attr": "click:shared.log(\"\",null,true)",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "shared",
+          "name": "log",
+          "args": [
+            {
+              "kind": "v",
+              "value": ""
+            },
+            {
+              "kind": "v",
+              "value": null
+            },
+            {
+              "kind": "v",
+              "value": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the signal and a JSON object",
+      "attr": "connect:shared.watch($s,{\"id\":\"a}\",\"tags\":[\"x,y\",\"]\"]})",
+      "parsed": [
+        {
+          "type": "connect",
+          "module": "shared",
+          "name": "watch",
+          "args": [
+            {
+              "kind": "$s",
+              "owner": null
+            },
+            {
+              "kind": "v",
+              "value": {
+                "id": "a}",
+                "tags": [
+                  "x,y",
+                  "]"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "closest and a group, twice",
+      "attr": "click:stock_grid.toggle(^row,{rows:*row,count:@count}) row-toggled:stock_grid.toggled($e,{rows:*row,count:@count})",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "stock_grid",
+          "name": "toggle",
+          "args": [
+            {
+              "kind": "^",
+              "owner": null,
+              "name": "row"
+            },
+            {
+              "kind": "{",
+              "fields": [
+                [
+                  "rows",
+                  {
+                    "kind": "*",
+                    "owner": null,
+                    "name": "row"
+                  }
+                ],
+                [
+                  "count",
+                  {
+                    "kind": "@",
+                    "owner": null,
+                    "name": "count"
+                  }
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "type": "row-toggled",
+          "module": "stock_grid",
+          "name": "toggled",
+          "args": [
+            {
+              "kind": "$e",
+              "owner": null
+            },
+            {
+              "kind": "{",
+              "fields": [
+                [
+                  "rows",
+                  {
+                    "kind": "*",
+                    "owner": null,
+                    "name": "row"
+                  }
+                ],
+                [
+                  "count",
+                  {
+                    "kind": "@",
+                    "owner": null,
+                    "name": "count"
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a keyed ref",
+      "attr": "connect:stock_grid.show(#qty,\"a\")",
+      "parsed": [
+        {
+          "type": "connect",
+          "module": "stock_grid",
+          "name": "show",
+          "args": [
+            {
+              "kind": "#",
+              "owner": null,
+              "name": "qty"
+            },
+            {
+              "kind": "v",
+              "value": "a"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a library's module",
+      "attr": "invalid:ui.combo_box.invalid($e,$c)",
+      "parsed": [
+        {
+          "type": "invalid",
+          "module": "ui.combo_box",
+          "name": "invalid",
+          "args": [
+            {
+              "kind": "$e",
+              "owner": null
+            },
+            {
+              "kind": "$c",
+              "owner": null
+            }
+          ]
+        }
+      ],
+      "from": "corten-ui"
+    }
+  ]
+}

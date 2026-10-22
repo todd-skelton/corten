@@ -179,3 +179,64 @@ fn rendering_collects_the_modules_a_page_uses() {
     let (_, modules) = script::collect(|| (Form {}.to_html(), LineItem { name: "x", quantity: 1 }.to_html()));
     assert_eq!(modules, vec!["field", "form", "line_item"]);
 }
+
+/// The strings handlers write, as the runtime's parser expects them (`wire.json`, which
+/// `scripts/wire.mjs` parses with the runtime's own parser).
+#[cfg(feature = "json")]
+#[test]
+fn handlers_write_the_shared_wire_vectors() {
+    #[derive(serde::Serialize)]
+    struct Options {
+        id: &'static str,
+        tags: [&'static str; 2],
+    }
+    let nasty = "),{\"x\":1}\\ \u{2028} <&'> é 🦀 ,a:b";
+    let pages = [
+        LineItem { name: "a\"b", quantity: 2 }.to_html(),
+        RowList { rows: &["x"] }.to_html(),
+        Form {}.to_html(),
+        StockGrid { rows: &[("a", 1)] }.to_html(),
+        scoped("x", || {
+            html! {
+                <p on:click={shared::log("hi", 2, true)}></p>
+                <p on:click={shared::log(nasty, -1.5, false)}></p>
+                <p on:click={shared::log("", f64::NAN, true)}></p>
+                <p on:connect={shared::watch(signal, Options { id: "a}", tags: ["x,y", "]"] })}></p>
+            }
+            .to_html()
+        }),
+    ];
+    let mut written = Vec::new();
+    for page in &pages {
+        for part in page.split(" data-on=\"").skip(1) {
+            let value = &part[..part.find('"').expect("a closing quote")];
+            let text = value
+                .replace("&quot;", "\"")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&#39;", "'")
+                .replace("&amp;", "&");
+            written.push(text);
+        }
+    }
+    let vectors: serde_json::Value = serde_json::from_str(include_str!("wire.json")).expect("wire.json is JSON");
+    let mut expected: Vec<String> = vectors["cases"]
+        .as_array()
+        .expect("cases")
+        .iter()
+        .filter(|case| case.get("from").is_none())
+        .map(|case| case["attr"].as_str().expect("attr").to_string())
+        .collect();
+    written.sort();
+    expected.sort();
+    assert_eq!(written, expected, "what handlers write and wire.json differ; update both sides together");
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "beyond what a JavaScript number holds exactly")]
+fn an_integer_javascript_cannot_hold_exactly_stops_debug_builds() {
+    let at_limit = scoped("x", || html! { <p on:click={shared::log("id", 9_007_199_254_740_991u64, true)}></p> }.to_html());
+    assert!(at_limit.contains("9007199254740991"), "{at_limit}");
+    scoped("x", || html! { <p on:click={shared::log("id", 9_007_199_254_740_993u64, true)}></p> }.to_html());
+}

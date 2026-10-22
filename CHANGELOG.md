@@ -79,6 +79,8 @@ Corten is pre-1.0, so any minor version may change the API.
 2. A patch no longer throws away what the user is doing: a field they edited (after its form was
    sent, for the form's own answer) keeps its value, and focus and the caret stay on the
    matching element. An invalid answer focuses its field only if the user has not moved on.
+3. An integer handler argument past 2^53 reached the browser as a different number. Debug
+   builds and tests now stop on it (pass such a value as a string).
 
 ### Documentation
 

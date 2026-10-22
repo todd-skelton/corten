@@ -886,6 +886,9 @@ pub mod __private {
     /// `on:RowToggled={..}` names a type made with `#[event]`.
     pub fn is_event<E: DomEvent>() {}
 
+    /// JavaScript's `Number.MAX_SAFE_INTEGER`.
+    const MAX_SAFE_INTEGER: u128 = (1 << 53) - 1;
+
     /// Writes `text` as a JSON string, escaped for a double-quoted attribute.
     pub fn json_str(text: &str, out: &mut String) {
         out.push_str("&quot;");
@@ -932,7 +935,18 @@ pub mod __private {
         )*};
     }
     values!(ts::String, |v, out| json_str(v, out); &str, String, std::borrow::Cow<'_, str>);
-    values!(ts::Number, |v, out| { use std::fmt::Write; let _ = write!(out, "{v}"); }; u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
+    values!(ts::Number, |v, out| { use std::fmt::Write; let _ = write!(out, "{v}"); }; u8, u16, u32, i8, i16, i32);
+    // A JavaScript number holds integers exactly up to 2^53; past that the browser would get a
+    // different number, silently. Debug builds and tests stop there: pass such a value (a 64-bit
+    // id) as a string.
+    values!(ts::Number, |v, out| {
+        use std::fmt::Write;
+        debug_assert!(
+            (*v as i128).unsigned_abs() <= MAX_SAFE_INTEGER,
+            "handler argument {v} is beyond what a JavaScript number holds exactly (2^53 - 1); pass it as a string"
+        );
+        let _ = write!(out, "{v}");
+    }; u64, usize, i64, isize);
     // JSON has no NaN or infinity.
     values!(ts::Number, |v, out| if v.is_finite() { use std::fmt::Write; let _ = write!(out, "{v}"); } else { out.push_str("null") }; f32, f64);
     values!(ts::Boolean, |v, out| out.push_str(if *v { "true" } else { "false" }); bool);

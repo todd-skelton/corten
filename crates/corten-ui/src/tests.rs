@@ -44,6 +44,9 @@ fn the_combo_box_value_is_a_native_select_and_the_input_waits_for_the_script() {
         "{html}"
     );
     assert!(html.contains(r#"<option value="b">Beta &lt;b&gt;</option>"#), "labels are escaped: {html}");
+    // The runtime's parser is checked against this string (a module name with a dot).
+    let vectors = include_str!("../../corten/src/script/wire.json");
+    assert!(vectors.contains(r#""attr": "invalid:ui.combo_box.invalid($e,$c)""#), "wire.json lists the library case");
     assert!(
         html.contains(r#" hidden data-on="input:ui.combo_box.filter($c) keydown:ui.combo_box.key($e,$c)"#),
         "the text input shows only with the script: {html}"
