@@ -25,7 +25,10 @@ pub fn home(name: &str) -> impl Render {
     let f = GreetForm::FIELDS;
     html! {
         <h1>"Welcome to Corten"</h1>
-        <p>"This page is rendered on the server. Edit " <code>"src/views.rs"</code> " and save: the page reloads."</p>
+        <p>
+            "This page is rendered on the server. Edit " <code>"src/views.rs"</code>
+            " and save: the page reloads."
+        </p>
         <form method="post" action={Greet} data-patch>
             <label>"Your name " <input name={f.name} value={name} required></label>
             <button>"Greet me"</button>

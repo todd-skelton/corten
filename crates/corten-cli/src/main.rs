@@ -4,8 +4,10 @@
 //! - `corten dev` builds and runs the app, rebuilds and restarts it when a file changes (a failed
 //!   build keeps the running server), and open pages reload by themselves.
 //! - `corten build` builds the release binary. `corten check` runs format, lint and tests.
+//! - `corten fmt` lays out the markup in `html!`, which rustfmt leaves alone.
 
 mod dev;
+mod fmt;
 mod new;
 
 use std::process::{Command, ExitCode};
@@ -20,7 +22,10 @@ Usage:
                    Build and run the app in this directory; rebuild and restart on every
                    change, and reload open pages. Default port 3000.
   corten build     Build the release binary.
-  corten check     cargo fmt --check, cargo clippy -D warnings, cargo test.
+  corten fmt [--check] [path ..]
+                   Lay out the markup inside html! (rustfmt leaves macro bodies alone).
+                   --check reports files that need it instead of writing them.
+  corten check     cargo fmt --check, corten fmt --check, cargo clippy -D warnings, cargo test.
   corten help      This text.
   corten --version
 ";
@@ -43,7 +48,9 @@ fn main() -> ExitCode {
                 "\ncorten: built the release binary in target/release. Deploy it with the static/ directory next to it (see Dockerfile)."
             );
         }),
+        Some("fmt") => fmt::run(&args[1..]),
         Some("check") => cargo(&["fmt", "--check"])
+            .and_then(|()| fmt::run(&["--check".to_string()]))
             .and_then(|()| cargo(&["clippy", "--all-targets", "--", "-D", "warnings"]))
             .and_then(|()| cargo(&["test"])),
         Some(other) => Err(format!("unknown command {other:?}; run corten help")),

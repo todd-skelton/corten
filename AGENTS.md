@@ -40,6 +40,8 @@ convenience. And a nicer API that slows every page loses.
    release build) so rendering does not get slower unnoticed.
 4. The `corten` command: `crates/corten-cli`, standard library only. `template/` is the app
    `corten new` writes; it must pass `corten check` with rustfmt's default settings.
+   `corten fmt` lays out `html!` bodies and only ever changes whitespace (it compares tokens
+   before writing); run it on `crates examples bench` after editing markup.
 5. Edit the runtime in `crates/corten/js/corten.js` and `solid.js`; the crate embeds their
    minified builds in `js/dist/`, which only `npm run build:js` writes (`npm run check` fails
    when they are stale). The `data-on` format is written by `crates/corten/src/script.rs` and
