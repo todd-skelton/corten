@@ -22,7 +22,8 @@ examples/cluster/    A listings feed on corten-cluster, and the failover benchma
 examples/ui-gallery/ corten-ui styled by a small design system; smoke.mjs tests it in a browser
 docs/              Guides (docs/guide), design decisions and limits, surfaces (architecture.md)
 skills/corten/     The agent skill for building apps on Corten
-bench/fullstack/     The same page in six frameworks, and the scripts that compare them
+bench/fullstack/     The same page in fourteen frameworks, and the scripts that compare them
+bench/live/          One price feed pushed to many clients in the same frameworks
 ```
 
 Dependencies of `corten`: `axum`, `futures-util`, `getrandom` (CSP nonces), `memchr`

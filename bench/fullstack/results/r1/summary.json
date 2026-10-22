@@ -3,514 +3,1015 @@
   "fixture": {
    "corten": {
     "startup": {
-     "firstOkMsFromDockerRun": 1967,
-     "idleMem": "9.523MiB / 1GiB"
+     "firstOkMsFromDockerRun": 564,
+     "idleMem": "8.461MiB / 1GiB"
     },
     "fixed": {
      "rps": 300,
-     "p50": 0.8,
-     "p95": 1,
-     "p99": 1.1,
+     "unsentPct": 0,
+     "p50": 0.3,
+     "p95": 0.3,
+     "p99": 0.4,
      "failedPct": 0,
-     "cpuPct": 13.8,
-     "memMiB": 19.2,
-     "memMaxMiB": 19.9
+     "cpuPct": 4.6,
+     "memMiB": 15.5,
+     "memMaxMiB": 15.8
     },
     "sat64": {
-     "rps": 3355,
-     "p50": 17.3,
-     "p95": 33.3,
-     "p99": 49.7,
+     "rps": 18854,
+     "unsentPct": 0,
+     "p50": 2.9,
+     "p95": 6,
+     "p99": 11.4,
      "failedPct": 0,
-     "cpuPct": 100.7,
-     "memMiB": 18.8,
-     "memMaxMiB": 19.5
+     "cpuPct": 97.7,
+     "memMiB": 15.8,
+     "memMaxMiB": 16.7
     },
     "sat256": {
-     "rps": 2566,
-     "p50": 96.8,
-     "p95": 146.8,
-     "p99": 182.4,
+     "rps": 17057,
+     "unsentPct": 0,
+     "p50": 13.1,
+     "p95": 26.4,
+     "p99": 40.7,
      "failedPct": 0,
-     "cpuPct": 101.2,
-     "memMiB": 23,
-     "memMaxMiB": 23.7
+     "cpuPct": 99.3,
+     "memMiB": 19,
+     "memMaxMiB": 20
     }
    },
    "nextjs": {
     "startup": {
-     "firstOkMsFromDockerRun": 19703,
-     "idleMem": "152.3MiB / 1GiB"
-    },
-    "fixed": {
-     "rps": 55,
-     "p50": 2141.6,
-     "p95": 59993.4,
-     "p99": 59993.9,
-     "failedPct": 25.85,
-     "cpuPct": 100,
-     "memMiB": 168.7,
-     "memMaxMiB": 181.8
-    },
-    "sat64": {
-     "rps": 52,
-     "p50": 1308,
-     "p95": 1690.8,
-     "p99": 1804.8,
-     "failedPct": 0,
-     "cpuPct": 100.8,
-     "memMiB": 185.3,
-     "memMaxMiB": 186.1
-    },
-    "sat256": {
-     "rps": 85,
-     "p50": 1601.7,
-     "p95": 3649.2,
-     "p99": 59868.5,
-     "failedPct": 1.16,
-     "cpuPct": 99.3,
-     "memMiB": 189.7,
-     "memMaxMiB": 198.4
-    }
-   },
-   "tanstack-start": {
-    "startup": {
-     "firstOkMsFromDockerRun": 7057,
-     "idleMem": "118.3MiB / 1GiB"
+     "firstOkMsFromDockerRun": 1363,
+     "idleMem": "159.2MiB / 1GiB"
     },
     "fixed": {
      "rps": 145,
-     "p50": 895.5,
-     "p95": 40373.2,
-     "p99": 59847.5,
-     "failedPct": 5.65,
-     "cpuPct": 100.9,
-     "memMiB": 135.7,
-     "memMaxMiB": 137.6
+     "unsentPct": 42.22,
+     "p50": 1416.1,
+     "p95": 48777.9,
+     "p99": 57420.9,
+     "failedPct": 1.66,
+     "cpuPct": 100.4,
+     "memMiB": 193,
+     "memMaxMiB": 209.2
     },
     "sat64": {
-     "rps": 137,
-     "p50": 423,
-     "p95": 614,
-     "p99": 988.5,
+     "rps": 178,
+     "unsentPct": 0,
+     "p50": 353.9,
+     "p95": 431.7,
+     "p99": 446.9,
      "failedPct": 0,
-     "cpuPct": 100.8,
-     "memMiB": 117.3,
-     "memMaxMiB": 118.8
+     "cpuPct": 100.2,
+     "memMiB": 209.1,
+     "memMaxMiB": 209.3
     },
     "sat256": {
-     "rps": 153,
-     "p50": 778.2,
-     "p95": 1076.5,
-     "p99": 59871,
-     "failedPct": 1.26,
-     "cpuPct": 100.9,
-     "memMiB": 120.5,
-     "memMaxMiB": 122
+     "rps": 165,
+     "unsentPct": 0,
+     "p50": 1378.7,
+     "p95": 1587.9,
+     "p99": 12767.7,
+     "failedPct": 0,
+     "cpuPct": 100.1,
+     "memMiB": 211.6,
+     "memMaxMiB": 213.6
+    },
+    "failed": "served 145/s of the fixed rate, 42.22% never sent"
+   },
+   "tanstack-start": {
+    "startup": {
+     "firstOkMsFromDockerRun": 918,
+     "idleMem": "121.3MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 1.5,
+     "p95": 33,
+     "p99": 47.6,
+     "failedPct": 0,
+     "cpuPct": 53.8,
+     "memMiB": 163.8,
+     "memMaxMiB": 165
+    },
+    "sat64": {
+     "rps": 605,
+     "unsentPct": 0,
+     "p50": 97.3,
+     "p95": 167.4,
+     "p99": 185.6,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 164.9,
+     "memMaxMiB": 165.2
+    },
+    "sat256": {
+     "rps": 623,
+     "unsentPct": 0,
+     "p50": 322.5,
+     "p95": 455.1,
+     "p99": 483.5,
+     "failedPct": 0,
+     "cpuPct": 100.3,
+     "memMiB": 165.5,
+     "memMaxMiB": 165.9
     }
    },
    "sveltekit": {
     "startup": {
-     "firstOkMsFromDockerRun": 7607,
-     "idleMem": "124.3MiB / 1GiB"
+     "firstOkMsFromDockerRun": 867,
+     "idleMem": "125.7MiB / 1GiB"
     },
     "fixed": {
-     "rps": 163,
-     "p50": 814.7,
-     "p95": 2400.1,
-     "p99": 56476.8,
-     "failedPct": 2.15,
-     "cpuPct": 101.5,
-     "memMiB": 131.8,
-     "memMaxMiB": 143.4
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 1.3,
+     "p95": 11.8,
+     "p99": 26.8,
+     "failedPct": 0,
+     "cpuPct": 44.1,
+     "memMiB": 140.7,
+     "memMaxMiB": 142.3
     },
     "sat64": {
-     "rps": 224,
-     "p50": 283,
-     "p95": 391.7,
-     "p99": 545,
+     "rps": 749,
+     "unsentPct": 0,
+     "p50": 83,
+     "p95": 136.2,
+     "p99": 160.1,
      "failedPct": 0,
-     "cpuPct": 101.9,
-     "memMiB": 149.5,
-     "memMaxMiB": 150.8
+     "cpuPct": 100.8,
+     "memMiB": 142.3,
+     "memMaxMiB": 142.7
     },
     "sat256": {
-     "rps": 329,
-     "p50": 391.2,
-     "p95": 632.8,
-     "p99": 6045.7,
-     "failedPct": 0.29,
-     "cpuPct": 99.3,
-     "memMiB": 156.6,
-     "memMaxMiB": 160.3
+     "rps": 634,
+     "unsentPct": 0,
+     "p50": 342,
+     "p95": 466.2,
+     "p99": 508.5,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 148.9,
+     "memMaxMiB": 149.1
     }
    },
    "react-router": {
     "startup": {
-     "firstOkMsFromDockerRun": 4807,
-     "idleMem": "83.88MiB / 1GiB"
+     "firstOkMsFromDockerRun": 961,
+     "idleMem": "83.98MiB / 1GiB"
     },
     "fixed": {
-     "rps": 142,
-     "p50": 902,
-     "p95": 45342.4,
-     "p99": 59898.3,
-     "failedPct": 6.02,
-     "cpuPct": 100,
-     "memMiB": 129.3,
-     "memMaxMiB": 131.9
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 2,
+     "p95": 45.2,
+     "p99": 155.4,
+     "failedPct": 0,
+     "cpuPct": 65.9,
+     "memMiB": 140.1,
+     "memMaxMiB": 140.5
     },
     "sat64": {
-     "rps": 173,
-     "p50": 353.4,
-     "p95": 518,
-     "p99": 616,
+     "rps": 492,
+     "unsentPct": 0,
+     "p50": 125.7,
+     "p95": 189.2,
+     "p99": 202.5,
      "failedPct": 0,
-     "cpuPct": 99.5,
-     "memMiB": 131.2,
-     "memMaxMiB": 132
+     "cpuPct": 100.6,
+     "memMiB": 140.2,
+     "memMaxMiB": 140.6
     },
     "sat256": {
-     "rps": 154,
-     "p50": 952.9,
-     "p95": 1420,
-     "p99": 38079.6,
-     "failedPct": 0.57,
-     "cpuPct": 100.4,
-     "memMiB": 132.1,
-     "memMaxMiB": 133
+     "rps": 479,
+     "unsentPct": 0,
+     "p50": 482.1,
+     "p95": 647.3,
+     "p99": 674.6,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 140.9,
+     "memMaxMiB": 141.5
     }
    },
    "leptos": {
     "startup": {
-     "firstOkMsFromDockerRun": 2289,
-     "idleMem": "9.266MiB / 1GiB"
+     "firstOkMsFromDockerRun": 537,
+     "idleMem": "8.832MiB / 1GiB"
     },
     "fixed": {
      "rps": 300,
-     "p50": 2.7,
-     "p95": 70.5,
-     "p99": 121.1,
+     "unsentPct": 0,
+     "p50": 0.9,
+     "p95": 1.2,
+     "p99": 1.3,
      "failedPct": 0,
-     "cpuPct": 71.6,
-     "memMiB": 18.3,
-     "memMaxMiB": 19.6
+     "cpuPct": 24.8,
+     "memMiB": 14.8,
+     "memMaxMiB": 15.2
     },
     "sat64": {
-     "rps": 440,
-     "p50": 140.5,
-     "p95": 225.3,
-     "p99": 261.8,
+     "rps": 1333,
+     "unsentPct": 0,
+     "p50": 49,
+     "p95": 64.2,
+     "p99": 73.5,
      "failedPct": 0,
-     "cpuPct": 100.9,
-     "memMiB": 18.2,
-     "memMaxMiB": 19.1
+     "cpuPct": 100.6,
+     "memMiB": 15.2,
+     "memMaxMiB": 15.6
     },
     "sat256": {
-     "rps": 458,
-     "p50": 542.3,
-     "p95": 1027.1,
-     "p99": 1306,
+     "rps": 1217,
+     "unsentPct": 0,
+     "p50": 206.8,
+     "p95": 328.4,
+     "p99": 372.3,
      "failedPct": 0,
-     "cpuPct": 100.2,
-     "memMiB": 34.3,
-     "memMaxMiB": 35.2
+     "cpuPct": 100.8,
+     "memMiB": 31.8,
+     "memMaxMiB": 32.4
     }
    }
   },
   "api": {
    "corten": {
     "startup": {
-     "firstOkMsFromDockerRun": 10824,
-     "idleMem": "1.793MiB / 1GiB"
+     "firstOkMsFromDockerRun": 339,
+     "idleMem": "1.648MiB / 1GiB"
     },
     "fixed": {
      "rps": 150,
-     "p50": 3.3,
-     "p95": 4.4,
-     "p99": 12.8,
+     "unsentPct": 0,
+     "p50": 1.4,
+     "p95": 1.9,
+     "p99": 2,
      "failedPct": 0,
-     "cpuPct": 33.5,
-     "memMiB": 17.2,
-     "memMaxMiB": 17.8
+     "cpuPct": 17.1,
+     "memMiB": 13.8,
+     "memMaxMiB": 14.2
     },
     "sat64": {
-     "rps": 418,
-     "p50": 150.5,
-     "p95": 229.5,
-     "p99": 290,
+     "rps": 885,
+     "unsentPct": 0,
+     "p50": 76.1,
+     "p95": 85,
+     "p99": 87.4,
      "failedPct": 0,
-     "cpuPct": 99.4,
-     "memMiB": 19.8,
-     "memMaxMiB": 20.7
+     "cpuPct": 101.1,
+     "memMiB": 17.2,
+     "memMaxMiB": 21.3
     },
     "sat256": {
-     "rps": 226,
-     "p50": 1086.2,
-     "p95": 1684.3,
-     "p99": 1827.8,
+     "rps": 872,
+     "unsentPct": 0,
+     "p50": 293.5,
+     "p95": 392.1,
+     "p99": 427.2,
      "failedPct": 0,
      "cpuPct": 100.9,
-     "memMiB": 62.1,
-     "memMaxMiB": 63.8
+     "memMiB": 52.2,
+     "memMaxMiB": 60.8
     }
    },
    "nextjs": {
     "startup": {
-     "firstOkMsFromDockerRun": 6201,
-     "idleMem": "50.54MiB / 1GiB"
+     "firstOkMsFromDockerRun": 992,
+     "idleMem": "51.68MiB / 1GiB"
     },
     "fixed": {
-     "rps": 34,
-     "p50": 4345.4,
-     "p95": 59994.1,
-     "p99": 59994.4,
-     "failedPct": 36.91,
-     "cpuPct": 101.1,
-     "memMiB": 281.4,
-     "memMaxMiB": 395.8
+     "rps": 79,
+     "unsentPct": 25.1,
+     "p50": 2548.7,
+     "p95": 48785.8,
+     "p99": 53032.4,
+     "failedPct": 1.56,
+     "cpuPct": 100.3,
+     "memMiB": 230.7,
+     "memMaxMiB": 259.8
     },
     "sat64": {
-     "rps": 33,
-     "p50": 1841.2,
-     "p95": 2953.3,
-     "p99": 3957.7,
+     "rps": 110,
+     "unsentPct": 0,
+     "p50": 559.5,
+     "p95": 674.6,
+     "p99": 746.5,
      "failedPct": 0,
-     "cpuPct": 100.9,
-     "memMiB": 461.2,
-     "memMaxMiB": 462.4
+     "cpuPct": 100.2,
+     "memMiB": 197.7,
+     "memMaxMiB": 199
     },
     "sat256": {
-     "rps": 39,
-     "p50": 3819.2,
-     "p95": 18491.9,
-     "p99": 59918.9,
-     "failedPct": 2.45,
-     "cpuPct": 100.8,
-     "memMiB": 478.5,
-     "memMaxMiB": 520.1
-    }
+     "rps": 105,
+     "unsentPct": 0,
+     "p50": 2110.4,
+     "p95": 2689.2,
+     "p99": 25058.1,
+     "failedPct": 0,
+     "cpuPct": 100.2,
+     "memMiB": 237.6,
+     "memMaxMiB": 254.5
+    },
+    "failed": "served 79/s of the fixed rate, 25.1% never sent"
    },
    "tanstack-start": {
     "startup": {
-     "firstOkMsFromDockerRun": 2473,
-     "idleMem": "26.73MiB / 1GiB"
+     "firstOkMsFromDockerRun": 510,
+     "idleMem": "26.79MiB / 1GiB"
     },
     "fixed": {
-     "rps": 95,
-     "p50": 2013.4,
-     "p95": 38687.6,
-     "p99": 51727.8,
-     "failedPct": 2.44,
-     "cpuPct": 100.5,
-     "memMiB": 157,
-     "memMaxMiB": 169.4
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.8,
+     "p95": 27.3,
+     "p99": 37.3,
+     "failedPct": 0,
+     "cpuPct": 51.3,
+     "memMiB": 121.8,
+     "memMaxMiB": 123.4
     },
     "sat64": {
-     "rps": 129,
-     "p50": 495.3,
-     "p95": 687.6,
-     "p99": 898,
+     "rps": 302,
+     "unsentPct": 0,
+     "p50": 213,
+     "p95": 243.8,
+     "p99": 253.4,
      "failedPct": 0,
-     "cpuPct": 99.7,
-     "memMiB": 161.3,
-     "memMaxMiB": 163.3
+     "cpuPct": 100.3,
+     "memMiB": 127.9,
+     "memMaxMiB": 130.5
     },
     "sat256": {
-     "rps": 132,
-     "p50": 1107.5,
-     "p95": 1866.1,
-     "p99": 47705.7,
-     "failedPct": 0.75,
-     "cpuPct": 99.7,
-     "memMiB": 166.9,
-     "memMaxMiB": 173.7
+     "rps": 292,
+     "unsentPct": 0,
+     "p50": 741.6,
+     "p95": 999.6,
+     "p99": 3093,
+     "failedPct": 0,
+     "cpuPct": 100.3,
+     "memMiB": 155,
+     "memMaxMiB": 162.8
     }
    },
    "sveltekit": {
     "startup": {
-     "firstOkMsFromDockerRun": 1819,
-     "idleMem": "23.48MiB / 1GiB"
+     "firstOkMsFromDockerRun": 467,
+     "idleMem": "23.62MiB / 1GiB"
     },
     "fixed": {
-     "rps": 138,
-     "p50": 72.7,
-     "p95": 1940.5,
-     "p99": 9493.4,
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.3,
+     "p95": 16.1,
+     "p99": 25.2,
      "failedPct": 0,
-     "cpuPct": 96.3,
-     "memMiB": 116.5,
-     "memMaxMiB": 137.3
+     "cpuPct": 43.5,
+     "memMiB": 118.6,
+     "memMaxMiB": 126
     },
     "sat64": {
-     "rps": 144,
-     "p50": 449.8,
-     "p95": 558.5,
-     "p99": 616.2,
+     "rps": 341,
+     "unsentPct": 0,
+     "p50": 189,
+     "p95": 219.5,
+     "p99": 230.2,
      "failedPct": 0,
-     "cpuPct": 100.3,
-     "memMiB": 132.7,
-     "memMaxMiB": 134.1
+     "cpuPct": 100.5,
+     "memMiB": 137.4,
+     "memMaxMiB": 139.4
     },
     "sat256": {
-     "rps": 146,
-     "p50": 1013.2,
-     "p95": 1346.5,
-     "p99": 41246.2,
-     "failedPct": 0.58,
-     "cpuPct": 99.8,
-     "memMiB": 144.7,
-     "memMaxMiB": 154.9
+     "rps": 335,
+     "unsentPct": 0,
+     "p50": 680,
+     "p95": 839.9,
+     "p99": 1357.3,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 144.2,
+     "memMaxMiB": 147.8
     }
    },
    "react-router": {
     "startup": {
-     "firstOkMsFromDockerRun": 1012,
-     "idleMem": "33.2MiB / 1GiB"
+     "firstOkMsFromDockerRun": 590,
+     "idleMem": "32.88MiB / 1GiB"
     },
     "fixed": {
-     "rps": 111,
-     "p50": 1975,
-     "p95": 41206.4,
-     "p99": 46634.4,
-     "failedPct": 2.61,
-     "cpuPct": 100.2,
-     "memMiB": 131.4,
-     "memMaxMiB": 146.7
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 3.2,
+     "p95": 32.1,
+     "p99": 58.9,
+     "failedPct": 0,
+     "cpuPct": 58,
+     "memMiB": 125.2,
+     "memMaxMiB": 126.4
     },
     "sat64": {
-     "rps": 146,
-     "p50": 417.2,
-     "p95": 601.5,
-     "p99": 773.4,
+     "rps": 272,
+     "unsentPct": 0,
+     "p50": 235.9,
+     "p95": 265.1,
+     "p99": 281.3,
      "failedPct": 0,
-     "cpuPct": 98.8,
-     "memMiB": 147,
-     "memMaxMiB": 148.9
+     "cpuPct": 100.4,
+     "memMiB": 131.2,
+     "memMaxMiB": 132.9
     },
     "sat256": {
-     "rps": 188,
-     "p50": 806.8,
-     "p95": 2502.2,
-     "p99": 13501.7,
+     "rps": 283,
+     "unsentPct": 0,
+     "p50": 822.3,
+     "p95": 1009.8,
+     "p99": 3518.7,
      "failedPct": 0,
-     "cpuPct": 99,
-     "memMiB": 152.7,
-     "memMaxMiB": 158.2
+     "cpuPct": 100.4,
+     "memMiB": 142.9,
+     "memMaxMiB": 149.2
     }
    },
    "leptos": {
     "startup": {
-     "firstOkMsFromDockerRun": 723,
-     "idleMem": "2.227MiB / 1GiB"
+     "firstOkMsFromDockerRun": 269,
+     "idleMem": "1.621MiB / 1GiB"
     },
     "fixed": {
      "rps": 150,
-     "p50": 3.9,
-     "p95": 32.6,
-     "p99": 52.9,
+     "unsentPct": 0,
+     "p50": 1.7,
+     "p95": 2.3,
+     "p99": 2.5,
      "failedPct": 0,
-     "cpuPct": 53.8,
-     "memMiB": 14.5,
-     "memMaxMiB": 15.2
+     "cpuPct": 22.1,
+     "memMiB": 11.5,
+     "memMaxMiB": 12
     },
     "sat64": {
-     "rps": 492,
-     "p50": 126,
-     "p95": 190.6,
-     "p99": 244.9,
+     "rps": 713,
+     "unsentPct": 0,
+     "p50": 89.7,
+     "p95": 110.3,
+     "p99": 114.7,
      "failedPct": 0,
-     "cpuPct": 98.8,
-     "memMiB": 17.4,
+     "cpuPct": 100.6,
+     "memMiB": 15,
+     "memMaxMiB": 16.2
+    },
+    "sat256": {
+     "rps": 612,
+     "unsentPct": 0,
+     "p50": 420.7,
+     "p95": 523,
+     "p99": 563.7,
+     "failedPct": 0,
+     "cpuPct": 100.7,
+     "memMiB": 50,
+     "memMaxMiB": 58.2
+    }
+   }
+  },
+  "fixture-json": {
+   "corten": {
+    "startup": {
+     "firstOkMsFromDockerRun": 556,
+     "idleMem": "8.434MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.3,
+     "p95": 0.3,
+     "p99": 0.4,
+     "failedPct": 0,
+     "cpuPct": 4.7,
+     "memMiB": 14.3,
+     "memMaxMiB": 15
+    },
+    "sat64": {
+     "rps": 16769,
+     "unsentPct": 0,
+     "p50": 3,
+     "p95": 6.6,
+     "p99": 11.5,
+     "failedPct": 0,
+     "cpuPct": 98.5,
+     "memMiB": 15,
+     "memMaxMiB": 15.3
+    },
+    "sat256": {
+     "rps": 16209,
+     "unsentPct": 0,
+     "p50": 13.7,
+     "p95": 27.8,
+     "p99": 41.2,
+     "failedPct": 0,
+     "cpuPct": 99.7,
+     "memMiB": 18.3,
+     "memMaxMiB": 19.1
+    }
+   },
+   "nextjs": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1271,
+     "idleMem": "156.1MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.9,
+     "p95": 4.1,
+     "p99": 31.6,
+     "failedPct": 0,
+     "cpuPct": 30.9,
+     "memMiB": 174,
+     "memMaxMiB": 174.4
+    },
+    "sat64": {
+     "rps": 1086,
+     "unsentPct": 0,
+     "p50": 52.8,
+     "p95": 108.9,
+     "p99": 126.8,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 174.3,
+     "memMaxMiB": 174.7
+    },
+    "sat256": {
+     "rps": 1082,
+     "unsentPct": 0,
+     "p50": 210.5,
+     "p95": 293.5,
+     "p99": 318.8,
+     "failedPct": 0,
+     "cpuPct": 100.8,
+     "memMiB": 175,
+     "memMaxMiB": 175.4
+    }
+   },
+   "tanstack-start": {
+    "startup": {
+     "firstOkMsFromDockerRun": 883,
+     "idleMem": "118.8MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.5,
+     "p95": 0.6,
+     "p99": 4.3,
+     "failedPct": 0,
+     "cpuPct": 12.6,
+     "memMiB": 153,
+     "memMaxMiB": 153.3
+    },
+    "sat64": {
+     "rps": 3545,
+     "unsentPct": 0,
+     "p50": 14.7,
+     "p95": 37.9,
+     "p99": 49.6,
+     "failedPct": 0,
+     "cpuPct": 101.6,
+     "memMiB": 154.1,
+     "memMaxMiB": 154.6
+    },
+    "sat256": {
+     "rps": 3509,
+     "unsentPct": 0,
+     "p50": 59.4,
+     "p95": 104,
+     "p99": 124.5,
+     "failedPct": 0,
+     "cpuPct": 102,
+     "memMiB": 156.5,
+     "memMaxMiB": 156.9
+    }
+   },
+   "sveltekit": {
+    "startup": {
+     "firstOkMsFromDockerRun": 924,
+     "idleMem": "124.4MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.5,
+     "p95": 0.6,
+     "p99": 4.1,
+     "failedPct": 0,
+     "cpuPct": 13.2,
+     "memMiB": 125.4,
+     "memMaxMiB": 125.9
+    },
+    "sat64": {
+     "rps": 3246,
+     "unsentPct": 0,
+     "p50": 15.9,
+     "p95": 41.5,
+     "p99": 52.4,
+     "failedPct": 0,
+     "cpuPct": 101.3,
+     "memMiB": 126.1,
+     "memMaxMiB": 126.6
+    },
+    "sat256": {
+     "rps": 3175,
+     "unsentPct": 0,
+     "p50": 68.6,
+     "p95": 125.5,
+     "p99": 144.3,
+     "failedPct": 0,
+     "cpuPct": 102,
+     "memMiB": 128.2,
+     "memMaxMiB": 128.7
+    }
+   },
+   "react-router": {
+    "startup": {
+     "firstOkMsFromDockerRun": 1035,
+     "idleMem": "135.4MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.7,
+     "p95": 0.8,
+     "p99": 3.5,
+     "failedPct": 0,
+     "cpuPct": 18.3,
+     "memMiB": 116.3,
+     "memMaxMiB": 116.9
+    },
+    "sat64": {
+     "rps": 2312,
+     "unsentPct": 0,
+     "p50": 24.7,
+     "p95": 37.3,
+     "p99": 86.3,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 116.8,
+     "memMaxMiB": 117.4
+    },
+    "sat256": {
+     "rps": 2239,
+     "unsentPct": 0,
+     "p50": 102.3,
+     "p95": 159,
+     "p99": 187.5,
+     "failedPct": 0,
+     "cpuPct": 101.5,
+     "memMiB": 117.4,
+     "memMaxMiB": 118.4
+    }
+   },
+   "leptos": {
+    "startup": {
+     "firstOkMsFromDockerRun": 570,
+     "idleMem": "8.699MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 300,
+     "unsentPct": 0,
+     "p50": 0.3,
+     "p95": 0.3,
+     "p99": 0.4,
+     "failedPct": 0,
+     "cpuPct": 4.5,
+     "memMiB": 13.7,
+     "memMaxMiB": 14.4
+    },
+    "sat64": {
+     "rps": 18241,
+     "unsentPct": 0,
+     "p50": 2.8,
+     "p95": 6.1,
+     "p99": 11,
+     "failedPct": 0,
+     "cpuPct": 97.9,
+     "memMiB": 14.5,
+     "memMaxMiB": 15
+    },
+    "sat256": {
+     "rps": 18775,
+     "unsentPct": 0,
+     "p50": 11.3,
+     "p95": 24.2,
+     "p99": 38.4,
+     "failedPct": 0,
+     "cpuPct": 98,
+     "memMiB": 16.7,
+     "memMaxMiB": 17.4
+    }
+   }
+  },
+  "api-json": {
+   "corten": {
+    "startup": {
+     "firstOkMsFromDockerRun": 328,
+     "idleMem": "1.867MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.4,
+     "p95": 1.9,
+     "p99": 2,
+     "failedPct": 0,
+     "cpuPct": 16.9,
+     "memMiB": 13.6,
+     "memMaxMiB": 14.2
+    },
+    "sat64": {
+     "rps": 923,
+     "unsentPct": 0,
+     "p50": 73.5,
+     "p95": 85.3,
+     "p99": 86.9,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 16.8,
      "memMaxMiB": 18.4
     },
     "sat256": {
-     "rps": 444,
-     "p50": 523.9,
-     "p95": 1066.6,
-     "p99": 1463.9,
+     "rps": 896,
+     "unsentPct": 0,
+     "p50": 285.7,
+     "p95": 382.3,
+     "p99": 419.3,
      "failedPct": 0,
-     "cpuPct": 98.8,
-     "memMiB": 55.8,
-     "memMaxMiB": 58.3
+     "cpuPct": 100.8,
+     "memMiB": 53.5,
+     "memMaxMiB": 59.4
+    }
+   },
+   "nextjs": {
+    "startup": {
+     "firstOkMsFromDockerRun": 866,
+     "idleMem": "46.13MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 2.2,
+     "p95": 41.7,
+     "p99": 58.4,
+     "failedPct": 0,
+     "cpuPct": 45.2,
+     "memMiB": 147.5,
+     "memMaxMiB": 150.4
+    },
+    "sat64": {
+     "rps": 342,
+     "unsentPct": 0,
+     "p50": 194.6,
+     "p95": 224.8,
+     "p99": 235,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 151.1,
+     "memMaxMiB": 153
+    },
+    "sat256": {
+     "rps": 322,
+     "unsentPct": 0,
+     "p50": 712.3,
+     "p95": 902.3,
+     "p99": 1868.8,
+     "failedPct": 0,
+     "cpuPct": 100.3,
+     "memMiB": 179.4,
+     "memMaxMiB": 187.5
+    }
+   },
+   "tanstack-start": {
+    "startup": {
+     "firstOkMsFromDockerRun": 469,
+     "idleMem": "24.26MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.5,
+     "p95": 11.5,
+     "p99": 18.8,
+     "failedPct": 0,
+     "cpuPct": 29.1,
+     "memMiB": 112.3,
+     "memMaxMiB": 114
+    },
+    "sat64": {
+     "rps": 642,
+     "unsentPct": 0,
+     "p50": 102.4,
+     "p95": 125,
+     "p99": 133.8,
+     "failedPct": 0,
+     "cpuPct": 100.7,
+     "memMiB": 119.6,
+     "memMaxMiB": 123.2
+    },
+    "sat256": {
+     "rps": 574,
+     "unsentPct": 0,
+     "p50": 432,
+     "p95": 516.3,
+     "p99": 564.6,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 138.2,
+     "memMaxMiB": 143.3
+    }
+   },
+   "sveltekit": {
+    "startup": {
+     "firstOkMsFromDockerRun": 423,
+     "idleMem": "22.11MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.5,
+     "p95": 9.9,
+     "p99": 16.9,
+     "failedPct": 0,
+     "cpuPct": 27.9,
+     "memMiB": 111.8,
+     "memMaxMiB": 113.8
+    },
+    "sat64": {
+     "rps": 655,
+     "unsentPct": 0,
+     "p50": 99.2,
+     "p95": 124,
+     "p99": 132.1,
+     "failedPct": 0,
+     "cpuPct": 100.6,
+     "memMiB": 122.7,
+     "memMaxMiB": 125.4
+    },
+    "sat256": {
+     "rps": 575,
+     "unsentPct": 0,
+     "p50": 437,
+     "p95": 514.5,
+     "p99": 540.5,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 138.1,
+     "memMaxMiB": 141.6
+    }
+   },
+   "react-router": {
+    "startup": {
+     "firstOkMsFromDockerRun": 591,
+     "idleMem": "31.74MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.8,
+     "p95": 19.7,
+     "p99": 29.3,
+     "failedPct": 0,
+     "cpuPct": 35.5,
+     "memMiB": 110.5,
+     "memMaxMiB": 112.1
+    },
+    "sat64": {
+     "rps": 546,
+     "unsentPct": 0,
+     "p50": 119.4,
+     "p95": 144.1,
+     "p99": 154,
+     "failedPct": 0,
+     "cpuPct": 100.5,
+     "memMiB": 125.4,
+     "memMaxMiB": 128.1
+    },
+    "sat256": {
+     "rps": 483,
+     "unsentPct": 0,
+     "p50": 525.1,
+     "p95": 596.9,
+     "p99": 622.3,
+     "failedPct": 0,
+     "cpuPct": 100.4,
+     "memMiB": 137.2,
+     "memMaxMiB": 140.7
+    }
+   },
+   "leptos": {
+    "startup": {
+     "firstOkMsFromDockerRun": 281,
+     "idleMem": "1.586MiB / 1GiB"
+    },
+    "fixed": {
+     "rps": 150,
+     "unsentPct": 0,
+     "p50": 1.3,
+     "p95": 1.8,
+     "p99": 2,
+     "failedPct": 0,
+     "cpuPct": 16.1,
+     "memMiB": 11.4,
+     "memMaxMiB": 11.8
+    },
+    "sat64": {
+     "rps": 916,
+     "unsentPct": 0,
+     "p50": 73.7,
+     "p95": 85.3,
+     "p99": 87.2,
+     "failedPct": 0,
+     "cpuPct": 101,
+     "memMiB": 14.1,
+     "memMaxMiB": 16
+    },
+    "sat256": {
+     "rps": 947,
+     "unsentPct": 0,
+     "p50": 269.7,
+     "p95": 369.1,
+     "p99": 406.9,
+     "failedPct": 0,
+     "cpuPct": 100.9,
+     "memMiB": 47.6,
+     "memMaxMiB": 55.5
     }
    }
   }
  },
  "coldStart": {
-  "baseline": {
-   "firstOkMs": {
-    "median": 209.5,
-    "min": 129.2,
-    "max": 304.5
-   },
-   "memAfterFirstRequest": "496KiB",
-   "imageMB": 2
-  },
   "corten": {
    "firstOkMs": {
-    "median": 184.2,
-    "min": 137.7,
-    "max": 385.4
+    "median": 8.1,
+    "min": 7.4,
+    "max": 13.4
    },
-   "memAfterFirstRequest": "1.594MiB",
-   "imageMB": 80
+   "memAfterFirstRequest": "1.48MiB",
+   "imageMB": 122
   },
   "nextjs": {
    "firstOkMs": {
-    "median": 1678.5,
-    "min": 1344.8,
-    "max": 2095.7
+    "median": 724.9,
+    "min": 704,
+    "max": 811.5
    },
-   "memAfterFirstRequest": "49.16MiB",
-   "imageMB": 266
+   "memAfterFirstRequest": "51.11MiB",
+   "imageMB": 385
   },
   "tanstack-start": {
    "firstOkMs": {
-    "median": 496.3,
-    "min": 350.2,
-    "max": 1177.7
+    "median": 225.6,
+    "min": 212.6,
+    "max": 313.7
    },
-   "memAfterFirstRequest": "26.44MiB",
-   "imageMB": 230
+   "memAfterFirstRequest": "26.34MiB",
+   "imageMB": 332
   },
   "sveltekit": {
    "firstOkMs": {
-    "median": 425.2,
-    "min": 362.3,
-    "max": 545.9
+    "median": 197.9,
+    "min": 178.2,
+    "max": 227.9
    },
-   "memAfterFirstRequest": "23.52MiB",
-   "imageMB": 231
+   "memAfterFirstRequest": "23.37MiB",
+   "imageMB": 333
   },
   "react-router": {
    "firstOkMs": {
-    "median": 1035.1,
-    "min": 799.7,
-    "max": 1263.9
+    "median": 335.7,
+    "min": 305,
+    "max": 369.1
    },
-   "memAfterFirstRequest": "32.98MiB",
-   "imageMB": 245
+   "memAfterFirstRequest": "32.08MiB",
+   "imageMB": 353
   },
   "leptos": {
    "firstOkMs": {
-    "median": 219.5,
-    "min": 170.2,
-    "max": 346.6
+    "median": 8.1,
+    "min": 7.1,
+    "max": 9.9
    },
-   "memAfterFirstRequest": "1.73MiB",
-   "imageMB": 85
+   "memAfterFirstRequest": "1.488MiB",
+   "imageMB": 127
   }
  },
  "bytes": {
   "corten": {
    "html": {
-    "raw": 11262,
-    "gzip": 2350
+    "raw": 11362,
+    "gzip": 2342
    },
    "js": {
-    "raw": 17201,
-    "gzip": 6346,
+    "raw": 10541,
+    "gzip": 4507,
     "files": 4
    },
    "wasm": {
@@ -519,19 +1020,19 @@
     "files": 0
    },
    "css": {
-    "raw": 2399,
-    "gzip": 946,
-    "files": 1
+    "raw": 4691,
+    "gzip": 1636,
+    "files": 2
    }
   },
   "nextjs": {
    "html": {
-    "raw": 25902,
-    "gzip": 4891
+    "raw": 25906,
+    "gzip": 4892
    },
    "js": {
     "raw": 467154,
-    "gzip": 139374,
+    "gzip": 139376,
     "files": 7
    },
    "wasm": {
@@ -547,13 +1048,13 @@
   },
   "tanstack-start": {
    "html": {
-    "raw": 17608,
-    "gzip": 4347
+    "raw": 17836,
+    "gzip": 4393
    },
    "js": {
-    "raw": 349436,
-    "gzip": 111221,
-    "files": 3
+    "raw": 350690,
+    "gzip": 113549,
+    "files": 5
    },
    "wasm": {
     "raw": 0,
@@ -568,12 +1069,12 @@
   },
   "sveltekit": {
    "html": {
-    "raw": 16728,
-    "gzip": 3657
+    "raw": 16730,
+    "gzip": 3648
    },
    "js": {
-    "raw": 98623,
-    "gzip": 37875,
+    "raw": 98612,
+    "gzip": 37884,
     "files": 11
    },
    "wasm": {
@@ -589,12 +1090,12 @@
   },
   "react-router": {
    "html": {
-    "raw": 19960,
-    "gzip": 5007
+    "raw": 19962,
+    "gzip": 5004
    },
    "js": {
-    "raw": 318699,
-    "gzip": 101546,
+    "raw": 317136,
+    "gzip": 100964,
     "files": 4
    },
    "wasm": {
@@ -610,8 +1111,8 @@
   },
   "leptos": {
    "html": {
-    "raw": 18235,
-    "gzip": 3555
+    "raw": 18237,
+    "gzip": 3556
    },
    "js": {
     "raw": 25351,
@@ -619,8 +1120,8 @@
     "files": 1
    },
    "wasm": {
-    "raw": 737163,
-    "gzip": 293576,
+    "raw": 737159,
+    "gzip": 293558,
     "files": 1
    },
    "css": {
@@ -630,142 +1131,216 @@
    }
   }
  },
+ "instructions": {
+  "corten/page": {
+   "user": 163599,
+   "kernel": 33288,
+   "runs": 3,
+   "failed": 0
+  },
+  "corten/json": {
+   "user": 211122,
+   "kernel": 32821,
+   "runs": 3,
+   "failed": 0
+  },
+  "nextjs/page": {
+   "user": 17361190,
+   "kernel": 137118,
+   "runs": 3,
+   "failed": 0
+  },
+  "nextjs/json": {
+   "user": 1745348,
+   "kernel": 58764,
+   "runs": 3,
+   "failed": 0
+  },
+  "tanstack-start/page": {
+   "user": 5365639,
+   "kernel": 51165,
+   "runs": 3,
+   "failed": 0
+  },
+  "tanstack-start/json": {
+   "user": 524514,
+   "kernel": 33752,
+   "runs": 3,
+   "failed": 0
+  },
+  "sveltekit/page": {
+   "user": 4519049,
+   "kernel": 47604,
+   "runs": 3,
+   "failed": 0
+  },
+  "sveltekit/json": {
+   "user": 672986,
+   "kernel": 33373,
+   "runs": 3,
+   "failed": 0
+  },
+  "react-router/page": {
+   "user": 6507600,
+   "kernel": 111193,
+   "runs": 3,
+   "failed": 0
+  },
+  "react-router/json": {
+   "user": 840467,
+   "kernel": 70484,
+   "runs": 3,
+   "failed": 0
+  },
+  "leptos/page": {
+   "user": 2726063,
+   "kernel": 35305,
+   "runs": 3,
+   "failed": 0
+  },
+  "leptos/json": {
+   "user": 205138,
+   "kernel": 32795,
+   "runs": 3,
+   "failed": 0
+  }
+ },
  "browser": {
   "desktop/corten": {
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 11,
-    "p90": 17
+    "med": 5,
+    "p90": 6
    },
    "fcp": {
-    "med": 188,
-    "p90": 328
+    "med": 76,
+    "p90": 80
    },
    "lcp": {
-    "med": 188,
-    "p90": 328
+    "med": 76,
+    "p90": 80
    },
    "interactive": {
-    "med": 179,
-    "p90": 304
-   },
-   "tbt": {
-    "med": 0,
-    "p90": 21
-   },
-   "action": {
-    "med": 89,
-    "p90": 116
-   },
-   "clientNav": {
-    "med": 11,
-    "p90": 27
-   },
-   "heapMB": {
-    "med": 1.3
-   }
-  },
-  "desktop/nextjs": {
-   "n": 10,
-   "allWorked": true,
-   "ttfb": {
-    "med": 30,
-    "p90": 99
-   },
-   "fcp": {
-    "med": 180,
-    "p90": 280
-   },
-   "lcp": {
-    "med": 180,
-    "p90": 280
-   },
-   "interactive": {
-    "med": 253,
-    "p90": 383
-   },
-   "tbt": {
-    "med": 6,
-    "p90": 42
-   },
-   "action": {
-    "med": 122,
-    "p90": 159
-   },
-   "clientNav": {
-    "med": 200,
-    "p90": 266
-   },
-   "heapMB": {
-    "med": 3.1
-   }
-  },
-  "desktop/tanstack-start": {
-   "n": 10,
-   "allWorked": true,
-   "ttfb": {
-    "med": 20,
-    "p90": 92
-   },
-   "fcp": {
-    "med": 184,
-    "p90": 296
-   },
-   "lcp": {
-    "med": 184,
-    "p90": 296
-   },
-   "interactive": {
-    "med": 229,
-    "p90": 368
-   },
-   "tbt": {
-    "med": 3,
-    "p90": 21
-   },
-   "action": {
-    "med": 90,
-    "p90": 110
-   },
-   "clientNav": {
-    "med": 32,
-    "p90": 48
-   },
-   "heapMB": {
-    "med": 2.8
-   }
-  },
-  "desktop/sveltekit": {
-   "n": 10,
-   "allWorked": true,
-   "ttfb": {
-    "med": 16,
-    "p90": 40
-   },
-   "fcp": {
-    "med": 188,
-    "p90": 248
-   },
-   "lcp": {
-    "med": 188,
-    "p90": 248
-   },
-   "interactive": {
-    "med": 217,
-    "p90": 292
+    "med": 62,
+    "p90": 74
    },
    "tbt": {
     "med": 0,
     "p90": 0
    },
    "action": {
-    "med": 87,
-    "p90": 113
+    "med": 76,
+    "p90": 90
+   },
+   "clientNav": {
+    "med": 10,
+    "p90": 11
+   },
+   "heapMB": {
+    "med": 1.4
+   }
+  },
+  "desktop/nextjs": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 22,
+    "p90": 26
+   },
+   "fcp": {
+    "med": 80,
+    "p90": 92
+   },
+   "lcp": {
+    "med": 80,
+    "p90": 92
+   },
+   "interactive": {
+    "med": 162,
+    "p90": 177
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 86,
+    "p90": 88
+   },
+   "clientNav": {
+    "med": 114,
+    "p90": 134
+   },
+   "heapMB": {
+    "med": 3.2
+   }
+  },
+  "desktop/tanstack-start": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 15,
+    "p90": 19
+   },
+   "fcp": {
+    "med": 80,
+    "p90": 80
+   },
+   "lcp": {
+    "med": 80,
+    "p90": 80
+   },
+   "interactive": {
+    "med": 130,
+    "p90": 137
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 80,
+    "p90": 86
+   },
+   "clientNav": {
+    "med": 29,
+    "p90": 33
+   },
+   "heapMB": {
+    "med": 2.9
+   }
+  },
+  "desktop/sveltekit": {
+   "n": 10,
+   "allWorked": true,
+   "ttfb": {
+    "med": 9,
+    "p90": 11
+   },
+   "fcp": {
+    "med": 92,
+    "p90": 108
+   },
+   "lcp": {
+    "med": 92,
+    "p90": 108
+   },
+   "interactive": {
+    "med": 115,
+    "p90": 123
+   },
+   "tbt": {
+    "med": 0,
+    "p90": 0
+   },
+   "action": {
+    "med": 73,
+    "p90": 75
    },
    "clientNav": {
     "med": 22,
-    "p90": 31
+    "p90": 25
    },
    "heapMB": {
     "med": 2.1
@@ -775,32 +1350,32 @@
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 22,
-    "p90": 126
+    "med": 17,
+    "p90": 20
    },
    "fcp": {
-    "med": 212,
-    "p90": 400
+    "med": 120,
+    "p90": 132
    },
    "lcp": {
-    "med": 212,
-    "p90": 400
+    "med": 120,
+    "p90": 132
    },
    "interactive": {
-    "med": 272,
-    "p90": 504
+    "med": 171,
+    "p90": 184
    },
    "tbt": {
     "med": 0,
-    "p90": 22
+    "p90": 0
    },
    "action": {
-    "med": 108,
-    "p90": 181
+    "med": 98,
+    "p90": 101
    },
    "clientNav": {
-    "med": 35,
-    "p90": 53
+    "med": 34,
+    "p90": 38
    },
    "heapMB": {
     "med": 2.5
@@ -810,32 +1385,32 @@
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 9,
-    "p90": 26
+    "med": 5,
+    "p90": 6
    },
    "fcp": {
-    "med": 264,
-    "p90": 304
+    "med": 108,
+    "p90": 112
    },
    "lcp": {
-    "med": 264,
-    "p90": 304
+    "med": 108,
+    "p90": 112
    },
    "interactive": {
-    "med": 293,
-    "p90": 338
+    "med": 118,
+    "p90": 134
    },
    "tbt": {
     "med": 0,
-    "p90": 41
+    "p90": 0
    },
    "action": {
-    "med": 84,
-    "p90": 106
+    "med": 77,
+    "p90": 87
    },
    "clientNav": {
-    "med": 32,
-    "p90": 43
+    "med": 27,
+    "p90": 28
    },
    "heapMB": {
     "med": 1.7
@@ -845,67 +1420,67 @@
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 11,
-    "p90": 21
+    "med": 6,
+    "p90": 7
    },
    "fcp": {
-    "med": 780,
-    "p90": 952
+    "med": 452,
+    "p90": 460
    },
    "lcp": {
-    "med": 780,
-    "p90": 952
+    "med": 452,
+    "p90": 460
    },
    "interactive": {
-    "med": 797,
-    "p90": 1003
+    "med": 458,
+    "p90": 465
    },
    "tbt": {
-    "med": 299,
-    "p90": 490
+    "med": 3,
+    "p90": 8
    },
    "action": {
-    "med": 349,
-    "p90": 392
+    "med": 282,
+    "p90": 284
    },
    "clientNav": {
-    "med": 207,
-    "p90": 228
+    "med": 186,
+    "p90": 189
    },
    "heapMB": {
-    "med": 1.3
+    "med": 1.4
    }
   },
   "mobile/nextjs": {
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 24,
-    "p90": 50
+    "med": 22,
+    "p90": 30
    },
    "fcp": {
-    "med": 748,
-    "p90": 852
+    "med": 412,
+    "p90": 416
    },
    "lcp": {
-    "med": 748,
-    "p90": 852
+    "med": 412,
+    "p90": 416
    },
    "interactive": {
-    "med": 1831,
-    "p90": 1887
+    "med": 1416,
+    "p90": 1437
    },
    "tbt": {
-    "med": 694,
-    "p90": 775
+    "med": 162,
+    "p90": 192
    },
    "action": {
-    "med": 410,
-    "p90": 527
+    "med": 308,
+    "p90": 318
    },
    "clientNav": {
-    "med": 751,
-    "p90": 829
+    "med": 444,
+    "p90": 456
    },
    "heapMB": {
     "med": 3.1
@@ -915,32 +1490,32 @@
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 15,
-    "p90": 43
+    "med": 12,
+    "p90": 16
    },
    "fcp": {
-    "med": 748,
-    "p90": 884
+    "med": 424,
+    "p90": 436
    },
    "lcp": {
-    "med": 748,
-    "p90": 884
+    "med": 424,
+    "p90": 436
    },
    "interactive": {
-    "med": 2707,
-    "p90": 2796
+    "med": 2329,
+    "p90": 2345
    },
    "tbt": {
-    "med": 514,
-    "p90": 604
+    "med": 64,
+    "p90": 74
    },
    "action": {
-    "med": 431,
-    "p90": 622
+    "med": 300,
+    "p90": 306
    },
    "clientNav": {
-    "med": 437,
-    "p90": 459
+    "med": 350,
+    "p90": 353
    },
    "heapMB": {
     "med": 2.9
@@ -950,32 +1525,32 @@
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 13,
-    "p90": 15
+    "med": 11,
+    "p90": 12
    },
    "fcp": {
-    "med": 820,
-    "p90": 860
+    "med": 472,
+    "p90": 472
    },
    "lcp": {
-    "med": 820,
-    "p90": 860
+    "med": 472,
+    "p90": 472
    },
    "interactive": {
-    "med": 1195,
-    "p90": 1304
+    "med": 843,
+    "p90": 850
    },
    "tbt": {
-    "med": 397,
-    "p90": 508
+    "med": 6,
+    "p90": 12
    },
    "action": {
-    "med": 407,
-    "p90": 436
+    "med": 280,
+    "p90": 291
    },
    "clientNav": {
-    "med": 336,
-    "p90": 366
+    "med": 271,
+    "p90": 273
    },
    "heapMB": {
     "med": 2.1
@@ -985,32 +1560,32 @@
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 20,
-    "p90": 22
+    "med": 16,
+    "p90": 18
    },
    "fcp": {
-    "med": 820,
-    "p90": 892
+    "med": 424,
+    "p90": 440
    },
    "lcp": {
-    "med": 820,
-    "p90": 892
+    "med": 424,
+    "p90": 440
    },
    "interactive": {
-    "med": 1362,
-    "p90": 1528
+    "med": 1057,
+    "p90": 1071
    },
    "tbt": {
-    "med": 436,
-    "p90": 598
+    "med": 33,
+    "p90": 48
    },
    "action": {
-    "med": 497,
-    "p90": 563
+    "med": 360,
+    "p90": 362
    },
    "clientNav": {
-    "med": 334,
-    "p90": 381
+    "med": 257,
+    "p90": 262
    },
    "heapMB": {
     "med": 2.6
@@ -1020,32 +1595,32 @@
    "n": 10,
    "allWorked": true,
    "ttfb": {
-    "med": 8,
-    "p90": 12
+    "med": 7,
+    "p90": 8
    },
    "fcp": {
-    "med": 724,
-    "p90": 912
+    "med": 420,
+    "p90": 424
    },
    "lcp": {
-    "med": 724,
-    "p90": 912
+    "med": 420,
+    "p90": 424
    },
    "interactive": {
-    "med": 2050,
-    "p90": 2091
+    "med": 1845,
+    "p90": 1861
    },
    "tbt": {
-    "med": 485,
-    "p90": 685
+    "med": 80,
+    "p90": 96
    },
    "action": {
-    "med": 426,
-    "p90": 441
+    "med": 297,
+    "p90": 309
    },
    "clientNav": {
-    "med": 369,
-    "p90": 389
+    "med": 247,
+    "p90": 257
    },
    "heapMB": {
     "med": 1.7

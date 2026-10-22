@@ -1,0 +1,40 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page(${pageTitle}, ~{::main})}">
+<main><article class="item">
+<nav class="crumbs"><a th:each="c : ${item.categories}" th:href="|/categories/${c.slug}|" th:text="${c.name}"></a></nav>
+<h1 th:text="${item.title}"></h1>
+<p class="subtitle" th:if="${item.subtitle != null}" th:text="${item.subtitle}"></p>
+<ul class="badges"><li th:each="b : ${item.badges}" th:text="${b}"></li></ul>
+<div class="gallery"><div class="img" role="img" th:each="url, s : ${item.images}" th:attr="aria-label=|${item.title} image ${s.count}|,data-src=${url}"></div></div>
+<section class="summary" th:with="s=${item.summary}"><th:block th:if="${s != null}"><span><strong th:text="${s.lowest ?: '—'}"></strong> lowest</span> <span th:text="|${s.count} listings|"></span> <span th:text="|${s.quantity} available|"></span></th:block><span th:if="${s == null}">No listings yet</span></section>
+<section class="listings">
+<h2>Listings</h2>
+<button type="button" class="sort">Price: low to high</button>
+<table><thead><tr><th>Seller</th><th>Condition</th><th>Ships from</th><th>Qty</th><th>Price</th></tr></thead>
+<tbody><tr th:each="l : ${listings}"><td th:text="${l.rating == null ? l.seller : l.seller + ' · ' + l.rating + ' ★ (' + l.reviews + ')'}"></td><td th:text="${l.condition}"></td><td th:text="${l.shipsFrom}"></td><td th:text="${l.quantity}"></td><td class="price" th:text="${l.price}"></td></tr></tbody></table>
+</section>
+<section class="offers">
+<h2>Offers</h2>
+<table><thead><tr><th>Buyer</th><th>Condition</th><th>Qty</th><th>Price</th></tr></thead>
+<tbody><tr th:each="o : ${offers}"><td th:text="${o.buyer}"></td><td th:text="${o.condition}"></td><td th:text="${o.quantity}"></td><td class="price" th:text="${o.price}"></td></tr></tbody></table>
+<button type="button" class="more" th:if="${moreOffers}" th:attr="hx-get=|/items/${item.id}?offers=all|" hx-select=".offers" hx-target="closest .offers" hx-swap="outerHTML" th:text="|Show all ${item.offers.size()} offers|"></button>
+</section>
+<section class="alert">
+<h2>Price alert</h2>
+<div class="alert-form"><form method="post" th:action="|/items/${item.id}|" th:attr="hx-post=|/items/${item.id}|" hx-target=".alert-message" hx-swap="outerHTML">
+<input type="hidden" name="item_id" th:value="${item.id}"><input type="hidden" name="title" th:value="${item.title}">
+<label>Email<input type="email" name="email" required></label>
+<label>Alert me below<input type="text" name="target_price" inputmode="decimal" required></label>
+<button type="submit">Set alert</button></form></div>
+<p class="alert-message" aria-live="polite" th:fragment="message" th:text="${message}"></p>
+</section>
+<section class="details">
+<h2>Details</h2>
+<p th:text="${item.description}"></p>
+<dl><th:block th:each="f : ${item.fields}"><dt th:text="${f.name}"></dt><dd th:text="${f.value}"></dd></th:block></dl>
+<ul class="tags"><li th:each="t : ${item.tags}" th:text="${t}"></li></ul>
+</section>
+<section class="contents" th:if="${!item.contents.isEmpty()}"><h2>Contents</h2><ul><li th:each="c : ${item.contents}"><a th:href="|/items/${c.itemId}|" th:text="${c.title}"></a> × <th:block th:text="${c.quantity}"></th:block></li></ul></section>
+<section class="included" th:if="${!item.includedIn.isEmpty()}"><h2>Included in</h2><ul><li th:each="c : ${item.includedIn}"><a th:href="|/items/${c.itemId}|" th:text="${c.title}"></a> × <th:block th:text="${c.quantity}"></th:block></li></ul></section>
+</article></main>
+</html>

@@ -1,16 +1,16 @@
 {
  "fsw-sveltekit": {
-  "samples": 120,
-  "cpuAvgPct": 99.8,
-  "cpuMaxPct": 105.55,
-  "memAvgMiB": 144.7,
-  "memMaxMiB": 154.9
+  "samples": 123,
+  "cpuAvgPct": 100.4,
+  "cpuMaxPct": 100.84,
+  "memAvgMiB": 144.2,
+  "memMaxMiB": 147.8
  },
- "rb-rust": {
-  "samples": 120,
-  "cpuAvgPct": 10,
-  "cpuMaxPct": 17.09,
-  "memAvgMiB": 34.1,
-  "memMaxMiB": 35.4
+ "item-api": {
+  "samples": 123,
+  "cpuAvgPct": 3.8,
+  "cpuMaxPct": 5.75,
+  "memAvgMiB": 60.6,
+  "memMaxMiB": 61
  }
 }

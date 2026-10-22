@@ -204,6 +204,48 @@ try {
   const stranger = await callFrom(base, otherOrigin);
   check("any other origin is blocked by the browser", stranger === "blocked", stranger);
   await agents.close();
+
+  // Cache headers: the home page is the same for every visitor, so a CDN may keep it; with the
+  // visitor's cookie it is theirs alone, and other pages are private unless they say otherwise.
+  const cacheOf = async (/** @type {string} */ path, /** @type {Record<string, string>} */ headers = {}) =>
+    (await fetch(`${base}${path}`, { headers })).headers.get("cache-control") ?? "";
+  const shared = await cacheOf("/");
+  check("a public page may be kept by shared caches", shared === "public, max-age=60, stale-while-revalidate=600", shared);
+  const mine = await cacheOf("/", { cookie: "session=abc" });
+  check("the same page requested with a cookie is private", mine === "private, no-cache", mine);
+  const item = await cacheOf("/items/item_5");
+  check("other pages are private by default", item === "private, no-cache", item);
+
+  // Back and forward restore a page from memory. Playwright turns the back/forward cache off, and
+  // its default headless shell never restores a page; the full Chromium in headless mode does.
+  const restoring = await chromium.launch({
+    channel: "chromium",
+    headless: true,
+    ignoreDefaultArgs: ["--disable-back-forward-cache"],
+  });
+  try {
+    const tab = await (await restoring.newContext()).newPage();
+    await tab.addInitScript(() =>
+      addEventListener("pageshow", (event) => event.persisted && ((/** @type {any} */ (window)).__restored = true)),
+    );
+    await tab.goto(`${base}/items/item_5`);
+    // The runtime and the page's handler modules are loaded.
+    await tab.evaluate(async () => {
+      const { ready } = await import("corten");
+      await ready;
+    });
+    await tab.goto(`${base}/robots.txt`);
+    await tab.goBack({ waitUntil: "commit" });
+    const restored = await tab
+      .waitForFunction(() => (/** @type {any} */ (window)).__restored === true, null, { timeout: 3000 })
+      .then(() => true, () => false);
+    const reasons = restored
+      ? ""
+      : await tab.evaluate(() => JSON.stringify((/** @type {any} */ (performance.getEntriesByType("navigation")[0]))?.notRestoredReasons ?? null));
+    check("going back restores the page from the back/forward cache", restored, reasons);
+  } finally {
+    await restoring.close();
+  }
 } finally {
   await browser.close();
 }

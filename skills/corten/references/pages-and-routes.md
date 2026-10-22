@@ -99,3 +99,22 @@ a 4xx message is sent, so write it for the client. Validation is `Errors` as the
 is no shell and no `App::context` (add `Api::new(routes).context()` if the API serves your own
 signed-in users). Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
+
+## Caching
+
+Everything the app renders is `private, no-cache` unless the handler says otherwise; static
+files and the runtime are cached forever by their versioned URLs. A page or JSON that is the same
+for every visitor may be shared by a CDN:
+
+```rust
+async fn home(req: Req) -> corten::Result<(Cache, Response)> {
+    let cache = Cache::public(Duration::from_secs(60)).stale_while_revalidate(Duration::from_secs(600));
+    Ok((cache, req.page("Home", view)?))
+}
+```
+
+`App` still sends it `private, no-cache` when the request has a cookie or `Authorization`, the
+context found someone, the response sets a cookie or the shell took `doc.nonce()`; a client
+navigation or a data request gets `private` with the same lifetime. It cannot see a cookie your
+own extractor reads, so never mark such a handler public. `Cache::no_store()` is for one-time
+secrets. Do not build a server-side page cache: cache the data the page reads instead.

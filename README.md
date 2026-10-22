@@ -9,18 +9,19 @@ HTML, a small runtime that swaps pages and patches forms, and *handlers*: plain 
 functions in a script next to a component, which its Rust markup calls by name. Live data arrives as numbered patches over
 server-sent events. One handler serves the browser, native apps and AI agents.
 
-- **Fast on the server.** 3,355 rendered pages a second where Next.js 16 does 52, and a 184 ms
-  cold start (measured, [below](#performance)).
-- **Light in the browser.** A 4.1 KB (brotli) runtime; the benchmark item page loads about 5 KB of
+- **Fast on the server.** 23,034 rendered pages a second on one CPU, 4.7x ASP.NET Core, the
+  fastest of thirteen other frameworks, and 1.5 MiB of memory after the first request
+  (measured, [below](#performance)).
+- **Light in the browser.** A 5.0 KB (brotli) runtime; the benchmark item page loads about 6 KB of
   JavaScript (gzip). No WASM, no virtual DOM, no hydration.
 - **Typed end to end.** Routes, form fields, CSS classes, handler calls and the elements they
   take, events and messages are Rust types. TypeScript types for scripts are generated from Rust.
 - **Works without JavaScript.** Links are links and forms post; scripts improve a page but never
   hold it up.
-- **Production defaults.** CSP with nonces, a cross-site write check, error pages, versioned
-  assets, compression, health checks, graceful shutdown and an installable PWA, from
-  `App::new(routes).serve()`. Routes with no screen go under `.api("/api", routes)` and answer
-  only JSON.
+- **Production defaults.** A strict CSP, a cross-site write check, error pages, versioned
+  assets, cache headers that never share one user's page with another, compression, health
+  checks, graceful shutdown and an installable PWA, from `App::new(routes).serve()`. Routes
+  with no screen go under `.api("/api", routes)` and answer only JSON.
 - **No JavaScript toolchain in the app.** One binary and a `static/` directory.
 
 ## Status
@@ -181,22 +182,40 @@ React components, or for a pure static site (a static site generator is simpler)
 
 ## Performance
 
-The same item page (listings table, offers, a form that patches) in six frameworks, one CPU per
-app, measured on one machine. Method, every table and the caveats are in
-[bench/fullstack](bench/fullstack/README.md).
+The same item page (listings table, offers, a form that patches) and the same item as JSON in
+fourteen frameworks, each with its usual production settings on one CPU and 1 GiB, measured on one
+DigitalOcean c-8 droplet (Xeon Platinum 8280) on 2026-10-22, one run. Requests a second are at 64
+users; "failed" means the app could not serve the fixed rate (or start) without tuning. Method,
+every table and the caveats are in [bench/fullstack](bench/fullstack/README.md).
 
-| | Corten | Leptos 0.8 | SvelteKit 3 | React Router 7 | TanStack Start | Next.js 16 |
+| | Pages/s, no database | JSON/s, no database | Pages/s, item API | Process start to first page | Memory after first request | JavaScript, gzip |
 |---|---|---|---|---|---|---|
-| Rendered pages per second, no database, 64 users | **3,355** | 440 | 224 | 173 | 137 | 52 |
-| Cold start to first page | **184 ms** | 220 ms | 425 ms | 1,035 ms | 496 ms | 1,679 ms |
-| Memory after first request | **1.6 MiB** | 1.7 MiB | 23.5 MiB | 33.0 MiB | 26.4 MiB | 49.2 MiB |
-| JavaScript the page loads, gzip | **4.5 KB** | 7.0 KB + 287 KB WASM | 37.0 KB | 99.2 KB | 108.6 KB | 136.1 KB |
+| **Corten** | **23,034** | **16,014** | **1,290** | **6.6 ms** | **1.477 MiB** | **4.4 KB** |
+| ASP.NET Core 10 | 4,915 | 16,810 | 1,278 | 702 ms | 30.56 MiB | 17.0 KB |
+| Leptos 0.8 | 1,790 | 22,847 | 915 | 7.4 ms | 1.473 MiB | 7.0 KB + 287 KB WASM |
+| Phoenix 1.8 | 1,986 | 3,225 | 481 | 1.2 s | 126 MiB | 46.2 KB |
+| Astro 7 | 1,441 | 2,227 | 492 | 311 ms | 36.78 MiB | 9.2 KB |
+| Spring Boot 4.1 | 1,289 | 10,072 | 610 | 7.9 s | 144.4 MiB | 17.0 KB |
+| SvelteKit 3 | 1,104 | 3,873 | 442 | 159 ms | 23.38 MiB | 37.0 KB |
+| TanStack Start | 755 | 4,269 | 374 | 195 ms | 26.51 MiB | 110.9 KB |
+| React Router 7 | 602 | 2,530 | 327 | 275 ms | 32.01 MiB | 98.6 KB |
+| Rails 8.1 | 573 | 1,171 | 440 | 1.0 s | 63.87 MiB | 40.6 KB |
+| Django 6.1 | 394 | 1,514 | 221 | 1.0 s | 63.31 MiB | 17.0 KB |
+| Nuxt 4 | 343 | 8,561 | 224 | 294 ms | 35.28 MiB | 73.7 KB |
+| Next.js 16 | failed (197) | 1,221 | failed (135) | 627 ms | 51.45 MiB | 136.1 KB |
+| Laravel 13 | failed | failed | failed (125) | 757 ms | 95.41 MiB | 84.3 KB |
 
-With a database fetch on every request both Rust apps are bound by parsing the API response and
-measure about equal, around 3x the fastest JavaScript framework. The JavaScript figure was
-re-measured on 2026-10-21, before handlers replaced islands; the handler runtime adds 0.88 KB
-gzip and the item page's two scripts 0.04 KB (file sizes, not a new run). The other rows are
-from the full run.
+With the item API every request fetches and parses about 55 KB of JSON, which bounds every app;
+Corten and ASP.NET Core are level there. Leptos serves JSON from memory faster than Corten
+(22,847 against 16,014 a second); why Corten's JSON route costs more than its HTML page has not
+been investigated. Pushing live updates is measured in [bench/live](bench/live/README.md): at
+10,000 open connections on one core, only Corten and Leptos delivered all 100,000 messages a
+second.
+
+The table was measured before handlers replaced islands; the JavaScript column moves the most.
+The handler runtime is
+1.8 KB gzip larger (5,600 bytes against 3,778, file sizes), so the item page now loads about
+6.2 KB; that is an estimate, not a new run.
 
 ## Documentation
 

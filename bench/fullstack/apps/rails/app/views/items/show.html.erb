@@ -1,0 +1,38 @@
+<% item = @item %><% content_for :title, "#{item["title"]} | Card Market" %>
+<article class="item">
+<nav class="crumbs"><% item["categories"].each do |c| %><a href="/categories/<%= c["slug"] %>"><%= c["name"] %></a><% end %></nav>
+<h1><%= item["title"] %></h1>
+<% if item["subtitle"] %><p class="subtitle"><%= item["subtitle"] %></p><% end %>
+<ul class="badges"><% item["badges"].each do |b| %><li><%= b %></li><% end %></ul>
+<div class="gallery"><% item["images"].each_with_index do |url, i| %><div class="img" role="img" aria-label="<%= item["title"] %> image <%= i + 1 %>" data-src="<%= url %>"></div><% end %></div>
+<section class="summary"><% if (s = item["summary"]) %><span><strong><%= s["lowest"] || "—" %></strong> lowest</span> <span><%= s["count"] %> listings</span> <span><%= s["quantity"] %> available</span><% else %><span>No listings yet</span><% end %></section>
+<section class="listings" data-controller="sort">
+<h2>Listings</h2>
+<button type="button" class="sort" data-sort-target="button" data-action="sort#toggle">Price: low to high</button>
+<table><thead><tr><th>Seller</th><th>Condition</th><th>Ships from</th><th>Qty</th><th>Price</th></tr></thead>
+<tbody data-sort-target="rows"><% item["listings"].sort_by.with_index { |l, i| [l["price_value"], i] }.each do |l| %><tr><td><%= l["seller"] %><% if l["rating"] %> · <%= l["rating"] %> ★ (<%= l["reviews"] %>)<% end %></td><td><%= l["condition"] %></td><td><%= l["ships_from"] %></td><td><%= l["quantity"] %></td><td class="price"><%= l["price"] %></td></tr><% end %></tbody></table>
+</section>
+<section class="offers"><turbo-frame id="offers">
+<h2>Offers</h2>
+<table><thead><tr><th>Buyer</th><th>Condition</th><th>Qty</th><th>Price</th></tr></thead>
+<tbody><% (@all_offers ? item["offers"] : item["offers"].first(5)).each do |o| %><tr><td><%= o["buyer"] %></td><td><%= o["condition"] %></td><td><%= o["quantity"] %></td><td class="price"><%= o["price"] %></td></tr><% end %></tbody></table>
+<% if item["offers"].size > 5 && !@all_offers %><a class="more" href="/items/<%= item["id"] %>?offers=all">Show all <%= item["offers"].size %> offers</a><% end %>
+</turbo-frame></section>
+<section class="alert">
+<h2>Price alert</h2>
+<div class="alert-form"><%= form_with url: "/items/#{item["id"]}", method: :post do %>
+<input type="hidden" name="item_id" value="<%= item["id"] %>"><input type="hidden" name="title" value="<%= item["title"] %>">
+<label>Email<input type="email" name="email" required></label>
+<label>Alert me below<input type="text" name="target_price" inputmode="decimal" required></label>
+<button type="submit">Set alert</button><% end %></div>
+<%= render "items/message", message: @message %>
+</section>
+<section class="details">
+<h2>Details</h2>
+<p><%= item["description"] %></p>
+<dl><% item["fields"].each do |f| %><dt><%= f["name"] %></dt><dd><%= f["value"] %></dd><% end %></dl>
+<ul class="tags"><% item["tags"].each do |t| %><li><%= t %></li><% end %></ul>
+</section>
+<% if item["contents"].any? %><section class="contents"><h2>Contents</h2><ul><% item["contents"].each do |c| %><li><a href="/items/<%= c["item_id"] %>"><%= c["title"] %></a> × <%= c["quantity"] %></li><% end %></ul></section><% end %>
+<% if item["included_in"].any? %><section class="included"><h2>Included in</h2><ul><% item["included_in"].each do |c| %><li><a href="/items/<%= c["item_id"] %>"><%= c["title"] %></a> × <%= c["quantity"] %></li><% end %></ul></section><% end %>
+</article>

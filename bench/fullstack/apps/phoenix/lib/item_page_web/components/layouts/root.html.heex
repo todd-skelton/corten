@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title default="Card Market">{assigns[:page_title]}</.live_title>
+    <link phx-track-static rel="stylesheet" href={~p"/css/style.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+    </script>
+  </head>
+  <body>
+    <header class="site"><.link navigate={~p"/"}>Card Market</.link></header>
+    <main>{@inner_content}</main>
+  </body>
+</html>

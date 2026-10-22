@@ -1,16 +1,16 @@
 {
  "fsw-leptos": {
-  "samples": 122,
-  "cpuAvgPct": 98.8,
-  "cpuMaxPct": 100.88,
-  "memAvgMiB": 55.8,
-  "memMaxMiB": 58.3
+  "samples": 123,
+  "cpuAvgPct": 100.7,
+  "cpuMaxPct": 101.02,
+  "memAvgMiB": 50,
+  "memMaxMiB": 58.2
  },
- "rb-rust": {
-  "samples": 122,
-  "cpuAvgPct": 12.9,
-  "cpuMaxPct": 16.14,
-  "memAvgMiB": 37.4,
-  "memMaxMiB": 38.3
+ "item-api": {
+  "samples": 123,
+  "cpuAvgPct": 9.5,
+  "cpuMaxPct": 11.49,
+  "memAvgMiB": 62.3,
+  "memMaxMiB": 62.5
  }
 }

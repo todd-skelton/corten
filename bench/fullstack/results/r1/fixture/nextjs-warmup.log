@@ -2,27 +2,27 @@
 
   █ TOTAL RESULTS 
 
-    checks_total.......: 812     39.912526/s
-    checks_succeeded...: 100.00% 812 out of 812
-    checks_failed......: 0.00%   0 out of 812
+    checks_total.......: 3031    151.016195/s
+    checks_succeeded...: 100.00% 3031 out of 3031
+    checks_failed......: 0.00%   0 out of 3031
 
     ✓ status 200
 
     HTTP
-    http_req_duration..............: avg=795.19ms p(50)=724.87ms p(95)=1.05s p(99)=4.12s max=6.02s
-      { expected_response:true }...: avg=795.19ms p(50)=724.87ms p(95)=1.05s p(99)=4.12s max=6.02s
-    http_req_failed................: 0.00% 0 out of 812
-    http_reqs......................: 812   39.912526/s
+    http_req_duration..............: avg=211.61ms p(50)=192.79ms p(95)=285.75ms p(99)=339.92ms max=1.69s
+      { expected_response:true }...: avg=211.61ms p(50)=192.79ms p(95)=285.75ms p(99)=339.92ms max=1.69s
+    http_req_failed................: 0.00%  0 out of 3031
+    http_reqs......................: 3031   151.016195/s
 
     EXECUTION
-    iteration_duration.............: avg=796.96ms p(50)=725.13ms p(95)=1.05s p(99)=4.16s max=6.05s
-    iterations.....................: 812   39.912526/s
-    vus............................: 32    min=32       max=32
-    vus_max........................: 32    min=32       max=32
+    iteration_duration.............: avg=211.75ms p(50)=192.94ms p(95)=285.91ms p(99)=340.02ms max=1.7s 
+    iterations.....................: 3031   151.016195/s
+    vus............................: 32     min=32        max=32
+    vus_max........................: 32     min=32        max=32
 
     NETWORK
-    data_received..................: 20 MB 968 kB/s
-    data_sent......................: 91 kB 4.4 kB/s
+    data_received..................: 73 MB  3.7 MB/s
+    data_sent......................: 338 kB 17 kB/s
 
 
 

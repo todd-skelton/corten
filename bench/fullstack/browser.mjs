@@ -20,6 +20,8 @@ const profiles = {
   mobile: { cpu: 4, network: { offline: false, latency: 150, downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8 } },
 };
 const items = ["item_3", "item_17", "item_250", "item_1999", "item_12345"];
+const SORT = "button.sort, listing-sort > button";
+const FIRST_PRICE = ".listings tbody tr:first-child td.price, listing-sort tbody tr:first-child td.price__amount";
 
 // Each cold load starts on a page from another site, like arriving from a search result or a
 // link. Starting from about:blank instead would make Chromium switch processes only for apps
@@ -72,16 +74,18 @@ async function loadItem(browser, profile, base, id) {
     });
     const metrics = Object.fromEntries((await cdp.send("Performance.getMetrics")).metrics.map((x) => [x.name, x.value]));
     m.jsHeapUsedMB = metrics.JSHeapUsedSize / 1048576;
-    const before = await page.locator("button.sort").textContent();
-    const priceCell = page.locator(".listings tbody tr:first-child td.price");
+    // The other apps' class names, or Corten's markup since its styles moved into scoped
+    // component files (the `<listing-sort>` island). Visible text: Corten hides one of two labels.
+    const before = await page.locator(SORT).innerText();
+    const priceCell = page.locator(FIRST_PRICE);
     const firstPrice = (await priceCell.count()) ? await priceCell.textContent() : null;
-    await page.locator("button.sort").click();
-    await page.waitForFunction((b) => document.querySelector("button.sort")?.textContent !== b, before, { timeout: 10_000 });
+    await page.locator(SORT).click();
+    await page.waitForFunction(([sel, b]) => /** @type {HTMLElement | null} */ (document.querySelector(sel))?.innerText !== b, [SORT, before], { timeout: 10_000 });
     const t0 = await page.evaluate(() => performance.now());
     await page.locator('input[name="email"]').fill("buyer@example.com");
     await page.locator('input[name="target_price"]').fill("4.5");
     await page.locator('button[type="submit"]').click();
-    await page.waitForFunction(() => /Alert set/.test(document.querySelector(".alert-message")?.textContent ?? ""), null, { timeout: 30_000 });
+    await page.waitForFunction(() => /Alert set/.test(document.querySelector(".alert-message, #alert-message")?.textContent ?? ""), null, { timeout: 30_000 });
     m.actionMs = (await page.evaluate(() => performance.now())) - t0;
     m.sortWorked = firstPrice === null ? null : (await priceCell.textContent()) !== firstPrice || before !== null;
     return m;
@@ -100,9 +104,10 @@ async function clientNav(browser, profile, base) {
       const start = performance.now();
       document.querySelector('a[href="/items/item_5"]').click();
       await new Promise((resolve) => {
-        const done = () => document.querySelector("h1")?.textContent === "Card Name 5" && document.querySelectorAll(".listings tbody tr").length > 0;
+        const done = () => document.querySelector("h1")?.textContent === "Card Name 5" && document.querySelectorAll(".listings tbody tr, listing-sort tbody tr").length > 0;
         if (done()) return resolve();
-        new MutationObserver((_, o) => { if (done()) { o.disconnect(); resolve(); } }).observe(document.body, { childList: true, subtree: true, characterData: true });
+        // The whole document, not document.body: Turbo replaces the <body> element itself.
+        new MutationObserver((_, o) => { if (done()) { o.disconnect(); resolve(); } }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
       });
       return performance.now() - start;
     });

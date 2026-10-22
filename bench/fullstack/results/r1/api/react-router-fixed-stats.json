@@ -1,16 +1,16 @@
 {
  "fsw-react-router": {
   "samples": 121,
-  "cpuAvgPct": 100.2,
-  "cpuMaxPct": 112.93,
-  "memAvgMiB": 131.4,
-  "memMaxMiB": 146.7
+  "cpuAvgPct": 58,
+  "cpuMaxPct": 96.54,
+  "memAvgMiB": 125.2,
+  "memMaxMiB": 126.4
  },
- "rb-rust": {
+ "item-api": {
   "samples": 121,
-  "cpuAvgPct": 5,
-  "cpuMaxPct": 10.84,
-  "memAvgMiB": 34.7,
-  "memMaxMiB": 37.6
+  "cpuAvgPct": 2.8,
+  "cpuMaxPct": 3.28,
+  "memAvgMiB": 60.5,
+  "memMaxMiB": 61
  }
 }

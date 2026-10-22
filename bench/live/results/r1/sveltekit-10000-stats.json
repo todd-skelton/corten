@@ -1,0 +1,9 @@
+{
+ "lv-sveltekit": {
+  "samples": 59,
+  "cpuAvgPct": 101.2,
+  "cpuMaxPct": 101.96,
+  "memAvgMiB": 336.8,
+  "memMaxMiB": 337.3
+ }
+}

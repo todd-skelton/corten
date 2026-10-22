@@ -1,16 +1,16 @@
 {
  "fsw-tanstack-start": {
-  "samples": 120,
-  "cpuAvgPct": 99.7,
-  "cpuMaxPct": 106.43,
-  "memAvgMiB": 161.3,
-  "memMaxMiB": 163.3
+  "samples": 123,
+  "cpuAvgPct": 100.3,
+  "cpuMaxPct": 100.74,
+  "memAvgMiB": 127.9,
+  "memMaxMiB": 130.5
  },
- "rb-rust": {
-  "samples": 120,
-  "cpuAvgPct": 7.5,
-  "cpuMaxPct": 20.09,
-  "memAvgMiB": 33.4,
-  "memMaxMiB": 34.3
+ "item-api": {
+  "samples": 123,
+  "cpuAvgPct": 2.9,
+  "cpuMaxPct": 4.16,
+  "memAvgMiB": 58,
+  "memMaxMiB": 58.3
  }
 }

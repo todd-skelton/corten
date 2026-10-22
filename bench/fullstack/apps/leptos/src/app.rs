@@ -41,6 +41,24 @@ pub fn warm_fixture() {
     let _ = api::fixture();
 }
 
+/// `GET /api/items/{id}`: the item as JSON for other services, the same data the page renders.
+/// A fixture item is serialized where it is.
+#[cfg(feature = "ssr")]
+pub async fn item_json(axum::extract::Path(id): axum::extract::Path<String>) -> axum::response::Response {
+    use axum::{http::StatusCode, response::IntoResponse, Json};
+    if let Some(items) = api::fixture() {
+        return match items.get(&id) {
+            Some(item) => Json(item).into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        };
+    }
+    match api::fetch_item(&id).await {
+        Ok(Some(item)) => Json(item).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(error) => (StatusCode::BAD_GATEWAY, error).into_response(),
+    }
+}
+
 #[cfg(feature = "ssr")]
 mod api {
     use crate::model::ItemView;

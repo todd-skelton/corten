@@ -1,0 +1,9 @@
+{
+ "fsw-leptos": {
+  "samples": 123,
+  "cpuAvgPct": 4.5,
+  "cpuMaxPct": 5.73,
+  "memAvgMiB": 13.7,
+  "memMaxMiB": 14.4
+ }
+}

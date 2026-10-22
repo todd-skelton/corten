@@ -1,7 +1,7 @@
 // What each app ships for one item page, measured the same way for all: every script, WASM and
 // stylesheet the page loads, fetched uncompressed and gzipped here (level 6), so a server that
 // does not compress is not penalized and one that does is not flattered.
-// Usage: node bytes.mjs <round>   (apps running on their catalog ports)
+// Usage: node bytes.mjs <round> [apps=all]   (apps running on their catalog ports)
 import { chromium } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -11,10 +11,11 @@ import { apps } from "./apps.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const round = process.argv[2] ?? "r1";
+const only = process.argv[3]?.split(",");
 const browser = await chromium.launch({ headless: true });
 const out = {};
 try {
-  for (const [name, app] of Object.entries(apps)) {
+  for (const [name, app] of Object.entries(apps).filter(([name]) => !only || only.includes(name))) {
     const page = await browser.newPage();
     const urls = new Set();
     page.on("request", (r) => ["script", "stylesheet", "fetch", "other"].includes(r.resourceType()) && urls.add(r.url()));

@@ -1,0 +1,39 @@
+{
+ "app": "astro",
+ "transport": "sse",
+ "note": "endpoint, ReadableStream",
+ "clients": 1000,
+ "idleMiB": 34.8,
+ "connectedMiB": 101.8,
+ "clientExit": 0,
+ "connected": 1000,
+ "failed": 0,
+ "connectMs": 1220,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 29.9,
+ "publishMs": {
+  "p50": 6.5,
+  "max": 46.4
+ },
+ "expected": 300000,
+ "delivered": 300000,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 15.1,
+  "p90": 23.9,
+  "p99": 34.7,
+  "max": 70.4
+ },
+ "cpuPct": 24.5,
+ "memMaxMiB": 115.8,
+ "kibPerClient": 68.6,
+ "oomKilled": false
+}

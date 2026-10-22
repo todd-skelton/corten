@@ -1,0 +1,9 @@
+{
+ "fsw-tanstack-start": {
+  "samples": 123,
+  "cpuAvgPct": 11.4,
+  "cpuMaxPct": 13.85,
+  "memAvgMiB": 136.7,
+  "memMaxMiB": 137
+ }
+}

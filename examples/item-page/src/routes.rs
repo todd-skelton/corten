@@ -26,6 +26,13 @@ pub struct Robots;
 #[route("/sitemap.xml")]
 pub struct Sitemap;
 
+/// An item as JSON, for other services (the same data the page shows).
+#[derive(Route)]
+#[route("/api/items/{id}")]
+pub struct ItemJson<'a> {
+    pub id: &'a str,
+}
+
 /// The MCP endpoint for agents.
 #[derive(Route)]
 #[route("/mcp")]

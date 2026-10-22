@@ -1,0 +1,39 @@
+{
+ "app": "phoenix",
+ "transport": "phoenix",
+ "note": "Phoenix Channels + PubSub",
+ "clients": 10000,
+ "idleMiB": 135.2,
+ "connectedMiB": 583,
+ "clientExit": 0,
+ "connected": 10000,
+ "failed": 0,
+ "connectMs": 10178,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 80.5,
+ "publishMs": {
+  "p50": 246,
+  "max": 434.7
+ },
+ "expected": 3000000,
+ "delivered": 3000000,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 135.4,
+  "p90": 239.5,
+  "p99": 344.6,
+  "max": 434.1
+ },
+ "cpuPct": 101.3,
+ "memMaxMiB": 661.2,
+ "kibPerClient": 45.9,
+ "oomKilled": false
+}

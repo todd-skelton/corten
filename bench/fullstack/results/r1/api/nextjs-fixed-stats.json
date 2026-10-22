@@ -1,16 +1,16 @@
 {
  "fsw-nextjs": {
-  "samples": 120,
-  "cpuAvgPct": 101.1,
-  "cpuMaxPct": 110.44,
-  "memAvgMiB": 281.4,
-  "memMaxMiB": 395.8
+  "samples": 121,
+  "cpuAvgPct": 100.3,
+  "cpuMaxPct": 100.74,
+  "memAvgMiB": 230.7,
+  "memMaxMiB": 259.8
  },
- "rb-rust": {
-  "samples": 120,
-  "cpuAvgPct": 3.9,
-  "cpuMaxPct": 13.82,
-  "memAvgMiB": 28.7,
-  "memMaxMiB": 32.7
+ "item-api": {
+  "samples": 121,
+  "cpuAvgPct": 1.8,
+  "cpuMaxPct": 3.08,
+  "memAvgMiB": 57.4,
+  "memMaxMiB": 58
  }
 }

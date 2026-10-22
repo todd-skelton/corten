@@ -1,0 +1,9 @@
+{
+ "lv-laravel": {
+  "samples": 59,
+  "cpuAvgPct": 5.8,
+  "cpuMaxPct": 9.28,
+  "memAvgMiB": 99,
+  "memMaxMiB": 100.4
+ }
+}

@@ -1,0 +1,5 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page('Card Market', ~{::main})}">
+<main><h1>Popular items</h1>
+<ul class="home-list"><li th:each="n : ${numbers}"><a th:href="|/items/item_${n}|" th:text="|Card Name ${n}|"></a></li></ul></main>
+</html>

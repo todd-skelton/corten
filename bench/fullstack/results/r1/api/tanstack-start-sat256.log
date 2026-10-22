@@ -2,89 +2,27 @@
 
   █ TOTAL RESULTS 
 
-    checks_total.......: 8144   131.560438/s
-    checks_succeeded...: 99.25% 8083 out of 8144
-    checks_failed......: 0.74%  61 out of 8144
+    checks_total.......: 17778   292.448948/s
+    checks_succeeded...: 100.00% 17778 out of 17778
+    checks_failed......: 0.00%   0 out of 17778
 
-    ✗ status 200
-      ↳  99% — ✓ 8083 / ✗ 61
+    ✓ status 200
 
     HTTP
-    http_req_duration..............: avg=1.9s  p(50)=1.1s p(95)=1.86s p(99)=47.7s  max=59.94s
-      { expected_response:true }...: avg=1.46s p(50)=1.1s p(95)=1.83s p(99)=18.24s max=59.33s
-    http_req_failed................: 0.74%  61 out of 8144
-    http_reqs......................: 8144   131.560438/s
+    http_req_duration..............: avg=869.72ms p(50)=741.63ms p(95)=999.56ms p(99)=3.09s max=39.56s
+      { expected_response:true }...: avg=869.72ms p(50)=741.63ms p(95)=999.56ms p(99)=3.09s max=39.56s
+    http_req_failed................: 0.00%  0 out of 17778
+    http_reqs......................: 17778  292.448948/s
 
     EXECUTION
-    iteration_duration.............: avg=1.9s  p(50)=1.1s p(95)=1.86s p(99)=47.78s max=1m0s  
-    iterations.....................: 8144   131.560438/s
-    vus............................: 5      min=5          max=256
+    iteration_duration.............: avg=870.12ms p(50)=741.78ms p(95)=999.69ms p(99)=3.09s max=39.59s
+    iterations.....................: 17778  292.448948/s
+    vus............................: 256    min=256        max=256
     vus_max........................: 256    min=256        max=256
 
     NETWORK
-    data_received..................: 130 MB 2.1 MB/s
-    data_sent......................: 973 kB 16 kB/s
+    data_received..................: 290 MB 4.8 MB/s
+    data_sent......................: 2.1 MB 35 kB/s
 
 
 
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_1\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_7\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_84\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_238\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_197\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_456\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_427\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_86\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_100\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_178\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_48\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_377\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_90\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_31\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_5\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_22\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_71\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_412\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_124\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_367\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_199\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_197\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_48\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_19\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_302\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_308\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_426\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_114\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_463\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_10\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_1\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_80\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_249\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_405\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_150\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_377\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_20\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_133\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_1\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_2\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_4\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_235\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_4\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_199\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_122\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_387\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_247\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_237\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_57\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_396\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_271\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_1\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_260\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_215\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_48\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_354\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_39\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_230\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_24\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_92\": request timeout"
-time="2026-10-21T05:28:43Z" level=warning msg="Request Failed" error="Get \"http://fsw-tanstack-start:8080/items/item_358\": request timeout"

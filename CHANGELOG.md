@@ -16,7 +16,18 @@ Corten is pre-1.0, so any minor version may change the API.
 2. `Error::with_status`, for a 4xx with a message written for the client.
 3. `Errors` is a response (feature `json`): 422 with the JSON error and its fields.
 4. `Nonce` is an extractor, for a handler that writes HTML with an inline script itself.
-5. Handlers replace islands. `#[component(js)]` reads the script next to the component and gives
+5. `Cache` (`corten::cache`, in the prelude): a handler returns `(Cache::public(max_age), response)`
+   for a page or JSON that is the same for every visitor, with `.stale_while_revalidate(..)`;
+   `Cache::no_store()` keeps a response out of every cache. `App` sends a public response as
+   `private, no-cache` when the request has a `Cookie` or `Authorization`, the context found
+   someone, the response sets a cookie or the HTML has the request's nonce, and as `private` with
+   the same lifetime for a client navigation, a form answer or data from a page route.
+   `examples/item-page` marks its home and category pages public; its smoke test checks the
+   headers and that a page is restored from the browser's back/forward cache (in Playwright's
+   full Chromium; its default headless shell never restores a page).
+6. `examples/item-page` serves the item page's data as JSON at `/api/items/{id}` under
+   `App::api`, the same view model the page renders, shared with the cache by `Arc`.
+7. Handlers replace islands. `#[component(js)]` reads the script next to the component and gives
    it a module `js` with one function per `export function`; the markup calls them,
    `on:click={js::confirm(event, dialog)}`, and each argument is checked against the handler's
    JSDoc when the crate compiles. `let (save, dialog) = refs();` names elements (typed by the tag
@@ -26,23 +37,23 @@ Corten is pre-1.0, so any minor version may change the API.
    imported from `corten/events`), `script!` a module several components share, and `state(el,
    init)` (from `corten`) state kept with an element. The runtime runs every handler from one
    listener per event type on the document and runs `on:connect` when markup joins the page.
-6. `examples/seller-desk`: a client-heavy screen (selection with ranges, filter, sort, inline
+8. `examples/seller-desk`: a client-heavy screen (selection with ranges, filter, sort, inline
    edits, a confirm dialog, live stock levels) on handlers, with a browser test and timings.
-7. For lists and large components: `ref.closest()` (the element with the ref around the event's
+9. For lists and large components: `ref.closest()` (the element with the ref around the event's
    target, so one handler on a container serves every row), groups (a `@typedef` of elements in
    the script becomes a struct `js::Name { .. }` passed as one argument), keyed refs
    (`key={item.id}` and a `Map<string, HTMLElement>` parameter), and handlers take up to 12
    arguments. `corten::script::el` is in the prelude.
-8. A handler parameter typed with a class imported from `"corten/events"` is checked against the
+10. A handler parameter typed with a class imported from `"corten/events"` is checked against the
    `#[event]` type when the crate compiles.
-9. `corten::view::Remove(id)`: a patch that removes an element.
-10. `[package.metadata.corten] scripts = "prefix"`: a library's scripts and component roots are
+11. `corten::view::Remove(id)`: a patch that removes an element.
+12. `[package.metadata.corten] scripts = "prefix"`: a library's scripts and component roots are
     named `prefix.name` and `prefix-name`. `corten-ui` uses `ui`.
-11. `#[derive(Id)]` (in the prelude): an element id as a type, `struct RowId<'a>(&'a str)` is
+13. `#[derive(Id)]` (in the prelude): an element id as a type, `struct RowId<'a>(&'a str)` is
     `row-{key}`, so the markup and the patch that replaces or removes the element cannot drift.
     `Remove` takes one. Two ids with the same name in one program fail to build (two versions
     of one library excepted).
-12. `corten fmt [--check] [path ..]` lays out the markup inside `html!` (rustfmt leaves macro
+14. `corten fmt [--check] [path ..]` lays out the markup inside `html!` (rustfmt leaves macro
     bodies alone) at rustfmt's `max_width`. It never joins lines the author split and only changes
     whitespace: a body whose tokens would change is left as written, with a warning.
     `corten check` runs `corten fmt --check`.
@@ -75,6 +86,41 @@ Corten is pre-1.0, so any minor version may change the API.
    (`docs/guide/app.md`, the request path).
 6. `examples/item-page` mounts its MCP endpoint with `App::api`; its smoke test calls it from a
    page on another origin.
+7. Everything `App` renders that does not set `Cache-Control` is sent `private, no-cache`
+   (pages, swaps, patches, JSON, errors, refused writes, CORS preflights); before, it had no
+   `Cache-Control` and caches could guess a lifetime. Static files and the runtime are unchanged.
+8. The CSP allows Corten's own inline tag (the import map) by its SHA-256 hash, so a document
+   no longer has a nonce unless the shell calls `doc.nonce()` or a handler takes `Nonce`.
+   `Document::nonce` makes the nonce on first call. A shell that writes its own inline script
+   still calls `doc.nonce()`; that page is then never shared by a cache.
+9. A full document no longer sends `corten-page`; navigations and form answers still do. A
+   document that a cache hands to a client navigation by mistake now makes the runtime load the
+   URL as a whole page.
+10. With `App::messages`, pages vary on `accept-language` too.
+11. Measured with callgrind (median of 4-5 runs): a small JSON handler 28,255 instructions a
+    request instead of 27,551, a small page 30,912 instead of 31,757 (`docs/guide/app.md`).
+    The item page's document is 82 bytes smaller (9,161 instead of 9,243; 2,178 instead of 2,210
+    with zstd), measured with `render_cost`; its times on Docker Desktop varied more between runs
+    of the same build than between builds.
+12. An MCP tool's output is serialized once: `structuredContent` is written from the JSON text and
+    the text block is that text as a JSON string, with no `serde_json::Value` in between. Calling
+    `items.get` for one item costs 278,273 instructions instead of 2,020,422 (callgrind, median of
+    3). A tool may return `Arc<T>` (serde's `rc` feature) to skip a copy.
+13. `bench/fullstack`: every app serves the item as JSON at `/api/items/{id}`, measured like the
+    page; cold start is timed from the server's exec to its first 200, without Docker's container
+    setup; `count.mjs` counts instructions per request with `perf`; `droplet.mjs` runs the whole
+    benchmark on a DigitalOcean droplet and destroys it.
+14. `bench/fullstack` compares fourteen frameworks: Django, Rails, Laravel, ASP.NET Core, Spring
+    Boot, Phoenix, Astro and Nuxt join the six it had, each built the framework's usual way and
+    checked to render the same text and JSON (`check-app.mjs`). Warmups are 30 seconds (the JVM
+    and .NET need them); `droplet.mjs` records the droplet's CPU model. Apps run with their usual
+    settings in one CPU and 1 GiB; one that cannot start or serve the fixed rate is marked failed
+    instead of tuned.
+15. `bench/live` (new): one price feed pushed to 1,000 and 10,000 clients in the same fourteen
+    frameworks, each with its own transport (server-sent events, Corten's feed, Action Cable,
+    Phoenix Channels, Reverb). It reports delivery, order, delay, CPU and memory per client, and
+    marks an app that refuses clients, loses messages or stops as failed.
+    `droplet.mjs --suite live` runs it on a droplet.
 
 ### Fixed
 

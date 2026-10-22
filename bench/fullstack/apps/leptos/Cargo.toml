@@ -16,7 +16,8 @@ leptos_router = "0.8"
 leptos_meta = "0.8"
 leptos_axum = { version = "0.8", optional = true }
 axum = { version = "0.8", optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"], optional = true }
+futures = { version = "0.3", optional = true }
 tower-http = { version = "0.6", features = ["compression-gzip", "compression-br"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json"], optional = true }
 serde = { version = "1", features = ["derive"] }
@@ -31,6 +32,7 @@ hydrate = ["leptos/hydrate", "dep:wasm-bindgen", "dep:console_error_panic_hook",
 ssr = [
   "dep:axum",
   "dep:tokio",
+  "dep:futures",
   "dep:leptos_axum",
   "dep:tower-http",
   "dep:reqwest",

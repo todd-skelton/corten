@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@(ViewData["Title"] ?? "Card Market")</title>
+<link rel="stylesheet" href="~/style.css" asp-append-version="true">
+<script src="~/htmx.min.js" asp-append-version="true" defer></script>
+<script src="~/item.js" asp-append-version="true" defer></script>
+</head>
+<body hx-boost="true">
+<header class="site"><a href="/">Card Market</a></header>
+<main>@RenderBody()</main>
+</body>
+</html>

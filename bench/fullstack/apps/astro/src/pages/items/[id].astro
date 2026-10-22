@@ -1,0 +1,99 @@
+---
+import { actions } from "astro:actions";
+import Base from "../../layouts/Base.astro";
+import { fetchItem } from "../../lib/api";
+import { sortListings } from "../../lib/view-model";
+
+const item = await fetchItem(Astro.params.id ?? "");
+if (!item) Astro.response.status = 404;
+// Without JavaScript the form posts here and the action's answer comes back in the page.
+const message = Astro.getActionResult(actions.alert)?.data?.message ?? "";
+const allOffers = Astro.url.searchParams.get("offers") === "all";
+const listings = item ? sortListings(item.listings, false) : [];
+const offers = item ? (allOffers ? item.offers : item.offers.slice(0, 5)) : [];
+---
+<Base title={item ? `${item.title} | Card Market` : "Not found"}>
+  {!item ? <p>Not found</p> : (
+  <article class="item">
+    <nav class="crumbs">{item.categories.map((c) => <a href={`/categories/${c.slug}`}>{c.name}</a>)}</nav>
+    <h1>{item.title}</h1>
+    {item.subtitle && <p class="subtitle">{item.subtitle}</p>}
+    <ul class="badges">{item.badges.map((b) => <li>{b}</li>)}</ul>
+    <div class="gallery">{item.images.map((url, i) => <div class="img" role="img" aria-label={`${item.title} image ${i + 1}`} data-src={url}></div>)}</div>
+    <section class="summary">
+      {item.summary ? (
+        <><span><strong>{item.summary.lowest ?? "—"}</strong> lowest</span> <span>{`${item.summary.count} listings`}</span> <span>{`${item.summary.quantity} available`}</span></>
+      ) : <span>No listings yet</span>}
+    </section>
+    <section class="listings">
+      <h2>Listings</h2>
+      <button type="button" class="sort">Price: low to high</button>
+      <table>
+        <thead><tr><th>Seller</th><th>Condition</th><th>Ships from</th><th>Qty</th><th>Price</th></tr></thead>
+        <tbody>{listings.map((l) => <tr><td>{l.seller + (l.rating ? ` · ${l.rating} ★ (${l.reviews})` : "")}</td><td>{l.condition}</td><td>{l.ships_from}</td><td>{l.quantity}</td><td class="price">{l.price}</td></tr>)}</tbody>
+      </table>
+    </section>
+    <section class="offers">
+      <h2>Offers</h2>
+      <table>
+        <thead><tr><th>Buyer</th><th>Condition</th><th>Qty</th><th>Price</th></tr></thead>
+        <tbody>{offers.map((o) => <tr><td>{o.buyer}</td><td>{o.condition}</td><td>{o.quantity}</td><td class="price">{o.price}</td></tr>)}</tbody>
+      </table>
+      {item.offers.length > 5 && !allOffers && <button type="button" class="more" data-href={`/items/${item.id}?offers=all`}>{`Show all ${item.offers.length} offers`}</button>}
+    </section>
+    <section class="alert">
+      <h2>Price alert</h2>
+      <div class="alert-form">
+        <form method="POST" action={actions.alert}>
+          <input type="hidden" name="item_id" value={item.id} />
+          <input type="hidden" name="title" value={item.title} />
+          <label>Email<input type="email" name="email" required /></label>
+          <label>Alert me below<input type="text" name="target_price" inputmode="decimal" required /></label>
+          <button type="submit">Set alert</button>
+        </form>
+      </div>
+      <p class="alert-message" aria-live="polite">{message}</p>
+    </section>
+    <section class="details">
+      <h2>Details</h2>
+      <p>{item.description}</p>
+      <dl>{item.fields.map((f) => <><dt>{f.name}</dt><dd>{f.value}</dd></>)}</dl>
+      <ul class="tags">{item.tags.map((t) => <li>{t}</li>)}</ul>
+    </section>
+    {item.contents.length > 0 && <section class="contents"><h2>Contents</h2><ul>{item.contents.map((c) => <li><a href={`/items/${c.item_id}`}>{c.title}</a>{` × ${c.quantity}`}</li>)}</ul></section>}
+    {item.included_in.length > 0 && <section class="included"><h2>Included in</h2><ul>{item.included_in.map((c) => <li><a href={`/items/${c.item_id}`}>{c.title}</a>{` × ${c.quantity}`}</li>)}</ul></section>}
+  </article>
+  )}
+</Base>
+
+<script>
+  import { actions } from "astro:actions";
+
+  // Module scripts run once; the client router swaps pages, so listen on the document.
+  document.addEventListener("click", async (event) => {
+    const target = event.target as HTMLElement;
+    const sort = target.closest<HTMLButtonElement>("button.sort");
+    if (sort) {
+      // The server renders the listings cheapest first; "high to low" is the same rows reversed,
+      // which is the order sortListings gives.
+      const rows = sort.parentElement!.querySelector("tbody")!;
+      rows.append(...[...rows.rows].reverse());
+      const descending = sort.dataset.descending !== "true";
+      sort.dataset.descending = String(descending);
+      sort.textContent = descending ? "Price: high to low" : "Price: low to high";
+    }
+    const more = target.closest<HTMLButtonElement>("button.more");
+    if (more) {
+      const page = new DOMParser().parseFromString(await (await fetch(more.dataset.href!)).text(), "text/html");
+      more.closest(".offers")!.replaceWith(page.querySelector(".offers")!);
+    }
+  });
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target as HTMLFormElement;
+    if (!form.closest(".alert-form")) return;
+    event.preventDefault();
+    const { data, error } = await actions.alert(new FormData(form));
+    form.closest(".alert")!.querySelector(".alert-message")!.textContent = data?.message ?? error?.message ?? "";
+  });
+</script>

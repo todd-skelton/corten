@@ -1,16 +1,16 @@
 {
  "fsw-corten": {
-  "samples": 120,
-  "cpuAvgPct": 33.5,
-  "cpuMaxPct": 42.27,
-  "memAvgMiB": 17.2,
-  "memMaxMiB": 17.8
+  "samples": 121,
+  "cpuAvgPct": 17.1,
+  "cpuMaxPct": 20.22,
+  "memAvgMiB": 13.8,
+  "memMaxMiB": 14.2
  },
- "rb-rust": {
-  "samples": 120,
-  "cpuAvgPct": 7.1,
-  "cpuMaxPct": 10.1,
-  "memAvgMiB": 20.9,
-  "memMaxMiB": 21.8
+ "item-api": {
+  "samples": 121,
+  "cpuAvgPct": 3,
+  "cpuMaxPct": 3.47,
+  "memAvgMiB": 53.2,
+  "memMaxMiB": 53.5
  }
 }

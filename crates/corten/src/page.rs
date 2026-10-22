@@ -17,7 +17,7 @@ use axum::{
 
 use crate::{
     assets::Assets,
-    security::{Nonce, NonceSlot},
+    security::NonceSlot,
     view::{html, Render},
     Error, Meta, Result,
 };
@@ -31,6 +31,8 @@ const SHELL_HEADER: HeaderName = HeaderName::from_static("corten-shell");
 
 /// Responses depend on the mode header and, for [`Mode::Data`], on `Accept`.
 const VARY: &str = "corten, accept";
+/// The same, for an app with [`crate::App::messages`]: the locale follows `Accept-Language`.
+const VARY_LANGUAGE: &str = "corten, accept, accept-language";
 
 /// How the client asked for this response.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,7 +49,7 @@ pub enum Mode {
     Data,
 }
 
-fn mode_of(headers: &HeaderMap) -> Mode {
+pub(crate) fn mode_of(headers: &HeaderMap) -> Mode {
     match headers.get(MODE_HEADER).map(HeaderValue::as_bytes) {
         Some(b"nav") => Mode::Navigation,
         Some(b"action") => Mode::Action,
@@ -74,7 +76,7 @@ pub struct Document {
     pub main: Main,
     lang: &'static str,
     path: String,
-    nonce: Option<Nonce>,
+    nonce: Option<NonceSlot>,
     shared: Arc<Shared>,
 }
 
@@ -113,8 +115,12 @@ impl Document {
     }
 
     /// This request's CSP nonce, for the shell's own inline scripts. Empty without a policy.
+    ///
+    /// Asking for it makes one and puts it in the CSP, so the page is different bytes on every
+    /// request and is never cached for other users (see [`crate::App`], caching). Prefer a
+    /// script file from the static directory.
     pub fn nonce(&self) -> &str {
-        self.nonce.as_ref().map_or("", |n| &n.0)
+        self.nonce.as_ref().map_or("", |slot| &slot.get().0)
     }
 
     /// The versioned URL of a static file: `doc.asset("style.css")`. A missing file is a bug:
@@ -428,7 +434,7 @@ impl Req {
             let mut body = String::with_capacity(16 * 1024);
             swap_prefix(&meta, &mut body);
             self.render_into(view, &mut body)?;
-            return Ok(self.finish(html_response(status, body, PAGE_HEADER)));
+            return Ok(self.finish(html_response(status, body, Some(PAGE_HEADER))));
         }
         let mut main = String::new();
         let modules = self.render_into(view, &mut main)?;
@@ -489,28 +495,32 @@ impl Req {
                     main: Main(main),
                     lang: self.lang(),
                     path: self.uri.path().to_string(),
-                    nonce: self.nonce.as_ref().map(|slot| slot.get().clone()),
+                    nonce: self.nonce.clone(),
                     shared: self.shared.clone(),
                 };
                 let context = self.captured.context.as_deref();
                 (self.shared.shell.render)(doc, context.map(|c| c as &(dyn Any + Send + Sync)))
             }
         };
-        self.finish(html_response(status, body, PAGE_HEADER))
+        // Only a swap says it is one: a document a cache gave to a navigation fetch by mistake
+        // makes the runtime load the URL in full.
+        let kind = matches!(self.mode, Mode::Navigation | Mode::Action).then_some(PAGE_HEADER);
+        self.finish(html_response(status, body, kind))
     }
 
     /// Adds the shell key, which tells the runtime whether the shell is still current.
     fn finish(&self, mut res: Response) -> Response {
         res.headers_mut().insert(SHELL_HEADER, self.captured.key());
+        res.headers_mut().insert(header::VARY, self.vary());
         res
+    }
+
+    fn vary(&self) -> HeaderValue {
+        HeaderValue::from_static(if self.shared.locales.is_some() { VARY_LANGUAGE } else { VARY })
     }
 
     fn head(&self, meta: &Meta, modules: &[&'static str]) -> String {
         use std::fmt::Write;
-        let nonce = match &self.nonce {
-            Some(slot) => format!(r#" nonce="{}""#, slot.get().0),
-            None => String::new(),
-        };
         let mut out = String::with_capacity(1024);
         out.push_str("<title>");
         crate::view::escape_into(meta.title(), &mut out);
@@ -523,7 +533,7 @@ impl Req {
             self.captured.key
         );
         out.push_str(&self.shared.head_extra);
-        let _ = write!(out, r#"<script type="importmap"{nonce}>{}</script>"#, self.shared.import_map);
+        let _ = write!(out, r#"<script type="importmap">{}</script>"#, self.shared.import_map);
         let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
         // The modules the page's handlers call, fetched with the runtime rather than on first use.
         for name in modules.iter().filter(|m| self.shared.assets.as_ref().is_some_and(|a| a.has_script(m))) {
@@ -559,10 +569,7 @@ impl Req {
             data: &'a T,
         }
         let body = serde_json::to_string(&Screen { title: meta.title(), data })?;
-        let headers = [
-            (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
-            (header::VARY, HeaderValue::from_static(VARY)),
-        ];
+        let headers = [(header::CONTENT_TYPE, HeaderValue::from_static("application/json")), (header::VARY, self.vary())];
         Ok((status, headers, body).into_response())
     }
 
@@ -576,7 +583,7 @@ impl Req {
     pub fn patch_with_status(&self, status: StatusCode, view: impl Render) -> Result {
         let mut body = String::new();
         self.render_into(view, &mut body)?;
-        Ok(html_response(status, body, PATCH_HEADER))
+        Ok(html_response(status, body, Some(PATCH_HEADER)))
     }
 
     /// Answers a submit whose input failed validation, with 422 Unprocessable Content:
@@ -632,9 +639,9 @@ pub(crate) async fn render_errors(
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
     api: bool,
+    mode: Mode,
 ) -> Response {
     use axum::body::HttpBody;
-    let mode = mode_of(req.headers());
     if api || mode == Mode::Data {
         return crate::api::json_failure(run(req, next, deadline, signal).await, shared.dev).await;
     }
@@ -735,15 +742,18 @@ fn swap_prefix(meta: &Meta, out: &mut String) {
     out.push_str(meta.tags());
 }
 
-pub(crate) fn html_response(status: StatusCode, body: String, kind: HeaderName) -> Response {
-    (
+pub(crate) fn html_response(status: StatusCode, body: String, kind: Option<HeaderName>) -> Response {
+    let mut res = (
         status,
         [
             (header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8")),
             (header::VARY, HeaderValue::from_static(VARY)),
-            (kind, HeaderValue::from_static("1")),
         ],
         body,
     )
-        .into_response()
+        .into_response();
+    if let Some(kind) = kind {
+        res.headers_mut().insert(kind, HeaderValue::from_static("1"));
+    }
+    res
 }

@@ -1,0 +1,39 @@
+{
+ "app": "tanstack-start",
+ "transport": "sse",
+ "note": "server route, ReadableStream",
+ "clients": 10000,
+ "idleMiB": 24.1,
+ "connectedMiB": 246.6,
+ "clientExit": 0,
+ "connected": 10000,
+ "failed": 0,
+ "connectMs": 10165,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 89.3,
+ "publishMs": {
+  "p50": 270.7,
+  "max": 626.2
+ },
+ "expected": 3000000,
+ "delivered": 3000000,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 394.3,
+  "p90": 542.9,
+  "p99": 674,
+  "max": 840.9
+ },
+ "cpuPct": 101.3,
+ "memMaxMiB": 300,
+ "kibPerClient": 22.8,
+ "oomKilled": false
+}

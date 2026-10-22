@@ -1,0 +1,20 @@
+[package]
+name = "live-corten"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The live benchmark's Corten app: one feed of listing prices, served by corten::feed."
+
+# Not part of the Corten workspace.
+[workspace]
+
+[dependencies]
+corten = { path = "../../../../crates/corten", features = ["feed"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

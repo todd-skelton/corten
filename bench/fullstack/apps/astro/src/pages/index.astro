@@ -1,0 +1,9 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="Card Market">
+  <h1>Popular items</h1>
+  <ul class="home-list">
+    {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => <li><a href={`/items/item_${n}`}>{`Card Name ${n}`}</a></li>)}
+  </ul>
+</Base>

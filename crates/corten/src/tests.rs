@@ -195,15 +195,41 @@ async fn runtime_is_served_at_a_versioned_immutable_url() {
     assert_eq!(res.headers()["cache-control"], "public, max-age=31536000, immutable");
 }
 
+/// A shell with an inline script of its own, which takes the request's nonce.
+fn inline_shell(doc: Document) -> impl Render {
+    html! {
+        <html>
+            <head>
+                {doc.head}
+                <script nonce={doc.nonce()}>"1"</script>
+            </head>
+            <body><main>{doc.main}</main></body>
+        </html>
+    }
+}
+
 #[tokio::test]
-async fn the_app_puts_the_nonce_on_inline_tags_and_in_the_csp() {
+async fn the_csp_allows_the_import_map_by_hash_and_a_nonce_only_when_the_shell_asks() {
     let (_, headers, body) = call(app(routes(), None), "GET", None).await;
     let csp = headers["content-security-policy"].to_str().unwrap();
-    let nonce = csp.split("'nonce-").nth(1).unwrap().split('\'').next().unwrap();
-    assert!(body.contains(&format!(r#"<script type="importmap" nonce="{nonce}">"#)));
+    let import_map = security::hash_source(&crate::import_map(None));
+    assert!(csp.contains(&format!("script-src 'self' {import_map};")) && !csp.contains("nonce"), "{csp}");
+    assert!(body.contains(&format!(r#"<script type="importmap">{}</script>"#, crate::import_map(None))));
     assert_eq!(headers["x-content-type-options"], "nosniff");
     assert_eq!(headers["cross-origin-opener-policy"], "same-origin");
-    let (_, again, _) = call(app(routes(), None), "GET", None).await;
+    let (_, again, same) = call(app(routes(), None), "GET", None).await;
+    assert_eq!(
+        (again["content-security-policy"].clone(), same),
+        (headers["content-security-policy"].clone(), body),
+        "the same bytes"
+    );
+
+    let inline = || App::new(routes()).shell(inline_shell).router();
+    let (_, headers, body) = call(inline(), "GET", None).await;
+    let csp = headers["content-security-policy"].to_str().unwrap();
+    let nonce = csp.split("'nonce-").nth(1).unwrap().split('\'').next().unwrap();
+    assert!(body.contains(&format!(r#"<script nonce="{nonce}">1</script>"#)), "{body}");
+    let (_, again, _) = call(inline(), "GET", None).await;
     assert_ne!(again["content-security-policy"], headers["content-security-policy"], "a fresh nonce per request");
     let popups = App::new(routes()).policy(security::Policy::new().allow_popups()).router();
     let (_, popups, _) = call(popups, "GET", None).await;
@@ -537,13 +563,11 @@ async fn api_routes_have_their_own_csp_and_pages_get_a_nonce_only_when_they_use_
     let (_, headers, _) = call_with(router.clone(), "GET", "/api/items/1", None, None).await;
     assert_eq!(headers["content-security-policy"], "default-src 'none'; frame-ancestors 'none'");
     assert_eq!(headers["x-content-type-options"], "nosniff");
-    let (_, headers, body) = call_with(router.clone(), "GET", "/", None, None).await;
-    let csp = headers["content-security-policy"].to_str().unwrap();
-    let nonce = csp.split("'nonce-").nth(1).unwrap().split('\'').next().unwrap();
-    assert!(body.contains(&format!(r#"<script type="importmap" nonce="{nonce}">"#)), "a document asks for its nonce");
+    let (_, headers, _) = call_with(router.clone(), "GET", "/", None, None).await;
+    assert!(!headers["content-security-policy"].to_str().unwrap().contains("nonce"), "a document needs none");
     let (_, headers, _) = call_with(router.clone(), "GET", "/", Some("nav"), None).await;
     let csp = headers["content-security-policy"].to_str().unwrap();
-    assert!(csp.starts_with("default-src 'self'; script-src 'self'; style-src 'self';") && !csp.contains("nonce"), "{csp}");
+    assert!(csp.starts_with("default-src 'self'; script-src 'self' 'sha256-") && !csp.contains("nonce"), "{csp}");
     let (_, headers, _) = call_with(router, "GET", runtime_path(), None, None).await;
     assert!(!headers["content-security-policy"].to_str().unwrap().contains("nonce"), "nor does a static file");
 }
@@ -688,4 +712,78 @@ async fn a_json_body_that_does_not_parse_is_a_json_400() {
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
     assert!(body.starts_with(r#"{"error":{"status":400,"message":"Failed to parse the request body as JSON"#), "{body}");
+}
+
+/// Pages marked for shared caches, one that sets a cookie, one that must never be stored, and one
+/// that says nothing.
+fn cached_routes() -> Router {
+    let minute = std::time::Duration::from_secs(60);
+    let home = || html! { <p>"home"</p> };
+    Router::new()
+        .route("/", get(move |req: Req| async move { Ok::<_, Error>((Cache::public(minute), req.page("Home", home())?)) }))
+        .route(
+            "/cookie",
+            get(move |req: Req| async move {
+                Ok::<_, Error>((Cache::public(minute), [(header::SET_COOKIE, "seen=1")], req.page("Home", home())?))
+            }),
+        )
+        .route(
+            "/statement",
+            get(move |req: Req| async move { Ok::<_, Error>((Cache::no_store(), req.page("Statement", home())?)) }),
+        )
+        .route("/plain", get(|req: Req| async move { req.page("Plain", html! { <p>"plain"</p> }) }))
+}
+
+async fn cache_control(router: &Router, uri: &str, extra: &[(&'static str, &'static str)]) -> String {
+    let mut req = Request::get(uri);
+    for (name, value) in extra {
+        req = req.header(*name, *value);
+    }
+    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    res.headers()[header::CACHE_CONTROL].to_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn what_the_app_renders_is_private_unless_it_says_otherwise() {
+    let router = app(cached_routes(), None);
+    assert_eq!(cache_control(&router, "/plain", &[]).await, "private, no-cache");
+    assert_eq!(cache_control(&router, "/plain", &[("corten", "nav")]).await, "private, no-cache");
+    assert_eq!(cache_control(&router, "/missing", &[]).await, "private, no-cache", "error pages too");
+    assert_eq!(cache_control(&router, "/missing", &[("accept", "application/json")]).await, "private, no-cache");
+    assert_eq!(cache_control(&router, runtime_path(), &[]).await, "public, max-age=31536000, immutable");
+    assert_eq!(cache_control(&router, "/health/ready", &[]).await, "no-store", "Corten's own routes keep theirs");
+    assert_eq!(cache_control(&router, "/statement", &[("cookie", "s=1")]).await, "no-store");
+}
+
+#[tokio::test]
+async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
+    let router = app(cached_routes(), None);
+    assert_eq!(cache_control(&router, "/", &[]).await, "public, max-age=60");
+    assert_eq!(cache_control(&router, "/", &[("accept", "text/html,*/*")]).await, "public, max-age=60");
+    for personal in [("cookie", "session=abc"), ("authorization", "Bearer t")] {
+        assert_eq!(cache_control(&router, "/", &[personal]).await, "private, no-cache", "{personal:?}");
+    }
+    for partial in [("corten", "nav"), ("corten", "action"), ("accept", "application/json")] {
+        assert_eq!(cache_control(&router, "/", &[partial]).await, "private, max-age=60", "only the document: {partial:?}");
+    }
+    assert_eq!(cache_control(&router, "/cookie", &[]).await, "private, no-cache", "it sets a cookie");
+    let signed_in = app(cached_routes(), Some("ada"));
+    assert_eq!(cache_control(&signed_in, "/", &[]).await, "private, no-cache", "the context found someone");
+    let inline = App::new(cached_routes()).shell(inline_shell).router();
+    assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the shell took the nonce");
+
+    let minute = std::time::Duration::from_secs(60);
+    let api = Router::new().route("/api/rates", get(move || async move { (Cache::public(minute), "rates") }));
+    // The app has a context, but this mount does not run it.
+    let api = App::new(Router::new()).context(|_| async { Some(Viewer("ada")) }).api("/api", api).router();
+    assert_eq!(cache_control(&api, "/api/rates", &[("accept", "application/json")]).await, "public, max-age=60");
+    assert_eq!(cache_control(&api, "/api/rates", &[("authorization", "Bearer t")]).await, "private, no-cache");
+}
+
+#[tokio::test]
+async fn only_a_swap_says_it_is_a_page_swap() {
+    let (_, headers, _) = call(app(routes(), None), "GET", None).await;
+    assert!(!headers.contains_key("corten-page"), "a document a cache hands to a navigation makes the runtime reload");
+    let (_, headers, _) = call(app(routes(), None), "GET", Some("nav")).await;
+    assert_eq!(headers["corten-page"], "1");
 }

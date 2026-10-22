@@ -1,0 +1,9 @@
+{
+ "lv-tanstack-start": {
+  "samples": 59,
+  "cpuAvgPct": 26,
+  "cpuMaxPct": 42.42,
+  "memAvgMiB": 90,
+  "memMaxMiB": 90.2
+ }
+}

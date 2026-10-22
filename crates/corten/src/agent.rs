@@ -21,7 +21,9 @@
 //!
 //! A screen's data is already available to agents through [`crate::Req::screen`]; tools cover
 //! the writes. Results go back as `structuredContent` and as the same JSON in a text block, for
-//! clients that only read text.
+//! clients that only read text. The output is serialized once and written into the response as
+//! is, so a tool returning a large borrowed value (`Arc<T>` with serde's `rc` feature) costs one
+//! serialization and no copy.
 
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 
@@ -72,7 +74,8 @@ impl From<serde_json::Error> for ToolError {
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = Result<T, ToolError>> + Send>>;
-type Handler = Arc<dyn Fn(HeaderMap, Value) -> BoxFuture<Value> + Send + Sync>;
+/// A tool: its output as JSON text.
+type Handler = Arc<dyn Fn(HeaderMap, Value) -> BoxFuture<String> + Send + Sync>;
 type Auth<A> = Arc<dyn Fn(&HeaderMap) -> Result<A, ToolError> + Send + Sync>;
 
 struct Tool {
@@ -177,7 +180,7 @@ impl<A: Send + 'static> Tools<A> {
                 let caller = caller?;
                 let input: I = serde_json::from_value(args)?;
                 let output = handler(caller, input).await?;
-                serde_json::to_value(output).map_err(ToolError::internal)
+                serde_json::to_string(&output).map_err(ToolError::internal)
             })
         });
         let tools = Arc::get_mut(&mut self.tools).expect("add tools before serving");
@@ -217,6 +220,16 @@ impl<A: Send + 'static> Tools<A> {
         }
         let params = message.get("params").cloned().unwrap_or(Value::Null);
         let result = match method {
+            "tools/call" => match self.call(headers, params).await {
+                Err(CallError::Unauthorized) => {
+                    let mut res = reply(id, Err((-32001, "unauthorized".into())));
+                    *res.status_mut() = StatusCode::UNAUTHORIZED;
+                    res.headers_mut().insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+                    return res;
+                }
+                Err(CallError::Rpc(code, message)) => Err((code, message)),
+                Ok(result) => return reply_raw(&id, &result),
+            },
             "initialize" => {
                 let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
                 let version = PROTOCOL_VERSIONS.iter().find(|v| **v == asked).unwrap_or(&PROTOCOL_VERSIONS[0]);
@@ -228,16 +241,6 @@ impl<A: Send + 'static> Tools<A> {
             }
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": self.list() })),
-            "tools/call" => match self.call(headers, params).await {
-                Err(CallError::Unauthorized) => {
-                    let mut res = reply(id, Err((-32001, "unauthorized".into())));
-                    *res.status_mut() = StatusCode::UNAUTHORIZED;
-                    res.headers_mut().insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-                    return res;
-                }
-                Err(CallError::Rpc(code, message)) => Err((code, message)),
-                Ok(result) => Ok(result),
-            },
             _ => Err((-32601, format!("method not found: {method}"))),
         };
         reply(id, result)
@@ -258,7 +261,8 @@ impl<A: Send + 'static> Tools<A> {
             .collect()
     }
 
-    async fn call(&self, headers: HeaderMap, params: Value) -> Result<Value, CallError> {
+    /// The call's `result`, as JSON text.
+    async fn call(&self, headers: HeaderMap, params: Value) -> Result<String, CallError> {
         let name = params.get("name").and_then(Value::as_str).ok_or(CallError::Rpc(-32602, "missing tool name".into()))?;
         let tool = self.tools.get(name).ok_or_else(|| CallError::Rpc(-32602, format!("unknown tool: {name}")))?;
         let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
@@ -266,11 +270,12 @@ impl<A: Send + 'static> Tools<A> {
             return Err(CallError::Rpc(-32602, "arguments must be an object".into()));
         }
         // Tool failures are results with isError, so the agent can read them and retry.
-        let failed = |text: String| json!({ "content": [{ "type": "text", "text": text }], "isError": true });
+        let failed = |text: String| json!({ "content": [{ "type": "text", "text": text }], "isError": true }).to_string();
         match (tool.handler)(headers, args).await {
-            Ok(value) => {
-                let text = value.to_string();
-                Ok(json!({ "content": [{ "type": "text", "text": text }], "structuredContent": value, "isError": false }))
+            Ok(output) => {
+                // The output as written, and once more as a JSON string for the text block.
+                let text = serde_json::to_string(&output).map_err(|e| CallError::Rpc(-32603, e.to_string()))?;
+                Ok(format!(r#"{{"content":[{{"type":"text","text":{text}}}],"structuredContent":{output},"isError":false}}"#))
             }
             Err(ToolError::Unauthorized) => Err(CallError::Unauthorized),
             Err(ToolError::Invalid(message)) => Ok(failed(format!("invalid arguments: {message}"))),
@@ -293,7 +298,16 @@ fn reply(id: Value, result: Result<Value, (i64, String)>) -> Response {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err((code, message)) => json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }),
     };
-    ([(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body.to_string()).into_response()
+    json_response(body.to_string())
+}
+
+/// A successful reply whose `result` is JSON text already, written into the body as is.
+fn reply_raw(id: &Value, result: &str) -> Response {
+    json_response(format!(r#"{{"id":{id},"jsonrpc":"2.0","result":{result}}}"#))
+}
+
+fn json_response(body: String) -> Response {
+    ([(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response()
 }
 
 #[cfg(test)]
@@ -408,6 +422,8 @@ mod tests {
         assert_eq!(res["id"], 7);
         assert_eq!(res["result"]["structuredContent"], json!({ "id": "a", "quantity": 12 }));
         assert_eq!(res["result"]["isError"], false);
+        let text: Value = serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(text, res["result"]["structuredContent"], "the text block is the same JSON");
         let (_, res) = rpc(call(json!({ "id": "a" })), true).await;
         assert_eq!(res["result"]["isError"], true);
         assert!(res["result"]["content"][0]["text"].as_str().unwrap().starts_with("invalid arguments: missing field `delta`"));
