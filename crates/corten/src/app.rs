@@ -13,17 +13,21 @@ use axum::{
     extract::Request,
     http::{Extensions, HeaderMap, StatusCode},
     middleware::{self, Next},
-    response::sse::{Event, KeepAlive, Sse},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        Response,
+    },
     routing::get,
     Router,
 };
 use futures_util::{stream, StreamExt};
 
 use crate::{
+    api::{Api, Mount},
     assets::Assets,
     page::{self, default_error_page, default_shell, error_page_fn, IntoShell, Shared, ShellFn},
     pwa::Pwa,
-    security::Policy,
+    security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
     view::Render,
     Meta, Signal,
@@ -69,6 +73,7 @@ pub struct App {
     dev: Option<bool>,
     components: Vec<crate::Component>,
     deadline: Option<Duration>,
+    apis: Vec<(Mount, Router)>,
 }
 
 impl App {
@@ -87,7 +92,27 @@ impl App {
             dev: None,
             components: Vec::new(),
             deadline: Some(Duration::from_secs(30)),
+            apis: Vec::new(),
         }
+    }
+
+    /// Routes that answer only JSON (a webhook, an OAuth callback, a public API), under `prefix`:
+    /// `.api("/api", api_routes)`, or `.api("/api", Api::new(api_routes).allow_origin(..))` for
+    /// settings. The routes keep their full paths (`/api/items/{id}`), so a `#[derive(Route)]`
+    /// struct names the same URL in the router and in links, and every path must start with
+    /// `prefix` (under `corten dev` one that does not answers 500, saying so).
+    ///
+    /// Under the prefix every failure is JSON, `{"error":{"status","message"}}`, whatever the
+    /// client accepts, and an unknown URL or a wrong method there is a JSON 404 or 405. There is no
+    /// shell, no nonce and no context (unless [`Api::context`]); the deadline, the request signal,
+    /// compression and the same-origin check on writes stay. See [`crate::api`]. `"/"` makes the
+    /// whole app an API (Corten's own routes, like the health checks, keep their behavior).
+    pub fn api(mut self, prefix: &str, api: impl Into<Api>) -> Self {
+        let prefixes: Vec<String> = self.apis.iter().map(|(mount, _)| mount.prefix.clone()).collect();
+        crate::api::check_prefix(prefix, &prefixes);
+        let api = api.into();
+        self.apis.push((Mount::new(prefix.to_string(), &api), api.routes));
+        self
     }
 
     /// The app's components with a script or a stylesheet (`#[island]`, `#[component(css)]`,
@@ -149,10 +174,11 @@ impl App {
         self
     }
 
-    /// Who is asking: `context(headers)` runs before every request (outside the error pages, so
-    /// they see it too), and a `Some` value is put in the request extensions, where the shell's
+    /// Who is asking: `context(headers)` runs before every page request (outside the error pages,
+    /// so they see it too), and a `Some` value is put in the request extensions, where the shell's
     /// second parameter, `req.context::<C>()` and axum's `Extension<C>` find it. Typically the
-    /// signed-in user, read from a session cookie.
+    /// signed-in user, read from a session cookie. Corten's own routes (static files, the
+    /// runtime, health checks) skip it, and so do [`App::api`] routes unless [`Api::context`].
     ///
     /// The function reads what it needs from the headers and returns a future that owns it:
     /// `|h| { let sid = cookie::get(h, "sid").map(str::to_owned); async move { load(sid).await } }`.
@@ -229,7 +255,15 @@ impl App {
         if let Some(href) = assets.as_ref().and_then(|a| a.stylesheet()) {
             head.push_str(&format!(r#"<link rel="stylesheet" href="{href}">"#));
         }
-        let mut routes = self.routes.merge(crate::routes());
+        let mut routes = self.routes;
+        let mut mounts = Vec::with_capacity(self.apis.len());
+        for (mount, api) in self.apis {
+            routes = routes.merge(if dev { crate::api::checked(&mount.prefix, api) } else { api });
+            mounts.push(mount);
+        }
+        // Corten's own routes: they skip the context, and an API prefix does not take them over.
+        let mut own = Own { exact: vec!["/health/live", "/health/ready"], prefixes: vec!["/corten/".to_string()] };
+        routes = routes.merge(crate::routes());
         let mut offline = None;
         if let Some(pwa) = self.pwa {
             let pwa = pwa.resolve(assets.as_deref());
@@ -241,6 +275,7 @@ impl App {
                 head.push_str(&format!(r#"<meta name="corten-sw" content="{}">"#, crate::pwa::WORKER_PATH));
             }
             offline = Some(pwa.offline_path().to_string());
+            own.exact.extend([crate::pwa::MANIFEST_PATH, crate::pwa::WORKER_PATH]);
             routes = routes.merge(pwa.routes());
         }
         if dev {
@@ -259,6 +294,7 @@ impl App {
             );
         }
         if let Some(assets) = &assets {
+            own.prefixes.push(assets.mount_prefix());
             routes = routes.merge(assets.routes());
         }
         let ready = self.ready.unwrap_or_else(|| Arc::new(|| Box::pin(async { true })));
@@ -270,29 +306,18 @@ impl App {
         shared.locales = self.locales;
         shared.dev = dev;
         shared.components = self.components.iter().map(|c| c.name).collect();
-        let shared = Arc::new(shared);
-        let context = self.context.map(|(f, _, _)| f);
-        let deadline = self.deadline;
-        let routes = routes.layer(middleware::from_fn(move |mut req: Request, next: Next| {
-            let shared = shared.clone();
-            let context = context.clone();
-            async move {
-                // Dropped with this future if the client leaves first; then the response's.
-                let watch = Watch(Signal::default());
-                req.extensions_mut().insert(watch.0.clone());
-                if let Some(context) = &context {
-                    let insert = context(req.headers()).await;
-                    insert(req.extensions_mut());
-                }
-                req.extensions_mut().insert(shared.clone());
-                let res = page::render_errors(shared, req, next, deadline, &watch.0).await;
-                signal::follow(res, watch)
-            }
-        }));
-        let routes = self.policy.apply(routes);
-        #[cfg(feature = "compress")]
-        let routes = crate::compress::apply(routes);
-        routes
+        let layer = Arc::new(Layer {
+            shared: Arc::new(shared),
+            context: self.context.map(|(f, _, _)| f),
+            deadline: self.deadline,
+            policy: Applied::new(self.policy),
+            mounts,
+            own,
+        });
+        routes.layer(middleware::from_fn(move |req: Request, next: Next| {
+            let layer = layer.clone();
+            async move { layer.handle(req, next).await }
+        }))
     }
 
     /// Serves the app on `HOST`:`PORT` (default `127.0.0.1:3000`) until Ctrl-C or `SIGTERM`,
@@ -311,6 +336,87 @@ impl App {
         let shown = if host == "0.0.0.0" { "localhost" } else { &host };
         println!("corten: listening on http://{shown}:{}", listener.local_addr()?.port());
         axum::serve(listener, router).with_graceful_shutdown(crate::shutdown_signal()).await
+    }
+}
+
+/// The paths of Corten's own routes.
+struct Own {
+    exact: Vec<&'static str>,
+    prefixes: Vec<String>,
+}
+
+impl Own {
+    fn contains(&self, path: &str) -> bool {
+        self.exact.contains(&path) || self.prefixes.iter().any(|prefix| path.starts_with(prefix.as_str()))
+    }
+}
+
+/// Everything `App` puts around a request, as one middleware: one boxed future per request,
+/// where separate security, compression and error layers cost one each.
+struct Layer {
+    shared: Arc<Shared>,
+    context: Option<ContextFn>,
+    deadline: Option<Duration>,
+    policy: Applied,
+    mounts: Vec<Mount>,
+    own: Own,
+}
+
+impl Layer {
+    async fn handle(&self, req: Request, next: Next) -> Response {
+        #[cfg(feature = "compress")]
+        let coding = crate::compress::negotiate(req.headers());
+        let res = self.secure(req, next).await;
+        #[cfg(feature = "compress")]
+        let res = crate::compress::finish(res, coding).await;
+        res
+    }
+
+    /// The security policy around the request: the same-origin check first, the headers last.
+    async fn secure(&self, mut req: Request, next: Next) -> Response {
+        let path = req.uri().path();
+        let own = self.own.contains(path);
+        let mount = if own { None } else { self.mounts.iter().find(|mount| mount.contains(path)) };
+        if let Some(mount) = mount {
+            if let Some(mut res) = mount.preflight(req.method(), req.headers()) {
+                self.policy.headers(&mut res, None);
+                return res;
+            }
+        }
+        let origins = mount.map_or(&[][..], |mount| mount.origins());
+        if let Some(mut refused) = self.policy.refuse(req.method(), req.headers(), origins) {
+            if mount.is_some() {
+                refused = crate::api::json_failure(refused, false).await;
+            }
+            self.policy.headers(&mut refused, None);
+            return refused;
+        }
+        let cors = mount.and_then(|mount| mount.allowed_origin(req.headers()));
+        // A page's nonce is made only if its HTML asks for one; an API route never has one.
+        let nonce = mount.is_none().then(NonceSlot::default);
+        if let Some(nonce) = &nonce {
+            req.extensions_mut().insert(nonce.clone());
+        }
+        let context = mount.map_or(!own, |mount| mount.context);
+        let mut res = self.run(req, next, context, mount.is_some()).await;
+        self.policy.headers(&mut res, nonce.as_ref());
+        if let Some(mount) = mount {
+            mount.cors(cors, &mut res);
+        }
+        res
+    }
+
+    async fn run(&self, mut req: Request, next: Next, context: bool, api: bool) -> Response {
+        // Dropped with this future if the client leaves first; then the response's.
+        let watch = Watch(Signal::default());
+        req.extensions_mut().insert(watch.0.clone());
+        if let Some(run) = self.context.as_ref().filter(|_| context) {
+            let insert = run(req.headers()).await;
+            insert(req.extensions_mut());
+        }
+        req.extensions_mut().insert(self.shared.clone());
+        let res = page::render_errors(&self.shared, req, next, self.deadline, &watch.0, api).await;
+        signal::follow(res, watch)
     }
 }
 

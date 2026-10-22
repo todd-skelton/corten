@@ -28,7 +28,8 @@ In scope is anything Corten does on an app's behalf:
    going through `raw`.
 2. The Content-Security-Policy and its per-request nonce, and the other headers
    `corten::security::Policy` sets.
-3. The same-origin check on writes (CSRF), and the session cookie helpers' defaults.
+3. The same-origin check on writes (CSRF), the CORS answers of `App::api` routes, and the
+   session cookie helpers' defaults.
 4. Request handling: the request modes, patches, redirects (`Href` only accepts typed routes),
    static files and versioned asset URLs, and error pages that could leak internals outside dev
    mode.
@@ -37,6 +38,6 @@ In scope is anything Corten does on an app's behalf:
 6. `corten-cluster` (outbox, relay, followers) and `corten::agent` (MCP tools).
 
 Out of scope: the app's own handlers and HTML passed through `raw`, settings an app chose to
-loosen (`allow_style_attributes`, `allow_origin`, `SetCookie::insecure`, `script_readable`),
+loosen (`allow_style_attributes`, `allow_origin` on a `Policy` or an `Api`, `SetCookie::insecure`, `script_readable`),
 dev mode (`CORTEN_DEV`, `corten dev`), which is not meant to face the internet, and
 vulnerabilities in dependencies that Corten does not make reachable. Report those upstream.

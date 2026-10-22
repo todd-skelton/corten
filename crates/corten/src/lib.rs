@@ -15,7 +15,7 @@
 //! }
 //! ```
 //!
-//! A request arrives in one of four [`Mode`]s and one handler answers all of them:
+//! A page request arrives in one of four [`Mode`]s and one handler answers all of them:
 //!
 //! | Mode | Sent by | Response |
 //! |---|---|---|
@@ -24,11 +24,14 @@
 //! | `Action` | the runtime, `<form data-patch>` submit | fragments that replace elements with the same `id` |
 //! | `Data` | a native screen, an agent or a test, with `Accept: application/json` | the screen's data as JSON ([`Req::screen`]) |
 //!
+//! Routes with no screen (webhooks, OAuth callbacks, public APIs) answer only JSON: mount them
+//! under a prefix with [`App::api`] and every failure there is JSON ([`Api`]).
+//!
 //! [`App`] puts the production pieces around the app's routes with defaults: security headers
 //! and a CSP nonce, a cross-site write check, error pages, versioned static files, health checks,
 //! compression (feature `compress`), and live reload under `corten dev`.
 //!
-//! Modules: [`view`] (markup), [`island`] (components with a script), [`style`] (component
+//! Modules: [`api`] (JSON-only routes), [`view`] (markup), [`island`] (components with a script), [`style`] (component
 //! stylesheets and design tokens), [`route`] (typed links),
 //! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`].
 //! Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid for
@@ -42,6 +45,7 @@ extern crate self as corten;
 pub use corten_feed as feed;
 #[cfg(feature = "agent")]
 pub mod agent;
+pub mod api;
 mod app;
 pub mod assets;
 #[cfg(feature = "compress")]
@@ -78,6 +82,7 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 
+pub use api::Api;
 pub use app::App;
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
@@ -121,7 +126,7 @@ pub mod prelude {
         },
         component, html,
         i18n::Messages as _,
-        island, raw, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
+        island, raw, Api, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
     };
 }
 
@@ -312,6 +317,14 @@ impl Error {
     /// permission check: `return Err(Error::status(StatusCode::NOT_FOUND))`.
     pub fn status(status: StatusCode) -> Self {
         Error { status, source: status.canonical_reason().unwrap_or("error").into() }
+    }
+
+    /// The same error with another status: `Error::new("no item 7").with_status(StatusCode::NOT_FOUND)`.
+    /// A JSON client (an [`App::api`] route, or a request for `application/json`) gets a 4xx
+    /// error's message, so give it one written for the client; the error page never shows it.
+    pub fn with_status(mut self, status: StatusCode) -> Self {
+        self.status = status;
+        self
     }
 }
 

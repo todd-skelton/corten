@@ -2,9 +2,9 @@
 //!
 //! The rules stay in the app (they are business rules); Corten only carries the result to each
 //! surface the same way: a browser gets the form re-rendered with messages next to its fields
-//! and focus on the first one ([`crate::Req::invalid`]), a data client gets
-//! `{"errors": {"field": "message"}}`, and an agent tool gets the same messages
-//! (`ToolError::from(errors)`, feature `agent`).
+//! and focus on the first one ([`crate::Req::invalid`]), a data client or an [`crate::App::api`]
+//! route gets the JSON error with one message per field (`Errors` is a response, feature `json`),
+//! and an agent tool gets the same messages (`ToolError::from(errors)`, feature `agent`).
 //!
 //! Fields are named by [`FieldName`]s from `#[derive(Fields)]`, never by text. In the form, mark
 //! each field and print its message, which the field points at:
@@ -182,6 +182,34 @@ impl serde::Serialize for Errors {
             map.serialize_entry(field.0, message)?;
         }
         map.end()
+    }
+}
+
+/// 422 Unprocessable Content with the JSON error every JSON failure has, plus the fields:
+/// `{"error":{"status":422,"message":"email: Enter an email address.","fields":{"email":"Enter an email address."}}}`.
+/// An [`crate::App::api`] handler returns it as its error, `Result<Json<T>, Errors>`; pages use
+/// [`crate::Req::invalid`], which answers this way to data clients.
+#[cfg(feature = "json")]
+impl axum::response::IntoResponse for Errors {
+    fn into_response(self) -> axum::response::Response {
+        self.response()
+    }
+}
+
+#[cfg(feature = "json")]
+impl Errors {
+    pub(crate) fn response(&self) -> axum::response::Response {
+        use axum::{
+            http::{header, HeaderValue, StatusCode},
+            response::IntoResponse,
+        };
+        let status = StatusCode::UNPROCESSABLE_ENTITY;
+        let error = crate::api::error_body(status, &self.to_string());
+        let fields = serde_json::to_string(&self).expect("strings serialize");
+        // The error object with one more member: `..."message":"..."` + `,"fields":{...}}}`.
+        let body = format!(r#"{},"fields":{fields}}}}}"#, &error[..error.len() - 2]);
+        let headers = [(header::CONTENT_TYPE, HeaderValue::from_static(crate::api::JSON))];
+        (status, headers, body).into_response()
     }
 }
 

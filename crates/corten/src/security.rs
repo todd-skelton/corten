@@ -6,23 +6,55 @@
 //! ```
 //!
 //! Corten's own inline tags (the import map, the island style rule) carry the nonce, and
-//! [`crate::Head::nonce`] gives it to the shell for any inline script the app adds. Nothing else
-//! inline runs, so an HTML injection cannot execute script even if a template escapes wrongly.
+//! [`crate::Document::nonce`] gives it to the shell for any inline script the app adds. Nothing
+//! else inline runs, so an HTML injection cannot execute script even if a template escapes wrongly.
+//!
+//! The nonce is made the first time something asks for it (a document's head, or a handler that
+//! takes [`Nonce`]). A response nothing asked for (JSON, a patch, a static file) gets the same
+//! policy without a nonce source, which allows less and costs no random bytes or header string.
 
-use std::{cell::RefCell, sync::Arc};
+use std::{
+    cell::RefCell,
+    convert::Infallible,
+    sync::{Arc, OnceLock},
+};
 
 use axum::{
-    extract::Request,
-    http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
+    extract::{FromRequestParts, Request},
+    http::{header, request::Parts, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     Router,
 };
 
-/// The CSP nonce for this request. [`Policy::apply`] puts it in the request extensions and
-/// [`crate::Req`] passes it to [`crate::Head`].
+/// The CSP nonce for this request: `Document::nonce` in a shell, or `nonce: Nonce` as an
+/// extractor in a handler that writes HTML itself. Asking for it is what puts it in the
+/// response's CSP.
 #[derive(Clone, Debug)]
 pub struct Nonce(pub Arc<str>);
+
+impl<S: Send + Sync> FromRequestParts<S> for Nonce {
+    type Rejection = Infallible;
+
+    /// Without a [`Policy`] nothing checks a nonce, so any fresh one is as good.
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        Ok(parts.extensions.get::<NonceSlot>().map_or_else(Nonce::generate, |slot| slot.get().clone()))
+    }
+}
+
+/// Where the request's nonce is made, at most once, when something asks for it.
+#[derive(Clone, Default)]
+pub(crate) struct NonceSlot(Arc<OnceLock<Nonce>>);
+
+impl NonceSlot {
+    pub fn get(&self) -> &Nonce {
+        self.0.get_or_init(Nonce::generate)
+    }
+
+    fn taken(&self) -> Option<&Nonce> {
+        self.0.get()
+    }
+}
 
 impl Nonce {
     /// 128 random bits from the operating system, hex encoded (hex is valid base64 text).
@@ -160,9 +192,15 @@ impl Policy {
 
     /// The CSP header value for one nonce.
     pub fn csp(&self, nonce: &str) -> String {
+        self.csp_with(Some(nonce))
+    }
+
+    /// The CSP, with `'nonce-...'` sources only when there is a nonce.
+    fn csp_with(&self, nonce: Option<&str>) -> String {
         let list = |extra: &[String]| extra.iter().fold(String::new(), |acc, s| acc + " " + s);
+        let nonce = nonce.map_or_else(String::new, |n| format!(" 'nonce-{n}'"));
         let mut csp = format!(
-            "default-src 'self'; script-src 'self' 'nonce-{nonce}'{}; style-src 'self' 'nonce-{nonce}'{}; img-src 'self'{}; \
+            "default-src 'self'; script-src 'self'{nonce}{}; style-src 'self'{nonce}{}; img-src 'self'{}; \
              connect-src 'self'{}; font-src 'self'{}; frame-src {}; object-src 'none'; base-uri 'self'; form-action 'self'; \
              frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'",
             list(&self.script),
@@ -179,22 +217,32 @@ impl Policy {
     }
 
     /// Wraps every route of `router`: writes from other sites get 403, every response gets the
-    /// headers, and handlers see the request's [`Nonce`].
+    /// headers, and handlers see the request's [`Nonce`]. [`crate::App`] applies its policy
+    /// itself; this is for a router served without one.
     pub fn apply<S: Clone + Send + Sync + 'static>(self, router: Router<S>) -> Router<S> {
-        // The header is the same text around each nonce, so split it once here.
-        let csp_parts = self.csp("\0").split('\0').map(str::to_string).collect();
-        let policy = Arc::new(Applied { policy: self, csp_parts });
-        router.layer(middleware::from_fn(move |req: Request, next: Next| {
+        let policy = Arc::new(Applied::new(self));
+        router.layer(middleware::from_fn(move |mut req: Request, next: Next| {
             let policy = policy.clone();
-            async move { policy.handle(req, next).await }
+            async move {
+                if let Some(refused) = policy.refuse(req.method(), req.headers(), &[]) {
+                    return refused;
+                }
+                let nonce = NonceSlot::default();
+                req.extensions_mut().insert(nonce.clone());
+                let mut res = next.run(req).await;
+                policy.headers(&mut res, Some(&nonce));
+                res
+            }
         }))
     }
 }
 
-/// A policy in use, with its CSP header split around the nonce.
-struct Applied {
+/// A policy in use: its CSP split around the nonce, and the headers that do not change.
+pub(crate) struct Applied {
     policy: Policy,
     csp_parts: Vec<String>,
+    without_nonce: HeaderValue,
+    api_csp: HeaderValue,
 }
 
 impl std::ops::Deref for Applied {
@@ -204,19 +252,41 @@ impl std::ops::Deref for Applied {
     }
 }
 
+/// The CSP of JSON-only routes ([`crate::App::api`]): nothing loads, nothing frames them.
+const API_CSP: &str = "default-src 'none'; frame-ancestors 'none'";
+
 impl Applied {
-    async fn handle(&self, mut req: Request, next: Next) -> Response {
-        if !self.same_origin(req.method(), req.headers()) {
-            return (StatusCode::FORBIDDEN, "Cross-site request refused.").into_response();
+    pub fn new(policy: Policy) -> Self {
+        // The header is the same text around each nonce, so split it once here.
+        let csp_parts = policy.csp("\0").split('\0').map(str::to_string).collect();
+        let without_nonce = HeaderValue::try_from(policy.csp_with(None)).expect("CSP sources are checked tokens");
+        Applied { policy, csp_parts, without_nonce, api_csp: HeaderValue::from_static(API_CSP) }
+    }
+
+    /// The 403 for a write another site sent, if this is one. `origins` are the extra origins
+    /// allowed for this request's route (an API mount's).
+    pub fn refuse(&self, method: &Method, headers: &HeaderMap, origins: &[String]) -> Option<Response> {
+        if self.same_origin(method, headers) || allowed(headers, origins) {
+            return None;
         }
-        let nonce = Nonce::generate();
-        req.extensions_mut().insert(nonce.clone());
-        let mut res = next.run(req).await;
+        Some((StatusCode::FORBIDDEN, "Cross-site request refused.").into_response())
+    }
+
+    /// The security headers. `nonce` is the request's slot, or `None` for a response that is
+    /// never a page (an API route, a refused write), which gets a CSP that allows nothing.
+    pub fn headers(&self, res: &mut Response, nonce: Option<&NonceSlot>) {
         let headers = res.headers_mut();
+        // The headers below, plus `Vary` from compression: one allocation instead of a few.
+        headers.reserve(8);
         let csp_header =
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
-        if let Ok(value) = HeaderValue::try_from(self.csp_parts.join(&*nonce.0)) {
-            headers.insert(csp_header, value);
+        let csp = match nonce.map(|slot| slot.taken()) {
+            None => Some(self.api_csp.clone()),
+            Some(None) => Some(self.without_nonce.clone()),
+            Some(Some(nonce)) => HeaderValue::try_from(self.csp_parts.join(&*nonce.0)).ok(),
+        };
+        if let Some(csp) = csp {
+            headers.insert(csp_header, csp);
         }
         headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
         headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("strict-origin-when-cross-origin"));
@@ -226,8 +296,19 @@ impl Applied {
         if self.hsts {
             headers.insert(header::STRICT_TRANSPORT_SECURITY, HeaderValue::from_static("max-age=31536000; includeSubDomains"));
         }
-        res
     }
+}
+
+/// True when the request's `Origin` is one of `origins` and it carries no cookies: a site allowed
+/// for an API authenticates with a token, so a write it sends with the user's cookies (a
+/// `SameSite=None` session and `credentials: "include"`) is refused like any cross-site write.
+fn allowed(headers: &HeaderMap, origins: &[String]) -> bool {
+    !origins.is_empty()
+        && !headers.contains_key(header::COOKIE)
+        && headers
+            .get(header::ORIGIN)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|origin| origins.iter().any(|o| o.eq_ignore_ascii_case(origin.trim_end_matches('/'))))
 }
 
 impl Policy {

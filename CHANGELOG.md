@@ -5,6 +5,36 @@ Corten is pre-1.0, so any minor version may change the API.
 
 ## Unreleased
 
+### Added
+
+1. `App::api(prefix, routes)`: routes with no screen (webhooks, public APIs, the MCP endpoint)
+   answer every failure as JSON whatever the client accepts, including unknown URLs, wrong
+   methods and the deadline, with no shell, nonce or context and a `default-src 'none'` CSP.
+   `Api::allow_origin` lets one site's pages call them from the browser (CORS preflight and
+   headers, writes without cookies let through for those routes only); `Api::context` runs
+   `App::context` for them.
+2. `Error::with_status`, for a 4xx with a message written for the client.
+3. `Errors` is a response (feature `json`): 422 with the JSON error and its fields.
+4. `Nonce` is an extractor, for a handler that writes HTML with an inline script itself.
+
+### Changed
+
+1. Every JSON failure has one shape, `{"error":{"status":404,"message":"Not Found"}}`. A data
+   request's error now carries `message`, and an extractor's rejection is that JSON instead of
+   plain text. `req.invalid` answers a data request with
+   `{"error":{"status":422,"message":...,"fields":{...}}}` instead of `{"errors":{...}}`.
+2. The CSP nonce is made only when a document asks for it; other responses get the same policy
+   without a nonce source. `Policy::apply` no longer puts a `Nonce` in the request extensions:
+   take `nonce: Nonce` as an extractor instead of `Extension<Nonce>`.
+3. `App::context` no longer runs for static files, the runtime, the PWA files and the health
+   checks.
+4. `App` is one middleware instead of three (security, compression, errors). Measured with
+   callgrind, a small JSON handler costs 27,584 instructions a request instead of 36,324, a
+   small page 31,742 instead of 41,280, and a JSON 404 19,892 instead of 26,930
+   (`docs/guide/app.md`, the request path).
+5. `examples/item-page` mounts its MCP endpoint with `App::api`; its smoke test calls it from a
+   page on another origin.
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

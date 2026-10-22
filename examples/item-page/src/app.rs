@@ -1,11 +1,11 @@
 //! An item detail page with every production piece Corten offers switched on: security
 //! policy (CSP nonce, cross-site write check), versioned assets, error pages, health, PWA with
 //! push, head tags, an i18n catalog, robots/sitemap, compression, and the price-alert action as
-//! an MCP tool for agents.
+//! an MCP tool for agents, mounted as a JSON-only route (`App::api`).
 use std::sync::Arc;
 
 use corten::{
-    Error,
+    Api, Error,
     agent::{ToolError, Tools},
     axum::http::StatusCode,
     prelude::*,
@@ -34,7 +34,13 @@ pub fn app(source: Source) -> App {
         .icon("icons/192.png", "192x192")
         .icon("icons/512.png", "512x512")
         .maskable_icon("icons/512.png", "512x512");
-    App::new(routes(source.clone()).route(routes::Mcp::PATH, tools(source, tokens).route()))
+    // Agents in a browser on another site (AGENT_ORIGINS, comma separated) may call the tools.
+    let mut mcp = Api::new(Router::new().route(routes::Mcp::PATH, tools(source.clone(), tokens).route()));
+    for origin in std::env::var("AGENT_ORIGINS").unwrap_or_default().split(',').filter(|o| !o.is_empty()) {
+        mcp = mcp.allow_origin(origin);
+    }
+    App::new(routes(source))
+        .api(routes::Mcp::PATH, mcp)
         .shell(views::shell)
         .messages::<Msg>()
         .components(views::COMPONENTS)
@@ -310,7 +316,8 @@ mod tests {
 
         let (status, _, body) = send(post(None, Some("application/json"))).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(body, r#"{"errors":{"target_price":"Enter a target price above zero."}}"#);
+        let body: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(body["error"]["fields"], json!({ "target_price": "Enter a target price above zero." }));
 
         let (status, _, body) = send(post(None, None)).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -448,5 +455,24 @@ mod tests {
         let (_, _, body) = send(call(Some("dev-token"), read)).await;
         let res: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(res["result"]["structuredContent"]["listings"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn the_mcp_endpoint_is_json_only() {
+        let (status, headers, body) = send(Request::get("/mcp").header("accept", "*/*").body(Body::empty()).unwrap()).await;
+        assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(body, r#"{"error":{"status":405,"message":"Method Not Allowed"}}"#, "not the HTML error page");
+        assert_eq!(headers["content-security-policy"], "default-src 'none'; frame-ancestors 'none'");
+        let cross = Request::post("/mcp")
+            .header("origin", "https://agent.example")
+            .header("sec-fetch-site", "cross-site")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#))
+            .unwrap();
+        let (status, _, body) = send(cross).await;
+        assert_eq!(
+            (status, &body[..]),
+            (StatusCode::FORBIDDEN, r#"{"error":{"status":403,"message":"Cross-site request refused."}}"#)
+        );
     }
 }

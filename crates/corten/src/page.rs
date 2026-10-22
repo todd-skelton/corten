@@ -10,7 +10,7 @@ use std::{
 
 use axum::{
     extract::{FromRequestParts, Request},
-    http::{header, request::Parts, Extensions, HeaderMap, HeaderName, HeaderValue, StatusCode},
+    http::{header, request::Parts, Extensions, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -18,7 +18,7 @@ use axum::{
 use crate::{
     assets::Assets,
     find_islands,
-    security::Nonce,
+    security::{Nonce, NonceSlot},
     view::{html, Render},
     Error, Meta, Result,
 };
@@ -174,8 +174,20 @@ fn is_current(path: &str, href: &str, section: bool) -> bool {
 
 /// The shell's per-request context, taken from the request extensions when the request arrives.
 pub(crate) struct Captured {
-    key: String,
+    /// The shell key, printed as 16 hex digits.
+    key: u64,
     context: Option<Box<dyn Any + Send + Sync>>,
+}
+
+impl Captured {
+    fn key(&self) -> HeaderValue {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut text = [0u8; 16];
+        for (i, digit) in text.iter_mut().enumerate() {
+            *digit = HEX[(self.key >> (60 - 4 * i) & 15) as usize];
+        }
+        HeaderValue::from_bytes(&text).expect("hex is a valid header")
+    }
 }
 
 type RenderShell = dyn Fn(Document, Option<&(dyn Any + Send + Sync)>) -> String + Send + Sync;
@@ -323,8 +335,8 @@ where
 /// that build each kind of response. Every handler that returns HTML takes one.
 pub struct Req {
     pub mode: Mode,
-    nonce: Option<Nonce>,
-    path: String,
+    nonce: Option<NonceSlot>,
+    uri: Uri,
     accept_language: Option<HeaderValue>,
     shared: Arc<Shared>,
     captured: Captured,
@@ -336,21 +348,22 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
 
     async fn from_request_parts(parts: &mut Parts, _: &St) -> std::result::Result<Self, Self::Rejection> {
         let shared = parts.extensions.get::<Arc<Shared>>().unwrap_or(&DEFAULT).clone();
-        Ok(Req::new(&parts.headers, &parts.extensions, parts.uri.path(), shared))
+        Ok(Req::new(&parts.headers, &parts.extensions, &parts.uri, shared))
     }
 }
 
 impl Req {
-    pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, path: &str, shared: Arc<Shared>) -> Self {
+    /// Nothing here allocates unless the shell takes a context (which is copied).
+    pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>) -> Self {
         let (hash, context) = match (shared.shell.capture)(extensions) {
             Some((hash, context)) => (hash, Some(context)),
             None => (0, None),
         };
-        let key = format!("{:016x}", shared.key_base ^ hash.rotate_left(1));
+        let key = shared.key_base ^ hash.rotate_left(1);
         Req {
             mode: mode_of(headers),
-            nonce: extensions.get::<Nonce>().cloned(),
-            path: path.to_string(),
+            nonce: extensions.get::<NonceSlot>().cloned(),
+            uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
             shared,
             captured: Captured { key, context },
@@ -372,7 +385,7 @@ impl Req {
 
     /// The request path.
     pub fn path(&self) -> &str {
-        &self.path
+        self.uri.path()
     }
 
     /// The app's messages (from [`crate::i18n::messages!`]) in the best locale for this request's
@@ -457,8 +470,8 @@ impl Req {
                     head: Head { title: meta.title().to_string(), html: head },
                     main: Main(main),
                     lang: self.lang(),
-                    path: self.path.clone(),
-                    nonce: self.nonce.clone(),
+                    path: self.uri.path().to_string(),
+                    nonce: self.nonce.as_ref().map(|slot| slot.get().clone()),
                     shared: self.shared.clone(),
                 };
                 let context = self.captured.context.as_deref();
@@ -470,16 +483,14 @@ impl Req {
 
     /// Adds the shell key, which tells the runtime whether the shell is still current.
     fn finish(&self, mut res: Response) -> Response {
-        if let Ok(value) = HeaderValue::try_from(&self.captured.key) {
-            res.headers_mut().insert(SHELL_HEADER, value);
-        }
+        res.headers_mut().insert(SHELL_HEADER, self.captured.key());
         res
     }
 
     fn head(&self, meta: &Meta, main: &str) -> String {
         use std::fmt::Write;
         let nonce = match &self.nonce {
-            Some(n) => format!(r#" nonce="{}""#, n.0),
+            Some(slot) => format!(r#" nonce="{}""#, slot.get().0),
             None => String::new(),
         };
         let mut out = String::with_capacity(1024);
@@ -490,7 +501,7 @@ impl Req {
         let dir = &self.shared.islands_dir;
         let _ = write!(
             out,
-            r#"<meta name="corten-islands" content="{dir}"><meta name="corten-shell" content="{}">"#,
+            r#"<meta name="corten-islands" content="{dir}"><meta name="corten-shell" content="{:016x}">"#,
             self.captured.key
         );
         out.push_str(&self.shared.head_extra);
@@ -559,7 +570,8 @@ impl Req {
     ///
     /// - [`Mode::Action`]: `form`, the form re-rendered with the errors, as a patch. The runtime
     ///   then moves focus to the first field marked `aria-invalid="true"`.
-    /// - [`Mode::Data`] (feature `json`): `{"errors": {"field": "message"}}`.
+    /// - [`Mode::Data`] (feature `json`): the JSON error with the fields,
+    ///   `{"error": {"status": 422, "message": "email: ...", "fields": {"email": "..."}}}`.
     /// - Otherwise (no JavaScript): `page()`, usually `req.page(..)` for the whole page with the
     ///   form showing the errors; a success status becomes 422. It is only called here, so an
     ///   action never loads data for a page it does not send.
@@ -572,10 +584,7 @@ impl Req {
         match self.mode {
             Mode::Action => self.patch_with_status(status, form),
             #[cfg(feature = "json")]
-            Mode::Data => {
-                let body = serde_json::to_string(&serde_json::json!({ "errors": errors }))?;
-                Ok((status, [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response())
-            }
+            Mode::Data => Ok(errors.response()),
             _ => {
                 let _ = errors;
                 let mut res = page().await?;
@@ -601,57 +610,48 @@ impl Req {
 /// Middleware the app installs: a failed request (an [`Error`] from a handler, or an empty error
 /// response such as axum's 404 for an unknown URL or 405 for a wrong method) renders the error
 /// page in the request's mode, and the PWA's offline path gets Corten's offline page when the app
-/// has no route for it.
+/// has no route for it. A [`Mode::Data`] request, and every request on an `api` route, gets the
+/// failure as JSON instead ([`crate::api`]).
 pub(crate) async fn render_errors(
-    shared: Arc<Shared>,
+    shared: &Arc<Shared>,
     req: Request,
     next: Next,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
+    api: bool,
 ) -> Response {
     use axum::body::HttpBody;
     let mode = mode_of(req.headers());
+    if api || mode == Mode::Data {
+        return crate::api::json_failure(run(req, next, deadline, signal).await, shared.dev).await;
+    }
     let offline = req.method() == axum::http::Method::GET && shared.offline.as_deref() == Some(req.uri().path());
     // A browser: the runtime, or a document request that asks for HTML (a health probe or a
     // webhook sender does not).
     let browser = matches!(mode, Mode::Navigation | Mode::Action) || (mode == Mode::Document && accepts_html(req.headers()));
-    let failed_req = (mode != Mode::Data).then(|| Req::new(req.headers(), req.extensions(), req.uri().path(), shared.clone()));
-    let res = match deadline {
-        None => next.run(req).await,
-        Some(limit) => {
-            let (method, uri) = (req.method().clone(), req.uri().clone());
-            match within(limit, next.run(req)).await {
-                Some(res) => res,
-                None => {
-                    signal.abort(crate::Abort::Deadline);
-                    tracing::warn!("corten: {method} {} passed its {limit:?} deadline", uri.path());
-                    StatusCode::SERVICE_UNAVAILABLE.into_response()
-                }
-            }
-        }
-    };
+    // Taken now, while the request (its context, its nonce) is here; it allocates nothing unless
+    // the shell takes a context.
+    let failed_req = Req::new(req.headers(), req.extensions(), req.uri(), shared.clone());
+    let res = run(req, next, deadline, signal).await;
     let status = res.status();
     let mut failed = res.extensions().get::<crate::Failed>().cloned();
-    let allow = res.headers().get(header::ALLOW).cloned();
     let error = status.is_client_error() || status.is_server_error();
     let empty_error = error && res.body().size_hint().exact() == Some(0);
     // An extractor's rejection (a form field missing, a path segment that does not parse) is
     // plain text written for a developer. A browser gets the error page instead, with the text
-    // under it in dev mode; any other client (data, probes, webhooks) still gets the text.
-    let rejection = error && failed.is_none() && browser && is_plain_text(res.headers());
+    // under it in dev mode; any other client (probes, webhooks) still gets the text.
+    let rejection = error && failed.is_none() && browser && crate::api::is_plain_text(res.headers());
     if failed.is_none() && !empty_error && !rejection {
         return res;
     }
+    let allow = res.headers().get(header::ALLOW).cloned();
     if rejection {
         let text = axum::body::to_bytes(res.into_body(), 16 * 1024).await.unwrap_or_default();
         let text = String::from_utf8_lossy(&text);
         tracing::debug!(status = status.as_u16(), "corten: request rejected: {text}");
         failed = Some(crate::Failed(Arc::from(text.as_ref())));
     }
-    let Some(req) = failed_req else {
-        let body = format!(r#"{{"error":{{"status":{}}}}}"#, status.as_u16());
-        return (status, [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response();
-    };
+    let req = failed_req;
     if offline && status == StatusCode::NOT_FOUND {
         let view = html! { <h1>"You are offline"</h1><p>"Check your connection and try again."</p> };
         return req.respond(StatusCode::OK, Meta::new("Offline").noindex(), view.to_html());
@@ -669,12 +669,24 @@ pub(crate) async fn render_errors(
     res
 }
 
-fn accepts_html(headers: &HeaderMap) -> bool {
-    headers.get(header::ACCEPT).and_then(|v| v.to_str().ok()).is_some_and(|v| v.contains("text/html"))
+/// The handler's response, or an empty 503 once it has waited past `deadline`.
+async fn run(req: Request, next: Next, deadline: Option<std::time::Duration>, signal: &crate::Signal) -> Response {
+    let Some(limit) = deadline else {
+        return next.run(req).await;
+    };
+    let (method, uri) = (req.method().clone(), req.uri().clone());
+    match within(limit, next.run(req)).await {
+        Some(res) => res,
+        None => {
+            signal.abort(crate::Abort::Deadline);
+            tracing::warn!("corten: {method} {} passed its {limit:?} deadline", uri.path());
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
+        }
+    }
 }
 
-fn is_plain_text(headers: &HeaderMap) -> bool {
-    headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("text/plain"))
+fn accepts_html(headers: &HeaderMap) -> bool {
+    headers.get(header::ACCEPT).and_then(|v| v.to_str().ok()).is_some_and(|v| v.contains("text/html"))
 }
 
 /// `fut`'s output, or `None` once it has waited `limit`. The timer starts the first time `fut` is

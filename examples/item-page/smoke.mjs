@@ -168,6 +168,44 @@ try {
 
   const cross = await fetch(`${base}/items/item_5`, { method: "POST", headers: { "sec-fetch-site": "cross-site", "content-type": "application/x-www-form-urlencoded" }, body: "title=a&email=a@b.c&target_price=1" });
   check("cross-site form post is refused", cross.status === 403);
+
+  // The MCP endpoint is a JSON-only route (App::api). The container is started with
+  // AGENT_ORIGINS set to the other loopback name (http://127.0.0.1:18481 for a base on
+  // localhost), so an agent's page there may call it.
+  const wrongMethod = await fetch(`${base}/mcp`);
+  const wrongBody = await wrongMethod.json().catch(() => null);
+  check("an API route answers a failure as JSON to any client", wrongMethod.status === 405 && wrongBody?.error?.status === 405, `${wrongMethod.status} ${wrongMethod.headers.get("content-type")}`);
+  check("an API route has its own CSP", wrongMethod.headers.get("content-security-policy") === "default-src 'none'; frame-ancestors 'none'");
+  const baseUrl = new URL(base);
+  const otherOrigin = `${baseUrl.protocol}//${baseUrl.hostname === "localhost" ? "127.0.0.1" : "localhost"}:${baseUrl.port}`;
+  // A page at one origin calling the endpoint at another. Both are this server's loopback names
+  // (Chromium keeps loopback pages from reaching loopback servers only when the page is not
+  // local), and the page's own CSP is bypassed so that only CORS decides.
+  const agents = await browser.newContext({ bypassCSP: true });
+  /** Calls tools/list from a page at `pageOrigin` on the endpoint at `apiOrigin`: the tool count, or "blocked". */
+  const callFrom = async (pageOrigin, apiOrigin) => {
+    const agent = await agents.newPage();
+    await agent.goto(`${pageOrigin}/robots.txt`);
+    const result = await agent.evaluate(async (url) => {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer dev-token" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+        });
+        return String((await res.json()).result?.tools?.length);
+      } catch {
+        return "blocked";
+      }
+    }, `${apiOrigin}/mcp`);
+    await agent.close();
+    return result;
+  };
+  const allowed = await callFrom(otherOrigin, base);
+  check("an allowed origin calls the API from the browser (preflight, then the write)", allowed === "2", allowed);
+  const stranger = await callFrom(base, otherOrigin);
+  check("any other origin is blocked by the browser", stranger === "blocked", stranger);
+  await agents.close();
 } finally {
   await browser.close();
 }

@@ -74,3 +74,28 @@ async fn home(req: Req, State(m): State<Market>) -> corten::Result {
     req.screen("Watchlist", &home, home_view(&home))   // HTML, or {"title","data"} for Accept: application/json
 }
 ```
+
+## A route with no screen
+
+Webhooks, OAuth callbacks, calls from other services and public APIs answer only JSON. Mount
+them under a prefix; their paths stay whole, so route structs still work:
+
+```rust
+#[derive(Route)]
+#[route("/api/items/{id}/price")]
+pub struct PriceApi<'a> { pub id: &'a str }
+
+async fn price(Path(id): Path<String>) -> corten::Result<Json<Price>> {
+    let price = load(&id).await?.ok_or_else(|| Error::new(format!("no item {id}")).with_status(StatusCode::NOT_FOUND))?;
+    Ok(Json(price))
+}
+
+App::new(pages)
+    .api("/api", Router::new().route(PriceApi::PATH, get(price)))   // Api::new(..).allow_origin(..) for a partner site
+```
+
+Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
+a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
+is no shell and no `App::context` (add `Api::new(routes).context()` if the API serves your own
+signed-in users). Do not add an API route for a screen: a native client reads the page with
+`req.screen`.

@@ -33,6 +33,10 @@ backend.
    `alerts.create` (the same rule the form uses), behind bearer tokens.
 5. PWA: a manifest and a generated service worker (`corten::pwa`) make the web app installable
    with an offline fallback page; the item-page smoke test checks both in Chromium.
+6. JSON-only routes (`App::api`): endpoints with no screen (webhooks, OAuth callbacks, calls
+   between services, public APIs, the MCP endpoint) under a prefix where every failure is JSON
+   and there is no shell, nonce or context. `examples/item-page` mounts its MCP endpoint this
+   way, and lets agents' pages on `AGENT_ORIGINS` call it from the browser.
 
 ## Native apps (next, not built)
 
@@ -101,9 +105,12 @@ back silently), and logic an island repeats from Rust (the listing sort rule in 
    included, is a field.
 3. Actions are idempotent or carry an idempotency key, because native and agent clients retry
    (a 502 can hide a committed write).
-4. One feed protocol. Clients never invent their own diffing. Changes go through
+4. A screen is never also an API route. `/api/items/{id}` next to `/items/{id}` is a second
+   backend for the same screen; a native screen reads `req.screen` instead. `App::api` is for
+   endpoints that have no screen.
+5. One feed protocol. Clients never invent their own diffing. Changes go through
    `corten-protocol` and its tests.
-5. A new surface ships with a test that drives the example through it, like `scripts/smoke.mjs`
+6. A new surface ships with a test that drives the example through it, like `scripts/smoke.mjs`
    does for the web.
 
 ## What belongs in the framework
@@ -120,6 +127,8 @@ library. Measured against a production marketplace app:
 | Shell data on client navigation | Framework: `App::context`, shell key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the shell went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
 | Which nav items show for which roles | App | Roles and permissions are the app's model; the shell view decides. |
 | Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
+| Routes with no screen (webhooks, public APIs) | Framework: `App::api` | The framework's error pages, nonce and context assume a browser asking for a page; only the framework can switch them off for a prefix and answer every failure as JSON instead. |
+| Cross-origin calls to those routes (CORS) | Framework: `Api::allow_origin` | The framework's same-origin check refuses cross-site writes, so it is the only layer that can let one site's calls through for some routes while the pages keep refusing them. Anything beyond one allowed site and its preflight is `tower-http`'s CORS layer on the app's routes. |
 | Types across the server/browser seam | Framework: `corten::types` (TypeScript from the Rust types), `#[island]` and `island()`, `subscribe<Row>`, `#[derive(Fields)]` | The framework defines the seams (props, feeds, form posts, tools), so it is the only layer that can type both ends. |
 | Response compression | Framework: `corten::compress` | The framework serves the runtime and assets and knows they never change (compress once, best level) and that pages are generated per request (fastest level that pays). A generic layer re-compresses static files on every request at a level tuned for neither. |
 | Validation rules and messages | App | Domain rules; messages come from the app's catalog. |

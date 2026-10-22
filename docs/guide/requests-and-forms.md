@@ -11,10 +11,12 @@
 | `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch(view)` | replaces each element by `id` |
 | `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(&route)` | renders the page |
 | any, `Accept: application/json` | native screen, agent, test | `req.screen(meta, &data, view)`: `{"title", "data"}` | renders natively, or reasons over it |
+| any, under an `App::api` prefix | a webhook, a service, a partner's site | JSON (`axum::Json`), errors as `{"error": ...}` | reads the JSON |
 | SSE | `<corten-live src>` | `corten::live(stream_of_views)` | applies each like a patch |
 | `GET {feed}`, `{feed}/live` | an island's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |
 
-One handler serves every mode, and `req.mode` says which. The shell renders on full loads only;
+One handler serves every mode, and `req.mode` says which. A route with no screen goes under
+[`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The shell renders on full loads only;
 every page carries a key hashed from the context and the deploy, and when a navigation answers
 with a different key (sign-in, a new release) the runtime loads the whole document instead, so
 the shell is never stale.
@@ -26,8 +28,8 @@ validation cannot misspell them: `Errors` takes nothing else. Validation stays i
 
 ```rust,ignore
 if let Err(errors) = check(&input) {
-    // 422: the form as a patch for the runtime, `{"errors": ...}` for JSON clients, or the whole
-    // page for a browser without JavaScript (only then is `page` called).
+    // 422: the form as a patch for the runtime, the JSON error with `fields` for JSON clients,
+    // or the whole page for a browser without JavaScript (only then is `page` called).
     return req.invalid(&errors, AlertForm { input: &input, errors: &errors }, page).await;
 }
 ```
@@ -44,7 +46,14 @@ app; a path written as text does not compile.
 ## Errors
 
 A handler returns `corten::Result`; any `std::error::Error` converts with `?` and becomes a
-500, and `Error::status(StatusCode::NOT_FOUND)` sets another status. The app's error page is
-rendered in the request's mode (a page, a swap, or JSON for data clients) and the message is
-logged, never shown, except under `corten dev`. An extractor's own rejection (a path segment
-that does not parse, a form of the wrong type) gets the error page too when a browser asked.
+500, and `Error::status(StatusCode::NOT_FOUND)` (or `.with_status(..)` on an error) sets
+another status. The app's error page is rendered in the request's mode (a page or a swap) and
+the message is logged, never shown, except under `corten dev`. An extractor's own rejection (a
+path segment that does not parse, a form of the wrong type) gets the error page too when a
+browser asked.
+
+A client that asked for JSON, and every request under an [`App::api`](app.md#json-only-routes)
+prefix, gets every failure in one shape: `{"error":{"status":404,"message":"Not Found"}}`. A
+4xx carries the error's message or the rejection's text; a 5xx carries only the status's
+reason. Validation errors add the fields:
+`{"error":{"status":422,"message":"email: ...","fields":{"email":"..."}}}`.

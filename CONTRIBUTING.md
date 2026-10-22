@@ -56,7 +56,7 @@ docker run -d --name corten-hello-dev -p 18483:8080 -e CORTEN_DEV=1 corten-hello
 node scripts/smoke-dev.mjs http://localhost:18483 corten-hello-dev
 docker rm -f corten-hello-dev
 docker build -f examples/item-page/Dockerfile -t corten-item-page .
-docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -v "${PWD}/examples/item-page/fixtures:/fixtures:ro" corten-item-page
+docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -e AGENT_ORIGINS=http://127.0.0.1:18481 -v "${PWD}/examples/item-page/fixtures:/fixtures:ro" corten-item-page
 node examples/item-page/smoke.mjs http://localhost:18481
 docker rm -f corten-item-page
 docker build -f examples/ui-gallery/Dockerfile -t corten-ui-gallery .

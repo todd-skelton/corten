@@ -19,7 +19,8 @@ server-sent events. One handler serves the browser, native apps and AI agents.
   hold it up.
 - **Production defaults.** CSP with nonces, a cross-site write check, error pages, versioned
   assets, compression, health checks, graceful shutdown and an installable PWA, from
-  `App::new(routes).serve()`.
+  `App::new(routes).serve()`. Routes with no screen go under `.api("/api", routes)` and answer
+  only JSON.
 - **No JavaScript toolchain in the app.** One binary and a `static/` directory.
 
 ## Status

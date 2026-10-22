@@ -67,7 +67,7 @@ pub(crate) fn accepted(headers: &HeaderMap, offered: &[Coding]) -> Option<Coding
         let Ok(value) = value.to_str() else { continue };
         for item in value.split(',') {
             let mut parts = item.split(';');
-            let name = parts.next().unwrap_or("").trim().to_ascii_lowercase();
+            let name = parts.next().unwrap_or("").trim();
             let q = parts
                 .filter_map(|p| p.trim().strip_prefix("q=").or_else(|| p.trim().strip_prefix("Q=")))
                 .find_map(|q| q.trim().parse::<f32>().ok())
@@ -75,11 +75,15 @@ pub(crate) fn accepted(headers: &HeaderMap, offered: &[Coding]) -> Option<Coding
             if q == 0 {
                 continue;
             }
-            let coding = match name.as_str() {
-                "zstd" => Coding::Zstd,
-                "br" => Coding::Brotli,
-                "gzip" | "x-gzip" => Coding::Gzip,
-                _ => continue,
+            let is = |coding: &str| name.eq_ignore_ascii_case(coding);
+            let coding = if is("zstd") {
+                Coding::Zstd
+            } else if is("br") {
+                Coding::Brotli
+            } else if is("gzip") || is("x-gzip") {
+                Coding::Gzip
+            } else {
+                continue;
             };
             let Some(rank) = offered.iter().position(|c| *c == coding) else { continue };
             if best.is_none_or(|(bq, brank, _)| q > bq || (q == bq && rank < brank)) {
@@ -135,14 +139,22 @@ pub(crate) fn encode(coding: Coding, data: &[u8], best: bool) -> Vec<u8> {
 }
 
 /// Compresses every compressible response of `router` for clients that accept it. Apply it
-/// outermost, so it sees every response.
+/// outermost, so it sees every response. [`crate::App`] compresses its responses itself; this is
+/// for a router served without one.
 pub fn apply<S: Clone + Send + Sync + 'static>(router: Router<S>) -> Router<S> {
-    router.layer(middleware::from_fn(compress))
+    router.layer(middleware::from_fn(|req: Request, next: Next| async move {
+        let coding = negotiate(req.headers());
+        finish(next.run(req).await, coding).await
+    }))
 }
 
-async fn compress(req: Request, next: Next) -> Response {
-    let coding = accepted(req.headers(), &[Coding::Zstd, Coding::Brotli, Coding::Gzip]);
-    let res = next.run(req).await;
+/// The coding a response to this request may use, read before the request moves on.
+pub(crate) fn negotiate(headers: &HeaderMap) -> Option<Coding> {
+    accepted(headers, &[Coding::Zstd, Coding::Brotli, Coding::Gzip])
+}
+
+/// `res` compressed with `coding` when it is worth it.
+pub(crate) async fn finish(res: Response, coding: Option<Coding>) -> Response {
     let headers = res.headers();
     let content_type = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
     if !compressible(content_type)
@@ -270,6 +282,7 @@ mod tests {
         assert_eq!(accepted(&accept("gzip;q=1, br;q=0.5"), &all), Some(Coding::Gzip));
         assert_eq!(accepted(&accept("zstd;q=0, gzip"), &all), Some(Coding::Gzip));
         assert_eq!(accepted(&accept("identity"), &all), None);
+        assert_eq!(accepted(&accept("GZIP, Br;Q=0.5"), &all), Some(Coding::Gzip), "names are case-insensitive");
         assert_eq!(accepted(&HeaderMap::new(), &all), None);
         assert_eq!(accepted(&accept("zstd, gzip"), &[Coding::Brotli, Coding::Gzip]), Some(Coding::Gzip));
     }
