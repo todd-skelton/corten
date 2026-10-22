@@ -2,27 +2,27 @@
 
   █ TOTAL RESULTS 
 
-    checks_total.......: 11526   187.92506/s
-    checks_succeeded...: 100.00% 11526 out of 11526
-    checks_failed......: 0.00%   0 out of 11526
+    checks_total.......: 17207   282.517566/s
+    checks_succeeded...: 100.00% 17207 out of 17207
+    checks_failed......: 0.00%   0 out of 17207
 
     ✓ status 200
 
     HTTP
-    http_req_duration..............: avg=1.34s p(50)=806.81ms p(95)=2.5s p(99)=13.5s  max=48.6s 
-      { expected_response:true }...: avg=1.34s p(50)=806.81ms p(95)=2.5s p(99)=13.5s  max=48.6s 
-    http_req_failed................: 0.00%  0 out of 11526
-    http_reqs......................: 11526  187.92506/s
+    http_req_duration..............: avg=899.2ms  p(50)=822.32ms p(95)=1s p(99)=3.51s max=30.52s
+      { expected_response:true }...: avg=899.2ms  p(50)=822.32ms p(95)=1s p(99)=3.51s max=30.52s
+    http_req_failed................: 0.00%  0 out of 17207
+    http_reqs......................: 17207  282.517566/s
 
     EXECUTION
-    iteration_duration.............: avg=1.34s p(50)=807.12ms p(95)=2.5s p(99)=13.56s max=48.69s
-    iterations.....................: 11526  187.92506/s
-    vus............................: 85     min=85         max=256
+    iteration_duration.............: avg=899.64ms p(50)=822.42ms p(95)=1s p(99)=3.55s max=30.56s
+    iterations.....................: 17207  282.517566/s
+    vus............................: 256    min=256        max=256
     vus_max........................: 256    min=256        max=256
 
     NETWORK
-    data_received..................: 211 MB 3.4 MB/s
-    data_sent......................: 1.4 MB 22 kB/s
+    data_received..................: 315 MB 5.2 MB/s
+    data_sent......................: 2.0 MB 33 kB/s
 
 
 

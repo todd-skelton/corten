@@ -1,0 +1,46 @@
+@page "/items/{id}"
+@model ItemModel
+@if (Model.Item is not { } item)
+{
+    ViewData["Title"] = "Not found";
+    <p>Not found</p>
+    return;
+}
+@{ ViewData["Title"] = $"{item.Title} | Card Market"; }
+<article class="item">
+<nav class="crumbs">@foreach (var c in item.Categories) {<a href="/categories/@c.Slug">@c.Name</a>}</nav>
+<h1>@item.Title</h1>
+@if (item.Subtitle is not null) {<p class="subtitle">@item.Subtitle</p>}
+<ul class="badges">@foreach (var b in item.Badges) {<li>@b</li>}</ul>
+<div class="gallery">@for (var i = 0; i < item.Images.Count; i++) {<div class="img" role="img" aria-label="@item.Title image @(i + 1)" data-src="@item.Images[i]"></div>}</div>
+<section class="summary">@if (item.Summary is { } s) {<span><strong>@(s.Lowest ?? "—")</strong> lowest</span> <span>@s.Count listings</span> <span>@s.Quantity available</span>} else {<span>No listings yet</span>}</section>
+<section class="listings">
+<h2>Listings</h2>
+<button type="button" class="sort">Price: low to high</button>
+<table><thead><tr><th>Seller</th><th>Condition</th><th>Ships from</th><th>Qty</th><th>Price</th></tr></thead>
+<tbody>@foreach (var l in item.Listings.OrderBy(l => l.PriceValue)) {<tr><td>@(l.Rating is null ? l.Seller : $"{l.Seller} · {l.Rating} ★ ({l.Reviews})")</td><td>@l.Condition</td><td>@l.ShipsFrom</td><td>@l.Quantity</td><td class="price">@l.Price</td></tr>}</tbody></table>
+</section>
+<section class="offers">
+<h2>Offers</h2>
+<table><thead><tr><th>Buyer</th><th>Condition</th><th>Qty</th><th>Price</th></tr></thead>
+<tbody>@foreach (var o in Model.AllOffers ? item.Offers : item.Offers.Take(5)) {<tr><td>@o.Buyer</td><td>@o.Condition</td><td>@o.Quantity</td><td class="price">@o.Price</td></tr>}</tbody></table>
+@if (item.Offers.Count > 5 && !Model.AllOffers) {<button type="button" class="more" hx-get="/items/@item.Id?offers=all" hx-select=".offers" hx-target="closest .offers" hx-swap="outerHTML">Show all @item.Offers.Count offers</button>}
+</section>
+<section class="alert">
+<h2>Price alert</h2>
+<div class="alert-form"><form method="post" hx-post="/items/@item.Id" hx-target=".alert-message" hx-swap="outerHTML">
+<input type="hidden" name="item_id" value="@item.Id"><input type="hidden" name="title" value="@item.Title">
+<label>Email<input type="email" name="email" required></label>
+<label>Alert me below<input type="text" name="target_price" inputmode="decimal" required></label>
+<button type="submit">Set alert</button></form></div>
+<partial name="_AlertMessage" model="Model.Message" />
+</section>
+<section class="details">
+<h2>Details</h2>
+<p>@item.Description</p>
+<dl>@foreach (var f in item.Fields) {<dt>@f.Name</dt><dd>@f.Value</dd>}</dl>
+<ul class="tags">@foreach (var t in item.Tags) {<li>@t</li>}</ul>
+</section>
+@if (item.Contents.Count > 0) {<section class="contents"><h2>Contents</h2><ul>@foreach (var c in item.Contents) {<li><a href="/items/@c.ItemId">@c.Title</a> × @c.Quantity</li>}</ul></section>}
+@if (item.IncludedIn.Count > 0) {<section class="included"><h2>Included in</h2><ul>@foreach (var c in item.IncludedIn) {<li><a href="/items/@c.ItemId">@c.Title</a> × @c.Quantity</li>}</ul></section>}
+</article>

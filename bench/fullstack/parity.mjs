@@ -1,5 +1,7 @@
 // Every app must render the same visible text for the same items (status included).
-// Usage: node parity.mjs  (apps running on their catalog ports)
+// Usage: node parity.mjs [apps=all] [reference=first]  (apps running on their catalog ports)
+// Elements with the `hidden` attribute are not visible text (Corten renders both sort labels and
+// hides one).
 import { apps } from "./apps.mjs";
 
 const ids = [1, 2, 3, 5, 17, 99, 250, 777, 1500, 1999, 2000, 2500, 3000, 12345, 49999].map((n) => `item_${n}`).concat(["does-not-exist"]);
@@ -10,15 +12,17 @@ const visible = (html) =>
     .replace(/<template[\s\S]*?<\/template>/g, " ")
     .replace(/<head[\s\S]*?<\/head>/g, " ")
     .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(span|p|div)\b[^>]*\shidden(?:="[^"]*")?[^>]*>[\s\S]*?<\/\1>/g, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;|&#38;/g, "&").replace(/&#x27;|&#39;/g, "'").replace(/&quot;|&#34;/g, '"').replace(/&lt;|&#60;/g, "<").replace(/&gt;|&#62;/g, ">")
     .replace(/\s+/g, " ")
     .trim();
 const names = Object.keys(apps).filter((n) => !process.argv[2] || process.argv[2].split(",").includes(n));
-const [reference, ...others] = names;
+const reference = process.argv[3] ?? names[0];
+const others = names.filter((n) => n !== reference);
 let failures = 0;
 for (const id of ids) {
-  const pages = await Promise.all(names.map(async (n) => {
+  const pages = await Promise.all([reference, ...others].map(async (n) => {
     const res = await fetch(`http://localhost:${apps[n].port}/items/${id}`);
     return { n, status: res.status, text: visible(await res.text()) };
   }));

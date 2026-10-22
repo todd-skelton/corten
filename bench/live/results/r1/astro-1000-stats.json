@@ -1,0 +1,9 @@
+{
+ "lv-astro": {
+  "samples": 59,
+  "cpuAvgPct": 24.5,
+  "cpuMaxPct": 39.19,
+  "memAvgMiB": 113.1,
+  "memMaxMiB": 115.8
+ }
+}

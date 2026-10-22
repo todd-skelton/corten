@@ -1,0 +1,6 @@
+vendor
+node_modules
+.env
+storage/logs/*
+storage/framework/views/*
+bootstrap/cache/*.php

@@ -1,0 +1,9 @@
+{
+ "fsw-corten": {
+  "samples": 123,
+  "cpuAvgPct": 99.7,
+  "cpuMaxPct": 101.78,
+  "memAvgMiB": 18.3,
+  "memMaxMiB": 19.1
+ }
+}

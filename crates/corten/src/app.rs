@@ -11,7 +11,7 @@ use std::{
 
 use axum::{
     extract::Request,
-    http::{Extensions, HeaderMap, StatusCode},
+    http::{header, Extensions, HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -25,23 +25,29 @@ use futures_util::{stream, StreamExt};
 use crate::{
     api::{Api, Mount},
     assets::Assets,
+    cache::{self, Seen},
     page::{self, default_error_page, default_shell, error_page_fn, IntoShell, Shared, ShellFn},
     pwa::Pwa,
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
     view::Render,
-    Meta, Signal,
+    Meta, Mode, Signal,
 };
 
-type ContextFuture = Pin<Box<dyn Future<Output = Box<dyn FnOnce(&mut Extensions) + Send>> + Send>>;
+/// Puts the context's value in the request, and says whether there was one.
+type InsertContext = Box<dyn FnOnce(&mut Extensions) -> bool + Send>;
+type ContextFuture = Pin<Box<dyn Future<Output = InsertContext> + Send>>;
 type ContextFn = Arc<dyn Fn(&HeaderMap) -> ContextFuture + Send + Sync>;
 type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
 
 /// An app: its routes, plus everything around them that every production app needs, on by
 /// default. `App::new(routes).serve().await` gives:
 ///
-/// - security headers, a CSP with a per-request nonce, and a check that refuses cross-site writes
-///   ([`Policy::new`]; change it with [`App::policy`]);
+/// - security headers, a CSP (Corten's inline tags allowed by hash, a nonce only when the shell
+///   asks for one), and a check that refuses cross-site writes ([`Policy::new`]; change it with
+///   [`App::policy`]);
+/// - `Cache-Control: private, no-cache` on what the app renders, unless a handler returns a
+///   [`crate::Cache`] (see [`crate::cache`]);
 /// - the shell around every page ([`crate::default_shell`] until [`App::shell`]);
 /// - error pages for failed requests and unknown URLs, in the request's mode, with the error
 ///   shown under `corten dev`;
@@ -192,11 +198,13 @@ impl App {
             let value = context(headers);
             Box::pin(async move {
                 let value = value.await;
-                Box::new(move |extensions: &mut Extensions| {
-                    if let Some(value) = value {
+                Box::new(move |extensions: &mut Extensions| match value {
+                    Some(value) => {
                         extensions.insert(value);
+                        true
                     }
-                }) as Box<dyn FnOnce(&mut Extensions) + Send>
+                    None => false,
+                }) as InsertContext
             })
         });
         self.context = Some((context, TypeId::of::<C>(), type_name::<C>()));
@@ -306,11 +314,12 @@ impl App {
         shared.locales = self.locales;
         shared.dev = dev;
         shared.components = self.components.iter().map(|c| c.name).collect();
+        let policy = Applied::new(self.policy, shared.island_style.as_deref());
         let layer = Arc::new(Layer {
             shared: Arc::new(shared),
             context: self.context.map(|(f, _, _)| f),
             deadline: self.deadline,
-            policy: Applied::new(self.policy),
+            policy,
             mounts,
             own,
         });
@@ -380,6 +389,7 @@ impl Layer {
         if let Some(mount) = mount {
             if let Some(mut res) = mount.preflight(req.method(), req.headers()) {
                 self.policy.headers(&mut res, None);
+                res.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
                 return res;
             }
         }
@@ -389,6 +399,7 @@ impl Layer {
                 refused = crate::api::json_failure(refused, false).await;
             }
             self.policy.headers(&mut refused, None);
+            refused.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
             return refused;
         }
         let cors = mount.and_then(|mount| mount.allowed_origin(req.headers()));
@@ -398,25 +409,42 @@ impl Layer {
             req.extensions_mut().insert(nonce.clone());
         }
         let context = mount.map_or(!own, |mount| mount.context);
-        let mut res = self.run(req, next, context, mount.is_some()).await;
+        let credentials = cache::credentials(req.headers());
+        let path = self.shared.dev.then(|| req.uri().path().to_string());
+        let (mut res, from_context, mode) = self.run(req, next, context, mount.is_some()).await;
+        // First: the security headers reserve room for `Cache-Control` and `Vary` too.
         self.policy.headers(&mut res, nonce.as_ref());
+        let seen = Seen {
+            personal: credentials || from_context,
+            // A page route answers several forms at one URL; only the full document may be shared.
+            partial: mount.is_none() && mode != Mode::Document,
+            nonce: nonce.as_ref().is_some_and(|slot| slot.taken().is_some()),
+            dev: self.shared.dev,
+        };
+        // Corten's own routes (assets, the runtime) are settled the same way: they say what they
+        // are, and anything that does not gets the default.
+        cache::settle(&mut res, seen, path.as_deref().unwrap_or(""));
         if let Some(mount) = mount {
             mount.cors(cors, &mut res);
         }
         res
     }
 
-    async fn run(&self, mut req: Request, next: Next, context: bool, api: bool) -> Response {
+    /// The response, whether the context function returned a value for the request, and the
+    /// request's mode.
+    async fn run(&self, mut req: Request, next: Next, context: bool, api: bool) -> (Response, bool, Mode) {
         // Dropped with this future if the client leaves first; then the response's.
         let watch = Watch(Signal::default());
         req.extensions_mut().insert(watch.0.clone());
+        let mut found = false;
         if let Some(run) = self.context.as_ref().filter(|_| context) {
             let insert = run(req.headers()).await;
-            insert(req.extensions_mut());
+            found = insert(req.extensions_mut());
         }
         req.extensions_mut().insert(self.shared.clone());
-        let res = page::render_errors(&self.shared, req, next, self.deadline, &watch.0, api).await;
-        signal::follow(res, watch)
+        let mode = page::mode_of(req.headers());
+        let res = page::render_errors(&self.shared, req, next, self.deadline, &watch.0, api, mode).await;
+        (signal::follow(res, watch), found, mode)
     }
 }
 

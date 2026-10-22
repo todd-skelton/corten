@@ -1,0 +1,593 @@
+2026-10-22T11:18:46.743Z node cold-start.mjs r1 10
+corten 0 first 200 13.4 ms after the server process started, 1.488MiB
+corten 1 first 200 8.1 ms after the server process started, 1.484MiB
+corten 2 first 200 8.2 ms after the server process started, 1.477MiB
+corten 3 first 200 7.5 ms after the server process started, 1.488MiB
+corten 4 first 200 8.0 ms after the server process started, 1.484MiB
+corten 5 first 200 8.7 ms after the server process started, 1.48MiB
+corten 6 first 200 7.4 ms after the server process started, 1.48MiB
+corten 7 first 200 7.8 ms after the server process started, 1.477MiB
+corten 8 first 200 8.2 ms after the server process started, 1.484MiB
+corten 9 first 200 7.6 ms after the server process started, 1.484MiB
+nextjs 0 first 200 713.0 ms after the server process started, 51.14MiB
+nextjs 1 first 200 811.5 ms after the server process started, 51.58MiB
+nextjs 2 first 200 704.0 ms after the server process started, 51.32MiB
+nextjs 3 first 200 724.9 ms after the server process started, 50.88MiB
+nextjs 4 first 200 712.2 ms after the server process started, 50.87MiB
+nextjs 5 first 200 727.9 ms after the server process started, 51.11MiB
+nextjs 6 first 200 706.6 ms after the server process started, 50.92MiB
+nextjs 7 first 200 718.3 ms after the server process started, 51.02MiB
+nextjs 8 first 200 771.5 ms after the server process started, 51.04MiB
+nextjs 9 first 200 730.6 ms after the server process started, 50.93MiB
+tanstack-start 0 first 200 225.6 ms after the server process started, 26.43MiB
+tanstack-start 1 first 200 212.6 ms after the server process started, 26.35MiB
+tanstack-start 2 first 200 219.2 ms after the server process started, 26.42MiB
+tanstack-start 3 first 200 215.0 ms after the server process started, 26.41MiB
+tanstack-start 4 first 200 232.2 ms after the server process started, 26.3MiB
+tanstack-start 5 first 200 235.9 ms after the server process started, 26.34MiB
+tanstack-start 6 first 200 313.7 ms after the server process started, 26.34MiB
+tanstack-start 7 first 200 223.8 ms after the server process started, 26.49MiB
+tanstack-start 8 first 200 231.9 ms after the server process started, 26.46MiB
+tanstack-start 9 first 200 219.5 ms after the server process started, 26.41MiB
+sveltekit 0 first 200 209.4 ms after the server process started, 23.78MiB
+sveltekit 1 first 200 197.9 ms after the server process started, 23.85MiB
+sveltekit 2 first 200 198.8 ms after the server process started, 23.78MiB
+sveltekit 3 first 200 227.9 ms after the server process started, 23.76MiB
+sveltekit 4 first 200 192.6 ms after the server process started, 23.87MiB
+sveltekit 5 first 200 193.2 ms after the server process started, 23.37MiB
+sveltekit 6 first 200 178.2 ms after the server process started, 23.66MiB
+sveltekit 7 first 200 180.5 ms after the server process started, 24.05MiB
+sveltekit 8 first 200 213.5 ms after the server process started, 24.07MiB
+sveltekit 9 first 200 186.1 ms after the server process started, 23.76MiB
+react-router 0 first 200 335.7 ms after the server process started, 31.91MiB
+react-router 1 first 200 305.2 ms after the server process started, 32.1MiB
+react-router 2 first 200 369.1 ms after the server process started, 32.08MiB
+react-router 3 first 200 329.5 ms after the server process started, 31.89MiB
+react-router 4 first 200 305.0 ms after the server process started, 32.38MiB
+react-router 5 first 200 345.9 ms after the server process started, 32.08MiB
+react-router 6 first 200 331.2 ms after the server process started, 31.98MiB
+react-router 7 first 200 306.7 ms after the server process started, 32.28MiB
+react-router 8 first 200 341.6 ms after the server process started, 32.05MiB
+react-router 9 first 200 337.4 ms after the server process started, 32.04MiB
+leptos 0 first 200 7.6 ms after the server process started, 1.492MiB
+leptos 1 first 200 8.7 ms after the server process started, 1.477MiB
+leptos 2 first 200 7.9 ms after the server process started, 1.488MiB
+leptos 3 first 200 8.0 ms after the server process started, 1.484MiB
+leptos 4 first 200 7.3 ms after the server process started, 1.484MiB
+leptos 5 first 200 8.5 ms after the server process started, 1.488MiB
+leptos 6 first 200 9.9 ms after the server process started, 1.484MiB
+leptos 7 first 200 9.0 ms after the server process started, 1.477MiB
+leptos 8 first 200 7.1 ms after the server process started, 1.484MiB
+leptos 9 first 200 8.1 ms after the server process started, 1.484MiB
+{
+ "corten": {
+  "firstOkMs": {
+   "median": 8.1,
+   "min": 7.4,
+   "max": 13.4
+  },
+  "memAfterFirstRequest": "1.48MiB",
+  "imageMB": 122
+ },
+ "nextjs": {
+  "firstOkMs": {
+   "median": 724.9,
+   "min": 704,
+   "max": 811.5
+  },
+  "memAfterFirstRequest": "51.11MiB",
+  "imageMB": 385
+ },
+ "tanstack-start": {
+  "firstOkMs": {
+   "median": 225.6,
+   "min": 212.6,
+   "max": 313.7
+  },
+  "memAfterFirstRequest": "26.34MiB",
+  "imageMB": 332
+ },
+ "sveltekit": {
+  "firstOkMs": {
+   "median": 197.9,
+   "min": 178.2,
+   "max": 227.9
+  },
+  "memAfterFirstRequest": "23.37MiB",
+  "imageMB": 333
+ },
+ "react-router": {
+  "firstOkMs": {
+   "median": 335.7,
+   "min": 305,
+   "max": 369.1
+  },
+  "memAfterFirstRequest": "32.08MiB",
+  "imageMB": 353
+ },
+ "leptos": {
+  "firstOkMs": {
+   "median": 8.1,
+   "min": 7.1,
+   "max": 9.9
+  },
+  "memAfterFirstRequest": "1.488MiB",
+  "imageMB": 127
+ }
+}
+2026-10-22T11:21:25.531Z node run-ssr.mjs r1 fixture 300 corten,nextjs,tanstack-start,sveltekit,react-router,leptos page
+2026-10-22T11:21:35.366Z corten fixture warmup
+2026-10-22T11:21:57.929Z corten fixture fixed
+2026-10-22T11:23:00.001Z corten fixture sat64
+2026-10-22T11:24:02.067Z corten fixture sat256
+2026-10-22T11:25:14.933Z nextjs fixture warmup
+2026-10-22T11:25:35.536Z nextjs fixture fixed
+2026-10-22T11:26:47.110Z nextjs fixture sat64
+2026-10-22T11:27:49.172Z nextjs fixture sat256
+2026-10-22T11:29:01.598Z tanstack-start fixture warmup
+2026-10-22T11:29:22.204Z tanstack-start fixture fixed
+2026-10-22T11:30:24.269Z tanstack-start fixture sat64
+2026-10-22T11:31:26.328Z tanstack-start fixture sat256
+2026-10-22T11:32:38.706Z sveltekit fixture warmup
+2026-10-22T11:32:59.253Z sveltekit fixture fixed
+2026-10-22T11:34:01.318Z sveltekit fixture sat64
+2026-10-22T11:35:03.386Z sveltekit fixture sat256
+2026-10-22T11:36:15.909Z react-router fixture warmup
+2026-10-22T11:36:36.588Z react-router fixture fixed
+2026-10-22T11:37:38.654Z react-router fixture sat64
+2026-10-22T11:38:40.719Z react-router fixture sat256
+2026-10-22T11:39:52.791Z leptos fixture warmup
+2026-10-22T11:40:13.314Z leptos fixture fixed
+2026-10-22T11:41:15.390Z leptos fixture sat64
+2026-10-22T11:42:17.457Z leptos fixture sat256
+2026-10-22T11:43:19.787Z done
+2026-10-22T11:43:19.797Z node run-ssr.mjs r1 fixture 300 corten,nextjs,tanstack-start,sveltekit,react-router,leptos json
+2026-10-22T11:43:29.606Z corten-json fixture warmup
+2026-10-22T11:43:50.231Z corten-json fixture fixed
+2026-10-22T11:44:52.297Z corten-json fixture sat64
+2026-10-22T11:45:54.360Z corten-json fixture sat256
+2026-10-22T11:47:07.203Z nextjs-json fixture warmup
+2026-10-22T11:47:27.717Z nextjs-json fixture fixed
+2026-10-22T11:48:29.781Z nextjs-json fixture sat64
+2026-10-22T11:49:31.838Z nextjs-json fixture sat256
+2026-10-22T11:50:44.235Z tanstack-start-json fixture warmup
+2026-10-22T11:51:04.770Z tanstack-start-json fixture fixed
+2026-10-22T11:52:06.833Z tanstack-start-json fixture sat64
+2026-10-22T11:53:08.899Z tanstack-start-json fixture sat256
+2026-10-22T11:54:21.367Z sveltekit-json fixture warmup
+2026-10-22T11:54:41.886Z sveltekit-json fixture fixed
+2026-10-22T11:55:43.956Z sveltekit-json fixture sat64
+2026-10-22T11:56:46.023Z sveltekit-json fixture sat256
+2026-10-22T11:57:58.470Z react-router-json fixture warmup
+2026-10-22T11:58:19.008Z react-router-json fixture fixed
+2026-10-22T12:00:59.852Z node run-ssr.mjs r1 fixture 300 corten,nextjs,tanstack-start,sveltekit,react-router,leptos page
+2026-10-22T12:01:09.668Z corten fixture warmup
+2026-10-22T12:01:30.303Z corten fixture fixed
+2026-10-22T12:02:32.368Z corten fixture sat64
+2026-10-22T12:03:34.430Z corten fixture sat256
+2026-10-22T12:04:47.306Z nextjs fixture warmup
+2026-10-22T12:05:07.911Z nextjs fixture fixed
+2026-10-22T12:06:20.268Z nextjs fixture sat64
+2026-10-22T12:07:22.329Z nextjs fixture sat256
+2026-10-22T12:08:34.768Z tanstack-start fixture warmup
+2026-10-22T12:08:55.532Z tanstack-start fixture fixed
+2026-10-22T12:09:57.601Z tanstack-start fixture sat64
+2026-10-22T12:10:59.662Z tanstack-start fixture sat256
+2026-10-22T12:12:12.055Z sveltekit fixture warmup
+2026-10-22T12:12:32.589Z sveltekit fixture fixed
+2026-10-22T12:13:34.653Z sveltekit fixture sat64
+2026-10-22T12:14:36.717Z sveltekit fixture sat256
+2026-10-22T12:15:49.208Z react-router fixture warmup
+2026-10-22T12:16:09.809Z react-router fixture fixed
+2026-10-22T12:17:11.873Z react-router fixture sat64
+2026-10-22T12:18:13.934Z react-router fixture sat256
+2026-10-22T12:19:25.964Z leptos fixture warmup
+2026-10-22T12:19:46.489Z leptos fixture fixed
+2026-10-22T12:20:48.570Z leptos fixture sat64
+2026-10-22T12:21:50.646Z leptos fixture sat256
+2026-10-22T12:22:52.950Z done
+2026-10-22T12:22:52.961Z node run-ssr.mjs r1 fixture 300 corten,nextjs,tanstack-start,sveltekit,react-router,leptos json
+2026-10-22T12:23:02.772Z corten-json fixture warmup
+2026-10-22T12:23:23.461Z corten-json fixture fixed
+2026-10-22T12:24:25.527Z corten-json fixture sat64
+2026-10-22T12:25:27.595Z corten-json fixture sat256
+2026-10-22T12:26:40.364Z nextjs-json fixture warmup
+2026-10-22T12:27:00.928Z nextjs-json fixture fixed
+2026-10-22T12:28:02.983Z nextjs-json fixture sat64
+2026-10-22T12:29:05.048Z nextjs-json fixture sat256
+2026-10-22T12:30:17.435Z tanstack-start-json fixture warmup
+2026-10-22T12:30:37.977Z tanstack-start-json fixture fixed
+2026-10-22T12:31:40.041Z tanstack-start-json fixture sat64
+2026-10-22T12:32:42.107Z tanstack-start-json fixture sat256
+2026-10-22T12:33:54.550Z sveltekit-json fixture warmup
+2026-10-22T12:34:15.064Z sveltekit-json fixture fixed
+2026-10-22T12:35:17.127Z sveltekit-json fixture sat64
+2026-10-22T12:36:19.194Z sveltekit-json fixture sat256
+2026-10-22T12:37:31.735Z react-router-json fixture warmup
+2026-10-22T12:37:52.246Z react-router-json fixture fixed
+2026-10-22T12:38:54.323Z react-router-json fixture sat64
+2026-10-22T12:39:56.393Z react-router-json fixture sat256
+2026-10-22T12:41:08.451Z leptos-json fixture warmup
+2026-10-22T12:41:29.136Z leptos-json fixture fixed
+2026-10-22T12:42:31.196Z leptos-json fixture sat64
+2026-10-22T12:43:33.254Z leptos-json fixture sat256
+2026-10-22T12:44:35.553Z done
+2026-10-22T12:44:35.563Z node run-ssr.mjs r1 api 150 corten,nextjs,tanstack-start,sveltekit,react-router,leptos page
+2026-10-22T12:44:45.144Z corten api warmup
+2026-10-22T12:45:05.687Z corten api fixed
+2026-10-22T12:46:07.757Z corten api sat64
+2026-10-22T12:47:09.821Z corten api sat256
+2026-10-22T12:48:22.331Z nextjs api warmup
+2026-10-22T12:48:42.946Z nextjs api fixed
+2026-10-22T12:50:08.908Z nextjs api sat64
+2026-10-22T12:51:10.975Z nextjs api sat256
+2026-10-22T12:52:23.002Z tanstack-start api warmup
+2026-10-22T12:52:43.614Z tanstack-start api fixed
+2026-10-22T12:53:45.677Z tanstack-start api sat64
+2026-10-22T12:54:47.743Z tanstack-start api sat256
+2026-10-22T12:55:59.743Z sveltekit api warmup
+2026-10-22T12:56:20.352Z sveltekit api fixed
+2026-10-22T12:57:22.430Z sveltekit api sat64
+2026-10-22T12:58:24.490Z sveltekit api sat256
+2026-10-22T12:59:36.569Z react-router api warmup
+2026-10-22T12:59:57.170Z react-router api fixed
+2026-10-22T13:00:59.226Z react-router api sat64
+2026-10-22T13:02:01.287Z react-router api sat256
+2026-10-22T13:03:13.094Z leptos api warmup
+2026-10-22T13:03:33.670Z leptos api fixed
+2026-10-22T13:04:35.735Z leptos api sat64
+2026-10-22T13:05:37.799Z leptos api sat256
+2026-10-22T13:06:40.104Z done
+2026-10-22T13:06:40.114Z node run-ssr.mjs r1 api 150 corten,nextjs,tanstack-start,sveltekit,react-router,leptos json
+2026-10-22T13:06:49.690Z corten-json api warmup
+2026-10-22T13:07:10.257Z corten-json api fixed
+2026-10-22T13:08:12.326Z corten-json api sat64
+2026-10-22T13:09:14.399Z corten-json api sat256
+2026-10-22T13:10:26.762Z nextjs-json api warmup
+2026-10-22T13:10:47.393Z nextjs-json api fixed
+2026-10-22T13:11:49.466Z nextjs-json api sat64
+2026-10-22T13:12:51.536Z nextjs-json api sat256
+2026-10-22T13:14:03.515Z tanstack-start-json api warmup
+2026-10-22T13:14:24.060Z tanstack-start-json api fixed
+2026-10-22T13:15:26.133Z tanstack-start-json api sat64
+2026-10-22T13:16:28.207Z tanstack-start-json api sat256
+2026-10-22T13:17:40.154Z sveltekit-json api warmup
+2026-10-22T13:18:00.722Z sveltekit-json api fixed
+2026-10-22T13:19:02.790Z sveltekit-json api sat64
+2026-10-22T13:20:04.852Z sveltekit-json api sat256
+2026-10-22T13:21:16.993Z react-router-json api warmup
+2026-10-22T13:21:37.556Z react-router-json api fixed
+2026-10-22T13:22:39.619Z react-router-json api sat64
+2026-10-22T13:23:41.676Z react-router-json api sat256
+2026-10-22T13:24:53.496Z leptos-json api warmup
+2026-10-22T13:25:14.046Z leptos-json api fixed
+2026-10-22T13:26:16.109Z leptos-json api sat64
+2026-10-22T13:27:18.173Z leptos-json api sat256
+2026-10-22T13:28:20.480Z done
+2026-10-22T13:28:20.490Z node count.mjs r1 3
+corten page {"requests":5000,"failed":0,"userPerRequest":163599,"kernelPerRequest":33288}
+corten page {"requests":5000,"failed":0,"userPerRequest":163507,"kernelPerRequest":32035}
+corten page {"requests":5000,"failed":0,"userPerRequest":163869,"kernelPerRequest":33383}
+corten json {"requests":5000,"failed":0,"userPerRequest":210639,"kernelPerRequest":32818}
+corten json {"requests":5000,"failed":0,"userPerRequest":211122,"kernelPerRequest":33430}
+corten json {"requests":5000,"failed":0,"userPerRequest":211365,"kernelPerRequest":32821}
+nextjs page {"requests":5000,"failed":0,"userPerRequest":17361190,"kernelPerRequest":137118}
+nextjs page {"requests":5000,"failed":0,"userPerRequest":17791688,"kernelPerRequest":138087}
+nextjs page {"requests":5000,"failed":0,"userPerRequest":16781195,"kernelPerRequest":132945}
+nextjs json {"requests":5000,"failed":0,"userPerRequest":1745348,"kernelPerRequest":59774}
+nextjs json {"requests":5000,"failed":0,"userPerRequest":1746234,"kernelPerRequest":58347}
+nextjs json {"requests":5000,"failed":0,"userPerRequest":1740102,"kernelPerRequest":58764}
+tanstack-start page {"requests":5000,"failed":0,"userPerRequest":5697206,"kernelPerRequest":52070}
+tanstack-start page {"requests":5000,"failed":0,"userPerRequest":5365639,"kernelPerRequest":51165}
+tanstack-start page {"requests":5000,"failed":0,"userPerRequest":5320380,"kernelPerRequest":50435}
+tanstack-start json {"requests":5000,"failed":0,"userPerRequest":524514,"kernelPerRequest":33547}
+tanstack-start json {"requests":5000,"failed":0,"userPerRequest":523773,"kernelPerRequest":33752}
+tanstack-start json {"requests":5000,"failed":0,"userPerRequest":528516,"kernelPerRequest":33838}
+sveltekit page {"requests":5000,"failed":0,"userPerRequest":4584905,"kernelPerRequest":47604}
+sveltekit page {"requests":5000,"failed":0,"userPerRequest":4519049,"kernelPerRequest":48179}
+sveltekit page {"requests":5000,"failed":0,"userPerRequest":4471373,"kernelPerRequest":47068}
+sveltekit json {"requests":5000,"failed":0,"userPerRequest":650784,"kernelPerRequest":33284}
+sveltekit json {"requests":5000,"failed":0,"userPerRequest":674822,"kernelPerRequest":34138}
+sveltekit json {"requests":5000,"failed":0,"userPerRequest":672986,"kernelPerRequest":33373}
+react-router page {"requests":5000,"failed":0,"userPerRequest":6961213,"kernelPerRequest":113665}
+react-router page {"requests":5000,"failed":0,"userPerRequest":6374204,"kernelPerRequest":111100}
+react-router page {"requests":5000,"failed":0,"userPerRequest":6507600,"kernelPerRequest":111193}
+react-router json {"requests":5000,"failed":0,"userPerRequest":836827,"kernelPerRequest":70373}
+react-router json {"requests":5000,"failed":0,"userPerRequest":877998,"kernelPerRequest":70874}
+react-router json {"requests":5000,"failed":0,"userPerRequest":840467,"kernelPerRequest":70484}
+leptos page {"requests":5000,"failed":0,"userPerRequest":2726063,"kernelPerRequest":36140}
+leptos page {"requests":5000,"failed":0,"userPerRequest":2726319,"kernelPerRequest":35298}
+leptos page {"requests":5000,"failed":0,"userPerRequest":2719769,"kernelPerRequest":35305}
+leptos json {"requests":5000,"failed":0,"userPerRequest":205138,"kernelPerRequest":33068}
+leptos json {"requests":5000,"failed":0,"userPerRequest":205121,"kernelPerRequest":32795}
+leptos json {"requests":5000,"failed":0,"userPerRequest":205207,"kernelPerRequest":32195}
+done
+2026-10-22T13:36:58.335Z node parity.mjs
+{"id":"item_1","app":"nextjs","status":[200,200],"corten":"stings 9920 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1862 ·","nextjs":"stings 9920 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1862 · 4.32 ★ (38) Near M"}
+{"id":"item_1","app":"tanstack-start","status":[200,200],"corten":"stings 9920 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1862 ·","tanstack-start":"stings 9920 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1862 · 4.32 ★ (38) Near M"}
+{"id":"item_1","app":"sveltekit","status":[200,200],"corten":"stings 9920 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1862 ·","sveltekit":"stings 9920 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1862 · 4.32 ★ (38) Near M"}
+{"id":"item_1","app":"react-router","status":[200,200],"corten":"stings 9920 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1862 ·","react-router":"stings 9920 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1862 · 4.32 ★ (38) Near M"}
+{"id":"item_1","app":"leptos","status":[200,200],"corten":"stings 9920 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1862 ·","leptos":"stings 9920 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1862 · 4.32 ★ (38) Near M"}
+{"id":"item_2","app":"nextjs","status":[200,200],"corten":"stings 2728 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 136 · ","nextjs":"stings 2728 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 136 · 4.29 ★ (341) Near M"}
+{"id":"item_2","app":"tanstack-start","status":[200,200],"corten":"stings 2728 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 136 · ","tanstack-start":"stings 2728 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 136 · 4.29 ★ (341) Near M"}
+{"id":"item_2","app":"sveltekit","status":[200,200],"corten":"stings 2728 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 136 · ","sveltekit":"stings 2728 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 136 · 4.29 ★ (341) Near M"}
+{"id":"item_2","app":"react-router","status":[200,200],"corten":"stings 2728 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 136 · ","react-router":"stings 2728 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 136 · 4.29 ★ (341) Near M"}
+{"id":"item_2","app":"leptos","status":[200,200],"corten":"stings 2728 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 136 · ","leptos":"stings 2728 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 136 · 4.29 ★ (341) Near M"}
+{"id":"item_3","app":"nextjs","status":[200,200],"corten":"stings 1758 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1539 ·","nextjs":"stings 1758 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1539 · 4.22 ★ (149) Near "}
+{"id":"item_3","app":"tanstack-start","status":[200,200],"corten":"stings 1758 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1539 ·","tanstack-start":"stings 1758 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1539 · 4.22 ★ (149) Near "}
+{"id":"item_3","app":"sveltekit","status":[200,200],"corten":"stings 1758 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1539 ·","sveltekit":"stings 1758 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1539 · 4.22 ★ (149) Near "}
+{"id":"item_3","app":"react-router","status":[200,200],"corten":"stings 1758 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1539 ·","react-router":"stings 1758 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1539 · 4.22 ★ (149) Near "}
+{"id":"item_3","app":"leptos","status":[200,200],"corten":"stings 1758 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1539 ·","leptos":"stings 1758 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1539 · 4.22 ★ (149) Near "}
+{"id":"item_5","app":"nextjs","status":[200,200],"corten":"stings 1232 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 850 · ","nextjs":"stings 1232 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 850 · 4.58 ★ (274) Near M"}
+{"id":"item_5","app":"tanstack-start","status":[200,200],"corten":"stings 1232 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 850 · ","tanstack-start":"stings 1232 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 850 · 4.58 ★ (274) Near M"}
+{"id":"item_5","app":"sveltekit","status":[200,200],"corten":"stings 1232 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 850 · ","sveltekit":"stings 1232 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 850 · 4.58 ★ (274) Near M"}
+{"id":"item_5","app":"react-router","status":[200,200],"corten":"stings 1232 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 850 · ","react-router":"stings 1232 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 850 · 4.58 ★ (274) Near M"}
+{"id":"item_5","app":"leptos","status":[200,200],"corten":"stings 1232 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 850 · ","leptos":"stings 1232 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 850 · 4.58 ★ (274) Near M"}
+{"id":"item_17","app":"nextjs","status":[200,200],"corten":"istings 572 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1377 ·","nextjs":"istings 572 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1377 · 4.04 ★ (119) Near "}
+{"id":"item_17","app":"tanstack-start","status":[200,200],"corten":"istings 572 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1377 ·","tanstack-start":"istings 572 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1377 · 4.04 ★ (119) Near "}
+{"id":"item_17","app":"sveltekit","status":[200,200],"corten":"istings 572 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1377 ·","sveltekit":"istings 572 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1377 · 4.04 ★ (119) Near "}
+{"id":"item_17","app":"react-router","status":[200,200],"corten":"istings 572 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1377 ·","react-router":"istings 572 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1377 · 4.04 ★ (119) Near "}
+{"id":"item_17","app":"leptos","status":[200,200],"corten":"istings 572 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1377 ·","leptos":"istings 572 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1377 · 4.04 ★ (119) Near "}
+{"id":"item_99","app":"nextjs","status":[200,200],"corten":"istings 161 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 37 · 4","nextjs":"istings 161 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 37 · 4.93 ★ (73) Near Min"}
+{"id":"item_99","app":"tanstack-start","status":[200,200],"corten":"istings 161 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 37 · 4","tanstack-start":"istings 161 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 37 · 4.93 ★ (73) Near Min"}
+{"id":"item_99","app":"sveltekit","status":[200,200],"corten":"istings 161 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 37 · 4","sveltekit":"istings 161 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 37 · 4.93 ★ (73) Near Min"}
+{"id":"item_99","app":"react-router","status":[200,200],"corten":"istings 161 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 37 · 4","react-router":"istings 161 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 37 · 4.93 ★ (73) Near Min"}
+{"id":"item_99","app":"leptos","status":[200,200],"corten":"istings 161 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 37 · 4","leptos":"istings 161 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 37 · 4.93 ★ (73) Near Min"}
+{"id":"item_250","app":"nextjs","status":[200,200],"corten":"istings 110 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1770 ·","nextjs":"istings 110 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1770 · 4.36 ★ (162) Near "}
+{"id":"item_250","app":"tanstack-start","status":[200,200],"corten":"istings 110 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1770 ·","tanstack-start":"istings 110 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1770 · 4.36 ★ (162) Near "}
+{"id":"item_250","app":"sveltekit","status":[200,200],"corten":"istings 110 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1770 ·","sveltekit":"istings 110 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1770 · 4.36 ★ (162) Near "}
+{"id":"item_250","app":"react-router","status":[200,200],"corten":"istings 110 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1770 ·","react-router":"istings 110 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1770 · 4.36 ★ (162) Near "}
+{"id":"item_250","app":"leptos","status":[200,200],"corten":"istings 110 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1770 ·","leptos":"istings 110 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1770 · 4.36 ★ (162) Near "}
+{"id":"item_777","app":"nextjs","status":[200,200],"corten":"listings 29 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1099 ·","nextjs":"listings 29 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1099 · 4.92 ★ (69) Near M"}
+{"id":"item_777","app":"tanstack-start","status":[200,200],"corten":"listings 29 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1099 ·","tanstack-start":"listings 29 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1099 · 4.92 ★ (69) Near M"}
+{"id":"item_777","app":"sveltekit","status":[200,200],"corten":"listings 29 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1099 ·","sveltekit":"listings 29 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1099 · 4.92 ★ (69) Near M"}
+{"id":"item_777","app":"react-router","status":[200,200],"corten":"listings 29 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1099 ·","react-router":"listings 29 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1099 · 4.92 ★ (69) Near M"}
+{"id":"item_777","app":"leptos","status":[200,200],"corten":"listings 29 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1099 ·","leptos":"listings 29 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1099 · 4.92 ★ (69) Near M"}
+{"id":"item_1500","app":"nextjs","status":[200,200],"corten":"listings 44 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 285 · ","nextjs":"listings 44 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 285 · 3.92 ★ (384) Near M"}
+{"id":"item_1500","app":"tanstack-start","status":[200,200],"corten":"listings 44 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 285 · ","tanstack-start":"listings 44 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 285 · 3.92 ★ (384) Near M"}
+{"id":"item_1500","app":"sveltekit","status":[200,200],"corten":"listings 44 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 285 · ","sveltekit":"listings 44 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 285 · 3.92 ★ (384) Near M"}
+{"id":"item_1500","app":"react-router","status":[200,200],"corten":"listings 44 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 285 · ","react-router":"listings 44 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 285 · 3.92 ★ (384) Near M"}
+{"id":"item_1500","app":"leptos","status":[200,200],"corten":"listings 44 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 285 · ","leptos":"listings 44 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 285 · 3.92 ★ (384) Near M"}
+{"id":"item_1999","app":"nextjs","status":[200,200],"corten":"listings 30 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 242 · ","nextjs":"listings 30 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 242 · 3.98 ★ (49) Near Mi"}
+{"id":"item_1999","app":"tanstack-start","status":[200,200],"corten":"listings 30 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 242 · ","tanstack-start":"listings 30 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 242 · 3.98 ★ (49) Near Mi"}
+{"id":"item_1999","app":"sveltekit","status":[200,200],"corten":"listings 30 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 242 · ","sveltekit":"listings 30 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 242 · 3.98 ★ (49) Near Mi"}
+{"id":"item_1999","app":"react-router","status":[200,200],"corten":"listings 30 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 242 · ","react-router":"listings 30 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 242 · 3.98 ★ (49) Near Mi"}
+{"id":"item_1999","app":"leptos","status":[200,200],"corten":"listings 30 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 242 · ","leptos":"listings 30 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 242 · 3.98 ★ (49) Near Mi"}
+{"id":"item_2000","app":"nextjs","status":[200,200],"corten":"listings 24 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 55 · 3","nextjs":"listings 24 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 55 · 3.59 ★ (50) Near Min"}
+{"id":"item_2000","app":"tanstack-start","status":[200,200],"corten":"listings 24 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 55 · 3","tanstack-start":"listings 24 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 55 · 3.59 ★ (50) Near Min"}
+{"id":"item_2000","app":"sveltekit","status":[200,200],"corten":"listings 24 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 55 · 3","sveltekit":"listings 24 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 55 · 3.59 ★ (50) Near Min"}
+{"id":"item_2000","app":"react-router","status":[200,200],"corten":"listings 24 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 55 · 3","react-router":"listings 24 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 55 · 3.59 ★ (50) Near Min"}
+{"id":"item_2000","app":"leptos","status":[200,200],"corten":"listings 24 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 55 · 3","leptos":"listings 24 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 55 · 3.59 ★ (50) Near Min"}
+{"id":"item_2500","app":"nextjs","status":[200,200],"corten":" listings 8 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 897 · ","nextjs":" listings 8 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 897 · 4.53 ★ (16) Near Mi"}
+{"id":"item_2500","app":"tanstack-start","status":[200,200],"corten":" listings 8 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 897 · ","tanstack-start":" listings 8 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 897 · 4.53 ★ (16) Near Mi"}
+{"id":"item_2500","app":"sveltekit","status":[200,200],"corten":" listings 8 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 897 · ","sveltekit":" listings 8 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 897 · 4.53 ★ (16) Near Mi"}
+{"id":"item_2500","app":"react-router","status":[200,200],"corten":" listings 8 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 897 · ","react-router":" listings 8 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 897 · 4.53 ★ (16) Near Mi"}
+{"id":"item_2500","app":"leptos","status":[200,200],"corten":" listings 8 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 897 · ","leptos":" listings 8 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 897 · 4.53 ★ (16) Near Mi"}
+{"id":"item_3000","app":"nextjs","status":[200,200],"corten":" listings 9 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1753 ·","nextjs":" listings 9 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1753 · 3.99 ★ (192) Near "}
+{"id":"item_3000","app":"tanstack-start","status":[200,200],"corten":" listings 9 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1753 ·","tanstack-start":" listings 9 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1753 · 3.99 ★ (192) Near "}
+{"id":"item_3000","app":"sveltekit","status":[200,200],"corten":" listings 9 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1753 ·","sveltekit":" listings 9 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1753 · 3.99 ★ (192) Near "}
+{"id":"item_3000","app":"react-router","status":[200,200],"corten":" listings 9 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1753 ·","react-router":" listings 9 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1753 · 3.99 ★ (192) Near "}
+{"id":"item_3000","app":"leptos","status":[200,200],"corten":" listings 9 available Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Seller 1753 ·","leptos":" listings 9 available Listings Price: low to high Seller Condition Ships from Qty Price Seller 1753 · 3.99 ★ (192) Near "}
+{"id":"item_12345","app":"nextjs","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","nextjs":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_12345","app":"tanstack-start","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","tanstack-start":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_12345","app":"sveltekit","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","sveltekit":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_12345","app":"react-router","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","react-router":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_12345","app":"leptos","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","leptos":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_49999","app":"nextjs","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","nextjs":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_49999","app":"tanstack-start","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","tanstack-start":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_49999","app":"sveltekit","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","sveltekit":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_49999","app":"react-router","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","react-router":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"id":"item_49999","app":"leptos","status":[200,200],"corten":" Rare No listings yet Listings Price: low to high Price: high to low Seller Condition Ships from Qty Price Offers Buyer ","leptos":" Rare No listings yet Listings Price: low to high Seller Condition Ships from Qty Price Offers Buyer Condition Qty Price"}
+{"reference":"corten","compared":["nextjs","tanstack-start","sveltekit","react-router","leptos"],"pages":16,"failures":75}
+step failed with 1
+2026-10-22T13:37:00.199Z node bytes.mjs r1
+corten {"html":{"raw":11362,"gzip":2342},"js":{"raw":10541,"gzip":4507,"files":4},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":4691,"gzip":1636,"files":2}}
+nextjs {"html":{"raw":25906,"gzip":4892},"js":{"raw":467154,"gzip":139376,"files":7},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+tanstack-start {"html":{"raw":17836,"gzip":4393},"js":{"raw":350690,"gzip":113549,"files":5},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+sveltekit {"html":{"raw":16730,"gzip":3648},"js":{"raw":98612,"gzip":37884,"files":11},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+react-router {"html":{"raw":19962,"gzip":5004},"js":{"raw":317136,"gzip":100964,"files":4},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+leptos {"html":{"raw":18237,"gzip":3556},"js":{"raw":25351,"gzip":7124,"files":1},"wasm":{"raw":737159,"gzip":293558,"files":1},"css":{"raw":2041,"gzip":869,"files":1}}
+2026-10-22T13:37:05.051Z node browser.mjs corten=http://localhost:18410 nextjs=http://localhost:18411 tanstack-start=http://localhost:18412 sveltekit=http://localhost:18413 react-router=http://localhost:18414 leptos=http://localhost:18415 runs=10 out=r1/browser.json
+{"profile":"desktop","app":"corten","i":0,"id":"item_3","ttfb":6,"fcp":92,"lcp":92,"dcl":76.40000000037253,"load":76.80000000074506,"hydratedAt":76.40000000037253,"tbtToHydration":0,"bytes":{"html":2702,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3792572021484375,"actionMs":87.40000000037253,"sortWorked":true,"clientNavMs":9.400000000372529}
+{"profile":"desktop","app":"nextjs","i":0,"id":"item_3","ttfb":21.699999999254942,"fcp":80,"lcp":80,"dcl":60.59999999962747,"load":192.59999999962747,"hydratedAt":223.2999999988824,"tbtToHydration":0,"bytes":{"html":5437,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.1159133911132812,"actionMs":87,"sortWorked":true,"clientNavMs":117.5}
+{"profile":"desktop","app":"tanstack-start","i":0,"id":"item_3","ttfb":15.900000000372529,"fcp":80,"lcp":80,"dcl":59.30000000074506,"load":98.80000000074506,"hydratedAt":121,"tbtToHydration":0,"bytes":{"html":18067,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.8565750122070312,"actionMs":80.60000000149012,"sortWorked":true,"clientNavMs":28.90000000037253}
+{"profile":"desktop","app":"sveltekit","i":0,"id":"item_3","ttfb":11.300000000745058,"fcp":108,"lcp":108,"dcl":75.90000000037253,"load":76,"hydratedAt":113.5,"tbtToHydration":0,"bytes":{"html":16963,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.114940643310547,"actionMs":72.29999999888241,"sortWorked":true,"clientNavMs":24.799999998882413}
+{"profile":"desktop","app":"react-router","i":0,"id":"item_3","ttfb":15.400000000372529,"fcp":88,"lcp":88,"dcl":76.19999999925494,"load":117.40000000037253,"hydratedAt":173.19999999925494,"tbtToHydration":0,"bytes":{"html":5013,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.4876937866210938,"actionMs":97,"sortWorked":true,"clientNavMs":33.40000000037253}
+{"profile":"desktop","app":"leptos","i":0,"id":"item_3","ttfb":5.800000000745058,"fcp":72,"lcp":72,"dcl":51.69999999925494,"load":51.90000000037253,"hydratedAt":111.90000000037253,"tbtToHydration":0,"bytes":{"html":3603,"js":7495,"wasm":282717,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7341423034667969,"actionMs":87.19999999925494,"sortWorked":true,"clientNavMs":23.09999999962747}
+{"profile":"desktop","app":"corten","i":1,"id":"item_17","ttfb":6.200000001117587,"fcp":64,"lcp":64,"dcl":59.90000000037253,"load":61.09999999962747,"hydratedAt":62.20000000111759,"tbtToHydration":0,"bytes":{"html":2717,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3562583923339844,"actionMs":73.19999999925494,"sortWorked":true,"clientNavMs":10.400000000372529}
+{"profile":"desktop","app":"nextjs","i":1,"id":"item_17","ttfb":26.199999999254942,"fcp":84,"lcp":84,"dcl":43.59999999962747,"load":130.59999999962747,"hydratedAt":156.19999999925494,"tbtToHydration":0,"bytes":{"html":5474,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.190837860107422,"actionMs":83.90000000037253,"sortWorked":true,"clientNavMs":113.80000000074506}
+{"profile":"desktop","app":"tanstack-start","i":1,"id":"item_17","ttfb":27.199999999254942,"fcp":92,"lcp":92,"dcl":71.09999999962747,"load":117.59999999962747,"hydratedAt":143.40000000037253,"tbtToHydration":0,"bytes":{"html":18136,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.9200439453125,"actionMs":70.90000000037253,"sortWorked":true,"clientNavMs":29.600000001490116}
+{"profile":"desktop","app":"sveltekit","i":1,"id":"item_17","ttfb":13.099999999627471,"fcp":92,"lcp":92,"dcl":78.40000000037253,"load":78.59999999962747,"hydratedAt":123.19999999925494,"tbtToHydration":0,"bytes":{"html":17030,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1721649169921875,"actionMs":71.90000000037253,"sortWorked":true,"clientNavMs":21.90000000037253}
+{"profile":"desktop","app":"react-router","i":1,"id":"item_17","ttfb":19.800000000745058,"fcp":128,"lcp":128,"dcl":107,"load":113.20000000111759,"hydratedAt":168.59999999962747,"tbtToHydration":0,"bytes":{"html":5022,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.5416603088378906,"actionMs":100.59999999962747,"sortWorked":true,"clientNavMs":34}
+{"profile":"desktop","app":"leptos","i":1,"id":"item_17","ttfb":6,"fcp":84,"lcp":84,"dcl":65.30000000074506,"load":65.5,"hydratedAt":109,"tbtToHydration":0,"bytes":{"html":3637,"js":7495,"wasm":282867,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7337379455566406,"actionMs":88.10000000149012,"sortWorked":true,"clientNavMs":28.199999999254942}
+{"profile":"desktop","app":"corten","i":2,"id":"item_250","ttfb":4.5,"fcp":72,"lcp":72,"dcl":59.19999999925494,"load":60,"hydratedAt":61.40000000037253,"tbtToHydration":0,"bytes":{"html":2525,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3558692932128906,"actionMs":92.30000000074506,"sortWorked":true,"clientNavMs":12.599999999627471}
+{"profile":"desktop","app":"nextjs","i":2,"id":"item_250","ttfb":25.59999999962747,"fcp":88,"lcp":88,"dcl":44.69999999925494,"load":135.80000000074506,"hydratedAt":164.90000000037253,"tbtToHydration":0,"bytes":{"html":5257,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.2648048400878906,"actionMs":71.40000000037253,"sortWorked":true,"clientNavMs":98.80000000074506}
+{"profile":"desktop","app":"tanstack-start","i":2,"id":"item_250","ttfb":12.299999998882413,"fcp":76,"lcp":76,"dcl":54.69999999925494,"load":98.79999999888241,"hydratedAt":121.90000000037253,"tbtToHydration":0,"bytes":{"html":16543,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.925708770751953,"actionMs":86,"sortWorked":true,"clientNavMs":33}
+{"profile":"desktop","app":"sveltekit","i":2,"id":"item_250","ttfb":10.599999999627471,"fcp":112,"lcp":112,"dcl":82.39999999850988,"load":82.59999999962747,"hydratedAt":123.19999999925494,"tbtToHydration":0,"bytes":{"html":15556,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1151351928710938,"actionMs":72.5,"sortWorked":true,"clientNavMs":20.90000000037253}
+{"profile":"desktop","app":"react-router","i":2,"id":"item_250","ttfb":17.40000000037253,"fcp":92,"lcp":92,"dcl":75.80000000074506,"load":79.20000000111759,"hydratedAt":150.80000000074506,"tbtToHydration":0,"bytes":{"html":4727,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.54718017578125,"actionMs":99.79999999888241,"sortWorked":true,"clientNavMs":29.199999999254942}
+{"profile":"desktop","app":"leptos","i":2,"id":"item_250","ttfb":4.799999998882413,"fcp":76,"lcp":76,"dcl":52.899999998509884,"load":52.899999998509884,"hydratedAt":94.29999999888241,"tbtToHydration":0,"bytes":{"html":3451,"js":7495,"wasm":282877,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7331085205078125,"actionMs":72.80000000074506,"sortWorked":true,"clientNavMs":29.5}
+{"profile":"desktop","app":"corten","i":3,"id":"item_1999","ttfb":4,"fcp":72,"lcp":72,"dcl":58.69999999925494,"load":59,"hydratedAt":60.5,"tbtToHydration":0,"bytes":{"html":2099,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3785362243652344,"actionMs":74.90000000037253,"sortWorked":true,"clientNavMs":10.300000000745058}
+{"profile":"desktop","app":"nextjs","i":3,"id":"item_1999","ttfb":17.40000000037253,"fcp":80,"lcp":80,"dcl":57.20000000111759,"load":127.30000000074506,"hydratedAt":157.90000000037253,"tbtToHydration":0,"bytes":{"html":4392,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.1476593017578125,"actionMs":71.39999999850988,"sortWorked":true,"clientNavMs":121.90000000037253}
+{"profile":"desktop","app":"tanstack-start","i":3,"id":"item_1999","ttfb":11.199999999254942,"fcp":80,"lcp":80,"dcl":58.69999999925494,"load":103.79999999888241,"hydratedAt":130.19999999925494,"tbtToHydration":0,"bytes":{"html":10709,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.7994003295898438,"actionMs":70.69999999925494,"sortWorked":true,"clientNavMs":34.30000000074506}
+{"profile":"desktop","app":"sveltekit","i":3,"id":"item_1999","ttfb":8.200000001117587,"fcp":80,"lcp":80,"dcl":68,"load":68,"hydratedAt":112.10000000149012,"tbtToHydration":0,"bytes":{"html":9876,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.0638427734375,"actionMs":74.80000000074506,"sortWorked":true,"clientNavMs":19.700000001117587}
+{"profile":"desktop","app":"react-router","i":3,"id":"item_1999","ttfb":13.699999999254942,"fcp":124,"lcp":124,"dcl":108.59999999962747,"load":110.79999999888241,"hydratedAt":170.7999999988824,"tbtToHydration":0,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.3894081115722656,"actionMs":99.60000000149012,"sortWorked":true,"clientNavMs":32.40000000037253}
+{"profile":"desktop","app":"leptos","i":3,"id":"item_1999","ttfb":4.099999999627471,"fcp":116,"lcp":116,"dcl":67.29999999888241,"load":70.69999999925494,"hydratedAt":133.7999999988824,"tbtToHydration":0,"bytes":{"html":2587,"js":7495,"wasm":282718,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.6994361877441406,"actionMs":75.40000000037253,"sortWorked":true,"clientNavMs":27.5}
+{"profile":"desktop","app":"corten","i":4,"id":"item_12345","ttfb":2.399999998509884,"fcp":68,"lcp":68,"dcl":54.29999999888241,"load":54.69999999925494,"hydratedAt":55.899999998509884,"tbtToHydration":0,"bytes":{"html":1706,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3794670104980469,"actionMs":75.80000000074506,"sortWorked":null,"clientNavMs":9.899999998509884}
+{"profile":"desktop","app":"nextjs","i":4,"id":"item_12345","ttfb":18.09999999962747,"fcp":76,"lcp":76,"dcl":53.90000000037253,"load":126.70000000111759,"hydratedAt":152,"tbtToHydration":0,"bytes":{"html":3492,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.0026283264160156,"actionMs":72.69999999925494,"sortWorked":null,"clientNavMs":83.79999999888241}
+{"profile":"desktop","app":"tanstack-start","i":4,"id":"item_12345","ttfb":13.099999999627471,"fcp":80,"lcp":80,"dcl":59.59999999962747,"load":106.09999999962747,"hydratedAt":130.09999999962747,"tbtToHydration":0,"bytes":{"html":6727,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.665599822998047,"actionMs":73.89999999850988,"sortWorked":null,"clientNavMs":28.200000001117587}
+{"profile":"desktop","app":"sveltekit","i":4,"id":"item_12345","ttfb":7.199999999254942,"fcp":80,"lcp":80,"dcl":66.69999999925494,"load":66.79999999888241,"hydratedAt":107.89999999850988,"tbtToHydration":0,"bytes":{"html":6032,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.0010528564453125,"actionMs":90,"sortWorked":null,"clientNavMs":20.800000000745058}
+{"profile":"desktop","app":"react-router","i":4,"id":"item_12345","ttfb":14,"fcp":72,"lcp":72,"dcl":57.09999999962747,"load":88.39999999850988,"hydratedAt":146,"tbtToHydration":0,"bytes":{"html":2614,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.615917205810547,"actionMs":73.09999999962747,"sortWorked":null,"clientNavMs":34.40000000037253}
+{"profile":"desktop","app":"leptos","i":4,"id":"item_12345","ttfb":3.699999999254942,"fcp":108,"lcp":108,"dcl":65.69999999925494,"load":68.5,"hydratedAt":111.09999999962747,"tbtToHydration":0,"bytes":{"html":1873,"js":7495,"wasm":282717,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.6774177551269531,"actionMs":76.90000000037253,"sortWorked":null,"clientNavMs":26.299999998882413}
+{"profile":"desktop","app":"corten","i":5,"id":"item_3","ttfb":4.199999999254942,"fcp":76,"lcp":76,"dcl":65.30000000074506,"load":66.19999999925494,"hydratedAt":71.59999999962747,"tbtToHydration":0,"bytes":{"html":2702,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3562583923339844,"actionMs":73,"sortWorked":true,"clientNavMs":10.300000000745058}
+{"profile":"desktop","app":"nextjs","i":5,"id":"item_3","ttfb":22.90000000037253,"fcp":96,"lcp":96,"dcl":82.20000000111759,"load":145.09999999962747,"hydratedAt":176.90000000037253,"tbtToHydration":1,"bytes":{"html":5437,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.1517066955566406,"actionMs":87.5,"sortWorked":true,"clientNavMs":70}
+{"profile":"desktop","app":"tanstack-start","i":5,"id":"item_3","ttfb":16.800000000745058,"fcp":76,"lcp":76,"dcl":60.40000000037253,"load":101.5,"hydratedAt":125.70000000111759,"tbtToHydration":0,"bytes":{"html":18067,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.9288177490234375,"actionMs":83.29999999888241,"sortWorked":true,"clientNavMs":28.59999999962747}
+{"profile":"desktop","app":"sveltekit","i":5,"id":"item_3","ttfb":11.199999999254942,"fcp":84,"lcp":84,"dcl":72,"load":72,"hydratedAt":110,"tbtToHydration":0,"bytes":{"html":16963,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1085777282714844,"actionMs":74.5,"sortWorked":true,"clientNavMs":21.5}
+{"profile":"desktop","app":"react-router","i":5,"id":"item_3","ttfb":15.599999999627471,"fcp":112,"lcp":112,"dcl":61.79999999888241,"load":95.09999999962747,"hydratedAt":158.09999999962747,"tbtToHydration":0,"bytes":{"html":5013,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.488018035888672,"actionMs":97.79999999888241,"sortWorked":true,"clientNavMs":38}
+{"profile":"desktop","app":"leptos","i":5,"id":"item_3","ttfb":4.899999998509884,"fcp":108,"lcp":108,"dcl":90.29999999888241,"load":90.59999999962747,"hydratedAt":122.59999999962747,"tbtToHydration":0,"bytes":{"html":3602,"js":7495,"wasm":282839,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7346115112304688,"actionMs":85.90000000037253,"sortWorked":true,"clientNavMs":27}
+{"profile":"desktop","app":"corten","i":6,"id":"item_17","ttfb":3.700000001117587,"fcp":80,"lcp":80,"dcl":67.20000000111759,"load":67.80000000074506,"hydratedAt":73.59999999962747,"tbtToHydration":0,"bytes":{"html":2717,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3562583923339844,"actionMs":90.40000000037253,"sortWorked":true,"clientNavMs":10.199999999254942}
+{"profile":"desktop","app":"nextjs","i":6,"id":"item_17","ttfb":16.800000000745058,"fcp":80,"lcp":80,"dcl":55.30000000074506,"load":128.40000000037253,"hydratedAt":154.30000000074506,"tbtToHydration":0,"bytes":{"html":5474,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.201404571533203,"actionMs":86,"sortWorked":true,"clientNavMs":133.90000000037253}
+{"profile":"desktop","app":"tanstack-start","i":6,"id":"item_17","ttfb":19.300000000745058,"fcp":80,"lcp":80,"dcl":60,"load":107.40000000037253,"hydratedAt":136.90000000037253,"tbtToHydration":0,"bytes":{"html":18136,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.91888427734375,"actionMs":79.59999999962747,"sortWorked":true,"clientNavMs":27.699999999254942}
+{"profile":"desktop","app":"sveltekit","i":6,"id":"item_17","ttfb":8,"fcp":92,"lcp":92,"dcl":79.19999999925494,"load":79.29999999888241,"hydratedAt":125.89999999850988,"tbtToHydration":0,"bytes":{"html":17030,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.171661376953125,"actionMs":72.30000000074506,"sortWorked":true,"clientNavMs":23.5}
+{"profile":"desktop","app":"react-router","i":6,"id":"item_17","ttfb":21.200000001117587,"fcp":120,"lcp":120,"dcl":110,"load":116.40000000037253,"hydratedAt":173.90000000037253,"tbtToHydration":0,"bytes":{"html":5022,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.5496597290039062,"actionMs":79.39999999850988,"sortWorked":true,"clientNavMs":35.80000000074506}
+{"profile":"desktop","app":"leptos","i":6,"id":"item_17","ttfb":4.700000001117587,"fcp":72,"lcp":72,"dcl":50.80000000074506,"load":50.80000000074506,"hydratedAt":117.70000000111759,"tbtToHydration":0,"bytes":{"html":3636,"js":7495,"wasm":282717,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.734161376953125,"actionMs":72.79999999888241,"sortWorked":true,"clientNavMs":23.5}
+{"profile":"desktop","app":"corten","i":7,"id":"item_250","ttfb":6.5,"fcp":76,"lcp":76,"dcl":54.5,"load":55,"hydratedAt":59.5,"tbtToHydration":0,"bytes":{"html":2525,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3793792724609375,"actionMs":72.80000000074506,"sortWorked":true,"clientNavMs":9.5}
+{"profile":"desktop","app":"nextjs","i":7,"id":"item_250","ttfb":22.59999999962747,"fcp":80,"lcp":80,"dcl":43.90000000037253,"load":132,"hydratedAt":161.90000000037253,"tbtToHydration":0,"bytes":{"html":5257,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.269317626953125,"actionMs":86.90000000037253,"sortWorked":true,"clientNavMs":93.5}
+{"profile":"desktop","app":"tanstack-start","i":7,"id":"item_250","ttfb":14.800000000745058,"fcp":80,"lcp":80,"dcl":58.90000000037253,"load":108.19999999925494,"hydratedAt":134.59999999962747,"tbtToHydration":0,"bytes":{"html":16543,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.915924072265625,"actionMs":70.70000000111759,"sortWorked":true,"clientNavMs":27.800000000745058}
+{"profile":"desktop","app":"sveltekit","i":7,"id":"item_250","ttfb":8.599999999627471,"fcp":104,"lcp":104,"dcl":77.40000000037253,"load":77.59999999962747,"hydratedAt":120,"tbtToHydration":0,"bytes":{"html":15556,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1143112182617188,"actionMs":73,"sortWorked":true,"clientNavMs":21.5}
+{"profile":"desktop","app":"react-router","i":7,"id":"item_250","ttfb":17.300000000745058,"fcp":152,"lcp":152,"dcl":131.90000000037253,"load":134.5,"hydratedAt":193.09999999962747,"tbtToHydration":0,"bytes":{"html":4727,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.5361900329589844,"actionMs":97.29999999888241,"sortWorked":true,"clientNavMs":31.40000000037253}
+{"profile":"desktop","app":"leptos","i":7,"id":"item_250","ttfb":4.899999998509884,"fcp":112,"lcp":112,"dcl":70.39999999850988,"load":73.29999999888241,"hydratedAt":135.59999999962747,"tbtToHydration":0,"bytes":{"html":3448,"js":7495,"wasm":282717,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.73260498046875,"actionMs":86.39999999850988,"sortWorked":true,"clientNavMs":27.300000000745058}
+{"profile":"desktop","app":"corten","i":8,"id":"item_1999","ttfb":6.400000000372529,"fcp":80,"lcp":80,"dcl":72.09999999962747,"load":72.5,"hydratedAt":73.5,"tbtToHydration":0,"bytes":{"html":2099,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.35595703125,"actionMs":73.30000000074506,"sortWorked":true,"clientNavMs":9.800000000745058}
+{"profile":"desktop","app":"nextjs","i":8,"id":"item_1999","ttfb":13.600000001490116,"fcp":92,"lcp":92,"dcl":72.60000000149012,"load":138.5,"hydratedAt":173.90000000037253,"tbtToHydration":0,"bytes":{"html":4392,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.152233123779297,"actionMs":87.59999999962747,"sortWorked":true,"clientNavMs":141.69999999925494}
+{"profile":"desktop","app":"tanstack-start","i":8,"id":"item_1999","ttfb":10.799999998882413,"fcp":80,"lcp":80,"dcl":56.09999999962747,"load":104.89999999850988,"hydratedAt":130.2999999988824,"tbtToHydration":0,"bytes":{"html":10709,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.7998809814453125,"actionMs":87.90000000037253,"sortWorked":true,"clientNavMs":27.300000000745058}
+{"profile":"desktop","app":"sveltekit","i":8,"id":"item_1999","ttfb":7.200000001117587,"fcp":88,"lcp":88,"dcl":73,"load":73,"hydratedAt":115.20000000111759,"tbtToHydration":0,"bytes":{"html":9876,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.0638427734375,"actionMs":72.59999999962747,"sortWorked":true,"clientNavMs":21.09999999962747}
+{"profile":"desktop","app":"react-router","i":8,"id":"item_1999","ttfb":20.399999998509884,"fcp":132,"lcp":132,"dcl":108.69999999925494,"load":125.19999999925494,"hydratedAt":184.19999999925494,"tbtToHydration":0,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.4186477661132812,"actionMs":103.29999999888241,"sortWorked":true,"clientNavMs":37.5}
+{"profile":"desktop","app":"leptos","i":8,"id":"item_1999","ttfb":4.300000000745058,"fcp":72,"lcp":72,"dcl":49.90000000037253,"load":50,"hydratedAt":109.70000000111759,"tbtToHydration":0,"bytes":{"html":2585,"js":7495,"wasm":282717,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.6990470886230469,"actionMs":73.90000000037253,"sortWorked":true,"clientNavMs":25.90000000037253}
+{"profile":"desktop","app":"corten","i":9,"id":"item_12345","ttfb":2.5,"fcp":68,"lcp":68,"dcl":59.90000000037253,"load":60.30000000074506,"hydratedAt":61.30000000074506,"tbtToHydration":0,"bytes":{"html":1706,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.35595703125,"actionMs":76.5,"sortWorked":null,"clientNavMs":10.599999999627471}
+{"profile":"desktop","app":"nextjs","i":9,"id":"item_12345","ttfb":20.399999998509884,"fcp":76,"lcp":76,"dcl":52.5,"load":122.5,"hydratedAt":148.19999999925494,"tbtToHydration":0,"bytes":{"html":3492,"js":141476,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.01123046875,"actionMs":73.90000000037253,"sortWorked":null,"clientNavMs":97.09999999962747}
+{"profile":"desktop","app":"tanstack-start","i":9,"id":"item_12345","ttfb":7.199999999254942,"fcp":72,"lcp":72,"dcl":54.69999999925494,"load":101.5,"hydratedAt":126.40000000037253,"tbtToHydration":0,"bytes":{"html":6727,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.665393829345703,"actionMs":71.40000000037253,"sortWorked":null,"clientNavMs":28.699999999254942}
+{"profile":"desktop","app":"sveltekit","i":9,"id":"item_12345","ttfb":6.900000000372529,"fcp":80,"lcp":80,"dcl":67.40000000037253,"load":67.5,"hydratedAt":93.20000000111759,"tbtToHydration":0,"bytes":{"html":6032,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.000995635986328,"actionMs":74.90000000037253,"sortWorked":null,"clientNavMs":26.40000000037253}
+{"profile":"desktop","app":"react-router","i":9,"id":"item_12345","ttfb":9.5,"fcp":80,"lcp":80,"dcl":67.90000000037253,"load":70.09999999962747,"hydratedAt":133.5,"tbtToHydration":0,"bytes":{"html":2614,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.618457794189453,"actionMs":86.59999999962747,"sortWorked":null,"clientNavMs":36.59999999962747}
+{"profile":"desktop","app":"leptos","i":9,"id":"item_12345","ttfb":3.199999999254942,"fcp":112,"lcp":112,"dcl":66.09999999962747,"load":68.89999999850988,"hydratedAt":117.89999999850988,"tbtToHydration":0,"bytes":{"html":1872,"js":7495,"wasm":282717,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.6774177551269531,"actionMs":75.70000000111759,"sortWorked":null,"clientNavMs":23.800000000745058}
+{"profile":"mobile","app":"corten","i":0,"id":"item_3","ttfb":4.199999999254942,"fcp":448,"lcp":448,"dcl":448.09999999962747,"load":450.5,"hydratedAt":457.90000000037253,"tbtToHydration":3,"bytes":{"html":2702,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3823013305664062,"actionMs":282.19999999925494,"sortWorked":true,"clientNavMs":185.69999999925494}
+{"profile":"mobile","app":"nextjs","i":0,"id":"item_3","ttfb":21,"fcp":404,"lcp":404,"dcl":399.7999999988824,"load":1255.5999999996275,"hydratedAt":1397.4000000003725,"tbtToHydration":158,"bytes":{"html":5437,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.0512046813964844,"actionMs":317.80000000074506,"sortWorked":true,"clientNavMs":433.80000000074506}
+{"profile":"mobile","app":"tanstack-start","i":0,"id":"item_3","ttfb":12.400000000372529,"fcp":424,"lcp":424,"dcl":416,"load":2181.7000000011176,"hydratedAt":2350.2000000011176,"tbtToHydration":68,"bytes":{"html":18067,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.8783416748046875,"actionMs":305.19999999925494,"sortWorked":true,"clientNavMs":339.5}
+{"profile":"mobile","app":"sveltekit","i":0,"id":"item_3","ttfb":12.300000000745058,"fcp":472,"lcp":472,"dcl":479.59999999962747,"load":480.30000000074506,"hydratedAt":843,"tbtToHydration":6,"bytes":{"html":16963,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1152381896972656,"actionMs":279,"sortWorked":true,"clientNavMs":272.8999999985099}
+{"profile":"mobile","app":"react-router","i":0,"id":"item_3","ttfb":24.09999999962747,"fcp":440,"lcp":440,"dcl":425.40000000037253,"load":783.3000000007451,"hydratedAt":1057.300000000745,"tbtToHydration":35,"bytes":{"html":5013,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.515911102294922,"actionMs":388.69999999925494,"sortWorked":true,"clientNavMs":268.19999999925494}
+{"profile":"mobile","app":"leptos","i":0,"id":"item_3","ttfb":8,"fcp":424,"lcp":424,"dcl":419.2999999988824,"load":419.7999999988824,"hydratedAt":1845.5999999996275,"tbtToHydration":101,"bytes":{"html":3602,"js":7495,"wasm":282741,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7402534484863281,"actionMs":309,"sortWorked":true,"clientNavMs":236.90000000037253}
+{"profile":"mobile","app":"corten","i":1,"id":"item_17","ttfb":4.599999999627471,"fcp":452,"lcp":452,"dcl":449.3999999985099,"load":451.8999999985099,"hydratedAt":459.09999999962747,"tbtToHydration":4,"bytes":{"html":2717,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3822212219238281,"actionMs":283.59999999962747,"sortWorked":true,"clientNavMs":186.30000000074506}
+{"profile":"mobile","app":"nextjs","i":1,"id":"item_17","ttfb":30,"fcp":424,"lcp":424,"dcl":410.09999999962747,"load":1265.9000000003725,"hydratedAt":1407.0999999996275,"tbtToHydration":157,"bytes":{"html":5474,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.114654541015625,"actionMs":320.09999999962747,"sortWorked":true,"clientNavMs":455.5}
+{"profile":"mobile","app":"tanstack-start","i":1,"id":"item_17","ttfb":15.199999999254942,"fcp":432,"lcp":432,"dcl":421.3999999985099,"load":2179.2999999988824,"hydratedAt":2330.5999999996275,"tbtToHydration":68,"bytes":{"html":18136,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.9418678283691406,"actionMs":300.30000000074506,"sortWorked":true,"clientNavMs":353.40000000037253}
+{"profile":"mobile","app":"sveltekit","i":1,"id":"item_17","ttfb":19,"fcp":472,"lcp":472,"dcl":470.09999999962747,"load":470.09999999962747,"hydratedAt":849.9000000003725,"tbtToHydration":7,"bytes":{"html":17030,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1771469116210938,"actionMs":296.5,"sortWorked":true,"clientNavMs":266.5}
+{"profile":"mobile","app":"react-router","i":1,"id":"item_17","ttfb":15.799999998882413,"fcp":424,"lcp":424,"dcl":418,"load":782.7999999988824,"hydratedAt":1057.0999999996275,"tbtToHydration":35,"bytes":{"html":5022,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.5830078125,"actionMs":361.69999999925494,"sortWorked":true,"clientNavMs":262.2000000011176}
+{"profile":"mobile","app":"leptos","i":1,"id":"item_17","ttfb":7.299999998882413,"fcp":424,"lcp":424,"dcl":412.90000000037253,"load":413,"hydratedAt":1856.5,"tbtToHydration":92,"bytes":{"html":3638,"js":7495,"wasm":282998,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7441902160644531,"actionMs":304.40000000037253,"sortWorked":true,"clientNavMs":254}
+{"profile":"mobile","app":"corten","i":2,"id":"item_250","ttfb":5.400000000372529,"fcp":460,"lcp":460,"dcl":453,"load":456.30000000074506,"hydratedAt":464.7000000011176,"tbtToHydration":6,"bytes":{"html":2525,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3818740844726562,"actionMs":282.69999999925494,"sortWorked":true,"clientNavMs":187.2999999988824}
+{"profile":"mobile","app":"nextjs","i":2,"id":"item_250","ttfb":25.600000001490116,"fcp":404,"lcp":404,"dcl":397.6000000014901,"load":1281.800000000745,"hydratedAt":1423.5,"tbtToHydration":172,"bytes":{"html":5257,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.109111785888672,"actionMs":308.3999999985099,"sortWorked":true,"clientNavMs":444.1000000014901}
+{"profile":"mobile","app":"tanstack-start","i":2,"id":"item_250","ttfb":16.09999999962747,"fcp":440,"lcp":440,"dcl":440.5,"load":2184.4000000003725,"hydratedAt":2345.4000000003725,"tbtToHydration":76,"bytes":{"html":16543,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.9393577575683594,"actionMs":311.90000000037253,"sortWorked":true,"clientNavMs":351.30000000074506}
+{"profile":"mobile","app":"sveltekit","i":2,"id":"item_250","ttfb":12.300000000745058,"fcp":464,"lcp":464,"dcl":469.59999999962747,"load":470.30000000074506,"hydratedAt":840.5999999996275,"tbtToHydration":12,"bytes":{"html":15556,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1144561767578125,"actionMs":290.90000000037253,"sortWorked":true,"clientNavMs":271.2999999988824}
+{"profile":"mobile","app":"react-router","i":2,"id":"item_250","ttfb":17.90000000037253,"fcp":476,"lcp":476,"dcl":471.69999999925494,"load":788.3000000007451,"hydratedAt":1071.0999999996275,"tbtToHydration":72,"bytes":{"html":4727,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.5751304626464844,"actionMs":359.59999999962747,"sortWorked":true,"clientNavMs":259.7999999988824}
+{"profile":"mobile","app":"leptos","i":2,"id":"item_250","ttfb":5.599999999627471,"fcp":416,"lcp":416,"dcl":405.59999999962747,"load":405.59999999962747,"hydratedAt":1845.4000000003725,"tbtToHydration":80,"bytes":{"html":3451,"js":7495,"wasm":282691,"css":1124,"data":0},"requests":4,"jsHeapUsedMB":1.7431068420410156,"actionMs":312.40000000037253,"sortWorked":true,"clientNavMs":246.60000000149012}
+{"profile":"mobile","app":"corten","i":3,"id":"item_1999","ttfb":3.900000000372529,"fcp":452,"lcp":452,"dcl":446,"load":448.5,"hydratedAt":456.30000000074506,"tbtToHydration":0,"bytes":{"html":2099,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.35552978515625,"actionMs":284,"sortWorked":true,"clientNavMs":184.59999999962747}
+{"profile":"mobile","app":"nextjs","i":3,"id":"item_1999","ttfb":32.30000000074506,"fcp":412,"lcp":412,"dcl":401,"load":1274.7000000011176,"hydratedAt":1424.5,"tbtToHydration":162,"bytes":{"html":4392,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.069580078125,"actionMs":315.40000000037253,"sortWorked":true,"clientNavMs":443.8999999985099}
+{"profile":"mobile","app":"tanstack-start","i":3,"id":"item_1999","ttfb":11.599999999627471,"fcp":416,"lcp":416,"dcl":414.69999999925494,"load":2183.89999999851,"hydratedAt":2338.699999999255,"tbtToHydration":64,"bytes":{"html":10709,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.8216285705566406,"actionMs":302.80000000074506,"sortWorked":true,"clientNavMs":345.2999999988824}
+{"profile":"mobile","app":"sveltekit","i":3,"id":"item_1999","ttfb":7.700000001117587,"fcp":436,"lcp":436,"dcl":434.30000000074506,"load":434.90000000037253,"hydratedAt":842.7000000011176,"tbtToHydration":0,"bytes":{"html":9876,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.0677528381347656,"actionMs":284.40000000037253,"sortWorked":true,"clientNavMs":269.40000000037253}
+{"profile":"mobile","app":"react-router","i":3,"id":"item_1999","ttfb":17.300000000745058,"fcp":420,"lcp":420,"dcl":410,"load":786.3000000007451,"hydratedAt":1046.1000000014901,"tbtToHydration":29,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.433635711669922,"actionMs":337.7999999988824,"sortWorked":true,"clientNavMs":255.59999999962747}
+{"profile":"mobile","app":"leptos","i":3,"id":"item_1999","ttfb":7.799999998882413,"fcp":408,"lcp":408,"dcl":398.59999999962747,"load":398.69999999925494,"hydratedAt":1827.5999999996275,"tbtToHydration":65,"bytes":{"html":2586,"js":7495,"wasm":282694,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7057418823242188,"actionMs":297,"sortWorked":true,"clientNavMs":239.2999999988824}
+{"profile":"mobile","app":"corten","i":4,"id":"item_12345","ttfb":6.699999999254942,"fcp":432,"lcp":432,"dcl":430.69999999925494,"load":432.7999999988824,"hydratedAt":437.8999999985099,"tbtToHydration":0,"bytes":{"html":1706,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3794670104980469,"actionMs":246.59999999962747,"sortWorked":null,"clientNavMs":183.30000000074506}
+{"profile":"mobile","app":"nextjs","i":4,"id":"item_12345","ttfb":16.90000000037253,"fcp":396,"lcp":396,"dcl":390.19999999925494,"load":1285.199999999255,"hydratedAt":1415.5999999996275,"tbtToHydration":173,"bytes":{"html":3492,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":2.927173614501953,"actionMs":298.2999999988824,"sortWorked":null,"clientNavMs":449.69999999925494}
+{"profile":"mobile","app":"tanstack-start","i":4,"id":"item_12345","ttfb":8.199999999254942,"fcp":412,"lcp":412,"dcl":399.59999999962747,"load":2187.699999999255,"hydratedAt":2328.5999999996275,"tbtToHydration":63,"bytes":{"html":6727,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.685832977294922,"actionMs":279.40000000037253,"sortWorked":null,"clientNavMs":343.2999999988824}
+{"profile":"mobile","app":"sveltekit","i":4,"id":"item_12345","ttfb":6.699999999254942,"fcp":408,"lcp":408,"dcl":412.30000000074506,"load":412.69999999925494,"hydratedAt":840.3000000007451,"tbtToHydration":0,"bytes":{"html":6032,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.0042495727539062,"actionMs":276.5,"sortWorked":null,"clientNavMs":267.09999999962747}
+{"profile":"mobile","app":"react-router","i":4,"id":"item_12345","ttfb":13.200000001117587,"fcp":416,"lcp":416,"dcl":412.7000000011176,"load":775.0999999996275,"hydratedAt":1079.0999999996275,"tbtToHydration":48,"bytes":{"html":2614,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.658203125,"actionMs":328.2999999988824,"sortWorked":null,"clientNavMs":256.5}
+{"profile":"mobile","app":"leptos","i":4,"id":"item_12345","ttfb":6,"fcp":416,"lcp":416,"dcl":398.30000000074506,"load":398.40000000037253,"hydratedAt":1832.2000000011176,"tbtToHydration":62,"bytes":{"html":1872,"js":7495,"wasm":282895,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.6830978393554688,"actionMs":275.5,"sortWorked":null,"clientNavMs":238.19999999925494}
+{"profile":"mobile","app":"corten","i":5,"id":"item_3","ttfb":6.799999998882413,"fcp":452,"lcp":452,"dcl":449.7999999988824,"load":452,"hydratedAt":458.3999999985099,"tbtToHydration":8,"bytes":{"html":2702,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3819122314453125,"actionMs":312.80000000074506,"sortWorked":true,"clientNavMs":189.59999999962747}
+{"profile":"mobile","app":"nextjs","i":5,"id":"item_3","ttfb":21.699999999254942,"fcp":412,"lcp":412,"dcl":405.40000000037253,"load":1257.5,"hydratedAt":1387.2999999988824,"tbtToHydration":149,"bytes":{"html":5437,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.06829833984375,"actionMs":305.90000000037253,"sortWorked":true,"clientNavMs":438.30000000074506}
+{"profile":"mobile","app":"tanstack-start","i":5,"id":"item_3","ttfb":11.900000000372529,"fcp":436,"lcp":436,"dcl":436.30000000074506,"load":2172.4000000003725,"hydratedAt":2314.199999999255,"tbtToHydration":74,"bytes":{"html":18067,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.9413299560546875,"actionMs":296.5,"sortWorked":true,"clientNavMs":350.3999999985099}
+{"profile":"mobile","app":"sveltekit","i":5,"id":"item_3","ttfb":12.200000001117587,"fcp":472,"lcp":472,"dcl":475.30000000074506,"load":476,"hydratedAt":849.2000000011176,"tbtToHydration":13,"bytes":{"html":16963,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.11517333984375,"actionMs":265.30000000074506,"sortWorked":true,"clientNavMs":272.69999999925494}
+{"profile":"mobile","app":"react-router","i":5,"id":"item_3","ttfb":18.299999998882413,"fcp":440,"lcp":440,"dcl":428.19999999925494,"load":789.5,"hydratedAt":1060.199999999255,"tbtToHydration":33,"bytes":{"html":5013,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.52142333984375,"actionMs":362.30000000074506,"sortWorked":true,"clientNavMs":255.09999999962747}
+{"profile":"mobile","app":"leptos","i":5,"id":"item_3","ttfb":9.900000000372529,"fcp":424,"lcp":424,"dcl":422.1000000014901,"load":422.1000000014901,"hydratedAt":1841.4000000003725,"tbtToHydration":80,"bytes":{"html":3602,"js":7495,"wasm":282958,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7444610595703125,"actionMs":292.90000000037253,"sortWorked":true,"clientNavMs":241}
+{"profile":"mobile","app":"corten","i":6,"id":"item_17","ttfb":7,"fcp":448,"lcp":448,"dcl":446.59999999962747,"load":448.80000000074506,"hydratedAt":455.2000000011176,"tbtToHydration":3,"bytes":{"html":2717,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3817596435546875,"actionMs":278.09999999962747,"sortWorked":true,"clientNavMs":185.80000000074506}
+{"profile":"mobile","app":"nextjs","i":6,"id":"item_17","ttfb":20.40000000037253,"fcp":412,"lcp":412,"dcl":403,"load":1308.7000000011176,"hydratedAt":1436.6000000014901,"tbtToHydration":192,"bytes":{"html":5474,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.1171302795410156,"actionMs":290.2000000011176,"sortWorked":true,"clientNavMs":436.2999999988824}
+{"profile":"mobile","app":"tanstack-start","i":6,"id":"item_17","ttfb":11.399999998509884,"fcp":416,"lcp":416,"dcl":411.3999999985099,"load":2172.89999999851,"hydratedAt":2322.699999999255,"tbtToHydration":63,"bytes":{"html":18136,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.941131591796875,"actionMs":306.40000000037253,"sortWorked":true,"clientNavMs":350.8999999985099}
+{"profile":"mobile","app":"sveltekit","i":6,"id":"item_17","ttfb":9.900000000372529,"fcp":468,"lcp":468,"dcl":466.5,"load":466.5,"hydratedAt":827.3000000007451,"tbtToHydration":0,"bytes":{"html":17030,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.175182342529297,"actionMs":280.19999999925494,"sortWorked":true,"clientNavMs":276.90000000037253}
+{"profile":"mobile","app":"react-router","i":6,"id":"item_17","ttfb":15.900000000372529,"fcp":412,"lcp":412,"dcl":407,"load":782,"hydratedAt":1034.5,"tbtToHydration":29,"bytes":{"html":5022,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.587963104248047,"actionMs":342,"sortWorked":true,"clientNavMs":255.90000000037253}
+{"profile":"mobile","app":"leptos","i":6,"id":"item_17","ttfb":7.300000000745058,"fcp":428,"lcp":428,"dcl":421.09999999962747,"load":421.2000000011176,"hydratedAt":1834.300000000745,"tbtToHydration":73,"bytes":{"html":3636,"js":7497,"wasm":282717,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7446250915527344,"actionMs":264.69999999925494,"sortWorked":true,"clientNavMs":248}
+{"profile":"mobile","app":"corten","i":7,"id":"item_250","ttfb":5.5,"fcp":460,"lcp":460,"dcl":458.69999999925494,"load":461.5,"hydratedAt":466,"tbtToHydration":14,"bytes":{"html":2525,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3818702697753906,"actionMs":279.09999999962747,"sortWorked":true,"clientNavMs":181.69999999925494}
+{"profile":"mobile","app":"nextjs","i":7,"id":"item_250","ttfb":21.5,"fcp":416,"lcp":416,"dcl":407.90000000037253,"load":1246.2999999988824,"hydratedAt":1373.5,"tbtToHydration":154,"bytes":{"html":5257,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.1163902282714844,"actionMs":316.59999999962747,"sortWorked":true,"clientNavMs":459.69999999925494}
+{"profile":"mobile","app":"tanstack-start","i":7,"id":"item_250","ttfb":9.900000000372529,"fcp":428,"lcp":428,"dcl":419.30000000074506,"load":2179.300000000745,"hydratedAt":2321.699999999255,"tbtToHydration":64,"bytes":{"html":16543,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.937602996826172,"actionMs":294.19999999925494,"sortWorked":true,"clientNavMs":341.19999999925494}
+{"profile":"mobile","app":"sveltekit","i":7,"id":"item_250","ttfb":10.699999999254942,"fcp":472,"lcp":472,"dcl":465.90000000037253,"load":466,"hydratedAt":839.4000000003725,"tbtToHydration":8,"bytes":{"html":15556,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.114482879638672,"actionMs":268.40000000037253,"sortWorked":true,"clientNavMs":270.5}
+{"profile":"mobile","app":"react-router","i":7,"id":"item_250","ttfb":16.09999999962747,"fcp":428,"lcp":428,"dcl":418.80000000074506,"load":784.5,"hydratedAt":1050.2000000011176,"tbtToHydration":30,"bytes":{"html":4727,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.570240020751953,"actionMs":360.09999999962747,"sortWorked":true,"clientNavMs":257.30000000074506}
+{"profile":"mobile","app":"leptos","i":7,"id":"item_250","ttfb":8.400000000372529,"fcp":420,"lcp":420,"dcl":404.40000000037253,"load":404.40000000037253,"hydratedAt":1861.1000000014901,"tbtToHydration":93,"bytes":{"html":3451,"js":7497,"wasm":282717,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7428321838378906,"actionMs":270.69999999925494,"sortWorked":true,"clientNavMs":257.09999999962747}
+{"profile":"mobile","app":"corten","i":8,"id":"item_1999","ttfb":6.900000000372529,"fcp":448,"lcp":448,"dcl":447.7000000011176,"load":450.1000000014901,"hydratedAt":458.1000000014901,"tbtToHydration":3,"bytes":{"html":2099,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3819999694824219,"actionMs":271.3999999985099,"sortWorked":true,"clientNavMs":188.7999999988824}
+{"profile":"mobile","app":"nextjs","i":8,"id":"item_1999","ttfb":29.300000000745058,"fcp":408,"lcp":408,"dcl":404.2000000011176,"load":1320.300000000745,"hydratedAt":1482.6000000014901,"tbtToHydration":206,"bytes":{"html":4392,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.06585693359375,"actionMs":294.19999999925494,"sortWorked":true,"clientNavMs":429.59999999962747}
+{"profile":"mobile","app":"tanstack-start","i":8,"id":"item_1999","ttfb":18.299999998882413,"fcp":420,"lcp":420,"dcl":414.2999999988824,"load":2176.5999999996275,"hydratedAt":2319.2999999988824,"tbtToHydration":57,"bytes":{"html":10709,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.8833541870117188,"actionMs":293.59999999962747,"sortWorked":true,"clientNavMs":349.09999999962747}
+{"profile":"mobile","app":"sveltekit","i":8,"id":"item_1999","ttfb":7.699999999254942,"fcp":444,"lcp":444,"dcl":429.3999999985099,"load":429.8999999985099,"hydratedAt":850.3999999985099,"tbtToHydration":0,"bytes":{"html":9876,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.0677566528320312,"actionMs":267.59999999962747,"sortWorked":true,"clientNavMs":268.7999999988824}
+{"profile":"mobile","app":"react-router","i":8,"id":"item_1999","ttfb":11.599999999627471,"fcp":416,"lcp":416,"dcl":409.09999999962747,"load":785.1999999992549,"hydratedAt":1045.2999999988824,"tbtToHydration":30,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.453266143798828,"actionMs":356.69999999925494,"sortWorked":true,"clientNavMs":261}
+{"profile":"mobile","app":"leptos","i":8,"id":"item_1999","ttfb":5.400000000372529,"fcp":420,"lcp":420,"dcl":405.7999999988824,"load":405.90000000037253,"hydratedAt":1866.0999999996275,"tbtToHydration":96,"bytes":{"html":2586,"js":7495,"wasm":282952,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7057418823242188,"actionMs":286.30000000074506,"sortWorked":true,"clientNavMs":239.59999999962747}
+{"profile":"mobile","app":"corten","i":9,"id":"item_12345","ttfb":3.5,"fcp":436,"lcp":436,"dcl":429.6000000014901,"load":431.30000000074506,"hydratedAt":437.90000000037253,"tbtToHydration":0,"bytes":{"html":1706,"js":5617,"wasm":0,"css":1953,"data":0},"requests":7,"jsHeapUsedMB":1.3794670104980469,"actionMs":280,"sortWorked":null,"clientNavMs":189.40000000037253}
+{"profile":"mobile","app":"nextjs","i":9,"id":"item_12345","ttfb":21.09999999962747,"fcp":380,"lcp":380,"dcl":378.19999999925494,"load":1243.699999999255,"hydratedAt":1361.9000000003725,"tbtToHydration":141,"bytes":{"html":3492,"js":141476,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":2.9385757446289062,"actionMs":273.80000000074506,"sortWorked":null,"clientNavMs":434.90000000037253}
+{"profile":"mobile","app":"tanstack-start","i":9,"id":"item_12345","ttfb":8.300000000745058,"fcp":400,"lcp":400,"dcl":398.80000000074506,"load":2172.800000000745,"hydratedAt":2307.4000000003725,"tbtToHydration":62,"bytes":{"html":6727,"js":352190,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.6858673095703125,"actionMs":293.59999999962747,"sortWorked":null,"clientNavMs":357.80000000074506}
+{"profile":"mobile","app":"sveltekit","i":9,"id":"item_12345","ttfb":7.200000001117587,"fcp":560,"lcp":560,"dcl":561.4000000003725,"load":562.4000000003725,"hydratedAt":805.5,"tbtToHydration":0,"bytes":{"html":6032,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.0039291381835938,"actionMs":289,"sortWorked":null,"clientNavMs":269.40000000037253}
+{"profile":"mobile","app":"react-router","i":9,"id":"item_12345","ttfb":12.799999998882413,"fcp":420,"lcp":420,"dcl":405.19999999925494,"load":778.7999999988824,"hydratedAt":1025.7999999988824,"tbtToHydration":26,"bytes":{"html":2614,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.6572799682617188,"actionMs":318.5,"sortWorked":null,"clientNavMs":256.90000000037253}
+{"profile":"mobile","app":"leptos","i":9,"id":"item_12345","ttfb":4,"fcp":400,"lcp":400,"dcl":391.7000000011176,"load":391.7000000011176,"hydratedAt":1826.5999999996275,"tbtToHydration":57,"bytes":{"html":1871,"js":7495,"wasm":282718,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.6830978393554688,"actionMs":305.30000000074506,"sortWorked":null,"clientNavMs":259.90000000037253}
+done
+2026-10-22T13:42:33.639Z node summarize.mjs r1
+
+SSR fixture
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 300, 0.3/0.4, 4.6% | 18854, 2.9/11.4 | 17057, 40.7, 0% | 15.8-20 MiB |
+| nextjs | 145, 1416.1/57420.9, 100.4% | 178, 353.9/446.9 | 165, 12767.7, 0% | 209.1-213.6 MiB |
+| tanstack-start | 300, 1.5/47.6, 53.8% | 605, 97.3/185.6 | 623, 483.5, 0% | 164.9-165.9 MiB |
+| sveltekit | 300, 1.3/26.8, 44.1% | 749, 83/160.1 | 634, 508.5, 0% | 142.3-149.1 MiB |
+| react-router | 300, 2/155.4, 65.9% | 492, 125.7/202.5 | 479, 674.6, 0% | 140.2-141.5 MiB |
+| leptos | 300, 0.9/1.3, 24.8% | 1333, 49/73.5 | 1217, 372.3, 0% | 15.2-32.4 MiB |
+
+SSR api
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 150, 1.4/2, 17.1% | 885, 76.1/87.4 | 872, 427.2, 0% | 17.2-60.8 MiB |
+| nextjs | 79, 2548.7/53032.4, 100.3% | 110, 559.5/746.5 | 105, 25058.1, 0% | 197.7-254.5 MiB |
+| tanstack-start | 150, 2.8/37.3, 51.3% | 302, 213/253.4 | 292, 3093, 0% | 127.9-162.8 MiB |
+| sveltekit | 150, 2.3/25.2, 43.5% | 341, 189/230.2 | 335, 1357.3, 0% | 137.4-147.8 MiB |
+| react-router | 150, 3.2/58.9, 58% | 272, 235.9/281.3 | 283, 3518.7, 0% | 131.2-149.2 MiB |
+| leptos | 150, 1.7/2.5, 22.1% | 713, 89.7/114.7 | 612, 563.7, 0% | 15-58.2 MiB |
+
+SSR fixture-json
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 300, 0.3/0.4, 4.7% | 16769, 3/11.5 | 16209, 41.2, 0% | 15-19.1 MiB |
+| nextjs | 300, 0.9/31.6, 30.9% | 1086, 52.8/126.8 | 1082, 318.8, 0% | 174.3-175.4 MiB |
+| tanstack-start | 300, 0.5/4.3, 12.6% | 3545, 14.7/49.6 | 3509, 124.5, 0% | 154.1-156.9 MiB |
+| sveltekit | 300, 0.5/4.1, 13.2% | 3246, 15.9/52.4 | 3175, 144.3, 0% | 126.1-128.7 MiB |
+| react-router | 300, 0.7/3.5, 18.3% | 2312, 24.7/86.3 | 2239, 187.5, 0% | 116.8-118.4 MiB |
+| leptos | 300, 0.3/0.4, 4.5% | 18241, 2.8/11 | 18775, 38.4, 0% | 14.5-17.4 MiB |
+
+SSR api-json
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 150, 1.4/2, 16.9% | 923, 73.5/86.9 | 896, 419.3, 0% | 16.8-59.4 MiB |
+| nextjs | 150, 2.2/58.4, 45.2% | 342, 194.6/235 | 322, 1868.8, 0% | 151.1-187.5 MiB |
+| tanstack-start | 150, 1.5/18.8, 29.1% | 642, 102.4/133.8 | 574, 564.6, 0% | 119.6-143.3 MiB |
+| sveltekit | 150, 1.5/16.9, 27.9% | 655, 99.2/132.1 | 575, 540.5, 0% | 122.7-141.6 MiB |
+| react-router | 150, 1.8/29.3, 35.5% | 546, 119.4/154 | 483, 622.3, 0% | 125.4-140.7 MiB |
+| leptos | 150, 1.3/2, 16.1% | 916, 73.7/87.2 | 947, 406.9, 0% | 14.1-55.5 MiB |
+
+Instructions per request (median, user / kernel)
+| corten/page | 163,599 / 33,288 | 3 runs | 0 failed |
+| corten/json | 211,122 / 32,821 | 3 runs | 0 failed |
+| nextjs/page | 17,361,190 / 137,118 | 3 runs | 0 failed |
+| nextjs/json | 1,745,348 / 58,764 | 3 runs | 0 failed |
+| tanstack-start/page | 5,365,639 / 51,165 | 3 runs | 0 failed |
+| tanstack-start/json | 524,514 / 33,752 | 3 runs | 0 failed |
+| sveltekit/page | 4,519,049 / 47,604 | 3 runs | 0 failed |
+| sveltekit/json | 672,986 / 33,373 | 3 runs | 0 failed |
+| react-router/page | 6,507,600 / 111,193 | 3 runs | 0 failed |
+| react-router/json | 840,467 / 70,484 | 3 runs | 0 failed |
+| leptos/page | 2,726,063 / 35,305 | 3 runs | 0 failed |
+| leptos/json | 205,138 / 32,795 | 3 runs | 0 failed |
+
+Cold start
+| corten | 8.1 ms (min 7.4, max 13.4) | 1.48MiB | 122 MB image |
+| nextjs | 724.9 ms (min 704, max 811.5) | 51.11MiB | 385 MB image |
+| tanstack-start | 225.6 ms (min 212.6, max 313.7) | 26.34MiB | 332 MB image |
+| sveltekit | 197.9 ms (min 178.2, max 227.9) | 23.37MiB | 333 MB image |
+| react-router | 335.7 ms (min 305, max 369.1) | 32.08MiB | 353 MB image |
+| leptos | 8.1 ms (min 7.1, max 9.9) | 1.488MiB | 127 MB image |
+
+Bytes (raw / gzip)
+| corten | html 11.1/2.3 | js 10.3/4.4 (4) | wasm 0.0/0.0 | css 4.6/1.6 |
+| nextjs | html 25.3/4.8 | js 456.2/136.1 (7) | wasm 0.0/0.0 | css 1.9/0.8 |
+| tanstack-start | html 17.4/4.3 | js 342.5/110.9 (5) | wasm 0.0/0.0 | css 1.9/0.8 |
+| sveltekit | html 16.3/3.6 | js 96.3/37.0 (11) | wasm 0.0/0.0 | css 1.9/0.8 |
+| react-router | html 19.5/4.9 | js 309.7/98.6 (4) | wasm 0.0/0.0 | css 1.9/0.8 |
+| leptos | html 17.8/3.5 | js 24.8/7.0 (1) | wasm 719.9/286.7 | css 2.0/0.8 |
+
+Browser (median / p90 ms)
+| desktop/corten | interactive 62/74 | LCP 76 | TBT 0 | action 76 | nav 10/11 | heap 1.4 MB | ok |
+| desktop/nextjs | interactive 162/177 | LCP 80 | TBT 0 | action 86 | nav 114/134 | heap 3.2 MB | ok |
+| desktop/tanstack-start | interactive 130/137 | LCP 80 | TBT 0 | action 80 | nav 29/33 | heap 2.9 MB | ok |
+| desktop/sveltekit | interactive 115/123 | LCP 92 | TBT 0 | action 73 | nav 22/25 | heap 2.1 MB | ok |
+| desktop/react-router | interactive 171/184 | LCP 120 | TBT 0 | action 98 | nav 34/38 | heap 2.5 MB | ok |
+| desktop/leptos | interactive 118/134 | LCP 108 | TBT 0 | action 77 | nav 27/28 | heap 1.7 MB | ok |
+| mobile/corten | interactive 458/465 | LCP 452 | TBT 3 | action 282 | nav 186/189 | heap 1.4 MB | ok |
+| mobile/nextjs | interactive 1416/1437 | LCP 412 | TBT 162 | action 308 | nav 444/456 | heap 3.1 MB | ok |
+| mobile/tanstack-start | interactive 2329/2345 | LCP 424 | TBT 64 | action 300 | nav 350/353 | heap 2.9 MB | ok |
+| mobile/sveltekit | interactive 843/850 | LCP 472 | TBT 6 | action 280 | nav 271/273 | heap 2.1 MB | ok |
+| mobile/react-router | interactive 1057/1071 | LCP 424 | TBT 33 | action 360 | nav 257/262 | heap 2.6 MB | ok |
+| mobile/leptos | interactive 1845/1861 | LCP 420 | TBT 80 | action 297 | nav 247/257 | heap 1.7 MB | ok |
+2026-10-22T13:42:34.999Z all done

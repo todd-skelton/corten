@@ -184,6 +184,14 @@ impl Assets {
         self.islands.contains(tag)
     }
 
+    /// `tag,tag{display:contents}` for every island, sorted, for the `<style>` in a page's head;
+    /// `None` without islands.
+    pub(crate) fn island_style(&self) -> Option<String> {
+        let mut tags: Vec<&str> = self.islands.iter().map(String::as_str).collect();
+        tags.sort_unstable();
+        (!tags.is_empty()).then(|| format!("{}{{display:contents}}", tags.join(",")))
+    }
+
     /// Where island modules are served from: `{prefix}islands/`.
     pub fn islands_dir(&self) -> &str {
         &self.islands_dir

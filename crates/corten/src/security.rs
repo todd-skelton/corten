@@ -5,13 +5,15 @@
 //! let app = corten::security::Policy::new().script_src("https://js.stripe.com").apply(router);
 //! ```
 //!
-//! Corten's own inline tags (the import map, the island style rule) carry the nonce, and
-//! [`crate::Document::nonce`] gives it to the shell for any inline script the app adds. Nothing
-//! else inline runs, so an HTML injection cannot execute script even if a template escapes wrongly.
+//! Corten's own inline tags (the import map, the island style rule) are the same on every page of
+//! a deploy, so the CSP allows them by their SHA-256 hash. [`crate::Document::nonce`] gives the
+//! shell a nonce for any inline script the app adds. Nothing else inline runs, so an HTML
+//! injection cannot execute script even if a template escapes wrongly.
 //!
-//! The nonce is made the first time something asks for it (a document's head, or a handler that
-//! takes [`Nonce`]). A response nothing asked for (JSON, a patch, a static file) gets the same
-//! policy without a nonce source, which allows less and costs no random bytes or header string.
+//! The nonce is made the first time something asks for it (the shell, or a handler that takes
+//! [`Nonce`]). A response nothing asked for (most pages, JSON, a patch, a static file) gets the
+//! policy without a nonce source: it allows less, costs no random bytes, and the same page is the
+//! same bytes for every request, so a cache may share it ([`crate::App`], caching).
 
 use std::{
     cell::RefCell,
@@ -51,7 +53,7 @@ impl NonceSlot {
         self.0.get_or_init(Nonce::generate)
     }
 
-    fn taken(&self) -> Option<&Nonce> {
+    pub fn taken(&self) -> Option<&Nonce> {
         self.0.get()
     }
 }
@@ -192,15 +194,18 @@ impl Policy {
 
     /// The CSP header value for one nonce.
     pub fn csp(&self, nonce: &str) -> String {
-        self.csp_with(Some(nonce))
+        self.csp_with(Some(nonce), None)
     }
 
-    /// The CSP, with `'nonce-...'` sources only when there is a nonce.
-    fn csp_with(&self, nonce: Option<&str>) -> String {
+    /// The CSP, with `'nonce-...'` sources only when there is a nonce. The import map, and the
+    /// island style rule when there is one, are allowed by hash.
+    fn csp_with(&self, nonce: Option<&str>, island_style: Option<&str>) -> String {
         let list = |extra: &[String]| extra.iter().fold(String::new(), |acc, s| acc + " " + s);
         let nonce = nonce.map_or_else(String::new, |n| format!(" 'nonce-{n}'"));
+        let import_map = hash_source(crate::import_map());
+        let island_style = island_style.map_or_else(String::new, |css| format!(" {}", hash_source(css)));
         let mut csp = format!(
-            "default-src 'self'; script-src 'self'{nonce}{}; style-src 'self'{nonce}{}; img-src 'self'{}; \
+            "default-src 'self'; script-src 'self' {import_map}{nonce}{}; style-src 'self'{island_style}{nonce}{}; img-src 'self'{}; \
              connect-src 'self'{}; font-src 'self'{}; frame-src {}; object-src 'none'; base-uri 'self'; form-action 'self'; \
              frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'",
             list(&self.script),
@@ -220,7 +225,7 @@ impl Policy {
     /// headers, and handlers see the request's [`Nonce`]. [`crate::App`] applies its policy
     /// itself; this is for a router served without one.
     pub fn apply<S: Clone + Send + Sync + 'static>(self, router: Router<S>) -> Router<S> {
-        let policy = Arc::new(Applied::new(self));
+        let policy = Arc::new(Applied::new(self, None));
         router.layer(middleware::from_fn(move |mut req: Request, next: Next| {
             let policy = policy.clone();
             async move {
@@ -235,6 +240,79 @@ impl Policy {
             }
         }))
     }
+}
+
+/// `'sha256-...'`, the CSP source that allows the inline element whose text is `text`.
+pub(crate) fn hash_source(text: &str) -> String {
+    format!("'sha256-{}'", base64(&sha256(text.as_bytes())))
+}
+
+/// SHA-256 (FIPS 180-4), for the CSP hashes of Corten's inline tags. They are computed once at
+/// startup, so a small plain implementation serves instead of a dependency.
+fn sha256(data: &[u8]) -> [u8; 32] {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
+        0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+        0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+        0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
+        0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+        0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    ];
+    let mut h: [u32; 8] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    let mut message = data.to_vec();
+    message.push(0x80);
+    while message.len() % 64 != 56 {
+        message.push(0);
+    }
+    message.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
+    for block in message.as_chunks::<64>().0 {
+        let mut w = [0u32; 64];
+        for (word, bytes) in w.iter_mut().zip(block.as_chunks::<4>().0) {
+            *word = u32::from_be_bytes(*bytes);
+        }
+        for i in 16..64 {
+            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+        }
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
+        for (k, w) in K.iter().zip(w) {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let choice = (e & f) ^ (!e & g);
+            let t1 = hh.wrapping_add(s1).wrapping_add(choice).wrapping_add(*k).wrapping_add(w);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let majority = (a & b) ^ (a & c) ^ (b & c);
+            let t2 = s0.wrapping_add(majority);
+            (hh, g, f, e, d, c, b, a) = (g, f, e, d.wrapping_add(t1), c, b, a, t1.wrapping_add(t2));
+        }
+        for (state, add) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
+            *state = state.wrapping_add(add);
+        }
+    }
+    let mut out = [0u8; 32];
+    for (bytes, word) in out.as_chunks_mut::<4>().0.iter_mut().zip(h) {
+        *bytes = word.to_be_bytes();
+    }
+    out
+}
+
+/// Standard base64 with padding.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let byte = |i: usize| u32::from(chunk.get(i).copied().unwrap_or(0));
+        let n = (byte(0) << 16) | (byte(1) << 8) | byte(2);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 /// A policy in use: its CSP split around the nonce, and the headers that do not change.
@@ -256,10 +334,11 @@ impl std::ops::Deref for Applied {
 const API_CSP: &str = "default-src 'none'; frame-ancestors 'none'";
 
 impl Applied {
-    pub fn new(policy: Policy) -> Self {
+    /// `island_style` is the rule a page with islands prints in `<style>`, allowed by its hash.
+    pub fn new(policy: Policy, island_style: Option<&str>) -> Self {
         // The header is the same text around each nonce, so split it once here.
-        let csp_parts = policy.csp("\0").split('\0').map(str::to_string).collect();
-        let without_nonce = HeaderValue::try_from(policy.csp_with(None)).expect("CSP sources are checked tokens");
+        let csp_parts = policy.csp_with(Some("\0"), island_style).split('\0').map(str::to_string).collect();
+        let without_nonce = HeaderValue::try_from(policy.csp_with(None, island_style)).expect("CSP sources are checked tokens");
         Applied { policy, csp_parts, without_nonce, api_csp: HeaderValue::from_static(API_CSP) }
     }
 
@@ -276,8 +355,8 @@ impl Applied {
     /// never a page (an API route, a refused write), which gets a CSP that allows nothing.
     pub fn headers(&self, res: &mut Response, nonce: Option<&NonceSlot>) {
         let headers = res.headers_mut();
-        // The headers below, plus `Vary` from compression: one allocation instead of a few.
-        headers.reserve(8);
+        // The headers below, `Cache-Control` and `Vary` from compression: one allocation, not a few.
+        headers.reserve(9);
         let csp_header =
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
         let csp = match nonce.map(|slot| slot.taken()) {
@@ -461,6 +540,21 @@ mod tests {
     }
 
     #[test]
+    fn hash_sources_match_the_browsers_sha256() {
+        // Known answers (FIPS 180-4 examples, and Node's crypto for the rest), across block sizes.
+        assert_eq!(hash_source(""), "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='");
+        assert_eq!(hash_source("abc"), "'sha256-ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0='");
+        assert_eq!(
+            hash_source("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+            "'sha256-JI1qYdIGOLjlwCaTDD5gOaM85Flk/yFn9uzt1BnbBsE='"
+        );
+        assert_eq!(hash_source(&"a".repeat(1000)), "'sha256-Qe3s5C1j6Nm/UVqbppMuHCDLyfWl0TRkWttdsblzfqM='");
+        assert_eq!(hash_source("x-a,x-b{display:contents}"), "'sha256-00iQbWJAoniMipHb+WLUVm3oMINcwW9byUcwNquEbzc='");
+        assert_eq!(base64(b"ab"), "YWI=");
+        assert_eq!(base64(b"a"), "YQ==");
+    }
+
+    #[test]
     fn writes_from_other_sites_are_refused_and_non_browsers_pass() {
         let p = Policy::new().allow_origin("https://admin.example.com/");
         let post = Method::POST;
@@ -499,8 +593,12 @@ mod tests {
     #[test]
     fn csp_carries_the_nonce_and_extra_sources() {
         let csp = Policy::new().script_src("https://js.stripe.com").frame_src("https://js.stripe.com").csp("abc");
-        assert!(csp.contains("script-src 'self' 'nonce-abc' https://js.stripe.com;"));
+        let import_map = hash_source(crate::import_map());
+        assert!(csp.contains(&format!("script-src 'self' {import_map} 'nonce-abc' https://js.stripe.com;")), "{csp}");
         assert!(csp.contains("style-src 'self' 'nonce-abc';"));
+        let islands = Policy::new().csp_with(None, Some("a-b{display:contents}"));
+        let style = hash_source("a-b{display:contents}");
+        assert!(islands.contains(&format!("style-src 'self' {style};")) && !islands.contains("nonce"), "{islands}");
         assert!(csp.contains("frame-src https://js.stripe.com;"));
         assert!(Policy::new().csp("x").contains("frame-src 'none';"));
         assert!(!csp.contains("unsafe-inline"));

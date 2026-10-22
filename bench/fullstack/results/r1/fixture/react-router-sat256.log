@@ -2,81 +2,27 @@
 
   █ TOTAL RESULTS 
 
-    checks_total.......: 9370   153.866847/s
-    checks_succeeded...: 99.43% 9317 out of 9370
-    checks_failed......: 0.56%  53 out of 9370
+    checks_total.......: 28966   478.954491/s
+    checks_succeeded...: 100.00% 28966 out of 28966
+    checks_failed......: 0.00%   0 out of 28966
 
-    ✗ status 200
-      ↳  99% — ✓ 9317 / ✗ 53
+    ✓ status 200
 
     HTTP
-    http_req_duration..............: avg=1.64s p(50)=952.87ms p(95)=1.41s p(99)=38.07s max=59.99s
-      { expected_response:true }...: avg=1.31s p(50)=950.98ms p(95)=1.41s p(99)=13.22s max=59.87s
-    http_req_failed................: 0.56%  53 out of 9370
-    http_reqs......................: 9370   153.866847/s
+    http_req_duration..............: avg=532.03ms p(50)=482.12ms p(95)=647.25ms p(99)=674.62ms max=31.68s
+      { expected_response:true }...: avg=532.03ms p(50)=482.12ms p(95)=647.25ms p(99)=674.62ms max=31.68s
+    http_req_failed................: 0.00%  0 out of 28966
+    http_reqs......................: 28966  478.954491/s
 
     EXECUTION
-    iteration_duration.............: avg=1.64s p(50)=953.19ms p(95)=1.42s p(99)=38.08s max=1m0s  
-    iterations.....................: 9370   153.866847/s
-    vus............................: 12     min=12         max=256
+    iteration_duration.............: avg=532.33ms p(50)=482.2ms  p(95)=647.38ms p(99)=674.75ms max=31.72s
+    iterations.....................: 28966  478.954491/s
+    vus............................: 256    min=256        max=256
     vus_max........................: 256    min=256        max=256
 
     NETWORK
-    data_received..................: 171 MB 2.8 MB/s
-    data_sent......................: 1.1 MB 18 kB/s
+    data_received..................: 530 MB 8.8 MB/s
+    data_sent......................: 3.4 MB 56 kB/s
 
 
 
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_13\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_117\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_28\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_301\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_73\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_1\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_7\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_73\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_183\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_1\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_404\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_500\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_474\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_142\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_23\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_153\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_26\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_185\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_136\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_1\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_178\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_156\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_13\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_39\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_48\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_62\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_71\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_425\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_244\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_481\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_92\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_241\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_50\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_336\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_43\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_393\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_16\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_78\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_85\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_168\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_409\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_489\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_118\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_113\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_341\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_352\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_217\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_310\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_293\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_1\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_12\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_233\": request timeout"
-time="2026-10-21T05:11:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-react-router:8080/items/item_146\": request timeout"

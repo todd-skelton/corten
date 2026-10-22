@@ -1,13 +1,14 @@
 //! An item detail page with every production piece Corten offers switched on: security
 //! policy (CSP nonce, cross-site write check), versioned assets, error pages, health, PWA with
-//! push, head tags, an i18n catalog, robots/sitemap, compression, and the price-alert action as
-//! an MCP tool for agents, mounted as a JSON-only route (`App::api`).
-use std::sync::Arc;
+//! push, head tags, an i18n catalog, robots/sitemap, compression, the home and category pages
+//! cached by CDNs (`Cache::public`), an item as JSON for other services and the price-alert
+//! action as an MCP tool for agents, both mounted as JSON-only routes (`App::api`).
+use std::{sync::Arc, time::Duration};
 
 use corten::{
     Api, Error,
     agent::{ToolError, Tools},
-    axum::http::StatusCode,
+    axum::{Json, http::StatusCode, response::Response},
     prelude::*,
     pwa::{Manifest, Pwa},
     seo::{self, SitemapUrl},
@@ -39,7 +40,9 @@ pub fn app(source: Source) -> App {
     for origin in std::env::var("AGENT_ORIGINS").unwrap_or_default().split(',').filter(|o| !o.is_empty()) {
         mcp = mcp.allow_origin(origin);
     }
+    let api = Router::new().route(routes::ItemJson::PATH, get(item_json)).with_state(source.clone());
     App::new(routes(source))
+        .api("/api", api)
         .api(routes::Mcp::PATH, mcp)
         .shell(views::shell)
         .messages::<Msg>()
@@ -49,7 +52,7 @@ pub fn app(source: Source) -> App {
 
 fn routes(source: Source) -> Router {
     Router::new()
-        .route(routes::Home::PATH, get(|req: Req| async move { req.page("Card Market", Home { t: req.t() }) }))
+        .route(routes::Home::PATH, get(home))
         .route(routes::Item::PATH, get(show).post(create_alert))
         .route(routes::Category::PATH, get(category))
         .route(routes::Robots::PATH, get(|| async { seo::robots(&[routes::Mcp::PATH], Some(routes::Sitemap::PATH)) }))
@@ -67,15 +70,30 @@ fn not_found() -> Error {
     Error::status(StatusCode::NOT_FOUND)
 }
 
-async fn category(req: Req, Path(slug): Path<String>) -> corten::Result {
+/// Pages that are the same for every visitor: a CDN may serve them for a minute, and an older
+/// copy for ten more while it fetches a fresh one.
+fn shared() -> Cache {
+    Cache::public(Duration::from_secs(60)).stale_while_revalidate(Duration::from_secs(600))
+}
+
+async fn home(req: Req) -> corten::Result<(Cache, Response)> {
+    Ok((shared(), req.page("Card Market", Home { t: req.t() })?))
+}
+
+async fn category(req: Req, Path(slug): Path<String>) -> corten::Result<(Cache, Response)> {
     let t: Msg = req.t();
-    req.page(t.category_title(&slug).to_string(), views::category(t, &slug))
+    Ok((shared(), req.page(t.category_title(&slug).to_string(), views::category(t, &slug))?))
 }
 
 async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> corten::Result {
     let item = source.item(&id).await?.ok_or_else(not_found)?;
     let page = ItemPage::new(req.t(), &item, String::new());
     req.page(page.meta(), page.view())
+}
+
+/// The cached item, serialized where it is.
+async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> corten::Result<Json<Arc<ItemView>>> {
+    Ok(Json(source.item(&id).await?.ok_or_else(not_found)?))
 }
 
 async fn create_alert(
@@ -153,8 +171,8 @@ fn tools(source: Source, tokens: Arc<[String]>) -> Tools {
                 let source = read_source.clone();
                 async move {
                     let item = source.item(&input.id).await.map_err(ToolError::internal)?;
-                    let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
-                    Ok(ItemView::clone(&item))
+                    // The cached item, serialized where it is: no copy.
+                    item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))
                 }
             },
         )
@@ -246,6 +264,27 @@ mod tests {
         assert!(css.contains(".sm\\:direction-row{flex-direction:row}"));
         assert!(css.contains(".item-detail__crumbs a{color:var(--color-muted);") && css.contains(".alert-form__message{"));
         assert_eq!(crate::theme::Space::_5.var(), "var(--space-5)");
+    }
+
+    #[tokio::test]
+    async fn the_home_page_is_shared_by_caches_and_item_pages_are_not() {
+        let get = |uri: &str, header: Option<(&str, &str)>| {
+            let mut req = Request::get(uri);
+            if let Some((name, value)) = header {
+                req = req.header(name, value);
+            }
+            req.body(Body::empty()).unwrap()
+        };
+        let (_, headers, _) = send(get("/", None)).await;
+        assert_eq!(headers["cache-control"], "public, max-age=60, stale-while-revalidate=600");
+        let vary: Vec<_> = headers.get_all("vary").iter().map(|v| v.to_str().unwrap()).collect();
+        assert!(vary.contains(&"corten, accept, accept-language") && vary.contains(&"cookie"), "{vary:?}");
+        let (_, headers, _) = send(get("/", Some(("cookie", "session=abc")))).await;
+        assert_eq!(headers["cache-control"], "private, no-cache", "a signed-in visitor's copy is theirs");
+        let (_, headers, _) = send(get("/", Some(("corten", "nav")))).await;
+        assert_eq!(headers["cache-control"], "private, max-age=60, stale-while-revalidate=600", "only the document is shared");
+        let (_, headers, _) = send(get("/items/item_9", None)).await;
+        assert_eq!(headers["cache-control"], "private, no-cache");
     }
 
     #[tokio::test]
@@ -455,6 +494,16 @@ mod tests {
         let (_, _, body) = send(call(Some("dev-token"), read)).await;
         let res: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(res["result"]["structuredContent"]["listings"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn other_services_read_an_item_as_json() {
+        let (status, headers, body) = send(Request::get("/api/items/item_9").body(Body::empty()).unwrap()).await;
+        assert_eq!((status, &headers["content-type"]), (StatusCode::OK, &"application/json".parse().unwrap()));
+        let item: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!((item["id"].as_str(), item["listings"].as_array().map(Vec::len)), (Some("item_9"), Some(2)));
+        let (status, _, body) = send(Request::get("/api/items/nope").header("accept", "*/*").body(Body::empty()).unwrap()).await;
+        assert_eq!((status, body.as_str()), (StatusCode::NOT_FOUND, r#"{"error":{"status":404,"message":"Not Found"}}"#));
     }
 
     #[tokio::test]

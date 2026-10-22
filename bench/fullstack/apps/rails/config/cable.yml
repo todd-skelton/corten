@@ -1,0 +1,10 @@
+# One Puma process, so the in-process adapter carries every broadcast. Several processes would
+# share one through Solid Cable or Redis.
+development:
+  adapter: async
+
+test:
+  adapter: test
+
+production:
+  adapter: async

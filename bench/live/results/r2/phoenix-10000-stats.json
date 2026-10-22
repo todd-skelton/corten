@@ -1,0 +1,9 @@
+{
+ "lv-phoenix": {
+  "samples": 59,
+  "cpuAvgPct": 101.3,
+  "cpuMaxPct": 101.85,
+  "memAvgMiB": 657.2,
+  "memMaxMiB": 661.2
+ }
+}

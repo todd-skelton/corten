@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block main %}<h1>Popular items</h1>
+<ul class="home-list">{% for n in numbers %}<li><a href="/items/item_{{ n }}">Card Name {{ n }}</a></li>{% endfor %}</ul>{% endblock %}

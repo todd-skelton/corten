@@ -1,0 +1,9 @@
+{
+ "lv-rails": {
+  "samples": 59,
+  "cpuAvgPct": 100.9,
+  "cpuMaxPct": 101.56,
+  "memAvgMiB": 337.3,
+  "memMaxMiB": 338.4
+ }
+}

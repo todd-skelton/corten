@@ -2,27 +2,27 @@
 
   █ TOTAL RESULTS 
 
-    checks_total.......: 2018    99.797969/s
-    checks_succeeded...: 100.00% 2018 out of 2018
-    checks_failed......: 0.00%   0 out of 2018
+    checks_total.......: 5887    292.958666/s
+    checks_succeeded...: 100.00% 5887 out of 5887
+    checks_failed......: 0.00%   0 out of 5887
 
     ✓ status 200
 
     HTTP
-    http_req_duration..............: avg=318.63ms p(50)=279.52ms p(95)=503.48ms p(99)=835.65ms max=3.3s
-      { expected_response:true }...: avg=318.63ms p(50)=279.52ms p(95)=503.48ms p(99)=835.65ms max=3.3s
-    http_req_failed................: 0.00%  0 out of 2018
-    http_reqs......................: 2018   99.797969/s
+    http_req_duration..............: avg=108.81ms p(50)=101.6ms  p(95)=144.41ms p(99)=180.64ms max=1.28s
+      { expected_response:true }...: avg=108.81ms p(50)=101.6ms  p(95)=144.41ms p(99)=180.64ms max=1.28s
+    http_req_failed................: 0.00%  0 out of 5887
+    http_reqs......................: 5887   292.958666/s
 
     EXECUTION
-    iteration_duration.............: avg=319.08ms p(50)=279.82ms p(95)=504.91ms p(99)=840.49ms max=3.3s
-    iterations.....................: 2018   99.797969/s
+    iteration_duration.............: avg=108.94ms p(50)=101.75ms p(95)=144.6ms  p(99)=180.83ms max=1.28s
+    iterations.....................: 5887   292.958666/s
     vus............................: 32     min=32        max=32
     vus_max........................: 32     min=32        max=32
 
     NETWORK
-    data_received..................: 33 MB  1.6 MB/s
-    data_sent......................: 241 kB 12 kB/s
+    data_received..................: 96 MB  4.8 MB/s
+    data_sent......................: 703 kB 35 kB/s
 
 
 

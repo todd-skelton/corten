@@ -5,7 +5,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { network } from "./apps.mjs";
+import { k6User, network } from "./apps.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const [out = "results/ab", ...images] = process.argv.slice(2);
@@ -27,7 +27,7 @@ for (const round of [1, 2]) {
         const name = `${image}-${encName}-${phase}-r${round}`;
         const stats = join(dir, `${name}-stats.json`);
         const sampler = phase === "warmup" ? null : spawn("node", [join(here, "sample-stats.mjs"), stats, "42", "ab-app"], { stdio: "ignore", windowsHide: true });
-        const args = ["run", "--rm", "--network", network, "--cpus", "4", "-v", `${here}:/bench`, "-e", "BASE=http://ab-app:8080", "-e", `ENC=${enc}`];
+        const args = ["run", "--rm", "--network", network, "--cpus", "4", ...k6User, "-v", `${here}:/bench`, "-e", "BASE=http://ab-app:8080", "-e", `ENC=${enc}`];
         for (const [k, v] of Object.entries(env)) args.push("-e", `${k}=${v}`);
         args.push("grafana/k6:latest", "run", "--quiet", "--summary-export", `/bench/${out}/${name}.json`, "/bench/ab-load.js");
         docker(...args);

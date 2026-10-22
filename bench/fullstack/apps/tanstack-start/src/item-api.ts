@@ -20,18 +20,19 @@ async function loadFixture() {
   return fixture;
 }
 
+/** The item, or null when there is no such item. Server only. */
+export async function fetchItem(id: string): Promise<ItemView | null> {
+  const items = await loadFixture();
+  if (items) return items.get(id) ?? null;
+  const res = await fetch(`${base}/api/discovery/items/${encodeURIComponent(id)}`);
+  if (!res.ok && res.status !== 404) throw new Error(`item API returned ${res.status}`);
+  return res.status === 404 ? null : toItemView(await res.json());
+}
+
 export const getItem = createServerFn({ method: "GET" })
   .validator((id: string) => id)
   .handler(async ({ data: id }): Promise<ItemView> => {
-    const items = await loadFixture();
-    let item: ItemView | null;
-    if (items) {
-      item = items.get(id) ?? null;
-    } else {
-      const res = await fetch(`${base}/api/discovery/items/${encodeURIComponent(id)}`);
-      if (!res.ok && res.status !== 404) throw new Error(`item API returned ${res.status}`);
-      item = res.status === 404 ? null : toItemView(await res.json());
-    }
+    const item = await fetchItem(id);
     if (!item) throw notFound();
     return item;
   });

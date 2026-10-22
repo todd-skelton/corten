@@ -1,0 +1,39 @@
+{
+ "app": "aspnet",
+ "transport": "sse",
+ "note": "TypedResults.ServerSentEvents",
+ "clients": 1000,
+ "idleMiB": 27.1,
+ "connectedMiB": 45.6,
+ "clientExit": 0,
+ "connected": 1000,
+ "failed": 0,
+ "connectMs": 1176,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 29.9,
+ "publishMs": {
+  "p50": 5.5,
+  "max": 55.9
+ },
+ "expected": 300000,
+ "delivered": 300000,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 12,
+  "p90": 18.5,
+  "p99": 29.8,
+  "max": 81.2
+ },
+ "cpuPct": 19.8,
+ "memMaxMiB": 65.2,
+ "kibPerClient": 18.9,
+ "oomKilled": false
+}

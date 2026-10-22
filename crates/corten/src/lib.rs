@@ -28,10 +28,11 @@
 //! under a prefix with [`App::api`] and every failure there is JSON ([`Api`]).
 //!
 //! [`App`] puts the production pieces around the app's routes with defaults: security headers
-//! and a CSP nonce, a cross-site write check, error pages, versioned static files, health checks,
-//! compression (feature `compress`), and live reload under `corten dev`.
+//! and a CSP, a cross-site write check, error pages, versioned static files, cache headers
+//! ([`cache`]), health checks, compression (feature `compress`), and live reload under
+//! `corten dev`.
 //!
-//! Modules: [`api`] (JSON-only routes), [`view`] (markup), [`island`] (components with a script), [`style`] (component
+//! Modules: [`api`] (JSON-only routes), [`cache`] (HTTP caching), [`view`] (markup), [`island`] (components with a script), [`style`] (component
 //! stylesheets and design tokens), [`route`] (typed links),
 //! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`].
 //! Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid for
@@ -48,6 +49,7 @@ pub mod agent;
 pub mod api;
 mod app;
 pub mod assets;
+pub mod cache;
 #[cfg(feature = "compress")]
 pub mod compress;
 pub mod form;
@@ -86,6 +88,7 @@ pub use api::Api;
 pub use app::App;
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
+pub use cache::Cache;
 /// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
 /// gives `AlertInput::FIELDS.email`, the [`FieldName`] `"email"` (serde `rename` and `rename_all`
 /// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled
@@ -126,7 +129,7 @@ pub mod prelude {
         },
         component, html,
         i18n::Messages as _,
-        island, raw, Api, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
+        island, raw, Api, App, Cache, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
     };
 }
 

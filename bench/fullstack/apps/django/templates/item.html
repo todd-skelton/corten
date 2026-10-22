@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} | Card Market{% endblock %}
+{% block main %}<article class="item">
+<nav class="crumbs">{% for c in item.categories %}<a href="/categories/{{ c.slug }}">{{ c.name }}</a>{% endfor %}</nav>
+<h1>{{ item.title }}</h1>
+{% if item.subtitle %}<p class="subtitle">{{ item.subtitle }}</p>{% endif %}
+<ul class="badges">{% for b in item.badges %}<li>{{ b }}</li>{% endfor %}</ul>
+<div class="gallery">{% for url in item.images %}<div class="img" role="img" aria-label="{{ item.title }} image {{ forloop.counter }}" data-src="{{ url }}"></div>{% endfor %}</div>
+<section class="summary">{% if item.summary %}<span><strong>{{ item.summary.lowest|default_if_none:"—" }}</strong> lowest</span> <span>{{ item.summary.count }} listings</span> <span>{{ item.summary.quantity }} available</span>{% else %}<span>No listings yet</span>{% endif %}</section>
+<section class="listings">
+<h2>Listings</h2>
+<button type="button" class="sort">Price: low to high</button>
+<table><thead><tr><th>Seller</th><th>Condition</th><th>Ships from</th><th>Qty</th><th>Price</th></tr></thead>
+<tbody>{% for l in listings %}<tr><td>{{ l.seller }}{% if l.rating %} · {{ l.rating }} ★ ({{ l.reviews }}){% endif %}</td><td>{{ l.condition }}</td><td>{{ l.ships_from }}</td><td>{{ l.quantity }}</td><td class="price">{{ l.price }}</td></tr>{% endfor %}</tbody></table>
+</section>
+<section class="offers">
+<h2>Offers</h2>
+<table><thead><tr><th>Buyer</th><th>Condition</th><th>Qty</th><th>Price</th></tr></thead>
+<tbody>{% for o in offers %}<tr><td>{{ o.buyer }}</td><td>{{ o.condition }}</td><td>{{ o.quantity }}</td><td class="price">{{ o.price }}</td></tr>{% endfor %}</tbody></table>
+{% if more_offers %}<button type="button" class="more" hx-get="/items/{{ item.id }}?offers=all" hx-select=".offers" hx-target="closest .offers" hx-swap="outerHTML">Show all {{ item.offers|length }} offers</button>{% endif %}
+</section>
+<section class="alert">
+<h2>Price alert</h2>
+<div class="alert-form"><form method="post" action="/items/{{ item.id }}" hx-post="/items/{{ item.id }}" hx-target=".alert-message" hx-swap="outerHTML">{% csrf_token %}
+<input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="title" value="{{ item.title }}">
+<label>Email<input type="email" name="email" required></label>
+<label>Alert me below<input type="text" name="target_price" inputmode="decimal" required></label>
+<button type="submit">Set alert</button></form></div>
+{% include "alert_message.html" %}
+</section>
+<section class="details">
+<h2>Details</h2>
+<p>{{ item.description }}</p>
+<dl>{% for f in item.fields %}<dt>{{ f.name }}</dt><dd>{{ f.value }}</dd>{% endfor %}</dl>
+<ul class="tags">{% for t in item.tags %}<li>{{ t }}</li>{% endfor %}</ul>
+</section>
+{% if item.contents %}<section class="contents"><h2>Contents</h2><ul>{% for c in item.contents %}<li><a href="/items/{{ c.item_id }}">{{ c.title }}</a> × {{ c.quantity }}</li>{% endfor %}</ul></section>{% endif %}
+{% if item.included_in %}<section class="included"><h2>Included in</h2><ul>{% for c in item.included_in %}<li><a href="/items/{{ c.item_id }}">{{ c.title }}</a> × {{ c.quantity }}</li>{% endfor %}</ul></section>{% endif %}
+</article>{% endblock %}

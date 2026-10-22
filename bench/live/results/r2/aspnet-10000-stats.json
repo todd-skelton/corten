@@ -1,0 +1,9 @@
+{
+ "lv-aspnet": {
+  "samples": 59,
+  "cpuAvgPct": 101.2,
+  "cpuMaxPct": 102.31,
+  "memAvgMiB": 254.5,
+  "memMaxMiB": 255.5
+ }
+}

@@ -67,11 +67,11 @@ async fn an_app_serves_its_islands_and_preloads_them_where_they_render() {
     let start = html.find(r#"<link rel="modulepreload" href=""#).expect("the island is preloaded") + 32;
     let url = &html[start..start + html[start..].find('"').unwrap()];
     assert!(url.starts_with("/assets/") && url.ends_with("/islands/price-board.js"), "{url}");
-    let nonce = html.split_once(r#"<script type="importmap" nonce=""#).unwrap().1.split_once('"').unwrap().0;
-    assert!(
-        html.contains(&format!(r#"<style nonce="{nonce}">price-board{{display:contents}}</style>"#)),
-        "layout-neutral, under the CSP"
-    );
+    assert!(html.contains("<style>price-board{display:contents}</style>"), "layout-neutral");
+    let res = app.clone().oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    let csp = res.headers()["content-security-policy"].to_str().unwrap();
+    let style = crate::security::hash_source("price-board{display:contents}");
+    assert!(csp.contains(&format!("style-src 'self' {style};")) && !csp.contains("nonce"), "allowed by its hash: {csp}");
     let res = app.oneshot(Request::get(url).body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(res.headers()["cache-control"], "public, max-age=31536000, immutable");
     assert_eq!(text(res).await, PriceBoard.island.unwrap().script);

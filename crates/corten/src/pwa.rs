@@ -15,8 +15,9 @@
 //! What the worker does, and why:
 //!
 //! - Navigations go to the network first (with navigation preload, so the worker adds no
-//!   startup delay) and fall back to the cached offline page. Pages are never cached: they
-//!   carry the signed-in user's data and a per-request CSP nonce.
+//!   startup delay) and fall back to the cached offline page. The worker never caches pages:
+//!   they may carry the signed-in user's data, and the browser's HTTP cache already follows the
+//!   page's `Cache-Control` ([`crate::cache`]).
 //! - Versioned files (`/assets/{version}/...` and the runtime) are served cache-first, and only
 //!   responses marked `immutable` are stored, so a mismatched version is never cached.
 //! - Everything else (runtime navigation fetches, form actions, feeds, JSON, anything under a

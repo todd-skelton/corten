@@ -1,0 +1,9 @@
+{
+ "lv-corten": {
+  "samples": 59,
+  "cpuAvgPct": 101.8,
+  "cpuMaxPct": 102.46,
+  "memAvgMiB": 250.7,
+  "memMaxMiB": 250.9
+ }
+}

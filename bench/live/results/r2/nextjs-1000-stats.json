@@ -1,0 +1,9 @@
+{
+ "lv-nextjs": {
+  "samples": 59,
+  "cpuAvgPct": 29,
+  "cpuMaxPct": 71.52,
+  "memAvgMiB": 165.1,
+  "memMaxMiB": 169
+ }
+}

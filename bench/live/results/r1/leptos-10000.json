@@ -1,0 +1,39 @@
+{
+ "app": "leptos",
+ "transport": "sse",
+ "note": "axum Sse + tokio broadcast",
+ "clients": 10000,
+ "idleMiB": 0.8,
+ "connectedMiB": 232.2,
+ "clientExit": 0,
+ "connected": 10000,
+ "failed": 0,
+ "connectMs": 10171,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 29.9,
+ "publishMs": {
+  "p50": 4,
+  "max": 84.9
+ },
+ "expected": 3000000,
+ "delivered": 3000000,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 93.6,
+  "p90": 171.2,
+  "p99": 210.6,
+  "max": 274.5
+ },
+ "cpuPct": 102.2,
+ "memMaxMiB": 235.5,
+ "kibPerClient": 23.7,
+ "oomKilled": false
+}

@@ -1,0 +1,9 @@
+{
+ "lv-react-router": {
+  "samples": 59,
+  "cpuAvgPct": 30.3,
+  "cpuMaxPct": 57.51,
+  "memAvgMiB": 158,
+  "memMaxMiB": 206.4
+ }
+}

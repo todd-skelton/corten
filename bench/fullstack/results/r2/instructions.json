@@ -1,0 +1,528 @@
+{
+ "corten/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 163666,
+   "kernelPerRequest": 33546
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 163908,
+   "kernelPerRequest": 33127
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 164503,
+   "kernelPerRequest": 33522
+  }
+ ],
+ "corten/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 212201,
+   "kernelPerRequest": 32219
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 212653,
+   "kernelPerRequest": 32931
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 212003,
+   "kernelPerRequest": 33626
+  }
+ ],
+ "nextjs/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 17374305,
+   "kernelPerRequest": 129662
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 16989693,
+   "kernelPerRequest": 127905
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 16760527,
+   "kernelPerRequest": 127870
+  }
+ ],
+ "nextjs/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1717353,
+   "kernelPerRequest": 58010
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1694767,
+   "kernelPerRequest": 57543
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1649825,
+   "kernelPerRequest": 56949
+  }
+ ],
+ "tanstack-start/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 5330316,
+   "kernelPerRequest": 48594
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 5321881,
+   "kernelPerRequest": 48454
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 5222247,
+   "kernelPerRequest": 48029
+  }
+ ],
+ "tanstack-start/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 539485,
+   "kernelPerRequest": 33405
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 537327,
+   "kernelPerRequest": 33203
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 569902,
+   "kernelPerRequest": 33548
+  }
+ ],
+ "sveltekit/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 4537628,
+   "kernelPerRequest": 44896
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 4466174,
+   "kernelPerRequest": 44206
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 4512477,
+   "kernelPerRequest": 43965
+  }
+ ],
+ "sveltekit/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 676566,
+   "kernelPerRequest": 33392
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 649965,
+   "kernelPerRequest": 33020
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 679915,
+   "kernelPerRequest": 33265
+  }
+ ],
+ "react-router/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 6508414,
+   "kernelPerRequest": 108635
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 6489483,
+   "kernelPerRequest": 108479
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 6441544,
+   "kernelPerRequest": 107926
+  }
+ ],
+ "react-router/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 841565,
+   "kernelPerRequest": 69650
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 877991,
+   "kernelPerRequest": 69738
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 848339,
+   "kernelPerRequest": 70142
+  }
+ ],
+ "leptos/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2725108,
+   "kernelPerRequest": 35072
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2718743,
+   "kernelPerRequest": 35415
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2729199,
+   "kernelPerRequest": 35087
+  }
+ ],
+ "leptos/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 204592,
+   "kernelPerRequest": 31621
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 203847,
+   "kernelPerRequest": 31825
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 204099,
+   "kernelPerRequest": 31739
+  }
+ ],
+ "django/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 13785548,
+   "kernelPerRequest": 347970
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 13809615,
+   "kernelPerRequest": 348281
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 13825458,
+   "kernelPerRequest": 348424
+  }
+ ],
+ "django/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1996706,
+   "kernelPerRequest": 171724
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1999080,
+   "kernelPerRequest": 171287
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1997757,
+   "kernelPerRequest": 171731
+  }
+ ],
+ "rails/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 4849308,
+   "kernelPerRequest": 318584
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 4857062,
+   "kernelPerRequest": 320229
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 4870250,
+   "kernelPerRequest": 318531
+  }
+ ],
+ "rails/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2283091,
+   "kernelPerRequest": 284927
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2260181,
+   "kernelPerRequest": 280541
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2285531,
+   "kernelPerRequest": 281378
+  }
+ ],
+ "laravel/page": {
+  "failed": "never answered /items/item_1 within a minute"
+ },
+ "laravel/json": {
+  "failed": "never answered /api/items/item_1 within a minute"
+ },
+ "aspnet/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1025384,
+   "kernelPerRequest": 55963
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1058000,
+   "kernelPerRequest": 56670
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1272921,
+   "kernelPerRequest": 62207
+  }
+ ],
+ "aspnet/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 258198,
+   "kernelPerRequest": 76574
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 279672,
+   "kernelPerRequest": 93646
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 269111,
+   "kernelPerRequest": 60120
+  }
+ ],
+ "spring/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 6059548,
+   "kernelPerRequest": 96600
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 6030656,
+   "kernelPerRequest": 97429
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 5939013,
+   "kernelPerRequest": 98716
+  }
+ ],
+ "spring/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2436007,
+   "kernelPerRequest": 99170
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1801784,
+   "kernelPerRequest": 102310
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 594544,
+   "kernelPerRequest": 98868
+  }
+ ],
+ "phoenix/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2142641,
+   "kernelPerRequest": 87929
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2139628,
+   "kernelPerRequest": 89848
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2144182,
+   "kernelPerRequest": 88450
+  }
+ ],
+ "phoenix/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1550827,
+   "kernelPerRequest": 77360
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1552447,
+   "kernelPerRequest": 78249
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1545641,
+   "kernelPerRequest": 77767
+  }
+ ],
+ "astro/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2020856,
+   "kernelPerRequest": 78720
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2039650,
+   "kernelPerRequest": 79752
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2086540,
+   "kernelPerRequest": 82536
+  }
+ ],
+ "astro/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1093725,
+   "kernelPerRequest": 79459
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1086273,
+   "kernelPerRequest": 77190
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1096062,
+   "kernelPerRequest": 78031
+  }
+ ],
+ "nuxt/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 9941206,
+   "kernelPerRequest": 65183
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 9840704,
+   "kernelPerRequest": 64298
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 9754678,
+   "kernelPerRequest": 63460
+  }
+ ],
+ "nuxt/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 403611,
+   "kernelPerRequest": 32005
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 423012,
+   "kernelPerRequest": 32366
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 406861,
+   "kernelPerRequest": 32387
+  }
+ ]
+}

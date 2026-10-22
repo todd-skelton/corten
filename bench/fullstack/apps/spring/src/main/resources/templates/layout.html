@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org" th:fragment="page(title, main)">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title th:text="${title}">Card Market</title>
+<link rel="stylesheet" th:href="@{/style.css}">
+<script th:src="@{/htmx.min.js}" defer></script>
+<script th:src="@{/item.js}" defer></script>
+</head>
+<body hx-boost="true">
+<header class="site"><a href="/">Card Market</a></header>
+<main th:replace="${main}"></main>
+</body>
+</html>

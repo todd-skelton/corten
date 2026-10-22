@@ -1,0 +1,9 @@
+{
+ "lv-leptos": {
+  "samples": 59,
+  "cpuAvgPct": 102.1,
+  "cpuMaxPct": 102.87,
+  "memAvgMiB": 235.3,
+  "memMaxMiB": 235.5
+ }
+}

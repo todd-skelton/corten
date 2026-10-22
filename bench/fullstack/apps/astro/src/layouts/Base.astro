@@ -1,0 +1,26 @@
+---
+import { ClientRouter } from "astro:transitions";
+import "../style.css";
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <ClientRouter />
+  </head>
+  <body>
+    <header class="site"><a href="/">Card Market</a></header>
+    <main><slot /></main>
+    <script>
+      // The browser benchmark reads this mark: the page's scripts (and the client router) run.
+      (window as unknown as { __hydratedAt?: number }).__hydratedAt ??= performance.now();
+    </script>
+  </body>
+</html>

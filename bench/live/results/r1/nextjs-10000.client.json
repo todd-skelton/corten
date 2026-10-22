@@ -1,0 +1,29 @@
+{
+ "clients": 10000,
+ "connected": 9787,
+ "failed": 213,
+ "connectMs": 18498,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 97.3,
+ "publishMs": {
+  "p50": 305,
+  "max": 1278.2
+ },
+ "expected": 2936100,
+ "delivered": 2936100,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 432.5,
+  "p90": 552.6,
+  "p99": 677.1,
+  "max": 1494.4
+ }
+}

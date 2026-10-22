@@ -1,0 +1,7 @@
+# BuildKit reads this instead of the repository's .dockerignore, which leaves out all of bench/.
+target
+**/target
+**/node_modules
+tmp
+bench
+!bench/live/apps/corten
