@@ -95,7 +95,9 @@ Corten's JavaScript is the runtime (`corten.js`), the two islands this page uses
 
 Since this run the runtime gained typed seams and `#[island]` actions. Re-measured the same way
 on 2026-10-21 (Corten only, one run): 21.0 / 7.6 KB before the island change, **22.3 / 8.0 KB**
-after it (4 files); HTML 10.8 / 2.3 KB.
+after it (4 files); HTML 10.8 / 2.3 KB. The runtime is now served minified from its documented
+source (`scripts/build-js.mjs`): **10.5 / 4.5 KB** in the same 4 files (2026-10-21, Corten only,
+one run, `/items/item_5`, the runtime 9.4 KB of it).
 
 Styles then moved into a CSS file per component and a token file (2026-10-21, Corten only, the
 files as served, gzip -9 in Node): CSS **4.7 / 1.6 KB in 2 files** (`style.css` 1.5 / 0.7,

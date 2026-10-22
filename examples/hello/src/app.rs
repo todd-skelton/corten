@@ -4,7 +4,7 @@
 //! |---|---|
 //! | `GET /` | `req.screen`: HTML for browsers, `{"title","data"}` for `Accept: application/json` |
 //! | `POST /watch` | form patch with JavaScript, full page without, JSON for data clients |
-//! | `GET /feed/cards`, `/feed/cards/live` | the live feed `<live-prices>` subscribes to |
+//! | `GET /feed/stocks`, `/feed/stocks/live` | the live feed `<live-prices>` subscribes to |
 //! | `GET /about` | a plain page, reached by client navigation |
 //! | `POST /sign-in` | sets a cookie; the shell shows the viewer, and the runtime reloads the document |
 use std::time::Duration;
@@ -20,14 +20,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
 pub struct Market {
-    pub cards: Feed<Card>,
+    pub stocks: Feed<Stock>,
 }
 
 impl Market {
     pub fn new() -> Self {
-        let cards =
-            [("c1", "Charizard ex", 12_999), ("c2", "Umbreon VMAX", 54_000), ("c3", "Pikachu with Grey Felt Hat", 31_050)];
-        Market { cards: Feed::new(cards.map(|(id, name, cents)| Card::new(id, name, cents))) }
+        let stocks = [("s1", "Acme Corp", 12_999), ("s2", "Globex", 54_000), ("s3", "Initech", 31_050)];
+        Market { stocks: Feed::new(stocks.map(|(id, name, cents)| Stock::new(id, name, cents))) }
     }
 }
 
@@ -62,12 +61,12 @@ mod url {
     pub struct SignIn;
 
     #[derive(Route)]
-    #[route("/feed/cards")]
-    pub struct Cards;
+    #[route("/feed/stocks")]
+    pub struct Stocks;
 
     #[derive(Route)]
-    #[route("/feed/cards/live")]
-    pub struct CardsLive;
+    #[route("/feed/stocks/live")]
+    pub struct StocksLive;
 }
 
 fn routes(market: Market) -> Router {
@@ -76,8 +75,8 @@ fn routes(market: Market) -> Router {
         .route(url::Watch::PATH, post(watch))
         .route(url::About::PATH, get(about))
         .route(url::SignIn::PATH, post(sign_in))
-        .route(url::Cards::PATH, get(|State(m): State<Market>| async move { m.cards.snapshot() }))
-        .route(url::CardsLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.cards.live(since) }))
+        .route(url::Stocks::PATH, get(|State(m): State<Market>| async move { m.stocks.snapshot() }))
+        .route(url::StocksLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }))
         .with_state(market)
 }
 
@@ -125,16 +124,16 @@ async fn sign_in(req: Req) -> corten::Result {
 /// A feed row. `price` is the display text, kept with the cents so every surface shows the
 /// same string and no client re-implements the formatting.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct Card {
+pub struct Stock {
     pub id: String,
     pub name: String,
     pub price_cents: u32,
     pub price: String,
 }
 
-impl Card {
+impl Stock {
     fn new(id: &str, name: &str, cents: u32) -> Self {
-        Card { id: id.into(), name: name.into(), price_cents: cents, price: format_price(cents) }
+        Stock { id: id.into(), name: name.into(), price_cents: cents, price: format_price(cents) }
     }
 
     fn set_price(&mut self, cents: u32) {
@@ -143,7 +142,7 @@ impl Card {
     }
 }
 
-impl Row for Card {
+impl Row for Stock {
     fn id(&self) -> &str {
         &self.id
     }
@@ -154,17 +153,17 @@ fn format_price(cents: u32) -> String {
 }
 
 /// Moves one price per second, so the live island has something to show.
-pub async fn simulate_market(cards: Feed<Card>) {
+pub async fn simulate_market(stocks: Feed<Stock>) {
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut n = 0u64;
     loop {
         tick.tick().await;
-        let id = format!("c{}", n % 3 + 1);
+        let id = format!("s{}", n % 3 + 1);
         let delta = [125i64, -50, 200, -150][(n % 4) as usize];
         n = n.wrapping_add(1);
-        cards.write(|tx| {
-            if let Some(card) = tx.get_mut(&id) {
-                card.set_price((card.price_cents as i64 + delta).max(100) as u32);
+        stocks.write(|tx| {
+            if let Some(stock) = tx.get_mut(&id) {
+                stock.set_price((stock.price_cents as i64 + delta).max(100) as u32);
             }
         });
     }
@@ -173,13 +172,13 @@ pub async fn simulate_market(cards: Feed<Card>) {
 /// The watchlist screen's data: what the view shows, and what a data client gets.
 #[derive(Serialize)]
 pub struct Home {
-    cards: Vec<Card>,
+    stocks: Vec<Stock>,
     message: String,
 }
 
 impl Home {
     fn new(market: &Market, message: String) -> Self {
-        Home { cards: market.cards.read(|rows| rows.values().cloned().collect()), message }
+        Home { stocks: market.stocks.read(|rows| rows.values().cloned().collect()), message }
     }
 }
 
@@ -187,9 +186,9 @@ fn home_view(home: &Home) -> impl Render {
     let f = WatchForm::FIELDS;
     html! {
         <h1>"Watchlist"</h1>
-        <LivePrices cards={&home.cards} feed={url::Cards::PATH} />
+        <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} />
         <form method="post" action={url::Watch} data-patch>
-            <label>"Card "<select name={f.id}>for card in &home.cards { <option value={card.id}>{card.name}</option> }</select></label>
+            <label>"Stock "<select name={f.id}>for stock in &home.stocks { <option value={stock.id}>{stock.name}</option> }</select></label>
             <button>"Watch"</button>
         </form>
         <WatchMessage message={&home.message} />
@@ -199,14 +198,14 @@ fn home_view(home: &Home) -> impl Render {
 /// The prices, rendered here first and then kept current by `live_prices.js` from the feed. The
 /// pause button shows only when the script runs, since nothing updates without it.
 #[island]
-fn LivePrices<'a>(cards: &'a [Card], #[prop] feed: &'a str) -> impl Render {
+fn LivePrices<'a>(stocks: &'a [Stock], #[prop] feed: &'a str) -> impl Render {
     html! {
         <button type="button" class="pause" ref={PauseButton} on:click={Pause} aria-pressed="false" hidden>"Pause updates"</button>
-        <table class="cards">
-            <thead><tr><th>"Card"</th><th>"Price"</th></tr></thead>
+        <table class="stocks">
+            <thead><tr><th>"Stock"</th><th>"Price"</th></tr></thead>
             <tbody>
-                for card in cards {
-                    <tr><td>{card.name}</td><td ref={Price} data-id={card.id}>{card.price}</td></tr>
+                for stock in stocks {
+                    <tr><td>{stock.name}</td><td ref={Price} data-id={stock.id}>{stock.price}</td></tr>
                 }
             </tbody>
         </table>
@@ -233,9 +232,9 @@ struct WatchForm {
 
 async fn watch(req: Req, State(market): State<Market>, Form(form): Form<WatchForm>) -> corten::Result {
     let message = market
-        .cards
+        .stocks
         .read(|rows| rows.get(&form.id).map(|c| format!("Watching {} at {}.", c.name, c.price)))
-        .unwrap_or_else(|| "That card is not on the list.".into());
+        .unwrap_or_else(|| "That stock is not on the list.".into());
     match req.mode {
         Mode::Action => req.patch(WatchMessage { message: &message }),
         // No JavaScript, or a native screen or agent: the whole screen with the message.
@@ -276,14 +275,14 @@ mod tests {
         if let Some(accept) = accept {
             req = req.header("accept", accept);
         }
-        req.body(Body::from("id=c2")).unwrap()
+        req.body(Body::from("id=s2")).unwrap()
     }
 
     /// The island's script is checked against these declarations by `npm run check`.
     #[test]
     fn island_types_match_the_server() {
         corten::types::Types::new()
-            .add::<Card>()
+            .add::<Stock>()
             .components(&[LivePrices])
             .sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
@@ -293,7 +292,7 @@ mod tests {
         let (kind, body) = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/islands/live-prices.js\">"), "the island module is preloaded: {body}");
-        assert!(body.contains(r#"<td data-ref="price" data-id="c1">$129.99</td>"#), "server renders prices first");
+        assert!(body.contains(r#"<td data-ref="price" data-id="s1">$129.99</td>"#), "server renders prices first");
     }
 
     #[tokio::test]
@@ -311,20 +310,17 @@ mod tests {
     async fn home_is_json_for_data_clients() {
         let (kind, body) = send(Request::get("/").header("accept", "application/json").body(Body::empty()).unwrap()).await;
         assert_eq!(kind, "application/json");
-        assert!(body.starts_with(r#"{"title":"Watchlist | Corten","data":{"cards":[{"id":"c1","name":"Charizard ex","price_cents":12999,"price":"$129.99"}"#), "{body}");
+        assert!(body.starts_with(r#"{"title":"Watchlist | Corten","data":{"stocks":[{"id":"s1","name":"Acme Corp","price_cents":12999,"price":"$129.99"}"#), "{body}");
     }
 
     #[tokio::test]
     async fn one_watch_handler_serves_every_surface() {
         let (_, patch) = send(watch_request(Some("action"), None)).await;
-        assert_eq!(
-            patch,
-            r#"<p class="watch-message" id="watch-message" aria-live="polite">Watching Umbreon VMAX at $540.00.</p>"#
-        );
+        assert_eq!(patch, r#"<p class="watch-message" id="watch-message" aria-live="polite">Watching Globex at $540.00.</p>"#);
         let (kind, page) = send(watch_request(None, None)).await;
-        assert!(kind.starts_with("text/html") && page.contains("<html") && page.contains("Watching Umbreon VMAX"));
+        assert!(kind.starts_with("text/html") && page.contains("<html") && page.contains("Watching Globex"));
         let (kind, data) = send(watch_request(None, Some("application/json"))).await;
         assert_eq!(kind, "application/json");
-        assert!(data.ends_with(r#""message":"Watching Umbreon VMAX at $540.00."}}"#), "{data}");
+        assert!(data.ends_with(r#""message":"Watching Globex at $540.00."}}"#), "{data}");
     }
 }

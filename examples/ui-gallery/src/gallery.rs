@@ -7,11 +7,11 @@ use crate::{
     field::Field,
 };
 
-pub const SETS: [Choice; 4] = [
-    Choice { value: "sv1", label: "Scarlet & Violet" },
-    Choice { value: "pal", label: "Paldea Evolved" },
-    Choice { value: "obf", label: "Obsidian Flames" },
-    Choice { value: "151", label: "Scarlet & Violet 151" },
+pub const COLORS: [Choice; 4] = [
+    Choice { value: "salt", label: "Salt & Pepper" },
+    Choice { value: "sand", label: "Desert Sand" },
+    Choice { value: "forest", label: "Forest Green" },
+    Choice { value: "gray", label: "Salt & Pepper Gray" },
 ];
 
 /// The tabs, in order, by the `tab` query value that selects each.
@@ -28,7 +28,7 @@ pub fn Gallery<'a>(tab: usize, result: &'a str) -> impl Render {
         ..Number::new("qty", f.qty, "Fewer", "More")
     };
     let price = Number { value: Some(12.5), min: Some(0.0), step: 0.01, ..Number::new("price", f.price, "Lower", "Higher") };
-    let set = Picker { required: true, ..Picker::new("set", f.set, "Choose a set", "No matching set", &SETS) };
+    let color = Picker { required: true, ..Picker::new("color", f.color, "Choose a color", "No matching color", &COLORS) };
     let items = [
         MenuItem { label: &"Help", link: &url::Help, post: false },
         MenuItem { label: &"Archive", link: &url::Archive, post: true },
@@ -39,7 +39,7 @@ pub fn Gallery<'a>(tab: usize, result: &'a str) -> impl Render {
         <form method="post" action={url::Order} data-patch>
             <Field id="qty" label="Quantity"><NumberField field={&qty} /></Field>
             <Field id="price" label="Price"><span class={Currency}>"$"</span><NumberField field={&price} /></Field>
-            <Field id="set" label="Set"><ComboBox field={&set} /></Field>
+            <Field id="color" label="Color"><ComboBox field={&color} /></Field>
             <button>"Order"</button>
         </form>
         <OrderResult text={result} />

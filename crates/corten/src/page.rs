@@ -320,6 +320,7 @@ pub struct Req {
     accept_language: Option<HeaderValue>,
     shared: Arc<Shared>,
     captured: Captured,
+    signal: crate::Signal,
 }
 
 impl<St: Send + Sync> FromRequestParts<St> for Req {
@@ -345,7 +346,14 @@ impl Req {
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
             shared,
             captured: Captured { key, context },
+            signal: extensions.get::<crate::Signal>().cloned().unwrap_or_default(),
         }
+    }
+
+    /// When the work for this request should stop, and why: the server's `request.signal`. See
+    /// [`crate::Signal`]; work the handler awaits stops without it.
+    pub fn signal(&self) -> &crate::Signal {
+        &self.signal
     }
 
     /// The shell's context for this request (what the app's middleware inserted), if any:
@@ -586,12 +594,31 @@ impl Req {
 /// response such as axum's 404 for an unknown URL or 405 for a wrong method) renders the error
 /// page in the request's mode, and the PWA's offline path gets Corten's offline page when the app
 /// has no route for it.
-pub(crate) async fn render_errors(shared: Arc<Shared>, req: Request, next: Next) -> Response {
+pub(crate) async fn render_errors(
+    shared: Arc<Shared>,
+    req: Request,
+    next: Next,
+    deadline: Option<std::time::Duration>,
+    signal: &crate::Signal,
+) -> Response {
     use axum::body::HttpBody;
     let mode = mode_of(req.headers());
     let offline = req.method() == axum::http::Method::GET && shared.offline.as_deref() == Some(req.uri().path());
     let failed_req = (mode != Mode::Data).then(|| Req::new(req.headers(), req.extensions(), req.uri().path(), shared.clone()));
-    let res = next.run(req).await;
+    let res = match deadline {
+        None => next.run(req).await,
+        Some(limit) => {
+            let (method, uri) = (req.method().clone(), req.uri().clone());
+            match within(limit, next.run(req)).await {
+                Some(res) => res,
+                None => {
+                    signal.abort(crate::Abort::Deadline);
+                    tracing::warn!("corten: {method} {} passed its {limit:?} deadline", uri.path());
+                    StatusCode::SERVICE_UNAVAILABLE.into_response()
+                }
+            }
+        }
+    };
     let status = res.status();
     let failed = res.extensions().get::<crate::Failed>().cloned();
     let allow = res.headers().get(header::ALLOW).cloned();
@@ -618,6 +645,28 @@ pub(crate) async fn render_errors(shared: Arc<Shared>, req: Request, next: Next)
         res.headers_mut().insert(header::ALLOW, allow);
     }
     res
+}
+
+/// `fut`'s output, or `None` once it has waited `limit`. The timer starts the first time `fut` is
+/// not ready, so a handler that answers at once (a page rendered from memory) never registers
+/// one: about 600 ns a request measured with `tokio::time::timeout`.
+async fn within<F: std::future::Future>(limit: std::time::Duration, fut: F) -> Option<F::Output> {
+    use std::{future::Future, pin::pin, task::Poll};
+    let mut fut = pin!(fut);
+    let mut timer = pin!(None::<tokio::time::Sleep>);
+    std::future::poll_fn(|cx| {
+        if let Poll::Ready(out) = fut.as_mut().poll(cx) {
+            return Poll::Ready(Some(out));
+        }
+        if timer.is_none() {
+            timer.set(Some(tokio::time::sleep(limit)));
+        }
+        match timer.as_mut().as_pin_mut().map(|timer| timer.poll(cx)) {
+            Some(Poll::Ready(())) => Poll::Ready(None),
+            _ => Poll::Pending,
+        }
+    })
+    .await
 }
 
 /// `<title>` and the head tags, which the runtime moves into `<head>` when it swaps a page.

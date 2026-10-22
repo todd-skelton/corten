@@ -12,8 +12,8 @@ pub struct Choice<'a> {
 /// A combobox's field and options. Start from [`Picker::new`] and set what differs:
 ///
 /// ```ignore
-/// let set = Picker { value: Some(&item.set), required: true, ..Picker::new("set", "set", t.choose_set(), t.no_match(), &sets) };
-/// html! { <ComboBox field={&set} /> }
+/// let color = Picker { value: Some(&item.color), required: true, ..Picker::new("color", "color", t.choose_color(), t.no_match(), &colors) };
+/// html! { <ComboBox field={&color} /> }
 /// ```
 pub struct Picker<'a> {
     /// The `id` the app's `<label for>` points at. It names the `<select>` until the script
@@ -64,12 +64,12 @@ impl<'a> Picker<'a> {
 /// use corten::prelude::*;
 /// use corten_ui::{Choice, ComboBox, Picker};
 ///
-/// let sets = [Choice { value: "sv1", label: "Scarlet & Violet" }, Choice { value: "pal", label: "Paldea Evolved" }];
-/// let field = Picker { value: Some("pal"), ..Picker::new("set", "set", "Choose a set", "No matches", &sets) };
+/// let colors = [Choice { value: "salt", label: "Salt & Pepper" }, Choice { value: "sand", label: "Desert Sand" }];
+/// let field = Picker { value: Some("sand"), ..Picker::new("color", "color", "Choose a color", "No matches", &colors) };
 /// let html = ComboBox { field: &field }.to_html();
-/// assert!(html.contains(r#"<select id="set" name="set""#));
-/// assert!(html.contains(r#"<option value="pal" selected>Paldea Evolved</option>"#));
-/// assert!(html.contains(r#"role="combobox""#) && html.contains(r#"value="Paldea Evolved""#));
+/// assert!(html.contains(r#"<select id="color" name="color""#));
+/// assert!(html.contains(r#"<option value="sand" selected>Desert Sand</option>"#));
+/// assert!(html.contains(r#"role="combobox""#) && html.contains(r#"value="Desert Sand""#));
 /// ```
 #[island]
 pub fn ComboBox<'a>(field: &'a Picker<'a>) -> impl Render {

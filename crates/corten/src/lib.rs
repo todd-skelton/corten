@@ -56,6 +56,7 @@ pub mod pwa;
 pub mod route;
 pub mod security;
 pub mod seo;
+mod signal;
 pub mod style;
 #[cfg(feature = "types")]
 pub mod types;
@@ -91,6 +92,7 @@ pub use island::{island, Island};
 pub use meta::Meta;
 pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
 pub use route::{Href, Route};
+pub use signal::{Abort, Signal};
 pub use style::Style;
 pub use view::{component, html, raw, Render};
 
@@ -123,10 +125,11 @@ pub mod prelude {
     };
 }
 
-/// The runtime source, embedded so apps never copy it.
-pub const RUNTIME_JS: &str = include_str!("../js/corten.js");
+/// The runtime, embedded so apps never copy it: `js/corten.js` minified by `scripts/build-js.mjs`
+/// (`npm run check` fails if it is stale), so the documented source costs the browser nothing.
+pub const RUNTIME_JS: &str = include_str!("../js/dist/corten.js");
 
-/// Prebuilt by `scripts/build-solid.mjs` from `js/solid.js`; apps need no JavaScript tooling.
+/// Prebuilt by `scripts/build-js.mjs` from `js/solid.js`; apps need no JavaScript tooling.
 #[cfg(feature = "solid")]
 pub const SOLID_JS: &str = include_str!("../js/dist/solid.js");
 

@@ -142,7 +142,7 @@ try {
     const res = await fetch(runtime, { cache: "no-store" });
     const text = await res.text();
     const timing = entries().filter((e) => e.name === runtime).at(-1);
-    return { runtime: text.includes("export function island"), encoded: timing?.encodedBodySize ?? 0, decoded: timing?.decodedBodySize ?? 0 };
+    return { runtime: text.startsWith("// Corten runtime"), encoded: timing?.encodedBodySize ?? 0, decoded: timing?.decodedBodySize ?? 0 };
   });
   check(
     "the browser gets the runtime compressed",
@@ -151,7 +151,7 @@ try {
   );
   const runtimeUrl = await page.evaluate(() => /** @type {HTMLScriptElement} */ (document.querySelector('script[type="module"][src*="/corten/"]')).src);
   const runtimeBr = await fetch(runtimeUrl, { headers: { "accept-encoding": "br" } });
-  check("the runtime is sent as brotli", runtimeBr.headers.get("content-encoding") === "br" && (await runtimeBr.text()).includes("export function island"));
+  check("the runtime is sent as brotli", runtimeBr.headers.get("content-encoding") === "br" && (await runtimeBr.text()).startsWith("// Corten runtime"));
   const styleUrl = await page.evaluate(() => /** @type {HTMLLinkElement} */ (document.querySelector('link[rel="stylesheet"]')).href);
   await fetch(styleUrl, { headers: { "accept-encoding": "br" } });
   await page.waitForTimeout(500);

@@ -56,7 +56,7 @@ type CortenActions<I, S> = {
  *     export default island("offer-list", {
  *       state: () => ({ shown: false }),            // optional: each element's own state
  *       connect({ el, refs, props, signal }) {},    // optional: when the element joins the page;
- *                                                   // a returned function runs when it leaves
+ *                                                   // signal aborts when it leaves (the only cleanup)
  *       actions: {                                  // one per on:event={Name} in the markup
  *         showAll({ refs, target, event, state }) {},
  *       },
@@ -66,5 +66,6 @@ type CortenActions<I, S> = {
  */
 type CortenSpec<I, S> = {
   state?: () => S;
-  connect?: (ctx: CortenContext<I, S>) => void | (() => void);
+  /** Returns nothing (or a promise): cleanup listens on `ctx.signal`, never on a returned function. */
+  connect?: (ctx: CortenContext<I, S>) => void | Promise<void>;
 } & ([keyof CortenPart<I, "actions">] extends [never] ? { actions?: {} } : { actions: CortenActions<I, S> });

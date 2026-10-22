@@ -1,11 +1,13 @@
 // @ts-check
 // corten/solid: render an island with Solid. Served prebuilt by the corten crate (feature "solid") at
-// /corten/solid.js; `npm run build:solid` regenerates js/dist/solid.js from this file.
+// /corten/solid.js; `npm run build:js` regenerates js/dist/solid.js from this file.
 //
 //   import { island } from "corten";
 //   import { mount, h, createSignal } from "corten/solid";
 //   export default island("stock-badge", {
-//     connect: ({ el }) => mount(el, () => { const [n, setN] = createSignal(0); return h("button", { onClick: () => setN(n() + 1) }, () => n()); }),
+//     connect({ el, signal }) {
+//       mount(el, () => { const [n, setN] = createSignal(0); return h("button", { onClick: () => setN(n() + 1) }, () => n()); }, { signal });
+//     },
 //   });
 //
 // Rules (h has no compiler, so reactivity is explicit):
@@ -59,17 +61,20 @@ export function each(list, render) {
 }
 
 /**
- * Renders `view(server)` with Solid in an island's element and returns the function that disposes
- * it, so `connect` can return it: `connect: ({ el, props }) => mount(el, (server) => h(Grid, props))`.
+ * Renders `view(server)` with Solid in an island's element until `signal` aborts, then disposes it
+ * (its effects, cleanups and listeners): `mount(el, (server) => h(Grid, props), { signal })` with
+ * the island's `ctx.signal`.
  * `server` holds the nodes the server rendered inside the element, so the view can keep showing
  * them until its data is ready (`when(loaded, view, () => server)`); empty the array once they are
  * gone (`server.length = 0`) so they can be collected. Props are read before the nodes go.
  * @param {HTMLElement} el
  * @param {(server: Node[]) => any} view
- * @returns {() => void}
+ * @param {{ signal: AbortSignal }} options
+ * @returns {void}
  */
-export function mount(el, view) {
+export function mount(el, view, { signal }) {
+  if (signal.aborted) return;
   const server = Array.from(el.childNodes);
   el.replaceChildren();
-  return render(() => view(server), el);
+  signal.addEventListener("abort", render(() => view(server), el), { once: true });
 }

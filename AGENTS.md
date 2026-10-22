@@ -15,6 +15,9 @@ reason that a smaller change cannot meet.
    text is `messages!` (`crates/corten-macros`, no dependencies: keep it on `proc_macro` alone).
    Never write a URL, `data-ref`, `data-on` or message key as a string in a view. Islands have
    one pattern, `island(tag, { state, connect, actions })`; do not add built-in client behaviors.
+   Cleanup is `ctx.signal` alone (an `AbortSignal`): runtime APIs that start lasting work take
+   `{ signal }` and return nothing, and nothing hands back a stop function. On the server, work
+   that outlives the handler's future takes `corten::Signal`.
    Styles are a CSS file per component (`#[component(css)]`, scoped at compile time, `class={Name}`)
    and tokens from `tokens!`; never write one of a component's classes as a string, and keep
    inline `style=` out (the CSP blocks it).
@@ -23,7 +26,9 @@ reason that a smaller change cannot meet.
    release build) so rendering does not get slower unnoticed.
 4. The `corten` command: `crates/corten-cli`, standard library only. `template/` is the app
    `corten new` writes; it must pass `corten check` with rustfmt's default settings.
-5. Never edit `crates/corten/js/dist/solid.js` by hand; run `npm run build:solid`.
+5. Edit the runtime in `crates/corten/js/corten.js` and `solid.js`; the crate embeds their
+   minified builds in `js/dist/`, which only `npm run build:js` writes (`npm run check` fails
+   when they are stale).
 6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`,
    and production modules (security, assets, PWA, head tags, compression) by
    `examples/item-page/smoke.mjs`. Add the check with the behavior.

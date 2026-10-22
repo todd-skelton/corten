@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct Listing {
     pub id: String,
     pub title: String,
-    pub set_name: String,
+    pub category: String,
     pub condition: String,
     pub price_cents: i64,
     pub market_cents: i64,
@@ -24,21 +24,21 @@ impl Row for Listing {
 }
 
 const NAMES: [&str; 12] = [
-    "Charizard",
-    "Pikachu",
-    "Mewtwo",
-    "Gengar",
-    "Umbreon",
-    "Rayquaza",
-    "Lugia",
-    "Gardevoir",
-    "Snorlax",
-    "Eevee",
-    "Mew",
-    "Arceus",
+    "Desk Lamp",
+    "Notebook",
+    "Water Bottle",
+    "Backpack",
+    "Headphones",
+    "Coffee Grinder",
+    "Office Chair",
+    "Monitor Stand",
+    "Keyboard",
+    "Wall Clock",
+    "Plant Pot",
+    "Bookshelf",
 ];
-const SETS: [&str; 6] = ["Base Set", "Jungle", "Fossil", "Evolving Skies", "Lost Origin", "Paldean Fates"];
-const CONDITIONS: [&str; 5] = ["NM", "LP", "MP", "HP", "DMG"];
+const CATEGORIES: [&str; 6] = ["Home", "Office", "Kitchen", "Outdoor", "Audio", "Furniture"];
+const CONDITIONS: [&str; 5] = ["new", "open box", "used", "refurbished", "for parts"];
 
 /// xorshift64*: deterministic, no dependency.
 pub struct Rng(u64);
@@ -71,7 +71,7 @@ pub fn generate(count: usize, now: u64) -> Vec<Listing> {
             Listing {
                 id: id(n),
                 title: NAMES[rng.below(NAMES.len())].to_string(),
-                set_name: SETS[rng.below(SETS.len())].to_string(),
+                category: CATEGORIES[rng.below(CATEGORIES.len())].to_string(),
                 condition: CONDITIONS[rng.below(CONDITIONS.len())].to_string(),
                 price_cents: price,
                 market_cents: (price as f64 * (0.8 + rng.below(400) as f64 / 1_000.0)).round().max(1.0) as i64,

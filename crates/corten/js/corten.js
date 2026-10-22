@@ -1,9 +1,11 @@
 // @ts-check
-// Corten runtime. Served by the corten crate at /corten/corten.js and imported as "corten".
+// Corten runtime. Served by the corten crate at /corten/{version}/corten.js, minified from this
+// file into dist/corten.js by `npm run build:js`, and imported as "corten".
 //
 // What it does, and nothing else:
 // 1. Same-origin navigations: fetch the next page with `corten: nav` and swap it into <main>.
-// 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id.
+// 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id. The
+//    latest submit of a form wins; a navigation abandons pending ones.
 // 3. <corten-live src>: apply fragments streamed as server-sent `patch` events.
 // 4. Islands: an undefined <tag-name> loads `{islands dir}/tag-name.js` (the script of an #[island]
 //    component) and defines its `island()`; `on:event={Action}` markup runs its actions.
@@ -31,6 +33,8 @@ const islandClasses = new WeakSet();
  * The behavior of an `#[island]` component, in the script next to it:
  * `island("offer-list", { state() {}, connect(ctx) {}, actions: { showAll(ctx) {} } })`.
  * `on:click={ShowAll}` in the markup runs `actions.showAll`; `ref={Rows}` is `ctx.refs.rows`.
+ * `ctx.signal` aborts when the element leaves the page: pass it to `addEventListener`, `fetch`,
+ * `subscribe` and `mount`, or listen for its `abort` event. It is the only cleanup hook.
  * Types (checked against the Rust markup) and docs: islands.d.ts.
  * @template {keyof CortenIslands} T
  * @template [S=undefined]
@@ -63,8 +67,8 @@ export function island(tag, spec) {
         signal: life.signal,
       };
       wire(this);
-      const stop = connect?.(this.#context);
-      if (typeof stop === "function") life.signal.addEventListener("abort", stop, { once: true });
+      const made = /** @type {unknown} */ (connect?.(this.#context));
+      if (typeof made === "function") console.error(`corten: <${tag}> connect returned a function, which never runs; clean up on ctx.signal instead`);
     }
 
     disconnectedCallback() {
@@ -193,45 +197,64 @@ function readProps(host) {
 /**
  * Live rows from a `corten::feed` at `url`: calls `snapshot` with every row, then `patch` with each
  * later write in order. Reconnects resume where they stopped; a gap, an unknown cursor or a client
- * that fell behind loads a new snapshot. Returns a function that stops the subscription. `Row` is
- * the feed's row type from the generated declarations; without one, rows are `unknown`.
+ * that fell behind loads a new snapshot. It runs until `signal` aborts (in an island, pass
+ * `ctx.signal`: the subscription ends when the element leaves the page), or, without one, for the
+ * life of the page. `Row` is the feed's row type from the generated declarations; without one,
+ * rows are `unknown`.
  * @template [Row=unknown]
  * @param {string} url
  * @param {FeedHandlers<Row>} handlers
- * @returns {() => void}
+ * @param {{ signal?: AbortSignal }} [options]
+ * @returns {void}
  */
-export function subscribe(url, handlers) {
+export function subscribe(url, handlers, { signal } = {}) {
+  if (signal?.aborted) return;
   /** @type {EventSource | null} */
   let source = null;
-  let seq = 0;
-  let stopped = false;
-  let failures = 0;
   /** @type {AbortController | null} */
   let request = null;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  let seq = 0;
+  let failures = 0;
   const status = handlers.status ?? (() => {});
+  signal?.addEventListener(
+    "abort",
+    () => {
+      clearTimeout(timer);
+      request?.abort();
+      source?.close();
+    },
+    { once: true },
+  );
+
+  /** Runs `next` after a backoff that grows with each failure in a row. @param {() => void} next */
+  function retry(next) {
+    failures += 1;
+    clearTimeout(timer);
+    timer = setTimeout(next, Math.min(30_000, 500 * 2 ** failures));
+  }
 
   async function sync() {
     source?.close();
     source = null;
     request?.abort();
-    if (stopped) return;
+    if (signal?.aborted) return;
     status("syncing");
-    request = new AbortController();
+    const current = (request = new AbortController());
     try {
-      const res = await fetch(url, { headers: { accept: "application/json" }, signal: request.signal });
+      const res = await fetch(url, { headers: { accept: "application/json" }, signal: current.signal });
       if (!res.ok) throw new Error(`corten: feed ${url} answered ${res.status}`);
       /** @type {{ epoch: string, seq: number, rows: Row[] }} */
       const snap = await res.json();
-      if (stopped) return;
       failures = 0;
       seq = snap.seq;
       handlers.snapshot(snap.rows, snap.seq);
       listen(`${url}/live?since=${encodeURIComponent(`${snap.epoch}-${snap.seq}`)}`);
     } catch (error) {
-      if (stopped || (error instanceof DOMException && error.name === "AbortError")) return;
+      if (current.signal.aborted) return;
       console.error(error);
-      failures += 1;
-      setTimeout(sync, Math.min(30_000, 500 * 2 ** failures));
+      retry(sync);
     }
   }
 
@@ -249,11 +272,7 @@ export function subscribe(url, handlers) {
     // listen again from the last event, with backoff, so no snapshot is needed.
     es.addEventListener("error", () => {
       status("reconnecting");
-      if (es.readyState !== EventSource.CLOSED || source !== es || stopped) return;
-      failures += 1;
-      setTimeout(() => {
-        if (source === es && !stopped) listen(`${url}/live?since=${encodeURIComponent(cursor)}`);
-      }, Math.min(30_000, 500 * 2 ** failures));
+      if (es.readyState === EventSource.CLOSED && source === es) retry(() => listen(`${url}/live?since=${encodeURIComponent(cursor)}`));
     });
     es.addEventListener("sync", () => sync());
     es.addEventListener("patch", (event) => {
@@ -269,11 +288,6 @@ export function subscribe(url, handlers) {
   }
 
   sync();
-  return () => {
-    stopped = true;
-    request?.abort();
-    source?.close();
-  };
 }
 
 /**
@@ -469,21 +483,38 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
     event.navigationType === "reload" ||
     event.sourceElement?.closest?.("[data-reload]");
   if (skip) return;
+  // The page is about to change: replies to its pending submits would patch the wrong page.
+  for (const pending of submits.values()) pending.controller.abort();
   event.intercept({ handler: () => visit(new URL(event.destination.url), event.signal) });
 });
+
+/**
+ * The pending submit of each `data-patch` form. Like a browser's own form navigation, the latest
+ * submit wins: a newer one aborts the older request, and a navigation aborts them all, so a late
+ * reply never patches a page it was not meant for. The same submit again while it is pending (a
+ * double click) is ignored rather than sent twice.
+ * @type {Map<HTMLFormElement, { key: string, controller: AbortController }>}
+ */
+const submits = new Map();
 
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-patch")) return;
   event.preventDefault();
-  if (form.getAttribute("aria-busy") === "true") return;
   const submitter = /** @type {SubmitEvent} */ (event).submitter;
   const data = new FormData(form, submitter);
   const method = (submitter?.getAttribute("formmethod") || form.method).toUpperCase();
   const url = new URL(submitter?.getAttribute("formaction") || form.action, location.href);
-  /** @type {RequestInit} */
-  const init = { method, headers: { corten: "action" } };
   const fields = new URLSearchParams(/** @type {any} */ (data));
+  const key = `${method} ${url.href} ${fields}`;
+  const previous = submits.get(form);
+  if (previous?.key === key) return;
+  previous?.controller.abort();
+  const controller = new AbortController();
+  const { signal } = controller;
+  submits.set(form, { key, controller });
+  /** @type {RequestInit} */
+  const init = { method, headers: { corten: "action" }, signal };
   if (method === "GET") url.search = fields.toString();
   else init.body = form.enctype === "multipart/form-data" ? data : fields;
   form.setAttribute("aria-busy", "true");
@@ -493,21 +524,28 @@ document.addEventListener("submit", async (event) => {
     const res = await fetch(url, init);
     const location_ = res.headers.get("corten-location");
     if (location_) {
+      submits.delete(form);
       if (navigation) navigation.navigate(location_);
       else location.assign(location_);
-    } else if (res.headers.has("corten-patch")) {
-      await patch(await res.text());
-      if (res.status === 422) focusInvalid();
     } else if (res.headers.has("corten-page") && shellChanged(res)) {
       location.reload();
-    } else if (res.headers.has("corten-page")) {
-      await swapPage(await res.text());
+    } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
+      const body = await res.text();
+      signal.throwIfAborted();
+      await (res.headers.has("corten-patch") ? patch(body) : swapPage(body));
       if (res.status === 422) focusInvalid();
     } else {
       form.dispatchEvent(new CustomEvent("corten:error", { bubbles: true, detail: { status: res.status } }));
     }
+  } catch (error) {
+    if (signal.aborted) return;
+    // Offline or the server is unreachable: the form stays as it is, and the page can say so.
+    form.dispatchEvent(new CustomEvent("corten:error", { bubbles: true, detail: { status: 0, error } }));
   } finally {
-    form.removeAttribute("aria-busy");
+    if (submits.get(form)?.controller === controller) {
+      submits.delete(form);
+      form.removeAttribute("aria-busy");
+    }
   }
 });
 

@@ -3,8 +3,9 @@
 // Every @ts-expect-error line must be an error, or tsc fails ("Unused '@ts-expect-error'").
 // The islands are the examples', declared from their Rust markup in examples/*/types/app.d.ts.
 import { island, subscribe } from "corten";
+import { mount } from "corten/solid";
 
-/** @typedef {import("../examples/hello/types/app").Card} Card Generated from the Rust struct. */
+/** @typedef {import("../examples/hello/types/app").Stock} Stock Generated from the Rust struct. */
 
 island("offer-list", {
   actions: {
@@ -58,7 +59,6 @@ island("live-prices", {
     props.feed.toFixed();
     // @ts-expect-error State has only what state() returns.
     state.tick;
-    return () => {};
   },
   actions: {
     pause({ state, target }) {
@@ -76,8 +76,33 @@ island("live-prices", {
   actions: { pause() {} },
 });
 
-subscribe("/feed/cards", {
-  /** @param {Card[]} rows */
+island("live-prices", {
+  // @ts-expect-error Cleanup listens on ctx.signal; a returned function would never run.
+  connect: () => () => {},
+  actions: { pause() {} },
+});
+
+island("live-prices", {
+  async connect({ signal, props }) {
+    await fetch(props.feed, { signal });
+    subscribe(props.feed, { snapshot() {}, patch() {} }, { signal });
+    // @ts-expect-error subscribe() returns nothing to stop it with; pass a signal.
+    subscribe(props.feed, { snapshot() {}, patch() {} })();
+  },
+  actions: { pause() {} },
+});
+
+island("live-prices", {
+  connect({ el, signal }) {
+    mount(el, () => null, { signal });
+    // @ts-expect-error A Solid view lives as long as the island: mount needs its signal.
+    mount(el, () => null);
+  },
+  actions: { pause() {} },
+});
+
+subscribe("/feed/stocks", {
+  /** @param {Stock[]} rows */
   snapshot: (rows) => rows.map((row) => row.name),
   patch: (changes) => {
     for (const change of changes) {
@@ -88,7 +113,7 @@ subscribe("/feed/cards", {
   },
 });
 
-subscribe("/feed/cards", {
+subscribe("/feed/stocks", {
   snapshot: (rows) => {
     // @ts-expect-error Without a row type, rows are unknown, not any.
     rows[0].name;

@@ -24,8 +24,9 @@ use crate::{
     page::{self, default_error_page, default_shell, error_page_fn, IntoShell, Shared, ShellFn},
     pwa::Pwa,
     security::Policy,
+    signal::{self, Watch},
     view::Render,
-    Meta,
+    Meta, Signal,
 };
 
 type ContextFuture = Pin<Box<dyn Future<Output = Box<dyn FnOnce(&mut Extensions) + Send>> + Send>>;
@@ -67,6 +68,7 @@ pub struct App {
     locales: Option<&'static [&'static str]>,
     dev: Option<bool>,
     components: Vec<crate::Component>,
+    deadline: Option<Duration>,
 }
 
 impl App {
@@ -84,6 +86,7 @@ impl App {
             locales: None,
             dev: None,
             components: Vec::new(),
+            deadline: Some(Duration::from_secs(30)),
         }
     }
 
@@ -97,6 +100,17 @@ impl App {
     /// A component listed twice counts once.
     pub fn components(mut self, components: &[crate::Component]) -> Self {
         self.components.extend_from_slice(components);
+        self
+    }
+
+    /// How long a handler may take to answer (30 seconds unless set). Past it the client gets
+    /// the 503 error page, the handler's future is dropped, and the request's [`crate::Signal`]
+    /// aborts with [`crate::Abort::Deadline`] for work the handler spawned. It bounds the time to
+    /// the response's start, so a stream (a feed, server-sent events) runs as long as it needs;
+    /// reading the request body counts, so an app that takes large uploads raises it. `None`
+    /// removes it, for an app whose handlers bound themselves.
+    pub fn deadline(mut self, deadline: impl Into<Option<Duration>>) -> Self {
+        self.deadline = deadline.into();
         self
     }
 
@@ -258,16 +272,21 @@ impl App {
         shared.components = self.components.iter().map(|c| c.name).collect();
         let shared = Arc::new(shared);
         let context = self.context.map(|(f, _, _)| f);
+        let deadline = self.deadline;
         let routes = routes.layer(middleware::from_fn(move |mut req: Request, next: Next| {
             let shared = shared.clone();
             let context = context.clone();
             async move {
+                // Dropped with this future if the client leaves first; then the response's.
+                let watch = Watch(Signal::default());
+                req.extensions_mut().insert(watch.0.clone());
                 if let Some(context) = &context {
                     let insert = context(req.headers()).await;
                     insert(req.extensions_mut());
                 }
                 req.extensions_mut().insert(shared.clone());
-                page::render_errors(shared, req, next).await
+                let res = page::render_errors(shared, req, next, deadline, &watch.0).await;
+                signal::follow(res, watch)
             }
         }));
         let routes = self.policy.apply(routes);

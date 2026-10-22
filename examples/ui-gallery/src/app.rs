@@ -9,7 +9,7 @@
 use corten::{Component, prelude::*};
 use serde::Deserialize;
 
-use crate::gallery::{Gallery, MenuResult, OrderResult, SETS, TABS};
+use crate::gallery::{COLORS, Gallery, MenuResult, OrderResult, TABS};
 
 pub mod url {
     use corten::Route;
@@ -66,12 +66,12 @@ async fn home(req: Req, Query(q): Query<HomeQuery>) -> corten::Result {
 pub struct OrderForm {
     pub qty: f64,
     pub price: f64,
-    pub set: String,
+    pub color: String,
 }
 
 async fn order(req: Req, Form(form): Form<OrderForm>) -> corten::Result {
-    let set = SETS.iter().find(|s| s.value == form.set).map_or("no set", |s| s.label);
-    let text = format!("Ordered {} of {set} at ${:.2}.", form.qty, form.price);
+    let color = COLORS.iter().find(|c| c.value == form.color).map_or("no color", |c| c.label);
+    let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
     match req.mode {
         Mode::Action => req.patch(OrderResult { text: &text }),
         _ => req.page(TITLE, Gallery { tab: 0, result: &text }),
@@ -126,9 +126,9 @@ mod tests {
     #[tokio::test]
     async fn the_form_answers_with_a_patch_or_the_page() {
         let form = || Request::post("/order").header("content-type", "application/x-www-form-urlencoded");
-        let patch = send(form().header("corten", "action").body(Body::from("qty=2&price=12.50&set=pal")).unwrap()).await;
-        assert_eq!(patch, r#"<p id="result" role="status">Ordered 2 of Paldea Evolved at $12.50.</p>"#);
-        let page = send(form().body(Body::from("qty=2&price=12.50&set=pal")).unwrap()).await;
-        assert!(page.contains("<html") && page.contains("Ordered 2 of Paldea Evolved"));
+        let patch = send(form().header("corten", "action").body(Body::from("qty=2&price=12.50&color=sand")).unwrap()).await;
+        assert_eq!(patch, r#"<p id="result" role="status">Ordered 2 in Desert Sand at $12.50.</p>"#);
+        let page = send(form().body(Body::from("qty=2&price=12.50&color=sand")).unwrap()).await;
+        assert!(page.contains("<html") && page.contains("Ordered 2 in Desert Sand"));
     }
 }

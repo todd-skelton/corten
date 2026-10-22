@@ -5,7 +5,7 @@
  * A feed row. `price` is the display text, kept with the cents so every surface shows the
  * same string and no client re-implements the formatting.
  */
-export interface Card {
+export interface Stock {
   id: string;
   name: string;
   price: string;

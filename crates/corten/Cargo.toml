@@ -12,8 +12,10 @@ axum = "0.8"
 corten-macros = { path = "../corten-macros" }
 futures-util = { version = "0.3", default-features = false }
 getrandom = "0.3"
+# Already in axum's tree: the response body type, for the request signal.
+http-body = "1"
 memchr = "2"
-tokio = { version = "1", default-features = false, features = ["net", "signal"] }
+tokio = { version = "1", default-features = false, features = ["net", "signal", "sync", "time"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }

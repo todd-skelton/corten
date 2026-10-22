@@ -5,7 +5,7 @@ needs it and none of the weight where it does not.
 
 - Pages are HTML from the server, written in `html!`, a JSX-like macro that compiles to string
   writes. Components are plain functions. A misspelled prop or field is a compile error.
-- The browser gets a small runtime (6.3 KB compressed) that swaps pages on navigation, patches
+- The browser gets a small runtime (3.3 KB brotli) that swaps pages on navigation, patches
   fragments after form posts and loads islands: components whose behavior is a short script
   next to their Rust markup.
 - Live data is numbered patches over server-sent events, resumable after a reconnect or a
@@ -248,13 +248,34 @@ ref or action outside its island, or as a string, does not compile.
 `ref` and `on:` are the only island syntax, and there are no built-in client behaviors to learn:
 showing, toggling or reordering is an action of a few lines in the island's script.
 
+## Cancellation
+
+Both sides use one idea, the web's `AbortSignal`: work belongs to something, and stops when
+that thing ends.
+
+| Where | The signal | Aborts when |
+|---|---|---|
+| an island | `ctx.signal`, in `connect` and every action | the element leaves the page; pass it to `addEventListener`, `fetch`, `subscribe` and `mount`, which is the only cleanup (`connect` returns nothing) |
+| a `<form data-patch>` submit | the runtime's, per form | a newer submit of the same form, or a navigation, so a late reply never patches the wrong page |
+| a client navigation | the Navigation API's `event.signal` | another navigation starts |
+| a request on the server | `req.signal()`, or `signal: corten::Signal` as an extractor | the response was sent (`Abort::Responded`), the client left (`Disconnected`), or the deadline passed (`Deadline`) |
+
+On the server, work the handler awaits needs no signal: Rust drops the handler's future when the
+client leaves or the deadline passes. The signal is for what a drop cannot reach: spawned tasks,
+blocking threads, queries running elsewhere. `App::deadline` (30 seconds unless set, `None` for
+none) bounds the time to a response's start and answers 503 with the error page; streams run as
+long as they need. It includes reading the request body, so an app that takes large uploads
+raises it. A client closing an HTTP/1.1 connection mid-request is seen at once (an
+integration test closes the socket and waits for `Disconnected`). The deadline's timer starts
+only when a handler waits, so a page rendered from memory registers none.
+
 For screens whose state lives in the browser (a grid of thousands of live rows):
 
 | Piece | Server | Browser |
 |---|---|---|
 | Typed props | `#[prop] grid: &GridProps` (feature `json`) | `props.grid` |
-| Live rows | `corten::feed::Feed<Row>`: `write(\|tx\| ...)`, `snapshot()`, `live(since)` (feature `feed`) | `connect: ({ props }) => subscribe(props.feed, { snapshot, patch, status })` |
-| Rendering | serves Solid as `corten/solid` (feature `solid`) | `connect: ({ el }) => mount(el, (server) => h(Grid, ...))` |
+| Live rows | `corten::feed::Feed<Row>`: `write(\|tx\| ...)`, `snapshot()`, `live(since)` (feature `feed`) | `subscribe(props.feed, { snapshot, patch, status }, { signal })` in `connect` |
+| Rendering | serves Solid as `corten/solid` (feature `solid`) | `mount(el, (server) => h(Grid, ...), { signal })` in `connect` |
 
 Feed guarantees: every `write` is one numbered patch carrying the final value of each row it
 touched, encoded once and sent as the same bytes to every subscriber. A subscriber gets the
@@ -427,8 +448,8 @@ bench/fullstack/     The same page in six frameworks, and the scripts that compa
 ```
 
 Dependencies of `corten`: `axum`, `futures-util`, `getrandom` (CSP nonces), `memchr`
-(already in axum's tree), `tokio` (sockets and signals), `tracing`, `corten-macros` (no
-dependencies). Optional: `tracing-subscriber` (`log`, on by default), `serde` and `serde_json`
+(already in axum's tree), `http-body` (axum's body trait), `tokio` (sockets, signals, timers),
+`tracing`, `corten-macros` (no dependencies). Optional: `tracing-subscriber` (`log`, on by default), `serde` and `serde_json`
 (`json`), `schemars` (`types`, `agent`), `zstd`, `brotli`, `flate2` (`compress`),
 `corten-feed` (`feed`). Apps need no JavaScript dependencies; `package.json` here is tooling for
 the framework itself.
