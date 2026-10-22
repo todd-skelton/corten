@@ -341,3 +341,31 @@ impl IntoResponse for Error {
 
 #[cfg(test)]
 mod tests;
+
+/// The README and the guides as doctests: `cargo test` compiles every `rust` block in them that
+/// is not marked `ignore`, so the documented examples cannot drift from the API.
+#[cfg(all(doctest, feature = "json"))]
+mod doc_examples {
+    #[doc = include_str!("../../../README.md")]
+    struct Readme;
+    #[doc = include_str!("../../../docs/guide/app.md")]
+    struct App;
+    #[doc = include_str!("../../../docs/guide/cancellation.md")]
+    struct Cancellation;
+    #[doc = include_str!("../../../docs/guide/getting-started.md")]
+    struct GettingStarted;
+    #[doc = include_str!("../../../docs/guide/islands.md")]
+    struct Islands;
+    #[doc = include_str!("../../../docs/guide/live-data.md")]
+    struct LiveData;
+    #[doc = include_str!("../../../docs/guide/requests-and-forms.md")]
+    struct RequestsAndForms;
+    #[doc = include_str!("../../../docs/guide/styles.md")]
+    struct Styles;
+    #[doc = include_str!("../../../docs/guide/type-safety.md")]
+    struct TypeSafety;
+    #[doc = include_str!("../../../docs/guide/ui.md")]
+    struct Ui;
+    #[doc = include_str!("../../../docs/guide/views.md")]
+    struct Views;
+}

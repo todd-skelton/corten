@@ -1,6 +1,6 @@
 //! Integration tests against real Postgres and NATS (JetStream). They run when
 //! `CORTEN_TEST_DATABASE_URL` and `CORTEN_TEST_NATS_URL` are set and are skipped otherwise; see
-//! the README for the containers. Each test uses its own feed keys, so they can share a database,
+//! CONTRIBUTING.md for the containers. Each test uses its own feed keys, so they can share a database,
 //! but the relay lease is one row, so run them with `--test-threads=1`.
 
 use std::time::{Duration, Instant};

@@ -1,19 +1,135 @@
 # Corten
 
-Server-rendered web apps in Rust, with the interactivity of a client framework where a page
-needs it and none of the weight where it does not.
+**Server-rendered web apps in Rust, with interactivity only where a page needs it.**
 
-- Pages are HTML from the server, written in `html!`, a JSX-like macro that compiles to string
-  writes. Components are plain functions. A misspelled prop or field is a compile error.
-- The browser gets a small runtime (3.3 KB brotli) that swaps pages on navigation, patches
-  fragments after form posts and loads islands: components whose behavior is a short script
-  next to their Rust markup.
-- Live data is numbered patches over server-sent events, resumable after a reconnect or a
-  failover. Islands with heavy client state can render with Solid.
-- No WASM, no bundler, no JavaScript toolchain in the app. One binary and a `static/`
-  directory.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Status: 0.1, not yet on crates.io. License: [MIT](LICENSE).
+Corten renders every page on the server with `html!`, a JSX-like Rust macro. The browser gets
+HTML, a small runtime that swaps pages and patches forms, and *islands*: components whose
+behavior is a short script next to their Rust markup. Live data arrives as numbered patches over
+server-sent events. One handler serves the browser, native apps and AI agents.
+
+- **Fast on the server.** 3,355 rendered pages a second where Next.js 16 does 52, and a 184 ms
+  cold start (measured, [below](#performance)).
+- **Light in the browser.** A 3.3 KB (brotli) runtime; the benchmark item page loads 4.5 KB of
+  JavaScript (gzip). No WASM, no virtual DOM, no hydration.
+- **Typed end to end.** Routes, form fields, CSS classes, island refs and actions, and messages
+  are Rust types. TypeScript types for islands are generated from Rust.
+- **Works without JavaScript.** Links are links and forms post; scripts improve a page but never
+  hold it up.
+- **Production defaults.** CSP with nonces, a cross-site write check, error pages, versioned
+  assets, compression, health checks, graceful shutdown and an installable PWA, from
+  `App::new(routes).serve()`.
+- **No JavaScript toolchain in the app.** One binary and a `static/` directory.
+
+## Status
+
+Corten is 0.1: usable, tested, and not yet on crates.io. Install it from this repository. The
+API will change before 1.0; [CHANGELOG.md](CHANGELOG.md) lists what changed. `corten-ui` is
+tested in Chromium only.
+
+## Quick start
+
+```sh
+cargo install --git https://github.com/todd-skelton/corten corten-cli
+corten new my-app
+cd my-app
+corten dev        # http://localhost:3000, rebuilds on save, open pages reload
+```
+
+`corten new` writes a working app: a page, a form that patches part of the page, an island, a
+test and a Dockerfile. See [Getting started](docs/guide/getting-started.md).
+
+## Example
+
+A page with a form. With JavaScript, submitting it swaps in the greeting; without JavaScript it
+posts and the whole page comes back. One handler serves both.
+
+```rust,no_run
+use corten::prelude::*;
+
+#[derive(Route)]
+#[route("/")]
+struct Home;
+
+#[derive(Route)]
+#[route("/greet")]
+struct Greet;
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    let routes = Router::new().route(Home::PATH, get(home)).route(Greet::PATH, post(greet));
+    App::new(routes).serve().await
+}
+
+async fn home(req: Req) -> corten::Result {
+    req.page("Home", page(""))
+}
+
+async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
+    match req.mode {
+        Mode::Action => req.patch(Greeting { name: &form.name }),
+        _ => req.page("Home", page(&form.name)),
+    }
+}
+
+#[derive(serde::Deserialize, Fields)]
+struct GreetForm {
+    name: String,
+}
+
+fn page(name: &str) -> impl Render + '_ {
+    let f = GreetForm::FIELDS;
+    html! {
+        <h1>"Welcome"</h1>
+        <form method="post" action={Greet} data-patch>
+            <input name={f.name} required>
+            <button>"Greet me"</button>
+        </form>
+        <Greeting name={name} />
+    }
+}
+
+/// Rendered inside the page, and on its own as the form's patch, so the two cannot drift.
+#[component]
+fn Greeting(name: &str) -> impl Render {
+    html! { <p id="greeting" aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
+}
+```
+
+A misspelled route, field or prop does not compile. Behavior lives in an island: the markup
+names what the script may touch, and the script sits in the file next to it.
+
+```rust,ignore
+// src/click_counter.rs
+#[island]
+pub fn ClickCounter() -> impl Render {
+    html! { <button type="button" on:click={Count}>"Clicks: "<output ref={Total}>"0"</output></button> }
+}
+```
+
+```js
+// src/click_counter.js
+import { island } from "corten";
+
+export default island("click-counter", {
+  state: () => ({ count: 0 }),
+  actions: {
+    count({ state, refs }) {
+      refs.total.value = String(++state.count);
+    },
+  },
+});
+```
+
+## When to use it
+
+Corten fits apps whose screens are server data: stores, marketplaces, dashboards, admin tools,
+content with live parts. It suits teams that want one language on the server and the platform in
+the browser.
+
+Look elsewhere for an offline-first app whose state lives on the device, for server-side TSX or
+React components, or for a pure static site (a static site generator is simpler).
 
 ## Values
 
@@ -46,378 +162,10 @@ Status: 0.1, not yet on crates.io. License: [MIT](LICENSE).
 9. **Verified, not assumed.** Every runtime behavior has a browser smoke test. Reliability work,
    like failover and lost-patch counts, is benchmarked rather than argued.
 
-## Quick start
-
-```sh
-cargo install --git https://github.com/todd-skelton/corten corten-cli
-corten new my-app
-cd my-app
-corten dev        # http://localhost:3000, rebuilds on save, open pages reload
-```
-
-`corten new` writes a working app: a page, a form that patches part of the page, an island, a
-test and a Dockerfile.
-
-| Command | What it does |
-|---|---|
-| `corten new <dir>` | Creates an app. `--name` sets the crate name, `--corten-path` uses a local checkout. |
-| `corten dev` | Builds and runs the app, rebuilds and restarts on every change (a failed build keeps the last good server running), and reloads open pages. `--port` or `PORT`. |
-| `corten check` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`. |
-| `corten build` | The release binary. |
-
-The CLI is a convenience over cargo, not a build system: an app is an ordinary crate, and
-`cargo run` works too.
-
-## An app
-
-```rust
-use corten::prelude::*;
-
-#[derive(Route)]
-#[route("/")]
-struct Home;
-
-#[derive(Route)]
-#[route("/greet")]
-struct Greet;
-
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
-    let routes = Router::new().route(Home::PATH, get(home)).route(Greet::PATH, post(greet));
-    App::new(routes).shell(shell).serve().await
-}
-
-async fn home(req: Req) -> corten::Result {
-    req.page("Home", html! {
-        <h1>"Welcome"</h1>
-        <form method="post" action={Greet} data-patch>
-            <input name={GreetForm::FIELDS.name} required>
-            <button>"Greet me"</button>
-        </form>
-        <Greeting name="" />
-    })
-}
-
-#[derive(serde::Deserialize, Fields)]
-struct GreetForm { name: String }
-
-/// With JavaScript the runtime swaps in the patch; without it the form posts and the whole page
-/// comes back. One handler serves both.
-async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
-    match req.mode {
-        Mode::Action => req.patch(Greeting { name: &form.name }),
-        _ => req.page("Home", html! { <Greeting name={&form.name} /> }),
-    }
-}
-
-#[component]
-fn Greeting(name: &str) -> impl Render {
-    html! { <p id="greeting" aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
-}
-
-fn shell(doc: Document) -> impl Render {
-    html! {
-        <!DOCTYPE html>
-        <html lang={doc.lang()}>
-            <head><meta charset="utf-8"><link rel="stylesheet" href={doc.asset("style.css")}>{doc.head}</head>
-            <body><main>{doc.main}</main></body>
-        </html>
-    }
-}
-```
-
-Handlers are plain axum handlers. `App` adds everything a production app needs around them.
-
-## App: defaults and overrides
-
-| Concern | Default | Override |
-|---|---|---|
-| Address | `HOST` (`127.0.0.1`), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
-| Shell | a minimal HTML document | `.shell(fn(Document) -> impl Render)`, or `fn(Document, Option<C>)` with a context |
-| Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`: shells, handlers (`req.context::<C>()`) and error pages see it |
-| Error pages | 404, 405 and 500 inside the shell, in the request's mode (page, swap or JSON); the error is logged, never shown | `.error_page(\|status\| (title, view))` |
-| Security | CSP with a per-request nonce, nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods | `.policy(Policy::new()...)` |
-| Static files | `static/` (or `STATIC_DIR`), island scripts and the components' stylesheets (one file) at content-hashed, immutable URLs; each island preloaded on the pages that render it | `.assets(dir)`, `.components(&[..])` |
-| Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
-| Shutdown | Ctrl-C and `SIGTERM` end live streams, then the server | |
-| Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
-| Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels (feature `compress`) | |
-| Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
-| Languages | none | `.messages::<Msg>()`: `req.t()`, `doc.t()` and `doc.lang()` follow `Accept-Language` |
-| Dev mode | when `CORTEN_DEV` is set (`corten dev` sets it): errors shown on the page, open pages reload after a rebuild | `.dev(bool)` |
-
-## Views
-
-`html!` reads like JSX and compiles to `push_str` calls: static markup is merged at compile
-time, expressions are escaped as they are written, and the output buffer is sized from the last
-render of the same call site.
-
-| Write | Means |
-|---|---|
-| `"Price"` | text (source whitespace between tags is never output) |
-| `{expr}` | an expression, escaped: anything that implements `Render` (strings, numbers, `Option`, other views) or else `Display`. `raw(html)` prints trusted HTML |
-| `href={url}`, `href={("/items/", &id)}` | an attribute; a tuple prints its parts without building a string |
-| `hidden={flag}`, `class={maybe}` | `bool` prints the bare name or nothing; `None` leaves the attribute out |
-| `<input {..errors.aria(field)}>` | spreads `Attrs` |
-| `for`, `if`/`else`, `match`, `let` | as in Rust, with markup in the braces |
-| `<Card title="x" compact>children</Card>` | a component: a struct with those fields (`compact` is `true`), children in `children` |
-| `<>...</>`, `<!DOCTYPE html>`, `<input>` | fragments, the doctype, void elements without a closing tag |
-
-`#[component]` turns a function into a props struct and a `Render` impl, so the same
-component renders inside a page and on its own as a patch, and the two cannot drift. A view owns
-what it captures and renders once, so it can be returned from a function.
-
-## Typed links and messages
-
-The three strings that usually drift between files are Rust types, checked when the app compiles.
-
-```rust
-#[derive(Route)]
-#[route("/items/{id}")]
-pub struct ItemRoute<'a> { pub id: &'a str, pub tab: Option<&'a str> }   // tab is a query parameter
-
-corten::i18n::messages! {
-    pub struct Msg { "en" => "locales/en.json", "fr" => "locales/fr.json" }
-}
-
-Router::new().route(ItemRoute::PATH, get(show));                            // the path axum matches
-
-let t: Msg = req.t();
-html! {
-    <a href={ItemRoute { id: &item.id, tab: None }}>{item.title}</a>       // /items/a%20b
-    <p>{t.item_show_all_offers(item.offers.len())}</p>
-}
-```
-
-| What | Fails to compile when |
-|---|---|
-| `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
-| `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument |
-
-Routes write their URL straight into the page (path parameters percent-encoded, `None` query
-parameters left out). Messages are split into text and arguments when the crate compiles: one
-without arguments is a `&'static str`, one with arguments writes its pieces into the page,
-escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
-
-## How a request works
-
-| Request | Sent by | Handler returns | Client does |
-|---|---|---|---|
-| `GET`, no `corten` header | first load, reload, no JavaScript | `req.page(meta, view)`: the shell around the page | renders HTML |
-| `GET` with `corten: nav` | runtime, same-origin link or back/forward | the same call: `<title>`, head tags and the page only | swaps `<main>` |
-| `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch(view)` | replaces each element by `id` |
-| `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(&route)` | renders the page |
-| any, `Accept: application/json` | native screen, agent, test | `req.screen(meta, &data, view)`: `{"title", "data"}` | renders natively, or reasons over it |
-| SSE | `<corten-live src>` | `corten::live(stream_of_views)` | applies each like a patch |
-| `GET {feed}`, `{feed}/live` | an island's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |
-
-One handler serves every mode, and `req.mode` says which. The shell renders on full loads only;
-every page carries a key hashed from the context and the deploy, and when a navigation answers
-with a different key (sign-in, a new release) the runtime loads the whole document instead, so
-the shell is never stale.
-
-## Forms
-
-`#[derive(Fields)]` gives a form struct its field names as `FieldName` constants, so markup and
-validation cannot misspell them: `Errors` takes nothing else. Validation stays in the app; `Errors` carries the first message per field.
-
-```rust
-if let Err(errors) = check(&input) {
-    // 422: the form as a patch for the runtime, `{"errors": ...}` for JSON clients, or the whole
-    // page for a browser without JavaScript (only then is `page` called).
-    return req.invalid(&errors, AlertForm { input: &input, errors: &errors }, page).await;
-}
-```
-
-In the form, `<input name={f.email} {..errors.aria(f.email)}>` sets `aria-invalid` and
-`aria-describedby`, and the runtime focuses the first invalid field.
-
-## Islands
-
-An island is a component with behavior. Its markup is Rust like every other view; its behavior
-is a script in the file next to it. The markup names what the script touches: `ref={Rows}` is an
-element the script uses, `on:click={ShowAll}` runs one of its actions. Everything else in the
-script is plain JavaScript.
-
-```rust
-// src/views/offer_list.rs
-#[island]
-pub fn OfferList<'a>(t: Msg, offers: &'a [Offer]) -> impl Render {
-    let (first, rest) = offers.split_at(offers.len().min(5));
-    html! {
-        <table><tbody ref={Rows}>for o in first { <OfferRow o={o} /> }</tbody></table>
-        if !rest.is_empty() {
-            <template ref={Rest}>for o in rest { <OfferRow o={o} /> }</template>
-            <button type="button" on:click={ShowAll}>{t.item_show_all_offers(offers.len())}</button>
-        }
-    }
-}
-```
-
-```js
-// src/views/offer_list.js
-import { island } from "corten";
-
-export default island("offer-list", {
-  actions: {
-    showAll({ refs, target }) {
-      refs.rows.append(refs.rest.content);
-      refs.rest.remove();
-      target.remove();
-    },
-  },
-});
-```
-
-| In the markup | In the script |
-|---|---|
-| `ref={Rows}` on a `<tbody>` | `refs.rows`, an `HTMLTableSectionElement` (`all.rows` for every one) |
-| `on:click={ShowAll}` on a `<button>` | `actions.showAll(ctx)`, with `ctx.target` the button and `ctx.event` the click |
-| a parameter marked `#[prop]` (feature `json`) | `props.name`, typed from the Rust type |
-| the component, `<OfferList ... />` | `<offer-list>` around the markup; `state()` per element, `connect(ctx)` when it joins the page |
-
-The component renders inside its tag (its name in kebab-case) and works without the script. The
-script is compiled into the binary; list the island once, `App::new(routes).components(&[OfferList])`,
-and Corten serves it at a versioned URL and preloads it on the pages that render it. The
-generated declarations (`Types::components`, below) describe each island's markup, so
-`island("offer-list", ...)` is type-checked with no imports: a ref the markup does not have, a
-missing or misspelled action, or `.content` on a `<tbody>` fails `npm run check`. In Rust, a
-ref or action outside its island, or as a string, does not compile.
-
-`ref` and `on:` are the only island syntax, and there are no built-in client behaviors to learn:
-showing, toggling or reordering is an action of a few lines in the island's script.
-
-## Cancellation
-
-Both sides use one idea, the web's `AbortSignal`: work belongs to something, and stops when
-that thing ends.
-
-| Where | The signal | Aborts when |
-|---|---|---|
-| an island | `ctx.signal`, in `connect` and every action | the element leaves the page; pass it to `addEventListener`, `fetch`, `subscribe` and `mount`, which is the only cleanup (`connect` returns nothing) |
-| a `<form data-patch>` submit | the runtime's, per form | a newer submit of the same form, or a navigation, so a late reply never patches the wrong page |
-| a client navigation | the Navigation API's `event.signal` | another navigation starts |
-| a request on the server | `req.signal()`, or `signal: corten::Signal` as an extractor | the response was sent (`Abort::Responded`), the client left (`Disconnected`), or the deadline passed (`Deadline`) |
-
-On the server, work the handler awaits needs no signal: Rust drops the handler's future when the
-client leaves or the deadline passes. The signal is for what a drop cannot reach: spawned tasks,
-blocking threads, queries running elsewhere. `App::deadline` (30 seconds unless set, `None` for
-none) bounds the time to a response's start and answers 503 with the error page; streams run as
-long as they need. It includes reading the request body, so an app that takes large uploads
-raises it. A client closing an HTTP/1.1 connection mid-request is seen at once (an
-integration test closes the socket and waits for `Disconnected`). The deadline's timer starts
-only when a handler waits, so a page rendered from memory registers none.
-
-For screens whose state lives in the browser (a grid of thousands of live rows):
-
-| Piece | Server | Browser |
-|---|---|---|
-| Typed props | `#[prop] grid: &GridProps` (feature `json`) | `props.grid` |
-| Live rows | `corten::feed::Feed<Row>`: `write(\|tx\| ...)`, `snapshot()`, `live(since)` (feature `feed`) | `subscribe(props.feed, { snapshot, patch, status }, { signal })` in `connect` |
-| Rendering | serves Solid as `corten/solid` (feature `solid`) | `mount(el, (server) => h(Grid, ...), { signal })` in `connect` |
-
-Feed guarantees: every `write` is one numbered patch carrying the final value of each row it
-touched, encoded once and sent as the same bytes to every subscriber. A subscriber gets the
-snapshot and then each later patch exactly once, in order; reconnects resume from
-`Last-Event-ID`, and an unknown cursor or a gap ends in a fresh snapshot. `corten-cluster`
-runs one feed across instances (Postgres outbox, a leased relay to NATS JetStream): in the
-failover benchmark, 777,600 of 777,600 patches arrived with both instances killed and restarted
-under load (measured, one run, `examples/cluster/results/`).
-
-## Styles
-
-Each component's styles are a CSS file next to it, scoped to it at compile time; design tokens
-are one JSON file; both reach the browser as one cached stylesheet. There is no CSS build step.
-
-```css
-/* src/views/offer_list.css */
-.table { font-variant-numeric: tabular-nums; }
-.row:hover { background: var(--color-surface-2); }
-.row.selected { outline: 2px solid var(--color-accent); }
-```
-
-```rust
-#[island(css)]  // or #[component(css)] for markup without a script
-pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Render {
-    html! {
-        <table class={Table}>
-            for o in offers { <tr class={(Row, (selected == Some(&o.id)).then_some(Selected))}>...</tr> }
-        </table>
-    }
-}
-```
-
-| You write | Corten checks or generates |
-|---|---|
-| `offer_list.css` next to `OfferList` | every class prefixed, `.offer-list__row`; a rule that does not start at one of the file's classes (or the island's tag) does not compile, so a component cannot style what it does not render |
-| `class={Row}`, `class={[Row, Selected]}` | static markup, `class="offer-list__row"`; a class the file lacks, another component's class, or one of the file's classes written as text (`class="row"`) does not compile |
-| `class={(Row, cond.then_some(Selected), extra)}` | joined when the page renders; `None` adds nothing, an empty list leaves the attribute out |
-| a class nothing uses | `warning: constant Hot is never used` (an error under `-D warnings`) |
-| `#[component(css = OfferList)]` | a helper in the same module shares the stylesheet, and its uses count |
-| `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed responsive utilities: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
-| `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
-
-Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks the
-class, so adding a variant without a rule does not compile. A component library is a crate that
-exports `pub const COMPONENTS: &[Component]`; the app passes it to `App::components`.
-`static/style.css` holds what belongs to no component: element defaults, fonts and the shell.
-Link it before `{doc.head}` so component rules win ties. Inline `style=` stays blocked by the
-CSP; one-off values come from the token utilities instead.
-
-## Headless components
-
-`corten-ui` is an optional crate of islands for the widgets the browser has no element for. Each
-renders accessible markup on the server, works as plain HTML before its script loads, and ships
-no CSS.
-
-| Component | Without JavaScript | The script adds |
-|---|---|---|
-| `NumberField` | a native `<input type="number">` (arrow keys, `min`, `max`, `step`, `required`) | step buttons with press and hold, Page Up and Down, Home and End, the step's decimals |
-| `ComboBox` | a native `<select>`, which keeps the value | a text input that filters a listbox (ARIA 1.2 combobox), validation reported on the input |
-| `TabGroup` | tabs that are typed links to the page with that tab selected | roving focus, arrow keys, switching in place with the address following |
-| `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, `aria-expanded`, the button as the menu's CSS anchor |
-
-```rust
-let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };
-html! { <div class={Field}><label for="qty">{t.quantity()}</label><NumberField field={&qty} /></div> }
-```
-
-A design system wraps each one and styles its parts by role and state, which are what assistive
-technology announces, so the styles cannot drift from it: `.field [role="option"][aria-selected="true"]`,
-`.tabs [role="tab"][aria-selected="true"]`, `.menu [role="menu"]:popover-open`. The island's tag is
-`display: contents`, so the parts are laid out by the wrapper. Labels come from the app, in the
-page's language. Links are typed routes. List `corten_ui::COMPONENTS` in `App::components`.
-
-Everything else Base UI-style libraries provide is already the platform's: `<dialog>` with
-`command="show-modal"` for dialogs and alert dialogs, `popover` for popovers and tooltips,
-`<details name>` for accordions, `<select>` (with `appearance: base-select` where supported),
-checkboxes, radios and `<input type="range">`. [examples/ui-gallery](examples/ui-gallery) shows
-all four styled by a small design system, with a browser test.
-
-## Types across seams
-
-Every value that crosses from Rust to the browser or to an agent is defined once, in Rust, and
-checked on the other side.
-
-| Seam | How it is checked |
-|---|---|
-| Handler to markup | `html!` is Rust: a missing field or prop is a compile error |
-| Links to routes | `#[derive(Route)]`: the router, every link, `req.redirect` and `doc.current` use the same struct; a path as text does not compile (a URL outside the app is an explicit `Uri`) |
-| Views to islands | `#[island]`: refs and actions are names from the island's own markup; `Types::components` types `refs`, `props` and every action in its script |
-| Markup to stylesheet | `#[component(css)]`: `class={Name}` is a constant from the component's own CSS file |
-| Tokens to views | `tokens!`: scales are enums and utilities take them, per breakpoint |
-| Text to catalogs | `messages!`: every locale has every key with the same arguments |
-| Form to handler | `#[derive(Fields)]` names are `FieldName`s, the only key `name=`, `Errors` and corten-ui's fields take; serde parses the post |
-| Server to island | `corten::types::Types::new().add::<Row>().components(COMPONENTS).sync(path)` in a test writes TypeScript declarations and fails while they are stale; `npm run check` then fails in every island that reads an old name |
-| Server to agent | tool input and output schemas generated from the structs (feature `agent`) |
-
-Untyped props and rows are `unknown`, not `any`. The full table, and what is not checked, is
-in [docs/architecture.md](docs/architecture.md#types-across-seams).
-
 ## Performance
 
 The same item page (listings table, offers, a form that patches) in six frameworks, one CPU per
-app. Measured on one machine, one run per phase; full tables and method in
+app, measured on one machine. Method, every table and the caveats are in
 [bench/fullstack](bench/fullstack/README.md).
 
 | | Corten | Leptos 0.8 | SvelteKit 3 | React Router 7 | TanStack Start | Next.js 16 |
@@ -425,103 +173,56 @@ app. Measured on one machine, one run per phase; full tables and method in
 | Rendered pages per second, no database, 64 users | **3,355** | 440 | 224 | 173 | 137 | 52 |
 | Cold start to first page | **184 ms** | 220 ms | 425 ms | 1,035 ms | 496 ms | 1,679 ms |
 | Memory after first request | **1.6 MiB** | 1.7 MiB | 23.5 MiB | 33.0 MiB | 26.4 MiB | 49.2 MiB |
-| JavaScript the page loads, gzip | **4.5 KB**¹ | 7.0 KB + 287 KB WASM | 37.0 KB | 99.2 KB | 108.6 KB | 136.1 KB |
+| JavaScript the page loads, gzip | **4.5 KB** | 7.0 KB + 287 KB WASM | 37.0 KB | 99.2 KB | 108.6 KB | 136.1 KB |
 
 With a database fetch on every request both Rust apps are bound by parsing the API response and
-measure about equal, around 3x the fastest JavaScript framework.
+measure about equal, around 3x the fastest JavaScript framework. The JavaScript figure was
+re-measured on 2026-10-21; the other rows are from the full run.
 
-¹ Re-measured on 2026-10-21 with the benchmark's `bytes.mjs` method after the runtime was served
-minified (10.5 KB raw in 4 files, `/items/item_5`, Corten only, one run; the full run measured
-6.2 KB before the typed seams and `#[island]` changes); the other columns are from the full run.
+## Documentation
 
-## Choices
+| Guide | What it covers |
+|---|---|
+| [Getting started](docs/guide/getting-started.md) | the `corten` command and the parts of an app |
+| [The app](docs/guide/app.md) | every default `App` puts around your routes, and how to replace each |
+| [Views](docs/guide/views.md) | `html!`, components, typed links and messages |
+| [Requests and forms](docs/guide/requests-and-forms.md) | request modes, patches, validation, redirects |
+| [Islands](docs/guide/islands.md) | behavior in the browser: refs, actions, props, Solid |
+| [Live data](docs/guide/live-data.md) | `<corten-live>`, feeds, running a feed across instances |
+| [Cancellation](docs/guide/cancellation.md) | `AbortSignal` in the browser and on the server, deadlines |
+| [Styles](docs/guide/styles.md) | a scoped CSS file per component, design tokens, themes |
+| [Headless components](docs/guide/ui.md) | `corten-ui`: number field, combobox, tabs, menu button |
+| [Type safety](docs/guide/type-safety.md) | every seam between server and client, and how it is checked |
+| [Design decisions and limits](docs/design.md) | why it is built this way, and what it does not do |
+| [Surfaces](docs/architecture.md) | one server for web, native apps and agents |
 
-1. **Markup is a Rust macro, not TSX.** Rendering TSX needs a JavaScript runtime on the server
-   or a second toolchain in the app; `html!` keeps one language and compiles to the same string
-   writes a hand-written renderer would do. Measured on the item page, `html!` renders as fast
-   as the compiled templates it replaced (askama).
-2. **No WASM.** Hydrating a WASM app costs hundreds of kilobytes before the page responds; the
-   server already has the HTML, so the browser only needs behavior where there is behavior.
-3. **No virtual DOM on the server.** Frameworks that build a view tree per request and then
-   serialize it pay for it in throughput (Leptos above). `html!` writes straight to the
-   response buffer.
-4. **Custom elements, not a client framework, by default.** Islands use the platform; Solid is
-   opt-in for the screens that need fine-grained reactive state.
-5. **Plain CSS files, scoped by the compiler, not utility classes or CSS-in-Rust.** Utility
-   frameworks put unchecked strings in every view and need a scanner and a build step; CSS in
-   Rust needs inline styles the CSP blocks, or a runtime. A CSS file per component keeps the
-   language designers know, and the macro makes its class names typed. Tokens cover the
-   one-off values (spacing, direction per breakpoint) utilities are good at.
+API reference: `cargo doc --open -p corten`. Building an app with an AI agent? The
+[corten skill](skills/corten/SKILL.md) gives it the rules and recipes.
 
-## Rules
+## Crates
 
-1. HTML comes from the server, in `html!`. Islands never build markup from strings; they move,
-   show or hide server-rendered nodes. Extra rows ship in a `<template ref={Rest}>`. (One
-   exception: `ComboBox` mirrors the server's `<option>`s into its listbox, so each option is
-   sent once.)
-2. A fragment that can be patched is a component, rendered by the page and by the patch, so the
-   two cannot drift.
-3. An island's script reaches the page only through the names its markup gives it: `refs`,
-   `all` and actions run by `on:event`. Per-element state is `state()` or the DOM itself.
-4. User-facing text lives in views or the view model, never in island code.
-5. Everything works without JavaScript: links are links and forms post.
-6. A page another surface reads derives `Serialize`, and its fields are its whole view model
-   (formatted text included). Then `req.screen` gives every surface the same data.
+| Crate | What it is |
+|---|---|
+| [`corten`](crates/corten) | the framework, on axum: `App`, `Req`, `html!`, islands, the browser runtime |
+| [`corten-cli`](crates/corten-cli) | the `corten` command: `new`, `dev`, `check`, `build` |
+| [`corten-macros`](crates/corten-macros) | the macros, on `proc_macro` alone (no `syn`) |
+| [`corten-ui`](crates/corten-ui) | optional headless islands for widgets the browser lacks |
+| [`corten-feed`](crates/corten-feed) | live feeds: rows, numbered patches, replay, resume |
+| [`corten-cluster`](crates/corten-cluster) | one feed across instances: Postgres outbox, NATS JetStream |
+| [`corten-protocol`](crates/corten-protocol) | the feed wire format and a client replica, for native and agent clients |
 
-## Layout
+Examples: [hello](examples/hello) (every piece on one screen), [item-page](examples/item-page)
+(every production module), [ui-gallery](examples/ui-gallery) (`corten-ui` styled), and
+[cluster](examples/cluster) (failover across instances).
 
-```text
-crates/
-  corten/            The framework on axum: App, Req, html!, components, the runtime (js/corten.js)
-  corten-macros/     html!, #[component], #[island], messages!, tokens!, derives (Fields, Route), on proc_macro alone (no syn)
-  corten-cli/        The corten command, standard library only
-  corten-feed/       Live feeds: rows, numbered patches, replay, resume
-  corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
-  corten-cluster/    One feed across instances: Postgres outbox, NATS JetStream relay
-  corten-ui/         Optional headless islands: number field, combobox, tabs, menu button
-examples/hello/      One screen that uses every piece; scripts/smoke.mjs tests it in a browser
-examples/item-page/  A marketplace item page with every production module on; smoke.mjs tests it
-examples/cluster/    A listings feed on corten-cluster, and the failover benchmark
-examples/ui-gallery/ corten-ui styled by a small design system; smoke.mjs tests it in a browser
-docs/architecture.md How web, native and agent surfaces share one server
-bench/fullstack/     The same page in six frameworks, and the scripts that compare them
-```
+## Contributing
 
-Dependencies of `corten`: `axum`, `futures-util`, `getrandom` (CSP nonces), `memchr`
-(already in axum's tree), `http-body` (axum's body trait), `tokio` (sockets, signals, timers),
-`tracing`, `corten-macros` (no dependencies). Optional: `tracing-subscriber` (`log`, on by default), `serde` and `serde_json`
-(`json`), `schemars` (`types`, `agent`), `zstd`, `brotli`, `flate2` (`compress`),
-`corten-feed` (`feed`). Apps need no JavaScript dependencies; `package.json` here is tooling for
-the framework itself.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the layout and the
+checks; report security issues as [SECURITY.md](SECURITY.md) describes.
 
-## Limits
+## License
 
-1. Client navigation uses the Navigation API (Chrome, Edge, Firefox 147+, Safari 26.2+); older
-   browsers do full page loads, and forms, patches and islands still work.
-2. Patches replace whole elements, so focus inside a replaced element is lost. Keep targets small.
-3. Scripts inside swapped pages do not run. Put behavior in islands.
-4. Offline is a fallback page plus cached versioned files, not offline data.
-5. Hover and touch prefetch reuses a fetched page for up to 10 seconds (cleared after any form
-   post).
-6. A feed's write rate is bounded by Postgres commit latency on its feed row. Split hot data into
-   several feeds.
-7. `html!` views render once and own what they capture; read from `req` before building the view.
-8. Component stylesheets support plain CSS with nesting and `@media`, `@supports`, `@container`,
-   `@layer`, `@keyframes` and `@font-face`; `@import` and escaped class names are not supported.
-   Keyframe names are not scoped. Every listed component's CSS is in the one file, whether or not
-   a page uses it: the item page's `components.css` (tokens, two themes, utilities and five
-   components) is 3.2 KB, 822 bytes brotli (measured). A large library adds to every first load
-   until the file is split per route, which is not built.
-9. `corten-ui` is tested in Chromium only. Its popups are placed by the design system's CSS with
-   anchor positioning (Baseline since January 2026); a browser without it shows them where
-   `popover` puts them by default, centered. Tabs are horizontal.
-   Its tags are not prefixed (`<combo-box>`, `<tab-group>`), so an app island with the same
-   name is a startup error.
-
-## Working on Corten
-
-[AGENTS.md](AGENTS.md) lists the checks: Rust tests, lints and format (in Docker on Windows),
-`npm run check` for the runtime's types, and browser smoke tests against the examples.
+[MIT](LICENSE).
 
 ## Name
 

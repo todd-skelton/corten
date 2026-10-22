@@ -97,7 +97,7 @@ back silently), and logic an island repeats from Rust (the listing sort rule in 
 
 1. No business logic in a surface. Rules, validation, formatting and permissions live in Rust
    on the server.
-2. A screen's page struct is its whole view model (README rule 7). Displayed text, prices
+2. A screen's page struct is its whole view model ([design rule 6](design.md#rules)). Displayed text, prices
    included, is a field.
 3. Actions are idempotent or carry an idempotency key, because native and agent clients retry
    (a 502 can hide a committed write).

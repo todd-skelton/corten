@@ -1,7 +1,7 @@
 # Working on Corten
 
-Read `README.md` (rules, request modes) and `docs/architecture.md` (surfaces) before changing
-anything. Keep the framework small: a change that adds a dependency or a new concept needs a
+Read `README.md`, the guide in `docs/guide/` for the area you are changing, `docs/design.md`
+(choices, rules, limits) and `docs/architecture.md` (surfaces) before changing anything. Keep the framework small: a change that adds a dependency or a new concept needs a
 reason that a smaller change cannot meet.
 
 ## Values
@@ -57,26 +57,6 @@ convenience. And a nicer API that slows every page loses.
 
 ## Checks (all must pass before you report done)
 
-```powershell
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo fmt --all --check && cargo clippy --workspace --all-features --all-targets -- -D warnings && cargo test --workspace --all-features"
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check"
-npm run check
-docker build -f examples/hello/Dockerfile -t corten-hello .
-docker run -d --name corten-hello -p 18480:8080 corten-hello
-npm run smoke -- http://localhost:18480
-docker rm -f corten-hello
-docker run -d --name corten-hello-dev -p 18483:8080 -e CORTEN_DEV=1 corten-hello
-node scripts/smoke-dev.mjs http://localhost:18483 corten-hello-dev
-docker rm -f corten-hello-dev
-docker build -f examples/item-page/Dockerfile -t corten-item-page .
-docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -v "${PWD}/examples/item-page/fixtures:/fixtures:ro" corten-item-page
-node examples/item-page/smoke.mjs http://localhost:18481
-docker rm -f corten-item-page
-docker build -f examples/ui-gallery/Dockerfile -t corten-ui-gallery .
-docker run -d --name corten-ui-gallery -p 18482:8080 corten-ui-gallery
-node examples/ui-gallery/smoke.mjs http://localhost:18482
-docker rm -f corten-ui-gallery
-```
-
-Rust tests run in Docker because the Windows host cannot link `windows-sys`. Run each command
-separately.
+Run every command in [CONTRIBUTING.md](CONTRIBUTING.md#checks), each separately, and remove the
+containers afterwards. Update the guide that describes a changed behavior, and add a line to
+`CHANGELOG.md` under Unreleased.
