@@ -16,6 +16,26 @@ Corten is pre-1.0, so any minor version may change the API.
 2. `Error::with_status`, for a 4xx with a message written for the client.
 3. `Errors` is a response (feature `json`): 422 with the JSON error and its fields.
 4. `Nonce` is an extractor, for a handler that writes HTML with an inline script itself.
+5. Handlers replace islands. `#[component(js)]` reads the script next to the component and gives
+   it a module `js` with one function per `export function`; the markup calls them,
+   `on:click={js::confirm(event, dialog)}`, and each argument is checked against the handler's
+   JSDoc when the crate compiles. `let (save, dialog) = refs();` names elements (typed by the tag
+   each is put on), `event`, `target`, `signal` and `scope` are the browser's, and other
+   arguments are JSON values. A component takes a handler as a prop (`on_remove: Handler`, set
+   with `on:remove={..}`). `#[event]` declares a typed DOM event (`on:RowToggled={..}`, the class
+   imported from `corten/events`), `script!` a module several components share, and `state(el,
+   init)` (from `corten`) state kept with an element. The runtime runs every handler from one
+   listener per event type on the document and runs `on:connect` when markup joins the page.
+6. `examples/seller-desk`: a client-heavy screen (selection with ranges, filter, sort, inline
+   edits, a confirm dialog, live stock levels) on handlers, with a browser test and timings.
+
+### Removed
+
+1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
+   script renders its own root element, marked `data-scope`; `corten-ui`'s components are
+   `#[component(js)]` with a `div` root. `Types::components` declares typed events instead of
+   `CortenIslands`, and `corten::find_islands` is gone (the page preloads the modules its
+   handlers named while it rendered).
 
 ### Changed
 

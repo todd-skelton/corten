@@ -1,69 +1,87 @@
 // @ts-check
-import { island } from "corten";
-
 // NumberField (number_field.rs). The input is a native number input, whose stepUp and stepDown
 // already keep min, max and step; this adds the buttons, press and hold, Page Up and Page Down,
-// Home and End, and the step's decimals.
+// Home and End, and the step's decimals. A step sends `input` and `change` like typing does, and
+// the input's own on:input (`sync`) then disables a button at its bound.
+
+import { state } from "corten";
 
 /** Milliseconds a button is held before it repeats, and between repeats. */
 const HOLD = 400;
 const REPEAT = 60;
 
-export default island("number-field", {
-  state: () => ({ timer: 0, pointer: false }),
-  connect({ refs, signal, state }) {
-    sync(refs);
-    const release = () => {
-      clearTimeout(state.timer);
-      // The click that follows this pointerup runs first, and must not step again.
-      setTimeout(() => (state.pointer = false));
-    };
-    for (const type of ["pointerup", "pointercancel", "blur"]) addEventListener(type, release, { signal });
-    signal.addEventListener("abort", () => clearTimeout(state.timer));
-  },
-  actions: {
-    press({ refs, target, event, state }) {
-      if (event.button !== 0 || target.disabled) return;
-      // Keeps focus where it was (usually the input) and selects no text.
-      event.preventDefault();
-      state.pointer = true;
-      const by = target === refs.increase ? 1 : -1;
-      /** @param {number} delay */
-      const tick = (delay) => {
-        if (step(refs, by)) state.timer = setTimeout(() => tick(REPEAT), delay);
-      };
-      clearTimeout(state.timer);
-      tick(HOLD);
-    },
-    click({ refs, target, state }) {
-      // A pointer press has stepped already; Enter or Space on the button has not.
-      if (!state.pointer) step(refs, target === refs.increase ? 1 : -1);
-    },
-    key({ refs, event }) {
-      const { input } = refs;
-      if (event.key === "PageUp" || event.key === "PageDown") step(refs, event.key === "PageUp" ? 10 : -10);
-      else if (event.key === "Home" && input.min !== "") set(refs, input.min);
-      else if (event.key === "End" && input.max !== "") set(refs, input.max);
-      else return;
-      event.preventDefault();
-    },
-    sync({ refs }) {
-      sync(refs);
-    },
-  },
-});
+/** A field's press and hold. @param {HTMLInputElement} input */
+const held = (input) => state(input, () => ({ timer: 0, pointer: false }));
 
 /**
- * @typedef {{ input: HTMLInputElement, decrease: HTMLButtonElement, increase: HTMLButtonElement }} Parts
+ * When the field joins the page: the buttons match the value, and a hold ends wherever the
+ * pointer is released.
+ * @param {HTMLButtonElement} decrease @param {HTMLInputElement} input @param {HTMLButtonElement} increase
+ * @param {AbortSignal} signal
  */
+export function connect(decrease, input, increase, signal) {
+  sync(decrease, input, increase);
+  const s = held(input);
+  const release = () => {
+    clearTimeout(s.timer);
+    // The click that follows this pointerup runs first, and must not step again.
+    setTimeout(() => (s.pointer = false));
+  };
+  for (const type of ["pointerup", "pointercancel", "blur"]) addEventListener(type, release, { signal });
+  signal.addEventListener("abort", () => clearTimeout(s.timer));
+}
+
+/**
+ * Steps by `by` while the button is held.
+ * @param {PointerEvent} event @param {HTMLButtonElement} button @param {HTMLInputElement} input @param {number} by
+ */
+export function press(event, button, input, by) {
+  if (event.button !== 0 || button.disabled) return;
+  // Keeps focus where it was (usually the input) and selects no text.
+  event.preventDefault();
+  const s = held(input);
+  s.pointer = true;
+  /** @param {number} delay */
+  const tick = (delay) => {
+    if (step(input, by)) s.timer = setTimeout(() => tick(REPEAT), delay);
+  };
+  clearTimeout(s.timer);
+  tick(HOLD);
+}
+
+/**
+ * Enter or Space on a button; a pointer press has stepped already.
+ * @param {HTMLInputElement} input @param {number} by
+ */
+export function click(input, by) {
+  if (!held(input).pointer) step(input, by);
+}
+
+/** @param {KeyboardEvent} event @param {HTMLInputElement} input */
+export function key(event, input) {
+  if (event.key === "PageUp" || event.key === "PageDown") step(input, event.key === "PageUp" ? 10 : -10);
+  else if (event.key === "Home" && input.min !== "") set(input, input.min);
+  else if (event.key === "End" && input.max !== "") set(input, input.max);
+  else return;
+  event.preventDefault();
+}
+
+/**
+ * Disables each button at its bound.
+ * @param {HTMLButtonElement} decrease @param {HTMLInputElement} input @param {HTMLButtonElement} increase
+ */
+export function sync(decrease, input, increase) {
+  const value = input.valueAsNumber;
+  const known = !Number.isNaN(value);
+  decrease.disabled = input.disabled || (known && input.min !== "" && value <= Number(input.min));
+  increase.disabled = input.disabled || (known && input.max !== "" && value >= Number(input.max));
+}
 
 /**
  * Adds `by` steps; false when the value did not change (at a bound, or disabled).
- * @param {Parts} parts
- * @param {number} by
+ * @param {HTMLInputElement} input @param {number} by
  */
-function step(parts, by) {
-  const { input } = parts;
+function step(input, by) {
   if (input.disabled || input.readOnly) return false;
   const before = input.value;
   try {
@@ -72,27 +90,22 @@ function step(parts, by) {
   } catch {
     return false; // step="any" has no step
   }
-  return commit(parts, before);
+  return commit(input, before);
 }
 
-/**
- * @param {Parts} parts
- * @param {string} value
- */
-function set(parts, value) {
-  if (parts.input.disabled || parts.input.readOnly) return;
-  const before = parts.input.value;
-  parts.input.value = value;
-  commit(parts, before);
+/** @param {HTMLInputElement} input @param {string} value */
+function set(input, value) {
+  if (input.disabled || input.readOnly) return;
+  const before = input.value;
+  input.value = value;
+  commit(input, before);
 }
 
 /**
  * Shows the step's decimals and, when the value changed, tells the page as typing would.
- * @param {Parts} parts
- * @param {string} before
+ * @param {HTMLInputElement} input @param {string} before
  */
-function commit(parts, before) {
-  const { input } = parts;
+function commit(input, before) {
   if (input.value !== "" && input.step !== "any") {
     input.value = Number(input.value).toFixed((input.step.split(".")[1] ?? "").length);
   }
@@ -100,15 +113,4 @@ function commit(parts, before) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
-}
-
-/**
- * Disables each button at its bound.
- * @param {Parts} parts
- */
-function sync({ input, decrease, increase }) {
-  const value = input.valueAsNumber;
-  const known = !Number.isNaN(value);
-  decrease.disabled = input.disabled || (known && input.min !== "" && value <= Number(input.min));
-  increase.disabled = input.disabled || (known && input.max !== "" && value >= Number(input.max));
 }

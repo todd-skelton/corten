@@ -30,9 +30,9 @@ html! { <corten-live src={url::Trades}><LastTrade text={&last_trade} /></corten-
 
 ## Rows: feeds
 
-For islands that keep state (a table of live prices, a grid), a `corten::feed::Feed<Row>`
-(feature `feed`) holds keyed rows and serves a snapshot plus ordered patches; an island calls
-`subscribe(url, { snapshot, patch, status }, { signal })`.
+For scripts that keep state (a table of live prices, a grid), a `corten::feed::Feed<Row>`
+(feature `feed`) holds keyed rows and serves a snapshot plus ordered patches; an `on:connect`
+handler calls `subscribe(url, { snapshot, patch, status }, { signal })`.
 
 ```rust,ignore
 let stocks = Feed::new(rows);

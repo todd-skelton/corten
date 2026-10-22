@@ -1,101 +1,130 @@
 // @ts-check
-import { island } from "corten";
-
 // ComboBox (combo_box.rs): the ARIA 1.2 combobox with a listbox popup. The <select> keeps the
 // value; this shows a text input instead, filters the options as the user types, and writes
-// the pick back to the select.
+// the pick back to the select. `connect` keeps the parts and the highlight by the component's
+// root, so each handler takes only the root (`scope`).
 
 /** @typedef {{ select: HTMLSelectElement, input: HTMLInputElement, popup: HTMLDivElement, list: HTMLDivElement, empty: HTMLParagraphElement }} Parts */
-/** @typedef {{ shown: HTMLElement[], active: number }} State */
+/** @typedef {Parts & { shown: HTMLElement[], active: number }} Box */
 
-export default island("combo-box", {
-  /** @returns {State} */
-  state: () => ({ shown: [], active: -1 }),
-  connect({ refs }) {
-    const { select, input, popup, list } = refs;
-    // The app's <label for> follows the control that shows.
-    const id = select.id;
-    select.id = `${id}-value`;
-    input.id = id;
-    select.hidden = true;
-    input.hidden = false;
-    for (const option of Array.from(select.options)) {
-      if (option.value === "") continue;
-      const el = document.createElement("div");
-      el.id = `${list.id}-${option.index}`;
-      el.setAttribute("role", "option");
-      el.dataset.value = option.value;
-      el.textContent = option.text;
-      if (option.disabled) el.setAttribute("aria-disabled", "true");
-      list.append(el);
-    }
-    mark(refs);
-    anchor(popup, input);
-  },
-  actions: {
-    filter({ refs, state }) {
-      refs.input.setCustomValidity("");
-      open(refs, state, true);
-    },
-    toggle({ refs, state }) {
-      if (refs.popup.matches(":popover-open")) close(refs, state);
-      else open(refs, state, false);
-    },
-    key({ refs, state, event }) {
-      const isOpen = refs.popup.matches(":popover-open");
-      switch (event.key) {
-        case "ArrowDown":
-        case "ArrowUp": {
-          const by = event.key === "ArrowDown" ? 1 : -1;
-          if (!isOpen) {
-            open(refs, state, false);
-            if (state.active < 0) highlight(refs, state, by > 0 ? 0 : state.shown.length - 1);
-          } else if (state.shown.length) {
-            const next = state.active < 0 ? (by > 0 ? 0 : -1) : state.active + by;
-            highlight(refs, state, (next + state.shown.length) % state.shown.length);
-          }
-          break;
-        }
-        case "Enter":
-          if (!isOpen) return; // Enter in a closed field submits the form
-          if (state.active >= 0) choose(refs, state, state.shown[state.active]);
-          else close(refs, state);
-          break;
-        case "Escape":
-          if (!isOpen) return;
-          refs.input.value = label(refs);
-          close(refs, state);
-          break;
-        default:
-          return;
+/** @type {WeakMap<HTMLElement, Box>} */
+const boxes = new WeakMap();
+
+/** The combobox whose root is `root`, once connected. @param {HTMLElement} root */
+const box = (root) => boxes.get(root);
+
+/**
+ * @param {HTMLElement} root @param {HTMLSelectElement} select @param {HTMLInputElement} input
+ * @param {HTMLDivElement} popup @param {HTMLDivElement} list @param {HTMLParagraphElement} empty
+ */
+export function connect(root, select, input, popup, list, empty) {
+  if (boxes.has(root)) return; // back after a move: already built
+  /** @type {Box} */
+  const b = { select, input, popup, list, empty, shown: [], active: -1 };
+  boxes.set(root, b);
+  // The app's <label for> follows the control that shows.
+  const id = select.id;
+  select.id = `${id}-value`;
+  input.id = id;
+  select.hidden = true;
+  input.hidden = false;
+  for (const option of Array.from(select.options)) {
+    if (option.value === "") continue;
+    const el = document.createElement("div");
+    el.id = `${list.id}-${option.index}`;
+    el.setAttribute("role", "option");
+    el.dataset.value = option.value;
+    el.textContent = option.text;
+    if (option.disabled) el.setAttribute("aria-disabled", "true");
+    list.append(el);
+  }
+  mark(b);
+  anchor(popup, input);
+}
+
+/** @param {HTMLElement} root */
+export function filter(root) {
+  const b = box(root);
+  if (!b) return;
+  b.input.setCustomValidity("");
+  open(b, true);
+}
+
+/** @param {HTMLElement} root */
+export function toggle(root) {
+  const b = box(root);
+  if (!b) return;
+  if (b.popup.matches(":popover-open")) close(b);
+  else open(b, false);
+}
+
+/** @param {KeyboardEvent} event @param {HTMLElement} root */
+export function key(event, root) {
+  const b = box(root);
+  if (!b) return;
+  const isOpen = b.popup.matches(":popover-open");
+  switch (event.key) {
+    case "ArrowDown":
+    case "ArrowUp": {
+      const by = event.key === "ArrowDown" ? 1 : -1;
+      if (!isOpen) {
+        open(b, false);
+        if (b.active < 0) highlight(b, by > 0 ? 0 : b.shown.length - 1);
+      } else if (b.shown.length) {
+        const next = b.active < 0 ? (by > 0 ? 0 : -1) : b.active + by;
+        highlight(b, (next + b.shown.length) % b.shown.length);
       }
-      event.preventDefault();
-    },
-    leave({ refs, state }) {
-      const text = refs.input.value.trim();
-      const typed = text.toLocaleLowerCase();
-      const exact = options(refs).find((el) => el.textContent?.toLocaleLowerCase() === typed && !disabled(el));
-      if (exact) choose(refs, state, exact);
-      else if (text === "" && refs.select.value !== "") set(refs, "");
-      else refs.input.value = label(refs);
-      close(refs, state);
-    },
-    hold({ event }) {
-      // A press in the popup keeps focus in the input, so leaving does not run first.
-      event.preventDefault();
-    },
-    pick({ refs, state, event }) {
-      const el = event.target instanceof Element ? event.target.closest('[role="option"]') : null;
-      if (el instanceof HTMLElement) choose(refs, state, el);
-    },
-    invalid({ refs, event }) {
-      // The select is hidden, so the browser cannot point at it: report on the input instead.
-      event.preventDefault();
-      refs.input.setCustomValidity(refs.select.validationMessage);
-      refs.input.reportValidity();
-    },
-  },
-});
+      break;
+    }
+    case "Enter":
+      if (!isOpen) return; // Enter in a closed field submits the form
+      if (b.active >= 0) choose(b, b.shown[b.active]);
+      else close(b);
+      break;
+    case "Escape":
+      if (!isOpen) return;
+      b.input.value = label(b);
+      close(b);
+      break;
+    default:
+      return;
+  }
+  event.preventDefault();
+}
+
+/** @param {HTMLElement} root */
+export function leave(root) {
+  const b = box(root);
+  if (!b) return;
+  const text = b.input.value.trim();
+  const typed = text.toLocaleLowerCase();
+  const exact = options(b).find((el) => el.textContent?.toLocaleLowerCase() === typed && !disabled(el));
+  if (exact) choose(b, exact);
+  else if (text === "" && b.select.value !== "") set(b, "");
+  else b.input.value = label(b);
+  close(b);
+}
+
+/** A press in the popup keeps focus in the input, so leaving does not run first. @param {MouseEvent} event */
+export function hold(event) {
+  event.preventDefault();
+}
+
+/** @param {MouseEvent} event @param {HTMLElement} root */
+export function pick(event, root) {
+  const b = box(root);
+  const el = event.target instanceof Element ? event.target.closest('[role="option"]') : null;
+  if (b && el instanceof HTMLElement) choose(b, el);
+}
+
+/** The select is hidden, so the browser cannot point at it: report on the input instead. @param {Event} event @param {HTMLElement} root */
+export function invalid(event, root) {
+  const b = box(root);
+  if (!b) return;
+  event.preventDefault();
+  b.input.setCustomValidity(b.select.validationMessage);
+  b.input.reportValidity();
+}
 
 /** @param {Parts} parts */
 function options(parts) {
@@ -115,45 +144,42 @@ function label(parts) {
 
 /**
  * Shows the popup with every option (`typed` false) or those that contain the input's text.
- * @param {Parts} parts
- * @param {State} state
+ * @param {Box} parts
  * @param {boolean} typed
  */
-function open(parts, state, typed) {
+function open(parts, typed) {
   const { input, popup, empty } = parts;
   const query = typed ? input.value.trim().toLocaleLowerCase() : "";
-  state.shown = [];
+  parts.shown = [];
   for (const el of options(parts)) {
     el.hidden = query !== "" && !el.textContent?.toLocaleLowerCase().includes(query);
-    if (!el.hidden) state.shown.push(el);
+    if (!el.hidden) parts.shown.push(el);
   }
-  empty.hidden = state.shown.length > 0;
+  empty.hidden = parts.shown.length > 0;
   if (!popup.matches(":popover-open")) popup.showPopover();
   input.setAttribute("aria-expanded", "true");
-  const selected = state.shown.findIndex((el) => el.getAttribute("aria-selected") === "true");
-  highlight(parts, state, typed && query !== "" ? (state.shown.length ? 0 : -1) : selected);
+  const selected = parts.shown.findIndex((el) => el.getAttribute("aria-selected") === "true");
+  highlight(parts, typed && query !== "" ? (parts.shown.length ? 0 : -1) : selected);
 }
 
 /**
- * @param {Parts} parts
- * @param {State} state
+ * @param {Box} parts
  */
-function close(parts, state) {
+function close(parts) {
   if (parts.popup.matches(":popover-open")) parts.popup.hidePopover();
   parts.input.setAttribute("aria-expanded", "false");
-  highlight(parts, state, -1);
+  highlight(parts, -1);
 }
 
 /**
  * Marks the option Enter would pick (-1: none) and tells assistive technology.
- * @param {Parts} parts
- * @param {State} state
+ * @param {Box} parts
  * @param {number} index
  */
-function highlight(parts, state, index) {
-  state.shown[state.active]?.removeAttribute("data-highlighted");
-  state.active = index;
-  const el = state.shown[index];
+function highlight(parts, index) {
+  parts.shown[parts.active]?.removeAttribute("data-highlighted");
+  parts.active = index;
+  const el = parts.shown[index];
   if (el) {
     el.setAttribute("data-highlighted", "");
     el.scrollIntoView({ block: "nearest" });
@@ -164,16 +190,15 @@ function highlight(parts, state, index) {
 }
 
 /**
- * @param {Parts} parts
- * @param {State} state
+ * @param {Box} parts
  * @param {HTMLElement} el
  */
-function choose(parts, state, el) {
+function choose(parts, el) {
   if (disabled(el)) return;
   parts.input.value = el.textContent ?? "";
   parts.input.setCustomValidity("");
   set(parts, el.dataset.value ?? "");
-  close(parts, state);
+  close(parts);
 }
 
 /**

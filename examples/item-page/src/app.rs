@@ -222,7 +222,7 @@ mod tests {
         assert!(html.contains("Show all 7 offers"), "catalog interpolation");
         assert!(html.contains("<h1>Pika &lt;Promo&gt; &amp; &quot;Friends&quot;</h1>"));
         assert!(html.contains(r#"<link rel="canonical" href="/items/item_9" data-corten-head>"#));
-        assert!(html.contains(r#"/islands/listing-sort.js">"#));
+        assert!(html.contains(r#"/scripts/listing_sort.js">"#), "the scripts the page's handlers use are preloaded");
         assert!(html.contains(r#"<link rel="manifest" href="/manifest.webmanifest">"#));
     }
 
@@ -254,15 +254,17 @@ mod tests {
         let (_, _, html) = send(req).await;
         assert!(html.contains(r#"<html lang="fr">"#) && html.contains("Voir les 7 offres") && html.contains("<h2>Annonces</h2>"));
         assert!(html.contains(r#"<form method="post" action="/items/item_9" data-patch>"#));
-        assert!(html.contains(r#"<listing-sort><h2>Annonces</h2><button type="button" data-on="click:toggle">"#));
+        assert!(html.contains(
+            r#"<div data-scope="listing-sort"><h2>Annonces</h2><button type="button" data-on="click:listing_sort.toggle(@rows,@ascending,@descending)">"#
+        ));
         let (status, _, body) = send(Request::get("/categories/promo").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("<h1>Category promo</h1>") && body.contains(r#"<a href="/">Back to popular items</a>"#));
     }
 
-    /// The islands' scripts are checked against these declarations by `npm run check`.
+    /// The scripts are checked against these declarations by `npm run check`.
     #[test]
-    fn island_types_match_the_server() {
+    fn script_types_match_the_server() {
         corten::types::Types::new().components(views::COMPONENTS).sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 
@@ -357,16 +359,7 @@ mod tests {
             }
         }
         let render = per(start);
-        let main = ItemPage::new(t, &items[0], String::new()).view().to_html();
-        let start = Instant::now();
-        for _ in 0..rounds * ids.len() {
-            std::hint::black_box(corten::find_islands(std::hint::black_box(&main)));
-        }
-        println!(
-            "build view: {build:.1} us, build + render main: {render:.1} us ({} bytes avg), find islands: {:.1} us",
-            bytes / (rounds * ids.len()),
-            per(start)
-        );
+        println!("build view: {build:.1} us, build + render main: {render:.1} us ({} bytes avg)", bytes / (rounds * ids.len()));
         for (label, mode, encoding) in [
             ("navigation, identity", Some("nav"), "identity"),
             ("document, identity", None, "identity"),

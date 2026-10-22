@@ -1,6 +1,6 @@
 //! `corten`: create, run and check Corten apps. Standard library only.
 //!
-//! - `corten new <dir>` writes a working app (page, form, island, test, Dockerfile).
+//! - `corten new <dir>` writes a working app (page, form, handler script, test, Dockerfile).
 //! - `corten dev` builds and runs the app, rebuilds and restarts it when a file changes (a failed
 //!   build keeps the running server), and open pages reload by themselves.
 //! - `corten build` builds the release binary. `corten check` runs format, lint and tests.

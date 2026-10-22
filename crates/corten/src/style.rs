@@ -1,6 +1,6 @@
 //! Styles: a stylesheet next to each component, design tokens, and class names that are checked.
 //!
-//! `#[component(css)]` (or `#[island(css)]`) gives a component the stylesheet with its name in
+//! `#[component(css)]` gives a component the stylesheet with its name in
 //! snake_case, next to its source file: `OfferList` has `offer_list.css`. At compile time every
 //! class in the file is prefixed with the component's name, so `.title` is `.offer-list__title`
 //! and two components can both have a `.title`. The markup names classes with constants:
@@ -30,8 +30,8 @@
 //!   [`ClassList`].
 //! - A class the file does not have is a compile error, and so is a class of the file written as
 //!   text (`class="list"`), which would not match the scoped rule.
-//! - Every rule must start inside the component: a selector names one of the file's classes (or,
-//!   for an island, its tag). `h2 { .. }` alone is a compile error; `.list h2 { .. }` is fine.
+//! - Every rule must start inside the component: a selector names one of the file's classes.
+//!   `h2 { .. }` alone is a compile error; `.list h2 { .. }` is fine.
 //!   Element defaults, resets and fonts belong in the app's `static/style.css`.
 //! - Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks
 //!   a class, so a variant without a rule does not compile.
@@ -368,7 +368,7 @@ mod tests {
         assert_eq!(BadgeCount { n: 2 }.to_html(), r#"<span class="badge-list__badge">2</span>"#);
         let style = BadgeList.style.expect("own stylesheet");
         assert_eq!((style.name, style.file), ("badge-list", "badge_list.css"));
-        assert!(BadgeList.island.is_none());
+        assert!(BadgeList.script.is_none());
     }
 
     // Rendering records components in debug builds only.

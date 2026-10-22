@@ -75,8 +75,8 @@ fn decimals(step: f64) -> usize {
 /// Page Down, keeps the step's decimals, disables a button at its bound, and sends `input` and
 /// `change` events like typing does.
 ///
-/// Parts: `input`; `button[aria-controls]` twice, the first decreasing; `button:disabled` at a
-/// bound. Hide the input's own spin buttons in the design system's CSS
+/// Parts: a `div` around `input` and `button[aria-controls]` twice, the first decreasing;
+/// `button:disabled` at a bound. Hide the input's own spin buttons in the design system's CSS
 /// (`appearance: textfield` and `::-webkit-inner-spin-button`).
 ///
 /// ```
@@ -88,22 +88,59 @@ fn decimals(step: f64) -> usize {
 ///
 /// let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", Order::FIELDS.qty, "Fewer", "More") };
 /// let html = NumberField { field: &qty }.to_html();
-/// assert!(html.starts_with(r#"<number-field><button type="button" aria-controls="qty" aria-label="Fewer" tabindex="-1" disabled"#));
-/// assert!(html.contains(r#"<input type="number" inputmode="decimal" id="qty" name="qty" value="1" min="1" step="1""#));
+/// assert!(html.starts_with(r#"<div data-scope="number-field" data-on="connect:number_field.connect(@decrease,@input,@increase,$s)"><button data-ref="decrease" type="button" aria-controls="qty" aria-label="Fewer" tabindex="-1" disabled"#));
+/// assert!(html.contains(r#"<input data-ref="input" type="number" inputmode="decimal" id="qty" name="qty" value="1" min="1" step="1""#));
 /// ```
-#[island]
+#[component(js)]
 pub fn NumberField<'a>(field: &'a Number<'a>) -> impl Render {
     let f = field;
+    let (input, decrease, increase) = refs();
     let at_min = matches!((f.value, f.min), (Some(v), Some(min)) if v <= min);
     let at_max = matches!((f.value, f.max), (Some(v), Some(max)) if v >= max);
     html! {
-        <button type="button" aria-controls={f.id} aria-label={f.decrease.label} tabindex="-1" disabled={f.disabled || at_min}
-            ref={Decrease} on:pointerdown={Press} on:click={Click}>{f.decrease.content}</button>
-        <input type="number" inputmode="decimal" id={f.id} name={f.name} value={f.value.map(|v| f.shown(v))}
-            min={f.min} max={f.max} step={f.step} required={f.required} disabled={f.disabled}
-            ref={Input} on:keydown={Key} on:input={Sync} on:change={Sync} {..f.attrs}>
-        <button type="button" aria-controls={f.id} aria-label={f.increase.label} tabindex="-1" disabled={f.disabled || at_max}
-            ref={Increase} on:pointerdown={Press} on:click={Click}>{f.increase.content}</button>
+        <div on:connect={js::connect(decrease, input, increase, signal)}>
+            <button
+                ref={decrease}
+                type="button"
+                aria-controls={f.id}
+                aria-label={f.decrease.label}
+                tabindex="-1"
+                disabled={f.disabled || at_min}
+                on:pointerdown={js::press(event, target, input, -1)}
+                on:click={js::click(input, -1)}
+            >
+                {f.decrease.content}
+            </button>
+            <input
+                ref={input}
+                type="number"
+                inputmode="decimal"
+                id={f.id}
+                name={f.name}
+                value={f.value.map(|v| f.shown(v))}
+                min={f.min}
+                max={f.max}
+                step={f.step}
+                required={f.required}
+                disabled={f.disabled}
+                on:keydown={js::key(event, input)}
+                on:input={js::sync(decrease, input, increase)}
+                on:change={js::sync(decrease, input, increase)}
+                {..f.attrs}
+            >
+            <button
+                ref={increase}
+                type="button"
+                aria-controls={f.id}
+                aria-label={f.increase.label}
+                tabindex="-1"
+                disabled={f.disabled || at_max}
+                on:pointerdown={js::press(event, target, input, 1)}
+                on:click={js::click(input, 1)}
+            >
+                {f.increase.content}
+            </button>
+        </div>
     }
 }
 

@@ -13,7 +13,7 @@
 | any, `Accept: application/json` | native screen, agent, test | `req.screen(meta, &data, view)`: `{"title", "data"}` | renders natively, or reasons over it |
 | any, under an `App::api` prefix | a webhook, a service, a partner's site | JSON (`axum::Json`), errors as `{"error": ...}` | reads the JSON |
 | SSE | `<corten-live src>` | `corten::live(stream_of_views)` | applies each like a patch |
-| `GET {feed}`, `{feed}/live` | an island's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |
+| `GET {feed}`, `{feed}/live` | a handler's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |
 
 One handler serves every mode, and `req.mode` says which. A route with no screen goes under
 [`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The shell renders on full loads only;

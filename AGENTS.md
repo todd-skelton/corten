@@ -21,13 +21,14 @@ convenience. And a nicer API that slows every page loses.
 1. Wire format and client-side feed logic: `crates/corten-protocol`. No async or web
    dependencies there; it must build for native and agent clients.
 2. Server feed (replay, live streams, followers): `crates/corten-feed`.
-3. Pages, request modes, patches, islands, the runtime, `App` defaults: `crates/corten`.
-   Markup is `html!` and `#[component]`, links are `#[derive(Route)]` structs, behavior is an
-   `#[island]` (its script next to it; `ref={Name}` and `on:event={Action}` in its markup) and
-   text is `messages!` (`crates/corten-macros`, no dependencies: keep it on `proc_macro` alone).
-   Never write a URL, `data-ref`, `data-on` or message key as a string in a view. Islands have
-   one pattern, `island(tag, { state, connect, actions })`; do not add built-in client behaviors.
-   Cleanup is `ctx.signal` alone (an `AbortSignal`): runtime APIs that start lasting work take
+3. Pages, request modes, patches, handlers, the runtime, `App` defaults: `crates/corten`.
+   Markup is `html!` and `#[component]`, links are `#[derive(Route)]` structs, behavior is a
+   `#[component(js)]` (plain `export function`s with JSDoc in the script next to it, called from
+   its markup: `let save = refs();`, `ref={save}`, `on:click={js::enable(save)}`) and text is
+   `messages!` (`crates/corten-macros`, no dependencies: keep it on `proc_macro` alone). Never
+   write a URL, `data-ref`, `data-on`, `data-scope` or message key as a string in a view.
+   Behavior has one pattern, a function the markup calls; do not add built-in client behaviors
+   or a second component model. Cleanup is the `signal` keyword alone (an `AbortSignal`): runtime APIs that start lasting work take
    `{ signal }` and return nothing, and nothing hands back a stop function. On the server, work
    that outlives the handler's future takes `corten::Signal`.
    Styles are a CSS file per component (`#[component(css)]`, scoped at compile time, `class={Name}`)
@@ -44,11 +45,12 @@ convenience. And a nicer API that slows every page loses.
 6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`
    (live reload under `corten dev` by `scripts/smoke-dev.mjs`), and production modules (security, assets, PWA, head tags, compression) by
    `examples/item-page/smoke.mjs`. Add the check with the behavior.
-7. Types across seams: never hand-write a type the server already defines. Islands are checked
-   against the declarations `corten::types` generates (`examples/*/types/app.d.ts`, rewritten by
-   the `island_types_match_the_server` test); a typing guarantee gets an `@ts-expect-error` line in
-   `scripts/typecheck-fixture.js`.
-8. Widgets the browser lacks go in `crates/corten-ui`: headless `#[island]`s (no CSS; parts are
+7. Types across seams: never hand-write a type the server already defines. Handler calls are
+   checked against each handler's JSDoc when the crate compiles; feed rows and typed events
+   (`#[event]`) against the declarations `corten::types` generates (`examples/*/types/app.d.ts`,
+   rewritten by the `script_types_match_the_server` test); a typing guarantee gets an
+   `@ts-expect-error` line in `scripts/typecheck-fixture.js` or a `compile_fail` doctest.
+8. Widgets the browser lacks go in `crates/corten-ui`: headless `#[component(js)]`s (no CSS; parts are
    styled by role and ARIA state), labels from the app, links as typed routes (`Link`), working as
    plain HTML before the script loads. Add one only when an app needs it and the platform has no
    element for it; remove it when the platform does. Each is tested in a browser by

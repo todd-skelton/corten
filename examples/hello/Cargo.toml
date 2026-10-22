@@ -3,7 +3,7 @@ name = "hello"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Every Corten piece on one screen: page, form patch, live island, navigation, and the same screen as JSON."
+description = "Every Corten piece on one screen: page, form patch, live prices from a handler, navigation, and the same screen as JSON."
 
 [dependencies]
 corten = { path = "../../crates/corten", features = ["feed", "types"] }

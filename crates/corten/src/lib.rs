@@ -1,6 +1,6 @@
 //! Corten: a full-stack web framework for Rust. The server renders every screen with `html!`,
-//! the browser gets HTML plus a small runtime and custom-element islands, and live data flows as
-//! numbered patches over server-sent events.
+//! the browser gets HTML plus a small runtime that runs the handlers the markup names, and live
+//! data flows as numbered patches over server-sent events.
 //!
 //! ```ignore
 //! use corten::prelude::*;
@@ -31,11 +31,11 @@
 //! and a CSP nonce, a cross-site write check, error pages, versioned static files, health checks,
 //! compression (feature `compress`), and live reload under `corten dev`.
 //!
-//! Modules: [`api`] (JSON-only routes), [`view`] (markup), [`island`] (components with a script), [`style`] (component
-//! stylesheets and design tokens), [`route`] (typed links),
+//! Modules: [`api`] (JSON-only routes), [`view`] (markup), [`script`] (handlers: behavior in the
+//! browser), [`style`] (component stylesheets and design tokens), [`route`] (typed links),
 //! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`].
-//! Features: `json` (island props, data screens), `feed` (live rows), `solid` (Solid for
-//! stateful islands), `types` (TypeScript declarations from Rust types), `agent` (MCP tools),
+//! Features: `json` (handler values, data screens), `feed` (live rows), `solid` (Solid for
+//! screens with client state), `types` (TypeScript declarations from Rust types), `agent` (MCP tools),
 //! `compress`, `log` (a log subscriber in [`App::serve`]).
 
 // So the code `html!` generates (`::corten::view::...`) also compiles inside this crate.
@@ -53,11 +53,11 @@ pub mod compress;
 pub mod form;
 mod html;
 pub mod i18n;
-pub mod island;
 pub mod meta;
 mod page;
 pub mod pwa;
 pub mod route;
+pub mod script;
 pub mod security;
 pub mod seo;
 mod signal;
@@ -92,28 +92,31 @@ pub use axum;
 /// field fails to compile instead of posting a field the handler never reads.
 pub use corten_macros::Fields;
 pub use form::{Errors, FieldName};
-pub use html::{escape, find_islands};
-pub use island::{island, Island};
+pub use html::escape;
 pub use meta::Meta;
 pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
 pub use route::{Href, Route};
+pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
 pub use view::{component, html, raw, Render};
 
-/// What a component sends to the browser: its island's script (`#[island]`) and its stylesheet
-/// (`#[component(css)]`), or the stylesheet of a token file (`style::tokens!`).
+/// What a component sends to the browser: its handlers' script (`#[component(js)]` or
+/// [`script::script!`]), its stylesheet (`#[component(css)]`, or a token file's), or the class of
+/// a typed event ([`script::event`]).
 ///
 /// Each such component has one, named like the component (`OfferList`, a constant next to the
 /// struct `OfferList`). A library lists its own, `pub const COMPONENTS: &[Component] = &[Button,
 /// Dialog];`, and the app passes every list to [`App::components`]: the scripts are served and
-/// preloaded where they render, and the stylesheets are joined, in order, into one file.
+/// preloaded where they are used, the stylesheets joined, in order, into one file, and the events
+/// served as `corten/events`.
 #[derive(Clone, Copy, Debug)]
 pub struct Component {
     /// The component's Rust name, `"OfferList"`.
     pub name: &'static str,
-    pub island: Option<Island>,
+    pub script: Option<Script>,
     pub style: Option<Style>,
+    pub event: Option<script::EventDef>,
 }
 
 /// What most files need: `use corten::prelude::*;`.
@@ -126,7 +129,9 @@ pub mod prelude {
         },
         component, html,
         i18n::Messages as _,
-        island, raw, Api, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
+        raw,
+        script::{refs, Handler, Ref},
+        Api, App, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
     };
 }
 
@@ -174,22 +179,21 @@ pub fn runtime_path() -> &'static str {
     &RUNTIME_URL
 }
 
-/// URL of the Solid module (feature `solid`), imported by islands as `corten/solid`.
+/// URL of the Solid module (feature `solid`), imported by handlers as `corten/solid`.
 #[cfg(feature = "solid")]
 pub fn solid_path() -> &'static str {
     &SOLID_URL
 }
 
-/// The import map's JSON: `corten`, plus `corten/solid` when that feature is on.
-pub(crate) fn import_map() -> &'static str {
-    static MAP: LazyLock<String> = LazyLock::new(|| {
-        #[cfg(feature = "solid")]
-        let solid = format!(r#","corten/solid":"{}""#, solid_path());
-        #[cfg(not(feature = "solid"))]
-        let solid = "";
-        format!(r#"{{"imports":{{"corten":"{}"{solid}}}}}"#, runtime_path())
-    });
-    &MAP
+/// The import map's JSON: `corten`, `corten/solid` when that feature is on, and `corten/events`
+/// (the app's typed events) when `events` is the URL of their module.
+pub(crate) fn import_map(events: Option<&str>) -> String {
+    #[cfg(feature = "solid")]
+    let solid = format!(r#","corten/solid":"{}""#, solid_path());
+    #[cfg(not(feature = "solid"))]
+    let solid = "";
+    let events = events.map(|url| format!(r#","corten/events":"{url}""#)).unwrap_or_default();
+    format!(r#"{{"imports":{{"corten":"{}"{solid}{events}}}}}"#, runtime_path())
 }
 
 /// Streams fragments to `<corten-live src="...">` as server-sent events. Each item is applied like a
@@ -213,19 +217,19 @@ pub fn routes<St: Clone + Send + Sync + 'static>() -> Router<St> {
 const JS: &str = "text/javascript; charset=utf-8";
 
 /// A script Corten serves from memory, at a versioned URL.
-struct Script {
+struct Served {
     source: &'static str,
     #[cfg(feature = "compress")]
     packed: std::sync::OnceLock<compress::Precompressed>,
 }
 
-static RUNTIME: Script = Script::new(RUNTIME_JS);
+static RUNTIME: Served = Served::new(RUNTIME_JS);
 #[cfg(feature = "solid")]
-static SOLID: Script = Script::new(SOLID_JS);
+static SOLID: Served = Served::new(SOLID_JS);
 
-impl Script {
+impl Served {
     const fn new(source: &'static str) -> Self {
-        Script {
+        Served {
             source,
             #[cfg(feature = "compress")]
             packed: std::sync::OnceLock::new(),
@@ -367,8 +371,8 @@ mod doc_examples {
     struct Cancellation;
     #[doc = include_str!("../../../docs/guide/getting-started.md")]
     struct GettingStarted;
-    #[doc = include_str!("../../../docs/guide/islands.md")]
-    struct Islands;
+    #[doc = include_str!("../../../docs/guide/scripts.md")]
+    struct Scripts;
     #[doc = include_str!("../../../docs/guide/live-data.md")]
     struct LiveData;
     #[doc = include_str!("../../../docs/guide/requests-and-forms.md")]

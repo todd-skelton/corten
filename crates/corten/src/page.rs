@@ -17,7 +17,6 @@ use axum::{
 
 use crate::{
     assets::Assets,
-    find_islands,
     security::{Nonce, NonceSlot},
     view::{html, Render},
     Error, Meta, Result,
@@ -68,7 +67,7 @@ fn accepts_json(headers: &HeaderMap) -> bool {
 ///
 /// Print `{doc.head}` inside `<head>` before any other script and `{doc.main}` inside `<main>`.
 pub struct Document {
-    /// Title, the page's [`Meta`] tags, the runtime, island preloads, the manifest. Print it
+    /// Title, the page's [`Meta`] tags, the runtime, script preloads, the manifest. Print it
     /// before any other module script.
     pub head: Head,
     /// The page's HTML, already rendered.
@@ -273,12 +272,14 @@ pub fn default_error_page(status: StatusCode) -> (Meta, impl Render) {
 
 pub(crate) type ErrorPage = dyn Fn(StatusCode) -> (Meta, String) + Send + Sync;
 
-/// Everything a request needs from the app: the shell, the error page, where islands live.
+/// Everything a request needs from the app: the shell, the error page, where scripts live.
 pub(crate) struct Shared {
     pub shell: ShellFn,
     pub error_page: Box<ErrorPage>,
     pub assets: Option<Arc<Assets>>,
-    pub islands_dir: String,
+    pub scripts_dir: String,
+    /// The import map's JSON: the runtime, Solid, the app's typed events.
+    pub import_map: String,
     /// Extra `<head>` tags from the app's configuration (manifest link, theme color, service
     /// worker), rendered once.
     pub head_extra: String,
@@ -296,16 +297,19 @@ pub(crate) struct Shared {
 
 impl Shared {
     pub(crate) fn new(shell: ShellFn, error_page: Box<ErrorPage>, assets: Option<Arc<Assets>>, head_extra: String) -> Self {
-        let islands_dir = assets.as_ref().map_or_else(|| "/assets/islands/".to_string(), |a| a.islands_dir().to_string());
+        let scripts_dir = assets.as_ref().map_or_else(|| "/assets/scripts/".to_string(), |a| a.scripts_dir().to_string());
+        let import_map = crate::import_map(assets.as_ref().and_then(|a| a.events()).as_deref());
         let mut hasher = std::hash::DefaultHasher::new();
         crate::runtime_version().hash(&mut hasher);
-        islands_dir.hash(&mut hasher);
+        scripts_dir.hash(&mut hasher);
+        import_map.hash(&mut hasher);
         head_extra.hash(&mut hasher);
         Shared {
             shell,
             error_page,
             assets,
-            islands_dir,
+            scripts_dir,
+            import_map,
             head_extra,
             key_base: hasher.finish(),
             offline: None,
@@ -421,26 +425,29 @@ impl Req {
             return Ok(self.finish(html_response(status, body, PAGE_HEADER)));
         }
         let mut main = String::new();
-        self.render_into(view, &mut main)?;
-        Ok(self.respond(status, meta, main))
+        let modules = self.render_into(view, &mut main)?;
+        Ok(self.respond_with(status, meta, main, &modules))
     }
 
-    /// Renders `view`. Under `corten dev`, a component with a script or stylesheet that the app
-    /// does not list is an error, since its script or stylesheet would not be served (debug
-    /// builds of the app record what renders; release builds do not).
-    fn render_into(&self, view: impl Render, out: &mut String) -> Result<()> {
+    /// Renders `view` and returns the script modules its handlers use, for the page to preload.
+    /// Under `corten dev`, a component with a script or stylesheet that the app does not list is
+    /// an error, since its script or stylesheet would not be served (debug builds of the app
+    /// record what renders; release builds do not).
+    fn render_into(&self, view: impl Render, out: &mut String) -> Result<Vec<&'static str>> {
         if !self.shared.dev {
-            // An empty buffer: to_html sizes it from earlier renders of the same view.
-            if out.capacity() == 0 {
-                *out = view.to_html();
-            } else {
-                view.render(out);
-            }
-            return Ok(());
+            let ((), modules) = crate::script::collect(|| {
+                // An empty buffer: to_html sizes it from earlier renders of the same view.
+                if out.capacity() == 0 {
+                    *out = view.to_html();
+                } else {
+                    view.render(out);
+                }
+            });
+            return Ok(modules);
         }
-        let ((), used) = crate::style::collect(|| view.render(out));
+        let (((), used), modules) = crate::script::collect(|| crate::style::collect(|| view.render(out)));
         if let Some(missing) = used.iter().find(|c| !self.shared.components.contains(c.name)) {
-            let what = match (missing.island.is_some(), missing.style.is_some()) {
+            let what = match (missing.script.is_some(), missing.style.is_some()) {
                 (true, true) => "script and stylesheet are",
                 (true, false) => "script is",
                 _ => "stylesheet is",
@@ -450,11 +457,16 @@ impl Req {
                 name = missing.name
             )));
         }
-        Ok(())
+        Ok(modules)
     }
 
     /// The response for already-rendered `<main>` HTML.
     fn respond(&self, status: StatusCode, meta: Meta, main: String) -> Response {
+        self.respond_with(status, meta, main, &[])
+    }
+
+    /// The same, preloading the script modules `modules`.
+    fn respond_with(&self, status: StatusCode, meta: Meta, main: String, modules: &[&'static str]) -> Response {
         let body = match self.mode {
             // The runtime swaps the page into <main> and the head tags into <head>; an action
             // that answers with a page (a form with errors, say) is swapped the same way.
@@ -465,7 +477,7 @@ impl Req {
                 body
             }
             Mode::Document | Mode::Data => {
-                let head = self.head(&meta, &main);
+                let head = self.head(&meta, modules);
                 let doc = Document {
                     head: Head { title: meta.title().to_string(), html: head },
                     main: Main(main),
@@ -487,7 +499,7 @@ impl Req {
         res
     }
 
-    fn head(&self, meta: &Meta, main: &str) -> String {
+    fn head(&self, meta: &Meta, modules: &[&'static str]) -> String {
         use std::fmt::Write;
         let nonce = match &self.nonce {
             Some(slot) => format!(r#" nonce="{}""#, slot.get().0),
@@ -498,23 +510,18 @@ impl Req {
         crate::view::escape_into(meta.title(), &mut out);
         out.push_str("</title>");
         out.push_str(meta.tags());
-        let dir = &self.shared.islands_dir;
+        let dir = &self.shared.scripts_dir;
         let _ = write!(
             out,
-            r#"<meta name="corten-islands" content="{dir}"><meta name="corten-shell" content="{:016x}">"#,
+            r#"<meta name="corten-scripts" content="{dir}"><meta name="corten-shell" content="{:016x}">"#,
             self.captured.key
         );
         out.push_str(&self.shared.head_extra);
-        let _ = write!(out, r#"<script type="importmap"{nonce}>{}</script>"#, crate::import_map());
+        let _ = write!(out, r#"<script type="importmap"{nonce}>{}</script>"#, self.shared.import_map);
         let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
-        let mut islands = find_islands(main);
-        // Only the app's islands: any other custom element is someone else's to define and style.
-        islands.retain(|tag| self.shared.assets.as_ref().is_some_and(|a| a.has_island(tag)));
-        for tag in &islands {
-            let _ = write!(out, r#"<link rel="modulepreload" href="{dir}{tag}.js">"#);
-        }
-        if !islands.is_empty() {
-            let _ = write!(out, "<style{nonce}>{}{{display:contents}}</style>", islands.join(","));
+        // The modules the page's handlers call, fetched with the runtime rather than on first use.
+        for name in modules.iter().filter(|m| self.shared.assets.as_ref().is_some_and(|a| a.has_script(m))) {
+            let _ = write!(out, r#"<link rel="modulepreload" href="{dir}{name}.js">"#);
         }
         out
     }

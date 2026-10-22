@@ -8,19 +8,31 @@ const OFFERS_SHOWN: usize = 5;
 
 /// The first offers, with the rest in a `<template>` that "Show all" moves into the table
 /// (`offer_list.js`). Without JavaScript the first offers show.
-#[island]
+#[component(js)]
 pub fn OfferList<'a>(t: Msg, offers: &'a [Offer]) -> impl Render {
-    let (first, rest) = offers.split_at(offers.len().min(OFFERS_SHOWN));
+    let (rows, rest) = refs();
+    let (first, more) = offers.split_at(offers.len().min(OFFERS_SHOWN));
     html! {
-        <h2>{t.item_offers()}</h2>
-        <table>
-            <thead><tr><th>{t.table_buyer()}</th><th>{t.table_condition()}</th><th>{t.table_qty()}</th><th>{t.table_price()}</th></tr></thead>
-            <tbody ref={Rows}>for o in first { <OfferRow o={o} /> }</tbody>
-        </table>
-        if !rest.is_empty() {
-            <template ref={Rest}>for o in rest { <OfferRow o={o} /> }</template>
-            <button type="button" on:click={ShowAll}>{t.item_show_all_offers(offers.len())}</button>
-        }
+        <div>
+            <h2>{t.item_offers()}</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>{t.table_buyer()}</th>
+                        <th>{t.table_condition()}</th>
+                        <th>{t.table_qty()}</th>
+                        <th>{t.table_price()}</th>
+                    </tr>
+                </thead>
+                <tbody ref={rows}>for o in first { <OfferRow o={o} /> }</tbody>
+            </table>
+            if !more.is_empty() {
+                <template ref={rest}>for o in more { <OfferRow o={o} /> }</template>
+                <button type="button" on:click={js::showAll(rows, rest, target)}>
+                    {t.item_show_all_offers(offers.len())}
+                </button>
+            }
+        </div>
     }
 }
 

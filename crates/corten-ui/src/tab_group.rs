@@ -21,7 +21,7 @@ pub struct Tab<'a> {
 /// select) and switches panels on click. Tabs that are links work without it: each loads its
 /// page, where the server selects it. Tabs that are buttons need it.
 ///
-/// Parts: `[role=tablist]`; `[role=tab]` (`[aria-selected=true]` for the selected one), an
+/// Parts: a `div` around `[role=tablist]`; `[role=tab]` (`[aria-selected=true]` for the selected one), an
 /// `a` or a `button`; `[role=tabpanel]`, hidden unless selected.
 ///
 /// ```
@@ -38,25 +38,56 @@ pub struct Tab<'a> {
 ///     Tab { label: &"Offers", panel: &html! { <p>"No offers"</p> }, link: Some(&offers) },
 /// ];
 /// let html = TabGroup { id: "book", label: "Market", tabs: &tabs, selected: 1 }.to_html();
-/// assert!(html.contains(r#"<a role="tab" id="book-tab-1" href="/items/x?tab=offers" aria-controls="book-panel-1" aria-selected="true""#));
-/// assert!(html.contains(r#"<div role="tabpanel" id="book-panel-0" aria-labelledby="book-tab-0" tabindex="0" hidden"#));
+/// assert!(html.contains(r#"<a data-ref="tab" role="tab" id="book-tab-1" href="/items/x?tab=offers" aria-controls="book-panel-1" aria-selected="true""#));
+/// assert!(html.contains(r#"<div data-ref="panel" role="tabpanel" id="book-panel-0" aria-labelledby="book-tab-0" tabindex="0" hidden"#));
 /// ```
-#[island]
+#[component(js)]
 pub fn TabGroup<'a>(id: &'a str, label: &'a str, tabs: &'a [Tab<'a>], selected: usize) -> impl Render {
+    let (tab, panel) = refs();
     html! {
-        <div role="tablist" aria-label={label}>
-            for (i, tab) in tabs.iter().enumerate() {
-                match tab.link {
-                    Some(link) => <a role="tab" id={(id, "-tab-", i)} href={Url(link)} aria-controls={(id, "-panel-", i)}
-                        aria-selected={state(i == selected)} ref={Trigger} on:click={Choose} on:keydown={Move}>{tab.label}</a>,
-                    None => <button type="button" role="tab" id={(id, "-tab-", i)} aria-controls={(id, "-panel-", i)}
-                        aria-selected={state(i == selected)} ref={Trigger} on:click={Choose} on:keydown={Move}>{tab.label}</button>,
+        <div on:connect={js::connect(tab)}>
+            <div role="tablist" aria-label={label}>
+                for (i, t) in tabs.iter().enumerate() {
+                    match t.link {
+                        Some(link) => <a
+                            ref={tab as HTMLElement}
+                            role="tab"
+                            id={(id, "-tab-", i)}
+                            href={Url(link)}
+                            aria-controls={(id, "-panel-", i)}
+                            aria-selected={state(i == selected)}
+                            on:click={js::choose(event, target, tab, panel)}
+                            on:keydown={js::step(event, target, tab, panel)}
+                        >
+                            {t.label}
+                        </a>,
+                        None => <button
+                            ref={tab as HTMLElement}
+                            type="button"
+                            role="tab"
+                            id={(id, "-tab-", i)}
+                            aria-controls={(id, "-panel-", i)}
+                            aria-selected={state(i == selected)}
+                            on:click={js::choose(event, target, tab, panel)}
+                            on:keydown={js::step(event, target, tab, panel)}
+                        >
+                            {t.label}
+                        </button>,
+                    }
                 }
+            </div>
+            for (i, t) in tabs.iter().enumerate() {
+                <div
+                    ref={panel}
+                    role="tabpanel"
+                    id={(id, "-panel-", i)}
+                    aria-labelledby={(id, "-tab-", i)}
+                    tabindex="0"
+                    hidden={i != selected}
+                >
+                    {t.panel}
+                </div>
             }
         </div>
-        for (i, tab) in tabs.iter().enumerate() {
-            <div role="tabpanel" id={(id, "-panel-", i)} aria-labelledby={(id, "-tab-", i)} tabindex="0" hidden={i != selected}
-                ref={Panel}>{tab.panel}</div>
-        }
     }
 }

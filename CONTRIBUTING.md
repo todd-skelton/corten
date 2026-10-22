@@ -10,12 +10,12 @@ new concept needs a reason a smaller change cannot meet.
 ```text
 crates/
   corten/            The framework on axum: App, Req, html!, components, the runtime (js/corten.js)
-  corten-macros/     html!, #[component], #[island], messages!, tokens!, derives (Fields, Route), on proc_macro alone (no syn)
+  corten-macros/     html!, #[component], #[event], script!, messages!, tokens!, derives (Fields, Route), on proc_macro alone (no syn)
   corten-cli/        The corten command, standard library only
   corten-feed/       Live feeds: rows, numbered patches, replay, resume
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
   corten-cluster/    One feed across instances: Postgres outbox, NATS JetStream relay
-  corten-ui/         Optional headless islands: number field, combobox, tabs, menu button
+  corten-ui/         Optional headless components: number field, combobox, tabs, menu button
 examples/hello/      One screen that uses every piece; scripts/smoke.mjs tests it in a browser
 examples/item-page/  A marketplace item page with every production module on; smoke.mjs tests it
 examples/cluster/    A listings feed on corten-cluster, and the failover benchmark

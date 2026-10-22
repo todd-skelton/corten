@@ -1,4 +1,4 @@
-//! The app's views. Each component's stylesheet and island script are next to it in `views/`.
+//! The app's views. Each component's stylesheet and script are next to it in `views/`.
 use corten::{Component, prelude::*};
 
 use crate::{routes, text::Msg, theme};

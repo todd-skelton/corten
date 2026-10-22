@@ -1,9 +1,9 @@
 //! `#[component]`: a function becomes a struct with one field per parameter, and a
 //! `corten::view::Render` impl that runs the function body when the struct renders.
 //!
-//! With `css`, the component has a stylesheet next to it (see `crate::style`); an island or a
-//! component with its own stylesheet also gets a constant with its name in the value namespace,
-//! `OfferList: corten::Component`, which the app lists once in `App::components`.
+//! With `css`, the component has a stylesheet next to it (see `crate::style`); with `js`, a script
+//! of handlers (see `crate::script`). Either gives it a constant with its name in the value
+//! namespace, `OfferList: corten::Component`, which the app lists once in `App::components`.
 
 use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
 
@@ -19,31 +19,44 @@ pub enum CssArg {
     Of(Ident),
 }
 
-/// Parses `#[component]`, `#[component(css)]` or `#[component(css = Owner)]`.
-pub fn args(args: TokenStream, what: &str) -> Result<Option<CssArg>, Error> {
-    let tokens: Vec<TokenTree> = args.into_iter().collect();
-    let usage = format!("{what} takes nothing, css (a stylesheet named after the component, next to it) or css = OtherComponent");
-    match tokens.as_slice() {
-        [] => Ok(None),
-        [TokenTree::Ident(css)] if css.to_string() == "css" => Ok(Some(CssArg::Own(css.span()))),
-        [TokenTree::Ident(css), TokenTree::Punct(eq), TokenTree::Ident(owner)]
-            if css.to_string() == "css" && eq.as_char() == '=' =>
-        {
-            Ok(Some(CssArg::Of(owner.clone())))
+/// What `#[component(..)]` takes: `css` or `css = Owner`, and `js`.
+#[derive(Default)]
+pub struct Args {
+    pub css: Option<CssArg>,
+    /// `js`: the handlers are the script next to the component, `{name}.js`.
+    pub js: Option<Span>,
+}
+
+/// Parses `#[component]`, `#[component(css)]`, `#[component(css = Owner)]`, `#[component(js)]`
+/// or both, comma-separated.
+pub fn args(args: TokenStream) -> Result<Args, Error> {
+    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent, and js (a script named after it)";
+    let mut out = Args::default();
+    for part in split(args, ',') {
+        match part.as_slice() {
+            [TokenTree::Ident(css)] if css.to_string() == "css" && out.css.is_none() => out.css = Some(CssArg::Own(css.span())),
+            [TokenTree::Ident(css), TokenTree::Punct(eq), TokenTree::Ident(owner)]
+                if css.to_string() == "css" && eq.as_char() == '=' && out.css.is_none() =>
+            {
+                out.css = Some(CssArg::Of(owner.clone()))
+            }
+            [TokenTree::Ident(js)] if js.to_string() == "js" && out.js.is_none() => out.js = Some(js.span()),
+            [first, ..] => return err(first.span(), usage),
+            [] => {}
         }
-        [first, ..] => err(first.span(), usage),
     }
+    Ok(out)
 }
 
 pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
-    let css = self::args(args, "#[component]")?;
-    build(item, false, css)
+    let args = self::args(args)?;
+    build(item, args)
 }
 
-/// `#[component]`, or with `island`, `#[island]`: the same struct, wrapped in the island's tag,
-/// with the island's names in scope and its description next to it (see `crate::island`).
-pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<TokenStream, Error> {
-    let what = if island { "#[island]" } else { "#[component]" };
+/// The struct, its `Render` impl and, for a component with a script or stylesheet, the constant
+/// the app lists.
+pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
+    let what = "#[component]";
     let tokens: Vec<TokenTree> = item.into_iter().collect();
     let mut i = 0;
     let mut attrs = Vec::new();
@@ -127,30 +140,20 @@ pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<Tok
         i += 1;
     };
 
-    if island && generics.len() > 2 {
-        for param in split(stream(generics[1..generics.len() - 1].iter().cloned()), ',') {
-            if !is_punct(param.first(), '\'') {
-                return err(param[0].span(), "an #[island] takes lifetime parameters only, so its constant names one island");
-            }
-        }
-    }
     let mut fields = TokenStream::new();
     let mut lets = TokenStream::new();
     let mut elided = false;
-    let mut props = Vec::new();
     for param in split(params.stream(), ',') {
         let mut p = 0;
         let mut field_attrs = Vec::new();
-        let mut is_prop = false;
         while is_punct(param.get(p), '#') {
-            if crate::island::is_prop(&param[p..p + 2]) {
-                if !island {
-                    return err(param[p].span(), "#[prop] sends a parameter to an island's script; use it in an #[island]");
-                }
-                is_prop = true;
-            } else {
-                field_attrs.extend(param[p..p + 2].iter().cloned());
+            if is_prop(&param[p..p + 2]) {
+                return err(
+                    param[p].span(),
+                    "#[prop] is gone: pass the value to the handler that uses it, on:connect={js::start(signal, value)}",
+                );
             }
+            field_attrs.extend(param[p..p + 2].iter().cloned());
             p += 2;
         }
         if is_ident(param.get(p), "mut") {
@@ -160,9 +163,6 @@ pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<Tok
             let span = param.first().map_or(params.span(), TokenTree::span);
             return err(span, "component parameters are `name: Type`");
         };
-        if is_prop {
-            props.push(crate::island::Prop { field: field.clone(), ty: param[p + 2..].to_vec() });
-        }
         let ty = name_elided_lifetimes(param[p + 2..].to_vec(), &mut elided);
         fields.extend(stream(field_attrs));
         fields.extend(stream(vis.iter().cloned()));
@@ -186,30 +186,41 @@ pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<Tok
         generics = named;
     }
     let (impl_generics, type_generics) = split_generics(&generics);
-    let parts = if island { Some(crate::island::parts(&name, &body.stream(), &props)?) } else { None };
-    let tag = parts.as_ref().map(|_| crate::island::kebab(&name.to_string()));
+
+    // Refs (`let (rows, rest) = refs();`) and the scope they belong to: the component's one root
+    // element, marked `data-scope` by its html!.
+    let scope_name = crate::names::kebab(&name.to_string());
+    let (body, has_refs) = refs(&body, &scope_name)?;
+    let scoped = has_refs || mentions(&body.stream(), "scope");
+    let body = if scoped { mark_root(&body, &scope_name)? } else { body };
+
+    let script = match args.js {
+        Some(span) => {
+            let file = format!("{}.js", crate::names::snake(&name.to_string()));
+            let path = crate::style::locate(&file, span)?;
+            Some(crate::script::Module::read(&path, span)?)
+        }
+        None => None,
+    };
+
+    let css = args.css;
     let css_owner = match &css {
         Some(CssArg::Of(owner)) => Some(owner.clone()),
         _ => None,
     };
     let (css, own_css) = match &css {
         None => (None, false),
-        Some(CssArg::Own(span)) => (Some(Css::read(&name, tag.as_deref(), *span)?), true),
+        Some(CssArg::Own(span)) => (Some(Css::read(&name, *span)?), true),
         Some(CssArg::Of(owner)) => {
             if owner.to_string() == name.to_string() {
                 return err(owner.span(), "css = names another component; for this component's own stylesheet write css");
             }
-            (Some(Css::read(owner, None, owner.span())?), false)
+            (Some(Css::read(owner, owner.span())?), false)
         }
     };
     let mut used = Vec::new();
     let body = match &css {
         Some(css) => {
-            if let Some(parts) = &parts {
-                if let Some(clash) = css.idents.iter().find(|i| parts.names.contains(i)) {
-                    return err(name.span(), format!("{clash} is a class in {} and a ref or action; rename one", css.file));
-                }
-            }
             let mut copy = Group::new(Delimiter::Brace, css.rewrite(body.stream(), false, &mut used)?);
             copy.set_span(body.span());
             copy
@@ -223,11 +234,9 @@ pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<Tok
         &[TokenTree::Ident(name.clone()).into(), stream(generics.clone()), stream(where_clause.clone())],
     ));
     out.extend([TokenTree::Group(Group::new(Delimiter::Brace, fields))]);
-    let (mut scope, open, close, mut items, island_literal) = match parts {
-        Some(p) => (p.scope, p.open, p.close, p.items, Some(p.island)),
-        None => Default::default(),
-    };
-    // The constant the app lists: the island's script and the component's own stylesheet.
+    let mut scope = TokenStream::new();
+    let mut items = TokenStream::new();
+    // The constant the app lists: the component's script and its own stylesheet.
     if let Some(css) = &css {
         // A helper (`css = Owner`) uses the owner's constants, so its uses count for the owner.
         let style_owner = css_owner.clone().unwrap_or_else(|| name.clone());
@@ -236,8 +245,18 @@ pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<Tok
         }
         scope.extend(css.scope(&style_owner, &used));
     }
-    let owner = if own_css || island_literal.is_some() { Some(name.clone()) } else { css_owner };
-    if own_css || island_literal.is_some() {
+    let has_constant = own_css || script.is_some();
+    if let Some(module) = &script {
+        // Inside `render`, so two components in one file each have their own `js`.
+        scope.extend(module.module(
+            TokenStream::new(),
+            Ident::new("js", Span::call_site()),
+            q("::core::option::Option::None", &[]),
+            TokenStream::new(),
+        ));
+    }
+    let owner = if has_constant { Some(name.clone()) } else { css_owner };
+    if has_constant {
         let some = |t: Option<TokenStream>| match t {
             Some(t) => q("::core::option::Option::Some(__A0)", &[t]),
             None => q("::core::option::Option::None", &[]),
@@ -247,14 +266,15 @@ pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<Tok
         items.extend(q(
             "#[doc = __A0] #[allow(non_upper_case_globals, dead_code)] __A5 const __A1: ::corten::Component = ::corten::Component {
                 name: __A2,
-                island: __A3,
+                script: __A3,
                 style: __A4,
+                event: ::core::option::Option::None,
             };",
             &[
                 literal(&doc),
                 TokenTree::Ident(name.clone()).into(),
                 literal(&name.to_string()),
-                some(island_literal),
+                some(script.as_ref().map(crate::script::Module::literal)),
                 some(style),
                 stream(vis.iter().cloned()),
             ],
@@ -266,18 +286,24 @@ pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<Tok
         }
         None => TokenStream::new(),
     };
+    let draw = if scoped {
+        q(
+            "::corten::script::__private::scoped(__A1, || ::corten::view::Render::render(&__A0, __corten_component_out));",
+            &[TokenTree::Group(body).into(), literal(&scope_name)],
+        )
+    } else {
+        q("::corten::view::Render::render(&__A0, __corten_component_out);", &[TokenTree::Group(body).into()])
+    };
     let render = q(
         "fn render(&self, __corten_component_out: &mut ::std::string::String) {
             #[allow(unused_imports)]
             use ::corten::view::__private::{ParamCopy as _, ParamRef as _};
-            __A5
-            __A2
             __A0
+            __A1
             __A3
-            ::corten::view::Render::render(&__A1, __corten_component_out);
-            __A4
+            __A2
         }",
-        &[lets, TokenTree::Group(body).into(), scope, open, close, used],
+        &[lets, scope, draw, used],
     );
     out.extend(q(
         "#[automatically_derived] impl __A0 ::corten::view::Render for __A1 __A2 __A3",
@@ -291,6 +317,114 @@ pub fn build(item: TokenStream, island: bool, css: Option<CssArg>) -> Result<Tok
     out.extend([TokenTree::Group(Group::new(Delimiter::Brace, render))]);
     out.extend(items);
     Ok(out)
+}
+
+/// True for the parameter attribute `#[prop]` (no longer supported).
+fn is_prop(attr: &[TokenTree]) -> bool {
+    matches!(attr, [TokenTree::Punct(p), TokenTree::Group(g)] if p.as_char() == '#' && {
+        let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+        inner.len() == 1 && is_ident(inner.first(), "prop")
+    })
+}
+
+/// Replaces `let (rows, rest) = refs();` at the top level of the body with each ref, named and
+/// scoped to this component. Returns whether there were any.
+fn refs(body: &Group, scope: &str) -> Result<(Group, bool), Error> {
+    let tokens: Vec<TokenTree> = body.stream().into_iter().collect();
+    let mut out: Vec<TokenTree> = Vec::with_capacity(tokens.len());
+    let mut found = false;
+    let mut i = 0;
+    while i < tokens.len() {
+        let is_refs_call = |at: usize| {
+            is_ident(tokens.get(at), "refs")
+                && matches!(tokens.get(at + 1), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis && g.stream().is_empty())
+        };
+        if is_ident(tokens.get(i), "let") && is_punct(tokens.get(i + 2), '=') && is_refs_call(i + 3) {
+            let names: Vec<Ident> = match &tokens[i + 1] {
+                TokenTree::Ident(one) => vec![one.clone()],
+                TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis => {
+                    let mut list = Vec::new();
+                    for part in split(g.stream(), ',') {
+                        match part.as_slice() {
+                            [TokenTree::Ident(n)] => list.push(n.clone()),
+                            [first, ..] => return err(first.span(), "refs() names plain variables: let (rows, rest) = refs();"),
+                            [] => {}
+                        }
+                    }
+                    list
+                }
+                other => return err(other.span(), "refs() names plain variables: let (rows, rest) = refs();"),
+            };
+            for n in &names {
+                let text = n.to_string();
+                if !text.starts_with(|c: char| c.is_ascii_lowercase())
+                    || !text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                {
+                    return err(n.span(), format!("{text}: a ref is a snake_case variable, its name in the page"));
+                }
+            }
+            let make = |n: &Ident| {
+                q("::corten::script::__private::new_ref::<_>(__A0, __A1)", &[literal(scope), literal(&n.to_string())])
+            };
+            let value = if names.len() == 1 && matches!(tokens[i + 1], TokenTree::Ident(_)) {
+                make(&names[0])
+            } else {
+                let mut list = TokenStream::new();
+                for n in &names {
+                    list.extend(make(n));
+                    list.extend(q(",", &[]));
+                }
+                crate::tokens::parens(list)
+            };
+            out.extend(tokens[i..i + 3].iter().cloned());
+            out.extend(value);
+            found = true;
+            i += 5;
+            continue;
+        }
+        if is_refs_call(i) {
+            return err(tokens[i].span(), "refs() goes at the top of a component's body: let (rows, rest) = refs();");
+        }
+        out.push(tokens[i].clone());
+        i += 1;
+    }
+    let mut copy = Group::new(Delimiter::Brace, stream(out));
+    copy.set_span(body.span());
+    Ok((copy, found))
+}
+
+/// True when `ident` appears anywhere in `tokens`.
+fn mentions(tokens: &TokenStream, ident: &str) -> bool {
+    tokens.clone().into_iter().any(|t| match t {
+        TokenTree::Ident(i) => i.to_string() == ident,
+        TokenTree::Group(g) => mentions(&g.stream(), ident),
+        _ => false,
+    })
+}
+
+/// Tells the body's final `html! { .. }` to mark its root element with the component's scope.
+fn mark_root(body: &Group, scope: &str) -> Result<Group, Error> {
+    let mut tokens: Vec<TokenTree> = body.stream().into_iter().collect();
+    let n = tokens.len();
+    let at_end = n >= 3
+        && is_ident(tokens.get(n - 3), "html")
+        && is_punct(tokens.get(n - 2), '!')
+        && matches!(tokens.get(n - 1), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace);
+    if !at_end {
+        return err(
+            body.span(),
+            "a component with refs ends with html! { <root> .. </root> }: the root element is where its refs end",
+        );
+    }
+    let TokenTree::Group(g) = &tokens[n - 1] else { unreachable!() };
+    let mut inner = q("@ scope __A0 ;", &[literal(scope)]);
+    inner.extend(g.stream());
+    let mut marked = Group::new(Delimiter::Brace, inner);
+    marked.set_span(g.span());
+    tokens[n - 1] = TokenTree::Group(marked);
+    let mut copy = Group::new(Delimiter::Brace, stream(tokens));
+    copy.set_span(body.span());
+    Ok(copy)
 }
 
 fn lifetime() -> [TokenTree; 2] {

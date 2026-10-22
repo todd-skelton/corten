@@ -7,179 +7,348 @@
 // 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id. The
 //    latest submit of a form wins; a navigation abandons pending ones.
 // 3. <corten-live src>: apply fragments streamed as server-sent `patch` events.
-// 4. Islands: an undefined <tag-name> loads `{islands dir}/tag-name.js` (the script of an #[island]
-//    component) and defines its `island()`; `on:event={Action}` markup runs its actions.
-// 5. subscribe(): live rows from a corten::feed (snapshot + ordered patches) for islands that keep state.
+// 4. Handlers: `data-on="click:cart_line.confirm($e,@dialog)"` (what `on:click={js::confirm(event, dialog)}`
+//    prints) runs the export `confirm` of `{scripts dir}/cart_line.js` with the event and the
+//    element with `data-ref="dialog"` in the same component. One listener per event type on the
+//    document; modules are imported when markup that names them joins the page; `on:connect`
+//    runs when the element joins, and its `signal` aborts when it leaves.
+// 5. subscribe(): live rows from a corten::feed (snapshot + ordered patches) for scripts that keep state.
 // 6. Hover prefetch of same-origin links, the page's head tags on navigation, `aria-current` on
 //    shell links with `data-nav`, and the service worker when the shell names one (corten::pwa).
 // 7. A page response whose shell key differs from this page's (the user signed in or out, or a
 //    deploy changed the runtime or assets) is loaded in full instead of swapped.
 // Without JavaScript, links and forms still work as plain HTML.
 
-const islandsDir = document.querySelector('meta[name="corten-islands"]')?.getAttribute("content") ?? "/static/islands/";
-/** @type {Map<string, Promise<void>>} */
-const loading = new Map();
-
-// Island wrappers are layout-neutral. The server prints this rule for the first page's islands;
-// islands that arrive later (navigation, patches) get it here. A constructed stylesheet is CSSOM,
-// so it works under a nonce-only CSP.
-const islandStyles = new CSSStyleSheet();
-document.adoptedStyleSheets = [...document.adoptedStyleSheets, islandStyles];
-
-/** Every element whose class island() made. */
-const islandClasses = new WeakSet();
+const scriptsDir = document.querySelector('meta[name="corten-scripts"]')?.getAttribute("content") ?? "/assets/scripts/";
 
 /**
- * The behavior of an `#[island]` component, in the script next to it:
- * `island("offer-list", { state() {}, connect(ctx) {}, actions: { showAll(ctx) {} } })`.
- * `on:click={ShowAll}` in the markup runs `actions.showAll`; `ref={Rows}` is `ctx.refs.rows`.
- * `ctx.signal` aborts when the element leaves the page: pass it to `addEventListener`, `fetch`,
- * `subscribe` and `mount`, or listen for its `abort` event. It is the only cleanup hook.
- * Types (checked against the Rust markup) and docs: islands.d.ts.
- * @template {keyof CortenIslands} T
- * @template [S=undefined]
- * @param {T} tag
- * @param {CortenSpec<CortenIslands[T], S>} spec
- * @returns {{ new (): HTMLElement, tag: T }}
+ * One handler call of a `data-on` attribute: `click:cart_line.confirm($e,@dialog,"Lamp")`.
+ * @typedef {{ type: string, module: string, name: string, args: Arg[] }} Binding
+ * @typedef {{ kind: "@" | "*", owner: string | null, name: string } | { kind: "$e" | "$t" | "$s" | "$c", owner: string | null } | { kind: "v", value: unknown }} Arg
  */
-export function island(tag, spec) {
-  const { state, connect } = spec;
-  const actions = /** @type {Record<string, (ctx: any) => void>} */ (/** @type {any} */ (spec).actions ?? {});
-  const made = class extends HTMLElement {
-    static tag = tag;
-    /** @type {AbortController | null} */
-    #life = null;
-    /** @type {Set<string>} */
-    #listening = new Set();
-    /** @type {any} */
-    #context = null;
 
-    connectedCallback() {
-      if (this.#life) return;
-      const life = (this.#life = new AbortController());
-      this.#listening = new Set();
-      this.#context = {
-        el: this,
-        refs: refs(this, false),
-        all: refs(this, true),
-        props: readProps(this),
-        state: this.#context ? this.#context.state : state?.(),
-        signal: life.signal,
-      };
-      wire(this);
-      const made = /** @type {unknown} */ (connect?.(this.#context));
-      if (typeof made === "function") console.error(`corten: <${tag}> connect returned a function, which never runs; clean up on ctx.signal instead`);
+/** Script modules by name, once imported. @type {Map<string, Record<string, unknown>>} */
+const modules = new Map();
+/** @type {Map<string, Promise<unknown>>} */
+const loading = new Map();
+
+/**
+ * Imports the script module `name` (`{scripts dir}/name.js`) once. The runtime starts every import
+ * a page's markup names as soon as the markup is in the page, so the module is there, and its
+ * handlers run synchronously (and can call `event.preventDefault()`), by the time a person acts.
+ * @param {string} name
+ */
+function load(name) {
+  let pending = loading.get(name);
+  if (!pending) {
+    const url = `${scriptsDir}${name}.js`;
+    pending = import(url).then(
+      (module) => void modules.set(name, module),
+      (error) => console.error(`corten: no script module at ${url}; list its component in App::components`, error),
+    );
+    loading.set(name, pending);
+  }
+  return pending;
+}
+
+/** Each element's parsed `data-on`, until the attribute changes. @type {WeakMap<Element, { source: string, list: Binding[] }>} */
+const parsed = new WeakMap();
+
+/** @param {Element} el */
+function bindings(el) {
+  const source = el.getAttribute("data-on") ?? "";
+  let entry = parsed.get(el);
+  if (!entry || entry.source !== source) {
+    entry = { source, list: parseOn(source) };
+    parsed.set(el, entry);
+  }
+  return entry.list;
+}
+
+/**
+ * Parses `type:module.name(arg,arg) type:module.name()`. Arguments are refs (`@rows`, every one:
+ * `*rows`, another component's: `@offer-list/rows`), the browser's values (`$e` event, `$t` the
+ * element with the attribute, `$s` its signal, `$c` the component's root, `$c/offer-list`), or JSON.
+ * @param {string} source
+ * @returns {Binding[]}
+ */
+function parseOn(source) {
+  /** @type {Binding[]} */
+  const list = [];
+  const n = source.length;
+  let i = 0;
+  while (i < n) {
+    if (source[i] === " ") {
+      i += 1;
+      continue;
     }
-
-    disconnectedCallback() {
-      // A move within the page disconnects and reconnects in one task; only tear down real removals.
-      queueMicrotask(() => {
-        if (this.isConnected || !this.#life) return;
-        this.#life.abort();
-        this.#life = null;
-      });
-    }
-
-    /**
-     * Starts delegating `type` events to actions (once per type).
-     * @param {string} type
-     */
-    listen(type) {
-      if (!this.#life || this.#listening.has(type)) return;
-      this.#listening.add(type);
-      // Bubbling events in the bubble phase, so actions run innermost first, like event
-      // handlers; events that do not bubble (focus, mouseenter) reach the element only by capture.
-      const options = { signal: this.#life.signal };
-      this.addEventListener(type, (event) => event.bubbles && this.#run(event), options);
-      this.addEventListener(type, (event) => !event.bubbles && this.#run(event), { ...options, capture: true });
-    }
-
-    /** @param {Event} event */
-    #run(event) {
-      const start = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null;
-      for (let node = start; node; node = node.parentElement) {
-        const on = node.getAttribute("data-on");
-        if (on && owner(node) === this) {
-          for (const pair of on.split(" ")) {
-            const colon = pair.indexOf(":");
-            if (pair.slice(0, colon) !== event.type) continue;
-            const name = pair.slice(colon + 1);
-            const action = actions[name];
-            if (!action) {
-              console.error(`corten: <${tag}> has no action ${name} (data-on="${on}")`);
-              continue;
-            }
-            const ctx = Object.create(this.#context);
-            ctx.target = node;
-            ctx.event = event;
-            action(ctx);
-          }
-        }
-        if (node === this || event.cancelBubble) return;
+    const colon = source.indexOf(":", i);
+    const dot = source.indexOf(".", colon);
+    const open = source.indexOf("(", dot);
+    if (colon < 0 || dot < 0 || open < 0) throw new Error(`corten: data-on="${source}" is not type:module.handler(..)`);
+    /** @type {Arg[]} */
+    const args = [];
+    let start = open + 1;
+    let depth = 0;
+    let j = start;
+    for (; j < n; j += 1) {
+      const c = source[j];
+      if (c === '"') {
+        for (j += 1; j < n && source[j] !== '"'; j += 1) if (source[j] === "\\") j += 1;
+      } else if (c === "[" || c === "{") depth += 1;
+      else if (c === "]" || c === "}") depth -= 1;
+      else if (depth === 0 && (c === "," || c === ")")) {
+        if (j > start) args.push(parseArg(source.slice(start, j)));
+        start = j + 1;
+        if (c === ")") break;
       }
     }
+    list.push({ type: source.slice(i, colon), module: source.slice(colon + 1, dot), name: source.slice(dot + 1, open), args });
+    i = j + 1;
+  }
+  return list;
+}
+
+/** @param {string} text @returns {Arg} */
+function parseArg(text) {
+  const c = text[0];
+  if (c === "@" || c === "*") {
+    const slash = text.indexOf("/");
+    return slash < 0 ? { kind: c, owner: null, name: text.slice(1) } : { kind: c, owner: text.slice(1, slash), name: text.slice(slash + 1) };
+  }
+  if (c === "$") {
+    const kind = /** @type {"$e" | "$t" | "$s" | "$c"} */ (text.slice(0, 2));
+    return { kind, owner: text[2] === "/" ? text.slice(3) : null };
+  }
+  return { kind: "v", value: JSON.parse(text) };
+}
+
+/**
+ * The root element of the component that owns `from`'s markup (`owner`: of that component, an
+ * ancestor of it).
+ * @param {Element} from
+ * @param {string | null} owner
+ */
+function scopeOf(from, owner) {
+  const scope = owner ? from.closest(`[data-scope="${owner}"]`) : from.closest("[data-scope]");
+  if (!scope) throw new Error(`corten: no component root ${owner ? `data-scope="${owner}"` : "[data-scope]"} around`, { cause: from });
+  return scope;
+}
+
+/**
+ * The elements of ref `name` in the component that owns `from`'s markup. A ref is the
+ * component's own (`data-ref="rows"` inside its root and not inside a nested component's root) or
+ * was put on an element a child component rendered (`data-ref="offer-list/rows"`).
+ * @param {Element} from
+ * @param {string | null} owner
+ * @param {string} name
+ */
+function findRefs(from, owner, name) {
+  const scope = scopeOf(from, owner);
+  // Resolved refs are kept per component root until the page's elements change: a click on a
+  // row of a 500-row grid then costs a lookup, not a query of every row. Mutations not yet
+  // delivered to the observer are taken now, so a handler never gets a stale list.
+  const pending = observer.takeRecords();
+  if (pending.length) observed(pending);
+  let cached = refCache.get(scope);
+  if (!cached || cached.generation !== generation) refCache.set(scope, (cached = { generation, refs: new Map() }));
+  const hit = cached.refs.get(name);
+  if (hit) return hit.slice();
+  const own = scope.getAttribute("data-scope");
+  const qualified = `${own}/${name}`;
+  /** @type {Element[]} */
+  const found = [];
+  const check = (/** @type {Element} */ el) => {
+    const ref = el.getAttribute("data-ref");
+    if (ref === name ? el.closest("[data-scope]") === scope : ref === qualified && el.closest(`[data-scope="${own}"]`) === scope) found.push(el);
   };
-  islandClasses.add(made);
+  check(scope);
+  for (const el of Array.from(scope.querySelectorAll(`[data-ref="${name}"],[data-ref="${qualified}"]`))) check(el);
+  cached.refs.set(name, found);
+  return found.slice();
+}
+
+/** Bumped when elements join or leave the page, which can change what a ref resolves to. */
+let generation = 0;
+/** @type {WeakMap<Element, { generation: number, refs: Map<string, Element[]> }>} */
+const refCache = new WeakMap();
+
+/** @type {WeakMap<Element, unknown>} */
+const states = new WeakMap();
+
+/**
+ * The state a script keeps for `el` (usually a component's root: pass `scope`), made by `init`
+ * the first time and kept while the element exists. Handlers are plain functions, so state that
+ * lasts between events lives here (or in the DOM) rather than in the module, which every
+ * instance of the component shares.
+ * @template T
+ * @param {Element} el
+ * @param {() => T} init
+ * @returns {T}
+ */
+export function state(el, init) {
+  if (states.has(el)) return /** @type {T} */ (states.get(el));
+  const made = init();
+  states.set(el, made);
   return made;
 }
 
+/** Each element's life, for `signal`: aborted when it leaves the page. @type {Map<Element, AbortController>} */
+const lives = new Map();
+
+/** @param {Element} el */
+function signalOf(el) {
+  let life = lives.get(el);
+  if (!life) {
+    life = new AbortController();
+    lives.set(el, life);
+  }
+  return life.signal;
+}
+
 /**
- * The island an element belongs to: the closest custom element around it. An island's markup
- * ends where another custom element starts, so nested islands keep their own refs and actions.
+ * Runs one handler for `el`. The module was imported when the markup arrived; if it is still
+ * loading (a person faster than the network), the handler runs when it is there, after the event.
  * @param {Element} el
- * @returns {Element | null}
+ * @param {Binding} binding
+ * @param {Event} event
  */
-function owner(el) {
-  for (let node = el.parentElement; node; node = node.parentElement) {
-    if (node.localName.includes("-")) return node;
+function run(el, binding, event) {
+  const module = modules.get(binding.module);
+  if (!module) {
+    load(binding.module).then(() => modules.has(binding.module) && run(el, binding, event));
+    return;
   }
-  return null;
+  const handler = module[binding.name];
+  if (typeof handler !== "function") {
+    console.error(`corten: ${binding.module}.js exports no function ${binding.name}`, el);
+    return;
+  }
+  try {
+    const args = binding.args.map((arg) => {
+      switch (arg.kind) {
+        case "v":
+          return arg.value;
+        case "$e":
+          return event;
+        case "$t":
+          return el;
+        case "$s":
+          return signalOf(el);
+        case "$c":
+          return scopeOf(el, arg.owner);
+        case "*":
+          return findRefs(el, arg.owner, arg.name);
+        default: {
+          const [first] = findRefs(el, arg.owner, arg.name);
+          if (!first) throw new Error(`corten: ${binding.module}.${binding.name} takes ref ${arg.name}, and its component has no element with it`);
+          return first;
+        }
+      }
+    });
+    const result = handler(...args);
+    if (result instanceof Promise) result.catch(reportError);
+  } catch (error) {
+    reportError(error);
+  }
 }
 
-/**
- * Makes each island listen for the events of the `data-on` elements in `root`: on connect, and
- * for markup a patch adds later.
- * @param {Element} root
- */
-function wire(root) {
-  const marked = Array.from(root.querySelectorAll("[data-on]"));
-  if (root.hasAttribute("data-on")) marked.unshift(root);
-  for (const el of marked) {
-    const host = /** @type {any} */ (owner(el));
-    if (!host || !islandClasses.has(host.constructor)) continue;
-    for (const pair of /** @type {string} */ (el.getAttribute("data-on")).split(" ")) host.listen(pair.slice(0, pair.indexOf(":")));
-  }
-}
+/** Event types with a listener on the document. */
+const listening = new Set();
 
 /**
- * `refs` (the first match, which must exist) or `all` (every match) of an island.
- * @param {Element} host
- * @param {boolean} many
+ * Listens for `type` on the document, once: an event that bubbles runs the handlers of every
+ * element on its path, innermost first, until one stops it; one that does not (`focus`,
+ * `mouseenter`) reaches the document only by capture and runs its target's handlers.
+ * @param {string} type
  */
-function refs(host, many) {
-  return new Proxy(
-    {},
-    {
-      get(_, name) {
-        if (typeof name !== "string") return undefined;
-        const mine = Array.from(host.querySelectorAll(`[data-ref="${name}"]`)).filter((el) => owner(el) === host);
-        if (many) return mine;
-        if (!mine[0]) throw new Error(`corten: <${host.localName}> has no element with ref={${name[0].toUpperCase()}${name.slice(1)}} (data-ref="${name}")`);
-        return mine[0];
-      },
+function listen(type) {
+  if (type === "connect" || listening.has(type)) return;
+  listening.add(type);
+  document.addEventListener(type, (event) => {
+    if (!event.bubbles) return;
+    for (const node of event.composedPath()) {
+      if (!(node instanceof Element)) continue;
+      if (node.hasAttribute("data-on")) for (const b of bindings(node)) if (b.type === type) run(node, b, event);
+      if (event.cancelBubble) return;
+    }
+  });
+  document.addEventListener(
+    type,
+    (event) => {
+      const target = event.composedPath()[0];
+      if (event.bubbles || !(target instanceof Element) || !target.hasAttribute("data-on")) return;
+      for (const b of bindings(target)) if (b.type === type) run(target, b, event);
     },
+    { capture: true },
   );
 }
 
+/** Elements whose `on:connect` handlers ran in their current life. @type {Set<Element>} */
+const connected = new Set();
+
 /**
- * The `#[prop]` JSON the server printed as the island's first child, read when it connects (so a
- * script that replaces the children, as Solid does, still has it).
- * @param {Element} host
+ * Wires the markup under `root`: imports the modules its handlers name, listens for their events
+ * and runs `on:connect` handlers.
+ * @param {Element} root
  */
-function readProps(host) {
-  const script = host.querySelector(":scope > script[data-props]");
-  return script ? JSON.parse(script.textContent ?? "{}") : {};
+function scan(root) {
+  const marked = Array.from(root.querySelectorAll("[data-on]"));
+  if (root.hasAttribute("data-on")) marked.unshift(root);
+  for (const el of marked) {
+    let connects = false;
+    for (const b of bindings(el)) {
+      load(b.module);
+      if (b.type === "connect") connects = true;
+      else listen(b.type);
+    }
+    if (connects && !connected.has(el)) {
+      connected.add(el);
+      const event = new Event("connect");
+      for (const b of bindings(el)) if (b.type === "connect") run(el, b, event);
+    }
+  }
 }
+
+/**
+ * Ends the life of every element that left the page: its `signal` aborts, and `on:connect` runs
+ * again if it comes back. It runs after the mutations that removed it, so an element moved within
+ * the page (removed and inserted in one task) keeps its life.
+ */
+function sweep() {
+  for (const [el, life] of lives) {
+    if (el.isConnected) continue;
+    lives.delete(el);
+    life.abort();
+  }
+  for (const el of connected) if (!el.isConnected) connected.delete(el);
+}
+
+/**
+ * Markup that joins the page (a navigation, a patch, a script's insert, Solid's render) is wired;
+ * markup that leaves it ends.
+ * @param {MutationRecord[]} records
+ */
+function observed(records) {
+  let removed = false;
+  let changed = false;
+  for (const record of records) {
+    for (const node of Array.from(record.removedNodes)) {
+      if (node instanceof Element) changed = removed = true;
+    }
+    for (const node of Array.from(record.addedNodes)) {
+      if (!(node instanceof Element)) continue;
+      changed = true;
+      if (node.isConnected) scan(node);
+    }
+  }
+  // Text changes (a live cell's new value) cannot change what a ref is.
+  if (changed) generation += 1;
+  if (removed && (lives.size || connected.size)) sweep();
+}
+
+const observer = new MutationObserver(observed);
+observer.observe(document.documentElement, { childList: true, subtree: true });
 
 /**
  * @template Row
@@ -189,7 +358,7 @@ function readProps(host) {
 /**
  * @template Row
  * @typedef {object} FeedHandlers
- * @property {(rows: Row[], seq: number) => void} snapshot Every row; replaces what the island had.
+ * @property {(rows: Row[], seq: number) => void} snapshot Every row; replaces what the script had.
  * @property {(changes: FeedChange<Row>[], seq: number, receivedAt: number) => void} patch One write, in order, never twice.
  * @property {(status: "syncing" | "live" | "reconnecting") => void} [status]
  */
@@ -197,8 +366,8 @@ function readProps(host) {
 /**
  * Live rows from a `corten::feed` at `url`: calls `snapshot` with every row, then `patch` with each
  * later write in order. Reconnects resume where they stopped; a gap, an unknown cursor or a client
- * that fell behind loads a new snapshot. It runs until `signal` aborts (in an island, pass
- * `ctx.signal`: the subscription ends when the element leaves the page), or, without one, for the
+ * that fell behind loads a new snapshot. It runs until `signal` aborts (in a handler, pass
+ * `signal`: the subscription ends when the element leaves the page), or, without one, for the
  * life of the page. `Row` is the feed's row type from the generated declarations; without one,
  * rows are `unknown`.
  * @template [Row=unknown]
@@ -290,34 +459,6 @@ export function subscribe(url, handlers, { signal } = {}) {
   sync();
 }
 
-/**
- * Defines every undefined custom element under `root` from its island module.
- * @param {ParentNode} root
- */
-export function upgrade(root) {
-  const tags = new Set(Array.from(root.querySelectorAll(":not(:defined)"), (el) => el.localName));
-  return Promise.allSettled(Array.from(tags, define)).then(() => undefined);
-}
-
-/** @param {string} tag */
-function define(tag) {
-  let pending = loading.get(tag);
-  if (!pending) {
-    islandStyles.insertRule(`${tag}{display:contents}`, islandStyles.cssRules.length);
-    const url = `${islandsDir}${tag}.js`;
-    pending = import(url).then(
-      (module) => {
-        const made = module.default;
-        if (made?.tag !== tag) throw new Error(`${url} must end with export default island("${tag}", { ... })`);
-        if (!customElements.get(tag)) customElements.define(tag, made);
-      },
-      (error) => console.error(`corten: <${tag}> has no island module at ${url}; list the #[island] in App::components`, error),
-    ).catch((error) => console.error(`corten: ${error.message}`));
-    loading.set(tag, pending);
-  }
-  return pending;
-}
-
 /** @param {string} html */
 function parse(html) {
   const template = document.createElement("template");
@@ -332,12 +473,9 @@ function parse(html) {
 export function patch(html) {
   for (const el of Array.from(parse(html).children)) {
     const target = el.id ? document.getElementById(el.id) : null;
-    if (target) {
-      target.replaceWith(el);
-      wire(el);
-    } else console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
+    if (target) target.replaceWith(el);
+    else console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
   }
-  return upgrade(document.body);
 }
 
 /**
@@ -358,7 +496,6 @@ function swapPage(html) {
   if (!main) throw new Error("corten: the shell must render a <main> element");
   main.replaceChildren(content);
   markCurrent();
-  return upgrade(main);
 }
 
 /**
@@ -567,9 +704,10 @@ customElements.define(
 );
 
 markCurrent();
+scan(document.documentElement);
 
-/** Resolves once the islands on the first page are defined. */
-export const ready = upgrade(document.body);
+/** Resolves once the script modules the first page's handlers use are imported. */
+export const ready = Promise.all(loading.values()).then(() => undefined);
 
 // Under `corten dev` the server sends the time it started; after a restart (a rebuild) the stream
 // reconnects to a server that started later, and the page reloads.

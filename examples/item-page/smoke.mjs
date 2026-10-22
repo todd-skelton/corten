@@ -35,12 +35,10 @@ try {
     "head tags follow navigation",
     (await page.$$eval('head [data-corten-head][rel="canonical"]', (l) => l.map((x) => x.getAttribute("href")))).join() === "/items/item_5",
   );
-  await page.waitForFunction(() => !!customElements.get("listing-sort") && !!customElements.get("offer-list"));
-  check("islands load from versioned URLs", true);
-  check(
-    "islands that arrive by navigation are layout-neutral",
-    (await page.evaluate(() => getComputedStyle(/** @type {Element} */ (document.querySelector("listing-sort"))).display)) === "contents",
+  const scripts = await page.evaluate(() =>
+    performance.getEntriesByType("resource").map((e) => e.name).filter((n) => /\/scripts\/(listing_sort|offer_list)\.js$/.test(n)),
   );
+  check("the scripts a navigation's markup names load from versioned URLs", scripts.length === 2 && scripts.every((n) => /\/assets\/[0-9a-f]{12}\/scripts\//.test(n)), scripts.join(" "));
 
   // Styles: tokens, a component's scoped rules and a responsive utility, from components.css.
   const styles = await page.evaluate(() => {
@@ -53,7 +51,7 @@ try {
     delete root.dataset.theme;
     return {
       accent: getComputedStyle(root).getPropertyValue("--color-accent").trim(),
-      price: css("listing-sort tbody td:last-child").fontVariantNumeric,
+      price: css("[data-scope=listing-sort] tbody td:last-child").fontVariantNumeric,
       summary: css("article > section").flexDirection,
       themes: [light, dark],
     };
@@ -63,18 +61,18 @@ try {
   check("a responsive utility applies at this width", styles.summary === "row", styles.summary);
   check("a theme overrides tokens", styles.themes[0] === "#1d1b26" && styles.themes[1] === "#ecebf2", styles.themes.join(" "));
 
-  const firstPrice = () => page.textContent("listing-sort tbody tr:first-child td:last-child");
-  const sort = "listing-sort button";
+  const firstPrice = () => page.textContent("[data-scope=listing-sort] tbody tr:first-child td:last-child");
+  const sort = "[data-scope=listing-sort] > button";
   const before = await firstPrice();
   await page.click(sort);
-  check("listing sort island reorders rows", (await firstPrice()) !== before && (await page.innerText(sort)) === "Price: high to low");
+  check("a click runs the listing sort handler", (await firstPrice()) !== before && (await page.innerText(sort)) === "Price: high to low");
   await page.click(sort);
   check("a second click restores the server's order", (await firstPrice()) === before && (await page.innerText(sort)) === "Price: low to high");
-  const more = await page.$("offer-list button");
+  const more = await page.$("[data-scope=offer-list] button");
   if (more) {
-    const rows = await page.$$eval("offer-list tbody tr", (r) => r.length);
+    const rows = await page.$$eval("[data-scope=offer-list] tbody tr", (r) => r.length);
     await more.click();
-    check("offer list island shows the rest", (await page.$$eval("offer-list tbody tr", (r) => r.length)) > rows);
+    check("a click runs the offer list handler", (await page.$$eval("[data-scope=offer-list] tbody tr", (r) => r.length)) > rows);
   }
 
   await page.fill('input[name="email"]', "buyer@example.com");

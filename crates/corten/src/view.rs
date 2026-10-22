@@ -41,8 +41,8 @@
 //! - `class={..}` takes a list: a class constant of the component's stylesheet (`class={Title}`,
 //!   see [`crate::style`]), utility classes, text, an `Option` of one, or a tuple of them, joined
 //!   with spaces; an empty list leaves the attribute out.
-//! - Inside an [`island`](crate::island) component, `ref={Name}` names an element for the
-//!   island's script and `on:click={Action}` runs one of its actions.
+//! - In a component with a script ([`crate::script`]), `ref={save}` names an element for its
+//!   handlers and `on:click={js::confirm(event, dialog)}` calls one of them.
 //! - A view owns what it uses and renders once, so it can be returned from a function and markup
 //!   can move or match the values it captured.
 //! - `<Card title="x" compact>children</Card>` builds the struct `Card` (from [`component`] or

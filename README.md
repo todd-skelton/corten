@@ -5,16 +5,16 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Corten renders every page on the server with `html!`, a JSX-like Rust macro. The browser gets
-HTML, a small runtime that swaps pages and patches forms, and *islands*: components whose
-behavior is a short script next to their Rust markup. Live data arrives as numbered patches over
+HTML, a small runtime that swaps pages and patches forms, and *handlers*: plain JavaScript
+functions in a script next to a component, which its Rust markup calls by name. Live data arrives as numbered patches over
 server-sent events. One handler serves the browser, native apps and AI agents.
 
 - **Fast on the server.** 3,355 rendered pages a second where Next.js 16 does 52, and a 184 ms
   cold start (measured, [below](#performance)).
-- **Light in the browser.** A 3.3 KB (brotli) runtime; the benchmark item page loads 4.5 KB of
+- **Light in the browser.** A 3.7 KB (brotli) runtime; the benchmark item page loads about 5 KB of
   JavaScript (gzip). No WASM, no virtual DOM, no hydration.
-- **Typed end to end.** Routes, form fields, CSS classes, island refs and actions, and messages
-  are Rust types. TypeScript types for islands are generated from Rust.
+- **Typed end to end.** Routes, form fields, CSS classes, handler calls and the elements they
+  take, events and messages are Rust types. TypeScript types for scripts are generated from Rust.
 - **Works without JavaScript.** Links are links and forms post; scripts improve a page but never
   hold it up.
 - **Production defaults.** CSP with nonces, a cross-site write check, error pages, versioned
@@ -38,8 +38,8 @@ cd my-app
 corten dev    # serves http://localhost:3000 and reloads on save
 ```
 
-`corten new` writes a working app: a page, a form that patches part of the page, an island, a
-test and a Dockerfile. See [Getting started](docs/guide/getting-started.md).
+`corten new` writes a working app: a page, a form that patches part of the page, a
+component with a script, a test and a Dockerfile. See [Getting started](docs/guide/getting-started.md).
 
 ## Example
 
@@ -109,19 +109,19 @@ fn Greeting(name: &str) -> impl Render {
 }
 ```
 
-A misspelled route, field or prop does not compile. Behavior lives in an island: the markup
-names what the script may touch, and the script sits in the file next to it.
+A misspelled route, field or prop does not compile. Behavior lives in a script next to the
+component: plain functions the markup calls with the elements they use.
 
 ```rust,ignore
 // src/click_counter.rs
-#[island]
+#[component(js)]
 pub fn ClickCounter() -> impl Render {
+    let total = refs();
     html! {
-        // on:click runs the script's `count` action;
-        // ref={Total} is the element it reads as `refs.total`.
-        <button type="button" on:click={Count}>
+        // A click calls count() in click_counter.js with the <output>.
+        <button type="button" on:click={js::count(total)}>
             "Clicks: "
-            <output ref={Total}>"0"</output>
+            <output ref={total}>"0"</output>
         </button>
     }
 }
@@ -129,18 +129,14 @@ pub fn ClickCounter() -> impl Render {
 
 ```js
 // src/click_counter.js
-import { island } from "corten";
-
-export default island("click-counter", {
-  state: () => ({ count: 0 }),
-  actions: {
-    count({ state, refs }) {
-      state.count += 1;
-      refs.total.value = String(state.count);
-    },
-  },
-});
+/** @param {HTMLOutputElement} total */
+export function count(total) {
+  total.value = String(Number(total.value) + 1);
+}
 ```
+
+`js::count` exists because the script exports `count`, and it takes `total` because the JSDoc
+says an `HTMLOutputElement` and the ref is on an `<output>`. Either mismatch is a compile error.
 
 ## When to use it
 
@@ -165,12 +161,13 @@ React components, or for a pure static site (a static site generator is simpler)
 3. **HTML that works on its own.** Every page renders on the server, and links and forms work
    without JavaScript. Scripts improve a page but never hold it up.
 4. **Mistakes fail at compile time.** No strings at the seams between server and client: routes,
-   refs, actions, class names, form fields and messages are all typed. TypeScript types are
+   handler calls, refs, class names, form fields and messages are all typed. TypeScript types are
    generated from Rust, never written by hand. If a guarantee exists, a test proves it fails to
    compile when broken.
-5. **One way to do each thing.** Islands have one pattern, cleanup has one hook, and a handler
-   serves every mode. Fewer concepts make large codebases readable for people and for agents.
-   The behavior sits next to its markup, and the markup names everything the script can touch.
+5. **One way to do each thing.** Behavior is a function the markup calls, cleanup has one hook,
+   and a request handler serves every mode. Fewer concepts make large codebases readable for
+   people and for agents. The behavior sits next to its markup, and each call names everything
+   the function touches.
 6. **Small surface, deliberate dependencies.** A dependency or a new concept has to clearly earn
    its place. The framework owns what nearly every app needs, like security headers,
    cancellation, error pages and assets. Domain logic and things only some apps use belong to the
@@ -197,7 +194,9 @@ app, measured on one machine. Method, every table and the caveats are in
 
 With a database fetch on every request both Rust apps are bound by parsing the API response and
 measure about equal, around 3x the fastest JavaScript framework. The JavaScript figure was
-re-measured on 2026-10-21; the other rows are from the full run.
+re-measured on 2026-10-21, before handlers replaced islands; the handler runtime adds 0.43 KB
+gzip and the item page's two scripts 0.04 KB (file sizes, not a new run). The other rows are
+from the full run.
 
 ## Documentation
 
@@ -207,7 +206,7 @@ re-measured on 2026-10-21; the other rows are from the full run.
 | [The app](docs/guide/app.md) | every default `App` puts around your routes, and how to replace each |
 | [Views](docs/guide/views.md) | `html!`, components, typed links and messages |
 | [Requests and forms](docs/guide/requests-and-forms.md) | request modes, patches, validation, redirects |
-| [Islands](docs/guide/islands.md) | behavior in the browser: refs, actions, props, Solid |
+| [Scripts](docs/guide/scripts.md) | behavior in the browser: handlers, refs, typed events, Solid |
 | [Live data](docs/guide/live-data.md) | `<corten-live>`, feeds, running a feed across instances |
 | [Cancellation](docs/guide/cancellation.md) | `AbortSignal` in the browser and on the server, deadlines |
 | [Styles](docs/guide/styles.md) | a scoped CSS file per component, design tokens, themes |
@@ -223,10 +222,10 @@ API reference: `cargo doc --open -p corten`. Building an app with an AI agent? T
 
 | Crate | What it is |
 |---|---|
-| [`corten`](crates/corten) | the framework, on axum: `App`, `Req`, `html!`, islands, the browser runtime |
+| [`corten`](crates/corten) | the framework, on axum: `App`, `Req`, `html!`, handlers, the browser runtime |
 | [`corten-cli`](crates/corten-cli) | the `corten` command: `new`, `dev`, `check`, `build` |
 | [`corten-macros`](crates/corten-macros) | the macros, on `proc_macro` alone (no `syn`) |
-| [`corten-ui`](crates/corten-ui) | optional headless islands for widgets the browser lacks |
+| [`corten-ui`](crates/corten-ui) | optional headless components for widgets the browser lacks |
 | [`corten-feed`](crates/corten-feed) | live feeds: rows, numbered patches, replay, resume |
 | [`corten-cluster`](crates/corten-cluster) | one feed across instances: Postgres outbox, NATS JetStream |
 | [`corten-protocol`](crates/corten-protocol) | the feed wire format and a client replica, for native and agent clients |

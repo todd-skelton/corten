@@ -1,105 +1,27 @@
 // @ts-check
-// Not served or run: `npm run check` type-checks it to prove the island seams are strict.
+// Not served or run: `npm run check` type-checks it to prove the script seams are strict.
 // Every @ts-expect-error line must be an error, or tsc fails ("Unused '@ts-expect-error'").
-// The islands are the examples', declared from their Rust markup in examples/*/types/app.d.ts.
-import { island, subscribe } from "corten";
+// Handler parameters need nothing here: the Rust markup's calls are checked against each
+// handler's JSDoc when the crate compiles. What crosses into scripts as JSON or as an event is
+// declared from the Rust types in examples/*/types/app.d.ts.
+import { state, subscribe } from "corten";
 import { mount } from "corten/solid";
 
 /** @typedef {import("../examples/hello/types/app").Stock} Stock Generated from the Rust struct. */
 
-island("offer-list", {
-  actions: {
-    showAll({ refs, all, target, event, el, signal }) {
-      refs.rest.content.cloneNode(true);
-      refs.rows.rows.item(0);
-      all.rows.map((rows) => rows.rows.length);
-      target.disabled = true;
-      event.clientX.toFixed();
-      el.hidden = signal.aborted;
-      // @ts-expect-error A ref the markup does not have.
-      refs.row;
-      // @ts-expect-error rows is on a <tbody>, which has no .content.
-      refs.rows.content;
-      // @ts-expect-error The action runs on a <button>, which has no .rows.
-      target.rows;
-    },
-  },
-});
-
-// @ts-expect-error An action the markup names (on:click={ShowAll}) is missing.
-island("offer-list", { actions: {} });
-
-island("offer-list", {
-  actions: {
-    showAll() {},
-    // @ts-expect-error An action the markup does not name.
-    showNone() {},
-  },
-});
-
-// @ts-expect-error A tag no #[island] has.
-island("offer-lists", {});
-
-island("offer-list", {
-  actions: {
-    showAll({ props }) {
-      // @ts-expect-error The island has no #[prop]s.
-      props.feed;
-    },
-  },
-});
-
-island("live-prices", {
-  state: () => ({ ticks: 0 }),
-  connect({ props, state, all }) {
-    props.feed.toUpperCase();
-    state.ticks += 1;
-    all.price[0]?.cellIndex.toFixed();
-    // @ts-expect-error feed is a &str in Rust, so a string here.
-    props.feed.toFixed();
-    // @ts-expect-error State has only what state() returns.
-    state.tick;
-  },
-  actions: {
-    pause({ state, target }) {
-      state.ticks = 0;
-      target.ariaPressed = "true";
-    },
-  },
-});
-
-island("live-prices", {
-  connect({ state }) {
-    // @ts-expect-error Without state(), there is no state.
-    state.ticks;
-  },
-  actions: { pause() {} },
-});
-
-island("live-prices", {
-  // @ts-expect-error Cleanup listens on ctx.signal; a returned function would never run.
-  connect: () => () => {},
-  actions: { pause() {} },
-});
-
-island("live-prices", {
-  async connect({ signal, props }) {
-    await fetch(props.feed, { signal });
-    subscribe(props.feed, { snapshot() {}, patch() {} }, { signal });
-    // @ts-expect-error subscribe() returns nothing to stop it with; pass a signal.
-    subscribe(props.feed, { snapshot() {}, patch() {} })();
-  },
-  actions: { pause() {} },
-});
-
-island("live-prices", {
-  connect({ el, signal }) {
-    mount(el, () => null, { signal });
-    // @ts-expect-error A Solid view lives as long as the island: mount needs its signal.
-    mount(el, () => null);
-  },
-  actions: { pause() {} },
-});
+/** @param {HTMLElement} root @param {AbortSignal} signal */
+export function connect(root, signal) {
+  const s = state(root, () => ({ ticks: 0 }));
+  s.ticks += 1;
+  // @ts-expect-error State has only what its init returns.
+  s.tick;
+  mount(root, () => null, { signal });
+  // @ts-expect-error A Solid view lives as long as its element: mount needs a signal.
+  mount(root, () => null);
+  subscribe("/feed/stocks", { snapshot() {}, patch() {} }, { signal });
+  // @ts-expect-error subscribe() returns nothing to stop it with; pass a signal.
+  subscribe("/feed/stocks", { snapshot() {}, patch() {} })();
+}
 
 subscribe("/feed/stocks", {
   /** @param {Stock[]} rows */

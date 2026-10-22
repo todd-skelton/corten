@@ -36,13 +36,17 @@ pub fn home(name: &str) -> impl Render {
 }
 
 /// A button that counts its clicks in the browser. The markup is here; `click_counter.js`, next
-/// to this file, adds the behavior, and `click_counter.css` its look. `on:click={Count}` runs
-/// its `count` action, `ref={Total}` is the element it updates and `class={Button}` is the
-/// stylesheet's `.button`, scoped to this component.
-#[island(css)]
+/// to this file, has the handler, and `click_counter.css` the look. `on:click={js::count(total)}`
+/// calls its `count` function with the element `ref={total}` is on (a compile error unless the
+/// function takes an `<output>`), and `class={Button}` is the stylesheet's `.button`, scoped to
+/// this component.
+#[component(css, js)]
 pub fn ClickCounter() -> impl Render {
+    let total = refs();
     html! {
-        <button type="button" class={Button} on:click={Count}>"Clicks: "<output ref={Total}>"0"</output></button>
+        <button type="button" class={Button} on:click={js::count(total)}>
+            "Clicks: "<output ref={total}>"0"</output>
+        </button>
     }
 }
 

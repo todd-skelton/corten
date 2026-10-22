@@ -7,7 +7,7 @@ that thing ends.
 
 | Where | The signal | Aborts when |
 |---|---|---|
-| an island | `ctx.signal`, in `connect` and every action | the element leaves the page; pass it to `addEventListener`, `fetch`, `subscribe` and `mount`, which is the only cleanup (`connect` returns nothing) |
+| a handler | the `signal` keyword: `on:connect={js::watch(signal)}` | the element with the `on:` leaves the page; pass it to `addEventListener`, `fetch`, `subscribe` and `mount`, which is the only cleanup |
 | a `<form data-patch>` submit | the runtime's, per form | a newer submit of the same form, or a navigation, so a late reply never patches the wrong page |
 | a client navigation | the Navigation API's `event.signal` | another navigation starts |
 | a request on the server | `req.signal()`, or `signal: corten::Signal` as an extractor | the response was sent (`Abort::Responded`), the client left (`Disconnected`), or the deadline passed (`Deadline`) |

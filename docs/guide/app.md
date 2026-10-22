@@ -13,7 +13,7 @@ routes. Each default can be replaced in one line.
 | Error pages | 404, 405 and 500 inside the shell, in the request's mode (page, swap or JSON); the error is logged, never shown | `.error_page(\|status\| (title, view))` |
 | JSON-only routes | none | `.api("/api", routes)`: every failure under the prefix is JSON, with no shell and no context ([below](#json-only-routes)) |
 | Security | CSP with a nonce for each document, nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods | `.policy(Policy::new()...)` |
-| Static files | `static/` (or `STATIC_DIR`), island scripts and the components' stylesheets (one file) at content-hashed, immutable URLs; each island preloaded on the pages that render it | `.assets(dir)`, `.components(&[..])` |
+| Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file) at content-hashed, immutable URLs; each script preloaded on the pages whose handlers use it | `.assets(dir)`, `.components(&[..])` |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Shutdown | Ctrl-C and `SIGTERM` end live streams, then the server | |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
@@ -29,7 +29,7 @@ see [Cancellation](cancellation.md).
 App::new(routes)
     .shell(shell)                                  // the document around every page
     .context(|headers| viewer_from(headers))       // who is asking, for the shell and handlers
-    .components(&[TOKENS, OfferList])              // islands and styled components
+    .components(&[TOKENS, OfferList])              // components with scripts or styles
     .messages::<Msg>()                             // the locales the shell's lang follows
     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")))
     .serve()

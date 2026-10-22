@@ -55,26 +55,25 @@ try {
   });
 
   await page.goto(base);
-  await page.waitForFunction(() => !!customElements.get("live-prices"));
-  check("island defined from its module", true);
-  await page.waitForSelector('live-prices[data-status="live"]', { timeout: 5000 }).catch(() => {});
-  check("feed subscription is live", (await page.getAttribute("live-prices", "data-status")) === "live");
+  const live = "[data-scope=live-prices]";
+  await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
+  check("on:connect runs the script's watch(), which subscribes to the feed", (await page.getAttribute(live, "data-status")) === "live");
 
   const prices = () => page.$$eval('[data-ref="price"]', (cells) => cells.map((c) => c.textContent));
   const before = await prices();
   await page.waitForFunction((b) => JSON.stringify([...document.querySelectorAll('[data-ref="price"]')].map((c) => c.textContent)) !== b, JSON.stringify(before), { timeout: 4000 }).catch(() => {});
   check("live patches update prices", JSON.stringify(await prices()) !== JSON.stringify(before), `${before.join(", ")} -> ${(await prices()).join(", ")}`);
 
-  // An island action with per-element state: on:click={Pause} runs the script's pause().
-  check("an island's script reveals its controls", await page.isVisible("live-prices button"));
-  await page.click("live-prices button");
+  // A handler with per-component state: on:click={js::pause(scope, target, price)}.
+  check("the script reveals its controls", await page.isVisible(`${live} button`));
+  await page.click(`${live} button`);
   const paused = await prices();
   await page.waitForTimeout(2500);
   check(
-    "an action changes the island's state (pause holds the prices)",
-    (await page.getAttribute("live-prices button", "aria-pressed")) === "true" && JSON.stringify(await prices()) === JSON.stringify(paused),
+    "a handler changes the component's state (pause holds the prices)",
+    (await page.getAttribute(`${live} button`, "aria-pressed")) === "true" && JSON.stringify(await prices()) === JSON.stringify(paused),
   );
-  await page.click("live-prices button");
+  await page.click(`${live} button`);
   // The page's prices by stock id, and the feed's.
   const shown = () => page.$$eval('[data-ref="price"]', (cells) => JSON.stringify(cells.map((c) => [c.getAttribute("data-id"), c.textContent]).sort()));
   const latest = async () => {
@@ -86,7 +85,7 @@ try {
     resumed = (await shown()) === (await latest());
     if (!resumed) await page.waitForTimeout(150);
   }
-  check("resuming shows the latest prices", resumed && (await page.getAttribute("live-prices button", "aria-pressed")) === "false");
+  check("resuming shows the latest prices", resumed && (await page.getAttribute(`${live} button`, "aria-pressed")) === "false");
 
   // A marker on window survives client navigations and patches, and disappears on a full load.
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
@@ -142,7 +141,7 @@ try {
 
   const current = () => page.$$eval("a[data-nav][aria-current=page]", (links) => links.map((l) => l.getAttribute("href")).join());
   check("the shell marks the current link", (await current()) === "/");
-  check("one feed stream while the island is on the page", (await openFeeds()) === 1);
+  check("one feed stream while the component is on the page", (await openFeeds()) === 1);
   // A navigation abandons a pending submit, whose reply was for the page being left.
   delayWatch = 1200;
   await page.click("main form[data-patch] button");
@@ -150,7 +149,7 @@ try {
   await page.waitForFunction(() => document.title === "About | Corten");
   await page.waitForTimeout(1600);
   check("navigating away abandons a pending submit", abandoned.length === 2, abandoned.join());
-  check("the feed stream closes when its island leaves the page", (await openFeeds()) === 0);
+  check("the feed stream closes when its component leaves the page (its signal aborts)", (await openFeeds()) === 0);
   check("the <corten-live> stream closes when it leaves the page", (await openStreams("/live/trades")) === 0);
   check("client navigation moves aria-current in the shell", (await current()) === "/about");
   check("main is not left busy", (await page.getAttribute("main", "aria-busy")) === null);
@@ -160,8 +159,8 @@ try {
 
   await page.goBack();
   await page.waitForFunction(() => document.title === "Watchlist | Corten");
-  await page.waitForSelector('live-prices[data-status="live"]', { timeout: 5000 }).catch(() => {});
-  check("back navigation restores the watchlist and resubscribes", (await page.getAttribute("live-prices", "data-status")) === "live");
+  await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
+  check("back navigation restores the watchlist and on:connect resubscribes", (await page.getAttribute(live, "data-status")) === "live");
   // The submit failed on purpose above; the browser logs that request.
   const unexpected = errors.filter((e) => !e.includes("ERR_INTERNET_DISCONNECTED"));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
@@ -212,7 +211,7 @@ try {
 
   // A multipart form is sent as FormData. /watch reads a URL-encoded form, so axum rejects it with
   // plain text, which a browser never sees: it gets the app's error page.
-  await page.waitForFunction(() => !!customElements.get("live-prices"));
+  await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
   /** @type {string[]} */
   const types = [];
   const onRequest = (/** @type {import("@playwright/test").Request} */ r) => r.url().endsWith("/watch") && types.push(r.headers()["content-type"] ?? "");

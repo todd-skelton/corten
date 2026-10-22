@@ -5,7 +5,7 @@
 //! let app = corten::security::Policy::new().script_src("https://js.stripe.com").apply(router);
 //! ```
 //!
-//! Corten's own inline tags (the import map, the island style rule) carry the nonce, and
+//! Corten's own inline tags (the import map) carry the nonce, and
 //! [`crate::Document::nonce`] gives it to the shell for any inline script the app adds. Nothing
 //! else inline runs, so an HTML injection cannot execute script even if a template escapes wrongly.
 //!

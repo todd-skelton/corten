@@ -1,5 +1,5 @@
 {
-  "//": "Type-checks the runtime and example islands without a build step: npm run check",
+  "//": "Type-checks the runtime and the scripts next to components without a build step: npm run check",
   "compilerOptions": {
     "checkJs": true,
     "allowJs": true,
@@ -15,6 +15,7 @@
   "include": [
     "crates/corten/js/*.js",
     "crates/corten/js/*.d.ts",
+    "crates/corten/src/**/*.js",
     "crates/corten-ui/src/*.js",
     "examples/*/src/**/*.js",
     "examples/*/static/**/*.js",

@@ -11,17 +11,3 @@ export interface Stock {
   price: string;
   price_cents: number;
 }
-
-declare global {
-  /** The app's islands, from its #[island] components: what island("tag", ...) is checked against. */
-  interface CortenIslands {
-    /** `<live-prices>`: live_prices.js */
-    "live-prices": {
-      props: { feed: string; };
-      refs: { pauseButton: "button"; price: "td"; };
-      actions: { pause: { on: "click"; el: "button" }; };
-    };
-  }
-}
-
-export {};

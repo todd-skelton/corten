@@ -1,25 +1,26 @@
-//! TypeScript declarations for the data islands read, generated from the Rust types (feature
-//! `types`), so island code is type-checked against the server.
+//! TypeScript declarations for the data scripts read, generated from the Rust types (feature
+//! `types`), so handler code is type-checked against the server.
 //!
-//! Every value that crosses into the browser as JSON is a Rust type: an island's `#[prop]`s, a
-//! feed's rows, a screen's data. Derive `schemars::JsonSchema` on them next to `Serialize` (the
+//! Every value that crosses into the browser as JSON is a Rust type: a handler's arguments, a
+//! typed event's fields, a feed's rows, a screen's data. Derive `schemars::JsonSchema` on them next to `Serialize` (the
 //! app depends on `schemars = "1"` as it does on `serde`), list them and the app's components once,
 //! and keep the generated file in sync from a test:
 //!
 //! ```ignore
 //! #[test]
-//! fn island_types_match_the_server() {
+//! fn script_types_match_the_server() {
 //!     corten::types::Types::new().add::<Card>().components(views::COMPONENTS).sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
 //! }
 //! ```
 //!
 //! `sync` rewrites the file when the Rust types changed and fails the test, so CI (which runs on
-//! a clean checkout) fails until the new file is committed. For islands the file declares the
-//! global `CortenIslands`: each island's props, the elements its refs are on and its actions'
-//! events, as the markup declares them. `island("tag", ...)` is checked against it with no import,
-//! and other types are imported in JSDoc (`/** @typedef {import("../types/app").Card} Card */`).
-//! `tsc --checkJs` then fails on a renamed or retyped field, ref or action, not the page in
-//! production. The file holds types only; the browser never loads it.
+//! a clean checkout) fails until the new file is committed. The app's typed events (`#[event]`)
+//! are declared as the classes of the module `corten/events`, with their fields, so a script
+//! that dispatches `new RowToggled({ id, selected })` is checked against the Rust struct. Other
+//! types are imported in JSDoc (`/** @typedef {import("../types/app").Card} Card */`). `tsc
+//! --checkJs` then fails on a renamed or retyped field, not the page in production. Handler
+//! parameters need nothing generated: the markup's calls are checked against the handler's own
+//! JSDoc when the crate compiles. The file holds types only; the browser never loads it.
 //!
 //! Types describe the JSON as the server writes it (`skip_serializing_if` fields are optional,
 //! `Option` is `T | null`). [`Types::json_schema`] gives the same definitions as JSON Schema,
@@ -34,8 +35,8 @@ use serde_json::{Map, Value};
 pub struct Types {
     generator: SchemaGenerator,
     roots: BTreeMap<String, Value>,
-    /// Each island's entry in `CortenIslands`, by tag.
-    islands: BTreeMap<&'static str, String>,
+    /// Each typed event's class in `corten/events`, by name.
+    events: BTreeMap<&'static str, String>,
 }
 
 impl Default for Types {
@@ -49,7 +50,7 @@ impl Types {
         Types {
             generator: SchemaSettings::draft2020_12().for_serialize().into_generator(),
             roots: BTreeMap::new(),
-            islands: BTreeMap::new(),
+            events: BTreeMap::new(),
         }
     }
 
@@ -63,51 +64,24 @@ impl Types {
         self
     }
 
-    /// Adds the islands among the app's components (the list it gives `App::components`) to
-    /// `CortenIslands`, with the types of their props.
+    /// Adds the typed events among the app's components (the list it gives `App::components`)
+    /// to `corten/events`, with the types of their fields.
     pub fn components(mut self, components: &[crate::Component]) -> Self {
-        let tags = |tags: &[&str]| union(tags.iter().map(|t| format!("{t:?}")).collect());
-        for island in components.iter().filter_map(|c| c.island) {
-            let mut entry = format!(
-                "    /** `<{}>`: {} */
-    {:?}: {{
-      props: {{",
-                island.tag, island.file, island.tag
+        for event in components.iter().filter_map(|c| c.event) {
+            let mut fields = String::new();
+            let mut init = Vec::new();
+            for field in event.fields {
+                let schema = (field.ts)(&mut self.generator);
+                let ty = ts(&schema, "    ");
+                let _ = write!(fields, "\n    readonly {}: {ty};", field.name);
+                init.push(format!("{}: {ty}", field.name));
+            }
+            let init = if init.is_empty() { "init?: {}".to_string() } else { format!("init: {{ {} }}", init.join("; ")) };
+            let entry = format!(
+                "  /** The `{}` event, from #[event] {}. */\n  export class {} extends Event {{\n    constructor({init});{fields}\n  }}\n",
+                event.name, event.class, event.class
             );
-            for prop in island.props {
-                let schema = (prop.ts)(&mut self.generator);
-                let _ = write!(entry, " {}: {};", prop.name, ts(&schema, "      "));
-            }
-            entry.push_str(if island.props.is_empty() {
-                "};
-      refs: {"
-            } else {
-                " };
-      refs: {"
-            });
-            for r in island.refs {
-                let _ = write!(entry, " {}: {};", r.name, tags(r.tags));
-            }
-            entry.push_str(if island.refs.is_empty() {
-                "};
-      actions: {"
-            } else {
-                " };
-      actions: {"
-            });
-            for a in island.actions {
-                let _ = write!(entry, " {}: {{ on: {}; el: {} }};", a.name, tags(a.events), tags(a.tags));
-            }
-            entry.push_str(if island.actions.is_empty() {
-                "};
-    };
-"
-            } else {
-                " };
-    };
-"
-            });
-            self.islands.insert(island.tag, entry);
+            self.events.insert(event.class, entry);
         }
         self
     }
@@ -150,12 +124,12 @@ impl Types {
             out.push('\n');
             out.push_str(block);
         }
-        if !self.islands.is_empty() {
-            out.push_str("\ndeclare global {\n  /** The app's islands, from its #[island] components: what island(\"tag\", ...) is checked against. */\n  interface CortenIslands {\n");
-            for entry in self.islands.values() {
+        if !self.events.is_empty() {
+            out.push_str("\n/** The app's typed events (#[event]), dispatched by scripts and listened for with on:Name. */\ndeclare module \"corten/events\" {\n");
+            for entry in self.events.values() {
                 out.push_str(entry);
             }
-            out.push_str("  }\n}\n\nexport {};\n");
+            out.push_str("}\n\nexport {};\n");
         }
         out
     }
@@ -377,32 +351,32 @@ export type Kind = "single" | "sealed_box";
         assert!(Types::new().add::<Card>().json_schema()["$defs"]["Kind"]["enum"].is_array());
     }
 
-    #[crate::island]
+    /// A row was picked.
+    #[crate::script::event]
     #[allow(dead_code)]
-    fn PriceBoard<'a>(title: &'a str, #[prop] card: &'a Card) -> impl crate::Render {
-        crate::html! { <h2 ref={Title} on:click={Pick}>{title}</h2><template ref={Rest}></template> }
+    struct RowToggled {
+        id: String,
+        kind: Kind,
     }
 
     #[test]
-    fn islands_declare_their_props_refs_and_actions() {
-        let ts = Types::new().add::<Kind>().components(&[PriceBoard]).typescript();
+    fn typed_events_declare_their_classes() {
+        let ts = Types::new().components(&[RowToggled]).typescript();
         let expected = r#"
-declare global {
-  /** The app's islands, from its #[island] components: what island("tag", ...) is checked against. */
-  interface CortenIslands {
-    /** `<price-board>`: price_board.js */
-    "price-board": {
-      props: { card: Card; };
-      refs: { title: "h2"; rest: "template"; };
-      actions: { pick: { on: "click"; el: "h2" }; };
-    };
+/** The app's typed events (#[event]), dispatched by scripts and listened for with on:Name. */
+declare module "corten/events" {
+  /** The `row-toggled` event, from #[event] RowToggled. */
+  export class RowToggled extends Event {
+    constructor(init: { id: string; kind: Kind });
+    readonly id: string;
+    readonly kind: Kind;
   }
 }
 
 export {};
 "#;
         assert!(ts.ends_with(expected), "{ts}");
-        assert!(ts.contains("export interface Card {"), "a prop's type is declared with the rest: {ts}");
+        assert!(ts.contains("export type Kind = "), "a field's type is declared with the rest: {ts}");
     }
 
     #[test]

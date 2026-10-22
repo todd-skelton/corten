@@ -22,7 +22,13 @@ const KEYWORDS: &[&str] = &[
 ];
 
 pub fn expand(input: TokenStream) -> TokenStream {
-    match Cursor::new(input).nodes(None) {
+    let (scope, input) = scope_marker(input);
+    match Cursor::new(input).nodes(None).and_then(|mut nodes| {
+        if let Some(scope) = &scope {
+            mark_scope(&mut nodes, scope)?;
+        }
+        Ok(nodes)
+    }) {
         Ok(nodes) => {
             let mut gen = Gen::default();
             gen.nodes(&nodes, false);
@@ -39,6 +45,34 @@ pub fn expand(input: TokenStream) -> TokenStream {
             )
         }
         Err((span, message)) => compile_error(span, &message),
+    }
+}
+
+/// `#[component]` starts the markup of a component with refs with `@scope "name";`.
+fn scope_marker(input: TokenStream) -> (Option<String>, TokenStream) {
+    let tokens: Vec<TokenTree> = input.clone().into_iter().collect();
+    if let (true, true, Some(TokenTree::Literal(name)), true) =
+        (is_punct(tokens.first(), '@'), is_ident(tokens.get(1), "scope"), tokens.get(2), is_punct(tokens.get(3), ';'))
+    {
+        if let Some(name) = string_value(name) {
+            return (Some(name), stream(tokens.into_iter().skip(4)));
+        }
+    }
+    (None, input)
+}
+
+/// Puts `data-scope="name"` on the one root element.
+fn mark_scope(nodes: &mut [Node], scope: &str) -> Result<(), Error> {
+    let mut roots = nodes.iter_mut().filter(|n| !matches!(n, Node::Let(_)));
+    match (roots.next(), roots.next()) {
+        (Some(Node::Element { attrs, .. }), None) => {
+            attrs.insert(0, Attr::Static("data-scope".into(), scope.into()));
+            Ok(())
+        }
+        _ => err(
+            Span::call_site(),
+            "a component with refs renders one root element, which holds its refs: wrap its markup in one element",
+        ),
     }
 }
 
@@ -70,11 +104,12 @@ enum Attr {
     Static(String, String),
     Expr(String, TokenStream),
     Spread(TokenStream),
-    /// `ref={Rows}`: prints `data-ref="rows"`.
-    Ref(TokenStream),
-    /// `on:click={ShowAll}`: the event and the action. All of an element's print as one
-    /// `data-on="click:showAll"`.
-    On(String, TokenStream),
+    /// `ref={rows}`: prints `data-ref="rows"`, and types the ref with the element's interface, or
+    /// with a wider one (`ref={trigger as HTMLElement}`) when the ref is on several kinds.
+    Ref(TokenStream, Option<Ident>),
+    /// `on:click={js::show(rows)}`: the event (with its span) and the handler. All of an
+    /// element's print as one `data-on="click:module.show(@rows)"`.
+    On(String, Span, TokenStream),
 }
 
 struct Cursor {
@@ -266,6 +301,28 @@ impl Cursor {
                     }
                     attrs.push(Attr::Spread(stream(inner.into_iter().skip(2))));
                 }
+                Some(TokenTree::Ident(id))
+                    if component
+                        && id.to_string() == "on"
+                        && is_punct(self.peek2(), ':')
+                        && !matches!(self.tokens.get(self.i + 2), Some(TokenTree::Punct(_))) =>
+                {
+                    self.next();
+                    self.next();
+                    let span = self.span();
+                    let Some(TokenTree::Ident(event)) = self.next() else {
+                        return err(span, "on: on a component names one of its Handler props: on:remove={..} sets on_remove");
+                    };
+                    if !is_punct(self.peek(), '=') {
+                        return err(span, format!("on:{event} takes a handler: on:{event}={{js::name(..)}}"));
+                    }
+                    self.next();
+                    let (_, expr) = self.value(true)?;
+                    let field = Ident::new(&format!("on_{event}"), event.span());
+                    let expr =
+                        keywords(expr, &q("::corten::script::ev::Event", &[]), &q("::corten::script::el::HTMLElement", &[]));
+                    props.push((stream([TokenTree::Ident(field)]), q("&(__A0)", &[expr])));
+                }
                 Some(TokenTree::Ident(_)) if component => {
                     let Some(TokenTree::Ident(prop)) = self.next() else { unreachable!() };
                     if is_punct(self.peek(), '-') {
@@ -283,8 +340,8 @@ impl Cursor {
                 }
                 Some(TokenTree::Ident(_)) => {
                     let name = self.attr_name()?;
-                    if name == "data-ref" || name == "data-on" {
-                        return err(span, "data-ref and data-on are printed from names: write ref={Rows} or on:click={ShowAll} in an #[island] component");
+                    if name == "data-ref" || name == "data-on" || name == "data-scope" {
+                        return err(span, "data-ref, data-on and data-scope are printed by Corten: write ref={rows} (with let (rows) = refs();) or on:click={js::show(rows)}");
                     }
                     if name == "ref" || name.starts_with("on:") {
                         let braced = is_punct(self.peek(), '=')
@@ -292,16 +349,31 @@ impl Cursor {
                         if !braced {
                             return err(
                                 span,
-                                format!(
-                                    "{name} takes a name of the island's script in braces: ref={{Rows}}, on:click={{ShowAll}}"
-                                ),
+                                format!("{name} takes a value in braces: ref={{rows}}, on:click={{js::show(rows)}}"),
                             );
                         }
                         self.next();
                         let (_, expr) = self.value(false)?;
                         attrs.push(match name.strip_prefix("on:") {
-                            Some(event) => Attr::On(event.to_string(), expr),
-                            None => Attr::Ref(expr),
+                            Some(event) => Attr::On(event.to_string(), span, expr),
+                            None => {
+                                // `value` wraps the braces' contents in parentheses.
+                                let mut tokens: Vec<TokenTree> = expr.clone().into_iter().collect();
+                                if let [TokenTree::Group(g)] = tokens.as_slice() {
+                                    if g.delimiter() == Delimiter::Parenthesis {
+                                        tokens = g.stream().into_iter().collect();
+                                    }
+                                }
+                                let n = tokens.len();
+                                if n >= 3 && is_ident(tokens.get(n - 2), "as") {
+                                    let TokenTree::Ident(wide) = &tokens[n - 1] else {
+                                        return err(tokens[n - 1].span(), "ref={trigger as HTMLElement} names a DOM interface");
+                                    };
+                                    Attr::Ref(stream(tokens[..n - 2].iter().cloned()), Some(wide.clone()))
+                                } else {
+                                    Attr::Ref(expr, None)
+                                }
+                            }
                         });
                         continue;
                     }
@@ -494,8 +566,8 @@ impl Cursor {
 struct Gen {
     out: TokenStream,
     text: String,
-    /// Type checks that print nothing (`ref={Rows}` is a ref of this island), emitted before the
-    /// writes so they do not split runs of static markup.
+    /// Type checks that print nothing, emitted before the writes so they do not split runs of
+    /// static markup.
     checks: TokenStream,
 }
 
@@ -517,24 +589,6 @@ impl Gen {
         let mut out = self.checks;
         out.extend(self.out);
         out
-    }
-
-    /// Prints an island name (`ref={Rows}`, `on:click={ShowAll}`). A bare name is known now, so
-    /// it is static markup, and its type is checked apart; anything else is written at run time.
-    fn island_name(&mut self, expr: &TokenStream, check: &str, write: &str) {
-        let mut tokens: Vec<TokenTree> = expr.clone().into_iter().collect();
-        if let [TokenTree::Group(g)] = tokens.as_slice() {
-            if g.delimiter() == Delimiter::Parenthesis {
-                tokens = g.stream().into_iter().collect();
-            }
-        }
-        match tokens.as_slice() {
-            [TokenTree::Ident(name)] if name.to_string().starts_with(|c: char| c.is_ascii_uppercase()) => {
-                self.text.push_str(&crate::island::camel(&name.to_string()));
-                self.checks.extend(q(check, std::slice::from_ref(expr)));
-            }
-            _ => self.code(q(write, std::slice::from_ref(expr))),
-        }
     }
 
     fn body(&self, nodes: &[Node], raw: bool) -> TokenTree {
@@ -571,39 +625,54 @@ impl Gen {
                         Attr::Static(attr, value) => {
                             self.text.push_str(&format!(" {attr}=\"{}\"", escape(value)));
                         }
-                        Attr::Ref(expr) => {
-                            self.text.push_str(" data-ref=\"");
-                            self.island_name(
-                                expr,
-                                "::corten::island::__private::check_ref(&__A0);",
-                                "__OUT.push_str(::corten::island::__private::ref_name(&__A0));",
-                            );
-                            self.text.push('"');
+                        Attr::Ref(expr, wide) => {
+                            let el: TokenStream =
+                                format!("::corten::script::el::{}", crate::dom::element(name)).parse().expect("a path parses");
+                            match wide {
+                                // `ref={trigger as HTMLElement}`: a ref on several kinds of element, typed as one they all are.
+                                Some(wide) => {
+                                    let ty: TokenStream = format!("::corten::script::el::{wide}").parse().expect("a path parses");
+                                    let ty: TokenStream = ty
+                                        .into_iter()
+                                        .map(|mut t| {
+                                            t.set_span(wide.span());
+                                            t
+                                        })
+                                        .collect();
+                                    self.code(q(
+                                        "::corten::script::__private::ref_attr_as::<__A1, __A2>(&(__A0), __OUT);",
+                                        &[expr.clone(), el, ty],
+                                    ))
+                                }
+                                None => self.code(q(
+                                    "::corten::script::__private::ref_attr::<__A1>(&(__A0), __OUT);",
+                                    &[expr.clone(), el],
+                                )),
+                            }
                         }
                         Attr::On(..) if actions_printed => {}
                         Attr::On(..) => {
                             actions_printed = true;
-                            self.text.push_str(" data-on=\"");
-                            for (i, (event, expr)) in attrs
-                                .iter()
-                                .filter_map(|a| match a {
-                                    Attr::On(event, expr) => Some((event, expr)),
-                                    _ => None,
-                                })
-                                .enumerate()
-                            {
-                                if i > 0 {
-                                    self.text.push(' ');
-                                }
-                                self.text.push_str(event);
-                                self.text.push(':');
-                                self.island_name(
-                                    expr,
-                                    "::corten::island::__private::check_action(&__A0);",
-                                    "__OUT.push_str(::corten::island::__private::action_name(&__A0));",
-                                );
+                            let target: TokenStream =
+                                format!("::corten::script::el::{}", crate::dom::element(name)).parse().expect("a path parses");
+                            let mut binds = TokenStream::new();
+                            for attr in attrs {
+                                let Attr::On(event, span, expr) = attr else { continue };
+                                let (printed, ty) = if event.starts_with(|c: char| c.is_ascii_uppercase()) {
+                                    let ty: TokenStream = TokenTree::Ident(Ident::new(event, *span)).into();
+                                    self.checks
+                                        .extend(q("::corten::script::__private::is_event::<__A0>();", std::slice::from_ref(&ty)));
+                                    (crate::names::kebab(event), ty)
+                                } else {
+                                    let ty: TokenStream = format!("::corten::script::ev::{}", crate::dom::event(event))
+                                        .parse()
+                                        .expect("a path parses");
+                                    (event.clone(), ty)
+                                };
+                                let expr = keywords(expr.clone(), &ty, &target);
+                                binds.extend(q("(__A0, &(__A1) as &dyn ::corten::script::Bind),", &[literal(&printed), expr]));
                             }
-                            self.text.push('"');
+                            self.code(q("::corten::script::__private::data_on(__OUT, &[__A0]);", &[binds]));
                         }
                         // Classes are a list (see `corten::style::ClassList`): `class={(Row, hot.then_some(Hot))}`.
                         Attr::Expr(attr, expr) if attr == "class" => {
@@ -660,4 +729,45 @@ impl Gen {
             }
         }
     }
+}
+
+/// `event`, `target`, `signal` and `scope` in a handler call are the browser's: typed as the
+/// event `event_ty` and the element `target_ty`. A field (`x.event`), a path segment, a struct
+/// field name (`event: ..`), a call (`event()`) or a macro keeps its own meaning.
+fn keywords(tokens: TokenStream, event_ty: &TokenStream, target_ty: &TokenStream) -> TokenStream {
+    let tokens: Vec<TokenTree> = tokens.into_iter().collect();
+    let mut out = TokenStream::new();
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            TokenTree::Ident(id) if matches!(id.to_string().as_str(), "event" | "target" | "signal" | "scope") => {
+                let after_dot = i > 0 && (is_punct(tokens.get(i - 1), '.') || is_punct(tokens.get(i - 1), ':'));
+                let next = tokens.get(i + 1);
+                let used_otherwise = is_punct(next, ':')
+                    || is_punct(next, '!')
+                    || matches!(next, Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis);
+                if after_dot || used_otherwise {
+                    out.extend([token.clone()]);
+                    continue;
+                }
+                let replaced = match id.to_string().as_str() {
+                    "event" => q("::corten::script::__private::EventKw::<__A0>::NEW", std::slice::from_ref(event_ty)),
+                    "target" => q("::corten::script::__private::TargetKw::<__A0>::NEW", std::slice::from_ref(target_ty)),
+                    "signal" => q("::corten::script::__private::SignalKw", &[]),
+                    _ => q("::corten::script::__private::ScopeKw", &[]),
+                };
+                // Errors about the keyword point at it.
+                out.extend(replaced.into_iter().map(|mut t| {
+                    t.set_span(id.span());
+                    t
+                }));
+            }
+            TokenTree::Group(g) => {
+                let mut copy = Group::new(g.delimiter(), keywords(g.stream(), event_ty, target_ty));
+                copy.set_span(g.span());
+                out.extend([TokenTree::Group(copy)]);
+            }
+            other => out.extend([other.clone()]),
+        }
+    }
+    out
 }

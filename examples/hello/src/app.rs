@@ -164,7 +164,7 @@ fn format_price(cents: u32) -> String {
     format!("${}.{:02}", cents / 100, cents % 100)
 }
 
-/// Moves one price per second, so the live island and the last trade have something to show.
+/// Moves one price per second, so the live prices and the last trade have something to show.
 pub async fn simulate_market(market: Market) {
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut n = 0u64;
@@ -227,18 +227,26 @@ fn home_view(home: &Home) -> impl Render {
 /// The prices, rendered here first and then kept current by `live_prices.js` from the feed. The
 /// pause button shows only when the script runs, since nothing updates without it. Styled by
 /// `live_prices.css`.
-#[island(css)]
-fn LivePrices<'a>(stocks: &'a [Stock], #[prop] feed: &'a str) -> impl Render {
+#[component(css, js)]
+fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str) -> impl Render {
+    let (pause, price) = refs();
     html! {
-        <button type="button" ref={PauseButton} on:click={Pause} aria-pressed="false" hidden>"Pause updates"</button>
-        <table class={Table}>
-            <thead><tr><th>"Stock"</th><th>"Price"</th></tr></thead>
-            <tbody>
-                for stock in stocks {
-                    <tr><td>{stock.name}</td><td class={Amount} ref={Price} data-id={stock.id}>{stock.price}</td></tr>
-                }
-            </tbody>
-        </table>
+        <div on:connect={js::watch(scope, pause, price, feed, signal)}>
+            <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price)}>
+                "Pause updates"
+            </button>
+            <table class={Table}>
+                <thead><tr><th>"Stock"</th><th>"Price"</th></tr></thead>
+                <tbody>
+                    for stock in stocks {
+                        <tr>
+                            <td>{stock.name}</td>
+                            <td ref={price} class={Amount} data-id={stock.id}>{stock.price}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     }
 }
 
@@ -315,22 +323,20 @@ mod tests {
         req.body(Body::from("id=s2")).unwrap()
     }
 
-    /// The island's script is checked against these declarations by `npm run check`.
+    /// The script's rows are checked against these declarations by `npm run check`.
     #[test]
-    fn island_types_match_the_server() {
-        corten::types::Types::new()
-            .add::<Stock>()
-            .components(&[LivePrices])
-            .sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
+    fn script_types_match_the_server() {
+        corten::types::Types::new().add::<Stock>().sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
     }
 
     #[tokio::test]
-    async fn home_renders_rows_and_island_for_browsers() {
+    async fn home_renders_rows_and_script_for_browsers() {
         let (kind, body) = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(kind.starts_with("text/html"));
-        assert!(body.contains("/islands/live-prices.js\">"), "the island module is preloaded: {body}");
+        assert!(body.contains("/scripts/live_prices.js\">"), "the script module is preloaded: {body}");
+        assert!(body.contains(r#"data-on="connect:live_prices.watch($c,@pause,*price,&quot;/feed/stocks&quot;,$s)""#), "{body}");
         assert!(
-            body.contains(r#"<td class="live-prices__amount" data-ref="price" data-id="s1">$129.99</td>"#),
+            body.contains(r#"<td data-ref="price" class="live-prices__amount" data-id="s1">$129.99</td>"#),
             "server renders prices first: {body}"
         );
         assert!(body.contains(

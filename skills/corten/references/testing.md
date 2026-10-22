@@ -30,12 +30,12 @@ mod tests {
 
 1. Cover each mode a handler serves: no `corten` header (the whole document), `corten: action`
    (the patch), and `accept: application/json` (data screens).
-2. Keep the island scripts' declarations current with a test, so `tsc --noEmit` or the editor
-   checks the scripts against the markup and the Rust types (feature `types`):
+2. Keep the scripts' declarations current with a test, so `tsc --noEmit` or the editor checks
+   the scripts against the Rust types and `#[event]` classes (feature `types`):
 
    ```rust
    #[test]
-   fn island_types_match_the_server() {
+   fn script_types_match_the_server() {
        corten::types::Types::new()
            .add::<Stock>()
            .components(&[LivePrices])

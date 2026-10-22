@@ -1,4 +1,4 @@
-//! Headless islands for the widgets the browser has no element for. Each renders accessible
+//! Headless components for the widgets the browser has no element for. Each renders accessible
 //! markup on the server, works as plain HTML before its script loads, and ships no CSS: the
 //! design system styles it.
 //!
@@ -23,9 +23,10 @@
 //! **Styling.** A design system wraps each component in its own element and styles the parts by
 //! role and state, which are the accessibility contract and so cannot drift from what assistive
 //! technology announces: `.field [role=option][aria-selected=true]`, `.field [role=tab][aria-selected=true]`,
-//! `.field button:disabled`. Each component's docs list its parts. The island's tag is
-//! `display: contents`, so its parts are laid out by the wrapper (`order` places an adornment
-//! between them). Popups (`[popover]`) are in the top layer, and the script makes the control
+//! `.field button:disabled`. Each component's docs list its parts. Each component's root is a
+//! `div` (`[data-scope=number-field]`) that holds its parts; the wrapper lays it out, as the
+//! flex container itself or with `display: contents` so the parts join the wrapper's layout
+//! (`order` places an adornment between them). Popups (`[popover]`) are in the top layer, and the script makes the control
 //! that opens each one its anchor; the design system places it with CSS anchor positioning,
 //! which the browser keeps in place on scroll and resize without script:
 //! `inset: auto; position-area: block-end span-inline-end; position-try-fallbacks: flip-block;
@@ -60,7 +61,7 @@ pub use menu_button::{MenuButton, MenuItem};
 pub use number_field::{Number, NumberField, Step};
 pub use tab_group::{Tab, TabGroup};
 
-/// Every island in this crate, for `App::components`.
+/// Every component in this crate with a script, for `App::components`.
 pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton];
 
 /// A typed route a component links to (`#[derive(Route)]`), as a trait object so a list of

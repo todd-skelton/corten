@@ -22,7 +22,7 @@ pub struct MenuItem<'a> {
 /// moves focus into the menu and back to the button, keeps `aria-expanded`, makes the button the
 /// menu's CSS anchor, and closes the menu when an item is used.
 ///
-/// Parts: `button[aria-haspopup=menu]` (`[aria-expanded=true]` when open); `[role=menu]`,
+/// Parts: a `div` around `button[aria-haspopup=menu]` (`[aria-expanded=true]` when open); `[role=menu]`,
 /// the popover, whose anchor is the button (place it with `position-area`); `[role=menuitem]`, an
 /// `a` or a `button` in a form.
 ///
@@ -40,25 +40,45 @@ pub struct MenuItem<'a> {
 ///
 /// let items = [MenuItem { label: &"Orders", link: &Orders, post: false }, MenuItem { label: &"Sign out", link: &SignOut, post: true }];
 /// let html = MenuButton { id: "account", label: &"Account", items: &items }.to_html();
-/// assert!(html.contains(r#"<button type="button" id="account-button" popovertarget="account" aria-haspopup="menu" aria-expanded="false""#));
-/// assert!(html.contains(r#"<a role="menuitem" href="/orders""#));
-/// assert!(html.contains(r#"<form method="post" action="/sign-out" data-patch><button role="menuitem""#));
+/// assert!(html.contains(r#"<button data-ref="trigger" type="button" id="account-button" popovertarget="account" aria-haspopup="menu" aria-expanded="false""#));
+/// assert!(html.contains(r#"<a data-ref="item" role="menuitem" href="/orders""#));
+/// assert!(html.contains(r#"<form method="post" action="/sign-out" data-patch><button data-ref="item" role="menuitem""#));
 /// ```
-#[island]
+#[component(js)]
 pub fn MenuButton<'a>(id: &'a str, label: &'a dyn Render, items: &'a [MenuItem<'a>]) -> impl Render {
+    let (trigger, menu, item) = refs();
     html! {
-        <button type="button" id={(id, "-button")} popovertarget={id} aria-haspopup="menu" aria-expanded="false"
-            ref={Trigger} on:keydown={Open}>{label}</button>
-        <div popover id={id} role="menu" aria-labelledby={(id, "-button")} ref={Menu} on:keydown={Move} on:toggle={Toggled}>
-            for item in items {
-                if item.post {
-                    <form method="post" action={Url(item.link)} data-patch>
-                        <button role="menuitem" ref={Item} on:click={Used}>{item.label}</button>
-                    </form>
-                } else {
-                    <a role="menuitem" href={Url(item.link)} ref={Item} on:click={Used}>{item.label}</a>
+        <div on:connect={js::connect(trigger, menu, item)}>
+            <button
+                ref={trigger}
+                type="button"
+                id={(id, "-button")}
+                popovertarget={id}
+                aria-haspopup="menu"
+                aria-expanded="false"
+                on:keydown={js::open(event, menu)}
+            >
+                {label}
+            </button>
+            <div
+                ref={menu}
+                popover
+                id={id}
+                role="menu"
+                aria-labelledby={(id, "-button")}
+                on:keydown={js::step(event, menu, item)}
+                on:toggle={js::toggled(event, trigger, menu, item)}
+            >
+                for i in items {
+                    if i.post {
+                        <form method="post" action={Url(i.link)} data-patch>
+                            <button ref={item as HTMLElement} role="menuitem" on:click={js::used(menu)}>{i.label}</button>
+                        </form>
+                    } else {
+                        <a ref={item as HTMLElement} role="menuitem" href={Url(i.link)} on:click={js::used(menu)}>{i.label}</a>
+                    }
                 }
-            }
+            </div>
         </div>
     }
 }

@@ -1,4 +1,4 @@
-//! The page: every corten-ui island, wrapped and styled as a design system would.
+//! The page: every corten-ui component, wrapped and styled as a design system would.
 use corten::prelude::*;
 use corten_ui::{Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup};
 

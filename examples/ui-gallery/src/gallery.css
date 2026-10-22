@@ -1,5 +1,5 @@
-/* The adornment sits between the price's decrease button and its input: the island's tag is
-   display: contents, so its parts are the control's flex items. */
+/* The adornment sits between the price's decrease button and its input: the number field's
+   root is display: contents (field.css), so its parts are the control's flex items. */
 .currency { order: 1; }
 .currency ~ * > input { order: 2; }
 .currency ~ * > button:last-child { order: 3; }

@@ -11,7 +11,7 @@ classes; Corten prefixes them (`.offer-list__row`) and generates a constant for 
 ```
 
 ```rust
-#[island(css)]   // #[component(css)] when there is no script
+#[component(css)]   // #[component(css, js)] when it has a script too
 pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Render {
     html! {
         <table class={Table}>

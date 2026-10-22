@@ -1,14 +1,13 @@
 // @ts-check
-// corten/solid: render an island with Solid. Served prebuilt by the corten crate (feature "solid") at
-// /corten/solid.js; `npm run build:js` regenerates js/dist/solid.js from this file.
+// corten/solid: render part of a component with Solid. Served prebuilt by the corten crate
+// (feature "solid") at /corten/solid.js; `npm run build:js` regenerates js/dist/solid.js from this file.
 //
-//   import { island } from "corten";
+//   // stock_badge.rs: <div on:connect={js::start(target, signal)}>"0"</div>
 //   import { mount, h, createSignal } from "corten/solid";
-//   export default island("stock-badge", {
-//     connect({ el, signal }) {
-//       mount(el, () => { const [n, setN] = createSignal(0); return h("button", { onClick: () => setN(n() + 1) }, () => n()); }, { signal });
-//     },
-//   });
+//   /** @param {HTMLDivElement} el @param {AbortSignal} signal */
+//   export function start(el, signal) {
+//     mount(el, () => { const [n, setN] = createSignal(0); return h("button", { onClick: () => setN(n() + 1) }, () => n()); }, { signal });
+//   }
 //
 // Rules (h has no compiler, so reactivity is explicit):
 // 1. A value that changes is passed as a function: `h("td", () => row().price)`, `{ class: () => ... }`.
@@ -61,12 +60,12 @@ export function each(list, render) {
 }
 
 /**
- * Renders `view(server)` with Solid in an island's element until `signal` aborts, then disposes it
- * (its effects, cleanups and listeners): `mount(el, (server) => h(Grid, props), { signal })` with
- * the island's `ctx.signal`.
+ * Renders `view(server)` with Solid in `el` until `signal` aborts, then disposes it (its effects,
+ * cleanups and listeners): `mount(el, (server) => h(Grid, props), { signal })` in an `on:connect`
+ * handler, with its `signal`.
  * `server` holds the nodes the server rendered inside the element, so the view can keep showing
  * them until its data is ready (`when(loaded, view, () => server)`); empty the array once they are
- * gone (`server.length = 0`) so they can be collected. Props are read before the nodes go.
+ * gone (`server.length = 0`) so they can be collected. 
  * @param {HTMLElement} el
  * @param {(server: Node[]) => any} view
  * @param {{ signal: AbortSignal }} options

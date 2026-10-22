@@ -2,7 +2,7 @@
 
 [Back to the guides](../../README.md#documentation)
 
-`corten-ui` is an optional crate of islands for the widgets the browser has no element for. Each
+`corten-ui` is an optional crate of components for the widgets the browser has no element for. Each
 renders accessible markup on the server, works as plain HTML before its script loads, and ships
 no CSS.
 
@@ -20,8 +20,9 @@ html! { <div class={Field}><label for="qty">{t.quantity()}</label><NumberField f
 
 A design system wraps each one and styles its parts by role and state, which are what assistive
 technology announces, so the styles cannot drift from it: `.field [role="option"][aria-selected="true"]`,
-`.tabs [role="tab"][aria-selected="true"]`, `.menu [role="menu"]:popover-open`. The island's tag is
-`display: contents`, so the parts are laid out by the wrapper. Labels come from the app, in the
+`.tabs [role="tab"][aria-selected="true"]`, `.menu [role="menu"]:popover-open`. Each component's root is a `div`
+(`[data-scope=number-field]`) around its parts; the wrapper lays it out, or gives it
+`display: contents` so the parts join the wrapper's layout. Labels come from the app, in the
 page's language. Links are typed routes. List `corten_ui::COMPONENTS` in `App::components`.
 
 Everything else Base UI-style libraries provide is already the platform's: `<dialog>` with

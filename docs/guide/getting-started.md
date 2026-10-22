@@ -11,7 +11,8 @@ cd my-app
 corten dev        # http://localhost:3000, rebuilds on save, open pages reload
 ```
 
-`corten new` writes a working app: a page, a form that patches part of the page, an island, a
+`corten new` writes a working app: a page, a form that patches part of the page, a component
+with a script, a
 test and a Dockerfile.
 
 | Command | What it does |
@@ -30,7 +31,7 @@ The CLI is a convenience over cargo, not a build system: an app is an ordinary c
 |---|---|
 | `src/main.rs` | the routes (`#[derive(Route)]` types), the handlers and `App` |
 | `src/views.rs` | the shell and pages, in `html!` |
-| `src/click_counter.js`, `.css` | the `ClickCounter` island's script and stylesheet, next to its component |
+| `src/click_counter.js`, `.css` | the `ClickCounter` component's handlers and stylesheet, next to it |
 | `static/` | the app's own CSS (element defaults, the shell), images; served at versioned URLs |
 | `AGENTS.md` | the rules for an AI agent working on the app |
 | `Dockerfile` | a release build in a slim image |

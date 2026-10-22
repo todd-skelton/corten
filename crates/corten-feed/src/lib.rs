@@ -1,6 +1,6 @@
 //! The server side of a live feed: a keyed set of rows with a snapshot and an ordered patch stream.
 //!
-//! Pages stay server-rendered. When an island needs live client state (a seller grid), the
+//! Pages stay server-rendered. When a component needs live client state (a seller grid), the
 //! server keeps the rows in a [`Feed`], writes go through [`Feed::write`], and every write
 //! becomes one numbered patch. Two routes per feed:
 //!

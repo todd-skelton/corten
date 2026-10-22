@@ -13,7 +13,7 @@ are one JSON file; both reach the browser as one cached stylesheet. There is no 
 ```
 
 ```rust,ignore
-#[island(css)]  // or #[component(css)] for markup without a script
+#[component(css)]  // #[component(css, js)] with a script too
 pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Render {
     html! {
         <table class={Table}>
@@ -25,7 +25,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 
 | You write | Corten checks or generates |
 |---|---|
-| `offer_list.css` next to `OfferList` | every class prefixed, `.offer-list__row`; a rule that does not start at one of the file's classes (or the island's tag) does not compile, so a component cannot style what it does not render |
+| `offer_list.css` next to `OfferList` | every class prefixed, `.offer-list__row`; a rule that does not start at one of the file's classes does not compile, so a component cannot style what it does not render |
 | `class={Row}`, `class={[Row, Selected]}` | static markup, `class="offer-list__row"`; a class the file lacks, another component's class, or one of the file's classes written as text (`class="row"`) does not compile |
 | `class={(Row, cond.then_some(Selected), extra)}` | joined when the page renders; `None` adds nothing, an empty list leaves the attribute out |
 | a class nothing uses | `warning: constant Hot is never used` (an error under `-D warnings`) |

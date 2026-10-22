@@ -54,7 +54,7 @@ impl<'a> Picker<'a> {
 /// the text, and leaving the field picks an option whose label was typed exactly, clears an
 /// emptied field, or restores the text.
 ///
-/// Parts: `select`; `input[role=combobox]` (`[aria-expanded=true]` when open);
+/// Parts: a `div` around `select`; `input[role=combobox]` (`[aria-expanded=true]` when open);
 /// `[popover]`, the popup, whose anchor is the input (place it with `position-area`);
 /// `[role=listbox]` and `[role=option]` (`[aria-selected=true]` for the value,
 /// `[data-highlighted]` for the one Enter would pick, `[aria-disabled=true]`); `[role=status]`
@@ -70,26 +70,54 @@ impl<'a> Picker<'a> {
 /// let colors = [Choice { value: "salt", label: "Salt & Pepper" }, Choice { value: "sand", label: "Desert Sand" }];
 /// let field = Picker { value: Some("sand"), ..Picker::new("color", Order::FIELDS.color, "Choose a color", "No matches", &colors) };
 /// let html = ComboBox { field: &field }.to_html();
-/// assert!(html.contains(r#"<select id="color" name="color""#));
+/// assert!(html.contains(r#"<select data-ref="select" id="color" name="color""#));
 /// assert!(html.contains(r#"<option value="sand" selected>Desert Sand</option>"#));
 /// assert!(html.contains(r#"role="combobox""#) && html.contains(r#"value="Desert Sand""#));
 /// ```
-#[island]
+#[component(js)]
 pub fn ComboBox<'a>(field: &'a Picker<'a>) -> impl Render {
     let f = field;
+    let (select, input, popup, list, empty) = refs();
     let shown = f.value.and_then(|v| f.options.iter().find(|o| o.value == v)).map(|o| o.label);
     html! {
-        <select id={f.id} name={f.name} required={f.required} disabled={f.disabled} ref={Select} on:invalid={Invalid} {..f.attrs}>
-            <option value="">{f.placeholder}</option>
-            for o in f.options { <option value={o.value} selected={f.value == Some(o.value)}>{o.label}</option> }
-        </select>
-        <input type="text" id={(f.id, "-input")} role="combobox" aria-autocomplete="list" aria-expanded="false"
-            aria-controls={(f.id, "-list")} autocomplete="off" placeholder={f.placeholder} value={shown}
-            disabled={f.disabled} hidden ref={Input}
-            on:input={Filter} on:keydown={Key} on:click={Toggle} on:focusout={Leave} {..f.attrs}>
-        <div popover="manual" ref={Popup} on:mousedown={Hold} on:click={Pick}>
-            <div role="listbox" id={(f.id, "-list")} ref={List}></div>
-            <p role="status" ref={Empty} hidden>{f.empty}</p>
+        <div on:connect={js::connect(scope, select, input, popup, list, empty)}>
+            <select
+                ref={select}
+                id={f.id}
+                name={f.name}
+                required={f.required}
+                disabled={f.disabled}
+                on:invalid={js::invalid(event, scope)}
+                {..f.attrs}
+            >
+                <option value="">{f.placeholder}</option>
+                for o in f.options {
+                    <option value={o.value} selected={f.value == Some(o.value)}>{o.label}</option>
+                }
+            </select>
+            <input
+                ref={input}
+                type="text"
+                id={(f.id, "-input")}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded="false"
+                aria-controls={(f.id, "-list")}
+                autocomplete="off"
+                placeholder={f.placeholder}
+                value={shown}
+                disabled={f.disabled}
+                hidden
+                on:input={js::filter(scope)}
+                on:keydown={js::key(event, scope)}
+                on:click={js::toggle(scope)}
+                on:focusout={js::leave(scope)}
+                {..f.attrs}
+            >
+            <div ref={popup} popover="manual" on:mousedown={js::hold(event)} on:click={js::pick(event, scope)}>
+                <div ref={list} role="listbox" id={(f.id, "-list")}></div>
+                <p ref={empty} role="status" hidden>{f.empty}</p>
+            </div>
         </div>
     }
 }

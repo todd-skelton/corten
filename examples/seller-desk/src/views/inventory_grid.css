@@ -1,0 +1,10 @@
+.grid { display: grid; gap: 8px; }
+.toolbar { display: flex; gap: 12px; align-items: center; min-height: 36px; }
+.toolbar input[type="search"] { font: inherit; padding: 6px 8px; width: 20rem; }
+.table { border-collapse: collapse; width: 100%; }
+.table th, .table td { border-bottom: 1px solid #e3e1ea; padding: 4px 8px; text-align: left; }
+.table th button { all: unset; cursor: pointer; font-weight: 600; }
+.table th[aria-sort="ascending"] button::after { content: " \2191"; }
+.table th[aria-sort="descending"] button::after { content: " \2193"; }
+.table tr[aria-selected="true"] { background: #efe9fb; }
+.empty { color: #6b6880; }

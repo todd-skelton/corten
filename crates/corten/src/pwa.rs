@@ -174,7 +174,7 @@ impl Pwa {
         self
     }
 
-    /// Versioned URLs to cache at install (the CSS and island modules the offline page and the
+    /// Versioned URLs to cache at install (the CSS and script modules the offline page and the
     /// first screens need). The runtime is always included.
     pub fn precache(mut self, urls: impl IntoIterator<Item = String>) -> Self {
         self.precache.extend(urls);

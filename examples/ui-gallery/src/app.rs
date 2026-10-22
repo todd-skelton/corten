@@ -1,4 +1,4 @@
-//! corten-ui's islands on one page, with the form they belong to.
+//! corten-ui's components on one page, with the form they belong to.
 //!
 //! | Route | |
 //! |---|---|
@@ -102,9 +102,9 @@ mod tests {
         String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
     }
 
-    /// The islands' scripts are checked against these declarations by `npm run check`.
+    /// The scripts are checked against these declarations by `npm run check`.
     #[test]
-    fn island_types_match_the_server() {
+    fn script_types_match_the_server() {
         corten::types::Types::new()
             .components(COMPONENTS)
             .components(corten_ui::COMPONENTS)
@@ -112,10 +112,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_page_preloads_the_islands_it_renders_and_selects_the_tab_in_the_url() {
+    async fn the_page_preloads_the_scripts_it_uses_and_selects_the_tab_in_the_url() {
         let page = send(Request::get("/?tab=offers").body(Body::empty()).unwrap()).await;
-        for tag in ["number-field", "combo-box", "tab-group", "menu-button"] {
-            assert!(page.contains(&format!("/islands/{tag}.js\">")), "{tag} is preloaded: {page}");
+        for name in ["number_field", "combo_box", "tab_group", "menu_button"] {
+            assert!(page.contains(&format!("/scripts/{name}.js\">")), "{name} is preloaded: {page}");
         }
         assert!(
             page.contains(r#"id="book-tab-1" href="/?tab=offers" aria-controls="book-panel-1" aria-selected="true""#),

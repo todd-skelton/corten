@@ -1,5 +1,7 @@
 .root { display: grid; gap: 4px; margin-block: 12px; justify-items: start; }
 .control { display: flex; align-items: center; gap: 4px; }
+/* A component's root holds its parts; here they join the control's flex row. */
+.control > [data-scope] { display: contents; }
 .control input,
 .control select { font: inherit; padding: 6px 8px; border: 1px solid GrayText; border-radius: 6px; }
 .control input[type="number"] { appearance: textfield; width: 9ch; text-align: center; }

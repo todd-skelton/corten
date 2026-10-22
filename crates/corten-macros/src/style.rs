@@ -20,18 +20,11 @@ pub struct Sheet {
 }
 
 /// Prefixes every class in `src` with `{prefix}__`. A rule outside any at-rule (or in `@media`,
-/// `@supports`, `@container`, `@layer`) must name one of the file's classes, or `tag` (the
-/// island's element), so a component's styles cannot reach elements it does not render.
-pub fn scope(src: &str, prefix: &str, tag: Option<&str>) -> Result<Sheet, String> {
-    let mut s = Scoper {
-        text: src,
-        bytes: src.as_bytes(),
-        i: 0,
-        out: String::with_capacity(src.len()),
-        classes: Vec::new(),
-        prefix,
-        tag,
-    };
+/// `@supports`, `@container`, `@layer`) must name one of the file's classes, so a component's
+/// styles cannot reach elements it does not render.
+pub fn scope(src: &str, prefix: &str) -> Result<Sheet, String> {
+    let mut s =
+        Scoper { text: src, bytes: src.as_bytes(), i: 0, out: String::with_capacity(src.len()), classes: Vec::new(), prefix };
     s.block(Ctx::Top, true)?;
     Ok(Sheet { css: s.out, classes: s.classes })
 }
@@ -53,7 +46,6 @@ struct Scoper<'a> {
     out: String,
     classes: Vec<String>,
     prefix: &'a str,
-    tag: Option<&'a str>,
 }
 
 impl Scoper<'_> {
@@ -204,7 +196,7 @@ impl Scoper<'_> {
     }
 
     /// The selector with its classes prefixed. With `check`, every selector in the list must
-    /// name a class of the file, or the island's tag.
+    /// name a class of the file.
     fn selector(&mut self, text: &str, check: bool, at: usize) -> Result<String, String> {
         let chars: Vec<char> = text.chars().collect();
         let mut out = String::with_capacity(text.len() + 16);
@@ -276,18 +268,17 @@ impl Scoper<'_> {
         Ok(out)
     }
 
-    /// An error unless the selector names a class of the file or the island's tag.
+    /// An error unless the selector names a class of the file.
     fn owned(&self, part: &[char], scoped: bool, at: usize) -> Result<(), String> {
         let part: String = part.iter().collect();
         let part = part.trim();
-        if scoped || self.tag.is_some_and(|tag| has_tag(part, tag)) {
+        if scoped {
             return Ok(());
         }
-        let scope = match self.tag {
-            Some(tag) => format!("one of the stylesheet's classes or the island's tag, like `{tag} {part}`"),
-            None => format!("one of the stylesheet's classes, like `.list {part}`"),
-        };
-        Err(self.error(at, format!("`{part}` styles elements this component does not own: start the rule with {scope}")))
+        Err(self.error(
+            at,
+            format!("`{part}` styles elements this component does not own: start the rule with one of the stylesheet's classes, like `.list {part}`"),
+        ))
     }
 }
 
@@ -297,16 +288,6 @@ fn ident_start(rest: &[char]) -> bool {
         ['-', c, ..] => c.is_ascii_alphabetic() || *c == '_',
         _ => false,
     }
-}
-
-/// True when `selector` has `tag` as a type selector.
-fn has_tag(selector: &str, tag: &str) -> bool {
-    selector.match_indices(tag).any(|(at, _)| {
-        let before = selector[..at].chars().next_back();
-        let after = selector[at + tag.len()..].chars().next();
-        before.is_none_or(|c| c.is_whitespace() || matches!(c, '>' | '+' | '~' | '(' | ','))
-            && after.is_none_or(|c| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_')))
-    })
 }
 
 /// Comments removed and whitespace collapsed, outside strings.
@@ -379,7 +360,7 @@ pub fn class_ident(class: &str) -> Result<String, String> {
     Ok(out)
 }
 
-/// The stylesheet `file` next to the source file of `span`. When the compiler gives no source
+/// The stylesheet or script `file` next to the source file of `span`. When the compiler gives no source
 /// path (some editors' macro servers), the one file with that name under the crate's `src`.
 pub fn locate(file: &str, span: Span) -> Result<PathBuf, Error> {
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
@@ -395,17 +376,14 @@ pub fn locate(file: &str, span: Span) -> Result<PathBuf, Error> {
             if path.is_file() {
                 return Ok(path);
             }
-            return err(
-                span,
-                format!("this component's stylesheet is {file}, next to its source file, and {} does not exist", path.display()),
-            );
+            return err(span, format!("{file} belongs next to this source file, and {} does not exist", path.display()));
         }
     }
     let mut found = Vec::new();
     find(&root.join("src"), file, &mut found);
     match found.len() {
         1 => Ok(found.pop().expect("one")),
-        0 => err(span, format!("this component's stylesheet is {file}, next to its source file, and there is none")),
+        0 => err(span, format!("{file} belongs next to this source file, and there is none")),
         _ => err(span, format!("several files are named {file}; the compiler gave no source path to choose one")),
     }
 }
@@ -435,13 +413,13 @@ pub struct Css {
 }
 
 impl Css {
-    pub fn read(owner: &Ident, tag: Option<&str>, span: Span) -> Result<Css, Error> {
+    pub fn read(owner: &Ident, span: Span) -> Result<Css, Error> {
         let name = owner.to_string();
-        let prefix = crate::island::kebab(&name);
-        let file = format!("{}.css", crate::island::snake(&name));
+        let prefix = crate::names::kebab(&name);
+        let file = format!("{}.css", crate::names::snake(&name));
         let path = locate(&file, span)?;
         let text = std::fs::read_to_string(&path).map_err(|e| (span, format!("cannot read {}: {e}", path.display())))?;
-        let sheet = scope(&text, &prefix, tag).map_err(|e| (span, format!("{file}, {e}")))?;
+        let sheet = scope(&text, &prefix).map_err(|e| (span, format!("{file}, {e}")))?;
         let mut idents: Vec<String> = Vec::with_capacity(sheet.classes.len());
         for class in &sheet.classes {
             let ident = class_ident(class).map_err(|e| (span, format!("{file}: {e}")))?;
@@ -673,19 +651,18 @@ mod tests {
     #[test]
     fn classes_are_prefixed_and_rules_stay_inside_the_component() {
         let css = "/* list */\n.list { gap: 8px; }\n.list > .row:hover, .row.is-on { color: var(--ink) }\n@media (min-width: 40rem) { .list { gap: 1.5rem } }\n.title { & span { font-weight: 700 } h2 & { margin: 0 } }\n@keyframes spin { from { rotate: 0 } to { rotate: 1turn } }\n.img { background: url(\"a.b.png\") }\n.x[data-tone=\".y\"] { opacity: .5 }";
-        let sheet = scope(css, "offer-list", None).unwrap();
+        let sheet = scope(css, "offer-list").unwrap();
         assert_eq!(
             sheet.css,
             ".offer-list__list{gap:8px}.offer-list__list > .offer-list__row:hover, .offer-list__row.offer-list__is-on{color:var(--ink)}@media (min-width: 40rem){.offer-list__list{gap:1.5rem}}.offer-list__title{& span{font-weight:700}h2 &{margin:0}}@keyframes spin{from{rotate:0}to{rotate:1turn}}.offer-list__img{background:url(\"a.b.png\")}.offer-list__x[data-tone=\".y\"]{opacity:.5}"
         );
         assert_eq!(sheet.classes, ["list", "row", "is-on", "title", "img", "x"]);
-        assert!(scope("h2 { margin: 0 }", "x", None).unwrap_err().contains("`h2` styles elements this component does not own"));
-        assert!(scope(".a, h2 { margin: 0 }", "x", None).unwrap_err().contains("line 1"));
-        assert!(scope("offer-list h2 { margin: 0 }", "offer-list", Some("offer-list")).is_ok());
-        assert!(scope("@media print { body { margin: 0 } }", "x", None).is_err(), "at-rules do not unscope");
-        assert!(scope("\n\n@import \"x.css\";", "x", None).unwrap_err().starts_with("line 3: @import"));
-        assert!(scope(".a { color: red", "x", None).unwrap_err().contains("never closed"));
-        assert!(scope(".a__b { color: red }", "x", None).is_err());
+        assert!(scope("h2 { margin: 0 }", "x").unwrap_err().contains("`h2` styles elements this component does not own"));
+        assert!(scope(".a, h2 { margin: 0 }", "x").unwrap_err().contains("line 1"));
+        assert!(scope("@media print { body { margin: 0 } }", "x").is_err(), "at-rules do not unscope");
+        assert!(scope("\n\n@import \"x.css\";", "x").unwrap_err().starts_with("line 3: @import"));
+        assert!(scope(".a { color: red", "x").unwrap_err().contains("never closed"));
+        assert!(scope(".a__b { color: red }", "x").is_err());
     }
 
     #[test]

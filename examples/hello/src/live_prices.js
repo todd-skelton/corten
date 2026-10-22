@@ -1,48 +1,51 @@
 // @ts-check
-import { island, subscribe } from "corten";
+// LivePrices (app.rs): keeps the server-rendered prices current from the feed. While paused it
+// keeps the latest rows and shows them on resume.
+import { state, subscribe } from "corten";
 
 /** @typedef {import("../types/app").Stock} Stock Generated from `Stock` in src/app.rs. */
 
+/** @param {HTMLElement} root */
+const prices = (root) => state(root, () => ({ paused: false, latest: /** @type {Map<string, Stock>} */ (new Map()) }));
+
 /**
- * @param {HTMLElement[]} cells The price cells, `all.price`.
- * @param {Stock} stock
+ * @param {HTMLElement} root @param {HTMLButtonElement} pause @param {HTMLTableCellElement[]} cells
+ * @param {string} feed @param {AbortSignal} signal
  */
+export function watch(root, pause, cells, feed, signal) {
+  const s = prices(root);
+  pause.hidden = false;
+  /** @param {Stock} stock */
+  const show = (stock) => {
+    s.latest.set(stock.id, stock);
+    if (!s.paused) paint(cells, stock);
+  };
+  subscribe(
+    feed,
+    {
+      /** @param {Stock[]} rows */
+      snapshot: (rows) => rows.forEach(show),
+      patch: (changes) => {
+        for (const change of changes) if (change.op === "upsert") show(change.value);
+      },
+      status: (status) => {
+        root.dataset.status = status;
+      },
+    },
+    { signal },
+  );
+}
+
+/** @param {HTMLElement} root @param {HTMLButtonElement} button @param {HTMLTableCellElement[]} cells */
+export function pause(root, button, cells) {
+  const s = prices(root);
+  s.paused = !s.paused;
+  button.setAttribute("aria-pressed", String(s.paused));
+  if (!s.paused) for (const stock of s.latest.values()) paint(cells, stock);
+}
+
+/** @param {HTMLTableCellElement[]} cells @param {Stock} stock */
 function paint(cells, stock) {
   const cell = cells.find((c) => c.dataset.id === stock.id);
   if (cell && cell.textContent !== stock.price) cell.textContent = stock.price;
 }
-
-// Keeps the server-rendered prices current from the feed the server names in props.feed. While
-// paused it keeps the latest rows and shows them on resume.
-export default island("live-prices", {
-  state: () => ({ paused: false, latest: /** @type {Map<string, Stock>} */ (new Map()) }),
-  connect({ el, refs, all, props, state, signal }) {
-    refs.pauseButton.hidden = false;
-    /** @param {Stock} stock */
-    const show = (stock) => {
-      state.latest.set(stock.id, stock);
-      if (!state.paused) paint(all.price, stock);
-    };
-    subscribe(
-      props.feed,
-      {
-        /** @param {Stock[]} rows */
-        snapshot: (rows) => rows.forEach(show),
-        patch: (changes) => {
-          for (const change of changes) if (change.op === "upsert") show(change.value);
-        },
-        status: (status) => {
-          el.dataset.status = status;
-        },
-      },
-      { signal },
-    );
-  },
-  actions: {
-    pause({ all, state, target }) {
-      state.paused = !state.paused;
-      target.setAttribute("aria-pressed", String(state.paused));
-      if (!state.paused) for (const stock of state.latest.values()) paint(all.price, stock);
-    },
-  },
-});

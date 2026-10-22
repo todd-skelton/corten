@@ -90,10 +90,7 @@ async fn a_bare_router_renders_in_the_default_shell_without_a_policy() {
     assert!(body.starts_with(r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">"#), "{body}");
     assert!(body.contains(r#"<title>A &amp; B</title><meta name="description" content="About A" data-corten-head>"#));
     assert!(body.contains(&format!(r#"<script type="module" src="{}"></script>"#, runtime_path())));
-    assert!(
-        !body.contains("modulepreload") && !body.contains("display:contents"),
-        "a custom element that is not one of the app's islands is left alone"
-    );
+    assert!(!body.contains("modulepreload"), "a page without handlers preloads no scripts");
     assert!(body.contains("<p>&lt;script&gt;</p>"), "page text is escaped");
     assert!(!body.contains("nonce"), "no policy, no nonce");
 }
@@ -154,14 +151,6 @@ async fn page_answers_data_requests_with_the_document() {
     let (_, headers, body) = call_with(app(routes(), None), "GET", "/", None, Some("application/json")).await;
     assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"));
     assert!(body.starts_with("<html>"));
-}
-
-#[test]
-fn finds_custom_elements_once_in_order() {
-    let html = r#"<div><offer-list a="1"><tr></tr></offer-list><listing-sort></listing-sort><offer-list></offer-list><corten-live></corten-live><h2-x>"#;
-    assert_eq!(find_islands(html), vec!["offer-list", "listing-sort", "h2-x"]);
-    assert!(find_islands("<p>a &lt;b-c&gt; d</p><br><-x></x-y><p data-x-y=\"a-b\">well-known</p>").is_empty());
-    assert_eq!(find_islands("<my-big-el data-x-y=\"a-b\"></my-big-el><x--><a-1>"), vec!["my-big-el", "x--", "a-1"]);
 }
 
 #[cfg(feature = "solid")]

@@ -33,7 +33,7 @@ In scope is anything Corten does on an app's behalf:
 4. Request handling: the request modes, patches, redirects (`Href` only accepts typed routes),
    static files and versioned asset URLs, and error pages that could leak internals outside dev
    mode.
-5. The browser runtime (`corten.js`), islands, `<corten-live>` and feeds, including resuming a
+5. The browser runtime (`corten.js`), handlers, `<corten-live>` and feeds, including resuming a
    feed from a client-supplied cursor.
 6. `corten-cluster` (outbox, relay, followers) and `corten::agent` (MCP tools).
 

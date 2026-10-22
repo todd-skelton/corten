@@ -1,6 +1,6 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
 //! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(Route)]` (see
-//! `corten::route`), `#[island]` (see `corten::island`), `messages!` (see `corten::i18n`) and
+//! `corten::route`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
 //! `tokens!` and component stylesheets (see `corten::style`).
 //!
 //! Written against `proc_macro` alone (no `syn` or `quote`), so the crate has no dependencies
@@ -8,11 +8,14 @@
 
 mod component;
 mod derive;
+mod dom;
+mod event;
 mod html;
-mod island;
 mod json;
 mod messages;
+mod names;
 mod route;
+mod script;
 mod style;
 mod theme;
 mod tokens;
@@ -37,12 +40,16 @@ pub fn derive_route(input: TokenStream) -> TokenStream {
     route::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
-/// A component with behavior in a script next to it. Documented at `corten::island`.
+/// A struct as a typed DOM event. Documented at `corten::script`.
 #[proc_macro_attribute]
-pub fn island(args: TokenStream, item: TokenStream) -> TokenStream {
-    component::args(args, "#[island]")
-        .and_then(|css| component::build(item, true, css))
-        .unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+pub fn event(args: TokenStream, item: TokenStream) -> TokenStream {
+    event::expand(args, item).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// A handler module shared by components. Documented at `corten::script`.
+#[proc_macro]
+pub fn script(input: TokenStream) -> TokenStream {
+    script::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// A design-token file as CSS custom properties, typed scales and utility classes. Documented

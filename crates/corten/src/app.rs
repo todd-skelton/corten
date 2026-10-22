@@ -45,9 +45,9 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 /// - the shell around every page ([`crate::default_shell`] until [`App::shell`]);
 /// - error pages for failed requests and unknown URLs, in the request's mode, with the error
 ///   shown under `corten dev`;
-/// - the files in `static/` (or `STATIC_DIR`), the scripts of the app's islands and its
+/// - the files in `static/` (or `STATIC_DIR`), the scripts of the app's components and its
 ///   components' stylesheets joined into one file ([`App::components`]), at content-versioned,
-///   immutable URLs, each island's script preloaded on the pages that render it;
+///   immutable URLs, each script preloaded on the pages whose handlers use it;
 /// - `/health/live` and `/health/ready`, the runtime at a versioned URL;
 /// - compression of pages and static files (feature `compress`);
 /// - under `corten dev` (`CORTEN_DEV=1`): open pages reload when the server restarts.
@@ -115,12 +115,12 @@ impl App {
         self
     }
 
-    /// The app's components with a script or a stylesheet (`#[island]`, `#[component(css)]`,
-    /// `style::tokens!`), each listed by its constant: `.components(&[TOKENS, OfferList,
+    /// The app's components with a script, a stylesheet or a typed event
+    /// (`#[component(js)]`, `#[component(css)]`, `script!`, `#[event]`, `style::tokens!`), each listed by its constant: `.components(&[TOKENS, OfferList,
     /// ListingSort])`, or a library's list, `.components(ui::COMPONENTS)`. Call it once per list;
     /// the order is the stylesheets' order, so list tokens and libraries first.
     ///
-    /// Scripts are served with the static files and preloaded on the pages that render them;
+    /// Scripts are served with the static files and preloaded on the pages whose handlers use them;
     /// the stylesheets are one file, `components.css`, linked from every document's `<head>`.
     /// A component listed twice counts once.
     pub fn components(mut self, components: &[crate::Component]) -> Self {

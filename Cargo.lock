@@ -1764,6 +1764,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "seller-desk"
+version = "0.1.0"
+dependencies = [
+ "corten",
+ "http-body-util",
+ "schemars",
+ "serde",
+ "tokio",
+ "tower",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"

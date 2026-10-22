@@ -3,7 +3,7 @@ name = "ui-gallery"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "corten-ui's islands in one form, styled by a small design system, with a browser smoke test."
+description = "corten-ui's components in one form, styled by a small design system, with a browser smoke test."
 
 [dependencies]
 corten = { path = "../../crates/corten" }

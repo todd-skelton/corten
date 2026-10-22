@@ -64,7 +64,11 @@ mod tests {
     #[tokio::test]
     async fn home_page_renders_in_the_shell() {
         let html = send(Request::get("/").body(Body::empty()).unwrap()).await;
-        assert!(html.contains("<title>{{name}}</title>") && html.contains("<click-counter"));
+        assert!(html.contains("<title>{{name}}</title>"));
+        assert!(
+            html.contains("click_counter.count(@total)"),
+            "the counter's handler: {html}"
+        );
     }
 
     #[tokio::test]

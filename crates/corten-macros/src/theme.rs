@@ -394,7 +394,8 @@ fn generate(root: &Value, file: &Path, path: &str) -> Result<TokenStream, String
     out.extend(q(
         "#[doc = __A0] pub const TOKENS: ::corten::Component = ::corten::Component {
             name: __A1,
-            island: ::core::option::Option::None,
+            script: ::core::option::Option::None,
+            event: ::core::option::Option::None,
             style: ::core::option::Option::Some(::corten::style::Style { name: __A1, file: __A1, css: __A2, classes: &[] }),
         };",
         &[

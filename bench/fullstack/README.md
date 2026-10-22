@@ -5,7 +5,7 @@ price-alert form that posts and patches a message) built in:
 
 | App | Stack | Directory |
 |---|---|---|
-| corten | Corten 0.1 (Rust, axum, `html!` views, custom-element islands) | [examples/item-page](../../examples/item-page) |
+| corten | Corten 0.1 (Rust, axum, `html!` views, custom-element islands; measured before handlers replaced them) | [examples/item-page](../../examples/item-page) |
 | nextjs | Next.js 16.4.2, App Router, React Server Components, server action | [apps/nextjs](apps/nextjs) |
 | tanstack-start | TanStack Start 1.169.3, React 19, server functions, Nitro | [apps/tanstack-start](apps/tanstack-start) |
 | sveltekit | SvelteKit 3.1.0, Svelte 5.57, adapter-node 6, form action | [apps/sveltekit](apps/sveltekit) |
