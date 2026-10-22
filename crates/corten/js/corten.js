@@ -457,9 +457,13 @@ async function visit(url, signal) {
 const navigation = /** @type {any} */ (window).navigation;
 
 navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
+  // A script's history.pushState or replaceState (a tab that puts itself in the address) is the
+  // page's own: nothing to fetch. Back and forward between pages this runtime swapped are
+  // same-document traversals too, and do need the page.
   const skip =
     !event.canIntercept ||
     event.hashChange ||
+    (event.destination.sameDocument && event.navigationType !== "traverse") ||
     event.downloadRequest !== null ||
     event.formData ||
     event.navigationType === "reload" ||

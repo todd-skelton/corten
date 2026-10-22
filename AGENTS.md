@@ -31,7 +31,12 @@ reason that a smaller change cannot meet.
    against the declarations `corten::types` generates (`examples/*/types/app.d.ts`, rewritten by
    the `island_types_match_the_server` test); a typing guarantee gets an `@ts-expect-error` line in
    `scripts/typecheck-fixture.js`.
-8. `bench/` is not part of the workspace. Its apps are built only by `bench/fullstack` scripts.
+8. Widgets the browser lacks go in `crates/corten-ui`: headless `#[island]`s (no CSS; parts are
+   styled by role and ARIA state), labels from the app, links as typed routes (`Link`), working as
+   plain HTML before the script loads. Add one only when an app needs it and the platform has no
+   element for it; remove it when the platform does. Each is tested in a browser by
+   `examples/ui-gallery/smoke.mjs`.
+9. `bench/` is not part of the workspace. Its apps are built only by `bench/fullstack` scripts.
 
 ## Checks (all must pass before you report done)
 
@@ -47,6 +52,10 @@ docker build -f examples/item-page/Dockerfile -t corten-item-page .
 docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -v "${PWD}/examples/item-page/fixtures:/fixtures:ro" corten-item-page
 node examples/item-page/smoke.mjs http://localhost:18481
 docker rm -f corten-item-page
+docker build -f examples/ui-gallery/Dockerfile -t corten-ui-gallery .
+docker run -d --name corten-ui-gallery -p 18482:8080 corten-ui-gallery
+node examples/ui-gallery/smoke.mjs http://localhost:18482
+docker rm -f corten-ui-gallery
 ```
 
 Rust tests run in Docker because the Windows host cannot link `windows-sys`. Run each command

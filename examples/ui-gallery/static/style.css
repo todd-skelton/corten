@@ -1,0 +1,5 @@
+/* Element defaults. Parts the components hide with the hidden attribute stay hidden even when a
+   design system gives their role a display. */
+[hidden] { display: none !important; }
+:root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
+body { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }

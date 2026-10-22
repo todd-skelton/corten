@@ -1,0 +1,17 @@
+[package]
+name = "ui-gallery"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "corten-ui's islands in one form, styled by a small design system, with a browser smoke test."
+
+[dependencies]
+corten = { path = "../../crates/corten" }
+corten-ui = { path = "../../crates/corten-ui" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+corten = { path = "../../crates/corten", features = ["types"] }
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

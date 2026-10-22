@@ -304,6 +304,36 @@ exports `pub const COMPONENTS: &[Component]`; the app passes it to `App::compone
 Link it before `{doc.head}` so component rules win ties. Inline `style=` stays blocked by the
 CSP; one-off values come from the token utilities instead.
 
+## Headless components
+
+`corten-ui` is an optional crate of islands for the widgets the browser has no element for. Each
+renders accessible markup on the server, works as plain HTML before its script loads, and ships
+no CSS.
+
+| Component | Without JavaScript | The script adds |
+|---|---|---|
+| `NumberField` | a native `<input type="number">` (arrow keys, `min`, `max`, `step`, `required`) | step buttons with press and hold, Page Up and Down, Home and End, the step's decimals |
+| `ComboBox` | a native `<select>`, which keeps the value | a text input that filters a listbox (ARIA 1.2 combobox), validation reported on the input |
+| `TabGroup` | tabs that are typed links to the page with that tab selected | roving focus, arrow keys, switching in place with the address following |
+| `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, placement, `aria-expanded` |
+
+```rust
+let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };
+html! { <div class={Field}><label for="qty">{t.quantity()}</label><NumberField field={&qty} /></div> }
+```
+
+A design system wraps each one and styles its parts by role and state, which are what assistive
+technology announces, so the styles cannot drift from it: `.field [role="option"][aria-selected="true"]`,
+`.tabs [role="tab"][aria-selected="true"]`, `.menu [role="menu"]:popover-open`. The island's tag is
+`display: contents`, so the parts are laid out by the wrapper. Labels come from the app, in the
+page's language. Links are typed routes. List `corten_ui::COMPONENTS` in `App::components`.
+
+Everything else Base UI-style libraries provide is already the platform's: `<dialog>` with
+`command="show-modal"` for dialogs and alert dialogs, `popover` for popovers and tooltips,
+`<details name>` for accordions, `<select>` (with `appearance: base-select` where supported),
+checkboxes, radios and `<input type="range">`. [examples/ui-gallery](examples/ui-gallery) shows
+all four styled by a small design system, with a browser test.
+
 ## Types across seams
 
 Every value that crosses from Rust to the browser or to an agent is defined once, in Rust, and
@@ -365,7 +395,9 @@ method (the full run measured 6.2 KB before them); the other columns are from th
 ## Rules
 
 1. HTML comes from the server, in `html!`. Islands never build markup from strings; they move,
-   show or hide server-rendered nodes. Extra rows ship in a `<template ref={Rest}>`.
+   show or hide server-rendered nodes. Extra rows ship in a `<template ref={Rest}>`. (One
+   exception: `ComboBox` mirrors the server's `<option>`s into its listbox, so each option is
+   sent once.)
 2. A fragment that can be patched is a component, rendered by the page and by the patch, so the
    two cannot drift.
 3. An island's script reaches the page only through the names its markup gives it: `refs`,
@@ -385,9 +417,11 @@ crates/
   corten-feed/       Live feeds: rows, numbered patches, replay, resume
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
   corten-cluster/    One feed across instances: Postgres outbox, NATS JetStream relay
+  corten-ui/         Optional headless islands: number field, combobox, tabs, menu button
 examples/hello/      One screen that uses every piece; scripts/smoke.mjs tests it in a browser
 examples/item-page/  A marketplace item page with every production module on; smoke.mjs tests it
 examples/cluster/    A listings feed on corten-cluster, and the failover benchmark
+examples/ui-gallery/ corten-ui styled by a small design system; smoke.mjs tests it in a browser
 docs/architecture.md How web, native and agent surfaces share one server
 bench/fullstack/     The same page in six frameworks, and the scripts that compare them
 ```
@@ -417,11 +451,15 @@ the framework itself.
    a page uses it: the item page's `components.css` (tokens, two themes, utilities and five
    components) is 3.2 KB, 822 bytes brotli (measured). A large library adds to every first load
    until the file is split per route, which is not built.
+9. `corten-ui` is tested in Chromium only. Its popups are placed by script under their anchor, or
+   above it when only there is room; there is no other collision handling. Tabs are horizontal.
+   Its tags are not prefixed (`<combo-box>`, `<tab-group>`), so an app island with the same
+   name is a startup error.
 
 ## Working on Corten
 
 [AGENTS.md](AGENTS.md) lists the checks: Rust tests, lints and format (in Docker on Windows),
-`npm run check` for the runtime's types, and browser smoke tests against both examples.
+`npm run check` for the runtime's types, and browser smoke tests against the examples.
 
 ## Name
 

@@ -135,6 +135,7 @@ library. Measured against a production marketplace app:
 | Design tokens to CSS and Rust | Framework: `tokens!` | Utilities are typed in views and their classes must exist in the served CSS, so both come from the one macro, at compile time. The token file format is plain JSON (scales, themes, breakpoints, utilities). |
 | Design tokens to Swift and Kotlin | Build tooling | Same JSON, other languages; a build step per platform, not part of the server. |
 | A component library (buttons, dialogs, menus) | App or a library crate | Look and domain vary per product. The framework gives the parts (scoped CSS, islands, `COMPONENTS` lists); it ships no widgets. |
+| Behavior of widgets the browser lacks (number field, combobox, tabs, menu button) | `corten-ui`, a separate crate in this repo | Focus, keys and ARIA are the same in every product and hard to get right, so each app should not write them; but they are optional, change faster than the core and add client code. So they live outside `corten` (not re-exported, depends only on `corten`), headless (no CSS: the design system styles them by role and ARIA state), and each one is removed when the platform's own element is good enough. Dialogs, popovers, accordions, selects, switches and sliders are already the platform's. |
 | Sessions and authentication | App | Only cookie helpers and the shell context hook are provided. |
 
 ## Open decisions

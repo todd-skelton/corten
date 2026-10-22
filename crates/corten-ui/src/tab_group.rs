@@ -1,0 +1,62 @@
+use corten::prelude::*;
+
+use crate::{state, Link, Url};
+
+/// One tab of a [`TabGroup`].
+pub struct Tab<'a> {
+    /// What the tab shows.
+    pub label: &'a dyn Render,
+    /// The panel's content.
+    pub panel: &'a dyn Render,
+    /// The page with this tab selected (`ItemRoute { id, tab: Some("offers") }`). Without
+    /// JavaScript the tab is a link to it; with JavaScript the tab switches in place and the
+    /// address bar follows, so a reload or a shared link opens the same tab. `None`: a button.
+    pub link: Option<&'a dyn Link>,
+}
+
+/// Tabs and their panels: the WAI-ARIA tabs pattern with automatic activation.
+///
+/// The server renders every panel and hides all but `selected`. The script (`tab_group.js`)
+/// adds the roving focus (Tab reaches the selected tab, the arrow keys, Home and End move and
+/// select) and switches panels on click. Tabs that are links work without it: each loads its
+/// page, where the server selects it. Tabs that are buttons need it.
+///
+/// Parts: `[role=tablist]`; `[role=tab]` (`[aria-selected=true]` for the selected one), an
+/// `a` or a `button`; `[role=tabpanel]`, hidden unless selected.
+///
+/// ```
+/// use corten::prelude::*;
+/// use corten_ui::{Tab, TabGroup};
+///
+/// #[derive(Route)]
+/// #[route("/items/{id}")]
+/// struct Item<'a> { id: &'a str, tab: Option<&'a str> }
+///
+/// let (listings, offers) = (Item { id: "x", tab: None }, Item { id: "x", tab: Some("offers") });
+/// let tabs = [
+///     Tab { label: &"Listings", panel: &html! { <p>"3 listings"</p> }, link: Some(&listings) },
+///     Tab { label: &"Offers", panel: &html! { <p>"No offers"</p> }, link: Some(&offers) },
+/// ];
+/// let html = TabGroup { id: "book", label: "Market", tabs: &tabs, selected: 1 }.to_html();
+/// assert!(html.contains(r#"<a role="tab" id="book-tab-1" href="/items/x?tab=offers" aria-controls="book-panel-1" aria-selected="true""#));
+/// assert!(html.contains(r#"<div role="tabpanel" id="book-panel-0" aria-labelledby="book-tab-0" tabindex="0" hidden"#));
+/// ```
+#[island]
+pub fn TabGroup<'a>(id: &'a str, label: &'a str, tabs: &'a [Tab<'a>], selected: usize) -> impl Render {
+    html! {
+        <div role="tablist" aria-label={label}>
+            for (i, tab) in tabs.iter().enumerate() {
+                match tab.link {
+                    Some(link) => <a role="tab" id={(id, "-tab-", i)} href={Url(link)} aria-controls={(id, "-panel-", i)}
+                        aria-selected={state(i == selected)} ref={Trigger} on:click={Choose} on:keydown={Move}>{tab.label}</a>,
+                    None => <button type="button" role="tab" id={(id, "-tab-", i)} aria-controls={(id, "-panel-", i)}
+                        aria-selected={state(i == selected)} ref={Trigger} on:click={Choose} on:keydown={Move}>{tab.label}</button>,
+                }
+            }
+        </div>
+        for (i, tab) in tabs.iter().enumerate() {
+            <div role="tabpanel" id={(id, "-panel-", i)} aria-labelledby={(id, "-tab-", i)} tabindex="0" hidden={i != selected}
+                ref={Panel}>{tab.panel}</div>
+        }
+    }
+}

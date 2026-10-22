@@ -1,0 +1,17 @@
+/* The adornment sits between the price's decrease button and its input: the island's tag is
+   display: contents, so its parts are the control's flex items. */
+.currency { order: 1; }
+.currency ~ * > input { order: 2; }
+.currency ~ * > button:last-child { order: 3; }
+
+.book [role="tablist"] { display: flex; gap: 4px; border-bottom: 1px solid GrayText; }
+.book [role="tab"] { padding: 6px 12px; border: 0; background: none; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
+.book [role="tab"][aria-selected="true"] { box-shadow: inset 0 -2px #6b3fd4; font-weight: 600; }
+.book [role="tabpanel"] { padding: 12px 0; }
+
+/* A popover's display applies only while it is open, or it would show closed. */
+.actions [role="menu"]:popover-open { display: grid; }
+.actions [role="menu"] { min-width: var(--anchor-width); margin: 4px 0 0; padding: 4px; border: 1px solid GrayText; border-radius: 6px; }
+.actions [role="menu"] form { margin: 0; }
+.actions [role="menuitem"] { display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: start; text-decoration: none; cursor: pointer; }
+.actions [role="menuitem"]:focus { outline: none; background: Highlight; color: HighlightText; }

@@ -1,0 +1,15 @@
+[package]
+name = "corten-ui"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Headless Corten islands for the widgets the browser has no element for: number field, combobox, tabs, menu button."
+license = "MIT"
+repository = "https://github.com/todd-skelton/corten"
+
+# Only corten, without its default features: the islands need no JSON, no logging and no CSS.
+[dependencies]
+corten = { path = "../corten", default-features = false }
+
+[dev-dependencies]
+corten = { path = "../corten", default-features = false, features = ["types"] }

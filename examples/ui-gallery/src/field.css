@@ -1,0 +1,15 @@
+.root { display: grid; gap: 4px; margin-block: 12px; justify-items: start; }
+.control { display: flex; align-items: center; gap: 4px; }
+.control input,
+.control select { font: inherit; padding: 6px 8px; border: 1px solid GrayText; border-radius: 6px; }
+.control input[type="number"] { appearance: textfield; width: 9ch; text-align: center; }
+.control input::-webkit-inner-spin-button { appearance: none; }
+.control button { font: inherit; min-width: 36px; height: 36px; border: 1px solid GrayText; border-radius: 6px; background: none; }
+.control button:disabled { opacity: 0.4; }
+.control [role="combobox"] { width: 18rem; }
+.control [popover] { min-width: var(--anchor-width); max-height: 14rem; overflow: auto; margin: 4px 0 0; padding: 4px; border: 1px solid GrayText; border-radius: 6px; }
+.control [role="option"] { padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.control [role="option"][aria-selected="true"] { font-weight: 600; }
+.control [role="option"][data-highlighted] { background: Highlight; color: HighlightText; }
+.control [role="option"][aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.control [role="status"] { margin: 0; padding: 4px 8px; color: GrayText; }
