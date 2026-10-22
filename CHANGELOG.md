@@ -73,6 +73,9 @@ Corten is pre-1.0, so any minor version may change the API.
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
    the browser's data saver is on.
+2. A patch no longer throws away what the user is doing: a field they edited (after its form was
+   sent, for the form's own answer) keeps its value, and focus and the caret stay on the
+   matching element. An invalid answer focuses its field only if the user has not moved on.
 
 ### Documentation
 

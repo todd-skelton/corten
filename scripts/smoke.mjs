@@ -177,6 +177,51 @@ try {
   await page.waitForFunction(() => document.title === "About | Corten");
   check("same context: navigation swaps again", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 3));
 
+  // A patch replaces markup but keeps what the user is doing: edited fields keep their state,
+  // untouched ones take the server's, and focus and caret stay put (here a <corten-live> style
+  // patch, with no form sent).
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      '<form id="kept"><input name="q" value="a"><input name="r" value="a"><input type="checkbox" name="c" value="1"><select name="s"><option value="1">1</option><option value="2">2</option></select><select name="t"><option value="1">1</option><option value="2">2</option></select><p><button type="button">Go</button></p></form>',
+    ),
+  );
+  await page.fill("#kept [name=q]", "typed");
+  await page.check("#kept [name=c]");
+  await page.selectOption("#kept [name=s]", "2");
+  await page.focus("#kept [name=q]");
+  await page.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("#kept [name=q]")).setSelectionRange(1, 3));
+  const fresh =
+    '<form id="kept" class="new"><input name="q" value="b"><input name="r" value="b"><input type="checkbox" name="c" value="1"><select name="s"><option value="1">1</option><option value="2">2</option></select><select name="t"><option value="1">1</option><option value="2" selected>2</option></select><p><button type="button">Go</button></p></form>';
+  const afterLive = await page.evaluate(async (html) => {
+    const { patch } = await import("corten");
+    await patch(html);
+    const q = /** @type {HTMLInputElement} */ (document.querySelector("#kept [name=q]"));
+    return {
+      server: document.querySelector("#kept")?.className,
+      q: q.value,
+      r: /** @type {HTMLInputElement} */ (document.querySelector("#kept [name=r]")).value,
+      c: /** @type {HTMLInputElement} */ (document.querySelector("#kept [name=c]")).checked,
+      s: /** @type {HTMLSelectElement} */ (document.querySelector("#kept [name=s]")).value,
+      t: /** @type {HTMLSelectElement} */ (document.querySelector("#kept [name=t]")).value,
+      focused: document.activeElement === q,
+      selection: [q.selectionStart, q.selectionEnd],
+    };
+  }, fresh);
+  check(
+    "a patch keeps edited fields, focus and selection, and applies the rest",
+    afterLive.server === "new" && afterLive.q === "typed" && afterLive.r === "b" && afterLive.c && afterLive.s === "2" && afterLive.t === "2" && afterLive.focused && afterLive.selection.join() === "1,3",
+    JSON.stringify(afterLive),
+  );
+  await page.focus("#kept button");
+  const buttonFocus = await page.evaluate(async (html) => {
+    const { patch } = await import("corten");
+    await patch(html);
+    return document.activeElement === document.querySelector("#kept button");
+  }, fresh);
+  check("a patch keeps focus on an element without an id or name (by its place)", buttonFocus);
+  await page.evaluate(() => document.querySelector("#kept")?.remove());
+
   // data-nav="section": current on its page and every page under it.
   await page.evaluate(() => document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>'));
   await page.click('header a[href="/"]:not(#section-link)');

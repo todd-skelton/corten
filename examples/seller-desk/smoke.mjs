@@ -95,6 +95,49 @@ try {
   await page.press(`${cell} input`, "Escape");
   check("the patched cell's handlers know the new saved price", (await page.inputValue(`${cell} input`)) === "7.50");
 
+  // Text typed while the form is on its way is kept when the answer lands, with the focus and
+  // caret; the server's markup (the error) still applies.
+  let release = () => {};
+  await page.route("**/items/*/price", async (route) => {
+    await new Promise((resolve) => (release = () => resolve(undefined)));
+    await route.continue();
+  });
+  await page.fill(`${cell} input`, "x");
+  await page.click(`${cell} button`);
+  await page.focus(`${cell} input`);
+  await page.keyboard.type("yz");
+  await page.keyboard.press("ArrowLeft");
+  release();
+  await page.waitForSelector(`${cell} input[aria-invalid=true]`, { timeout: 5000 }).catch(() => {});
+  const kept = await page.evaluate((sel) => {
+    const input = /** @type {HTMLInputElement} */ (document.querySelector(sel));
+    return { value: input.value, focused: document.activeElement === input, caret: input.selectionStart };
+  }, `${cell} input`);
+  check(
+    "a field edited while its form was sent keeps the edit, focus and caret",
+    kept.value === "xyz" && kept.focused && kept.caret === 2,
+    JSON.stringify(kept),
+  );
+  // Focus the user moved elsewhere while waiting is not pulled back to the invalid field.
+  await page.fill(`${cell} input`, "q");
+  await page.click(`${cell} button`);
+  const elsewhere = "tbody tr:nth-child(3) td:last-child input";
+  await page.focus(elsewhere);
+  await page.waitForTimeout(200);
+  const answered = page.waitForResponse("**/items/*/price");
+  await page.evaluate((sel) => ((/** @type {any} */ (window)).__oldCell = document.querySelector(sel)), `${cell} input`);
+  release();
+  await answered;
+  await page.waitForFunction((sel) => document.querySelector(sel) !== (/** @type {any} */ (window)).__oldCell, `${cell} input`, { timeout: 5000 }).catch(() => {});
+  check(
+    "an invalid answer does not take the focus from a field the user moved to",
+    await page.evaluate((sel) => document.activeElement === document.querySelector(sel), elsewhere),
+  );
+  await page.unroute("**/items/*/price");
+  await page.fill(`${cell} input`, "7.50");
+  await page.click(`${cell} button`);
+  await page.waitForFunction((sel) => document.querySelector(sel)?.getAttribute("aria-invalid") === null, `${cell} input`, { timeout: 5000 }).catch(() => {});
+
   // Archive two rows through the confirm dialog (a child given the grid's dialog ref and handler).
   const ids = await page.$$eval("tbody tr", (rows) => rows.slice(0, 2).map((r) => r.id));
   await page.click("tbody tr:nth-child(1) input[type=checkbox]");

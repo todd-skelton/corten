@@ -50,7 +50,13 @@ framework's shape, and what it does not do yet.
 
 1. Client navigation uses the Navigation API (Chrome, Edge, Firefox 147+, Safari 26.2+); older
    browsers do full page loads, and forms, patches and handlers still work.
-2. Patches replace whole elements, so focus inside a replaced element is lost. Keep targets small.
+2. Patches replace whole elements: the server's markup wins, except for what the user is doing.
+   A field they edited keeps its value (for the form that was sent, edited after it was sent),
+   and focus and the caret move to the matching element (same id; else, inside the nearest
+   element with an id, the same name; focus also follows an element without either to the same
+   place). A field without an id or a unique name takes the server's value, and a multiple
+   select keeps only its first choice. Other browser state inside a replaced element (an open `<details>`, scroll
+   position) resets, so keep targets small.
 3. `<script>` tags inside swapped pages do not run. Put behavior in a component's script.
 4. Handlers run from one listener per event type on the document, so a third-party listener that
    stops an event before it reaches the document stops its handlers too, as in any delegating

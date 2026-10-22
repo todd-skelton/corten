@@ -35,7 +35,12 @@ if let Err(errors) = check(&input) {
 ```
 
 In the form, `<input name={f.email} {..errors.aria(f.email)}>` sets `aria-invalid` and
-`aria-describedby`, and the runtime focuses the first invalid field.
+`aria-describedby`, and the runtime focuses the first invalid field (unless the user has moved
+on to another part of the page while waiting).
+
+A patch replaces markup but not the user's work: a field typed into after the form was sent (or,
+in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret
+stay on the matching element. Everything else is the server's.
 
 ## Redirects
 

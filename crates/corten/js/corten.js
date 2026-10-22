@@ -559,19 +559,123 @@ function modulesOf(node) {
 /**
  * Applies a patch: every top-level element in `html` replaces the element with its id, and a
  * `<template id="row-7" data-remove>` removes it. The modules the new markup's handlers name are
- * imported first, so its handlers run from the first event.
+ * imported first, so its handlers run from the first event. The server's markup wins, except for
+ * what the user is doing: a field they edited keeps their text, and focus stays where it was.
  * @param {string} html
  * @param {AbortSignal} [signal] Nothing changes once it aborts.
  */
-export async function patch(html, signal) {
+export function patch(html, signal) {
+  return apply(html, signal, null);
+}
+
+/**
+ * {@link patch}, for a form's response: `sent` holds the values the form sent, so a field counts
+ * as edited only when it changed after the request left.
+ * @param {string} html @param {AbortSignal | undefined} signal @param {Map<Element, string | undefined> | null} sent
+ */
+async function apply(html, signal, sent) {
   const content = parse(html);
   await modulesOf(content);
   if (signal?.aborted) return;
   for (const el of Array.from(content.children)) {
     const target = el.id ? document.getElementById(el.id) : null;
     if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) target?.remove();
-    else if (target) target.replaceWith(el);
+    else if (target) keep(target, el, sent);
     else console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
+  }
+}
+
+/**
+ * A field's state as text: what the user has (or, with `initial`, what the markup set).
+ * Buttons, hidden and file inputs are not fields here: undefined.
+ * @param {Element} f @param {boolean} [initial] @returns {string | undefined}
+ */
+function stateOf(f, initial) {
+  if (f instanceof HTMLSelectElement) {
+    const marks = Array.from(f.options, (o) => +(initial ? o.defaultSelected : o.selected));
+    if (initial && !f.multiple) {
+      // What the browser selects from the markup: the last option marked selected, else the
+      // first enabled one (none in a list box).
+      const last = marks.lastIndexOf(1);
+      const i = last >= 0 ? last : f.size > 1 ? -1 : Array.from(f.options).findIndex((o) => !o.disabled);
+      marks.fill(0);
+      if (i >= 0) marks[i] = 1;
+    }
+    return marks.join("");
+  }
+  if (f instanceof HTMLTextAreaElement) return initial ? f.defaultValue : f.value;
+  if (!(f instanceof HTMLInputElement) || /^(hidden|file|submit|button|reset|image)$/.test(f.type)) return;
+  if (/^(checkbox|radio)$/.test(f.type)) return String(initial ? f.defaultChecked : f.checked);
+  return initial ? f.defaultValue : f.value;
+}
+
+/** The fields of a form and their state, when it is sent. @param {HTMLFormElement} form */
+function sentState(form) {
+  /** @type {Map<Element, string | undefined>} */
+  const sent = new Map();
+  for (const f of Array.from(form.elements)) sent.set(f, stateOf(f));
+  return sent;
+}
+
+/**
+ * The element in `fresh` (the new markup for `root`) that stands for `el` (inside `root`). An
+ * element with an id is the one with that id. Otherwise, within its nearest ancestor with an id
+ * (or the root): the one with its name (and value, for a checkbox or radio) when exactly one has
+ * it on both sides, else (unless `exact`) the one at the same place.
+ * @param {Element} root @param {Element} fresh @param {Element} el @param {boolean} [exact]
+ * @returns {Element | null}
+ */
+function counterpart(root, fresh, el, exact) {
+  if (el === root) return fresh;
+  if (el.id) return fresh.querySelector(`#${CSS.escape(el.id)}`);
+  let anchor = /** @type {Element} */ (el.parentElement);
+  while (anchor !== root && !anchor.id) anchor = /** @type {Element} */ (anchor.parentElement);
+  const home = anchor === root ? fresh : counterpart(root, fresh, anchor);
+  const name = el.getAttribute("name");
+  if (!home) return null;
+  if (name) {
+    const selector = `${el.localName}[name="${CSS.escape(name)}"]${/^(checkbox|radio)$/.test(el.getAttribute("type") ?? "") ? `[value="${CSS.escape(/** @type {HTMLInputElement} */ (el).value)}"]` : ""}`;
+    const theirs = home.querySelectorAll(selector);
+    if (theirs.length === 1 && anchor.querySelectorAll(selector).length === 1) return theirs[0];
+  }
+  if (exact) return null;
+  /** @type {Element | undefined} */
+  let found = home;
+  for (let at = el, path = []; ; at = /** @type {Element} */ (at.parentElement)) {
+    if (at === anchor) {
+      for (const i of path) found = found?.children[i];
+      return found?.localName === el.localName ? found : null;
+    }
+    path.unshift(Array.prototype.indexOf.call(/** @type {Element} */ (at.parentElement).children, at));
+  }
+}
+
+/**
+ * Replaces `root` with `fresh`, carrying over the fields the user edited (since `sent`, for a
+ * field the form sent; else since the markup set them), the focus and the caret.
+ * @param {Element} root @param {Element} fresh @param {Map<Element, string | undefined> | null} sent
+ */
+function keep(root, fresh, sent) {
+  const focused = document.activeElement;
+  const next = focused !== document.body && focused && root.contains(focused) ? counterpart(root, fresh, focused) : null;
+  for (const f of [root, ...Array.from(root.querySelectorAll("input, textarea, select"))]) {
+    const now = stateOf(f);
+    // Only a field found by id or name gets the user's text: by place, rows that moved could
+    // put it into another row's field.
+    const to = now !== undefined && now !== (sent?.has(f) ? sent.get(f) : stateOf(f, true)) && counterpart(root, fresh, f, true);
+    if (!to || to.localName !== f.localName) continue;
+    // A select's `value` is its chosen option (the first, for a multiple select).
+    const field = /** @type {HTMLInputElement} */ (f);
+    if (/^(checkbox|radio)$/.test(field.type)) /** @type {HTMLInputElement} */ (to).checked = field.checked;
+    else /** @type {HTMLInputElement} */ (to).value = field.value;
+  }
+  root.replaceWith(fresh);
+  if (next instanceof HTMLElement) {
+    next.focus({ preventScroll: true });
+    try {
+      const { selectionStart, selectionEnd, selectionDirection } = /** @type {HTMLInputElement} */ (focused);
+      if (selectionStart !== null) /** @type {HTMLInputElement} */ (next).setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? undefined);
+    } catch {}
   }
 }
 
@@ -627,9 +731,16 @@ function shellChanged(res) {
   return key !== null && shellKey !== null && key !== shellKey;
 }
 
-/** Moves focus to the first field the server marked invalid. */
-function focusInvalid() {
-  const field = document.querySelector('main [aria-invalid="true"]');
+/**
+ * Moves focus to the first field the server marked invalid in `form` (or in its replacement,
+ * found by id), else in <main>; unless the user has moved on to something outside it.
+ * @param {HTMLFormElement} form
+ */
+function focusInvalid(form) {
+  const home = (form.isConnected ? form : form.id && document.getElementById(form.id)) || document.querySelector("main");
+  const active = document.activeElement;
+  if (active && active !== document.body && !home?.contains(active)) return;
+  const field = home?.querySelector('[aria-invalid="true"]') ?? document.querySelector('main [aria-invalid="true"]');
   if (field instanceof HTMLElement) field.focus();
 }
 
@@ -766,6 +877,7 @@ document.addEventListener("submit", async (event) => {
   const method = (submitter?.getAttribute("formmethod") || form.method).toUpperCase();
   const url = new URL(submitter?.getAttribute("formaction") || form.action, location.href);
   const fields = new URLSearchParams(/** @type {any} */ (data));
+  const sent = sentState(form);
   const key = `${method} ${url.href} ${fields}`;
   const previous = submits.get(form);
   if (previous?.key === key) return;
@@ -795,9 +907,9 @@ document.addEventListener("submit", async (event) => {
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
       const body = await res.text();
       signal.throwIfAborted();
-      await (res.headers.has("corten-patch") ? patch(body, signal) : swapPage(body, signal));
+      await (res.headers.has("corten-patch") ? apply(body, signal, sent) : swapPage(body, signal));
       signal.throwIfAborted();
-      if (res.status === 422) focusInvalid();
+      if (res.status === 422) focusInvalid(form);
     } else {
       form.dispatchEvent(new CustomEvent("corten:error", { bubbles: true, detail: { status: res.status } }));
     }
