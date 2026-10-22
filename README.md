@@ -15,6 +15,37 @@ needs it and none of the weight where it does not.
 
 Status: 0.1, not yet on crates.io. License: [MIT](LICENSE).
 
+## Values
+
+1. **Fast, and proven fast.** Speed is a feature, and every claim has a measured number behind
+   it. A change to rendering, the runtime or the request path is measured before and after
+   (`render_cost`, bytes shipped, nanoseconds per request). We say no to features that cost every
+   user to help a few, like view transitions on every swap.
+2. **The platform first.** Use what the browser and HTTP already provide: custom elements,
+   `FormData`, `AbortSignal`, the Navigation API, popover, server-sent events, native validation.
+   Build only what the platform lacks, and remove it once the platform catches up. One idea
+   should work the same everywhere, so cancellation is `AbortSignal` in the browser and on the
+   server.
+3. **HTML that works on its own.** Every page renders on the server, and links and forms work
+   without JavaScript. Scripts improve a page but never hold it up.
+4. **Mistakes fail at compile time.** No strings at the seams between server and client: routes,
+   refs, actions, class names, form fields and messages are all typed. TypeScript types are
+   generated from Rust, never written by hand. If a guarantee exists, a test proves it fails to
+   compile when broken.
+5. **One way to do each thing.** Islands have one pattern, cleanup has one hook, and a handler
+   serves every mode. Fewer concepts make large codebases readable for people and for agents.
+   The behavior sits next to its markup, and the markup names everything the script can touch.
+6. **Small surface, deliberate dependencies.** A dependency or a new concept has to clearly earn
+   its place. The framework owns what nearly every app needs, like security headers,
+   cancellation, error pages and assets. Domain logic and things only some apps use belong to the
+   app or platform.
+7. **Good defaults, easy overrides.** `App::new(routes).serve()` should be production-ready.
+   Every default can be replaced in one line, and the common case stays short.
+8. **One server, every surface.** The same handler and data serve the browser, native apps and AI
+   agents. The server is the source of truth, and clients render it.
+9. **Verified, not assumed.** Every runtime behavior has a browser smoke test. Reliability work,
+   like failover and lost-patch counts, is benchmarked rather than argued.
+
 ## Quick start
 
 ```sh

@@ -4,6 +4,18 @@ Read `README.md` (rules, request modes) and `docs/architecture.md` (surfaces) be
 anything. Keep the framework small: a change that adds a dependency or a new concept needs a
 reason that a smaller change cannot meet.
 
+## Values
+
+Every change follows the values in `README.md` (Values). When they conflict, this order decides:
+
+1. Correctness and reliability.
+2. Performance at the user's end.
+3. Type safety and one way to do things.
+4. Developer convenience.
+
+For example, the deadline timer that cost 640 ns per request was reworked, not accepted for
+convenience. And a nicer API that slows every page loses.
+
 ## Where things go
 
 1. Wire format and client-side feed logic: `crates/corten-protocol`. No async or web
