@@ -48,7 +48,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | a number field, combobox, tabs or menu button | `corten-ui` first, the platform otherwise | [scripts.md](references/scripts.md) |
 | styles for a component | `#[component(css)]`, a CSS file next to it, design tokens | [styles.md](references/styles.md) |
 | JSON for a native client or an agent | `req.screen(title, &data, view)` | [pages-and-routes.md](references/pages-and-routes.md) |
-| a route with no screen (webhook, public API, service call) | `App::api("/api", routes)`, handlers return `axum::Json` | [pages-and-routes.md](references/pages-and-routes.md) |
+| a route with no screen (webhook, public API, service call) | `App::api("/api", routes)`, handlers return `Json` (the prelude's `corten::Json`) | [pages-and-routes.md](references/pages-and-routes.md) |
 | a page or JSON a CDN may share | return `(Cache::public(max_age), response)`; never for anything personal | [pages-and-routes.md](references/pages-and-routes.md) |
 | a test | `app().router().oneshot(..)` with the `corten` mode header | [testing.md](references/testing.md) |
 

@@ -185,3 +185,53 @@ fn attributes_spread() {
     let view = html! { <input name="a" {..Aria(true)} {..pairs}> };
     assert_eq!(view.to_html(), r#"<input name="a" aria-invalid="true" data-id="7">"#);
 }
+
+#[test]
+fn escaping_matches_the_one_byte_at_a_time_rule() {
+    fn reference(text: &str) -> String {
+        let mut out = String::new();
+        for c in text.chars() {
+            match c {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                '"' => out.push_str("&quot;"),
+                '\'' => out.push_str("&#39;"),
+                c => out.push(c),
+            }
+        }
+        out
+    }
+    // Each escaped character, and its neighbours in ASCII (which the eight-byte test must not
+    // mistake for it), at every offset of strings longer than one chunk, among multibyte text.
+    let pieces = ["a", "&", "<", ">", "\"", "'", "%", "=", "?", ";", ":", "!", "#", "é", "★", "\u{7f}", "\u{80}", "\0"];
+    let mut seed = 0x2545_f491_4f6c_dd1du64;
+    for _ in 0..4000 {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        let len = (seed % 40) as usize;
+        let text: String = (0..len).map(|i| pieces[((seed >> (i % 60)) as usize + i * 7) % pieces.len()]).collect();
+        let mut out = String::new();
+        crate::view::escape_into(&text, &mut out);
+        assert_eq!(out, reference(&text), "{text:?}");
+    }
+    for at in 0..24 {
+        for special in ["&", "<", ">", "\"", "'"] {
+            let text = format!("{}{special}{}", "x".repeat(at), "y".repeat(24 - at));
+            let mut out = String::new();
+            crate::view::escape_into(&text, &mut out);
+            assert_eq!(out, reference(&text));
+        }
+    }
+}
+
+#[test]
+fn floats_render_as_display_writes_them() {
+    for value in [0.5, -1.25, 3.0, 1e21, 1.5e-7, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.0] {
+        assert_eq!(value.to_html(), value.to_string());
+        assert_eq!(html! { <i data-v={value}></i> }.to_html(), format!("<i data-v=\"{value}\"></i>"));
+    }
+    assert_eq!(2.5f32.to_html(), "2.5");
+    assert_eq!(u128::MAX.to_html(), u128::MAX.to_string());
+}

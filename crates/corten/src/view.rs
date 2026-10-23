@@ -270,15 +270,35 @@ const ENTITIES: [&str; 5] = ["&amp;", "&lt;", "&gt;", "&quot;", "&#39;"];
 pub fn escape_into(text: &str, out: &mut String) {
     let bytes = text.as_bytes();
     let mut start = 0;
-    for (i, &byte) in bytes.iter().enumerate() {
-        let entity = ESCAPES[byte as usize];
-        if entity != 0 {
-            out.push_str(&text[start..i]);
-            out.push_str(ENTITIES[entity as usize - 1]);
-            start = i + 1;
-        }
+    while let Some(i) = next_escaped(bytes, start) {
+        out.push_str(&text[start..i]);
+        out.push_str(ENTITIES[ESCAPES[bytes[i] as usize] as usize - 1]);
+        start = i + 1;
     }
     out.push_str(&text[start..]);
+}
+
+/// The index of the first byte from `from` on that `escape_into` replaces. Most text has none, so
+/// it skips eight bytes at a time while none of them is one, then finds it with the table.
+#[inline]
+fn next_escaped(bytes: &[u8], from: usize) -> Option<usize> {
+    const ONES: u64 = u64::from_ne_bytes([1; 8]);
+    // Nonzero exactly when some byte of `x` is zero.
+    let zero = |x: u64| x.wrapping_sub(ONES) & !x & (ONES << 7);
+    let mut i = from;
+    while let Some(chunk) = bytes.get(i..i + 8) {
+        let x = u64::from_ne_bytes(chunk.try_into().expect("eight bytes"));
+        // `|` with 1 makes `&` (0x26) into `'` (0x27), so one test finds either.
+        let found = zero(x ^ (ONES * b'"' as u64))
+            | zero((x | ONES) ^ (ONES * b'\'' as u64))
+            | zero(x ^ (ONES * b'<' as u64))
+            | zero(x ^ (ONES * b'>' as u64));
+        if found != 0 {
+            break;
+        }
+        i += 8;
+    }
+    bytes[i..].iter().position(|&byte| ESCAPES[byte as usize] != 0).map(|at| i + at)
 }
 
 /// `value`'s `Display` output, escaped, without an intermediate string.
@@ -433,11 +453,12 @@ macro_rules! signed {
 }
 signed!(i8, i16, i32, i64, isize);
 
+// Digits, `.`, `-`, `e`, `inf` and `NaN`: nothing to escape, so written as they are.
 macro_rules! display {
     ($($t:ty),*) => {$(
         impl Render for $t {
             fn render(&self, out: &mut String) {
-                escape_display(self, out)
+                let _ = fmt::Write::write_fmt(out, format_args!("{self}"));
             }
         }
     )*};

@@ -9,6 +9,7 @@ use std::{
 };
 
 use axum::{
+    body::Body,
     extract::{FromRequestParts, Request},
     http::{header, request::Parts, Extensions, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri},
     middleware::Next,
@@ -743,17 +744,15 @@ fn swap_prefix(meta: &Meta, out: &mut String) {
 }
 
 pub(crate) fn html_response(status: StatusCode, body: String, kind: Option<HeaderName>) -> Response {
-    let mut res = (
-        status,
-        [
-            (header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8")),
-            (header::VARY, HeaderValue::from_static(VARY)),
-        ],
-        body,
-    )
-        .into_response();
+    let mut res = Response::new(Body::from(body));
+    *res.status_mut() = status;
+    let headers = res.headers_mut();
+    // Room for the headers `App` adds too, so the map is allocated once.
+    headers.reserve(12);
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+    headers.insert(header::VARY, HeaderValue::from_static(VARY));
     if let Some(kind) = kind {
-        res.headers_mut().insert(kind, HeaderValue::from_static("1"));
+        headers.insert(kind, HeaderValue::from_static("1"));
     }
     res
 }

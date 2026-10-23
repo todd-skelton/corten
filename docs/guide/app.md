@@ -122,7 +122,7 @@ webhook, an OAuth callback, a call between services, a public API) is called by 
 most HTTP clients send `Accept: */*` or nothing. Mount those routes under a prefix:
 
 ```rust
-use corten::{prelude::*, axum::Json};
+use corten::prelude::*;
 
 async fn price(Path(id): Path<String>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "id": id, "lowest": "$0.50" }))
@@ -155,6 +155,10 @@ Under the prefix:
    its CORS preflight, adds `Access-Control-Allow-Origin` and lets its writes through. The
    pages keep refusing that site's writes. The site authenticates with a token: a write from it
    that carries the user's cookies is refused, and no `Access-Control-Allow-Credentials` is sent.
+5. `Json` in the prelude is `corten::Json` (feature `json`). It reads a request body as
+   axum's `Json` does, with the same rejections, and writes the response with
+   `serde_json::to_vec` into a `Vec` the body keeps. axum's `Json` works too, but writes
+   through a `BytesMut` writer that costs more for each of the many small writes JSON makes.
 
 The routes keep their full paths, so a `#[derive(Route)]` struct names the same URL in the
 router and in links; under `corten dev` a route outside its prefix answers 500, saying so.

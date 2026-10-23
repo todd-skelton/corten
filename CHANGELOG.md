@@ -58,6 +58,14 @@ Corten is pre-1.0, so any minor version may change the API.
     whitespace: a body whose tokens would change is left as written, with a warning.
     `corten check` runs `corten fmt --check`.
 
+15. `corten::Json` (feature `json`, in the prelude): axum's `Json` extractor with the same
+    rejections, and a response written by `serde_json::to_vec` into a `Vec` the body keeps.
+    axum's `Json` writes through a `BytesMut` writer that costs more for every small write. On a
+    bench droplet (Xeon Platinum 8280, app on one core, 64 users, two rounds), the item's 8.8 KB
+    of JSON under `App::api` served 24,330-25,000 requests a second instead of 18,608-19,168
+    (Leptos, which uses axum's `Json`: 20,008-20,377), and took 121,882 user instructions a
+    request in process instead of 193,668. `examples/item-page` uses it for `/api/items/{id}`.
+
 ### Removed
 
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -121,6 +129,14 @@ Corten is pre-1.0, so any minor version may change the API.
     Phoenix Channels, Reverb). It reports delivery, order, delay, CPU and memory per client, and
     marks an app that refuses clients, loses messages or stops as failed.
     `droplet.mjs --suite live` runs it on a droplet.
+16. HTML escaping skips eight bytes at a time while none of them needs escaping, floats render
+    without going through the escaping writer (their text never needs it), and a page's header map
+    is allocated once with room for the headers `App` adds. The item page took 110,478-110,898
+    user instructions a request in process for a navigation instead of 123,515-123,730, and
+    138,127-138,687 for the full document instead of 152,150-153,001 (cycles 5-9% fewer), on the
+    bench droplet; under load the difference was inside the run-to-run spread.
+17. An MCP tool's reply is joined into one string allocated at its final size, instead of two
+    `format!` calls that grew theirs while copying a large result.
 
 ### Fixed
 

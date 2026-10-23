@@ -55,6 +55,8 @@ pub mod compress;
 pub mod form;
 mod html;
 pub mod i18n;
+#[cfg(feature = "json")]
+pub mod json;
 pub mod meta;
 mod page;
 pub mod pwa;
@@ -96,6 +98,8 @@ pub use cache::Cache;
 pub use corten_macros::Fields;
 pub use form::{Errors, FieldName};
 pub use html::escape;
+#[cfg(feature = "json")]
+pub use json::Json;
 pub use meta::Meta;
 pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
 pub use route::{Href, Route};
@@ -124,6 +128,8 @@ pub struct Component {
 
 /// What most files need: `use corten::prelude::*;`.
 pub mod prelude {
+    #[cfg(feature = "json")]
+    pub use crate::Json;
     pub use crate::{
         axum::{
             extract::{Form, Path, Query, State},

@@ -94,6 +94,8 @@ App::new(pages)
     .api("/api", Router::new().route(PriceApi::PATH, get(price)))   // Api::new(..).allow_origin(..) for a partner site
 ```
 
+`Json` is the prelude's `corten::Json`: axum's extractor, and a response written in one buffer
+(faster than `axum::Json`; keep the prelude's unless a crate hands you axum's).
 Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
 a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
 is no shell and no `App::context` (add `Api::new(routes).context()` if the API serves your own

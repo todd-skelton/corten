@@ -8,7 +8,7 @@ use std::{sync::Arc, time::Duration};
 use corten::{
     Api, Error,
     agent::{ToolError, Tools},
-    axum::{Json, http::StatusCode, response::Response},
+    axum::{http::StatusCode, response::Response},
     prelude::*,
     pwa::{Manifest, Pwa},
     seo::{self, SitemapUrl},
@@ -420,6 +420,45 @@ mod tests {
             }
             println!("full request, {label}: {:.1} us, {} bytes avg", per(start), size / (rounds * ids.len()));
         }
+    }
+
+    /// One route in a loop, for `perf stat` and `perf record`: LOOP_TARGET is `json` (the item
+    /// through `App`), `bare-json` (the same handler on a plain axum router), `page` (a client
+    /// navigation) or `document`; LOOP_SECONDS how long. Count instructions per request as the
+    /// difference between a long and a short run, so startup cancels out.
+    /// `CORTEN_FIXTURE=/path/items.json LOOP_TARGET=json cargo test --release -p item-page -- --ignored route_loop --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn route_loop() {
+        use std::time::{Duration, Instant};
+        let path = std::env::var("CORTEN_FIXTURE").expect("CORTEN_FIXTURE");
+        let source = Source::fixture(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let target = std::env::var("LOOP_TARGET").unwrap_or_else(|_| "json".into());
+        let seconds: u64 = std::env::var("LOOP_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
+        let (router, prefix, mode) = match target.as_str() {
+            "json" => (super::app(source.clone()).router(), "/api/items/", None),
+            "bare-json" => {
+                (Router::new().route(routes::ItemJson::PATH, get(item_json)).with_state(source.clone()), "/api/items/", None)
+            }
+            "page" => (super::app(source.clone()).router(), "/items/", Some("nav")),
+            "document" => (super::app(source.clone()).router(), "/items/", None),
+            other => panic!("unknown LOOP_TARGET {other}"),
+        };
+        let paths: Vec<String> = (1..=500).map(|n| format!("{prefix}item_{n}")).collect();
+        let start = Instant::now();
+        let mut count = 0u64;
+        while start.elapsed() < Duration::from_secs(seconds) {
+            for path in &paths {
+                let mut req = Request::get(path.as_str()).header("accept-encoding", "identity");
+                if let Some(mode) = mode {
+                    req = req.header("corten", mode);
+                }
+                let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+                std::hint::black_box(res.into_body().collect().await.unwrap().to_bytes());
+            }
+            count += paths.len() as u64;
+        }
+        println!("{target}: {count} requests, {:.2} us per request", start.elapsed().as_secs_f64() * 1e6 / count as f64);
     }
 
     #[tokio::test]
