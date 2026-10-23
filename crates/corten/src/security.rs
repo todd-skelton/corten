@@ -194,7 +194,7 @@ impl Policy {
 
     /// The CSP header value for one nonce.
     pub fn csp(&self, nonce: &str) -> String {
-        self.csp_with(Some(nonce), &crate::import_map(None))
+        self.csp_with(Some(nonce), &crate::import_map(None, None))
     }
 
     /// The CSP, with `'nonce-...'` sources only when there is a nonce. `import_map` is the text of
@@ -224,7 +224,7 @@ impl Policy {
     /// headers, and handlers see the request's [`Nonce`]. [`crate::App`] applies its policy
     /// itself; this is for a router served without one.
     pub fn apply<S: Clone + Send + Sync + 'static>(self, router: Router<S>) -> Router<S> {
-        let policy = Arc::new(Applied::new(self, &crate::import_map(None)));
+        let policy = Arc::new(Applied::new(self, &crate::import_map(None, None)));
         router.layer(middleware::from_fn(move |mut req: Request, next: Next| {
             let policy = policy.clone();
             async move {
@@ -592,7 +592,7 @@ mod tests {
     #[test]
     fn csp_carries_the_nonce_and_extra_sources() {
         let csp = Policy::new().script_src("https://js.stripe.com").frame_src("https://js.stripe.com").csp("abc");
-        let import_map = hash_source(&crate::import_map(None));
+        let import_map = hash_source(&crate::import_map(None, None));
         assert!(csp.contains(&format!("script-src 'self' {import_map} 'nonce-abc' https://js.stripe.com;")), "{csp}");
         assert!(csp.contains("style-src 'self' 'nonce-abc';"));
         let plain = Policy::new().csp_with(None, "{}");

@@ -1,0 +1,16 @@
+{
+  "//": "Type-checks the view apps' scripts against the declarations gen/ writes from the Rust Row and Card (node build.mjs first): npx tsc -p bench/browser/jsconfig.json",
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "strict": true,
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": [],
+    "paths": { "corten": ["../../crates/corten/js/corten.js"] }
+  },
+  "include": ["gen/src/*.js", "apps/view/*.js", "apps/shared/labels.js", "apps/shared/market.js", "../../crates/corten/js/views.d.ts", "out/_gen/view/views.d.ts"]
+}

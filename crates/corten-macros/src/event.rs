@@ -87,6 +87,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             script: ::core::option::Option::None,
             style: ::core::option::Option::None,
             event: ::core::option::Option::Some(::corten::script::EventDef { class: __A1, name: __A2, fields: &[__A3] }),
+            view: ::core::option::Option::None,
         };",
         &[TokenTree::Ident(name.clone()).into(), literal(&name.to_string()), literal(&dom), list],
     ));

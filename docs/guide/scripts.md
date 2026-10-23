@@ -67,8 +67,8 @@ A ref on several kinds of element is typed as one they all are: `ref={tab as HTM
 `data-on="click:offer_list.showAll(@rows,@rest,$t)"`. One listener per event type on the
 document runs the handlers, innermost element first, and `event.stopPropagation()` stops the
 walk as it would stop bubbling. Nothing runs per element until an event reaches it. Script
-modules are compiled into the binary, served at versioned URLs, preloaded on the pages that
-render them and imported when markup that names them joins the page. List each component once,
+modules are compiled into the binary, served at versioned URLs, loaded as module scripts by the
+pages that render them and imported when markup that names them joins later. List each component once,
 `App::new(routes).components(&[OfferList])`.
 
 ## Components and their roots
@@ -214,11 +214,16 @@ an app's own: `[package.metadata.corten] scripts = "ui"` in its `Cargo.toml` mak
 
 ## When handlers run
 
-A handler runs while its event is dispatched, so it can call `event.preventDefault()`. Markup
-the runtime inserts (a navigation, a patch, a live fragment) waits for the modules its handlers
-name, and modules named inside a `<template>` load with the page. On the first page, an event
-that arrives before its module is loaded gets the browser's default and no handler, as without
-JavaScript. `on:connect` waits for its module instead.
+A handler runs while its event is dispatched, so it can call `event.preventDefault()`. The
+first page loads the modules its handlers name as module scripts of its own, right after the
+runtime; Corten ends each component's module with lines that hand its exports to the runtime
+(a `corten:module` event the runtime takes only from the module the page's own script tag for
+that name loaded, and only while the page loads; it is not an API, and `"corten"` exports nothing for it), so its
+handlers are in when the browser runs the page's scripts, before `DOMContentLoaded`, with
+no `import()` to wait for. Markup the runtime inserts (a navigation, a patch, a live fragment)
+waits for the modules its handlers name, and modules named inside a `<template>` load with the
+page. On the first page, an event that arrives before its module is in gets the browser's
+default and no handler, as without JavaScript. `on:connect` waits for its module instead.
 
 ## State
 
@@ -236,10 +241,96 @@ from `corten` gives the same object for the same element until it is gone.
 4. Cleanup is `signal` alone: pass it to `addEventListener`, `fetch`, `subscribe` and `mount`.
    See [Cancellation](cancellation.md).
 
+## Views
+
+A component a script changes often (a row of a grid with thousands) can be a
+`#[component(view)]`. Its handlers then write the component's holes by name instead of finding
+elements:
+
+```rust,ignore
+#[component(view)]
+pub fn Row<'a>(id: u32, label: &'a str, selected: bool, pick: Ref<el::HTMLAnchorElement>) -> impl Render {
+    html! {
+        <tr key={id} data-selected={selected}>
+            <td>{id}</td>
+            <td><a ref={pick}>{label}</a></td>
+        </tr>
+    }
+}
+
+#[component(js)]
+fn Grid<'a>(items: &'a [Item]) -> impl Render {
+    let (body, template, pick) = refs();
+    html! {
+        <table>
+            <tbody ref={body} on:click={js::select(pick.closest(), body)}>
+                for item in items {
+                    <Row id={item.id} label={&item.label} selected={false} pick={pick} />
+                }
+            </tbody>
+            <template ref={template}><Row id={0} label="" selected={false} pick={pick} /></template>
+        </table>
+    }
+}
+```
+
+```js
+// grid.js
+import { Row, rows } from "corten/views";
+/** @import { Holds } from "corten/views" */
+
+/** @param {HTMLAnchorElement} link @param {Holds<Row, HTMLTableSectionElement>} body */
+export function select(link, body) {
+  const list = rows(body, Row); // body's rows, the same list every time
+  const row = list.of(link); // the row that was clicked
+  if (row) row.selected = true;
+  list.at(5).label += " !!!"; // writes that one text node
+}
+```
+
+Views are not a second way to handle events: the markup calls handlers with `on:` as everywhere
+else, and a handler that gets the list's parent (and the `<template>`, to make new rows) calls
+`rows(body, Row, template)`:
+
+| `rows()` | |
+|---|---|
+| `at(i)`, `get(key)`, `of(event.target)`, `indexOf(view)`, `length`, iteration | the views of the rows |
+| `push(items)`, `remove(view)`, `swap(i, j)`, `clear()` | change the rows; new ones are clones of the template's row, filled with their data |
+| `replace(items)` | shows exactly `items`: rows with a key it had keep their element and are filled again |
+
+One parent has one list, whichever handler asks, and it notices rows changed without it (a
+server patch, a sort) the next time it is used.
+
+The parameter's type says whose rows it holds: `Holds<Row, HTMLTableSectionElement>` (or
+`Holds<Row, HTMLTemplateElement>` for the template). `tsc` then rejects `rows(body, Card)` and
+`rows(plainElement, Row)`, and the Rust compiler rejects passing a ref whose element the markup
+does not fill with `Row`s only: the ref must be on the element whose children are a loop of
+`<Row .. />` (or on a `<template>` holding one `<Row .. />`), with nothing else beside them. A
+component that takes such a ref as a prop names its type
+`Ref<el::HTMLTableSectionElement, RowsOf<{ view_id("Row") }>>`.
+
+| In the markup | In the view |
+|---|---|
+| `{label}`, the only child of an element | `label`: reads and writes that element's text |
+| `data-selected={selected}`, an attribute's whole value | `selected`: the attribute (a `bool` adds or removes it) |
+| `value={qty}` or `checked={on}` on an `<input>` | `qty`, `on`: what the input shows now (the user's edit), and its default |
+| `key={id}` on the root | `Row.key(el)` and `Row.keyOf(data)`, what `rows()` keys by; when `id` is also used outside holes (a child's prop, an element id), only `Row.key(el)`: the server makes the rows, and `rows()` has no `push` or `replace` |
+| a parameter used any other way (`"Label: "{label}`, inside a loop, in a `class`), or a `Ref` | nothing: a script could not write it alone |
+
+Holes are found when the crate compiles, on elements whose place is fixed (no loop, condition,
+expression or component before them), so the view walks straight to them. Numbers, text and
+`bool` parameters can be properties. A number property is a JavaScript number in the page, so
+debug builds stop a value past 2^53 (a 64-bit id), as they do for a handler's number argument:
+make such a value a string. `corten::types` declares the classes and `rows()` in
+`corten/views`, so `row.lable = "x"` or `row.label = 3` fails `tsc`. A view needs one root
+element and at least one hole, or the component does not compile. List the component in
+`App::components`; `rows()` and the classes are served as one module, mapped as
+`corten/views`, and only to apps with views.
+
 ## Screens with client state
 
-For screens whose state lives in the browser (a grid of thousands of live rows), a handler can
-render part of a component with Solid and keep its rows current from a [feed](live-data.md):
+For screens whose state lives in the browser and that many parts of the screen derive from (rows
+a script reads and writes are [views](#views), not this), a handler can render part of a component with Solid and keep its rows current from a [feed](live-data.md):
 
 | Piece | Server | Browser |
 |---|---|---|

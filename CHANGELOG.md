@@ -4,7 +4,6 @@ Notable changes to Corten. The format follows [Keep a Changelog](https://keepach
 Corten is pre-1.0, so any minor version may change the API.
 
 ## Unreleased
-
 ### Added
 
 1. `App::api(prefix, routes)`: routes with no screen (webhooks, public APIs, the MCP endpoint)
@@ -64,6 +63,20 @@ Corten is pre-1.0, so any minor version may change the API.
     of JSON under `App::api` served 24,330-25,000 requests a second instead of 18,608-19,168
     (Leptos, which uses axum's `Json`: 20,008-20,377), and took 121,882 user instructions a
     request in process instead of 193,668. `examples/item-page` uses it for `/api/items/{id}`.
+16. `#[component(view)]`: the component gets a class in `corten/views` whose properties are its
+    holes, a parameter that is an element's whole text or an attribute's whole value.
+    `row.label = "x"` writes that text, `row.label` reads it back, an `<input>`'s `value` and
+    `checked` are its live properties, a root `key={id}` keys it, and `corten::types` declares it
+    so `tsc` checks scripts against the Rust parameters. Debug builds stop a number property past
+    2^53. Handlers use views through `rows(parent, View, template)` from the same module: one list
+    per parent element that follows changes made elsewhere. Corten serves `rows()` and the classes as one module, only to apps with views.
+17. `Holds<Row, HTMLTableSectionElement>` in `corten/views` types a handler parameter that holds
+    a view's rows; `rows(body, Row)` takes only that, so `tsc` rejects the wrong view or a plain
+    element, and the Rust compiler rejects a ref whose element the markup does not fill with `Row`s
+    only. `Ref` gained a second type parameter for it (`RowsOf<{ view_id("Row") }>`, defaulting to
+    `NoRows`). `rows()` gained `get(key)` and `indexOf(view)`. A view whose key the markup also
+    shows outside its holes has no `keyOf`, and its `rows()` cannot `push` or `replace`: the
+    server makes those rows. `examples/seller-desk`'s grid rows are an `InventoryRow` view.
 
 ### Removed
 
@@ -163,6 +176,17 @@ Corten is pre-1.0, so any minor version may change the API.
     25-27%; `bench/fullstack/results/ab-typed-parse`). A response whose list field is not a list
     now fails the request instead of showing an empty list. `count.mjs` takes `api` as a fifth
     argument to count with items from the item API.
+21. The runtime's ref cache survives lists: inserting or removing rows no longer makes the next
+    handler query the whole component for its other refs (a click after creating 10,000 rows took
+    8.8 ms, now 0.8 ms, then 0.1 ms), and markup joining the page is wired with one query for its
+    handlers and one for its refs per insert, instead of two per element.
+22. The first page loads its handler modules as `<script type="module">` tags (not preloads the
+    runtime then `import()`s), and Corten ends each component's module with lines that hand its
+    exports to the runtime (a `corten:module` event it takes only from the module the page's own
+    script tag for that name loaded, while the page loads; `"corten"` exports nothing for it).
+    Handlers are in when the page's scripts run, before `DOMContentLoaded`: on a page of 1,000
+    server-rendered rows the time from the parser finishing to the handlers being ready went from
+    75 ms to under 10 ms.
 
 ### Fixed
 

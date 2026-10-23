@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-23T02:04:01.765Z",
+  "chromium": "148.0.7778.96",
+  "loads": 15,
+  "apps": {
+    "vanilla-ssr": {
+      "htmlB": 266571,
+      "htmlGzipB": 14781,
+      "readyMs": 135.5,
+      "takeoverMs": 2.2,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 1182,
+      "firstSelectMs": 0.5,
+      "firstUpdateMs": 0.7,
+      "firstRemoveMs": 0.2,
+      "errors": 0
+    },
+    "state-ssr": {
+      "htmlB": 312837,
+      "htmlGzipB": 15257,
+      "readyMs": 136.6,
+      "takeoverMs": 3.7,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 1206,
+      "firstSelectMs": 0.9,
+      "firstUpdateMs": 1.1,
+      "firstRemoveMs": 0.6,
+      "errors": 0
+    },
+    "view-ssr": {
+      "htmlB": 312836,
+      "htmlGzipB": 15257,
+      "readyMs": 110.2,
+      "takeoverMs": 2.3,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 1126,
+      "firstSelectMs": 0.7,
+      "firstUpdateMs": 1,
+      "firstRemoveMs": 0.3,
+      "errors": 0
+    },
+    "solid-ssr": {
+      "htmlB": 292628,
+      "htmlGzipB": 18805,
+      "readyMs": 150.7,
+      "takeoverMs": 16,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 2233,
+      "firstSelectMs": 1.2,
+      "firstUpdateMs": 1,
+      "firstRemoveMs": 0.9,
+      "errors": 0
+    },
+    "remix-ssr": {
+      "htmlB": 275485,
+      "htmlGzipB": 14967,
+      "readyMs": 255.5,
+      "takeoverMs": 148.4,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 3955,
+      "firstSelectMs": 18.5,
+      "firstUpdateMs": 17.7,
+      "firstRemoveMs": 17,
+      "errors": 0
+    }
+  }
+}

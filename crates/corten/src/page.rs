@@ -70,7 +70,7 @@ fn accepts_json(headers: &HeaderMap) -> bool {
 ///
 /// Print `{doc.head}` inside `<head>` before any other script and `{doc.main}` inside `<main>`.
 pub struct Document {
-    /// Title, the page's [`Meta`] tags, the runtime, script preloads, the manifest. Print it
+    /// Title, the page's [`Meta`] tags, the runtime, the handler modules, the manifest. Print it
     /// before any other module script.
     pub head: Head,
     /// The page's HTML, already rendered.
@@ -311,7 +311,10 @@ pub(crate) struct Shared {
 impl Shared {
     pub(crate) fn new(shell: ShellFn, error_page: Box<ErrorPage>, assets: Option<Arc<Assets>>, head_extra: String) -> Self {
         let scripts_dir = assets.as_ref().map_or_else(|| "/assets/scripts/".to_string(), |a| a.scripts_dir().to_string());
-        let import_map = crate::import_map(assets.as_ref().and_then(|a| a.events()).as_deref());
+        let import_map = crate::import_map(
+            assets.as_ref().and_then(|a| a.events()).as_deref(),
+            assets.as_ref().and_then(|a| a.views()).as_deref(),
+        );
         let mut hasher = std::hash::DefaultHasher::new();
         crate::runtime_version().hash(&mut hasher);
         scripts_dir.hash(&mut hasher);
@@ -442,7 +445,7 @@ impl Req {
         Ok(self.respond_with(status, meta, main, &modules))
     }
 
-    /// Renders `view` and returns the script modules its handlers use, for the page to preload.
+    /// Renders `view` and returns the script modules its handlers use, for the page to load.
     /// Under `corten dev`, a component with a script or stylesheet that the app does not list is
     /// an error, since its script or stylesheet would not be served (debug builds of the app
     /// record what renders; release builds do not).
@@ -478,7 +481,7 @@ impl Req {
         self.respond_with(status, meta, main, &[])
     }
 
-    /// The same, preloading the script modules `modules`.
+    /// The same, loading the script modules `modules`.
     fn respond_with(&self, status: StatusCode, meta: Meta, main: String, modules: &[&'static str]) -> Response {
         let body = match self.mode {
             // The runtime swaps the page into <main> and the head tags into <head>; an action
@@ -537,8 +540,21 @@ impl Req {
         let _ = write!(out, r#"<script type="importmap">{}</script>"#, self.shared.import_map);
         let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
         // The modules the page's handlers call, fetched with the runtime rather than on first use.
-        for name in modules.iter().filter(|m| self.shared.assets.as_ref().is_some_and(|a| a.has_script(m))) {
-            let _ = write!(out, r#"<link rel="modulepreload" href="{dir}{name}.js">"#);
+        // A component's module hands its exports to the runtime as it runs, so it is a module script
+        // of the page: its handlers are in before DOMContentLoaded, with no import() to wait on.
+        let mut preloaded = false;
+        for name in modules.iter() {
+            let Some(assets) = self.shared.assets.as_ref().filter(|a| a.has_script(name)) else { continue };
+            if assets.registers(name) {
+                let _ = write!(out, r#"<script type="module" src="{dir}{name}.js"></script>"#);
+            } else {
+                let _ = write!(out, r#"<link rel="modulepreload" href="{dir}{name}.js">"#);
+            }
+            preloaded = true;
+        }
+        // A handler module may import the views (corten/views): fetched with it, not after it.
+        if let Some(views) = self.shared.assets.as_ref().filter(|_| preloaded).and_then(|a| a.views()) {
+            let _ = write!(out, r#"<link rel="modulepreload" href="{views}">"#);
         }
         out
     }

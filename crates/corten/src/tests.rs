@@ -212,9 +212,9 @@ fn inline_shell(doc: Document) -> impl Render {
 async fn the_csp_allows_the_import_map_by_hash_and_a_nonce_only_when_the_shell_asks() {
     let (_, headers, body) = call(app(routes(), None), "GET", None).await;
     let csp = headers["content-security-policy"].to_str().unwrap();
-    let import_map = security::hash_source(&crate::import_map(None));
+    let import_map = security::hash_source(&crate::import_map(None, None));
     assert!(csp.contains(&format!("script-src 'self' {import_map};")) && !csp.contains("nonce"), "{csp}");
-    assert!(body.contains(&format!(r#"<script type="importmap">{}</script>"#, crate::import_map(None))));
+    assert!(body.contains(&format!(r#"<script type="importmap">{}</script>"#, crate::import_map(None, None))));
     assert_eq!(headers["x-content-type-options"], "nosniff");
     assert_eq!(headers["cross-origin-opener-policy"], "same-origin");
     let (_, again, same) = call(app(routes(), None), "GET", None).await;

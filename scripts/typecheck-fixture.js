@@ -5,6 +5,8 @@
 // handler's JSDoc when the crate compiles. What crosses into scripts as JSON or as an event is
 // declared from the Rust types in examples/*/types/app.d.ts.
 import { state, subscribe } from "corten";
+// @ts-expect-error The runtime takes a module's exports from the line Corten appends; it exports no hook for it.
+import { register } from "corten";
 import { mount } from "corten/solid";
 
 /** @typedef {import("../examples/hello/types/app").Stock} Stock Generated from the Rust struct. */

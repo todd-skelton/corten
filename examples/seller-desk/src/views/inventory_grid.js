@@ -1,17 +1,19 @@
 // @ts-check
 // InventoryGrid (inventory_grid.rs): selection with ranges and select all, filter, sort,
-// archiving through a confirm dialog, and live stock levels. The selection is the checkboxes
-// themselves; the grid keeps only the last clicked row, for shift-click ranges.
+// archiving through a confirm dialog, and live stock levels. The rows are InventoryRow views:
+// a handler writes a row's holes by name (`row.selected = true`, `row.qty = 3`), and the page
+// holds the selection. The grid keeps only the last clicked row, for shift-click ranges.
 import { state, subscribe } from "corten";
+import { InventoryRow, rows } from "corten/views";
+/** @import { Holds } from "corten/views" */
 
 /** @typedef {import("../../types/app").Level} Level Generated from `Level` in src/app.rs. */
 
 /**
  * What the selection handlers read and update. The markup builds it once,
- * `js::Selection { rows: row, boxes: select, all, count, bar }`, and passes it as one argument.
+ * `js::Selection { body, all, count, bar }`, and passes it as one argument.
  * @typedef {object} Selection
- * @property {HTMLTableRowElement[]} rows
- * @property {HTMLInputElement[]} boxes
+ * @property {Holds<InventoryRow, HTMLTableSectionElement>} body
  * @property {HTMLInputElement} all
  * @property {HTMLOutputElement} count
  * @property {HTMLDivElement} bar
@@ -22,20 +24,20 @@ const last = (root) => state(root, () => ({ index: -1 }));
 
 /**
  * Keeps the stock cells current from the levels feed until the grid leaves the page.
- * @param {Map<string, HTMLTableCellElement>} cells @param {string} feed @param {AbortSignal} signal
+ * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {string} feed @param {AbortSignal} signal
  */
-export function live(cells, feed, signal) {
+export function live(body, feed, signal) {
+  const list = rows(body, InventoryRow);
   /** @param {Level} level */
   const show = (level) => {
-    const cell = cells.get(level.id);
-    const text = String(level.qty);
-    if (cell && cell.textContent !== text) cell.textContent = text;
+    const row = list.get(level.id);
+    if (row) row.qty = level.qty;
   };
   subscribe(
     feed,
     {
-      /** @param {Level[]} rows */
-      snapshot: (rows) => rows.forEach(show),
+      /** @param {Level[]} levels */
+      snapshot: (levels) => levels.forEach(show),
       patch: (changes) => {
         for (const change of changes) if (change.op === "upsert") show(change.value);
       },
@@ -50,13 +52,19 @@ export function live(cells, feed, signal) {
  * @param {MouseEvent} event @param {HTMLInputElement} box @param {HTMLElement} root @param {Selection} sel
  */
 export function toggle(event, box, root, sel) {
-  const at = sel.boxes.indexOf(box);
+  const list = rows(sel.body, InventoryRow);
+  const row = list.of(box);
+  if (!row) return;
+  const at = list.indexOf(row);
   const s = last(root);
-  if (event.shiftKey && s.index >= 0 && at >= 0) {
+  if (event.shiftKey && s.index >= 0) {
     const [from, to] = at < s.index ? [at, s.index] : [s.index, at];
-    for (let i = from; i <= to; i += 1) if (!sel.rows[i].hidden) mark(sel.rows[i], sel.boxes[i], box.checked);
-  } else if (at >= 0) {
-    mark(sel.rows[at], box, box.checked);
+    for (let i = from; i <= to; i += 1) {
+      const other = list.at(i);
+      if (!other.el.hidden) other.selected = box.checked;
+    }
+  } else {
+    row.selected = box.checked;
   }
   s.index = at;
   tally(sel);
@@ -67,30 +75,30 @@ export function toggle(event, box, root, sel) {
  * @param {HTMLElement} root @param {Selection} sel
  */
 export function selectAll(root, sel) {
-  for (let i = 0; i < sel.rows.length; i += 1) if (!sel.rows[i].hidden) mark(sel.rows[i], sel.boxes[i], sel.all.checked);
+  for (const row of rows(sel.body, InventoryRow)) if (!row.el.hidden) row.selected = sel.all.checked;
   last(root).index = -1;
   tally(sel);
 }
 
 /** @param {HTMLElement} root @param {Selection} sel */
 export function clear(root, sel) {
-  for (let i = 0; i < sel.rows.length; i += 1) mark(sel.rows[i], sel.boxes[i], false);
+  for (const row of rows(sel.body, InventoryRow)) row.selected = false;
   last(root).index = -1;
   tally(sel);
 }
 
-/** Lowercased row text, read once per row. @type {WeakMap<HTMLTableRowElement, string>} */
+/** Lowercased name and set, read once per row. @type {WeakMap<Element, string>} */
 const texts = new WeakMap();
 
 /** @param {HTMLInputElement} input @param {HTMLParagraphElement} empty @param {Selection} sel */
 export function filter(input, empty, sel) {
   const query = input.value.trim().toLocaleLowerCase();
   let shown = 0;
-  for (const row of sel.rows) {
-    let text = texts.get(row);
-    if (text === undefined) texts.set(row, (text = `${row.cells[1].textContent} ${row.cells[2].textContent}`.toLocaleLowerCase()));
-    row.hidden = query !== "" && !text.includes(query);
-    if (!row.hidden) shown += 1;
+  for (const row of rows(sel.body, InventoryRow)) {
+    let text = texts.get(row.el);
+    if (text === undefined) texts.set(row.el, (text = `${row.el.cells[1].textContent} ${row.set}`.toLocaleLowerCase()));
+    row.el.hidden = query !== "" && !text.includes(query);
+    if (!row.el.hidden) shown += 1;
   }
   empty.hidden = shown > 0;
   tally(sel);
@@ -110,10 +118,10 @@ export function sort(button, body, column) {
     return cell.querySelector("input")?.value ?? cell.textContent ?? "";
   };
   const numeric = column >= 4;
-  const rows = Array.from(body.rows).map((row) => ({ row, key: numeric ? Number(key(row)) : key(row) }));
-  rows.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  if (descending) rows.reverse();
-  body.append(...rows.map((r) => r.row));
+  const sorted = Array.from(body.rows).map((row) => ({ row, key: numeric ? Number(key(row)) : key(row) }));
+  sorted.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  if (descending) sorted.reverse();
+  body.append(...sorted.map((r) => r.row));
 }
 
 /** @param {HTMLDialogElement} dialog */
@@ -126,15 +134,11 @@ export function confirm(dialog) {
  * @param {HTMLElement} root @param {HTMLFormElement} form @param {HTMLInputElement} ids @param {Selection} sel
  */
 export function archive(root, form, ids, sel) {
-  ids.value = sel.boxes.filter((box) => box.checked).map((box) => box.value).join(",");
+  const picked = [];
+  for (const row of rows(sel.body, InventoryRow)) if (row.selected) picked.push(InventoryRow.key(row.el));
+  ids.value = picked.join(",");
   form.requestSubmit();
   clear(root, sel);
-}
-
-/** @param {HTMLTableRowElement} row @param {HTMLInputElement} box @param {boolean} on */
-function mark(row, box, on) {
-  box.checked = on;
-  row.setAttribute("aria-selected", String(on));
 }
 
 /**
@@ -142,15 +146,16 @@ function mark(row, box, on) {
  * indeterminate when some are.
  * @param {Selection} sel
  */
-function tally({ rows, boxes, all, count, bar }) {
+function tally({ body, all, count, bar }) {
   let n = 0;
   let visible = 0;
   let visibleChecked = 0;
-  for (let i = 0; i < boxes.length; i += 1) {
-    if (boxes[i].checked) n += 1;
-    if (!rows[i].hidden) {
+  for (const row of rows(body, InventoryRow)) {
+    const on = row.selected;
+    if (on) n += 1;
+    if (!row.el.hidden) {
       visible += 1;
-      if (boxes[i].checked) visibleChecked += 1;
+      if (on) visibleChecked += 1;
     }
   }
   count.value = String(n);

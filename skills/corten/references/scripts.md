@@ -145,12 +145,44 @@ export function watch(cells, feed, signal) {
 The server renders the rows first; the feed only keeps them current. Clients resume from their
 last patch after a disconnect. Across several instances, use `corten-cluster`.
 
+## Many rows: views
+
+A row component a script changes often is a `#[component(view)]`: each parameter that is an
+element's whole text, an attribute's whole value, or an input's `value`/`checked` becomes a typed
+property of a class in `corten/views`. The handler takes the rows' parent as
+`Holds<Row, ..>` and calls `rows(body, Row)`; never query rows by hand.
+
+```rust
+#[component(view)]
+pub fn Row<'a>(id: u32, label: &'a str, selected: bool, pick: Ref<el::HTMLAnchorElement>) -> impl Render {
+    html! { <tr key={id} data-selected={selected}><td><a ref={pick}>{label}</a></td></tr> }
+}
+// the grid: <tbody ref={body} on:click={js::select(pick.closest(), body)}> for item in items { <Row .. /> } </tbody>
+// the ref must be on an element whose children are only <Row .. /> (the compiler checks it)
+```
+
+```js
+import { Row, rows } from "corten/views";
+/** @import { Holds } from "corten/views" */
+
+/** @param {HTMLAnchorElement} link @param {Holds<Row, HTMLTableSectionElement>} body */
+export function select(link, body) {
+  const row = rows(body, Row).of(link);
+  if (row) row.selected = true; // writes the attribute, nothing else
+}
+```
+
+`rows()` has `at`, `get(key)`, `of`, `indexOf`, `push`, `remove`, `swap`, `clear` and keyed
+`replace` (pass the `<template>` holding one `<Row .. />` to make new rows). List the view in
+`App::components`. Details: `docs/guide/scripts.md`, "Views".
+
 ## Heavy client state (feature `solid`)
 
 For a grid of thousands of live rows, render with Solid from an `on:connect` handler:
 `import { h, mount, createStore } from "corten/solid"`, then
 `mount(el, () => h(Grid, ...), { signal })` and feed it from `subscribe`. Use it only where the
-plain DOM pattern above gets complicated.
+client owns state that many parts of the screen derive from; rows a script reads and writes are
+views.
 
 ## Widgets
 

@@ -37,6 +37,8 @@ pub struct Types {
     roots: BTreeMap<String, Value>,
     /// Each typed event's class in `corten/events`, by name.
     events: BTreeMap<&'static str, String>,
+    /// Each view's class in `corten/views`, by name.
+    views: BTreeMap<&'static str, &'static str>,
 }
 
 impl Default for Types {
@@ -51,6 +53,7 @@ impl Types {
             generator: SchemaSettings::draft2020_12().for_serialize().into_generator(),
             roots: BTreeMap::new(),
             events: BTreeMap::new(),
+            views: BTreeMap::new(),
         }
     }
 
@@ -65,8 +68,12 @@ impl Types {
     }
 
     /// Adds the typed events among the app's components (the list it gives `App::components`)
-    /// to `corten/events`, with the types of their fields.
+    /// to `corten/events`, with the types of their fields, and the views (`#[component(view)]`)
+    /// to `corten/views`.
     pub fn components(mut self, components: &[crate::Component]) -> Self {
+        for view in components.iter().filter_map(|c| c.view) {
+            self.views.insert(view.class, view.ts);
+        }
         for event in components.iter().filter_map(|c| c.event) {
             let mut fields = String::new();
             let mut init = Vec::new();
@@ -129,7 +136,18 @@ impl Types {
             for entry in self.events.values() {
                 out.push_str(entry);
             }
-            out.push_str("}\n\nexport {};\n");
+            out.push_str("}\n");
+        }
+        if !self.views.is_empty() {
+            out.push_str("\n/** The app's views (#[component(view)]): each one's holes, read from and written to the page. */\ndeclare module \"corten/views\" {\n");
+            out.push_str(crate::script::VIEW_TYPES);
+            for ts in self.views.values() {
+                out.push_str(ts);
+            }
+            out.push_str("}\n");
+        }
+        if !self.events.is_empty() || !self.views.is_empty() {
+            out.push_str("\nexport {};\n");
         }
         out
     }

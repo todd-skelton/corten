@@ -19,7 +19,28 @@ try {
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
 
+  // At DOMContentLoaded the page's module scripts have run and handed their handlers to the
+  // runtime: a click then already runs the grid's handler (and a second click puts it back). The
+  // hand-off is not an API: a forged one from another URL, sent just before the real module's,
+  // is ignored (or this click would find no handler).
+  await page.addInitScript(() => {
+    let forged = false;
+    document.addEventListener("corten:module", (event) => {
+      if (forged) return;
+      forged = true;
+      const { name } = /** @type {CustomEvent<{ name: string }>} */ (event).detail;
+      const detail = { name, url: new URL("/forged.js", location.href).href, exports: {} };
+      document.dispatchEvent(new CustomEvent("corten:module", { detail }));
+    }, { capture: true });
+    document.addEventListener("DOMContentLoaded", () => {
+      const box = /** @type {HTMLInputElement | null} */ (document.querySelector("tbody input[type=checkbox]"));
+      box?.click();
+      /** @type {any} */ (window).__countAtDcl = document.querySelector("output")?.textContent;
+      box?.click();
+    });
+  });
   await page.goto(base);
+  check("handlers run from DOMContentLoaded", (await page.evaluate(() => /** @type {any} */ (window).__countAtDcl)) === "1");
   const nav = await page.evaluate(async () => {
     const { ready } = await import("corten");
     await ready;
@@ -155,7 +176,7 @@ try {
   check("the dialog closed", !(await page.isVisible("dialog[open]")));
 
   // Live levels: the feed changes some stock cells.
-  const levels = () => page.$$eval("tbody td[data-key]", (cells) => cells.map((c) => c.textContent).join());
+  const levels = () => page.$$eval("tbody tr > td:nth-child(5)", (cells) => cells.map((c) => c.textContent).join());
   const first = await levels();
   await page.waitForTimeout(1200);
   check("live levels update stock cells", (await levels()) !== first);
