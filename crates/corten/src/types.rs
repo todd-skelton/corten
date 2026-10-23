@@ -140,6 +140,7 @@ impl Types {
         }
         if !self.views.is_empty() {
             out.push_str("\n/** The app's views (#[component(view)]): each one's holes, read from and written to the page. */\ndeclare module \"corten/views\" {\n");
+            out.push_str(crate::script::VIEW_TYPES);
             for ts in self.views.values() {
                 out.push_str(ts);
             }

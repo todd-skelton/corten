@@ -88,7 +88,7 @@ fn decimals(step: f64) -> usize {
 ///
 /// let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", Order::FIELDS.qty, "Fewer", "More") };
 /// let html = NumberField { field: &qty }.to_html();
-/// assert!(html.starts_with(r#"<div data-scope="ui-number-field" data-events="pointerdown click keydown input change" data-on="connect:ui.number_field.connect(@decrease,@input,@increase,$s)"><button data-ref="decrease" type="button" aria-controls="qty" aria-label="Fewer" tabindex="-1" disabled"#));
+/// assert!(html.starts_with(r#"<div data-scope="ui-number-field" data-on="connect:ui.number_field.connect(@decrease,@input,@increase,$s)"><button data-ref="decrease" type="button" aria-controls="qty" aria-label="Fewer" tabindex="-1" disabled"#));
 /// assert!(html.contains(r#"<input data-ref="input" type="number" inputmode="decimal" id="qty" name="qty" value="1" min="1" step="1""#));
 /// ```
 #[component(js)]

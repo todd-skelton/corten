@@ -49,6 +49,14 @@ const page = (title, main, head = "", events = "") => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title><link rel="stylesheet" href="../app.css"><script type="module" src="app.js"></script>${head}</head>
 <body>${main.startsWith("<main") ? main : `<main id="main"${events ? ` data-events="${events}"` : ""}>${main}</main>`}</body></html>
 `;
+/**
+ * A page the way Corten serves one: the import map, the runtime, and a preload of the handler
+ * module the markup names (the runtime imports it from the scripts directory).
+ */
+const cortenPage = (title, main, module) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>${title}</title><link rel="stylesheet" href="../app.css"><script type="importmap">{"imports":{"corten":"./runtime.js","corten/views":"./views.js"}}</script><meta name="corten-scripts" content="./scripts/"><link rel="modulepreload" href="./scripts/${module}.js"><link rel="modulepreload" href="./views.js"><script type="module" src="./runtime.js"></script></head>
+<body>${main}</body></html>
+`;
 
 // The rows the server renders on the server-rendered pages, with the apps' own generator.
 const { label, nextId } = await import("./apps/shared/labels.js");
@@ -75,20 +83,21 @@ const remixPage = await (await server("apps/remix/server.tsx"))(initial);
 const apps = [
   { name: "vanilla", entry: "apps/vanilla/app.js", main: body(false) },
   { name: "state", entry: "apps/state/app.js", main: body(true) },
-  { name: "view", entry: "apps/view/app.js", main: viewPage("view") },
+  // Corten's runtime runs these: the handlers are the Rust components' scripts (gen/src/*.js).
+  { name: "view", module: "bench", main: viewPage("view") },
   { name: "solid", entry: "apps/solid/app.jsx", main: "", plugins: [solidJsx({ generate: "dom" })] },
   { name: "solid-h", entry: "apps/solid-h/app.js", main: "" },
   { name: "remix", entry: "apps/remix/app.tsx", main: "" },
   // Server-rendered: 1,000 rows in the HTML that the client has to take over.
   { name: "vanilla-ssr", entry: "apps/vanilla/app.js", main: body(false, initial) },
   { name: "state-ssr", entry: "apps/state/app.js", main: body(true, initial) },
-  { name: "view-ssr", entry: "apps/view/app.js", main: viewPage("view-ssr") },
+  { name: "view-ssr", module: "bench", main: viewPage("view-ssr") },
   { name: "solid-ssr", entry: "apps/solid/hydrate.jsx", main: solidPage.html + data(initial), head: solidPage.head, plugins: [solidJsx({ generate: "dom", hydratable: true })] },
   { name: "remix-ssr", entry: "apps/remix/hydrate.tsx", main: remixPage.html },
   // The dashboard: 200 cards on one shared store, and a total.
   { name: "dashboard-vanilla", entry: "apps/dashboard-vanilla/app.js", main: dashboard(false) },
   { name: "dashboard-state", entry: "apps/dashboard-state/app.js", main: dashboard(true) },
-  { name: "dashboard-view", entry: "apps/dashboard-view/app.js", main: dashboard(true) },
+  { name: "dashboard-view", module: "dashboard", main: viewPage("dashboard-view") },
   { name: "dashboard-solid", entry: "apps/dashboard-solid/app.jsx", main: "", plugins: [solidJsx({ generate: "dom" })] },
   { name: "dashboard-remix", entry: "apps/dashboard-remix/app.tsx", main: "" },
 ];
@@ -99,12 +108,34 @@ const sizes = {};
 for (const app of apps) {
   const dir = join(out, app.name);
   mkdirSync(dir, { recursive: true });
+  if (app.module) {
+    // What the browser gets from Corten: the runtime, the views module, and the handler module
+    // (its own imports bundled in; "corten" and "corten/views" stay imports, for the import map).
+    const runtime = readFileSync(join(js, "dist", "corten.js"));
+    const views = readFileSync(join(gen, "view", "views.js"));
+    const script = await build({
+      entryPoints: [join(here, "gen", "src", `${app.module}.js`)],
+      bundle: true, format: "esm", minify: process.env.MINIFY !== "0", target: "es2022", legalComments: "none", write: false,
+      external: ["corten", "corten/views"],
+    });
+    const code = script.outputFiles[0].contents;
+    mkdirSync(join(dir, "scripts"), { recursive: true });
+    writeFileSync(join(dir, "runtime.js"), runtime);
+    writeFileSync(join(dir, "views.js"), views);
+    writeFileSync(join(dir, "scripts", `${app.module}.js`), code);
+    writeFileSync(join(dir, "index.html"), cortenPage(app.name, app.main, app.module));
+    const files = [runtime, views, code];
+    const sum = (f) => files.reduce((t, b) => t + f(b), 0);
+    sizes[app.name] = { raw: sum((b) => b.length), gzip: sum((b) => gzipSync(b, { level: 9 }).length), brotli: sum((b) => brotliCompressSync(b).length) };
+    console.log(`${app.name.padEnd(8)} ${String(sizes[app.name].raw).padStart(7)} B  ${String(sizes[app.name].gzip).padStart(6)} B gzip  ${String(sizes[app.name].brotli).padStart(6)} B br (runtime + views + ${app.module}.js)`);
+    continue;
+  }
   const result = await build({
     entryPoints: [join(here, app.entry)],
     bundle: true, format: "esm", minify: process.env.MINIFY !== "0", target: "es2022", legalComments: "none", write: false,
     outfile: join(dir, "app.js"),
     conditions: ["browser"],
-    alias: { "corten/state": join(js, "state.js"), "corten/view": join(js, "view.js"), "corten/views": join(gen, "view", "views.js"), "corten/solid": join(js, "solid.js") },
+    alias: { "corten/state": join(here, "apps", "shared", "state.js"), "corten/solid": join(js, "solid.js") },
     jsx: "automatic", jsxImportSource: "remix/component",
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: app.plugins ?? [],

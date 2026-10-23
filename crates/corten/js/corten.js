@@ -97,9 +97,11 @@ function findRefs(from, owner, name) {
   const pending = observer.takeRecords();
   if (pending.length) observed(pending);
   let cached = refCache.get(scope);
-  if (!cached || cached.generation !== generation) refCache.set(scope, (cached = { generation, refs: new Map() }));
-  const hit = cached.refs.get(name);
-  if (hit) return hit.slice();
+  if (!cached) refCache.set(scope, (cached = new Map()));
+  // Still right while no element with this ref name joined the page and none it found left.
+  const changes = refChanges.get(name) ?? 0;
+  const hit = cached.get(name);
+  if (hit && hit.changes === changes && hit.found.every((el) => el.isConnected)) return hit.found.slice();
   const own = scope.getAttribute("data-scope");
   const qualified = `${own}/${name}`;
   /** @type {Element[]} */
@@ -110,14 +112,26 @@ function findRefs(from, owner, name) {
   };
   check(scope);
   for (const el of Array.from(scope.querySelectorAll(`[data-ref="${name}"],[data-ref="${qualified}"]`))) check(el);
-  cached.refs.set(name, found);
+  cached.set(name, { changes, found });
   return found.slice();
 }
 
-/** Bumped when elements join or leave the page, which can change what a ref resolves to. */
-let generation = 0;
-/** @type {WeakMap<Element, { generation: number, refs: Map<string, Element[]> }>} */
+/**
+ * How often elements with a ref of this name (`rows`, for `rows` and `offer-list/rows`) joined
+ * the page. Only those can add to what a ref resolves to; elements that leave are noticed when a
+ * cached ref is next used. So 10,000 rows put in or taken out of a list leave the refs of the
+ * list's component cached.
+ * @type {Map<string, number>}
+ */
+const refChanges = new Map();
+/** Each component root's resolved refs. @type {WeakMap<Element, Map<string, { changes: number, found: Element[] }>>} */
 const refCache = new WeakMap();
+
+/** @param {Element} el @param {Set<string>} names */
+function refName(el, names) {
+  const ref = el.getAttribute("data-ref");
+  if (ref !== null) names.add(ref.slice(ref.indexOf("/") + 1));
+}
 
 /** @type {WeakMap<Element, unknown>} */
 const states = new WeakMap();
@@ -283,13 +297,26 @@ const connected = new Set();
 
 /**
  * Wires the markup under `root`: imports the modules its handlers name, listens for their events
- * and runs `on:connect` handlers.
+ * and runs `on:connect` handlers. The names of the refs in it go in `names`.
  * @param {Element} root
+ * @param {Set<string>} names
+ * @param {boolean} [inside] only what is inside `root` joined the page
  */
-function scan(root) {
-  for (const template of Array.from(root.querySelectorAll("template"))) modulesOf(template.content);
+function scan(root, names, inside = false) {
+  for (const template of Array.from(root.getElementsByTagName("template"))) modulesOf(template.content);
   const marked = Array.from(root.querySelectorAll("[data-on]"));
-  if (root.hasAttribute("data-on")) marked.unshift(root);
+  if (!inside) {
+    if (root.hasAttribute("data-on")) marked.unshift(root);
+    refName(root, names);
+  }
+  // Rows cloned from one template carry the same refs, so a name is added once per run of them.
+  const refs = root.querySelectorAll("[data-ref]");
+  let last = null;
+  for (let i = 0; i < refs.length; i += 1) {
+    const ref = refs[i].getAttribute("data-ref");
+    if (ref !== last && ref !== null) names.add(ref.slice(ref.indexOf("/") + 1));
+    last = ref;
+  }
   for (const el of marked) {
     let connects = false;
     for (const b of bindings(el)) {
@@ -320,25 +347,32 @@ function sweep() {
 }
 
 /**
+ * More elements than this joining in one change, and at least half of their parent's children,
+ * are scanned with one query of the parent (see `observed`).
+ */
+const MANY = 16;
+
+/**
  * Markup that joins the page (a navigation, a patch, a script's insert, Solid's render) is wired;
  * markup that leaves it ends.
  * @param {MutationRecord[]} records
  */
 function observed(records) {
   let removed = false;
-  let changed = false;
+  /** The names of the refs of the elements that joined. @type {Set<string>} */
+  const names = new Set();
+  /** Parents that got many children at once: scanned whole, with one query each. @type {Set<Element>} */
+  const wide = new Set();
   for (const record of records) {
-    for (const node of Array.from(record.removedNodes)) {
-      if (node instanceof Element) changed = removed = true;
-    }
-    for (const node of Array.from(record.addedNodes)) {
-      if (!(node instanceof Element)) continue;
-      changed = true;
-      if (node.isConnected) scan(node);
-    }
+    if (record.removedNodes.length) removed = true;
+    const added = record.addedNodes;
+    const parent = record.target;
+    if (added.length > MANY && parent instanceof Element && added.length * 2 >= parent.childElementCount) wide.add(parent);
+    else for (const node of Array.from(added)) if (node instanceof Element && node.isConnected) scan(node, names);
   }
-  // Text changes (a live cell's new value) cannot change what a ref is.
-  if (changed) generation += 1;
+  // Wiring is the same however often it runs, so a parent scanned whole may hold rows wired before.
+  for (const parent of wide) if (parent.isConnected) scan(parent, names, true);
+  for (const name of names) refChanges.set(name, (refChanges.get(name) ?? 0) + 1);
   if (removed && (lives.size || connected.size)) sweep();
 }
 
@@ -873,7 +907,7 @@ customElements.define(
 );
 
 markCurrent();
-scan(document.documentElement);
+scan(document.documentElement, new Set());
 
 /** Resolves once the script modules the first page's handlers use are imported. */
 export const ready = Promise.all(loading.values()).then(() => undefined);

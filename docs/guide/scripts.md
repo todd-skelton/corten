@@ -239,44 +239,79 @@ from `corten` gives the same object for the same element until it is gone.
 ## Views (prototype)
 
 On this branch, a component a script changes often (a row of a grid with thousands) can be a
-`#[component(view)]`. Its script then writes the component's holes by name instead of finding
+`#[component(view)]`. Its handlers then write the component's holes by name instead of finding
 elements:
 
 ```rust,ignore
 #[component(view)]
-pub fn Row<'a>(id: u32, label: &'a str, selected: bool) -> impl Render {
+pub fn Row<'a>(id: u32, label: &'a str, selected: bool, pick: Ref<el::HTMLAnchorElement>) -> impl Render {
     html! {
         <tr key={id} data-selected={selected}>
             <td>{id}</td>
-            <td><a>{label}</a></td>
+            <td><a ref={pick}>{label}</a></td>
         </tr>
+    }
+}
+
+#[component(js)]
+fn Grid<'a>(items: &'a [Item]) -> impl Render {
+    let (body, template, pick) = refs();
+    html! {
+        <table>
+            <tbody ref={body} on:click={js::select(pick.closest(), body)}>
+                for item in items {
+                    <Row id={item.id} label={&item.label} selected={false} pick={pick} />
+                }
+            </tbody>
+            <template ref={template}><Row id={0} label="" selected={false} pick={pick} /></template>
+        </table>
     }
 }
 ```
 
 ```js
-import { rows } from "corten/view";
-import { Row } from "corten/views";
+// grid.js
+import { Row, rows } from "corten/views";
 
-const list = rows(body, Row, template); // body's rows; new ones are clones of template's
-list.at(5).label += " !!!";             // writes that one text node
-list.of(event.target).selected = true;  // the row that was clicked
-list.replace(fresh);                    // keyed: kept rows keep their elements
+/** @param {HTMLAnchorElement} link @param {HTMLTableSectionElement} body */
+export function select(link, body) {
+  const list = rows(body, Row); // body's rows, the same list every time
+  const row = list.of(link); // the row that was clicked
+  if (row) row.selected = true;
+  list.at(5).label += " !!!"; // writes that one text node
+}
 ```
+
+Views are not a second way to handle events: the markup calls handlers with `on:` as everywhere
+else, and a handler that gets the list's parent (and the `<template>`, to make new rows) calls
+`rows(body, Row, template)`:
+
+| `rows()` | |
+|---|---|
+| `at(i)`, `of(event.target)`, `length`, iteration | the views of the rows |
+| `push(items)`, `remove(view)`, `swap(i, j)`, `clear()` | change the rows; new ones are clones of the template's row, filled with their data |
+| `replace(items)` | shows exactly `items`: rows with a key it had keep their element and are filled again |
+
+One parent has one list, whichever handler asks, and it notices rows changed without it (a
+server patch, a sort) the next time it is used.
 
 | In the markup | In the view |
 |---|---|
 | `{label}`, the only child of an element | `label`: reads and writes that element's text |
 | `data-selected={selected}`, an attribute's whole value | `selected`: the attribute (a `bool` adds or removes it) |
+| `value={qty}` or `checked={on}` on an `<input>` | `qty`, `on`: what the input shows now (the user's edit), and its default |
 | `key={id}` on the root | `Row.key(el)` / `Row.keyOf(data)`, what `rows()` keys by |
-| a parameter used any other way (`"Label: "{label}`, inside a loop, in a `class`) | nothing: a script could not write it alone |
+| a parameter used any other way (`"Label: "{label}`, inside a loop, in a `class`), or a `Ref` | nothing: a script could not write it alone |
 
 Holes are found when the crate compiles, on elements whose place is fixed (no loop, condition,
 expression or component before them), so the view walks straight to them. Numbers, text and
-`bool` parameters can be properties; `corten::types` declares the class in `corten/views`, so
-`row.lable = "x"` or `row.label = 3` fails `tsc`. A view needs one root element and at least one
-hole, or the component does not compile. List the component in `App::components`; the classes are
-served as one module, mapped as `corten/views`.
+`bool` parameters can be properties. A number property is a JavaScript number in the page, so
+debug builds stop a value past 2^53 (a 64-bit id), as they do for a handler's number argument:
+make such a value a string. `corten::types` declares the classes and `rows()` in
+`corten/views`, so `row.lable = "x"` or `row.label = 3` fails `tsc`. A view needs one root
+element and at least one hole, or the component does not compile. List the component in
+`App::components`; `rows()` and the classes are served as one module, mapped as
+`corten/views`, and only to apps with views.
 
 ## Screens with client state
 

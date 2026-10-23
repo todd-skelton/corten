@@ -1,5 +1,5 @@
 {
-  "//": "Type-checks the view app against the declarations gen/ writes from the Rust Row (node build.mjs first): npx tsc -p bench/browser/jsconfig.json",
+  "//": "Type-checks the view apps' scripts against the declarations gen/ writes from the Rust Row and Card (node build.mjs first): npx tsc -p bench/browser/jsconfig.json",
   "compilerOptions": {
     "checkJs": true,
     "allowJs": true,
@@ -10,7 +10,7 @@
     "moduleResolution": "bundler",
     "lib": ["es2022", "dom", "dom.iterable"],
     "types": [],
-    "paths": { "corten/state": ["../../crates/corten/js/state.js"], "corten/view": ["../../crates/corten/js/view.js"] }
+    "paths": { "corten": ["../../crates/corten/js/corten.js"] }
   },
-  "include": ["apps/view/*.js", "apps/shared/labels.js", "../../crates/corten/js/views.d.ts", "out/_gen/view/views.d.ts"]
+  "include": ["gen/src/*.js", "apps/view/*.js", "apps/shared/labels.js", "apps/shared/market.js", "../../crates/corten/js/views.d.ts", "out/_gen/view/views.d.ts"]
 }

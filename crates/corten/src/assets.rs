@@ -447,6 +447,7 @@ mod tests {
         let module = crate::script::views_module(&[ROW, ROW]).unwrap().unwrap();
         assert_eq!(module.matches("export class Row").count(), 1, "listed twice, served once");
         assert!(module.starts_with("// The app's views"), "with the helpers the classes use");
+        assert!(module.contains("const{checked,rows,text,value}=") && module.contains("export { rows };"), "and rows()");
         let error = Assets::build(None, &[ROW, view("export class Row { other() {} }\n")], "/assets").err().expect("two Rows");
         assert!(error.to_string().contains("two views named Row"), "{error}");
         assert!(Assets::build(None, &[SCRIPT], "/assets").unwrap().views().is_none());

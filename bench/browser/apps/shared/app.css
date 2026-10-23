@@ -7,4 +7,4 @@ tr.danger, tr[data-selected] { background: #f2dede; }
 a { cursor: pointer; color: #337ab7; }
 .cards { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
 .card { border: 1px solid #ddd; padding: 2px 4px; font-size: 12px; }
-.up { color: green; } .down { color: #b00; }
+.up { color: green; } .down, [data-down] { color: #b00; }

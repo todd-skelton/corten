@@ -4,12 +4,18 @@ Notable changes to Corten. The format follows [Keep a Changelog](https://keepach
 Corten is pre-1.0, so any minor version may change the API.
 
 ## Unreleased
-15. `#[component(view)]` (prototype, for the `corten/view` browser runtime on this branch): the
-   component gets a class in `corten/views` whose properties are its holes, a parameter that is
-   an element's whole text or an attribute's whole value. `row.label = "x"` writes that text,
-   `row.label` reads it back, a root `key={id}` keys it for `rows()`, and `corten::types`
-   declares it so `tsc` checks scripts against the Rust parameters. A component's root also
-   gets `data-events`, the event types of the `on:` handlers in its markup.
+15. `#[component(view)]` (prototype on this branch): the component gets a class in
+   `corten/views` whose properties are its holes, a parameter that is an element's whole text or
+   an attribute's whole value. `row.label = "x"` writes that text, `row.label` reads it back,
+   an `<input>`'s `value` and `checked` are its live properties, a root `key={id}` keys it,
+   and `corten::types` declares it so `tsc` checks scripts against the Rust parameters. Debug
+   builds stop a number property past 2^53. Handlers use views through `rows(parent, View,
+   template)` from the same module: one list per parent element that follows changes made
+   elsewhere. Corten serves `rows()` and the classes as one module, only to apps with views.
+16. The runtime's ref cache survives lists: inserting or removing rows no longer makes the next
+   handler query the whole component for its other refs (a click after creating 10,000 rows took
+   8.8 ms, now 0.8 ms, then 0.1 ms), and markup joining the page is wired with one query for its
+   handlers and one for its refs per insert, instead of two per element.
 
 ### Added
 

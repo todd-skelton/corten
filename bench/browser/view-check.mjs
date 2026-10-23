@@ -1,6 +1,8 @@
-// Checks corten/view's rows() in a real DOM against random edits: after every replace, push,
-// remove, swap or clear, the children must show exactly the items, in order, keep their elements
-// for kept keys, and at(i) / of(target) must give the view of the right row. node view-check.mjs
+// Checks rows() (crates/corten/js/view.js, served in corten/views) in a real DOM against random
+// edits: after every replace, push, remove, swap or clear, and after changes made to the
+// children without it (a server patch, a sort), the children must show exactly the items, in
+// order, keep their elements for kept keys, and at(i) / of(target) must give the view of the
+// right row. node view-check.mjs
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -29,7 +31,7 @@ const result = await page.evaluate(async (src) => {
     set k(v) { text(this.el.firstElementChild, String(v)); }
     get v() { return this.el.firstElementChild.nextElementSibling.textContent; }
     set v(v) { text(this.el.firstElementChild.nextElementSibling, String(v)); }
-    static fill(el, data) { const view = new this(el); view.k = data.k; view.v = data.v; }
+    static fill(el, data) { mod.text(el.firstElementChild, String(data.k)); mod.text(el.firstElementChild.nextElementSibling, String(data.v)); }
     static key(el) { return el.firstElementChild.textContent; }
     static keyOf(data) { return String(data.k); }
   }
@@ -47,13 +49,17 @@ const result = await page.evaluate(async (src) => {
   const start = () => {
     items = fresh(rnd(40));
     ul.innerHTML = items.map((x) => `<li><b>${x.k}</b>:<i>${x.v}</i></li>`).join("");
-    l = mod.rows(ul, Item, template);
+    // One list per parent: the same object every time, following the new children.
+    const again = mod.rows(ul, Item, template);
+    if (l && again !== l) fail(step, "rows() made a second list for one parent");
+    l = again;
   };
-  for (let step = 0; step < 3000; step++) {
+  let step = 0;
+  for (; step < 3000; step++) {
     if (step % 300 === 0) start();
     const before = new Map(Array.from(ul.children, (el, i) => [items[i].k, el]));
     let next = items.slice();
-    const kind = rnd(10);
+    const kind = rnd(12);
     lastKind = String(kind);
     if (kind <= 5) {
       // replace with: new list, inserts, deletes, shuffle, swap, or changed values
@@ -83,6 +89,16 @@ const result = await page.evaluate(async (src) => {
       const i = rnd(next.length);
       next[i] = { ...next[i], v: next[i].v + 1 };
       l.at(i).v = String(next[i].v);
+    } else if (kind === 10 && next.length > 1) {
+      // Without the list: a sort moves a row to the end; the list sees it on its next use.
+      const i = rnd(next.length);
+      ul.appendChild(ul.children[i]);
+      next.push(...next.splice(i, 1));
+    } else if (kind === 11) {
+      // Without the list: a patch adds a server-rendered row at the start.
+      const [x] = fresh(1);
+      ul.insertAdjacentHTML("afterbegin", `<li><b>${x.k}</b>:<i>${x.v}</i></li>`);
+      next.unshift(x);
     } else if (rnd(20) === 0) {
       l.clear();
       next = [];

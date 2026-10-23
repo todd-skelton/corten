@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { chromium } = createRequire(join(here, "..", "..", "package.json"))("@playwright/test");
-const source = readFileSync(join(here, "..", "..", "crates", "corten", "js", "state.js"), "utf8");
+const source = readFileSync(join(here, "apps", "shared", "state.js"), "utf8");
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 await page.setContent('<ul id="l"></ul><template id="t"><li> </li></template>');

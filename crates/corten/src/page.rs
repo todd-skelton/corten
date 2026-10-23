@@ -539,8 +539,14 @@ impl Req {
         let _ = write!(out, r#"<script type="importmap">{}</script>"#, self.shared.import_map);
         let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
         // The modules the page's handlers call, fetched with the runtime rather than on first use.
+        let mut preloaded = false;
         for name in modules.iter().filter(|m| self.shared.assets.as_ref().is_some_and(|a| a.has_script(m))) {
             let _ = write!(out, r#"<link rel="modulepreload" href="{dir}{name}.js">"#);
+            preloaded = true;
+        }
+        // A handler module may import the views (corten/views): fetched with it, not after it.
+        if let Some(views) = self.shared.assets.as_ref().filter(|_| preloaded).and_then(|a| a.views()) {
+            let _ = write!(out, r#"<link rel="modulepreload" href="{views}">"#);
         }
         out
     }

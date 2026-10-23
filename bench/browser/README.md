@@ -4,7 +4,7 @@ A test of one proposal for Corten's browser side. A component's script is a setu
 plain variables and one `state({...})` object. Assigning a new value to a state key re-runs, in
 a microtask, only the renders that read that key: there is no `update()` call, no virtual DOM
 and no signal per value. Lists are `<template>` clones that a keyed `list()` patches. The
-prototype runtime is [crates/corten/js/state.js](../../crates/corten/js/state.js), 2,147 B gzip
+prototype runtime is [apps/shared/state.js](apps/shared/state.js), 2,147 B gzip
 on its own as first measured (2,291 B after the fixes below). Nothing in the framework uses it yet.
 
 Every app renders the same rows (the js-framework-benchmark word lists, the same 32-bit LCG and
@@ -28,7 +28,7 @@ cd bench/browser
 npm install
 node build.mjs          # out/<app>/: index.html and app.js, and sizes (runs gen/ with cargo for the view apps)
 node list-check.mjs     # list() against 3,000 random edits in a real DOM
-node view-check.mjs     # corten/view's rows() against 3,000 random edits
+node view-check.mjs     # rows() (corten/views) against 3,000 random edits, some made without it
 node run.mjs            # client operations, memory and load (two rounds, in alternating order)
 node ssr.mjs            # 1,000 server-rendered rows: take over, then interact
 node dashboard.mjs      # 200 cards on one shared store
@@ -276,68 +276,79 @@ replaces the hand-written `Row` with the generated one.
 
 ## Generated views, end to end
 
-The view app no longer has a hand-written `Row`. [gen/src/main.rs](gen/src/main.rs) is a small
-Rust program on the framework:
+The view apps run on Corten's own runtime, the way an app serves them. There is no app bundle and
+no second handler model: [gen/src/main.rs](gen/src/main.rs) is a small Rust program on the
+framework, and its handlers are the components' scripts.
 
-1. `#[component(view)] Row(id: u32, label: &str, selected: bool)` is the row, in `html!`. The macro
-   finds its holes when the crate compiles (`{id}` and `{label}` as an element's whole text,
-   `data-selected={selected}` and `key={id}` as attributes) and generates the `Row` class with a
-   getter and setter per hole, `fill`, `key` and `keyOf`, and its TypeScript declaration.
-2. A `Bench` component renders the page's `<main>` with `html!`: the buttons, 0 or 1,000 `<Row>`s
-   and a `<template ref={row}>` with one empty `Row` that new rows are cloned from. Its root gets
-   `data-scope` and `data-events="click"` from the macro.
-3. The program writes the page, `corten::script::views_module(&[Row])` (what the app's assets
-   serve as `corten/views`) and `Types::new().components(&[Row])` (the declarations).
-   [build.mjs](build.mjs) runs it with cargo and bundles [apps/view/app.js](apps/view/app.js), which
-   imports `Row` from `corten/views`.
+1. `#[component(view)] Row(id: u32, label: &str, selected: bool, select: Ref<..>, remove: Ref<..>)`
+   is the row, in `html!`. The macro finds its holes when the crate compiles and generates the
+   `Row` class (a getter and setter per hole, `fill`, `key`, `keyOf`) and its declaration. The
+   two refs are not holes: they put `data-ref` on the row's links for the bench's handlers.
+2. `#[component(js)] Bench` renders `<main>`: buttons with `on:click={js::create(body, template,
+   1000)}` and so on, a `<tbody>` with `on:click={js::select(select.closest(), body)}` and
+   `on:click={js::remove(remove.closest(), body)}` (one handler for every row), and a
+   `<template ref={template}>` with one empty `Row`. [gen/src/bench.js](gen/src/bench.js) is
+   its script: plain functions that call `rows(body, Row, template)` and write `row.label`.
+3. The dashboard is the same: `#[component(view)] Card` and `#[component(js)] Dashboard`, with
+   [gen/src/dashboard.js](gen/src/dashboard.js). Nothing in it is hand-written any more.
+4. [build.mjs](build.mjs) writes each page as Corten serves one: the import map (`corten`,
+   `corten/views`), the runtime (`crates/corten/js/dist/corten.js`), `views.js` from
+   `corten::script::views_module` (`rows()` and the generated classes in one module), and the
+   handler module, preloaded. The JS sizes below are those three files.
 
-`npx tsc -p bench/browser/jsconfig.json` checks the app against the generated declarations, and
-[apps/view/types-check.js](apps/view/types-check.js) holds what it must reject: a misspelled
-property, a number written to `label`, and a new row without `selected`. On the Rust side,
-`compile_fail` doctests on `corten::script::ViewDef` cover a view with two roots, one with no hole
-(`"Label: "{label}` is part of a longer text) and a key that is not a hole.
+`npx tsc -p bench/browser/jsconfig.json` checks both scripts against the generated declarations,
+and [apps/view/types-check.js](apps/view/types-check.js) holds what it must reject (a misspelled
+property, a number written to `label`, a new row without `selected`, a ref passed as data, a
+`Card`'s data given to a `Row` list). The macro checks the JSDoc: `js::select(select.closest(),
+body)` compiles only because `select` is on an `<a>` and `body` on a `<tbody>`.
 
-Results against the hand-written view (commit 9571f9d's `row.js` and `view.js`, built as
-`view-hand`) and plain JavaScript:
+Ops, medians of two interleaved rounds of 15 (ms, commit; [results/ops-view-runtime.json](results/ops-view-runtime.json)):
 
-| | vanilla | view, hand-written | view, generated |
-|---|---|---|---|
-| create 1,000 rows, interleaved mean ms | 20.98 ± 0.13 | 24.74 ± 0.29 | 26.35 ± 0.16 |
-| update, swap, select, remove, patch (medians, ms) | 0.1 to 0.6 | 0.1 to 0.6 | 0.1 to 0.6, no difference |
-| bytes per row (10k rows) | 166 | 114 | 98 |
-| heap with 10k rows (KB) | 2,690 | 2,186 | 2,031 |
-| JS (B gzip) | 1,086 | 2,024 | 2,125 |
-| server-rendered page, 1,000 rows (B gzip) | 14,781 | 15,257 | 12,028 |
-| takeover of 1,000 server rows (ms, medians of 21 loads, 3 runs) | | 2.7 to 3.4 | 3.2 to 3.6 |
+| | vanilla | view | state | solid |
+|---|---|---|---|---|
+| create 1,000 rows | 5.5 to 11.3 | 10.1 to 13.9 | 6.8 to 9.9 | 10.4 to 12.6 |
+| create 10,000 rows | 69.7 to 88.4 | 85.3 to 88.6 | 69.1 to 107 | 103.1 to 113.9 |
+| append 1,000 rows | 7.9 to 8.7 | 10.5 to 12.2 | 9.8 to 10.4 | 9.2 to 11.6 |
+| update, select, swap, remove, patch | 0.1 to 0.5 | 0.2 to 0.7 | 0.2 to 0.8 | 0.2 to 1.1 |
+| bytes per row (10k rows) | 165 to 166 | 116 | 246 to 250 | 927 to 928 |
+| heap with 10k rows (KB) | 2,682 to 2,694 | 2,252 | 3,478 to 3,521 | 10,158 to 10,161 |
+| JS (B gzip) | 1,086 | 8,288 (runtime 5,732) | 3,076 | 7,013 |
 
-1. **Creating rows costs 1.6 ms per 1,000 more than the hand-written view.** The generated `fill`
-   writes every hole, and the hand-written one skipped two: the `data-key` attribute (the hand
-   version keyed by the id's text) and `data-selected` (it left a new row unselected). The first
-   generated `fill` went through a view and its setters; writing the holes directly took 10,000
-   rows from 131 to 121 ms in a micro-benchmark (`out/fill-micro.mjs`, not committed), so that is
-   what the macro generates.
-2. **Takeover differs by about 0.5 ms, and the generated code is not the cause.** The same
-   generated app takes over the hand-written page in 2.9 to 3.0 ms, and the generated page with
-   the hand page's 40 KB JSON block added back takes 2.8 to 2.9 ms. Takeover is measured from the
-   end of parsing, and a longer page apparently leaves less of the script's start after that point.
-   The generated page has no JSON block, because `rows()` reads the rows from the page.
-3. **Memory is lower** (98 bytes per row against 114): the rows hold one attribute more, but the
-   app keeps no array of row data.
-4. **Server rendering is unchanged.** The item page's `render_cost` (release, the
-   benchmark fixture, run alternately against main's commit): main 27.0, 28.0, 28.2 and 34.3 µs,
-   this branch 26.0, 26.7, 28.5 and 29.1 µs. Its pages are 40 bytes larger (7,775 against 7,735)
-   from `data-events`.
+This machine is noisy (vanilla's own create 1,000 ranges from 5.5 to 11.3 ms between rounds), so
+read the ranges, not single values.
+
+Dashboard (30 ticks, commit / frame ms): tick 20 vanilla 0.3 / 13.2, view 0.3 / 14.9, Solid
+0.6 / 13.9; tick 200 vanilla 0.7 / 14.8, view 1.1 / 16.9, Solid 1.9 / 16.7. Heap 1,140, 1,251 and
+1,749 KB.
+
+1. **Updates cost what they did with the prototype's own handlers**, through the real runtime's
+   delegation and typed refs: a click resolves `^select` and `@body` and calls the handler, and
+   the handler writes one text node.
+2. **Creating rows is within the noise of plain JavaScript and ahead of Solid at 10,000.** The
+   runtime wires markup that joins the page (it imports the modules it names and records the
+   names of the refs it carries); the first version of this run took 166 to 207 ms for 10,000
+   rows, because it queried twice per inserted row and then read every ref attribute. One query
+   for handlers, one for refs, and reading a run of identical ref names once brought the
+   observer's share from about 33 ms to about 18 ms.
+3. **The runtime had to change for lists.** Its ref cache was dropped whenever any element joined
+   or left the page, so the first click after creating 10,000 rows queried the component for
+   `@body` across every row (8.8 ms). Now a cached ref stays until an element with that ref
+   name joins the page or one it found leaves (0.8 ms, then 0.1). Inserted markup is scanned with
+   one query per insert, or one per parent when most of its children are new, instead of two per
+   element (`create 10,000` again: 357 ms before, about 222 ms now in the probe).
+4. **Takeover of server-rendered rows is the runtime's module loading, not the views.** The view
+   page is ready 75 ms after parsing (median of 15 loads), plain JavaScript 2.4 ms, Solid 24 ms.
+   The handler module is fetched by 30 ms, but the runtime imports it with `import()`, and that
+   resolves around the first frame (about 130 to 200 ms after parsing on this 1,000-row page),
+   even when the module was already evaluated by a static `<script type="module">`. Every
+   Corten page waits this way for its handlers; clicks before then get the browser's default.
+   Wiring before the first frame needs the page to hand the runtime its modules through a static
+   import, which is a runtime change of its own.
+5. **Memory is lowest of all** (115 bytes per row): the page holds the rows and the list keeps one
+   array of elements.
 
 Still open:
 
-1. `data-events` lists the `on:` types in a component's own markup. A handler the component passes
-   to a child as a prop (`<Confirm on:confirm={..}>`) is put on an element by the child, which picks
-   the event, so a script started on the parent's root would not hear it. Recording the types while
-   the page renders (as the page already records script modules) would close this.
-2. The bench's handlers are the prototype's names (`data-on="click:select"`, from a bench-only
-   `Bind`), not the framework's typed `js::name(..)` calls. Joining the two handler models is a
-   design decision this prototype does not make.
-3. Only numbers, text and `bool` parameters become properties; a `u64` past 2^53 does not read
-   back exactly; an attribute hole writes the attribute, so `value={qty}` on an `<input>` the user
-   has typed in does not change what it shows.
-4. The dashboard's `Card` is still hand-written.
+1. The macro does not yet check that a handler's `rows(body, Row)` names the view that `body`'s
+   rows are; `tsc` checks the data and properties, not which parent holds which view.
+2. Takeover (item 4 above).

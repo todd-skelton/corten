@@ -204,6 +204,14 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         Some(span) => Some(crate::html::view_of(&body, &name.to_string(), &typed, span)?),
         None => None,
     };
+    // A view's number property is a JavaScript number in the page: debug builds stop a value it
+    // cannot hold exactly (a u64 past 2^53), as for a handler's number argument.
+    for field in view.iter().flat_map(|v| &v.numbers) {
+        lets.extend(q(
+            "::corten::script::__private::ViewNumber::check(&self.__A0, __A1);",
+            &[TokenTree::Ident(Ident::new(field, Span::call_site())).into(), literal(field)],
+        ));
+    }
     let (body, has_refs) = refs(&body, &scope_name)?;
     let scoped = has_refs || mentions(&body.stream(), "scope");
     let body = if scoped { mark_root(&body, &scope_name)? } else { body };
@@ -277,10 +285,10 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         };
         let style = if own_css { css.as_ref().map(Css::style) } else { None };
         let doc = format!(" The script, stylesheet and view of the `{name}` component, for `App::components`.");
-        let view = view.as_ref().map(|(js, ts)| {
+        let view = view.as_ref().map(|v| {
             q(
                 "::corten::script::ViewDef { class: __A0, js: __A1, ts: __A2 }",
-                &[literal(&name.to_string()), literal(js), literal(ts)],
+                &[literal(&name.to_string()), literal(&v.js), literal(&v.ts)],
             )
         });
         items.extend(q(
