@@ -147,6 +147,10 @@ Corten is pre-1.0, so any minor version may change the API.
     forms, where zmij and `Display` round differently, still go through `Display`, as do `f32`
     values. With the middleware change above, the item page took 100,380 instructions a request
     for a navigation instead of 109,373 and 113,949 for the full document instead of 124,617.
+    On a bench droplet (Xeon Platinum 8280, app on one core, 64 users, three rounds alternating
+    old and new) the item page served 21,053-22,526 requests a second instead of 17,556-20,084
+    (user cycles 88,508-96,341 a request instead of 100,013-116,955), and the item's JSON
+    24,565-25,804 instead of 23,314-24,867.
 
 ### Fixed
 
