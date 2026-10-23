@@ -57,7 +57,6 @@ Corten is pre-1.0, so any minor version may change the API.
     bodies alone) at rustfmt's `max_width`. It never joins lines the author split and only changes
     whitespace: a body whose tokens would change is left as written, with a warning.
     `corten check` runs `corten fmt --check`.
-
 15. `corten::Json` (feature `json`, in the prelude): axum's `Json` extractor with the same
     rejections, and a response written by `serde_json::to_vec` into a `Vec` the body keeps.
     axum's `Json` writes through a `BytesMut` writer that costs more for every small write. On a
