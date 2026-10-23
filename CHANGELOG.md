@@ -151,6 +151,18 @@ Corten is pre-1.0, so any minor version may change the API.
     old and new) the item page served 21,053-22,526 requests a second instead of 17,556-20,084
     (user cycles 88,508-96,341 a request instead of 100,013-116,955), and the item's JSON
     24,565-25,804 instead of 23,314-24,867.
+20. `examples/item-page` reads the item API's response into structs of only the fields the page
+    uses (`ApiItem`) instead of a `serde_json::Value`, so serde skips the rest of the 55 KB
+    without building it. Measured with `perf` on a bench droplet (Xeon Platinum 8280, median of
+    3 x 5,000 requests): an item page fetched from the item API costs 1,385,381 user instructions
+    instead of 4,395,372, the item's JSON 1,398,989 instead of 4,387,294; from memory both are
+    unchanged (123,185 and 133,263). On that droplet, two rounds alternating old and new against
+    the item API at 64 users, the item page served 3,128-3,176 requests a second instead of
+    1,249-1,270 and the item's JSON 3,349-3,372 instead of 1,337-1,359; at 150 a second the page
+    used 6.6-6.7% of its core instead of 13.3% (ASP.NET Core there: 1,344-1,373 pages a second,
+    25-27%; `bench/fullstack/results/ab-typed-parse`). A response whose list field is not a list
+    now fails the request instead of showing an empty list. `count.mjs` takes `api` as a fifth
+    argument to count with items from the item API.
 
 ### Fixed
 

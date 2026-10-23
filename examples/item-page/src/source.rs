@@ -3,7 +3,7 @@
 //! measure the web server alone.
 use std::{collections::HashMap, sync::Arc};
 
-use crate::model::ItemView;
+use crate::model::{ApiItem, ItemView};
 
 #[derive(Clone)]
 pub enum Source {
@@ -21,14 +21,14 @@ impl Source {
         Ok(Source::Api { client: reqwest::Client::new(), base: base.into() })
     }
 
-    /// `{"item_1": <API response>, ...}`, converted one item at a time so the parsed JSON for the
-    /// whole file never sits in memory at once.
+    /// `{"item_1": <API response>, ...}`, converted one item at a time so the parsed responses for
+    /// the whole file never sit in memory at once. Same typed parse as the API path.
     pub fn fixture(json: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let raw: HashMap<String, &serde_json::value::RawValue> = serde_json::from_str(json)?;
         let mut items = HashMap::with_capacity(raw.len());
         for (id, value) in raw {
-            let value: serde_json::Value = serde_json::from_str(value.get())?;
-            items.insert(id, Arc::new(ItemView::from_api(&value)));
+            let item: ApiItem = serde_json::from_str(value.get())?;
+            items.insert(id, Arc::new(ItemView::from(item)));
         }
         Ok(Source::Fixture(Arc::new(items)))
     }
@@ -42,8 +42,9 @@ impl Source {
                 if res.status() == reqwest::StatusCode::NOT_FOUND {
                     return Ok(None);
                 }
-                let value: serde_json::Value = res.error_for_status()?.json().await?;
-                Ok(Some(Arc::new(ItemView::from_api(&value))))
+                // Straight into the fields the page reads; see `ApiItem`.
+                let item: ApiItem = res.error_for_status()?.json().await?;
+                Ok(Some(Arc::new(ItemView::from(item))))
             }
         }
     }

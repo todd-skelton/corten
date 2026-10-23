@@ -245,6 +245,34 @@ JSON (26% fewer, not investigated), so they compare across droplets. Requests a 
 the unchanged apps served 0-17% fewer pages from memory on r3's droplet than on r2's, while
 Corten's page held level (23,034 and 23,086).
 
+### Corten's item API path after r3 (2026-10-23)
+
+Corten's item-API page fell from 1,290 a second in r2 to 1,175 in r3, as the unchanged apps
+fell 5-22% (ASP.NET Core 1,278 to 1,209, Leptos 915 to 812, Spring 610 to 494): r3's droplet,
+not a change in Corten. What remained was Corten's own cost. Every request parsed the 55 KB
+response into a `serde_json::Value` and then read the view from it; ASP.NET Core deserializes
+into typed records and skips the members it does not use. Parsing into the `Value` and reading
+the view from it took 3.47 million instructions an item in process (callgrind), against about
+124,000 to render the page; parsing into the typed structs takes 1.08 million. `examples/item-page` now deserializes into `ApiItem`, structs of only the fields the
+page reads, and the same views come out for all 508 fixture items. Leptos's app, as it is
+written, still parses into a `Value`.
+
+Measured on one c-8 droplet (Xeon Platinum 8280), the build before (`1ee12d4`) and after one at a
+time, alternating, two rounds, items from the item API (`results/ab-typed-parse`):
+
+| | Before | After | ASP.NET Core, same droplet |
+|---|---|---|---|
+| Page, 64 users: req/s | 1,249-1,270 | 3,128-3,176 | 1,344-1,373 |
+| Page, 150/s: CPU, p99 | 13.3%, 1.6-1.7 ms | 6.6-6.7%, 1.1-1.3 ms | 25-27%, 6.1-6.2 ms |
+| JSON, 64 users: req/s | 1,337-1,359 | 3,349-3,372 | |
+| Page, user instructions a request | 4,395,372 | 1,385,381 | 5.4-9.2 million (JIT and GC vary) |
+| JSON, user instructions a request | 4,387,294 | 1,398,989 | |
+
+The item API used 26% of its two cores at Corten's 3,176 a second, so Corten's core was still
+the limit. Instructions are `count.mjs ... api`, median of 3 x 5,000 requests; from memory the
+page and JSON were unchanged (123,185 and 133,263). The r3 tables above are r3's run and change
+at the next full round.
+
 ### Corten before and after its type and performance pass (Docker Desktop, 2026-10-21)
 
 `ab.mjs` runs the image Corten's first r1 rows were measured with (`cb-corten`) and the current build
@@ -294,6 +322,8 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    kernel instructions while 4 users make 5,000 requests (items in memory) after a 30 s warmup;
    median of 3. A count does not depend on what else the machine is doing, so it is steadier than
    time; it does not see waiting (I/O, locks) or how well the instructions run.
+   `node count.mjs <round> 3 <apps> page,json api` counts with items from the item API instead,
+   so the count includes fetching and parsing each 55 KB response (keys `<app>/<target>/api`).
 6. Browser (`browser.mjs`): every app running at once on the app core, items from the item API,
    one app measured at a time; Playwright
    Chromium, cache disabled, 10 runs per app and profile, each cold load starting on a page

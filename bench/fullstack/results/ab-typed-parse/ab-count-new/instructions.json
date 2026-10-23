@@ -1,0 +1,82 @@
+{
+ "corten/page/api": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1385864,
+   "kernelPerRequest": 75653
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1385381,
+   "kernelPerRequest": 75654
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1384179,
+   "kernelPerRequest": 86061
+  }
+ ],
+ "corten/json/api": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1399408,
+   "kernelPerRequest": 75495
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1398989,
+   "kernelPerRequest": 75348
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 1395253,
+   "kernelPerRequest": 75346
+  }
+ ],
+ "corten/page": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 123068,
+   "kernelPerRequest": 33947
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 123185,
+   "kernelPerRequest": 33549
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 123621,
+   "kernelPerRequest": 33577
+  }
+ ],
+ "corten/json": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 133577,
+   "kernelPerRequest": 32341
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 132962,
+   "kernelPerRequest": 33588
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 133263,
+   "kernelPerRequest": 31735
+  }
+ ]
+}

@@ -1,0 +1,457 @@
+{
+ "note": "examples/item-page before (cb-corten-old, the serde_json::Value parse, 1ee12d4) and after (cb-corten-new, ApiItem) on one c-8 droplet, items from the item API, alternating, two rounds; aspnet as a reference on the same droplet. Instructions: count.mjs, median of 3 x 5,000 requests.",
+ "load": [
+  {
+   "run": "ab-aspnet-1",
+   "route": "page",
+   "app": "aspnet",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 1.2,
+   "p99": 6.2,
+   "cpu": 27.3,
+   "apiCpu": 2.3,
+   "failed": 0
+  },
+  {
+   "run": "ab-aspnet-1",
+   "route": "page",
+   "app": "aspnet",
+   "phase": "sat64",
+   "rps": 1373,
+   "p50": 46,
+   "p99": 67.9,
+   "cpu": 100.7,
+   "apiCpu": 12.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-aspnet-1",
+   "route": "page",
+   "app": "aspnet",
+   "phase": "sat256",
+   "rps": 1215,
+   "p50": 210.3,
+   "p99": 257.2,
+   "cpu": 100.2,
+   "apiCpu": 12,
+   "failed": 0
+  },
+  {
+   "run": "ab-aspnet-2",
+   "route": "page",
+   "app": "aspnet",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 1.2,
+   "p99": 6.1,
+   "cpu": 25.4,
+   "apiCpu": 2.3,
+   "failed": 0
+  },
+  {
+   "run": "ab-aspnet-2",
+   "route": "page",
+   "app": "aspnet",
+   "phase": "sat64",
+   "rps": 1344,
+   "p50": 47.1,
+   "p99": 68.4,
+   "cpu": 100.8,
+   "apiCpu": 12.4,
+   "failed": 0
+  },
+  {
+   "run": "ab-aspnet-2",
+   "route": "page",
+   "app": "aspnet",
+   "phase": "sat256",
+   "rps": 1241,
+   "p50": 206.2,
+   "p99": 254.5,
+   "cpu": 100.7,
+   "apiCpu": 10.9,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-1",
+   "route": "page",
+   "app": "corten",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 0.7,
+   "p99": 1.3,
+   "cpu": 6.7,
+   "apiCpu": 2.3,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-1",
+   "route": "page",
+   "app": "corten",
+   "phase": "sat64",
+   "rps": 3176,
+   "p50": 19.6,
+   "p99": 27.9,
+   "cpu": 101.3,
+   "apiCpu": 25.6,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-1",
+   "route": "page",
+   "app": "corten",
+   "phase": "sat256",
+   "rps": 3015,
+   "p50": 83.4,
+   "p99": 134,
+   "cpu": 101.8,
+   "apiCpu": 27,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-1",
+   "route": "json",
+   "app": "corten",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 0.7,
+   "p99": 1.1,
+   "cpu": 6.2,
+   "apiCpu": 2.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-1",
+   "route": "json",
+   "app": "corten",
+   "phase": "sat64",
+   "rps": 3372,
+   "p50": 18,
+   "p99": 27.2,
+   "cpu": 101.6,
+   "apiCpu": 27.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-1",
+   "route": "json",
+   "app": "corten",
+   "phase": "sat256",
+   "rps": 3145,
+   "p50": 80.3,
+   "p99": 122.6,
+   "cpu": 101.8,
+   "apiCpu": 29.9,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-2",
+   "route": "page",
+   "app": "corten",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 0.7,
+   "p99": 1.1,
+   "cpu": 6.6,
+   "apiCpu": 2.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-2",
+   "route": "page",
+   "app": "corten",
+   "phase": "sat64",
+   "rps": 3128,
+   "p50": 19.3,
+   "p99": 29.4,
+   "cpu": 101.5,
+   "apiCpu": 25.9,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-2",
+   "route": "page",
+   "app": "corten",
+   "phase": "sat256",
+   "rps": 2963,
+   "p50": 85.2,
+   "p99": 133.4,
+   "cpu": 101.9,
+   "apiCpu": 26.6,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-2",
+   "route": "json",
+   "app": "corten",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 0.7,
+   "p99": 1.1,
+   "cpu": 6.3,
+   "apiCpu": 2.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-2",
+   "route": "json",
+   "app": "corten",
+   "phase": "sat64",
+   "rps": 3349,
+   "p50": 18,
+   "p99": 27.7,
+   "cpu": 101.4,
+   "apiCpu": 27.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-new-2",
+   "route": "json",
+   "app": "corten",
+   "phase": "sat256",
+   "rps": 3168,
+   "p50": 79.3,
+   "p99": 124.6,
+   "cpu": 101.9,
+   "apiCpu": 29.4,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-1",
+   "route": "page",
+   "app": "corten",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 1.1,
+   "p99": 1.7,
+   "cpu": 13.3,
+   "apiCpu": 2.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-1",
+   "route": "page",
+   "app": "corten",
+   "phase": "sat64",
+   "rps": 1249,
+   "p50": 51,
+   "p99": 60.3,
+   "cpu": 101,
+   "apiCpu": 10.9,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-1",
+   "route": "page",
+   "app": "corten",
+   "phase": "sat256",
+   "rps": 1190,
+   "p50": 215.5,
+   "p99": 295,
+   "cpu": 101,
+   "apiCpu": 11.6,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-1",
+   "route": "json",
+   "app": "corten",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 1.1,
+   "p99": 1.7,
+   "cpu": 12.7,
+   "apiCpu": 2.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-1",
+   "route": "json",
+   "app": "corten",
+   "phase": "sat64",
+   "rps": 1337,
+   "p50": 48.3,
+   "p99": 56.7,
+   "cpu": 101,
+   "apiCpu": 11.6,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-1",
+   "route": "json",
+   "app": "corten",
+   "phase": "sat256",
+   "rps": 1240,
+   "p50": 206.9,
+   "p99": 286.9,
+   "cpu": 101,
+   "apiCpu": 12.5,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-2",
+   "route": "page",
+   "app": "corten",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 1.1,
+   "p99": 1.6,
+   "cpu": 13.3,
+   "apiCpu": 2.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-2",
+   "route": "page",
+   "app": "corten",
+   "phase": "sat64",
+   "rps": 1270,
+   "p50": 50.8,
+   "p99": 59.3,
+   "cpu": 100.9,
+   "apiCpu": 11.9,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-2",
+   "route": "page",
+   "app": "corten",
+   "phase": "sat256",
+   "rps": 1180,
+   "p50": 217.3,
+   "p99": 298.8,
+   "cpu": 100.9,
+   "apiCpu": 12,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-2",
+   "route": "json",
+   "app": "corten",
+   "phase": "fixed",
+   "rps": 150,
+   "p50": 1.1,
+   "p99": 1.5,
+   "cpu": 13,
+   "apiCpu": 2.3,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-2",
+   "route": "json",
+   "app": "corten",
+   "phase": "sat64",
+   "rps": 1359,
+   "p50": 47.1,
+   "p99": 56.8,
+   "cpu": 100.9,
+   "apiCpu": 12.2,
+   "failed": 0
+  },
+  {
+   "run": "ab-old-2",
+   "route": "json",
+   "app": "corten",
+   "phase": "sat256",
+   "rps": 1254,
+   "p50": 202.3,
+   "p99": 298.2,
+   "cpu": 101.2,
+   "apiCpu": 12.5,
+   "failed": 0
+  }
+ ],
+ "instructions": {
+  "old:corten/page/api": {
+   "user": 4395372,
+   "kernel": 78058,
+   "runs": [
+    4395372,
+    4393073,
+    4397227
+   ]
+  },
+  "old:corten/json/api": {
+   "user": 4387294,
+   "kernel": 77822,
+   "runs": [
+    4384041,
+    4387294,
+    4398961
+   ]
+  },
+  "old:corten/page": {
+   "user": 123484,
+   "kernel": 31967,
+   "runs": [
+    123728,
+    123351,
+    123484
+   ]
+  },
+  "old:corten/json": {
+   "user": 132348,
+   "kernel": 33403,
+   "runs": [
+    132457,
+    132348,
+    132133
+   ]
+  },
+  "new:corten/page/api": {
+   "user": 1385381,
+   "kernel": 75654,
+   "runs": [
+    1385864,
+    1385381,
+    1384179
+   ]
+  },
+  "new:corten/json/api": {
+   "user": 1398989,
+   "kernel": 75348,
+   "runs": [
+    1399408,
+    1398989,
+    1395253
+   ]
+  },
+  "new:corten/page": {
+   "user": 123185,
+   "kernel": 33577,
+   "runs": [
+    123068,
+    123185,
+    123621
+   ]
+  },
+  "new:corten/json": {
+   "user": 133263,
+   "kernel": 32341,
+   "runs": [
+    133577,
+    132962,
+    133263
+   ]
+  },
+  "aspnet:aspnet/page/api": {
+   "user": 9039318,
+   "kernel": 338237,
+   "runs": [
+    9039318,
+    9213320,
+    5394979
+   ]
+  },
+  "aspnet:aspnet/json/api": {
+   "user": 4366191,
+   "kernel": 288027,
+   "runs": [
+    7171987,
+    4366191,
+    2985703
+   ]
+  }
+ }
+}

@@ -206,7 +206,11 @@ every table and the caveats are in [bench/fullstack](bench/fullstack/README.md).
 | Laravel 13 | failed | failed | failed (109) | 845 ms | 95.34 MiB | 84.3 KB |
 
 With the item API every request fetches and parses about 55 KB of JSON, which bounds every app;
-ASP.NET Core and Corten are level there. Corten's JSON route now costs about what its HTML page
+ASP.NET Core and Corten are level there in r3. Since then the example reads only the fields it
+uses from that response instead of a `serde_json::Value`: on one droplet, before and after
+alternating, it served 3,128-3,176 pages a second instead of 1,249-1,270, against ASP.NET Core's
+1,344-1,373 there ([details](bench/fullstack/README.md#cortens-item-api-path-after-r3-2026-10-23)).
+Corten's JSON route now costs about what its HTML page
 does (134,000 against 124,000 user-mode instructions a request; Leptos's JSON 205,000), down from
 212,000 in the previous round, since `corten::Json` replaced axum's `Json`. Pushing live updates
 is measured in [bench/live](bench/live/README.md): at 10,000 open connections on one core, only
