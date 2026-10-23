@@ -12,11 +12,11 @@ use axum::{
     body::Body,
     extract::{FromRequestParts, Request},
     http::{header, request::Parts, Extensions, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri},
-    middleware::Next,
     response::{IntoResponse, Response},
 };
 
 use crate::{
+    app::Next,
     assets::Assets,
     security::NonceSlot,
     view::{html, Render},

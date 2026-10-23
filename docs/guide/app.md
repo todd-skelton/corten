@@ -46,7 +46,8 @@ document, so the shell is never stale.
 
 `App` is one middleware around the routes: the same-origin check, the request signal, the
 context, the deadline, error pages, security headers and compression run in one future per
-request. Corten's own inline tag (the import map) is the same on every page of a deploy, so the
+request. It is a tower layer of its own rather than axum's `from_fn`, which boxes the rest of the
+stack again for every request (about 700 instructions). Corten's own inline tag (the import map) is the same on every page of a deploy, so the
 CSP allows it by its SHA-256 hash, computed once at startup. A nonce is made only when something asks for one
 (`doc.nonce()` in the shell, or a handler that takes `Nonce`). Static files, the runtime and the
 health checks skip `App::context`, so a session lookup runs only for the requests that can use

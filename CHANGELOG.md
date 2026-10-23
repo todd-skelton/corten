@@ -136,6 +136,17 @@ Corten is pre-1.0, so any minor version may change the API.
     bench droplet; under load the difference was inside the run-to-run spread.
 17. An MCP tool's reply is joined into one string allocated at its final size, instead of two
     `format!` calls that grew theirs while copying a large result.
+18. `App`'s middleware is a tower layer of its own instead of axum's `middleware::from_fn`, which
+    boxed the rest of the stack again for every request. Measured with callgrind (release build,
+    in process, 4,000 requests): a small JSON handler under `App::api` 16,558 instructions a
+    request instead of 17,305, a small page 21,190 instead of 21,880.
+19. Floats in views (`{price}`, `data-price={price}`) are written from zmij's digits (already in
+    axum's tree through serde_json) instead of through `core::fmt`, with the same text as
+    `Display`: checked against it for 300 million values, every bit pattern, short decimals and
+    short binary fractions. The few values that could sit exactly halfway between two shortest
+    forms, where zmij and `Display` round differently, still go through `Display`, as do `f32`
+    values. With the middleware change above, the item page took 100,380 instructions a request
+    for a navigation instead of 109,373 and 113,949 for the full document instead of 124,617.
 
 ### Fixed
 

@@ -2,22 +2,23 @@
 
 use std::{
     any::{type_name, TypeId},
+    convert::Infallible,
     future::Future,
     path::PathBuf,
     pin::Pin,
     sync::Arc,
+    task::{Context, Poll},
     time::Duration,
 };
 
 use axum::{
     extract::Request,
     http::{header, Extensions, HeaderMap, StatusCode},
-    middleware::{self, Next},
     response::{
         sse::{Event, KeepAlive, Sse},
         Response,
     },
-    routing::get,
+    routing::{get, Route},
     Router,
 };
 use futures_util::{stream, StreamExt};
@@ -323,10 +324,7 @@ impl App {
             mounts,
             own,
         });
-        routes.layer(middleware::from_fn(move |req: Request, next: Next| {
-            let layer = layer.clone();
-            async move { layer.handle(req, next).await }
-        }))
+        routes.layer(Wrap(layer))
     }
 
     /// Serves the app on `HOST`:`PORT` (default `127.0.0.1:3000`) until Ctrl-C or `SIGTERM`,
@@ -357,6 +355,53 @@ struct Own {
 impl Own {
     fn contains(&self, path: &str) -> bool {
         self.exact.contains(&path) || self.prefixes.iter().any(|prefix| path.starts_with(prefix.as_str()))
+    }
+}
+
+/// Puts [`Layer`] around each route. A tower layer of its own rather than axum's `from_fn`, which
+/// boxes the rest of the stack again for every request (`Next`) on top of the future.
+#[derive(Clone)]
+struct Wrap(Arc<Layer>);
+
+impl tower_layer::Layer<Route> for Wrap {
+    type Service = Wrapped;
+
+    fn layer(&self, route: Route) -> Wrapped {
+        Wrapped { layer: self.0.clone(), route }
+    }
+}
+
+#[derive(Clone)]
+struct Wrapped {
+    layer: Arc<Layer>,
+    route: Route,
+}
+
+impl tower_service::Service<Request> for Wrapped {
+    type Response = Response;
+    type Error = Infallible;
+    type Future = Pin<Box<dyn Future<Output = Result<Response, Infallible>> + Send>>;
+
+    // A route is always ready: it clones its service for each call.
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let (layer, next) = (self.layer.clone(), Next(self.route.clone()));
+        Box::pin(async move { Ok(layer.handle(req, next).await) })
+    }
+}
+
+/// The rest of the stack under [`Layer`]: the route, then the handler.
+pub(crate) struct Next(Route);
+
+impl Next {
+    pub(crate) async fn run(mut self, req: Request) -> Response {
+        match tower_service::Service::call(&mut self.0, req).await {
+            Ok(res) => res,
+            Err(never) => match never {},
+        }
     }
 }
 
