@@ -273,9 +273,17 @@ impl<A: Send + 'static> Tools<A> {
         let failed = |text: String| json!({ "content": [{ "type": "text", "text": text }], "isError": true }).to_string();
         match (tool.handler)(headers, args).await {
             Ok(output) => {
-                // The output as written, and once more as a JSON string for the text block.
+                // The output as written, and once more as a JSON string for the text block, into
+                // one string sized for both: a large result is not copied as it grows.
                 let text = serde_json::to_string(&output).map_err(|e| CallError::Rpc(-32603, e.to_string()))?;
-                Ok(format!(r#"{{"content":[{{"type":"text","text":{text}}}],"structuredContent":{output},"isError":false}}"#))
+                Ok([
+                    r#"{"content":[{"type":"text","text":"#,
+                    &text,
+                    r#"}],"structuredContent":"#,
+                    &output,
+                    r#","isError":false}"#,
+                ]
+                .concat())
             }
             Err(ToolError::Unauthorized) => Err(CallError::Unauthorized),
             Err(ToolError::Invalid(message)) => Ok(failed(format!("invalid arguments: {message}"))),
@@ -303,7 +311,7 @@ fn reply(id: Value, result: Result<Value, (i64, String)>) -> Response {
 
 /// A successful reply whose `result` is JSON text already, written into the body as is.
 fn reply_raw(id: &Value, result: &str) -> Response {
-    json_response(format!(r#"{{"id":{id},"jsonrpc":"2.0","result":{result}}}"#))
+    json_response([r#"{"id":"#, &id.to_string(), r#","jsonrpc":"2.0","result":"#, result, "}"].concat())
 }
 
 fn json_response(body: String) -> Response {

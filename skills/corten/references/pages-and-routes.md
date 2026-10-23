@@ -94,11 +94,31 @@ App::new(pages)
     .api("/api", Router::new().route(PriceApi::PATH, get(price)))   // Api::new(..).allow_origin(..) for a partner site
 ```
 
+`Json` is the prelude's `corten::Json`: axum's extractor, and a response written in one buffer
+(faster than `axum::Json`; keep the prelude's unless a crate hands you axum's).
 Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
 a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
 is no shell and no `App::context` (add `Api::new(routes).context()` if the API serves your own
 signed-in users). Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
+
+## Data from another service
+
+A page built from another service's JSON deserializes the response into structs holding only
+the fields the page reads, not a `serde_json::Value`. serde skips the other fields without
+building them; for the example item page's 55 KB response that is a third of the work.
+`#[serde(default)]` keeps a missing field from failing the page; a field that may be null is an
+`Option`, and one the service sends as either a string or a number can stay a `Value`:
+
+```rust
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ApiListing { listing_id: String, price_amount: serde_json::Value }
+
+let listings: Vec<ApiListing> = client.get(url).send().await?.error_for_status()?.json().await?;
+```
+
+Convert those into the view model once, where the data is loaded, so views read plain fields.
 
 ## Caching
 

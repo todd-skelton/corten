@@ -56,14 +56,21 @@ Corten is pre-1.0, so any minor version may change the API.
     bodies alone) at rustfmt's `max_width`. It never joins lines the author split and only changes
     whitespace: a body whose tokens would change is left as written, with a warning.
     `corten check` runs `corten fmt --check`.
-15. `#[component(view)]`: the component gets a class in `corten/views` whose properties are its
-    holes, a parameter that is an element's whole text or an attribute's whole value. `row.label = "x"` writes that text, `row.label` reads it back,
-    an `<input>`'s `value` and `checked` are its live properties, a root `key={id}` keys it,
-    and `corten::types` declares it so `tsc` checks scripts against the Rust parameters. Debug
-    builds stop a number property past 2^53. Handlers use views through `rows(parent, View,
-    template)` from the same module: one list per parent element that follows changes made
-    elsewhere. Corten serves `rows()` and the classes as one module, only to apps with views.
-16. `Holds<Row, HTMLTableSectionElement>` in `corten/views` types a handler parameter that holds
+15. `corten::Json` (feature `json`, in the prelude): axum's `Json` extractor with the same
+    rejections, and a response written by `serde_json::to_vec` into a `Vec` the body keeps.
+    axum's `Json` writes through a `BytesMut` writer that costs more for every small write. On a
+    bench droplet (Xeon Platinum 8280, app on one core, 64 users, two rounds), the item's 8.8 KB
+    of JSON under `App::api` served 24,330-25,000 requests a second instead of 18,608-19,168
+    (Leptos, which uses axum's `Json`: 20,008-20,377), and took 121,882 user instructions a
+    request in process instead of 193,668. `examples/item-page` uses it for `/api/items/{id}`.
+16. `#[component(view)]`: the component gets a class in `corten/views` whose properties are its
+    holes, a parameter that is an element's whole text or an attribute's whole value.
+    `row.label = "x"` writes that text, `row.label` reads it back, an `<input>`'s `value` and
+    `checked` are its live properties, a root `key={id}` keys it, and `corten::types` declares it
+    so `tsc` checks scripts against the Rust parameters. Debug builds stop a number property past
+    2^53. Handlers use views through `rows(parent, View, template)` from the same module: one list
+    per parent element that follows changes made elsewhere. Corten serves `rows()` and the classes as one module, only to apps with views.
+17. `Holds<Row, HTMLTableSectionElement>` in `corten/views` types a handler parameter that holds
     a view's rows; `rows(body, Row)` takes only that, so `tsc` rejects the wrong view or a plain
     element, and the Rust compiler rejects a ref whose element the markup does not fill with `Row`s
     only. `Ref` gained a second type parameter for it (`RowsOf<{ view_id("Row") }>`, defaulting to
@@ -134,16 +141,52 @@ Corten is pre-1.0, so any minor version may change the API.
     Phoenix Channels, Reverb). It reports delivery, order, delay, CPU and memory per client, and
     marks an app that refuses clients, loses messages or stops as failed.
     `droplet.mjs --suite live` runs it on a droplet.
-16. The runtime's ref cache survives lists: inserting or removing rows no longer makes the next
+16. HTML escaping skips eight bytes at a time while none of them needs escaping, floats render
+    without going through the escaping writer (their text never needs it), and a page's header map
+    is allocated once with room for the headers `App` adds. The item page took 110,478-110,898
+    user instructions a request in process for a navigation instead of 123,515-123,730, and
+    138,127-138,687 for the full document instead of 152,150-153,001 (cycles 5-9% fewer), on the
+    bench droplet; under load the difference was inside the run-to-run spread.
+17. An MCP tool's reply is joined into one string allocated at its final size, instead of two
+    `format!` calls that grew theirs while copying a large result.
+18. `App`'s middleware is a tower layer of its own instead of axum's `middleware::from_fn`, which
+    boxed the rest of the stack again for every request. Measured with callgrind (release build,
+    in process, 4,000 requests): a small JSON handler under `App::api` 16,558 instructions a
+    request instead of 17,305, a small page 21,190 instead of 21,880.
+19. Floats in views (`{price}`, `data-price={price}`) are written from zmij's digits (already in
+    axum's tree through serde_json) instead of through `core::fmt`, with the same text as
+    `Display`: checked against it for 300 million values, every bit pattern, short decimals and
+    short binary fractions. The few values that could sit exactly halfway between two shortest
+    forms, where zmij and `Display` round differently, still go through `Display`, as do `f32`
+    values. With the middleware change above, the item page took 100,380 instructions a request
+    for a navigation instead of 109,373 and 113,949 for the full document instead of 124,617.
+    On a bench droplet (Xeon Platinum 8280, app on one core, 64 users, three rounds alternating
+    old and new) the item page served 21,053-22,526 requests a second instead of 17,556-20,084
+    (user cycles 88,508-96,341 a request instead of 100,013-116,955), and the item's JSON
+    24,565-25,804 instead of 23,314-24,867.
+20. `examples/item-page` reads the item API's response into structs of only the fields the page
+    uses (`ApiItem`) instead of a `serde_json::Value`, so serde skips the rest of the 55 KB
+    without building it. Measured with `perf` on a bench droplet (Xeon Platinum 8280, median of
+    3 x 5,000 requests): an item page fetched from the item API costs 1,385,381 user instructions
+    instead of 4,395,372, the item's JSON 1,398,989 instead of 4,387,294; from memory both are
+    unchanged (123,185 and 133,263). On that droplet, two rounds alternating old and new against
+    the item API at 64 users, the item page served 3,128-3,176 requests a second instead of
+    1,249-1,270 and the item's JSON 3,349-3,372 instead of 1,337-1,359; at 150 a second the page
+    used 6.6-6.7% of its core instead of 13.3% (ASP.NET Core there: 1,344-1,373 pages a second,
+    25-27%; `bench/fullstack/results/ab-typed-parse`). A response whose list field is not a list
+    now fails the request instead of showing an empty list. `count.mjs` takes `api` as a fifth
+    argument to count with items from the item API.
+21. The runtime's ref cache survives lists: inserting or removing rows no longer makes the next
     handler query the whole component for its other refs (a click after creating 10,000 rows took
     8.8 ms, now 0.8 ms, then 0.1 ms), and markup joining the page is wired with one query for its
     handlers and one for its refs per insert, instead of two per element.
-17. The first page loads its handler modules as `<script type="module">` tags (not preloads the
+22. The first page loads its handler modules as `<script type="module">` tags (not preloads the
     runtime then `import()`s), and Corten ends each component's module with lines that hand its
     exports to the runtime (a `corten:module` event it takes only from the module the page's own
-    script tag for that name loaded, while the page loads; `"corten"` exports nothing for it). Handlers are in when
-    the page's scripts run, before `DOMContentLoaded`: on a page of 1,000 server-rendered rows the time from the
-    parser finishing to the handlers being ready went from 75 ms to under 10 ms.
+    script tag for that name loaded, while the page loads; `"corten"` exports nothing for it).
+    Handlers are in when the page's scripts run, before `DOMContentLoaded`: on a page of 1,000
+    server-rendered rows the time from the parser finishing to the handlers being ready went from
+    75 ms to under 10 ms.
 
 ### Fixed
 
@@ -162,6 +205,9 @@ Corten is pre-1.0, so any minor version may change the API.
    Shutdown ends open `corten::live` streams first, as it does feed streams: `docker stop` on the
    hello example with one stream open took 4,059 ms before and 965 ms after (measured, one run
    each; 637 to 929 ms with no stream).
+6. `bench/fullstack/browser.mjs` finds Corten's sort button and listing prices by the
+   `listing-sort` component's scope (`[data-scope=listing-sort]`). It looked only for the
+   `<listing-sort>` island that handlers replaced, so the browser pass stopped at Corten's page.
 
 ### Documentation
 
@@ -174,6 +220,11 @@ Corten is pre-1.0, so any minor version may change the API.
 4. New `CONTRIBUTING.md`, `SECURITY.md` and this changelog.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
+6. The benchmark tables in the README, `bench/fullstack` and `bench/live` are from round r3
+   (2026-10-23, one c-8 droplet each, Xeon Platinum 8280), measured with handlers, `corten::Json`
+   and the request-path changes above. Corten serves 23,086 item pages and 24,338 JSON responses
+   a second at 64 users (r2: 23,034 and 16,014); a page costs 123,665 user instructions and the
+   JSON 133,588 (r2: 163,908 and 212,201). The item page loads 6.2 KB of JavaScript (gzip).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

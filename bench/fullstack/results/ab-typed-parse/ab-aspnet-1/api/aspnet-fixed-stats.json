@@ -1,0 +1,16 @@
+{
+ "fsw-aspnet": {
+  "samples": 121,
+  "cpuAvgPct": 27.3,
+  "cpuMaxPct": 95.73,
+  "memAvgMiB": 60.4,
+  "memMaxMiB": 62.6
+ },
+ "item-api": {
+  "samples": 121,
+  "cpuAvgPct": 2.3,
+  "cpuMaxPct": 3.03,
+  "memAvgMiB": 71.8,
+  "memMaxMiB": 72.3
+ }
+}

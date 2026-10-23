@@ -1,0 +1,9 @@
+{
+ "lv-django": {
+  "samples": 59,
+  "cpuAvgPct": 101.2,
+  "cpuMaxPct": 101.76,
+  "memAvgMiB": 1014,
+  "memMaxMiB": 1014
+ }
+}

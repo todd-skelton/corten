@@ -1,0 +1,46 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 649785  21659.131855/s
+    checks_succeeded...: 100.00% 649785 out of 649785
+    checks_failed......: 0.00%   0 out of 649785
+
+    ✓ status 200
+
+    HTTP
+    http_req_duration..............: avg=1.38ms p(50)=1.12ms p(95)=3.32ms p(99)=6.29ms max=31.35ms
+      { expected_response:true }...: avg=1.38ms p(50)=1.12ms p(95)=3.32ms p(99)=6.29ms max=31.35ms
+    http_req_failed................: 0.00%  0 out of 649785
+    http_reqs......................: 649785 21659.131855/s
+
+    EXECUTION
+    iteration_duration.............: avg=1.46ms p(50)=1.18ms p(95)=3.5ms  p(99)=6.59ms max=31.41ms
+    iterations.....................: 649785 21659.131855/s
+    vus............................: 32     min=32          max=32
+    vus_max........................: 32     min=32          max=32
+
+    NETWORK
+    data_received..................: 6.9 GB 229 MB/s
+    data_sent......................: 72 MB  2.4 MB/s
+
+
+
+Unable to find image 'grafana/k6:latest' locally
+latest: Pulling from grafana/k6
+4f4fb700ef54: Pulling fs layer
+c23814d09c35: Pulling fs layer
+55afa1ecc21d: Pulling fs layer
+20bef106a16f: Pulling fs layer
+4f4fb700ef54: Already exists
+c23814d09c35: Download complete
+44136fa355b3: Already exists
+55afa1ecc21d: Download complete
+f762dabc449b: Download complete
+c23814d09c35: Pull complete
+55afa1ecc21d: Pull complete
+20bef106a16f: Download complete
+4f4fb700ef54: Pull complete
+20bef106a16f: Pull complete
+Digest: sha256:e66db15b860113878fa74670e31f5e274830b7b6e42c8bff28b2f2d86a257603
+Status: Downloaded newer image for grafana/k6:latest

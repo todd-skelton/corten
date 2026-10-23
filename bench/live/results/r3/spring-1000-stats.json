@@ -1,0 +1,9 @@
+{
+ "lv-spring": {
+  "samples": 59,
+  "cpuAvgPct": 27.5,
+  "cpuMaxPct": 100.95,
+  "memAvgMiB": 304.9,
+  "memMaxMiB": 312.9
+ }
+}

@@ -1,0 +1,39 @@
+{
+ "app": "django",
+ "transport": "sse",
+ "note": "async StreamingHttpResponse on uvicorn (ASGI)",
+ "clients": 10000,
+ "idleMiB": 43.6,
+ "connectedMiB": 1011,
+ "clientExit": 0,
+ "connected": 9938,
+ "failed": 62,
+ "connectMs": 22044,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 236,
+ "publishErrors": 0,
+ "publishSeconds": 120.4,
+ "publishMs": {
+  "p50": 479.8,
+  "max": 1336.3
+ },
+ "expected": 2345368,
+ "delivered": 2345368,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 273.6,
+  "p90": 467.3,
+  "p99": 1201.1,
+  "max": 1335.2
+ },
+ "cpuPct": 101.2,
+ "memMaxMiB": 1014,
+ "kibPerClient": 99.7,
+ "oomKilled": true
+}

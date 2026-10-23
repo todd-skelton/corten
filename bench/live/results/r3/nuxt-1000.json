@@ -1,0 +1,39 @@
+{
+ "app": "nuxt",
+ "transport": "sse",
+ "note": "h3 createEventStream",
+ "clients": 1000,
+ "idleMiB": 29,
+ "connectedMiB": 85,
+ "clientExit": 0,
+ "connected": 1000,
+ "failed": 0,
+ "connectMs": 1190,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 29.9,
+ "publishMs": {
+  "p50": 12,
+  "max": 64.9
+ },
+ "expected": 300000,
+ "delivered": 300000,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 22,
+  "p90": 31.2,
+  "p99": 52.3,
+  "max": 96.1
+ },
+ "cpuPct": 32.8,
+ "memMaxMiB": 104.4,
+ "kibPerClient": 57.3,
+ "oomKilled": false
+}

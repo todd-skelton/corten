@@ -1,0 +1,42 @@
+{
+ "aspnet/page/api": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 9039318,
+   "kernelPerRequest": 338952
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 9213320,
+   "kernelPerRequest": 338237
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 5394979,
+   "kernelPerRequest": 311205
+  }
+ ],
+ "aspnet/json/api": [
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 7171987,
+   "kernelPerRequest": 314818
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 4366191,
+   "kernelPerRequest": 288027
+  },
+  {
+   "requests": 5000,
+   "failed": 0,
+   "userPerRequest": 2985703,
+   "kernelPerRequest": 277463
+  }
+ ]
+}

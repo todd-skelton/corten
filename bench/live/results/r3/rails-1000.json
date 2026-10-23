@@ -1,0 +1,39 @@
+{
+ "app": "rails",
+ "transport": "actioncable",
+ "note": "Action Cable (async adapter) in Puma",
+ "clients": 1000,
+ "idleMiB": 62.7,
+ "connectedMiB": 97.3,
+ "clientExit": 0,
+ "connected": 1000,
+ "failed": 0,
+ "connectMs": 1803,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 30,
+ "publishMs": {
+  "p50": 65.3,
+  "max": 177
+ },
+ "expected": 300000,
+ "delivered": 300000,
+ "missing": 0,
+ "outOfOrder": 2,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 37.5,
+  "p90": 63,
+  "p99": 89.4,
+  "max": 193.9
+ },
+ "cpuPct": 67.3,
+ "memMaxMiB": 105.7,
+ "kibPerClient": 35.4,
+ "oomKilled": false
+}

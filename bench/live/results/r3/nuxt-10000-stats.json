@@ -1,0 +1,9 @@
+{
+ "lv-nuxt": {
+  "samples": 59,
+  "cpuAvgPct": 101.4,
+  "cpuMaxPct": 102.07,
+  "memAvgMiB": 444.3,
+  "memMaxMiB": 447.4
+ }
+}
