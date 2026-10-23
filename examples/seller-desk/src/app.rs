@@ -266,7 +266,7 @@ mod tests {
         let desk = Desk::new(3);
         let (status, html) = send(&desk, post("/items/i00001/price", "price=12.5")).await;
         assert_eq!(status, StatusCode::OK);
-        assert!(html.starts_with(r#"<form data-scope="price-cell" id="price-i00001""#), "{html}");
+        assert!(html.starts_with(r#"<form data-scope="price-cell" data-events="input keydown" id="price-i00001""#), "{html}");
         assert!(html.contains(r#"value="12.50""#), "{html}");
         let (status, html) = send(&desk, post("/items/i00001/price", "price=abc")).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);

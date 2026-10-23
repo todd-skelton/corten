@@ -236,6 +236,48 @@ from `corten` gives the same object for the same element until it is gone.
 4. Cleanup is `signal` alone: pass it to `addEventListener`, `fetch`, `subscribe` and `mount`.
    See [Cancellation](cancellation.md).
 
+## Views (prototype)
+
+On this branch, a component a script changes often (a row of a grid with thousands) can be a
+`#[component(view)]`. Its script then writes the component's holes by name instead of finding
+elements:
+
+```rust,ignore
+#[component(view)]
+pub fn Row<'a>(id: u32, label: &'a str, selected: bool) -> impl Render {
+    html! {
+        <tr key={id} data-selected={selected}>
+            <td>{id}</td>
+            <td><a>{label}</a></td>
+        </tr>
+    }
+}
+```
+
+```js
+import { rows } from "corten/view";
+import { Row } from "corten/views";
+
+const list = rows(body, Row, template); // body's rows; new ones are clones of template's
+list.at(5).label += " !!!";             // writes that one text node
+list.of(event.target).selected = true;  // the row that was clicked
+list.replace(fresh);                    // keyed: kept rows keep their elements
+```
+
+| In the markup | In the view |
+|---|---|
+| `{label}`, the only child of an element | `label`: reads and writes that element's text |
+| `data-selected={selected}`, an attribute's whole value | `selected`: the attribute (a `bool` adds or removes it) |
+| `key={id}` on the root | `Row.key(el)` / `Row.keyOf(data)`, what `rows()` keys by |
+| a parameter used any other way (`"Label: "{label}`, inside a loop, in a `class`) | nothing: a script could not write it alone |
+
+Holes are found when the crate compiles, on elements whose place is fixed (no loop, condition,
+expression or component before them), so the view walks straight to them. Numbers, text and
+`bool` parameters can be properties; `corten::types` declares the class in `corten/views`, so
+`row.lable = "x"` or `row.label = 3` fails `tsc`. A view needs one root element and at least one
+hole, or the component does not compile. List the component in `App::components`; the classes are
+served as one module, mapped as `corten/views`.
+
 ## Screens with client state
 
 For screens whose state lives in the browser (a grid of thousands of live rows), a handler can

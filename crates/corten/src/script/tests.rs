@@ -32,7 +32,7 @@ fn handlers_are_calls_with_refs_keywords_and_values() {
     assert_eq!(
         html,
         concat!(
-            r#"<li data-scope="line-item"><input value="2" data-on="input:line_item.enable(@save)">"#,
+            r#"<li data-scope="line-item" data-events="input click"><input value="2" data-on="input:line_item.enable(@save)">"#,
             r#"<button data-ref="save" disabled>Save</button>"#,
             r#"<button data-on="click:line_item.confirm($e,@dialog,&quot;a\&quot;b&quot;)">Remove</button>"#,
             r#"<dialog data-ref="dialog">Sure?</dialog></li>"#,
@@ -60,7 +60,10 @@ fn RowList<'a>(rows: &'a [&'a str]) -> impl Render {
 #[test]
 fn a_ref_in_a_loop_is_an_array_and_typed_events_are_kebab_case() {
     let html = RowList { rows: &["x", "y"] }.to_html();
-    assert!(html.starts_with(r#"<table data-scope="row-list"><tbody data-on="row-toggled:row_list.count($e,*row)">"#), "{html}");
+    assert!(
+        html.starts_with(r#"<table data-scope="row-list" data-events="row-toggled click"><tbody data-on="row-toggled:row_list.count($e,*row)">"#),
+        "{html}"
+    );
     assert!(html.contains(r#"<tr data-ref="row" data-on="click:row_list.toggle($t,&quot;x&quot;)">"#), "{html}");
 }
 
@@ -84,6 +87,8 @@ fn Dialog() -> impl Render {
 
 #[test]
 fn a_parent_passes_a_handler_and_its_refs_resolve_in_its_scope() {
+    // The child puts the handler on its button and picks the event, so the parent's root has no
+    // data-events for it (known: a script started on the root would not hear that click).
     let html = Dialog {}.to_html();
     assert_eq!(
         html,
@@ -120,7 +125,7 @@ fn a_handler_made_by_a_parent_keeps_the_parents_scope_inside_a_child() {
     assert_eq!(
         html,
         concat!(
-            r#"<div data-scope="form"><label data-scope="field"><input data-ref="input" "#,
+            r#"<div data-scope="form"><label data-scope="field" data-events="input change"><input data-ref="input" "#,
             r#"data-on="input:field.trim($t) change:form.enable(@form/save,$c/form)"></label>"#,
             r#"<button data-ref="save">Save</button></div>"#,
         )
@@ -164,7 +169,7 @@ fn closest_groups_keyed_refs_and_typed_event_handlers_are_written_compactly() {
     assert_eq!(
         html,
         concat!(
-            r#"<table data-scope="stock-grid"><tbody data-on="click:stock_grid.toggle(^row,{rows:*row,count:@count}) "#,
+            r#"<table data-scope="stock-grid" data-events="click row-toggled"><tbody data-on="click:stock_grid.toggle(^row,{rows:*row,count:@count}) "#,
             r#"row-toggled:stock_grid.toggled($e,{rows:*row,count:@count})">"#,
             r#"<tr data-ref="row" id="a"><td data-ref="qty" data-key="a">1</td></tr>"#,
             r#"<tr data-ref="row" id="b"><td data-ref="qty" data-key="b">2</td></tr></tbody>"#,

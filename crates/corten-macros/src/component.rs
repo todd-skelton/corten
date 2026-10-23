@@ -2,7 +2,8 @@
 //! `corten::view::Render` impl that runs the function body when the struct renders.
 //!
 //! With `css`, the component has a stylesheet next to it (see `crate::style`); with `js`, a script
-//! of handlers (see `crate::script`). Either gives it a constant with its name in the value
+//! of handlers (see `crate::script`); with `view`, a class scripts write its holes through (see
+//! `crate::html::view_of`). Any of them gives it a constant with its name in the value
 //! namespace, `OfferList: corten::Component`, which the app lists once in `App::components`.
 
 use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
@@ -25,12 +26,14 @@ pub struct Args {
     pub css: Option<CssArg>,
     /// `js`: the handlers are the script next to the component, `{name}.js`.
     pub js: Option<Span>,
+    /// `view`: scripts get a class with the component's holes, in `corten/views`.
+    pub view: Option<Span>,
 }
 
-/// Parses `#[component]`, `#[component(css)]`, `#[component(css = Owner)]`, `#[component(js)]`
-/// or both, comma-separated.
+/// Parses `#[component]`, `#[component(css)]`, `#[component(css = Owner)]`, `#[component(js)]`,
+/// `#[component(view)]` or several, comma-separated.
 pub fn args(args: TokenStream) -> Result<Args, Error> {
-    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent, and js (a script named after it)";
+    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent, js (a script named after it) and view (a class scripts write its holes through)";
     let mut out = Args::default();
     for part in split(args, ',') {
         match part.as_slice() {
@@ -41,6 +44,7 @@ pub fn args(args: TokenStream) -> Result<Args, Error> {
                 out.css = Some(CssArg::Of(owner.clone()))
             }
             [TokenTree::Ident(js)] if js.to_string() == "js" && out.js.is_none() => out.js = Some(js.span()),
+            [TokenTree::Ident(view)] if view.to_string() == "view" && out.view.is_none() => out.view = Some(view.span()),
             [first, ..] => return err(first.span(), usage),
             [] => {}
         }
@@ -143,6 +147,8 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     let mut fields = TokenStream::new();
     let mut lets = TokenStream::new();
     let mut elided = false;
+    // Each parameter's name and type as written, for a view's holes.
+    let mut typed: Vec<(String, Vec<TokenTree>)> = Vec::new();
     for param in split(params.stream(), ',') {
         let mut p = 0;
         let mut field_attrs = Vec::new();
@@ -163,6 +169,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             let span = param.first().map_or(params.span(), TokenTree::span);
             return err(span, "component parameters are `name: Type`");
         };
+        typed.push((field.to_string(), param[p + 2..].to_vec()));
         let ty = name_elided_lifetimes(param[p + 2..].to_vec(), &mut elided);
         fields.extend(stream(field_attrs));
         fields.extend(stream(vis.iter().cloned()));
@@ -192,6 +199,10 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     let scope_name = match crate::script::prefix() {
         Some(prefix) => format!("{prefix}-{}", crate::names::kebab(&name.to_string())),
         None => crate::names::kebab(&name.to_string()),
+    };
+    let view = match args.view {
+        Some(span) => Some(crate::html::view_of(&body, &name.to_string(), &typed, span)?),
+        None => None,
     };
     let (body, has_refs) = refs(&body, &scope_name)?;
     let scoped = has_refs || mentions(&body.stream(), "scope");
@@ -248,7 +259,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         }
         scope.extend(css.scope(&style_owner, &used));
     }
-    let has_constant = own_css || script.is_some();
+    let has_constant = own_css || script.is_some() || view.is_some();
     if let Some(module) = &script {
         // Inside `render`, so two components in one file each have their own `js`.
         scope.extend(module.module(
@@ -265,13 +276,20 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             None => q("::core::option::Option::None", &[]),
         };
         let style = if own_css { css.as_ref().map(Css::style) } else { None };
-        let doc = format!(" The script and stylesheet of the `{name}` component, for `App::components`.");
+        let doc = format!(" The script, stylesheet and view of the `{name}` component, for `App::components`.");
+        let view = view.as_ref().map(|(js, ts)| {
+            q(
+                "::corten::script::ViewDef { class: __A0, js: __A1, ts: __A2 }",
+                &[literal(&name.to_string()), literal(js), literal(ts)],
+            )
+        });
         items.extend(q(
             "#[doc = __A0] #[allow(non_upper_case_globals, dead_code)] __A5 const __A1: ::corten::Component = ::corten::Component {
                 name: __A2,
                 script: __A3,
                 style: __A4,
                 event: ::core::option::Option::None,
+                view: __A6,
             };",
             &[
                 literal(&doc),
@@ -280,6 +298,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
                 some(script.as_ref().map(crate::script::Module::literal)),
                 some(style),
                 stream(vis.iter().cloned()),
+                some(view),
             ],
         ));
     }

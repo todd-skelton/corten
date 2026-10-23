@@ -11,23 +11,27 @@ const { chromium } = createRequire(join(here, "..", "..", "package.json"))("@pla
 const source = readFileSync(join(here, "..", "..", "crates", "corten", "js", "view.js"), "utf8");
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
-await page.setContent('<ul id="l"></ul><template id="t"><li><b> </b>:<i> </i></li></template>');
+// The template's row has empty holes, as a server renders it for empty values.
+await page.setContent('<ul id="l"></ul><template id="t"><li><b></b>:<i></i></li></template>');
 const result = await page.evaluate(async (src) => {
   const mod = await import(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
   const ul = document.getElementById("l");
-  const proto = document.getElementById("t").content.firstElementChild;
-  const k = (el) => el.firstChild.firstChild;
-  const v = (el) => el.lastChild.firstChild;
-  // A stand-in for what html! generates: one property per hole.
+  const template = document.getElementById("t");
+  // The shape #[component(view)] generates (its `text` helper included): one property per hole.
+  const text = (el, value) => {
+    const t = el.firstChild;
+    if (t === null) el.textContent = value;
+    else if (t.data !== value) t.data = value;
+  };
   class Item {
     constructor(el) { this.el = el; }
-    get k() { return k(this.el).data; }
-    get v() { return v(this.el).data; }
-    set v(value) { v(this.el).data = value; }
-    static make(d) { const el = proto.cloneNode(true); Item.fill(el, d); return el; }
-    static fill(el, d) { k(el).data = String(d.k); v(el).data = String(d.v); }
-    static key(el) { return k(el).data; }
-    static keyOf(d) { return String(d.k); }
+    get k() { return this.el.firstElementChild.textContent; }
+    set k(v) { text(this.el.firstElementChild, String(v)); }
+    get v() { return this.el.firstElementChild.nextElementSibling.textContent; }
+    set v(v) { text(this.el.firstElementChild.nextElementSibling, String(v)); }
+    static fill(el, data) { const view = new this(el); view.k = data.k; view.v = data.v; }
+    static key(el) { return el.firstElementChild.textContent; }
+    static keyOf(data) { return String(data.k); }
   }
   let seed = 7;
   const rnd = (n) => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) >>> 8) % n;
@@ -43,7 +47,7 @@ const result = await page.evaluate(async (src) => {
   const start = () => {
     items = fresh(rnd(40));
     ul.innerHTML = items.map((x) => `<li><b>${x.k}</b>:<i>${x.v}</i></li>`).join("");
-    l = mod.rows(ul, Item);
+    l = mod.rows(ul, Item, template);
   };
   for (let step = 0; step < 3000; step++) {
     if (step % 300 === 0) start();

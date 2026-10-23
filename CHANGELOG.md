@@ -4,6 +4,12 @@ Notable changes to Corten. The format follows [Keep a Changelog](https://keepach
 Corten is pre-1.0, so any minor version may change the API.
 
 ## Unreleased
+15. `#[component(view)]` (prototype, for the `corten/view` browser runtime on this branch): the
+   component gets a class in `corten/views` whose properties are its holes, a parameter that is
+   an element's whole text or an attribute's whole value. `row.label = "x"` writes that text,
+   `row.label` reads it back, a root `key={id}` keys it for `rows()`, and `corten::types`
+   declares it so `tsc` checks scripts against the Rust parameters. A component's root also
+   gets `data-events`, the event types of the `on:` handlers in its markup.
 
 ### Added
 

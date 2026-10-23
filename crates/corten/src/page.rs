@@ -310,7 +310,10 @@ pub(crate) struct Shared {
 impl Shared {
     pub(crate) fn new(shell: ShellFn, error_page: Box<ErrorPage>, assets: Option<Arc<Assets>>, head_extra: String) -> Self {
         let scripts_dir = assets.as_ref().map_or_else(|| "/assets/scripts/".to_string(), |a| a.scripts_dir().to_string());
-        let import_map = crate::import_map(assets.as_ref().and_then(|a| a.events()).as_deref());
+        let import_map = crate::import_map(
+            assets.as_ref().and_then(|a| a.events()).as_deref(),
+            assets.as_ref().and_then(|a| a.views()).as_deref(),
+        );
         let mut hasher = std::hash::DefaultHasher::new();
         crate::runtime_version().hash(&mut hasher);
         scripts_dir.hash(&mut hasher);

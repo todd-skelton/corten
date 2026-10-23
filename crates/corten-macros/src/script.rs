@@ -595,6 +595,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     let items = q(
         "#[doc = \" The module, for `App::components`.\"] pub const COMPONENT: ::corten::Component = ::corten::Component {
             name: __A0, script: ::core::option::Option::Some(__A1), style: ::core::option::Option::None, event: ::core::option::Option::None,
+            view: ::core::option::Option::None,
         };",
         &[literal(&module.name), module.literal()],
     );

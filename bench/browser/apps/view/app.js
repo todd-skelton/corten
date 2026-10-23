@@ -1,17 +1,18 @@
 // @ts-check
-// Plain JavaScript as the framework: handlers write what they changed, by name, through the
-// generated Row view. No state, no renders.
+// Plain JavaScript as the framework: handlers write what they changed, by name, through the Row
+// view that #[component(view)] generates from the Rust component (gen/src/main.rs). No state, no
+// renders.
 import { mount } from "corten/state";
 import { rows } from "corten/view";
-import { Row } from "./row.js";
+import { Row } from "corten/views";
 import { label, nextId, patched } from "../shared/labels.js";
 
-/** @param {number} n @returns {import("./row.js").RowData[]} */
-const build = (n) => Array.from({ length: n }, () => ({ id: nextId(), label: label() }));
+/** @param {number} n */
+const build = (n) => Array.from({ length: n }, () => ({ id: nextId(), label: label(), selected: false }));
 
 /** @param {{ refs: Record<string, Element> }} ctx */
 function bench({ refs }) {
-  const list = rows(refs.body, Row);
+  const list = rows(refs.body, Row, /** @type {HTMLTemplateElement} */ (refs.row));
   /** @type {Row | undefined} */
   let selected;
 

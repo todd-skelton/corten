@@ -35,7 +35,7 @@ fn the_combo_box_value_is_a_native_select_and_the_input_waits_for_the_script() {
     let html = ComboBox { field: &field }.to_html();
     assert!(
         html.starts_with(
-            r#"<div data-scope="ui-combo-box" data-on="connect:ui.combo_box.connect($c,@select,@input,@popup,@list,@empty)">"#
+            r#"<div data-scope="ui-combo-box" data-events="invalid input keydown click focusout mousedown" data-on="connect:ui.combo_box.connect($c,@select,@input,@popup,@list,@empty)">"#
         ),
         "{html}"
     );
@@ -103,7 +103,7 @@ fn a_menu_button_lists_links_and_actions() {
     let items = [MenuItem { label: &"Out", link: &Out, post: true }];
     let html = MenuButton { id: "m", label: &"Menu", items: &items }.to_html();
     assert!(
-        html.starts_with(r#"<div data-scope="ui-menu-button" data-on="connect:ui.menu_button.connect(@trigger,@menu,*item)">"#),
+        html.starts_with(r#"<div data-scope="ui-menu-button" data-events="keydown toggle click" data-on="connect:ui.menu_button.connect(@trigger,@menu,*item)">"#),
         "{html}"
     );
     assert!(

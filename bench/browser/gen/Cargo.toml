@@ -1,0 +1,17 @@
+[package]
+name = "corten-bench-gen"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Renders the browser bench's view pages with html! and writes the corten/views module #[component(view)] generates."
+
+# Not part of the repository's workspace (bench/ is excluded).
+[workspace]
+
+[dependencies]
+corten = { path = "../../../crates/corten", default-features = false, features = ["types"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3

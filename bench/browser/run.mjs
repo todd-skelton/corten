@@ -60,7 +60,8 @@ async function check(page, op, m) {
     return {
       rows: rows.length,
       label: label ? text(label[0]) : null,
-      danger: Array.from(rows, (r, i) => (r.classList.contains("danger") ? i : -1)).filter((i) => i >= 0),
+      // The view app's Row marks a selected row with data-selected (a hole), the others with .danger.
+      danger: Array.from(rows, (r, i) => (r.classList.contains("danger") || r.hasAttribute("data-selected") ? i : -1)).filter((i) => i >= 0),
       ids: [rows[1]?.firstElementChild?.textContent, rows[998]?.firstElementChild?.textContent].map(Number),
     };
   }, op);

@@ -3,6 +3,7 @@
 import { build } from "esbuild";
 import { transformAsync } from "@babel/core";
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { gzipSync, brotliCompressSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -43,9 +44,10 @@ function dashboard(on) {
   return `<div class="controls">${b("tick20", "Tick 20")}${b("tick200", "Tick 200")}</div><p>Total <span data-ref="total">${total}</span></p><div class="cards">${cards}</div>`;
 }
 const data = (rows) => `<script type="application/json" id="data">${JSON.stringify(rows)}</script>`;
+/** A page around `main`: its contents, or the whole `<main>` when the Rust generator rendered it. */
 const page = (title, main, head = "", events = "") => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title><link rel="stylesheet" href="../app.css"><script type="module" src="app.js"></script>${head}</head>
-<body><main id="main"${events ? ` data-events="${events}"` : ""}>${main}</main></body></html>
+<body>${main.startsWith("<main") ? main : `<main id="main"${events ? ` data-events="${events}"` : ""}>${main}</main>`}</body></html>
 `;
 
 // The rows the server renders on the server-rendered pages, with the apps' own generator.
@@ -59,20 +61,28 @@ async function server(entry, plugins = []) {
   await build({ entryPoints: [join(here, entry)], bundle: true, format: "esm", platform: "node", outfile, plugins, jsx: "automatic", jsxImportSource: "remix/component", nodePaths: [join(here, "node_modules")], logLevel: "error" });
   return (await import(pathToFileURL(outfile).href)).render;
 }
+// The view apps' pages come from Rust: html! renders them and #[component(view)] generates the
+// Row class they import as corten/views (gen/, a crate outside the workspace).
+const gen = join(out, "_gen");
+mkdirSync(gen, { recursive: true });
+writeFileSync(join(gen, "rows.json"), JSON.stringify(initial));
+execFileSync("cargo", ["run", "-q", "--release", "--manifest-path", join(here, "gen", "Cargo.toml"), "--", join(gen, "rows.json"), join(gen, "view")], { stdio: "inherit" });
+const viewPage = (name) => readFileSync(join(gen, "view", `${name}-main.html`), "utf8");
+
 const solidPage = await (await server("apps/solid/server.jsx", [solidJsx({ generate: "ssr", hydratable: true })]))(initial);
 const remixPage = await (await server("apps/remix/server.tsx"))(initial);
 
 const apps = [
   { name: "vanilla", entry: "apps/vanilla/app.js", main: body(false) },
   { name: "state", entry: "apps/state/app.js", main: body(true) },
-  { name: "view", entry: "apps/view/app.js", main: body(true) },
+  { name: "view", entry: "apps/view/app.js", main: viewPage("view") },
   { name: "solid", entry: "apps/solid/app.jsx", main: "", plugins: [solidJsx({ generate: "dom" })] },
   { name: "solid-h", entry: "apps/solid-h/app.js", main: "" },
   { name: "remix", entry: "apps/remix/app.tsx", main: "" },
   // Server-rendered: 1,000 rows in the HTML that the client has to take over.
   { name: "vanilla-ssr", entry: "apps/vanilla/app.js", main: body(false, initial) },
   { name: "state-ssr", entry: "apps/state/app.js", main: body(true, initial) },
-  { name: "view-ssr", entry: "apps/view/app.js", main: body(true, initial) },
+  { name: "view-ssr", entry: "apps/view/app.js", main: viewPage("view-ssr") },
   { name: "solid-ssr", entry: "apps/solid/hydrate.jsx", main: solidPage.html + data(initial), head: solidPage.head, plugins: [solidJsx({ generate: "dom", hydratable: true })] },
   { name: "remix-ssr", entry: "apps/remix/hydrate.tsx", main: remixPage.html },
   // The dashboard: 200 cards on one shared store, and a total.
@@ -94,7 +104,7 @@ for (const app of apps) {
     bundle: true, format: "esm", minify: process.env.MINIFY !== "0", target: "es2022", legalComments: "none", write: false,
     outfile: join(dir, "app.js"),
     conditions: ["browser"],
-    alias: { "corten/state": join(js, "state.js"), "corten/view": join(js, "view.js"), "corten/solid": join(js, "solid.js") },
+    alias: { "corten/state": join(js, "state.js"), "corten/view": join(js, "view.js"), "corten/views": join(gen, "view", "views.js"), "corten/solid": join(js, "solid.js") },
     jsx: "automatic", jsxImportSource: "remix/component",
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: app.plugins ?? [],

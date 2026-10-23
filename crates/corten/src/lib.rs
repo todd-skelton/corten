@@ -105,8 +105,8 @@ pub use style::Style;
 pub use view::{component, html, raw, Render};
 
 /// What a component sends to the browser: its handlers' script (`#[component(js)]` or
-/// [`script::script!`]), its stylesheet (`#[component(css)]`, or a token file's), or the class of
-/// a typed event ([`script::event`]).
+/// [`script::script!`]), its stylesheet (`#[component(css)]`, or a token file's), its view class
+/// (`#[component(view)]`), or the class of a typed event ([`script::event`]).
 ///
 /// Each such component has one, named like the component (`OfferList`, a constant next to the
 /// struct `OfferList`). A library lists its own, `pub const COMPONENTS: &[Component] = &[Button,
@@ -120,6 +120,7 @@ pub struct Component {
     pub script: Option<Script>,
     pub style: Option<Style>,
     pub event: Option<script::EventDef>,
+    pub view: Option<script::ViewDef>,
 }
 
 /// What most files need: `use corten::prelude::*;`.
@@ -189,15 +190,17 @@ pub fn solid_path() -> &'static str {
     &SOLID_URL
 }
 
-/// The import map's JSON: `corten`, `corten/solid` when that feature is on, and `corten/events`
-/// (the app's typed events) when `events` is the URL of their module.
-pub(crate) fn import_map(events: Option<&str>) -> String {
+/// The import map's JSON: `corten`, `corten/solid` when that feature is on, `corten/events`
+/// (the app's typed events) when `events` is the URL of their module, and `corten/views` (the
+/// app's view classes) when `views` is.
+pub(crate) fn import_map(events: Option<&str>, views: Option<&str>) -> String {
     #[cfg(feature = "solid")]
     let solid = format!(r#","corten/solid":"{}""#, solid_path());
     #[cfg(not(feature = "solid"))]
     let solid = "";
     let events = events.map(|url| format!(r#","corten/events":"{url}""#)).unwrap_or_default();
-    format!(r#"{{"imports":{{"corten":"{}"{solid}{events}}}}}"#, runtime_path())
+    let views = views.map(|url| format!(r#","corten/views":"{url}""#)).unwrap_or_default();
+    format!(r#"{{"imports":{{"corten":"{}"{solid}{events}{views}}}}}"#, runtime_path())
 }
 
 /// Streams fragments to `<corten-live src="...">` as server-sent events. Each item is applied like a

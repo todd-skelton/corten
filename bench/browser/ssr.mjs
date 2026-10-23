@@ -16,7 +16,7 @@ const { chromium } = createRequire(join(here, "..", "..", "package.json"))("@pla
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []));
 const LOADS = Number(args.loads ?? 15);
 const PORT = 44201;
-const APPS = ["vanilla-ssr", "state-ssr", "view-ssr", "solid-ssr", "remix-ssr"];
+const APPS = args.apps ? args.apps.split(",") : ["vanilla-ssr", "state-ssr", "view-ssr", "solid-ssr", "remix-ssr"];
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const round = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 
@@ -72,7 +72,7 @@ for (const app of APPS) {
       heapKB = round((await cdp.send("Runtime.getHeapUsage")).usedSize / 1024, 0);
     }
     const select = await interact(page, "tbody tr:nth-child(2) a.select");
-    const ok1 = await page.evaluate(() => document.querySelector("tbody tr:nth-child(2)").classList.contains("danger"));
+    const ok1 = await page.evaluate(() => (document.querySelector("tbody tr:nth-child(2)").classList.contains("danger") || document.querySelector("tbody tr:nth-child(2)").hasAttribute("data-selected")));
     const update = await interact(page, "#update");
     const ok2 = await page.evaluate(() => document.querySelector("tbody tr:nth-child(1) a.select").textContent.endsWith(" !!!"));
     const remove = await interact(page, "tbody tr:nth-child(4) a.remove");

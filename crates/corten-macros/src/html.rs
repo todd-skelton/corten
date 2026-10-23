@@ -61,18 +61,355 @@ fn scope_marker(input: TokenStream) -> (Option<String>, TokenStream) {
     (None, input)
 }
 
-/// Puts `data-scope="name"` on the one root element.
+/// Puts `data-scope="name"` on the one root element, and `data-events` with the types of the
+/// `on:` handlers in the component's markup, so a script started on the root listens for exactly
+/// those without searching the markup.
 fn mark_scope(nodes: &mut [Node], scope: &str) -> Result<(), Error> {
+    let mut types = Vec::new();
+    event_types(nodes, &mut types);
     let mut roots = nodes.iter_mut().filter(|n| !matches!(n, Node::Let(_)));
     match (roots.next(), roots.next()) {
         (Some(Node::Element { attrs, .. }), None) => {
             attrs.insert(0, Attr::Static("data-scope".into(), scope.into()));
+            if !types.is_empty() {
+                attrs.insert(1, Attr::Static("data-events".into(), types.join(" ")));
+            }
             Ok(())
         }
         _ => err(
             Span::call_site(),
             "a component with refs renders one root element, which holds its refs: wrap its markup in one element",
         ),
+    }
+}
+
+/// The event types of the `on:` attributes in `nodes` (and in markup they pass to components as
+/// children), in first-use order. `on:connect` is not an event a listener gets. A handler a
+/// component passes to a child as a prop (`<Confirm on:confirm={..}>`) is put on an element by
+/// the child, which picks its type, so it is not here.
+fn event_types(nodes: &[Node], out: &mut Vec<String>) {
+    for node in nodes {
+        match node {
+            Node::Element { attrs, children, .. } => {
+                for attr in attrs {
+                    if let Attr::On(event, ..) = attr {
+                        let ty = if event.starts_with(|c: char| c.is_ascii_uppercase()) {
+                            crate::names::kebab(event)
+                        } else {
+                            event.clone()
+                        };
+                        if ty != "connect" && !out.contains(&ty) {
+                            out.push(ty);
+                        }
+                    }
+                }
+                event_types(children, out);
+            }
+            Node::Component { children: Some(children), .. } => event_types(children, out),
+            Node::Block { bodies, .. } => bodies.iter().for_each(|body| event_types(body, out)),
+            _ => {}
+        }
+    }
+}
+
+/// How a view property reads back from the page, from the parameter's Rust type.
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    Number,
+    Text,
+    Bool,
+}
+
+impl Kind {
+    /// `u32`, `f64`, `&'a str`, `String`, `Cow<'a, str>` or `bool`; other types are not a
+    /// view's (a script could not read them back from the page as the same value).
+    fn of(ty: &[TokenTree]) -> Option<Kind> {
+        let mut i = 0;
+        loop {
+            match ty.get(i) {
+                Some(TokenTree::Punct(p)) if p.as_char() == '&' => i += 1,
+                Some(TokenTree::Punct(p)) if p.as_char() == '\'' => i += 2,
+                Some(TokenTree::Ident(id)) if id.to_string() == "mut" => i += 1,
+                _ => break,
+            }
+        }
+        let words: Vec<String> = ty[i..].iter().map(ToString::to_string).collect();
+        match words.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+            ["u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32" | "i64" | "isize" | "f32" | "f64"] => {
+                Some(Kind::Number)
+            }
+            ["str" | "String"] => Some(Kind::Text),
+            ["bool"] => Some(Kind::Bool),
+            ["Cow", "<", .., "str", ">"] => Some(Kind::Text),
+            _ => None,
+        }
+    }
+
+    fn ts(self) -> &'static str {
+        match self {
+            Kind::Number => "number",
+            Kind::Text => "string",
+            Kind::Bool => "boolean",
+        }
+    }
+}
+
+/// Where a parameter is shown: an element's whole text, or one attribute's whole value. `path` is
+/// the element's place under the root, as child-element indexes.
+struct Hole {
+    param: usize,
+    path: Vec<usize>,
+    attr: Option<String>,
+}
+
+/// The view class `#[component(view)]` generates for the component `class`, from the `html!` its
+/// `body` ends with: the JavaScript (`export class Row { .. }`) and its TypeScript declaration.
+///
+/// A parameter is a property when every use of it in the markup is a hole: `{label}` as the only
+/// child of an element, or an attribute's whole value (`data-selected={selected}`), on elements
+/// whose place is fixed (no loop, condition, expression or component before them among their
+/// siblings). The property's getter reads its first hole and its setter writes all of them. A root
+/// with `key={id}` keys the view, for `rows()`.
+pub fn view_of(body: &Group, class: &str, params: &[(String, Vec<TokenTree>)], span: Span) -> Result<(String, String), Error> {
+    let tokens: Vec<TokenTree> = body.stream().into_iter().collect();
+    let n = tokens.len();
+    let markup = match tokens.last() {
+        Some(TokenTree::Group(g))
+            if n >= 3
+                && g.delimiter() == Delimiter::Brace
+                && is_ident(tokens.get(n - 3), "html")
+                && is_punct(tokens.get(n - 2), '!') =>
+        {
+            g.clone()
+        }
+        _ => {
+            return err(
+                body.span(),
+                "a view's component ends with html! { <root> .. </root> }: its holes are found in that markup",
+            )
+        }
+    };
+    let nodes = Cursor::of(&markup).nodes(None)?;
+    let mut roots = nodes.iter().filter(|n| !matches!(n, Node::Let(_)));
+    let root = match (roots.next(), roots.next()) {
+        (Some(root @ Node::Element { .. }), None) => root,
+        _ => return err(markup.span(), "a view renders one root element: wrap its markup in one element"),
+    };
+    let names: Vec<&str> = params.iter().map(|(name, _)| name.as_str()).collect();
+    let mut holes = Vec::new();
+    find_holes(root, &mut Vec::new(), &names, &mut holes);
+    let mut uses = vec![0; params.len()];
+    count_uses(&nodes, &names, &mut uses);
+    // The properties: parameters shown only in holes, of a type the page can hold.
+    let mut props: Vec<(usize, Kind)> = Vec::new();
+    for (i, (_, ty)) in params.iter().enumerate() {
+        let shown: Vec<&Hole> = holes.iter().filter(|h| h.param == i).collect();
+        let Some(kind) = Kind::of(ty) else { continue };
+        let fits = shown.iter().all(|h| h.attr.is_some() || kind != Kind::Bool);
+        if !shown.is_empty() && shown.len() == uses[i] && fits {
+            props.push((i, kind));
+        }
+    }
+    if let Some(&(i, _)) = props.iter().find(|&&(i, _)| matches!(params[i].0.as_str(), "el" | "constructor")) {
+        return err(
+            span,
+            format!("a view's property cannot be named {}: its root element is el, and a class has a constructor", params[i].0),
+        );
+    }
+    if props.is_empty() {
+        return err(
+            span,
+            "a view needs a hole a script can write: a parameter that is the whole text of an element (<a>{label}</a>) or an attribute's whole value (data-selected={selected})",
+        );
+    }
+    let Node::Element { attrs: root_attrs, .. } = root else { unreachable!() };
+    let key = root_attrs.iter().find_map(|a| match a {
+        Attr::Expr(name, expr) if name == "data-key" => Some(param_of(expr, &names)),
+        _ => None,
+    });
+    let key = match key {
+        None => None,
+        Some(Some(i)) if props.iter().any(|(p, _)| *p == i) => Some(i),
+        Some(_) => {
+            return err(
+                span,
+                "a view's key={..} is one of its parameters, and shown only where a script can write it (an element's whole text or an attribute's whole value)",
+            )
+        }
+    };
+
+    let access = |base: &str, path: &[usize]| {
+        let mut s = base.to_string();
+        for &k in path {
+            s.push_str(".firstElementChild");
+            for _ in 0..k {
+                s.push_str(".nextElementSibling");
+            }
+        }
+        s
+    };
+    let mut js = format!("export class {class} {{\n  constructor(el) {{ this.el = el; }}\n");
+    let mut ts = format!(
+        "  /** The view of #[component(view)] {class}: its holes, read from and written to the page. */\n  export class {class} {{\n    constructor(el: Element);\n    readonly el: Element;\n"
+    );
+    let mut data = Vec::new();
+    // `fill` writes the holes itself: going through a view and its setters cost about 1.5 µs a
+    // row when making 10,000 rows.
+    let mut fill = Vec::new();
+    for &(i, kind) in &props {
+        let name = &params[i].0;
+        let shown: Vec<&Hole> = holes.iter().filter(|h| h.param == i).collect();
+        let first = shown[0];
+        let at = access("this.el", &first.path);
+        let get = match (&first.attr, kind) {
+            (None, Kind::Number) => format!("Number({at}.textContent)"),
+            (None, _) => format!("{at}.textContent"),
+            (Some(attr), Kind::Number) => format!("Number({at}.getAttribute({attr:?}))"),
+            (Some(attr), Kind::Text) => format!("{at}.getAttribute({attr:?}) ?? \"\""),
+            (Some(attr), Kind::Bool) => format!("{at}.hasAttribute({attr:?})"),
+        };
+        // Writes every hole of the element `base` from `value`.
+        let write = |base: &str, value: &str| -> Vec<String> {
+            shown
+                .iter()
+                .map(|h| {
+                    let at = access(base, &h.path);
+                    match (&h.attr, kind) {
+                        (None, _) => format!("text({at}, {value});"),
+                        (Some(attr), Kind::Bool) => format!("{at}.toggleAttribute({attr:?}, {value});"),
+                        (Some(attr), _) => format!("{at}.setAttribute({attr:?}, {value});"),
+                    }
+                })
+                .collect()
+        };
+        let (set, filled) = if kind == Kind::Number {
+            // A numbered local: a parameter may be named like anything in this function.
+            let local = format!("v{i}");
+            let mut filled = vec![format!("const {local} = String(data.{name});")];
+            filled.extend(write("el", &local));
+            (write("this.el", "String(v)"), filled)
+        } else {
+            (write("this.el", "v"), write("el", &format!("data.{name}")))
+        };
+        fill.extend(filled);
+        js.push_str(&format!("  get {name}() {{ return {get}; }}\n  set {name}(v) {{ {} }}\n", set.join(" ")));
+        ts.push_str(&format!("    {name}: {};\n", kind.ts()));
+        data.push(format!("{name}: {}", kind.ts()));
+    }
+    js.push_str(&format!("  static fill(el, data) {{ {} }}\n", fill.join(" ")));
+    let data = format!("{{ {} }}", data.join("; "));
+    ts.push_str(&format!("    /** Writes every hole of `el` (a {class}'s root) from `data`. */\n    static fill(el: Element, data: {data}): void;\n"));
+    if let Some(i) = key {
+        let key = &params[i].0;
+        js.push_str(&format!(
+            "  static key(el) {{ return el.getAttribute(\"data-key\") ?? \"\"; }}\n  static keyOf(data) {{ return String(data.{key}); }}\n"
+        ));
+        ts.push_str(&format!(
+            "    /** The key of a {class}'s root (its key={{{key}}}). */\n    static key(el: Element): string;\n    static keyOf(data: {data}): string;\n"
+        ));
+    }
+    js.push_str("}\n");
+    ts.push_str("  }\n");
+    Ok((js, ts))
+}
+
+/// The holes under `node` (an element at `path`): its attributes whose value is a parameter, its
+/// text when that is a parameter alone, and those of its child elements whose place is fixed.
+fn find_holes(node: &Node, path: &mut Vec<usize>, names: &[&str], holes: &mut Vec<Hole>) {
+    let Node::Element { name, attrs, children } = node else { return };
+    for attr in attrs {
+        if let Attr::Expr(attr, expr) = attr {
+            if let (false, Some(param)) = (attr == "class", param_of(expr, names)) {
+                holes.push(Hole { param, path: path.clone(), attr: Some(attr.clone()) });
+            }
+        }
+    }
+    let content: Vec<&Node> = children.iter().filter(|c| !matches!(c, Node::Let(_))).collect();
+    if let ([Node::Expr(expr)], false) = (content.as_slice(), VOID.contains(&name.as_str()) || RAW_TEXT.contains(&name.as_str()))
+    {
+        if let Some(param) = param_of(expr, names) {
+            holes.push(Hole { param, path: path.clone(), attr: None });
+        }
+    }
+    let mut index = 0;
+    for child in children {
+        match child {
+            Node::Element { .. } => {
+                path.push(index);
+                find_holes(child, path, names, holes);
+                path.pop();
+                index += 1;
+            }
+            Node::Text(_) | Node::Let(_) => {}
+            // Anything else may print elements, so the ones after it have no fixed place.
+            _ => break,
+        }
+    }
+}
+
+/// The parameter an expression is, when it is one alone (`label`, or `(label)` as an attribute
+/// value is wrapped).
+fn param_of(expr: &TokenStream, names: &[&str]) -> Option<usize> {
+    let mut tokens: Vec<TokenTree> = expr.clone().into_iter().collect();
+    if let [TokenTree::Group(g)] = tokens.as_slice() {
+        if g.delimiter() == Delimiter::Parenthesis {
+            tokens = g.stream().into_iter().collect();
+        }
+    }
+    match tokens.as_slice() {
+        [TokenTree::Ident(id)] => names.iter().position(|n| id.to_string() == *n),
+        _ => None,
+    }
+}
+
+/// Counts every mention of each parameter in the markup's Rust code (a field `x.label` is not one).
+fn count_uses(nodes: &[Node], names: &[&str], uses: &mut [usize]) {
+    fn count(tokens: &TokenStream, names: &[&str], uses: &mut [usize]) {
+        let tokens: Vec<TokenTree> = tokens.clone().into_iter().collect();
+        for (i, token) in tokens.iter().enumerate() {
+            match token {
+                TokenTree::Ident(id) if !(i > 0 && is_punct(tokens.get(i - 1), '.')) => {
+                    if let Some(p) = names.iter().position(|n| id.to_string() == *n) {
+                        uses[p] += 1;
+                    }
+                }
+                TokenTree::Group(g) => count(&g.stream(), names, uses),
+                _ => {}
+            }
+        }
+    }
+    for node in nodes {
+        match node {
+            Node::Element { attrs, children, .. } => {
+                for attr in attrs {
+                    match attr {
+                        Attr::Expr(_, expr) | Attr::Spread(expr) | Attr::Ref(expr, _) | Attr::On(_, _, expr) => {
+                            count(expr, names, uses)
+                        }
+                        Attr::Bare(_) | Attr::Static(..) => {}
+                    }
+                }
+                count_uses(children, names, uses);
+            }
+            Node::Component { props, children, .. } => {
+                for (_, value) in props {
+                    count(value, names, uses);
+                }
+                if let Some(children) = children {
+                    count_uses(children, names, uses);
+                }
+            }
+            Node::Expr(tokens) | Node::Let(tokens) => count(tokens, names, uses),
+            Node::Block { head, bodies, .. } => {
+                for h in head {
+                    count(h, names, uses);
+                }
+                for body in bodies {
+                    count_uses(body, names, uses);
+                }
+            }
+            Node::Text(_) | Node::Markup(_) => {}
+        }
     }
 }
 
@@ -344,8 +681,8 @@ impl Cursor {
                     if name == "key" {
                         name = "data-key".into();
                     }
-                    if name == "data-ref" || name == "data-on" || name == "data-scope" {
-                        return err(span, "data-ref, data-on and data-scope are printed by Corten: write ref={rows} (with let (rows) = refs();) or on:click={js::show(rows)}");
+                    if name == "data-ref" || name == "data-on" || name == "data-scope" || name == "data-events" {
+                        return err(span, "data-ref, data-on, data-scope and data-events are printed by Corten: write ref={rows} (with let (rows) = refs();) or on:click={js::show(rows)}");
                     }
                     if name == "ref" || name.starts_with("on:") {
                         let braced = is_punct(self.peek(), '=')

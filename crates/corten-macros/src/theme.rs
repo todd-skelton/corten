@@ -396,6 +396,7 @@ fn generate(root: &Value, file: &Path, path: &str) -> Result<TokenStream, String
             name: __A1,
             script: ::core::option::Option::None,
             event: ::core::option::Option::None,
+            view: ::core::option::Option::None,
             style: ::core::option::Option::Some(::corten::style::Style { name: __A1, file: __A1, css: __A2, classes: &[] }),
         };",
         &[
