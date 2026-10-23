@@ -361,6 +361,10 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
 8. r4's droplet had a slower CPU than r3's (Platinum 8168 against 8280). Django and Nuxt, which
    passed r3's in-memory page test near their limit, failed it on r4's; their settings did not
    change. r3's numbers stay in `results/r3/`.
+9. r4 measured the tree at `05fcb74`. The `prototype/state` merge (views, handler modules as
+   module scripts) and the removal of Solid landed on `main` while it ran and are not in these
+   numbers; they change Corten's runtime and the item page's scripts, so its bytes and browser
+   rows may differ at the next round.
 
 ## Running it
 
