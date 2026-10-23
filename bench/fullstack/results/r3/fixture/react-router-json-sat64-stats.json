@@ -1,0 +1,9 @@
+{
+ "fsw-react-router": {
+  "samples": 123,
+  "cpuAvgPct": 101,
+  "cpuMaxPct": 101.85,
+  "memAvgMiB": 116.9,
+  "memMaxMiB": 117.4
+ }
+}

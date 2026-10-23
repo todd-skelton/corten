@@ -1,0 +1,39 @@
+{
+ "app": "sveltekit",
+ "transport": "sse",
+ "note": "+server.ts, ReadableStream",
+ "clients": 10000,
+ "idleMiB": 19.4,
+ "connectedMiB": 262.8,
+ "clientExit": 0,
+ "connected": 10000,
+ "failed": 0,
+ "connectMs": 10170,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 98.5,
+ "publishMs": {
+  "p50": 297.2,
+  "max": 700.2
+ },
+ "expected": 3000000,
+ "delivered": 3000000,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 435.6,
+  "p90": 613.9,
+  "p99": 768,
+  "max": 916.3
+ },
+ "cpuPct": 101.2,
+ "memMaxMiB": 328.5,
+ "kibPerClient": 24.9,
+ "oomKilled": false
+}

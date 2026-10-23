@@ -20,8 +20,8 @@ const profiles = {
   mobile: { cpu: 4, network: { offline: false, latency: 150, downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8 } },
 };
 const items = ["item_3", "item_17", "item_250", "item_1999", "item_12345"];
-const SORT = "button.sort, listing-sort > button";
-const FIRST_PRICE = ".listings tbody tr:first-child td.price, listing-sort tbody tr:first-child td.price__amount";
+const SORT = "button.sort, [data-scope=listing-sort] > button, listing-sort > button";
+const FIRST_PRICE = ".listings tbody tr:first-child td.price, [data-scope=listing-sort] tbody tr:first-child td.price__amount, listing-sort tbody tr:first-child td.price__amount";
 
 // Each cold load starts on a page from another site, like arriving from a search result or a
 // link. Starting from about:blank instead would make Chromium switch processes only for apps
@@ -74,8 +74,9 @@ async function loadItem(browser, profile, base, id) {
     });
     const metrics = Object.fromEntries((await cdp.send("Performance.getMetrics")).metrics.map((x) => [x.name, x.value]));
     m.jsHeapUsedMB = metrics.JSHeapUsedSize / 1048576;
-    // The other apps' class names, or Corten's markup since its styles moved into scoped
-    // component files (the `<listing-sort>` island). Visible text: Corten hides one of two labels.
+    // The other apps' class names, or Corten's markup: the `listing-sort` component's scope (since
+    // handlers replaced islands) or the older `<listing-sort>` island. Visible text: Corten hides
+    // one of two labels.
     const before = await page.locator(SORT).innerText();
     const priceCell = page.locator(FIRST_PRICE);
     const firstPrice = (await priceCell.count()) ? await priceCell.textContent() : null;
@@ -104,7 +105,7 @@ async function clientNav(browser, profile, base) {
       const start = performance.now();
       document.querySelector('a[href="/items/item_5"]').click();
       await new Promise((resolve) => {
-        const done = () => document.querySelector("h1")?.textContent === "Card Name 5" && document.querySelectorAll(".listings tbody tr, listing-sort tbody tr").length > 0;
+        const done = () => document.querySelector("h1")?.textContent === "Card Name 5" && document.querySelectorAll(".listings tbody tr, [data-scope=listing-sort] tbody tr, listing-sort tbody tr").length > 0;
         if (done()) return resolve();
         // The whole document, not document.body: Turbo replaces the <body> element itself.
         new MutationObserver((_, o) => { if (done()) { o.disconnect(); resolve(); } }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });

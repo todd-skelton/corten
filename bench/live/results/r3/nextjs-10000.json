@@ -1,0 +1,39 @@
+{
+ "app": "nextjs",
+ "transport": "sse",
+ "note": "route handler, ReadableStream",
+ "clients": 10000,
+ "idleMiB": 44.2,
+ "connectedMiB": 604.5,
+ "clientExit": 0,
+ "connected": 9923,
+ "failed": 77,
+ "connectMs": 18958,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 204,
+ "publishErrors": 0,
+ "publishSeconds": 120.3,
+ "publishMs": {
+  "p50": 363.5,
+  "max": 1471.2
+ },
+ "expected": 2024292,
+ "delivered": 2024292,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 500.9,
+  "p90": 1530.4,
+  "p99": 2569.1,
+  "max": 2798.3
+ },
+ "cpuPct": 101.1,
+ "memMaxMiB": 653.8,
+ "kibPerClient": 57.8,
+ "oomKilled": false
+}

@@ -1,0 +1,39 @@
+{
+ "app": "laravel",
+ "transport": "pusher",
+ "note": "Reverb (a second process) fed by Laravel broadcasting",
+ "clients": 1000,
+ "idleMiB": 128.9,
+ "connectedMiB": 152.6,
+ "clientExit": 0,
+ "connected": 1000,
+ "failed": 0,
+ "connectMs": 1174,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 300,
+ "publishErrors": 0,
+ "publishSeconds": 29.9,
+ "publishMs": {
+  "p50": 36.1,
+  "max": 120
+ },
+ "expected": 300000,
+ "delivered": 300000,
+ "missing": 0,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": 21.7,
+  "p90": 31.1,
+  "p99": 36.3,
+  "max": 106.7
+ },
+ "cpuPct": 34.1,
+ "memMaxMiB": 159.1,
+ "kibPerClient": 24.3,
+ "oomKilled": false
+}

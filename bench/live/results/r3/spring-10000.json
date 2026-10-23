@@ -1,0 +1,39 @@
+{
+ "app": "spring",
+ "transport": "sse",
+ "note": "SseEmitter on Tomcat",
+ "clients": 10000,
+ "idleMiB": 127.1,
+ "connectedMiB": 373.9,
+ "clientExit": 0,
+ "connected": 1983,
+ "failed": 8017,
+ "connectMs": 130187,
+ "rate": 10,
+ "seconds": 30,
+ "planned": 300,
+ "published": 12,
+ "publishErrors": 12,
+ "publishSeconds": 120,
+ "publishMs": {
+  "p50": 10000.3,
+  "max": 10001.7
+ },
+ "expected": 23796,
+ "delivered": 0,
+ "missing": 23796,
+ "outOfOrder": 0,
+ "duplicates": 0,
+ "dropped": 0,
+ "resyncs": 0,
+ "latencyMs": {
+  "p50": null,
+  "p90": null,
+  "p99": null,
+  "max": null
+ },
+ "cpuPct": 100,
+ "memMaxMiB": 374.2,
+ "kibPerClient": 127.4,
+ "oomKilled": false
+}

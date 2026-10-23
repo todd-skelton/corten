@@ -9,11 +9,11 @@ HTML, a small runtime that swaps pages and patches forms, and *handlers*: plain 
 functions in a script next to a component, which its Rust markup calls by name. Live data arrives as numbered patches over
 server-sent events. One handler serves the browser, native apps and AI agents.
 
-- **Fast on the server.** 23,034 rendered pages a second on one CPU, 4.7x ASP.NET Core, the
+- **Fast on the server.** 23,086 rendered pages a second on one CPU, 5.1x ASP.NET Core, the
   fastest of thirteen other frameworks, and 1.5 MiB of memory after the first request
   (measured, [below](#performance)).
-- **Light in the browser.** A 5.0 KB (brotli) runtime; the benchmark item page loads about 6 KB of
-  JavaScript (gzip). No WASM, no virtual DOM, no hydration.
+- **Light in the browser.** A 5.0 KB (brotli) runtime; the benchmark item page loads 6.2 KB of
+  JavaScript (gzip, measured). No WASM, no virtual DOM, no hydration.
 - **Typed end to end.** Routes, form fields, CSS classes, handler calls and the elements they
   take, events and messages are Rust types. TypeScript types for scripts are generated from Rust.
 - **Works without JavaScript.** Links are links and forms post; scripts improve a page but never
@@ -184,38 +184,33 @@ React components, or for a pure static site (a static site generator is simpler)
 
 The same item page (listings table, offers, a form that patches) and the same item as JSON in
 fourteen frameworks, each with its usual production settings on one CPU and 1 GiB, measured on one
-DigitalOcean c-8 droplet (Xeon Platinum 8280) on 2026-10-22, one run. Requests a second are at 64
+DigitalOcean c-8 droplet (Xeon Platinum 8280) on 2026-10-23, one run. Requests a second are at 64
 users; "failed" means the app could not serve the fixed rate (or start) without tuning. Method,
 every table and the caveats are in [bench/fullstack](bench/fullstack/README.md).
 
 | | Pages/s, no database | JSON/s, no database | Pages/s, item API | Process start to first page | Memory after first request | JavaScript, gzip |
 |---|---|---|---|---|---|---|
-| **Corten** | **23,034** | **16,014** | **1,290** | **6.6 ms** | **1.477 MiB** | **4.4 KB** |
-| ASP.NET Core 10 | 4,915 | 16,810 | 1,278 | 702 ms | 30.56 MiB | 17.0 KB |
-| Leptos 0.8 | 1,790 | 22,847 | 915 | 7.4 ms | 1.473 MiB | 7.0 KB + 287 KB WASM |
-| Phoenix 1.8 | 1,986 | 3,225 | 481 | 1.2 s | 126 MiB | 46.2 KB |
-| Astro 7 | 1,441 | 2,227 | 492 | 311 ms | 36.78 MiB | 9.2 KB |
-| Spring Boot 4.1 | 1,289 | 10,072 | 610 | 7.9 s | 144.4 MiB | 17.0 KB |
-| SvelteKit 3 | 1,104 | 3,873 | 442 | 159 ms | 23.38 MiB | 37.0 KB |
-| TanStack Start | 755 | 4,269 | 374 | 195 ms | 26.51 MiB | 110.9 KB |
-| React Router 7 | 602 | 2,530 | 327 | 275 ms | 32.01 MiB | 98.6 KB |
-| Rails 8.1 | 573 | 1,171 | 440 | 1.0 s | 63.87 MiB | 40.6 KB |
-| Django 6.1 | 394 | 1,514 | 221 | 1.0 s | 63.31 MiB | 17.0 KB |
-| Nuxt 4 | 343 | 8,561 | 224 | 294 ms | 35.28 MiB | 73.7 KB |
-| Next.js 16 | failed (197) | 1,221 | failed (135) | 627 ms | 51.45 MiB | 136.1 KB |
-| Laravel 13 | failed | failed | failed (125) | 757 ms | 95.41 MiB | 84.3 KB |
+| **Corten** | **23,086** | **24,338** | **1,175** | **7.5 ms** | **1.484 MiB** | **6.2 KB** |
+| ASP.NET Core 10 | 4,519 | 14,624 | 1,209 | 726 ms | 30.56 MiB | 17.0 KB |
+| Leptos 0.8 | 1,490 | 20,887 | 812 | 7.5 ms | 1.48 MiB | 7.0 KB + 287 KB WASM |
+| Phoenix 1.8 | 1,683 | 2,669 | 413 | 1.3 s | 125.2 MiB | 46.2 KB |
+| Astro 7 | 1,303 | 2,001 | 460 | 327 ms | 37.09 MiB | 9.2 KB |
+| Spring Boot 4.1 | 1,192 | 8,289 | 494 | 8.2 s | 136.1 MiB | 17.0 KB |
+| SvelteKit 3 | 1,028 | 3,429 | 373 | 175 ms | 23.78 MiB | 37.0 KB |
+| TanStack Start | 727 | 3,588 | 292 | 212 ms | 26.77 MiB | 110.9 KB |
+| React Router 7 | 565 | 2,502 | 294 | 301 ms | 32.09 MiB | 98.6 KB |
+| Rails 8.1 | 541 | 1,117 | 399 | 1.1 s | 63.92 MiB | 40.6 KB |
+| Django 6.1 | 335 | 1,309 | 183 | 1.1 s | 63.37 MiB | 17.0 KB |
+| Nuxt 4 | 318 | 8,214 | 212 | 313 ms | 35.61 MiB | 73.7 KB |
+| Next.js 16 | failed (197) | 1,103 | failed (116) | 704 ms | 51.36 MiB | 136.1 KB |
+| Laravel 13 | failed | failed | failed (109) | 845 ms | 95.34 MiB | 84.3 KB |
 
 With the item API every request fetches and parses about 55 KB of JSON, which bounds every app;
-Corten and ASP.NET Core are level there. Leptos serves JSON from memory faster than Corten
-(22,847 against 16,014 a second); why Corten's JSON route costs more than its HTML page has not
-been investigated. Pushing live updates is measured in [bench/live](bench/live/README.md): at
-10,000 open connections on one core, only Corten and Leptos delivered all 100,000 messages a
-second.
-
-The table was measured before handlers replaced islands; the JavaScript column moves the most.
-The handler runtime is
-1.8 KB gzip larger (5,600 bytes against 3,778, file sizes), so the item page now loads about
-6.2 KB; that is an estimate, not a new run.
+ASP.NET Core and Corten are level there. Corten's JSON route now costs about what its HTML page
+does (134,000 against 124,000 user-mode instructions a request; Leptos's JSON 205,000), down from
+212,000 in the previous round, since `corten::Json` replaced axum's `Json`. Pushing live updates
+is measured in [bench/live](bench/live/README.md): at 10,000 open connections on one core, only
+Corten and Leptos delivered all 100,000 messages a second.
 
 ## Documentation
 

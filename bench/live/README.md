@@ -83,76 +83,86 @@ node bench/fullstack/droplet.mjs <round> --ssh-key <id> --suite live
 
 ## Results
 
-All numbers are measured, from one run (`results/r2/`, 2026-10-22) on a DigitalOcean c-8
+All numbers are measured, from one run (`results/r3/`, 2026-10-23 UTC) on a DigitalOcean c-8
 droplet (Intel Xeon Platinum 8280 at 2.7 GHz, 8 dedicated vCPUs, 16 GB, Ubuntu 24.04, kernel 6.8,
-Docker 29.9), the same droplet as the full-stack round r2: the app pinned to core 1, the clients
+Docker 29.9), created for this suite and destroyed after it: the app pinned to core 1, the clients
 on cores 2-7 (six worker threads), the system on core 0. Ten prices a second for 30 seconds;
 delay is from the publisher's send to the client's receipt. Kept up: every price delivered to
 every client, in order, at the rate asked. Fell behind: every price delivered, in order, but the
 app took longer than 30 seconds to send them (the publisher stops after 120 seconds). Failed:
-clients refused, prices lost, or publishes unanswered. r1 (`results/r1/`) ran Spring and Laravel
-with tuned settings and is kept for the record.
+clients refused, prices lost or out of order, publishes unanswered, or the app killed for memory.
+r2 (`results/r2/`) measured Corten before handlers replaced islands and before the later
+request-path work (`corten::Json`, the middleware layer, float formatting); r1 (`results/r1/`)
+ran Spring and Laravel with tuned settings. Both are kept for the record; numbers are compared
+within a round.
 
 ### 1,000 clients (10,000 messages a second)
 
 | App | Transport | Result | Connected | Delivered per second | Delay p50 / p99 | CPU | Memory connected | Per client |
 |---|---|---|---|---|---|---|---|---|
-| **corten** | feed (SSE) | kept up | 1,000 | 10,033 | 7.8 / 18 ms | 13% | 25.7 MiB | 25.6 KiB |
-| leptos | SSE | kept up | 1,000 | 10,033 | 9.0 / 18 ms | 16% | 23.9 MiB | 23.7 KiB |
-| aspnet | SSE | kept up | 1,000 | 10,033 | 12 / 27 ms | 19% | 45.3 MiB | 18.6 KiB |
-| phoenix | Channels | kept up | 1,000 | 10,033 | 12 / 30 ms | 24% | 179.3 MiB | 45 KiB |
-| spring | SSE | kept up | 1,000 | 10,033 | 13 / 90 ms | 24% | 244.8 MiB | 121.8 KiB |
-| astro | SSE | kept up | 1,000 | 10,033 | 14 / 30 ms | 22% | 100.4 MiB | 67.6 KiB |
-| sveltekit | SSE | kept up | 1,000 | 10,033 | 14 / 32 ms | 24% | 87.3 MiB | 69.4 KiB |
-| tanstack-start | SSE | kept up | 1,000 | 10,033 | 14 / 39 ms | 23% | 82.3 MiB | 59.5 KiB |
-| react-router | SSE | kept up | 1,000 | 10,033 | 17 / 81 ms | 30% | 95.2 MiB | 67.4 KiB |
-| nextjs | SSE | kept up | 1,000 | 10,033 | 20 / 60 ms | 29% | 155.5 MiB | 114.1 KiB |
-| nuxt | SSE | kept up | 1,000 | 10,033 | 20 / 41 ms | 29% | 86.5 MiB | 59.2 KiB |
-| laravel | Reverb | kept up | 1,000 | 10,033 | 21 / 34 ms | 33% | 152 MiB | 24.3 KiB |
-| django | SSE | kept up | 1,000 | 10,033 | 22 / 47 ms | 42% | 137.7 MiB | 96.4 KiB |
-| rails | Action Cable | kept up | 1,000 | 10,000 | 42 / 91 ms | 78% | 97.9 MiB | 36.4 KiB |
+| **corten** | feed (SSE) | kept up | 1,000 | 10,033 | 9.3 / 20 ms | 17% | 25.7 MiB | 25.6 KiB |
+| leptos | SSE | kept up | 1,000 | 10,033 | 9.3 / 19 ms | 17% | 23.9 MiB | 23.7 KiB |
+| aspnet | SSE | kept up | 1,000 | 10,033 | 13 / 29 ms | 22% | 45.4 MiB | 18.7 KiB |
+| phoenix | Channels | kept up | 1,000 | 10,033 | 14 / 33 ms | 27% | 180.3 MiB | 45.5 KiB |
+| sveltekit | SSE | kept up | 1,000 | 10,033 | 15 / 37 ms | 25% | 81.5 MiB | 63.6 KiB |
+| spring | SSE | kept up | 1,000 | 10,033 | 15 / 55 ms | 28% | 239.3 MiB | 123.1 KiB |
+| tanstack-start | SSE | kept up | 1,000 | 10,033 | 16 / 38 ms | 26% | 80.3 MiB | 57.5 KiB |
+| astro | SSE | kept up | 1,000 | 10,033 | 16 / 39 ms | 26% | 103.8 MiB | 71.3 KiB |
+| react-router | SSE | kept up | 1,000 | 10,033 | 18 / 89 ms | 33% | 98.8 MiB | 70.8 KiB |
+| nextjs | SSE | kept up | 1,000 | 10,033 | 20 / 58 ms | 31% | 153.7 MiB | 112 KiB |
+| laravel | Reverb | kept up | 1,000 | 10,033 | 22 / 36 ms | 34% | 152.6 MiB | 24.3 KiB |
+| nuxt | SSE | kept up | 1,000 | 10,033 | 22 / 52 ms | 33% | 85 MiB | 57.3 KiB |
+| django | SSE | kept up | 1,000 | 10,033 | 22 / 48 ms | 41% | 137.8 MiB | 96.3 KiB |
+| rails | Action Cable | **failed: messages lost or out of order** | 1,000 | 10,000 | 38 / 89 ms | 67% | 97.3 MiB | 35.4 KiB |
 
 ### 10,000 clients (100,000 messages a second)
 
 | App | Transport | Result | Connected | Delivered per second | Delay p50 / p99 | CPU | Memory connected | Per client |
 |---|---|---|---|---|---|---|---|---|
-| **corten** | feed (SSE) | kept up | 10,000 | 100,334 | 78 / 216 ms | 102% | 250.5 MiB | 25.6 KiB |
-| leptos | SSE | kept up | 10,000 | 100,334 | 88 / 188 ms | 102% | 232.2 MiB | 23.7 KiB |
-| aspnet | SSE | fell behind: 300 of 300 in 56.4 s | 10,000 | 53,191 | 235 / 487 ms | 101% | 201.8 MiB | 17.9 KiB |
-| phoenix | Channels | fell behind: 300 of 300 in 80.5 s | 10,000 | 37,267 | 135 / 345 ms | 101% | 583 MiB | 45.9 KiB |
-| sveltekit | SSE | fell behind: 300 of 300 in 92.4 s | 10,000 | 32,468 | 402 / 752 ms | 101% | 268.6 MiB | 25.5 KiB |
-| tanstack-start | SSE | fell behind: 300 of 300 in 96.5 s | 10,000 | 31,088 | 429 / 761 ms | 101% | 239.7 MiB | 22.1 KiB |
-| astro | SSE | fell behind: 300 of 300 in 103.5 s | 10,000 | 28,986 | 439 / 851 ms | 102% | 301.4 MiB | 27.4 KiB |
-| nuxt | SSE | fell behind: 292 of 300 in 120.2 s | 10,000 | 24,293 | 480 / 907 ms | 101% | 311.1 MiB | 28.9 KiB |
-| rails | Action Cable | fell behind: 151 of 300 in 120.4 s | 10,000 | 12,542 | 744 / 1,461 ms | 101% | 324.9 MiB | 26.9 KiB |
-| nextjs | SSE | **failed: 64 of 10000 clients not connected** | 9,936 | 24,385 | 446 / 1,647 ms | 101% | 605.1 MiB | 57.8 KiB |
-| django | SSE | **failed: 4 of 10000 clients not connected** | 9,996 | 21,005 | 256 / 1,181 ms | 101% | 1017 MiB | 99.7 KiB |
-| react-router | SSE | **failed: 214 of 300 publishes unanswered, messages lost or out of order** | 10,000 | 12,719 | 501 / 3,573 ms | 101% | 326.6 MiB | 30.4 KiB |
-| spring | SSE | **failed: 8026 of 10000 clients not connected, 12 of 12 publishes unanswered, messages lost or out of order** | 1,974 | - | - | 100% | 382.4 MiB | 131.6 KiB |
-| laravel | Reverb | **failed: 4997 of 10000 clients not connected, 300 of 300 publishes unanswered, messages lost or out of order** | 5,003 | - | - | 6% | 93.9 MiB | - |
+| leptos | SSE | kept up | 10,000 | 100,334 | 96 / 235 ms | 102% | 232.2 MiB | 23.7 KiB |
+| **corten** | feed (SSE) | kept up | 10,000 | 100,334 | 111 / 243 ms | 103% | 249.5 MiB | 25.5 KiB |
+| aspnet | SSE | fell behind: 300 of 300 in 53.8 s | 10,000 | 55,762 | 220 / 475 ms | 102% | 200.9 MiB | 17.8 KiB |
+| phoenix | Channels | fell behind: 300 of 300 in 83.6 s | 10,000 | 35,885 | 142 / 335 ms | 102% | 584.9 MiB | 46 KiB |
+| sveltekit | SSE | fell behind: 300 of 300 in 98.5 s | 10,000 | 30,457 | 436 / 768 ms | 101% | 262.8 MiB | 24.9 KiB |
+| tanstack-start | SSE | fell behind: 300 of 300 in 101.8 s | 10,000 | 29,470 | 458 / 786 ms | 101% | 241.2 MiB | 22.2 KiB |
+| astro | SSE | fell behind: 300 of 300 in 109.7 s | 10,000 | 27,347 | 468 / 889 ms | 101% | 299.4 MiB | 27.2 KiB |
+| nuxt | SSE | fell behind: 274 of 300 in 120.1 s | 10,000 | 22,814 | 510 / 1,008 ms | 101% | 307.3 MiB | 28.5 KiB |
+| rails | Action Cable | fell behind: 160 of 300 in 120.1 s | 10,000 | 13,322 | 697 / 1,288 ms | 101% | 327.3 MiB | 27.1 KiB |
+| django | SSE | **failed: 62 of 10000 clients not connected, killed out of memory** | 9,938 | 19,480 | 274 / 1,201 ms | 101% | 1011 MiB | 99.7 KiB |
+| nextjs | SSE | **failed: 77 of 10000 clients not connected** | 9,923 | 16,827 | 501 / 2,569 ms | 101% | 604.5 MiB | 57.8 KiB |
+| react-router | SSE | **failed: 214 of 300 publishes unanswered, messages lost or out of order** | 10,000 | 12,592 | 534 / 3,482 ms | 101% | 323.7 MiB | 30.1 KiB |
+| spring | SSE | **failed: 8017 of 10000 clients not connected, 12 of 12 publishes unanswered, messages lost or out of order** | 1,983 | - | - | 100% | 373.9 MiB | 127.4 KiB |
+| laravel | Reverb | **failed: 4995 of 10000 clients not connected, 300 of 300 publishes unanswered, messages lost or out of order** | 5,005 | - | - | 6% | 94 MiB | - |
 
-At 1,000 clients every app kept up and delivered every message in order; they differ in cost.
-Corten used 13% of its core and 25.7 MiB, Leptos 16% and 23.9 MiB, ASP.NET Core 19% and 45.3 MiB;
-the JavaScript frameworks 22-30% and 82-156 MiB, Django 42%, Rails 78%.
+At 1,000 clients every app but Rails delivered every message in order; they differ in cost.
+Corten used 17% of its core and 25.7 MiB, Leptos 17% and 23.9 MiB, ASP.NET Core 22% and 45.4 MiB;
+the JavaScript frameworks 25-33% and 80-154 MiB, Django 41%, Rails 67%. Rails delivered all
+300,000 messages but 2 arrived out of order, which this suite counts as failed (r2's Rails kept
+up).
 
 At 10,000 clients only Corten and Leptos delivered all 100,000 messages a second, so their row is
 close to what one core of this machine sends; the other apps used their whole core and fell
-behind or failed. ASP.NET Core came next at 53,191 a second. Failures:
+behind or failed. ASP.NET Core came next at 55,762 a second, then Phoenix at 35,885. Failures:
 
-1. **spring** (Tomcat and JVM defaults) accepted 1,974 connections and answered none of its 12
-   publishes. At about 130 KiB a client that is the default heap (a quarter of 1 GiB); the app's
-   log was not kept. r1, with 75% of memory as heap and Tomcat's limit raised, held 6,666.
-2. **laravel** (PHP's default `memory_limit`, 128 MB) accepted 5,003 connections, then Reverb
+1. **django** was killed for memory at 1,011 MiB (about 100 KiB a client) with 9,938 connected;
+   every price it sent before then reached every connected client. In r2 it stayed at 1,017 MiB
+   and was not killed.
+2. **nextjs** connected 9,923 of 10,000; every price it sent reached every client that was
+   connected. Not investigated.
+3. **react-router**: 214 of 300 publish requests got no answer within 10 seconds; the 86
+   answered reached every client.
+4. **spring** (Tomcat and JVM defaults) accepted 1,983 connections and answered none of its 12
+   publishes. At about 130 KiB a client that is the default heap (a quarter of 1 GiB). r1, with
+   75% of memory as heap and Tomcat's limit raised, held 6,666.
+5. **laravel** (PHP's default `memory_limit`, 128 MB) accepted 5,005 connections, then Reverb
    closed all of them and every publish failed. r1, with 512 MB, held 10,000, so the limit is the
    likely cause; not confirmed.
-3. **react-router**: 214 of 300 publish requests got no answer within 10 seconds; 99.1% of the 86
-   answered reached every client.
-4. **nextjs** connected 9,936 of 10,000 and **django** 9,996; neither failure was investigated.
-   Every price they sent reached every client that was connected.
 
-Corten against Leptos: the same at 1,000 clients; at 10,000 Corten's median delay was lower
-(78 against 88 ms) and its p99 higher (216 against 188 ms), within the noise of one run. Each
-Corten message is 167 bytes on the wire against 61 for a plain SSE event, because it carries the
-feed's cursor (`id: epoch-seq`) and a keyed patch (`{"op":"upsert","id":...,"value":...}`): a
-client that reconnects resumes from its cursor, and a patch updates one row of a grid, neither of
-which the plain stream does. The reconnect and resume path was not measured here.
+Corten against Leptos: the same at 1,000 clients (9.3 ms median delay each); at 10,000 Leptos's
+median delay was lower (96 against 111 ms) and the p99s level (235 against 243 ms). r2 had the
+medians the other way round (78 against 88 ms), so the difference is within the noise of one
+run. Each Corten message is 167 bytes on the wire against 61 for a plain SSE event, because it
+carries the feed's cursor (`id: epoch-seq`) and a keyed patch
+(`{"op":"upsert","id":...,"value":...}`): a client that reconnects resumes from its cursor, and a
+patch updates one row of a grid, neither of which the plain stream does. The reconnect and resume
+path was not measured here.

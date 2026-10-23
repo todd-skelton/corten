@@ -169,6 +169,9 @@ Corten is pre-1.0, so any minor version may change the API.
    Shutdown ends open `corten::live` streams first, as it does feed streams: `docker stop` on the
    hello example with one stream open took 4,059 ms before and 965 ms after (measured, one run
    each; 637 to 929 ms with no stream).
+6. `bench/fullstack/browser.mjs` finds Corten's sort button and listing prices by the
+   `listing-sort` component's scope (`[data-scope=listing-sort]`). It looked only for the
+   `<listing-sort>` island that handlers replaced, so the browser pass stopped at Corten's page.
 
 ### Documentation
 
@@ -181,6 +184,11 @@ Corten is pre-1.0, so any minor version may change the API.
 4. New `CONTRIBUTING.md`, `SECURITY.md` and this changelog.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
+6. The benchmark tables in the README, `bench/fullstack` and `bench/live` are from round r3
+   (2026-10-23, one c-8 droplet each, Xeon Platinum 8280), measured with handlers, `corten::Json`
+   and the request-path changes above. Corten serves 23,086 item pages and 24,338 JSON responses
+   a second at 64 users (r2: 23,034 and 16,014); a page costs 123,665 user instructions and the
+   JSON 133,588 (r2: 163,908 and 212,201). The item page loads 6.2 KB of JavaScript (gzip).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

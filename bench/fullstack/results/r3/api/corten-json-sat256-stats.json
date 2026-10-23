@@ -1,0 +1,16 @@
+{
+ "fsw-corten": {
+  "samples": 123,
+  "cpuAvgPct": 101,
+  "cpuMaxPct": 102.02,
+  "memAvgMiB": 53.2,
+  "memMaxMiB": 62.4
+ },
+ "item-api": {
+  "samples": 123,
+  "cpuAvgPct": 14.5,
+  "cpuMaxPct": 18.54,
+  "memAvgMiB": 88.5,
+  "memMaxMiB": 88.9
+ }
+}
