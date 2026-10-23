@@ -1,0 +1,30 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 5302    73.09577/s
+    checks_succeeded...: 100.00% 5302 out of 5302
+    checks_failed......: 0.00%   0 out of 5302
+
+    ✓ status 200
+
+    HTTP
+    http_req_duration..............: avg=10.63s p(50)=13.08s p(95)=13.76s p(99)=13.83s max=13.88s
+      { expected_response:true }...: avg=10.63s p(50)=13.08s p(95)=13.76s p(99)=13.83s max=13.88s
+    http_req_failed................: 0.00%  0 out of 5302
+    http_reqs......................: 5302   73.09577/s
+
+    EXECUTION
+    dropped_iterations.............: 3698   50.982301/s
+    iteration_duration.............: avg=10.63s p(50)=13.08s p(95)=13.76s p(99)=13.83s max=13.88s
+    iterations.....................: 5302   73.09577/s
+    vus............................: 54     min=54        max=1000
+    vus_max........................: 1000   min=200       max=1000
+
+    NETWORK
+    data_received..................: 68 MB  937 kB/s
+    data_sent......................: 596 kB 8.2 kB/s
+
+
+
+time="2026-10-23T16:23:55Z" level=warning msg="Insufficient VUs, reached 1000 active VUs and cannot initialize more" executor=constant-arrival-rate scenario=load

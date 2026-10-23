@@ -224,11 +224,14 @@ Corten is pre-1.0, so any minor version may change the API.
 4. New `CONTRIBUTING.md`, `SECURITY.md` and this changelog.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
-6. The benchmark tables in the README, `bench/fullstack` and `bench/live` are from round r3
-   (2026-10-23, one c-8 droplet each, Xeon Platinum 8280), measured with handlers, `corten::Json`
-   and the request-path changes above. Corten serves 23,086 item pages and 24,338 JSON responses
-   a second at 64 users (r2: 23,034 and 16,014); a page costs 123,665 user instructions and the
-   JSON 133,588 (r2: 163,908 and 212,201). The item page loads 6.2 KB of JavaScript (gzip).
+6. The full-stack benchmark tables in the README and `bench/fullstack` are from round r4
+   (2026-10-23, one c-8 droplet, Xeon Platinum 8168), measured with the typed item-API parse;
+   `bench/live` is still r3 (Xeon Platinum 8280). On r4's slower CPU Corten serves 18,043 item
+   pages and 18,934 JSON responses a second from memory at 64 users (r3: 23,086 and 24,338 on the
+   8280), and 2,142 item-API pages against ASP.NET Core's 915 (r3: 1,175 and 1,209). A page costs
+   123,693 user instructions and the JSON 133,308 (r3: 123,665 and 133,588). Django and Nuxt
+   failed r4's in-memory page test, which they passed in r3 near their limit. The item page
+   loads 6.2 KB of JavaScript (gzip).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

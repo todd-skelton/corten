@@ -1,0 +1,16 @@
+{
+ "fsw-phoenix": {
+  "samples": 121,
+  "cpuAvgPct": 55.1,
+  "cpuMaxPct": 68.53,
+  "memAvgMiB": 260.9,
+  "memMaxMiB": 291.7
+ },
+ "item-api": {
+  "samples": 121,
+  "cpuAvgPct": 3.9,
+  "cpuMaxPct": 5.12,
+  "memAvgMiB": 139.4,
+  "memMaxMiB": 139.7
+ }
+}

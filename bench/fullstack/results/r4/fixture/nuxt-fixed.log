@@ -1,0 +1,149 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 16071  191.31567/s
+    checks_succeeded...: 99.26% 15953 out of 16071
+    checks_failed......: 0.73%  118 out of 16071
+
+    ✗ status 200
+      ↳  99% — ✓ 15953 / ✗ 118
+
+    HTTP
+    http_req_duration..............: avg=2.59s p(50)=808.62ms p(95)=1.27s  p(99)=49.24s max=53.65s
+      { expected_response:true }...: avg=2.6s  p(50)=810.28ms p(95)=1.28s  p(99)=49.25s max=53.65s
+    http_req_failed................: 0.73%  118 out of 16071
+    http_reqs......................: 16071  191.31567/s
+
+    EXECUTION
+    dropped_iterations.............: 1930   22.975499/s
+    iteration_duration.............: avg=2.92s p(50)=813.21ms p(95)=11.74s p(99)=49.3s  max=1m0s  
+    iterations.....................: 16071  191.31567/s
+    vus............................: 2      min=2            max=1000
+    vus_max........................: 1000   min=200          max=1000
+
+    NETWORK
+    data_received..................: 257 MB 3.1 MB/s
+    data_sent......................: 1.7 MB 21 kB/s
+
+
+
+time="2026-10-23T14:58:23Z" level=warning msg="Insufficient VUs, reached 1000 active VUs and cannot initialize more" executor=constant-arrival-rate scenario=load
+time="2026-10-23T14:58:45Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_393\": dial: i/o timeout"
+time="2026-10-23T14:58:45Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_370\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_308\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_210\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_1\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_82\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_365\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_140\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_30\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_345\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_15\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_39\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_96\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_57\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_148\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_144\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_206\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_176\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_37\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_373\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_9\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_368\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_17\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_454\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_182\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_63\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_25\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_11\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_59\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_315\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_209\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_129\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_88\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_22\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_120\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_132\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_340\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_120\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_26\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_66\": dial: i/o timeout"
+time="2026-10-23T14:58:46Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_127\": dial: i/o timeout"
+time="2026-10-23T14:58:47Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_38\": dial: i/o timeout"
+time="2026-10-23T14:58:47Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_130\": dial: i/o timeout"
+time="2026-10-23T14:58:47Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_192\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_65\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_285\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_161\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_111\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_21\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_343\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_47\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_10\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_29\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_321\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_313\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_16\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_129\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_120\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_64\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_79\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_86\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_2\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_1\": dial: i/o timeout"
+time="2026-10-23T14:58:48Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_83\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_57\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_28\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_180\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_2\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_384\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_430\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_1\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_226\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_384\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_311\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_162\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_85\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_290\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_11\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_26\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_38\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_10\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_220\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_362\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_461\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_2\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_432\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_479\": dial: i/o timeout"
+time="2026-10-23T14:58:49Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_386\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_12\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_184\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_160\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_91\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_23\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_9\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_1\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_8\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_6\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_245\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_7\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_291\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_2\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_55\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_19\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_4\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_1\": dial: i/o timeout"
+time="2026-10-23T14:58:50Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_2\": dial: i/o timeout"
+time="2026-10-23T14:58:51Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_17\": dial: i/o timeout"
+time="2026-10-23T14:58:51Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_139\": dial: i/o timeout"
+time="2026-10-23T14:58:51Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_71\": dial: i/o timeout"
+time="2026-10-23T14:58:51Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_259\": dial: i/o timeout"
+time="2026-10-23T14:58:53Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_170\": dial: i/o timeout"
+time="2026-10-23T14:58:53Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_13\": dial: i/o timeout"
+time="2026-10-23T14:58:53Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_129\": dial: i/o timeout"
+time="2026-10-23T14:58:53Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_9\": dial: i/o timeout"
+time="2026-10-23T14:58:53Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_185\": dial: i/o timeout"
+time="2026-10-23T14:59:17Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_17\": request timeout"
+time="2026-10-23T14:59:17Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_163\": request timeout"
+time="2026-10-23T14:59:17Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_83\": request timeout"

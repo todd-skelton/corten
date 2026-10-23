@@ -1,0 +1,9 @@
+{
+ "fsw-astro": {
+  "samples": 123,
+  "cpuAvgPct": 100.9,
+  "cpuMaxPct": 101.43,
+  "memAvgMiB": 137.6,
+  "memMaxMiB": 138.3
+ }
+}

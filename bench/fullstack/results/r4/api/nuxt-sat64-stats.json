@@ -1,0 +1,16 @@
+{
+ "fsw-nuxt": {
+  "samples": 123,
+  "cpuAvgPct": 100.2,
+  "cpuMaxPct": 100.45,
+  "memAvgMiB": 134.7,
+  "memMaxMiB": 137
+ },
+ "item-api": {
+  "samples": 123,
+  "cpuAvgPct": 2.1,
+  "cpuMaxPct": 3.34,
+  "memAvgMiB": 140,
+  "memMaxMiB": 140.5
+ }
+}

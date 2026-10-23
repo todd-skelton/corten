@@ -184,35 +184,34 @@ React components, or for a pure static site (a static site generator is simpler)
 
 The same item page (listings table, offers, a form that patches) and the same item as JSON in
 fourteen frameworks, each with its usual production settings on one CPU and 1 GiB, measured on one
-DigitalOcean c-8 droplet (Xeon Platinum 8280) on 2026-10-23, one run. Requests a second are at 64
+DigitalOcean c-8 droplet (Xeon Platinum 8168) on 2026-10-23, one run (r4). Requests a second are at 64
 users; "failed" means the app could not serve the fixed rate (or start) without tuning. Method,
 every table and the caveats are in [bench/fullstack](bench/fullstack/README.md).
 
 | | Pages/s, no database | JSON/s, no database | Pages/s, item API | Process start to first page | Memory after first request | JavaScript, gzip |
 |---|---|---|---|---|---|---|
-| **Corten** | **23,086** | **24,338** | **1,175** | **7.5 ms** | **1.484 MiB** | **6.2 KB** |
-| ASP.NET Core 10 | 4,519 | 14,624 | 1,209 | 726 ms | 30.56 MiB | 17.0 KB |
-| Leptos 0.8 | 1,490 | 20,887 | 812 | 7.5 ms | 1.48 MiB | 7.0 KB + 287 KB WASM |
-| Phoenix 1.8 | 1,683 | 2,669 | 413 | 1.3 s | 125.2 MiB | 46.2 KB |
-| Astro 7 | 1,303 | 2,001 | 460 | 327 ms | 37.09 MiB | 9.2 KB |
-| Spring Boot 4.1 | 1,192 | 8,289 | 494 | 8.2 s | 136.1 MiB | 17.0 KB |
-| SvelteKit 3 | 1,028 | 3,429 | 373 | 175 ms | 23.78 MiB | 37.0 KB |
-| TanStack Start | 727 | 3,588 | 292 | 212 ms | 26.77 MiB | 110.9 KB |
-| React Router 7 | 565 | 2,502 | 294 | 301 ms | 32.09 MiB | 98.6 KB |
-| Rails 8.1 | 541 | 1,117 | 399 | 1.1 s | 63.92 MiB | 40.6 KB |
-| Django 6.1 | 335 | 1,309 | 183 | 1.1 s | 63.37 MiB | 17.0 KB |
-| Nuxt 4 | 318 | 8,214 | 212 | 313 ms | 35.61 MiB | 73.7 KB |
-| Next.js 16 | failed (197) | 1,103 | failed (116) | 704 ms | 51.36 MiB | 136.1 KB |
-| Laravel 13 | failed | failed | failed (109) | 845 ms | 95.34 MiB | 84.3 KB |
+| **Corten** | **18,043** | **18,934** | **2,142** | **7.6 ms** | **1.074 MiB** | **6.2 KB** |
+| ASP.NET Core 10 | 3,385 | 11,715 | 915 | 860 ms | 30.82 MiB | 17.0 KB |
+| Phoenix 1.8 | 1,290 | 1,839 | 289 | 1.6 s | 125.3 MiB | 46.2 KB |
+| Leptos 0.8 | 1,282 | 15,952 | 631 | 8.8 ms | 1.48 MiB | 7.0 KB + 287 KB WASM |
+| Astro 7 | 1,097 | 1,802 | 418 | 409 ms | 36.85 MiB | 9.2 KB |
+| Spring Boot 4.1 | 1,050 | 7,338 | 433 | 9.2 s | 134.6 MiB | 17.0 KB |
+| SvelteKit 3 | 757 | 3,088 | 298 | 203 ms | 23.98 MiB | 37.0 KB |
+| TanStack Start | 578 | 3,416 | 283 | 244 ms | 26.41 MiB | 110.9 KB |
+| React Router 7 | 455 | 2,159 | 242 | 346 ms | 31.84 MiB | 98.6 KB |
+| Rails 8.1 | 393 | 829 | 260 | 1.4 s | 63.91 MiB | 40.6 KB |
+| Nuxt 4 | failed (266) | 6,998 | 181 | 348 ms | 35.29 MiB | 73.7 KB |
+| Django 6.1 | failed (228) | 1,126 | 149 | 1.4 s | 62.12 MiB | 17.0 KB |
+| Next.js 16 | failed (156) | 1,025 | failed (107) | 793 ms | 51.23 MiB | 136.1 KB |
+| Laravel 13 | failed | failed | failed (73) | 990 ms | 96.8 MiB | 84.3 KB |
 
-With the item API every request fetches and parses about 55 KB of JSON, which bounds every app;
-ASP.NET Core and Corten are level there in r3. Since then the example reads only the fields it
-uses from that response instead of a `serde_json::Value`: on one droplet, before and after
-alternating, it served 3,128-3,176 pages a second instead of 1,249-1,270, against ASP.NET Core's
-1,344-1,373 there ([details](bench/fullstack/README.md#cortens-item-api-path-after-r3-2026-10-23)).
-Corten's JSON route now costs about what its HTML page
-does (134,000 against 124,000 user-mode instructions a request; Leptos's JSON 205,000), down from
-212,000 in the previous round, since `corten::Json` replaced axum's `Json`. Pushing live updates
+With the item API every request fetches and parses about 55 KB of JSON, which bounds every app.
+Corten reads only the fields the page uses from that response, not a `serde_json::Value`, and
+serves 2.3x ASP.NET Core's pages there (2,142 a second against 915) at a quarter of its CPU
+([details](bench/fullstack/README.md#cortens-item-api-path)). Corten's JSON route costs about what
+its HTML page does (133,000 against 124,000 user-mode instructions a request; Leptos's JSON
+205,000). This droplet's CPU was slower than r3's, so every app's requests a second are lower than
+in r3; instruction counts held. Pushing live updates
 is measured in [bench/live](bench/live/README.md): at 10,000 open connections on one core, only
 Corten and Leptos delivered all 100,000 messages a second.
 

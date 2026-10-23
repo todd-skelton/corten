@@ -1,0 +1,34 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 16071  265.777338/s
+    checks_succeeded...: 99.96% 16066 out of 16071
+    checks_failed......: 0.03%  5 out of 16071
+
+    ✗ status 200
+      ↳  99% — ✓ 16066 / ✗ 5
+
+    HTTP
+    http_req_duration..............: avg=959.44ms p(50)=723.33ms p(95)=979.18ms p(99)=8.25s max=59.99s
+      { expected_response:true }...: avg=941.07ms p(50)=723.06ms p(95)=979.16ms p(99)=7.36s max=59.59s
+    http_req_failed................: 0.03%  5 out of 16071
+    http_reqs......................: 16071  265.777338/s
+
+    EXECUTION
+    iteration_duration.............: avg=959.87ms p(50)=723.41ms p(95)=979.28ms p(99)=8.27s max=1m0s  
+    iterations.....................: 16071  265.777338/s
+    vus............................: 256    min=256        max=256
+    vus_max........................: 256    min=256        max=256
+
+    NETWORK
+    data_received..................: 259 MB 4.3 MB/s
+    data_sent......................: 1.8 MB 29 kB/s
+
+
+
+time="2026-10-23T15:01:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_118\": request timeout"
+time="2026-10-23T15:01:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_335\": request timeout"
+time="2026-10-23T15:01:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_238\": request timeout"
+time="2026-10-23T15:01:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_47\": request timeout"
+time="2026-10-23T15:01:22Z" level=warning msg="Request Failed" error="Get \"http://fsw-nuxt:8080/items/item_64\": request timeout"
