@@ -1,6 +1,6 @@
 // @ts-check
-// corten/solid: render part of a component with Solid. Served prebuilt by the corten crate
-// (feature "solid") at /corten/solid.js; `npm run build:js` regenerates js/dist/solid.js from this file.
+// Bench only: Solid without a compiler, for the solid-h app (build.mjs aliases it as corten/solid).
+// Corten served this module until views replaced it; the framework no longer ships Solid.
 //
 //   // stock_badge.rs: <div on:connect={js::start(target, signal)}>"0"</div>
 //   import { mount, h, createSignal } from "corten/solid";

@@ -4,7 +4,7 @@
 //! fastest level that still pays: zstd 1 for clients that accept it (current Chrome, Edge,
 //! Firefox and Safari), otherwise brotli 2, otherwise gzip 1. On the item page that costs about
 //! 50 µs with zstd, against 400-500 µs for brotli and gzip at common default levels, for a body
-//! within 10% of the smallest. The runtime, Solid and [`crate::assets`] files never change, so
+//! within 10% of the smallest. The runtime and [`crate::assets`] files never change, so
 //! they are compressed once, at brotli 11 and gzip 9, the first time a client asks for them (in
 //! a background thread, so startup is not delayed; until then they go out as dynamic responses).
 //!

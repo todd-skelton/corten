@@ -384,7 +384,7 @@ function sweep() {
 const MANY = 16;
 
 /**
- * Markup that joins the page (a navigation, a patch, a script's insert, Solid's render) is wired;
+ * Markup that joins the page (a navigation, a patch, a script's insert) is wired;
  * markup that leaves it ends.
  * @param {MutationRecord[]} records
  */

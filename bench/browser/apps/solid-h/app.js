@@ -1,5 +1,5 @@
-// Solid without a compiler, through corten/solid's h, each and mount: what Corten ships today
-// for client-heavy parts of a page.
+// Solid without a compiler, through the h, each and mount helpers in ./solid.js (aliased as
+// corten/solid by build.mjs).
 import { h, each, mount, createSignal, createSelector, batch } from "corten/solid";
 import { label, nextId, patched } from "../shared/labels.js";
 

@@ -291,7 +291,7 @@ pub(crate) struct Shared {
     pub error_page: Box<ErrorPage>,
     pub assets: Option<Arc<Assets>>,
     pub scripts_dir: String,
-    /// The import map's JSON: the runtime, Solid, the app's typed events.
+    /// The import map's JSON: the runtime, the app's typed events and views.
     pub import_map: String,
     /// Extra `<head>` tags from the app's configuration (manifest link, theme color, service
     /// worker), rendered once.

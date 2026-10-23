@@ -173,20 +173,6 @@ async fn page_answers_data_requests_with_the_document() {
     assert!(body.starts_with("<html>"));
 }
 
-#[cfg(feature = "solid")]
-#[tokio::test]
-async fn solid_feature_adds_the_import_map_entry_and_route() {
-    let (_, _, body) = call(routes(), "GET", None).await;
-    assert!(body.contains(&format!(
-        r#"<script type="importmap">{{"imports":{{"corten":"{}","corten/solid":"{}"}}}}</script>"#,
-        runtime_path(),
-        solid_path()
-    )));
-    let res = crate::routes::<()>().oneshot(Request::get(solid_path()).body(Body::empty()).unwrap()).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(res.headers()["content-type"], "text/javascript; charset=utf-8");
-}
-
 #[tokio::test]
 async fn runtime_is_served_at_a_versioned_immutable_url() {
     assert!(runtime_path().starts_with(&format!("/corten/{}/", runtime_version())));

@@ -138,7 +138,7 @@ for (const app of apps) {
     bundle: true, format: "esm", minify: process.env.MINIFY !== "0", target: "es2022", legalComments: "none", write: false,
     outfile: join(dir, "app.js"),
     conditions: ["browser"],
-    alias: { "corten/state": join(here, "apps", "shared", "state.js"), "corten/solid": join(js, "solid.js") },
+    alias: { "corten/state": join(here, "apps", "shared", "state.js"), "corten/solid": join(here, "apps", "solid-h", "solid.js") },
     jsx: "automatic", jsxImportSource: "remix/component",
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: app.plugins ?? [],

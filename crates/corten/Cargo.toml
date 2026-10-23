@@ -46,8 +46,6 @@ types = ["json", "dep:schemars"]
 compress = ["dep:brotli", "dep:flate2", "dep:zstd"]
 # corten::feed: live data for scripts (snapshot + ordered patches over server-sent events).
 feed = ["json", "dep:corten-feed"]
-# Serves Solid for scripts at /corten/solid.js, imported as "corten/solid".
-solid = []
 # corten::agent: the app's actions as Model Context Protocol tools for AI agents.
 agent = ["types"]
 

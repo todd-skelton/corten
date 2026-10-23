@@ -252,8 +252,6 @@ impl Pwa {
         let list = |items: &[String]| format!("[{}]", items.iter().map(|s| json_string(s)).collect::<Vec<_>>().join(","));
         let mut precache = self.precache.clone();
         precache.push(crate::runtime_path().to_string());
-        #[cfg(feature = "solid")]
-        precache.push(crate::solid_path().to_string());
         let cache = format!("corten-{}-{}", self.version, crate::runtime_version());
         let imports =
             if self.imports.is_empty() { String::new() } else { format!("importScripts(...{});\n", list(&self.imports)) };

@@ -19,8 +19,8 @@ framework's shape, and what it does not do yet.
    response buffer.
 4. **Plain functions, not a client framework, by default.** A handler is an exported function the
    markup calls with the elements it uses, run by one delegated listener per event type; there
-   is no component instance, lifecycle class or hydration in the browser. Solid is opt-in for
-   the screens that need fine-grained reactive state.
+   is no component instance, lifecycle class or hydration in the browser. Rows a script changes
+   often are views: generated classes that read and write the server-rendered elements.
 5. **Handlers are checked where they are called.** The compiler reads each script's JSDoc, so a
    call with a ref on the wrong element, an event of the wrong type, a value of the wrong type or
    a handler the script does not export fails to compile at the call. No generated declarations

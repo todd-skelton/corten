@@ -85,6 +85,10 @@ Corten is pre-1.0, so any minor version may change the API.
    `#[component(js)]` with a `div` root. `Types::components` declares typed events instead of
    `CortenIslands`, and `corten::find_islands` is gone (the page preloads the modules its
    handlers named while it rendered).
+2. The `solid` feature, `corten/solid`, `corten::solid_path` and `SOLID_JS`. Rows a script
+   changes are views, which measured faster to take over (7-8.5 ms against 18-20 ms for 1,000
+   server-rendered rows) and lighter (116 bytes a row against 927), and the framework no longer
+   ships a third-party JavaScript bundle. Solid stays in `bench/browser` as a comparison.
 
 ### Changed
 

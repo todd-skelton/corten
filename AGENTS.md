@@ -42,7 +42,7 @@ convenience. And a nicer API that slows every page loses.
    `corten new` writes; it must pass `corten check` with rustfmt's default settings.
    `corten fmt` lays out `html!` bodies and only ever changes whitespace (it compares tokens
    before writing); run it on `crates examples bench` after editing markup.
-5. Edit the runtime in `crates/corten/js/corten.js` and `solid.js`; the crate embeds their
+5. Edit the runtime in `crates/corten/js/corten.js` and `view.js`; the crate embeds their
    minified builds in `js/dist/`, which only `npm run build:js` writes (`npm run check` fails
    when they are stale). The `data-on` format is written by `crates/corten/src/script.rs` and
    read by `crates/corten/js/on.js`; a change to it updates `crates/corten/src/script/wire.json`,

@@ -327,12 +327,12 @@ element and at least one hole, or the component does not compile. List the compo
 `App::components`; `rows()` and the classes are served as one module, mapped as
 `corten/views`, and only to apps with views.
 
-## Screens with client state
+## Live rows
 
-For screens whose state lives in the browser and that many parts of the screen derive from (rows
-a script reads and writes are [views](#views), not this), a handler can render part of a component with Solid and keep its rows current from a [feed](live-data.md):
+Rows the server keeps current come from a [feed](live-data.md), and the handler writes them
+through [views](#views):
 
 | Piece | Server | Browser |
 |---|---|---|
 | Live rows | `corten::feed::Feed<Row>`: `write(\|tx\| ...)`, `snapshot()`, `live(since)` (feature `feed`) | `subscribe(url, { snapshot, patch, status }, { signal })` in an `on:connect` handler |
-| Rendering | serves Solid as `corten/solid` (feature `solid`) | `mount(el, (server) => h(Grid, ...), { signal })` in the same handler |
+| Rendering | the rows, rendered with `html!` as `#[component(view)]`s | `rows(body, Row).get(row.id).price = row.price` for each changed row, in the same handler |

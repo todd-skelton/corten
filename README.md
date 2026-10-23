@@ -224,7 +224,7 @@ Corten and Leptos delivered all 100,000 messages a second.
 | [The app](docs/guide/app.md) | every default `App` puts around your routes, and how to replace each |
 | [Views](docs/guide/views.md) | `html!`, components, typed links and messages |
 | [Requests and forms](docs/guide/requests-and-forms.md) | request modes, patches, validation, redirects |
-| [Scripts](docs/guide/scripts.md) | behavior in the browser: handlers, refs, typed events, Solid |
+| [Scripts](docs/guide/scripts.md) | behavior in the browser: handlers, refs, typed events, views |
 | [Live data](docs/guide/live-data.md) | `<corten-live>`, feeds, running a feed across instances |
 | [Cancellation](docs/guide/cancellation.md) | `AbortSignal` in the browser and on the server, deadlines |
 | [Styles](docs/guide/styles.md) | a scoped CSS file per component, design tokens, themes |

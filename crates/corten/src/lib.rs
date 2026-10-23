@@ -35,9 +35,9 @@
 //! Modules: [`api`] (JSON-only routes), [`cache`] (HTTP caching), [`view`] (markup), [`script`]
 //! (handlers: behavior in the browser), [`style`] (component stylesheets and design tokens), [`route`] (typed links),
 //! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`].
-//! Features: `json` (handler values, data screens), `feed` (live rows), `solid` (Solid for
-//! screens with client state), `types` (TypeScript declarations from Rust types), `agent` (MCP tools),
-//! `compress`, `log` (a log subscriber in [`App::serve`]).
+//! Features: `json` (handler values, data screens), `feed` (live rows), `types` (TypeScript
+//! declarations from Rust types), `agent` (MCP tools), `compress`, `log` (a log subscriber in
+//! [`App::serve`]).
 
 // So the code `html!` generates (`::corten::view::...`) also compiles inside this crate.
 extern crate self as corten;
@@ -150,10 +150,6 @@ pub mod prelude {
 /// (`npm run check` fails if it is stale), so the documented source costs the browser nothing.
 pub const RUNTIME_JS: &str = include_str!("../js/dist/corten.js");
 
-/// Prebuilt by `scripts/build-js.mjs` from `js/solid.js`; apps need no JavaScript tooling.
-#[cfg(feature = "solid")]
-pub const SOLID_JS: &str = include_str!("../js/dist/solid.js");
-
 /// FNV-1a, 64 bit: a stable content hash for versioned URLs (not for security).
 pub(crate) mod fnv {
     pub const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
@@ -171,14 +167,9 @@ pub(crate) mod fnv {
     }
 }
 
-#[cfg(not(feature = "solid"))]
 const CLIENT_HASH: u64 = fnv::hash(RUNTIME_JS.as_bytes());
-#[cfg(feature = "solid")]
-const CLIENT_HASH: u64 = fnv::extend(fnv::hash(RUNTIME_JS.as_bytes()), SOLID_JS.as_bytes());
 static CLIENT_VERSION: LazyLock<String> = LazyLock::new(|| format!("{:012x}", CLIENT_HASH >> 16));
 static RUNTIME_URL: LazyLock<String> = LazyLock::new(|| format!("/corten/{}/corten.js", runtime_version()));
-#[cfg(feature = "solid")]
-static SOLID_URL: LazyLock<String> = LazyLock::new(|| format!("/corten/{}/solid.js", runtime_version()));
 
 /// Content hash of the client code Corten serves; it changes whenever the runtime does.
 pub fn runtime_version() -> &'static str {
@@ -190,23 +181,12 @@ pub fn runtime_path() -> &'static str {
     &RUNTIME_URL
 }
 
-/// URL of the Solid module (feature `solid`), imported by handlers as `corten/solid`.
-#[cfg(feature = "solid")]
-pub fn solid_path() -> &'static str {
-    &SOLID_URL
-}
-
-/// The import map's JSON: `corten`, `corten/solid` when that feature is on, `corten/events`
-/// (the app's typed events) when `events` is the URL of their module, and `corten/views` (the
-/// app's view classes) when `views` is.
+/// The import map's JSON: `corten`, `corten/events` (the app's typed events) when `events` is the
+/// URL of their module, and `corten/views` (the app's view classes) when `views` is.
 pub(crate) fn import_map(events: Option<&str>, views: Option<&str>) -> String {
-    #[cfg(feature = "solid")]
-    let solid = format!(r#","corten/solid":"{}""#, solid_path());
-    #[cfg(not(feature = "solid"))]
-    let solid = "";
     let events = events.map(|url| format!(r#","corten/events":"{url}""#)).unwrap_or_default();
     let views = views.map(|url| format!(r#","corten/views":"{url}""#)).unwrap_or_default();
-    format!(r#"{{"imports":{{"corten":"{}"{solid}{events}{views}}}}}"#, runtime_path())
+    format!(r#"{{"imports":{{"corten":"{}"{events}{views}}}}}"#, runtime_path())
 }
 
 /// Streams fragments to `<corten-live src="...">` as server-sent events. Each item is applied like a
@@ -233,13 +213,10 @@ async fn draining() {
     let _ = DRAINING.subscribe().wait_for(|draining| *draining).await;
 }
 
-/// Routes the runtime at [`runtime_path`] (and Solid at [`solid_path`] with the `solid`
-/// feature), versioned and cached forever. Merge into the app router.
+/// Routes the runtime at [`runtime_path`], versioned and cached forever. Merge into the app
+/// router.
 pub fn routes<St: Clone + Send + Sync + 'static>() -> Router<St> {
-    let router = Router::new().route(runtime_path(), get(|headers: HeaderMap| async move { RUNTIME.respond(&headers) }));
-    #[cfg(feature = "solid")]
-    let router = router.route(solid_path(), get(|headers: HeaderMap| async move { SOLID.respond(&headers) }));
-    router
+    Router::new().route(runtime_path(), get(|headers: HeaderMap| async move { RUNTIME.respond(&headers) }))
 }
 
 const JS: &str = "text/javascript; charset=utf-8";
@@ -252,8 +229,6 @@ struct Served {
 }
 
 static RUNTIME: Served = Served::new(RUNTIME_JS);
-#[cfg(feature = "solid")]
-static SOLID: Served = Served::new(SOLID_JS);
 
 impl Served {
     const fn new(source: &'static str) -> Self {

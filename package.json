@@ -1,5 +1,5 @@
 {
-  "//": "Framework tooling only. Apps need no JavaScript dependencies: the corten crate serves the runtime and the prebuilt Solid bundle.",
+  "//": "Framework tooling only. Apps need no JavaScript dependencies: the corten crate serves the runtime.",
   "name": "corten-tooling",
   "private": true,
   "type": "module",
@@ -11,7 +11,6 @@
   "devDependencies": {
     "@playwright/test": "1.60.0",
     "esbuild": "0.28.2",
-    "solid-js": "1.9.17",
     "typescript": "5.9.3"
   }
 }

@@ -176,14 +176,6 @@ export function select(link, body) {
 `replace` (pass the `<template>` holding one `<Row .. />` to make new rows). List the view in
 `App::components`. Details: `docs/guide/scripts.md`, "Views".
 
-## Heavy client state (feature `solid`)
-
-For a grid of thousands of live rows, render with Solid from an `on:connect` handler:
-`import { h, mount, createStore } from "corten/solid"`, then
-`mount(el, () => h(Grid, ...), { signal })` and feed it from `subscribe`. Use it only where the
-client owns state that many parts of the screen derive from; rows a script reads and writes are
-views.
-
 ## Widgets
 
 Use `corten-ui` (number field, combobox, tabs, menu button) before writing one. For anything

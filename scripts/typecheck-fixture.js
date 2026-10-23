@@ -7,7 +7,6 @@
 import { state, subscribe } from "corten";
 // @ts-expect-error The runtime takes a module's exports from the line Corten appends; it exports no hook for it.
 import { register } from "corten";
-import { mount } from "corten/solid";
 
 /** @typedef {import("../examples/hello/types/app").Stock} Stock Generated from the Rust struct. */
 
@@ -17,9 +16,6 @@ export function connect(root, signal) {
   s.ticks += 1;
   // @ts-expect-error State has only what its init returns.
   s.tick;
-  mount(root, () => null, { signal });
-  // @ts-expect-error A Solid view lives as long as its element: mount needs a signal.
-  mount(root, () => null);
   subscribe("/feed/stocks", { snapshot() {}, patch() {} }, { signal });
   // @ts-expect-error subscribe() returns nothing to stop it with; pass a signal.
   subscribe("/feed/stocks", { snapshot() {}, patch() {} })();
