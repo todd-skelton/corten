@@ -78,8 +78,17 @@ Corten is pre-1.0, so any minor version may change the API.
     shows outside its holes has no `keyOf`, and its `rows()` cannot `push` or `replace`: the
     server makes those rows. `examples/seller-desk`'s grid rows are an `InventoryRow` view.
 
-### Removed
+18. Releases: every crate in `crates/` can be published to crates.io at the one version in
+    `[workspace.package]`, with license, repository, keywords, categories and `rust-version`
+    (1.88, checked by CI and the checks in `CONTRIBUTING.md`). Pushing a tag `vX.Y.Z` runs
+    `.github/workflows/release.yml`: the checks, a static `corten` binary for Linux (x86_64,
+    aarch64), macOS (x86_64, aarch64) and Windows, `cargo publish --workspace`, and a GitHub
+    release with the binaries and the changelog section. `cargo binstall corten-cli` downloads
+    the binary. `CONTRIBUTING.md` (Releasing) has the steps, including the first release.
+19. `.github/workflows/ci.yml` runs the checks in `CONTRIBUTING.md` on every pull request and
+    push to `main`, plus `cargo publish --workspace --dry-run` and a build on Rust 1.88.
 
+### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
    `#[component(js)]` with a `div` root. `Types::components` declares typed events instead of
@@ -211,8 +220,13 @@ Corten is pre-1.0, so any minor version may change the API.
     moved with a slow stretch of the machine. The README's server highlight now quotes round r4
     (18,043 pages a second, 1.1 MiB), the round its server table is from.
 
-### Fixed
+23. `corten new` makes the app depend on the `corten` release on crates.io that matches the
+    command's version (`corten = { version = "0.1.0", ... }`) instead of the repository's `main`
+    branch, so an app builds against the release it was created for. `--corten-path` still uses
+    a local checkout. Install the command with `cargo install corten-cli`.
+24. `Cargo.lock` takes tokio 1.54.1; 1.54.0 was yanked.
 
+### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
    the browser's data saver is on.

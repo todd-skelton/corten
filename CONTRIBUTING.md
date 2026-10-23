@@ -47,7 +47,8 @@ PowerShell from the repository root; in another shell use `$PWD` for `${PWD}`).
 
 ```powershell
 docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo fmt --all --check && cargo run -q -p corten-cli -- fmt --check crates examples bench && cargo clippy --workspace --all-features --all-targets -- -D warnings && cargo test --workspace --all-features"
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check"
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check && cd /src && cargo publish --workspace --dry-run --locked --allow-dirty"
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-msrv-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1.88-bookworm cargo check --locked --workspace --all-features --all-targets
 npm run check
 docker build -f examples/hello/Dockerfile -t corten-hello .
 docker run -d --name corten-hello -p 18480:8080 corten-hello
@@ -68,7 +69,10 @@ docker rm -f corten-ui-gallery
 
 The first command also compiles every `rust` code block in `README.md` and `docs/guide/` as a
 doctest. Mark a fragment that cannot compile on its own `rust,ignore`, and a complete program
-that serves forever `rust,no_run`.
+that serves forever `rust,no_run`. The second ends by packaging every published crate and
+building each from its `.crate` file, as crates.io will (`cargo publish --dry-run`); the third
+builds on the oldest supported Rust, `rust-version` in the root `Cargo.toml`. The `CI` workflow
+(`.github/workflows/ci.yml`) runs the same checks on every pull request and push to `main`.
 
 ## Cluster integration tests
 
@@ -97,3 +101,37 @@ The failover benchmark is `node examples/cluster/bench/run.mjs`; see its header.
 3. Update the guide in `docs/guide/` that describes the behavior, and add a line to
    `CHANGELOG.md` under Unreleased.
 4. Commit messages say what changed and why, in plain sentences.
+
+## Releasing
+
+Every published crate (all of `crates/`) shares the version in `[workspace.package]` and is
+released together; the examples have `publish = false`. Pushing a tag `vX.Y.Z` runs the
+`Release` workflow (`.github/workflows/release.yml`): the checks, a `corten` binary for each
+platform, `cargo publish --workspace` (each crate after the ones it depends on), then a GitHub
+release with the binaries and the version's `CHANGELOG.md` section as its notes. It stops before
+publishing when the tag, the workspace version and the changelog disagree.
+
+1. In one pull request, set `version` in `[workspace.package]` and the same version on every
+   `corten*` line of `[workspace.dependencies]`, then rename `## Unreleased` in `CHANGELOG.md`
+   to `## X.Y.Z (YYYY-MM-DD)` and start a new empty `## Unreleased` above it. A release before
+   1.0 that changes the API bumps the minor version.
+2. Merge it, then tag that commit on `main` and push the tag:
+   `git tag -a vX.Y.Z -m "Corten X.Y.Z"` and `git push origin vX.Y.Z`.
+3. Approve the `release` environment when the workflow asks.
+
+A published version cannot be replaced, only yanked (`cargo yank --version X.Y.Z <crate>`), so
+a fix is a new patch release.
+
+### Before the first release
+
+crates.io only lets a workflow publish (trusted publishing) for a crate that already exists, so
+the first release uses an API token once:
+
+1. Sign in to crates.io with the GitHub account that owns the repository.
+2. In the repository settings, create the environment `release` with yourself as a required
+   reviewer, and add a secret `CARGO_REGISTRY_TOKEN` to it: a crates.io token with the
+   `publish-new` and `publish-update` scopes, expiring in a few days.
+3. Release as above. Then, for each crate, open its Settings on crates.io, add a trusted
+   publisher (GitHub, repository `todd-skelton/corten`, workflow `release.yml`, environment
+   `release`), delete the secret and revoke the token. Later releases authenticate through
+   `rust-lang/crates-io-auth-action` with no stored token.

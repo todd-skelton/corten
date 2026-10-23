@@ -33,13 +33,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "{name:?} is not a crate name: lowercase letters, digits, - and _, starting with a letter (use --name)"
         ));
     }
-    let dependency = match option(args, "--corten-path")? {
-        Some(path) => {
-            let path = std::fs::canonicalize(path).map_err(|e| format!("--corten-path {path}: {e}"))?;
-            format!("path = {:?}", path.to_string_lossy().trim_start_matches(r"\\?\"))
-        }
-        None => r#"git = "https://github.com/todd-skelton/corten""#.to_string(),
-    };
+    let dependency = dependency(option(args, "--corten-path")?)?;
     if dir.exists() && std::fs::read_dir(&dir).map_err(|e| e.to_string())?.next().is_some() {
         return Err(format!("{} exists and is not empty", dir.display()));
     }
@@ -49,6 +43,18 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
     println!("Created {name} in {}.\n\n  cd {}\n  corten dev\n\nthen open http://localhost:3000.", dir.display(), dir.display());
     Ok(())
+}
+
+/// The app's `corten` dependency: the release this command was built with (the crates share one
+/// version), or a local checkout with `--corten-path`.
+fn dependency(path: Option<&str>) -> Result<String, String> {
+    match path {
+        Some(path) => {
+            let path = std::fs::canonicalize(path).map_err(|e| format!("--corten-path {path}: {e}"))?;
+            Ok(format!("path = {:?}", path.to_string_lossy().trim_start_matches(r"\\?\")))
+        }
+        None => Ok(format!("version = {:?}", env!("CARGO_PKG_VERSION"))),
+    }
 }
 
 fn crate_name(dir: &Path) -> Result<String, String> {
@@ -61,4 +67,22 @@ fn write(path: &Path, text: &str) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dependency;
+
+    #[test]
+    fn a_new_app_depends_on_the_release_the_command_came_from() {
+        assert_eq!(dependency(None).unwrap(), format!("version = \"{}\"", env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn corten_path_points_the_app_at_a_local_checkout() {
+        let here = std::fs::canonicalize(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let written = dependency(Some(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        assert_eq!(written, format!("path = {:?}", here.to_string_lossy().trim_start_matches(r"\\?\")));
+        assert!(dependency(Some("no/such/dir")).unwrap_err().starts_with("--corten-path no/such/dir: "));
+    }
 }

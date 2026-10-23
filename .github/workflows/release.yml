@@ -1,0 +1,100 @@
+# Publishes a release when a tag vX.Y.Z is pushed (CONTRIBUTING.md, Releasing): the checks, the
+# corten binary for each platform, every crate on crates.io, then a GitHub release with the
+# binaries and the CHANGELOG.md section for the version.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: version
+        name: The tag, the crates and CHANGELOG.md name the same version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "corten") | .version')
+          test "$GITHUB_REF_NAME" = "v$version" || { echo "tag $GITHUB_REF_NAME does not match the workspace version $version"; exit 1; }
+          awk -v v="$version" '$0 ~ "^## " v "( |$)" { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: notes
+          path: notes.md
+
+  binaries:
+    needs: [checks, version]
+    strategy:
+      matrix:
+        include:
+          # Linux binaries are static (musl), so they run on any distribution.
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-24.04 }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+          - { target: x86_64-apple-darwin, os: macos-15 }
+          - { target: aarch64-apple-darwin, os: macos-15 }
+          - { target: x86_64-pc-windows-msvc, os: windows-2025 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }} && rustup default stable
+      - run: cargo build --release --locked -p corten-cli --target ${{ matrix.target }}
+      # The archive names are the ones [package.metadata.binstall] in crates/corten-cli/Cargo.toml expects.
+      - if: runner.os != 'Windows'
+        run: tar -czf corten-${{ matrix.target }}.tgz -C target/${{ matrix.target }}/release corten
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/corten.exe -DestinationPath corten-${{ matrix.target }}.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: corten-${{ matrix.target }}
+          path: corten-${{ matrix.target }}.*
+
+  publish:
+    needs: [checks, version, binaries]
+    runs-on: ubuntu-24.04
+    # Protect this environment in the repository settings; crates.io's trusted publisher names it.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Only the first release, before the crates exist, needs an API token (crates.io allows
+      # trusted publishing for crates that are already published). Delete the secret after it.
+      HAS_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - id: auth
+        if: env.HAS_TOKEN != 'true'
+        uses: rust-lang/crates-io-auth-action@v1
+      # Publishes every crate without publish = false, each after the crates it depends on.
+      - run: cargo publish --workspace --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
+
+  github-release:
+    needs: [version, publish]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+      - run: gh release create "$GITHUB_REF_NAME" corten-* --repo "$GITHUB_REPOSITORY" --title "Corten ${{ needs.version.outputs.version }}" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -1,15 +1,19 @@
 [package]
 name = "corten"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
-publish = false
 description = "A full-stack Rust web framework: pages in html!, fragment patches, typed handlers and live feeds, on axum."
-license = "MIT"
-repository = "https://github.com/todd-skelton/corten"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["web", "framework", "html", "server-rendering", "axum"]
+categories = ["web-programming::http-server", "template-engine"]
+readme = "../../README.md"
 
 [dependencies]
 axum = "0.8"
-corten-macros = { path = "../corten-macros" }
+corten-macros.workspace = true
 futures-util = { version = "0.3", default-features = false }
 getrandom = "0.3"
 # Already in axum's tree: the response body type, for the request signal.
@@ -25,7 +29,7 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
-corten-feed = { path = "../corten-feed", optional = true }
+corten-feed = { workspace = true, optional = true }
 schemars = { version = "1.2", optional = true }
 brotli = { version = "9", optional = true }
 flate2 = { version = "1", optional = true }
@@ -48,6 +52,10 @@ compress = ["dep:brotli", "dep:flate2", "dep:zstd"]
 feed = ["json", "dep:corten-feed"]
 # corten::agent: the app's actions as Model Context Protocol tools for AI agents.
 agent = ["types"]
+
+# docs.rs documents every module, including the opt-in ones.
+[package.metadata.docs.rs]
+all-features = true
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }

@@ -1,12 +1,17 @@
 [package]
 name = "corten-cluster"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
-publish = false
 description = "One Corten feed served by many instances: Postgres outbox, a leased relay to NATS JetStream, and per-instance followers that resume each other's cursors."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["corten", "nats", "postgres", "outbox", "feed"]
+categories = ["web-programming::http-server", "database"]
 
 [dependencies]
-corten-feed = { path = "../corten-feed" }
+corten-feed.workspace = true
 axum = "0.8"
 async-nats = "0.50"
 futures-util = { version = "0.3", default-features = false }

@@ -28,14 +28,15 @@ server-sent events. One handler serves the browser, native apps and AI agents.
 
 ## Status
 
-Corten is 0.1: usable, tested, and not yet on crates.io. Install it from this repository. The
-API will change before 1.0; [CHANGELOG.md](CHANGELOG.md) lists what changed. `corten-ui` is
-tested in Chromium only.
+Corten is 0.1: usable and tested, on Rust 1.88 or later. A release publishes every crate at one
+version on crates.io and attaches a prebuilt `corten` for Linux, macOS and Windows to the GitHub
+release. The API will change before 1.0; [CHANGELOG.md](CHANGELOG.md) lists what changed.
+`corten-ui` is tested in Chromium only.
 
 ## Quick start
 
 ```sh
-cargo install --git https://github.com/todd-skelton/corten corten-cli
+cargo install corten-cli    # or cargo binstall corten-cli, for the prebuilt binary
 corten new my-app
 cd my-app
 corten dev    # serves http://localhost:3000 and reloads on save
