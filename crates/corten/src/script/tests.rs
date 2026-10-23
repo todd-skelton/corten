@@ -210,7 +210,7 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
     let views = body.split_once(r#""corten/views":""#).expect("the import map maps corten/views").1.split_once('"').unwrap().0;
     assert!(views.ends_with("/views.js"), "{body}");
     assert!(body.contains(&format!(r#"<link rel="modulepreload" href="{views}">"#)), "{body}");
-    // The handler module is a module script of the page, and registers with the runtime as it runs.
+    // The handler module is a module script of the page, and hands its exports to the runtime as it runs.
     let module = views.replace("/views.js", "/scripts/line_item.js");
     assert!(body.contains(&format!(r#"<script type="module" src="{module}"></script>"#)), "{body}");
     let app = crate::App::new(Router::new()).components(&[LineItem, Badge]).router();
@@ -218,9 +218,9 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
     let source = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
     assert!(
         source.ends_with(concat!(
-            "import { register as __corten_register } from \"corten\";\n",
+            "import \"corten\";\n",
             "import * as __corten_self from \"./line_item.js\";\n",
-            "__corten_register(\"line_item\", __corten_self);\n"
+            "document.dispatchEvent(new CustomEvent(\"corten:module\", { detail: { name: \"line_item\", url: import.meta.url, exports: __corten_self } }));\n"
         )),
         "{source}"
     );

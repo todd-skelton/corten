@@ -475,23 +475,26 @@ pub fn views_module(components: &[Component]) -> Result<Option<String>, String> 
     Ok((!out.is_empty()).then_some(out))
 }
 
-/// A script module as Corten serves it: its source, then the line that hands its exports to the
-/// runtime, so the page can load it with a module script and the runtime finds it without an
-/// `import()`. The bench uses it for the same reason.
+/// A script module as Corten serves it: its source, then the lines that hand its exports to the
+/// runtime (a `corten:module` event on `document`), so the page can load it with a module script
+/// and the runtime finds it without an `import()`. The runtime exports nothing for this: it takes
+/// the event only from the module the page's own script tag for that name loaded, once, while the
+/// page loads. The
+/// bench uses it for the same reason.
 #[doc(hidden)]
 pub fn served(name: &str, source: &str) -> String {
-    let mut out = String::with_capacity(source.len() + 160 + 2 * name.len());
+    let mut out = String::with_capacity(source.len() + 200 + 2 * name.len());
     out.push_str(source);
     if !source.ends_with('\n') {
         out.push('\n');
     }
-    out.push_str("// Corten: this module's exports, for the runtime.\n");
-    out.push_str("import { register as __corten_register } from \"corten\";\n");
+    out.push_str("// Corten: hands this module's exports to the runtime.\n");
+    out.push_str("import \"corten\";\n");
     out.push_str("import * as __corten_self from \"./");
     out.push_str(name);
-    out.push_str(".js\";\n__corten_register(\"");
+    out.push_str(".js\";\ndocument.dispatchEvent(new CustomEvent(\"corten:module\", { detail: { name: \"");
     out.push_str(name);
-    out.push_str("\", __corten_self);\n");
+    out.push_str("\", url: import.meta.url, exports: __corten_self } }));\n");
     out
 }
 

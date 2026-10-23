@@ -72,7 +72,7 @@ pub struct Assets {
     files: HashMap<String, File>,
     /// Names with a module at `scripts/{name}.js`.
     scripts: std::collections::HashSet<String>,
-    /// The components' and `script!` modules: they register with the runtime as they run, so a
+    /// The components' and `script!` modules: they hand their exports to the runtime as they run, so a
     /// page loads them with a module script of its own.
     registered: std::collections::HashSet<String>,
     /// The joined component stylesheets' URL, when any component has one.
@@ -242,7 +242,7 @@ impl Assets {
         self.scripts.contains(name)
     }
 
-    /// True when the script module `name` registers with the runtime as it runs (a component's or
+    /// True when the script module `name` hands its exports to the runtime as it runs (a component's or
     /// a `script!` module): a page loads it with `<script type="module">`, not an `import()`.
     pub fn registers(&self, name: &str) -> bool {
         self.registered.contains(name)

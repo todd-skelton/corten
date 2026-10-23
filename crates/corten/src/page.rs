@@ -539,7 +539,7 @@ impl Req {
         let _ = write!(out, r#"<script type="importmap">{}</script>"#, self.shared.import_map);
         let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
         // The modules the page's handlers call, fetched with the runtime rather than on first use.
-        // A component's module registers with the runtime as it runs, so it is a module script
+        // A component's module hands its exports to the runtime as it runs, so it is a module script
         // of the page: its handlers are in before DOMContentLoaded, with no import() to wait on.
         let mut preloaded = false;
         for name in modules.iter() {

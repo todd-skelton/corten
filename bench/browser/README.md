@@ -209,12 +209,13 @@ proportional to the change. `state()` (and Solid, and Remix) let the handler say
 time finding the change again: through tracking, a scheduled render, and a list compare that is
 proportional to the list.
 
-The view prototype keeps the plain JavaScript shape and adds names and types. `html!` would
-generate, for each component used from a script, a class whose properties are its holes, read from
-and written to the DOM ([apps/view/row.js](apps/view/row.js) is the hand-written stand-in). The
-runtime, [crates/corten/js/view.js](../../crates/corten/js/view.js), is one function: `rows(parent,
-View)`, an array of those views (`at`, `of(event.target)`, `push`, `remove`, `swap`, `clear`,
-keyed `replace`). `mount` and event delegation are `state.js`'s.
+Views keep the plain JavaScript shape and add names and types. For each component used from a
+script, `#[component(view)]` generates a class whose properties are its holes, read from and
+written to the DOM. [crates/corten/js/view.js](../../crates/corten/js/view.js) adds one function:
+`rows(parent, View)`, an array of those views (`at`, `of(event.target)`, `push`, `remove`,
+`swap`, `clear`, keyed `replace`). This first round measured the views with a hand-written
+class and `state.js`'s `mount` and event delegation; the sections after it run them on
+Corten's runtime.
 
 ```js
 update: () => {
@@ -295,7 +296,7 @@ framework, and its handlers are the components' scripts.
    `corten/views`), the runtime (`crates/corten/js/dist/corten.js`), `views.js` from
    `corten::script::views_module` (`rows()` and the generated classes in one module), and the
    handler module as a module script of the page, ending with the line Corten appends to every
-   handler module it serves (`register`, written by gen/), with `views.js` preloaded. The JS
+   handler module it serves (a `corten:module` event, written by gen/), with `views.js` preloaded. The JS
    sizes below are those three files.
 
 `npx tsc -p bench/browser/jsconfig.json` checks both scripts against the generated declarations,
@@ -334,7 +335,7 @@ from the parser finishing to the handlers being ready, vanilla 2.1 ms, view 7.2 
 ms. In the same session the previous commit's page (`modulepreload` and the runtime's
 `import()`) took 66.9 ms against 7.7 ms for this one.
 
-1. **Updates cost what they did with the prototype's own handlers**, through the real runtime's
+1. **Updates cost what they did with the bench's first hand-written handlers**, through the real runtime's
    delegation and typed refs: a click resolves `^select` and `@body` and calls the handler, and
    the handler writes one text node.
 2. **Creating rows is within the noise of plain JavaScript and Solid.** The runtime wires markup
@@ -347,7 +348,7 @@ ms. In the same session the previous commit's page (`modulepreload` and the runt
 4. **Takeover is no longer the runtime's module loading.** The handler module used to be
    preloaded and then imported with `import()`, which resolved around the first frame (about
    130 to 200 ms after parsing on this 1,000-row page). Now the page loads it as a module script,
-   and the line Corten appends to it registers its exports with the runtime as it runs, before
+   and the lines Corten appends to it hand its exports to the runtime as it runs, before
    `DOMContentLoaded`: 66.9 ms became 7.7 ms, against 2.1 for plain JavaScript and 25.7 for Solid.
    The rest is the module graph (runtime, views, handlers) evaluating and `on:connect` running.
    The seller desk's smoke test clicks a row at `DOMContentLoaded` and checks its handler ran.

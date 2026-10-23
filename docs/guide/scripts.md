@@ -216,8 +216,10 @@ an app's own: `[package.metadata.corten] scripts = "ui"` in its `Cargo.toml` mak
 
 A handler runs while its event is dispatched, so it can call `event.preventDefault()`. The
 first page loads the modules its handlers name as module scripts of its own, right after the
-runtime; Corten ends each component's module with a line that hands its exports to the runtime,
-so its handlers are in when the browser runs the page's scripts, before `DOMContentLoaded`, with
+runtime; Corten ends each component's module with lines that hand its exports to the runtime
+(a `corten:module` event the runtime takes only from the module the page's own script tag for
+that name loaded, and only while the page loads; it is not an API, and `"corten"` exports nothing for it), so its
+handlers are in when the browser runs the page's scripts, before `DOMContentLoaded`, with
 no `import()` to wait for. Markup the runtime inserts (a navigation, a patch, a live fragment)
 waits for the modules its handlers name, and modules named inside a `<template>` load with the
 page. On the first page, an event that arrives before its module is in gets the browser's
@@ -239,9 +241,9 @@ from `corten` gives the same object for the same element until it is gone.
 4. Cleanup is `signal` alone: pass it to `addEventListener`, `fetch`, `subscribe` and `mount`.
    See [Cancellation](cancellation.md).
 
-## Views (prototype)
+## Views
 
-On this branch, a component a script changes often (a row of a grid with thousands) can be a
+A component a script changes often (a row of a grid with thousands) can be a
 `#[component(view)]`. Its handlers then write the component's holes by name instead of finding
 elements:
 
@@ -327,8 +329,8 @@ element and at least one hole, or the component does not compile. List the compo
 
 ## Screens with client state
 
-For screens whose state lives in the browser (a grid of thousands of live rows), a handler can
-render part of a component with Solid and keep its rows current from a [feed](live-data.md):
+For screens whose state lives in the browser and that many parts of the screen derive from (rows
+a script reads and writes are [views](#views), not this), a handler can render part of a component with Solid and keep its rows current from a [feed](live-data.md):
 
 | Piece | Server | Browser |
 |---|---|---|

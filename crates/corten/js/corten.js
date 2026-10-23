@@ -34,19 +34,34 @@ const modules = new Map();
 /** @type {Map<string, Promise<unknown>>} */
 const loading = new Map();
 
-/** Modules the first page loads with its own module scripts, until they register. @type {Map<string, () => void>} */
+/** Modules the first page loads with its own module scripts, until they arrive. @type {Map<string, () => void>} */
 const arriving = new Map();
 let contentLoaded = false;
 document.addEventListener("DOMContentLoaded", () => {
   contentLoaded = true;
-  // A module script that failed or never registered: imported the usual way instead.
+  // A module script that failed or never arrived: imported the usual way instead.
   for (const done of arriving.values()) done();
   arriving.clear();
 });
 
+/** The page's own module script for script module `name`, if it has one. @param {string} name */
+const moduleScript = (name) => /** @type {HTMLScriptElement | null} */ (document.querySelector(`script[type="module"][src="${scriptsDir}${name}.js"]`));
+
+// Corten ends each script module it serves with a "corten:module" event carrying the module's
+// name, URL and exports, so a module the page loads with a module script is found without waiting
+// on an import(). It is not an API: the runtime takes exports only from the module the page's own
+// script tag for that name loaded (its URL), once, and only while the page loads.
+document.addEventListener("corten:module", (event) => {
+  const { name, url, exports } = /** @type {CustomEvent<{ name: string, url: string, exports: Record<string, unknown> }>} */ (event).detail;
+  if (contentLoaded || modules.has(name) || moduleScript(name)?.src !== url) return;
+  modules.set(name, exports);
+  arriving.get(name)?.();
+  arriving.delete(name);
+});
+
 /**
  * Imports the script module `name` (`{scripts dir}/name.js`) once. The first page's modules are
- * module scripts of its own, which register as they run, before `DOMContentLoaded` and without
+ * module scripts of its own, which hand their exports over as they run, before `DOMContentLoaded` and without
  * waiting on an `import()`; markup the runtime inserts later waits for its modules, so a handler
  * always runs while its event is dispatched (and can call `event.preventDefault()`). An event
  * that arrives before its module (a click while the first page still loads) gets the browser's
@@ -63,25 +78,12 @@ function load(name) {
         (error) => console.error(`corten: no script module at ${url}; list its component in App::components`, error),
       );
     if (modules.has(name)) pending = Promise.resolve();
-    else if (!contentLoaded && document.querySelector(`script[type="module"][src="${url}"]`)) {
+    else if (!contentLoaded && moduleScript(name)) {
       pending = new Promise((done) => arriving.set(name, () => done(undefined))).then(() => (modules.has(name) ? undefined : fromUrl()));
     } else pending = fromUrl();
     loading.set(name, pending);
   }
   return pending;
-}
-
-/**
- * Takes the script module `name`'s exports. Corten ends each script module it serves with this
- * call, so a module the page loads with a script tag needs no `import()` to be found; app code
- * never calls it.
- * @param {string} name
- * @param {Record<string, unknown>} module
- */
-export function register(name, module) {
-  modules.set(name, module);
-  arriving.get(name)?.();
-  arriving.delete(name);
 }
 
 /** Each element's parsed `data-on`, until the attribute changes. @type {WeakMap<Element, { source: string, list: Binding[] }>} */

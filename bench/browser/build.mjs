@@ -51,7 +51,7 @@ const page = (title, main, head = "", events = "") => `<!doctype html>
 `;
 /**
  * A page the way Corten serves one: the import map, the runtime, the handler module the markup
- * names as a module script of the page (it registers with the runtime as it runs), and a preload
+ * names as a module script of the page (it hands its exports to the runtime as it runs), and a preload
  * of the views it imports.
  */
 const cortenPage = (title, main, module) => `<!doctype html>
