@@ -61,49 +61,82 @@ app's mean with its standard error.
 
 The harness uses the repository's Playwright and its Chromium.
 
-## On Linux, against the most used frameworks (round browser-1)
+## On Linux, against the most used frameworks (round browser-3)
 
-`droplet.mjs browser-1 --suite browser` on a DigitalOcean c-8 droplet (Xeon Platinum 8280),
-Ubuntu 24.04, headless Chromium 148.0.7778.96, 2026-10-23, after the fourteen apps of
-`bench/fullstack`'s browser pass were stopped. Corten's runtime,
-`views.js` and the handler module are the ones the framework serves. Every app passed the DOM
-checks after every operation, and every server-rendered app kept the server's 1,000 rows (none
-removed or added while starting). [results/browser-1](results/browser-1) has every number,
-including frame times; the README's client table is this one ([summarize.mjs](summarize.mjs)).
+`droplet.mjs browser-3 --suite browser` on a DigitalOcean c-8 droplet (Xeon Platinum 8280),
+Ubuntu 24.04, headless Chromium 148.0.7778.96, 2026-10-23, at commit 77002fe, after the fourteen
+apps of `bench/fullstack`'s browser pass were stopped. Corten's runtime, `views.js` and the
+handler module are the ones the framework serves. Every app passed the DOM checks after every
+operation, and every server-rendered app kept the server's 1,000 rows (none removed or added
+while starting). [results/browser-3](results/browser-3) has every number, including frame times;
+the README's client table is this one ([summarize.mjs](summarize.mjs)).
 
 | | **Corten (views)** | Solid 1.9 | Svelte 5 | Vue 3.5 | React 19 | Remix 3 | Plain JS (floor) |
 |---|---|---|---|---|---|---|---|
-| Take over 1,000 server-rendered rows | **6.6 ms** | 20.3 ms | 29.4 ms | 31.3 ms | 75.6 ms | 94.2 ms | 1.5 ms |
-| First click on a taken-over row | **2.0 ms** | 1.3 ms | 3.3 ms | 2.8 ms | 6.0 ms | 18.7 ms | 0.4 ms |
-| Change 1 row of 10,000 | **0.3 ms** | 0.3 ms | 1.3 ms | 4.5 ms | 7.2-25.6 ms | 118 ms | 0.2 ms |
-| Change 100 rows of 10,000 | **1.0 ms** | 0.9 ms | 1.9 ms | 5.4 ms | 9.7-14.6 ms | 115 ms | 0.8 ms |
-| Update every 10th of 1,000 | **0.8 ms** | 0.8 ms | 0.8 ms | 1.5 ms | 3.0 ms | 10.4 ms | 0.5 ms |
-| Select a row | **0.2 ms** | 0.3 ms | 1.5 ms | 0.8 ms | 1.3 ms | 11.0 ms | 0.2 ms |
-| Swap two rows | **0.3 ms** | 1.0 ms | 1.0 ms | 0.9 ms | 11.1 ms | 11.3 ms | 0.2 ms |
-| Create 1,000 rows | **8.9 ms** | 6.6 ms | 7.5 ms | 13.0 ms | 16.7 ms | 17.4 ms | 5.8 ms |
-| Create 10,000 rows | **87.5 ms** | 60.1 ms | 92.1 ms | 126 ms | 376 ms | 187 ms | 56.1 ms |
-| Dashboard: 200 prices tick | **0.7 ms** | 1.3 ms | 1.4 ms | 1.4 ms | 1.1 ms | 18.7 ms | 0.6 ms |
-| Memory per row | **116 B** | 928 B | 1,229 B | 1,875 B | 2,036 B | 2,416 B | 165 B |
-| JavaScript, gzip | **8.5 KB** | 6.8 KB | 20.6 KB | 26.2 KB | 68.4 KB | 28.4 KB | 1.1 KB |
+| Take over 1,000 server-rendered rows | **6.0 ms** | 19.6 ms | 25.6 ms | 28.3 ms | 60.1 ms | 83.5 ms | 1.4 ms |
+| First click on a taken-over row | **1.8 ms** | 1.1 ms | 2.9 ms | 2.5 ms | 5.3 ms | 16.3 ms | 0.4 ms |
+| Change 1 row of 10,000 | **0.2 ms** | 0.2 ms | 1.2 ms | 5.9 ms | 11.7 ms | 120 ms | 0.1 ms |
+| Change 100 rows of 10,000 | **0.9 ms** | 1.0 ms | 1.8 ms | 6.8 ms | 26.4 ms | 112 ms | 0.6 ms |
+| Update every 10th of 1,000 | **0.6 ms** | 0.9 ms | 1.0 ms | 1.6 ms | 2.0 ms | 10.0 ms | 0.4 ms |
+| Select a row | **0.2 ms** | 0.3 ms | 1.2 ms | 0.7 ms | 1.1 ms | 8.5 ms | 0.1 ms |
+| Swap two rows | **0.3 ms** | 1.0 ms | 1.0 ms | 1.0 ms | 10.1 ms | 8.6 ms | 0.2 ms |
+| Create 1,000 rows | **6.4 ms** | 5.6 ms | 6.9 ms | 12.2 ms | 14.9 ms | 15.5 ms | 5.2 ms |
+| Create 10,000 rows | **68.9 ms** | 59.2 ms | 81.9 ms | 127 ms | 351 ms | 172 ms | 48.9 ms |
+| Dashboard: 200 prices tick | **0.6 ms** | 1.0 ms | 1.6 ms | 1.3 ms | 0.9 ms | 17.2 ms | 0.4 ms |
+| Memory per row | **101 B** | 927 B | 1,229 B | 1,876 B | 2,036 B | 2,416 B | 165 B |
+| JavaScript, gzip | **8.6 KB** | 6.8 KB | 20.6 KB | 26.2 KB | 68.4 KB | 28.4 KB | 1.1 KB |
 
 Commit times, median of 15 (5 for the 10,000-row operations), the slower of the two rounds or
-both when they differ by more than half and a millisecond. Takeover leaves out the frames the
-browser paints between parsing and the app being ready, which is about 100 ms on some loads and
-none on others for every app here ([Running it](#running-it)). The dashboard ticks 200 prices
-in one shared store and a total.
+both when they differ by more than half and a millisecond. Takeover is the median of 30 fresh
+loads that take turns between the apps, and leaves out the frames the browser paints between
+parsing and the app being ready, which is about 100 ms on some loads and none on others for
+every app here ([Running it](#running-it)). The dashboard ticks 200 prices in one shared store
+and a total.
 
 What it shows:
 
-1. **Taking over server-rendered rows** is where views differ most: 6.6 ms, against 20-31 ms for
-   Solid, Svelte and Vue and 76-94 ms for React and Remix.
+1. **Taking over server-rendered rows** is where views differ most: 6.0 ms, against 20-28 ms for
+   Solid, Svelte and Vue and 60-84 ms for React and Remix.
 2. **Changing rows that exist** costs views what it costs plain JavaScript and Solid (a few
    tenths of a millisecond), and as little as or less than Svelte, Vue, React and Remix.
-3. **Memory**: 116 bytes a row, below this plain JavaScript app (165), which keeps a copy of
+3. **Memory**: 101 bytes a row, below this plain JavaScript app (165), which keeps a copy of
    each label.
-4. **Creating rows in the browser** is where views trail: 87.5 ms for 10,000 against 60.1 for
-   Solid and 56.1 for plain JavaScript (Svelte 92.1, Vue 126). Not profiled yet.
-5. **Size**: 8.5 KB gzip (runtime, views and the handlers), above Solid (6.8 KB) and below the
+4. **Creating rows in the browser** is where views trail: 68.9 ms for 10,000 against 59.2 for
+   Solid and 48.9 for plain JavaScript (Svelte 81.9, Vue 127). browser-1 measured 87.5 ms before
+   the change below.
+5. **Size**: 8.6 KB gzip (runtime, views and the handlers), above Solid (6.8 KB) and below the
    others.
+
+browser-1 (the same droplet type, before the change below) is in [results/browser-1](results/browser-1).
+A round between them, browser-2, is not kept: it ran on a Xeon Platinum 8168, and its takeover
+for Corten (29.5 ms) did not reproduce. Three reruns of that step on an 8280 gave 4.9, 20.7 and
+6.3 ms. Marks in the page showed why: on some loads `views.js` starts 10-17 ms after the runtime
+has finished, in the build before the change as well, and `ssr.mjs` ran each app's loads back
+to back, so a slow stretch of the machine moved one app's median. Loads now take turns.
+
+### Creating many rows
+
+Creating 10,000 rows was profiled against Solid and plain JavaScript on a c-8 droplet (Xeon
+Platinum 8280), clearing and creating 60 times per build and alternating builds. Views cost about
+27 ms more than Solid; three parts of that were not the DOM work every app does:
+
+| | Cost per 10,000 rows | Now |
+|---|---|---|
+| The runtime read every `data-ref` of the new rows to learn which ref names joined | about 8 ms | one selector query per name when many rows join one parent |
+| `rows().replace` looked up every key in an empty map on a first fill | about 2 ms | skipped when there is nothing to keep |
+| `fill` called `toggleAttribute(name, false)` on every new row | about 2 ms | checks `hasAttribute` first |
+
+| Create 10,000 rows (ms, median of 60) | Before | After | Solid | Plain JS |
+|---|---|---|---|---|
+| Laid out | 89.9 | 78.6 | 63.6 | 61.1 |
+| Table hidden (no layout) | 75.8 | 66.5 | 63.7 | 54.2 |
+
+Takeover was the same before and after (5.45 ms each, eight alternating runs of 30 loads), and a
+row's heap went from 116 to 101 bytes. With the table hidden, views are within 3 ms of Solid.
+What is left is the cost of keeping each row's key and refs in the page: writing `data-key` is
+about 4 ms per 10,000 rows and the remaining ref scan 1-2 ms. Moving them out of the page would
+give back the takeover and memory that come from reading the page instead of rebuilding it, so
+they stay. Building the rows from one HTML string was about twice as slow.
 
 ## Results
 

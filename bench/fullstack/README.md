@@ -248,6 +248,40 @@ Corten's page 123,693 against 123,665 in r3, Leptos's 2,725,430 against 2,727,19
 1,086,010 against 1,124,519; Spring's JSON 1,271,081 against 1,331,933. So counts compare across
 rounds, and requests a second only within one.
 
+### Browser pass after the many-rows change (round browser-3, 2026-10-23)
+
+`droplet.mjs browser-3 --suite browser` reran parity, bytes and the browser timing for all
+fourteen apps on a c-8 droplet (Xeon Platinum 8280), with Corten at 77002fe (the runtime that
+finds ref names in many new rows with one query per name); the other apps are unchanged. Every
+browser run worked and parity passed on 16 pages for every app. Corten's item page loads 6.9 KB of
+JavaScript (gzip, four files; browser-1 6.8 KB). All rows are in
+[results/browser-3](results/browser-3); the README's browser table comes from this round. A
+selection, median (p90):
+
+| App | Interactive | LCP | Blocking time | Form action | Client navigation | JS heap |
+|---|---|---|---|---|---|---|
+| Desktop | | | | | | |
+| corten | 50 (60) ms | 60 ms | 0 ms | 75 ms | 12 (13) ms | 1.4 MB |
+| aspnet | 42 (43) ms | 60 ms | 0 ms | 76 ms | 15 (16) ms | 1.5 MB |
+| django | 43 (48) ms | 64 ms | 0 ms | 77 ms | 19 (22) ms | 1.5 MB |
+| astro | 48 (50) ms | 56 ms | 0 ms | 76 ms | 17 (18) ms | 1.4 MB |
+| nextjs | 138 (141) ms | 68 ms | 0 ms | 74 ms | 105 (124) ms | 3.2 MB |
+| leptos | 91 (95) ms | 64 ms | 0 ms | 75 ms | 23 (24) ms | 1.7 MB |
+| tanstack-start | 105 (113) ms | 64 ms | 0 ms | 71 ms | 26 (28) ms | 2.9 MB |
+| Mobile (4x CPU, 150 ms RTT, 1.6 Mbps) | | | | | | |
+| corten | 441 (449) ms | 444 ms | 0 ms | 269 ms | 191 (196) ms | 1.4 MB |
+| aspnet | 428 (434) ms | 400 ms | 0 ms | 287 ms | 240 (243) ms | 1.5 MB |
+| django | 435 (436) ms | 396 ms | 0 ms | 288 ms | 239 (243) ms | 1.5 MB |
+| astro | 615 (618) ms | 256 ms | 0 ms | 298 ms | 242 (246) ms | 1.4 MB |
+| nextjs | 1360 (1379) ms | 400 ms | 133 ms | 303 ms | 431 (440) ms | 3.1 MB |
+| leptos | 1819 (1825) ms | 408 ms | 54 ms | 283 ms | 239 (245) ms | 1.7 MB |
+| tanstack-start | 2289 (2308) ms | 408 ms | 52 ms | 289 ms | 336 (341) ms | 2.9 MB |
+
+Every app's desktop interactive times are 4-22% lower than in browser-1 on the same CPU model,
+Corten's included (50 ms against 54); phone times moved by up to 4%. One run each, so the
+difference between droplets is about as large as anything the change did to this page, which has
+no list a script fills.
+
 ### Browser pass on the views runtime (round browser-1, 2026-10-23)
 
 `droplet.mjs browser-1 --suite browser` reran parity, bytes and the browser timing for all
@@ -255,7 +289,7 @@ fourteen apps on a fresh c-8 droplet (Xeon Platinum 8280), with Corten at the co
 handler modules as module scripts and serves views; the other apps are unchanged from r3. Every
 browser run worked. Corten's item page now loads 6.8 KB of
 JavaScript (gzip, four files) against 6.2 KB in r3; the rest are within 0.1 KB of r3. All rows
-are in [results/browser-1](results/browser-1); the README's browser table comes from this round.
+are in [results/browser-1](results/browser-1); the README's browser table came from this round until browser-3.
 A selection, median (p90):
 
 | App | Interactive | LCP | Blocking time | Form action | Client navigation | JS heap |

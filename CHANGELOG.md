@@ -205,6 +205,11 @@ Corten is pre-1.0, so any minor version may change the API.
     boolean attribute before toggling it. On a droplet, creating 10,000 rows took 79 ms instead of
     90 ms (Solid 64, plain JavaScript 61), a row took 101 bytes of heap instead of 116, and
     takeover was unchanged.
+25. The README's browser and client-heavy tables are from round `browser-3` (Creating 10,000 rows
+    68.9 ms, against 87.5 in `browser-1`; Solid 59.2). `bench/browser/ssr.mjs` takes the loads of
+    every app in turns and `run-all.mjs` takes 30, after one app's takeover median in a round
+    moved with a slow stretch of the machine. The README's server highlight now quotes round r4
+    (18,043 pages a second, 1.1 MiB), the round its server table is from.
 
 ### Fixed
 

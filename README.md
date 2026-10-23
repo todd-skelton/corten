@@ -9,12 +9,12 @@ HTML, a small runtime that swaps pages and patches forms, and *handlers*: plain 
 functions in a script next to a component, which its Rust markup calls by name. Live data arrives as numbered patches over
 server-sent events. One handler serves the browser, native apps and AI agents.
 
-- **Fast on the server.** 23,086 rendered pages a second on one CPU, 5.1x ASP.NET Core, the
-  fastest of thirteen other frameworks, and 1.5 MiB of memory after the first request
+- **Fast on the server.** 18,043 rendered pages a second on one CPU, 5.3x ASP.NET Core, the
+  fastest of thirteen other frameworks, and 1.1 MiB of memory after the first request
   (measured, [below](#performance)).
-- **Light in the browser.** A 5.2 KB (brotli) runtime; the benchmark item page loads 6.8 KB of
+- **Light in the browser.** A 5.3 KB (brotli) runtime; the benchmark item page loads 6.9 KB of
   JavaScript (gzip, measured). No WASM, no virtual DOM, no hydration: a script takes over 1,000
-  server-rendered rows in 6.6 ms, against 20-94 ms for Solid, Svelte, Vue, React and Remix
+  server-rendered rows in 6.0 ms, against 20-84 ms for Solid, Svelte, Vue, React and Remix
   (measured, [below](#client-heavy-screens)).
 - **Typed end to end.** Routes, form fields, CSS classes, handler calls and the elements they
   take, events and messages are Rust types. TypeScript types for scripts are generated from Rust.
@@ -185,7 +185,7 @@ React components, or for a pure static site (a static site generator is simpler)
 ## Performance
 
 Measured on DigitalOcean c-8 droplets on 2026-10-23, one run each: the server table on a Xeon
-Platinum 8168 (round r4), the browser tables on a Xeon Platinum 8280 (round browser-1). The
+Platinum 8168 (round r4), the browser tables on a Xeon Platinum 8280 (round browser-3). The
 method, every table and the caveats are in [bench/fullstack](bench/fullstack/README.md) and
 [bench/browser](bench/browser/README.md).
 
@@ -233,25 +233,25 @@ items from the item API.
 
 | | Phone: interactive | Phone: largest paint | Phone: client navigation | Desktop: interactive | Desktop: client navigation | JS heap | JavaScript, gzip |
 |---|---|---|---|---|---|---|---|
-| ASP.NET Core 10 | 430 ms | 404 ms | 245 ms | 45 ms | 16 ms | 1.5 MB | 17.0 KB |
-| Django 6.1 | 439 ms | 408 ms | 244 ms | 47 ms | 21 ms | 1.5 MB | 17.0 KB |
-| **Corten** | **454 ms** | **452 ms** | **200 ms** | **54 ms** | **13 ms** | **1.4 MB** | **6.8 KB** |
-| Astro 7 | 604 ms | 264 ms | 244 ms | 52 ms | 18 ms | 1.4 MB | 9.2 KB |
-| Spring Boot 4.1 | 612 ms | 424 ms | 246 ms | 66 ms | 39 ms | 1.5 MB | 17.0 KB |
-| SvelteKit 3 | 846 ms | 472 ms | 274 ms | 102 ms | 22 ms | 2.1 MB | 37.0 KB |
-| Laravel 13 | 885 ms | 416 ms | 217 ms | 76 ms | 25 ms | 2 MB | 84.3 KB |
-| Phoenix 1.8 | 947 ms | 400 ms | 134 ms | 110 ms | 17 ms | 2.1 MB | 46.2 KB |
-| React Router 7 | 1,069 ms | 432 ms | 265 ms | 167 ms | 32 ms | 2.6 MB | 98.6 KB |
-| Rails 8.1 | 1,153 ms | 412 ms | 255 ms | 60 ms | 26 ms | 1.9 MB | 40.6 KB |
-| Next.js 16 | 1,413 ms | 404 ms | 453 ms | 150 ms | 89 ms | 3.1 MB | 136.1 KB |
-| Nuxt 4 | 1,496 ms | 432 ms | 288 ms | 91 ms | 25 ms | 2.7 MB | 73.7 KB |
-| Leptos 0.8 | 1,848 ms | 416 ms | 254 ms | 109 ms | 25 ms | 1.7 MB | 7.0 KB + 287 KB WASM |
-| TanStack Start | 2,332 ms | 420 ms | 351 ms | 118 ms | 28 ms | 2.9 MB | 110.9 KB |
+| ASP.NET Core 10 | 428 ms | 400 ms | 240 ms | 42 ms | 15 ms | 1.5 MB | 17.0 KB |
+| Django 6.1 | 435 ms | 396 ms | 239 ms | 43 ms | 19 ms | 1.5 MB | 17.0 KB |
+| **Corten** | **441 ms** | **444 ms** | **191 ms** | **50 ms** | **12 ms** | **1.4 MB** | **6.9 KB** |
+| Spring Boot 4.1 | 607 ms | 408 ms | 238 ms | 57 ms | 36 ms | 1.5 MB | 17.0 KB |
+| Astro 7 | 615 ms | 256 ms | 242 ms | 48 ms | 17 ms | 1.4 MB | 9.2 KB |
+| SvelteKit 3 | 833 ms | 472 ms | 267 ms | 88 ms | 20 ms | 2.1 MB | 37.0 KB |
+| Laravel 13 | 873 ms | 416 ms | 212 ms | 67 ms | 22 ms | 2 MB | 84.3 KB |
+| Phoenix 1.8 | 926 ms | 396 ms | 120 ms | 86 ms | 15 ms | 2.1 MB | 46.2 KB |
+| React Router 7 | 1,033 ms | 424 ms | 257 ms | 146 ms | 29 ms | 2.6 MB | 98.6 KB |
+| Rails 8.1 | 1,147 ms | 412 ms | 247 ms | 54 ms | 25 ms | 1.9 MB | 40.6 KB |
+| Next.js 16 | 1,360 ms | 400 ms | 431 ms | 138 ms | 105 ms | 3.1 MB | 136.1 KB |
+| Nuxt 4 | 1,469 ms | 424 ms | 275 ms | 87 ms | 24 ms | 2.7 MB | 73.7 KB |
+| Leptos 0.8 | 1,819 ms | 408 ms | 239 ms | 91 ms | 23 ms | 1.7 MB | 7.0 KB + 287 KB WASM |
+| TanStack Start | 2,289 ms | 408 ms | 336 ms | 105 ms | 26 ms | 2.9 MB | 110.9 KB |
 
 On a phone, Corten is interactive with the apps that ship only htmx (ASP.NET Core, Django), in a
 third of Next.js's time and a fifth of TanStack Start's. Its client navigation is the fastest
-after Phoenix's, which reuses an open LiveView socket. Its largest paint (452 ms) is the slowest
-of those three; Astro's is the fastest (264 ms).
+after Phoenix's, which reuses an open LiveView socket. Its largest paint (444 ms) is the slowest
+of those three; Astro's is the fastest (256 ms).
 
 ### Client-heavy screens
 
@@ -261,30 +261,32 @@ is, built for production, and checked after every operation, so an app that skip
 instead of looking fast. Times run from the click to the DOM being updated (the frames that lay
 it out and paint it are in the results): the median of 15, the slower of two rounds, or the
 range when they disagree. Takeover runs from the HTML being parsed to the app marking itself
-ready, for 1,000 rows the server rendered, less any frame the browser paints in between; every
-framework kept the server's rows. Plain JavaScript is the floor: hand-written DOM code.
+ready, for 1,000 rows the server rendered, less any frame the browser paints in between (the
+median of 30 loads that take turns between the apps); every framework kept the server's rows.
+Plain JavaScript is the floor: hand-written DOM code.
 
 | | **Corten (views)** | Solid 1.9 | Svelte 5 | Vue 3.5 | React 19 | Remix 3 | Plain JS (floor) |
 |---|---|---|---|---|---|---|---|
-| Take over 1,000 server-rendered rows | **6.6 ms** | 20.3 ms | 29.4 ms | 31.3 ms | 75.6 ms | 94.2 ms | 1.5 ms |
-| First click on a taken-over row | **2.0 ms** | 1.3 ms | 3.3 ms | 2.8 ms | 6.0 ms | 18.7 ms | 0.4 ms |
-| Change 1 row of 10,000 | **0.3 ms** | 0.3 ms | 1.3 ms | 4.5 ms | 7.2-25.6 ms | 118 ms | 0.2 ms |
-| Change 100 rows of 10,000 | **1.0 ms** | 0.9 ms | 1.9 ms | 5.4 ms | 9.7-14.6 ms | 115 ms | 0.8 ms |
-| Update every 10th of 1,000 | **0.8 ms** | 0.8 ms | 0.8 ms | 1.5 ms | 3.0 ms | 10.4 ms | 0.5 ms |
-| Select a row | **0.2 ms** | 0.3 ms | 1.5 ms | 0.8 ms | 1.3 ms | 11.0 ms | 0.2 ms |
-| Swap two rows | **0.3 ms** | 1.0 ms | 1.0 ms | 0.9 ms | 11.1 ms | 11.3 ms | 0.2 ms |
-| Create 1,000 rows | **8.9 ms** | 6.6 ms | 7.5 ms | 13.0 ms | 16.7 ms | 17.4 ms | 5.8 ms |
-| Create 10,000 rows | **87.5 ms** | 60.1 ms | 92.1 ms | 126 ms | 376 ms | 187 ms | 56.1 ms |
-| Dashboard: 200 prices tick | **0.7 ms** | 1.3 ms | 1.4 ms | 1.4 ms | 1.1 ms | 18.7 ms | 0.6 ms |
-| Memory per row | **116 B** | 928 B | 1,229 B | 1,875 B | 2,036 B | 2,416 B | 165 B |
-| JavaScript, gzip | **8.5 KB** | 6.8 KB | 20.6 KB | 26.2 KB | 68.4 KB | 28.4 KB | 1.1 KB |
+| Take over 1,000 server-rendered rows | **6.0 ms** | 19.6 ms | 25.6 ms | 28.3 ms | 60.1 ms | 83.5 ms | 1.4 ms |
+| First click on a taken-over row | **1.8 ms** | 1.1 ms | 2.9 ms | 2.5 ms | 5.3 ms | 16.3 ms | 0.4 ms |
+| Change 1 row of 10,000 | **0.2 ms** | 0.2 ms | 1.2 ms | 5.9 ms | 11.7 ms | 120 ms | 0.1 ms |
+| Change 100 rows of 10,000 | **0.9 ms** | 1.0 ms | 1.8 ms | 6.8 ms | 26.4 ms | 112 ms | 0.6 ms |
+| Update every 10th of 1,000 | **0.6 ms** | 0.9 ms | 1.0 ms | 1.6 ms | 2.0 ms | 10.0 ms | 0.4 ms |
+| Select a row | **0.2 ms** | 0.3 ms | 1.2 ms | 0.7 ms | 1.1 ms | 8.5 ms | 0.1 ms |
+| Swap two rows | **0.3 ms** | 1.0 ms | 1.0 ms | 1.0 ms | 10.1 ms | 8.6 ms | 0.2 ms |
+| Create 1,000 rows | **6.4 ms** | 5.6 ms | 6.9 ms | 12.2 ms | 14.9 ms | 15.5 ms | 5.2 ms |
+| Create 10,000 rows | **68.9 ms** | 59.2 ms | 81.9 ms | 127 ms | 351 ms | 172 ms | 48.9 ms |
+| Dashboard: 200 prices tick | **0.6 ms** | 1.0 ms | 1.6 ms | 1.3 ms | 0.9 ms | 17.2 ms | 0.4 ms |
+| Memory per row | **101 B** | 927 B | 1,229 B | 1,876 B | 2,036 B | 2,416 B | 165 B |
+| JavaScript, gzip | **8.6 KB** | 6.8 KB | 20.6 KB | 26.2 KB | 68.4 KB | 28.4 KB | 1.1 KB |
 
 Corten's rows are server-rendered `#[component(view)]` components, so taking them over is reading
-the page rather than rebuilding it, and a row costs 116 bytes of JavaScript memory against
-928-2,416 for the frameworks, which keep each row's data and bookkeeping in JavaScript. Creating
-thousands of rows in the browser is where it trails Solid and plain JavaScript (87.5 ms against
-60.1 and 56.1 ms for 10,000); that gap has not been profiled yet. React's single-row change
-ranged from 7.2 to 25.6 ms between the two rounds.
+the page rather than rebuilding it, and a row costs 101 bytes of JavaScript memory against
+927-2,416 for the frameworks, which keep each row's data and bookkeeping in JavaScript. Creating
+thousands of rows in the browser is where it trails Solid and plain JavaScript (68.9 ms against
+59.2 and 48.9 ms for 10,000, down from 87.5 ms in the round before). What is left is mostly the
+cost of keeping each row's key and refs in the page, which is what makes takeover and memory
+small ([profile](bench/browser/README.md#creating-many-rows)).
 
 ## Documentation
 
