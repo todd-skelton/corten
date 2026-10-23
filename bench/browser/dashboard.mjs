@@ -1,6 +1,6 @@
 // The dashboard: a tick changes 20 (or all 200) prices in a shared store; measure from the click
 // to the DOM updated and to the next frame, and check every changed card and the total.
-// Usage: node dashboard.mjs [--iterations 30]
+// Usage: node dashboard.mjs [--iterations 30] [--apps dashboard-view,dashboard-solid] [--out results/dashboard-<date>.json]
 import { createRequire } from "node:module";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,7 +12,7 @@ const { chromium } = createRequire(join(here, "..", "..", "package.json"))("@pla
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []));
 const N = Number(args.iterations ?? 30);
 const PORT = 44203;
-const APPS = ["dashboard-vanilla", "dashboard-state", "dashboard-view", "dashboard-solid", "dashboard-remix"];
+const APPS = args.apps ? args.apps.split(",") : ["dashboard-vanilla", "dashboard-state", "dashboard-view", "dashboard-solid", "dashboard-remix", "dashboard-react", "dashboard-svelte", "dashboard-vue"];
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const round = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 const sizes = JSON.parse(readFileSync(join(here, "out", "sizes.json"), "utf8"));
@@ -60,7 +60,7 @@ for (const app of APPS) {
 await browser.close();
 server.close();
 mkdirSync(join(here, "results"), { recursive: true });
-writeFileSync(join(here, "results", `dashboard-${out.date.slice(0, 10)}.json`), JSON.stringify(out, null, 2));
+writeFileSync(args.out ?? join(here, "results", `dashboard-${out.date.slice(0, 10)}.json`), JSON.stringify(out, null, 2));
 console.log(`chromium ${out.chromium}; ${N} ticks each; median ms commit / frame`);
 console.log("".padEnd(10), ...APPS.map((a) => a.replace("dashboard-", "").padStart(14)));
 for (const k of Object.keys(out.apps[APPS[0]])) console.log(k.padEnd(10), ...APPS.map((a) => String(out.apps[a][k]).padStart(14)));

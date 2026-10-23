@@ -1,5 +1,5 @@
 {
-  "//": "Browser benchmark of the state() prototype against plain JavaScript, Solid and Remix 3. Bench-only dependencies; the framework does not depend on any of them.",
+  "//": "Browser benchmark of Corten's views against plain JavaScript, Solid, Svelte, Vue, React and Remix 3. Bench-only dependencies; the framework does not depend on any of them.",
   "name": "corten-browser-bench",
   "private": true,
   "type": "module",
@@ -12,7 +12,11 @@
     "@babel/core": "7.28.5",
     "babel-preset-solid": "1.9.16",
     "esbuild": "0.28.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "remix": "3.0.0",
-    "solid-js": "1.9.17"
+    "solid-js": "1.9.17",
+    "svelte": "5.57.2",
+    "vue": "3.5.44"
   }
 }

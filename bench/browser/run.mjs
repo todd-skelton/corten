@@ -18,7 +18,7 @@ const ROUNDS = Number(args.rounds ?? 2);
 const LOADS = 10;
 const WARMUP = 3;
 const PORT = 44200;
-const APPS = (args.apps ?? "vanilla,state,view,solid,solid-h,remix").split(",");
+const APPS = (args.apps ?? "vanilla,state,view,solid,solid-h,remix,react,svelte,vue").split(",");
 
 const OPS = [
   { name: "create 1k", prep: ["#clear"], click: "#create", rows: 1000 },

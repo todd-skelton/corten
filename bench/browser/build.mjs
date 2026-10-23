@@ -1,5 +1,6 @@
 // Builds every app into out/<app>/: index.html and one minified app.js (esbuild; Solid's JSX
-// through babel-preset-solid). Prints each app's JavaScript size.
+// through babel-preset-solid, Svelte and Vue through their own compilers). Prints each app's
+// JavaScript size.
 import { build } from "esbuild";
 import { transformAsync } from "@babel/core";
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
@@ -23,6 +24,33 @@ const solidJsx = (options) => ({
     });
   },
 });
+
+/** Svelte 5 components through svelte/compiler, for the browser ("client") or Node ("server"). */
+const svelte = (/** @type {"client" | "server"} */ generate) => ({
+  name: "svelte",
+  setup(b) {
+    b.onLoad({ filter: /\.svelte$/ }, async (args) => {
+      const { compile } = await import("svelte/compiler");
+      const result = compile(readFileSync(args.path, "utf8"), { filename: args.path, generate, css: "external" });
+      return { contents: result.js.code, loader: "js", resolveDir: dirname(args.path) };
+    });
+  },
+});
+/** Vue single-file components through vue/compiler-sfc, the template inlined into setup (as Vite does in production). */
+const vue = (/** @type {boolean} */ ssr) => ({
+  name: "vue",
+  setup(b) {
+    b.onLoad({ filter: /\.vue$/ }, async (args) => {
+      const sfc = await import("vue/compiler-sfc");
+      const { descriptor, errors } = sfc.parse(readFileSync(args.path, "utf8"), { filename: args.path });
+      if (errors.length) throw errors[0];
+      const script = sfc.compileScript(descriptor, { id: args.path, isProd: true, inlineTemplate: true, templateOptions: { ssr, isProd: true } });
+      return { contents: script.content, loader: "js", resolveDir: dirname(args.path) };
+    });
+  },
+});
+// Vite's production defaults for Vue's compile-time flags.
+const vueFlags = { __VUE_OPTIONS_API__: "true", __VUE_PROD_DEVTOOLS__: "false", __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: "false" };
 
 const BUTTONS = [
   ["create", "Create 1,000"], ["create10k", "Create 10,000"], ["append", "Append 1,000"], ["update", "Update every 10th"],
@@ -65,9 +93,12 @@ const market = await import("./apps/shared/market.js");
 const initial = Array.from({ length: 1000 }, () => ({ id: nextId(), label: label() }));
 
 /** Bundles a server entry for Node and returns its render(initial). */
-async function server(entry, plugins = []) {
+async function server(entry, plugins = [], jsxImportSource = "remix/component") {
   const outfile = join(out, "_server", entry.replace(/[\\/]/g, "_") + ".mjs");
-  await build({ entryPoints: [join(here, entry)], bundle: true, format: "esm", platform: "node", outfile, plugins, jsx: "automatic", jsxImportSource: "remix/component", nodePaths: [join(here, "node_modules")], logLevel: "error" });
+  const define = { "process.env.NODE_ENV": '"production"', ...vueFlags };
+  await build({ entryPoints: [join(here, entry)], bundle: true, format: "esm", platform: "node", conditions: ["production"], outfile, plugins, jsx: "automatic", jsxImportSource, define,
+    // A CommonJS package (react-dom/server) bundled into ESM still requires Node's built-ins.
+    banner: { js: 'import { createRequire as __cr } from "node:module"; const require = __cr(import.meta.url);' }, nodePaths: [join(here, "node_modules")], logLevel: "error" });
   return (await import(pathToFileURL(outfile).href)).render;
 }
 // The view apps' pages come from Rust: html! renders them and #[component(view)] generates the
@@ -80,6 +111,9 @@ const viewPage = (name) => readFileSync(join(gen, "view", `${name}-main.html`), 
 
 const solidPage = await (await server("apps/solid/server.jsx", [solidJsx({ generate: "ssr", hydratable: true })]))(initial);
 const remixPage = await (await server("apps/remix/server.tsx"))(initial);
+const reactPage = await (await server("apps/react/server.jsx", [], "react"))(initial);
+const sveltePage = await (await server("apps/svelte/server.js", [svelte("server")]))(initial);
+const vuePage = await (await server("apps/vue/server.js", [vue(true)]))(initial);
 
 const apps = [
   { name: "vanilla", entry: "apps/vanilla/app.js", main: body(false) },
@@ -89,18 +123,28 @@ const apps = [
   { name: "solid", entry: "apps/solid/app.jsx", main: "", plugins: [solidJsx({ generate: "dom" })] },
   { name: "solid-h", entry: "apps/solid-h/app.js", main: "" },
   { name: "remix", entry: "apps/remix/app.tsx", main: "" },
+  { name: "react", entry: "apps/react/app.jsx", main: "", jsxImportSource: "react" },
+  { name: "svelte", entry: "apps/svelte/app.js", main: "", plugins: [svelte("client")] },
+  { name: "vue", entry: "apps/vue/app.js", main: "", plugins: [vue(false)] },
   // Server-rendered: 1,000 rows in the HTML that the client has to take over.
   { name: "vanilla-ssr", entry: "apps/vanilla/app.js", main: body(false, initial) },
   { name: "state-ssr", entry: "apps/state/app.js", main: body(true, initial) },
   { name: "view-ssr", module: "bench", main: viewPage("view-ssr") },
   { name: "solid-ssr", entry: "apps/solid/hydrate.jsx", main: solidPage.html + data(initial), head: solidPage.head, plugins: [solidJsx({ generate: "dom", hydratable: true })] },
   { name: "remix-ssr", entry: "apps/remix/hydrate.tsx", main: remixPage.html },
+  // The rows' data goes in the head: these frameworks hydrate everything inside <main>.
+  { name: "react-ssr", entry: "apps/react/hydrate.jsx", main: reactPage.html, head: data(initial), jsxImportSource: "react" },
+  { name: "svelte-ssr", entry: "apps/svelte/hydrate.js", main: sveltePage.html, head: sveltePage.head + data(initial), plugins: [svelte("client")] },
+  { name: "vue-ssr", entry: "apps/vue/hydrate.js", main: vuePage.html, head: data(initial), plugins: [vue(false)] },
   // The dashboard: 200 cards on one shared store, and a total.
   { name: "dashboard-vanilla", entry: "apps/dashboard-vanilla/app.js", main: dashboard(false) },
   { name: "dashboard-state", entry: "apps/dashboard-state/app.js", main: dashboard(true) },
   { name: "dashboard-view", module: "dashboard", main: viewPage("dashboard-view") },
   { name: "dashboard-solid", entry: "apps/dashboard-solid/app.jsx", main: "", plugins: [solidJsx({ generate: "dom" })] },
   { name: "dashboard-remix", entry: "apps/dashboard-remix/app.tsx", main: "" },
+  { name: "dashboard-react", entry: "apps/dashboard-react/app.jsx", main: "", jsxImportSource: "react" },
+  { name: "dashboard-svelte", entry: "apps/dashboard-svelte/app.js", main: "", plugins: [svelte("client")] },
+  { name: "dashboard-vue", entry: "apps/dashboard-vue/app.js", main: "", plugins: [vue(false)] },
 ];
 
 mkdirSync(out, { recursive: true });
@@ -137,10 +181,11 @@ for (const app of apps) {
     entryPoints: [join(here, app.entry)],
     bundle: true, format: "esm", minify: process.env.MINIFY !== "0", target: "es2022", legalComments: "none", write: false,
     outfile: join(dir, "app.js"),
-    conditions: ["browser"],
+    // As Vite builds for production: packages' "production" exports, not runtime dev checks.
+    conditions: ["browser", "production"],
     alias: { "corten/state": join(here, "apps", "shared", "state.js"), "corten/solid": join(here, "apps", "solid-h", "solid.js") },
-    jsx: "automatic", jsxImportSource: "remix/component",
-    define: { "process.env.NODE_ENV": '"production"' },
+    jsx: "automatic", jsxImportSource: app.jsxImportSource ?? "remix/component",
+    define: { "process.env.NODE_ENV": '"production"', ...vueFlags },
     plugins: app.plugins ?? [],
     nodePaths: [join(here, "node_modules")],
   });

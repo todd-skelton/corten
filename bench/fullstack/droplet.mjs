@@ -7,6 +7,8 @@
 //   --from <step>: start run-all.mjs at that step and keep the droplet's earlier results.
 //   --attach: with --host, only wait for the round already running there and download it.
 //   --suite live: run bench/live (run.mjs, then summarize.mjs) instead; results in bench/live/results.
+//   --suite browser: only the browser pass of this comparison (run-all.mjs from "browser": parity,
+//     bytes, browser timing), then bench/browser's run-all.mjs; results in both results folders.
 // Results land in bench/fullstack/results/<round>/. The droplet is destroyed when the run ends,
 // fails or is interrupted, unless --keep (and never one passed with --host).
 import { spawnSync } from "node:child_process";
@@ -23,8 +25,10 @@ const round = args[0];
 const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
 if (!round || round.startsWith("--")) throw new Error("usage: node droplet.mjs <round> (--ssh-key <id> | --host <ip>)");
 const suite = flag("suite", "fullstack");
-if (!["fullstack", "live"].includes(suite)) throw new Error("--suite is fullstack or live");
-const suiteDir = `/bench/bench/${suite}`;
+if (!["fullstack", "live", "browser"].includes(suite)) throw new Error("--suite is fullstack, live or browser");
+const suiteDir = `/bench/bench/${suite === "live" ? "live" : "fullstack"}`;
+// The last line of a finished run: bench/browser's run-all.mjs prints its own after fullstack's.
+const doneMarker = suite === "browser" ? /browser suite (done|finished)/ : /all done/;
 const run = (cmd, cmdArgs, options = {}) => {
   const r = spawnSync(cmd, cmdArgs, { encoding: "utf8", stdio: options.quiet ? "pipe" : "inherit", ...options });
   if (r.status !== 0 && !options.allowFail) throw new Error(`${cmd} ${cmdArgs.join(" ")} failed: ${r.stderr ?? r.status}`);
@@ -54,7 +58,7 @@ try {
   if (!host) {
     const key = flag("ssh-key");
     if (!key) throw new Error("--ssh-key <DigitalOcean key id> is required to create a droplet");
-    const created = run("doctl", ["compute", "droplet", "create", `corten-bench-${suite === "live" ? "live-" : ""}${round}`, "--size", flag("size", "c-8"), "--region", flag("region", "sfo2"),
+    const created = run("doctl", ["compute", "droplet", "create", `corten-bench-${suite === "fullstack" ? "" : `${suite}-`}${round}`, "--size", flag("size", "c-8"), "--region", flag("region", "sfo2"),
       "--image", "ubuntu-24-04-x64", "--ssh-keys", key, "--tag-name", "corten-bench", "--wait", "--format", "ID,PublicIPv4", "--no-header"], { quiet: true });
     [dropletId, host] = created.stdout.trim().split(/\s+/);
     console.log(`droplet ${dropletId} at ${host}`);
@@ -71,12 +75,16 @@ try {
       "command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh >/dev/null",
       "command -v node >/dev/null || (curl -fsSL https://deb.nodesource.com/setup_24.x | bash - >/dev/null && apt-get install -y -qq nodejs >/dev/null)",
       "command -v perf >/dev/null || apt-get install -y -qq linux-tools-common linux-tools-$(uname -r) >/dev/null",
+      // bench/browser renders its Corten pages with a small Rust program (gen/).
+      ...(suite === "browser"
+        ? ["command -v cc >/dev/null || apt-get install -y -qq build-essential >/dev/null", "command -v cargo >/dev/null || (curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal >/dev/null)"]
+        : []),
     ].join(" && "));
 
     console.log("uploading the working tree");
     const tarball = join(here, "results", ".upload.tgz");
     mkdirSync(dirname(tarball), { recursive: true });
-    run("tar", ["-czf", tarball, "--exclude=target", "--exclude=node_modules", "--exclude=./bench/fullstack/results", "--exclude=./bench/live/results", "--exclude=./.git", "-C", repo, "."]);
+    run("tar", ["-czf", tarball, "--exclude=target", "--exclude=node_modules", "--exclude=./bench/fullstack/results", "--exclude=./bench/live/results", "--exclude=./bench/browser/results", "--exclude=./bench/browser/out", "--exclude=./.git", "-C", repo, "."]);
     const from = flag("from");
     ssh(from ? "mkdir -p /bench" : "rm -rf /bench && mkdir -p /bench");
     run("scp", ["-q", tarball, `root@${host}:/bench/src.tgz`]);
@@ -93,6 +101,7 @@ try {
       ].join(" && ")
       : [
         "cd /bench && tar -xzf src.tgz && npm ci --silent && npx playwright install --with-deps chromium >/dev/null",
+        ...(suite === "browser" ? ["(cd bench/browser && npm ci --silent)"] : []),
         "docker build -q -f examples/item-page/Dockerfile -t cb-corten .",
         ...fullstackImages(Object.keys(apps)),
         "docker network create rustbench >/dev/null 2>&1 || true",
@@ -101,11 +110,13 @@ try {
       ].join(" && "));
 
     // Detached, so a dropped connection does not stop the run; polled until it finishes.
-    console.log(`running round ${round} (${suite === "live" ? "about an hour" : "about six hours for fourteen apps"})`);
+    console.log(`running round ${round} (${{ live: "about an hour", browser: "about an hour", fullstack: "about six hours for fourteen apps" }[suite]})`);
     // `;`, not `&&`: only the node command goes to the background, so ssh returns at once.
-    const command = suite === "live"
-      ? `sh -c 'node run.mjs ${round}; node summarize.mjs ${round}; echo all done'`
-      : `node run-all.mjs ${round} 10 ${from ?? ""}`;
+    const command = {
+      live: `sh -c 'node run.mjs ${round}; node summarize.mjs ${round}; echo all done'`,
+      browser: `sh -c '. "$HOME/.cargo/env"; node run-all.mjs ${round} 10 browser; cd /bench/bench/browser && node run-all.mjs ${round}'`,
+      fullstack: `node run-all.mjs ${round} 10 ${from ?? ""}`,
+    }[suite];
     ssh(`cd ${suiteDir}; ${env} nohup ${command} ${from ? ">>" : ">"} ${log} 2>&1 < /dev/null &`);
   }
   let shown = 0;
@@ -113,21 +124,26 @@ try {
     await sleep(60_000);
     const r = ssh(`cat ${log}`, { quiet: true, allowFail: true });
     if (r.status !== 0) continue;
-    const lines = r.stdout.split("\n").filter((l) => /^\d{4}-|step failed|all done|^\|/.test(l));
+    const lines = r.stdout.split("\n").filter((l) => /^\d{4}-|step failed|all done|browser suite|^\|/.test(l));
     for (const l of lines.slice(shown)) console.log(l);
     shown = lines.length;
-    if (r.stdout.includes("all done")) break;
+    if (doneMarker.test(r.stdout)) break;
   }
 
   console.log("downloading the results");
-  const local = join(here, "..", suite, "results");
-  mkdirSync(local, { recursive: true });
   // host.txt: the CPU model and the rest, since droplets of one size are not all the same machine.
-  ssh(`cd ${suiteDir} && cp results-${round}.log results/${round}/run.log && (lscpu; free -m; uname -r; docker --version; node --version) > results/${round}/host.txt 2>&1; tar -czf /tmp/results.tgz -C results ${round}`);
-  run("scp", ["-q", `root@${host}:/tmp/results.tgz`, join(local, ".results.tgz")]);
-  run("tar", ["-xzf", join(local, ".results.tgz"), "-C", local]);
-  rmSync(join(local, ".results.tgz"));
-  console.log(`results in ${join(local, round)}`);
+  const hostInfo = "(lscpu; free -m; uname -r; docker --version; node --version; npx playwright --version)";
+  const download = (remoteDir, localName) => {
+    const local = join(here, "..", localName, "results");
+    mkdirSync(local, { recursive: true });
+    ssh(`cd ${remoteDir} && cp ${log} results/${round}/run.log && ${hostInfo} > results/${round}/host.txt 2>&1; tar -czf /tmp/results.tgz -C results ${round}`);
+    run("scp", ["-q", `root@${host}:/tmp/results.tgz`, join(local, ".results.tgz")]);
+    run("tar", ["-xzf", join(local, ".results.tgz"), "-C", local]);
+    rmSync(join(local, ".results.tgz"));
+    console.log(`results in ${join(local, round)}`);
+  };
+  download(suiteDir, suite === "live" ? "live" : "fullstack");
+  if (suite === "browser") download("/bench/bench/browser", "browser");
 } finally {
   destroy();
 }

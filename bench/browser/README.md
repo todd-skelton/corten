@@ -18,8 +18,15 @@ the same markup), and the harness measures all of them from outside with the sam
 | solid | Solid 1.9.17 with its compiler, written like the js-framework-benchmark's keyed Solid app (a signal per label, `createSelector`) | [apps/solid](apps/solid/rows.jsx) |
 | solid-h | Solid without a compiler, through the `h`, `each` and `mount` helpers in [apps/solid-h/solid.js](apps/solid-h/solid.js) (Corten served them as `corten/solid` until views replaced them) | [apps/solid-h](apps/solid-h/app.js) |
 | remix | Remix 3.0.0 `remix/component`: plain variables and `handle.update()` (the same component as the rmx bench's) | [apps/remix](apps/remix/RowsBench.tsx) |
+| react | React 19.3 with `react-dom`, written like the js-framework-benchmark's keyed react-hooks app (one reducer, immutable rows, a memoized `Row`) | [apps/react](apps/react/rows.jsx) |
+| svelte | Svelte 5.57 with runes, written like the js-framework-benchmark's keyed Svelte app (a `$state` label per row, the rows in `$state.raw`) | [apps/svelte](apps/svelte/App.svelte) |
+| vue | Vue 3.5 single-file component, written like the js-framework-benchmark's keyed Vue app (a `shallowRef` of rows, `triggerRef`, `v-memo`) | [apps/vue](apps/vue/App.vue) |
 
-Each app is one esbuild bundle, minified (Solid's JSX goes through `babel-preset-solid`).
+Each app is one esbuild bundle, minified, built for production (`NODE_ENV=production` and the
+`production` export condition, as Vite does). Solid's JSX goes through `babel-preset-solid`,
+Svelte through `svelte/compiler` and Vue through `vue/compiler-sfc` with the template inlined;
+the server-rendered pages come from each framework's own server renderer (`renderToString`,
+`svelte/server`, `vue/server-renderer`) and hydrate with its own client.
 
 ## Running it
 
@@ -34,7 +41,19 @@ node ssr.mjs            # 1,000 server-rendered rows: take over, then interact
 node dashboard.mjs      # 200 cards on one shared store
 node state-check.mjs    # state() and render scheduling: batching, key switches, abort
 node ab.mjs <prep|-> <click> <app> <app> ...   # interleaved means, for sub-millisecond gaps
+node run-all.mjs <round>     # build, run, ssr and dashboard into results/<round>/, then the table
+node summarize.mjs <round>   # the README table from results/<round>/
 ```
+
+On a Linux droplet: `node bench/fullstack/droplet.mjs <round> --ssh-key <id> --suite browser`
+runs the fourteen-framework browser pass of `bench/fullstack` and then `run-all.mjs`.
+
+Takeover on the server-rendered pages is the time from the parser finishing to the app being
+ready, less the rendering of any frame the browser paints in between: Chromium paints the
+server's rows before the module scripts run on some loads and after them on others (about
+100 ms on this page), whichever framework it is. `paintedFirstMs` in the results is that
+rendering. Rows the app removes or adds while starting are counted in a separate load, since a
+mutation observer slows every app that touches many nodes.
 
 The browser's clock resolves to 0.1 ms here, so differences under a millisecond come from
 [ab.mjs](ab.mjs): the apps take turns in blocks of 25 clicks in one browser, and it reports each
