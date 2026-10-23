@@ -65,17 +65,20 @@ const remixPage = await (await server("apps/remix/server.tsx"))(initial);
 const apps = [
   { name: "vanilla", entry: "apps/vanilla/app.js", main: body(false) },
   { name: "state", entry: "apps/state/app.js", main: body(true) },
+  { name: "view", entry: "apps/view/app.js", main: body(true) },
   { name: "solid", entry: "apps/solid/app.jsx", main: "", plugins: [solidJsx({ generate: "dom" })] },
   { name: "solid-h", entry: "apps/solid-h/app.js", main: "" },
   { name: "remix", entry: "apps/remix/app.tsx", main: "" },
   // Server-rendered: 1,000 rows in the HTML that the client has to take over.
   { name: "vanilla-ssr", entry: "apps/vanilla/app.js", main: body(false, initial) },
   { name: "state-ssr", entry: "apps/state/app.js", main: body(true, initial) },
+  { name: "view-ssr", entry: "apps/view/app.js", main: body(true, initial) },
   { name: "solid-ssr", entry: "apps/solid/hydrate.jsx", main: solidPage.html + data(initial), head: solidPage.head, plugins: [solidJsx({ generate: "dom", hydratable: true })] },
   { name: "remix-ssr", entry: "apps/remix/hydrate.tsx", main: remixPage.html },
   // The dashboard: 200 cards on one shared store, and a total.
   { name: "dashboard-vanilla", entry: "apps/dashboard-vanilla/app.js", main: dashboard(false) },
   { name: "dashboard-state", entry: "apps/dashboard-state/app.js", main: dashboard(true) },
+  { name: "dashboard-view", entry: "apps/dashboard-view/app.js", main: dashboard(true) },
   { name: "dashboard-solid", entry: "apps/dashboard-solid/app.jsx", main: "", plugins: [solidJsx({ generate: "dom" })] },
   { name: "dashboard-remix", entry: "apps/dashboard-remix/app.tsx", main: "" },
 ];
@@ -91,7 +94,7 @@ for (const app of apps) {
     bundle: true, format: "esm", minify: process.env.MINIFY !== "0", target: "es2022", legalComments: "none", write: false,
     outfile: join(dir, "app.js"),
     conditions: ["browser"],
-    alias: { "corten/state": join(js, "state.js"), "corten/solid": join(js, "solid.js") },
+    alias: { "corten/state": join(js, "state.js"), "corten/view": join(js, "view.js"), "corten/solid": join(js, "solid.js") },
     jsx: "automatic", jsxImportSource: "remix/component",
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: app.plugins ?? [],

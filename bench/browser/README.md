@@ -14,6 +14,7 @@ the same markup), and the harness measures all of them from outside with the sam
 |---|---|---|
 | vanilla | Plain JavaScript written for speed, the floor | [apps/vanilla](apps/vanilla/app.js) |
 | state | The proposal: `state`, `list`, `mount`, and a row template whose fill function the Rust macro would generate | [apps/state](apps/state/app.js) |
+| view | Plain JavaScript as the framework: handlers write a generated view's named holes (`row.label = x`); no state, tracking or scheduler. The `Row` class stands in for what `html!` would generate | [apps/view](apps/view/app.js) |
 | solid | Solid 1.9.17 with its compiler, written like the js-framework-benchmark's keyed Solid app (a signal per label, `createSelector`) | [apps/solid](apps/solid/rows.jsx) |
 | solid-h | Solid through `corten/solid` (`h`, `each`, `mount`), which is what Corten ships today for client-heavy parts | [apps/solid-h](apps/solid-h/app.js) |
 | remix | Remix 3.0.0 `remix/component`: plain variables and `handle.update()` (the same component as the rmx bench's) | [apps/remix](apps/remix/RowsBench.tsx) |
@@ -27,6 +28,7 @@ cd bench/browser
 npm install
 node build.mjs          # out/<app>/: index.html and app.js, and sizes
 node list-check.mjs     # list() against 3,000 random edits in a real DOM
+node view-check.mjs     # corten/view's rows() against 3,000 random edits
 node run.mjs            # client operations, memory and load (two rounds, in alternating order)
 node ssr.mjs            # 1,000 server-rendered rows: take over, then interact
 node dashboard.mjs      # 200 cards on one shared store
@@ -186,3 +188,88 @@ Known limits of this test:
 3. Every number comes from one machine and one browser. Firefox and Safari were not run.
 4. The Remix figures are for an esbuild bundle, which is smaller than what Remix's own asset
    server sends (42.5 KB gzip in 41 files in the rmx bench).
+
+## Plain JavaScript as the framework: generated views
+
+Where the time goes. Timed one at a time on a warm page (with `out/attrib.mjs`, which is not committed), the
+DOM writes cost the same in every app; the extra work is the bookkeeping that finds out what to
+write:
+
+| Step | µs |
+|---|---|
+| one text node write | 0.4 |
+| set + get on a plain object / on a `Proxy` | ~0 / 0.3 |
+| 200 reads, plain / through a `Proxy` | 0.7 / 11.5 |
+| 200 `Map.set` (recording what a render read) | 10.0 |
+| `queueMicrotask` and running it | 1.6 |
+| copying a 10,000-item array / scanning it by identity | 4.6 / 26.8 |
+
+Plain JavaScript is fast because the handler already knows what changed, so the work is
+proportional to the change. `state()` (and Solid, and Remix) let the handler say less, then spend
+time finding the change again: through tracking, a scheduled render, and a list compare that is
+proportional to the list.
+
+The view prototype keeps the plain JavaScript shape and adds names and types. `html!` would
+generate, for each component used from a script, a class whose properties are its holes, read from
+and written to the DOM ([apps/view/row.js](apps/view/row.js) is the hand-written stand-in). The
+runtime, [crates/corten/js/view.js](../../crates/corten/js/view.js), is one function: `rows(parent,
+View)`, an array of those views (`at`, `of(event.target)`, `push`, `remove`, `swap`, `clear`,
+keyed `replace`). `mount` and event delegation are `state.js`'s.
+
+```js
+update: () => {
+  for (let i = 0; i < list.length; i += 10) list.at(i).label += " !!!";
+},
+select: (event) => {
+  if (selected) selected.selected = false;
+  selected = list.of(event.target);
+  if (selected) selected.selected = true;
+},
+```
+
+Interleaved means ([ab.mjs](ab.mjs), commit ms):
+
+| | vanilla | state | view | solid |
+|---|---|---|---|---|
+| patch 1 of 10k | 0.151 ± 0.009 | 0.272 ± 0.006 | 0.157 ± 0.013 | 0.260 ± 0.010 |
+| patch 100 of 10k | 1.032 ± 0.056 | 1.354 ± 0.083 | 0.649 ± 0.011 | 1.804 ± 0.091 |
+| update every 10th of 1k | 0.955 ± 0.072 | 1.004 ± 0.059 | 0.691 ± 0.026 | 1.228 ± 0.056 |
+| swap | 0.121 ± 0.004 | 0.425 ± 0.014 | 0.124 ± 0.004 | 0.736 ± 0.039 |
+
+The view beats this vanilla app on the two relabel rows. The vanilla app keeps every label twice,
+in its `data` array and in the DOM, and writes both; the view keeps it once, in the DOM. That
+difference was not profiled further.
+
+From [run.mjs](run.mjs) ([results/ops-view.json](results/ops-view.json)), [ssr.mjs](ssr.mjs)
+([results/ssr-view.json](results/ssr-view.json)) and [dashboard.mjs](dashboard.mjs)
+([results/dashboard-view.json](results/dashboard-view.json)), medians:
+
+| | vanilla | state | view | solid |
+|---|---|---|---|---|
+| create 1k (ms) | 7–9.2 | 11–11.1 | 10.7–10.8 | 12.3–12.4 |
+| bytes per row | 165 | 243 | 114 | 927 |
+| heap with 10k rows (KB) | 2,682 | 3,457 | 2,186 | 10,157 |
+| JS (B gzip) | 1,086 | 3,076 | 2,013 | 7,013 |
+| takeover of 1,000 server rows (ms) | 2.2 | 3.7 | 2.3 | 16 |
+| dashboard tick 20 / 200 (ms) | 0.2 / 0.9 | 0.6 / 1.45 | 0.3 / 0.95 | 0.5 / 1.8 |
+
+[view-check.mjs](view-check.mjs) runs 3,000 random edits (keyed replace, push, remove, swap,
+writes through `at`, clear), including lists that start from server-rendered rows, and checks
+content, order, kept elements, `at`, `of` and iteration after each one. Its first run found a
+bug: `swap` was wrong when the second row came first or the two were neighbors (147 failures);
+after the fix it passes with 0.
+
+What this does not give for free:
+
+1. **Derived values.** Nothing recomputes the dashboard's total; the handler that changes a price
+   writes it. The pattern that keeps this safe is that one component owns the related DOM and
+   exposes methods (`Card.move`, the total in the same handler), so there is one place to forget,
+   not one per caller.
+2. **State shared between components.** Without a store, a change crosses components as a DOM
+   `CustomEvent` or through an `EventTarget`, and each listener writes its own view.
+3. **Data that is not on the page.** The view reads back from the DOM, so what is shown is the only
+   copy. Values that are not shown (the dashboard's unrounded prices) stay in plain variables.
+
+Known limits: the `Row` and `Card` classes are hand-written stand-ins, so the generated code is
+not proven; `replace` reorders with a simple pass, not a longest-run step; one machine, Chromium
+only.

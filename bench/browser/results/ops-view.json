@@ -1,0 +1,651 @@
+{
+  "date": "2026-10-23T01:55:57.285Z",
+  "chromium": "148.0.7778.96",
+  "iterations": 15,
+  "rounds": [
+    {
+      "vanilla": {
+        "size": {
+          "raw": 2127,
+          "gzip": 1086,
+          "brotli": 946
+        },
+        "load": {
+          "readyMs": 24.55
+        },
+        "memory": {
+          "readyKB": 1071,
+          "rows1kKB": 1365,
+          "rows10kKB": 2682,
+          "perRowB": 165,
+          "clearedKB": 1203
+        },
+        "results": {
+          "create 1k": {
+            "n": 15,
+            "commitMs": 9.2,
+            "frameMs": 105.9
+          },
+          "replace 1k": {
+            "n": 15,
+            "commitMs": 19.6,
+            "frameMs": 122.8
+          },
+          "update every 10th": {
+            "n": 15,
+            "commitMs": 0.4,
+            "frameMs": 17.2
+          },
+          "select row": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 4.2
+          },
+          "swap rows": {
+            "n": 15,
+            "commitMs": 0.3,
+            "frameMs": 17
+          },
+          "remove row": {
+            "n": 15,
+            "commitMs": 0.1,
+            "frameMs": 19.2
+          },
+          "create 10k": {
+            "n": 5,
+            "commitMs": 77.8,
+            "frameMs": 914
+          },
+          "append 1k": {
+            "n": 15,
+            "commitMs": 9.5,
+            "frameMs": 110.4
+          },
+          "clear 1k": {
+            "n": 15,
+            "commitMs": 10,
+            "frameMs": 11.1
+          },
+          "patch 100 of 1k": {
+            "n": 15,
+            "commitMs": 0.5,
+            "frameMs": 20.7
+          },
+          "patch 1 of 10k": {
+            "n": 5,
+            "commitMs": 0.1,
+            "frameMs": 116.3
+          },
+          "patch 100 of 10k": {
+            "n": 5,
+            "commitMs": 0.5,
+            "frameMs": 88.6
+          }
+        },
+        "errors": []
+      },
+      "state": {
+        "size": {
+          "raw": 6276,
+          "gzip": 3076,
+          "brotli": 2809
+        },
+        "load": {
+          "readyMs": 27.15
+        },
+        "memory": {
+          "readyKB": 1080,
+          "rows1kKB": 1442,
+          "rows10kKB": 3457,
+          "perRowB": 243,
+          "clearedKB": 1246
+        },
+        "results": {
+          "create 1k": {
+            "n": 15,
+            "commitMs": 11,
+            "frameMs": 120.1
+          },
+          "replace 1k": {
+            "n": 15,
+            "commitMs": 20.8,
+            "frameMs": 124.1
+          },
+          "update every 10th": {
+            "n": 15,
+            "commitMs": 0.6,
+            "frameMs": 24.2
+          },
+          "select row": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 9.1
+          },
+          "swap rows": {
+            "n": 15,
+            "commitMs": 0.6,
+            "frameMs": 25.4
+          },
+          "remove row": {
+            "n": 15,
+            "commitMs": 0.4,
+            "frameMs": 22
+          },
+          "create 10k": {
+            "n": 5,
+            "commitMs": 100.9,
+            "frameMs": 1131.5
+          },
+          "append 1k": {
+            "n": 15,
+            "commitMs": 10.5,
+            "frameMs": 124.3
+          },
+          "clear 1k": {
+            "n": 15,
+            "commitMs": 9.1,
+            "frameMs": 10.2
+          },
+          "patch 100 of 1k": {
+            "n": 15,
+            "commitMs": 0.6,
+            "frameMs": 22.3
+          },
+          "patch 1 of 10k": {
+            "n": 5,
+            "commitMs": 0.5,
+            "frameMs": 118.9
+          },
+          "patch 100 of 10k": {
+            "n": 5,
+            "commitMs": 0.9,
+            "frameMs": 94.5
+          }
+        },
+        "errors": []
+      },
+      "view": {
+        "size": {
+          "raw": 4182,
+          "gzip": 2013,
+          "brotli": 1804
+        },
+        "load": {
+          "readyMs": 19.75
+        },
+        "memory": {
+          "readyKB": 1075,
+          "rows1kKB": 1304,
+          "rows10kKB": 2186,
+          "perRowB": 114,
+          "clearedKB": 1233
+        },
+        "results": {
+          "create 1k": {
+            "n": 15,
+            "commitMs": 10.7,
+            "frameMs": 89.8
+          },
+          "replace 1k": {
+            "n": 15,
+            "commitMs": 16.5,
+            "frameMs": 82.8
+          },
+          "update every 10th": {
+            "n": 15,
+            "commitMs": 0.6,
+            "frameMs": 12.4
+          },
+          "select row": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 3.2
+          },
+          "swap rows": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 12.9
+          },
+          "remove row": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 20.1
+          },
+          "create 10k": {
+            "n": 5,
+            "commitMs": 80.3,
+            "frameMs": 817.4
+          },
+          "append 1k": {
+            "n": 15,
+            "commitMs": 10.4,
+            "frameMs": 123.6
+          },
+          "clear 1k": {
+            "n": 15,
+            "commitMs": 10.1,
+            "frameMs": 11
+          },
+          "patch 100 of 1k": {
+            "n": 15,
+            "commitMs": 0.6,
+            "frameMs": 17.8
+          },
+          "patch 1 of 10k": {
+            "n": 5,
+            "commitMs": 0.2,
+            "frameMs": 99.4
+          },
+          "patch 100 of 10k": {
+            "n": 5,
+            "commitMs": 0.6,
+            "frameMs": 101.3
+          }
+        },
+        "errors": []
+      },
+      "solid": {
+        "size": {
+          "raw": 17177,
+          "gzip": 7013,
+          "brotli": 6379
+        },
+        "load": {
+          "readyMs": 19.6
+        },
+        "memory": {
+          "readyKB": 1103,
+          "rows1kKB": 2152,
+          "rows10kKB": 10157,
+          "perRowB": 927,
+          "clearedKB": 1290
+        },
+        "results": {
+          "create 1k": {
+            "n": 15,
+            "commitMs": 12.4,
+            "frameMs": 110.2
+          },
+          "replace 1k": {
+            "n": 15,
+            "commitMs": 21.9,
+            "frameMs": 106.5
+          },
+          "update every 10th": {
+            "n": 15,
+            "commitMs": 0.9,
+            "frameMs": 19.9
+          },
+          "select row": {
+            "n": 15,
+            "commitMs": 0.3,
+            "frameMs": 4.4
+          },
+          "swap rows": {
+            "n": 15,
+            "commitMs": 0.9,
+            "frameMs": 13.2
+          },
+          "remove row": {
+            "n": 15,
+            "commitMs": 0.8,
+            "frameMs": 29.6
+          },
+          "create 10k": {
+            "n": 5,
+            "commitMs": 100,
+            "frameMs": 774.7
+          },
+          "append 1k": {
+            "n": 15,
+            "commitMs": 12.4,
+            "frameMs": 135
+          },
+          "clear 1k": {
+            "n": 15,
+            "commitMs": 12.1,
+            "frameMs": 13.1
+          },
+          "patch 100 of 1k": {
+            "n": 15,
+            "commitMs": 1.1,
+            "frameMs": 25.1
+          },
+          "patch 1 of 10k": {
+            "n": 5,
+            "commitMs": 0.3,
+            "frameMs": 117.2
+          },
+          "patch 100 of 10k": {
+            "n": 5,
+            "commitMs": 0.9,
+            "frameMs": 123.2
+          }
+        },
+        "errors": []
+      }
+    },
+    {
+      "solid": {
+        "size": {
+          "raw": 17177,
+          "gzip": 7013,
+          "brotli": 6379
+        },
+        "load": {
+          "readyMs": 23.3
+        },
+        "memory": {
+          "readyKB": 1103,
+          "rows1kKB": 2151,
+          "rows10kKB": 10159,
+          "perRowB": 927,
+          "clearedKB": 1290
+        },
+        "results": {
+          "create 1k": {
+            "n": 15,
+            "commitMs": 12.3,
+            "frameMs": 117.1
+          },
+          "replace 1k": {
+            "n": 15,
+            "commitMs": 21.2,
+            "frameMs": 99.4
+          },
+          "update every 10th": {
+            "n": 15,
+            "commitMs": 0.7,
+            "frameMs": 15.8
+          },
+          "select row": {
+            "n": 15,
+            "commitMs": 0.3,
+            "frameMs": 5.1
+          },
+          "swap rows": {
+            "n": 15,
+            "commitMs": 1,
+            "frameMs": 19.9
+          },
+          "remove row": {
+            "n": 15,
+            "commitMs": 0.5,
+            "frameMs": 14.4
+          },
+          "create 10k": {
+            "n": 5,
+            "commitMs": 116.5,
+            "frameMs": 1236.2
+          },
+          "append 1k": {
+            "n": 15,
+            "commitMs": 12,
+            "frameMs": 127.3
+          },
+          "clear 1k": {
+            "n": 15,
+            "commitMs": 11.6,
+            "frameMs": 12.5
+          },
+          "patch 100 of 1k": {
+            "n": 15,
+            "commitMs": 0.9,
+            "frameMs": 19.1
+          },
+          "patch 1 of 10k": {
+            "n": 5,
+            "commitMs": 0.3,
+            "frameMs": 105.3
+          },
+          "patch 100 of 10k": {
+            "n": 5,
+            "commitMs": 0.8,
+            "frameMs": 127.7
+          }
+        },
+        "errors": []
+      },
+      "view": {
+        "size": {
+          "raw": 4182,
+          "gzip": 2013,
+          "brotli": 1804
+        },
+        "load": {
+          "readyMs": 33.65
+        },
+        "memory": {
+          "readyKB": 1075,
+          "rows1kKB": 1304,
+          "rows10kKB": 2186,
+          "perRowB": 114,
+          "clearedKB": 1233
+        },
+        "results": {
+          "create 1k": {
+            "n": 15,
+            "commitMs": 10.8,
+            "frameMs": 109.8
+          },
+          "replace 1k": {
+            "n": 15,
+            "commitMs": 20.3,
+            "frameMs": 123.5
+          },
+          "update every 10th": {
+            "n": 15,
+            "commitMs": 0.6,
+            "frameMs": 22.6
+          },
+          "select row": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 5
+          },
+          "swap rows": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 21.8
+          },
+          "remove row": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 31.7
+          },
+          "create 10k": {
+            "n": 5,
+            "commitMs": 103.8,
+            "frameMs": 940.8
+          },
+          "append 1k": {
+            "n": 15,
+            "commitMs": 10,
+            "frameMs": 110.1
+          },
+          "clear 1k": {
+            "n": 15,
+            "commitMs": 9.1,
+            "frameMs": 10
+          },
+          "patch 100 of 1k": {
+            "n": 15,
+            "commitMs": 0.7,
+            "frameMs": 17.8
+          },
+          "patch 1 of 10k": {
+            "n": 5,
+            "commitMs": 0.1,
+            "frameMs": 106.8
+          },
+          "patch 100 of 10k": {
+            "n": 5,
+            "commitMs": 0.6,
+            "frameMs": 119.9
+          }
+        },
+        "errors": []
+      },
+      "state": {
+        "size": {
+          "raw": 6276,
+          "gzip": 3076,
+          "brotli": 2809
+        },
+        "load": {
+          "readyMs": 23.3
+        },
+        "memory": {
+          "readyKB": 1080,
+          "rows1kKB": 1442,
+          "rows10kKB": 3456,
+          "perRowB": 243,
+          "clearedKB": 1246
+        },
+        "results": {
+          "create 1k": {
+            "n": 15,
+            "commitMs": 11.1,
+            "frameMs": 120.3
+          },
+          "replace 1k": {
+            "n": 15,
+            "commitMs": 18.2,
+            "frameMs": 114.6
+          },
+          "update every 10th": {
+            "n": 15,
+            "commitMs": 0.5,
+            "frameMs": 17.8
+          },
+          "select row": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 3.8
+          },
+          "swap rows": {
+            "n": 15,
+            "commitMs": 0.5,
+            "frameMs": 17.8
+          },
+          "remove row": {
+            "n": 15,
+            "commitMs": 0.4,
+            "frameMs": 27.4
+          },
+          "create 10k": {
+            "n": 5,
+            "commitMs": 96,
+            "frameMs": 1053.2
+          },
+          "append 1k": {
+            "n": 15,
+            "commitMs": 9.2,
+            "frameMs": 104.7
+          },
+          "clear 1k": {
+            "n": 15,
+            "commitMs": 7,
+            "frameMs": 7.9
+          },
+          "patch 100 of 1k": {
+            "n": 15,
+            "commitMs": 0.5,
+            "frameMs": 17.8
+          },
+          "patch 1 of 10k": {
+            "n": 5,
+            "commitMs": 0.5,
+            "frameMs": 107.4
+          },
+          "patch 100 of 10k": {
+            "n": 5,
+            "commitMs": 0.8,
+            "frameMs": 96.8
+          }
+        },
+        "errors": []
+      },
+      "vanilla": {
+        "size": {
+          "raw": 2127,
+          "gzip": 1086,
+          "brotli": 946
+        },
+        "load": {
+          "readyMs": 27.05
+        },
+        "memory": {
+          "readyKB": 1071,
+          "rows1kKB": 1365,
+          "rows10kKB": 2682,
+          "perRowB": 165,
+          "clearedKB": 1203
+        },
+        "results": {
+          "create 1k": {
+            "n": 15,
+            "commitMs": 7,
+            "frameMs": 85.6
+          },
+          "replace 1k": {
+            "n": 15,
+            "commitMs": 14.5,
+            "frameMs": 74.3
+          },
+          "update every 10th": {
+            "n": 15,
+            "commitMs": 0.4,
+            "frameMs": 13.2
+          },
+          "select row": {
+            "n": 15,
+            "commitMs": 0.1,
+            "frameMs": 3.9
+          },
+          "swap rows": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 16.4
+          },
+          "remove row": {
+            "n": 15,
+            "commitMs": 0.2,
+            "frameMs": 19.9
+          },
+          "create 10k": {
+            "n": 5,
+            "commitMs": 82.7,
+            "frameMs": 812.1
+          },
+          "append 1k": {
+            "n": 15,
+            "commitMs": 9,
+            "frameMs": 90.6
+          },
+          "clear 1k": {
+            "n": 15,
+            "commitMs": 9.2,
+            "frameMs": 10.4
+          },
+          "patch 100 of 1k": {
+            "n": 15,
+            "commitMs": 0.6,
+            "frameMs": 17.3
+          },
+          "patch 1 of 10k": {
+            "n": 5,
+            "commitMs": 0.2,
+            "frameMs": 90.6
+          },
+          "patch 100 of 10k": {
+            "n": 5,
+            "commitMs": 0.5,
+            "frameMs": 86.1
+          }
+        },
+        "errors": []
+      }
+    }
+  ]
+}

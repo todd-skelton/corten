@@ -12,7 +12,7 @@ const { chromium } = createRequire(join(here, "..", "..", "package.json"))("@pla
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []));
 const N = Number(args.iterations ?? 30);
 const PORT = 44203;
-const APPS = ["dashboard-vanilla", "dashboard-state", "dashboard-solid", "dashboard-remix"];
+const APPS = ["dashboard-vanilla", "dashboard-state", "dashboard-view", "dashboard-solid", "dashboard-remix"];
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const round = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 const sizes = JSON.parse(readFileSync(join(here, "out", "sizes.json"), "utf8"));
