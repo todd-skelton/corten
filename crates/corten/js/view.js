@@ -216,7 +216,8 @@ export function rows(parent, View, template) {
       // Each new item's old element, or -1.
       const from = new Int32Array(n).fill(-1);
       let kept = 0;
-      for (let i = 0; i < n; i += 1) {
+      // With no rows to keep (a first fill, or after clear()), no key is looked up.
+      if (where.size) for (let i = 0; i < n; i += 1) {
         const k = keyOf(items[i]);
         const j = where.get(k);
         if (j !== undefined) {

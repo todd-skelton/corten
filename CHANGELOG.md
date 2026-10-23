@@ -199,6 +199,12 @@ Corten is pre-1.0, so any minor version may change the API.
     `bench/fullstack`'s browser pass and then `bench/browser` on a droplet. The README's
     Performance section has a browser table and a client-heavy table from that run
     (`browser-1`).
+24. Making many rows is cheaper. When many children join one parent at once, the runtime finds
+    the ref names in them with one selector query per name instead of reading every `data-ref`;
+    `rows().replace` looks up no keys when the list was empty; and a view's `fill` checks a
+    boolean attribute before toggling it. On a droplet, creating 10,000 rows took 79 ms instead of
+    90 ms (Solid 64, plain JavaScript 61), a row took 101 bytes of heap instead of 116, and
+    takeover was unchanged.
 
 ### Fixed
 

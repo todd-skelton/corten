@@ -341,12 +341,14 @@ function scan(root, names, inside = false) {
     refName(root, names);
   }
   // Rows cloned from one template carry the same refs, so a name is added once per run of them.
-  const refs = root.querySelectorAll("[data-ref]");
-  let last = null;
-  for (let i = 0; i < refs.length; i += 1) {
-    const ref = refs[i].getAttribute("data-ref");
-    if (ref !== last && ref !== null) names.add(ref.slice(ref.indexOf("/") + 1));
-    last = ref;
+  if (!(inside && fewRefNames(root, names))) {
+    const refs = root.querySelectorAll("[data-ref]");
+    let last = null;
+    for (let i = 0; i < refs.length; i += 1) {
+      const ref = refs[i].getAttribute("data-ref");
+      if (ref !== last && ref !== null) names.add(ref.slice(ref.indexOf("/") + 1));
+      last = ref;
+    }
   }
   for (const el of marked) {
     let connects = false;
@@ -362,6 +364,28 @@ function scan(root, names, inside = false) {
     }
   }
 }
+
+/**
+ * Adds the names of the refs under `root` to `names` when there are only a few, and says whether
+ * it found them all. Many children put in at once (rows() or a patch filling a list) are clones of
+ * a few components, so each query looks for a ref not yet seen and the last finds none: a few
+ * passes of the browser's selector engine instead of reading 20,000 attributes from script.
+ * @param {Element} root @param {Set<string>} names
+ */
+function fewRefNames(root, names) {
+  let selector = "[data-ref]";
+  for (let seen = 0; seen < FEW_NAMES; seen += 1) {
+    const el = root.querySelector(selector);
+    if (!el) return true;
+    const ref = /** @type {string} */ (el.getAttribute("data-ref"));
+    names.add(ref.slice(ref.indexOf("/") + 1));
+    selector += `:not([data-ref="${CSS.escape(ref)}"])`;
+  }
+  return false;
+}
+
+/** Distinct ref names fewRefNames looks for, one query each, before scan reads every ref. */
+const FEW_NAMES = 8;
 
 /**
  * Ends the life of every element that left the page: its `signal` aborts, and `on:connect` runs

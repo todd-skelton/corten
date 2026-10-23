@@ -87,6 +87,33 @@ try {
   }
   check("resuming shows the latest prices", resumed && (await page.getAttribute(`${live} button`, "aria-pressed")) === "false");
 
+  // Many rows joining at once are scanned for ref names one query per name: a name that only the
+  // last of them has still refreshes the refs the component has cached (pause just resolved them).
+  await page.click(`${live} button`);
+  await page.evaluate((live) => {
+    const body = /** @type {HTMLTableSectionElement} */ (document.querySelector(`${live} tbody`));
+    const old = /** @type {HTMLElement} */ (body.querySelector('[data-ref="price"][data-key="s1"]'));
+    old.removeAttribute("data-ref");
+    old.id = "old-s1";
+    const rows = document.createDocumentFragment();
+    for (let i = 0; i < 20; i += 1) {
+      const tr = document.createElement("tr");
+      tr.className = "wide";
+      tr.innerHTML = i < 19 ? '<td data-ref="note">n</td>' : '<td data-ref="price" data-key="s1" id="new-s1">-</td>';
+      rows.append(tr);
+    }
+    body.append(rows);
+  }, live);
+  await page.click(`${live} button`);
+  const repainted = await page.textContent("#new-s1");
+  check("a ref name only the last row of a 20-row insert has is found", repainted !== "-", String(repainted));
+  await page.evaluate(() => {
+    for (const tr of Array.from(document.querySelectorAll("tr.wide"))) tr.remove();
+    const old = /** @type {HTMLElement} */ (document.getElementById("old-s1"));
+    old.setAttribute("data-ref", "price");
+    old.removeAttribute("id");
+  });
+
   // A marker on window survives client navigations and patches, and disappears on a full load.
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
   await page.selectOption("select[name=id]", "s2");

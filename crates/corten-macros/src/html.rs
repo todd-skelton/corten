@@ -249,8 +249,10 @@ pub fn view_of(body: &Group, class: &str, params: &[(String, Vec<TokenTree>)], s
             (None, Some(attr), Kind::Text) => format!("{at}.getAttribute({attr:?}) ?? \"\""),
             (None, Some(attr), Kind::Bool) => format!("{at}.hasAttribute({attr:?})"),
         };
-        // Writes every hole of the element `base` from `value`.
-        let write = |base: &str, value: &str| -> Vec<String> {
+        // Writes every hole of the element `base` from `value`. `fill` (`many`) checks a
+        // boolean attribute before toggling it: hasAttribute is about half the cost of a
+        // toggleAttribute that changes nothing, which is most rows of a new list.
+        let write = |base: &str, value: &str, many: bool| -> Vec<String> {
             shown
                 .iter()
                 .map(|h| {
@@ -260,6 +262,9 @@ pub fn view_of(body: &Group, class: &str, params: &[(String, Vec<TokenTree>)], s
                         // after the user typed) and the attribute (what a form reset goes back to).
                         (Some(prop), ..) => format!("{prop}({at}, {value});"),
                         (None, None, _) => format!("text({at}, {value});"),
+                        (None, Some(attr), Kind::Bool) if many => {
+                            format!("if ({at}.hasAttribute({attr:?}) !== {value}) {at}.toggleAttribute({attr:?}, {value});")
+                        }
                         (None, Some(attr), Kind::Bool) => format!("{at}.toggleAttribute({attr:?}, {value});"),
                         (None, Some(attr), _) => format!("{at}.setAttribute({attr:?}, {value});"),
                     }
@@ -270,10 +275,10 @@ pub fn view_of(body: &Group, class: &str, params: &[(String, Vec<TokenTree>)], s
             // A numbered local: a parameter may be named like anything in this function.
             let local = format!("v{i}");
             let mut filled = vec![format!("const {local} = String(data.{name});")];
-            filled.extend(write("el", &local));
-            (write("this.el", "String(v)"), filled)
+            filled.extend(write("el", &local, true));
+            (write("this.el", "String(v)", false), filled)
         } else {
-            (write("this.el", "v"), write("el", &format!("data.{name}")))
+            (write("this.el", "v", false), write("el", &format!("data.{name}"), true))
         };
         fill.extend(filled);
         js.push_str(&format!("  get {name}() {{ return {get}; }}\n  set {name}(v) {{ {} }}\n", set.join(" ")));
