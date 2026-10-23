@@ -1,5 +1,6 @@
 // Checks list() in a real DOM against random edits: after every set(), the children must show
-// exactly the items, in order, and keep their elements for kept keys. node list-check.mjs
+// exactly the items, in order, keep their elements for kept keys, and map to their items both
+// ways (item(), node()), including lists that start from server-rendered elements. node list-check.mjs
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,13 +18,22 @@ const result = await page.evaluate(async (src) => {
   const tpl = mod.template(document.getElementById("t"), (li) => [li.firstChild], (h, item, before) => {
     if (item.v !== before?.v) h[0].data = item.k + ":" + item.v;
   });
-  const l = mod.list(ul, tpl, (x) => x.k);
   let seed = 1;
   const rnd = (n) => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) >>> 8) % n;
+  let failures = 0;
+  // Every 300 steps the list starts over from server-rendered elements (adopted, not made), and
+  // item() must find each one's item before and after edits.
   let items = [];
   let nextKey = 0;
-  let failures = 0;
+  let l;
+  const start = () => {
+    items = Array.from({ length: rnd(40) }, () => ({ k: nextKey++, v: 0 }));
+    ul.innerHTML = items.map((x) => `<li>${x.k}:${x.v}</li>`).join("");
+    l = mod.list(ul, tpl, (x) => x.k, items);
+    if (!Array.from(ul.children).every((el, i) => l.item(el.firstChild) === items[i])) failures++;
+  };
   for (let step = 0; step < 3000; step++) {
+    if (step % 300 === 0) start();
     const before = new Map(Array.from(ul.children, (el, i) => [items[i]?.k, el]));
     let next = items.slice();
     const kind = rnd(7);
@@ -36,7 +46,7 @@ const result = await page.evaluate(async (src) => {
     else next.reverse();
     l.set(next);
     const kids = Array.from(ul.children);
-    const ok = kids.length === next.length && kids.every((el, i) => el.textContent === next[i].k + ":" + next[i].v && (!before.has(next[i].k) || before.get(next[i].k) === el));
+    const ok = kids.length === next.length && kids.every((el, i) => el.textContent === next[i].k + ":" + next[i].v && (!before.has(next[i].k) || before.get(next[i].k) === el) && l.item(el) === next[i] && l.node(next[i].k) === el);
     if (!ok) failures++;
     items = next;
   }

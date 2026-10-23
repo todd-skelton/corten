@@ -30,7 +30,8 @@ function summary({ refs }) {
   return {
     render() {
       let total = 0;
-      for (const symbol in prices) total += prices[symbol];
+      // Known keys, not `for..in`: iterating a Proxy's keys takes the engine's slow path.
+      for (const symbol of SYMBOLS) total += prices[symbol];
       text(refs.total, total.toFixed(2));
     },
     tick20: () => apply(20),

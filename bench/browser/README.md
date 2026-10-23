@@ -5,7 +5,7 @@ plain variables and one `state({...})` object. Assigning a new value to a state 
 a microtask, only the renders that read that key: there is no `update()` call, no virtual DOM
 and no signal per value. Lists are `<template>` clones that a keyed `list()` patches. The
 prototype runtime is [crates/corten/js/state.js](../../crates/corten/js/state.js), 2,147 B gzip
-on its own. Nothing in the framework uses it yet.
+on its own as first measured (2,291 B after the fixes below). Nothing in the framework uses it yet.
 
 Every app renders the same rows (the js-framework-benchmark word lists, the same 32-bit LCG and
 the same markup), and the harness measures all of them from outside with the same code.
@@ -30,13 +30,20 @@ node list-check.mjs     # list() against 3,000 random edits in a real DOM
 node run.mjs            # client operations, memory and load (two rounds, in alternating order)
 node ssr.mjs            # 1,000 server-rendered rows: take over, then interact
 node dashboard.mjs      # 200 cards on one shared store
+node state-check.mjs    # state() and render scheduling: batching, key switches, abort
+node ab.mjs <prep|-> <click> <app> <app> ...   # interleaved means, for sub-millisecond gaps
 ```
+
+The browser's clock resolves to 0.1 ms here, so differences under a millisecond come from
+[ab.mjs](ab.mjs): the apps take turns in blocks of 25 clicks in one browser, and it reports each
+app's mean with its standard error.
 
 The harness uses the repository's Playwright and its Chromium.
 
 ## Results
 
-These were measured on 2026-10-22 on one Windows desktop, with headless Chromium 148.0.7778.96.
+The tables in this section are the first run, on commit a755602. [Closing the gaps](#closing-the-gaps)
+has what changed after it. They were measured on 2026-10-22 on one Windows desktop, with headless Chromium 148.0.7778.96.
 Values are medians in milliseconds. "Commit" runs from the click until the app has updated the
 DOM, which every app has done once the microtasks queued during the click have run;
 [run.mjs](run.mjs) checks the DOM after every operation, so an app that skips work fails instead
@@ -102,7 +109,8 @@ tick touches exactly 20 cards and the total in state.
    0.3 ms of plain JavaScript.
 2. Shallow state has a measurable price on very large lists. Changing one row of 10,000 copies
    the array and compares 10,000 items, which took 0.5 ms here against Solid's 0.1 to 0.2 ms.
-   That cost grows linearly; 100,000 rows would be about 5 ms (estimated, not measured).
+   That cost grows linearly. [Closing the gaps](#closing-the-gaps) brought it to within 0.03 ms
+   of Solid.
 3. Memory is where signals cost the most. A Solid row holds its signals, owner and computations,
    which came to 927 B. A state row is its item and its element, at 243 B, which is about 77 B
    more than plain JavaScript.
@@ -118,6 +126,56 @@ tick touches exactly 20 cards and the total in state.
    2,000 `data-on` attributes to learn the event types. The server knows those types when it
    compiles, so the prototype now reads them from the root's `data-events` attribute, and the
    time fell to 4.6 ms.
+
+## Closing the gaps
+
+The first run found three places where the proposal lost. All three were fixed or explained
+without giving back memory or takeover time: bytes per row went from 243 to 241, and takeover
+stayed at 4.2 to 4.5 ms. Every figure below was measured with [ab.mjs](ab.mjs) (mean ms ±
+standard error) unless marked.
+
+1. **A change to one row of a long list cost the list's length.** `list.set()` called `key()` on
+   every item and built a new element array on every change. It now skips an item that is the
+   same object as before, and keeps the element array when no item moved. `node(key)` remembers
+   the element it found last, so the selected row is not searched for on every render.
+
+   | commit ms | vanilla | state, first run | state now | solid |
+   |---|---|---|---|---|
+   | patch 1 of 10k | 0.156 ± 0.014 | 0.380 ± 0.018 | 0.279 ± 0.008 | 0.254 ± 0.012 |
+   | patch 100 of 10k | 0.776 ± 0.044 | 1.152 ± 0.049 | 0.989 ± 0.055 | 1.521 ± 0.101 |
+
+   The rest of the gap to Solid on one row (about 0.03 ms) is copying the 10,000-item array, which
+   is the price of shallow state. Solid pays more at 100 rows because each changed label is its
+   own signal update.
+2. **The dashboard tick ran behind Solid.** Profiling showed that most of the state version's time
+   was the total's `for (const symbol in prices)`. A `for..in` over a `Proxy` takes the
+   engine's slow path: an `ownKeys` trap, then a descriptor and a `get` for every key. Reading a
+   known list of keys instead (`for (const symbol of SYMBOLS)`) is the fix. Separately, renders
+   now keep their keys between runs and only drop the ones they stopped reading, which saves a
+   delete and an add per key on every run. [state-check.mjs](state-check.mjs) covers this,
+   including a render that switches keys.
+
+   | commit ms | vanilla | state | state with `for..in` | solid | remix |
+   |---|---|---|---|---|---|
+   | tick 20 | 0.189 ± 0.003 | 0.369 ± 0.011 | 0.578 ± 0.012 | 0.481 ± 0.008 | 3.937 ± 0.043 |
+   | tick 200 | 0.860 ± 0.025 | 1.430 ± 0.026 | 1.673 ± 0.031 | 1.800 ± 0.062 | 33.45 ± 0.68 |
+
+   The rule this implies is that a state object holds named fields. A render that needs
+   every key should iterate a list it already has, and `html!`'s generated types can give it
+   that list. Development mode could warn when a render iterates a state.
+3. **Taking over server HTML depended on `data-events`.** This is not a speed problem: with the
+   attribute, takeover is 4.2 to 4.5 ms (median of 15 loads), against 2.3 ms for plain
+   JavaScript and 22.6 ms for Solid. The open question was whether the server can write the
+   attribute. It can: `html!` already finds every `on:event` in a component and already puts
+   `data-scope` on the component's one root, so the union of the event types is known when the
+   component compiles. That macro change is part of the port and has not been written yet.
+   Reading the server's rows lazily was also tried and dropped: takeover did not change (4.2 ms),
+   and the first click got slower (2.2 ms against 1.1).
+
+Everything else stayed the same when [run.mjs](run.mjs) was rerun after the fixes (one round,
+[results/ops-fixes.json](results/ops-fixes.json)). [list-check.mjs](list-check.mjs) now also
+starts lists from server-rendered elements and checks `item()` and `node()` after every edit.
+It passed 3,000 random edits.
 
 Known limits of this test:
 

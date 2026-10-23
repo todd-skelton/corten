@@ -88,7 +88,7 @@ for (const app of apps) {
   mkdirSync(dir, { recursive: true });
   const result = await build({
     entryPoints: [join(here, app.entry)],
-    bundle: true, format: "esm", minify: true, target: "es2022", legalComments: "none", write: false,
+    bundle: true, format: "esm", minify: process.env.MINIFY !== "0", target: "es2022", legalComments: "none", write: false,
     outfile: join(dir, "app.js"),
     conditions: ["browser"],
     alias: { "corten/state": join(js, "state.js"), "corten/solid": join(js, "solid.js") },

@@ -15,7 +15,10 @@
 
 /**
  * A render: a function the runtime runs again when a key it read last time is given a new value.
- * @typedef {{ run: () => void, order: number, deps: Set<Render>[] }} Render
+ * `stamp` counts its runs; each key's readers remember the run that last read it, so a render that
+ * reads the same keys again (the usual case) updates a number instead of leaving and rejoining
+ * every key's readers.
+ * @typedef {{ run: () => void, order: number, stamp: number, deps: Map<Render, number>[] }} Render
  */
 
 /** The render running now, which collects the keys it reads. @type {Render | null} */
@@ -48,24 +51,25 @@ function freeze(value, seen = new WeakSet()) {
  * @returns {T}
  */
 export function state(init) {
-  /** @type {Map<PropertyKey, Set<Render>>} */
+  /** @type {Map<PropertyKey, Map<Render, number>>} */
   const readers = new Map();
   const target = /** @type {Record<PropertyKey, unknown>} */ ({ ...init });
   if (dev.on) for (const v of Object.values(target)) freeze(v);
   /** @param {PropertyKey} key */
   const read = (key) => {
-    let set = readers.get(key);
-    if (!set) readers.set(key, (set = new Set()));
-    if (current && !set.has(current)) {
-      set.add(current);
-      current.deps.push(set);
-    }
+    const r = /** @type {Render} */ (current);
+    let by = readers.get(key);
+    if (!by) readers.set(key, (by = new Map()));
+    const seen = by.get(r);
+    if (seen === r.stamp) return;
+    if (seen === undefined) r.deps.push(by);
+    by.set(r, r.stamp);
   };
   /** @param {PropertyKey} key */
   const changed = (key) => {
-    const set = readers.get(key);
-    if (!set?.size) return;
-    for (const r of set) dirty.add(r);
+    const by = readers.get(key);
+    if (!by?.size) return;
+    for (const r of by.keys()) dirty.add(r);
     if (!scheduled) {
       scheduled = true;
       queueMicrotask(flush);
@@ -118,10 +122,9 @@ export function flush() {
   scheduled = false;
 }
 
-/** @param {Render} r */
+/** Runs `r`, recording the keys it reads, and drops the keys it read last time but not now. @param {Render} r */
 function track(r) {
-  for (const set of r.deps) set.delete(r);
-  r.deps.length = 0;
+  r.stamp += 1;
   const outer = current;
   current = r;
   try {
@@ -131,6 +134,13 @@ function track(r) {
   } finally {
     current = outer;
   }
+  let kept = 0;
+  for (let i = 0; i < r.deps.length; i += 1) {
+    const by = r.deps[i];
+    if (by.get(r) === r.stamp) r.deps[kept++] = by;
+    else by.delete(r);
+  }
+  r.deps.length = kept;
 }
 
 /**
@@ -194,6 +204,8 @@ export function list(parent, row, key, initial = []) {
   let items = initial;
   /** @type {Element[]} */
   let nodes = /** @type {Element[]} */ (Array.from(parent.children)).slice(0, initial.length);
+  /** The element node() found last. @type {Element | undefined} */
+  let found;
   for (let i = 0; i < nodes.length; i += 1) /** @type {any} */ (nodes[i]).$i = initial[i];
 
   /** @param {T} item */
@@ -218,31 +230,53 @@ export function list(parent, row, key, initial = []) {
       const oldNodes = nodes;
       const n = next.length;
       const m = old.length;
-      /** @type {Element[]} */
-      const out = new Array(n);
       items = next;
-      nodes = out;
       if (n === 0) {
+        nodes = [];
         if (m) parent.textContent = "";
         return;
       }
       if (m === 0) {
-        appendAll(parent, next, out, 0, n, make, null);
+        nodes = new Array(n);
+        appendAll(parent, next, nodes, 0, n, make, null);
         return;
       }
       // Same keys at the start and the end: patch in place.
       let start = 0;
-      while (start < n && start < m && key(next[start]) === key(old[start])) {
-        patch((out[start] = oldNodes[start]), next[start], old[start]);
+      // An item that is the same object as before needs nothing: no key() call, no patch. With
+      // shallow state, a change to one row of 10,000 makes one new object, so this loop is the
+      // whole cost of the other 9,999.
+      const end = n < m ? n : m;
+      while (start < end) {
+        const a = next[start];
+        const b = old[start];
+        if (a !== b) {
+          if (key(a) !== key(b)) break;
+          row.patch(oldNodes[start], a, b);
+          /** @type {any} */ (oldNodes[start]).$i = a;
+        }
         start += 1;
       }
       let endNew = n - 1;
       let endOld = m - 1;
-      while (endNew >= start && endOld >= start && key(next[endNew]) === key(old[endOld])) {
-        patch((out[endNew] = oldNodes[endOld]), next[endNew], old[endOld]);
+      while (endNew >= start && endOld >= start) {
+        const a = next[endNew];
+        const b = old[endOld];
+        if (a !== b) {
+          if (key(a) !== key(b)) break;
+          row.patch(oldNodes[endOld], a, b);
+          /** @type {any} */ (oldNodes[endOld]).$i = a;
+        }
         endNew -= 1;
         endOld -= 1;
       }
+      // Every item kept its place (the usual edit: some rows changed): the elements are the same.
+      if (start > endNew && start > endOld) return;
+      /** @type {Element[]} */
+      const out = new Array(n);
+      nodes = out;
+      for (let i = 0; i < start; i += 1) out[i] = oldNodes[i];
+      for (let i = endNew + 1, j = endOld + 1; i < n; i += 1, j += 1) out[i] = oldNodes[j];
       if (start > endOld) {
         if (start <= endNew) appendAll(parent, next, out, start, endNew + 1, make, oldNodes[endOld + 1] ?? null);
         return;
@@ -301,9 +335,15 @@ export function list(parent, row, key, initial = []) {
       while (el && el.parentNode !== parent) el = el.parentNode;
       return el ? /** @type {any} */ (el).$i : undefined;
     },
-    /** The element showing the item with this key. @param {unknown} k @returns {Element | undefined} */
+    /**
+     * The element showing the item with this key. It remembers the last one it found, so a render
+     * that asks for the same key every time it runs (the selected row) does not search the list.
+     * @param {unknown} k @returns {Element | undefined}
+     */
     node(k) {
-      for (let i = 0; i < items.length; i += 1) if (key(items[i]) === k) return nodes[i];
+      if (found && found.parentNode === parent && key(/** @type {any} */ (found).$i) === k) return found;
+      found = undefined;
+      for (let i = 0; i < items.length; i += 1) if (key(items[i]) === k) return (found = nodes[i]);
       return undefined;
     },
     get items() {
@@ -385,9 +425,9 @@ export function mount(root, setup, { signal = new AbortController().signal } = {
   const renders = typeof component.render === "function" ? [component.render] : Object.values(component.render ?? {});
   for (const run of renders) {
     /** @type {Render} */
-    const r = { run, order: (order += 1), deps: [] };
+    const r = { run, order: (order += 1), stamp: 0, deps: [] };
     track(r);
-    signal.addEventListener("abort", () => { for (const set of r.deps) set.delete(r); dirty.delete(r); }, { once: true });
+    signal.addEventListener("abort", () => { for (const by of r.deps) by.delete(r); r.deps.length = 0; dirty.delete(r); }, { once: true });
   }
   for (const type of (root.getAttribute("data-events") ?? "").split(" ")) {
     if (!type) continue;
