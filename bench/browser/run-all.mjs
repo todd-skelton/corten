@@ -24,7 +24,7 @@ const step = (...args) => {
 };
 step("build.mjs");
 step("run.mjs", "--iterations", "15", "--rounds", "2", "--apps", "vanilla,view,solid,react,svelte,vue,remix", "--out", join(dir, "ops.json"));
-step("ssr.mjs", "--loads", "15", "--apps", "vanilla-ssr,view-ssr,solid-ssr,react-ssr,svelte-ssr,vue-ssr,remix-ssr", "--out", join(dir, "ssr.json"));
+step("ssr.mjs", "--loads", "30", "--apps", "vanilla-ssr,view-ssr,solid-ssr,react-ssr,svelte-ssr,vue-ssr,remix-ssr", "--out", join(dir, "ssr.json"));
 step("dashboard.mjs", "--iterations", "30", "--apps", "dashboard-vanilla,dashboard-view,dashboard-solid,dashboard-react,dashboard-svelte,dashboard-vue,dashboard-remix", "--out", join(dir, "dashboard.json"));
 step("summarize.mjs", round);
 console.log(new Date().toISOString(), failed ? `browser suite finished with ${failed} failed steps` : "browser suite done");

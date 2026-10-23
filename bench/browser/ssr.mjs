@@ -66,23 +66,26 @@ async function interact(page, selector) {
 const server = await serve(PORT);
 const browser = await chromium.launch({ headless: true });
 const out = { date: new Date().toISOString(), chromium: browser.version(), loads: LOADS, apps: {} };
+// Loads take turns between the apps (each round in the other order), so a slow stretch of the
+// machine falls on every app instead of on the one whose loads were running.
+const seen = Object.fromEntries(APPS.map((app) => [app, { runs: [], heapKB: 0, errors: 0, changed: { removed: 0, added: 0 } }]));
 for (const app of APPS) {
-  const html = readFileSync(join(here, "out", app, "index.html"));
-  const runs = [];
-  let heapKB = 0;
-  let errors = 0;
+  const s = seen[app];
   const counted = await browser.newContext();
   const countPage = await counted.newPage();
-  countPage.on("pageerror", () => errors++);
+  countPage.on("pageerror", () => s.errors++);
   await countPage.addInitScript(watch);
   await countPage.goto(`http://127.0.0.1:${PORT}/${app}/`);
   await countPage.waitForFunction(() => document.documentElement.dataset.ready);
-  const changed = await countPage.evaluate(() => (/** @type {any} */ (window).__rows));
+  s.changed = await countPage.evaluate(() => (/** @type {any} */ (window).__rows));
   await counted.close();
-  for (let i = 0; i < LOADS; i++) {
+}
+for (let i = 0; i < LOADS; i++) {
+  for (const app of i % 2 ? [...APPS].reverse() : APPS) {
+    const s = seen[app];
     const context = await browser.newContext();
     const page = await context.newPage();
-    page.on("pageerror", () => errors++);
+    page.on("pageerror", () => s.errors++);
     await page.addInitScript(frames);
     await page.goto(`http://127.0.0.1:${PORT}/${app}/`);
     await page.waitForFunction(() => document.documentElement.dataset.ready);
@@ -100,7 +103,7 @@ for (const app of APPS) {
     if (i === 0) {
       const cdp = await context.newCDPSession(page);
       for (let k = 0; k < 3; k++) await cdp.send("HeapProfiler.collectGarbage");
-      heapKB = round((await cdp.send("Runtime.getHeapUsage")).usedSize / 1024, 0);
+      s.heapKB = round((await cdp.send("Runtime.getHeapUsage")).usedSize / 1024, 0);
     }
     const select = await interact(page, "tbody tr:nth-child(2) a.select");
     const ok1 = await page.evaluate(() => (document.querySelector("tbody tr:nth-child(2)").classList.contains("danger") || document.querySelector("tbody tr:nth-child(2)").hasAttribute("data-selected")));
@@ -109,9 +112,13 @@ for (const app of APPS) {
     const remove = await interact(page, "tbody tr:nth-child(4) a.remove");
     const ok3 = await page.evaluate(() => document.querySelectorAll("tbody tr").length === 999);
     if (!(ok1 && ok2 && ok3)) throw new Error(`${app}: interactions did not take effect (${ok1} ${ok2} ${ok3})`);
-    runs.push({ ...start, select, update, remove });
+    s.runs.push({ ...start, select, update, remove });
     await context.close();
   }
+}
+for (const app of APPS) {
+  const { runs, heapKB, errors, changed } = seen[app];
+  const html = readFileSync(join(here, "out", app, "index.html"));
   out.apps[app] = {
     htmlB: html.length,
     htmlGzipB: gzipSync(html, { level: 9 }).length,
