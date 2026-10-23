@@ -17,7 +17,7 @@ const solidJsx = (options) => ({
   setup(b) {
     b.onLoad({ filter: /\.jsx$/ }, async (args) => {
       const source = readFileSync(args.path, "utf8");
-      const result = await transformAsync(source, { filename: args.path, presets: [["babel-preset-solid", options]] });
+      const result = await transformAsync(source, { filename: args.path, cwd: here, presets: [["babel-preset-solid", options]] });
       return { contents: result.code, loader: "js" };
     });
   },
