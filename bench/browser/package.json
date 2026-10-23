@@ -1,0 +1,18 @@
+{
+  "//": "Browser benchmark of the state() prototype against plain JavaScript, Solid and Remix 3. Bench-only dependencies; the framework does not depend on any of them.",
+  "name": "corten-browser-bench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node serve.mjs",
+    "bench": "node run.mjs"
+  },
+  "devDependencies": {
+    "@babel/core": "7.28.5",
+    "babel-preset-solid": "1.9.16",
+    "esbuild": "0.28.2",
+    "remix": "3.0.0",
+    "solid-js": "1.9.17"
+  }
+}

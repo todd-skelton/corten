@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-23T01:01:30.192Z",
+  "chromium": "148.0.7778.96",
+  "loads": 15,
+  "apps": {
+    "vanilla-ssr": {
+      "htmlB": 266571,
+      "htmlGzipB": 14781,
+      "readyMs": 187.9,
+      "takeoverMs": 2.3,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 1182,
+      "firstSelectMs": 0.6,
+      "firstUpdateMs": 0.9,
+      "firstRemoveMs": 0.2,
+      "errors": 0
+    },
+    "state-ssr": {
+      "htmlB": 312837,
+      "htmlGzipB": 15257,
+      "readyMs": 187,
+      "takeoverMs": 4.6,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 1210,
+      "firstSelectMs": 1.1,
+      "firstUpdateMs": 1.7,
+      "firstRemoveMs": 0.7,
+      "errors": 0
+    },
+    "solid-ssr": {
+      "htmlB": 292628,
+      "htmlGzipB": 18805,
+      "readyMs": 253.3,
+      "takeoverMs": 24.2,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 2235,
+      "firstSelectMs": 1.9,
+      "firstUpdateMs": 1.7,
+      "firstRemoveMs": 1.4,
+      "errors": 0
+    },
+    "remix-ssr": {
+      "htmlB": 275485,
+      "htmlGzipB": 14963,
+      "readyMs": 373.9,
+      "takeoverMs": 186.9,
+      "rowsAtReady": 1000,
+      "rowsRemoved": 0,
+      "rowsAdded": 0,
+      "heapKB": 3940,
+      "firstSelectMs": 26,
+      "firstUpdateMs": 22.9,
+      "firstRemoveMs": 21,
+      "errors": 0
+    }
+  }
+}
