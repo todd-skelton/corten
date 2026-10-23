@@ -12,8 +12,10 @@ server-sent events. One handler serves the browser, native apps and AI agents.
 - **Fast on the server.** 23,086 rendered pages a second on one CPU, 5.1x ASP.NET Core, the
   fastest of thirteen other frameworks, and 1.5 MiB of memory after the first request
   (measured, [below](#performance)).
-- **Light in the browser.** A 5.0 KB (brotli) runtime; the benchmark item page loads 6.2 KB of
-  JavaScript (gzip, measured). No WASM, no virtual DOM, no hydration.
+- **Light in the browser.** A 5.2 KB (brotli) runtime; the benchmark item page loads 6.8 KB of
+  JavaScript (gzip, measured). No WASM, no virtual DOM, no hydration: a script takes over 1,000
+  server-rendered rows in 6.6 ms, against 20-94 ms for Solid, Svelte, Vue, React and Remix
+  (measured, [below](#client-heavy-screens)).
 - **Typed end to end.** Routes, form fields, CSS classes, handler calls and the elements they
   take, events and messages are Rust types. TypeScript types for scripts are generated from Rust.
 - **Works without JavaScript.** Links are links and forms post; scripts improve a page but never
@@ -182,28 +184,34 @@ React components, or for a pure static site (a static site generator is simpler)
 
 ## Performance
 
-The same item page (listings table, offers, a form that patches) and the same item as JSON in
-fourteen frameworks, each with its usual production settings on one CPU and 1 GiB, measured on one
-DigitalOcean c-8 droplet (Xeon Platinum 8168) on 2026-10-23, one run (r4). Requests a second are at 64
-users; "failed" means the app could not serve the fixed rate (or start) without tuning. Method,
-every table and the caveats are in [bench/fullstack](bench/fullstack/README.md).
+Measured on DigitalOcean c-8 droplets on 2026-10-23, one run each: the server table on a Xeon
+Platinum 8168 (round r4), the browser tables on a Xeon Platinum 8280 (round browser-1). The
+method, every table and the caveats are in [bench/fullstack](bench/fullstack/README.md) and
+[bench/browser](bench/browser/README.md).
 
-| | Pages/s, no database | JSON/s, no database | Pages/s, item API | Process start to first page | Memory after first request | JavaScript, gzip |
-|---|---|---|---|---|---|---|
-| **Corten** | **18,043** | **18,934** | **2,142** | **7.6 ms** | **1.074 MiB** | **6.2 KB** |
-| ASP.NET Core 10 | 3,385 | 11,715 | 915 | 860 ms | 30.82 MiB | 17.0 KB |
-| Phoenix 1.8 | 1,290 | 1,839 | 289 | 1.6 s | 125.3 MiB | 46.2 KB |
-| Leptos 0.8 | 1,282 | 15,952 | 631 | 8.8 ms | 1.48 MiB | 7.0 KB + 287 KB WASM |
-| Astro 7 | 1,097 | 1,802 | 418 | 409 ms | 36.85 MiB | 9.2 KB |
-| Spring Boot 4.1 | 1,050 | 7,338 | 433 | 9.2 s | 134.6 MiB | 17.0 KB |
-| SvelteKit 3 | 757 | 3,088 | 298 | 203 ms | 23.98 MiB | 37.0 KB |
-| TanStack Start | 578 | 3,416 | 283 | 244 ms | 26.41 MiB | 110.9 KB |
-| React Router 7 | 455 | 2,159 | 242 | 346 ms | 31.84 MiB | 98.6 KB |
-| Rails 8.1 | 393 | 829 | 260 | 1.4 s | 63.91 MiB | 40.6 KB |
-| Nuxt 4 | failed (266) | 6,998 | 181 | 348 ms | 35.29 MiB | 73.7 KB |
-| Django 6.1 | failed (228) | 1,126 | 149 | 1.4 s | 62.12 MiB | 17.0 KB |
-| Next.js 16 | failed (156) | 1,025 | failed (107) | 793 ms | 51.23 MiB | 136.1 KB |
-| Laravel 13 | failed | failed | failed (73) | 990 ms | 96.8 MiB | 84.3 KB |
+### On the server
+
+The same item page (listings table, offers, a form that patches) and the same item as JSON in
+fourteen frameworks, each with its usual production settings on one CPU and 1 GiB. Requests a
+second are at 64 users; "failed" means the app could not serve the fixed rate (or start) without
+tuning.
+
+| | Pages/s, no database | JSON/s, no database | Pages/s, item API | Process start to first page | Memory after first request |
+|---|---|---|---|---|---|
+| **Corten** | **18,043** | **18,934** | **2,142** | **7.6 ms** | **1.074 MiB** |
+| ASP.NET Core 10 | 3,385 | 11,715 | 915 | 860 ms | 30.82 MiB |
+| Phoenix 1.8 | 1,290 | 1,839 | 289 | 1.6 s | 125.3 MiB |
+| Leptos 0.8 | 1,282 | 15,952 | 631 | 8.8 ms | 1.48 MiB |
+| Astro 7 | 1,097 | 1,802 | 418 | 409 ms | 36.85 MiB |
+| Spring Boot 4.1 | 1,050 | 7,338 | 433 | 9.2 s | 134.6 MiB |
+| SvelteKit 3 | 757 | 3,088 | 298 | 203 ms | 23.98 MiB |
+| TanStack Start | 578 | 3,416 | 283 | 244 ms | 26.41 MiB |
+| React Router 7 | 455 | 2,159 | 242 | 346 ms | 31.84 MiB |
+| Rails 8.1 | 393 | 829 | 260 | 1.4 s | 63.91 MiB |
+| Nuxt 4 | failed (266) | 6,998 | 181 | 348 ms | 35.29 MiB |
+| Django 6.1 | failed (228) | 1,126 | 149 | 1.4 s | 62.12 MiB |
+| Next.js 16 | failed (156) | 1,025 | failed (107) | 793 ms | 51.23 MiB |
+| Laravel 13 | failed | failed | failed (73) | 990 ms | 96.8 MiB |
 
 With the item API every request fetches and parses about 55 KB of JSON, which bounds every app.
 Corten reads only the fields the page uses from that response, not a `serde_json::Value`, and
@@ -214,6 +222,69 @@ its HTML page does (133,000 against 124,000 user-mode instructions a request; Le
 in r3; instruction counts held. Pushing live updates
 is measured in [bench/live](bench/live/README.md): at 10,000 open connections on one core, only
 Corten and Leptos delivered all 100,000 messages a second.
+
+### In the browser
+
+The same item page, loaded cold in Chromium 148 from another site, median of 10 loads each. The
+phone is the Lighthouse profile: 4x CPU slowdown, 150 ms round trip, 1.6 Mbps down.
+"Interactive" is when the page's own code says it is ready (hydration finished, or handlers
+connected); client navigation is the home page to the item page. Every app ran on one core with
+items from the item API.
+
+| | Phone: interactive | Phone: largest paint | Phone: client navigation | Desktop: interactive | Desktop: client navigation | JS heap | JavaScript, gzip |
+|---|---|---|---|---|---|---|---|
+| ASP.NET Core 10 | 430 ms | 404 ms | 245 ms | 45 ms | 16 ms | 1.5 MB | 17.0 KB |
+| Django 6.1 | 439 ms | 408 ms | 244 ms | 47 ms | 21 ms | 1.5 MB | 17.0 KB |
+| **Corten** | **454 ms** | **452 ms** | **200 ms** | **54 ms** | **13 ms** | **1.4 MB** | **6.8 KB** |
+| Astro 7 | 604 ms | 264 ms | 244 ms | 52 ms | 18 ms | 1.4 MB | 9.2 KB |
+| Spring Boot 4.1 | 612 ms | 424 ms | 246 ms | 66 ms | 39 ms | 1.5 MB | 17.0 KB |
+| SvelteKit 3 | 846 ms | 472 ms | 274 ms | 102 ms | 22 ms | 2.1 MB | 37.0 KB |
+| Laravel 13 | 885 ms | 416 ms | 217 ms | 76 ms | 25 ms | 2 MB | 84.3 KB |
+| Phoenix 1.8 | 947 ms | 400 ms | 134 ms | 110 ms | 17 ms | 2.1 MB | 46.2 KB |
+| React Router 7 | 1,069 ms | 432 ms | 265 ms | 167 ms | 32 ms | 2.6 MB | 98.6 KB |
+| Rails 8.1 | 1,153 ms | 412 ms | 255 ms | 60 ms | 26 ms | 1.9 MB | 40.6 KB |
+| Next.js 16 | 1,413 ms | 404 ms | 453 ms | 150 ms | 89 ms | 3.1 MB | 136.1 KB |
+| Nuxt 4 | 1,496 ms | 432 ms | 288 ms | 91 ms | 25 ms | 2.7 MB | 73.7 KB |
+| Leptos 0.8 | 1,848 ms | 416 ms | 254 ms | 109 ms | 25 ms | 1.7 MB | 7.0 KB + 287 KB WASM |
+| TanStack Start | 2,332 ms | 420 ms | 351 ms | 118 ms | 28 ms | 2.9 MB | 110.9 KB |
+
+On a phone, Corten is interactive with the apps that ship only htmx (ASP.NET Core, Django), in a
+third of Next.js's time and a fifth of TanStack Start's. Its client navigation is the fastest
+after Phoenix's, which reuses an open LiveView socket. Its largest paint (452 ms) is the slowest
+of those three; Astro's is the fastest (264 ms).
+
+### Client-heavy screens
+
+A table of rows a script changes, in Chromium 148 on Linux. Each framework's app is written the
+way its keyed [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark) entry
+is, built for production, and checked after every operation, so an app that skips work fails
+instead of looking fast. Times run from the click to the DOM being updated (the frames that lay
+it out and paint it are in the results): the median of 15, the slower of two rounds, or the
+range when they disagree. Takeover runs from the HTML being parsed to the app marking itself
+ready, for 1,000 rows the server rendered, less any frame the browser paints in between; every
+framework kept the server's rows. Plain JavaScript is the floor: hand-written DOM code.
+
+| | **Corten (views)** | Solid 1.9 | Svelte 5 | Vue 3.5 | React 19 | Remix 3 | Plain JS (floor) |
+|---|---|---|---|---|---|---|---|
+| Take over 1,000 server-rendered rows | **6.6 ms** | 20.3 ms | 29.4 ms | 31.3 ms | 75.6 ms | 94.2 ms | 1.5 ms |
+| First click on a taken-over row | **2.0 ms** | 1.3 ms | 3.3 ms | 2.8 ms | 6.0 ms | 18.7 ms | 0.4 ms |
+| Change 1 row of 10,000 | **0.3 ms** | 0.3 ms | 1.3 ms | 4.5 ms | 7.2-25.6 ms | 118 ms | 0.2 ms |
+| Change 100 rows of 10,000 | **1.0 ms** | 0.9 ms | 1.9 ms | 5.4 ms | 9.7-14.6 ms | 115 ms | 0.8 ms |
+| Update every 10th of 1,000 | **0.8 ms** | 0.8 ms | 0.8 ms | 1.5 ms | 3.0 ms | 10.4 ms | 0.5 ms |
+| Select a row | **0.2 ms** | 0.3 ms | 1.5 ms | 0.8 ms | 1.3 ms | 11.0 ms | 0.2 ms |
+| Swap two rows | **0.3 ms** | 1.0 ms | 1.0 ms | 0.9 ms | 11.1 ms | 11.3 ms | 0.2 ms |
+| Create 1,000 rows | **8.9 ms** | 6.6 ms | 7.5 ms | 13.0 ms | 16.7 ms | 17.4 ms | 5.8 ms |
+| Create 10,000 rows | **87.5 ms** | 60.1 ms | 92.1 ms | 126 ms | 376 ms | 187 ms | 56.1 ms |
+| Dashboard: 200 prices tick | **0.7 ms** | 1.3 ms | 1.4 ms | 1.4 ms | 1.1 ms | 18.7 ms | 0.6 ms |
+| Memory per row | **116 B** | 928 B | 1,229 B | 1,875 B | 2,036 B | 2,416 B | 165 B |
+| JavaScript, gzip | **8.5 KB** | 6.8 KB | 20.6 KB | 26.2 KB | 68.4 KB | 28.4 KB | 1.1 KB |
+
+Corten's rows are server-rendered `#[component(view)]` components, so taking them over is reading
+the page rather than rebuilding it, and a row costs 116 bytes of JavaScript memory against
+928-2,416 for the frameworks, which keep each row's data and bookkeeping in JavaScript. Creating
+thousands of rows in the browser is where it trails Solid and plain JavaScript (87.5 ms against
+60.1 and 56.1 ms for 10,000); that gap has not been profiled yet. React's single-row change
+ranged from 7.2 to 25.6 ms between the two rounds.
 
 ## Documentation
 

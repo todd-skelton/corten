@@ -191,6 +191,14 @@ Corten is pre-1.0, so any minor version may change the API.
     Handlers are in when the page's scripts run, before `DOMContentLoaded`: on a page of 1,000
     server-rendered rows the time from the parser finishing to the handlers being ready went from
     75 ms to under 10 ms.
+23. `bench/browser` compares Corten's views with React 19, Svelte 5, Vue 3.5, Solid and Remix 3,
+    client-rendered, server-rendered and hydrated, and on the dashboard; `run-all.mjs` runs a
+    round and `summarize.mjs` prints the README's client table. Takeover leaves out the frames
+    Chromium paints between parsing and the app being ready (about 100 ms on some loads and none
+    on others, for every app), which had made it bimodal. `droplet.mjs --suite browser` runs
+    `bench/fullstack`'s browser pass and then `bench/browser` on a droplet. The README's
+    Performance section has a browser table and a client-heavy table from that run
+    (`browser-1`).
 
 ### Fixed
 

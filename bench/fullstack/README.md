@@ -248,6 +248,39 @@ Corten's page 123,693 against 123,665 in r3, Leptos's 2,725,430 against 2,727,19
 1,086,010 against 1,124,519; Spring's JSON 1,271,081 against 1,331,933. So counts compare across
 rounds, and requests a second only within one.
 
+### Browser pass on the views runtime (round browser-1, 2026-10-23)
+
+`droplet.mjs browser-1 --suite browser` reran parity, bytes and the browser timing for all
+fourteen apps on a fresh c-8 droplet (Xeon Platinum 8280), with Corten at the commit that loads
+handler modules as module scripts and serves views; the other apps are unchanged from r3. Every
+browser run worked. Corten's item page now loads 6.8 KB of
+JavaScript (gzip, four files) against 6.2 KB in r3; the rest are within 0.1 KB of r3. All rows
+are in [results/browser-1](results/browser-1); the README's browser table comes from this round.
+A selection, median (p90):
+
+| App | Interactive | LCP | Blocking time | Form action | Client navigation | JS heap |
+|---|---|---|---|---|---|---|
+| Desktop | | | | | | |
+| corten | 54 (63) ms | 64 ms | 0 ms | 75 ms | 13 (13) ms | 1.4 MB |
+| aspnet | 45 (52) ms | 72 ms | 0 ms | 77 ms | 16 (20) ms | 1.5 MB |
+| django | 47 (51) ms | 68 ms | 0 ms | 76 ms | 21 (21) ms | 1.5 MB |
+| astro | 52 (57) ms | 60 ms | 0 ms | 75 ms | 18 (20) ms | 1.4 MB |
+| nextjs | 150 (160) ms | 72 ms | 0 ms | 85 ms | 89 (144) ms | 3.2 MB |
+| leptos | 109 (127) ms | 100 ms | 0 ms | 74 ms | 25 (25) ms | 1.7 MB |
+| tanstack-start | 118 (123) ms | 68 ms | 0 ms | 84 ms | 28 (30) ms | 2.9 MB |
+| Mobile (4x CPU, 150 ms RTT, 1.6 Mbps) | | | | | | |
+| corten | 454 (458) ms | 452 ms | 6 ms | 290 ms | 200 (202) ms | 1.4 MB |
+| aspnet | 430 (436) ms | 404 ms | 4 ms | 301 ms | 245 (248) ms | 1.5 MB |
+| django | 439 (443) ms | 408 ms | 3 ms | 302 ms | 244 (252) ms | 1.5 MB |
+| astro | 604 (622) ms | 264 ms | 0 ms | 326 ms | 244 (246) ms | 1.4 MB |
+| nextjs | 1413 (1443) ms | 404 ms | 169 ms | 312 ms | 453 (462) ms | 3.1 MB |
+| leptos | 1848 (1858) ms | 416 ms | 89 ms | 307 ms | 254 (258) ms | 1.7 MB |
+| tanstack-start | 2332 (2346) ms | 420 ms | 69 ms | 302 ms | 351 (357) ms | 2.9 MB |
+
+Against r3, which ran on the same CPU model (r4 ran on a Xeon Platinum 8168), one run each:
+Corten's desktop interactive 54 ms (r3: 58), phone 454 ms (r3: 442), client navigation 13 and
+200 ms (r3: 13 and 194). Parity passed on 16 pages for every app.
+
 ### Corten's item API path
 
 Corten's item-API page fell from 1,290 a second in r2 to 1,175 in r3 as the unchanged apps fell
