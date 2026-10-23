@@ -67,8 +67,8 @@ A ref on several kinds of element is typed as one they all are: `ref={tab as HTM
 `data-on="click:offer_list.showAll(@rows,@rest,$t)"`. One listener per event type on the
 document runs the handlers, innermost element first, and `event.stopPropagation()` stops the
 walk as it would stop bubbling. Nothing runs per element until an event reaches it. Script
-modules are compiled into the binary, served at versioned URLs, preloaded on the pages that
-render them and imported when markup that names them joins the page. List each component once,
+modules are compiled into the binary, served at versioned URLs, loaded as module scripts by the
+pages that render them and imported when markup that names them joins later. List each component once,
 `App::new(routes).components(&[OfferList])`.
 
 ## Components and their roots
@@ -214,11 +214,14 @@ an app's own: `[package.metadata.corten] scripts = "ui"` in its `Cargo.toml` mak
 
 ## When handlers run
 
-A handler runs while its event is dispatched, so it can call `event.preventDefault()`. Markup
-the runtime inserts (a navigation, a patch, a live fragment) waits for the modules its handlers
-name, and modules named inside a `<template>` load with the page. On the first page, an event
-that arrives before its module is loaded gets the browser's default and no handler, as without
-JavaScript. `on:connect` waits for its module instead.
+A handler runs while its event is dispatched, so it can call `event.preventDefault()`. The
+first page loads the modules its handlers name as module scripts of its own, right after the
+runtime; Corten ends each component's module with a line that hands its exports to the runtime,
+so its handlers are in when the browser runs the page's scripts, before `DOMContentLoaded`, with
+no `import()` to wait for. Markup the runtime inserts (a navigation, a patch, a live fragment)
+waits for the modules its handlers name, and modules named inside a `<template>` load with the
+page. On the first page, an event that arrives before its module is in gets the browser's
+default and no handler, as without JavaScript. `on:connect` waits for its module instead.
 
 ## State
 
@@ -272,8 +275,9 @@ fn Grid<'a>(items: &'a [Item]) -> impl Render {
 ```js
 // grid.js
 import { Row, rows } from "corten/views";
+/** @import { Holds } from "corten/views" */
 
-/** @param {HTMLAnchorElement} link @param {HTMLTableSectionElement} body */
+/** @param {HTMLAnchorElement} link @param {Holds<Row, HTMLTableSectionElement>} body */
 export function select(link, body) {
   const list = rows(body, Row); // body's rows, the same list every time
   const row = list.of(link); // the row that was clicked
@@ -288,19 +292,27 @@ else, and a handler that gets the list's parent (and the `<template>`, to make n
 
 | `rows()` | |
 |---|---|
-| `at(i)`, `of(event.target)`, `length`, iteration | the views of the rows |
+| `at(i)`, `get(key)`, `of(event.target)`, `indexOf(view)`, `length`, iteration | the views of the rows |
 | `push(items)`, `remove(view)`, `swap(i, j)`, `clear()` | change the rows; new ones are clones of the template's row, filled with their data |
 | `replace(items)` | shows exactly `items`: rows with a key it had keep their element and are filled again |
 
 One parent has one list, whichever handler asks, and it notices rows changed without it (a
 server patch, a sort) the next time it is used.
 
+The parameter's type says whose rows it holds: `Holds<Row, HTMLTableSectionElement>` (or
+`Holds<Row, HTMLTemplateElement>` for the template). `tsc` then rejects `rows(body, Card)` and
+`rows(plainElement, Row)`, and the Rust compiler rejects passing a ref whose element the markup
+does not fill with `Row`s only: the ref must be on the element whose children are a loop of
+`<Row .. />` (or on a `<template>` holding one `<Row .. />`), with nothing else beside them. A
+component that takes such a ref as a prop names its type
+`Ref<el::HTMLTableSectionElement, RowsOf<{ view_id("Row") }>>`.
+
 | In the markup | In the view |
 |---|---|
 | `{label}`, the only child of an element | `label`: reads and writes that element's text |
 | `data-selected={selected}`, an attribute's whole value | `selected`: the attribute (a `bool` adds or removes it) |
 | `value={qty}` or `checked={on}` on an `<input>` | `qty`, `on`: what the input shows now (the user's edit), and its default |
-| `key={id}` on the root | `Row.key(el)` / `Row.keyOf(data)`, what `rows()` keys by |
+| `key={id}` on the root | `Row.key(el)` and `Row.keyOf(data)`, what `rows()` keys by; when `id` is also used outside holes (a child's prop, an element id), only `Row.key(el)`: the server makes the rows, and `rows()` has no `push` or `replace` |
 | a parameter used any other way (`"Label: "{label}`, inside a loop, in a `class`), or a `Ref` | nothing: a script could not write it alone |
 
 Holes are found when the crate compiles, on elements whose place is fixed (no loop, condition,

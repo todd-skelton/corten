@@ -206,15 +206,13 @@ pub fn view_of(body: &Group, class: &str, params: &[(String, Vec<TokenTree>)], s
         Attr::Expr(name, expr) if name == "data-key" => Some(param_of(expr, &names)),
         _ => None,
     });
-    let key = match key {
-        None => None,
-        Some(Some(i)) if props.iter().any(|(p, _)| *p == i) => Some(i),
-        Some(_) => {
-            return err(
-                span,
-                "a view's key={..} is one of its parameters, and shown only where a script can write it (an element's whole text or an attribute's whole value)",
-            )
-        }
+    // A key that is one of its holes lets scripts make rows (`keyOf` and `fill` give a new row its
+    // key); a key the markup also shows elsewhere (a child's prop, an id) is fixed, and the server
+    // makes the rows.
+    let (key, made) = match key {
+        None => (None, false),
+        Some(Some(i)) => (Some(i), props.iter().any(|(p, _)| *p == i)),
+        Some(None) => return err(span, "a view's key={..} is one of its parameters, alone (key={id})"),
     };
 
     let access = |base: &str, path: &[usize]| {
@@ -228,8 +226,10 @@ pub fn view_of(body: &Group, class: &str, params: &[(String, Vec<TokenTree>)], s
         s
     };
     let mut js = format!("export class {class} {{\n  constructor(el) {{ this.el = el; }}\n");
+    let Node::Element { name: root_tag, .. } = root else { unreachable!() };
+    let root_el = crate::dom::element(root_tag);
     let mut ts = format!(
-        "  /** The view of #[component(view)] {class}: its holes, read from and written to the page. */\n  export class {class} {{\n    constructor(el: Element);\n    readonly el: Element;\n"
+        "  /** The view of #[component(view)] {class}: its holes, read from and written to the page. */\n  export class {class} {{\n    constructor(el: Element);\n    readonly el: {root_el};\n"
     );
     let mut data = Vec::new();
     // `fill` writes the holes itself: going through a view and its setters cost about 1.5 µs a
@@ -285,12 +285,14 @@ pub fn view_of(body: &Group, class: &str, params: &[(String, Vec<TokenTree>)], s
     ts.push_str(&format!("    /** Writes every hole of `el` (a {class}'s root) from `data`. */\n    static fill(el: Element, data: {data}): void;\n"));
     if let Some(i) = key {
         let key = &params[i].0;
-        js.push_str(&format!(
-            "  static key(el) {{ return el.getAttribute(\"data-key\") ?? \"\"; }}\n  static keyOf(data) {{ return String(data.{key}); }}\n"
-        ));
+        js.push_str("  static key(el) { return el.getAttribute(\"data-key\") ?? \"\"; }\n");
         ts.push_str(&format!(
-            "    /** The key of a {class}'s root (its key={{{key}}}). */\n    static key(el: Element): string;\n    static keyOf(data: {data}): string;\n"
+            "    /** The key of a {class}'s root (its key={{{key}}}). */\n    static key(el: Element): string;\n"
         ));
+        if made {
+            js.push_str(&format!("  static keyOf(data) {{ return String(data.{key}); }}\n"));
+            ts.push_str(&format!("    static keyOf(data: {data}): string;\n"));
+        }
     }
     js.push_str("}\n");
     ts.push_str("  }\n");
@@ -964,6 +966,13 @@ impl Gen {
                         Attr::Ref(expr, wide) => {
                             let el: TokenStream =
                                 format!("::corten::script::el::{}", crate::dom::element(name)).parse().expect("a path parses");
+                            // What the element holds: one view's rows, for a handler's Holds<Row, ..>.
+                            let holds: TokenStream = match rows_of(children) {
+                                Some(view) => format!("::corten::script::RowsOf<{}u64>", crate::script::view_id(&view)),
+                                None => "::corten::script::NoRows".to_string(),
+                            }
+                            .parse()
+                            .expect("a path parses");
                             match wide {
                                 // `ref={trigger as HTMLElement}`: a ref on several kinds of element, typed as one they all are.
                                 Some(wide) => {
@@ -976,13 +985,13 @@ impl Gen {
                                         })
                                         .collect();
                                     self.code(q(
-                                        "::corten::script::__private::ref_attr_as::<__A1, __A2>(&(__A0), __OUT);",
-                                        &[expr.clone(), el, ty],
+                                        "::corten::script::__private::ref_attr_as::<__A1, __A2, __A3>(&(__A0), __OUT);",
+                                        &[expr.clone(), el, ty, holds],
                                     ))
                                 }
                                 None => self.code(q(
-                                    "::corten::script::__private::ref_attr::<__A1>(&(__A0), __OUT);",
-                                    &[expr.clone(), el],
+                                    "::corten::script::__private::ref_attr::<__A1, __A2>(&(__A0), __OUT);",
+                                    &[expr.clone(), el, holds],
                                 )),
                             }
                         }
@@ -1064,6 +1073,31 @@ impl Gen {
                 }
             }
         }
+    }
+}
+
+/// The view every child of an element is, when the markup puts only components of one name in it
+/// (`<Row .. />`, directly or as the whole body of a `for`, `if` or `match`): its name, the last
+/// segment of its path, which is also its class in `corten/views`.
+fn rows_of(children: &[Node]) -> Option<String> {
+    fn walk(nodes: &[Node], found: &mut Option<String>) -> bool {
+        nodes.iter().all(|node| match node {
+            Node::Let(_) => true,
+            Node::Text(text) => text.trim().is_empty(),
+            Node::Component { path, .. } => {
+                let Some(TokenTree::Ident(last)) = path.clone().into_iter().last() else { return false };
+                let name = last.to_string();
+                found.get_or_insert_with(|| name.clone()) == &name
+            }
+            Node::Block { bodies, .. } => bodies.iter().all(|body| walk(body, found)),
+            Node::Element { .. } | Node::Markup(_) | Node::Expr(_) => false,
+        })
+    }
+    let mut found = None;
+    if walk(children, &mut found) {
+        found
+    } else {
+        None
     }
 }
 

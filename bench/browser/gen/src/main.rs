@@ -117,4 +117,8 @@ fn main() {
     let views = [Row, Card];
     write("views.js", corten::script::views_module(&views).expect("one view per name").expect("Row is a view"));
     write("views.d.ts", Types::new().components(&views).typescript());
+    // What Corten appends to each handler module it serves: the line that registers it.
+    for module in ["bench", "dashboard"] {
+        write(&format!("{module}.footer.js"), corten::script::served(module, ""));
+    }
 }

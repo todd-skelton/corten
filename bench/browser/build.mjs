@@ -50,11 +50,12 @@ const page = (title, main, head = "", events = "") => `<!doctype html>
 <body>${main.startsWith("<main") ? main : `<main id="main"${events ? ` data-events="${events}"` : ""}>${main}</main>`}</body></html>
 `;
 /**
- * A page the way Corten serves one: the import map, the runtime, and a preload of the handler
- * module the markup names (the runtime imports it from the scripts directory).
+ * A page the way Corten serves one: the import map, the runtime, the handler module the markup
+ * names as a module script of the page (it registers with the runtime as it runs), and a preload
+ * of the views it imports.
  */
 const cortenPage = (title, main, module) => `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${title}</title><link rel="stylesheet" href="../app.css"><script type="importmap">{"imports":{"corten":"./runtime.js","corten/views":"./views.js"}}</script><meta name="corten-scripts" content="./scripts/"><link rel="modulepreload" href="./scripts/${module}.js"><link rel="modulepreload" href="./views.js"><script type="module" src="./runtime.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><title>${title}</title><link rel="stylesheet" href="../app.css"><script type="importmap">{"imports":{"corten":"./runtime.js","corten/views":"./views.js"}}</script><meta name="corten-scripts" content="./scripts/"><script type="module" src="./runtime.js"></script><script type="module" src="./scripts/${module}.js"></script><link rel="modulepreload" href="./views.js"></head>
 <body>${main}</body></html>
 `;
 
@@ -118,7 +119,9 @@ for (const app of apps) {
       bundle: true, format: "esm", minify: process.env.MINIFY !== "0", target: "es2022", legalComments: "none", write: false,
       external: ["corten", "corten/views"],
     });
-    const code = script.outputFiles[0].contents;
+    // Then the line Corten appends to every handler module it serves (written by gen/).
+    const footer = readFileSync(join(gen, "view", `${app.module}.footer.js`), "utf8");
+    const code = Buffer.from(script.outputFiles[0].text.replace(/\n?$/, "\n") + footer.replace(/^\n/, ""));
     mkdirSync(join(dir, "scripts"), { recursive: true });
     writeFileSync(join(dir, "runtime.js"), runtime);
     writeFileSync(join(dir, "views.js"), views);

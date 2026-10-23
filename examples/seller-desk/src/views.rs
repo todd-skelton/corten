@@ -15,8 +15,8 @@ pub use inventory_grid::InventoryGrid;
 pub use inventory_row::{InventoryRow, RowId};
 pub use price_cell::PriceCell;
 
-/// What the app lists in `App::components`: the scripts and the stylesheets.
-pub const COMPONENTS: &[Component] = &[InventoryGrid, PriceCell];
+/// What the app lists in `App::components`: the scripts, the stylesheets and the row's view.
+pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell];
 
 /// An item and its stock level, as a row shows them.
 pub struct Line<'a> {

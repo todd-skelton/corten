@@ -1,32 +1,37 @@
 use corten::prelude::*;
 
-use super::{Line, PriceCell};
+use super::PriceCell;
 
 /// A row's id, `row-{item id}`: the archive patch removes rows by it.
 #[derive(Id)]
 pub struct RowId<'a>(pub &'a str);
 
-/// One item: markup only. The grid's refs (`row`, `select`, `qty`) go on this row's
-/// elements, so the grid's handlers get every row and checkbox, and every stock cell by its
-/// item's id (`key`).
-#[component]
+/// One item. `view` makes `InventoryRow` in `corten/views`, whose holes the grid's script writes
+/// by name: `selected` (the checkbox and the row's mark), `set` and `qty` (the live levels).
+/// Its key, the item's id, is also the price cell's and the row id the archive patch removes, so
+/// the server makes the rows and scripts find them by key (`rows(body, InventoryRow).get(id)`).
+/// `select` is the grid's ref: its one click handler on the table body gets the checkbox.
+#[component(view)]
 pub fn InventoryRow<'a>(
-    line: &'a Line<'a>,
-    row: Ref<el::HTMLTableRowElement>,
+    id: &'a str,
+    name: &'a str,
+    set: &'a str,
+    condition: &'a str,
+    qty: u32,
+    price_cents: u32,
+    selected: bool,
     select: Ref<el::HTMLInputElement>,
-    qty: Ref<el::HTMLTableCellElement>,
 ) -> impl Render {
-    let item = line.item;
     html! {
-        <tr ref={row} id={RowId(&item.id)}>
+        <tr key={id} id={RowId(id)} data-selected={selected}>
             <td>
-                <input ref={select} type="checkbox" value={item.id} aria-label={("Select ", item.name.as_str())}>
+                <input ref={select} type="checkbox" checked={selected} aria-label={("Select ", name)}>
             </td>
-            <td>{item.name}</td>
-            <td>{item.set}</td>
-            <td>{item.condition}</td>
-            <td ref={qty} key={item.id}>{line.qty}</td>
-            <td><PriceCell id={&item.id} cents={Some(item.price_cents)} typed="" errors={&Errors::new()} /></td>
+            <td>{name}</td>
+            <td>{set}</td>
+            <td>{condition}</td>
+            <td>{qty}</td>
+            <td><PriceCell id={id} cents={Some(price_cents)} typed="" errors={&Errors::new()} /></td>
         </tr>
     }
 }

@@ -16,6 +16,18 @@ Corten is pre-1.0, so any minor version may change the API.
    handler query the whole component for its other refs (a click after creating 10,000 rows took
    8.8 ms, now 0.8 ms, then 0.1 ms), and markup joining the page is wired with one query for its
    handlers and one for its refs per insert, instead of two per element.
+17. The first page loads its handler modules as `<script type="module">` tags (not preloads the
+   runtime then `import()`s), and Corten ends each component's module with a line that hands its
+   exports to the runtime (`register` from `corten`). Handlers are in when the page's scripts
+   run, before `DOMContentLoaded`: on a page of 1,000 server-rendered rows the time from the
+   parser finishing to the handlers being ready went from 75 ms to under 10 ms.
+18. `Holds<Row, HTMLTableSectionElement>` in `corten/views` types a handler parameter that holds
+   a view's rows; `rows(body, Row)` takes only that, so `tsc` rejects the wrong view or a plain
+   element, and the Rust compiler rejects a ref whose element the markup does not fill with `Row`s
+   only. `Ref` gained a second type parameter for it (`RowsOf<{ view_id("Row") }>`, defaulting to
+   `NoRows`). `rows()` gained `get(key)` and `indexOf(view)`. A view whose key the markup also
+   shows outside its holes has no `keyOf`, and its `rows()` cannot `push` or `replace`: the
+   server makes those rows. `examples/seller-desk`'s grid rows are an `InventoryRow` view.
 
 ### Added
 

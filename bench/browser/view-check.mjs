@@ -1,8 +1,9 @@
 // Checks rows() (crates/corten/js/view.js, served in corten/views) in a real DOM against random
 // edits: after every replace, push, remove, swap or clear, and after changes made to the
 // children without it (a server patch, a sort), the children must show exactly the items, in
-// order, keep their elements for kept keys, and at(i) / of(target) must give the view of the
-// right row. node view-check.mjs
+// order, keep their elements for kept keys, and at(i) / get(key) / of(target) / indexOf(view)
+// must give the view of the right row. Rows of a view without keyOf (the server makes them)
+// refuse push and replace. node view-check.mjs
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -14,7 +15,7 @@ const source = readFileSync(join(here, "..", "..", "crates", "corten", "js", "vi
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 // The template's row has empty holes, as a server renders it for empty values.
-await page.setContent('<ul id="l"></ul><template id="t"><li><b></b>:<i></i></li></template>');
+await page.setContent('<ul id="l"></ul><template id="t"><li><b></b>:<i></i></li></template><ol id="s"><li><b>a</b>:<i>1</i></li></ol>');
 const result = await page.evaluate(async (src) => {
   const mod = await import(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
   const ul = document.getElementById("l");
@@ -109,11 +110,23 @@ const result = await page.evaluate(async (src) => {
       if (el.textContent !== next[i].k + ":" + next[i].v) fail(step, "content at " + i);
       if (before.has(next[i].k) && before.get(next[i].k) !== el) fail(step, "element not kept for " + next[i].k);
       if (l.at(i).el !== el || l.of(el.firstChild)?.el !== el) fail(step, "at/of at " + i);
+      if (l.get(String(next[i].k))?.el !== el || l.indexOf(l.at(i)) !== i) fail(step, "get/indexOf at " + i);
     });
     const seen = Array.from(l, (view) => view.el);
     if (seen.length !== kids.length || seen.some((el, i) => el !== kids[i])) fail(step, "iterator");
     items = next;
   }
+  // A view whose key the markup also shows elsewhere has no keyOf: its rows are the server's.
+  class Served {
+    constructor(el) { this.el = el; }
+    static fill(el, data) { mod.text(el.lastChild, String(data.v)); }
+    static key(el) { return el.firstElementChild.textContent; }
+  }
+  const served = mod.rows(document.getElementById("s"), Served, template);
+  const refuses = (fn) => { try { fn(); return false; } catch (e) { return /server makes these rows/.test(String(e)); } };
+  if (served.get("a")?.el !== document.querySelector("#s li")) fail(step, "get on server-made rows");
+  if (!refuses(() => served.push([{ v: 2 }])) || !refuses(() => served.replace([]))) fail(step, "server-made rows took push or replace");
+  if (document.querySelectorAll("#s li").length !== 1) fail(step, "server-made rows changed");
   return { failures, notes };
 }, source);
 await browser.close();

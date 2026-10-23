@@ -394,7 +394,7 @@ fn refs(body: &Group, scope: &str) -> Result<(Group, bool), Error> {
                 }
             }
             let make = |n: &Ident| {
-                q("::corten::script::__private::new_ref::<_>(__A0, __A1)", &[literal(scope), literal(&n.to_string())])
+                q("::corten::script::__private::new_ref::<_, _>(__A0, __A1)", &[literal(scope), literal(&n.to_string())])
             };
             let value = if names.len() == 1 && matches!(tokens[i + 1], TokenTree::Ident(_)) {
                 make(&names[0])

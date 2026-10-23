@@ -250,15 +250,15 @@ mod tests {
         let desk = Desk::new(20);
         let (status, html) = send(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(html.matches(r#"<tr data-ref="row""#).count(), 20, "{html}");
+        assert_eq!(html.matches(r#"<tr data-key=""#).count(), 20, "every row is an InventoryRow, keyed by its item: {html}");
         assert!(html.contains("/scripts/inventory_grid.js\">") && html.contains("/scripts/price_cell.js\">"), "{html}");
-        let sel = "{rows:*row,boxes:*select,all:@all,count:@count,bar:@bar}";
+        let sel = "{body:@body,all:@all,count:@count,bar:@bar}";
         assert!(
             html.contains(&format!(r#"data-on="click:inventory_grid.toggle($e,^select,$c,{sel})""#)),
             "one handler for every row: {html}"
         );
-        assert!(html.contains(r#"<td data-ref="qty" data-key="i00003">"#), "stock cells are keyed by item: {html}");
-        assert!(html.contains(r#"data-on="connect:inventory_grid.live(#qty,"#), "{html}");
+        assert!(html.contains(r#"<tr data-key="i00003" id="row-i00003"><td><input data-ref="select""#), "{html}");
+        assert!(html.contains(r#"data-on="connect:inventory_grid.live(@body,"#), "{html}");
     }
 
     #[tokio::test]
@@ -285,7 +285,7 @@ mod tests {
         );
         assert!(html.contains("Archived 2 items."), "{html}");
         let (_, page) = send(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
-        assert_eq!(page.matches(r#"<tr data-ref="row""#).count(), 3);
+        assert_eq!(page.matches(r#"<tr data-key=""#).count(), 3);
     }
 
     /// Server cost of the desk at a realistic size: `cargo test -p seller-desk --release -- --ignored --nocapture`.

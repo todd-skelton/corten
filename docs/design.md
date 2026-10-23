@@ -75,8 +75,9 @@ framework's shape, and what it does not do yet.
    framework. Markup the runtime inserts (a navigation, a patch) waits for the modules its
    handlers name, so those handlers always run while their event is dispatched. On the first
    page, an event that arrives before its module (a click while the page still loads) gets the
-   browser's default and no handler, as it would without JavaScript; the page preloads its
-   modules, so this needs a person faster than the network.
+   browser's default and no handler, as it would without JavaScript; the page loads its
+   modules as module scripts that register with the runtime as they run, so their handlers are
+   in before `DOMContentLoaded`, and this needs a person faster than the network.
 5. Offline is a fallback page plus cached versioned files, not offline data.
 6. Hover and touch prefetch reuses a fetched page for up to 10 seconds (cleared after any form
    post). It keeps the 8 newest and cancels the bodies of the rest, so hovering does not hold

@@ -364,11 +364,28 @@ pub struct Field {
 /// ```compile_fail
 /// use corten::prelude::*;
 ///
-/// // A view's key is one of its holes.
+/// // A view's key is one of its parameters, alone.
 /// #[component(view)]
 /// fn Keyed<'a>(id: &'a str, label: &'a str) -> impl Render {
+///     html! { <li key={id.len()}><b>{label}</b>" #"{id}</li> }
+/// }
+/// ```
+///
+/// A key the markup also shows outside its holes (here in a longer text) makes a view whose rows
+/// the server makes: its class has `key` but no `keyOf`, so `rows()` cannot `push` or `replace`.
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[component(view)]
+/// fn Line<'a>(id: &'a str, label: &'a str) -> impl Render {
 ///     html! { <li key={id}><b>{label}</b>" #"{id}</li> }
 /// }
+///
+/// # fn main() {
+/// let view = Line.view.expect("a view");
+/// assert!(view.js.contains("static key(el)") && !view.js.contains("keyOf"), "{}", view.js);
+/// # }
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct ViewDef {
@@ -385,36 +402,55 @@ pub struct ViewDef {
 const VIEW_HELPERS: &str = concat!(include_str!("../js/dist/view.js"), "export { rows };\n");
 
 /// The declarations of what `VIEW_HELPERS` exports, for `declare module "corten/views"`.
+#[cfg_attr(not(feature = "types"), allow(dead_code))]
 pub(crate) const VIEW_TYPES: &str = "  /** What #[component(view)] generates for a component whose root has key={..}. */
   export interface ViewClass<D, V> {
     new (el: Element): V;
     fill(el: Element, data: D): void;
     key(el: Element): string;
-    keyOf(data: D): string;
+    /** There when the key is one of the view's holes: then scripts can make its rows. */
+    keyOf?(data: D): string;
   }
+  const holds: unique symbol;
+  /**
+   * An element `E` whose children are rows of the view `V` (or a <template> that holds one): the
+   * JSDoc type of a handler parameter `rows()` reads, `@param {Holds<Row, HTMLTableSectionElement>} body`
+   * (with `@import { Holds } from 'corten/views'`). Corten checks the ref passed for it is on an
+   * element the markup fills with `<Row .. />` only.
+   */
+  export type Holds<V, E extends Element = HTMLElement> = E & { readonly [holds]: V };
   /** The views of every child of a parent element, all made from one component. */
-  export interface Rows<D, V extends { el: Element }> {
+  export interface ServerRows<V extends { el: Element }> {
     readonly length: number;
     /** The view of the i-th row. */
     at(i: number): V;
+    /** The view of the row with this key, if any. */
+    get(key: string): V | undefined;
     /** The view of the row that holds `target` (an event's target), if any. */
     of(target: EventTarget | null): V | undefined;
-    /** Adds rows at the end. */
-    push(items: readonly D[]): void;
+    /** Where the view's row is, or -1. */
+    indexOf(view: V): number;
     /** Takes out a row. */
     remove(view: V): void;
     /** Swaps two rows. */
     swap(i: number, j: number): void;
     clear(): void;
+    [Symbol.iterator](): IterableIterator<V>;
+  }
+  /** The rows of a view whose key is one of its holes: scripts make rows too. */
+  export interface Rows<D, V extends { el: Element }> extends ServerRows<V> {
+    /** Adds rows at the end. */
+    push(items: readonly D[]): void;
     /** Shows exactly `items`: rows with a key it had keep their element and are filled again, the rest are made, in `items`' order. */
     replace(items: readonly D[]): void;
-    [Symbol.iterator](): IterableIterator<V>;
   }
   /**
    * The rows under `parent`, each a `View`: the same list every time for one parent, following
-   * changes made elsewhere. New rows are clones of the one row in `template`.
+   * changes made elsewhere. New rows are clones of the one row in `template`. A view whose key is
+   * also shown outside its holes gets `ServerRows`: the server makes its rows.
    */
-  export function rows<D, V extends { el: Element }>(parent: Element, View: ViewClass<D, V>, template?: HTMLTemplateElement): Rows<D, V>;
+  export function rows<D, V extends { el: Element }>(parent: Holds<V, Element>, View: ViewClass<D, V> & { keyOf(data: D): string }, template?: Holds<V, HTMLTemplateElement>): Rows<D, V>;
+  export function rows<D, V extends { el: Element }>(parent: Holds<V, Element>, View: ViewClass<D, V>): ServerRows<V>;
 ";
 
 /// The `corten/views` module: the view class of every listed `#[component(view)]`, or `None`
@@ -439,6 +475,26 @@ pub fn views_module(components: &[Component]) -> Result<Option<String>, String> 
     Ok((!out.is_empty()).then_some(out))
 }
 
+/// A script module as Corten serves it: its source, then the line that hands its exports to the
+/// runtime, so the page can load it with a module script and the runtime finds it without an
+/// `import()`. The bench uses it for the same reason.
+#[doc(hidden)]
+pub fn served(name: &str, source: &str) -> String {
+    let mut out = String::with_capacity(source.len() + 160 + 2 * name.len());
+    out.push_str(source);
+    if !source.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str("// Corten: this module's exports, for the runtime.\n");
+    out.push_str("import { register as __corten_register } from \"corten\";\n");
+    out.push_str("import * as __corten_self from \"./");
+    out.push_str(name);
+    out.push_str(".js\";\n__corten_register(\"");
+    out.push_str(name);
+    out.push_str("\", __corten_self);\n");
+    out
+}
+
 /// A Rust type that is a DOM event: [`event`] implements it.
 pub trait DomEvent {
     /// Its type in the page, `"row-toggled"`.
@@ -449,27 +505,158 @@ pub trait DomEvent {
 /// interface, inferred from the tag it is put on. Pass it to a handler (a parameter typed `T` gets
 /// the first element with it, `T[]` every one), or to a child component that puts it on one of
 /// its elements.
-pub struct Ref<T = el::HTMLElement> {
+///
+/// `V` is what the element holds, for a handler that takes a view's rows
+/// (`@param {Holds<Row, HTMLTableSectionElement>} body`): [`RowsOf`] when every child the
+/// markup puts in it is that `#[component(view)]` (`for line in lines { <Row .. /> }`, or the one
+/// `<Row .. />` of a `<template>`), [`NoRows`] otherwise.
+pub struct Ref<T = el::HTMLElement, V = NoRows> {
     scope: &'static str,
     name: &'static str,
-    kind: PhantomData<fn() -> T>,
+    kind: PhantomData<fn() -> (T, V)>,
 }
 
-impl<T> Clone for Ref<T> {
+/// A ref whose element the markup fills with something other than one view's rows.
+pub enum NoRows {}
+
+/// A ref whose element holds only rows of one `#[component(view)]`, named by [`view_id`] of its
+/// name: the type a component's prop names for such a ref,
+/// `Ref<el::HTMLTableSectionElement, RowsOf<{ view_id("Row") }>>`.
+///
+/// A handler that calls `rows(body, OrderRow)` types `body` as
+/// `Holds<OrderRow, HTMLTableSectionElement>` (from `corten/views`), and only a ref on an element
+/// the markup fills with `OrderRow`s fits it:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[component(view)]
+/// fn OrderRow(id: u32) -> impl Render {
+///     html! { <tr key={id}><td>{id}</td></tr> }
+/// }
+///
+/// // order_list.js: export function clear(body), body a Holds<OrderRow, HTMLTableSectionElement>.
+/// #[component(js)]
+/// fn OrderList<'a>(ids: &'a [u32]) -> impl Render {
+///     let body = refs();
+///     html! {
+///         <table>
+///             <tbody ref={body} on:dblclick={js::clear(body)}>
+///                 for id in ids.iter() { <OrderRow id={*id} /> }
+///             </tbody>
+///         </table>
+///     }
+/// }
+///
+/// # fn main() {
+/// assert!(OrderList { ids: &[1, 2] }.to_html().contains(r#"<tr data-key="2"><td>2</td></tr>"#));
+/// # }
+/// ```
+///
+/// Rows of another view, or anything else beside the rows, do not compile:
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[component(view)]
+/// fn OrderRow(id: u32) -> impl Render {
+///     html! { <tr key={id}><td>{id}</td></tr> }
+/// }
+///
+/// #[component(js)]
+/// fn OrderList<'a>(ids: &'a [u32]) -> impl Render {
+///     let body = refs();
+///     html! {
+///         <table>
+///             <tbody ref={body} on:dblclick={js::clear(body)}>
+///                 for id in ids.iter() { <OrderRow id={*id} /> }
+///                 <tr><td>"Total"</td></tr>
+///             </tbody>
+///         </table>
+///     }
+/// }
+/// # fn main() {}
+/// ```
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[component(view)]
+/// fn Note(id: u32) -> impl Render {
+///     html! { <tr key={id}><td>{id}</td></tr> }
+/// }
+///
+/// #[component(js)]
+/// fn OrderList<'a>(ids: &'a [u32]) -> impl Render {
+///     let body = refs();
+///     html! {
+///         <table>
+///             <tbody ref={body} on:dblclick={js::clear(body)}>
+///                 for id in ids.iter() { <Note id={*id} /> }
+///             </tbody>
+///         </table>
+///     }
+/// }
+/// # fn main() {}
+/// ```
+pub struct RowsOf<const VIEW: u64>(());
+
+/// The number [`RowsOf`] names a view by: FNV-1a of its name, the name scripts import it by. A
+/// component that puts a parent's ref on the element holding the rows names it with this:
+///
+/// ```
+/// use corten::prelude::*;
+/// use corten::script::{RowsOf, view_id};
+///
+/// #[component(view)]
+/// fn OrderRow(id: u32) -> impl Render {
+///     html! { <tr key={id}><td>{id}</td></tr> }
+/// }
+///
+/// #[component]
+/// fn OrderBody<'a>(ids: &'a [u32], body: Ref<el::HTMLTableSectionElement, RowsOf<{ view_id("OrderRow") }>>) -> impl Render {
+///     html! { <tbody ref={body}>for id in ids.iter() { <OrderRow id={*id} /> }</tbody> }
+/// }
+///
+/// // order_list.js: export function clear(body), body a Holds<OrderRow, HTMLTableSectionElement>.
+/// #[component(js)]
+/// fn OrderList<'a>(ids: &'a [u32]) -> impl Render {
+///     let body = refs();
+///     html! { <table on:dblclick={js::clear(body)}><OrderBody ids={ids} body={body} /></table> }
+/// }
+///
+/// # fn main() {
+/// let html = OrderList { ids: &[1] }.to_html();
+/// assert!(html.contains(r#"<tbody data-ref="body"><tr data-key="1">"#), "{html}");
+/// # }
+/// ```
+pub const fn view_id(name: &str) -> u64 {
+    let bytes = name.as_bytes();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut i = 0;
+    while i < bytes.len() {
+        hash ^= bytes[i] as u64;
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+        i += 1;
+    }
+    hash
+}
+
+impl<T, V> Clone for Ref<T, V> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T> Copy for Ref<T> {}
+impl<T, V> Copy for Ref<T, V> {}
 
-impl<T> std::fmt::Debug for Ref<T> {
+impl<T, V> std::fmt::Debug for Ref<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Ref({}/{})", self.scope, self.name)
     }
 }
 
-impl<T> Ref<T> {
+impl<T, V> Ref<T, V> {
     /// The element with this ref that holds the event's target, like the DOM's
     /// `event.target.closest(..)`: one handler on a list's container gets the row that was
     /// clicked. A handler with a `closest()` argument runs only for events inside such an
@@ -505,7 +692,7 @@ impl<T> Ref<T> {
     /// # }
     /// ```
     pub const fn closest(self) -> Closest<T> {
-        Closest(self)
+        Closest(Ref { scope: self.scope, name: self.name, kind: PhantomData })
     }
 }
 
@@ -600,6 +787,9 @@ pub mod el {
                 const TS: &'static str = stringify!($name);
             }
             $(impl SubOf<$parent> for $name {})+
+            impl<T: SubOf<$name>, V> super::__private::RefParam<T, V> for $name {
+                const SIGIL: &'static str = "@";
+            }
         };
     }
 
@@ -738,6 +928,9 @@ pub mod ts {
     /// Elements by their `key`: `Map<string, HTMLTableCellElement>`, a ref put with
     /// `key={item.id}` on elements in a loop.
     pub struct Map<T>(std::marker::PhantomData<T>);
+    /// `Holds<Row, HTMLTableSectionElement>` (from `corten/views`): an element `T` whose children
+    /// are rows of the view `Row` ([`super::view_id`] of its name), what `rows(body, Row)` takes.
+    pub struct Holds<T, const VIEW: u64>(std::marker::PhantomData<T>);
 }
 
 thread_local! {
@@ -899,7 +1092,7 @@ pub mod __private {
 
     /// `let (rows, rest) = refs();`: each name, made by `#[component]`.
     #[inline]
-    pub const fn new_ref<T>(scope: &'static str, name: &'static str) -> Ref<T> {
+    pub const fn new_ref<T, V>(scope: &'static str, name: &'static str) -> Ref<T, V> {
         Ref { scope, name, kind: PhantomData }
     }
 
@@ -911,9 +1104,10 @@ pub mod __private {
         }
     }
 
-    /// ` data-ref="rows"` on an element of interface `E`, which makes `rows` a `Ref<E>`.
+    /// ` data-ref="rows"` on an element of interface `E` that holds `V`, which makes `rows` a
+    /// `Ref<E, V>`.
     #[inline]
-    pub fn ref_attr<E>(r: &Ref<E>, out: &mut String) {
+    pub fn ref_attr<E, V>(r: &Ref<E, V>, out: &mut String) {
         out.push_str(" data-ref=\"");
         qualified(out, r.scope, SCOPE.with(Cell::get));
         out.push_str(r.name);
@@ -923,7 +1117,7 @@ pub mod __private {
     /// `ref={trigger as HTMLElement}` on an element of interface `E`: `trigger` is a `Ref<W>`,
     /// and every `E` it is on must be a `W`.
     #[inline]
-    pub fn ref_attr_as<E: el::SubOf<W>, W>(r: &Ref<W>, out: &mut String) {
+    pub fn ref_attr_as<E: el::SubOf<W>, W, V>(r: &Ref<W, V>, out: &mut String) {
         ref_attr(r, out)
     }
 
@@ -974,26 +1168,34 @@ pub mod __private {
     #[derive(Clone, Copy)]
     pub struct ScopeKw;
 
-    /// What a parameter type gets for a ref: the first element (`@`), every one (`*`), or every
-    /// one by its key (`#`).
-    pub trait RefParam<T> {
+    /// What a parameter type gets for a ref of an `T` that holds `V`: the first element (`@`),
+    /// every one (`*`), or every one by its key (`#`).
+    #[diagnostic::on_unimplemented(
+        message = "the handler's JSDoc type {Self} does not fit this ref, an {T} that holds {V}",
+        label = "a ref of an {T} that holds {V}",
+        note = "Holds<Row, ..> takes a ref whose element the markup fills with Row views only (a for loop of <Row .. />, \
+                or one <Row .. /> in a <template>); RowsOf and Holds name the view by view_id(\"Row\")"
+    )]
+    pub trait RefParam<T, V> {
         const SIGIL: &'static str;
     }
-    impl<T: el::SubOf<P>, P: el::Elem> RefParam<T> for P {
-        const SIGIL: &'static str = "@";
-    }
-    impl<T: el::SubOf<P>, P: el::Elem> RefParam<T> for ts::Array<P> {
+    // An element type takes the first element: `impl RefParam<T, V> for HTMLButtonElement` and the
+    // others, from `el`'s list (one impl each, so a mismatched Holds gets this trait's message).
+    impl<T: el::SubOf<P>, P: el::Elem, V> RefParam<T, V> for ts::Array<P> {
         const SIGIL: &'static str = "*";
     }
-    impl<T: el::SubOf<P>, P: el::Elem> RefParam<T> for ts::Map<P> {
+    impl<T: el::SubOf<P>, P: el::Elem, V> RefParam<T, V> for ts::Map<P> {
         const SIGIL: &'static str = "#";
+    }
+    impl<T: el::SubOf<P>, P: el::Elem, const VIEW: u64> RefParam<T, RowsOf<VIEW>> for ts::Holds<P, VIEW> {
+        const SIGIL: &'static str = "@";
     }
 
     /// A parameter type one element of interface `T` fits.
     pub trait OneParam<T> {}
     impl<T: el::SubOf<P>, P: el::Elem> OneParam<T> for P {}
     impl<T> OneParam<T> for ts::Any {}
-    impl<T> RefParam<T> for ts::Any {
+    impl<T, V> RefParam<T, V> for ts::Any {
         const SIGIL: &'static str = "@";
     }
 
@@ -1002,7 +1204,7 @@ pub mod __private {
     impl<E: ev::SubOf<P>, P: ev::EventType> EventParam<E> for P {}
     impl<E> EventParam<E> for ts::Any {}
 
-    impl<T, P: RefParam<T>> Arg<P> for Ref<T> {
+    impl<T, V, P: RefParam<T, V>> Arg<P> for Ref<T, V> {
         fn write_arg(&self, ctx: &Ctx, out: &mut String) {
             out.push_str(P::SIGIL);
             qualified(out, self.scope, ctx.current);

@@ -426,6 +426,7 @@ fn browser_only(param: &Param) -> bool {
     match param {
         Param::Checked(path) => {
             path.starts_with("el::")
+                || path.starts_with("ts::Holds")
                 || path.starts_with("ev::")
                 || path.starts_with("ts::Array")
                 || path.starts_with("ts::Map")
@@ -522,6 +523,15 @@ fn description(jsdoc: &str) -> String {
 fn param_type(ty: &str) -> Param {
     let ty = ty.trim().trim_start_matches('(').trim_end_matches(')').trim();
     let element = |t: &str| dom::ELEMENTS.contains(&t);
+    // `Holds<Row, HTMLTableSectionElement>` (corten/views): an element that holds Row views.
+    if let Some(inner) = ty.strip_prefix("Holds<").and_then(|t| t.strip_suffix('>')) {
+        let (view, el) = inner.split_once(',').map_or((inner.trim(), "HTMLElement"), |(v, e)| (v.trim(), e.trim()));
+        let plain = !view.is_empty() && view.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+        return match (plain, common(el, element)) {
+            (true, Some(e)) => Param::Checked(format!("ts::Holds<::corten::script::el::{e}, {}u64>", view_id(view))),
+            _ => Param::Any,
+        };
+    }
     if let Some(value) = ty.strip_prefix("Map<").and_then(|t| t.strip_suffix('>')).and_then(|t| t.trim().strip_prefix("string,"))
     {
         return match common(value.trim(), element) {
@@ -550,6 +560,11 @@ fn param_type(ty: &str) -> Param {
         "boolean" => Param::Checked("ts::Boolean".into()),
         _ => Param::Any,
     }
+}
+
+/// `corten::script::view_id`: FNV-1a of a view's name.
+pub(crate) fn view_id(name: &str) -> u64 {
+    name.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, b| (hash ^ b as u64).wrapping_mul(0x0100_0000_01b3))
 }
 
 /// One element interface, or for a union of them the closest one they all are.
@@ -647,6 +662,28 @@ function helper() {}
                 "stock:Any",
                 "signal:ts::AbortSignal",
                 "url:ts::String",
+            ]
+        );
+    }
+
+    #[test]
+    fn holds_names_the_view_its_rows_are() {
+        let source =
+            "/** @param {Holds<Row, HTMLTableSectionElement>} body @param {Holds<Row>} any @param {Holds<Row, Thing>} odd */
+export function f(body, any, odd) {}";
+        let (handlers, _) = parse(source).unwrap();
+        let row = view_id("Row");
+        // FNV-1a's published values, as corten::script::view_id computes them.
+        assert_eq!((view_id(""), view_id("a")), (0xcbf2_9ce4_8422_2325, 0xaf63_dc4c_8601_ec8c));
+        assert_eq!(
+            handlers[0].params,
+            [
+                (
+                    "body".to_string(),
+                    Param::Checked(format!("ts::Holds<::corten::script::el::HTMLTableSectionElement, {row}u64>"))
+                ),
+                ("any".to_string(), Param::Checked(format!("ts::Holds<::corten::script::el::HTMLElement, {row}u64>"))),
+                ("odd".to_string(), Param::Any),
             ]
         );
     }

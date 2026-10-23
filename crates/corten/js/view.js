@@ -43,27 +43,32 @@ export function checked(el, on) {
 }
 
 /**
- * What #[component(view)] generates for a component whose root has `key={..}`.
+ * What #[component(view)] generates for a component whose root has `key={..}`. `keyOf` is there
+ * when the key is one of its holes, so a script can make rows; a view whose key the markup also
+ * shows elsewhere (a cell's form, an element id) has only `key`, and the server makes its rows.
  * @template D the data it is made from: every hole's value
  * @template {object} V the view
  * @typedef {{
  *   new (el: Element): V,
  *   fill(el: Element, data: D): void,
  *   key(el: Element): string,
- *   keyOf(data: D): string,
+ *   keyOf?: (data: D) => string,
  * }} ViewClass
  */
 
 /**
- * The views of every child of a parent element, all made from one component: `at(i)` and
- * `of(event.target)` give one; `replace(items)` shows exactly `items` (rows with a key it had
- * keep their element and are filled again, the rest are made, and the order follows `items`).
+ * The views of every child of a parent element, all made from one component: `at(i)`,
+ * `get(key)` and `of(event.target)` give one; `replace(items)` shows exactly `items` (rows
+ * with a key it had keep their element and are filled again, the rest are made, and the order
+ * follows `items`).
  * @template D
  * @template {{ el: Element }} V
  * @typedef {{
  *   readonly length: number,
  *   at(i: number): V,
+ *   get(key: string): V | undefined,
  *   of(target: EventTarget | null): V | undefined,
+ *   indexOf(view: V): number,
  *   push(items: readonly D[]): void,
  *   remove(view: V): void,
  *   swap(i: number, j: number): void,
@@ -72,6 +77,8 @@ export function checked(el, on) {
  *   [Symbol.iterator](): IterableIterator<V>,
  * }} Rows
  */
+
+const SERVER_MADE = "corten: the server makes these rows: their view's key is also shown outside its holes";
 
 /** @type {WeakMap<Element, { View: unknown, list: unknown, use: (t: HTMLTemplateElement | undefined) => void }>} */
 const lists = new WeakMap();
@@ -96,6 +103,8 @@ export function rows(parent, View, template) {
   }
   /** @type {Element[]} */
   let els = Array.from(parent.children);
+  /** The rows by key, made on the first get() after a change. @type {Map<string, Element> | null} */
+  let byKey = null;
   // Changes to the children made elsewhere: the list reads them again before its next use.
   // Its own changes are taken (and dropped) as it makes them.
   let stale = false;
@@ -106,10 +115,14 @@ export function rows(parent, View, template) {
   const sync = () => {
     if (watch.takeRecords().length || stale) {
       els = Array.from(parent.children);
+      byKey = null;
       stale = false;
     }
   };
-  const done = () => void watch.takeRecords();
+  const done = () => {
+    watch.takeRecords();
+    byKey = null;
+  };
   /** @type {Element | null | undefined} */
   let proto;
   const use = (/** @type {HTMLTemplateElement | undefined} */ t) => {
@@ -139,12 +152,26 @@ export function rows(parent, View, template) {
       sync();
       return new View(els[i]);
     },
+    get(key) {
+      sync();
+      if (!byKey) {
+        byKey = new Map();
+        for (const el of els) byKey.set(View.key(el), el);
+      }
+      const el = byKey.get(key);
+      return el ? new View(el) : undefined;
+    },
     of(target) {
       let el = /** @type {Node | null} */ (target);
       while (el && el.parentNode !== parent) el = el.parentNode;
       return el ? new View(/** @type {Element} */ (el)) : undefined;
     },
+    indexOf(view) {
+      sync();
+      return els.indexOf(view.el);
+    },
     push(items) {
+      if (!View.keyOf) throw new Error(SERVER_MADE, { cause: parent });
       sync();
       add(items, els, els.length, null);
       done();
@@ -183,12 +210,14 @@ export function rows(parent, View, template) {
       const n = items.length;
       /** @type {Map<string, number>} */
       const where = new Map();
+      const keyOf = View.keyOf;
+      if (!keyOf) throw new Error(SERVER_MADE, { cause: parent });
       for (let j = 0; j < els.length; j += 1) where.set(View.key(els[j]), j);
       // Each new item's old element, or -1.
       const from = new Int32Array(n).fill(-1);
       let kept = 0;
       for (let i = 0; i < n; i += 1) {
-        const k = View.keyOf(items[i]);
+        const k = keyOf(items[i]);
         const j = where.get(k);
         if (j !== undefined) {
           from[i] = j;

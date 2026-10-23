@@ -72,6 +72,9 @@ pub struct Assets {
     files: HashMap<String, File>,
     /// Names with a module at `scripts/{name}.js`.
     scripts: std::collections::HashSet<String>,
+    /// The components' and `script!` modules: they register with the runtime as they run, so a
+    /// page loads them with a module script of its own.
+    registered: std::collections::HashSet<String>,
     /// The joined component stylesheets' URL, when any component has one.
     stylesheet: Option<String>,
 }
@@ -102,6 +105,7 @@ impl Assets {
         let mut seen: Vec<&Component> = Vec::new();
         let mut css = String::new();
         let mut events = String::new();
+        let mut registered = std::collections::HashSet::new();
         for component in components {
             if let Some(same) = seen.iter().find(|c| c.name == component.name) {
                 let script = |c: &Component| c.script.map(|s| s.source);
@@ -124,7 +128,8 @@ impl Assets {
                         script.name, component.name, script.file
                     )));
                 }
-                sources.push((url, script.source.as_bytes().to_vec()));
+                sources.push((url, crate::script::served(script.name, script.source).into_bytes()));
+                registered.insert(script.name.to_string());
             }
             if let Some(event) = component.event {
                 if events.is_empty() {
@@ -187,7 +192,16 @@ impl Assets {
         let version = format!("{:012x}", digest >> 16);
         let prefix = format!("{mount}/{version}/");
         let stylesheet = files.contains_key(STYLESHEET).then(|| format!("{prefix}{STYLESHEET}"));
-        Ok(Assets { scripts_dir: format!("{prefix}scripts/"), mount: mount.into(), version, prefix, files, scripts, stylesheet })
+        Ok(Assets {
+            scripts_dir: format!("{prefix}scripts/"),
+            mount: mount.into(),
+            version,
+            prefix,
+            files,
+            scripts,
+            registered,
+            stylesheet,
+        })
     }
 
     /// The URL of the components' joined stylesheet, when a listed component has one.
@@ -226,6 +240,12 @@ impl Assets {
     /// file in `scripts/`).
     pub fn has_script(&self, name: &str) -> bool {
         self.scripts.contains(name)
+    }
+
+    /// True when the script module `name` registers with the runtime as it runs (a component's or
+    /// a `script!` module): a page loads it with `<script type="module">`, not an `import()`.
+    pub fn registers(&self, name: &str) -> bool {
+        self.registered.contains(name)
     }
 
     /// Where script modules are served from: `{prefix}scripts/`.

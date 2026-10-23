@@ -294,61 +294,65 @@ framework, and its handlers are the components' scripts.
 4. [build.mjs](build.mjs) writes each page as Corten serves one: the import map (`corten`,
    `corten/views`), the runtime (`crates/corten/js/dist/corten.js`), `views.js` from
    `corten::script::views_module` (`rows()` and the generated classes in one module), and the
-   handler module, preloaded. The JS sizes below are those three files.
+   handler module as a module script of the page, ending with the line Corten appends to every
+   handler module it serves (`register`, written by gen/), with `views.js` preloaded. The JS
+   sizes below are those three files.
 
 `npx tsc -p bench/browser/jsconfig.json` checks both scripts against the generated declarations,
 and [apps/view/types-check.js](apps/view/types-check.js) holds what it must reject (a misspelled
 property, a number written to `label`, a new row without `selected`, a ref passed as data, a
-`Card`'s data given to a `Row` list). The macro checks the JSDoc: `js::select(select.closest(),
-body)` compiles only because `select` is on an `<a>` and `body` on a `<tbody>`.
+`Card`'s data given to a `Row` list, `rows(body, Card)` on a body of rows, `rows()` of a plain
+element, and `push` on rows the server makes). The macro checks the JSDoc:
+`js::select(select.closest(), body)` compiles only because `select` is on an `<a>` and `body`
+is a `<tbody>` the markup fills with `Row`s only (`@param {Holds<Row, HTMLTableSectionElement>}
+body`).
 
 Ops, medians of two interleaved rounds of 15 (ms, commit; [results/ops-view-runtime.json](results/ops-view-runtime.json)):
 
 | | vanilla | view | state | solid |
 |---|---|---|---|---|
-| create 1,000 rows | 5.5 to 11.3 | 10.1 to 13.9 | 6.8 to 9.9 | 10.4 to 12.6 |
-| create 10,000 rows | 69.7 to 88.4 | 85.3 to 88.6 | 69.1 to 107 | 103.1 to 113.9 |
-| append 1,000 rows | 7.9 to 8.7 | 10.5 to 12.2 | 9.8 to 10.4 | 9.2 to 11.6 |
-| update, select, swap, remove, patch | 0.1 to 0.5 | 0.2 to 0.7 | 0.2 to 0.8 | 0.2 to 1.1 |
-| bytes per row (10k rows) | 165 to 166 | 116 | 246 to 250 | 927 to 928 |
-| heap with 10k rows (KB) | 2,682 to 2,694 | 2,252 | 3,478 to 3,521 | 10,158 to 10,161 |
-| JS (B gzip) | 1,086 | 8,288 (runtime 5,732) | 3,076 | 7,013 |
+| create 1,000 rows | 9.2 to 9.9 | 10 to 14 | 6.2 to 10.8 | 10.6 to 11.6 |
+| create 10,000 rows | 78.5 to 80.9 | 101.7 to 120.9 | 82.6 to 89.5 | 74.6 to 104.9 |
+| append 1,000 rows | 7.1 to 9.7 | 9.5 to 15.6 | 10.6 to 11.2 | 9.2 to 10.9 |
+| update, select, swap, remove, patch | 0.1 to 0.5 | 0.2 to 0.7 | 0.2 to 0.8 | 0.2 to 1.2 |
+| bytes per row (10k rows) | 165 to 166 | 116 | 211 to 250 | 927 |
+| heap with 10k rows (KB) | 2,682 to 2,696 | 2,260 | 3,139 to 3,521 | 10,158 to 10,159 |
+| JS (B gzip) | 1,086 | 8,620 (runtime 5,924) | 3,076 | 7,013 |
 
-This machine is noisy (vanilla's own create 1,000 ranges from 5.5 to 11.3 ms between rounds), so
-read the ranges, not single values.
+This machine is noisy: Solid's create 10,000 ranges from 74.6 to 104.9 ms between the two rounds,
+and the view's from 101.7 to 120.9 against 85.3 to 88.6 in the previous run with the same create
+path. A same-session A/B of create 10,000 against the previous commit's runtime and views
+(`out/probe5.mjs`, fresh browser each, 24 clicks each) gave medians of 145.9 ms (this commit) and
+148.2 ms (previous), so read the ranges, not single values.
 
-Dashboard (30 ticks, commit / frame ms): tick 20 vanilla 0.3 / 13.2, view 0.3 / 14.9, Solid
-0.6 / 13.9; tick 200 vanilla 0.7 / 14.8, view 1.1 / 16.9, Solid 1.9 / 16.7. Heap 1,140, 1,251 and
-1,749 KB.
+Dashboard (30 ticks, commit / frame ms): tick 20 vanilla 0.2 / 14.6, view 0.4 / 14.5, Solid
+0.5 / 14.8; tick 200 vanilla 1.0 / 15.3, view 0.9 / 14.4, Solid 1.6 / 14.4. Heap 1,140, 1,256 and
+1,752 KB.
+
+Server-rendered takeover (15 fresh loads, medians; [results/ssr-2026-10-23.json](results/ssr-2026-10-23.json)):
+from the parser finishing to the handlers being ready, vanilla 2.1 ms, view 7.2 ms, Solid 25.7
+ms. In the same session the previous commit's page (`modulepreload` and the runtime's
+`import()`) took 66.9 ms against 7.7 ms for this one.
 
 1. **Updates cost what they did with the prototype's own handlers**, through the real runtime's
    delegation and typed refs: a click resolves `^select` and `@body` and calls the handler, and
    the handler writes one text node.
-2. **Creating rows is within the noise of plain JavaScript and ahead of Solid at 10,000.** The
-   runtime wires markup that joins the page (it imports the modules it names and records the
-   names of the refs it carries); the first version of this run took 166 to 207 ms for 10,000
-   rows, because it queried twice per inserted row and then read every ref attribute. One query
-   for handlers, one for refs, and reading a run of identical ref names once brought the
-   observer's share from about 33 ms to about 18 ms.
-3. **The runtime had to change for lists.** Its ref cache was dropped whenever any element joined
-   or left the page, so the first click after creating 10,000 rows queried the component for
-   `@body` across every row (8.8 ms). Now a cached ref stays until an element with that ref
-   name joins the page or one it found leaves (0.8 ms, then 0.1). Inserted markup is scanned with
-   one query per insert, or one per parent when most of its children are new, instead of two per
-   element (`create 10,000` again: 357 ms before, about 222 ms now in the probe).
-4. **Takeover of server-rendered rows is the runtime's module loading, not the views.** The view
-   page is ready 75 ms after parsing (median of 15 loads), plain JavaScript 2.4 ms, Solid 24 ms.
-   The handler module is fetched by 30 ms, but the runtime imports it with `import()`, and that
-   resolves around the first frame (about 130 to 200 ms after parsing on this 1,000-row page),
-   even when the module was already evaluated by a static `<script type="module">`. Every
-   Corten page waits this way for its handlers; clicks before then get the browser's default.
-   Wiring before the first frame needs the page to hand the runtime its modules through a static
-   import, which is a runtime change of its own.
-5. **Memory is lowest of all** (115 bytes per row): the page holds the rows and the list keeps one
+2. **Creating rows is within the noise of plain JavaScript and Solid.** The runtime wires markup
+   that joins the page (it imports the modules it names and records the names of the refs it
+   carries) with one query for handlers and one for refs per insert, and reads a run of
+   identical ref names once.
+3. **The runtime's ref cache survives lists.** A cached ref stays until an element with that ref
+   name joins the page or one it found leaves, so the first click after creating 10,000 rows
+   costs 0.8 ms, not a query of every row (8.8 ms).
+4. **Takeover is no longer the runtime's module loading.** The handler module used to be
+   preloaded and then imported with `import()`, which resolved around the first frame (about
+   130 to 200 ms after parsing on this 1,000-row page). Now the page loads it as a module script,
+   and the line Corten appends to it registers its exports with the runtime as it runs, before
+   `DOMContentLoaded`: 66.9 ms became 7.7 ms, against 2.1 for plain JavaScript and 25.7 for Solid.
+   The rest is the module graph (runtime, views, handlers) evaluating and `on:connect` running.
+   The seller desk's smoke test clicks a row at `DOMContentLoaded` and checks its handler ran.
+5. **Memory is lowest of all** (116 bytes per row): the page holds the rows and the list keeps one
    array of elements.
-
-Still open:
-
-1. The macro does not yet check that a handler's `rows(body, Row)` names the view that `body`'s
-   rows are; `tsc` checks the data and properties, not which parent holds which view.
-2. Takeover (item 4 above).
+6. **Which view a parent holds is checked at both ends.** `@param {Holds<Row,
+   HTMLTableSectionElement>} body` makes `tsc` reject `rows(body, Card)` and `rows()` of a plain
+   element, and the macro reject a ref whose element the markup does not fill with `Row`s only.

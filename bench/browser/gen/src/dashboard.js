@@ -4,6 +4,7 @@
 import { state } from "corten";
 import { Card, rows } from "corten/views";
 import { SYMBOLS, start, tick as next } from "../../apps/shared/market.js";
+/** @import { Holds } from "corten/views" */
 
 /** Marks the page ready, for the harness. */
 export function ready() {
@@ -12,7 +13,7 @@ export function ready() {
 
 /**
  * Applies the next tick of `n` prices.
- * @param {HTMLDivElement} cards @param {HTMLSpanElement} sum @param {number} n
+ * @param {Holds<Card, HTMLDivElement>} cards @param {HTMLSpanElement} sum @param {number} n
  */
 export function tick(cards, sum, n) {
   const prices = state(cards, () => SYMBOLS.map((_, i) => start(i)));

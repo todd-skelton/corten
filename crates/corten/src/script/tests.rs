@@ -195,7 +195,7 @@ fn a_view_number_javascript_cannot_hold_exactly_stops_debug_builds() {
 }
 
 #[tokio::test]
-async fn a_page_with_handlers_preloads_the_views_their_modules_may_import() {
+async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_may_import() {
     use axum::{body::Body, http::Request, routing::get, Router};
     use http_body_util::BodyExt;
     use tower::ServiceExt;
@@ -210,10 +210,29 @@ async fn a_page_with_handlers_preloads_the_views_their_modules_may_import() {
     let views = body.split_once(r#""corten/views":""#).expect("the import map maps corten/views").1.split_once('"').unwrap().0;
     assert!(views.ends_with("/views.js"), "{body}");
     assert!(body.contains(&format!(r#"<link rel="modulepreload" href="{views}">"#)), "{body}");
+    // The handler module is a module script of the page, and registers with the runtime as it runs.
+    let module = views.replace("/views.js", "/scripts/line_item.js");
+    assert!(body.contains(&format!(r#"<script type="module" src="{module}"></script>"#)), "{body}");
+    let app = crate::App::new(Router::new()).components(&[LineItem, Badge]).router();
+    let res = app.oneshot(Request::get(&module).body(Body::empty()).unwrap()).await.unwrap();
+    let source = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(
+        source.ends_with(concat!(
+            "import { register as __corten_register } from \"corten\";\n",
+            "import * as __corten_self from \"./line_item.js\";\n",
+            "__corten_register(\"line_item\", __corten_self);\n"
+        )),
+        "{source}"
+    );
     // A page whose handlers need no module has nothing to import the views.
     let plain = Router::new().route("/", get(|req: crate::Req| async move { req.page("Badge", Badge { n: 1 }) }));
     let body = get_page(crate::App::new(plain).components(&[LineItem, Badge]).router()).await;
-    assert!(!body.contains("modulepreload"), "{body}");
+    assert!(!body.contains("modulepreload") && !body.contains(r#"src="/assets/"#), "{body}");
+}
+
+#[test]
+fn view_ids_are_fnv1a_as_the_macros_compute_them() {
+    assert_eq!((script::view_id(""), script::view_id("a")), (0xcbf2_9ce4_8422_2325, 0xaf63_dc4c_8601_ec8c));
 }
 
 #[test]
