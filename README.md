@@ -22,7 +22,7 @@ server-sent events. One handler serves the browser, native apps and AI agents.
   hold it up.
 - **Production defaults.** A strict CSP, a cross-site write check, error pages, versioned
   assets, cache headers that never share one user's page with another, compression, health
-  checks, graceful shutdown and an installable PWA, from `App::new(routes).serve()`. Routes
+  checks, graceful shutdown and an installable PWA, from `corten::serve(App::new(routes))`. Routes
   with no screen go under `.api("/api", routes)` and answer only JSON.
 - **No JavaScript toolchain in the app.** One binary and a `static/` directory.
 
@@ -67,7 +67,7 @@ async fn main() -> std::io::Result<()> {
         .route(Home::PATH, get(home))
         .route(Greet::PATH, post(greet));
 
-    App::new(routes).serve().await
+    corten::serve(App::new(routes)).await
 }
 
 async fn home(req: Req) -> corten::Result {
@@ -176,7 +176,7 @@ React components, or for a pure static site (a static site generator is simpler)
    its place. The framework owns what nearly every app needs, like security headers,
    cancellation, error pages and assets. Domain logic and things only some apps use belong to the
    app or platform.
-7. **Good defaults, easy overrides.** `App::new(routes).serve()` should be production-ready.
+7. **Good defaults, easy overrides.** `corten::serve(App::new(routes))` should be production-ready.
    Every default can be replaced in one line, and the common case stays short.
 8. **One server, every surface.** The same handler and data serve the browser, native apps and AI
    agents. The server is the source of truth, and clients render it.

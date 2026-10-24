@@ -6,9 +6,9 @@
 //! | `POST /watch` | form patch with JavaScript, full page without, JSON for data clients |
 //! | `GET /feed/stocks`, `/feed/stocks/live` | the live feed `<live-prices>` subscribes to |
 //! | `GET /live/trades` | fragments streamed to `<corten-live>`: the last trade, no script of its own |
-//! | `GET /about` | a plain page, reached by client navigation, with a component in a section (`App::section`): its stylesheet is linked from this page only |
+//! | `GET /about` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only |
 //! | `POST /sign-in` | sets a cookie; the shell shows the viewer, and the runtime reloads the document |
-//! | `GET /account` | only for someone signed in (`App::guard`): anyone else is sent to the watchlist, where the sign-in button is |
+//! | `GET /account` | an area only someone signed in may use (`Area::guard`): anyone else is sent to the watchlist, where the sign-in button is |
 use std::{sync::Arc, time::Duration};
 
 use corten::{
@@ -39,22 +39,25 @@ impl Market {
 }
 
 /// The app: routes, the shell, and who is signed in. Everything else is Corten's defaults.
-pub fn app(market: Market) -> App {
+pub fn app(market: Market) -> App<Viewer> {
     App::new(routes(market))
-        .shell(shell)
-        .components(&[LivePrices])
-        .section(url::About::PATH, &[AboutNote])
         .context(|headers| {
             // A real app reads its session here; the example trusts a cookie, which is fine for a
             // demo and nothing else.
             let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
             async move { viewer }
         })
+        .shell(shell)
+        .components(&[LivePrices])
+        .area(url::About::PATH, Area::new(Router::new().route(url::About::PATH, get(about))).components(&[AboutNote]))
         // Every route under /account, now and later, needs someone signed in.
-        .guard(url::Account::PATH, |viewer: Option<&Viewer>, _| match viewer {
-            Some(_) => Access::ALLOW,
-            None => Access::sign_in(&url::Home),
-        })
+        .area(
+            url::Account::PATH,
+            Area::new(Router::new().route(url::Account::PATH, get(account))).guard(|viewer, _| match viewer {
+                Some(_) => Access::ALLOW,
+                None => Access::sign_in(&url::Home),
+            }),
+        )
 }
 
 /// Every URL the app serves and links to; links built from these cannot drift from the router.
@@ -98,9 +101,7 @@ fn routes(market: Market) -> Router {
     Router::new()
         .route(url::Home::PATH, get(home))
         .route(url::Watch::PATH, post(watch))
-        .route(url::About::PATH, get(about))
         .route(url::SignIn::PATH, post(sign_in))
-        .route(url::Account::PATH, get(account))
         .route(url::Stocks::PATH, get(|State(m): State<Market>| async move { m.stocks.snapshot() }))
         .route(url::StocksLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }))
         .route(url::Trades::PATH, get(trades))

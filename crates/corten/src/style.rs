@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_section_links_its_stylesheet_from_its_pages_only() {
+    async fn an_area_links_its_stylesheet_from_its_pages_only() {
         use axum::{body::Body, http::Request, routing::get};
         use http_body_util::BodyExt;
         use tower::ServiceExt;
@@ -419,19 +419,15 @@ mod tests {
             view: None,
         };
         let page = |req: crate::Req| async move { req.page("Badges", BadgeCount { n: 1 }) };
-        let routes = || {
-            Router::new()
-                .route("/", get(page))
-                .route("/admin", get(page))
-                .route("/admin/reports/{id}", get(page))
-                .route("/administrator", get(page))
-        };
         let app = |dev: bool| {
-            App::new(routes())
+            App::new(Router::new().route("/", get(page)).route("/administrator", get(page)))
                 .dev(dev)
                 .components(&[theme::TOKENS])
-                .section("/admin", &[BadgeList])
-                .section("/admin/reports", &[REPORT])
+                .area("/admin", crate::Area::new(Router::new().route("/admin", get(page))).components(&[BadgeList]))
+                .area(
+                    "/admin/reports",
+                    crate::Area::new(Router::new().route("/admin/reports/{id}", get(page))).components(&[REPORT]),
+                )
                 .router()
         };
         let get_page = |app: Router, path: &str, nav: bool| {
@@ -455,10 +451,10 @@ mod tests {
 
         let (status, body) = get_page(app(true), "/admin", false).await;
         assert_eq!(status, 200, "{body}");
-        assert_eq!(links(&body), ["components.css", "admin.css"], "the section's stylesheet after the shared one");
+        assert_eq!(links(&body), ["components.css", "admin.css"], "the area's stylesheet after the shared one");
         assert!(body.contains(r#"/sections/admin.css" data-corten-style>"#), "{body}");
         let (_, body) = get_page(app(true), "/admin/reports/7", false).await;
-        assert_eq!(links(&body), ["components.css", "admin.css", "reports.css"], "a page links every section it is under");
+        assert_eq!(links(&body), ["components.css", "admin.css", "reports.css"], "a page links every area it is under");
         let (status, body) = get_page(app(true), "/admin/reports/7", true).await;
         assert_eq!(status, 200);
         assert!(body.starts_with("<title>Badges</title><link"), "a navigation carries the links: {body}");
@@ -471,24 +467,26 @@ mod tests {
             "a prefix is whole segments"
         );
         let (status, body) = get_page(app(false), "/", true).await;
-        assert!(status == 200 && links(&body).is_empty(), "no section, no link: {body}");
+        assert!(status == 200 && links(&body).is_empty(), "no area, no link: {body}");
 
         #[cfg(debug_assertions)]
         {
             let (status, body) = get_page(app(true), "/", false).await;
             assert_eq!(status, 500);
             assert!(
-                body.contains("/ renders BadgeList, whose stylesheet is in the section /admin, which is not linked here"),
+                body.contains("/ renders BadgeList, whose stylesheet is in the area /admin, which is not linked here"),
                 "{body}"
             );
         }
 
-        for bad in ["admin", "/", "/admin/", "/admin/{id}", "/a b", "/admin//x"] {
-            let given = std::panic::catch_unwind(|| App::new(Router::new()).section(bad, &[])).is_err();
-            assert!(given, "{bad:?} is not a section prefix");
+        let area = |prefix: &str| App::new(Router::new()).area(prefix, crate::Area::new(Router::new()));
+        for bad in ["admin", "/", "/admin/", "/admin/{id}", "/a b", "/admin//x", "/admin/..", "/admin/./x"] {
+            let given = std::panic::catch_unwind(|| area(bad)).is_err();
+            assert!(given, "{bad:?} is not an area prefix");
         }
-        let twice = std::panic::catch_unwind(|| App::new(Router::new()).section("/a", &[]).section("/a", &[]));
-        assert!(twice.is_err(), "a section is given once");
+        let _ = area("/.well-known/v1.2~x");
+        let twice = std::panic::catch_unwind(|| area("/a").area("/a", crate::Area::new(Router::new())));
+        assert!(twice.is_err(), "an area is given once");
     }
 
     #[cfg(debug_assertions)]

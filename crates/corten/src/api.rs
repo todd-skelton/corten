@@ -23,7 +23,7 @@
 //! }
 //!
 //! let api = Router::new().route("/api/items/{id}/price", get(price));
-//! App::new(pages).api("/api", Api::new(api).allow_origin("https://partner.example")).serve().await
+//! corten::serve(App::new(pages).api("/api", Api::new(api).allow_origin("https://partner.example"))).await
 //! ```
 //!
 //! The same example compiles in `docs/guide/app.md` (JSON-only routes).
@@ -31,13 +31,11 @@
 //! A screen that a native app or an agent reads is not an API route: it stays a page that answers
 //! with [`crate::Req::screen`], so every surface shares one handler.
 
-use std::sync::Arc;
+use std::marker::PhantomData;
 
 use axum::{
     body::{Body, HttpBody},
-    extract::Request,
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
-    middleware::{self, Next},
     response::{IntoResponse, Response},
     Router,
 };
@@ -45,16 +43,20 @@ use axum::{
 use crate::html::json_string;
 
 /// Routes that answer only JSON, with their settings: what [`crate::App::api`] mounts. A
-/// [`Router`] converts into one with no settings, so `.api("/api", routes)` is enough.
-pub struct Api {
+/// [`Router`] converts into one with no settings, so `.api("/api", routes)` is enough. `C` is the
+/// app's context type, which [`Api::guard`] reads, as an [`crate::Area`]'s is. A fallback set on
+/// its router is dropped: an unknown URL under the prefix is the JSON 404.
+pub struct Api<C> {
     pub(crate) routes: Router,
     pub(crate) origins: Vec<String>,
     pub(crate) context: bool,
+    pub(crate) guard: Option<crate::app::GuardFn>,
+    context_type: PhantomData<fn() -> C>,
 }
 
-impl Api {
+impl<C> Api<C> {
     pub fn new(routes: Router) -> Self {
-        Api { routes, origins: Vec::new(), context: false }
+        Api { routes, origins: Vec::new(), context: false, guard: None, context_type: PhantomData }
     }
 
     /// A site whose pages may call these routes from the browser (CORS), like
@@ -77,14 +79,28 @@ impl Api {
     /// Runs [`crate::App::context`] for these routes too, for an API that serves the app's own
     /// signed-in users (`req.context::<C>()` or axum's `Extension<C>`). Without it, the context
     /// function is not called, which saves its work (a session lookup) on every request that
-    /// authenticates another way.
+    /// authenticates another way. An API under a guard runs it anyway, for the guard.
     pub fn context(mut self) -> Self {
         self.context = true;
         self
     }
 }
 
-impl From<Router> for Api {
+impl<C: Clone + Send + Sync + 'static> Api<C> {
+    /// Who may call these routes: every route under the prefix, including unknown URLs and wrong
+    /// methods there, needs `check`'s [`crate::Access::ALLOW`], as with [`crate::App::guard`]. A
+    /// caller sent to sign in gets a JSON 401, since a JSON client follows no redirect. Given once.
+    pub fn guard<F>(mut self, check: F) -> Self
+    where
+        F: Fn(Option<&C>, &crate::Guarded) -> crate::Access + Send + Sync + 'static,
+    {
+        assert!(self.guard.is_none(), "corten: an API's guard is given once");
+        self.guard = Some(Box::new(move |extensions, req| check(extensions.get::<C>(), req)));
+        self
+    }
+}
+
+impl<C> From<Router> for Api<C> {
     fn from(routes: Router) -> Self {
         Api::new(routes)
     }
@@ -98,7 +114,7 @@ pub(crate) struct Mount {
 }
 
 impl Mount {
-    pub fn new(prefix: String, api: &Api) -> Self {
+    pub fn new<C>(prefix: String, api: &Api<C>) -> Self {
         Mount { prefix, origins: api.origins.clone(), context: api.context }
     }
 
@@ -159,39 +175,24 @@ pub(crate) fn under(prefix: &str, path: &str) -> bool {
     prefix == "/" || path.strip_prefix(prefix).is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
-/// Checks a prefix given to `App::api`.
-pub(crate) fn check_prefix(prefix: &str, others: &[String]) {
+/// Checks a prefix given to `App::api` or `App::area` (`what` names it in the message): `"/"`
+/// when `root` allows it, or a path like `/admin`: letters, digits, `-`, `_`, `.` and `~`
+/// between slashes, without a trailing slash, parameters or `.` and `..` segments. One rule for
+/// both, since an area's prefix also names its stylesheet's file.
+pub(crate) fn check_prefix(what: &str, prefix: &str, root: bool) {
+    let plain = prefix.len() > 1
+        && prefix.starts_with('/')
+        && prefix[1..].split('/').all(|part| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && part.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~'))
+        });
+    let root = if root { "\"/\" or " } else { "" };
     assert!(
-        prefix == "/" || (prefix.starts_with('/') && !prefix.ends_with('/') && !prefix.contains(['{', '}', '*', '?', '#'])),
-        "corten: an API prefix is a path like \"/api\", without a trailing slash or parameters: {prefix:?}"
+        plain || (!root.is_empty() && prefix == "/"),
+        "corten: {what} prefix is {root}a path like \"/admin\": letters, digits, -, _, . and ~ between slashes, without a trailing slash or parameters: {prefix:?}"
     );
-    if let Some(other) = others.iter().find(|other| under(other, prefix) || under(prefix, other)) {
-        panic!("corten: the API prefixes {other:?} and {prefix:?} overlap");
-    }
-}
-
-/// Under `corten dev`, an API route outside its prefix fails with a message saying so (it would
-/// be served as a page: HTML errors, the page CSP, the context). Without dev mode the routes are
-/// mounted as they are.
-pub(crate) fn checked(prefix: &str, routes: Router) -> Router {
-    if !routes.has_routes() {
-        return routes;
-    }
-    let prefix: Arc<str> = prefix.into();
-    routes.route_layer(middleware::from_fn(move |req: Request, next: Next| {
-        let prefix = prefix.clone();
-        async move {
-            if under(&prefix, req.uri().path()) {
-                return next.run(req).await;
-            }
-            let path = req.uri().path();
-            crate::Error::new(format!(
-                "{path} is routed by App::api(\"{prefix}\", ..) but does not start with \"{prefix}\", so it is served as a page; \
-                 move it under the prefix or route it with the pages"
-            ))
-            .into_response()
-        }
-    }))
 }
 
 /// The JSON body of every failure: `{"error":{"status":404,"message":"Not Found"}}`.
@@ -262,19 +263,25 @@ mod tests {
     #[test]
     #[should_panic(expected = "overlap")]
     fn prefixes_cannot_overlap() {
-        check_prefix("/api/v2", &["/api".to_string()]);
+        let _ = crate::App::new(Router::new()).api("/api", Router::new()).api("/api/v2", Router::new());
     }
 
     #[test]
     #[should_panic(expected = "without a trailing slash")]
     fn a_prefix_has_no_trailing_slash() {
-        check_prefix("/api/", &[]);
+        check_prefix("an API", "/api/", true);
+    }
+
+    #[test]
+    fn the_root_is_an_api_prefix_but_not_an_area_prefix() {
+        check_prefix("an API", "/", true);
+        assert!(std::panic::catch_unwind(|| check_prefix("an area", "/", false)).is_err());
     }
 
     #[test]
     #[should_panic(expected = "a scheme and a host")]
     fn an_allowed_origin_is_one_origin() {
-        let _ = Api::new(Router::new()).allow_origin("*");
+        let _ = Api::<crate::NoContext>::new(Router::new()).allow_origin("*");
     }
 
     #[test]

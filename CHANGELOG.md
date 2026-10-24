@@ -11,7 +11,9 @@ Corten is pre-1.0, so any minor version may change the API.
    methods and the deadline, with no shell, nonce or context and a `default-src 'none'` CSP.
    `Api::allow_origin` lets one site's pages call them from the browser (CORS preflight and
    headers, writes without cookies let through for those routes only); `Api::context` runs
-   `App::context` for them.
+   `App::context` for them, and `Api::guard` decides who may call them. A route given to an API
+   outside its prefix answers 500 (saying so under `corten dev`) instead of being served as a
+   page.
 2. `Error::with_status`, for a 4xx with a message written for the client.
 3. `Errors` is a response (feature `json`): 422 with the JSON error and its fields.
 4. `Nonce` is an extractor, for a handler that writes HTML with an inline script itself.
@@ -96,13 +98,13 @@ Corten is pre-1.0, so any minor version may change the API.
     673 ns against axum's 871 (release build, best of five). `examples/seller-desk` posts its
     checked rows as `ids` fields (each row's box joins the archive form with `form=`) instead of
     a comma-joined field its script wrote.
-21. `App::section(prefix, components)`: components only the pages under a URL prefix render get a
-    stylesheet of their own, `sections/{prefix}.css`, linked from those pages only, so a large
-    part of the app most visitors never open stops adding to every first load. A client
-    navigation into the section loads the stylesheet before it swaps the page in (a full load if
-    it fails), and keeps it. A component with a stylesheet listed in two places, or tokens in a
-    section, is a startup error; under `corten dev` a page outside the section that renders one
-    of its components is an error naming both. Measured with callgrind (release build, in
+21. `Area::components(&[..])`: components only an area's pages render (see the `Area` item
+    below) get a stylesheet of their own, `sections/{prefix}.css`, linked from those pages only,
+    so a large part of the app most visitors never open stops adding to every first load. A
+    client navigation into the area loads the stylesheet before it swaps the page in (a full
+    load if it fails), and keeps it. A component with a stylesheet listed in two places, or
+    tokens in an area, is a startup error; under `corten dev` a page outside the area that
+    renders one of its components is an error naming both. Measured with callgrind (release build, in
     process, instructions in `App`'s middleware per item page): without sections a navigation
     took 87,249-87,331 against 87,252-87,257 before (three runs each), and a full document
     100,101-103,892 against 100,176-103,616 (ten runs each, medians 103,270 and 102,652; the same
@@ -112,7 +114,7 @@ Corten is pre-1.0, so any minor version may change the API.
     call, and the allocator. A full document took 100,766-102,327. The home page's
     component CSS is then 593 bytes brotli instead of 1,047 and an item page's 1,141 in two
     files. The runtime is 126 bytes gzip larger. `examples/hello` puts the about page's note
-    in a section, and the smoke test checks the stylesheet loads before the swap, stays, is not
+    in an area, and the smoke test checks the stylesheet loads before the swap, stays, is not
     linked twice, and that a failed load falls back to a full page load.
 22. `corten-ui`'s `Toaster` and `Toast`: a persistent `role="status"` region an action's patch
     fills by id (`#ui-toast`), hidden after `seconds` but kept while the pointer or focus is on
@@ -126,20 +128,21 @@ Corten is pre-1.0, so any minor version may change the API.
     build has the API, but Playwright then waits forever after the first navigation the runtime
     intercepts, so the smoke test checks WebKit's swap from inside the page and runs the rest
     without the API.
-24. `App::guard(prefix, |context: Option<&C>, req| Access::..)`: every route under a prefix
-    (including unknown URLs and wrong methods there) needs the guard's `Access::ALLOW`, so a
-    handler cannot forget a sign-in or permission check. The check gets the request as
+24. Guards: `Area::guard(|context, req| Access::..)` for an area, `App::guard` for the whole app
+    and `Api::guard` for an API. Every route under the prefix (including unknown URLs and wrong
+    methods there) needs the guard's `Access::ALLOW`, so a handler cannot forget a sign-in or
+    permission check. The check gets the request as
     `Guarded`: `req.writes()` (every method but GET, HEAD and OPTIONS) gives reads and writes at
     one URL different rules, `req.is::<Route>()` names one route, `req.uri()` builds a sign-in
-    link back. `"/"` guards the whole app, denying by default; `App::unguarded::<SignIn>()` opens
+    link back. `App::guard` denies by default; `App::unguarded::<SignIn>()` opens
     one route, and Corten's own routes and the offline page are never guarded. A sign-in answer
     that a guard would send to sign in again is a 500 that says so, not a redirect loop. The app decides who passes; Corten
     answers before the handler and its extractors run, in the request's mode:
     `Access::sign_in(&route)` is a 303 for a page or a form post without JavaScript,
     `corten-location` for a form patch, a JSON 401 for a data client or an `App::api` route,
     and `Access::refuse(error)` is the error page or the JSON error. Guards nest (outer first),
-    run the context for API routes under them, and stop the app at startup when their context
-    type is not `App::context`'s. Under `corten dev` a refusal names its guard. `Access` is in
+    run the context for API routes under them, and read the app's context type (a guard of
+    another type does not compile). Under `corten dev` a refusal names its guard. `Access` is in
     the prelude. `examples/hello` guards an account page; the smoke test checks the redirect
     signed out and the page signed in. Measured with callgrind (item page, full document,
     release build, instructions in Corten's middleware itself, the same in each of 3 runs):
@@ -148,6 +151,29 @@ Corten is pre-1.0, so any minor version may change the API.
     request. The answer a guard gives
     is boxed: carried inline, it made every request's future larger, and `memcpy` alone rose
     from 17,935-18,544 instructions to 19,073-19,518.
+25. `App<C>`: the context type is part of the app's type. `App::context` turns an `App` (an
+    `App<NoContext>`) into an `App<Viewer>`, so a shell or guard that reads another type, a
+    guard on an app without a context, and a second `App::context` do not compile (each was a
+    startup panic or not caught), and `App::guard`'s closure needs no parameter types.
+    `compile_fail` doctests cover each.
+26. `App::area(prefix, Area::new(routes))`: a part of the app under a prefix that owns its
+    routes, with `.components(&[..])` for a stylesheet only its pages load and `.guard(..)` for
+    who may use it. It replaces `App::section` and a guard given a prefix string: the prefix is
+    written once for both, areas and APIs check their prefixes by one rule (letters, digits,
+    `-`, `_`, `.` and `~` between slashes), an area under an API prefix is a startup error, and
+    a route given in an area or API that answers outside its prefix (a path typed wrong) is a
+    500, saying so under `corten dev`, instead of being served without that prefix's guard. A
+    library can ship an area as `Area<C>`. `Area` is in the prelude.
+27. The app guide's "Your own middleware" section: tower layers on the routes run inside
+    Corten's middleware (after the context and guards), and layers around `app.router()` run
+    outside it, given to `corten::serve`. `docs/design.md` has a rule for where a new `App`
+    setting goes (`Area` or `Api` for a prefix, `App<C>` for the context).
+
+    Measured with callgrind (item page, full document, release build, in process, no
+    compression, instructions per request in Corten's middleware and axum's routing, two runs
+    each, before and after items 25 and 26): no guard 3,969 and 3,968-3,975; a context 4,061 and
+    4,059-4,066; a guard on `/items` (an area after) 4,355 and 4,358; `App::guard` with
+    `req.writes()` and one unguarded route 4,399 and 4,384-4,391.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -290,6 +316,10 @@ Corten is pre-1.0, so any minor version may change the API.
     `Result<u32, Errors>` works under `use corten::prelude::*` instead of failing with too many
     generic arguments. Existing handlers are unchanged.
 29. `FieldName` is in the prelude, next to `Errors`, `Fields` and `Form`.
+30. `corten::serve(app)` replaces `App::serve`. It takes anything that becomes a router (`App`
+    does), so an app adds its own layers around the whole app,
+    `corten::serve(app.router().layer(..))`, without giving up `HOST`, `PORT`, the log
+    subscriber and graceful shutdown.
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

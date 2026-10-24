@@ -4,5 +4,5 @@ mod gallery;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    app::app().serve().await
+    corten::serve(app::app()).await
 }

@@ -238,7 +238,7 @@ async function run(browser) {
   const current = () => page.$$eval("a[data-nav][aria-current=page]", (links) => links.map((l) => l.getAttribute("href")).join());
   check("the shell marks the current link", (await current()) === "/");
   check("one feed stream while the component is on the page", (await openFeeds()) === 1);
-  // The about page's note is in a section (App::section): its stylesheet loads before the page is
+  // The about page's note is in an area (Area::components): its stylesheet loads before the page is
   // swapped in, so the note is styled the moment it joins the page.
   await page.evaluate(() => {
     new MutationObserver((_, observer) => {
@@ -293,7 +293,7 @@ async function run(browser) {
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
   errors.length = 0;
 
-  // /account is guarded (App::guard): signed out, a navigation there follows the redirect to the
+  // /account is guarded (Area::guard): signed out, a navigation there follows the redirect to the
   // watchlist, where the sign-in button is.
   await page.goto(`${base}/about`);
   await page.click('header a[href="/account"]');

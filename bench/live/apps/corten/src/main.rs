@@ -47,5 +47,5 @@ async fn main() -> std::io::Result<()> {
             }),
         )
         .with_state(feed);
-    App::new(routes).api("/live/publish", publish).serve().await
+    corten::serve(App::new(routes).api("/live/publish", publish)).await
 }
