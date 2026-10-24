@@ -21,7 +21,6 @@ http-body = "1"
 # Already in axum's tree: the traits App's middleware implements.
 tower-layer = "0.3"
 tower-service = "0.3"
-memchr = "2"
 # Already in axum's tree (its `Form` and `Query`): percent-decoding form bodies and query strings.
 form_urlencoded = "1"
 # Already in axum's tree (through serde_json): float digits for views.
@@ -38,8 +37,7 @@ brotli = { version = "9", optional = true }
 flate2 = { version = "1", optional = true }
 zstd = { version = "0.14", default-features = false, optional = true }
 
-# corten-macros has no dependencies and memchr is already in axum's tree. Everything else is
-# opt-in except `log`.
+# corten-macros has no dependencies. Everything else is opt-in except `log`.
 [features]
 default = ["log"]
 # App::serve prints logs (errors, startup, shutdown) to stderr unless the app set a subscriber.

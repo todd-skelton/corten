@@ -209,6 +209,7 @@ Corten is pre-1.0, so any minor version may change the API.
    changes are views, which measured faster to take over (7-8.5 ms against 18-20 ms for 1,000
    server-rendered rows) and lighter (116 bytes a row against 927), and the framework no longer
    ships a third-party JavaScript bundle. Solid stays in `bench/browser` as a comparison.
+3. The `memchr` dependency of `corten`, which no code used.
 
 ### Changed
 
@@ -344,6 +345,15 @@ Corten is pre-1.0, so any minor version may change the API.
     does), so an app adds its own layers around the whole app,
     `corten::serve(app.router().layer(..))`, without giving up `HOST`, `PORT`, the log
     subscriber and graceful shutdown.
+31. Less work per page, with the same bytes out: head tags (`Meta`) and `corten::escape` escape
+    through the word-at-a-time `escape_into` straight into the page instead of a character at a
+    time through `format!`; a route's text path parameters (`&str`, `String`, `Cow<str>`) are
+    percent-encoded from the string, a run of plain bytes at a time, without going through
+    `Display`; and each script module's tag is made when the assets load, so a page no longer
+    hashes the module's name twice and formats its tag. Measured with callgrind on the item page
+    app: 134,682 instructions per item page request before, 120,175 after (-10.8%), and 95,398 on
+    the home page (50 item links) before, 85,261 after (-10.6%). The item view's `render_cost` is unchanged within noise (median 20.0 µs before,
+    20.2 µs after, 15 runs each).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

@@ -45,9 +45,9 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             Segment::Param(name) | Segment::Rest(name) => {
                 flush(&mut text, &mut body);
                 let field = fields.iter().find(|f| f.name == *name).expect("checked above");
-                let function = if matches!(segment, Segment::Rest(_)) { "rest" } else { "segment" };
+                let rest = if matches!(segment, Segment::Rest(_)) { "true" } else { "false" };
                 body.extend(q(
-                    &format!("::corten::route::__private::{function}(&self.__A0, __OUT);"),
+                    &format!("(&::corten::route::__private::Segment(&self.__A0)).__segment({rest}, __OUT);"),
                     &[proc_macro::TokenTree::Ident(field.ident.clone()).into()],
                 ));
             }
@@ -74,7 +74,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             #[allow(unused_variables)]
             fn write_href(&self, __OUT: &mut ::std::string::String, __corten_html: bool) {
                 #[allow(unused_imports)]
-                use ::corten::route::__private::{QueryOption as _, QueryValue as _};
+                use ::corten::route::__private::{QueryOption as _, QueryValue as _, SegmentText as _, SegmentValue as _};
                 __A1
             }",
             &[string(&path).into(), body],

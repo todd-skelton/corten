@@ -76,6 +76,11 @@ pub struct Assets {
     /// The components' and `script!` modules: they hand their exports to the runtime as they run, so a
     /// page loads them with a module script of its own.
     registered: std::collections::HashSet<String>,
+    /// Each script module's tag in a page's head, sorted by name: a `<script type="module">` for a
+    /// registered module, else a `<link rel="modulepreload">`. Made here so a page only looks it up.
+    module_tags: Box<[(Box<str>, Box<str>)]>,
+    /// The views' module preload tag, when the app lists any `#[component(view)]`.
+    views_tag: Option<Box<str>>,
     /// The joined component stylesheets' URL, when any component has one.
     stylesheet: Option<String>,
     /// Each section with a stylesheet: its prefix and the stylesheet's URL.
@@ -228,7 +233,7 @@ impl Assets {
         sources.sort_by(|a, b| a.0.cmp(&b.0));
         let mut files = HashMap::new();
         let mut digest = fnv::OFFSET;
-        let scripts = sources
+        let scripts: std::collections::HashSet<String> = sources
             .iter()
             .filter_map(|(url, _)| url.strip_prefix("scripts/")?.strip_suffix(".js"))
             .filter(|name| !name.contains('/'))
@@ -249,8 +254,24 @@ impl Assets {
         let prefix = format!("{mount}/{version}/");
         let stylesheet = files.contains_key(STYLESHEET).then(|| format!("{prefix}{STYLESHEET}"));
         let sections = section_files.into_iter().map(|(section, file)| (section, format!("{prefix}{file}"))).collect();
+        let scripts_dir = format!("{prefix}scripts/");
+        let mut module_tags: Vec<(Box<str>, Box<str>)> = scripts
+            .iter()
+            .map(|name: &String| {
+                let tag = if registered.contains(name) {
+                    format!(r#"<script type="module" src="{scripts_dir}{name}.js"></script>"#)
+                } else {
+                    format!(r#"<link rel="modulepreload" href="{scripts_dir}{name}.js">"#)
+                };
+                (name.as_str().into(), tag.into())
+            })
+            .collect();
+        module_tags.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        let views_tag = files.contains_key(VIEWS).then(|| format!(r#"<link rel="modulepreload" href="{prefix}{VIEWS}">"#).into());
         Ok(Assets {
-            scripts_dir: format!("{prefix}scripts/"),
+            module_tags: module_tags.into(),
+            views_tag,
+            scripts_dir,
             mount: mount.into(),
             version,
             prefix,
@@ -310,6 +331,17 @@ impl Assets {
     /// a `script!` module): a page loads it with `<script type="module">`, not an `import()`.
     pub fn registers(&self, name: &str) -> bool {
         self.registered.contains(name)
+    }
+
+    /// The tag that loads the script module `name` with a page, when there is one.
+    pub(crate) fn module_tag(&self, name: &str) -> Option<&str> {
+        let at = self.module_tags.binary_search_by(|(n, _)| (**n).cmp(name)).ok()?;
+        Some(&self.module_tags[at].1)
+    }
+
+    /// The views' module preload tag, when the app lists any `#[component(view)]`.
+    pub(crate) fn views_tag(&self) -> Option<&str> {
+        self.views_tag.as_deref()
     }
 
     /// Where script modules are served from: `{prefix}scripts/`.
