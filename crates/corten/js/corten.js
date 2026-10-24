@@ -847,8 +847,10 @@ document.addEventListener("touchstart", (event) => prefetch(event.target), { pas
 /**
  * @param {URL} url
  * @param {AbortSignal} signal
+ * @param {Response} [redirected] the answer to this URL, already fetched by a navigation that
+ *   the server redirected here
  */
-async function visit(url, signal) {
+async function visit(url, signal, redirected) {
   const key = pageKey(url);
   const hit = prefetched.get(key);
   prefetched.delete(key);
@@ -859,8 +861,9 @@ async function visit(url, signal) {
   const main = document.querySelector("main");
   main?.setAttribute("aria-busy", "true");
   try {
-    res =
-      hit && fresh
+    res = redirected
+      ? redirected
+      : hit && fresh
         ? await hit.response.catch(() => fetch(url, { headers: { corten: "nav" }, signal }))
         : await fetch(url, { headers: { corten: "nav" }, signal });
   } catch (error) {
@@ -877,12 +880,22 @@ async function visit(url, signal) {
     location.reload();
     return;
   }
-  if (res.redirected) history.replaceState(history.state, "", res.url);
+  // The server redirected (a guard sending someone to sign in). Changing the address with
+  // history.replaceState would abort this navigation and the body with it, so read the body,
+  // then navigate again to where it came from, in place of this entry, with the page in hand.
+  if (res.redirected && !redirected) {
+    const page = new Response(await res.text(), { headers: res.headers });
+    signal.throwIfAborted();
+    navigation.navigate(res.url, { history: "replace", info: { [REDIRECTED]: page } });
+    return;
+  }
   await swapPage(await res.text(), signal);
 }
 
 /** @type {any} */
 const navigation = /** @type {any} */ (window).navigation;
+/** Key of the response a redirected navigation hands to the next one, in its `info`. */
+const REDIRECTED = Symbol("corten.redirected");
 
 navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   // A script's history.pushState or replaceState (a tab that puts itself in the address) is the
@@ -899,7 +912,8 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   if (skip) return;
   // The page is about to change: replies to its pending submits would patch the wrong page.
   for (const pending of submits.values()) pending.controller.abort();
-  event.intercept({ handler: () => visit(new URL(event.destination.url), event.signal) });
+  const redirected = event.info?.[REDIRECTED];
+  event.intercept({ handler: () => visit(new URL(event.destination.url), event.signal, redirected) });
 });
 
 /**

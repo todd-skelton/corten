@@ -1,4 +1,4 @@
-use corten::{prelude::*, view::Attrs, FieldName};
+use corten::{prelude::*, view::Attrs};
 
 /// A number field's input and buttons. Start from [`Number::new`] and set what differs:
 ///

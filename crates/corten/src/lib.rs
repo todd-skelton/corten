@@ -87,7 +87,7 @@ use axum::{
 use futures_util::{Stream, StreamExt};
 
 pub use api::Api;
-pub use app::App;
+pub use app::{Access, App};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 pub use cache::Cache;
@@ -142,7 +142,7 @@ pub mod prelude {
         raw,
         script::{el, refs, Handler, Ref},
         view::Id,
-        Api, App, Cache, Document, Errors, Fields, Form, Meta, Mode, Query, Render, Req, Result, Route,
+        Access, Api, App, Cache, Document, Errors, FieldName, Fields, Form, Meta, Mode, Query, Render, Req, Result, Route,
     };
 }
 
@@ -280,7 +280,23 @@ where
 }
 
 /// Handler result. Any `std::error::Error` converts with `?` and becomes a 500.
-pub type Result<T = Response> = std::result::Result<T, Error>;
+///
+/// The error type defaults to [`Error`], so `Result` alone is a handler's answer and
+/// `Result<T, E>` is still the standard two-parameter result under `use corten::prelude::*`:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// fn count(text: &str, field: FieldName, errors: &mut Errors) -> Result<u32, ()> {
+///     text.parse().map_err(|_| errors.add(field, "Enter a whole number."))
+/// }
+///
+/// async fn page() -> Result {
+///     Ok(().into_response())
+/// }
+/// # use corten::axum::response::IntoResponse;
+/// ```
+pub type Result<T = Response, E = Error> = std::result::Result<T, E>;
 
 /// Resolves when the process is asked to stop (Ctrl-C, or `SIGTERM` from a container runtime),
 /// after ending every open [`live`] stream and live feed stream (feature `feed`) so a graceful
