@@ -1,25 +1,28 @@
 # Corten
 
-**Server-rendered web apps in Rust, with interactivity only where a page needs it.**
+**Fast web apps: Rust on the server, plain JavaScript in the browser, and each doing the work it is fastest at.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Corten renders every page on the server with `html!`, a JSX-like Rust macro. The browser gets
-HTML, a small runtime that swaps pages and patches forms, and *handlers*: plain JavaScript
-functions in a script next to a component, which its Rust markup calls by name. Live data arrives as numbered patches over
-server-sent events. One handler serves the browser, native apps and AI agents.
+Corten's goal is speed at the user's end. Rust renders each page on the server with `html!`, a
+JSX-like Rust macro, so the first page arrives as finished HTML. In the browser, plain JavaScript
+does what the page can do with what it already has (sort, filter, select, edit, total) with no
+request: *handlers* are functions in a script next to a component, which its Rust markup calls
+by name, and *views* are typed classes over the rows the server rendered. When the server is
+needed, a small runtime swaps pages and patches forms, and live data arrives as numbered patches
+over server-sent events. One request handler serves the browser, native apps and AI agents.
 
 - **Fast on the server.** 18,043 rendered pages a second on one CPU, 5.3x ASP.NET Core, the
   fastest of thirteen other frameworks, and 1.1 MiB of memory after the first request
   (measured, [below](#performance)).
-- **Light in the browser.** A 5.3 KB (brotli) runtime; the benchmark item page loads 6.9 KB of
+- **Fast in the browser.** A 5.3 KB (brotli) runtime; the benchmark item page loads 6.9 KB of
   JavaScript (gzip, measured). No WASM, no virtual DOM, no hydration: a script takes over 1,000
   server-rendered rows in 6.0 ms, against 20-84 ms for Solid, Svelte, Vue, React and Remix
   (measured, [below](#client-heavy-screens)).
 - **Typed end to end.** Routes, form fields, CSS classes, handler calls and the elements they
   take, events and messages are Rust types. TypeScript types for scripts are generated from Rust.
-- **Works without JavaScript.** Links are links and forms post; scripts improve a page but never
-  hold it up.
+- **Works without JavaScript.** Links are links and forms post; scripts make a page faster and
+  richer but never hold it up.
 - **Production defaults.** A strict CSP, a cross-site write check, error pages, versioned
   assets, cache headers that never share one user's page with another, compression, health
   checks, graceful shutdown and an installable PWA, from `corten::serve(App::new(routes))`. Routes
@@ -144,17 +147,22 @@ says an `HTMLOutputElement` and the ref is on an `<output>`. Either mismatch is 
 
 ## When to use it
 
-Corten fits apps whose screens are server data: stores, marketplaces, dashboards, admin tools,
-content with live parts. It suits teams that want one language on the server and the platform in
-the browser.
+Corten fits apps where speed at the user's end matters: stores, marketplaces, dashboards, admin
+tools, rich editing screens, content with live parts. The server owns the data and decides what
+a write does; the browser does everything it can with the data it already has, without a round
+trip. It suits teams that want Rust on the server and the platform's own JavaScript in the
+browser, with types across the seam between them.
 
-Look elsewhere for an offline-first app whose state lives on the device, for server-side TSX or
-React components, or for a pure static site (a static site generator is simpler).
+Look elsewhere for an offline-first app whose data lives on the device (Corten's offline support
+is a fallback page and cached files), for server-side TSX or React components, or for a pure
+static site (a static site generator is simpler).
 
 ## Values
 
-1. **Fast, and proven fast.** Speed is a feature, and every claim has a measured number behind
-   it. A change to rendering, the runtime or the request path is measured before and after
+1. **Fast, and proven fast.** Speed at the user's end is the goal, and every claim has a measured
+   number behind it. The work goes where it is fastest for the user: the server renders the first
+   page and anything that needs its data, and the browser does what it can with what it already
+   has. A server render that is slower than a client action is the wrong choice. A change to rendering, the runtime or the request path is measured before and after
    (`render_cost`, bytes shipped, nanoseconds per request). We say no to features that cost every
    user to help a few, like view transitions on every swap.
 2. **The platform first.** Use what the browser and HTTP already provide: custom elements,
@@ -162,8 +170,10 @@ React components, or for a pure static site (a static site generator is simpler)
    Build only what the platform lacks, and remove it once the platform catches up. One idea
    should work the same everywhere, so cancellation is `AbortSignal` in the browser and on the
    server.
-3. **HTML that works on its own.** Every page renders on the server, and links and forms work
-   without JavaScript. Scripts improve a page but never hold it up.
+3. **HTML that works on its own.** Every page's first render comes from the server, and links and
+   forms work without JavaScript. Scripts make a page faster and richer but never hold it up. A
+   feature only a browser can provide (drag and drop, a canvas) needs JavaScript, and the page
+   around it still works.
 4. **Mistakes fail at compile time.** No strings at the seams between server and client: routes,
    handler calls, refs, class names, form fields and messages are all typed. TypeScript types are
    generated from Rust, never written by hand. The app's own setup is held to the same bar: a
@@ -182,7 +192,8 @@ React components, or for a pure static site (a static site generator is simpler)
 7. **Good defaults, easy overrides.** `corten::serve(App::new(routes))` should be production-ready.
    Every default can be replaced in one line, and the common case stays short.
 8. **One server, every surface.** The same handler and data serve the browser, native apps and AI
-   agents. The server is the source of truth, and clients render it.
+   agents. The server is the source of truth for the data and for what a write does; the state
+   of a screen (a sort, a selection, an open panel) belongs to the client showing it.
 9. **Verified, not assumed.** Every runtime behavior has a browser smoke test. Reliability work,
    like failover and lost-patch counts, is benchmarked rather than argued.
 

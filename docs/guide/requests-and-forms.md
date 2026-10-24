@@ -23,6 +23,10 @@ the shell is never stale.
 
 ## Forms
 
+A form is for what the server has to answer: a write, or data the page does not have. Sorting,
+filtering or totalling what the page already shows is faster in a handler, with no request
+([Server or browser](scripts.md#server-or-browser)).
+
 `#[derive(Fields)]` gives a form struct its field names as `FieldName` constants, so markup and
 validation cannot misspell them: `Errors` takes nothing else. Validation stays in the app; `Errors` carries the first message per field.
 Any name works, including ones the DOM gives a form's own properties (`action`, `method`, `id`): the runtime

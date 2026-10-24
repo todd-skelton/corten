@@ -1,9 +1,10 @@
 # Surfaces: one server for web, native and agents
 
 Corten starts with the web, but nothing in it assumes the client is a browser. The server owns
-state, rules and user-facing text. A surface is only a way of showing a screen and sending
-actions back. Every surface speaks plain HTTP, JSON or HTML, and server-sent events, which
-every platform has built in.
+the data, the rules a write follows and the text it renders; what a screen does with data it
+already has (sorting, filtering, selecting) is the client's, and is fastest there. A surface
+shows screens, keeps their state and sends actions back. Every surface speaks plain HTTP, JSON
+or HTML, and server-sent events, which every platform has built in.
 
 ## Three contracts
 

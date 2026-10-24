@@ -442,6 +442,15 @@ Corten is pre-1.0, so any minor version may change the API.
    page load that could not use the prefetched response.
 9. The README, `docs/design.md` and `corten-ui` say what is tested in which browsers: the
    runtime and `corten-ui` in Chromium, Firefox and WebKit.
+10. The goal is stated as speed at the user's end, with the work done where it is fastest: the
+    README's tagline, introduction, "When to use it" and values 1, 3 and 8, a new design choice
+    (9), design rules 1, 4 and 5, `docs/architecture.md`, the agent skill and the `AGENTS.md`
+    `corten new` writes. They read as if every interaction should be a server render; sorting,
+    filtering, selecting and totalling what a page already has belong in the browser. The scripts
+    guide has a new section, Server or browser, with a table for choosing. Pages and actions still
+    work without JavaScript; a feature only a browser can provide may need it. The missing piece
+    for rich client text is
+    [#17 Scripts have no typed way to show user-facing text they compute](https://github.com/todd-skelton/corten/issues/17).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
