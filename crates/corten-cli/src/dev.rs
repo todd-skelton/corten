@@ -152,10 +152,10 @@ fn package_dirs(text: &str) -> Vec<PathBuf> {
     for (at, _) in text.match_indices("path+file://") {
         let rest = &text[at + "path+file://".len()..];
         let end = rest.find(['#', ')', '"', '?']).unwrap_or(rest.len());
-        if let Some(dir) = file_url_path(&rest[..end]) {
-            if !dirs.contains(&dir) {
-                dirs.push(dir);
-            }
+        if let Some(dir) = file_url_path(&rest[..end])
+            && !dirs.contains(&dir)
+        {
+            dirs.push(dir);
         }
     }
     dirs
@@ -264,7 +264,11 @@ mod tests {
         let (app, lib) = (base.join("app"), base.join("lib"));
         std::fs::create_dir_all(app.join("src")).unwrap();
         std::fs::create_dir_all(lib.join("src")).unwrap();
-        std::fs::write(app.join("Cargo.toml"), "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nlib = { path = \"../lib\" }\n").unwrap();
+        std::fs::write(
+            app.join("Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nlib = { path = \"../lib\" }\n",
+        )
+        .unwrap();
         std::fs::write(app.join("src/main.rs"), "fn main() {}\n").unwrap();
         std::fs::write(lib.join("Cargo.toml"), "[package]\nname = \"lib\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
         std::fs::write(lib.join("src/lib.rs"), "").unwrap();
