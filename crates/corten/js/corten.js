@@ -619,11 +619,29 @@ function stateOf(f, initial) {
   return initial ? f.defaultValue : f.value;
 }
 
+/**
+ * The form's own property `name`, past a control named like it: in the DOM `<button name="action">`
+ * makes `form.action` that button, and `<input name="id">` makes `form.id` the input, so the
+ * runtime never reads a form's properties or calls its methods directly.
+ * @param {HTMLFormElement} form
+ * @param {string} name
+ * @returns {any}
+ */
+const formProperty = (form, name) => Reflect.get(HTMLFormElement.prototype, name, form);
+
+/**
+ * Calls the form's own method `name` (see formProperty).
+ * @param {HTMLFormElement} form
+ * @param {string} name
+ * @param {...any} args
+ */
+const formCall = (form, name, ...args) => formProperty(form, name).call(form, ...args);
+
 /** The fields of a form and their state, when it is sent. @param {HTMLFormElement} form */
 function sentState(form) {
   /** @type {Map<Element, string | undefined>} */
   const sent = new Map();
-  for (const f of Array.from(form.elements)) sent.set(f, stateOf(f));
+  for (const f of Array.from(/** @type {HTMLFormControlsCollection} */ (formProperty(form, "elements")))) sent.set(f, stateOf(f));
   return sent;
 }
 
@@ -778,7 +796,8 @@ function shellChanged(res) {
  * @param {HTMLFormElement} form
  */
 function focusInvalid(form) {
-  const home = (form.isConnected ? form : form.id && document.getElementById(form.id)) || document.querySelector("main");
+  const id = formProperty(form, "id");
+  const home = (formProperty(form, "isConnected") ? form : id && document.getElementById(id)) || document.querySelector("main");
   const active = document.activeElement;
   if (active && active !== document.body && !home?.contains(active)) return;
   const field = home?.querySelector('[aria-invalid="true"]') ?? document.querySelector('main [aria-invalid="true"]');
@@ -937,12 +956,12 @@ const submits = new Map();
 
 document.addEventListener("submit", async (event) => {
   const form = event.target;
-  if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-patch")) return;
+  if (!(form instanceof HTMLFormElement) || !formCall(form, "hasAttribute", "data-patch")) return;
   event.preventDefault();
   const submitter = /** @type {SubmitEvent} */ (event).submitter;
   const data = new FormData(form, submitter);
-  const method = (submitter?.getAttribute("formmethod") || form.method).toUpperCase();
-  const url = new URL(submitter?.getAttribute("formaction") || form.action, location.href);
+  const method = (submitter?.getAttribute("formmethod") || formProperty(form, "method")).toUpperCase();
+  const url = new URL(submitter?.getAttribute("formaction") || formProperty(form, "action"), location.href);
   const fields = new URLSearchParams(/** @type {any} */ (data));
   const sent = sentState(form);
   const key = `${method} ${url.href} ${fields}`;
@@ -955,8 +974,8 @@ document.addEventListener("submit", async (event) => {
   /** @type {RequestInit} */
   const init = { method, headers: { corten: "action" }, signal };
   if (method === "GET") url.search = fields.toString();
-  else init.body = form.enctype === "multipart/form-data" ? data : fields;
-  form.setAttribute("aria-busy", "true");
+  else init.body = formProperty(form, "enctype") === "multipart/form-data" ? data : fields;
+  formCall(form, "setAttribute", "aria-busy", "true");
   // A write can change any page, so nothing fetched before it is reused.
   if (method !== "GET") {
     for (const entry of prefetched.values()) discard(entry);
@@ -978,16 +997,16 @@ document.addEventListener("submit", async (event) => {
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
     } else {
-      form.dispatchEvent(new CustomEvent("corten:error", { bubbles: true, detail: { status: res.status } }));
+      formCall(form, "dispatchEvent", new CustomEvent("corten:error", { bubbles: true, detail: { status: res.status } }));
     }
   } catch (error) {
     if (signal.aborted) return;
     // Offline or the server is unreachable: the form stays as it is, and the page can say so.
-    form.dispatchEvent(new CustomEvent("corten:error", { bubbles: true, detail: { status: 0, error } }));
+    formCall(form, "dispatchEvent", new CustomEvent("corten:error", { bubbles: true, detail: { status: 0, error } }));
   } finally {
     if (submits.get(form)?.controller === controller) {
       submits.delete(form);
-      form.removeAttribute("aria-busy");
+      formCall(form, "removeAttribute", "aria-busy");
     }
   }
 });

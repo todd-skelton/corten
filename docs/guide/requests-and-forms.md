@@ -25,6 +25,9 @@ the shell is never stale.
 
 `#[derive(Fields)]` gives a form struct its field names as `FieldName` constants, so markup and
 validation cannot misspell them: `Errors` takes nothing else. Validation stays in the app; `Errors` carries the first message per field.
+Any name works, including ones the DOM gives a form's own properties (`action`, `method`, `id`): the runtime
+posts a `data-patch` form to its own `action` and `method` whatever its controls are named. An app's own
+script that reads `form.action` gets the control instead, as in any page; read `getAttribute("action")`.
 `FieldName`, `Errors` and `Form` are all in the prelude, and so is `Result`, whose error type
 defaults to `corten::Error`: a handler returns `Result`, and a helper that checks one field
 returns `Result<u32, Errors>`, both under `use corten::prelude::*`.

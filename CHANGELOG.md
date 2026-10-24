@@ -409,6 +409,12 @@ Corten is pre-1.0, so any minor version may change the API.
     takes the packages from `cargo metadata` after each build
     ([#10 corten dev does not rebuild when a path dependency changes](https://github.com/todd-skelton/corten/issues/10)).
 
+13. A `data-patch` form with a control named like one of the form's properties
+    (`<button name="action">`, an `<input name="method">`, `id`, `elements`) posts as it does
+    without JavaScript. The runtime read `form.action` and `form.method`, which the DOM makes the
+    control, and posted to `/[object HTMLButtonElement]` or threw; it now reads the form's own
+    properties. Found in the Chase Sets pilot, where `#[derive(Fields)]` named a field `action`.
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
