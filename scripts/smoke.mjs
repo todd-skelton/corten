@@ -530,4 +530,44 @@ async function run(browser) {
   check("without JavaScript the form posts and renders the page", ((await plain.textContent("#watch-message")) ?? "").startsWith("Watching Initech"));
   check("without JavaScript prices are server-rendered", (await plain.$$('[data-ref="price"]')).length === 3);
   await noJs.close();
+
+  // A navigation started before the first document has loaded is the browser's own: a script's
+  // form submit (one made from on:connect) makes Chromium stop loading the document, and a page
+  // taken over then never fires load.
+  const early = await browser.newPage();
+  /** @type {() => void} */
+  let release = () => {};
+  const held = new Promise((/** @type {(v?: unknown) => void} */ r) => (release = r));
+  await early.route("**/slow.png", async (route) => {
+    await held;
+    await route.fulfill({ status: 404, body: "" }).catch(() => {});
+  });
+  await early.addInitScript(() => {
+    if (location.pathname !== "/") return;
+    document.addEventListener("DOMContentLoaded", () => {
+      const img = new Image();
+      img.src = "/slow.png";
+      document.body.append(img);
+      const form = document.createElement("form");
+      form.method = "get";
+      form.action = "/about";
+      form.hidden = true;
+      document.body.append(form);
+      form.requestSubmit();
+    });
+  });
+  await early.goto(base, { waitUntil: "commit" });
+  await early.waitForFunction(() => document.title === "About | Corten", null, { timeout: 5000 }).catch(() => {});
+  release();
+  await early.waitForFunction(() => /** @type {PerformanceNavigationTiming} */ (performance.getEntriesByType("navigation")[0])?.loadEventEnd > 0, null, { timeout: 5000 }).catch(() => {});
+  const loaded = await early.evaluate(() => {
+    const entry = /** @type {PerformanceNavigationTiming} */ (performance.getEntriesByType("navigation")[0]);
+    return { path: new URL(entry.name).pathname, load: entry.loadEventEnd > 0, title: document.title };
+  });
+  check(
+    "a form submitted before the first page loads navigates, and the page loads",
+    loaded.title === "About | Corten" && loaded.load,
+    JSON.stringify(loaded),
+  );
+  await early.close();
 }

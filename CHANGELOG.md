@@ -400,6 +400,14 @@ Corten is pre-1.0, so any minor version may change the API.
     replaced. A `[::1]` port another process holds is now an error at startup, since
     `localhost` would reach that process. `HOST` set (as the Dockerfiles set `0.0.0.0`) binds
     that one address, as before.
+11. A navigation started before the first page has fired `load` is a full page load instead of a
+    swap. A form a script submitted from `on:connect` made Chromium stop loading the page, and
+    the runtime taking that navigation over left it without a `load` event
+    ([#11 A navigation taken over before the first page loads stops it loading](https://github.com/todd-skelton/corten/issues/11)).
+12. `corten dev` rebuilds when a local package the app's build reads changes (a path
+    dependency, a workspace's shared crate), not only on a change in the app's directory. It
+    takes the packages from `cargo metadata` after each build
+    ([#10 corten dev does not rebuild when a path dependency changes](https://github.com/todd-skelton/corten/issues/10)).
 
 ### Documentation
 

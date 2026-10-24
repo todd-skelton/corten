@@ -897,12 +897,22 @@ const navigation = /** @type {any} */ (window).navigation;
 /** Key of the response a redirected navigation hands to the next one, in its `info`. */
 const REDIRECTED = Symbol("corten.redirected");
 
+/**
+ * Whether the first document has fired `load`. Before it, a navigation is the browser's own (a
+ * full load): a script's form submit (one made from on:connect) makes Chromium stop loading the
+ * document before `navigate` fires, so `readyState` reads "complete" but `load` never comes, and
+ * a page taken over then would never load.
+ */
+let loaded = document.readyState === "complete";
+if (!loaded) addEventListener("load", () => (loaded = true), { once: true });
+
 navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   // A script's history.pushState or replaceState (a tab that puts itself in the address) is the
   // page's own: nothing to fetch. Back and forward between pages this runtime swapped are
   // same-document traversals too, and do need the page.
   const skip =
     !event.canIntercept ||
+    !loaded ||
     event.hashChange ||
     (event.destination.sameDocument && event.navigationType !== "traverse") ||
     event.downloadRequest !== null ||

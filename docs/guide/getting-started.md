@@ -18,7 +18,7 @@ test and a Dockerfile.
 | Command | What it does |
 |---|---|
 | `corten new <dir>` | Creates an app that depends on the `corten` release matching the command's version. `--name` sets the crate name, `--corten-path` uses a local checkout instead. |
-| `corten dev` | Builds and runs the app, rebuilds and restarts on every change (a failed build keeps the last good server running), and reloads open pages. `--port` or `PORT`. |
+| `corten dev` | Builds and runs the app, rebuilds and restarts on every change in the app's directory or a local package its build reads, like a workspace's shared crate (a failed build keeps the last good server running), and reloads open pages. `--port` or `PORT`. |
 | `corten fmt` | Lays out the markup inside `html!`, which rustfmt leaves alone (`--check` only reports). |
 | `corten check` | `cargo fmt --check`, `corten fmt --check`, `cargo clippy -D warnings`, `cargo test`. |
 | `corten build` | The release binary. |
