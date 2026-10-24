@@ -10,7 +10,8 @@ Every change follows the values in `README.md` (Values). When they conflict, thi
 
 1. Correctness and reliability.
 2. Performance at the user's end.
-3. Type safety and one way to do things.
+3. Compile-time safety and one way to do things: a mistake the compiler can catch is a compile
+   error, not a startup panic or a per-request check (`docs/design.md`, Rules).
 4. Developer convenience.
 
 For example, the deadline timer that cost 640 ns per request was reworked, not accepted for

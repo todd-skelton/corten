@@ -126,7 +126,10 @@ use std::cell::RefCell;
 ///   `var()` (`"var(--space-1)"`) and `value()`.
 /// - `themes` (optional): a selector and the values it overrides,
 ///   `{"[data-theme=dark]": {"color": {"ink": "#eee"}}}`. A token that is not in its scale is a
-///   compile error.
+///   compile error. A theme's `"@media"` applies the same values to another selector under a
+///   media condition, so the system's dark mode needs no second copy of them:
+///   `"@media": {"(prefers-color-scheme: dark)": ":root:not([data-theme=light])"}` (dark when the
+///   system is dark and the page did not choose light).
 /// - `breakpoints` (optional): `{"sm": "40rem", "md": "48rem"}`, smallest first.
 /// - `utilities` (optional): classes for one property, from a scale
 ///   (`{"gap": {"property": "gap", "scale": "space"}}`) or from their own values
@@ -379,6 +382,19 @@ mod tests {
         assert!(BadgeList.script.is_none());
     }
 
+    /// `Card` with `.card`: inside the markup `{Card}` is the class.
+    #[component(css)]
+    fn Card<'a>(title: &'a str) -> impl Render {
+        html! { <section class={Card}><h2 class={Title}>{title}</h2></section> }
+    }
+
+    #[test]
+    fn a_class_can_be_named_like_its_component() {
+        let html = html! { <Card title="Policies" /> }.to_html();
+        assert_eq!(html, r#"<section class="card__card"><h2 class="card__title">Policies</h2></section>"#);
+        assert_eq!(Card.style.expect("own stylesheet").file, "card.css");
+    }
+
     // Rendering records components in debug builds only.
     #[cfg(debug_assertions)]
     #[tokio::test]
@@ -405,6 +421,20 @@ mod tests {
         assert_eq!(status, 200, "outside corten dev nothing is checked");
     }
 
+    #[derive(crate::Route)]
+    #[route("/admin")]
+    struct Admin;
+
+    #[derive(crate::Route)]
+    #[route("/admin/reports")]
+    struct Reports;
+
+    #[derive(crate::Route)]
+    #[route("/admin/reports/{id}")]
+    struct Report<'a> {
+        id: &'a str,
+    }
+
     #[tokio::test]
     async fn an_area_links_its_stylesheet_from_its_pages_only() {
         use axum::{body::Body, http::Request, routing::get};
@@ -423,11 +453,8 @@ mod tests {
             App::new(Router::new().route("/", get(page)).route("/administrator", get(page)))
                 .dev(dev)
                 .components(&[theme::TOKENS])
-                .area("/admin", crate::Area::new(Router::new().route("/admin", get(page))).components(&[BadgeList]))
-                .area(
-                    "/admin/reports",
-                    crate::Area::new(Router::new().route("/admin/reports/{id}", get(page))).components(&[REPORT]),
-                )
+                .area::<Admin>(|admin| admin.route::<Admin>(get(page)).components(&[BadgeList]))
+                .area::<Reports>(|reports| reports.route::<Report>(get(page)).components(&[REPORT]))
                 .router()
         };
         let get_page = |app: Router, path: &str, nav: bool| {
@@ -479,13 +506,7 @@ mod tests {
             );
         }
 
-        let area = |prefix: &str| App::new(Router::new()).area(prefix, crate::Area::new(Router::new()));
-        for bad in ["admin", "/", "/admin/", "/admin/{id}", "/a b", "/admin//x", "/admin/..", "/admin/./x"] {
-            let given = std::panic::catch_unwind(|| area(bad)).is_err();
-            assert!(given, "{bad:?} is not an area prefix");
-        }
-        let _ = area("/.well-known/v1.2~x");
-        let twice = std::panic::catch_unwind(|| area("/a").area("/a", crate::Area::new(Router::new())));
+        let twice = std::panic::catch_unwind(|| App::new(Router::new()).area::<Admin>(|a| a).area::<Admin>(|a| a));
         assert!(twice.is_err(), "an area is given once");
     }
 

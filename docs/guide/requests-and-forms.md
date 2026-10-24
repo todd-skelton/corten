@@ -74,6 +74,12 @@ In the form, `<input name={f.email} {..errors.aria(f.email)}>` sets `aria-invali
 `aria-describedby`, and the runtime focuses the first invalid field (unless the user has moved
 on to another part of the page while waiting).
 
+A refusal no single field explains (a rule across fields, or a service the handler wrote to
+saying no: "The policy was retired meanwhile.") is the form's own message:
+`errors.add_form(text)`, shown with `{errors.form_message()}` at the top of the form, a
+`role="alert"` paragraph that is announced when the patch arrives. JSON clients get it first in
+`message` and as `form`; an agent tool gets it first in its error.
+
 A patch replaces markup but not the user's work: a field typed into after the form was sent (or,
 in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret
 stay on the matching element. Everything else is the server's.
@@ -101,4 +107,5 @@ A client that asked for JSON, and every request under an [`App::api`](app.md#jso
 prefix, gets every failure in one shape: `{"error":{"status":404,"message":"Not Found"}}`. A
 4xx carries the error's message or the rejection's text; a 5xx carries only the status's
 reason. Validation errors add the fields:
-`{"error":{"status":422,"message":"email: ...","fields":{"email":"..."}}}`.
+`{"error":{"status":422,"message":"email: ...","fields":{"email":"..."}}}`, and a message about
+the whole form (`Errors::add_form`) is `form` too.

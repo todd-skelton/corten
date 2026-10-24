@@ -6,7 +6,7 @@
 use std::{sync::Arc, time::Duration};
 
 use corten::{
-    Api, Error,
+    Error,
     agent::{ToolError, Tools},
     axum::{http::StatusCode, response::Response},
     prelude::*,
@@ -36,14 +36,15 @@ pub fn app(source: Source) -> App {
         .icon("icons/512.png", "512x512")
         .maskable_icon("icons/512.png", "512x512");
     // Agents in a browser on another site (AGENT_ORIGINS, comma separated) may call the tools.
-    let mut mcp = Api::new(Router::new().route(routes::Mcp::PATH, tools(source.clone(), tokens).route()));
-    for origin in std::env::var("AGENT_ORIGINS").unwrap_or_default().split(',').filter(|o| !o.is_empty()) {
-        mcp = mcp.allow_origin(origin);
-    }
-    let api = Router::new().route(routes::ItemJson::PATH, get(item_json)).with_state(source.clone());
+    let origins = std::env::var("AGENT_ORIGINS").unwrap_or_default();
+    let tools = tools(source.clone(), tokens).route();
+    let item_json = get(item_json).with_state(source.clone());
     App::new(routes(source))
-        .api("/api", api)
-        .api(routes::Mcp::PATH, mcp)
+        .api::<routes::ApiRoot>(|api| api.route::<routes::ItemJson>(item_json))
+        .api::<routes::Mcp>(|mcp| {
+            let mcp = mcp.route::<routes::Mcp>(tools);
+            origins.split(',').filter(|o| !o.is_empty()).fold(mcp, |mcp, origin| mcp.allow_origin(origin))
+        })
         .shell(views::shell)
         .messages::<Msg>()
         .components(views::COMPONENTS)

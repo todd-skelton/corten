@@ -22,8 +22,10 @@
 //!     Json(serde_json::json!({ "id": id, "lowest": "$0.50" }))
 //! }
 //!
-//! let api = Router::new().route("/api/items/{id}/price", get(price));
-//! corten::serve(App::new(pages).api("/api", Api::new(api).allow_origin("https://partner.example"))).await
+//! corten::serve(App::new(pages).api::<ApiRoot>(|api| {
+//!     api.route::<ItemPrice>(get(price)).allow_origin("https://partner.example")
+//! }))
+//! .await
 //! ```
 //!
 //! The same example compiles in `docs/guide/app.md` (JSON-only routes).
@@ -37,26 +39,55 @@ use axum::{
     body::{Body, HttpBody},
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
+    routing::MethodRouter,
     Router,
 };
 
-use crate::html::json_string;
+use crate::{html::json_string, route::Route as TypedRoute};
 
-/// Routes that answer only JSON, with their settings: what [`crate::App::api`] mounts. A
-/// [`Router`] converts into one with no settings, so `.api("/api", routes)` is enough. `C` is the
-/// app's context type, which [`Api::guard`] reads, as an [`crate::Area`]'s is. A fallback set on
-/// its router is dropped: an unknown URL under the prefix is the JSON 404.
-pub struct Api<C> {
+/// Routes that answer only JSON, with their settings, under the prefix `P`: what
+/// [`crate::App::api`] gives its function to fill in. `C` is the app's context type, which
+/// [`Api::guard`] reads, as an [`crate::Area`]'s is.
+pub struct Api<C, P> {
     pub(crate) routes: Router,
     pub(crate) origins: Vec<String>,
     pub(crate) context: bool,
     pub(crate) guard: Option<crate::app::GuardFn>,
-    context_type: PhantomData<fn() -> C>,
+    types: PhantomData<fn() -> (C, P)>,
 }
 
-impl<C> Api<C> {
-    pub fn new(routes: Router) -> Self {
-        Api { routes, origins: Vec::new(), context: false, guard: None, context_type: PhantomData }
+impl<C, P: TypedRoute> Api<C, P> {
+    pub(crate) fn new() -> Self {
+        Api { routes: Router::new(), origins: Vec::new(), context: false, guard: None, types: PhantomData }
+    }
+
+    /// A route of the API, at `R::PATH`: `.route::<ItemJson>(get(item_json))`, with
+    /// `.with_state(state)` on the method router when its handlers take `State`. `R`'s path is at
+    /// or under the prefix, or the app does not build, so no route of the API is served outside
+    /// it (and its settings and guard).
+    ///
+    /// ```compile_fail,E0080
+    /// # use corten::prelude::*;
+    /// #[derive(Route)]
+    /// #[route("/api")]
+    /// struct ApiRoot;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/apis/items")]
+    /// struct Items;
+    ///
+    /// let app = App::new(Router::new()).api::<ApiRoot>(|api| api.route::<Items>(get(|| async { "items" })));
+    /// # let _ = app.router();
+    /// ```
+    pub fn route<R: TypedRoute>(mut self, method_router: MethodRouter) -> Self {
+        const {
+            assert!(
+                under_const(P::PATH, R::PATH),
+                "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
+            )
+        };
+        self.routes = self.routes.route(R::PATH, method_router);
+        self
     }
 
     /// A site whose pages may call these routes from the browser (CORS), like
@@ -86,7 +117,7 @@ impl<C> Api<C> {
     }
 }
 
-impl<C: Clone + Send + Sync + 'static> Api<C> {
+impl<C: Clone + Send + Sync + 'static, P> Api<C, P> {
     /// Who may call these routes: every route under the prefix, including unknown URLs and wrong
     /// methods there, needs `check`'s [`crate::Access::ALLOW`], as with [`crate::App::guard`]. A
     /// caller sent to sign in gets a JSON 401, since a JSON client follows no redirect. Given once.
@@ -100,12 +131,6 @@ impl<C: Clone + Send + Sync + 'static> Api<C> {
     }
 }
 
-impl<C> From<Router> for Api<C> {
-    fn from(routes: Router) -> Self {
-        Api::new(routes)
-    }
-}
-
 /// An [`Api`] in use: its prefix and settings, without the routes.
 pub(crate) struct Mount {
     pub prefix: String,
@@ -114,7 +139,7 @@ pub(crate) struct Mount {
 }
 
 impl Mount {
-    pub fn new<C>(prefix: String, api: &Api<C>) -> Self {
+    pub fn new<C, P>(prefix: String, api: &Api<C, P>) -> Self {
         Mount { prefix, origins: api.origins.clone(), context: api.context }
     }
 
@@ -175,24 +200,56 @@ pub(crate) fn under(prefix: &str, path: &str) -> bool {
     prefix == "/" || path.strip_prefix(prefix).is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
-/// Checks a prefix given to `App::api` or `App::area` (`what` names it in the message): `"/"`
-/// when `root` allows it, or a path like `/admin`: letters, digits, `-`, `_`, `.` and `~`
+/// [`under`] when the app compiles: `path` is `prefix` or below it.
+pub(crate) const fn under_const(prefix: &str, path: &str) -> bool {
+    let (prefix, path) = (prefix.as_bytes(), path.as_bytes());
+    if prefix.len() == 1 && prefix[0] == b'/' {
+        return true;
+    }
+    if path.len() < prefix.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < prefix.len() {
+        if prefix[i] != path[i] {
+            return false;
+        }
+        i += 1;
+    }
+    path.len() == prefix.len() || path[prefix.len()] == b'/'
+}
+
+/// Whether `prefix` may be given to `App::api` or `App::area`, checked when the app compiles:
+/// `"/"` when `root` allows it, or a path like `/admin`: letters, digits, `-`, `_`, `.` and `~`
 /// between slashes, without a trailing slash, parameters or `.` and `..` segments. One rule for
 /// both, since an area's prefix also names its stylesheet's file.
-pub(crate) fn check_prefix(what: &str, prefix: &str, root: bool) {
-    let plain = prefix.len() > 1
-        && prefix.starts_with('/')
-        && prefix[1..].split('/').all(|part| {
-            !part.is_empty()
-                && part != "."
-                && part != ".."
-                && part.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~'))
-        });
-    let root = if root { "\"/\" or " } else { "" };
-    assert!(
-        plain || (!root.is_empty() && prefix == "/"),
-        "corten: {what} prefix is {root}a path like \"/admin\": letters, digits, -, _, . and ~ between slashes, without a trailing slash or parameters: {prefix:?}"
-    );
+pub(crate) const fn plain_prefix(prefix: &str, root: bool) -> bool {
+    let bytes = prefix.as_bytes();
+    if bytes.len() == 1 && bytes[0] == b'/' {
+        return root;
+    }
+    if bytes.len() < 2 || bytes[0] != b'/' {
+        return false;
+    }
+    // Each segment: its start, and whether it is only dots.
+    let (mut start, mut i) = (1, 1);
+    while i <= bytes.len() {
+        if i == bytes.len() || bytes[i] == b'/' {
+            let len = i - start;
+            let dots = len > 0 && len <= 2 && bytes[start] == b'.' && bytes[i - 1] == b'.';
+            if len == 0 || dots {
+                return false;
+            }
+            start = i + 1;
+        } else {
+            let b = bytes[i];
+            if !(b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~') {
+                return false;
+            }
+        }
+        i += 1;
+    }
+    true
 }
 
 /// The JSON body of every failure: `{"error":{"status":404,"message":"Not Found"}}`.
@@ -253,35 +310,52 @@ pub(crate) fn is_plain_text(headers: &HeaderMap) -> bool {
 mod tests {
     use super::*;
 
+    #[derive(crate::Route)]
+    #[route("/api")]
+    struct ApiRoot;
+
+    #[derive(crate::Route)]
+    #[route("/api/v2")]
+    struct V2;
+
     #[test]
     fn a_prefix_holds_its_own_path_and_those_below_it() {
-        assert!(under("/api", "/api") && under("/api", "/api/items/1"));
-        assert!(!under("/api", "/apis") && !under("/api", "/") && !under("/api", "/items"));
-        assert!(under("/", "/") && under("/", "/anything"));
+        for (prefix, path, held) in [
+            ("/api", "/api", true),
+            ("/api", "/api/items/1", true),
+            ("/api", "/api/items/{id}", true),
+            ("/api", "/apis", false),
+            ("/api", "/", false),
+            ("/api", "/items", false),
+            ("/", "/", true),
+            ("/", "/anything", true),
+        ] {
+            assert_eq!(under(prefix, path), held, "{prefix} {path}");
+            assert_eq!(under_const(prefix, path), held, "{prefix} {path}, when the app compiles");
+        }
     }
 
     #[test]
     #[should_panic(expected = "overlap")]
     fn prefixes_cannot_overlap() {
-        let _ = crate::App::new(Router::new()).api("/api", Router::new()).api("/api/v2", Router::new());
+        let _ = crate::App::new(Router::new()).api::<ApiRoot>(|api| api).api::<V2>(|api| api);
     }
 
     #[test]
-    #[should_panic(expected = "without a trailing slash")]
-    fn a_prefix_has_no_trailing_slash() {
-        check_prefix("an API", "/api/", true);
-    }
-
-    #[test]
-    fn the_root_is_an_api_prefix_but_not_an_area_prefix() {
-        check_prefix("an API", "/", true);
-        assert!(std::panic::catch_unwind(|| check_prefix("an area", "/", false)).is_err());
+    fn a_prefix_is_a_plain_path() {
+        for good in ["/api", "/admin/billing", "/a-b_c.d~e", "/v1.2"] {
+            assert!(plain_prefix(good, false), "{good}");
+        }
+        for bad in ["/api/", "api", "", "//api", "/items/{id}", "/a b", "/.", "/a/..", "/a?b"] {
+            assert!(!plain_prefix(bad, true), "{bad}");
+        }
+        assert!(plain_prefix("/", true) && !plain_prefix("/", false), "the root is an API prefix but not an area prefix");
     }
 
     #[test]
     #[should_panic(expected = "a scheme and a host")]
     fn an_allowed_origin_is_one_origin() {
-        let _ = Api::<crate::NoContext>::new(Router::new()).allow_origin("*");
+        let _ = Api::<crate::NoContext, ApiRoot>::new().allow_origin("*");
     }
 
     #[test]

@@ -23,7 +23,7 @@ server-sent events. One handler serves the browser, native apps and AI agents.
 - **Production defaults.** A strict CSP, a cross-site write check, error pages, versioned
   assets, cache headers that never share one user's page with another, compression, health
   checks, graceful shutdown and an installable PWA, from `corten::serve(App::new(routes))`. Routes
-  with no screen go under `.api("/api", routes)` and answer only JSON.
+  with no screen go in `.api::<ApiRoot>(|api| api.route::<Price>(get(price)))` and answer only JSON.
 - **No JavaScript toolchain in the app.** One binary and a `static/` directory.
 
 ## Status
@@ -166,7 +166,10 @@ React components, or for a pure static site (a static site generator is simpler)
    without JavaScript. Scripts improve a page but never hold it up.
 4. **Mistakes fail at compile time.** No strings at the seams between server and client: routes,
    handler calls, refs, class names, form fields and messages are all typed. TypeScript types are
-   generated from Rust, never written by hand. If a guarantee exists, a test proves it fails to
+   generated from Rust, never written by hand. The app's own setup is held to the same bar: a
+   route outside its area, a guard of the wrong context type or a prefix with a parameter does
+   not build. Where the compiler cannot see a mistake, it fails at startup, and only what depends
+   on the request is checked per request. If a guarantee exists, a test proves it fails to
    compile when broken.
 5. **One way to do each thing.** Behavior is a function the markup calls, cleanup has one hook,
    and a request handler serves every mode. Fewer concepts make large codebases readable for

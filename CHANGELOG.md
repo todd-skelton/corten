@@ -6,14 +6,13 @@ Corten is pre-1.0, so any minor version may change the API.
 ## Unreleased
 ### Added
 
-1. `App::api(prefix, routes)`: routes with no screen (webhooks, public APIs, the MCP endpoint)
+1. `App::api::<ApiRoot>(|api| api.route::<ItemJson>(get(item_json)))`: routes with no screen (webhooks, public APIs, the MCP endpoint)
    answer every failure as JSON whatever the client accepts, including unknown URLs, wrong
    methods and the deadline, with no shell, nonce or context and a `default-src 'none'` CSP.
    `Api::allow_origin` lets one site's pages call them from the browser (CORS preflight and
    headers, writes without cookies let through for those routes only); `Api::context` runs
    `App::context` for them, and `Api::guard` decides who may call them. A route given to an API
-   outside its prefix answers 500 (saying so under `corten dev`) instead of being served as a
-   page.
+   outside its prefix does not compile (item 30).
 2. `Error::with_status`, for a 4xx with a message written for the client.
 3. `Errors` is a response (feature `json`): 422 with the JSON error and its fields.
 4. `Nonce` is an extractor, for a handler that writes HTML with an inline script itself.
@@ -156,14 +155,13 @@ Corten is pre-1.0, so any minor version may change the API.
     guard on an app without a context, and a second `App::context` do not compile (each was a
     startup panic or not caught), and `App::guard`'s closure needs no parameter types.
     `compile_fail` doctests cover each.
-26. `App::area(prefix, Area::new(routes))`: a part of the app under a prefix that owns its
-    routes, with `.components(&[..])` for a stylesheet only its pages load and `.guard(..)` for
-    who may use it. It replaces `App::section` and a guard given a prefix string: the prefix is
-    written once for both, areas and APIs check their prefixes by one rule (letters, digits,
-    `-`, `_`, `.` and `~` between slashes), an area under an API prefix is a startup error, and
-    a route given in an area or API that answers outside its prefix (a path typed wrong) is a
-    500, saying so under `corten dev`, instead of being served without that prefix's guard. A
-    library can ship an area as `Area<C>`. `Area` is in the prelude.
+26. `App::area::<Admin>(|admin| admin.route::<AdminUser>(get(user)))`: a part of the app under a
+    prefix that owns its routes, with `.components(&[..])` for a stylesheet only its pages load
+    and `.guard(..)` for who may use it. It replaces `App::section` and a guard given a prefix
+    string: the prefix is written once for both, areas and APIs hold their prefixes to one rule
+    (letters, digits, `-`, `_`, `.` and `~` between slashes), and an area under an API prefix
+    is a startup error. A library ships an area as a function,
+    `fn admin<C>(area: Area<C, Admin>) -> Area<C, Admin>`. `Area` is in the prelude.
 27. The app guide's "Your own middleware" section: tower layers on the routes run inside
     Corten's middleware (after the context and guards), and layers around `app.router()` run
     outside it, given to `corten::serve`. `docs/design.md` has a rule for where a new `App`
@@ -174,6 +172,32 @@ Corten is pre-1.0, so any minor version may change the API.
     each, before and after items 25 and 26): no guard 3,969 and 3,968-3,975; a context 4,061 and
     4,059-4,066; a guard on `/items` (an area after) 4,355 and 4,358; `App::guard` with
     `req.writes()` and one unguarded route 4,399 and 4,384-4,391.
+28. A `tokens!` theme follows the system too: `"@media": {"(prefers-color-scheme: dark)":
+    ":root:not([data-theme=\"light\"])"}` in a theme writes its values again under that
+    condition and selector, so a dark theme that the page can choose and the system can ask for
+    is written once. Found porting a Chase Sets admin screen, whose dark mode follows the system
+    unless the user chose a mode.
+29. `Errors::add_form`, `Errors::form` and `Errors::form_message`: a message about the whole form
+    (a rule across fields, or the backend refusing the write), rendered as a `role="alert"`
+    paragraph and sent to JSON clients as `form` (and first in `message`) and to agent tools
+    first in their error. Before, such a message had no place in `Errors`, so `req.invalid`
+    gave data clients and agents a 422 without the reason. Found in the same port: the platform
+    API rejects some writes with a message that names no form field.
+30. An area's and an API's prefix and routes are route types, so the compiler checks what was
+    checked per request or not at all: `App::area::<P>` and `App::api::<P>` take `P`, a
+    `#[derive(Route)]` whose path is the prefix (a prefix with a parameter or a trailing slash
+    does not compile), and a function that fills in the `Area` or `Api` with
+    `.route::<R>(method_router)`, where an `R` outside the prefix does not compile (a `const`
+    assertion, with `compile_fail` doctests). Before, a route typed wrong answered 500 when
+    first requested. The function gets the app's context type, so an area's guard reads the
+    context's fields without a type annotation (`|viewer, req| viewer.is_some_and(|v| v.staff)`).
+    `Area::new`, `Api::new` and `impl From<Router> for Api` are gone. The per-request check of
+    where a route was given left the request path with it: measured with callgrind (item page,
+    full document, release build, instructions per request in Corten's middleware and axum's
+    routing, two runs each, before and after), no guard 6,841-6,842 and 6,819-6,826, a context
+    6,930-6,943 and 6,909, a guard on an `/items` area 7,169-7,176 and 7,159, the item route
+    inside that area 7,195 and 7,159, `App::guard` with one unguarded route 7,222-7,229 and
+    7,212-7,219. (These count more than item 27's figures, which were taken by another script.)
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -350,6 +374,22 @@ Corten is pre-1.0, so any minor version may change the API.
    requested one with the page in hand, so it is swapped in without a second request. The
    runtime is 156 bytes larger, 46 gzip. Found by the hello smoke test's guarded page in
    Chromium and Firefox.
+9. A component's stylesheet can have a class named like the component: `.card` in `Card`'s
+   stylesheet is `class={Card}` in its markup. Before, the class constant hid the component's
+   own `Component` constant inside `render`, and the build failed with "expected `&Component`,
+   found `&Class`" pointing at `#[component(css)]`. Found porting a Chase Sets admin screen,
+   where `Field` with `.field` and `Choices` with `.choices` had to be renamed. The generated
+   code only moves the class constants into a block: `render_cost`'s render functions measured
+   996,177,186 instructions before and 997,217,167 after under callgrind (one run each, 7,735
+   bytes a page both times).
+10. Without `HOST`, `corten::serve` listens on both loopback addresses, `127.0.0.1` and `[::1]`,
+    on one port (only `127.0.0.1` on a system without IPv6). Before, it took `127.0.0.1` alone,
+    and a browser that resolves `localhost` to `::1` first (Chromium on Windows) waited for a
+    fallback on every new connection: about 200 ms added to every page and asset, measured
+    porting a Chase Sets admin screen, where it made the port look slower than the React app it
+    replaced. A `[::1]` port another process holds is now an error at startup, since
+    `localhost` would reach that process. `HOST` set (as the Dockerfiles set `0.0.0.0`) binds
+    that one address, as before.
 
 ### Documentation
 
