@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use crate::escape;
+use crate::view::escape_into;
 
 /// Most URLs one sitemap file may list. Split larger sets with [`sitemap_index`].
 pub const SITEMAP_MAX_URLS: usize = 50_000;
@@ -26,11 +26,11 @@ pub fn sitemap<'a>(urls: impl IntoIterator<Item = SitemapUrl<'a>>) -> Response {
     for url in urls {
         count += 1;
         out.push_str("<url><loc>");
-        out.push_str(&escape(url.loc));
+        escape_into(url.loc, &mut out);
         out.push_str("</loc>");
         if let Some(lastmod) = url.lastmod {
             out.push_str("<lastmod>");
-            out.push_str(&escape(lastmod));
+            escape_into(lastmod, &mut out);
             out.push_str("</lastmod>");
         }
         out.push_str("</url>");
@@ -47,7 +47,7 @@ pub fn sitemap_index<'a>(sitemaps: impl IntoIterator<Item = &'a str>) -> Respons
     );
     for loc in sitemaps {
         out.push_str("<sitemap><loc>");
-        out.push_str(&escape(loc));
+        escape_into(loc, &mut out);
         out.push_str("</loc></sitemap>");
     }
     out.push_str("</sitemapindex>");

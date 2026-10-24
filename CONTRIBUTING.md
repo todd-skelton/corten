@@ -26,10 +26,11 @@ bench/fullstack/     The same page in fourteen frameworks, and the scripts that 
 bench/live/          One price feed pushed to many clients in the same frameworks
 ```
 
-Dependencies of `corten`: `axum`, `futures-util`, `getrandom` (CSP nonces), `memchr`
-(already in axum's tree), `http-body` (axum's body trait), `tokio` (sockets, signals, timers),
-`tracing`, `corten-macros` (no dependencies). Optional: `tracing-subscriber` (`log`, on by default), `serde` and `serde_json`
-(`json`), `schemars` (`types`, `agent`), `zstd`, `brotli`, `flate2` (`compress`),
+Dependencies of `corten`: `axum`, `futures-util`, `getrandom` (CSP nonces), and from axum's
+tree `http-body` (axum's body trait), `tower-layer` and `tower-service` (middleware traits),
+`form_urlencoded` (forms and query strings), `zmij` (float digits) and `serde`; `tokio`
+(sockets, signals, timers), `tracing`, `corten-macros` (no dependencies). Optional:
+`tracing-subscriber` (`log`, on by default), `serde`'s derive and `serde_json` (`json`), `schemars` (`types`, `agent`), `zstd`, `brotli`, `flate2` (`compress`),
 `corten-feed` (`feed`). Apps need no JavaScript dependencies; `package.json` here is tooling for
 the framework itself.
 

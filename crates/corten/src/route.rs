@@ -143,32 +143,58 @@ pub(crate) fn matches(pattern: &str, path: &str) -> bool {
     path.next().is_none()
 }
 
-/// Bytes written as they are in a path segment or query value; everything else is %XX.
-fn unreserved(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~')
-}
+/// For each byte, `SEGMENT` when it is written as it is in a path segment or query value
+/// (unreserved: letters, digits, `-._~`) and `REST` when it is in a `{*rest}` value (those and
+/// `/`); everything else is %XX.
+static KEEP: [u8; 256] = {
+    let mut table = [0u8; 256];
+    let mut b = 0;
+    while b < 256 {
+        let c = b as u8;
+        if c.is_ascii_alphanumeric() || matches!(c, b'-' | b'.' | b'_' | b'~') {
+            table[b] = SEGMENT | REST;
+        }
+        b += 1;
+    }
+    table[b'/' as usize] = REST;
+    table
+};
+const SEGMENT: u8 = 1;
+const REST: u8 = 2;
 
+/// Percent-encodes what is written to it into `out`. `keep` is `SEGMENT` or `REST`.
 struct Encode<'a> {
     out: &'a mut String,
-    keep_slash: bool,
+    keep: u8,
 }
 
-impl fmt::Write for Encode<'_> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
+impl Encode<'_> {
+    /// Copies each run of bytes kept as they are at once, so a value with nothing to encode (most
+    /// ids and slugs) is one copy. A run is ASCII; between two encoded bytes of one character it
+    /// is empty, and is skipped there, since that index is not a character boundary.
+    #[inline]
+    fn push(&mut self, s: &str) {
         const HEX: &[u8; 16] = b"0123456789ABCDEF";
         let bytes = s.as_bytes();
         let mut start = 0;
-        for (i, &b) in bytes.iter().enumerate() {
-            if unreserved(b) || (self.keep_slash && b == b'/') {
-                continue;
+        while let Some(at) = bytes[start..].iter().position(|&b| KEEP[b as usize] & self.keep == 0) {
+            let i = start + at;
+            let b = bytes[i];
+            if at > 0 {
+                self.out.push_str(&s[start..i]);
             }
-            self.out.push_str(&s[start..i]);
             self.out.push('%');
             self.out.push(HEX[(b >> 4) as usize] as char);
             self.out.push(HEX[(b & 15) as usize] as char);
             start = i + 1;
         }
         self.out.push_str(&s[start..]);
+    }
+}
+
+impl fmt::Write for Encode<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.push(s);
         Ok(())
     }
 }
@@ -176,19 +202,63 @@ impl fmt::Write for Encode<'_> {
 /// Used by the code `#[derive(Route)]` generates. Not a public API.
 #[doc(hidden)]
 pub mod __private {
-    use std::fmt::{self, Display, Write as _};
+    use std::{
+        borrow::Cow,
+        fmt::{self, Display, Write as _},
+    };
 
-    use super::Encode;
+    use super::{Encode, REST, SEGMENT};
 
-    /// One path segment, percent-encoded (a `/` in the value is `%2F`).
+    // A path parameter: one segment, percent-encoded (a `/` in the value is `%2F`), or with
+    // `rest` the rest of the path (`{*rest}`), slashes kept. A text field is encoded straight from
+    // the string; any other `Display` field through its `Display` output. The derive calls
+    // `(&Segment(&field)).__segment(..)`, so the text impls, which take `Segment` itself, are
+    // found before the one for `&Segment`.
+    pub struct Segment<'a, T: ?Sized>(pub &'a T);
+
     #[inline]
-    pub fn segment(value: &(impl Display + ?Sized), out: &mut String) {
-        let _ = write!(Encode { out, keep_slash: false }, "{value}");
+    fn keep(rest: bool) -> u8 {
+        if rest {
+            REST
+        } else {
+            SEGMENT
+        }
     }
 
-    /// The rest of the path (`{*rest}`): encoded, slashes kept.
-    pub fn rest(value: &(impl Display + ?Sized), out: &mut String) {
-        let _ = write!(Encode { out, keep_slash: true }, "{value}");
+    pub trait SegmentText {
+        fn __segment(&self, rest: bool, out: &mut String);
+    }
+
+    impl SegmentText for Segment<'_, &str> {
+        #[inline]
+        fn __segment(&self, rest: bool, out: &mut String) {
+            Encode { out, keep: keep(rest) }.push(self.0)
+        }
+    }
+
+    impl SegmentText for Segment<'_, String> {
+        #[inline]
+        fn __segment(&self, rest: bool, out: &mut String) {
+            Encode { out, keep: keep(rest) }.push(self.0)
+        }
+    }
+
+    impl SegmentText for Segment<'_, Cow<'_, str>> {
+        #[inline]
+        fn __segment(&self, rest: bool, out: &mut String) {
+            Encode { out, keep: keep(rest) }.push(self.0)
+        }
+    }
+
+    pub trait SegmentValue {
+        fn __segment(&self, rest: bool, out: &mut String);
+    }
+
+    impl<T: Display + ?Sized> SegmentValue for &Segment<'_, T> {
+        #[inline]
+        fn __segment(&self, rest: bool, out: &mut String) {
+            let _ = write!(Encode { out, keep: keep(rest) }, "{}", self.0);
+        }
     }
 
     fn pair(key: &str, value: &dyn Display, first: &mut bool, html: bool, out: &mut String) {
@@ -199,7 +269,7 @@ pub mod __private {
         });
         *first = false;
         out.push_str(key);
-        let _ = fmt::write(&mut Encode { out, keep_slash: false }, format_args!("{value}"));
+        let _ = fmt::write(&mut Encode { out, keep: SEGMENT }, format_args!("{value}"));
     }
 
     // `Option` fields are left out when `None`, lists write one pair per item; any other `Display`
@@ -295,6 +365,22 @@ mod tests {
         assert_eq!(File { path: "a/b c.txt".into() }.to_string(), "/files/a/b%20c.txt");
         let link = crate::html! { <a href={Offers { id: "x", page: Some(1), sort: "new" }}>"x"</a> }.to_html();
         assert_eq!(link, r#"<a href="/items/x/offers?page=1&amp;sort=new">x</a>"#);
+    }
+
+    #[derive(corten::Route)]
+    #[route("/n/{n}/{name}/{label}")]
+    struct Mixed<'a> {
+        n: u32,
+        name: std::borrow::Cow<'a, str>,
+        label: &'a String,
+    }
+
+    #[test]
+    fn text_and_display_parameters_encode_the_same() {
+        let label = "~a.b-c_d é".to_string();
+        let mixed = Mixed { n: 7, name: "é/x%".into(), label: &label };
+        assert_eq!(mixed.href(), "/n/7/%C3%A9%2Fx%25/~a.b-c_d%20%C3%A9");
+        assert_eq!(File { path: "/é//".into() }.href(), "/files//%C3%A9//");
     }
 
     #[derive(corten::Route, serde::Deserialize)]

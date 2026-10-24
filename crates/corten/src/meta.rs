@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use crate::escape;
+use crate::view::escape_into;
 
 /// A page's title and head tags. Every tag carries `data-corten-head` so the runtime can swap them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -60,20 +60,29 @@ impl Meta {
     }
 
     /// `<meta name="{name}" content="{content}">`.
-    pub fn name(mut self, name: &str, content: &str) -> Self {
-        self.tags.push_str(&format!(r#"<meta name="{}" content="{}" data-corten-head>"#, escape(name), escape(content)));
-        self
+    pub fn name(self, name: &str, content: &str) -> Self {
+        self.tag(r#"<meta name=""#, name, r#"" content=""#, content)
     }
 
     /// `<meta property="{property}" content="{content}">`, for Open Graph (`og:title`).
-    pub fn property(mut self, property: &str, content: &str) -> Self {
-        self.tags.push_str(&format!(r#"<meta property="{}" content="{}" data-corten-head>"#, escape(property), escape(content)));
-        self
+    pub fn property(self, property: &str, content: &str) -> Self {
+        self.tag(r#"<meta property=""#, property, r#"" content=""#, content)
     }
 
     /// `<link rel="{rel}" href="{href}">`.
-    pub fn link(mut self, rel: &str, href: &str) -> Self {
-        self.tags.push_str(&format!(r#"<link rel="{}" href="{}" data-corten-head>"#, escape(rel), escape(href)));
+    pub fn link(self, rel: &str, href: &str) -> Self {
+        self.tag(r#"<link rel=""#, rel, r#"" href=""#, href)
+    }
+
+    /// `{open}{first}{between}{second}" data-corten-head>`, both values escaped into the tags
+    /// with no string in between.
+    fn tag(mut self, open: &str, first: &str, between: &str, second: &str) -> Self {
+        let tags = &mut self.tags;
+        tags.push_str(open);
+        escape_into(first, tags);
+        tags.push_str(between);
+        escape_into(second, tags);
+        tags.push_str(r#"" data-corten-head>"#);
         self
     }
 

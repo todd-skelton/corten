@@ -1,18 +1,10 @@
 //! Small HTML helpers with no dependencies.
 
 /// Escapes text for use in HTML text or a quoted attribute.
+/// To append to a string instead, use [`crate::view::escape_into`].
 pub fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            c => out.push(c),
-        }
-    }
+    crate::view::escape_into(text, &mut out);
     out
 }
 

@@ -582,24 +582,25 @@ impl Req {
         );
         out.push_str(&self.shared.head_extra);
         self.section_links(&mut out);
-        let _ = write!(out, r#"<script type="importmap">{}</script>"#, self.shared.import_map);
-        let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
+        out.push_str(r#"<script type="importmap">"#);
+        out.push_str(&self.shared.import_map);
+        out.push_str(r#"</script><script type="module" src=""#);
+        out.push_str(crate::runtime_path());
+        out.push_str(r#""></script>"#);
         // The modules the page's handlers call, fetched with the runtime rather than on first use.
         // A component's module hands its exports to the runtime as it runs, so it is a module script
         // of the page: its handlers are in before DOMContentLoaded, with no import() to wait on.
-        let mut preloaded = false;
-        for name in modules.iter() {
-            let Some(assets) = self.shared.assets.as_ref().filter(|a| a.has_script(name)) else { continue };
-            if assets.registers(name) {
-                let _ = write!(out, r#"<script type="module" src="{dir}{name}.js"></script>"#);
-            } else {
-                let _ = write!(out, r#"<link rel="modulepreload" href="{dir}{name}.js">"#);
+        // Each module's tag was made when the assets loaded.
+        if let Some(assets) = &self.shared.assets {
+            let mut preloaded = false;
+            for tag in modules.iter().filter_map(|name| assets.module_tag(name)) {
+                out.push_str(tag);
+                preloaded = true;
             }
-            preloaded = true;
-        }
-        // A handler module may import the views (corten/views): fetched with it, not after it.
-        if let Some(views) = self.shared.assets.as_ref().filter(|_| preloaded).and_then(|a| a.views()) {
-            let _ = write!(out, r#"<link rel="modulepreload" href="{views}">"#);
+            // A handler module may import the views (corten/views): fetched with it, not after it.
+            if let Some(views) = assets.views_tag().filter(|_| preloaded) {
+                out.push_str(views);
+            }
         }
         out
     }
