@@ -214,9 +214,13 @@ impl AttrValue for FieldName {
     }
 }
 
-/// Field to message, in the order they were added. A field keeps its first message.
+/// Field to message, in the order they were added, and a message about the whole form. A field
+/// keeps its first message, and so does the form.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Errors(Vec<(FieldName, String)>);
+pub struct Errors {
+    fields: Vec<(FieldName, String)>,
+    form: Option<String>,
+}
 
 impl Errors {
     pub fn new() -> Self {
@@ -226,28 +230,43 @@ impl Errors {
     /// Records `message` for `field`, unless the field already has one.
     pub fn add(&mut self, field: FieldName, message: impl Into<String>) {
         if !self.has(field) {
-            self.0.push((field, message.into()));
+            self.fields.push((field, message.into()));
         }
     }
 
+    /// Records a message about the whole form, unless it has one: a rule no single field breaks,
+    /// or a refusal from the service the handler wrote to ("The policy was retired meanwhile.").
+    /// Prefer [`Errors::add`] when a field is at fault, so the message sits next to it.
+    pub fn add_form(&mut self, message: impl Into<String>) {
+        self.form.get_or_insert_with(|| message.into());
+    }
+
     pub fn get(&self, field: FieldName) -> Option<&str> {
-        self.0.iter().find(|(f, _)| *f == field).map(|(_, m)| m.as_str())
+        self.fields.iter().find(|(f, _)| *f == field).map(|(_, m)| m.as_str())
     }
 
     pub fn has(&self, field: FieldName) -> bool {
-        self.0.iter().any(|(f, _)| *f == field)
+        self.fields.iter().any(|(f, _)| *f == field)
     }
 
+    /// The message about the whole form, from [`Errors::add_form`].
+    pub fn form(&self) -> Option<&str> {
+        self.form.as_deref()
+    }
+
+    /// True when no field and not the form has a message.
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.fields.is_empty() && self.form.is_none()
     }
 
+    /// How many messages there are, the form's included.
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.fields.len() + usize::from(self.form.is_some())
     }
 
+    /// The fields' messages, in the order they were added.
     pub fn iter(&self) -> impl Iterator<Item = (FieldName, &str)> {
-        self.0.iter().map(|(f, m)| (*f, m.as_str()))
+        self.fields.iter().map(|(f, m)| (*f, m.as_str()))
     }
 
     /// `Ok(value)` when nothing was added, otherwise the errors.
@@ -269,6 +288,12 @@ impl Errors {
     /// nothing: the element [`Errors::aria`] points at.
     pub fn message(&self, field: FieldName) -> FieldMessage<'_> {
         FieldMessage { field, message: self.get(field) }
+    }
+
+    /// `<p class="form-error" role="alert">message</p>` when the form has a message, else
+    /// nothing. Put it at the top of the form; `role="alert"` announces it when a patch puts it in.
+    pub fn form_message(&self) -> FormMessage<'_> {
+        FormMessage { message: self.form() }
     }
 }
 
@@ -306,11 +331,29 @@ impl Render for FieldMessage<'_> {
     }
 }
 
-/// `field: message; field: message`, for logs and agent tool results.
+/// The form's message, from [`Errors::form_message`].
+pub struct FormMessage<'a> {
+    message: Option<&'a str>,
+}
+
+impl Render for FormMessage<'_> {
+    fn render(&self, out: &mut String) {
+        if let Some(message) = self.message {
+            out.push_str(r#"<p class="form-error" role="alert">"#);
+            escape_into(message, out);
+            out.push_str("</p>");
+        }
+    }
+}
+
+/// `form message; field: message; field: message`, for logs and agent tool results.
 impl fmt::Display for Errors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, (field, message)) in self.0.iter().enumerate() {
-            if i > 0 {
+        if let Some(form) = &self.form {
+            f.write_str(form)?;
+        }
+        for (i, (field, message)) in self.fields.iter().enumerate() {
+            if i > 0 || self.form.is_some() {
                 f.write_str("; ")?;
             }
             write!(f, "{field}: {message}")?;
@@ -319,13 +362,13 @@ impl fmt::Display for Errors {
     }
 }
 
-/// A JSON object, field to message.
+/// A JSON object, field to message (the form's message is not a field; see [`Errors::form`]).
 #[cfg(feature = "json")]
 impl serde::Serialize for Errors {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(self.0.len()))?;
-        for (field, message) in &self.0 {
+        let mut map = serializer.serialize_map(Some(self.fields.len()))?;
+        for (field, message) in &self.fields {
             map.serialize_entry(field.0, message)?;
         }
         map.end()
@@ -334,6 +377,8 @@ impl serde::Serialize for Errors {
 
 /// 422 Unprocessable Content with the JSON error every JSON failure has, plus the fields:
 /// `{"error":{"status":422,"message":"email: Enter an email address.","fields":{"email":"Enter an email address."}}}`.
+/// A message about the whole form comes first in `message` and is `form` too:
+/// `{"error":{"status":422,"message":"Sold out.","form":"Sold out.","fields":{}}}`.
 /// An [`crate::App::api`] handler returns it as its error, `Result<Json<T>, Errors>`; pages use
 /// [`crate::Req::invalid`], which answers this way to data clients.
 #[cfg(feature = "json")]
@@ -353,8 +398,12 @@ impl Errors {
         let status = StatusCode::UNPROCESSABLE_ENTITY;
         let error = crate::api::error_body(status, &self.to_string());
         let fields = serde_json::to_string(&self).expect("strings serialize");
-        // The error object with one more member: `..."message":"..."` + `,"fields":{...}}}`.
-        let body = format!(r#"{},"fields":{fields}}}}}"#, &error[..error.len() - 2]);
+        let form = match &self.form {
+            Some(form) => format!(r#","form":{}"#, serde_json::to_string(form).expect("strings serialize")),
+            None => String::new(),
+        };
+        // The error object with more members: `..."message":"..."` + `,"form":"..","fields":{...}}}`.
+        let body = format!(r#"{}{form},"fields":{fields}}}}}"#, &error[..error.len() - 2]);
         let headers = [(header::CONTENT_TYPE, HeaderValue::from_static(crate::api::JSON))];
         (status, headers, body).into_response()
     }
@@ -385,6 +434,37 @@ mod tests {
         assert_eq!(e.message(NAME).to_html(), "");
         assert!(e.clone().into_result(1).is_err());
         assert_eq!(Errors::new().into_result(1), Ok(1));
+    }
+
+    #[test]
+    fn the_form_has_a_message_of_its_own() {
+        let mut e = Errors::new();
+        e.add_form("The policy was retired meanwhile.");
+        e.add_form("second");
+        assert_eq!(e.form(), Some("The policy was retired meanwhile."));
+        assert!(!e.is_empty() && e.len() == 1 && e.iter().next().is_none(), "no field has a message");
+        assert!(e.clone().into_result(1).is_err(), "a form message alone fails the check");
+        assert_eq!(e.form_message().to_html(), r#"<p class="form-error" role="alert">The policy was retired meanwhile.</p>"#);
+        assert_eq!(Errors::new().form_message().to_html(), "");
+        e.add(EMAIL, "Enter an email address.");
+        assert_eq!(e.to_string(), "The policy was retired meanwhile.; email: Enter an email address.");
+    }
+
+    #[cfg(feature = "json")]
+    #[tokio::test]
+    async fn json_clients_get_the_form_message() {
+        use http_body_util::BodyExt;
+        let mut e = Errors::new();
+        e.add_form("Sold out.");
+        let res = e.response();
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], br#"{"error":{"status":422,"message":"Sold out.","form":"Sold out.","fields":{}}}"#);
+        e.add(EMAIL, "Enter an email address.");
+        let body = e.response().into_body().collect().await.unwrap().to_bytes();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["error"]["fields"]["email"], "Enter an email address.");
+        assert_eq!(value["error"]["form"], "Sold out.");
     }
 
     #[derive(Debug, serde::Deserialize)]

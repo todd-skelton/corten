@@ -153,6 +153,12 @@ Corten is pre-1.0, so any minor version may change the API.
     condition and selector, so a dark theme that the page can choose and the system can ask for
     is written once. Found porting a Chase Sets admin screen, whose dark mode follows the system
     unless the user chose a mode.
+25. `Errors::add_form`, `Errors::form` and `Errors::form_message`: a message about the whole form
+    (a rule across fields, or the backend refusing the write), rendered as a `role="alert"`
+    paragraph and sent to JSON clients as `form` (and first in `message`) and to agent tools
+    first in their error. Before, such a message had no place in `Errors`, so `req.invalid`
+    gave data clients and agents a 422 without the reason. Found in the same port: the platform
+    API rejects some writes with a message that names no form field.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
