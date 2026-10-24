@@ -382,6 +382,19 @@ mod tests {
         assert!(BadgeList.script.is_none());
     }
 
+    /// `Card` with `.card`: inside the markup `{Card}` is the class.
+    #[component(css)]
+    fn Card<'a>(title: &'a str) -> impl Render {
+        html! { <section class={Card}><h2 class={Title}>{title}</h2></section> }
+    }
+
+    #[test]
+    fn a_class_can_be_named_like_its_component() {
+        let html = html! { <Card title="Policies" /> }.to_html();
+        assert_eq!(html, r#"<section class="card__card"><h2 class="card__title">Policies</h2></section>"#);
+        assert_eq!(Card.style.expect("own stylesheet").file, "card.css");
+    }
+
     // Rendering records components in debug builds only.
     #[cfg(debug_assertions)]
     #[tokio::test]

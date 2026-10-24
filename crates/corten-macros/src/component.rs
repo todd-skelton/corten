@@ -324,16 +324,21 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     } else {
         q("::corten::view::Render::render(&__A0, __corten_component_out);", &[TokenTree::Group(body).into()])
     };
+    // The stylesheet's classes are in scope only around the markup: a class named like the
+    // component (`.card` in `Card`'s stylesheet) is what `{Card}` means there, while the
+    // component's own `Component` constant stays reachable outside, for `rendered`.
+    let mut markup = scope;
+    markup.extend(draw);
+    let markup = TokenTree::Group(Group::new(Delimiter::Brace, markup));
     let render = q(
         "fn render(&self, __corten_component_out: &mut ::std::string::String) {
             #[allow(unused_imports)]
             use ::corten::view::__private::{ParamCopy as _, ParamRef as _};
             __A0
             __A1
-            __A3
             __A2
         }",
-        &[lets, scope, draw, used],
+        &[lets, markup.into(), used],
     );
     out.extend(q(
         "#[automatically_derived] impl __A0 ::corten::view::Render for __A1 __A2 __A3",

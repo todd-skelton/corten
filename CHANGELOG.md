@@ -179,7 +179,7 @@ Corten is pre-1.0, so any minor version may change the API.
     condition and selector, so a dark theme that the page can choose and the system can ask for
     is written once. Found porting a Chase Sets admin screen, whose dark mode follows the system
     unless the user chose a mode.
-25. `Errors::add_form`, `Errors::form` and `Errors::form_message`: a message about the whole form
+29. `Errors::add_form`, `Errors::form` and `Errors::form_message`: a message about the whole form
     (a rule across fields, or the backend refusing the write), rendered as a `role="alert"`
     paragraph and sent to JSON clients as `form` (and first in `message`) and to agent tools
     first in their error. Before, such a message had no place in `Errors`, so `req.invalid`
@@ -361,6 +361,11 @@ Corten is pre-1.0, so any minor version may change the API.
    requested one with the page in hand, so it is swapped in without a second request. The
    runtime is 156 bytes larger, 46 gzip. Found by the hello smoke test's guarded page in
    Chromium and Firefox.
+9. A component's stylesheet can have a class named like the component: `.card` in `Card`'s
+   stylesheet is `class={Card}` in its markup. Before, the class constant hid the component's
+   own `Component` constant inside `render`, and the build failed with "expected `&Component`,
+   found `&Class`" pointing at `#[component(css)]`. Found porting a Chase Sets admin screen,
+   where `Field` with `.field` and `Choices` with `.choices` had to be renamed.
 
 ### Documentation
 

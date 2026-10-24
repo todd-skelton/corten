@@ -27,6 +27,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 |---|---|
 | `offer_list.css` next to `OfferList` | every class prefixed, `.offer-list__row`; a rule that does not start at one of the file's classes does not compile, so a component cannot style what it does not render |
 | `class={Row}`, `class={[Row, Selected]}` | static markup, `class="offer-list__row"`; a class the file lacks, another component's class, or one of the file's classes written as text (`class="row"`) does not compile |
+| `.card` in `Card`'s own stylesheet | `class={Card}` in its markup is the class, `card__card`: name the root class after the component |
 | `class={(Row, cond.then_some(Selected), extra)}` | joined when the page renders; `None` adds nothing, an empty list leaves the attribute out |
 | a class nothing uses | `warning: constant Hot is never used` (an error under `-D warnings`) |
 | `#[component(css = OfferList)]` | a helper in the same module shares the stylesheet, and its uses count |
