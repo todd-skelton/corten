@@ -148,6 +148,11 @@ Corten is pre-1.0, so any minor version may change the API.
     request. The answer a guard gives
     is boxed: carried inline, it made every request's future larger, and `memcpy` alone rose
     from 17,935-18,544 instructions to 19,073-19,518.
+25. A `tokens!` theme follows the system too: `"@media": {"(prefers-color-scheme: dark)":
+    ":root:not([data-theme=\"light\"])"}` in a theme writes its values again under that
+    condition and selector, so a dark theme that the page can choose and the system can ask for
+    is written once. Found porting a Chase Sets admin screen, whose dark mode follows the system
+    unless the user chose a mode.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

@@ -125,14 +125,28 @@ fn entries(value: &Value, what: &str) -> Result<Vec<Entry>, String> {
 struct Spec {
     breakpoints: Vec<(String, String)>,
     scales: Vec<Scale>,
-    themes: Vec<(String, Vec<(String, String)>)>,
+    themes: Vec<Theme>,
     utilities: Vec<Utility>,
+}
+
+/// A theme's overrides, for its selector and, under each media condition, another selector:
+/// `"@media": {"(prefers-color-scheme: dark)": ":root:not([data-theme=\"light\"])"}` applies the
+/// dark values when the system asks for them and the page did not choose light.
+struct Theme {
+    selector: String,
+    vars: Vec<(String, String)>,
+    media: Vec<(String, String)>,
+}
+
+/// A selector or media condition that cannot leave its block.
+fn prelude(text: &str) -> bool {
+    !text.contains(['{', '}', ';']) && !text.trim().is_empty()
 }
 
 fn parse(root: &Value) -> Result<Spec, String> {
     let mut breakpoints: Vec<(String, String)> = Vec::new();
     let mut scales: Vec<Scale> = Vec::new();
-    let mut themes: Vec<(String, Vec<(String, String)>)> = Vec::new();
+    let mut themes: Vec<Theme> = Vec::new();
     let mut utilities: Vec<Utility> = Vec::new();
     let top = object(root, "the file")?;
     for (key, _) in top {
@@ -154,11 +168,23 @@ fn parse(root: &Value) -> Result<Spec, String> {
     }
     if let Some(value) = section("themes") {
         for (selector, overrides) in object(value, "themes")? {
-            if selector.contains(['{', '}', ';']) || selector.trim().is_empty() {
+            if !prelude(selector) {
                 return Err(format!("themes: {selector:?} is not a selector"));
             }
             let mut vars = Vec::new();
+            let mut media = Vec::new();
             for (scale_name, values) in object(overrides, &format!("themes.{selector}"))? {
+                if scale_name == "@media" {
+                    let what = format!("themes.{selector}.@media");
+                    for (condition, target) in object(values, &what)? {
+                        if !prelude(condition) {
+                            return Err(format!("{what}: {condition:?} is not a media condition"));
+                        }
+                        // A selector, which `string` keeps inside its block.
+                        media.push((condition.clone(), string(target, &format!("{what}.{condition}"))?.to_string()));
+                    }
+                    continue;
+                }
                 let scale = scales
                     .iter()
                     .find(|s| s.name == *scale_name)
@@ -173,7 +199,7 @@ fn parse(root: &Value) -> Result<Spec, String> {
                     ));
                 }
             }
-            themes.push((selector.clone(), vars));
+            themes.push(Theme { selector: selector.clone(), vars, media });
         }
     }
     if let Some(value) = section("utilities") {
@@ -226,8 +252,8 @@ fn parse(root: &Value) -> Result<Spec, String> {
     Ok(Spec { breakpoints, scales, themes, utilities })
 }
 
-/// The stylesheet: custom properties on `:root`, each theme, then the utilities, at every width
-/// and per breakpoint.
+/// The stylesheet: custom properties on `:root`, each theme (followed by its media conditions),
+/// then the utilities, at every width and per breakpoint.
 fn css(spec: &Spec) -> String {
     let Spec { breakpoints, scales, themes, utilities } = spec;
     let mut css = String::from(":root{");
@@ -238,12 +264,13 @@ fn css(spec: &Spec) -> String {
     }
     css.pop();
     css.push('}');
-    for (selector, vars) in themes {
-        css.push_str(selector);
-        css.push('{');
-        let body: Vec<String> = vars.iter().map(|(k, v)| format!("{k}:{v}")).collect();
-        css.push_str(&body.join(";"));
-        css.push('}');
+    for theme in themes {
+        let body: Vec<String> = theme.vars.iter().map(|(k, v)| format!("{k}:{v}")).collect();
+        let body = body.join(";");
+        css.push_str(&format!("{}{{{body}}}", theme.selector));
+        for (condition, selector) in &theme.media {
+            css.push_str(&format!("@media {condition}{{{selector}{{{body}}}}}"));
+        }
     }
     let values = |u: &Utility| -> Vec<(String, String)> {
         match &u.source {
@@ -442,6 +469,27 @@ mod tests {
     }
 
     #[test]
+    fn a_theme_also_applies_under_its_media_conditions() {
+        let css = run(r##"{
+            "scales": { "color": { "ink": "#111", "bg": "#fff" } },
+            "themes": { "[data-theme=\"dark\"]": {
+                "@media": { "(prefers-color-scheme: dark)": ":root:not([data-theme=\"light\"])" },
+                "color": { "ink": "#eee", "bg": "#000" }
+            } }
+        }"##)
+        .unwrap();
+        assert_eq!(
+            css,
+            concat!(
+                ":root{--color-ink:#111;--color-bg:#fff}",
+                "[data-theme=\"dark\"]{--color-ink:#eee;--color-bg:#000}",
+                "@media (prefers-color-scheme: dark){:root:not([data-theme=\"light\"]){--color-ink:#eee;--color-bg:#000}}"
+            ),
+            "the values once in the file, under the selector and under the condition"
+        );
+    }
+
+    #[test]
     fn mistakes_are_errors_that_name_the_token() {
         let error = |text: &str| run(text).expect_err("an error");
         assert!(error(
@@ -454,5 +502,13 @@ mod tests {
             .contains(r##"no scale "spacing""##));
         assert!(error(r##"{"scale": {}}"##).contains("unknown section"));
         assert!(error(r##"{"scales": {"self": {"a": "1"}}}"##).contains("no Rust name"));
+        let media = |media: &str| {
+            error(&format!(
+                r##"{{"scales": {{"color": {{"ink": "#000"}}}}, "themes": {{"[data-dark]": {{"@media": {media}}}}}}}"##
+            ))
+        };
+        assert!(media(r##"{"(prefers-color-scheme: dark) { a": ":root"}"##).contains("is not a media condition"));
+        assert!(media(r##"{"(prefers-color-scheme: dark)": ":root{}"}"##).contains("cannot contain"));
+        assert!(media(r##"{"(prefers-color-scheme: dark)": {"color": {}}}"##).contains("is a string, not an object"));
     }
 }

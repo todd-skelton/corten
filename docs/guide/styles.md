@@ -37,6 +37,23 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks the
 class, so adding a variant without a rule does not compile. A component library is a crate that
 exports `pub const COMPONENTS: &[Component]`; the app passes it to `App::components`.
+
+A theme can also follow the system: its `"@media"` gives a media condition and the selector its
+values apply to under it, so they are written once.
+
+```json
+"themes": {
+  "[data-theme=\"dark\"]": {
+    "@media": { "(prefers-color-scheme: dark)": ":root:not([data-theme=\"light\"])" },
+    "color": { "ink": "#ecebf2", "bg": "#15141b" }
+  }
+}
+```
+
+The page is dark when it says `data-theme="dark"`, or when the system is dark and the page did
+not choose `light`. `color-scheme` (which themes form controls and scrollbars) is a property,
+not a token, so it goes in `static/style.css` next to the same selectors.
+
 `static/style.css` holds what belongs to no component: element defaults, fonts and the shell.
 Link it before `{doc.head}` so component rules win ties. Inline `style=` stays blocked by the
 CSP; one-off values come from the token utilities instead.

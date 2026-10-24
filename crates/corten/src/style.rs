@@ -126,7 +126,10 @@ use std::cell::RefCell;
 ///   `var()` (`"var(--space-1)"`) and `value()`.
 /// - `themes` (optional): a selector and the values it overrides,
 ///   `{"[data-theme=dark]": {"color": {"ink": "#eee"}}}`. A token that is not in its scale is a
-///   compile error.
+///   compile error. A theme's `"@media"` applies the same values to another selector under a
+///   media condition, so the system's dark mode needs no second copy of them:
+///   `"@media": {"(prefers-color-scheme: dark)": ":root:not([data-theme=light])"}` (dark when the
+///   system is dark and the page did not choose light).
 /// - `breakpoints` (optional): `{"sm": "40rem", "md": "48rem"}`, smallest first.
 /// - `utilities` (optional): classes for one property, from a scale
 ///   (`{"gap": {"property": "gap", "scale": "space"}}`) or from their own values
