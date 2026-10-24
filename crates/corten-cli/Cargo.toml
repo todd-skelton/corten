@@ -1,14 +1,28 @@
 [package]
 name = "corten-cli"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
-publish = false
 description = "The corten command: create, run and check Corten apps."
-license = "MIT"
-repository = "https://github.com/todd-skelton/corten"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["corten", "web", "cli", "scaffolding"]
+categories = ["command-line-utilities", "development-tools", "web-programming"]
+readme = "../../README.md"
 
 # No dependencies: the standard library only.
 
 [[bin]]
 name = "corten"
 path = "src/main.rs"
+
+# `cargo binstall corten-cli` downloads the binary the release workflow attaches to the GitHub
+# release (.github/workflows/release.yml names the archives) instead of compiling it.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/corten-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"

@@ -1,15 +1,19 @@
 [package]
 name = "corten"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
-publish = false
 description = "A full-stack Rust web framework: pages in html!, fragment patches, typed handlers and live feeds, on axum."
-license = "MIT"
-repository = "https://github.com/todd-skelton/corten"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["web", "framework", "html", "server-rendering", "axum"]
+categories = ["web-programming::http-server", "template-engine"]
+readme = "../../README.md"
 
 [dependencies]
 axum = "0.8"
-corten-macros = { path = "../corten-macros" }
+corten-macros.workspace = true
 futures-util = { version = "0.3", default-features = false }
 getrandom = "0.3"
 # Already in axum's tree: the response body type, for the request signal.
@@ -18,14 +22,17 @@ http-body = "1"
 tower-layer = "0.3"
 tower-service = "0.3"
 memchr = "2"
+# Already in axum's tree (its `Form` and `Query`): percent-decoding form bodies and query strings.
+form_urlencoded = "1"
 # Already in axum's tree (through serde_json): float digits for views.
 zmij = "1"
 tokio = { version = "1", default-features = false, features = ["net", "signal", "sync", "time"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"], optional = true }
-serde = { version = "1", features = ["derive"], optional = true }
+# Already in axum's tree. Always on for `Form` and `Query`; `json` adds the derive.
+serde = { version = "1", default-features = false, features = ["std"] }
 serde_json = { version = "1", optional = true }
-corten-feed = { path = "../corten-feed", optional = true }
+corten-feed = { workspace = true, optional = true }
 schemars = { version = "1.2", optional = true }
 brotli = { version = "9", optional = true }
 flate2 = { version = "1", optional = true }
@@ -38,7 +45,7 @@ default = ["log"]
 # App::serve prints logs (errors, startup, shutdown) to stderr unless the app set a subscriber.
 log = ["dep:tracing-subscriber"]
 # Handler arguments of any Serialize type (JSON in the markup) and JSON screens for data clients.
-json = ["dep:serde", "dep:serde_json"]
+json = ["serde/derive", "dep:serde_json"]
 # corten::types: TypeScript declarations for scripts, generated from the Rust types (schemars).
 types = ["json", "dep:schemars"]
 # corten::compress: pages compressed per request (zstd, brotli, gzip), the runtime and assets
@@ -49,7 +56,12 @@ feed = ["json", "dep:corten-feed"]
 # corten::agent: the app's actions as Model Context Protocol tools for AI agents.
 agent = ["types"]
 
+# docs.rs documents every module, including the opt-in ones.
+[package.metadata.docs.rs]
+all-features = true
+
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
+serde = { version = "1", features = ["derive"] }

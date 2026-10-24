@@ -45,7 +45,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | a fragment the server keeps current | `<corten-live src={Route}>` plus `corten::live` | [scripts.md](references/scripts.md) |
 | live rows a script updates | a `Feed` plus `subscribe` in an `on:connect` handler (feature `feed`) | [scripts.md](references/scripts.md) |
 | many rows a script reads or changes (a grid) | `#[component(view)]` rows, `rows(body, Row)` in the handler | [scripts.md](references/scripts.md) |
-| a number field, combobox, tabs or menu button | `corten-ui` first, the platform otherwise | [scripts.md](references/scripts.md) |
+| a number field, combobox, tabs, menu button or toast | `corten-ui` first, the platform otherwise | [scripts.md](references/scripts.md) |
 | styles for a component | `#[component(css)]`, a CSS file next to it, design tokens | [styles.md](references/styles.md) |
 | JSON for a native client or an agent | `req.screen(title, &data, view)` | [pages-and-routes.md](references/pages-and-routes.md) |
 | a route with no screen (webhook, public API, service call) | `App::api("/api", routes)`, handlers return `Json` (the prelude's `corten::Json`) | [pages-and-routes.md](references/pages-and-routes.md) |

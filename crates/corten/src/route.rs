@@ -12,12 +12,14 @@
 //! ```
 //!
 //! Fields named in the path fill it, percent-encoded (`{*rest}` keeps its slashes); every other
-//! field is a query parameter, left out when it is `None`. Field types only need `Display`, so a
+//! field is a query parameter, left out when it is `None`; a list (`Vec` or a slice) is the
+//! parameter once per item, `?condition=nm&condition=lp`, and left out when empty (what
+//! [`crate::Query`] reads back into a `Vec`). Field types only need `Display`, so a
 //! link borrows (`&str`) and copies nothing. The derive checks the path when it compiles: a
 //! parameter without a field, a parameter that is not a whole segment, or a character that would
 //! need escaping is an error. Renaming the route's path changes every link with it.
 //!
-//! Handlers read parameters with axum's `Path` and `Query` as before; a route struct with owned
+//! Handlers read parameters with axum's `Path` and Corten's [`crate::Query`]; a route struct with owned
 //! fields that also derives `Deserialize` can be the extractor's type. A route struct says where a
 //! link goes; that a handler is registered at `PATH` is the router's job (and its tests').
 //!
@@ -164,7 +166,8 @@ pub mod __private {
         let _ = fmt::write(&mut Encode { out, keep_slash: false }, format_args!("{value}"));
     }
 
-    // `Option` fields are left out when `None`; any other `Display` field is always written.
+    // `Option` fields are left out when `None`, lists write one pair per item; any other `Display`
+    // field is always written.
     pub struct Query<'a, T: ?Sized>(pub &'a T);
 
     pub trait QueryOption {
@@ -175,6 +178,24 @@ pub mod __private {
         #[inline]
         fn __query(&self, key: &str, first: &mut bool, html: bool, out: &mut String) {
             if let Some(value) = self.0 {
+                pair(key, value, first, html, out)
+            }
+        }
+    }
+
+    impl<T: Display> QueryOption for Query<'_, Vec<T>> {
+        #[inline]
+        fn __query(&self, key: &str, first: &mut bool, html: bool, out: &mut String) {
+            for value in self.0 {
+                pair(key, value, first, html, out)
+            }
+        }
+    }
+
+    impl<T: Display> QueryOption for Query<'_, &[T]> {
+        #[inline]
+        fn __query(&self, key: &str, first: &mut bool, html: bool, out: &mut String) {
+            for value in *self.0 {
                 pair(key, value, first, html, out)
             }
         }
@@ -226,5 +247,31 @@ mod tests {
         assert_eq!(File { path: "a/b c.txt".into() }.to_string(), "/files/a/b%20c.txt");
         let link = crate::html! { <a href={Offers { id: "x", page: Some(1), sort: "new" }}>"x"</a> }.to_html();
         assert_eq!(link, r#"<a href="/items/x/offers?page=1&amp;sort=new">x</a>"#);
+    }
+
+    #[derive(corten::Route, serde::Deserialize)]
+    #[route("/search")]
+    struct Search {
+        q: Option<String>,
+        #[serde(default)]
+        condition: Vec<String>,
+    }
+
+    #[derive(corten::Route)]
+    #[route("/compare")]
+    struct Compare<'a> {
+        ids: &'a [&'a str],
+    }
+
+    #[test]
+    fn a_list_is_the_parameter_once_per_item_and_reads_back() {
+        let search = Search { q: Some("charizard ex".into()), condition: vec!["nm".into(), "lp&mp".into()] };
+        assert_eq!(search.href(), "/search?q=charizard%20ex&condition=nm&condition=lp%26mp");
+        assert_eq!(search.to_html(), "/search?q=charizard%20ex&amp;condition=nm&amp;condition=lp%26mp");
+        assert_eq!(Search { q: None, condition: vec![] }.href(), "/search");
+        assert_eq!(Compare { ids: &["a", "b"] }.href(), "/compare?ids=a&ids=b");
+        let query = search.href();
+        let back: Search = crate::form::from_bytes(query.split_once('?').unwrap().1.as_bytes()).unwrap();
+        assert_eq!((back.q.as_deref(), back.condition), (Some("charizard ex"), vec!["nm".to_string(), "lp&mp".to_string()]));
     }
 }

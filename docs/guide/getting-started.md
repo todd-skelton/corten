@@ -5,7 +5,7 @@
 ## Install and create an app
 
 ```sh
-cargo install --git https://github.com/todd-skelton/corten corten-cli
+cargo install corten-cli    # or cargo binstall corten-cli, for the prebuilt binary
 corten new my-app
 cd my-app
 corten dev        # http://localhost:3000, rebuilds on save, open pages reload
@@ -17,7 +17,7 @@ test and a Dockerfile.
 
 | Command | What it does |
 |---|---|
-| `corten new <dir>` | Creates an app. `--name` sets the crate name, `--corten-path` uses a local checkout. |
+| `corten new <dir>` | Creates an app that depends on the `corten` release matching the command's version. `--name` sets the crate name, `--corten-path` uses a local checkout instead. |
 | `corten dev` | Builds and runs the app, rebuilds and restarts on every change (a failed build keeps the last good server running), and reloads open pages. `--port` or `PORT`. |
 | `corten fmt` | Lays out the markup inside `html!`, which rustfmt leaves alone (`--check` only reports). |
 | `corten check` | `cargo fmt --check`, `corten fmt --check`, `cargo clippy -D warnings`, `cargo test`. |

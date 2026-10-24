@@ -2,12 +2,12 @@
 
 ## Supported versions
 
-Corten is 0.1 and is installed from this repository. Fixes land on `main` only; there are no
-maintained release branches yet.
+Corten is 0.1. Fixes land on `main` and ship in a patch release of the newest minor version;
+there are no maintained release branches yet.
 
 | Version | Supported |
 |---|---|
-| `main` (0.1) | yes |
+| the newest 0.1.x release, and `main` | yes |
 | anything older | no |
 
 ## Reporting a vulnerability

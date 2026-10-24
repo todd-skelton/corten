@@ -3,6 +3,26 @@ resolver = "2"
 members = ["crates/*", "examples/*"]
 exclude = ["bench"]
 
+# Every published crate shares one version, released together (CONTRIBUTING.md, Releasing).
+[workspace.package]
+version = "0.1.0"
+license = "MIT"
+repository = "https://github.com/todd-skelton/corten"
+homepage = "https://github.com/todd-skelton/corten"
+rust-version = "1.88"
+
+# The crates depend on each other at exactly the workspace version: a path for building here,
+# the version for crates.io. Bump these with `workspace.package.version`. `corten` comes without its
+# default features, so a crate that depends on it picks its own (corten-ui needs none of them).
+# The examples are not published and depend on the crates by path.
+[workspace.dependencies]
+corten = { version = "0.1.0", path = "crates/corten", default-features = false }
+corten-macros = { version = "0.1.0", path = "crates/corten-macros" }
+corten-feed = { version = "0.1.0", path = "crates/corten-feed" }
+corten-protocol = { version = "0.1.0", path = "crates/corten-protocol" }
+corten-cluster = { version = "0.1.0", path = "crates/corten-cluster" }
+corten-ui = { version = "0.1.0", path = "crates/corten-ui" }
+
 [profile.release]
 opt-level = 3
 lto = "thin"

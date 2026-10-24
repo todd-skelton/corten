@@ -14,7 +14,7 @@ routes. Each default can be replaced in one line.
 | JSON-only routes | none | `.api("/api", routes)`: every failure under the prefix is JSON, with no shell and no context ([below](#json-only-routes)) |
 | Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the shell or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods | `.policy(Policy::new()...)` |
 | Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Cache::public(max_age)` next to a response that is the same for everyone |
-| Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])` |
+| Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file, plus one per section) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])`, `.section(prefix, &[..])` ([styles](styles.md#sections)) |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Shutdown | Ctrl-C and `SIGTERM` end live streams, then the server | |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |

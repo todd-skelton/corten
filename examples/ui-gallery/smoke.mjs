@@ -1,16 +1,35 @@
-// Browser smoke test of corten-ui's components, against the ui-gallery example.
-// Usage: node examples/ui-gallery/smoke.mjs [http://localhost:18482]
-import { chromium } from "@playwright/test";
+// Browser smoke test of corten-ui's components, against the ui-gallery example, in Chromium,
+// Firefox and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
+// Usage: node examples/ui-gallery/smoke.mjs [http://localhost:18482] [chromium|firefox|webkit ...]
+import { chromium, firefox, webkit } from "@playwright/test";
 
 const base = process.argv[2] ?? "http://localhost:18482";
+const engines = { chromium, firefox, webkit };
+const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys(engines);
 const failures = [];
+let engine = "";
 const check = (name, ok, detail = "") => {
-  console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? ` (${detail})` : ""}`);
-  if (!ok) failures.push(name);
+  console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
+  if (!ok) failures.push(`[${engine}] ${name}`);
 };
 
-const browser = await chromium.launch({ headless: true });
-try {
+for (engine of names) {
+  const browser = await engines[engine].launch({ headless: true });
+  try {
+    await run(browser);
+  } finally {
+    await browser.close();
+  }
+}
+
+if (failures.length) {
+  console.log(`\n${failures.length} failed:\n${failures.join("\n")}`);
+  process.exit(1);
+}
+console.log("\nall passed");
+
+/** @param {import("@playwright/test").Browser} browser */
+async function run(browser) {
   const page = await (await browser.newContext()).newPage();
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
@@ -18,7 +37,7 @@ try {
   await page.goto(`${base}/`);
   await page.waitForFunction(() => document.querySelector('[data-scope=ui-combo-box] [role="combobox"]:not([hidden])') !== null);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the four scripts load and connect", loaded === 4, `${loaded} script(s)`);
+  check("the five scripts load and connect", loaded === 5, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -160,6 +179,28 @@ try {
   check("a form item posts and patches", true);
   await expanded("false");
   check("using an item closes the menu", (await trigger.getAttribute("aria-expanded")) === "false");
+
+  // Toaster (2 seconds in the gallery)
+  const toast = page.locator("#ui-toast");
+  const dismiss = page.getByRole("button", { name: "Dismiss" });
+  check("no message: nothing shows", (await toast.isHidden()) && (await dismiss.isHidden()));
+  const save = page.getByRole("button", { name: "Save draft" });
+  await save.click();
+  await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Draft saved.");
+  check("the patch puts the message in the live region", (await page.getByRole("status").filter({ has: toast }).count()) === 1 && (await toast.isVisible()));
+  check("the close button shows with a message", await dismiss.isVisible());
+  await dismiss.click();
+  check("the button dismisses it", (await toast.isHidden()) && (await dismiss.isHidden()));
+  await save.click();
+  await toast.waitFor({ state: "visible" });
+  await toast.hover();
+  await page.waitForTimeout(2600);
+  check("it waits while the pointer is over it", await toast.isVisible());
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(400);
+  check("it is still there just after the pointer leaves (the rest of its time)", await toast.isVisible());
+  await toast.waitFor({ state: "hidden", timeout: 4000 }).catch(() => {});
+  check("then it goes after its time", (await toast.isHidden()) && (await dismiss.isHidden()));
   check("no console errors", errors.length === 0, errors.join(" | "));
 
   // Without JavaScript
@@ -167,20 +208,15 @@ try {
   await plain.goto(`${base}/`);
   check("no script: the select is the control", (await plain.locator("[data-scope=ui-combo-box] select").isVisible()) && (await plain.locator("[data-scope=ui-combo-box] input").isHidden()));
   await plain.locator("[data-scope=ui-combo-box] select").selectOption("sand");
-  await plain.getByRole("button", { name: "Order" }).click();
-  await plain.waitForLoadState();
+  // The post loads a new page; waitForLoadState alone can return for the page it left.
+  await Promise.all([plain.waitForURL("**/order"), plain.getByRole("button", { name: "Order" }).click()]);
   check("no script: the form posts the page", (await plain.textContent("#result")) === "Ordered 1 in Desert Sand at $12.50.", await plain.textContent("#result"));
   await plain.getByRole("tab", { name: "Offers" }).click();
   await plain.waitForURL("**/?tab=offers");
   check("no script: a tab is a link to its page", (await plain.getByRole("tabpanel").textContent()) === "Two offers, the best at $10.00.");
   await plain.getByRole("button", { name: "Actions" }).click();
   check("no script: the menu opens (popover)", await plain.getByRole("menuitem", { name: "Help" }).isVisible());
-} finally {
-  await browser.close();
+  await plain.goto(`${base}/`);
+  await Promise.all([plain.waitForURL("**/save"), plain.getByRole("button", { name: "Save draft" }).click()]);
+  check("no script: the page the post answers with shows the toast", (await plain.locator("#ui-toast").textContent()) === "Draft saved." && (await plain.locator("#ui-toast").isVisible()));
 }
-
-if (failures.length) {
-  console.log(`\n${failures.length} failed`);
-  process.exit(1);
-}
-console.log("\nall passed");

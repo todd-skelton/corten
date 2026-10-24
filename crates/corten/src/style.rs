@@ -152,6 +152,14 @@ pub struct Style {
     pub classes: &'static [&'static str],
 }
 
+impl Style {
+    /// True for a token file's stylesheet: custom properties, themes and utilities that apply to
+    /// every page, where a component's rules apply only to its own classes.
+    pub(crate) fn global(&self) -> bool {
+        self.name == self.file
+    }
+}
+
 /// One class of a component's stylesheet: the constants `#[component(css)]` makes, `Title`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Class(&'static str);
@@ -395,6 +403,92 @@ mod tests {
         assert!(link.split_once('"').unwrap().0.ends_with("/components.css"), "{body}");
         let (status, _) = get_page(App::new(routes()).dev(false).router()).await;
         assert_eq!(status, 200, "outside corten dev nothing is checked");
+    }
+
+    #[tokio::test]
+    async fn a_section_links_its_stylesheet_from_its_pages_only() {
+        use axum::{body::Body, http::Request, routing::get};
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        const REPORT: crate::Component = crate::Component {
+            name: "Report",
+            script: None,
+            style: Some(Style { name: "report", file: "report.css", css: ".report__a{}", classes: &["a"] }),
+            event: None,
+            view: None,
+        };
+        let page = |req: crate::Req| async move { req.page("Badges", BadgeCount { n: 1 }) };
+        let routes = || {
+            Router::new()
+                .route("/", get(page))
+                .route("/admin", get(page))
+                .route("/admin/reports/{id}", get(page))
+                .route("/administrator", get(page))
+        };
+        let app = |dev: bool| {
+            App::new(routes())
+                .dev(dev)
+                .components(&[theme::TOKENS])
+                .section("/admin", &[BadgeList])
+                .section("/admin/reports", &[REPORT])
+                .router()
+        };
+        let get_page = |app: Router, path: &str, nav: bool| {
+            let mut req = Request::get(path);
+            if nav {
+                req = req.header("corten", "nav");
+            }
+            let req = req.body(Body::empty()).unwrap();
+            async move {
+                let res = app.oneshot(req).await.unwrap();
+                let status = res.status();
+                (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+            }
+        };
+        let links = |body: &str| -> Vec<String> {
+            body.split(r#"<link rel="stylesheet" href=""#)
+                .skip(1)
+                .map(|rest| rest.split_once('"').unwrap().0.rsplit_once('/').unwrap().1.to_string())
+                .collect()
+        };
+
+        let (status, body) = get_page(app(true), "/admin", false).await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(links(&body), ["components.css", "admin.css"], "the section's stylesheet after the shared one");
+        assert!(body.contains(r#"/sections/admin.css" data-corten-style>"#), "{body}");
+        let (_, body) = get_page(app(true), "/admin/reports/7", false).await;
+        assert_eq!(links(&body), ["components.css", "admin.css", "reports.css"], "a page links every section it is under");
+        let (status, body) = get_page(app(true), "/admin/reports/7", true).await;
+        assert_eq!(status, 200);
+        assert!(body.starts_with("<title>Badges</title><link"), "a navigation carries the links: {body}");
+        assert_eq!(links(&body), ["admin.css", "reports.css"], "and not the shared stylesheet, which the page has");
+
+        let (status, body) = get_page(app(false), "/administrator", false).await;
+        assert_eq!(
+            (status, links(&body)),
+            (axum::http::StatusCode::OK, vec!["components.css".to_string()]),
+            "a prefix is whole segments"
+        );
+        let (status, body) = get_page(app(false), "/", true).await;
+        assert!(status == 200 && links(&body).is_empty(), "no section, no link: {body}");
+
+        #[cfg(debug_assertions)]
+        {
+            let (status, body) = get_page(app(true), "/", false).await;
+            assert_eq!(status, 500);
+            assert!(
+                body.contains("/ renders BadgeList, whose stylesheet is in the section /admin, which is not linked here"),
+                "{body}"
+            );
+        }
+
+        for bad in ["admin", "/", "/admin/", "/admin/{id}", "/a b", "/admin//x"] {
+            let given = std::panic::catch_unwind(|| App::new(Router::new()).section(bad, &[])).is_err();
+            assert!(given, "{bad:?} is not a section prefix");
+        }
+        let twice = std::panic::catch_unwind(|| App::new(Router::new()).section("/a", &[]).section("/a", &[]));
+        assert!(twice.is_err(), "a section is given once");
     }
 
     #[cfg(debug_assertions)]

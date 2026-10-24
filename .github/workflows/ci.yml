@@ -1,0 +1,84 @@
+# The checks in CONTRIBUTING.md (Checks), on every push to main and every pull request. Linux
+# runs them natively, so they need no Docker for cargo; the smoke tests still run the example
+# images the way CONTRIBUTING.md does.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo run -q -p corten-cli -- fmt --check crates examples bench
+      - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      - run: cargo test --workspace --all-features
+      - run: cargo test -p corten --no-default-features
+      - name: corten new writes an app that passes corten check
+        run: |
+          cargo build -q -p corten-cli
+          target/debug/corten new "$RUNNER_TEMP/app" --corten-path crates/corten
+          cd "$RUNNER_TEMP/app" && CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/target/debug/corten" check
+      # Every published crate still packages and builds on its own from the .crate files.
+      - run: cargo publish --workspace --dry-run --locked
+
+  msrv:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # Keep in step with workspace.package.rust-version in Cargo.toml.
+      - run: rustup toolchain install 1.88 --profile minimal && rustup default 1.88
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked --workspace --all-features --all-targets
+
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run check
+      - name: hello
+        run: |
+          docker build -f examples/hello/Dockerfile -t corten-hello .
+          docker run -d --name corten-hello -p 18480:8080 corten-hello
+          timeout 120 sh -c 'until curl -so /dev/null http://localhost:18480/; do sleep 1; done'
+          npm run smoke -- http://localhost:18480
+          docker rm -f corten-hello
+      - name: hello under corten dev
+        run: |
+          docker run -d --name corten-hello-dev -p 18483:8080 -e CORTEN_DEV=1 corten-hello
+          timeout 120 sh -c 'until curl -so /dev/null http://localhost:18483/; do sleep 1; done'
+          node scripts/smoke-dev.mjs http://localhost:18483 corten-hello-dev
+          docker rm -f corten-hello-dev
+      - name: item-page
+        run: |
+          docker build -f examples/item-page/Dockerfile -t corten-item-page .
+          docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -e AGENT_ORIGINS=http://127.0.0.1:18481 -v "$PWD/examples/item-page/fixtures:/fixtures:ro" corten-item-page
+          timeout 120 sh -c 'until curl -so /dev/null http://localhost:18481/; do sleep 1; done'
+          node examples/item-page/smoke.mjs http://localhost:18481
+          docker rm -f corten-item-page
+      - name: ui-gallery
+        run: |
+          docker build -f examples/ui-gallery/Dockerfile -t corten-ui-gallery .
+          docker run -d --name corten-ui-gallery -p 18482:8080 corten-ui-gallery
+          timeout 120 sh -c 'until curl -so /dev/null http://localhost:18482/; do sleep 1; done'
+          node examples/ui-gallery/smoke.mjs http://localhost:18482
+          docker rm -f corten-ui-gallery

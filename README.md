@@ -28,14 +28,15 @@ server-sent events. One handler serves the browser, native apps and AI agents.
 
 ## Status
 
-Corten is 0.1: usable, tested, and not yet on crates.io. Install it from this repository. The
-API will change before 1.0; [CHANGELOG.md](CHANGELOG.md) lists what changed. `corten-ui` is
-tested in Chromium only.
+Corten is 0.1: usable and tested, on Rust 1.88 or later. A release publishes every crate at one
+version on crates.io and attaches a prebuilt `corten` for Linux, macOS and Windows to the GitHub
+release. The API will change before 1.0; [CHANGELOG.md](CHANGELOG.md) lists what changed.
+The runtime and `corten-ui` are tested in Chromium, Firefox and WebKit.
 
 ## Quick start
 
 ```sh
-cargo install --git https://github.com/todd-skelton/corten corten-cli
+cargo install corten-cli    # or cargo binstall corten-cli, for the prebuilt binary
 corten new my-app
 cd my-app
 corten dev    # serves http://localhost:3000 and reloads on save
@@ -300,7 +301,7 @@ small ([profile](bench/browser/README.md#creating-many-rows)).
 | [Live data](docs/guide/live-data.md) | `<corten-live>`, feeds, running a feed across instances |
 | [Cancellation](docs/guide/cancellation.md) | `AbortSignal` in the browser and on the server, deadlines |
 | [Styles](docs/guide/styles.md) | a scoped CSS file per component, design tokens, themes |
-| [Headless components](docs/guide/ui.md) | `corten-ui`: number field, combobox, tabs, menu button |
+| [Headless components](docs/guide/ui.md) | `corten-ui`: number field, combobox, tabs, menu button, toaster |
 | [Type safety](docs/guide/type-safety.md) | every seam between server and client, and how it is checked |
 | [Design decisions and limits](docs/design.md) | why it is built this way, and what it does not do |
 | [Surfaces](docs/architecture.md) | one server for web, native apps and agents |

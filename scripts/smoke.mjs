@@ -1,19 +1,44 @@
-// Browser smoke test of every runtime behavior, against the hello example.
-// Usage: node scripts/smoke.mjs [http://localhost:18480]
-import { chromium } from "@playwright/test";
+// Browser smoke test of every runtime behavior, against the hello example, in Chromium, Firefox
+// and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
+// Usage: node scripts/smoke.mjs [http://localhost:18480] [chromium|firefox|webkit ...]
+import { chromium, firefox, webkit } from "@playwright/test";
 
 const base = process.argv[2] ?? "http://localhost:18480";
+const engines = { chromium, firefox, webkit };
+const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys(engines);
 const failures = [];
+let engine = "";
+const skipped = [];
+/** A check this browser cannot make, and why. */
+const skip = (/** @type {string} */ name, /** @type {string} */ why) => {
+  console.log(`skip [${engine}] ${name} (${why})`);
+  skipped.push(`[${engine}] ${name}`);
+};
 const check = (name, ok, detail = "") => {
-  console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? ` (${detail})` : ""}`);
-  if (!ok) failures.push(name);
+  console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
+  if (!ok) failures.push(`[${engine}] ${name}`);
 };
 
-const browser = await chromium.launch({ headless: true });
-try {
+for (engine of names) {
+  const browser = await engines[engine].launch({ headless: true });
+  try {
+    await run(browser);
+  } finally {
+    await browser.close();
+  }
+}
+if (skipped.length) console.log(`\n${skipped.length} skipped`);
+console.log(failures.length ? `\n${failures.length} failed:\n${failures.join("\n")}` : "\nall passed");
+process.exit(failures.length ? 1 : 0);
+
+/** @param {import("@playwright/test").Browser} browser */
+async function run(browser) {
   const page = await browser.newPage();
   const errors = [];
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  // Firefox logs an open stream that a full page load cuts (data-reload, an error page, a section
+  // stylesheet that failed) as an error, in one of two wordings.
+  const cut = /was interrupted while the page was loading|can.t establish a connection to the server at \S+\/live\/trades/;
+  page.on("console", (m) => m.type() === "error" && !cut.test(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
   // Every EventSource the page opens, to see which are still open.
   await page.addInitScript(() => {
@@ -35,11 +60,14 @@ try {
   let failWatch = false;
   /** @type {string[]} */
   const abandoned = [];
+  /** The requests failed on purpose, which are not abandoned. */
+  const offline = new Set();
   await page.route("**/watch", async (route) => {
     const wait = delayWatch;
     delayWatch = 0;
     if (failWatch) {
       failWatch = false;
+      offline.add(route.request());
       return route.abort("internetdisconnected");
     }
     if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
@@ -51,10 +79,51 @@ try {
   page.on("request", (request) => request.headers()["corten"] === "nav" && navRequests.push(request.url()));
   page.on("requestfailed", (request) => {
     const error = request.failure()?.errorText ?? "";
-    if (request.url().endsWith("/watch") && !error.includes("DISCONNECTED")) abandoned.push(error);
+    if (request.url().endsWith("/watch") && !offline.has(request)) abandoned.push(error);
   });
 
+  // Playwright's WebKit with the Navigation API (its Linux build) loses track of the page once the
+  // runtime intercepts a navigation: every later action waits for a navigation that never ends.
+  // WebKit's swaps are checked from inside the page here; the rest of the run hides the API, so
+  // its navigations are full page loads, the documented fallback.
+  if (engine === "webkit") {
+    const probe = await browser.newPage();
+    await probe.goto(base);
+    if (await probe.evaluate(() => "navigation" in window)) {
+      const seen = await probe.evaluate(async () => {
+        const until = async (/** @type {() => boolean} */ done) => {
+          for (let i = 0; i < 100 && !done(); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+          return done();
+        };
+        (/** @type {any} */ (window)).__marker = 1;
+        /** @type {HTMLAnchorElement} */ (document.querySelector('header a[href="/about"]')).click();
+        const about = await until(() => document.title === "About | Corten");
+        const note = document.querySelector(".about-note__note");
+        const border = note ? getComputedStyle(note).borderInlineStartWidth : "";
+        history.back();
+        const back = await until(() => document.title === "Watchlist | Corten");
+        return { about, border, back, kept: (/** @type {any} */ (window)).__marker === 1, path: location.pathname };
+      });
+      check(
+        "WebKit swaps a page in with its section stylesheet loaded, and back restores the last one",
+        seen.about && seen.border === "4px" && seen.back && seen.kept && seen.path === "/",
+        JSON.stringify(seen),
+      );
+    }
+    await probe.close();
+    await page.addInitScript(() => {
+      delete (/** @type {any} */ (Window.prototype)).navigation;
+      delete (/** @type {any} */ (window)).navigation;
+    });
+  }
+
   await page.goto(base);
+  // Without the Navigation API every navigation is a full page load, the documented fallback: the
+  // checks of what a swap keeps check that instead, or are skipped.
+  const swaps = await page.evaluate(() => "navigation" in window);
+  const noSwaps = "no Navigation API: navigations are full page loads";
+  // Playwright's WebKit stores a Secure cookie from http://localhost but never sends it back.
+  const signsIn = engine !== "webkit";
   const live = "[data-scope=live-prices]";
   await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
   check("on:connect runs the script's watch(), which subscribes to the feed", (await page.getAttribute(live, "data-status")) === "live");
@@ -169,6 +238,19 @@ try {
   const current = () => page.$$eval("a[data-nav][aria-current=page]", (links) => links.map((l) => l.getAttribute("href")).join());
   check("the shell marks the current link", (await current()) === "/");
   check("one feed stream while the component is on the page", (await openFeeds()) === 1);
+  // The about page's note is in a section (App::section): its stylesheet loads before the page is
+  // swapped in, so the note is styled the moment it joins the page.
+  await page.evaluate(() => {
+    new MutationObserver((_, observer) => {
+      const note = document.querySelector(".about-note__note");
+      if (!note) return;
+      (/** @type {any} */ (window)).__noteBorder = getComputedStyle(note).borderInlineStartWidth;
+      observer.disconnect();
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  const noteBorder = () => page.$eval(".about-note__note", (note) => getComputedStyle(note).borderInlineStartWidth);
+  const styleLinks = () => page.$$eval("link[data-corten-style]", (links) => links.length);
+  check("a page outside the section does not link its stylesheet", (await styleLinks()) === 0);
   // A navigation abandons a pending submit, whose reply was for the page being left.
   delayWatch = 1200;
   await page.click("main form[data-patch] button");
@@ -181,28 +263,51 @@ try {
   check("client navigation moves aria-current in the shell", (await current()) === "/about");
   check("main is not left busy", (await page.getAttribute("main", "aria-busy")) === null);
   check("client navigation swaps <main>", (await page.textContent("main h1")) === "About");
-  check("client navigation keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
+  if (swaps) {
+    const border = await page.evaluate(() => (/** @type {any} */ (window)).__noteBorder);
+    check("a section's stylesheet loads before its page is swapped in", border === "4px", border);
+  } else {
+    check("a section's page links its stylesheet", (await noteBorder()) === "4px" && (await styleLinks()) === 1);
+  }
+  if (swaps) check("client navigation keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
+  else check("without the Navigation API a link loads the whole page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
   check("navigation updates the URL", new URL(page.url()).pathname === "/about");
 
   await page.goBack();
   await page.waitForFunction(() => document.title === "Watchlist | Corten");
   await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
   check("back navigation restores the watchlist and on:connect resubscribes", (await page.getAttribute(live, "data-status")) === "live");
+  if (swaps) {
+    check("a section's stylesheet stays when the page leaves the section", (await styleLinks()) === 1);
+    await page.goForward();
+    await page.waitForFunction(() => document.title === "About | Corten");
+    check("coming back into the section does not link its stylesheet twice", (await styleLinks()) === 1 && (await noteBorder()) === "4px");
+    await page.goBack();
+    await page.waitForFunction(() => document.title === "Watchlist | Corten");
+    await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
+  } else {
+    for (const name of ["a section's stylesheet stays when the page leaves the section", "coming back into the section does not link its stylesheet twice"]) skip(name, noSwaps);
+  }
   // The submit failed on purpose above; the browser logs that request.
   const unexpected = errors.filter((e) => !e.includes("ERR_INTERNET_DISCONNECTED"));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
   errors.length = 0;
 
   // Signing in changes the shell's context, so the redirect loads the whole document.
-  await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 2));
-  await page.click("header form[data-patch] button");
-  await page.waitForFunction(() => document.querySelector("header")?.textContent?.includes("Signed in as Ada"), null, { timeout: 5000 }).catch(() => {});
-  check("signing in shows the viewer in the shell", ((await page.textContent("header")) ?? "").includes("Signed in as Ada"));
-  check("a new shell context loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
+  if (signsIn) {
+    await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 2));
+    await page.click("header form[data-patch] button");
+    await page.waitForFunction(() => document.querySelector("header")?.textContent?.includes("Signed in as Ada"), null, { timeout: 5000 }).catch(() => {});
+    check("signing in shows the viewer in the shell", ((await page.textContent("header")) ?? "").includes("Signed in as Ada"));
+    check("a new shell context loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
+  } else {
+    skip("signing in shows the viewer in the shell", "the browser does not send Secure cookies over http");
+  }
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 3));
   await page.click('header a[href="/about"]');
   await page.waitForFunction(() => document.title === "About | Corten");
-  check("same context: navigation swaps again", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 3));
+  if (swaps) check("same context: navigation swaps again", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 3));
+  else skip("same context: navigation swaps again", noSwaps);
 
   // A <corten-live> whose stream finishes (here one fragment, then `end`) applies it and stays
   // closed: no reconnect after the browser's retry delay (about 3 s in Chromium).
@@ -274,51 +379,83 @@ try {
   check("a patch keeps focus on an element without an id or name (by its place)", buttonFocus);
   await page.evaluate(() => document.querySelector("#kept")?.remove());
 
-  // data-nav="section": current on its page and every page under it.
-  await page.evaluate(() => document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>'));
-  await page.click('header a[href="/"]:not(#section-link)');
-  await page.waitForFunction(() => document.title === "Watchlist | Corten");
-  await page.click('header a[href="/about"]');
-  await page.waitForFunction(() => document.title === "About | Corten");
-  check(
-    'data-nav="section" marks the link on pages under it',
-    (await page.getAttribute("#section-link", "aria-current")) === "page" && (await page.getAttribute('header a[href="/"]:not(#section-link)', "aria-current")) === null,
-  );
+  // Swaps only: these links live in the shell, which a full page load replaces.
+  if (swaps) {
+    // data-nav="section": current on its page and every page under it.
+    await page.evaluate(() => document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>'));
+    await page.click('header a[href="/"]:not(#section-link)');
+    await page.waitForFunction(() => document.title === "Watchlist | Corten");
+    await page.click('header a[href="/about"]');
+    await page.waitForFunction(() => document.title === "About | Corten");
+    check(
+      'data-nav="section" marks the link on pages under it',
+      (await page.getAttribute("#section-link", "aria-current")) === "page" && (await page.getAttribute('header a[href="/"]:not(#section-link)', "aria-current")) === null,
+    );
 
-  // data-no-prefetch: hovering does not fetch; an ordinary link does (the control).
-  await page.evaluate(() =>
-    document.querySelector("main")?.insertAdjacentHTML("beforeend", '<p><a id="no-prefetch" href="/" data-no-prefetch>Home</a> <a id="prefetch" href="/?from=hover">Home</a></p>'),
-  );
-  navRequests.length = 0;
-  await page.hover("#no-prefetch");
-  await page.waitForTimeout(300);
-  const afterOptOut = navRequests.length;
-  await page.hover("#prefetch");
-  await page.waitForTimeout(300);
-  check("data-no-prefetch: hovering the link fetches nothing", afterOptOut === 0 && navRequests.length === 1, `${afterOptOut} then ${navRequests.join()}`);
+    // data-no-prefetch: hovering does not fetch; an ordinary link does (the control).
+    await page.evaluate(() =>
+      document.querySelector("main")?.insertAdjacentHTML("beforeend", '<p><a id="no-prefetch" href="/" data-no-prefetch>Home</a> <a id="prefetch" href="/?from=hover">Home</a></p>'),
+    );
+    navRequests.length = 0;
+    await page.hover("#no-prefetch");
+    await page.waitForTimeout(300);
+    const afterOptOut = navRequests.length;
+    await page.hover("#prefetch");
+    await page.waitForTimeout(300);
+    check("data-no-prefetch: hovering the link fetches nothing", afterOptOut === 0 && navRequests.length === 1, `${afterOptOut} then ${navRequests.join()}`);
 
-  // The prefetch cache keeps the 8 newest pages: after hovering 9 links, following the newest
-  // reuses its prefetch and following the oldest fetches it again. The links sit in the shell,
-  // which navigation keeps.
-  await page.evaluate(() =>
-    document.querySelector("header nav")?.insertAdjacentHTML("beforeend", Array.from({ length: 9 }, (_, i) => `<a class="hovered" href="/about?p=${i}">${i}</a>`).join(" ")),
-  );
-  for (let i = 0; i < 9; i += 1) {
-    await page.hover(`header a.hovered[href="/about?p=${i}"]`);
-    await page.waitForTimeout(150);
+    // The prefetch cache keeps the 8 newest pages: after hovering 9 links, following the newest
+    // reuses its prefetch and following the oldest fetches it again. The links sit in the shell,
+    // which navigation keeps.
+    await page.evaluate(() =>
+      document.querySelector("header nav")?.insertAdjacentHTML("beforeend", Array.from({ length: 9 }, (_, i) => `<a class="hovered" href="/about?p=${i}">${i}</a>`).join(" ")),
+    );
+    for (let i = 0; i < 9; i += 1) {
+      await page.hover(`header a.hovered[href="/about?p=${i}"]`);
+      await page.waitForTimeout(150);
+    }
+    const hoveredCount = navRequests.length;
+    await page.click('header a.hovered[href="/about?p=8"]');
+    await page.waitForFunction(() => location.search === "?p=8");
+    const afterNewest = navRequests.length;
+    await page.click('header a.hovered[href="/about?p=0"]');
+    await page.waitForFunction(() => location.search === "?p=0");
+    check(
+      "prefetch keeps the 8 newest pages: the newest is reused, the oldest is fetched again",
+      hoveredCount === 10 && afterNewest === 10 && navRequests.length === 11,
+      `${hoveredCount}, ${afterNewest}, ${navRequests.length}`,
+    );
+    await page.evaluate(() => document.querySelectorAll("header a.hovered").forEach((a) => a.remove()));
+
+    // A section stylesheet that fails to load: the runtime loads the page in full instead of
+    // showing it unstyled. A fresh document, so the stylesheet is not already in it.
+    await page.goto(base);
+    let failStyle = true;
+    await page.route("**/sections/**", (route) => {
+      if (!failStyle) return route.continue();
+      failStyle = false;
+      return route.abort("internetdisconnected");
+    });
+    const logged = errors.length;
+    await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 5));
+    await page.click('header a[href="/about"]');
+    await page.waitForFunction(() => document.title === "About | Corten" && document.readyState === "complete");
+    check(
+      "a section stylesheet that fails to load makes the page load in full",
+      !failStyle && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined)) && (await noteBorder()) === "4px",
+    );
+    await page.unroute("**/sections/**");
+    // The browser logs the stylesheet it could not load.
+    errors.splice(logged, errors.length, ...errors.slice(logged).filter((e) => !/Failed to load resource|ERR_INTERNET_DISCONNECTED/.test(e)));
+  } else {
+    for (const name of [
+      'data-nav="section" marks the link on pages under it',
+      "data-no-prefetch: hovering the link fetches nothing",
+      "prefetch keeps the 8 newest pages",
+      "a section stylesheet that fails to load makes the page load in full",
+    ])
+      skip(name, noSwaps);
   }
-  const hoveredCount = navRequests.length;
-  await page.click('header a.hovered[href="/about?p=8"]');
-  await page.waitForFunction(() => location.search === "?p=8");
-  const afterNewest = navRequests.length;
-  await page.click('header a.hovered[href="/about?p=0"]');
-  await page.waitForFunction(() => location.search === "?p=0");
-  check(
-    "prefetch keeps the 8 newest pages: the newest is reused, the oldest is fetched again",
-    hoveredCount === 10 && afterNewest === 10 && navRequests.length === 11,
-    `${hoveredCount}, ${afterNewest}, ${navRequests.length}`,
-  );
-  await page.evaluate(() => document.querySelectorAll("header a.hovered").forEach((a) => a.remove()));
 
   // With the browser's data saver on, hovering fetches nothing.
   const saver = await browser.newContext();
@@ -376,8 +513,4 @@ try {
   check("without JavaScript the form posts and renders the page", ((await plain.textContent("#watch-message")) ?? "").startsWith("Watching Initech"));
   check("without JavaScript prices are server-rendered", (await plain.$$('[data-ref="price"]')).length === 3);
   await noJs.close();
-} finally {
-  await browser.close();
 }
-console.log(failures.length ? `\n${failures.length} failed` : "\nall passed");
-process.exit(failures.length ? 1 : 0);

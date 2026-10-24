@@ -1,9 +1,14 @@
 [package]
 name = "corten-macros"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
-publish = false
 description = "Derive macros for Corten. Written against proc_macro alone, so it adds no dependencies."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["corten", "html", "macros", "components"]
+categories = ["web-programming", "template-engine"]
 
 [lib]
 proc-macro = true

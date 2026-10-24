@@ -96,7 +96,7 @@ pub use cache::Cache;
 /// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled
 /// field fails to compile instead of posting a field the handler never reads.
 pub use corten_macros::Fields;
-pub use form::{Errors, FieldName};
+pub use form::{Errors, FieldName, Form, Query};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::Json;
@@ -133,7 +133,7 @@ pub mod prelude {
     pub use crate::Json;
     pub use crate::{
         axum::{
-            extract::{Form, Path, Query, State},
+            extract::{Path, State},
             routing::{delete, get, post, put},
             Router,
         },
@@ -142,7 +142,7 @@ pub mod prelude {
         raw,
         script::{el, refs, Handler, Ref},
         view::Id,
-        Api, App, Cache, Document, Errors, Fields, Meta, Mode, Render, Req, Result, Route,
+        Api, App, Cache, Document, Errors, Fields, Form, Meta, Mode, Query, Render, Req, Result, Route,
     };
 }
 

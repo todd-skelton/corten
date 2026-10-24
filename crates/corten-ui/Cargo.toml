@@ -1,11 +1,14 @@
 [package]
 name = "corten-ui"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
-publish = false
-description = "Headless Corten components for the widgets the browser has no element for: number field, combobox, tabs, menu button."
-license = "MIT"
-repository = "https://github.com/todd-skelton/corten"
+description = "Headless Corten components for the widgets the browser has no element for: number field, combobox, tabs, menu button, toaster."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["corten", "ui", "headless", "components", "accessibility"]
+categories = ["web-programming", "gui", "accessibility"]
 
 # The names this crate's components put in the page start with "ui" (ui.combo_box.js,
 # data-scope="ui-combo-box"), so an app's own ComboBox never collides with them.
@@ -14,7 +17,7 @@ scripts = "ui"
 
 # Only corten, without its default features: the components need no JSON, no logging and no CSS.
 [dependencies]
-corten = { path = "../corten", default-features = false }
+corten = { workspace = true, default-features = false }
 
 [dev-dependencies]
-corten = { path = "../corten", default-features = false, features = ["types"] }
+corten = { workspace = true, default-features = false, features = ["types"] }

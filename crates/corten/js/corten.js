@@ -16,7 +16,8 @@
 //    the event is dispatched. `on:connect` runs when the element joins, and its `signal` aborts
 //    when it leaves.
 // 5. subscribe(): live rows from a corten::feed (snapshot + ordered patches) for scripts that keep state.
-// 6. Hover prefetch of same-origin links, the page's head tags on navigation, `aria-current` on
+// 6. Hover prefetch of same-origin links, the page's head tags and section stylesheets on
+//    navigation (a stylesheet loads before the swap and stays), `aria-current` on
 //    shell links with `data-nav`, and the service worker when the shell names one (corten::pwa).
 // 7. A page response whose shell key differs from this page's (the user signed in or out, or a
 //    deploy changed the runtime or assets) is loaded in full instead of swapped.
@@ -693,14 +694,20 @@ function keep(root, fresh, sent) {
 
 /**
  * Swaps a page response (`<title>`, the page's head tags, then the page) into <main>, once the
- * modules its handlers name are imported.
+ * modules its handlers name are imported and the section stylesheets it links are loaded. A
+ * stylesheet that fails to load makes the runtime load the page in full rather than show it
+ * unstyled.
  * @param {string} html
  * @param {AbortSignal} [signal]
  */
 async function swapPage(html, signal) {
   const content = parse(html);
-  await modulesOf(content);
+  const [, styled] = await Promise.all([modulesOf(content), stylesOf(content)]);
   signal?.throwIfAborted();
+  if (!styled) {
+    location.reload();
+    return;
+  }
   const title = content.querySelector("title");
   if (title) {
     document.title = title.textContent ?? "";
@@ -713,6 +720,28 @@ async function swapPage(html, signal) {
   if (!main) throw new Error("corten: the shell must render a <main> element");
   main.replaceChildren(content);
   markCurrent();
+}
+
+/**
+ * Moves the section stylesheets a page response links (`App::section`) out of it, adds those this
+ * document lacks to <head> and resolves when they have loaded: true, or false when one failed.
+ * They are never removed: their rules only match their own components' classes.
+ * @param {DocumentFragment} content
+ * @returns {Promise<boolean>}
+ */
+async function stylesOf(content) {
+  const have = Array.from(document.head.querySelectorAll("link[data-corten-style]"), (link) => link.getAttribute("href"));
+  const links = /** @type {NodeListOf<HTMLLinkElement>} */ (content.querySelectorAll("link[data-corten-style]"));
+  const loads = Array.from(links, (link) => {
+    link.remove();
+    if (have.includes(link.getAttribute("href"))) return true;
+    document.head.append(link);
+    return new Promise((resolve) => {
+      link.onload = () => resolve(true);
+      link.onerror = () => resolve(false);
+    });
+  });
+  return (await Promise.all(loads)).every(Boolean);
 }
 
 /**
@@ -780,6 +809,8 @@ function pageKey(url) {
 
 /** @param {EventTarget | null} target */
 function prefetch(target) {
+  // Without the Navigation API a click is a full page load, which cannot use a prefetched swap.
+  if (!("navigation" in window)) return;
   const link = target instanceof Element ? target.closest("a[href]") : null;
   if (!(link instanceof HTMLAnchorElement) || link.target || link.hasAttribute("download")) return;
   if (link.closest("[data-reload], [data-no-prefetch]")) return;
