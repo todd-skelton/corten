@@ -111,15 +111,18 @@ for a refusal), and a refused request never reaches the handler:
 ```rust
 App::new(routes)
     .context(|headers| viewer_from(headers))
-    .guard(Admin::PATH, |viewer: Option<&Viewer>, _uri| match viewer {
+    .guard(Admin::PATH, |viewer: Option<&Viewer>, req| match viewer {
         None => Access::sign_in(&SignIn),
-        Some(v) if v.can(Permission::Admin) => Access::ALLOW,
+        Some(v) if v.can(Permission::View) && (!req.writes() || v.can(Permission::Edit)) => Access::ALLOW,
         Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
     })
 ```
 
-The prefix is a plain path (no parameters) and covers whole segments. A check that needs the
-record (only its author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
+The prefix is a plain path (no parameters) or `"/"` for the whole app, and covers whole
+segments. `req.writes()` is every method but GET, HEAD and OPTIONS, so reads and writes at one
+URL get different rules; `req.is::<Export>()` names one route. Under `"/"`, open the sign-in
+page and webhooks with `.unguarded::<SignIn>()`. A check that needs the record (only its author
+may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
 
 ## Data from another service
 

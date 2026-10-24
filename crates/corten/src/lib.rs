@@ -87,7 +87,7 @@ use axum::{
 use futures_util::{Stream, StreamExt};
 
 pub use api::Api;
-pub use app::{Access, App};
+pub use app::{Access, App, Guarded};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 pub use cache::Cache;

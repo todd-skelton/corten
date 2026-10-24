@@ -101,7 +101,7 @@ framework's shape, and what it does not do yet.
     Its names in the page are prefixed (`ui.combo_box.js`, `data-scope="ui-combo-box"`) through
     `[package.metadata.corten] scripts = "ui"`, so an app's own components never collide with
     them. Two of an app's own scripts with one file name are a startup error that names both.
-11. `App::guard` covers a URL prefix, a plain path like a section's: there is no guard for `/`,
-    which would cover the sign-in page too, so an app that is private everywhere puts its pages
-    under a prefix or signs in on another site. A guard sees the context and the URI, not the
-    record a route loads, so a check that depends on the record stays in its handler.
+11. `App::guard` covers a URL prefix (or `/`), not a route list: a route is opened with
+    `App::unguarded`, not left out of a list, so one added later is covered. A guard sees the
+    context, the URI and whether the request writes, not the record a route loads, so a check
+    that depends on the record (the author, the organization) stays in its handler.

@@ -107,6 +107,42 @@ impl<R: Route> Href for R {
     }
 }
 
+/// True when `path` (a request's path, not decoded) is one `pattern` (a route's `PATH`) routes,
+/// as axum matches it: a literal segment is itself, `{name}` is one segment that is not empty,
+/// and a final `{*name}` is the rest, not empty. Anything else in braces matches nothing, so a
+/// pattern this does not understand never opens or names more than it should.
+pub(crate) fn matches(pattern: &str, path: &str) -> bool {
+    // Most patterns a request is checked against are literal (`/sign-in`), and most paths do not
+    // share the literal start of the others: both are settled without splitting either.
+    let Some(brace) = pattern.find('{') else {
+        return pattern == path;
+    };
+    if !path.starts_with(&pattern[..brace]) {
+        return false;
+    }
+    let mut path = path.split('/');
+    for part in pattern.split('/') {
+        let param =
+            part.len() > 2 && part.starts_with('{') && part.ends_with('}') && !part[1..part.len() - 1].contains(['{', '}']);
+        if param && part.starts_with("{*") {
+            return match path.next() {
+                Some(first) => !first.is_empty() || path.next().is_some(),
+                None => false,
+            };
+        }
+        match path.next() {
+            Some(segment) if param => {
+                if segment.is_empty() {
+                    return false;
+                }
+            }
+            Some(segment) if !part.contains(['{', '}']) && segment == part => {}
+            _ => return false,
+        }
+    }
+    path.next().is_none()
+}
+
 /// Bytes written as they are in a path segment or query value; everything else is %XX.
 fn unreserved(b: u8) -> bool {
     b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~')
@@ -233,6 +269,18 @@ mod tests {
     #[route("/files/{*path}")]
     struct File {
         path: String,
+    }
+
+    #[test]
+    fn a_pattern_matches_the_paths_axum_routes_to_it() {
+        use super::matches;
+        assert!(matches("/", "/") && !matches("/", "/a"));
+        assert!(matches("/sign-in", "/sign-in") && !matches("/sign-in", "/sign-in/") && !matches("/sign-in", "/sign-in-now"));
+        assert!(matches("/items/{id}/offers", "/items/7/offers"));
+        assert!(!matches("/items/{id}/offers", "/items//offers") && !matches("/items/{id}/offers", "/items/7/offers/x"));
+        assert!(matches("/files/{*path}", "/files/a") && matches("/files/{*path}", "/files/a/b"));
+        assert!(!matches("/files/{*path}", "/files") && !matches("/files/{*path}", "/files/"));
+        assert!(!matches("/items/{id}.json", "/items/7.json"), "what it does not understand matches nothing");
     }
 
     #[test]

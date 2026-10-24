@@ -13,7 +13,7 @@ use std::{
 
 use axum::{
     extract::Request,
-    http::{header, Extensions, HeaderMap, HeaderValue, StatusCode, Uri},
+    http::{header, Extensions, HeaderMap, HeaderValue, Method, StatusCode, Uri},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
@@ -29,7 +29,7 @@ use crate::{
     cache::{self, Seen},
     page::{self, default_error_page, default_shell, error_page_fn, IntoShell, Shared, ShellFn},
     pwa::Pwa,
-    route::Href,
+    route::{Href, Route as TypedRoute},
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
     view::Render,
@@ -42,7 +42,33 @@ type ContextFuture = Pin<Box<dyn Future<Output = InsertContext> + Send>>;
 type ContextFn = Arc<dyn Fn(&HeaderMap) -> ContextFuture + Send + Sync>;
 type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
 /// A guard's check, reading the context from the request's extensions.
-type GuardFn = Box<dyn Fn(&Extensions, &Uri) -> Access + Send + Sync>;
+type GuardFn = Box<dyn Fn(&Extensions, &Guarded) -> Access + Send + Sync>;
+
+/// The request a guard ([`App::guard`]) decides on: which route, and whether it reads or writes.
+pub struct Guarded<'a> {
+    uri: &'a Uri,
+    method: &'a Method,
+}
+
+impl Guarded<'_> {
+    /// The request's URI, for a sign-in link that brings the caller back.
+    pub fn uri(&self) -> &Uri {
+        self.uri
+    }
+
+    /// True for a request that may change something: every method but `GET`, `HEAD` and
+    /// `OPTIONS`, the same split as the same-origin check, so a method nobody listed counts as a
+    /// write. For screens anyone with one permission reads and another writes.
+    pub fn writes(&self) -> bool {
+        !matches!(*self.method, Method::GET | Method::HEAD | Method::OPTIONS)
+    }
+
+    /// True when the request is for the route `R`: `req.is::<Billing>()`, matched as the router
+    /// matches `R::PATH`, for a rule that one route under the prefix needs.
+    pub fn is<R: TypedRoute>(&self) -> bool {
+        crate::route::matches(R::PATH, self.uri.path())
+    }
+}
 
 /// What a guard ([`App::guard`]) decides for a request.
 pub struct Access(Decision);
@@ -123,6 +149,7 @@ pub struct App {
     components: Vec<crate::Component>,
     sections: Vec<(String, Vec<crate::Component>)>,
     guards: Vec<Guard>,
+    unguarded: Vec<&'static str>,
     deadline: Option<Duration>,
     apis: Vec<(Mount, Router)>,
 }
@@ -144,6 +171,7 @@ impl App {
             components: Vec::new(),
             sections: Vec::new(),
             guards: Vec::new(),
+            unguarded: Vec::new(),
             deadline: Some(Duration::from_secs(30)),
             apis: Vec::new(),
         }
@@ -207,14 +235,16 @@ impl App {
     }
 
     /// Routes that only some callers may use: every route at `prefix` and below it, including
-    /// ones added later, unknown URLs and wrong methods there. `check` gets the request's context
-    /// (see [`App::context`]; `None` when it found no one) and URI, and decides with [`Access`]:
+    /// ones added later, unknown URLs and wrong methods there; `"/"` is the whole app. `check`
+    /// gets the request's context (see [`App::context`]; `None` when it found no one) and the
+    /// request ([`Guarded`]: its URI, whether it writes, which route it is), and decides with
+    /// [`Access`]:
     ///
     /// ```
     /// use corten::{axum::http::StatusCode, prelude::*, Error};
     ///
     /// #[derive(Clone)]
-    /// struct Viewer { staff: bool }
+    /// struct Viewer { staff: bool, editor: bool }
     ///
     /// #[derive(Route)]
     /// #[route("/sign-in")]
@@ -223,9 +253,9 @@ impl App {
     /// fn app(routes: Router) -> App {
     ///     App::new(routes)
     ///         .context(|_| async { None::<Viewer> })
-    ///         .guard("/admin", |viewer: Option<&Viewer>, _| match viewer {
+    ///         .guard("/admin", |viewer: Option<&Viewer>, req| match viewer {
     ///             None => Access::sign_in(&SignIn),
-    ///             Some(viewer) if viewer.staff => Access::ALLOW,
+    ///             Some(v) if v.staff && (v.editor || !req.writes()) => Access::ALLOW,
     ///             Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
     ///         })
     /// }
@@ -240,24 +270,46 @@ impl App {
     /// error. Under a guard the context also runs for an API route without [`Api::context`].
     ///
     /// Guards may nest (`/admin` and `/admin/billing`): every guard a path is under must allow
-    /// it, the outer one first. A prefix is a path like a section's. The context's type must be
-    /// `C`, checked when the router is built; without [`App::context`] there is nothing to check
-    /// and building the router panics.
+    /// it, the outer one first. A prefix is `"/"` or a path like a section's. Corten's own routes
+    /// (static files, the runtime, health, the PWA's files and offline page) and the routes
+    /// marked [`App::unguarded`] are under none. The context's type must be `C`, checked when the
+    /// router is built; without [`App::context`] there is nothing to check and building the
+    /// router panics.
+    ///
+    /// A sign-in answer that points at a path a guard would also send to sign in (a sign-in page
+    /// under `App::guard("/", ..)` that is not [`App::unguarded`]) would loop; the request fails
+    /// with a 500 that says so instead.
     pub fn guard<C, F>(mut self, prefix: &str, check: F) -> Self
     where
         C: Send + Sync + 'static,
-        F: Fn(Option<&C>, &Uri) -> Access + Send + Sync + 'static,
+        F: Fn(Option<&C>, &Guarded) -> Access + Send + Sync + 'static,
     {
         assert!(
-            plain_prefix(prefix),
-            "corten: a guard prefix is a path like \"/admin\": letters, digits, - and _ between slashes, without a trailing slash or parameters: {prefix:?}"
+            prefix == "/" || plain_prefix(prefix),
+            "corten: a guard prefix is \"/\" or a path like \"/admin\": letters, digits, - and _ between slashes, without a trailing slash or parameters: {prefix:?}"
         );
         assert!(!self.guards.iter().any(|g| g.prefix == prefix), "corten: the guard {prefix:?} is given twice");
         self.guards.push(Guard {
             prefix: prefix.to_string(),
-            check: Box::new(move |extensions, uri| check(extensions.get::<C>(), uri)),
+            check: Box::new(move |extensions, req| check(extensions.get::<C>(), req)),
             context: (TypeId::of::<C>(), type_name::<C>()),
         });
+        self
+    }
+
+    /// A route no guard covers, for every method: the sign-in page under `App::guard("/", ..)`,
+    /// a password reset, a public landing page. `.unguarded::<SignIn>()`, once per route; the
+    /// route is matched as the router matches `R::PATH`.
+    ///
+    /// It takes a route type, never a path as text:
+    ///
+    /// ```compile_fail
+    /// let app = corten::App::new(corten::axum::Router::new()).unguarded::<&str>();
+    /// ```
+    pub fn unguarded<R: TypedRoute>(mut self) -> Self {
+        if !self.unguarded.contains(&R::PATH) {
+            self.unguarded.push(R::PATH);
+        }
         self
     }
 
@@ -473,6 +525,7 @@ impl App {
             shared: Arc::new(shared),
             context: self.context.map(|(f, _, _)| f),
             guards,
+            unguarded: self.unguarded,
             deadline: self.deadline,
             policy,
             mounts,
@@ -581,6 +634,7 @@ struct Layer {
     shared: Arc<Shared>,
     context: Option<ContextFn>,
     guards: Vec<Guard>,
+    unguarded: Vec<&'static str>,
     deadline: Option<Duration>,
     policy: Applied,
     mounts: Vec<Mount>,
@@ -602,7 +656,7 @@ impl Layer {
         let path = req.uri().path();
         let own = self.own.contains(path);
         let mount = if own { None } else { self.mounts.iter().find(|mount| mount.contains(path)) };
-        let guarded = !own && !self.guards.is_empty() && self.guards.iter().any(|g| crate::api::under(&g.prefix, path));
+        let guarded = !own && !self.guards.is_empty() && self.guarded(path);
         if let Some(mount) = mount {
             if let Some(mut res) = mount.preflight(req.method(), req.headers()) {
                 self.policy.headers(&mut res, None);
@@ -670,16 +724,17 @@ impl Layer {
     /// The answer of the first guard over the request's path that does not allow it.
     fn refusal(&self, req: &Request, mode: Mode, api: bool) -> Option<Response> {
         let path = req.uri().path();
-        let (prefix, Access(decision)) = self
-            .guards
-            .iter()
-            .filter(|guard| crate::api::under(&guard.prefix, path))
-            .map(|guard| (&guard.prefix, (guard.check)(req.extensions(), req.uri())))
-            .find(|(_, access)| !matches!(access.0, Decision::Allow))?;
+        let asked = Guarded { uri: req.uri(), method: req.method() };
+        let (prefix, Access(decision)) = self.decide(req.extensions(), &asked)?;
         tracing::debug!("corten: {} {path} refused by App::guard({prefix:?})", req.method());
         let error = match decision {
             Decision::Allow => return None,
             Decision::SignIn(_) if api || mode == Mode::Data => Error::status(StatusCode::UNAUTHORIZED),
+            Decision::SignIn(to) if self.loops(req.extensions(), &to) => Error::new(format!(
+                "App::guard({prefix:?}) sends {path} to sign in at {}, which a guard sends to sign in too; \
+                 mark the sign-in route with App::unguarded",
+                to.to_str().unwrap_or("")
+            )),
             Decision::SignIn(to) => return Some(page::redirect(mode, to)),
             Decision::Refuse(error) => error,
         };
@@ -691,6 +746,39 @@ impl Layer {
             }
         }
         Some(res)
+    }
+
+    /// True when `path` is under a guard: under a guard's prefix, and not the offline page or an
+    /// [`App::unguarded`] route.
+    fn guarded(&self, path: &str) -> bool {
+        self.guards.iter().any(|g| crate::api::under(&g.prefix, path))
+            && self.shared.offline.as_deref() != Some(path)
+            && !self.unguarded.iter().any(|pattern| crate::route::matches(pattern, path))
+    }
+
+    /// The first guard over the request that does not allow it, outer first, and its answer.
+    fn decide(&self, extensions: &Extensions, asked: &Guarded) -> Option<(&str, Access)> {
+        let path = asked.uri.path();
+        self.guards
+            .iter()
+            .filter(|guard| crate::api::under(&guard.prefix, path))
+            .map(|guard| (guard.prefix.as_str(), (guard.check)(extensions, asked)))
+            .find(|(_, access)| !matches!(access.0, Decision::Allow))
+    }
+
+    /// True when following a sign-in answer to `to` (a path in this app) would be sent to sign
+    /// in again: the browser would loop until it gives up.
+    fn loops(&self, extensions: &Extensions, to: &HeaderValue) -> bool {
+        let Some(uri) =
+            to.to_str().ok().filter(|to| to.starts_with('/') && !to.starts_with("//")).and_then(|to| to.parse::<Uri>().ok())
+        else {
+            return false;
+        };
+        if !self.guarded(uri.path()) || self.own.contains(uri.path()) {
+            return false;
+        }
+        let asked = Guarded { uri: &uri, method: &Method::GET };
+        matches!(self.decide(extensions, &asked), Some((_, Access(Decision::SignIn(_)))))
     }
 }
 
