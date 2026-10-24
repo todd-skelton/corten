@@ -33,7 +33,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 | `#[component(css = OfferList)]` | a helper in the same module shares the stylesheet, and its uses count |
 | `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed responsive utilities: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
 | `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
-| `App::area("/admin", Area::new(routes).components(&[SalesChart, ...]))` | those stylesheets in a file of their own, `sections/admin.css`, linked only from pages at and under `/admin`; a component listed in two places, or tokens in an area, is a startup error, and a page outside the area that renders one is an error under `corten dev` |
+| `App::area::<Admin>(\|admin\| admin.route::<..>(..).components(&[SalesChart, ...]))` | those stylesheets in a file of their own, `sections/admin.css`, linked only from pages at and under `/admin`; a component listed in two places, or tokens in an area, is a startup error, and a page outside the area that renders one is an error under `corten dev` |
 
 Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks the
 class, so adding a variant without a rule does not compile. A component library is a crate that
@@ -69,7 +69,7 @@ a stylesheet of its own:
 ```rust,ignore
 App::new(routes)
     .components(&[TOKENS, Button, OfferList])                              // every page
-    .area(Admin::PATH, Area::new(admin).components(&[SalesChart, AuditTable])) // pages at /admin and under it
+    .area::<Admin>(|admin| admin::routes(admin).components(&[SalesChart, AuditTable])) // pages at /admin and under it
 ```
 
 - The server picks a page's stylesheets by its path, from links built at startup: no per-render

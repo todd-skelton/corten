@@ -38,14 +38,14 @@ async fn main() -> std::io::Result<()> {
         .route("/live/feed", get(|State(feed): State<Feed<Tick>>| async move { feed.snapshot() }))
         .route("/live/feed/live", get(|State(feed): State<Feed<Tick>>, since: Since| async move { feed.live(since) }))
         .with_state(feed.clone());
-    let publish = Router::new()
-        .route(
-            "/live/publish",
-            post(|State(feed): State<Feed<Tick>>, Json(p): Json<Publish>| async move {
-                feed.write(|tx| tx.insert(Tick { id: "lst_1".into(), seq: p.seq, sent: p.sent, price: p.price }));
-                StatusCode::NO_CONTENT
-            }),
-        )
-        .with_state(feed);
-    corten::serve(App::new(routes).api("/live/publish", publish)).await
+    let publish = post(|State(feed): State<Feed<Tick>>, Json(p): Json<Publish>| async move {
+        feed.write(|tx| tx.insert(Tick { id: "lst_1".into(), seq: p.seq, sent: p.sent, price: p.price }));
+        StatusCode::NO_CONTENT
+    })
+    .with_state(feed);
+    corten::serve(App::new(routes).api::<PublishRoute>(|api| api.route::<PublishRoute>(publish))).await
 }
+
+#[derive(Route)]
+#[route("/live/publish")]
+struct PublishRoute;

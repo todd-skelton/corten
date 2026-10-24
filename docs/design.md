@@ -58,12 +58,17 @@ framework's shape, and what it does not do yet.
 6. A page another surface reads derives `Serialize`, and its fields are its whole view model
    (formatted text included). Then `req.screen` gives every surface the same data.
 7. `App` configures the whole app; a part of it under a URL prefix is an `Area` (or an `Api`
-   for routes that answer only JSON), which owns its routes. A new setting that applies to a
-   prefix goes on `Area` or `Api`, never on `App` as a method taking a prefix string; one that
-   reads who is asking takes the context type from `App<C>`, so a mismatch does not compile.
-   Before adding to `App`, check whether the setting belongs on one of those, and whether the
-   builder still reads as one list of settings with one way to give each; reorganize it when it
-   does not, rather than add a second way.
+   for routes that answer only JSON), which owns its routes. Its prefix and its routes are route
+   types (`.area::<Admin>(|admin| admin.route::<AdminUser>(..))`), so a route outside the prefix
+   does not compile. A new setting that applies to a prefix goes on `Area` or `Api`, never on
+   `App` as a method taking a prefix string; one that reads who is asking takes the context type
+   from `App<C>`, so a mismatch does not compile. Before adding to `App`, check whether the
+   setting belongs on one of those, and whether the builder still reads as one list of settings
+   with one way to give each; reorganize it when it does not, rather than add a second way.
+8. A mistake the compiler can see is a compile error, with a `compile_fail` doctest: a type, a
+   trait bound, or a `const` assertion over a route's `PATH`. One it cannot see (two settings
+   that clash, a file missing from `static/`) fails at startup, and only what depends on the
+   request is checked per request. A check that moves earlier also leaves the request path.
 
 ## Limits
 
@@ -112,6 +117,8 @@ framework's shape, and what it does not do yet.
     a URL prefix, not a route list: a route is opened with `App::unguarded`, not left out of a
     list, so one added later is covered. A guard sees the context, the URI and whether the
     request writes, not the record a route loads, so a check that depends on the record (the
-    author, the organization) stays in its handler. An area's routes must start with its
-    prefix, checked when a request reaches one (a route typed wrong answers 500), not at
-    startup, since an axum router does not list its paths.
+    author, the organization) stays in its handler. That an area's or an API's routes are
+    under its prefix is a `const` assertion, which the compiler evaluates when it builds the
+    app (`cargo build`, `cargo test`, `corten check`), not under `cargo check` alone. Routes
+    given to `App::new` are a plain axum `Router`, which no check sees into: one under an
+    area's prefix still gets its guard and stylesheet, which follow the path.

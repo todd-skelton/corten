@@ -19,6 +19,35 @@ fn demo_meta() -> Meta {
     Meta::new("A & B").description("About A")
 }
 
+/// Typed routes with no parameters, for the tests' areas and APIs: `paths! { Api = "/api" }`.
+macro_rules! paths {
+    ($($name:ident = $path:tt),* $(,)?) => {$(
+        #[derive(crate::Route)]
+        #[route($path)]
+        struct $name;
+    )*};
+}
+
+paths! {
+    ApiRoot = "/api",
+    ApiMissing = "/api/missing",
+    ApiDown = "/api/down",
+    ApiTeapot = "/api/teapot",
+    ApiSlow = "/api/slow",
+    ApiPost = "/api/post",
+    ApiWho = "/api/who",
+    ApiRates = "/api/rates",
+    ApiSignUp = "/api/sign-up",
+    ApiItems = "/api/items",
+    ApiStats = "/api/admin/stats",
+    ApiOther = "/api/other",
+    Items = "/items",
+    Admin = "/admin",
+    Billing = "/admin/billing",
+    Reviews = "/reviews",
+    Hooks = "/hooks",
+}
+
 /// The signed-in user, as an app's context function would find it.
 #[derive(Clone, Hash, PartialEq, Debug)]
 struct Viewer(&'static str);
@@ -473,23 +502,26 @@ struct ApiItem<'a> {
     id: &'a str,
 }
 
-/// A page, and API routes for each way an API request can fail.
-fn api_app(api: impl FnOnce(Router) -> crate::Api<Viewer>) -> Router {
-    let routes = Router::new()
-        .route(ApiItem::PATH, get(|axum::extract::Path(id): axum::extract::Path<u32>| async move { format!("item {id}") }))
-        .route("/api/missing", get(|| async { Err::<Response, _>(Error::new("no item 7").with_status(StatusCode::NOT_FOUND)) }))
-        .route("/api/down", get(|| async { Err::<Response, _>(Error::new("database password wrong")) }))
-        .route(
-            "/api/teapot",
-            get(|| async { (StatusCode::IM_A_TEAPOT, [("content-type", "application/json")], r#"{"mine":1}"#) }),
-        )
-        .route("/api/slow", get(std::future::pending::<&'static str>))
-        .route("/api/post", axum::routing::post(|| async { "posted" }));
+/// A page, and API routes for each way an API request can fail; `settings` adds the API's.
+fn api_app(settings: impl FnOnce(crate::Api<Viewer, ApiRoot>) -> crate::Api<Viewer, ApiRoot>) -> Router {
     App::new(Router::new().route("/", get(|req: Req| async move { req.page("Home", html! { <p>"home"</p> }) })))
         .context(|_| async { Some(Viewer("ada")) })
         .shell(test_shell)
         .deadline(std::time::Duration::from_millis(50))
-        .api("/api", api(routes))
+        .api::<ApiRoot>(|api| {
+            let api = api
+                .route::<ApiItem>(get(|axum::extract::Path(id): axum::extract::Path<u32>| async move { format!("item {id}") }))
+                .route::<ApiMissing>(get(|| async {
+                    Err::<Response, _>(Error::new("no item 7").with_status(StatusCode::NOT_FOUND))
+                }))
+                .route::<ApiDown>(get(|| async { Err::<Response, _>(Error::new("database password wrong")) }))
+                .route::<ApiTeapot>(get(|| async {
+                    (StatusCode::IM_A_TEAPOT, [("content-type", "application/json")], r#"{"mine":1}"#)
+                }))
+                .route::<ApiSlow>(get(std::future::pending::<&'static str>))
+                .route::<ApiPost>(axum::routing::post(|| async { "posted" }));
+            settings(api)
+        })
         .router()
 }
 
@@ -498,7 +530,7 @@ const ACCEPTS: [Option<&str>; 4] = [Some("*/*"), None, Some("text/html,applicati
 
 #[tokio::test]
 async fn api_routes_answer_every_failure_as_json_whatever_the_client_accepts() {
-    let router = api_app(|r| r.into());
+    let router = api_app(|api| api);
     for accept in ACCEPTS {
         let get = |uri: &'static str| call_with(router.clone(), "GET", uri, None, accept);
         let (status, headers, body) = get("/api/nope").await;
@@ -539,7 +571,7 @@ async fn api_routes_answer_every_failure_as_json_whatever_the_client_accepts() {
 
 #[tokio::test]
 async fn api_routes_have_their_own_csp_and_pages_get_a_nonce_only_when_they_use_one() {
-    let router = api_app(|r| r.into());
+    let router = api_app(|api| api);
     let (_, headers, _) = call_with(router.clone(), "GET", "/api/items/1", None, None).await;
     assert_eq!(headers["content-security-policy"], "default-src 'none'; frame-ancestors 'none'");
     assert_eq!(headers["x-content-type-options"], "nosniff");
@@ -570,21 +602,25 @@ async fn the_context_runs_for_pages_and_only_for_api_routes_that_ask() {
         Arc,
     };
     let calls = Arc::new(AtomicUsize::new(0));
-    let counting = |api: crate::Api<Viewer>| {
+    let counting = |context: bool| {
         let calls = calls.clone();
         App::new(Router::new().route("/", get(|| async { "page" })))
             .context(move |_| {
                 calls.fetch_add(1, Ordering::SeqCst);
                 async { Some(Viewer("ada")) }
             })
-            .api("/api", api)
+            .api::<ApiRoot>(|api| {
+                let api = api
+                    .route::<ApiWho>(get(|ctx: Option<axum::Extension<Viewer>>| async move { ctx.map_or("nobody", |v| v.0 .0) }));
+                if context {
+                    api.context()
+                } else {
+                    api
+                }
+            })
             .router()
     };
-    let who = || {
-        Router::new()
-            .route("/api/who", get(|ctx: Option<axum::Extension<Viewer>>| async move { ctx.map_or("nobody", |v| v.0 .0) }))
-    };
-    let router = counting(who().into());
+    let router = counting(false);
     let (_, _, body) = call_with(router.clone(), "GET", "/api/who", None, None).await;
     assert_eq!((body.as_str(), calls.load(Ordering::SeqCst)), ("nobody", 0), "an API route authenticates itself");
     for own in [runtime_path(), "/health/live"] {
@@ -593,13 +629,13 @@ async fn the_context_runs_for_pages_and_only_for_api_routes_that_ask() {
     assert_eq!(calls.load(Ordering::SeqCst), 0, "Corten's own routes skip the context");
     call_with(router, "GET", "/", None, None).await;
     assert_eq!(calls.load(Ordering::SeqCst), 1);
-    let (_, _, body) = call_with(counting(crate::Api::new(who()).context()), "GET", "/api/who", None, None).await;
+    let (_, _, body) = call_with(counting(true), "GET", "/api/who", None, None).await;
     assert_eq!((body.as_str(), calls.load(Ordering::SeqCst)), ("ada", 2), "unless it asks for it");
 }
 
 #[tokio::test]
 async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pages() {
-    let router = api_app(|r| crate::Api::new(r).allow_origin("https://partner.example/"));
+    let router = api_app(|api| api.allow_origin("https://partner.example/"));
     let cross = |uri: &str, origin: &str| {
         Request::post(uri).header("origin", origin).header("sec-fetch-site", "cross-site").body(Body::empty()).unwrap()
     };
@@ -643,8 +679,7 @@ async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pa
 
 #[tokio::test]
 async fn an_api_at_the_root_makes_the_whole_app_json() {
-    let routes = Router::new().route("/items", get(|| async { "items" }));
-    let router = App::new(Router::new()).api("/", routes).router();
+    let router = App::new(Router::new()).api::<Root>(|api| api.route::<Items>(get(|| async { "items" }))).router();
     let (status, headers, body) = call_with(router.clone(), "GET", "/nope", None, Some("text/html")).await;
     assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::NOT_FOUND, "application/json"));
     assert_eq!(body, r#"{"error":{"status":404,"message":"Not Found"}}"#);
@@ -652,27 +687,18 @@ async fn an_api_at_the_root_makes_the_whole_app_json() {
     assert_eq!((status, &body[..]), (StatusCode::OK, "ok"), "Corten's own routes keep their behavior");
 }
 
-#[tokio::test]
-async fn under_corten_dev_an_api_route_outside_its_prefix_says_so() {
-    let routes = Router::new().route("/items", get(|| async { "items" }));
-    let dev = App::new(Router::new()).api("/api", routes).dev(true).router();
-    let (status, _, body) = call_with(dev, "GET", "/items", None, Some("text/html")).await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(body.contains("/items is routed by App::api(&quot;/api&quot;, ..) but does not start with"), "{body}");
-}
-
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn validation_errors_are_the_json_error_with_fields() {
-    let routes = Router::new().route(
-        "/api/sign-up",
-        axum::routing::post(|| async {
-            let mut errors = Errors::new();
-            errors.add(SignUp::FIELDS.email, "Enter an email address.");
-            Err::<&str, _>(errors)
-        }),
-    );
-    let router = App::new(Router::new()).api("/api", routes).router();
+    let router = App::new(Router::new())
+        .api::<ApiRoot>(|api| {
+            api.route::<ApiSignUp>(axum::routing::post(|| async {
+                let mut errors = Errors::new();
+                errors.add(SignUp::FIELDS.email, "Enter an email address.");
+                Err::<&str, _>(errors)
+            }))
+        })
+        .router();
     let (status, _, body) = call_with(router, "POST", "/api/sign-up", None, None).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(
@@ -684,9 +710,13 @@ async fn validation_errors_are_the_json_error_with_fields() {
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn a_json_body_that_does_not_parse_is_a_json_400() {
-    let routes = Router::new()
-        .route("/api/items", axum::routing::post(|axum::Json(v): axum::Json<serde_json::Value>| async move { v.to_string() }));
-    let router = App::new(Router::new()).api("/api", routes).router();
+    let router = App::new(Router::new())
+        .api::<ApiRoot>(|api| {
+            api.route::<ApiItems>(axum::routing::post(
+                |axum::Json(v): axum::Json<serde_json::Value>| async move { v.to_string() },
+            ))
+        })
+        .router();
     let req = Request::post("/api/items").header("content-type", "application/json").body(Body::from("{nope")).unwrap();
     let res = router.oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -753,9 +783,11 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
     assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the shell took the nonce");
 
     let minute = std::time::Duration::from_secs(60);
-    let api = Router::new().route("/api/rates", get(move || async move { (Cache::public(minute), "rates") }));
     // The app has a context, but this mount does not run it.
-    let api = App::new(Router::new()).context(|_| async { Some(Viewer("ada")) }).api("/api", api).router();
+    let api = App::new(Router::new())
+        .context(|_| async { Some(Viewer("ada")) })
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(get(move || async move { (Cache::public(minute), "rates") })))
+        .router();
     assert_eq!(cache_control(&api, "/api/rates", &[("accept", "application/json")]).await, "public, max-age=60");
     assert_eq!(cache_control(&api, "/api/rates", &[("authorization", "Bearer t")]).await, "private, no-cache");
 }
@@ -796,9 +828,6 @@ fn guarded_app(dev: bool) -> (Router, Arc<std::sync::atomic::AtomicUsize>) {
     let pages = Router::new()
         .route("/", get(|req: Req| async move { req.page("Home", html! { <p>"home"</p> }) }))
         .route("/administrators", get(count(&ran)));
-    let admin = Router::new().route("/admin", get(count(&ran)).post(form(&ran)));
-    let billing = Router::new().route("/admin/billing", get(count(&ran)));
-    let api = Router::new().route("/api/admin/stats", get(count(&ran)));
     let viewer = |headers: &HeaderMap| headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
     let router = App::new(pages)
         .dev(dev)
@@ -807,29 +836,27 @@ fn guarded_app(dev: bool) -> (Router, Arc<std::sync::atomic::AtomicUsize>) {
             async move { viewer }
         })
         .shell(test_shell)
-        .api(
-            "/api",
-            Api::new(api).guard(|viewer, _| match viewer {
+        .api::<ApiRoot>(|api| {
+            api.route::<ApiStats>(get(count(&ran))).guard(|viewer, _| match viewer {
                 Some(_) => Access::ALLOW,
                 None => Access::sign_in(&SignIn),
-            }),
-        )
-        .area(
-            "/admin",
-            Area::new(admin).guard(|viewer: Option<&Viewer>, _| match viewer.map(|v| v.0) {
+            })
+        })
+        // The guards read the context's fields, and its type comes from the app.
+        .area::<Admin>(|admin| {
+            admin.route::<Admin>(get(count(&ran)).post(form(&ran))).guard(|viewer, _| match viewer.map(|v| v.0) {
                 None => Access::sign_in(&SignIn),
                 Some("ada" | "bob") => Access::ALLOW,
                 Some("down") => Access::refuse(Error::status(StatusCode::BAD_GATEWAY)),
                 Some(_) => Access::refuse(Error::new("not staff").with_status(StatusCode::FORBIDDEN)),
-            }),
-        )
-        .area(
-            "/admin/billing",
-            Area::new(billing).guard(|viewer: Option<&Viewer>, req| match viewer.map(|v| v.0) {
+            })
+        })
+        .area::<Billing>(|billing| {
+            billing.route::<Billing>(get(count(&ran))).guard(|viewer, req| match viewer.map(|v| v.0) {
                 Some("ada") => Access::ALLOW,
                 _ => Access::sign_in(&format!("/sign-in?next={}", req.uri().path()).parse::<axum::http::Uri>().unwrap()),
-            }),
-        )
+            })
+        })
         .router();
     (router, ran)
 }
@@ -938,11 +965,10 @@ async fn guards_nest_and_run_the_context_for_api_routes() {
 
 #[tokio::test]
 async fn the_outer_guard_answers_first_whatever_the_order_they_are_given_in() {
-    let routes = Router::new().route("/admin/billing", get(|| async { "billing" }));
     let router = App::new(Router::new())
         .context(|_| async { Some(Viewer("eve")) })
-        .area("/admin/billing", Area::new(routes).guard(|_, _| Access::sign_in(&SignIn)))
-        .area("/admin", Area::new(Router::new()).guard(|_, _| Access::refuse(Error::status(StatusCode::FORBIDDEN))))
+        .area::<Billing>(|billing| billing.route::<Billing>(get(|| async { "billing" })).guard(|_, _| Access::sign_in(&SignIn)))
+        .area::<Admin>(|admin| admin.guard(|_, _| Access::refuse(Error::status(StatusCode::FORBIDDEN))))
         .router();
     let (status, _, _) = guarded(&router, "GET", "/admin/billing", None, &[]).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
@@ -957,76 +983,54 @@ async fn under_dev_a_refusal_names_its_guard() {
     assert_eq!(body, r#"{"error":{"status":401,"message":"Unauthorized (refused by App::api(\"/api\"))"}}"#);
 }
 
-#[test]
-#[should_panic(expected = "an area prefix is a path like")]
-fn an_area_prefix_is_a_plain_path() {
-    let _ = App::new(Router::new()).area("/admin/", Area::new(Router::new()));
-}
+paths! { ApiAdmin = "/api/admin" }
 
 #[test]
 #[should_panic(expected = "the area \"/api/admin\" is under App::api(\"/api\")")]
 fn an_area_under_an_api_prefix_fails_at_startup() {
-    let _ = App::new(Router::new()).api("/api", Router::new()).area("/api/admin", Area::new(Router::new())).router();
+    let _ = App::new(Router::new()).api::<ApiRoot>(|api| api).area::<ApiAdmin>(|admin| admin).router();
 }
 
 #[tokio::test]
-async fn a_route_outside_its_area_or_api_prefix_fails_rather_than_go_unguarded() {
-    let app = |dev: bool| {
-        App::new(Router::new())
-            .dev(dev)
-            .context(|_| async { None::<Viewer> })
-            // Typed wrong: the routes are not under the prefixes they were given in.
-            .area(
-                "/admin",
-                Area::new(Router::new().route("/admn/users", get(|| async { "users" }))).guard(|_, _| Access::sign_in(&SignIn)),
-            )
-            .api("/api", Router::new().route("/apis/items", get(|| async { "items" })))
-            .router()
-    };
-    for (uri, name, prefix) in [("/admn/users", "App::area", "/admin"), ("/apis/items", "App::api", "/api")] {
-        let (status, _, body) = guarded(&app(false), "GET", uri, None, &[("accept", "text/html")]).await;
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{uri} is not served: {body}");
-        assert!(!body.contains(name), "the message stays in the log");
-        let (_, _, body) = guarded(&app(true), "GET", uri, None, &[("accept", "text/html")]).await;
-        let said = format!("{uri} is routed by {name}(&quot;{prefix}&quot;, ..) but does not start with &quot;{prefix}&quot;");
-        assert!(body.contains(&said), "{body}");
-    }
-}
-
-#[tokio::test]
-async fn an_area_fallback_does_not_answer_for_the_app() {
-    let area = Router::new().route("/admin", get(|| async { "admin" })).fallback(|| async { "the area's fallback" });
-    let router = App::new(Router::new().route("/", get(|| async { "home" }))).area("/admin", Area::new(area)).router();
+async fn the_app_answers_unknown_urls_under_an_area_or_api() {
+    let fallback = || async { "the app's fallback" };
+    let router = App::new(Router::new().route("/", get(|| async { "home" })).fallback(fallback))
+        .area::<Admin>(|admin| admin.route::<Admin>(get(|| async { "admin" })))
+        .router();
     for uri in ["/nope", "/admin/nope"] {
         let (status, _, body) = guarded(&router, "GET", uri, None, &[]).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}: {body}");
-        assert!(!body.contains("fallback"), "{uri} is the app's 404: {body}");
+        assert_eq!((status, &body[..]), (StatusCode::OK, "the app's fallback"), "{uri}");
     }
 }
 
 /// Reviews anyone may read and only a signed-in editor may write, at one URL.
+#[derive(crate::Route)]
+#[route("/reviews/{id}")]
+struct Review<'a> {
+    id: &'a str,
+}
+
 fn reviews_app() -> Router {
-    let routes = Router::new().route(
-        "/reviews/{id}",
-        get(|req: Req| async move { req.page("Review", html! { <p>"review"</p> }) })
-            .post(|| async { "saved" })
-            .delete(|| async { "deleted" }),
-    );
     App::new(Router::new())
         .context(|headers: &HeaderMap| {
             let viewer = headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
             async move { viewer }
         })
         .shell(test_shell)
-        .area(
-            "/reviews",
-            Area::new(routes).guard(|viewer: Option<&Viewer>, req| match viewer.map(|v| v.0) {
-                _ if !req.writes() => Access::ALLOW,
-                None => Access::sign_in(&SignIn),
-                Some("editor") => Access::ALLOW,
-                Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
-            }),
-        )
+        .area::<Reviews>(|reviews| {
+            reviews
+                .route::<Review>(
+                    get(|req: Req| async move { req.page("Review", html! { <p>"review"</p> }) })
+                        .post(|| async { "saved" })
+                        .delete(|| async { "deleted" }),
+                )
+                .guard(|viewer, req| match viewer.map(|v| v.0) {
+                    _ if !req.writes() => Access::ALLOW,
+                    None => Access::sign_in(&SignIn),
+                    Some("editor") => Access::ALLOW,
+                    Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
+                })
+        })
         .router()
 }
 
@@ -1069,7 +1073,7 @@ fn private_app(open_sign_in: bool) -> Router {
             async move { viewer }
         })
         .shell(test_shell)
-        .api("/hooks", Router::new())
+        .api::<Hooks>(|hooks| hooks)
         .guard(|viewer, _| match viewer {
             Some(_) => Access::ALLOW,
             None => Access::sign_in(&SignIn),
@@ -1119,19 +1123,17 @@ async fn a_sign_in_that_would_loop_is_an_error_that_says_so() {
 
 #[tokio::test]
 async fn a_guard_names_one_route_by_its_type() {
-    let routes = Router::new().route(ApiItem::PATH, get(|| async { "item" })).route("/api/other", get(|| async { "other" }));
     let router = App::new(Router::new())
         .context(|_| async { None::<Viewer> })
-        .api(
-            "/api",
-            Api::new(routes).guard(|_, req| {
+        .api::<ApiRoot>(|api| {
+            api.route::<ApiItem>(get(|| async { "item" })).route::<ApiOther>(get(|| async { "other" })).guard(|_, req| {
                 if req.is::<ApiItem>() {
                     Access::refuse(Error::status(StatusCode::FORBIDDEN))
                 } else {
                     Access::ALLOW
                 }
-            }),
-        )
+            })
+        })
         .router();
     assert_eq!(guarded(&router, "GET", "/api/items/7", None, &[]).await.0, StatusCode::FORBIDDEN);
     assert_eq!(guarded(&router, "GET", "/api/other", None, &[]).await.0, StatusCode::OK);

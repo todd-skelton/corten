@@ -421,6 +421,20 @@ mod tests {
         assert_eq!(status, 200, "outside corten dev nothing is checked");
     }
 
+    #[derive(crate::Route)]
+    #[route("/admin")]
+    struct Admin;
+
+    #[derive(crate::Route)]
+    #[route("/admin/reports")]
+    struct Reports;
+
+    #[derive(crate::Route)]
+    #[route("/admin/reports/{id}")]
+    struct Report<'a> {
+        id: &'a str,
+    }
+
     #[tokio::test]
     async fn an_area_links_its_stylesheet_from_its_pages_only() {
         use axum::{body::Body, http::Request, routing::get};
@@ -439,11 +453,8 @@ mod tests {
             App::new(Router::new().route("/", get(page)).route("/administrator", get(page)))
                 .dev(dev)
                 .components(&[theme::TOKENS])
-                .area("/admin", crate::Area::new(Router::new().route("/admin", get(page))).components(&[BadgeList]))
-                .area(
-                    "/admin/reports",
-                    crate::Area::new(Router::new().route("/admin/reports/{id}", get(page))).components(&[REPORT]),
-                )
+                .area::<Admin>(|admin| admin.route::<Admin>(get(page)).components(&[BadgeList]))
+                .area::<Reports>(|reports| reports.route::<Report>(get(page)).components(&[REPORT]))
                 .router()
         };
         let get_page = |app: Router, path: &str, nav: bool| {
@@ -495,13 +506,7 @@ mod tests {
             );
         }
 
-        let area = |prefix: &str| App::new(Router::new()).area(prefix, crate::Area::new(Router::new()));
-        for bad in ["admin", "/", "/admin/", "/admin/{id}", "/a b", "/admin//x", "/admin/..", "/admin/./x"] {
-            let given = std::panic::catch_unwind(|| area(bad)).is_err();
-            assert!(given, "{bad:?} is not an area prefix");
-        }
-        let _ = area("/.well-known/v1.2~x");
-        let twice = std::panic::catch_unwind(|| area("/a").area("/a", crate::Area::new(Router::new())));
+        let twice = std::panic::catch_unwind(|| App::new(Router::new()).area::<Admin>(|a| a).area::<Admin>(|a| a));
         assert!(twice.is_err(), "an area is given once");
     }
 

@@ -35,6 +35,6 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 7. Inline `style=` is blocked by the CSP. Use a class or a token utility instead.
 8. Every component's CSS ships in one `components.css`. Only when a part of the app most
    visitors never open (an admin area) adds CSS worth measuring, make it an area and list its
-   components there, `.area(Admin::PATH, Area::new(admin_routes).components(&[..]))`: their
+   components there, `.area::<Admin>(|admin| admin.route::<..>(..).components(&[..]))`: their
    stylesheet is linked from pages under that prefix only. A component used in several areas
    stays in `App::components`, and so do tokens. Details: `docs/guide/styles.md`, "Areas".

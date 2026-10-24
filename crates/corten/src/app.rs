@@ -18,7 +18,7 @@ use axum::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
     },
-    routing::{get, Route},
+    routing::{get, MethodRouter, Route},
     Router,
 };
 use futures_util::{stream, StreamExt};
@@ -121,8 +121,9 @@ impl Guard {
     }
 }
 
-/// A part of an app under a URL prefix, given to [`App::area`]: its routes, the components only
-/// its pages render, and who may use it.
+/// A part of an app under the prefix `P` (a route's path, like `Admin::PATH`), filled in by the
+/// function given to [`App::area`]: its routes, the components only its pages render, and who
+/// may use it.
 ///
 /// ```
 /// use corten::{axum::http::StatusCode, prelude::*, Error};
@@ -135,6 +136,10 @@ impl Guard {
 /// struct Admin;
 ///
 /// #[derive(Route)]
+/// #[route("/admin/users/{id}")]
+/// struct AdminUser<'a> { id: &'a str }
+///
+/// #[derive(Route)]
 /// #[route("/sign-in")]
 /// struct SignIn;
 ///
@@ -143,35 +148,56 @@ impl Guard {
 /// }
 ///
 /// fn app(pages: Router) -> App<Viewer> {
-///     let admin = Router::new().route(Admin::PATH, get(dashboard));
-///     App::new(pages)
-///         .context(|_headers| async { None::<Viewer> })
-///         .area(Admin::PATH, Area::new(admin).guard(|viewer: Option<&Viewer>, _| match viewer {
+///     App::new(pages).context(|_headers| async { None::<Viewer> }).area::<Admin>(|admin| {
+///         admin.route::<Admin>(get(dashboard)).route::<AdminUser>(get(dashboard)).guard(|viewer, _| match viewer {
 ///             None => Access::sign_in(&SignIn),
 ///             Some(v) if v.staff => Access::ALLOW,
 ///             Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
-///         }))
+///         })
+///     })
 /// }
 /// # let _ = app(Router::new()).router();
 /// ```
 ///
-/// `C` is the app's context type: an area with a guard fits only an app whose [`App::context`]
-/// gives the type the guard reads, and an area without one fits any app. A library that ships an
-/// area returns `Area<C>` for every `C`, and the app adds its guard. The area is built before
-/// [`App::area`] gives it that type, so a guard that reads the context's fields names it
-/// (`|viewer: Option<&Viewer>, req|`); one that only matches `Some(_)` and `None` need not.
-pub struct Area<C> {
+/// `C` is the app's context type, so a guard reads the context's fields without naming its type.
+/// A library that ships an area is a function, `pub fn admin<C>(area: Area<C, Admin>) -> Area<C,
+/// Admin>`, that the app passes to [`App::area`] as it is or adds its guard to:
+/// `.area::<Admin>(|area| admin(area).guard(..))`.
+pub struct Area<C, P> {
     routes: Router,
     components: Vec<crate::Component>,
     guard: Option<GuardFn>,
-    context_type: PhantomData<fn() -> C>,
+    types: PhantomData<fn() -> (C, P)>,
 }
 
-impl<C> Area<C> {
-    /// An area with these routes, every one at or under the prefix [`App::area`] gives it. A
-    /// fallback set on its router is dropped: an unknown URL under the prefix is the app's 404.
-    pub fn new(routes: Router) -> Self {
-        Area { routes, components: Vec::new(), guard: None, context_type: PhantomData }
+impl<C, P: TypedRoute> Area<C, P> {
+    /// A route of the area, at `R::PATH`: `.route::<AdminUser>(get(user).post(save))`, with
+    /// `.with_state(state)` on the method router when its handlers take `State`. `R`'s path is at
+    /// or under the area's prefix, or the app does not build, so no route of the area is served
+    /// outside its guard and stylesheet:
+    ///
+    /// ```compile_fail,E0080
+    /// # use corten::prelude::*;
+    /// #[derive(Route)]
+    /// #[route("/admin")]
+    /// struct Admin;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/admn/users")]
+    /// struct Users;
+    ///
+    /// let app = App::new(Router::new()).area::<Admin>(|admin| admin.route::<Users>(get(|| async { "users" })));
+    /// # let _ = app.router();
+    /// ```
+    pub fn route<R: TypedRoute>(mut self, method_router: MethodRouter) -> Self {
+        const {
+            assert!(
+                crate::api::under_const(P::PATH, R::PATH),
+                "corten: a route of an area is at or under its prefix (the note below names the area's prefix and the route)"
+            )
+        };
+        self.routes = self.routes.route(R::PATH, method_router);
+        self
     }
 
     /// Components only this area's pages render: `.components(&[AdminTable, SalesChart])`. Their
@@ -195,7 +221,7 @@ impl<C> Area<C> {
     }
 }
 
-impl<C: Clone + Send + Sync + 'static> Area<C> {
+impl<C: Clone + Send + Sync + 'static, P> Area<C, P> {
     /// Who may use the area: every route at its prefix and below it, including unknown URLs and
     /// wrong methods there, needs `check`'s [`Access::ALLOW`]. It works as [`App::guard`] does,
     /// for this prefix; under nested areas the outer one's guard answers first. Given once.
@@ -209,9 +235,9 @@ impl<C: Clone + Send + Sync + 'static> Area<C> {
     }
 }
 
-/// An [`Area`] given to [`App::area`], without its context type.
+/// An [`Area`] given to [`App::area`], without its types.
 struct Placed {
-    prefix: String,
+    prefix: &'static str,
     routes: Router,
     components: Vec<crate::Component>,
     guard: Option<GuardFn>,
@@ -252,7 +278,7 @@ pub enum NoContext {}
 /// App::new(routes)
 ///     .context(|headers| viewer_from(headers))       // who is asking, for the shell and handlers
 ///     .shell(shell)                                  // the document around every page
-///     .area("/admin", Area::new(admin_routes).guard(staff_only))
+///     .area::<Admin>(|admin| admin.route::<AdminUser>(get(user)).guard(staff_only))
 ///     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")))
 /// ```
 pub struct App<C = NoContext> {
@@ -424,48 +450,70 @@ impl<C: Clone + Send + Sync + 'static> App<C> {
 }
 
 impl<C> App<C> {
-    /// A part of the app under `prefix`, with its own routes and, if it needs them, its own
-    /// stylesheet and guard: `.area("/admin", Area::new(admin_routes).components(&[..]).guard(..))`.
+    /// A part of the app under `P::PATH`, with its own routes and, if it needs them, its own
+    /// stylesheet and guard, given by `build`:
+    /// `.area::<Admin>(|admin| admin.route::<AdminUser>(get(user)).components(&[..]).guard(..))`.
     /// See [`Area`]. The routes keep their full paths (`/admin/users/{id}`), so a
-    /// `#[derive(Route)]` struct names the same URL in the router and in links, and every path
-    /// must start with `prefix`: one that does not answers 500, saying so under `corten dev`,
-    /// rather than be served outside the area's guard.
+    /// `#[derive(Route)]` struct names the same URL in the router and in links, and a route
+    /// outside the prefix does not compile.
     ///
-    /// A prefix is a path like `/admin` (letters, digits, `-`, `_`, `.` and `~` between slashes,
-    /// no trailing slash, no parameters); `prefix` is often a route's `PATH`. Areas may nest
-    /// (`/admin` and `/admin/billing`, each with routes of its own); one under an [`App::api`]
-    /// prefix is a startup error, since that prefix answers only JSON.
-    pub fn area(mut self, prefix: &str, area: Area<C>) -> Self {
-        crate::api::check_prefix("an area", prefix, false);
+    /// `P` is a route whose path is the prefix, like `/admin` (letters, digits, `-`, `_`, `.` and
+    /// `~` between slashes, no trailing slash, no parameters; anything else does not compile).
+    /// Areas may nest (`/admin` and `/admin/billing`, each with routes of its own); one under an
+    /// [`App::api`] prefix, or one given twice, is a startup error.
+    ///
+    /// `build` gets an [`Area`] of the app's context type, so its guard reads the context
+    /// without naming it, and is called once, here.
+    ///
+    /// ```compile_fail,E0080
+    /// # use corten::prelude::*;
+    /// #[derive(Route)]
+    /// #[route("/items/{id}")]
+    /// struct Item<'a> { id: &'a str }
+    ///
+    /// let app = App::new(Router::new()).area::<Item>(|items| items);
+    /// # let _ = app.router();
+    /// ```
+    pub fn area<P: TypedRoute>(mut self, build: impl FnOnce(Area<C, P>) -> Area<C, P>) -> Self {
+        const {
+            assert!(
+                crate::api::plain_prefix(P::PATH, false),
+                "corten: an area's prefix is a path like \"/admin\": letters, digits, -, _, . and ~ between slashes, without a trailing slash or parameters (the note below names the prefix's route)"
+            )
+        };
+        let prefix = P::PATH;
         assert!(!self.areas.iter().any(|placed| placed.prefix == prefix), "corten: the area {prefix:?} is given twice");
-        self.areas.push(Placed {
-            prefix: prefix.to_string(),
-            routes: area.routes,
-            components: area.components,
-            guard: area.guard,
-        });
+        let area = build(Area { routes: Router::new(), components: Vec::new(), guard: None, types: PhantomData });
+        self.areas.push(Placed { prefix, routes: area.routes, components: area.components, guard: area.guard });
         self
     }
 
-    /// Routes that answer only JSON (a webhook, an OAuth callback, a public API), under `prefix`:
-    /// `.api("/api", api_routes)`, or `.api("/api", Api::new(api_routes).allow_origin(..))` for
-    /// settings. The routes keep their full paths (`/api/items/{id}`), so a `#[derive(Route)]`
-    /// struct names the same URL in the router and in links, and every path must start with
-    /// `prefix`: one that does not answers 500, saying so under `corten dev`. A prefix is `"/"`
-    /// or a path as [`App::area`] takes; API prefixes do not overlap.
+    /// Routes that answer only JSON (a webhook, an OAuth callback, a public API), under `P::PATH`,
+    /// given by `build`: `.api::<ApiRoot>(|api| api.route::<ItemJson>(get(item_json)))`, with
+    /// [`Api`]'s settings (`.allow_origin(..)`, `.context()`, `.guard(..)`) in the same chain. The
+    /// routes keep their full paths (`/api/items/{id}`), so a `#[derive(Route)]` struct names the
+    /// same URL in the router and in links, and a route outside the prefix does not compile. A
+    /// prefix is `"/"` or a path as [`App::area`] takes; API prefixes that overlap are a startup
+    /// error.
     ///
     /// Under the prefix every failure is JSON, `{"error":{"status","message"}}`, whatever the
     /// client accepts, and an unknown URL or a wrong method there is a JSON 404 or 405. There is no
     /// shell, no nonce and no context (unless [`Api::context`]); the deadline, the request signal,
     /// compression and the same-origin check on writes stay. See [`crate::api`]. `"/"` makes the
     /// whole app an API (Corten's own routes, like the health checks, keep their behavior).
-    pub fn api(mut self, prefix: &str, api: impl Into<Api<C>>) -> Self {
-        crate::api::check_prefix("an API", prefix, true);
+    pub fn api<P: TypedRoute>(mut self, build: impl FnOnce(Api<C, P>) -> Api<C, P>) -> Self {
+        const {
+            assert!(
+                crate::api::plain_prefix(P::PATH, true),
+                "corten: an API's prefix is \"/\" or a path like \"/api\": letters, digits, -, _, . and ~ between slashes, without a trailing slash or parameters (the note below names the prefix's route)"
+            )
+        };
+        let prefix = P::PATH;
         let under = crate::api::under;
         if let Some((other, ..)) = self.apis.iter().find(|(m, ..)| under(&m.prefix, prefix) || under(prefix, &m.prefix)) {
             panic!("corten: the API prefixes {:?} and {prefix:?} overlap", other.prefix);
         }
-        let api = api.into();
+        let api = build(Api::new());
         self.apis.push((Mount::new(prefix.to_string(), &api), api.routes, api.guard));
         self
     }
@@ -596,7 +644,7 @@ impl<C> App<C> {
     pub fn router(self) -> Router {
         let dev = self.dev.unwrap_or_else(|| std::env::var_os("CORTEN_DEV").is_some());
         for area in &self.areas {
-            if let Some((mount, ..)) = self.apis.iter().find(|(mount, ..)| mount.contains(&area.prefix)) {
+            if let Some((mount, ..)) = self.apis.iter().find(|(mount, ..)| mount.contains(area.prefix)) {
                 panic!("corten: the area {:?} is under App::api({:?}), whose routes answer only JSON", area.prefix, mount.prefix);
             }
         }
@@ -605,7 +653,7 @@ impl<C> App<C> {
             .areas
             .iter()
             .filter(|area| !area.components.is_empty())
-            .map(|area| (area.prefix.as_str(), area.components.as_slice()))
+            .map(|area| (area.prefix, area.components.as_slice()))
             .collect();
         let assets = load_assets(self.static_dir, &self.components, &sections).map(Arc::new);
         let mut head = String::new();
@@ -669,15 +717,12 @@ impl<C> App<C> {
         }
         let policy = Applied::new(self.policy, &shared.import_map);
 
-        // Routes that belong under a prefix (an API's, an area's), each with its owner, so a
-        // request a route answers outside its owner's prefix is refused.
-        let mut owners = Vec::with_capacity(self.apis.len() + self.areas.len());
-        let mut owned = Vec::with_capacity(owners.capacity());
+        // The routes of the APIs and areas: each is under its prefix, which the compiler checked.
+        let mut owned = Vec::with_capacity(self.apis.len() + self.areas.len());
         let mut mounts = Vec::with_capacity(self.apis.len());
         let mut guards: Vec<Guard> =
             self.guard.map(|check| Guard { prefix: "/".to_string(), given: "App::guard", check }).into_iter().collect();
         for (mount, api, guard) in self.apis {
-            owners.push(Owner { prefix: mount.prefix.clone(), name: "App::api" });
             owned.push(api);
             if let Some(check) = guard {
                 guards.push(Guard { prefix: mount.prefix.clone(), given: "App::api", check });
@@ -685,10 +730,9 @@ impl<C> App<C> {
             mounts.push(mount);
         }
         for area in self.areas {
-            owners.push(Owner { prefix: area.prefix.clone(), name: "App::area" });
             owned.push(area.routes);
             if let Some(check) = area.guard {
-                guards.push(Guard { prefix: area.prefix, given: "App::area", check });
+                guards.push(Guard { prefix: area.prefix.to_string(), given: "App::area", check });
             }
         }
         // A path's guards answer outer first: a prefix inside another is longer.
@@ -701,17 +745,15 @@ impl<C> App<C> {
             deadline: self.deadline,
             policy,
             mounts,
-            owners,
             own,
         });
         // The app's own routes are merged last: when two routers both have axum's default
-        // fallback, a merge keeps the one merged in, and unknown URLs belong to no owner. An
-        // area's or API's own fallback is dropped, or it would answer for the whole app.
+        // fallback, a merge keeps the one merged in, and the app's answers unknown URLs.
         let mut router = Router::new();
-        for (index, routes) in owned.into_iter().enumerate() {
-            router = router.merge(routes.reset_fallback().layer(Wrap { layer: layer.clone(), owner: Some(index) }));
+        for routes in owned {
+            router = router.merge(routes);
         }
-        router.merge(routes.layer(Wrap { layer, owner: None }))
+        router.merge(routes).layer(Wrap(layer))
     }
 }
 
@@ -803,12 +845,6 @@ pub(crate) async fn serve_on(
     }
 }
 
-/// Where routes that must stay under a prefix were given: an API's or an area's.
-struct Owner {
-    prefix: String,
-    name: &'static str,
-}
-
 /// The paths of Corten's own routes.
 struct Own {
     exact: Vec<&'static str>,
@@ -822,26 +858,21 @@ impl Own {
 }
 
 /// Puts [`Layer`] around each route. A tower layer of its own rather than axum's `from_fn`, which
-/// boxes the rest of the stack again for every request (`Next`) on top of the future. `owner`
-/// is the API or area the routes were given in, if any.
+/// boxes the rest of the stack again for every request (`Next`) on top of the future.
 #[derive(Clone)]
-struct Wrap {
-    layer: Arc<Layer>,
-    owner: Option<usize>,
-}
+struct Wrap(Arc<Layer>);
 
 impl tower_layer::Layer<Route> for Wrap {
     type Service = Wrapped;
 
     fn layer(&self, route: Route) -> Wrapped {
-        Wrapped { layer: self.layer.clone(), owner: self.owner, route }
+        Wrapped { layer: self.0.clone(), route }
     }
 }
 
 #[derive(Clone)]
 struct Wrapped {
     layer: Arc<Layer>,
-    owner: Option<usize>,
     route: Route,
 }
 
@@ -856,8 +887,8 @@ impl tower_service::Service<Request> for Wrapped {
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
-        let (layer, owner, next) = (self.layer.clone(), self.owner, Next::Route(self.route.clone()));
-        Box::pin(async move { Ok(layer.handle(req, next, owner).await) })
+        let (layer, next) = (self.layer.clone(), Next::Route(self.route.clone()));
+        Box::pin(async move { Ok(layer.handle(req, next).await) })
     }
 }
 
@@ -890,30 +921,25 @@ struct Layer {
     deadline: Option<Duration>,
     policy: Applied,
     mounts: Vec<Mount>,
-    owners: Vec<Owner>,
     own: Own,
 }
 
 impl Layer {
-    async fn handle(&self, req: Request, next: Next, owner: Option<usize>) -> Response {
+    async fn handle(&self, req: Request, next: Next) -> Response {
         #[cfg(feature = "compress")]
         let coding = crate::compress::negotiate(req.headers());
-        let res = self.secure(req, next, owner).await;
+        let res = self.secure(req, next).await;
         #[cfg(feature = "compress")]
         let res = crate::compress::finish(res, coding).await;
         res
     }
 
     /// The security policy around the request: the same-origin check first, the headers last.
-    /// `owner` is the API or area that gave the route, if any.
-    async fn secure(&self, mut req: Request, next: Next, owner: Option<usize>) -> Response {
+    async fn secure(&self, mut req: Request, next: Next) -> Response {
         let path = req.uri().path();
         let own = self.own.contains(path);
         let mount = if own { None } else { self.mounts.iter().find(|mount| mount.contains(path)) };
         let guarded = !own && !self.guards.is_empty() && self.guarded(path);
-        // A route given in an API or area but answering outside its prefix (a path typed wrong)
-        // would be served without that prefix's guard and settings: it fails instead.
-        let misplaced = owner.map(|index| &self.owners[index]).filter(|owner| !crate::api::under(&owner.prefix, path));
         if let Some(mount) = mount {
             if let Some(mut res) = mount.preflight(req.method(), req.headers()) {
                 self.policy.headers(&mut res, None);
@@ -940,7 +966,7 @@ impl Layer {
         let context = mount.map_or(!own, |mount| mount.context) || guarded;
         let credentials = cache::credentials(req.headers());
         let path = self.shared.dev.then(|| req.uri().path().to_string());
-        let (mut res, from_context, mode) = self.run(req, next, context, guarded, mount.is_some(), misplaced).await;
+        let (mut res, from_context, mode) = self.run(req, next, context, guarded, mount.is_some()).await;
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
         self.policy.headers(&mut res, nonce.as_ref());
         let seen = Seen {
@@ -961,15 +987,7 @@ impl Layer {
 
     /// The response, whether the context function returned a value for the request, and the
     /// request's mode.
-    async fn run(
-        &self,
-        mut req: Request,
-        next: Next,
-        context: bool,
-        guarded: bool,
-        api: bool,
-        misplaced: Option<&Owner>,
-    ) -> (Response, bool, Mode) {
+    async fn run(&self, mut req: Request, next: Next, context: bool, guarded: bool, api: bool) -> (Response, bool, Mode) {
         // Dropped with this future if the client leaves first; then the response's.
         let watch = Watch(Signal::default());
         req.extensions_mut().insert(watch.0.clone());
@@ -980,20 +998,7 @@ impl Layer {
         }
         req.extensions_mut().insert(self.shared.clone());
         let mode = page::mode_of(req.headers());
-        let refused = match misplaced {
-            Some(owner) => Some(
-                Error::new(format!(
-                    "{path} is routed by {name}({prefix:?}, ..) but does not start with {prefix:?}; \
-                     move it under the prefix or route it with the pages",
-                    path = req.uri().path(),
-                    name = owner.name,
-                    prefix = owner.prefix,
-                ))
-                .into_response(),
-            ),
-            None if guarded => self.refusal(&req, mode, api),
-            None => None,
-        };
+        let refused = if guarded { self.refusal(&req, mode, api) } else { None };
         let next = refused.map_or(next, |answer| Next::Refused(Box::new(answer)));
         let res = page::render_errors(&self.shared, req, next, self.deadline, &watch.0, api, mode).await;
         (signal::follow(res, watch), found, mode)

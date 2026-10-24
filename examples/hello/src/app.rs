@@ -49,15 +49,14 @@ pub fn app(market: Market) -> App<Viewer> {
         })
         .shell(shell)
         .components(&[LivePrices])
-        .area(url::About::PATH, Area::new(Router::new().route(url::About::PATH, get(about))).components(&[AboutNote]))
+        .area::<url::About>(|about_area| about_area.route::<url::About>(get(about)).components(&[AboutNote]))
         // Every route under /account, now and later, needs someone signed in.
-        .area(
-            url::Account::PATH,
-            Area::new(Router::new().route(url::Account::PATH, get(account))).guard(|viewer, _| match viewer {
+        .area::<url::Account>(|account_area| {
+            account_area.route::<url::Account>(get(account)).guard(|viewer, _| match viewer {
                 Some(_) => Access::ALLOW,
                 None => Access::sign_in(&url::Home),
-            }),
-        )
+            })
+        })
 }
 
 /// Every URL the app serves and links to; links built from these cannot drift from the router.

@@ -82,6 +82,10 @@ them under a prefix; their paths stay whole, so route structs still work:
 
 ```rust
 #[derive(Route)]
+#[route("/api")]
+pub struct ApiRoot;
+
+#[derive(Route)]
 #[route("/api/items/{id}/price")]
 pub struct PriceApi<'a> { pub id: &'a str }
 
@@ -91,14 +95,17 @@ async fn price(Path(id): Path<String>) -> corten::Result<Json<Price>> {
 }
 
 App::new(pages)
-    .api("/api", Router::new().route(PriceApi::PATH, get(price)))   // Api::new(..).allow_origin(..) for a partner site
+    .api::<ApiRoot>(|api| api.route::<PriceApi>(get(price)))   // .allow_origin(..) in the chain for a partner site
 ```
+
+The prefix and every route are route types, so a route outside the prefix does not compile.
+A handler that takes `State` gets it on its method router: `get(price).with_state(db)`.
 
 `Json` is the prelude's `corten::Json`: axum's extractor, and a response written in one buffer
 (faster than `axum::Json`; keep the prelude's unless a crate hands you axum's).
 Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
 a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
-is no shell and no `App::context` (add `Api::new(routes).context()` if the API serves your own
+is no shell and no `App::context` (add `.context()` to the API's chain if it serves your own
 signed-in users). Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
 
@@ -111,18 +118,21 @@ routes, the error page for a refusal), and a refused request never reaches the h
 ```rust
 App::new(routes)
     .context(|headers| viewer_from(headers))   // first: the app becomes an App<Viewer>
-    .area(Admin::PATH, Area::new(admin_routes).guard(|viewer: Option<&Viewer>, req| match viewer {
-        None => Access::sign_in(&SignIn),
-        Some(v) if v.can(Permission::View) && (!req.writes() || v.can(Permission::Edit)) => Access::ALLOW,
-        Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
-    }))
+    .area::<Admin>(|admin| {
+        admin.route::<Admin>(get(dashboard)).route::<AdminUser>(get(user).post(save_user)).guard(|viewer, req| match viewer {
+            None => Access::sign_in(&SignIn),
+            Some(v) if v.can(Permission::View) && (!req.writes() || v.can(Permission::Edit)) => Access::ALLOW,
+            Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
+        })
+    })
 ```
 
-The area's routes must start with its prefix (a plain path, no parameters), which covers whole
-segments. `req.writes()` is every method but GET, HEAD and OPTIONS, so reads and writes at one
+The area's prefix (`Admin`, a plain path, no parameters) and each of its routes are route types:
+a route outside the prefix, or a prefix with a parameter, does not build. The guard reads the
+context's fields without naming its type. A prefix covers whole segments. `req.writes()` is every method but GET, HEAD and OPTIONS, so reads and writes at one
 URL get different rules; `req.is::<Export>()` names one route. `App::guard(|viewer, req| ..)`
 guards the whole app; open the sign-in page and webhooks with `.unguarded::<SignIn>()`. An API
-takes `Api::new(routes).guard(..)`. A check that needs the record (only its author may edit it)
+takes `.guard(..)` in its chain. A check that needs the record (only its author may edit it)
 stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
 
 ## Data from another service

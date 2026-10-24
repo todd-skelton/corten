@@ -26,6 +26,11 @@ pub struct Robots;
 #[route("/sitemap.xml")]
 pub struct Sitemap;
 
+/// Where the JSON routes are: `App::api`'s prefix.
+#[derive(Route)]
+#[route("/api")]
+pub struct ApiRoot;
+
 /// An item as JSON, for other services (the same data the page shows).
 #[derive(Route)]
 #[route("/api/items/{id}")]
