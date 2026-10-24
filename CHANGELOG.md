@@ -174,6 +174,11 @@ Corten is pre-1.0, so any minor version may change the API.
     each, before and after items 25 and 26): no guard 3,969 and 3,968-3,975; a context 4,061 and
     4,059-4,066; a guard on `/items` (an area after) 4,355 and 4,358; `App::guard` with
     `req.writes()` and one unguarded route 4,399 and 4,384-4,391.
+28. A `tokens!` theme follows the system too: `"@media": {"(prefers-color-scheme: dark)":
+    ":root:not([data-theme=\"light\"])"}` in a theme writes its values again under that
+    condition and selector, so a dark theme that the page can choose and the system can ask for
+    is written once. Found porting a Chase Sets admin screen, whose dark mode follows the system
+    unless the user chose a mode.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
