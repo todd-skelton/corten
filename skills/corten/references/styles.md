@@ -33,3 +33,8 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 6. `static/style.css` holds only element defaults, fonts and the shell. It is linked before
    `{doc.head}`.
 7. Inline `style=` is blocked by the CSP. Use a class or a token utility instead.
+8. Every component's CSS ships in one `components.css`. Only when a part of the app most
+   visitors never open (an admin area) adds CSS worth measuring, list its components in
+   `App::section(Admin::PATH, &[..])` instead: their stylesheet is linked from pages under that
+   prefix only. A component used in several sections stays in `App::components`, and so do
+   tokens. Details: `docs/guide/styles.md`, "Sections".

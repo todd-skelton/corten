@@ -79,6 +79,7 @@ pub struct App {
     locales: Option<&'static [&'static str]>,
     dev: Option<bool>,
     components: Vec<crate::Component>,
+    sections: Vec<(String, Vec<crate::Component>)>,
     deadline: Option<Duration>,
     apis: Vec<(Mount, Router)>,
 }
@@ -98,6 +99,7 @@ impl App {
             locales: None,
             dev: None,
             components: Vec::new(),
+            sections: Vec::new(),
             deadline: Some(Duration::from_secs(30)),
             apis: Vec::new(),
         }
@@ -132,6 +134,36 @@ impl App {
     /// A component listed twice counts once.
     pub fn components(mut self, components: &[crate::Component]) -> Self {
         self.components.extend_from_slice(components);
+        self
+    }
+
+    /// Components only the pages under `prefix` render: `.section("/admin", &[AdminTable,
+    /// SalesChart])`. Their stylesheets are joined into a file of the section's own,
+    /// `sections/admin.css`, linked after `components.css` from the pages at `/admin` and under it,
+    /// so other pages do not download them. Their scripts are served as with [`App::components`].
+    ///
+    /// A client navigation into the section loads its stylesheet before it swaps the page in, and
+    /// the stylesheet stays (its rules only match its components' classes). Sections may nest
+    /// (`/admin` and `/admin/reports`): a page links every section it is under.
+    ///
+    /// A component with a stylesheet is listed once: one that pages in several sections render
+    /// belongs in [`App::components`], and so does a token file (`tokens!`), which styles every
+    /// page. Under `corten dev` a page outside a section that renders one of its components is an
+    /// error that names both; a patch is checked against its own URL. Without sections there is
+    /// one stylesheet, which is the right choice until a part of the app most visitors never open
+    /// adds enough CSS to measure (see the styles guide).
+    pub fn section(mut self, prefix: &str, components: &[crate::Component]) -> Self {
+        let valid = prefix.len() > 1
+            && prefix.starts_with('/')
+            && prefix[1..]
+                .split('/')
+                .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'));
+        assert!(
+            valid,
+            "corten: a section prefix is a path like \"/admin\": letters, digits, - and _ between slashes, without a trailing slash or parameters: {prefix:?}"
+        );
+        assert!(!self.sections.iter().any(|(p, _)| p == prefix), "corten: the section {prefix:?} is given twice");
+        self.sections.push((prefix.to_string(), components.to_vec()));
         self
     }
 
@@ -259,7 +291,8 @@ impl App {
                 "corten: the shell takes Option<{expected_name}> but App::context gives Option<{given_name}>"
             );
         }
-        let assets = load_assets(self.static_dir, &self.components).map(Arc::new);
+        let sections: Vec<(&str, &[crate::Component])> = self.sections.iter().map(|(p, c)| (p.as_str(), c.as_slice())).collect();
+        let assets = load_assets(self.static_dir, &self.components, &sections).map(Arc::new);
         let mut head = String::new();
         if let Some(href) = assets.as_ref().and_then(|a| a.stylesheet()) {
             head.push_str(&format!(r#"<link rel="stylesheet" href="{href}">"#));
@@ -314,7 +347,16 @@ impl App {
         shared.offline = offline;
         shared.locales = self.locales;
         shared.dev = dev;
-        shared.components = self.components.iter().map(|c| c.name).collect();
+        shared.components = self.components.iter().chain(self.sections.iter().flat_map(|(_, c)| c)).map(|c| c.name).collect();
+        if let Some(assets) = &shared.assets {
+            for (prefix, href) in assets.section_stylesheets() {
+                let index = shared.sections.len();
+                let listed = self.sections.iter().filter(|(p, _)| p == prefix).flat_map(|(_, c)| c);
+                shared.section_of.extend(listed.filter(|c| c.style.is_some()).map(|c| (c.name, index)));
+                let link = format!(r#"<link rel="stylesheet" href="{}" data-corten-style>"#, crate::escape(href));
+                shared.sections.push((prefix.clone(), link));
+            }
+        }
         let policy = Applied::new(self.policy, &shared.import_map);
         let layer = Arc::new(Layer {
             shared: Arc::new(shared),
@@ -493,17 +535,21 @@ impl Layer {
     }
 }
 
-fn load_assets(dir: Option<PathBuf>, components: &[crate::Component]) -> Option<Assets> {
+fn load_assets(
+    dir: Option<PathBuf>,
+    components: &[crate::Component],
+    sections: &[(&str, &[crate::Component])],
+) -> Option<Assets> {
     let explicit = dir.is_some() || std::env::var_os("STATIC_DIR").is_some();
     let dir = dir.or_else(|| std::env::var_os("STATIC_DIR").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("static"));
     if !dir.is_dir() {
         assert!(!explicit, "corten: the static directory {} does not exist", dir.display());
-        if components.is_empty() {
+        if components.is_empty() && sections.is_empty() {
             return None;
         }
     }
     let found = dir.is_dir().then_some(dir.as_path());
-    match Assets::build(found, components, "/assets") {
+    match Assets::build_with(found, components, sections, "/assets") {
         Ok(assets) => Some(assets),
         Err(error) => panic!("corten: could not load the static files in {} and the components: {error}", dir.display()),
     }

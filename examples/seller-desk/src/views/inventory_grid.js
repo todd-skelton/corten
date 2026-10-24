@@ -130,13 +130,11 @@ export function confirm(dialog) {
 }
 
 /**
- * Posts the selected ids; the server answers by removing their rows and with a status line.
- * @param {HTMLElement} root @param {HTMLFormElement} form @param {HTMLInputElement} ids @param {Selection} sel
+ * Posts the checked rows (their boxes belong to the form); the server answers by removing their
+ * rows and with a status line. The form's data is read as it submits, so clearing after is safe.
+ * @param {HTMLElement} root @param {HTMLFormElement} form @param {Selection} sel
  */
-export function archive(root, form, ids, sel) {
-  const picked = [];
-  for (const row of rows(sel.body, InventoryRow)) if (row.selected) picked.push(InventoryRow.key(row.el));
-  ids.value = picked.join(",");
+export function archive(root, form, sel) {
   form.requestSubmit();
   clear(root, sel);
 }

@@ -11,7 +11,7 @@ mod price_cell;
 
 pub use bulk_bar::BulkBar;
 pub use confirm_dialog::ConfirmDialog;
-pub use inventory_grid::InventoryGrid;
+pub use inventory_grid::{ArchiveFormId, InventoryGrid};
 pub use inventory_row::{InventoryRow, RowId};
 pub use price_cell::PriceCell;
 

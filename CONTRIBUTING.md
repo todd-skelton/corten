@@ -37,7 +37,8 @@ the framework itself.
 
 - Rust (stable). On Windows the tests run in Docker, because the host cannot link `windows-sys`.
 - Node 22 or later, for the runtime's type check, its minified build and the browser smoke
-  tests: `npm install`, then `npx playwright install chromium`.
+  tests: `npm install`, then `npx playwright install chromium firefox webkit` (the core and
+  `corten-ui` smoke tests run in all three).
 - Docker, for the example images the smoke tests run against.
 
 ## Checks

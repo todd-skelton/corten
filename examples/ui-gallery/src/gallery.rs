@@ -1,6 +1,6 @@
 //! The page: every corten-ui component, wrapped and styled as a design system would.
 use corten::prelude::*;
-use corten_ui::{Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup};
+use corten_ui::{Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster};
 
 use crate::{
     app::{OrderForm, url},
@@ -18,7 +18,7 @@ pub const COLORS: [Choice; 4] = [
 pub const TABS: [&str; 3] = ["listings", "offers", "sales"];
 
 #[component(css)]
-pub fn Gallery<'a>(tab: usize, result: &'a str) -> impl Render {
+pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>) -> impl Render {
     let f = OrderForm::FIELDS;
     let qty = Number {
         value: Some(1.0),
@@ -61,6 +61,10 @@ pub fn Gallery<'a>(tab: usize, result: &'a str) -> impl Render {
         </div>
         <div class={Actions}><MenuButton id="actions" label={&"Actions"} items={&items} /></div>
         <MenuResult text="" />
+        <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
+        <div class={Toasts}>
+            <Toaster close={&"Dismiss"} seconds={2} toast={Toast { message: toast.as_ref().map(|t| t as &dyn Render) }} />
+        </div>
     }
 }
 

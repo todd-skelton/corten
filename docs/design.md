@@ -89,11 +89,13 @@ framework's shape, and what it does not do yet.
    `html! { let shown = saved.as_deref().unwrap_or(typed); <input value={shown}> }`.
 9. Component stylesheets support plain CSS with nesting and `@media`, `@supports`, `@container`,
    `@layer`, `@keyframes` and `@font-face`; `@import` and escaped class names are not supported.
-   Keyframe names are not scoped. Every listed component's CSS is in the one file, whether or not
-   a page uses it: the item page's `components.css` (tokens, two themes, utilities and five
-   components) is 3.2 KB, 822 bytes brotli (measured). A large library adds to every first load
-   until the file is split per route, which is not built.
-10. `corten-ui` is tested in Chromium only. Its popups are placed by the design system's CSS with
+   Keyframe names are not scoped, so a section's keyframes share one namespace with the rest.
+   Every component listed in `App::components` is in one file, whether or not a page uses it: the
+   item page's `components.css` (tokens, two themes, utilities and six components) is 3,223 bytes,
+   1,047 brotli (measured). `App::section` moves the components only some pages render into a file
+   linked from those pages; the split is by URL prefix, chosen by the app, not detected from what
+   a page renders, which would cost every render.
+10. `corten-ui` is tested in Chromium, Firefox and WebKit (Playwright's builds). Its popups are placed by the design system's CSS with
    anchor positioning (Baseline since January 2026); a browser without it shows them where
    `popover` puts them by default, centered. Tabs are horizontal.
     Its names in the page are prefixed (`ui.combo_box.js`, `data-scope="ui-combo-box"`) through

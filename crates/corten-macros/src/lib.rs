@@ -87,6 +87,7 @@ pub fn derive_fields(input: TokenStream) -> TokenStream {
 fn fields(input: TokenStream) -> Result<String, String> {
     let tokens: Vec<TokenTree> = input.into_iter().collect();
     let mut rename_all = None;
+    let mut container_default = false;
     let mut visibility = String::new();
     let mut i = 0;
     let name = loop {
@@ -97,6 +98,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
                         if key == "rename_all" {
                             rename_all = Some(value.ok_or("Fields: rename_all needs a value, like rename_all = \"camelCase\"")?);
                         }
+                        container_default |= key == "default";
                     }
                 }
                 i += 2;
@@ -134,6 +136,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
     for field in split_fields(body.stream()) {
         let mut rename = None;
         let mut skip = false;
+        let mut default = container_default;
         let mut ident = None;
         let mut j = 0;
         while j < field.len() {
@@ -149,6 +152,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
                                     )
                                 }
                                 "skip" | "skip_deserializing" => skip = true,
+                                "default" => default = true,
                                 "flatten" => {
                                     return Err(
                                         "Fields: #[serde(flatten)] is not supported; list the fields in the form struct".into()
@@ -168,6 +172,15 @@ fn fields(input: TokenStream) -> Result<String, String> {
                 }
                 TokenTree::Ident(id) => {
                     ident = Some(id.to_string());
+                    // After the name and its `:`, the type.
+                    if !default {
+                        if let Some(what) = left_out_when_empty(field.get(j + 2..).unwrap_or_default()) {
+                            return Err(format!(
+                                "Fields: `{id}` is {what}; add #[serde(default)] so the form reads it as {}",
+                                if what.starts_with("a bool") { "false" } else { "empty" }
+                            ));
+                        }
+                    }
                     break;
                 }
                 _ => j += 1,
@@ -198,6 +211,20 @@ fn fields(input: TokenStream) -> Result<String, String> {
     }
     out += "    };\n}\n";
     Ok(out)
+}
+
+/// What a browser leaves out of the form when it has no value, for a field type that is a
+/// `bool` or a `Vec`: the key is missing, so without a default the form fails to read.
+fn left_out_when_empty(ty: &[TokenTree]) -> Option<&'static str> {
+    let name = ty.iter().take_while(|t| !matches!(t, TokenTree::Punct(p) if p.as_char() == '<')).filter_map(|t| match t {
+        TokenTree::Ident(id) => Some(id.to_string()),
+        _ => None,
+    });
+    match name.last().as_deref() {
+        Some("bool") if ty.len() == 1 => Some("a bool, and a browser sends nothing for an unchecked checkbox"),
+        Some("Vec") => Some("a list, and a browser sends nothing for a list with nothing checked or selected"),
+        _ => None,
+    }
 }
 
 /// Splits a brace group's tokens at top-level commas. Commas inside `<..>` belong to a type.

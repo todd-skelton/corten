@@ -1,6 +1,7 @@
 use corten::prelude::*;
 
-use super::PriceCell;
+use super::{ArchiveFormId, PriceCell};
+use crate::app::ArchiveInput;
 
 /// A row's id, `row-{item id}`: the archive patch removes rows by it.
 #[derive(Id)]
@@ -25,7 +26,15 @@ pub fn InventoryRow<'a>(
     html! {
         <tr key={id} id={RowId(id)} data-selected={selected}>
             <td>
-                <input ref={select} type="checkbox" checked={selected} aria-label={("Select ", name)}>
+                <input
+                    ref={select}
+                    type="checkbox"
+                    name={ArchiveInput::FIELDS.ids}
+                    value={id}
+                    form={ArchiveFormId}
+                    checked={selected}
+                    aria-label={("Select ", name)}
+                >
             </td>
             <td>{name}</td>
             <td>{set}</td>

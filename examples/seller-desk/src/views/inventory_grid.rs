@@ -1,7 +1,11 @@
 use corten::prelude::*;
 
 use super::{BulkBar, ConfirmDialog, InventoryRow, Line};
-use crate::app::{ArchiveInput, url};
+use crate::app::url;
+
+/// The archive form's id: the rows' checkboxes name it in `form=`.
+#[derive(Id)]
+pub struct ArchiveFormId;
 
 /// Every item, with selection (click, shift-click for a range, select all), a filter, sortable
 /// columns, inline price edits, a confirm dialog for archiving, and live stock levels.
@@ -11,10 +15,9 @@ use crate::app::{ArchiveInput, url};
 /// the script writes a row's holes through `rows(body, InventoryRow)`.
 #[component(css, js)]
 pub fn InventoryGrid<'a>(lines: &'a [Line<'a>]) -> impl Render {
-    let (body, select, all, count, bar, dialog, form, ids, empty) = refs();
+    let (body, select, all, count, bar, dialog, form, empty) = refs();
     // What the selection handlers update, built once and passed as one argument.
     let sel = js::Selection { body, all, count, bar };
-    let f = ArchiveInput::FIELDS;
     html! {
         <section class={Grid} on:connect={js::live(body, url::Levels, signal)}>
             <div class={Toolbar}>
@@ -65,14 +68,13 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>]) -> impl Render {
                 </tbody>
             </table>
             <p ref={empty} class={Empty} hidden>"No items match the filter."</p>
-            <form ref={form} method="post" action={url::Archive} data-patch hidden>
-                <input ref={ids} type="hidden" name={f.ids}>
-            </form>
+            // Each row's checkbox belongs to this form (`form=`), so it posts the checked ids.
+            <form ref={form} id={ArchiveFormId} method="post" action={url::Archive} data-patch hidden></form>
             <ConfirmDialog
                 dialog={dialog}
                 title="Archive the selected items?"
                 confirm="Archive"
-                on:confirm={js::archive(scope, form, ids, sel)}
+                on:confirm={js::archive(scope, form, sel)}
             >
                 <p>"Archived items leave the grid. Their listings end."</p>
             </ConfirmDialog>

@@ -304,8 +304,12 @@ pub(crate) struct Shared {
     pub locales: Option<&'static [&'static str]>,
     /// Dev mode: error pages show the error.
     pub dev: bool,
-    /// The names of the components the app lists (`App::components`).
+    /// The names of the components the app lists (`App::components` and `App::section`).
     pub components: std::collections::HashSet<&'static str>,
+    /// Each section with a stylesheet (`App::section`): its prefix and the stylesheet's `<link>`.
+    pub sections: Vec<(String, String)>,
+    /// The section (an index in `sections`) whose stylesheet has a component's rules.
+    pub section_of: std::collections::HashMap<&'static str, usize>,
 }
 
 impl Shared {
@@ -332,6 +336,8 @@ impl Shared {
             locales: None,
             dev: false,
             components: Default::default(),
+            sections: Vec::new(),
+            section_of: Default::default(),
         }
     }
 }
@@ -437,6 +443,7 @@ impl Req {
             // The runtime swaps the page into <main>, so render it straight after the title.
             let mut body = String::with_capacity(16 * 1024);
             swap_prefix(&meta, &mut body);
+            self.section_links(&mut body);
             self.render_into(view, &mut body)?;
             return Ok(self.finish(html_response(status, body, Some(PAGE_HEADER))));
         }
@@ -462,6 +469,16 @@ impl Req {
             return Ok(modules);
         }
         let (((), used), modules) = crate::script::collect(|| crate::style::collect(|| view.render(out)));
+        self.check_rendered(&used)?;
+        Ok(modules)
+    }
+
+    /// Under `corten dev`: an error when the page rendered a component whose script or stylesheet
+    /// it does not get, because the app does not list it or lists it in a section the page is
+    /// not under. Kept out of [`Req::render_into`], which is compiled once per view.
+    #[cold]
+    #[inline(never)]
+    fn check_rendered(&self, used: &[&'static crate::Component]) -> Result<()> {
         if let Some(missing) = used.iter().find(|c| !self.shared.components.contains(c.name)) {
             let what = match (missing.script.is_some(), missing.style.is_some()) {
                 (true, true) => "script and stylesheet are",
@@ -473,7 +490,29 @@ impl Req {
                 name = missing.name
             )));
         }
-        Ok(modules)
+        for component in used {
+            let Some(&index) = self.shared.section_of.get(component.name) else { continue };
+            let prefix = &self.shared.sections[index].0;
+            if !crate::api::under(prefix, self.path()) {
+                return Err(Error::new(format!(
+                    "{path} renders {name}, whose stylesheet is in the section {prefix}, which is not linked here: list {name} in App::components, or serve the page under {prefix}",
+                    path = self.path(),
+                    name = component.name
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// The `<link>` tags of the section stylesheets for this request's path.
+    #[inline]
+    fn section_links(&self, out: &mut String) {
+        let path = self.uri.path();
+        for (prefix, link) in &self.shared.sections {
+            if crate::api::under(prefix, path) {
+                out.push_str(link);
+            }
+        }
     }
 
     /// The response for already-rendered `<main>` HTML.
@@ -489,6 +528,7 @@ impl Req {
             Mode::Navigation | Mode::Action => {
                 let mut body = String::with_capacity(main.len() + 256);
                 swap_prefix(&meta, &mut body);
+                self.section_links(&mut body);
                 body.push_str(&main);
                 body
             }
@@ -537,6 +577,7 @@ impl Req {
             self.captured.key
         );
         out.push_str(&self.shared.head_extra);
+        self.section_links(&mut out);
         let _ = write!(out, r#"<script type="importmap">{}</script>"#, self.shared.import_map);
         let _ = write!(out, r#"<script type="module" src="{}"></script>"#, crate::runtime_path());
         // The modules the page's handlers call, fetched with the runtime rather than on first use.

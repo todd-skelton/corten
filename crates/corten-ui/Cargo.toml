@@ -2,7 +2,7 @@
 name = "corten-ui"
 version.workspace = true
 edition = "2021"
-description = "Headless Corten components for the widgets the browser has no element for: number field, combobox, tabs, menu button."
+description = "Headless Corten components for the widgets the browser has no element for: number field, combobox, tabs, menu button, toaster."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true

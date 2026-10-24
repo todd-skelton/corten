@@ -87,6 +87,42 @@ Corten is pre-1.0, so any minor version may change the API.
     the binary. `CONTRIBUTING.md` (Releasing) has the steps, including the first release.
 19. `.github/workflows/ci.yml` runs the checks in `CONTRIBUTING.md` on every pull request and
     push to `main`, plus `cargo publish --workspace --dry-run` and a build on Rust 1.88.
+20. List fields. `corten::Form` and `corten::Query` (in the prelude, replacing axum's) read a key
+    sent several times into a `Vec` field, a checkbox's `on` into a `bool`, and a blank field into
+    `None`; a scalar sent twice is a 422 (400 for a query) naming the field. `#[derive(Fields)]`
+    rejects a `bool` or `Vec` field without `#[serde(default)]`, since a browser sends nothing for
+    an unchecked box. A typed route's `Vec` or slice field writes its parameter once per item.
+    `corten::form::from_bytes` reads a body or query string directly. The alert form reads in
+    673 ns against axum's 871 (release build, best of five). `examples/seller-desk` posts its
+    checked rows as `ids` fields (each row's box joins the archive form with `form=`) instead of
+    a comma-joined field its script wrote.
+21. `App::section(prefix, components)`: components only the pages under a URL prefix render get a
+    stylesheet of their own, `sections/{prefix}.css`, linked from those pages only, so a large
+    part of the app most visitors never open stops adding to every first load. A client
+    navigation into the section loads the stylesheet before it swaps the page in (a full load if
+    it fails), and keeps it. A component with a stylesheet listed in two places, or tokens in a
+    section, is a startup error; under `corten dev` a page outside the section that renders one
+    of its components is an error naming both. Measured with callgrind (release build, in
+    process, instructions in `App`'s middleware per item page): without sections a navigation
+    took 87,249-87,331 against 87,252-87,257 before (three runs each), and a full document
+    100,101-103,892 against 100,176-103,616 (ten runs each, medians 103,270 and 102,652; the same
+    build lands near 100,200 or 103,600 from run to run). With the item page's four item
+    components in an `/items` section, a navigation took 88,341-88,589: writing the links is
+    about 120 of those, and most of the rest is in serde_json, which the section code does not
+    call, and the allocator. A full document took 100,766-102,327. The home page's
+    component CSS is then 593 bytes brotli instead of 1,047 and an item page's 1,141 in two
+    files. The runtime is 126 bytes gzip larger. `examples/hello` puts the about page's note
+    in a section, and the smoke test checks the stylesheet loads before the swap, stays, is not
+    linked twice, and that a failed load falls back to a full page load.
+22. `corten-ui`'s `Toaster` and `Toast`: a persistent `role="status"` region an action's patch
+    fills by id (`#ui-toast`), hidden after `seconds` but kept while the pointer or focus is on
+    it or the page is hidden (WCAG 2.2.1), with a close button the script reveals. Without
+    JavaScript the message is in the page the post answers with. `examples/ui-gallery` saves a
+    draft with one.
+23. `scripts/smoke.mjs` and `examples/ui-gallery/smoke.mjs` run in Chromium, Firefox and WebKit
+    (`node smoke.mjs [url] [engines...]`), and CI installs all three. Checks a browser cannot
+    make are skipped with the reason: Playwright's WebKit has no Navigation API (navigations are
+    full loads there) and does not send a `Secure` cookie over http.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -220,11 +256,11 @@ Corten is pre-1.0, so any minor version may change the API.
     moved with a slow stretch of the machine. The README's server highlight now quotes round r4
     (18,043 pages a second, 1.1 MiB), the round its server table is from.
 
-23. `corten new` makes the app depend on the `corten` release on crates.io that matches the
+26. `corten new` makes the app depend on the `corten` release on crates.io that matches the
     command's version (`corten = { version = "0.1.0", ... }`) instead of the repository's `main`
     branch, so an app builds against the release it was created for. `--corten-path` still uses
     a local checkout. Install the command with `cargo install corten-cli`.
-24. `Cargo.lock` takes tokio 1.54.1; 1.54.0 was yanked.
+27. `Cargo.lock` takes tokio 1.54.1; 1.54.0 was yanked.
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -245,6 +281,9 @@ Corten is pre-1.0, so any minor version may change the API.
 6. `bench/fullstack/browser.mjs` finds Corten's sort button and listing prices by the
    `listing-sort` component's scope (`[data-scope=listing-sort]`). It looked only for the
    `<listing-sort>` island that handlers replaced, so the browser pass stopped at Corten's page.
+7. `corten-ui`'s `MenuButton` returned focus to its button in WebKit even when the user had
+   clicked elsewhere: WebKit moves focus out of a closing popover before `toggle` fires, so the
+   menu now records on `beforetoggle` whether focus was inside it.
 
 ### Documentation
 
@@ -265,6 +304,14 @@ Corten is pre-1.0, so any minor version may change the API.
    123,693 user instructions and the JSON 133,308 (r3: 123,665 and 133,588). Django and Nuxt
    failed r4's in-memory page test, which they passed in r3 near their limit. The item page
    loads 6.2 KB of JavaScript (gzip).
+7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
+   axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
+   number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
+   dependency of `corten`; it was already in axum's tree.
+8. Hover prefetch does nothing in a browser without the Navigation API, where a click is a full
+   page load that could not use the prefetched response.
+9. The README, `docs/design.md` and `corten-ui` say what is tested in which browsers: the
+   runtime and `corten-ui` in Chromium, Firefox and WebKit.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

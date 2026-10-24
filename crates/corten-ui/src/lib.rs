@@ -8,11 +8,17 @@
 //! | [`ComboBox`] | type to filter a list, pick one; the value is a native `<select>` | the `<select>` |
 //! | [`TabGroup`] | tabs with arrow keys; tabs can be links, and the address follows | links to each tab's page |
 //! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
+//! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
+//!
+//! Each is tested in Chromium, Firefox and WebKit (`examples/ui-gallery/smoke.mjs`).
 //!
 //! Use the platform for everything else: `<dialog>` with `command="show-modal"` for dialogs and
-//! alert dialogs, `popover` for popovers and tooltips, `<details name>` for accordions,
+//! alert dialogs, `popover` for popovers and toggletips (`popovertarget`: shown on a click or
+//! tap), `<details name>` for accordions,
 //! `<select>` (styled with `appearance: base-select` where supported) for selects, native
-//! checkboxes, radios and `<input type="range">` for switches, toggle groups and sliders.
+//! checkboxes, radios and `<input type="range">` for switches, toggle groups and sliders. A
+//! tooltip shown on hover or focus is `interestfor` with `popover="hint"` once every browser has
+//! them (Safari has neither in October 2026); this crate does not add one in the meantime.
 //!
 //! List the components once, with the app's own:
 //!
@@ -55,14 +61,16 @@ mod combo_box;
 mod menu_button;
 mod number_field;
 mod tab_group;
+mod toaster;
 
 pub use combo_box::{Choice, ComboBox, Picker};
 pub use menu_button::{MenuButton, MenuItem};
 pub use number_field::{Number, NumberField, Step};
 pub use tab_group::{Tab, TabGroup};
+pub use toaster::{Toast, ToastId, Toaster};
 
 /// Every component in this crate with a script, for `App::components`.
-pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton];
+pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton, Toaster];
 
 /// A typed route a component links to (`#[derive(Route)]`), as a trait object so a list of
 /// items can hold different routes. A string is not a `Link`.

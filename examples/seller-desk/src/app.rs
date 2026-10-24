@@ -164,15 +164,15 @@ async fn set_price(req: Req, State(desk): State<Desk>, Path(id): Path<String>, F
 
 #[derive(Deserialize, Fields)]
 pub struct ArchiveInput {
-    /// The selected rows' ids, comma-separated: the grid's handler writes them.
-    pub ids: String,
+    /// The checked rows' ids, one `ids` per checkbox: each row's box belongs to the archive form.
+    #[serde(default)]
+    pub ids: Vec<String>,
 }
 
 async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveInput>) -> corten::Result {
-    let ids: Vec<&str> = input.ids.split(',').filter(|s| !s.is_empty()).collect();
     let mut items = desk.items.lock().expect("items");
     let mut done = Vec::new();
-    for item in items.iter_mut().filter(|i| ids.contains(&i.id.as_str()) && !i.archived) {
+    for item in items.iter_mut().filter(|i| input.ids.contains(&i.id) && !i.archived) {
         item.archived = true;
         done.push(item.id.clone());
     }
@@ -276,7 +276,7 @@ mod tests {
     #[tokio::test]
     async fn archiving_hides_the_rows_and_says_how_many() {
         let desk = Desk::new(5);
-        let (_, html) = send(&desk, post("/archive", "ids=i00001%2Ci00003")).await;
+        let (_, html) = send(&desk, post("/archive", "ids=i00001&ids=i00003")).await;
         assert!(
             html.contains(
                 r#"<template id="row-i00001" data-remove></template><template id="row-i00003" data-remove></template>"#

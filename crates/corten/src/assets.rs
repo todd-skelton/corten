@@ -7,7 +7,8 @@
 //! (`#[component(js)]` and `script!`, compiled into the binary) are served from
 //! `scripts/{name}.js` in the same version, the app's typed events from `events.js` (imported as
 //! `corten/events`), and the components' stylesheets, joined in the order the app lists them,
-//! from `components.css`.
+//! from `components.css`, except a section's (`App::section`), which are joined into
+//! `sections/{prefix}.css`.
 //!
 //! During a rolling deploy a page from the old version can ask a new server for an old URL. It
 //! gets the current file with `Cache-Control: no-cache`, so nothing caches the mismatch.
@@ -77,6 +78,8 @@ pub struct Assets {
     registered: std::collections::HashSet<String>,
     /// The joined component stylesheets' URL, when any component has one.
     stylesheet: Option<String>,
+    /// Each section with a stylesheet: its prefix and the stylesheet's URL.
+    sections: Vec<(String, String)>,
 }
 
 impl Assets {
@@ -91,6 +94,19 @@ impl Assets {
     /// `{mount}/{version}/...`. A component listed twice counts once; two different scripts with one
     /// name or two components with one class prefix (`ui::Card` and `admin::Card`) are an error.
     pub fn build(dir: Option<&Path>, components: &[Component], mount: &str) -> io::Result<Self> {
+        Self::build_with(dir, components, &[], mount)
+    }
+
+    /// [`Assets::build`] with sections: each section's components are served the same way, but
+    /// their stylesheets are joined into `sections/{prefix}.css` instead of `components.css`. A
+    /// component with a stylesheet is listed in one place, and a token file's (global) stylesheet
+    /// only in `components`.
+    pub(crate) fn build_with(
+        dir: Option<&Path>,
+        components: &[Component],
+        sections: &[(&str, &[Component])],
+        mount: &str,
+    ) -> io::Result<Self> {
         let mount = mount.trim_end_matches('/');
         assert!(mount.starts_with('/'), "the assets mount is an absolute path, like /assets");
         let mut paths = Vec::new();
@@ -102,12 +118,19 @@ impl Assets {
             sources.push((url, std::fs::read(&path)?));
         }
         let clash = |message: String| io::Error::new(io::ErrorKind::AlreadyExists, message);
-        let mut seen: Vec<&Component> = Vec::new();
-        let mut css = String::new();
+        // Where each component is listed: 0 is `components`, i + 1 the section i.
+        let listed = components
+            .iter()
+            .map(|c| (0, c))
+            .chain(sections.iter().enumerate().flat_map(|(i, (_, list))| list.iter().map(move |c| (i + 1, c))));
+        let place =
+            |at: usize| if at == 0 { "App::components".to_string() } else { format!("the section {}", sections[at - 1].0) };
+        let mut seen: Vec<(&Component, usize)> = Vec::new();
+        let mut sheets = vec![String::new(); sections.len() + 1];
         let mut events = String::new();
         let mut registered = std::collections::HashSet::new();
-        for component in components {
-            if let Some(same) = seen.iter().find(|c| c.name == component.name) {
+        for (at, component) in listed {
+            if let Some((same, first)) = seen.iter().find(|(c, _)| c.name == component.name) {
                 let script = |c: &Component| c.script.map(|s| s.source);
                 let style = |c: &Component| c.style.map(|s| s.css);
                 let event = |c: &Component| c.event.map(|e| e.name);
@@ -117,6 +140,14 @@ impl Assets {
                     && event(same) == event(component)
                     && view(same) == view(component)
                 {
+                    if *first != at && component.style.is_some() {
+                        return Err(clash(format!(
+                            "{} is listed in {} and in {}: its stylesheet is in one file, so list a component that pages in several sections render in App::components",
+                            component.name,
+                            place(*first),
+                            place(at)
+                        )));
+                    }
                     continue;
                 }
             }
@@ -138,18 +169,29 @@ impl Assets {
                 events.push_str(&format!("export const {} = event({:?});\n", event.class, event.name));
             }
             if let Some(style) = component.style {
-                if let Some(other) = seen.iter().find(|c| c.style.is_some_and(|s| s.name == style.name)) {
+                if at > 0 && style.global() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!(
+                            "{} styles every page (custom properties, themes, utilities): list it in App::components, not in {}",
+                            component.name,
+                            place(at)
+                        ),
+                    ));
+                }
+                if let Some((other, _)) = seen.iter().find(|(c, _)| c.style.is_some_and(|s| s.name == style.name)) {
                     return Err(clash(format!(
                         "{} and {} both style .{}__*: two components named {} in different modules need different names",
                         other.name, component.name, style.name, component.name
                     )));
                 }
+                let css = &mut sheets[at];
                 if !css.is_empty() {
                     css.push('\n');
                 }
                 css.push_str(style.css);
             }
-            seen.push(component);
+            seen.push((component, at));
         }
         if !events.is_empty() {
             if sources.iter().any(|(u, _)| u == EVENTS) {
@@ -157,17 +199,32 @@ impl Assets {
             }
             sources.push((EVENTS.to_string(), events.into_bytes()));
         }
-        if let Some(views) = crate::script::views_module(components).map_err(clash)? {
+        let all: Vec<Component> = seen.iter().map(|(c, _)| **c).collect();
+        if let Some(views) = crate::script::views_module(&all).map_err(clash)? {
             if sources.iter().any(|(u, _)| u == VIEWS) {
                 return Err(clash(format!("the static directory has a {VIEWS}, the name of the views' module")));
             }
             sources.push((VIEWS.to_string(), views.into_bytes()));
         }
+        let mut sheets = sheets.into_iter();
+        let css = sheets.next().unwrap_or_default();
         if !css.is_empty() {
             if sources.iter().any(|(u, _)| u == STYLESHEET) {
                 return Err(clash(format!("the static directory has a {STYLESHEET}, the name of the components' stylesheet")));
             }
             sources.push((STYLESHEET.to_string(), css.into_bytes()));
+        }
+        let mut section_files = Vec::new();
+        for ((prefix, _), css) in sections.iter().zip(sheets) {
+            if css.is_empty() {
+                continue;
+            }
+            let file = section_file(prefix);
+            if sources.iter().any(|(u, _)| *u == file) {
+                return Err(clash(format!("the static directory has a {file}, the name of the section {prefix}'s stylesheet")));
+            }
+            sources.push((file.clone(), css.into_bytes()));
+            section_files.push((prefix.to_string(), file));
         }
         sources.sort_by(|a, b| a.0.cmp(&b.0));
         let mut files = HashMap::new();
@@ -192,6 +249,7 @@ impl Assets {
         let version = format!("{:012x}", digest >> 16);
         let prefix = format!("{mount}/{version}/");
         let stylesheet = files.contains_key(STYLESHEET).then(|| format!("{prefix}{STYLESHEET}"));
+        let sections = section_files.into_iter().map(|(section, file)| (section, format!("{prefix}{file}"))).collect();
         Ok(Assets {
             scripts_dir: format!("{prefix}scripts/"),
             mount: mount.into(),
@@ -201,7 +259,14 @@ impl Assets {
             scripts,
             registered,
             stylesheet,
+            sections,
         })
+    }
+
+    /// Each section that has a stylesheet, in the order listed: its prefix and the stylesheet's
+    /// URL.
+    pub(crate) fn section_stylesheets(&self) -> &[(String, String)] {
+        &self.sections
     }
 
     /// The URL of the components' joined stylesheet, when a listed component has one.
@@ -315,6 +380,11 @@ impl Assets {
         crate::compress::encoded_headers(res.headers_mut(), file.content_type, coding);
         res
     }
+}
+
+/// Where a section's stylesheet is served: `sections/admin.css` for `/admin`.
+fn section_file(prefix: &str) -> String {
+    format!("sections{prefix}.css")
 }
 
 fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> io::Result<()> {
@@ -495,6 +565,56 @@ mod tests {
             .err()
             .expect("one prefix, two components");
         assert!(error.to_string().contains("both style .card__*"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_section_has_a_stylesheet_of_its_own() {
+        let tokens = styled("tokens.json", "tokens.json", ":root{--x:1}");
+        let card = styled("Card", "card", ".card__a{color:red}");
+        let chart = styled("Chart", "chart", ".chart__a{}");
+        let table = styled("Table", "table", ".table__a{}");
+        let sections: &[(&str, &[Component])] =
+            &[("/admin", &[chart, SCRIPT, chart]), ("/admin/reports", &[table]), ("/scripts-only", &[SCRIPT])];
+        let assets = Arc::new(Assets::build_with(None, &[tokens, card], sections, "/assets").unwrap());
+        assert!(assets.has_script("x_y"), "a section's scripts are served like the rest");
+        let urls: Vec<_> = assets.section_stylesheets().iter().map(|(p, u)| (p.as_str(), u.clone())).collect();
+        assert_eq!(
+            urls,
+            [("/admin", assets.url("sections/admin.css")), ("/admin/reports", assets.url("sections/admin/reports.css"))],
+            "a section without stylesheets has no file"
+        );
+        let app: Router = assets.routes();
+        let body = |url: String| {
+            let app = app.clone();
+            async move {
+                let res = app.oneshot(Request::get(url).body(Body::empty()).unwrap()).await.unwrap();
+                http_body_util::BodyExt::collect(res.into_body()).await.unwrap().to_bytes()
+            }
+        };
+        assert_eq!(&body(assets.url(STYLESHEET)).await[..], b":root{--x:1}\n.card__a{color:red}", "not the sections' rules");
+        assert_eq!(&body(assets.url("sections/admin.css")).await[..], b".chart__a{}", "listed twice, joined once");
+        assert_ne!(
+            assets.version(),
+            Assets::build_with(None, &[tokens, card], &[("/admin", &[table])], "/assets").unwrap().version(),
+            "a section's stylesheet is part of the version"
+        );
+
+        let error = |components: &[Component], sections: &[(&str, &[Component])]| {
+            Assets::build_with(None, components, sections, "/assets").err().expect("an error").to_string()
+        };
+        let twice = error(&[card], &[("/admin", &[card])]);
+        assert!(twice.contains("Card is listed in App::components and in the section /admin"), "{twice}");
+        let two_sections = error(&[], &[("/admin", &[chart]), ("/shop", &[chart])]);
+        assert!(two_sections.contains("in the section /admin and in the section /shop"), "{two_sections}");
+        // tokens! names its stylesheet by the token file's path, as both name and file.
+        let tokens = Component { style: Some(crate::Style { file: "tokens.json", ..tokens.style.unwrap() }), ..tokens };
+        let global = error(&[], &[("/admin", &[tokens])]);
+        assert!(global.contains("tokens.json styles every page"), "{global}");
+        let prefix = error(&[card], &[("/admin", &[styled("admin::Card", "card", ".card__b{}")])]);
+        assert!(prefix.contains("both style .card__*"), "{prefix}");
+        let root = dir("section-clash", &[("sections/admin.css", "a{}")]);
+        let file = Assets::build_with(Some(&root), &[], &[("/admin", &[chart])], "/assets").err().expect("taken").to_string();
+        assert!(file.contains("has a sections/admin.css"), "{file}");
     }
 
     #[test]

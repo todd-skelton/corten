@@ -67,6 +67,7 @@ pub fn MenuButton<'a>(id: &'a str, label: &'a dyn Render, items: &'a [MenuItem<'
                 role="menu"
                 aria-labelledby={(id, "-button")}
                 on:keydown={js::step(event, menu, item)}
+                on:beforetoggle={js::closing(event, menu)}
                 on:toggle={js::toggled(event, trigger, menu, item)}
             >
                 for i in items {

@@ -12,6 +12,7 @@ no CSS.
 | `ComboBox` | a native `<select>`, which keeps the value | a text input that filters a listbox (ARIA 1.2 combobox), validation reported on the input |
 | `TabGroup` | tabs that are typed links to the page with that tab selected | roving focus, arrow keys, switching in place with the address following |
 | `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, `aria-expanded`, the button as the menu's CSS anchor |
+| `Toaster` | the message is part of the page the post answers with | a live region an action's patch fills (`req.patch(Toast { message: Some(&text) })`), hidden after `seconds` but kept while the pointer or focus is on it or the page is hidden, and a close button |
 
 ```rust,ignore
 let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };
@@ -27,9 +28,13 @@ page's language. Links are typed routes. List `corten_ui::COMPONENTS` in `App::c
 
 Everything else Base UI-style libraries provide is already the platform's: `<dialog>` with
 `command="show-modal"` for dialogs and alert dialogs, `popover` for popovers and tooltips,
-`<details name>` for accordions, `<select>` (with `appearance: base-select` where supported),
+`<details name>` for accordions, toggletips as a `popover` opened by `popovertarget`, `<select>` (with `appearance: base-select` where supported),
 checkboxes, radios and `<input type="range">`. [examples/ui-gallery](../../examples/ui-gallery) shows
-all four styled by a small design system, with a browser test.
+all five styled by a small design system, with a browser test that runs in Chromium, Firefox and
+WebKit. A tooltip shown on hover or focus is `interestfor` with `popover="hint"` once every
+browser has them (Safari has neither in October 2026); the crate does not add one meanwhile. The
+toaster is not in the top layer, so an open modal `<dialog>` covers it: a form in a dialog answers
+inside the dialog.
 
 The design system places popups with CSS anchor positioning (the script makes the control that
 opens each popup its anchor):

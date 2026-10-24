@@ -15,3 +15,8 @@
 .actions [role="menu"] form { margin: 0; }
 .actions [role="menuitem"] { display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: start; text-decoration: none; cursor: pointer; }
 .actions [role="menuitem"]:focus { outline: none; background: Highlight; color: HighlightText; }
+
+/* The toaster has no box; the message is the toast, fixed at the bottom while it shows. */
+.toasts > div { position: fixed; inset: auto 16px 16px auto; display: flex; align-items: center; gap: 8px; }
+.toasts #ui-toast { padding: 8px 12px; border-radius: 6px; background: CanvasText; color: Canvas; }
+.toasts button { font: inherit; }

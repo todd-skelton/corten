@@ -4,8 +4,11 @@
 // menu's anchor, so the design system places the menu with CSS anchor positioning.
 import { state } from "corten";
 
-/** The item to focus when the menu opens: first (0) or last (-1). @param {HTMLDivElement} menu */
-const opening = (menu) => state(menu, () => ({ start: 0 }));
+/**
+ * The item to focus when the menu opens (first, 0, or last, -1), and whether focus was in the
+ * menu as it closed. @param {HTMLDivElement} menu
+ */
+const opening = (menu) => state(menu, () => ({ start: 0, focused: false }));
 
 /** @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu @param {HTMLElement[]} items */
 export function connect(trigger, menu, items) {
@@ -24,17 +27,30 @@ export function open(event, menu) {
   menu.showPopover();
 }
 
+/**
+ * Before the menu closes, while focus is still in it. WebKit moves focus out of a closing popover
+ * (to whatever had it before, often the body: a clicked button is not focused there) before
+ * `toggle` runs, so `toggled` cannot tell from `document.activeElement` alone.
+ * @param {ToggleEvent} event @param {HTMLDivElement} menu
+ */
+export function closing(event, menu) {
+  if (event.newState === "closed") opening(menu).focused = menu.contains(document.activeElement);
+}
+
 /** @param {ToggleEvent} event @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu @param {HTMLElement[]} items */
 export function toggled(event, trigger, menu, items) {
   const open = event.newState === "open";
   trigger.setAttribute("aria-expanded", String(open));
+  const s = opening(menu);
   if (open) {
-    const s = opening(menu);
     items.at(s.start)?.focus();
     s.start = 0;
-  } else if (menu.contains(document.activeElement)) {
-    trigger.focus();
+    return;
   }
+  // Back to the button when focus was in the menu, unless a click outside moved it somewhere.
+  const now = document.activeElement;
+  if (s.focused && (!now || now === document.body || menu.contains(now))) trigger.focus();
+  s.focused = false;
 }
 
 /** @param {KeyboardEvent} event @param {HTMLDivElement} menu @param {HTMLElement[]} items */

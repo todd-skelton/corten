@@ -35,6 +35,28 @@ the user edited (after the form was sent) and the focus carry over to the new ma
 can include the form the user is typing in.
 After a write that should change the URL, use `req.redirect(&Route)` instead.
 
+## Checkboxes and lists
+
+`Form` and `Query` read a key sent several times into a `Vec`. A `bool` or `Vec` field needs
+`#[serde(default)]` (`#[derive(Fields)]` does not compile without it), because the browser sends
+nothing for an unchecked box:
+
+```rust
+#[derive(serde::Deserialize, Fields)]
+struct ArchiveInput {
+    #[serde(default)]
+    ids: Vec<String>,   // one <input type="checkbox" name={f.ids} value={id}> per row
+    #[serde(default)]
+    notify: bool,       // a checkbox: "on" when checked
+}
+```
+
+Never join values into one field with commas in a script; give each box the name. A box outside
+the form joins it with `form={ArchiveFormId}` (a `#[derive(Id)]` type). A required list is a
+validation message (`errors.add(f.ids, ..)` when empty), not a missing field. A blank field is
+`None` for an `Option`. A typed route's `Vec` field writes `?condition=nm&condition=lp`, which
+`Query` reads back.
+
 ## Validation
 
 Validate on the server into `Errors`, keyed by `FieldName`, never by string:
