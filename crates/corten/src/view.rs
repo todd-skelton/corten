@@ -269,6 +269,12 @@ const ENTITIES: [&str; 5] = ["&amp;", "&lt;", "&gt;", "&quot;", "&#39;"];
 #[inline]
 pub fn escape_into(text: &str, out: &mut String) {
     let bytes = text.as_bytes();
+    // Most text has nothing to escape; a short string is one test (`next_escaped` would check
+    // anything under eight bytes one byte at a time).
+    if !crate::ascii::any(bytes, crate::ascii::html) {
+        out.push_str(text);
+        return;
+    }
     let mut start = 0;
     while let Some(i) = next_escaped(bytes, start) {
         out.push_str(&text[start..i]);
@@ -412,18 +418,9 @@ macro_rules! tuples {
 }
 tuples!((A, B), (A, B, C), (A, B, C, D));
 
-fn push_u64(mut n: u64, out: &mut String) {
-    let mut digits = [0u8; 20];
-    let mut i = digits.len();
-    loop {
-        i -= 1;
-        digits[i] = b'0' + (n % 10) as u8;
-        n /= 10;
-        if n == 0 {
-            break;
-        }
-    }
-    out.push_str(std::str::from_utf8(&digits[i..]).expect("ASCII digits"));
+fn push_u64(n: u64, out: &mut String) {
+    let mut buf = [0u8; 20];
+    out.push_str(std::str::from_utf8(crate::ascii::digits(n, &mut buf)).expect("ASCII digits"));
 }
 
 macro_rules! unsigned {

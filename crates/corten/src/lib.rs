@@ -49,6 +49,7 @@ pub use corten_feed as feed;
 pub mod agent;
 pub mod api;
 mod app;
+mod ascii;
 pub mod assets;
 pub mod cache;
 #[cfg(feature = "compress")]
@@ -100,7 +101,7 @@ pub use corten_macros::Fields;
 pub use form::{Errors, FieldName, Form, Query};
 pub use html::escape;
 #[cfg(feature = "json")]
-pub use json::Json;
+pub use json::{Json, ToJson};
 pub use meta::Meta;
 pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
 pub use route::{Href, Route};
@@ -130,8 +131,6 @@ pub struct Component {
 
 /// What most files need: `use corten::prelude::*;`.
 pub mod prelude {
-    #[cfg(feature = "json")]
-    pub use crate::Json;
     pub use crate::{
         axum::{
             extract::{Path, State},
@@ -145,6 +144,8 @@ pub mod prelude {
         view::Id,
         Access, Api, App, Area, Cache, Document, Errors, FieldName, Fields, Form, Meta, Mode, Query, Render, Req, Result, Route,
     };
+    #[cfg(feature = "json")]
+    pub use crate::{Json, ToJson};
 }
 
 /// The runtime, embedded so apps never copy it: `js/corten.js` minified by `scripts/build-js.mjs`

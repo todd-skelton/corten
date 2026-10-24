@@ -1,30 +1,30 @@
 //! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts.
-use corten::{Errors, Fields};
+use corten::{Errors, Fields, ToJson};
 
 use crate::text::Msg;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Category {
     pub name: String,
     pub slug: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Field {
     pub name: String,
     pub value: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Summary {
     pub lowest: Option<String>,
     pub count: i64,
     pub quantity: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Listing {
     pub id: String,
     pub seller: String,
@@ -37,7 +37,7 @@ pub struct Listing {
     pub price_value: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Offer {
     pub id: String,
     pub buyer: String,
@@ -46,7 +46,7 @@ pub struct Offer {
     pub price: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct ContentLine {
     pub id: String,
     pub item_id: String,
@@ -54,7 +54,7 @@ pub struct ContentLine {
     pub quantity: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct ItemView {
     pub id: String,
     pub title: String,

@@ -181,9 +181,15 @@ Under the prefix:
    pages keep refusing that site's writes. The site authenticates with a token: a write from it
    that carries the user's cookies is refused, and no `Access-Control-Allow-Credentials` is sent.
 5. `Json` in the prelude is `corten::Json` (feature `json`). It reads a request body as
-   axum's `Json` does, with the same rejections, and writes the response with
-   `serde_json::to_vec` into a `Vec` the body keeps. axum's `Json` works too, but writes
-   through a `BytesMut` writer that costs more for each of the many small writes JSON makes.
+   axum's `Json` does, with the same rejections. What it writes is a `ToJson`: derive it
+   (`#[derive(ToJson)]`, also in the prelude) on the response type, next to `Serialize` if other
+   surfaces read it too. The derive lays the JSON out when the crate compiles, so a response
+   copies one byte string between each pair of values instead of writing every key, quote and
+   comma, into a `Vec` sized from the type's last response that the body keeps. It reads
+   `#[serde(...)]` and writes the bytes `serde_json` would; an attribute it cannot follow
+   (`flatten`, `serialize_with`) does not compile. A field whose type has only `Serialize` (an id or a
+   date from another crate) is written by `serde_json`. `serde_json::Value` is a `ToJson`, as above.
+   axum's `Json` works too, and writes any `Serialize` through `serde_json` and a `BytesMut`.
 
 Each route is a `#[derive(Route)]` struct, and the API's prefix is one too (`ApiRoot` above), so
 the router and the links name the same URL, and a route outside the prefix (`/apis/items`
