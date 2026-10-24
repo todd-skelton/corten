@@ -367,6 +367,11 @@ Corten is pre-1.0, so any minor version may change the API.
     replaced. A `[::1]` port another process holds is now an error at startup, since
     `localhost` would reach that process. `HOST` set (as the Dockerfiles set `0.0.0.0`) binds
     that one address, as before.
+11. A component's stylesheet can have a class named like the component: `.card` in `Card`'s
+    stylesheet is `class={Card}` in its markup. Before, the class constant hid the component's
+    own `Component` constant inside `render`, and the build failed with "expected `&Component`,
+    found `&Class`" pointing at `#[component(css)]`. Found porting a Chase Sets admin screen,
+    where `Field` with `.field` and `Choices` with `.choices` had to be renamed.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
