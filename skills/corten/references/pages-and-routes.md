@@ -102,6 +102,28 @@ is no shell and no `App::context` (add `Api::new(routes).context()` if the API s
 signed-in users). Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
 
+## Routes only some callers may use
+
+Guard the prefix instead of checking in each handler; Corten answers in each request mode
+(303 to sign in, `corten-location` for a patch, JSON 401 for data and API routes, the error page
+for a refusal), and a refused request never reaches the handler:
+
+```rust
+App::new(routes)
+    .context(|headers| viewer_from(headers))
+    .guard(Admin::PATH, |viewer: Option<&Viewer>, req| match viewer {
+        None => Access::sign_in(&SignIn),
+        Some(v) if v.can(Permission::View) && (!req.writes() || v.can(Permission::Edit)) => Access::ALLOW,
+        Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
+    })
+```
+
+The prefix is a plain path (no parameters) or `"/"` for the whole app, and covers whole
+segments. `req.writes()` is every method but GET, HEAD and OPTIONS, so reads and writes at one
+URL get different rules; `req.is::<Export>()` names one route. Under `"/"`, open the sign-in
+page and webhooks with `.unguarded::<SignIn>()`. A check that needs the record (only its author
+may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
+
 ## Data from another service
 
 A page built from another service's JSON deserializes the response into structs holding only

@@ -229,6 +229,10 @@ try {
       addEventListener("pageshow", (event) => event.persisted && ((/** @type {any} */ (window)).__restored = true)),
     );
     await tab.goto(`${base}/items/item_5`);
+    // A fresh profile installs the app's service worker, which claims the open page, and Chrome
+    // never keeps a page a worker claimed. Load it again once the worker controls the profile.
+    await tab.waitForFunction(() => navigator.serviceWorker?.controller != null, null, { timeout: 5000 }).catch(() => {});
+    await tab.goto(`${base}/items/item_5`);
     // The runtime and the page's handler modules are loaded.
     await tab.evaluate(async () => {
       const { ready } = await import("corten");

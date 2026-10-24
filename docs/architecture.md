@@ -128,6 +128,7 @@ library. Measured against a production marketplace app:
 | Pages, patches, handlers, feeds across instances, CSP and CSRF, assets, head tags, PWA, catalog, sitemap, health, shutdown, agent tools | Framework | Built and tested earlier. |
 | Shell data on client navigation | Framework: `App::context`, shell key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the shell went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
 | Which nav items show for which roles | App | Roles and permissions are the app's model; the shell view decides. |
+| Which routes need sign-in or a permission | Framework: `App::guard`; the decision is the app's | The answer has to come out right in each request mode (a redirect, `corten-location`, a JSON 401, the error page) and before the handler reads the body, which only the framework sees. Who passes is the app's model, read from its context. |
 | Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
 | Routes with no screen (webhooks, public APIs) | Framework: `App::api` | The framework's error pages, nonce and context assume a browser asking for a page; only the framework can switch them off for a prefix and answer every failure as JSON instead. |
 | HTTP caching of pages and JSON | Framework: `Cache`, `private, no-cache` by default | Only the framework sees everything that makes a response personal (the context, the request's credentials, the mode, the nonce, a cookie set), so only it can refuse to mark such a response shareable. What to cache on the server (data, queries) is the app's, since only the app knows when its data changes. |
@@ -154,5 +155,5 @@ library. Measured against a production marketplace app:
 
 1. Native navigation: Turbo Drive in shell pages versus a Turbo-compatible adapter in `corten.js`.
 2. Auth across surfaces: session cookies for web and native shells, tokens for native screens
-   and agents, one permission check in handlers. Whatever is chosen, the app's middleware turns
-   it into the context (`App::context`) that shells and handlers read.
+   and agents. Whatever is chosen, the app turns it into the context (`App::context`) that
+   shells, guards (`App::guard`, one permission check per prefix) and handlers read.

@@ -8,6 +8,7 @@
 //! | `GET /live/trades` | fragments streamed to `<corten-live>`: the last trade, no script of its own |
 //! | `GET /about` | a plain page, reached by client navigation, with a component in a section (`App::section`): its stylesheet is linked from this page only |
 //! | `POST /sign-in` | sets a cookie; the shell shows the viewer, and the runtime reloads the document |
+//! | `GET /account` | only for someone signed in (`App::guard`): anyone else is sent to the watchlist, where the sign-in button is |
 use std::{sync::Arc, time::Duration};
 
 use corten::{
@@ -39,12 +40,21 @@ impl Market {
 
 /// The app: routes, the shell, and who is signed in. Everything else is Corten's defaults.
 pub fn app(market: Market) -> App {
-    App::new(routes(market)).shell(shell).components(&[LivePrices]).section(url::About::PATH, &[AboutNote]).context(|headers| {
-        // A real app reads its session here; the example trusts a cookie, which is fine for a
-        // demo and nothing else.
-        let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
-        async move { viewer }
-    })
+    App::new(routes(market))
+        .shell(shell)
+        .components(&[LivePrices])
+        .section(url::About::PATH, &[AboutNote])
+        .context(|headers| {
+            // A real app reads its session here; the example trusts a cookie, which is fine for a
+            // demo and nothing else.
+            let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
+            async move { viewer }
+        })
+        // Every route under /account, now and later, needs someone signed in.
+        .guard(url::Account::PATH, |viewer: Option<&Viewer>, _| match viewer {
+            Some(_) => Access::ALLOW,
+            None => Access::sign_in(&url::Home),
+        })
 }
 
 /// Every URL the app serves and links to; links built from these cannot drift from the router.
@@ -68,6 +78,10 @@ mod url {
     pub struct SignIn;
 
     #[derive(Route)]
+    #[route("/account")]
+    pub struct Account;
+
+    #[derive(Route)]
     #[route("/feed/stocks")]
     pub struct Stocks;
 
@@ -86,6 +100,7 @@ fn routes(market: Market) -> Router {
         .route(url::Watch::PATH, post(watch))
         .route(url::About::PATH, get(about))
         .route(url::SignIn::PATH, post(sign_in))
+        .route(url::Account::PATH, get(account))
         .route(url::Stocks::PATH, get(|State(m): State<Market>| async move { m.stocks.snapshot() }))
         .route(url::StocksLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }))
         .route(url::Trades::PATH, get(trades))
@@ -115,6 +130,7 @@ fn shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
                     <nav>
                         <a href={url::Home} data-nav aria-current={doc.current(&url::Home)}>"Watchlist"</a>
                         <a href={url::About} data-nav aria-current={doc.current(&url::About)}>"About"</a>
+                        <a href={url::Account} data-nav aria-current={doc.current(&url::Account)}>"Account"</a>
                     </nav>
                     match viewer {
                         Some(viewer) => <span>"Signed in as "{viewer.name}</span>,
@@ -315,6 +331,18 @@ async fn about(req: Req) -> corten::Result {
     )
 }
 
+/// The guard on `/account` has let only a signed-in viewer through.
+async fn account(req: Req) -> corten::Result {
+    let name = req.context::<Viewer>().map_or("", |viewer| &viewer.name);
+    req.page(
+        "Account | Corten",
+        html! {
+            <h1>"Account"</h1>
+            <p>"Signed in as "{name}"."</p>
+        },
+    )
+}
+
 /// A note only the about page shows. Its stylesheet, `about_note.css`, is in the `/about`
 /// section, so the watchlist never downloads it; a client navigation here loads it before the
 /// page is swapped in.
@@ -389,6 +417,15 @@ mod tests {
         let (_, about) = send(Request::get("/about").body(Body::empty()).unwrap()).await;
         assert!(about.contains(r#"/sections/about.css" data-corten-style>"#), "{about}");
         assert!(about.contains(r#"<p class="about-note__note">"#), "{about}");
+    }
+
+    #[tokio::test]
+    async fn the_account_page_is_for_someone_signed_in() {
+        let res = app(Market::new()).router().oneshot(Request::get("/account").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!((res.status().as_u16(), &res.headers()["location"]), (303, &"/".parse().unwrap()));
+        let signed_in = Request::get("/account").header("cookie", "viewer=Ada").body(Body::empty()).unwrap();
+        let (_, ada) = send(signed_in).await;
+        assert!(ada.contains("<h1>Account</h1><p>Signed in as Ada.</p>"), "{ada}");
     }
 
     #[tokio::test]

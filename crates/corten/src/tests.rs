@@ -773,3 +773,336 @@ async fn only_a_swap_says_it_is_a_page_swap() {
     let (_, headers, _) = call(app(routes(), None), "GET", Some("nav")).await;
     assert_eq!(headers["corten-page"], "1");
 }
+
+// ---- App::guard: routes only some callers may use ----
+
+#[derive(crate::Route)]
+#[route("/sign-in")]
+struct SignIn;
+
+/// Pages and an API under guards, the viewer named by the `viewer` header, and a count of the
+/// handlers that ran.
+fn guarded_app(dev: bool) -> (Router, Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let ran = Arc::new(AtomicUsize::new(0));
+    let count = |ran: &Arc<AtomicUsize>| {
+        let ran = ran.clone();
+        move |req: Req| {
+            ran.fetch_add(1, Ordering::SeqCst);
+            async move { req.page("Admin", html! { <p>"admin"</p> }) }
+        }
+    };
+    let form = |ran: &Arc<AtomicUsize>| {
+        let ran = ran.clone();
+        move |crate::Form(_): crate::Form<std::collections::HashMap<String, String>>| {
+            ran.fetch_add(1, Ordering::SeqCst);
+            async { "saved" }
+        }
+    };
+    let pages = Router::new()
+        .route("/", get(|req: Req| async move { req.page("Home", html! { <p>"home"</p> }) }))
+        .route("/admin", get(count(&ran)).post(form(&ran)))
+        .route("/admin/billing", get(count(&ran)))
+        .route("/administrators", get(count(&ran)));
+    let api = Router::new().route("/api/admin/stats", get(count(&ran)));
+    let viewer = |headers: &HeaderMap| headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
+    let router = App::new(pages)
+        .shell(test_shell)
+        .dev(dev)
+        .context(move |headers| {
+            let viewer = viewer(headers);
+            async move { viewer }
+        })
+        .api("/api", Router::new().merge(api))
+        .guard("/admin", |viewer: Option<&Viewer>, _| match viewer.map(|v| v.0) {
+            None => Access::sign_in(&SignIn),
+            Some("ada" | "bob") => Access::ALLOW,
+            Some("down") => Access::refuse(Error::status(StatusCode::BAD_GATEWAY)),
+            Some(_) => Access::refuse(Error::new("not staff").with_status(StatusCode::FORBIDDEN)),
+        })
+        .guard("/admin/billing", |viewer: Option<&Viewer>, req| match viewer.map(|v| v.0) {
+            Some("ada") => Access::ALLOW,
+            _ => Access::sign_in(&format!("/sign-in?next={}", req.uri().path()).parse::<axum::http::Uri>().unwrap()),
+        })
+        .guard("/api/admin", |viewer: Option<&Viewer>, _| match viewer {
+            Some(_) => Access::ALLOW,
+            None => Access::sign_in(&SignIn),
+        })
+        .router();
+    (router, ran)
+}
+
+async fn guarded(
+    router: &Router,
+    method: &str,
+    uri: &str,
+    viewer: Option<&str>,
+    headers: &[(&str, &str)],
+) -> (StatusCode, axum::http::HeaderMap, String) {
+    let mut req = Request::builder().method(method).uri(uri);
+    if let Some(viewer) = viewer {
+        req = req.header("viewer", viewer);
+    }
+    for (name, value) in headers {
+        req = req.header(*name, *value);
+    }
+    let body = if method == "POST" { Body::from("field=1") } else { Body::empty() };
+    let req = req.header("content-type", "application/x-www-form-urlencoded").body(body).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    let (parts, body) = res.into_parts();
+    let bytes = body.collect().await.unwrap().to_bytes();
+    (parts.status, parts.headers, String::from_utf8(bytes.to_vec()).unwrap())
+}
+
+#[tokio::test]
+async fn a_guard_sends_someone_signed_out_to_sign_in_in_their_mode() {
+    let (router, ran) = guarded_app(false);
+    for (method, uri, headers) in [
+        ("GET", "/admin", &[][..]),
+        ("GET", "/admin", &[("corten", "nav")][..]),
+        ("POST", "/admin", &[][..]),
+        ("GET", "/admin/nope", &[][..]),
+        ("DELETE", "/admin", &[][..]),
+    ] {
+        let (status, res, _) = guarded(&router, method, uri, None, headers).await;
+        assert_eq!(
+            (status, &res["location"]),
+            (StatusCode::SEE_OTHER, &"/sign-in".parse().unwrap()),
+            "{method} {uri} {headers:?}"
+        );
+        assert_eq!(res["cache-control"], "private, no-cache");
+    }
+    let (status, res, _) = guarded(&router, "POST", "/admin", None, &[("corten", "action")]).await;
+    assert_eq!((status, &res["corten-location"]), (StatusCode::NO_CONTENT, &"/sign-in".parse().unwrap()));
+    let unauthorized = r#"{"error":{"status":401,"message":"Unauthorized"}}"#;
+    let (status, res, body) = guarded(&router, "GET", "/admin", None, &[("accept", "application/json")]).await;
+    assert_eq!((status, &body[..]), (StatusCode::UNAUTHORIZED, unauthorized), "a data client");
+    assert_eq!(res["content-type"], "application/json");
+    for accept in ACCEPTS {
+        let headers: &[(&str, &str)] = match accept {
+            Some(accept) => &[("accept", accept)],
+            None => &[],
+        };
+        let (status, _, body) = guarded(&router, "GET", "/api/admin/stats", None, headers).await;
+        assert_eq!((status, &body[..]), (StatusCode::UNAUTHORIZED, unauthorized), "an API route, {accept:?}");
+    }
+    assert_eq!(ran.load(std::sync::atomic::Ordering::SeqCst), 0, "no handler ran, and no form was read");
+    let (status, _, _) = guarded(&router, "GET", "/administrators", None, &[]).await;
+    assert_eq!(status, StatusCode::OK, "a guard holds whole path segments");
+    let (status, _, _) = guarded(&router, "GET", "/", None, &[]).await;
+    assert_eq!(status, StatusCode::OK, "outside the guard");
+}
+
+#[tokio::test]
+async fn a_guard_refuses_someone_signed_in_with_the_error_in_their_mode() {
+    let (router, ran) = guarded_app(false);
+    let (status, res, body) = guarded(&router, "GET", "/admin", Some("eve"), &[("accept", "text/html")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(res["content-type"].to_str().unwrap().starts_with("text/html"));
+    assert!(body.contains("<a href=\"/\">eve</a>"), "the error page is in the shell, which sees the viewer: {body}");
+    assert!(!body.contains("not staff"), "the message stays in the log");
+    let (status, res, _) = guarded(&router, "POST", "/admin", Some("eve"), &[("corten", "action")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(res.contains_key("corten-page"), "a form patch gets the error page to swap in");
+    let (status, _, body) = guarded(&router, "GET", "/admin", Some("eve"), &[("accept", "application/json")]).await;
+    assert_eq!((status, &body[..]), (StatusCode::FORBIDDEN, r#"{"error":{"status":403,"message":"not staff"}}"#));
+    let (status, _, _) = guarded(&router, "GET", "/admin", Some("down"), &[]).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "who they are cannot be known now");
+    assert_eq!(ran.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn guards_nest_and_run_the_context_for_api_routes() {
+    let (router, ran) = guarded_app(false);
+    let (status, _, body) = guarded(&router, "GET", "/admin", Some("bob"), &[]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<p>admin</p>"));
+    let (status, _, body) = guarded(&router, "POST", "/admin", Some("bob"), &[]).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "saved"));
+    let (status, _, _) = guarded(&router, "GET", "/admin/billing", Some("ada"), &[]).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, res, _) = guarded(&router, "GET", "/admin/billing?x=1", Some("bob"), &[]).await;
+    assert_eq!(
+        (status, &res["location"]),
+        (StatusCode::SEE_OTHER, &"/sign-in?next=/admin/billing".parse().unwrap()),
+        "the inner guard, sending the caller back after signing in"
+    );
+    let (status, _, _) = guarded(&router, "GET", "/admin/billing", Some("eve"), &[]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "the outer guard answers first");
+    let (status, _, body) = guarded(&router, "GET", "/api/admin/stats", Some("eve"), &[]).await;
+    assert_eq!(status, StatusCode::OK, "the API mount has no Api::context, but its guard reads the context: {body}");
+    assert_eq!(ran.load(std::sync::atomic::Ordering::SeqCst), 4);
+}
+
+#[tokio::test]
+async fn the_outer_guard_answers_first_whatever_the_order_they_are_given_in() {
+    let routes = Router::new().route("/admin/billing", get(|| async { "billing" }));
+    let router = App::new(routes)
+        .context(|_| async { Some(Viewer("eve")) })
+        .guard("/admin/billing", |_: Option<&Viewer>, _| Access::sign_in(&SignIn))
+        .guard("/admin", |_: Option<&Viewer>, _| Access::refuse(Error::status(StatusCode::FORBIDDEN)))
+        .router();
+    let (status, _, _) = guarded(&router, "GET", "/admin/billing", None, &[]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn under_dev_a_refusal_names_its_guard() {
+    let (router, _) = guarded_app(true);
+    let (_, _, body) = guarded(&router, "GET", "/admin", Some("eve"), &[("accept", "text/html")]).await;
+    assert!(body.contains(r#"not staff (refused by App::guard(&quot;/admin&quot;))"#), "{body}");
+    let (_, _, body) = guarded(&router, "GET", "/api/admin/stats", None, &[]).await;
+    assert_eq!(body, r#"{"error":{"status":401,"message":"Unauthorized (refused by App::guard(\"/api/admin\"))"}}"#);
+}
+
+#[test]
+#[should_panic(expected = "App::guard(\"/admin\") takes Option<&")]
+fn a_guard_of_another_type_than_the_context_fails_at_startup() {
+    let _ = App::new(Router::new())
+        .context(|_| async { Some(Viewer("ada")) })
+        .guard("/admin", |_: Option<&String>, _| Access::ALLOW)
+        .router();
+}
+
+#[test]
+#[should_panic(expected = "the app has no App::context")]
+fn a_guard_without_a_context_fails_at_startup() {
+    let _ = App::new(Router::new()).guard("/admin", |_: Option<&Viewer>, _| Access::ALLOW).router();
+}
+
+#[test]
+#[should_panic(expected = "a guard prefix is \"/\" or a path like")]
+fn a_guard_prefix_is_a_plain_path() {
+    let _ = App::new(Router::new()).guard("/admin/", |_: Option<&Viewer>, _| Access::ALLOW);
+}
+
+/// Reviews anyone may read and only a signed-in editor may write, at one URL.
+fn reviews_app() -> Router {
+    let routes = Router::new().route(
+        "/reviews/{id}",
+        get(|req: Req| async move { req.page("Review", html! { <p>"review"</p> }) })
+            .post(|| async { "saved" })
+            .delete(|| async { "deleted" }),
+    );
+    App::new(routes)
+        .shell(test_shell)
+        .context(|headers: &HeaderMap| {
+            let viewer = headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
+            async move { viewer }
+        })
+        .guard("/reviews", |viewer: Option<&Viewer>, req| match viewer.map(|v| v.0) {
+            _ if !req.writes() => Access::ALLOW,
+            None => Access::sign_in(&SignIn),
+            Some("editor") => Access::ALLOW,
+            Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
+        })
+        .router()
+}
+
+#[tokio::test]
+async fn a_guard_can_open_reads_and_guard_writes_at_one_url() {
+    let router = reviews_app();
+    for method in ["GET", "HEAD"] {
+        let (status, _, _) = guarded(&router, method, "/reviews/1", None, &[]).await;
+        assert_eq!(status, StatusCode::OK, "{method} is a read");
+    }
+    for method in ["POST", "DELETE"] {
+        let (status, res, _) = guarded(&router, method, "/reviews/1", None, &[]).await;
+        assert_eq!((status, &res["location"]), (StatusCode::SEE_OTHER, &"/sign-in".parse().unwrap()), "{method} writes");
+        let (status, _, _) = guarded(&router, method, "/reviews/1", Some("reader"), &[]).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, _, _) = guarded(&router, method, "/reviews/1", Some("editor"), &[]).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _, _) = guarded(&router, "PATCH", "/reviews/1", Some("reader"), &[]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a method nobody listed is a write, refused before the 405");
+}
+
+#[derive(crate::Route)]
+#[route("/hooks/{name}")]
+struct Hook<'a> {
+    name: &'a str,
+}
+
+/// An app private everywhere: sign in, a webhook and Corten's own routes stay open.
+fn private_app(open_sign_in: bool) -> Router {
+    let page = |text: &'static str| get(move |req: Req| async move { req.page(text, html! { <p>{text}</p> }) });
+    let routes = Router::new()
+        .route("/", page("home"))
+        .route(SignIn::PATH, page("sign in").post(|| async { "signed in" }))
+        .route(Hook::PATH, axum::routing::post(|| async { "hooked" }));
+    let mut app = App::new(routes)
+        .shell(test_shell)
+        .pwa(crate::pwa::Pwa::new(crate::pwa::Manifest::new("A", "A")))
+        .context(|headers: &HeaderMap| {
+            let viewer = headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
+            async move { viewer }
+        })
+        .api("/hooks", Router::new())
+        .guard("/", |viewer: Option<&Viewer>, _| match viewer {
+            Some(_) => Access::ALLOW,
+            None => Access::sign_in(&SignIn),
+        })
+        .unguarded::<Hook>();
+    if open_sign_in {
+        app = app.unguarded::<SignIn>();
+    }
+    app.router()
+}
+
+#[tokio::test]
+async fn a_guard_on_the_whole_app_leaves_its_unguarded_routes_and_cortens_own_open() {
+    let router = private_app(true);
+    let (status, res, _) = guarded(&router, "GET", "/", None, &[]).await;
+    assert_eq!((status, &res["location"]), (StatusCode::SEE_OTHER, &"/sign-in".parse().unwrap()));
+    let (status, res, _) = guarded(&router, "GET", "/nope", None, &[]).await;
+    assert_eq!((status, &res["location"]), (StatusCode::SEE_OTHER, &"/sign-in".parse().unwrap()), "deny by default");
+    for (method, uri) in [("GET", "/sign-in"), ("POST", "/sign-in"), ("POST", "/hooks/stripe")] {
+        let (status, _, _) = guarded(&router, method, uri, None, &[]).await;
+        assert_eq!(status, StatusCode::OK, "{method} {uri} is unguarded");
+    }
+    let (status, _, _) = guarded(&router, "POST", "/hooks", None, &[]).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "only the route itself is open, not its prefix");
+    for uri in ["/health/live", runtime_path(), "/manifest.webmanifest", "/service-worker.js", "/offline"] {
+        let (status, _, _) = guarded(&router, "GET", uri, None, &[]).await;
+        assert_eq!(status, StatusCode::OK, "{uri} is Corten's own");
+    }
+    let (status, _, _) = guarded(&router, "GET", "/", Some("ada"), &[]).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_sign_in_that_would_loop_is_an_error_that_says_so() {
+    let router = private_app(false);
+    let (status, res, body) = guarded(&router, "GET", "/", None, &[("accept", "text/html")]).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "not a redirect the browser follows forever");
+    assert!(!res.contains_key("location") && !body.contains("unguarded"), "the message stays in the log");
+    let dev = App::new(Router::new().route(SignIn::PATH, get(|| async { "sign in" })))
+        .dev(true)
+        .context(|_| async { None::<Viewer> })
+        .guard("/", |_: Option<&Viewer>, _| Access::sign_in(&SignIn))
+        .router();
+    let (_, _, body) = guarded(&dev, "GET", "/sign-in", None, &[("accept", "text/html")]).await;
+    assert!(body.contains("mark the sign-in route with App::unguarded"), "{body}");
+}
+
+#[tokio::test]
+async fn a_guard_names_one_route_by_its_type() {
+    let routes = Router::new().route(ApiItem::PATH, get(|| async { "item" })).route("/api/other", get(|| async { "other" }));
+    let router = App::new(Router::new())
+        .context(|_| async { None::<Viewer> })
+        .api("/api", routes)
+        .guard(
+            "/api",
+            |_: Option<&Viewer>, req| {
+                if req.is::<ApiItem>() {
+                    Access::refuse(Error::status(StatusCode::FORBIDDEN))
+                } else {
+                    Access::ALLOW
+                }
+            },
+        )
+        .router();
+    assert_eq!(guarded(&router, "GET", "/api/items/7", None, &[]).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(guarded(&router, "GET", "/api/other", None, &[]).await.0, StatusCode::OK);
+}

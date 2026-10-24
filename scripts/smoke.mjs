@@ -293,6 +293,17 @@ async function run(browser) {
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
   errors.length = 0;
 
+  // /account is guarded (App::guard): signed out, a navigation there follows the redirect to the
+  // watchlist, where the sign-in button is.
+  await page.goto(`${base}/about`);
+  await page.click('header a[href="/account"]');
+  await page.waitForFunction(() => document.title === "Watchlist | Corten", null, { timeout: 5000 }).catch(() => {});
+  check(
+    "a guarded page sends someone signed out to sign in",
+    (await page.title()) === "Watchlist | Corten" && new URL(page.url()).pathname === "/",
+    page.url(),
+  );
+
   // Signing in changes the shell's context, so the redirect loads the whole document.
   if (signsIn) {
     await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 2));
@@ -300,8 +311,12 @@ async function run(browser) {
     await page.waitForFunction(() => document.querySelector("header")?.textContent?.includes("Signed in as Ada"), null, { timeout: 5000 }).catch(() => {});
     check("signing in shows the viewer in the shell", ((await page.textContent("header")) ?? "").includes("Signed in as Ada"));
     check("a new shell context loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
+    await page.click('header a[href="/account"]');
+    await page.waitForFunction(() => document.title === "Account | Corten", null, { timeout: 5000 }).catch(() => {});
+    check("a guarded page opens for someone signed in", ((await page.textContent("main")) ?? "").includes("Signed in as Ada."));
   } else {
     skip("signing in shows the viewer in the shell", "the browser does not send Secure cookies over http");
+    skip("a guarded page opens for someone signed in", "the browser does not send Secure cookies over http");
   }
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 3));
   await page.click('header a[href="/about"]');
@@ -420,6 +435,8 @@ async function run(browser) {
     const afterNewest = navRequests.length;
     await page.click('header a.hovered[href="/about?p=0"]');
     await page.waitForFunction(() => location.search === "?p=0");
+    // The address changes when the navigation starts, before the runtime sends its request.
+    for (let waited = 0; navRequests.length < 11 && waited < 2000; waited += 50) await page.waitForTimeout(50);
     check(
       "prefetch keeps the 8 newest pages: the newest is reused, the oldest is fetched again",
       hoveredCount === 10 && afterNewest === 10 && navRequests.length === 11,

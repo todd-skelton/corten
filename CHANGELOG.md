@@ -126,6 +126,28 @@ Corten is pre-1.0, so any minor version may change the API.
     build has the API, but Playwright then waits forever after the first navigation the runtime
     intercepts, so the smoke test checks WebKit's swap from inside the page and runs the rest
     without the API.
+24. `App::guard(prefix, |context: Option<&C>, req| Access::..)`: every route under a prefix
+    (including unknown URLs and wrong methods there) needs the guard's `Access::ALLOW`, so a
+    handler cannot forget a sign-in or permission check. The check gets the request as
+    `Guarded`: `req.writes()` (every method but GET, HEAD and OPTIONS) gives reads and writes at
+    one URL different rules, `req.is::<Route>()` names one route, `req.uri()` builds a sign-in
+    link back. `"/"` guards the whole app, denying by default; `App::unguarded::<SignIn>()` opens
+    one route, and Corten's own routes and the offline page are never guarded. A sign-in answer
+    that a guard would send to sign in again is a 500 that says so, not a redirect loop. The app decides who passes; Corten
+    answers before the handler and its extractors run, in the request's mode:
+    `Access::sign_in(&route)` is a 303 for a page or a form post without JavaScript,
+    `corten-location` for a form patch, a JSON 401 for a data client or an `App::api` route,
+    and `Access::refuse(error)` is the error page or the JSON error. Guards nest (outer first),
+    run the context for API routes under them, and stop the app at startup when their context
+    type is not `App::context`'s. Under `corten dev` a refusal names its guard. `Access` is in
+    the prelude. `examples/hello` guards an account page; the smoke test checks the redirect
+    signed out and the page signed in. Measured with callgrind (item page, full document,
+    release build, instructions in Corten's middleware itself, the same in each of 3 runs):
+    1,951 before, 2,006 with no guard, 2,392 with a context and a guard on `/items`, and 2,443
+    with a context, a guard on `/` and one unguarded route, of about 405,000 for the whole
+    request. The answer a guard gives
+    is boxed: carried inline, it made every request's future larger, and `memcpy` alone rose
+    from 17,935-18,544 instructions to 19,073-19,518.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -264,6 +286,10 @@ Corten is pre-1.0, so any minor version may change the API.
     branch, so an app builds against the release it was created for. `--corten-path` still uses
     a local checkout. Install the command with `cargo install corten-cli`.
 27. `Cargo.lock` takes tokio 1.54.1; 1.54.0 was yanked.
+28. `corten::Result` takes a second, defaulted parameter, `Result<T = Response, E = Error>`, so
+    `Result<u32, Errors>` works under `use corten::prelude::*` instead of failing with too many
+    generic arguments. Existing handlers are unchanged.
+29. `FieldName` is in the prelude, next to `Errors`, `Fields` and `Form`.
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -287,6 +313,13 @@ Corten is pre-1.0, so any minor version may change the API.
 7. `corten-ui`'s `MenuButton` returned focus to its button in WebKit even when the user had
    clicked elsewhere: WebKit moves focus out of a closing popover before `toggle` fires, so the
    menu now records on `beforetoggle` whether focus was inside it.
+8. A client navigation the server redirected (a page handler answering `req.redirect`, now a
+   guard sending someone to sign in) changed the address to where it was sent but left the old
+   page on screen: the runtime's `history.replaceState` aborted the navigation, and the body
+   read with it. The runtime now reads the page, then navigates to its URL in place of the
+   requested one with the page in hand, so it is swapped in without a second request. The
+   runtime is 156 bytes larger, 46 gzip. Found by the hello smoke test's guarded page in
+   Chromium and Firefox.
 
 ### Documentation
 

@@ -678,10 +678,16 @@ impl Req {
     /// an `axum::http::Uri` to leave the app. Works with and without JavaScript.
     pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> Result {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
-        Ok(match self.mode {
-            Mode::Action => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, value)]).into_response(),
-            _ => (StatusCode::SEE_OTHER, [(header::LOCATION, value)]).into_response(),
-        })
+        Ok(redirect(self.mode, value))
+    }
+}
+
+/// A redirect in `mode`: `corten-location` for a form patch (the runtime navigates), a 303
+/// otherwise.
+pub(crate) fn redirect(mode: Mode, to: HeaderValue) -> Response {
+    match mode {
+        Mode::Action => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response(),
+        _ => (StatusCode::SEE_OTHER, [(header::LOCATION, to)]).into_response(),
     }
 }
 

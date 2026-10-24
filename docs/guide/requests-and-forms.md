@@ -25,6 +25,9 @@ the shell is never stale.
 
 `#[derive(Fields)]` gives a form struct its field names as `FieldName` constants, so markup and
 validation cannot misspell them: `Errors` takes nothing else. Validation stays in the app; `Errors` carries the first message per field.
+`FieldName`, `Errors` and `Form` are all in the prelude, and so is `Result`, whose error type
+defaults to `corten::Error`: a handler returns `Result`, and a helper that checks one field
+returns `Result<u32, Errors>`, both under `use corten::prelude::*`.
 
 ```rust,ignore
 if let Err(errors) = check(&input) {
@@ -80,6 +83,10 @@ stay on the matching element. Everything else is the server's.
 After a successful write, `req.redirect(&route)` sends the browser on (post/redirect/get), with
 and without JavaScript. It takes a typed route, or an `axum::http::Uri` for a URL outside the
 app; a path written as text does not compile.
+
+A page handler may redirect too (an old URL, a guard sending someone to sign in). A client
+navigation follows it: the page it was sent to is swapped in and replaces the requested URL
+in the history, so Back skips the URL that redirected.
 
 ## Errors
 

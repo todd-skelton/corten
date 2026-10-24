@@ -10,6 +10,7 @@ routes. Each default can be replaced in one line.
 | Address | `HOST` (`127.0.0.1`), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
 | Shell | a minimal HTML document | `.shell(fn(Document) -> impl Render)`, or `fn(Document, Option<C>)` with a context |
 | Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`: shells, page handlers (`req.context::<C>()`) and error pages see it; Corten's own routes and API routes skip it |
+| Who may use a route | anyone | `.guard("/admin", \|viewer: Option<&Viewer>, req\| ..)`: every route under the prefix (`"/"`: the whole app) needs the guard's `Access::ALLOW`; `.unguarded::<SignIn>()` opens one route ([below](#guarded-routes)) |
 | Error pages | 404, 405 and 500 inside the shell, in the request's mode (page, swap or JSON); the error is logged, never shown | `.error_page(\|status\| (title, view))` |
 | JSON-only routes | none | `.api("/api", routes)`: every failure under the prefix is JSON, with no shell and no context ([below](#json-only-routes)) |
 | Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the shell or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods | `.policy(Policy::new()...)` |
@@ -168,3 +169,92 @@ behavior).
 
 A screen that a native app or an agent reads is not an API route: it stays a page that answers
 with `req.screen`, so every surface shares one handler (see [Surfaces](../architecture.md)).
+
+## Guarded routes
+
+A part of the app only some callers may use (an admin area, an account page) is a prefix with a
+guard. The guard reads the context and decides; Corten answers for it, in the request's mode:
+
+```rust
+use corten::{axum::http::StatusCode, prelude::*, Error};
+
+#[derive(Clone)]
+struct Viewer { staff: bool, editor: bool }
+
+#[derive(Route)]
+#[route("/sign-in")]
+struct SignIn;
+
+fn app(routes: Router) -> App {
+    App::new(routes)
+        .context(|_headers| async { None::<Viewer> })
+        .guard("/admin", |viewer: Option<&Viewer>, req| match viewer {
+            None => Access::sign_in(&SignIn),
+            Some(v) if v.staff && (v.editor || !req.writes()) => Access::ALLOW,
+            Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
+        })
+}
+# let _ = app(Router::new()).router();
+```
+
+| The guard says | Page, or a form post without JavaScript | Form patch | Data client, `App::api` route |
+|---|---|---|---|
+| `Access::ALLOW` | the handler runs | the handler runs | the handler runs |
+| `Access::sign_in(&route)` | 303 to the route | `corten-location`, and the runtime goes there | JSON 401 |
+| `Access::refuse(error)` | the error page for the error's status | the error page, swapped in | the JSON error |
+
+1. The guard covers every route at the prefix and below it, whole segments only (`/admin`
+   holds `/admin/users`, not `/administrators`), including routes added later, unknown URLs
+   and wrong methods. A handler there cannot forget the check, and a refused request never
+   reaches it or its extractors: the body is not read and nothing is written.
+2. Who passes is the app's model. The guard gets the context `App::context` found (`None`
+   when it found no one) and the request: `req.uri()`, to send the caller back after signing
+   in (`Access::sign_in(&SignIn { next: Some(req.uri().path()) })`, or an
+   `axum::http::Uri` on another site); `req.writes()`; and `req.is::<Route>()`. Refuse with a
+   503 or a 502 when who they are cannot be known now (the session store is down), so no one
+   is sent to sign in again for nothing.
+3. The context's type is checked when the router is built: a guard reading another type than
+   `App::context` gives, or a guard without a context, stops the app at startup.
+4. Guards nest (`/admin` and `/admin/billing`): every guard over the path must allow it, the
+   outer one first. Under a guard the context runs for `App::api` routes too, without
+   `Api::context`.
+5. Under `corten dev` the error page and the JSON error say which guard refused, and every
+   refusal is logged at `debug`.
+6. Test it the way a user meets it: a router test that sends each route signed out and signed
+   in without the permission.
+
+How the common cases look:
+
+| The app | Guard |
+|---|---|
+| A signed-in area (account, dashboard) | `.guard("/account", ..)`: `None` signs in, anyone else passes |
+| A role's area, stricter inside | `.guard("/admin", ..)` and `.guard("/admin/billing", ..)` |
+| Anyone reads, signed-in users write (reviews, comments, a price alert posted back to its page) | one guard on the prefix that allows `!req.writes()` for everyone |
+| Viewers and editors on the same screens | `v.can(VIEW) && (!req.writes() \|\| v.can(EDIT))` |
+| Private everywhere (an internal tool) | `.guard("/", ..)` plus `.unguarded::<SignIn>()`, and any webhook the same way |
+| One route under the prefix needs more | `req.is::<Export>()` inside the guard, or a nested guard when the route has a prefix of its own |
+| Only the author edits, members see their organization's records | the handler, which loads the record |
+
+A page and the form that posts back to it share one URL in Corten (`get(show).post(save)`),
+so a path cannot tell a read from a write; `req.writes()` can. It counts every method but
+`GET`, `HEAD` and `OPTIONS` as a write, the same split as the same-origin check, so a method no
+rule names (`PATCH`, `DELETE`) is held to the stricter rule.
+
+`.guard("/", ..)` denies by default: every route, every unknown URL and every API route is
+under it, so a route added later is private until it is marked. Corten's own routes (static
+files, the runtime, health, the PWA's manifest, worker and offline page) are never under a
+guard. `.unguarded::<SignIn>()` takes a route type, matched as the router matches its path, for
+every method, so the sign-in form posts too. A sign-in answer that points at a URL a guard also
+sends to sign in would loop in the browser; Corten answers it with a 500 instead, and under
+`corten dev` the page says to mark the sign-in route.
+
+A check that depends on the record (only the author may edit a draft) stays in the handler,
+which loads the record; `Error::status(StatusCode::FORBIDDEN)` gives the same answers there.
+
+A guard costs a request under it about 300 instructions (the prefix match, the check, the
+context lookup), and an app with no guards about 55. Measured with callgrind on the item page
+as a full document (release build, in process, instructions in Corten's middleware itself, the
+same in each of 3 runs): 1,951 before guards existed, 2,006 with no guard, 2,392 with a context
+and a guard on `/items`, 2,443 with a context, a guard on `/` that reads `req.writes()` and one
+unguarded route; a context alone added about 90 in an earlier run. A whole request is about
+405,000 instructions, and varies by more than that between runs.

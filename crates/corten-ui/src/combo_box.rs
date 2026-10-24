@@ -1,4 +1,4 @@
-use corten::{prelude::*, view::Attrs, FieldName};
+use corten::{prelude::*, view::Attrs};
 
 /// One option of a [`ComboBox`].
 #[derive(Clone, Copy)]
