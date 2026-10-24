@@ -121,8 +121,11 @@ Corten is pre-1.0, so any minor version may change the API.
     draft with one.
 23. `scripts/smoke.mjs` and `examples/ui-gallery/smoke.mjs` run in Chromium, Firefox and WebKit
     (`node smoke.mjs [url] [engines...]`), and CI installs all three. Checks a browser cannot
-    make are skipped with the reason: Playwright's WebKit has no Navigation API (navigations are
-    full loads there) and does not send a `Secure` cookie over http.
+    make are skipped with the reason: Playwright's WebKit on Windows has no Navigation API
+    (navigations are full loads there) and does not send a `Secure` cookie over http. Its Linux
+    build has the API, but Playwright then waits forever after the first navigation the runtime
+    intercepts, so the smoke test checks WebKit's swap from inside the page and runs the rest
+    without the API.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

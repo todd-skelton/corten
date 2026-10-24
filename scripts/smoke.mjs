@@ -82,9 +82,44 @@ async function run(browser) {
     if (request.url().endsWith("/watch") && !offline.has(request)) abandoned.push(error);
   });
 
+  // Playwright's WebKit with the Navigation API (its Linux build) loses track of the page once the
+  // runtime intercepts a navigation: every later action waits for a navigation that never ends.
+  // WebKit's swaps are checked from inside the page here; the rest of the run hides the API, so
+  // its navigations are full page loads, the documented fallback.
+  if (engine === "webkit") {
+    const probe = await browser.newPage();
+    await probe.goto(base);
+    if (await probe.evaluate(() => "navigation" in window)) {
+      const seen = await probe.evaluate(async () => {
+        const until = async (/** @type {() => boolean} */ done) => {
+          for (let i = 0; i < 100 && !done(); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+          return done();
+        };
+        (/** @type {any} */ (window)).__marker = 1;
+        /** @type {HTMLAnchorElement} */ (document.querySelector('header a[href="/about"]')).click();
+        const about = await until(() => document.title === "About | Corten");
+        const note = document.querySelector(".about-note__note");
+        const border = note ? getComputedStyle(note).borderInlineStartWidth : "";
+        history.back();
+        const back = await until(() => document.title === "Watchlist | Corten");
+        return { about, border, back, kept: (/** @type {any} */ (window)).__marker === 1, path: location.pathname };
+      });
+      check(
+        "WebKit swaps a page in with its section stylesheet loaded, and back restores the last one",
+        seen.about && seen.border === "4px" && seen.back && seen.kept && seen.path === "/",
+        JSON.stringify(seen),
+      );
+    }
+    await probe.close();
+    await page.addInitScript(() => {
+      delete (/** @type {any} */ (Window.prototype)).navigation;
+      delete (/** @type {any} */ (window)).navigation;
+    });
+  }
+
   await page.goto(base);
-  // Without the Navigation API (Playwright's WebKit) every navigation is a full page load, the
-  // documented fallback: the checks of what a swap keeps check that instead, or are skipped.
+  // Without the Navigation API every navigation is a full page load, the documented fallback: the
+  // checks of what a swap keeps check that instead, or are skipped.
   const swaps = await page.evaluate(() => "navigation" in window);
   const noSwaps = "no Navigation API: navigations are full page loads";
   // Playwright's WebKit stores a Secure cookie from http://localhost but never sends it back.
