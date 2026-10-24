@@ -1,7 +1,8 @@
 //! `corten dev`: build, run, and rebuild and restart on every change.
 //!
 //! Changes are found by polling modification times (no dependencies, works in containers and
-//! on network drives). A failed build leaves the running server alone. The binary runs from a
+//! on network drives), in the app's directory and in every local package its build reads (path
+//! dependencies, a workspace's shared crates), taken from `cargo metadata` after each build. A failed build leaves the running server alone. The binary runs from a
 //! copy, so the next build can replace the original while it runs (Windows locks running
 //! executables). The app gets `CORTEN_DEV=1`: Corten then serves `/corten/dev`, and every open
 //! page reloads when it reconnects to a server that started later.
@@ -27,9 +28,21 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let port =
         option(args, "--port")?.map(str::to_string).or_else(|| std::env::var("PORT").ok()).unwrap_or_else(|| "3000".into());
     let mut server: Option<Child> = None;
-    let mut seen = snapshot(&root);
+    let mut roots = vec![root.clone()];
+    let mut seen = snapshot(&roots);
     loop {
-        match build(&root) {
+        let built = build(&root);
+        // A dependency added or removed since the last build changes what is watched. Files of a
+        // newly watched package count from now, so the change that triggered this build is not
+        // seen twice.
+        if let Some(packages) = local_packages(&root) {
+            let next = watch_roots(&root, packages);
+            for added in next.iter().filter(|r| !roots.contains(r)) {
+                walk(added, &mut seen);
+            }
+            roots = next;
+        }
+        match built {
             Ok(binary) => {
                 if let Some(mut old) = server.take() {
                     let _ = old.kill();
@@ -57,10 +70,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 eprintln!("corten: the app exited ({status}); waiting for a change");
                 server = None;
             }
-            let now = snapshot(&root);
+            let now = snapshot(&roots);
             if now != seen {
                 std::thread::sleep(Duration::from_millis(150));
-                seen = snapshot(&root);
+                seen = snapshot(&roots);
                 eprintln!("corten: change detected, rebuilding");
                 break;
             }
@@ -116,9 +129,81 @@ fn json_string_field(line: &str, field: &str) -> Option<String> {
     None
 }
 
-fn snapshot(root: &Path) -> BTreeMap<PathBuf, SystemTime> {
+/// The directory of every local package in the app's build (`cargo metadata` names them by a
+/// `path+file://` package id), or `None` when cargo cannot say (a broken `Cargo.toml`), so the
+/// previous list is kept.
+fn local_packages(root: &Path) -> Option<Vec<PathBuf>> {
+    let output = Command::new("cargo")
+        .args(["metadata", "--format-version", "1"])
+        .current_dir(root)
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(package_dirs(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// The directories named by the `path+file://` package ids in `text`: `path+file:///a/b#0.1.0`,
+/// `path+file:///a/b#name@0.1.0`, or an older cargo's `name 0.1.0 (path+file:///a/b)`.
+fn package_dirs(text: &str) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    for (at, _) in text.match_indices("path+file://") {
+        let rest = &text[at + "path+file://".len()..];
+        let end = rest.find(['#', ')', '"', '?']).unwrap_or(rest.len());
+        if let Some(dir) = file_url_path(&rest[..end]) {
+            if !dirs.contains(&dir) {
+                dirs.push(dir);
+            }
+        }
+    }
+    dirs
+}
+
+/// The path of a `file://` URL's path part (`/D:/a%20b` on Windows, `/home/a` elsewhere).
+fn file_url_path(url: &str) -> Option<PathBuf> {
+    let bytes = url.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
+            decoded.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            decoded.push(bytes[i]);
+            i += 1;
+        }
+    }
+    let path = String::from_utf8(decoded).ok()?;
+    // `/C:/x` is `C:/x` on Windows.
+    let path = match path.as_bytes() {
+        [b'/', drive, b':', ..] if cfg!(windows) && drive.is_ascii_alphabetic() => &path[1..],
+        _ => path.as_str(),
+    };
+    (!path.is_empty()).then(|| PathBuf::from(path))
+}
+
+/// The directories to watch: the app's and each local package's, leaving out one inside another
+/// already watched, so no file is walked twice.
+fn watch_roots(root: &Path, packages: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut all: Vec<PathBuf> = std::iter::once(root.to_path_buf()).chain(packages).collect();
+    all.sort_by_key(|p| p.components().count());
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for dir in all {
+        if !roots.iter().any(|r| dir.starts_with(r)) {
+            roots.push(dir);
+        }
+    }
+    roots
+}
+
+fn snapshot(roots: &[PathBuf]) -> BTreeMap<PathBuf, SystemTime> {
     let mut files = BTreeMap::new();
-    walk(root, &mut files);
+    for root in roots {
+        walk(root, &mut files);
+    }
     files
 }
 
@@ -148,5 +233,46 @@ mod tests {
         let line = r#"{"reason":"compiler-artifact","target":{"kind":["bin"],"name":"app"},"executable":"C:\\a\\target\\debug\\app.exe","fresh":false}"#;
         assert_eq!(json_string_field(line, "executable").as_deref(), Some(r"C:\a\target\debug\app.exe"));
         assert_eq!(json_string_field(r#"{"executable":null}"#, "executable"), None);
+    }
+
+    #[test]
+    fn finds_each_local_package_in_cargo_metadata() {
+        let metadata = concat!(
+            r#"{"packages":[{"name":"axum","id":"registry+https://github.com/rust-lang/crates.io-index#axum@0.8.4"},"#,
+            r#"{"name":"app","id":"path+file:///work/shop/app#0.1.0"},"#,
+            r#"{"name":"platform","id":"path+file:///work/shop/my%20platform#platform@0.1.0"},"#,
+            r#"{"name":"old","id":"old 0.1.0 (path+file:///work/old)"},"#,
+            r#"{"name":"g","id":"git+https://github.com/a/g#abc"}],"#,
+            r#""workspace_members":["path+file:///work/shop/app#0.1.0"]}"#
+        );
+        let dirs = package_dirs(metadata);
+        assert_eq!(dirs, [PathBuf::from("/work/shop/app"), PathBuf::from("/work/shop/my platform"), PathBuf::from("/work/old")]);
+    }
+
+    #[test]
+    fn watches_each_directory_once() {
+        let roots = watch_roots(
+            Path::new("/work/shop/app"),
+            vec![PathBuf::from("/work/shop/app"), PathBuf::from("/work/shop/platform"), PathBuf::from("/work/shop/app/macros")],
+        );
+        assert_eq!(roots, [PathBuf::from("/work/shop/app"), PathBuf::from("/work/shop/platform")]);
+    }
+
+    #[test]
+    fn a_change_in_a_path_dependency_is_seen() {
+        let base = std::env::temp_dir().join(format!("corten-dev-watch-{}", std::process::id()));
+        let (app, lib) = (base.join("app"), base.join("lib"));
+        std::fs::create_dir_all(app.join("src")).unwrap();
+        std::fs::create_dir_all(lib.join("src")).unwrap();
+        std::fs::write(app.join("Cargo.toml"), "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nlib = { path = \"../lib\" }\n").unwrap();
+        std::fs::write(app.join("src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(lib.join("Cargo.toml"), "[package]\nname = \"lib\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+        std::fs::write(lib.join("src/lib.rs"), "").unwrap();
+        let packages = local_packages(&app).expect("cargo metadata runs");
+        let roots = watch_roots(&app, packages);
+        let lib_file = lib.join("src").join("lib.rs");
+        let before = snapshot(&roots);
+        assert!(before.keys().any(|p| p.canonicalize().ok() == lib_file.canonicalize().ok()), "{roots:?}");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
