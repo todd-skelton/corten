@@ -39,19 +39,19 @@ impl Market {
 }
 
 /// The app: routes, the shell, and who is signed in. Everything else is Corten's defaults.
-pub fn app(market: Market) -> App {
+pub fn app(market: Market) -> App<Viewer> {
     App::new(routes(market))
-        .shell(shell)
-        .components(&[LivePrices])
-        .section(url::About::PATH, &[AboutNote])
         .context(|headers| {
             // A real app reads its session here; the example trusts a cookie, which is fine for a
             // demo and nothing else.
             let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
             async move { viewer }
         })
+        .shell(shell)
+        .components(&[LivePrices])
+        .section(url::About::PATH, &[AboutNote])
         // Every route under /account, now and later, needs someone signed in.
-        .guard(url::Account::PATH, |viewer: Option<&Viewer>, _| match viewer {
+        .guard(url::Account::PATH, |viewer, _| match viewer {
             Some(_) => Access::ALLOW,
             None => Access::sign_in(&url::Home),
         })

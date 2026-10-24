@@ -203,29 +203,32 @@ type CaptureContext = dyn Fn(&Extensions) -> Option<(u64, Box<dyn Any + Send + S
 pub struct ShellFn {
     render: Box<RenderShell>,
     capture: Box<CaptureContext>,
-    /// The context type the shell takes, checked against [`crate::App::context`].
-    pub(crate) context_type: Option<(std::any::TypeId, &'static str)>,
 }
 
-/// A function that renders the document around every page. Implemented for
-/// `fn(Document) -> impl Render` and, for a shell that shows per-request data such as the
-/// signed-in user, `fn(Document, Option<C>) -> impl Render`, where `C` is whatever the app's
-/// middleware put in the request extensions (see [`crate::App::shell`]).
-pub trait IntoShell<Marker>: Send + Sync + 'static {
+/// A function that renders the document around every page of an app whose context is `C`.
+/// Implemented for `fn(Document) -> impl Render` and, for a shell that shows per-request data
+/// such as the signed-in user, `fn(Document, Option<C>) -> impl Render`, where `C` is the type
+/// [`crate::App::context`] gives (see [`crate::App::shell`]).
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a shell for an app whose context is `{C}`",
+    label = "a shell is `fn(Document) -> impl Render`, or `fn(Document, Option<{C}>) -> impl Render`",
+    note = "a shell that reads the context takes the type `App::context` gives; call `.context(..)` before `.shell(..)`"
+)]
+pub trait IntoShell<C, Marker>: Send + Sync + 'static {
     fn into_shell(self) -> ShellFn;
 }
 
-impl<F, V> IntoShell<fn(Document) -> V> for F
+impl<C, F, V> IntoShell<C, fn(Document) -> V> for F
 where
     F: Fn(Document) -> V + Send + Sync + 'static,
     V: Render,
 {
     fn into_shell(self) -> ShellFn {
-        ShellFn { render: Box::new(move |doc, _| self(doc).to_html()), capture: Box::new(|_| None), context_type: None }
+        ShellFn { render: Box::new(move |doc, _| self(doc).to_html()), capture: Box::new(|_| None) }
     }
 }
 
-impl<F, V, C> IntoShell<fn(Document, Option<C>) -> V> for F
+impl<F, V, C> IntoShell<C, fn(Document, Option<C>) -> V> for F
 where
     F: Fn(Document, Option<C>) -> V + Send + Sync + 'static,
     V: Render,
@@ -243,7 +246,6 @@ where
                 context.hash(&mut hasher);
                 Some((hasher.finish(), Box::new(context.clone())))
             }),
-            context_type: Some((std::any::TypeId::of::<C>(), std::any::type_name::<C>())),
         }
     }
 }
@@ -344,7 +346,10 @@ impl Shared {
 
 /// Used by handlers that run without an [`crate::App`] (unit tests of a bare router).
 static DEFAULT: LazyLock<Arc<Shared>> =
-    LazyLock::new(|| Arc::new(Shared::new(default_shell.into_shell(), error_page_fn(default_error_page), None, String::new())));
+    LazyLock::new(|| {
+        let shell = IntoShell::<crate::NoContext, _>::into_shell(default_shell);
+        Arc::new(Shared::new(shell, error_page_fn(default_error_page), None, String::new()))
+    });
 
 pub(crate) fn error_page_fn<F, V>(page: F) -> Box<ErrorPage>
 where

@@ -89,7 +89,7 @@ fn routes() -> Router {
 
 /// The app as `App` assembles it, with the test shell and a fixed viewer.
 fn app(routes: Router, viewer: Option<&'static str>) -> Router {
-    App::new(routes).shell(test_shell).context(move |_| async move { viewer.map(Viewer) }).router()
+    App::new(routes).context(move |_| async move { viewer.map(Viewer) }).shell(test_shell).router()
 }
 
 #[tokio::test]
@@ -361,12 +361,6 @@ async fn handlers_read_the_context() {
 }
 
 #[test]
-#[should_panic(expected = "the shell takes Option<")]
-fn a_context_of_another_type_than_the_shell_takes_fails_at_startup() {
-    let _ = App::new(routes()).shell(test_shell).context(|_| async { Some(1u8) }).router();
-}
-
-#[test]
 fn current_links_match_the_page_or_its_section() {
     use crate::page::is_current_for_tests as is_current;
     assert!(is_current("/sell", "/sell", false));
@@ -492,8 +486,8 @@ fn api_app(api: impl FnOnce(Router) -> crate::Api) -> Router {
         .route("/api/slow", get(std::future::pending::<&'static str>))
         .route("/api/post", axum::routing::post(|| async { "posted" }));
     App::new(Router::new().route("/", get(|req: Req| async move { req.page("Home", html! { <p>"home"</p> }) })))
-        .shell(test_shell)
         .context(|_| async { Some(Viewer("ada")) })
+        .shell(test_shell)
         .deadline(std::time::Duration::from_millis(50))
         .api("/api", api(routes))
         .router()
@@ -807,24 +801,24 @@ fn guarded_app(dev: bool) -> (Router, Arc<std::sync::atomic::AtomicUsize>) {
     let api = Router::new().route("/api/admin/stats", get(count(&ran)));
     let viewer = |headers: &HeaderMap| headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
     let router = App::new(pages)
-        .shell(test_shell)
         .dev(dev)
         .context(move |headers| {
             let viewer = viewer(headers);
             async move { viewer }
         })
+        .shell(test_shell)
         .api("/api", Router::new().merge(api))
-        .guard("/admin", |viewer: Option<&Viewer>, _| match viewer.map(|v| v.0) {
+        .guard("/admin", |viewer, _| match viewer.map(|v| v.0) {
             None => Access::sign_in(&SignIn),
             Some("ada" | "bob") => Access::ALLOW,
             Some("down") => Access::refuse(Error::status(StatusCode::BAD_GATEWAY)),
             Some(_) => Access::refuse(Error::new("not staff").with_status(StatusCode::FORBIDDEN)),
         })
-        .guard("/admin/billing", |viewer: Option<&Viewer>, req| match viewer.map(|v| v.0) {
+        .guard("/admin/billing", |viewer, req| match viewer.map(|v| v.0) {
             Some("ada") => Access::ALLOW,
             _ => Access::sign_in(&format!("/sign-in?next={}", req.uri().path()).parse::<axum::http::Uri>().unwrap()),
         })
-        .guard("/api/admin", |viewer: Option<&Viewer>, _| match viewer {
+        .guard("/api/admin", |viewer, _| match viewer {
             Some(_) => Access::ALLOW,
             None => Access::sign_in(&SignIn),
         })
@@ -939,8 +933,8 @@ async fn the_outer_guard_answers_first_whatever_the_order_they_are_given_in() {
     let routes = Router::new().route("/admin/billing", get(|| async { "billing" }));
     let router = App::new(routes)
         .context(|_| async { Some(Viewer("eve")) })
-        .guard("/admin/billing", |_: Option<&Viewer>, _| Access::sign_in(&SignIn))
-        .guard("/admin", |_: Option<&Viewer>, _| Access::refuse(Error::status(StatusCode::FORBIDDEN)))
+        .guard("/admin/billing", |_, _| Access::sign_in(&SignIn))
+        .guard("/admin", |_, _| Access::refuse(Error::status(StatusCode::FORBIDDEN)))
         .router();
     let (status, _, _) = guarded(&router, "GET", "/admin/billing", None, &[]).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
@@ -956,24 +950,9 @@ async fn under_dev_a_refusal_names_its_guard() {
 }
 
 #[test]
-#[should_panic(expected = "App::guard(\"/admin\") takes Option<&")]
-fn a_guard_of_another_type_than_the_context_fails_at_startup() {
-    let _ = App::new(Router::new())
-        .context(|_| async { Some(Viewer("ada")) })
-        .guard("/admin", |_: Option<&String>, _| Access::ALLOW)
-        .router();
-}
-
-#[test]
-#[should_panic(expected = "the app has no App::context")]
-fn a_guard_without_a_context_fails_at_startup() {
-    let _ = App::new(Router::new()).guard("/admin", |_: Option<&Viewer>, _| Access::ALLOW).router();
-}
-
-#[test]
 #[should_panic(expected = "a guard prefix is \"/\" or a path like")]
 fn a_guard_prefix_is_a_plain_path() {
-    let _ = App::new(Router::new()).guard("/admin/", |_: Option<&Viewer>, _| Access::ALLOW);
+    let _ = App::new(Router::new()).context(|_| async { None::<Viewer> }).guard("/admin/", |_, _| Access::ALLOW);
 }
 
 /// Reviews anyone may read and only a signed-in editor may write, at one URL.
@@ -985,12 +964,12 @@ fn reviews_app() -> Router {
             .delete(|| async { "deleted" }),
     );
     App::new(routes)
-        .shell(test_shell)
         .context(|headers: &HeaderMap| {
             let viewer = headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
             async move { viewer }
         })
-        .guard("/reviews", |viewer: Option<&Viewer>, req| match viewer.map(|v| v.0) {
+        .shell(test_shell)
+        .guard("/reviews", |viewer, req| match viewer.map(|v| v.0) {
             _ if !req.writes() => Access::ALLOW,
             None => Access::sign_in(&SignIn),
             Some("editor") => Access::ALLOW,
@@ -1032,14 +1011,14 @@ fn private_app(open_sign_in: bool) -> Router {
         .route(SignIn::PATH, page("sign in").post(|| async { "signed in" }))
         .route(Hook::PATH, axum::routing::post(|| async { "hooked" }));
     let mut app = App::new(routes)
-        .shell(test_shell)
         .pwa(crate::pwa::Pwa::new(crate::pwa::Manifest::new("A", "A")))
         .context(|headers: &HeaderMap| {
             let viewer = headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
             async move { viewer }
         })
+        .shell(test_shell)
         .api("/hooks", Router::new())
-        .guard("/", |viewer: Option<&Viewer>, _| match viewer {
+        .guard("/", |viewer, _| match viewer {
             Some(_) => Access::ALLOW,
             None => Access::sign_in(&SignIn),
         })
@@ -1080,7 +1059,7 @@ async fn a_sign_in_that_would_loop_is_an_error_that_says_so() {
     let dev = App::new(Router::new().route(SignIn::PATH, get(|| async { "sign in" })))
         .dev(true)
         .context(|_| async { None::<Viewer> })
-        .guard("/", |_: Option<&Viewer>, _| Access::sign_in(&SignIn))
+        .guard("/", |_, _| Access::sign_in(&SignIn))
         .router();
     let (_, _, body) = guarded(&dev, "GET", "/sign-in", None, &[("accept", "text/html")]).await;
     assert!(body.contains("mark the sign-in route with App::unguarded"), "{body}");
@@ -1092,16 +1071,13 @@ async fn a_guard_names_one_route_by_its_type() {
     let router = App::new(Router::new())
         .context(|_| async { None::<Viewer> })
         .api("/api", routes)
-        .guard(
-            "/api",
-            |_: Option<&Viewer>, req| {
-                if req.is::<ApiItem>() {
-                    Access::refuse(Error::status(StatusCode::FORBIDDEN))
-                } else {
-                    Access::ALLOW
-                }
-            },
-        )
+        .guard("/api", |_, req| {
+            if req.is::<ApiItem>() {
+                Access::refuse(Error::status(StatusCode::FORBIDDEN))
+            } else {
+                Access::ALLOW
+            }
+        })
         .router();
     assert_eq!(guarded(&router, "GET", "/api/items/7", None, &[]).await.0, StatusCode::FORBIDDEN);
     assert_eq!(guarded(&router, "GET", "/api/other", None, &[]).await.0, StatusCode::OK);

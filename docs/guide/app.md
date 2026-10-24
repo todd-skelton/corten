@@ -185,10 +185,10 @@ struct Viewer { staff: bool, editor: bool }
 #[route("/sign-in")]
 struct SignIn;
 
-fn app(routes: Router) -> App {
+fn app(routes: Router) -> App<Viewer> {
     App::new(routes)
         .context(|_headers| async { None::<Viewer> })
-        .guard("/admin", |viewer: Option<&Viewer>, req| match viewer {
+        .guard("/admin", |viewer, req| match viewer {
             None => Access::sign_in(&SignIn),
             Some(v) if v.staff && (v.editor || !req.writes()) => Access::ALLOW,
             Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),

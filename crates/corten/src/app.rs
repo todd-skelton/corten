@@ -1,9 +1,9 @@
 //! [`App`]: an app's routes with the production pieces around them, configured by defaults.
 
 use std::{
-    any::{type_name, TypeId},
     convert::Infallible,
     future::Future,
+    marker::PhantomData,
     path::PathBuf,
     pin::Pin,
     sync::Arc,
@@ -106,11 +106,23 @@ impl Access {
 struct Guard {
     prefix: String,
     check: GuardFn,
-    context: (TypeId, &'static str),
 }
 
+/// The context type of an [`App`] that has no [`App::context`]: nothing can read one, so a guard
+/// and a shell that takes a context do not compile until `.context(..)` gives the app its type.
+///
+/// ```compile_fail
+/// # use corten::prelude::*;
+/// #[derive(Clone)]
+/// struct Viewer;
+/// let app = App::new(Router::new()).guard("/admin", |_: Option<&Viewer>, _| Access::ALLOW);
+/// ```
+pub enum NoContext {}
+
 /// An app: its routes, plus everything around them that every production app needs, on by
-/// default. `App::new(routes).serve().await` gives:
+/// default. `C` is the type [`App::context`] gives ([`NoContext`] until it is called), and a
+/// guard or a shell reading the context takes that type or does not compile.
+/// `App::new(routes).serve().await` gives:
 ///
 /// - security headers, a CSP (Corten's inline tags allowed by hash, a nonce only when the shell
 ///   asks for one), and a check that refuses cross-site writes ([`Policy::new`]; change it with
@@ -129,17 +141,17 @@ struct Guard {
 ///
 /// ```ignore
 /// App::new(routes)
-///     .shell(shell)                                  // the document around every page
 ///     .context(|headers| viewer_from(headers))       // who is asking, for the shell and handlers
+///     .shell(shell)                                  // the document around every page
 ///     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")))
 ///     .serve()
 ///     .await
 /// ```
-pub struct App {
+pub struct App<C = NoContext> {
     routes: Router,
     shell: ShellFn,
     error_page: Option<Box<page::ErrorPage>>,
-    context: Option<(ContextFn, TypeId, &'static str)>,
+    context: Option<ContextFn>,
     policy: Policy,
     static_dir: Option<PathBuf>,
     pwa: Option<Pwa>,
@@ -152,6 +164,7 @@ pub struct App {
     unguarded: Vec<&'static str>,
     deadline: Option<Duration>,
     apis: Vec<(Mount, Router)>,
+    context_type: PhantomData<fn() -> C>,
 }
 
 impl App {
@@ -159,7 +172,7 @@ impl App {
     pub fn new(routes: Router) -> Self {
         App {
             routes,
-            shell: default_shell.into_shell(),
+            shell: IntoShell::<NoContext, _>::into_shell(default_shell),
             error_page: None,
             context: None,
             policy: Policy::new(),
@@ -174,9 +187,139 @@ impl App {
             unguarded: Vec::new(),
             deadline: Some(Duration::from_secs(30)),
             apis: Vec::new(),
+            context_type: PhantomData,
         }
     }
 
+    /// Who is asking: `context(headers)` runs before every page request (outside the error pages,
+    /// so they see it too), and a `Some` value is put in the request extensions, where the shell's
+    /// second parameter, `req.context::<C>()` and axum's `Extension<C>` find it. Typically the
+    /// signed-in user, read from a session cookie. Corten's own routes (static files, the
+    /// runtime, health checks) skip it, and so do [`App::api`] routes unless [`Api::context`].
+    ///
+    /// The function reads what it needs from the headers and returns a future that owns it:
+    /// `|h| { let sid = cookie::get(h, "sid").map(str::to_owned); async move { load(sid).await } }`.
+    ///
+    /// It gives the app its context type, `App<C>`: call it before [`App::shell`] and
+    /// [`App::guard`], which read that type. It is called once:
+    ///
+    /// ```compile_fail
+    /// # use corten::prelude::*;
+    /// let app = App::new(Router::new()).context(|_| async { Some(1) }).context(|_| async { Some(2) });
+    /// ```
+    pub fn context<F, Fut, C>(self, context: F) -> App<C>
+    where
+        F: Fn(&HeaderMap) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Option<C>> + Send + 'static,
+        C: Clone + Send + Sync + 'static,
+    {
+        let context: ContextFn = Arc::new(move |headers| {
+            let value = context(headers);
+            Box::pin(async move {
+                let value = value.await;
+                Box::new(move |extensions: &mut Extensions| match value {
+                    Some(value) => {
+                        extensions.insert(value);
+                        true
+                    }
+                    None => false,
+                }) as InsertContext
+            })
+        });
+        App {
+            routes: self.routes,
+            shell: self.shell,
+            error_page: self.error_page,
+            context: Some(context),
+            policy: self.policy,
+            static_dir: self.static_dir,
+            pwa: self.pwa,
+            ready: self.ready,
+            locales: self.locales,
+            dev: self.dev,
+            components: self.components,
+            sections: self.sections,
+            guards: self.guards,
+            unguarded: self.unguarded,
+            deadline: self.deadline,
+            apis: self.apis,
+            context_type: PhantomData,
+        }
+    }
+}
+
+impl<C: Clone + Send + Sync + 'static> App<C> {
+    /// Routes that only some callers may use: every route at `prefix` and below it, including
+    /// ones added later, unknown URLs and wrong methods there; `"/"` is the whole app. `check`
+    /// gets the request's context (see [`App::context`]; `None` when it found no one) and the
+    /// request ([`Guarded`]: its URI, whether it writes, which route it is), and decides with
+    /// [`Access`]:
+    ///
+    /// ```
+    /// use corten::{axum::http::StatusCode, prelude::*, Error};
+    ///
+    /// #[derive(Clone)]
+    /// struct Viewer { staff: bool, editor: bool }
+    ///
+    /// #[derive(Route)]
+    /// #[route("/sign-in")]
+    /// struct SignIn;
+    ///
+    /// fn app(routes: Router) -> App<Viewer> {
+    ///     App::new(routes)
+    ///         .context(|_| async { None::<Viewer> })
+    ///         .guard("/admin", |viewer, req| match viewer {
+    ///             None => Access::sign_in(&SignIn),
+    ///             Some(v) if v.staff && (v.editor || !req.writes()) => Access::ALLOW,
+    ///             Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
+    ///         })
+    /// }
+    /// # let _ = app(Router::new()).router();
+    /// ```
+    ///
+    /// It runs after the context and before the handler, so a refused request never reaches the
+    /// handler or its extractors (the body is not read). Who passes is the app's model; the guard
+    /// gives the answer in the request's mode: a page or a form post without JavaScript is
+    /// redirected to sign in, a form patch gets `corten-location`, a data client and an
+    /// [`App::api`] route get a JSON 401, and a refused caller gets the error page or the JSON
+    /// error. Under a guard the context also runs for an API route without [`Api::context`].
+    ///
+    /// Guards may nest (`/admin` and `/admin/billing`): every guard a path is under must allow
+    /// it, the outer one first. A prefix is `"/"` or a path like a section's. Corten's own routes
+    /// (static files, the runtime, health, the PWA's files and offline page) and the routes
+    /// marked [`App::unguarded`] are under none. The check reads the app's context type, so a
+    /// guard on an app without [`App::context`], or one that takes another type, does not compile:
+    ///
+    /// ```compile_fail
+    /// # use corten::prelude::*;
+    /// #[derive(Clone)]
+    /// struct Viewer;
+    /// let app = App::new(Router::new())
+    ///     .context(|_| async { Some(Viewer) })
+    ///     .guard("/admin", |_: Option<&String>, _| Access::ALLOW);
+    /// ```
+    ///
+    /// A sign-in answer that points at a path a guard would also send to sign in (a sign-in page
+    /// under `App::guard("/", ..)` that is not [`App::unguarded`]) would loop; the request fails
+    /// with a 500 that says so instead.
+    pub fn guard<F>(mut self, prefix: &str, check: F) -> Self
+    where
+        F: Fn(Option<&C>, &Guarded) -> Access + Send + Sync + 'static,
+    {
+        assert!(
+            prefix == "/" || plain_prefix(prefix),
+            "corten: a guard prefix is \"/\" or a path like \"/admin\": letters, digits, - and _ between slashes, without a trailing slash or parameters: {prefix:?}"
+        );
+        assert!(!self.guards.iter().any(|g| g.prefix == prefix), "corten: the guard {prefix:?} is given twice");
+        self.guards.push(Guard {
+            prefix: prefix.to_string(),
+            check: Box::new(move |extensions, req| check(extensions.get::<C>(), req)),
+        });
+        self
+    }
+}
+
+impl<C> App<C> {
     /// Routes that answer only JSON (a webhook, an OAuth callback, a public API), under `prefix`:
     /// `.api("/api", api_routes)`, or `.api("/api", Api::new(api_routes).allow_origin(..))` for
     /// settings. The routes keep their full paths (`/api/items/{id}`), so a `#[derive(Route)]`
@@ -234,69 +377,6 @@ impl App {
         self
     }
 
-    /// Routes that only some callers may use: every route at `prefix` and below it, including
-    /// ones added later, unknown URLs and wrong methods there; `"/"` is the whole app. `check`
-    /// gets the request's context (see [`App::context`]; `None` when it found no one) and the
-    /// request ([`Guarded`]: its URI, whether it writes, which route it is), and decides with
-    /// [`Access`]:
-    ///
-    /// ```
-    /// use corten::{axum::http::StatusCode, prelude::*, Error};
-    ///
-    /// #[derive(Clone)]
-    /// struct Viewer { staff: bool, editor: bool }
-    ///
-    /// #[derive(Route)]
-    /// #[route("/sign-in")]
-    /// struct SignIn;
-    ///
-    /// fn app(routes: Router) -> App {
-    ///     App::new(routes)
-    ///         .context(|_| async { None::<Viewer> })
-    ///         .guard("/admin", |viewer: Option<&Viewer>, req| match viewer {
-    ///             None => Access::sign_in(&SignIn),
-    ///             Some(v) if v.staff && (v.editor || !req.writes()) => Access::ALLOW,
-    ///             Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
-    ///         })
-    /// }
-    /// # let _ = app(Router::new()).router();
-    /// ```
-    ///
-    /// It runs after the context and before the handler, so a refused request never reaches the
-    /// handler or its extractors (the body is not read). Who passes is the app's model; the guard
-    /// gives the answer in the request's mode: a page or a form post without JavaScript is
-    /// redirected to sign in, a form patch gets `corten-location`, a data client and an
-    /// [`App::api`] route get a JSON 401, and a refused caller gets the error page or the JSON
-    /// error. Under a guard the context also runs for an API route without [`Api::context`].
-    ///
-    /// Guards may nest (`/admin` and `/admin/billing`): every guard a path is under must allow
-    /// it, the outer one first. A prefix is `"/"` or a path like a section's. Corten's own routes
-    /// (static files, the runtime, health, the PWA's files and offline page) and the routes
-    /// marked [`App::unguarded`] are under none. The context's type must be `C`, checked when the
-    /// router is built; without [`App::context`] there is nothing to check and building the
-    /// router panics.
-    ///
-    /// A sign-in answer that points at a path a guard would also send to sign in (a sign-in page
-    /// under `App::guard("/", ..)` that is not [`App::unguarded`]) would loop; the request fails
-    /// with a 500 that says so instead.
-    pub fn guard<C, F>(mut self, prefix: &str, check: F) -> Self
-    where
-        C: Send + Sync + 'static,
-        F: Fn(Option<&C>, &Guarded) -> Access + Send + Sync + 'static,
-    {
-        assert!(
-            prefix == "/" || plain_prefix(prefix),
-            "corten: a guard prefix is \"/\" or a path like \"/admin\": letters, digits, - and _ between slashes, without a trailing slash or parameters: {prefix:?}"
-        );
-        assert!(!self.guards.iter().any(|g| g.prefix == prefix), "corten: the guard {prefix:?} is given twice");
-        self.guards.push(Guard {
-            prefix: prefix.to_string(),
-            check: Box::new(move |extensions, req| check(extensions.get::<C>(), req)),
-            context: (TypeId::of::<C>(), type_name::<C>()),
-        });
-        self
-    }
-
     /// A route no guard covers, for every method: the sign-in page under `App::guard("/", ..)`,
     /// a password reset, a public landing page. `.unguarded::<SignIn>()`, once per route; the
     /// route is matched as the router matches `R::PATH`.
@@ -333,13 +413,22 @@ impl App {
 
     /// The document around every page: a function from [`crate::Document`] to a view, printing
     /// `{doc.head}` in `<head>` and `{doc.main}` in `<main>`. With a second parameter,
-    /// `Option<C>`, it also gets the request's context (see [`App::context`]).
+    /// `Option<C>`, it also gets the request's context (see [`App::context`]), whose type it must
+    /// be:
+    ///
+    /// ```compile_fail
+    /// # use corten::prelude::*;
+    /// fn shell(doc: Document, viewer: Option<String>) -> impl Render {
+    ///     html! { <html><body>{doc.main}</body></html> }
+    /// }
+    /// let app = App::new(Router::new()).context(|_| async { Some(1_u32) }).shell(shell);
+    /// ```
     ///
     /// The shell renders on full page loads only; client navigation swaps `<main>`. Every page
     /// carries a key hashed from the context and the deploy, and when a navigation or a form
     /// answer arrives with a different key (sign-in, sign-out, a new release), the runtime
     /// reloads the document, so the shell is never stale.
-    pub fn shell<M>(mut self, shell: impl IntoShell<M>) -> Self {
+    pub fn shell<M>(mut self, shell: impl IntoShell<C, M>) -> Self {
         self.shell = shell.into_shell();
         self
     }
@@ -356,37 +445,6 @@ impl App {
             let (meta, view) = page(status);
             (meta.into(), view)
         }));
-        self
-    }
-
-    /// Who is asking: `context(headers)` runs before every page request (outside the error pages,
-    /// so they see it too), and a `Some` value is put in the request extensions, where the shell's
-    /// second parameter, `req.context::<C>()` and axum's `Extension<C>` find it. Typically the
-    /// signed-in user, read from a session cookie. Corten's own routes (static files, the
-    /// runtime, health checks) skip it, and so do [`App::api`] routes unless [`Api::context`].
-    ///
-    /// The function reads what it needs from the headers and returns a future that owns it:
-    /// `|h| { let sid = cookie::get(h, "sid").map(str::to_owned); async move { load(sid).await } }`.
-    pub fn context<F, Fut, C>(mut self, context: F) -> Self
-    where
-        F: Fn(&HeaderMap) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Option<C>> + Send + 'static,
-        C: Clone + Send + Sync + 'static,
-    {
-        let context: ContextFn = Arc::new(move |headers| {
-            let value = context(headers);
-            Box::pin(async move {
-                let value = value.await;
-                Box::new(move |extensions: &mut Extensions| match value {
-                    Some(value) => {
-                        extensions.insert(value);
-                        true
-                    }
-                    None => false,
-                }) as InsertContext
-            })
-        });
-        self.context = Some((context, TypeId::of::<C>(), type_name::<C>()));
         self
     }
 
@@ -431,26 +489,6 @@ impl App {
     /// (`app.router().oneshot(request)`) and for serving it another way.
     pub fn router(self) -> Router {
         let dev = self.dev.unwrap_or_else(|| std::env::var_os("CORTEN_DEV").is_some());
-        if let (Some((_, given, given_name)), Some((expected, expected_name))) = (&self.context, self.shell.context_type) {
-            assert!(
-                *given == expected,
-                "corten: the shell takes Option<{expected_name}> but App::context gives Option<{given_name}>"
-            );
-        }
-        for guard in &self.guards {
-            let (expected, expected_name) = guard.context;
-            match &self.context {
-                Some((_, given, given_name)) => assert!(
-                    *given == expected,
-                    "corten: App::guard({:?}) takes Option<&{expected_name}> but App::context gives Option<{given_name}>",
-                    guard.prefix
-                ),
-                None => panic!(
-                    "corten: App::guard({:?}) reads the context, Option<&{expected_name}>, but the app has no App::context",
-                    guard.prefix
-                ),
-            }
-        }
         let sections: Vec<(&str, &[crate::Component])> = self.sections.iter().map(|(p, c)| (p.as_str(), c.as_slice())).collect();
         let assets = load_assets(self.static_dir, &self.components, &sections).map(Arc::new);
         let mut head = String::new();
@@ -523,7 +561,7 @@ impl App {
         guards.sort_by_key(|guard| guard.prefix.len());
         let layer = Arc::new(Layer {
             shared: Arc::new(shared),
-            context: self.context.map(|(f, _, _)| f),
+            context: self.context,
             guards,
             unguarded: self.unguarded,
             deadline: self.deadline,
