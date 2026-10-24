@@ -82,6 +82,11 @@ The form component shows them next to each field:
 {form.errors.message(f.email)}
 ```
 
+A refusal that belongs to no field (a cross-field rule, or the backend saying no) is
+`errors.add_form(text)`, shown once at the top of the form with `{form.errors.form_message()}`.
+Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
+clients and agents only see what is in `Errors`.
+
 The handler answers a failed check with `req.invalid`. It replies 422 with the form as a patch for
 the runtime, `{"errors": ...}` for JSON clients, or the whole page for a browser without
 JavaScript. The page closure runs only in that last case, so put the expensive loads inside it:
