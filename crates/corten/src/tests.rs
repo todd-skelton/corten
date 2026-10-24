@@ -1136,3 +1136,49 @@ async fn a_guard_names_one_route_by_its_type() {
     assert_eq!(guarded(&router, "GET", "/api/items/7", None, &[]).await.0, StatusCode::FORBIDDEN);
     assert_eq!(guarded(&router, "GET", "/api/other", None, &[]).await.0, StatusCode::OK);
 }
+
+/// Whether this system has an IPv6 loopback address to listen on.
+fn has_ipv6_loopback() -> bool {
+    std::net::TcpListener::bind("[::1]:0").is_ok()
+}
+
+/// Without `HOST`, `localhost` is both loopback addresses on one port, so a browser that tries
+/// `::1` first is answered at once, not after a fallback; stopping ends both.
+#[tokio::test]
+async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listeners = crate::app::bind(None, 0).await.unwrap();
+    let addrs: Vec<_> = listeners.iter().map(|l| l.local_addr().unwrap()).collect();
+    assert!(addrs[0].is_ipv4() && addrs[0].ip().is_loopback(), "{addrs:?}");
+    assert_eq!(addrs.len(), if has_ipv6_loopback() { 2 } else { 1 }, "{addrs:?}");
+    assert!(addrs.iter().all(|a| a.ip().is_loopback() && a.port() == addrs[0].port()), "{addrs:?}");
+
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let routes = Router::new().route("/", get(|| async { "hi" }));
+    let server = tokio::spawn(crate::app::serve_on(listeners, routes, async {
+        let _ = stopped.await;
+    }));
+    for addr in &addrs {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream.write_all(b"GET / HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n").await.unwrap();
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).await.unwrap();
+        assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("hi"), "{addr}: {answer}");
+    }
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+/// A `[::1]` port another process holds is an error, not a server only `127.0.0.1` reaches:
+/// `http://localhost` would get the other process.
+#[tokio::test]
+async fn a_taken_ipv6_loopback_port_is_an_error() {
+    if !has_ipv6_loopback() {
+        return;
+    }
+    let taken = std::net::TcpListener::bind("[::1]:0").unwrap();
+    let port = taken.local_addr().unwrap().port();
+    let error = crate::app::bind(None, port).await.expect_err("the port is taken on ::1");
+    assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+    assert_eq!(crate::app::bind(Some("127.0.0.1"), port).await.unwrap().len(), 1, "HOST names one address");
+}

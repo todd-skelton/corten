@@ -366,6 +366,14 @@ Corten is pre-1.0, so any minor version may change the API.
    own `Component` constant inside `render`, and the build failed with "expected `&Component`,
    found `&Class`" pointing at `#[component(css)]`. Found porting a Chase Sets admin screen,
    where `Field` with `.field` and `Choices` with `.choices` had to be renamed.
+10. Without `HOST`, `corten::serve` listens on both loopback addresses, `127.0.0.1` and `[::1]`,
+    on one port (only `127.0.0.1` on a system without IPv6). Before, it took `127.0.0.1` alone,
+    and a browser that resolves `localhost` to `::1` first (Chromium on Windows) waited for a
+    fallback on every new connection: about 200 ms added to every page and asset, measured
+    porting a Chase Sets admin screen, where it made the port look slower than the React app it
+    replaced. A `[::1]` port another process holds is now an error at startup, since
+    `localhost` would reach that process. `HOST` set (as the Dockerfiles set `0.0.0.0`) binds
+    that one address, as before.
 
 ### Documentation
 

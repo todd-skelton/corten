@@ -7,7 +7,7 @@ axum routes. Each default can be replaced in one line.
 
 | Concern | Default | Override |
 |---|---|---|
-| Address | `HOST` (`127.0.0.1`), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
+| Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
 | Shell | a minimal HTML document | `.shell(fn(Document) -> impl Render)`, or `fn(Document, Option<C>)` with a context |
 | Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`, first: it makes the app an `App<Viewer>`, and shells, guards, page handlers (`req.context::<C>()`) and error pages see it; Corten's own routes and API routes skip it |
 | A part of the app | none | `.area("/admin", Area::new(routes))`: its routes under one prefix, with `.components(&[..])` for a stylesheet only its pages load and `.guard(\|viewer, req\| ..)` for who may use it ([below](#areas-and-guarded-routes)) |
