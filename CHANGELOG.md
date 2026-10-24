@@ -359,6 +359,14 @@ Corten is pre-1.0, so any minor version may change the API.
    page load that could not use the prefetched response.
 9. The README, `docs/design.md` and `corten-ui` say what is tested in which browsers: the
    runtime and `corten-ui` in Chromium, Firefox and WebKit.
+10. Without `HOST`, `App::serve` listens on both loopback addresses, `127.0.0.1` and `[::1]`, on
+    one port (only `127.0.0.1` on a system without IPv6). Before, it took `127.0.0.1` alone, and
+    a browser that resolves `localhost` to `::1` first (Chromium on Windows) waited for a
+    fallback on every new connection: about 200 ms added to every page and asset, measured
+    porting a Chase Sets admin screen, where it made the port look slower than the React app it
+    replaced. A `[::1]` port another process holds is now an error at startup, since
+    `localhost` would reach that process. `HOST` set (as the Dockerfiles set `0.0.0.0`) binds
+    that one address, as before.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

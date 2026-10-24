@@ -534,22 +534,81 @@ impl App {
         routes.layer(Wrap(layer))
     }
 
-    /// Serves the app on `HOST`:`PORT` (default `127.0.0.1:3000`) until Ctrl-C or `SIGTERM`,
-    /// ending live streams first so shutdown is quick. With feature `log`, prints logs to stderr
+    /// Serves the app on `HOST`:`PORT` until Ctrl-C or `SIGTERM`, ending live streams first so
+    /// shutdown is quick. Without `HOST` it listens on the loopback addresses, `127.0.0.1` and
+    /// `[::1]`, so `http://localhost:PORT` answers at once however the system resolves
+    /// `localhost`; `PORT` defaults to 3000. With feature `log`, prints logs to stderr
     /// (`RUST_LOG` style filtering is the app's choice: set its own subscriber first).
     pub async fn serve(self) -> std::io::Result<()> {
         #[cfg(feature = "log")]
         let _ = tracing_subscriber::fmt().with_target(false).try_init();
-        let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".into());
+        let host = std::env::var("HOST").ok();
         let port: u16 = match std::env::var("PORT") {
             Ok(port) => port.parse().map_err(|_| std::io::Error::other(format!("PORT is not a port number: {port}")))?,
             Err(_) => 3000,
         };
         let router = self.router();
-        let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
-        let shown = if host == "0.0.0.0" { "localhost" } else { &host };
-        println!("corten: listening on http://{shown}:{}", listener.local_addr()?.port());
-        axum::serve(listener, router).with_graceful_shutdown(crate::shutdown_signal()).await
+        let listeners = bind(host.as_deref(), port).await?;
+        let shown = match host.as_deref() {
+            None | Some("0.0.0.0" | "::") => "localhost",
+            Some(host) => host,
+        };
+        println!("corten: listening on http://{shown}:{}", listeners[0].local_addr()?.port());
+        serve_on(listeners, router, crate::shutdown_signal()).await
+    }
+}
+
+/// The listeners for `host`:`port`; without a host, the IPv4 and IPv6 loopback addresses on one
+/// port. Browsers resolve `localhost` to `::1` first on some systems (Windows does), and a server
+/// only on `127.0.0.1` then answers each new connection a fallback later, about 200 ms (measured
+/// on Windows with Chromium and curl). A system without IPv6 gets `127.0.0.1` alone, but a `[::1]`
+/// port another process holds is an error: `localhost` would reach that process instead (port 0,
+/// any free port, tries another pair).
+pub(crate) async fn bind(host: Option<&str>, port: u16) -> std::io::Result<Vec<tokio::net::TcpListener>> {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    if let Some(host) = host {
+        return Ok(vec![tokio::net::TcpListener::bind((host, port)).await?]);
+    }
+    let mut tries = 0;
+    loop {
+        let v4 = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;
+        match tokio::net::TcpListener::bind((Ipv6Addr::LOCALHOST, v4.local_addr()?.port())).await {
+            Ok(v6) => return Ok(vec![v4, v6]),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                tries += 1;
+                if port != 0 || tries == 8 {
+                    return Err(error);
+                }
+            }
+            Err(_) => return Ok(vec![v4]),
+        }
+    }
+}
+
+/// Serves `router` on every listener until `stop` resolves, then lets each finish its requests;
+/// a listener that fails ends it with the error.
+pub(crate) async fn serve_on(
+    listeners: Vec<tokio::net::TcpListener>,
+    router: Router,
+    stop: impl Future<Output = ()>,
+) -> std::io::Result<()> {
+    use futures_util::future::{select, try_join_all, Either};
+    use std::future::IntoFuture;
+    let (stopped, watch) = tokio::sync::watch::channel(false);
+    let servers = listeners.into_iter().map(|listener| {
+        let mut watch = watch.clone();
+        let stop = async move {
+            let _ = watch.wait_for(|stopped| *stopped).await;
+        };
+        axum::serve(listener, router.clone()).with_graceful_shutdown(stop).into_future()
+    });
+    let servers = std::pin::pin!(try_join_all(servers));
+    match select(std::pin::pin!(stop), servers).await {
+        Either::Left(((), servers)) => {
+            let _ = stopped.send(true);
+            servers.await.map(drop)
+        }
+        Either::Right((served, _)) => served.map(drop),
     }
 }
 

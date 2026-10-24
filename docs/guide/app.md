@@ -7,7 +7,7 @@ routes. Each default can be replaced in one line.
 
 | Concern | Default | Override |
 |---|---|---|
-| Address | `HOST` (`127.0.0.1`), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
+| Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
 | Shell | a minimal HTML document | `.shell(fn(Document) -> impl Render)`, or `fn(Document, Option<C>)` with a context |
 | Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`: shells, page handlers (`req.context::<C>()`) and error pages see it; Corten's own routes and API routes skip it |
 | Who may use a route | anyone | `.guard("/admin", \|viewer: Option<&Viewer>, req\| ..)`: every route under the prefix (`"/"`: the whole app) needs the guard's `Access::ALLOW`; `.unguarded::<SignIn>()` opens one route ([below](#guarded-routes)) |
