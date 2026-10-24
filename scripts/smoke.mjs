@@ -220,6 +220,27 @@ async function run(browser) {
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Acme Corp"), null, { timeout: 4000 }).catch(() => {});
   check("a submit button's formaction and formmethod are used", ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Acme Corp"));
 
+  // Controls named like the form's properties (`<button name="action">` makes `form.action` that
+  // button) do not change where or how the runtime posts it.
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      '<form id="shadowed" method="post" action="/watch" data-patch><input type="hidden" name="id" value="s2"><input type="hidden" name="method" value="x"><input type="hidden" name="enctype" value="x"><input type="hidden" name="elements" value="x"><input type="hidden" name="setAttribute" value="x"><button name="action" value="go">Watch</button></form>',
+    ),
+  );
+  const shadowedPosts = /** @type {string[]} */ ([]);
+  const onShadowed = (/** @type {import("@playwright/test").Request} */ r) => r.resourceType() === "fetch" && shadowedPosts.push(`${r.method()} ${new URL(r.url()).pathname}`);
+  page.on("request", onShadowed);
+  await page.click("#shadowed button");
+  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Globex"), null, { timeout: 4000 }).catch(() => {});
+  page.off("request", onShadowed);
+  check(
+    "controls named action, method, id and the like do not change the post",
+    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Globex") && shadowedPosts.join() === "POST /watch",
+    `${shadowedPosts.join()}; ${await page.textContent("#watch-message")}`,
+  );
+  await page.evaluate(() => document.getElementById("shadowed")?.remove());
+
   // The latest submit wins: a slow earlier reply never overwrites a later one.
   delayWatch = 1200;
   await page.selectOption("select[name=id]", "s1");
@@ -325,7 +346,9 @@ async function run(browser) {
   else skip("same context: navigation swaps again", noSwaps);
 
   // A <corten-live> whose stream finishes (here one fragment, then `end`) applies it and stays
-  // closed: no reconnect after the browser's retry delay (about 3 s in Chromium).
+  // closed: no reconnect after the browser's retry delay (about 3 s in Chromium). Without the
+  // Navigation API the page above was a full load, whose title is in before <main> is.
+  await page.waitForLoadState("domcontentloaded");
   let onceRequests = 0;
   await page.route("**/live/once", (route) => {
     onceRequests += 1;
