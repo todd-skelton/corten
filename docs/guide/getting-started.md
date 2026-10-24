@@ -57,7 +57,7 @@ struct Greet;
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let routes = Router::new().route(Home::PATH, get(home)).route(Greet::PATH, post(greet));
-    App::new(routes).shell(shell).serve().await
+    corten::serve(App::new(routes).shell(shell)).await
 }
 
 async fn home(req: Req) -> corten::Result {

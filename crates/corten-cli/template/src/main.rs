@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    app().serve().await
+    corten::serve(app()).await
 }
 
 /// Every URL the app serves. Views link to these types, so a link cannot point at a route that

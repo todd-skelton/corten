@@ -57,6 +57,13 @@ framework's shape, and what it does not do yet.
 5. Everything works without JavaScript: links are links and forms post.
 6. A page another surface reads derives `Serialize`, and its fields are its whole view model
    (formatted text included). Then `req.screen` gives every surface the same data.
+7. `App` configures the whole app; a part of it under a URL prefix is an `Area` (or an `Api`
+   for routes that answer only JSON), which owns its routes. A new setting that applies to a
+   prefix goes on `Area` or `Api`, never on `App` as a method taking a prefix string; one that
+   reads who is asking takes the context type from `App<C>`, so a mismatch does not compile.
+   Before adding to `App`, check whether the setting belongs on one of those, and whether the
+   builder still reads as one list of settings with one way to give each; reorganize it when it
+   does not, rather than add a second way.
 
 ## Limits
 
@@ -89,10 +96,10 @@ framework's shape, and what it does not do yet.
    `html! { let shown = saved.as_deref().unwrap_or(typed); <input value={shown}> }`.
 9. Component stylesheets support plain CSS with nesting and `@media`, `@supports`, `@container`,
    `@layer`, `@keyframes` and `@font-face`; `@import` and escaped class names are not supported.
-   Keyframe names are not scoped, so a section's keyframes share one namespace with the rest.
+   Keyframe names are not scoped, so an area's keyframes share one namespace with the rest.
    Every component listed in `App::components` is in one file, whether or not a page uses it: the
    item page's `components.css` (tokens, two themes, utilities and six components) is 3,223 bytes,
-   1,047 brotli (measured). `App::section` moves the components only some pages render into a file
+   1,047 brotli (measured). `Area::components` moves the components only some pages render into a file
    linked from those pages; the split is by URL prefix, chosen by the app, not detected from what
    a page renders, which would cost every render.
 10. `corten-ui` is tested in Chromium, Firefox and WebKit (Playwright's builds). Its popups are placed by the design system's CSS with
@@ -101,7 +108,10 @@ framework's shape, and what it does not do yet.
     Its names in the page are prefixed (`ui.combo_box.js`, `data-scope="ui-combo-box"`) through
     `[package.metadata.corten] scripts = "ui"`, so an app's own components never collide with
     them. Two of an app's own scripts with one file name are a startup error that names both.
-11. `App::guard` covers a URL prefix (or `/`), not a route list: a route is opened with
-    `App::unguarded`, not left out of a list, so one added later is covered. A guard sees the
-    context, the URI and whether the request writes, not the record a route loads, so a check
-    that depends on the record (the author, the organization) stays in its handler.
+11. A guard (`App::guard` for the whole app, `Area::guard` and `Api::guard` for a prefix) covers
+    a URL prefix, not a route list: a route is opened with `App::unguarded`, not left out of a
+    list, so one added later is covered. A guard sees the context, the URI and whether the
+    request writes, not the record a route loads, so a check that depends on the record (the
+    author, the organization) stays in its handler. An area's routes must start with its
+    prefix, checked when a request reaches one (a route typed wrong answers 500), not at
+    startup, since an axum router does not list its paths.

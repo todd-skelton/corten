@@ -7,7 +7,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> std::io::Result<()> {
-//!     App::new(Router::new().route("/", get(home))).serve().await
+//!     corten::serve(App::new(Router::new().route("/", get(home)))).await
 //! }
 //!
 //! async fn home(req: Req) -> corten::Result {
@@ -25,7 +25,8 @@
 //! | `Data` | a native screen, an agent or a test, with `Accept: application/json` | the screen's data as JSON ([`Req::screen`]) |
 //!
 //! Routes with no screen (webhooks, OAuth callbacks, public APIs) answer only JSON: mount them
-//! under a prefix with [`App::api`] and every failure there is JSON ([`Api`]).
+//! under a prefix with [`App::api`] and every failure there is JSON ([`Api`]). A part of the app
+//! with its own stylesheet or guard (an admin area, an account) is an [`Area`].
 //!
 //! [`App`] puts the production pieces around the app's routes with defaults: security headers
 //! and a CSP, a cross-site write check, error pages, versioned static files, cache headers
@@ -37,7 +38,7 @@
 //! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`].
 //! Features: `json` (handler values, data screens), `feed` (live rows), `types` (TypeScript
 //! declarations from Rust types), `agent` (MCP tools), `compress`, `log` (a log subscriber in
-//! [`App::serve`]).
+//! [`serve`]).
 
 // So the code `html!` generates (`::corten::view::...`) also compiles inside this crate.
 extern crate self as corten;
@@ -87,7 +88,7 @@ use axum::{
 use futures_util::{Stream, StreamExt};
 
 pub use api::Api;
-pub use app::{Access, App, Guarded, NoContext};
+pub use app::{serve, Access, App, Area, Guarded, NoContext};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 pub use cache::Cache;
@@ -142,7 +143,7 @@ pub mod prelude {
         raw,
         script::{el, refs, Handler, Ref},
         view::Id,
-        Access, Api, App, Cache, Document, Errors, FieldName, Fields, Form, Meta, Mode, Query, Render, Req, Result, Route,
+        Access, Api, App, Area, Cache, Document, Errors, FieldName, Fields, Form, Meta, Mode, Query, Render, Req, Result, Route,
     };
 }
 

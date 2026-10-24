@@ -723,7 +723,7 @@ async function swapPage(html, signal) {
 }
 
 /**
- * Moves the section stylesheets a page response links (`App::section`) out of it, adds those this
+ * Moves the section stylesheets a page response links (`Area::components`) out of it, adds those this
  * document lacks to <head> and resolves when they have loaded: true, or false when one failed.
  * They are never removed: their rules only match their own components' classes.
  * @param {DocumentFragment} content

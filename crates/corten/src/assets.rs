@@ -7,7 +7,7 @@
 //! (`#[component(js)]` and `script!`, compiled into the binary) are served from
 //! `scripts/{name}.js` in the same version, the app's typed events from `events.js` (imported as
 //! `corten/events`), and the components' stylesheets, joined in the order the app lists them,
-//! from `components.css`, except a section's (`App::section`), which are joined into
+//! from `components.css`, except an area's (`Area::components`), which are joined into
 //! `sections/{prefix}.css`.
 //!
 //! During a rolling deploy a page from the old version can ask a new server for an old URL. It
@@ -123,8 +123,7 @@ impl Assets {
             .iter()
             .map(|c| (0, c))
             .chain(sections.iter().enumerate().flat_map(|(i, (_, list))| list.iter().map(move |c| (i + 1, c))));
-        let place =
-            |at: usize| if at == 0 { "App::components".to_string() } else { format!("the section {}", sections[at - 1].0) };
+        let place = |at: usize| if at == 0 { "App::components".to_string() } else { format!("the area {}", sections[at - 1].0) };
         let mut seen: Vec<(&Component, usize)> = Vec::new();
         let mut sheets = vec![String::new(); sections.len() + 1];
         let mut events = String::new();
@@ -142,7 +141,7 @@ impl Assets {
                 {
                     if *first != at && component.style.is_some() {
                         return Err(clash(format!(
-                            "{} is listed in {} and in {}: its stylesheet is in one file, so list a component that pages in several sections render in App::components",
+                            "{} is listed in {} and in {}: its stylesheet is in one file, so list a component that pages in several areas render in App::components",
                             component.name,
                             place(*first),
                             place(at)
@@ -221,7 +220,7 @@ impl Assets {
             }
             let file = section_file(prefix);
             if sources.iter().any(|(u, _)| *u == file) {
-                return Err(clash(format!("the static directory has a {file}, the name of the section {prefix}'s stylesheet")));
+                return Err(clash(format!("the static directory has a {file}, the name of the area {prefix}'s stylesheet")));
             }
             sources.push((file.clone(), css.into_bytes()));
             section_files.push((prefix.to_string(), file));
@@ -603,9 +602,9 @@ mod tests {
             Assets::build_with(None, components, sections, "/assets").err().expect("an error").to_string()
         };
         let twice = error(&[card], &[("/admin", &[card])]);
-        assert!(twice.contains("Card is listed in App::components and in the section /admin"), "{twice}");
+        assert!(twice.contains("Card is listed in App::components and in the area /admin"), "{twice}");
         let two_sections = error(&[], &[("/admin", &[chart]), ("/shop", &[chart])]);
-        assert!(two_sections.contains("in the section /admin and in the section /shop"), "{two_sections}");
+        assert!(two_sections.contains("in the area /admin and in the area /shop"), "{two_sections}");
         // tokens! names its stylesheet by the token file's path, as both name and file.
         let tokens = Component { style: Some(crate::Style { file: "tokens.json", ..tokens.style.unwrap() }), ..tokens };
         let global = error(&[], &[("/admin", &[tokens])]);

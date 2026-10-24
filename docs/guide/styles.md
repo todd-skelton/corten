@@ -32,7 +32,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 | `#[component(css = OfferList)]` | a helper in the same module shares the stylesheet, and its uses count |
 | `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed responsive utilities: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
 | `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
-| `App::section("/admin", &[SalesChart, ...])` | those stylesheets in a file of their own, `sections/admin.css`, linked only from pages at and under `/admin`; a component listed in two places, or tokens in a section, is a startup error, and a page outside the section that renders one is an error under `corten dev` |
+| `App::area("/admin", Area::new(routes).components(&[SalesChart, ...]))` | those stylesheets in a file of their own, `sections/admin.css`, linked only from pages at and under `/admin`; a component listed in two places, or tokens in an area, is a startup error, and a page outside the area that renders one is an error under `corten dev` |
 
 Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks the
 class, so adding a variant without a rule does not compile. A component library is a crate that
@@ -41,37 +41,38 @@ exports `pub const COMPONENTS: &[Component]`; the app passes it to `App::compone
 Link it before `{doc.head}` so component rules win ties. Inline `style=` stays blocked by the
 CSP; one-off values come from the token utilities instead.
 
-## Sections
+## Areas
 
 Every page links `components.css`, so a large part of the app that most visitors never open (an
-admin console, seller tools) adds its CSS to every first load. `App::section` gives that part a
-stylesheet of its own:
+admin console, seller tools) adds its CSS to every first load. An area
+([app guide](app.md#areas-and-guarded-routes)) gives that part its routes under one prefix and
+a stylesheet of its own:
 
 ```rust,ignore
 App::new(routes)
-    .components(&[TOKENS, Button, OfferList])           // every page
-    .section(Admin::PATH, &[SalesChart, AuditTable])    // pages at /admin and under it
+    .components(&[TOKENS, Button, OfferList])                              // every page
+    .area(Admin::PATH, Area::new(admin).components(&[SalesChart, AuditTable])) // pages at /admin and under it
 ```
 
 - The server picks a page's stylesheets by its path, from links built at startup: no per-render
-  tracking. A page under nested sections (`/admin`, `/admin/reports`) links each, outermost first.
-- A client navigation into the section adds the stylesheet to `<head>` and waits for it before
+  tracking. A page under nested areas (`/admin`, `/admin/reports`) links each, outermost first.
+- A client navigation into the area adds the stylesheet to `<head>` and waits for it before
   swapping the page in, so the page never shows unstyled; if it fails to load, the runtime loads
   the page in full. The stylesheet then stays: its rules match only its components' classes.
-- A component that pages in several sections render belongs in `App::components`, and so do
+- A component that pages in several areas render belongs in `App::components`, and so do
   tokens, which style every page. A patch is styled by the page it lands on and is checked
-  against its own URL, so a form whose action sits outside the page's section should answer with
+  against its own URL, so a form whose action sits outside the page's area should answer with
   components from `App::components`.
 
-Splitting has a price: two files compress worse than one, and entering the section costs a
+Splitting has a price: two files compress worse than one, and entering the area costs a
 request. Measured on the item page (release build, brotli at its file level): one
 `components.css` is 3,223 bytes, 1,047 brotli. With the item page's four components in an
-`/items` section, every page gets 593 bytes brotli and item pages 548 more, so the home page
+`/items` area, every page gets 593 bytes brotli and item pages 548 more, so the home page
 saves 454 bytes and an item page downloads 94 more, in two requests. Leave everything in
-`App::components` until a section's share is large enough to measure on the pages outside it.
+`App::components` until an area's share is large enough to measure on the pages outside it.
 
-Without sections a request costs what it did before (callgrind, the item page in process: the
-same instruction counts within run-to-run noise). Writing a section's links costs about 120
+Without areas a request costs what it did before (callgrind, the item page in process: the
+same instruction counts within run-to-run noise). Writing an area's links costs about 120
 instructions a page; the item page's navigation as a whole measured 88,341-88,589 instructions
-with a section against 87,249-87,331 without; most of the rest of the difference is in serde_json,
-which the section code does not call, and the allocator. Sections add 126 bytes gzip to the runtime.
+with an area against 87,249-87,331 without; most of the rest of the difference is in serde_json,
+which the area code does not call, and the allocator. Area stylesheets add 126 bytes gzip to the runtime.

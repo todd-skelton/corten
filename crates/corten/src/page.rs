@@ -306,9 +306,9 @@ pub(crate) struct Shared {
     pub locales: Option<&'static [&'static str]>,
     /// Dev mode: error pages show the error.
     pub dev: bool,
-    /// The names of the components the app lists (`App::components` and `App::section`).
+    /// The names of the components the app lists (`App::components` and `Area::components`).
     pub components: std::collections::HashSet<&'static str>,
-    /// Each section with a stylesheet (`App::section`): its prefix and the stylesheet's `<link>`.
+    /// Each area with a stylesheet (`Area::components`): its prefix and the stylesheet's `<link>`.
     pub sections: Vec<(String, String)>,
     /// The section (an index in `sections`) whose stylesheet has a component's rules.
     pub section_of: std::collections::HashMap<&'static str, usize>,
@@ -345,11 +345,10 @@ impl Shared {
 }
 
 /// Used by handlers that run without an [`crate::App`] (unit tests of a bare router).
-static DEFAULT: LazyLock<Arc<Shared>> =
-    LazyLock::new(|| {
-        let shell = IntoShell::<crate::NoContext, _>::into_shell(default_shell);
-        Arc::new(Shared::new(shell, error_page_fn(default_error_page), None, String::new()))
-    });
+static DEFAULT: LazyLock<Arc<Shared>> = LazyLock::new(|| {
+    let shell = IntoShell::<crate::NoContext, _>::into_shell(default_shell);
+    Arc::new(Shared::new(shell, error_page_fn(default_error_page), None, String::new()))
+});
 
 pub(crate) fn error_page_fn<F, V>(page: F) -> Box<ErrorPage>
 where
@@ -500,7 +499,7 @@ impl Req {
             let prefix = &self.shared.sections[index].0;
             if !crate::api::under(prefix, self.path()) {
                 return Err(Error::new(format!(
-                    "{path} renders {name}, whose stylesheet is in the section {prefix}, which is not linked here: list {name} in App::components, or serve the page under {prefix}",
+                    "{path} renders {name}, whose stylesheet is in the area {prefix}, which is not linked here: list {name} in App::components, or route the page in that area",
                     path = self.path(),
                     name = component.name
                 )));
