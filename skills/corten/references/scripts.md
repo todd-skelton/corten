@@ -119,6 +119,11 @@ async fn trades(State(m): State<Market>) -> impl IntoResponse {
 }
 ```
 
+When the data has a version, resume instead of redrawing: `Fragment::new(html).cursor(v)` for
+each item, `<corten-live src={Trades} since={v}>` in the page, and a `LiveSince(since)`
+argument that says where the browser is (the page's `since`, or `Last-Event-ID` after a
+reconnect). Send nothing until the next change when it is current. See the live-data guide.
+
 ## Live rows (feature `feed`)
 
 ```rust

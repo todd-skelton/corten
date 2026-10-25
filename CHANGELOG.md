@@ -208,7 +208,14 @@ Corten is pre-1.0, so any minor version may change the API.
     implements `Serialize` is written by serde_json. `corten::json::to_vec` writes any `ToJson`.
     `examples/item-page` derives it on its view model, and its `render_cost` checks the 500 benchmark
     items against serde_json byte for byte and times the JSON.
-32. `#[derive(FromJson)]`, `corten::json::from_slice` and `from_str` (feature `json`, the derive in the
+32. A `<corten-live>` stream resumes after a reconnect: `corten::live` takes `Fragment`s
+    as well as HTML, `Fragment::new(html).cursor(seq)` sends the app's cursor as the event's
+    `id`, `<corten-live since={seq}>` gives the first connection the cursor the page was
+    rendered at, and the `LiveSince` extractor reads either (`Last-Event-ID` first). A
+    handler sends only what changed after it, so a page view or a reconnect costs no extra read
+    or render. Asked for by the Chase Sets pilot, whose catalog lists drew every row on each
+    connection ([#15 A <corten-live> stream cannot resume after a reconnect](https://github.com/todd-skelton/corten/issues/15)).
+33. `#[derive(FromJson)]`, `corten::json::from_slice` and `from_str` (feature `json`, the derive in the
     prelude): JSON read by Corten's reader, which matches each key against the type's fields, makes
     each value straight from the text and skips (validating) the rest. Where it meets anything it
     does not follow (an escaped key, a missing or duplicate field, a number it does not parse

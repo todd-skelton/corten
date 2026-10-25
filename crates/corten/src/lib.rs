@@ -194,17 +194,99 @@ pub(crate) fn import_map(events: Option<&str>, views: Option<&str>) -> String {
 /// Streams fragments to `<corten-live src="...">` as server-sent events. Each item is applied like a
 /// form patch: top-level elements replace the elements with the same `id`.
 ///
+/// An item is rendered HTML (a `String`), or a [`Fragment`] that also carries the app's cursor
+/// after it, so a reconnect resumes there ([`LiveSince`]).
+///
 /// When `fragments` ends, the element closes its connection instead of reconnecting, so a stream
 /// of one item is a part of the page sent when it is ready. When the server shuts down the stream
 /// ends without that, and the browser reconnects (to another instance, or this one restarted).
 pub fn live<S>(fragments: S) -> Sse<impl Stream<Item = std::result::Result<Event, Infallible>>>
 where
-    S: Stream<Item = String> + Send + 'static,
+    S: Stream + Send + 'static,
+    S::Item: Into<Fragment>,
 {
-    let patches = fragments.map(|html| Event::default().event("patch").data(html));
+    let patches = fragments.map(|fragment| {
+        let Fragment { html, cursor } = fragment.into();
+        let event = Event::default().event("patch");
+        match cursor {
+            Some(cursor) => event.id(cursor),
+            None => event,
+        }
+        .data(html)
+    });
     // An event with no data is never dispatched, so `end` carries some.
     let end = futures_util::stream::once(async { Event::default().event("end").data("end") });
     Sse::new(patches.chain(end).map(Ok).take_until(draining())).keep_alive(KeepAlive::default())
+}
+
+/// One item of a [`live`] stream: rendered HTML, and the app's cursor after it.
+///
+/// The cursor is the point in the app's own data this fragment brings the page to (a version,
+/// a sequence number, a realtime stream's position); Corten only carries it. It is sent as the
+/// event's `id`, so a browser that reconnects sends it back as `Last-Event-ID`, which
+/// [`LiveSince`] reads.
+///
+/// ```
+/// let fragment = corten::Fragment::new("<p id=\"n\">3</p>".into()).cursor(42.to_string());
+/// ```
+pub struct Fragment {
+    html: String,
+    cursor: Option<String>,
+}
+
+impl Fragment {
+    pub fn new(html: String) -> Self {
+        Fragment { html, cursor: None }
+    }
+
+    /// The app's cursor after this fragment. A cursor cannot hold a line break or a NUL, which
+    /// would end the event: that panics in debug builds, and in release the fragment is sent
+    /// without its cursor (logged), so a reconnect draws the part again.
+    pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
+        let cursor = cursor.into();
+        if cursor.contains(['\n', '\r', '\0']) {
+            let message = format!("corten: a live fragment's cursor holds a line break or NUL: {cursor:?}");
+            if cfg!(debug_assertions) {
+                panic!("{message}");
+            }
+            tracing::error!("{message}");
+            return self;
+        }
+        self.cursor = Some(cursor);
+        self
+    }
+}
+
+impl From<String> for Fragment {
+    fn from(html: String) -> Self {
+        Fragment::new(html)
+    }
+}
+
+/// Where a [`live`] stream resumes: the cursor of the last [`Fragment`] the browser received,
+/// from `Last-Event-ID` when it reconnects, or else the `since` the page gave its element,
+/// `<corten-live src={..} since={cursor}>`, on the first connection. `None` when there is
+/// neither, and the handler draws the part as it is now.
+///
+/// A handler sends what changed after the cursor, or nothing until the next change when the
+/// cursor is current, so a page view or a reconnect costs no extra read or render.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LiveSince(pub Option<String>);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for LiveSince {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, _: &S) -> std::result::Result<Self, Self::Rejection> {
+        let header =
+            parts.headers.get("last-event-id").and_then(|v| v.to_str().ok()).filter(|v| !v.is_empty()).map(str::to_string);
+        let query = || {
+            form_urlencoded::parse(parts.uri.query()?.as_bytes())
+                .find(|(key, _)| key == "since")
+                .map(|(_, value)| value.into_owned())
+                .filter(|value| !value.is_empty())
+        };
+        Ok(LiveSince(header.or_else(query)))
+    }
 }
 
 /// Set when the process starts shutting down; open live streams end on it.
