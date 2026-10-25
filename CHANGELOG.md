@@ -266,6 +266,15 @@ Corten is pre-1.0, so any minor version may change the API.
     `#[route(query)]` field of another type does not compile. Asked for by the Chase Sets pilot,
     whose 10 item filters were repeated on 5 routes by a `macro_rules!`
     ([#32 A route cannot share a set of query parameters with another route](https://github.com/todd-skelton/corten/issues/32)).
+39. `#[derive(ToJson)]` writes a `#[serde(flatten)]` field whose type is a struct that derives
+    `ToJson` (or an `Option` or `Box` of one): its members in place, as serde writes them, laid
+    out when the crate compiles. The derive implements `corten::json::ToJsonMembers` for every
+    struct with named fields; flattening a map, an enum or a `Serialize`-only type still does not
+    compile, now with a message that says why. A dimension with 12 options (796 B) is written in
+    640-860 ns, where serde_json's flatten took 1,820-2,660 ns (measured, release build). Asked
+    for by the Chase Sets pilot, whose view model of an API type plus a few fields wrote its JSON
+    through serde_json
+    ([#34 #[derive(ToJson)] refuses #[serde(flatten)] of a struct that is itself ToJson](https://github.com/todd-skelton/corten/issues/34)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
