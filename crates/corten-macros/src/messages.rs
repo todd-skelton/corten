@@ -351,14 +351,34 @@ fn ident(name: &str) -> TokenTree {
 /// Names that are a method of the messages type but not a Rust keyword: an argument may use them.
 const METHODS: &[&str] = &["locale", "index", "from_index", "negotiate", "js", "by_key"];
 
-/// An argument's parameter: the catalog's name, raw when it is a Rust keyword (`{type}` is the
-/// parameter `r#type`), so a catalog shared with other apps compiles as it is.
+/// An argument's parameter: the catalog's name in snake case (`{updatedAt}` is `updated_at`), raw
+/// when it is a Rust keyword (`{type}` is `r#type`), so a catalog shared with other apps compiles
+/// as it is. `by_key` and `Message<..>` keep the catalog's name.
 fn arg_ident(name: &str) -> TokenTree {
-    if RESERVED.contains(&name) && !METHODS.contains(&name) {
-        TokenTree::Ident(Ident::new_raw(name, Span::call_site()))
+    let snake = snake_case(name);
+    if RESERVED.contains(&snake.as_str()) && !METHODS.contains(&snake.as_str()) {
+        TokenTree::Ident(Ident::new_raw(&snake, Span::call_site()))
     } else {
-        ident(name)
+        ident(&snake)
     }
+}
+
+/// `updatedAt` as `updated_at`, `itemID` as `item_id`; a snake case name as it is.
+fn snake_case(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 4);
+    let mut previous = '_';
+    for c in name.chars() {
+        if c.is_ascii_uppercase() {
+            if previous.is_ascii_lowercase() || previous.is_ascii_digit() {
+                out.push('_');
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+        previous = c;
+    }
+    out
 }
 
 /// Nested objects become dotted keys, in file order.
@@ -408,14 +428,23 @@ pub fn parse_message(message: &str) -> Result<Vec<Part>, String> {
                     }
                 }
                 let valid = name.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
-                    && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+                    && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
                 if !valid {
                     return Err(format!("{{{name}}} is not an argument name like {{count}} (write {{{{ for a brace)"));
                 }
                 // The only names Rust cannot give a parameter, even as `r#name`, and the generated
                 // code's own.
-                if matches!(name.as_str(), "self" | "super" | "crate" | "_") || name.starts_with("__corten") {
+                if matches!(snake_case(&name).as_str(), "self" | "super" | "crate" | "_") || name.starts_with("__corten") {
                     return Err(format!("{{{name}}} cannot be an argument's name in Rust; rename it in the catalog"));
+                }
+                // Two names that make one parameter (`{updatedAt}` and `{updated_at}`).
+                if let Some(Part::Arg(other)) =
+                    parts.iter().find(|p| matches!(p, Part::Arg(o) if *o != name && snake_case(o) == snake_case(&name)))
+                {
+                    return Err(format!(
+                        "{{{other}}} and {{{name}}} are both the parameter {}; use one name in the catalog",
+                        snake_case(&name)
+                    ));
                 }
                 if !text.is_empty() {
                     parts.push(Part::Text(std::mem::take(&mut text)));
@@ -564,6 +593,13 @@ mod tests {
         );
         assert!(parse_message("{self}").unwrap_err().contains("rename it in the catalog"));
         assert!(parse_message("{_}").is_err());
+        assert_eq!(parse_message("{updatedAt}").unwrap(), vec![Part::Arg("updatedAt".into())], "the catalog's name is kept");
+        assert_eq!(
+            (snake_case("updatedAt"), snake_case("itemID"), snake_case("v2Name"), snake_case("count")),
+            ("updated_at".into(), "item_id".into(), "v2_name".into(), "count".into())
+        );
+        let both = parse_message("{updatedAt} {updated_at}").unwrap_err();
+        assert!(both.contains("{updatedAt} and {updated_at} are both the parameter updated_at"), "{both}");
         assert_eq!(arg_names(&parse_message("{a} {b} {a}").unwrap()), vec!["a", "b"]);
     }
 

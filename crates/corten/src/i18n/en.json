@@ -6,6 +6,7 @@
   },
   "brace": "{{literal}} & more",
   "attention": {
-    "detail": "{provider} · {type} · confidence {match}"
+    "detail": "{provider} · {type} · confidence {match}",
+    "updated": "Updated {updatedAt} by {itemTitle}"
   }
 }
