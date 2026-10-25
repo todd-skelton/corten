@@ -70,6 +70,7 @@ const RESERVED: &[&str] = &[
     "index",
     "from_index",
     "negotiate",
+    "js",
 ];
 
 #[derive(Debug, PartialEq)]
@@ -155,6 +156,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     check(&locales)?;
 
     let mut methods = TokenStream::new();
+    // The messages with arguments again, unfilled, for a script to fill in: `t.js().key()`.
+    let mut js_methods = TokenStream::new();
     let mut seen = BTreeSet::new();
     let default = &locales[0];
     for (key, parts) in &default.messages {
@@ -193,6 +196,39 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             arms.extend(q("_ => __A0,", &[body_for(default)]));
             q("match self.0 __A0", &[stream([TokenTree::Group(Group::new(Delimiter::Brace, arms))])])
         };
+        if !args.is_empty() {
+            let wire_for = |locale: &Locale| -> TokenStream {
+                let parts = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1;
+                stream([string(&wire(parts))])
+            };
+            let by_locale = if locales.len() == 1 {
+                wire_for(default)
+            } else {
+                let mut arms = TokenStream::new();
+                for (n, locale) in locales.iter().enumerate().skip(1) {
+                    arms.extend(q(
+                        "__A0 => __A1,",
+                        &[TokenTree::Literal(proc_macro::Literal::u8_unsuffixed(n as u8)).into(), wire_for(locale)],
+                    ));
+                }
+                arms.extend(q("_ => __A0,", &[wire_for(default)]));
+                q("match self.0 __A0", &[stream([TokenTree::Group(Group::new(Delimiter::Brace, arms))])])
+            };
+            let names: Vec<&str> = args.iter().map(String::as_str).collect();
+            let quoted: Vec<String> = names.iter().map(|n| format!("\"{n}\"")).collect();
+            let js_doc =
+                format!(" {}: {}, for a handler whose JSDoc takes Message<{}>.", default.tag, display(parts), quoted.join(" | "));
+            js_methods.extend(q(
+                "#[doc = __A0] #[inline] __A1 const fn __A2(self) -> ::corten::i18n::Template<__A3> { ::corten::i18n::Template::new(__A4) }",
+                &[
+                    string(&js_doc).into(),
+                    vis.clone(),
+                    ident(&method).into(),
+                    TokenTree::Literal(proc_macro::Literal::u64_suffixed(crate::script::message_id(&names))).into(),
+                    by_locale,
+                ],
+            ));
+        }
         if args.is_empty() {
             methods.extend(q(
                 "#[doc = __A0] #[inline] __A1 const fn __A2(self) -> &'static str { __A3 }",
@@ -228,6 +264,21 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     }
     let name_tokens: TokenStream = TokenTree::Ident(name.clone()).into();
     let count = locales.len();
+    if !js_methods.is_empty() {
+        let js_tokens: TokenStream = TokenTree::Ident(Ident::new(&format!("{name}Js"), name.span())).into();
+        let doc = format!(" The messages of {name} with arguments, unfilled, for handlers to fill in from a script.");
+        let to_js = " This locale's messages with arguments, for a handler to fill in: js::count(total, t.js().rows_selected()) passes one, and the script calls label({ count }).";
+        methods.extend(q(
+            "#[doc = __A0] #[inline] __A1 const fn js(self) -> __A2 { __A2(self.0) }",
+            &[string(to_js).into(), vis.clone(), js_tokens.clone()],
+        ));
+        js_methods = q(
+            "#[doc = __A0] #[derive(Clone, Copy, Debug)] #[allow(dead_code)] __A1 struct __A2(u8);
+            #[allow(dead_code, non_snake_case)]
+            impl __A2 { __A3 }",
+            &[string(&doc).into(), vis.clone(), js_tokens, js_methods],
+        );
+    }
     let mut out = attrs;
     out.extend(q(
         "#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -244,6 +295,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         impl __A1 { __A5 }",
         &[vis, name_tokens, files, tags, TokenTree::Literal(proc_macro::Literal::usize_unsuffixed(count)).into(), methods],
     ));
+    out.extend(js_methods);
     Ok(out)
 }
 
@@ -316,6 +368,39 @@ pub fn parse_message(message: &str) -> Result<Vec<Part>, String> {
         parts.push(Part::Text(text));
     }
     Ok(parts)
+}
+
+/// A message as a handler argument, as it goes in `data-on` (HTML-escaped): text and argument
+/// names alternating, text first and last: %["","count"," selected"].
+fn wire(parts: &[Part]) -> String {
+    let mut pieces = vec![String::new()];
+    for part in parts {
+        match part {
+            Part::Text(text) => pieces.last_mut().expect("text first").push_str(text),
+            Part::Arg(name) => {
+                pieces.push(name.clone());
+                pieces.push(String::new());
+            }
+        }
+    }
+    let mut json = String::from("%[");
+    for (i, piece) in pieces.iter().enumerate() {
+        if i > 0 {
+            json.push(',');
+        }
+        json.push('"');
+        for c in piece.chars() {
+            match c {
+                '"' => json.push_str("\\\""),
+                '\\' => json.push_str("\\\\"),
+                c if (c as u32) < 0x20 || c == '\u{2028}' || c == '\u{2029}' => json.push_str(&format!("\\u{:04x}", c as u32)),
+                c => json.push(c),
+            }
+        }
+        json.push('"');
+    }
+    json.push(']');
+    escape(&json)
 }
 
 /// The arguments in order of first use.
@@ -412,6 +497,15 @@ mod tests {
         assert!(parse_message("{Count}").is_err());
         assert!(parse_message("{type}").is_err());
         assert_eq!(arg_names(&parse_message("{a} {b} {a}").unwrap()), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn a_message_for_a_script_alternates_text_and_names() {
+        assert_eq!(wire(&parse_message("{n} selected").unwrap()), "%[&quot;&quot;,&quot;n&quot;,&quot; selected&quot;]");
+        assert_eq!(
+            wire(&parse_message("\"{a}{b}\" & <\u{2028}>").unwrap()),
+            r#"%[&quot;\&quot;&quot;,&quot;a&quot;,&quot;&quot;,&quot;b&quot;,&quot;\&quot; &amp; &lt;\u2028&gt;&quot;]"#
+        );
     }
 
     #[test]

@@ -276,6 +276,17 @@ Corten is pre-1.0, so any minor version may change the API.
     for by the Chase Sets pilot, whose view model of an API type plus a few fields wrote its JSON
     through serde_json
     ([#34 #[derive(ToJson)] refuses #[serde(flatten)] of a struct that is itself ToJson](https://github.com/todd-skelton/corten/issues/34)).
+40. Text a script computes comes from the catalog: `t.js()` (from `messages!`) has each message
+    with arguments unfilled, a handler takes one as `@param {Message<"count">} label` (`Message`
+    from `corten`) and shows `label({ count })`. The markup passes it in the page's locale
+    (`js::count(total, t.js().rows_selected())`), sent as its text and argument names in
+    `data-on` (`%["","count"," selected"]`), so only the messages a page uses are sent and the
+    browser formats them with no round trip. A message whose arguments are not the ones the
+    JSDoc names does not compile at the call, and `tsc` checks the script fills in each one. The
+    runtime grew 177 B (74 B gzip). Asked for by the Chase Sets pilot, whose selection bar drew
+    every count from 0 to the page's rows in a `<template>` (1,220 B on a 33-row list, sent again
+    in each live event)
+    ([#17 Scripts have no typed way to show user-facing text they compute](https://github.com/todd-skelton/corten/issues/17)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -564,6 +575,12 @@ Corten is pre-1.0, so any minor version may change the API.
     Sets pilot, whose CI ran `corten check` once at the root of its three-member workspace
     ([#39 corten check at a workspace root type-checks none of the members' scripts](https://github.com/todd-skelton/corten/issues/39)).
 
+17. A form with a control named `id` is patched: the runtime read the patch's `el.id`, which for
+    `<form id="x"><input name="id">` is the input, so a refused `data-patch` form's 422 was
+    dropped and its field errors never shown. Ids are read from the attribute, in the patch and
+    where a patch carries over what the user typed (which lost the text in a form like that
+    inside a patched block)
+    ([#44 A form with a control named id cannot be patched](https://github.com/todd-skelton/corten/issues/44)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

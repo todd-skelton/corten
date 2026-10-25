@@ -220,6 +220,28 @@ function closestRef(el, owner, name, event) {
 }
 
 /**
+ * A message of the app's catalog with the arguments `K`, which a handler fills in and shows with
+ * `textContent`: `label({ count: rows.length })`. The markup passes it in the page's locale
+ * (`js::count(total, t.js().rows_selected())`), and the compiler checks that the message's
+ * arguments are the ones named here.
+ * @template {string} K
+ * @typedef {(args: Record<K, string | number>) => string} Message
+ */
+
+/**
+ * The function a `Message` argument is: its text with each argument put in.
+ * @param {string[]} parts text and argument names, alternating, text first and last
+ * @returns {(args: Record<string, string | number>) => string}
+ */
+function message(parts) {
+  return (args) => {
+    let text = parts[0];
+    for (let i = 1; i < parts.length; i += 2) text += String(args[parts[i]]) + parts[i + 1];
+    return text;
+  };
+}
+
+/**
  * The value of one argument.
  * @param {Arg} arg @param {Element} el @param {Event} event @param {Binding} binding
  * @returns {unknown}
@@ -228,6 +250,8 @@ function resolve(arg, el, event, binding) {
   switch (arg.kind) {
     case "v":
       return arg.value;
+    case "%":
+      return message(arg.parts);
     case "$e":
       return event;
     case "$t":
@@ -588,7 +612,8 @@ async function apply(html, signal, sent) {
   await modulesOf(content);
   if (signal?.aborted) return;
   for (const el of Array.from(content.children)) {
-    const target = el.id ? document.getElementById(el.id) : null;
+    const id = idOf(el);
+    const target = id ? document.getElementById(id) : null;
     if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) target?.remove();
     else if (target) keep(target, el, sent);
     else console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
@@ -618,6 +643,13 @@ function stateOf(f, initial) {
   if (/^(checkbox|radio)$/.test(f.type)) return String(initial ? f.defaultChecked : f.checked);
   return initial ? f.defaultValue : f.value;
 }
+
+/**
+ * An element's id, read from its attribute: a form's `id` property is its control named `id`
+ * when it has one (see formProperty), and any element may be a form.
+ * @param {Element} el
+ */
+const idOf = (el) => el.getAttribute("id");
 
 /**
  * The form's own property `name`, past a control named like it: in the DOM `<button name="action">`
@@ -677,9 +709,10 @@ function sentState(form) {
  */
 function counterpart(root, fresh, el, exact) {
   if (el === root) return fresh;
-  if (el.id) return fresh.querySelector(`#${CSS.escape(el.id)}`);
+  const id = idOf(el);
+  if (id) return fresh.querySelector(`#${CSS.escape(id)}`);
   let anchor = /** @type {Element} */ (el.parentElement);
-  while (anchor !== root && !anchor.id) anchor = /** @type {Element} */ (anchor.parentElement);
+  while (anchor !== root && !idOf(anchor)) anchor = /** @type {Element} */ (anchor.parentElement);
   const home = anchor === root ? fresh : counterpart(root, fresh, anchor);
   const name = el.getAttribute("name");
   if (!home) return null;

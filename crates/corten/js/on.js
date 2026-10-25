@@ -6,7 +6,7 @@
 /**
  * One handler call of a `data-on` attribute: `click:cart_line.confirm($e,@dialog,"Lamp")`.
  * @typedef {{ type: string, module: string, name: string, args: Arg[] }} Binding
- * @typedef {{ kind: "@" | "*" | "#" | "^", owner: string | null, name: string } | { kind: "$e" | "$t" | "$s" | "$c", owner: string | null } | { kind: "v", value: unknown } | { kind: "{", fields: [string, Arg][] }} Arg
+ * @typedef {{ kind: "@" | "*" | "#" | "^", owner: string | null, name: string } | { kind: "$e" | "$t" | "$s" | "$c", owner: string | null } | { kind: "v", value: unknown } | { kind: "{", fields: [string, Arg][] } | { kind: "%", parts: string[] }} Arg
  */
 
 /**
@@ -14,7 +14,8 @@
  * `*rows`, every one by its `data-key`: `#rows`, the one around the event's target: `^rows`,
  * another component's: `@offer-list/rows`), the browser's values (`$e` event, `$t` the element
  * with the attribute, `$s` its signal, `$c` the component's root, `$c/offer-list`), a group of
- * arguments (`{rows:*row,all:@all}`), or JSON. A module name may have dots (`ui.combo_box`).
+ * arguments (`{rows:*row,all:@all}`), a message for the handler to fill in (`%["","count"," selected"]`:
+ * text and argument names alternating), or JSON. A module name may have dots (`ui.combo_box`).
  * @param {string} source
  * @returns {Binding[]}
  */
@@ -85,5 +86,6 @@ function parseArg(text) {
     });
     return { kind: "{", fields };
   }
+  if (c === "%") return { kind: "%", parts: JSON.parse(text.slice(1)) };
   return { kind: "v", value: JSON.parse(text) };
 }

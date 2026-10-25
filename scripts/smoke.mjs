@@ -167,6 +167,9 @@ async function run(browser) {
   const before = await prices();
   await page.waitForFunction((b) => JSON.stringify([...document.querySelectorAll('[data-ref="price"]')].map((c) => c.textContent)) !== b, JSON.stringify(before), { timeout: 4000 }).catch(() => {});
   check("live patches update prices", JSON.stringify(await prices()) !== JSON.stringify(before), `${before.join(", ")} -> ${(await prices()).join(", ")}`);
+  // Text a script computes, from the catalog: on:connect={js::watch(.., updates, t.js().prices_updates())}.
+  const counted = await page.textContent(`${live} [data-ref="updates"]`);
+  check("a script fills in a message of the page's locale", /^Price updates: [1-9]\d*$/.test(counted ?? ""), String(counted));
 
   // A handler with per-component state: on:click={js::pause(scope, target, price)}.
   check("the script reveals its controls", await page.isVisible(`${live} button`));
@@ -540,6 +543,27 @@ async function run(browser) {
   }, fresh);
   check("a patch keeps focus on an element without an id or name (by its place)", buttonFocus);
   await page.evaluate(() => document.querySelector("#kept")?.remove());
+
+  // A form with a control named id (`form.id` is that control): its patch still finds it, and in
+  // a patched block an edited field inside it keeps the user's text.
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML("beforeend", '<form id="named-id"><input name="id" value="7"><p>old</p></form><div id="holds-named"><form><input name="id"><input name="q" value="a"></form></div>'),
+  );
+  await page.fill("#holds-named [name=q]", "typed");
+  const namedId = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    await patch('<form id="named-id"><input name="id" value="7"><p>new</p></form><div id="holds-named" class="new"><form><input name="id"><input name="q" value="b"></form></div>');
+    return {
+      form: document.querySelector("#named-id p")?.textContent,
+      block: document.querySelector("#holds-named")?.className,
+      q: /** @type {HTMLInputElement} */ (document.querySelector("#holds-named [name=q]")).value,
+    };
+  });
+  check("a form with a control named id is patched, and keeps what the user typed", namedId.form === "new" && namedId.block === "new" && namedId.q === "typed", JSON.stringify(namedId));
+  await page.evaluate(() => {
+    document.querySelector("#named-id")?.remove();
+    document.querySelector("#holds-named")?.remove();
+  });
 
   // Swaps only: these links live in the shell, which a full page load replaces.
   if (swaps) {
