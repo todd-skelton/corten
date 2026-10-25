@@ -16,7 +16,7 @@ checked on the other side.
 | Text to catalogs | `messages!`: every locale has every key with the same arguments |
 | Form to handler | `#[derive(Fields)]` names are `FieldName`s, the only key `name=`, `Errors` and corten-ui's fields take; serde parses the post |
 | Handler to JSON client | `Json<T>` takes a `ToJson`; `#[derive(ToJson)]` reads `#[serde(...)]` and refuses one it cannot write as serde does (`flatten`, `serialize_with`), so what it writes is what serde reads back |
-| Server to script | `corten::types::Types::new().add::<Row>().components(COMPONENTS).sync(path)` in a test writes TypeScript declarations and fails while they are stale; `npm run check` then fails in every script that reads an old name |
+| Server to script | `corten::types::Types::new().add::<Row>().components(COMPONENTS).sync(path)` in a test writes TypeScript declarations and fails while they are stale; `corten check` then fails in every script that reads an old name (it runs TypeScript's `tsc` over `src/` and `static/` when `tsc` is installed, and says so when it is not) |
 | Server to agent | tool input and output schemas generated from the structs (feature `agent`) |
 
 Untyped rows are `unknown`, not `any`. The full table, and what is not checked, is

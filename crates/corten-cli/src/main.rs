@@ -3,12 +3,14 @@
 //! - `corten new <dir>` writes a working app (page, form, handler script, test, Dockerfile).
 //! - `corten dev` builds and runs the app, rebuilds and restarts it when a file changes (a failed
 //!   build keeps the running server), and open pages reload by themselves.
-//! - `corten build` builds the release binary. `corten check` runs format, lint and tests.
+//! - `corten build` builds the release binary. `corten check` runs format, lint, a type check of
+//!   the app's scripts (with TypeScript's `tsc`, when it is installed) and tests.
 //! - `corten fmt` lays out the markup in `html!`, which rustfmt leaves alone.
 
 mod dev;
 mod fmt;
 mod new;
+mod scripts;
 
 use std::process::{Command, ExitCode};
 
@@ -25,7 +27,9 @@ Usage:
   corten fmt [--check] [path ..]
                    Lay out the markup inside html! (rustfmt leaves macro bodies alone).
                    --check reports files that need it instead of writing them.
-  corten check     cargo fmt --check, corten fmt --check, cargo clippy -D warnings, cargo test.
+  corten check     cargo fmt --check, corten fmt --check, cargo clippy -D warnings, a type check
+                   of the scripts in src/ and static/ (TypeScript's tsc, from node_modules or
+                   the PATH; without it, a note says they were not checked), cargo test.
   corten help      This text.
   corten --version
 ";
@@ -52,6 +56,7 @@ fn main() -> ExitCode {
         Some("check") => cargo(&["fmt", "--check"])
             .and_then(|()| fmt::run(&["--check".to_string()]))
             .and_then(|()| cargo(&["clippy", "--all-targets", "--", "-D", "warnings"]))
+            .and_then(|()| std::env::current_dir().map_err(|e| e.to_string()).and_then(|root| scripts::check(&root)))
             .and_then(|()| cargo(&["test"])),
         Some(other) => Err(format!("unknown command {other:?}; run corten help")),
     };
