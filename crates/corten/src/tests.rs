@@ -163,9 +163,16 @@ async fn a_live_fragment_carries_its_cursor_and_a_reconnect_reads_it_back() {
 }
 
 #[test]
+#[cfg(debug_assertions)]
 #[should_panic(expected = "line break")]
 fn a_cursor_cannot_end_its_event() {
     let _ = crate::Fragment::new(String::new()).cursor("a\nevent: patch");
+}
+
+#[test]
+#[cfg(not(debug_assertions))]
+fn a_cursor_that_would_end_its_event_is_left_off_in_release() {
+    assert_eq!(crate::Fragment::new(String::new()).cursor("a\nevent: patch").cursor, None);
 }
 
 #[tokio::test]
