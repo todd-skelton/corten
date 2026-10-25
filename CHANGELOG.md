@@ -484,6 +484,12 @@ Corten is pre-1.0, so any minor version may change the API.
     without JavaScript. The runtime read `form.action` and `form.method`, which the DOM makes the
     control, and posted to `/[object HTMLButtonElement]` or threw; it now reads the form's own
     properties. Found in the Chase Sets pilot, where `#[derive(Fields)]` named a field `action`.
+14. A component is scoped only when it has refs or a handler in its markup takes `scope`
+    (`on:click={js::clear(scope)}`). `#[component]` treated any identifier named `scope` as asking
+    for it, so a component with a variable or field of that name and two root elements failed with
+    an error about refs it did not have. The error for a scoped component with several roots now
+    names both causes. Found in the Chase Sets pilot
+    ([#26 A component that names a variable scope is treated as scoped](https://github.com/todd-skelton/corten/issues/26)).
 
 ### Documentation
 

@@ -113,6 +113,37 @@
 //! One listener per event type on the document runs the handlers; nothing runs per element until
 //! an event reaches it.
 //!
+//! A component is scoped (one root element, marked `data-scope`) when it has refs or one of its
+//! handlers takes `scope`. A variable that happens to be named `scope` does not count:
+//!
+//! ```
+//! use corten::prelude::*;
+//! # #[corten::script::event]
+//! # pub struct RowToggled {
+//! #     pub id: String,
+//! #     pub selected: bool,
+//! # }
+//!
+//! #[component(js)]
+//! fn StockGrid() -> impl Render {
+//!     html! { <table><caption><button on:click={js::clear(scope)}>"Clear"</button></caption></table> }
+//! }
+//!
+//! #[component]
+//! fn Mode<'a>(mode: &'a str) -> impl Render {
+//!     let scope = mode;
+//!     html! {
+//!         <dt>"Selection"</dt>
+//!         <dd>{scope}</dd>
+//!     }
+//! }
+//!
+//! # fn main() {
+//! assert!(StockGrid {}.to_html().starts_with(r#"<table data-scope="stock-grid">"#));
+//! assert_eq!(Mode { mode: "ids" }.to_html(), "<dt>Selection</dt><dd>ids</dd>");
+//! # }
+//! ```
+//!
 //! What does not compile:
 //!
 //! A ref on an element the handler does not take (`enable` takes a `<button>`):
