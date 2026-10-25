@@ -4,5 +4,8 @@
     "listing_count": "{count} listings",
     "image": "{title} image {n}"
   },
-  "brace": "{{literal}} & more"
+  "brace": "{{literal}} & more",
+  "attention": {
+    "detail": "{provider} · {type} · confidence {match}"
+  }
 }

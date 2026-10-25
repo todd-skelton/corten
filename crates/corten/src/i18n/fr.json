@@ -4,5 +4,8 @@
     "listing_count": "{count} annonces",
     "image": "Image {n} de {title}"
   },
-  "brace": "{{littéral}} & plus"
+  "brace": "{{littéral}} & plus",
+  "attention": {
+    "detail": "{provider} · {type} · confiance {match}"
+  }
 }

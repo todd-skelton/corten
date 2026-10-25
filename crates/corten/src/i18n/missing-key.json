@@ -3,5 +3,8 @@
     "listings": "Angebote",
     "listing_count": "{count} Angebote"
   },
-  "brace": "{{Wort}} & mehr"
+  "brace": "{{Wort}} & mehr",
+  "attention": {
+    "detail": "{provider} · {type} · Konfidenz {match}"
+  }
 }
