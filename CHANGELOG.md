@@ -618,6 +618,13 @@ Corten is pre-1.0, so any minor version may change the API.
     `{updated_at}`) are an error naming both. Found by the Chase Sets pilot, whose shared catalogs
     have 365 camelCase arguments
     ([#58 A catalog message cannot take a camelCase argument ({updatedAt})](https://github.com/todd-skelton/corten/issues/58)).
+21. A patch with a top-level element the browser would drop (no `id`, or text outside an
+    element) is an error in debug builds that names it: `req.patch`, `patch_with_status` and
+    `req.invalid`'s form answer 500 instead of a patch, so a router test or the first request in
+    development fails, and a `corten::live` fragment panics. Release builds send the patch as
+    before, with no check. Found by the Chase Sets pilot, whose refused write-off answered 422
+    with the API's message in a `<div>` without an id, which the page never showed
+    ([#61 A patch element without an id is dropped in the browser, and nothing says so before](https://github.com/todd-skelton/corten/issues/61)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

@@ -639,7 +639,9 @@ impl Req {
     }
 
     /// Answers a `<form data-patch>` submit with fragments. Every top-level element in `view`
-    /// must carry an `id`; the runtime replaces the element with that `id` on the page.
+    /// must carry an `id`; the runtime replaces the element with that `id` on the page. One
+    /// without an id (or text outside an element) would be dropped in the browser, so in debug
+    /// builds, router tests included, the patch is an error that names it.
     pub fn patch(&self, view: impl Render) -> Result {
         self.patch_with_status(StatusCode::OK, view)
     }
@@ -648,6 +650,8 @@ impl Req {
     pub fn patch_with_status(&self, status: StatusCode, view: impl Render) -> Result {
         let mut body = String::new();
         self.render_into(view, &mut body)?;
+        #[cfg(debug_assertions)]
+        check_patch(&body)?;
         Ok(html_response(status, body, Some(PATCH_HEADER)))
     }
 
@@ -686,6 +690,19 @@ impl Req {
     pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> Result {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         Ok(redirect(self.mode, value))
+    }
+}
+
+/// A patch the browser would apply only in part: an error naming what it would drop.
+#[cfg(debug_assertions)]
+#[cold]
+#[inline(never)]
+fn check_patch(body: &str) -> Result<()> {
+    match crate::html::patch_problem(body) {
+        None => Ok(()),
+        Some(problem) => Err(Error::new(format!(
+            "corten: this patch's top-level {problem}, so the browser would drop it: give each top-level element a #[derive(Id)] id the page has (make the element with the id the component's root)"
+        ))),
     }
 }
 
