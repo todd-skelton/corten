@@ -546,6 +546,12 @@ Corten is pre-1.0, so any minor version may change the API.
     Sets pilot, whose CI ran `corten check` once at the root of its three-member workspace
     ([#39 corten check at a workspace root type-checks none of the members' scripts](https://github.com/todd-skelton/corten/issues/39)).
 
+17. A form with a control named `id` is patched: the runtime read the patch's `el.id`, which for
+    `<form id="x"><input name="id">` is the input, so a refused `data-patch` form's 422 was
+    dropped and its field errors never shown. Ids are read from the attribute, in the patch and
+    where a patch carries over what the user typed (which lost the text in a form like that
+    inside a patched block)
+    ([#44 A form with a control named id cannot be patched](https://github.com/todd-skelton/corten/issues/44)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
