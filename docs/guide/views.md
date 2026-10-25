@@ -64,3 +64,10 @@ Routes write their URL straight into the page (path parameters percent-encoded, 
 parameters left out). Messages are split into text and arguments when the crate compiles: one
 without arguments is a `&'static str`, one with arguments writes its pieces into the page,
 escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
+
+A message the page cannot name in its source, because another service answers with its key
+(`{"titleKey": "queue.item.title", "titleParams": {..}}`), is `t.by_key(key, &args)`: the
+message with that catalog key (dotted, as in the JSON) in the request's locale, its arguments
+taken by name from `args` (pairs, a map or a JSON object). It is `None` when the catalog has no
+such key or `args` lacks one of its arguments (an `Option` renders nothing when `None`), so the
+page chooses what to show instead. Prefer the methods wherever the page knows the message.

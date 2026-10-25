@@ -65,6 +65,10 @@ html! { <button>{t.item_show_all_offers(offers.len())}</button> }
 Every locale must have every key of the first with the same arguments, or the crate does not
 compile. Pass `t: Msg` into components that show text.
 
+When an API answers with a message key and its arguments, show it with
+`t.by_key(&row.title_key, &row.title_params)` (an `Option`: `None` for an unknown key or a missing
+argument; choose the fallback). Never write a `match` from key strings to methods.
+
 ## A data screen
 
 A screen that native clients or agents also read derives `Serialize`, and its fields are the

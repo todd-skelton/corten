@@ -71,6 +71,7 @@ const RESERVED: &[&str] = &[
     "from_index",
     "negotiate",
     "js",
+    "by_key",
 ];
 
 #[derive(Debug, PartialEq)]
@@ -158,6 +159,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     let mut methods = TokenStream::new();
     // The messages with arguments again, unfilled, for a script to fill in: `t.js().key()`.
     let mut js_methods = TokenStream::new();
+    // `by_key`'s arms: a catalog key to its pieces in this locale.
+    let mut key_arms = TokenStream::new();
     let mut seen = BTreeSet::new();
     let default = &locales[0];
     for (key, parts) in &default.messages {
@@ -167,6 +170,34 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         }
         let args = arg_names(parts);
         let doc = format!(" {}: {}", default.tag, display(parts));
+        let pieces_for = |locale: &Locale| -> TokenStream {
+            let parts = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1;
+            let mut list = TokenStream::new();
+            for part in parts {
+                list.extend(match part {
+                    Part::Text(text) => q(
+                        "::corten::i18n::__private::Piece::Text(__A0, __A1),",
+                        &[string(text).into(), string(&escape(text)).into()],
+                    ),
+                    Part::Arg(name) => q("::corten::i18n::__private::Piece::Arg(__A0),", &[string(name).into()]),
+                });
+            }
+            q("&[__A0]", &[list])
+        };
+        let pieces = if locales.len() == 1 {
+            pieces_for(default)
+        } else {
+            let mut arms = TokenStream::new();
+            for (n, locale) in locales.iter().enumerate().skip(1) {
+                arms.extend(q(
+                    "__A0 => __A1,",
+                    &[TokenTree::Literal(proc_macro::Literal::u8_unsuffixed(n as u8)).into(), pieces_for(locale)],
+                ));
+            }
+            arms.extend(q("_ => __A0,", &[pieces_for(default)]));
+            q("match self.0 __A0", &[stream([TokenTree::Group(Group::new(Delimiter::Brace, arms))])])
+        };
+        key_arms.extend(q("__A0 => __A1,", &[string(key).into(), pieces]));
         let body_for = |locale: &Locale| -> TokenStream {
             let parts = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1;
             if args.is_empty() {
@@ -264,6 +295,20 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     }
     let name_tokens: TokenStream = TokenTree::Ident(name.clone()).into();
     let count = locales.len();
+    methods.extend(q(
+        "/// The message whose catalog key (the dotted key, as in the JSON) is `key`, with its
+        /// arguments taken by name from `args`: for a key an API answers with. `None` when the
+        /// catalog has no such key or `args` lacks one of the message's arguments.
+        __A0 fn by_key<'__corten_a, __CortenArgs: ::corten::i18n::Args + ?Sized>(
+            self,
+            key: &str,
+            args: &'__corten_a __CortenArgs,
+        ) -> ::core::option::Option<::corten::i18n::Found<'__corten_a, __CortenArgs>> {
+            let pieces: &'static [::corten::i18n::__private::Piece] = match key { __A1 _ => return ::core::option::Option::None };
+            ::corten::i18n::Found::new(pieces, args)
+        }",
+        &[vis.clone(), key_arms],
+    ));
     if !js_methods.is_empty() {
         let js_tokens: TokenStream = TokenTree::Ident(Ident::new(&format!("{name}Js"), name.span())).into();
         let doc = format!(" The messages of {name} with arguments, unfilled, for handlers to fill in from a script.");
