@@ -71,7 +71,7 @@ fn mark_scope(nodes: &mut [Node], scope: &str) -> Result<(), Error> {
         }
         _ => err(
             Span::call_site(),
-            "a component with refs renders one root element, which holds its refs: wrap its markup in one element",
+            "a component with refs, or with a handler that takes scope, renders one root element, which holds its refs and is its scope: wrap its markup in one element",
         ),
     }
 }
@@ -1106,6 +1106,28 @@ fn rows_of(children: &[Node]) -> Option<String> {
     }
 }
 
+/// Whether the identifier at `tokens[i]` is a handler keyword there: not a field (`x.scope`), a
+/// path segment, a struct field name (`scope: ..`), a call (`scope()`) or a macro.
+fn is_keyword_at(tokens: &[TokenTree], i: usize) -> bool {
+    let after_dot = i > 0 && (is_punct(tokens.get(i - 1), '.') || is_punct(tokens.get(i - 1), ':'));
+    let next = tokens.get(i + 1);
+    let used_otherwise = is_punct(next, ':')
+        || is_punct(next, '!')
+        || matches!(next, Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis);
+    !(after_dot || used_otherwise)
+}
+
+/// True when a handler value (the `{..}` of an `on:`) passes the keyword `kw`, as `keywords`
+/// would replace it.
+pub(crate) fn passes_keyword(tokens: TokenStream, kw: &str) -> bool {
+    let tokens: Vec<TokenTree> = tokens.into_iter().collect();
+    tokens.iter().enumerate().any(|(i, token)| match token {
+        TokenTree::Ident(id) => id.to_string() == kw && is_keyword_at(&tokens, i),
+        TokenTree::Group(g) => passes_keyword(g.stream(), kw),
+        _ => false,
+    })
+}
+
 /// `event`, `target`, `signal` and `scope` in a handler call are the browser's: typed as the
 /// event `event_ty` and the element `target_ty`. A field (`x.event`), a path segment, a struct
 /// field name (`event: ..`), a call (`event()`) or a macro keeps its own meaning.
@@ -1115,12 +1137,7 @@ fn keywords(tokens: TokenStream, event_ty: &TokenStream, target_ty: &TokenStream
     for (i, token) in tokens.iter().enumerate() {
         match token {
             TokenTree::Ident(id) if matches!(id.to_string().as_str(), "event" | "target" | "signal" | "scope") => {
-                let after_dot = i > 0 && (is_punct(tokens.get(i - 1), '.') || is_punct(tokens.get(i - 1), ':'));
-                let next = tokens.get(i + 1);
-                let used_otherwise = is_punct(next, ':')
-                    || is_punct(next, '!')
-                    || matches!(next, Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis);
-                if after_dot || used_otherwise {
+                if !is_keyword_at(&tokens, i) {
                     out.extend([token.clone()]);
                     continue;
                 }
