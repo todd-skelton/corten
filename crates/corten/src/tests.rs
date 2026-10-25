@@ -207,7 +207,7 @@ async fn action_returns_patch_and_plain_post_redirects() {
 }
 
 #[cfg(feature = "json")]
-#[derive(serde::Serialize)]
+#[derive(crate::json::ToJson)]
 struct Data {
     text: &'static str,
 }

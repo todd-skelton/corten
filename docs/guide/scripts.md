@@ -51,7 +51,7 @@ export function showAll(rows, rest, button) {
 | `row.closest()` | the element with ref `row` around the event's target (the handler runs only inside one) |
 | `js::Selection { rows: row, count }` | a `@typedef` of elements: one object argument |
 | `event`, `target`, `signal`, `scope` | the event (`MouseEvent` for a click), the element with the `on:`, an `AbortSignal` that aborts when it leaves the page, the component's root element |
-| a Rust value: `&str`, a number, `bool`, a typed route, any `Serialize` (feature `json`) | the JSON value (an integer past 2^53 stops debug builds, since a JavaScript number cannot hold it exactly: pass a 64-bit id as a string) |
+| a Rust value: `&str`, a number, `bool`, a typed route, any `ToJson` (feature `json`) | the JSON value (an integer past 2^53 stops debug builds, since a JavaScript number cannot hold it exactly: pass a 64-bit id as a string) |
 | `on:connect={..}` | runs when the element joins the page (first load, navigation, patch, a script's insert); on the first load it runs before the page's `load`, and a navigation it starts then (a link it clicks, a form it submits) is a full page load, not a swap |
 
 **What the compiler checks.** `#[component(js)]` reads the script when the crate compiles and

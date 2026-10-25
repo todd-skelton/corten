@@ -246,7 +246,7 @@ fn rendering_collects_the_modules_a_page_uses() {
 #[cfg(feature = "json")]
 #[test]
 fn handlers_write_the_shared_wire_vectors() {
-    #[derive(serde::Serialize)]
+    #[derive(crate::json::ToJson)]
     struct Options {
         id: &'static str,
         tags: [&'static str; 2],
