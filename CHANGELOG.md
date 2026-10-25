@@ -222,6 +222,20 @@ Corten is pre-1.0, so any minor version may change the API.
     call; this checks its body. TypeScript stays optional: without `tsc` the check passes and says
     how many scripts were not checked. Asked for by the Chase Sets pilot
     ([#20 corten check does not type-check an app's scripts](https://github.com/todd-skelton/corten/issues/20)).
+34. `#[derive(FromJson)]`, `corten::json::from_slice` and `from_str` (feature `json`, the derive in the
+    prelude): JSON read by Corten's reader, which matches each key against the type's fields, makes
+    each value straight from the text and skips (validating) the rest. Where it meets anything it
+    does not follow (an escaped key, a missing or duplicate field, a number it does not parse
+    itself) serde_json reads the text instead, so the value and every error are serde_json's; it
+    needs `Deserialize` next to it for that. It reads `rename`, `rename_all`, `alias`, `default`,
+    `skip`, `skip_deserializing`, `deny_unknown_fields` and `transparent`; one it cannot follow, or
+    an enum with data, does not compile, and a field of a type with only `Deserialize` is read by
+    serde_json from its own text. `examples/item-page` reads its item API's response with it:
+    measured in process (`perf_event`, user-mode instructions, release build, the 500 benchmark
+    responses of 55 KB), 878,078 instructions a response through serde_json and 698,733 through
+    `FromJson` (-20.4%), 913,151 and 733,130 with the conversion into the view model;
+    `render_cost` (median of 3) reads one in 304.8 µs through serde_json and 185.5 µs. Its
+    `render_cost` checks the 500 responses read the same both ways.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

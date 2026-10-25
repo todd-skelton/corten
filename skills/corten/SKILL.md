@@ -57,7 +57,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | JSON for a native client or an agent | `req.screen(title, &data, view)` | [pages-and-routes.md](references/pages-and-routes.md) |
 | a route with no screen (webhook, public API, service call) | `App::api("/api", routes)`, handlers return `Json` (the prelude's `corten::Json`) | [pages-and-routes.md](references/pages-and-routes.md) |
 | routes that need sign-in or a permission | an area with a guard, `.area::<Prefix>(\|area\| area.route::<R>(get(h)).guard(\|ctx, req\| Access::..))` (`req.writes()` for read/write rules; `App::guard` plus `App::unguarded` for a private app), not a check in each handler | [pages-and-routes.md](references/pages-and-routes.md) |
-| data from another service's JSON | structs of only the fields you read, not `serde_json::Value` | [pages-and-routes.md](references/pages-and-routes.md) |
+| data from another service's JSON | structs of only the fields you read (`#[derive(Deserialize, FromJson)]`, read with `corten::json::from_slice`), not `serde_json::Value` | [pages-and-routes.md](references/pages-and-routes.md) |
 | a page or JSON a CDN may share | return `(Cache::public(max_age), response)`; never for anything personal | [pages-and-routes.md](references/pages-and-routes.md) |
 | a test | `app().router().oneshot(..)` with the `corten` mode header | [testing.md](references/testing.md) |
 

@@ -1,5 +1,5 @@
 //! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts.
-use corten::{Errors, Fields, ToJson};
+use corten::{Errors, Fields, FromJson, ToJson};
 
 use crate::text::Msg;
 use schemars::JsonSchema;
@@ -109,16 +109,17 @@ pub fn alert_set(title: &str, email: &str, price: f64) -> String {
     format!("Alert set: we will email {email} when {title} drops below ${price:.2}.")
 }
 
-/// The parts of the item API's response the page reads, deserialized straight from the body.
-/// serde skips every other field without building it, and those are most of the 55 KB (the
-/// listings', offers' and contents' other columns), so this costs about a third of parsing the
-/// whole response into a `serde_json::Value` and walking it. Fields the API may send as a string
+/// The parts of the item API's response the page reads, read straight from the body by
+/// `corten::json::from_slice` (`FromJson`, serde_json where its reader gives up). Every other
+/// field is skipped without building it, and those are most of the 55 KB (the listings', offers'
+/// and contents' other columns), so this costs about a quarter of parsing the whole response into
+/// a `serde_json::Value` and walking it. Fields the API may send as a string
 /// or a number stay `Value` and are read by the helpers below.
 mod api {
     use super::*;
     use serde_json::Value;
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default)]
     pub struct ApiItem {
         catalog_item_id: Value,
@@ -137,20 +138,20 @@ mod api {
         included_in: Option<Vec<ApiLine>>,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default)]
     struct ApiBadge {
         label: Value,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default)]
     struct ApiCategory {
         name: Value,
         slug: Value,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default, rename_all = "camelCase")]
     struct ApiField {
         field_id: Value,
@@ -158,7 +159,7 @@ mod api {
         value: Value,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default)]
     struct ApiSummary {
         lowest_price_amount: Value,
@@ -167,7 +168,7 @@ mod api {
         total_visible_quantity: Value,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default)]
     struct ApiListing {
         listing_id: Value,
@@ -181,7 +182,7 @@ mod api {
         price_currency_code: Value,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default)]
     struct ApiOffer {
         offer_id: Value,
@@ -192,7 +193,7 @@ mod api {
         price_currency_code: Value,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default)]
     struct ApiLine {
         line_id: Value,
@@ -203,7 +204,7 @@ mod api {
         quantity: Value,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Deserialize, FromJson, Default)]
     #[serde(default)]
     struct ApiLineItem {
         title: Value,
@@ -335,8 +336,12 @@ mod tests {
             ],
             "included_in": [{ "line_id": "i1", "container_catalog_item_id": "item_4", "container_item": { "title": null } }]
         });
+        let text = body.to_string();
         let item: ApiItem = serde_json::from_value(body).unwrap();
         let view = ItemView::from(item);
+        // Compared as text: a NaN price is not equal to itself.
+        let fast = ItemView::from(corten::json::from_str::<ApiItem>(&text).unwrap());
+        assert_eq!(format!("{fast:?}"), format!("{view:?}"), "FromJson reads it as serde does");
         let line = |id: &str, item_id: &str, title: &str, quantity| ContentLine {
             id: id.into(),
             item_id: item_id.into(),

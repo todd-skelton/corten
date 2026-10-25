@@ -27,14 +27,14 @@ impl Source {
         let raw: HashMap<String, &serde_json::value::RawValue> = serde_json::from_str(json)?;
         let mut items = HashMap::with_capacity(raw.len());
         for (id, value) in raw {
-            let item: ApiItem = serde_json::from_str(value.get())?;
+            let item: ApiItem = corten::json::from_str(value.get())?;
             items.insert(id, Arc::new(ItemView::from(item)));
         }
         Ok(Source::Fixture(Arc::new(items)))
     }
 
     /// `None` when there is no such item. Shared, so a page borrows from it instead of copying.
-    pub async fn item(&self, id: &str) -> Result<Option<Arc<ItemView>>, reqwest::Error> {
+    pub async fn item(&self, id: &str) -> Result<Option<Arc<ItemView>>, SourceError> {
         match self {
             Source::Fixture(items) => Ok(items.get(id).cloned()),
             Source::Api { client, base } => {
@@ -43,9 +43,46 @@ impl Source {
                     return Ok(None);
                 }
                 // Straight into the fields the page reads; see `ApiItem`.
-                let item: ApiItem = res.error_for_status()?.json().await?;
+                let item: ApiItem = corten::json::from_slice(&res.error_for_status()?.bytes().await?)?;
                 Ok(Some(Arc::new(ItemView::from(item))))
             }
         }
+    }
+}
+
+/// The item API could not be reached or answered with an error, or its answer is not an item.
+#[derive(Debug)]
+pub enum SourceError {
+    Http(reqwest::Error),
+    Json(serde_json::Error),
+}
+
+impl std::fmt::Display for SourceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SourceError::Http(e) => write!(f, "item API: {e}"),
+            SourceError::Json(e) => write!(f, "item API response: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for SourceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SourceError::Http(e) => Some(e),
+            SourceError::Json(e) => Some(e),
+        }
+    }
+}
+
+impl From<reqwest::Error> for SourceError {
+    fn from(e: reqwest::Error) -> Self {
+        SourceError::Http(e)
+    }
+}
+
+impl From<serde_json::Error> for SourceError {
+    fn from(e: serde_json::Error) -> Self {
+        SourceError::Json(e)
     }
 }

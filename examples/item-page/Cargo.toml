@@ -8,7 +8,7 @@ description = "A marketplace item page on Corten with the production pieces on: 
 [dependencies]
 corten = { path = "../../crates/corten", features = ["json", "agent", "compress"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.12", default-features = false }
 serde = { version = "1", features = ["derive", "rc"] }
 schemars = "1.2"
 serde_json = { version = "1", features = ["raw_value"] }

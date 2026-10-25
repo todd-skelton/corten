@@ -84,7 +84,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
 }
 
 /// The type parameters (not lifetimes or consts) of `<'a, T: X, const N: usize>`.
-fn type_params(impl_generics: &TokenStream) -> Vec<Ident> {
+pub(crate) fn type_params(impl_generics: &TokenStream) -> Vec<Ident> {
     let tokens: Vec<TokenTree> = impl_generics.clone().into_iter().collect();
     if tokens.len() < 2 {
         return Vec::new();
@@ -101,16 +101,16 @@ fn type_params(impl_generics: &TokenStream) -> Vec<Ident> {
 
 // ---- #[serde(...)] ----
 
-enum Value {
+pub(crate) enum Value {
     Bare,
     Str(String),
     Group,
 }
 
-struct Arg {
-    key: String,
-    value: Value,
-    span: Span,
+pub(crate) struct Arg {
+    pub(crate) key: String,
+    pub(crate) value: Value,
+    pub(crate) span: Span,
 }
 
 impl Arg {
@@ -133,6 +133,11 @@ impl Arg {
 }
 
 fn serde_args(attrs: &[Group]) -> Result<Vec<Arg>, Error> {
+    serde_args_for(attrs, "ToJson")
+}
+
+/// The arguments of every `#[serde(...)]` in `attrs`; `derive` names the derive in errors.
+pub(crate) fn serde_args_for(attrs: &[Group], derive: &str) -> Result<Vec<Arg>, Error> {
     let mut out = Vec::new();
     for attr in attrs {
         let tokens: Vec<TokenTree> = attr.stream().into_iter().collect();
@@ -142,16 +147,16 @@ fn serde_args(attrs: &[Group]) -> Result<Vec<Arg>, Error> {
         }
         for arg in split(args.stream(), ',') {
             let Some(TokenTree::Ident(key)) = arg.first() else {
-                return err(args.span(), "ToJson: expected #[serde(key)] or #[serde(key = \"value\")]");
+                return err(args.span(), format!("{derive}: expected #[serde(key)] or #[serde(key = \"value\")]"));
             };
             let value = match (arg.get(1), arg.get(2)) {
                 (None, _) => Value::Bare,
                 (Some(TokenTree::Punct(p)), Some(TokenTree::Literal(l))) if p.as_char() == '=' => match string_value(l) {
                     Some(s) => Value::Str(s),
-                    None => return err(l.span(), "ToJson: expected a string"),
+                    None => return err(l.span(), format!("{derive}: expected a string")),
                 },
                 (Some(TokenTree::Group(_)), _) => Value::Group,
-                _ => return err(key.span(), "ToJson: expected #[serde(key)] or #[serde(key = \"value\")]"),
+                _ => return err(key.span(), format!("{derive}: expected #[serde(key)] or #[serde(key = \"value\")]")),
             };
             out.push(Arg { key: key.to_string(), value, span: key.span() });
         }
@@ -260,7 +265,7 @@ fn parse_fields(group: &Group, named: bool) -> Result<Vec<Field>, Error> {
 
 // ---- rename_all, as serde applies it ----
 
-const RULES: [&str; 8] = [
+pub(crate) const RULES: [&str; 8] = [
     "lowercase",
     "UPPERCASE",
     "PascalCase",
@@ -280,7 +285,7 @@ fn rule(arg: &Arg) -> Result<String, Error> {
 }
 
 /// A snake_case field name under a rule (serde's `RenameRule::apply_to_field`).
-fn field_rule(field: &str, rule: &str) -> String {
+pub(crate) fn field_rule(field: &str, rule: &str) -> String {
     match rule {
         "lowercase" | "snake_case" => field.to_string(),
         "UPPERCASE" | "SCREAMING_SNAKE_CASE" => field.to_ascii_uppercase(),
@@ -310,7 +315,7 @@ fn field_rule(field: &str, rule: &str) -> String {
 }
 
 /// A PascalCase variant name under a rule (serde's `RenameRule::apply_to_variant`).
-fn variant_rule(variant: &str, rule: &str) -> String {
+pub(crate) fn variant_rule(variant: &str, rule: &str) -> String {
     let snake = || {
         let mut snake = String::new();
         for (i, ch) in variant.char_indices() {
