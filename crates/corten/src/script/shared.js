@@ -8,3 +8,10 @@ export function log(text, n, loud) {
 export function watch(signal, options) {
   signal.addEventListener("abort", () => console.log("stopped", options.id));
 }
+
+/** @import { Message } from "corten" */
+
+/** @param {HTMLOutputElement} out @param {Message<"count">} label */
+export function say(out, label) {
+  out.textContent = label({ count: 3 });
+}

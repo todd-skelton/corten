@@ -40,3 +40,14 @@ subscribe("/feed/stocks", {
   },
   patch: () => {},
 });
+
+/** @import { Message } from "corten" */
+
+/** @param {HTMLOutputElement} out @param {Message<"count">} label */
+export function selected(out, label) {
+  out.textContent = label({ count: 3 });
+  // @ts-expect-error A message is filled in with the arguments its type names.
+  out.textContent = label({ total: 3 });
+  // @ts-expect-error Each of them.
+  out.textContent = label({});
+}

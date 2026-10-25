@@ -244,6 +244,36 @@ waits for the modules its handlers name, and modules named inside a `<template>`
 page. On the first page, an event that arrives before its module is in gets the browser's
 default and no handler, as without JavaScript. `on:connect` waits for its module instead.
 
+## Text a script computes
+
+"3 selected" or "Showing 12 of 40" depends on what the browser counted, and asking the server
+for it is a round trip for a change the browser makes in microseconds. It is still a message of
+the app's catalog (`messages!`): the markup passes it unfilled, in the page's locale, and the
+handler fills it in.
+
+```rust,ignore
+// locales/en.json: { "rows_selected": "{count} selected" }
+let t: Msg = req.t();
+html! { <tbody on:change={js::count(rows, total, t.js().rows_selected())}>..</tbody> }
+```
+
+```js
+/** @import { Message } from "corten" */
+/** @param {HTMLInputElement[]} rows @param {HTMLOutputElement} total @param {Message<"count">} label */
+export function count(rows, total, label) {
+  total.textContent = label({ count: rows.filter((row) => row.checked).length });
+}
+```
+
+`t.js()` has a method for each message with arguments. A message is sent only where a page
+passes it, as its text and argument names in `data-on`; there is no catalog module and no locale
+lookup in the browser. `Message<"count">` names the arguments, and a message whose arguments are
+not exactly those does not compile at the call (`Message<"shown" | "total">` takes a message with
+both). Inside the script, `tsc` checks that `label` is given each of them. Write it with
+`textContent`, which does not read it as markup. Format numbers before passing them in when the
+locale needs it (`Intl.NumberFormat` with `document.documentElement.lang`); plural forms are a
+key per form, as on the server.
+
 ## State
 
 A handler is a plain function shared by every instance, so state that outlives one event lives
@@ -257,9 +287,8 @@ from `corten` gives the same object for the same element until it is gone.
    `rows(..).push(items)`), and moves, shows, hides or writes the ones on the page.
 2. A script reaches the page only through its arguments: refs, `event`, `target`, `signal`,
    `scope`, values. A handler that looks elements up by selector is a smell.
-3. User-facing text lives in views or the view model, never in scripts. Text that depends on
-   what a script computed has no typed way in yet
-   ([#17 Scripts have no typed way to show user-facing text they compute](https://github.com/todd-skelton/corten/issues/17)).
+3. User-facing text lives in views, the view model or the catalog, never in scripts. Text that
+   depends on what a script computed is a message the markup passes (below).
 4. Cleanup is `signal` alone: pass it to `addEventListener`, `fetch`, `subscribe` and `mount`.
    See [Cancellation](cancellation.md).
 
