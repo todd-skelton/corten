@@ -498,7 +498,8 @@ Corten is pre-1.0, so any minor version may change the API.
     `Errors::message` are gone: write `let e = errors.within(FormId);` and `e.aria(..)`,
     `e.message(..)`. Found by the Chase Sets pilot, whose item page has two forms with a `text`
     field
-    ([#45 Field error ids are only the field's name, so two forms on a page share them](https://github.com/todd-skelton/corten/issues/45)).38. `Feed::snapshot` keeps the body it wrote until the rows or `seq` change (a write that touches
+    ([#45 Field error ids are only the field's name, so two forms on a page share them](https://github.com/todd-skelton/corten/issues/45)).
+38. `Feed::snapshot` keeps the body it wrote until the rows or `seq` change (a write that touches
     a row, `apply`, `reset`), so the snapshots between two writes, one for every page that
     calls `subscribe()`, share one serialization instead of cloning and serializing every row
     each time. The bytes are unchanged, and a body written while a write landed is not kept. The
@@ -507,7 +508,6 @@ Corten is pre-1.0, so any minor version may change the API.
     snapshot with no write since the last 444,927 before and 1,272 after at 100 rows (18 KB), and
     4,424,419 and 1,274 at 1,000 rows (187 KB); a snapshot right after a write 458,893 and 461,114
     (+0.5%), 4,433,932 and 4,440,648 (+0.2%); a write alone 9,664 and 9,705.
-
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
