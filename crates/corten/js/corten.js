@@ -612,7 +612,8 @@ async function apply(html, signal, sent) {
   await modulesOf(content);
   if (signal?.aborted) return;
   for (const el of Array.from(content.children)) {
-    const target = el.id ? document.getElementById(el.id) : null;
+    const id = idOf(el);
+    const target = id ? document.getElementById(id) : null;
     if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) target?.remove();
     else if (target) keep(target, el, sent);
     else console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
@@ -642,6 +643,13 @@ function stateOf(f, initial) {
   if (/^(checkbox|radio)$/.test(f.type)) return String(initial ? f.defaultChecked : f.checked);
   return initial ? f.defaultValue : f.value;
 }
+
+/**
+ * An element's id, read from its attribute: a form's `id` property is its control named `id`
+ * when it has one (see formProperty), and any element may be a form.
+ * @param {Element} el
+ */
+const idOf = (el) => el.getAttribute("id");
 
 /**
  * The form's own property `name`, past a control named like it: in the DOM `<button name="action">`
@@ -701,9 +709,10 @@ function sentState(form) {
  */
 function counterpart(root, fresh, el, exact) {
   if (el === root) return fresh;
-  if (el.id) return fresh.querySelector(`#${CSS.escape(el.id)}`);
+  const id = idOf(el);
+  if (id) return fresh.querySelector(`#${CSS.escape(id)}`);
   let anchor = /** @type {Element} */ (el.parentElement);
-  while (anchor !== root && !anchor.id) anchor = /** @type {Element} */ (anchor.parentElement);
+  while (anchor !== root && !idOf(anchor)) anchor = /** @type {Element} */ (anchor.parentElement);
   const home = anchor === root ? fresh : counterpart(root, fresh, anchor);
   const name = el.getAttribute("name");
   if (!home) return null;
