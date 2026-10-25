@@ -87,6 +87,10 @@ A refusal that belongs to no field (a cross-field rule, or the backend saying no
 Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
 clients and agents only see what is in `Errors`.
 
+A write that must apply once (an order, a payment) takes a `submit: SubmitKey` field, drawn with
+`{SubmitKey::field(f.submit)}`; the app stores the key with the write and answers a repeat with the
+first outcome. The runtime keeps the key until the submit has an answer below 500, then renews it.
+
 The handler answers a failed check with `req.invalid`. It replies 422 with the form as a patch for
 the runtime, `{"errors": ...}` for JSON clients, or the whole page for a browser without
 JavaScript. The page closure runs only in that last case, so put the expensive loads inside it:

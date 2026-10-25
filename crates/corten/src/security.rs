@@ -61,29 +61,34 @@ impl NonceSlot {
 impl Nonce {
     /// 128 random bits from the operating system, hex encoded (hex is valid base64 text).
     pub fn generate() -> Self {
-        // One system call per 64 nonces: each thread reads 1 KiB of OS randomness and hands it out
-        // 16 bytes at a time, never twice. The bytes are as unpredictable as a fresh read.
-        thread_local! {
-            static POOL: RefCell<([u8; 1024], usize)> = const { RefCell::new(([0; 1024], 1024)) };
-        }
-        let bytes: [u8; 16] = POOL.with_borrow_mut(|(pool, used)| {
-            if *used == pool.len() {
-                getrandom::fill(pool).expect("the OS random source is available");
-                *used = 0;
-            }
-            let bytes = pool[*used..*used + 16].try_into().expect("16 bytes");
-            pool[*used..*used + 16].fill(0);
-            *used += 16;
-            bytes
-        });
-        const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut text = [0u8; 32];
-        for (i, b) in bytes.iter().enumerate() {
-            text[2 * i] = HEX[(b >> 4) as usize];
-            text[2 * i + 1] = HEX[(b & 15) as usize];
-        }
-        Nonce(std::str::from_utf8(&text).expect("hex is ASCII").into())
+        Nonce(std::str::from_utf8(&random_hex()).expect("hex is ASCII").into())
     }
+}
+
+/// 128 random bits from the operating system as 32 lowercase hex digits.
+pub(crate) fn random_hex() -> [u8; 32] {
+    // One system call per 64 nonces: each thread reads 1 KiB of OS randomness and hands it out
+    // 16 bytes at a time, never twice. The bytes are as unpredictable as a fresh read.
+    thread_local! {
+        static POOL: RefCell<([u8; 1024], usize)> = const { RefCell::new(([0; 1024], 1024)) };
+    }
+    let bytes: [u8; 16] = POOL.with_borrow_mut(|(pool, used)| {
+        if *used == pool.len() {
+            getrandom::fill(pool).expect("the OS random source is available");
+            *used = 0;
+        }
+        let bytes = pool[*used..*used + 16].try_into().expect("16 bytes");
+        pool[*used..*used + 16].fill(0);
+        *used += 16;
+        bytes
+    });
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut text = [0u8; 32];
+    for (i, b) in bytes.iter().enumerate() {
+        text[2 * i] = HEX[(b >> 4) as usize];
+        text[2 * i + 1] = HEX[(b & 15) as usize];
+    }
+    text
 }
 
 /// Security policy for every response of a router. Build it once at startup.
