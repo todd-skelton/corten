@@ -31,7 +31,7 @@ pub struct Picker<'a> {
     pub options: &'a [Choice<'a>],
     pub required: bool,
     pub disabled: bool,
-    /// More attributes for both controls, such as `errors.aria(field)`.
+    /// More attributes for both controls, such as `errors.within(form).aria(field)`.
     pub attrs: &'a dyn Attrs,
 }
 

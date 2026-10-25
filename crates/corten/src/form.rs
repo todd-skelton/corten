@@ -49,14 +49,26 @@
 //! and an agent tool gets the same messages (`ToolError::from(errors)`, feature `agent`).
 //!
 //! Fields are named by [`FieldName`]s from `#[derive(Fields)]`, never by text. In the form, mark
-//! each field and print its message, which the field points at:
+//! each field and print its message, which the field points at. Both go through
+//! [`Errors::within`] the form's id (the `#[derive(Id)]` of the element a refusal replaces), so a
+//! message's id, `{form id}-{field}-error`, is not another form's on the same page:
 //!
 //! ```ignore
 //! let f = Input::FIELDS;
+//! let e = errors.within(SignupId);
 //! html! {
-//!     <input name={f.email} value={input.email} {..errors.aria(f.email)}>
-//!     {errors.message(f.email)}
+//!     <form id={SignupId} method="post" data-patch>
+//!         <input name={f.email} value={input.email} {..e.aria(f.email)}>
+//!         {e.message(f.email)}
+//!     </form>
 //! }
+//! ```
+//!
+//! Ids are written by `#[derive(Id)]` types, never as text:
+//!
+//! ```compile_fail
+//! let errors = corten::Errors::new();
+//! let e = errors.within("signup");
 //! ```
 //!
 //! A field named as text does not compile:
@@ -75,7 +87,7 @@ use axum::{
 };
 use serde::de::DeserializeOwned;
 
-use crate::view::{escape_into, quoted, AttrValue, Attrs, Render};
+use crate::view::{escape_into, quoted, AttrValue, Attrs, Id, Render};
 
 mod de;
 pub use de::{from_bytes, FormError};
@@ -278,16 +290,12 @@ impl Errors {
         }
     }
 
-    /// `aria-invalid="true" aria-describedby="{field}-error"` when `field` has an error, else
-    /// nothing: `<input name={f.email} {..errors.aria(f.email)}>`.
-    pub fn aria(&self, field: FieldName) -> Aria {
-        Aria { field, invalid: self.has(field) }
-    }
-
-    /// `<p class="field-error" id="{field}-error">message</p>` when `field` has an error, else
-    /// nothing: the element [`Errors::aria`] points at.
-    pub fn message(&self, field: FieldName) -> FieldMessage<'_> {
-        FieldMessage { field, message: self.get(field) }
+    /// The fields' marks and messages in the form whose id is `form`: the `#[derive(Id)]` of the
+    /// element a refused submit replaces (the form, or the block around it). Each message's id is
+    /// `{form}-{field}-error`, so two forms on a page with a field of the same name (a price in
+    /// every row) do not share one, and each field is described by its own message.
+    pub fn within<I: Id>(&self, form: I) -> Within<'_, I> {
+        Within { errors: self, form }
     }
 
     /// `<p class="form-error" role="alert">message</p>` when the form has a message, else
@@ -297,34 +305,64 @@ impl Errors {
     }
 }
 
-/// The ARIA attributes of a form field, from [`Errors::aria`].
-pub struct Aria {
+/// [`Errors`] in one form, from [`Errors::within`].
+pub struct Within<'a, I> {
+    errors: &'a Errors,
+    form: I,
+}
+
+impl<I: Id> Within<'_, I> {
+    /// `aria-invalid="true" aria-describedby="{form}-{field}-error"` when `field` has an error,
+    /// else nothing: `<input name={f.email} {..e.aria(f.email)}>`.
+    pub fn aria(&self, field: FieldName) -> Aria<'_, I> {
+        Aria { form: &self.form, field, invalid: self.errors.has(field) }
+    }
+
+    /// `<p class="field-error" id="{form}-{field}-error">message</p>` when `field` has an error,
+    /// else nothing: the element [`Within::aria`] points at.
+    pub fn message(&self, field: FieldName) -> FieldMessage<'_, I> {
+        FieldMessage { form: &self.form, field, message: self.errors.get(field) }
+    }
+}
+
+/// `{form}-{field}-error`, escaped for an attribute.
+fn message_id(form: &impl Id, field: FieldName, out: &mut String) {
+    form.write_id(out);
+    out.push('-');
+    escape_into(field.0, out);
+    out.push_str("-error");
+}
+
+/// The ARIA attributes of a form field, from [`Within::aria`].
+pub struct Aria<'a, I> {
+    form: &'a I,
     field: FieldName,
     invalid: bool,
 }
 
-impl Attrs for Aria {
+impl<I: Id> Attrs for Aria<'_, I> {
     fn render_attrs(&self, out: &mut String) {
         if self.invalid {
             out.push_str(r#" aria-invalid="true" aria-describedby=""#);
-            escape_into(self.field.0, out);
-            out.push_str(r#"-error""#);
+            message_id(self.form, self.field, out);
+            out.push('"');
         }
     }
 }
 
-/// A field's error message, from [`Errors::message`].
-pub struct FieldMessage<'a> {
+/// A field's error message, from [`Within::message`].
+pub struct FieldMessage<'a, I> {
+    form: &'a I,
     field: FieldName,
     message: Option<&'a str>,
 }
 
-impl Render for FieldMessage<'_> {
+impl<I: Id> Render for FieldMessage<'_, I> {
     fn render(&self, out: &mut String) {
         if let Some(message) = self.message {
             out.push_str(r#"<p class="field-error" id=""#);
-            escape_into(self.field.0, out);
-            out.push_str(r#"-error">"#);
+            message_id(self.form, self.field, out);
+            out.push_str(r#"">"#);
             escape_into(message, out);
             out.push_str("</p>");
         }
@@ -533,6 +571,12 @@ mod tests {
     const PRICE: FieldName = FieldName("price");
     const NAME: FieldName = FieldName("name");
 
+    #[derive(crate::view::Id)]
+    struct RowId<'a>(&'a str);
+
+    #[derive(crate::view::Id)]
+    struct SignupId;
+
     #[test]
     fn a_field_keeps_its_first_message_and_order_is_kept() {
         let mut e = Errors::new();
@@ -543,11 +587,21 @@ mod tests {
         assert_eq!(e.len(), 2);
         assert_eq!(e.to_string(), "email: Enter an email address.; price: Enter a price.");
         let mut out = String::new();
-        e.aria(PRICE).render_attrs(&mut out);
-        e.aria(NAME).render_attrs(&mut out);
-        assert_eq!(out, r#" aria-invalid="true" aria-describedby="price-error""#);
-        assert_eq!(e.message(PRICE).to_html(), r#"<p class="field-error" id="price-error">Enter a price.</p>"#);
-        assert_eq!(e.message(NAME).to_html(), "");
+        let row = e.within(RowId("s<1"));
+        row.aria(PRICE).render_attrs(&mut out);
+        row.aria(NAME).render_attrs(&mut out);
+        assert_eq!(out, r#" aria-invalid="true" aria-describedby="row-s&lt;1-price-error""#);
+        assert_eq!(row.message(PRICE).to_html(), r#"<p class="field-error" id="row-s&lt;1-price-error">Enter a price.</p>"#);
+        assert_eq!(row.message(NAME).to_html(), "");
+        // Two forms with a price field: each message has its own id.
+        assert_eq!(
+            e.within(RowId("s2")).message(PRICE).to_html(),
+            r#"<p class="field-error" id="row-s2-price-error">Enter a price.</p>"#
+        );
+        assert_eq!(
+            e.within(SignupId).message(EMAIL).to_html(),
+            r#"<p class="field-error" id="signup-email-error">Enter an email address.</p>"#
+        );
         assert!(e.clone().into_result(1).is_err());
         assert_eq!(Errors::new().into_result(1), Ok(1));
     }

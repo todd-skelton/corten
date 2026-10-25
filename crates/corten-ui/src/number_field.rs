@@ -21,7 +21,7 @@ pub struct Number<'a> {
     pub disabled: bool,
     pub decrease: Step<'a>,
     pub increase: Step<'a>,
-    /// More attributes for the input, such as `errors.aria(field)` or a placeholder.
+    /// More attributes for the input, such as `errors.within(form).aria(field)` or a placeholder.
     pub attrs: &'a dyn Attrs,
 }
 

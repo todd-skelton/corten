@@ -24,14 +24,15 @@ pub struct AlertMessageId;
 #[component(css)]
 pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Render {
     let f = AlertInput::FIELDS;
+    let e = form.errors.within(AlertFormId);
     html! {
         <div class={Form} id={AlertFormId}>
             <form method="post" action={routes::Item { id: form.id }} data-patch>
                 <input type="hidden" name={f.title} value={form.title}>
                 <label>
-                    {t.alert_email()}<input type="email" name={f.email} value={form.email} required {..form.errors.aria(f.email)}>
+                    {t.alert_email()}<input type="email" name={f.email} value={form.email} required {..e.aria(f.email)}>
                 </label>
-                {form.errors.message(f.email)}
+                {e.message(f.email)}
                 <label>
                     {t.alert_below()}
                     <input
@@ -40,10 +41,10 @@ pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Render {
                         value={form.target_price}
                         inputmode="decimal"
                         required
-                        {..form.errors.aria(f.target_price)}
+                        {..e.aria(f.target_price)}
                     >
                 </label>
-                {form.errors.message(f.target_price)}
+                {e.message(f.target_price)}
                 <button type="submit">{t.alert_submit()}</button>
             </form>
         </div>

@@ -97,9 +97,13 @@ alert form reads in 673 ns with `corten::Form` and 871 ns with axum's `Form`, re
 200 ids read into a `Vec<String>` in 22.3 µs; one comma-joined field split in the handler took
 6.5 µs, most of the difference being 200 strings instead of one.
 
-In the form, `<input name={f.email} {..errors.aria(f.email)}>` sets `aria-invalid` and
-`aria-describedby`, and the runtime focuses the first invalid field (unless the user has moved
-on to another part of the page while waiting).
+In the form, the errors are read within the form's id, the `#[derive(Id)]` of the element a
+refusal replaces: `let e = errors.within(PriceId(id));`. Then `<input name={f.price}
+{..e.aria(f.price)}>` sets `aria-invalid` and `aria-describedby`, `{e.message(f.price)}` prints
+the message it points at, with the id `{form id}-{field}-error` (`price-s1-price-error`), so two
+refused forms with a field of the same name (a price in every row) never share a message id.
+The runtime focuses the first invalid field (unless the user has moved on to another part of the
+page while waiting).
 
 A refusal no single field explains (a rule across fields, or a service the handler wrote to
 saying no: "The policy was retired meanwhile.") is the form's own message:

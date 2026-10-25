@@ -444,9 +444,13 @@ fn current_links_match_the_page_or_its_section() {
     assert!(!is_current("/seller", "/sell", true));
 }
 
+#[derive(crate::view::Id)]
+struct SignUpId;
+
 fn alert_form(errors: &Errors) -> impl Render + '_ {
     let f = SignUp::FIELDS;
-    html! { <form id="f"><input name={f.email} {..errors.aria(f.email)}>{errors.message(f.email)}</form> }
+    let e = errors.within(SignUpId);
+    html! { <form id={SignUpId}><input name={f.email} {..e.aria(f.email)}>{e.message(f.email)}</form> }
 }
 
 fn invalid_routes() -> Router {
@@ -468,7 +472,7 @@ async fn invalid_input_answers_422_in_each_mode() {
     assert_eq!(headers["corten-patch"], "1");
     assert_eq!(
         body,
-        r#"<form id="f"><input name="email" aria-invalid="true" aria-describedby="email-error"><p class="field-error" id="email-error">Enter an email address.</p></form>"#
+        r#"<form id="sign-up"><input name="email" aria-invalid="true" aria-describedby="sign-up-email-error"><p class="field-error" id="sign-up-email-error">Enter an email address.</p></form>"#
     );
 
     let (status, _, body) = call(app(invalid_routes(), None), "GET", None).await;
@@ -513,8 +517,9 @@ fn field_names_follow_serde_and_reach_markup() {
     let mut errors = Errors::new();
     errors.add(SignUp::FIELDS.email, "Enter an email address.");
     let f = SignUp::FIELDS;
-    let html = html! { <input name={f.email} {..errors.aria(f.email)}> }.to_html();
-    assert_eq!(html, r#"<input name="email" aria-invalid="true" aria-describedby="email-error">"#);
+    let e = errors.within(SignUpId);
+    let html = html! { <input name={f.email} {..e.aria(f.email)}> }.to_html();
+    assert_eq!(html, r#"<input name="email" aria-invalid="true" aria-describedby="sign-up-email-error">"#);
 }
 
 #[tokio::test]
