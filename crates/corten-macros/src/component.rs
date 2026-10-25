@@ -213,7 +213,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         ));
     }
     let (body, has_refs) = refs(&body, &scope_name)?;
-    let scoped = has_refs || mentions(&body.stream(), "scope");
+    let scoped = has_refs || handlers_take_scope(&body.stream());
     let body = if scoped { mark_root(&body, &scope_name)? } else { body };
 
     let script = match args.js {
@@ -428,11 +428,18 @@ fn refs(body: &Group, scope: &str) -> Result<(Group, bool), Error> {
     Ok((copy, found))
 }
 
-/// True when `ident` appears anywhere in `tokens`.
-fn mentions(tokens: &TokenStream, ident: &str) -> bool {
-    tokens.clone().into_iter().any(|t| match t {
-        TokenTree::Ident(i) => i.to_string() == ident,
-        TokenTree::Group(g) => mentions(&g.stream(), ident),
+/// True when a handler in the markup (`on:click={js::close(scope)}`) takes the keyword `scope`.
+/// A variable, field or call that happens to be named `scope` elsewhere does not count.
+fn handlers_take_scope(tokens: &TokenStream) -> bool {
+    let tokens: Vec<TokenTree> = tokens.clone().into_iter().collect();
+    tokens.iter().enumerate().any(|(i, token)| match token {
+        TokenTree::Ident(on) if on.to_string() == "on" => {
+            is_punct(tokens.get(i + 1), ':')
+                && matches!(tokens.get(i + 2), Some(TokenTree::Ident(_)))
+                && is_punct(tokens.get(i + 3), '=')
+                && matches!(tokens.get(i + 4), Some(TokenTree::Group(value)) if crate::html::passes_keyword(value.stream(), "scope"))
+        }
+        TokenTree::Group(g) => handlers_take_scope(&g.stream()),
         _ => false,
     })
 }

@@ -30,6 +30,11 @@ export function toggled(event, sel) {
   if (event.selected) sel.rows[0]?.focus();
 }
 
+/** @param {HTMLElement} grid */
+export function clear(grid) {
+  for (const row of grid.querySelectorAll("[aria-selected]")) row.removeAttribute("aria-selected");
+}
+
 /** @param {HTMLTableRowElement} row */
 export function announce(row) {
   row.dispatchEvent(new RowToggled({ id: row.id, selected: true }));
