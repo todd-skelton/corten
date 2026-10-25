@@ -820,6 +820,88 @@ pub mod __private {
         HEAD_SCRATCH.set(scratch);
     }
 
+    /// `html!` that is `let`s and then one component: built when it renders, as any view is, so
+    /// its props may borrow what the `let`s made. The closure returns [`IsDoc`] when the
+    /// component is a [`super::Document`] (a layout), so the view is one too, and [`IsView`]
+    /// otherwise.
+    pub struct One<F> {
+        render: std::cell::Cell<Option<F>>,
+        size: &'static std::sync::atomic::AtomicUsize,
+    }
+
+    /// The component of a [`One`] is a document.
+    pub struct IsDoc;
+    /// The component of a [`One`] is a view.
+    pub struct IsView;
+
+    impl<F> One<F> {
+        /// Used by `html!`, which gives every call site its own `size`.
+        #[inline]
+        pub fn new(size: &'static std::sync::atomic::AtomicUsize, render: F) -> Self {
+            One { render: std::cell::Cell::new(Some(render)), size }
+        }
+
+        #[inline]
+        fn take(&self) -> F {
+            match self.render.take() {
+                Some(render) => render,
+                None => panic!("a view from html! renders once; call the function that builds it again"),
+            }
+        }
+    }
+
+    impl<F: FnOnce(&mut String, Option<super::Part>) -> K, K> Render for One<F> {
+        #[inline]
+        fn render(&self, out: &mut String) {
+            (self.take())(out, None);
+        }
+
+        fn to_html(&self) -> String {
+            use std::sync::atomic::Ordering;
+            let mut out = String::with_capacity(self.size.load(Ordering::Relaxed).max(256));
+            self.render(&mut out);
+            self.size.store(out.len() + out.len() / 8, Ordering::Relaxed);
+            out
+        }
+    }
+
+    impl<F: FnOnce(&mut String, Option<super::Part>) -> IsDoc> super::Document for One<F> {
+        #[inline]
+        fn render_part(&self, out: &mut String, part: super::Part) {
+            (self.take())(out, Some(part));
+        }
+    }
+
+    // Inside a `One`'s closure: `(&OneOf(&component)).__one(out, part)` picks `ViaDocument` when
+    // the component is a document and falls back to `ViaView`.
+    pub struct OneOf<'a, T: ?Sized>(pub &'a T);
+
+    pub trait ViaDocument {
+        fn __one(&self, out: &mut String, part: Option<super::Part>) -> IsDoc;
+    }
+
+    impl<T: super::Document + ?Sized> ViaDocument for OneOf<'_, T> {
+        #[inline]
+        fn __one(&self, out: &mut String, part: Option<super::Part>) -> IsDoc {
+            match part {
+                Some(part) => self.0.render_part(out, part),
+                None => self.0.render(out),
+            }
+            IsDoc
+        }
+    }
+
+    pub trait ViaView {
+        fn __one(&self, out: &mut String, part: Option<super::Part>) -> IsView;
+    }
+
+    impl<T: Render + ?Sized> ViaView for &OneOf<'_, T> {
+        #[inline]
+        fn __one(&self, out: &mut String, _: Option<super::Part>) -> IsView {
+            self.0.render(out);
+            IsView
+        }
+    }
     // Method resolution picks `ViaRender` when the value implements Render (it matches without
     // an extra reference) and falls back to `ViaDisplay`, so `{x}` works for both.
     pub struct Wrap<'a, T: ?Sized>(pub &'a T);

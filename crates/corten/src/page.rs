@@ -839,6 +839,61 @@ impl Render for ReadAgain {
     }
 }
 
+/// Structured data for search engines (a product, its breadcrumbs), as
+/// `<script type="application/ld+json">`, among a page's head tags:
+/// `head={JsonLd { value: &product }}`, or `<JsonLd value={&product} />` in `html!`. The value
+/// is any [`crate::json::ToJson`]; its `<` are written `\u003c`, which JSON reads the same, so no
+/// text in it (a seller's description that says `</script>`) can end the element. It is data,
+/// not a script, so the CSP does not apply.
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Serialize, corten::ToJson)]
+/// struct Product<'a> {
+///     #[serde(rename = "@type")]
+///     kind: &'a str,
+///     name: &'a str,
+/// }
+///
+/// let ld = JsonLd { value: &Product { kind: "Product", name: "</script><b>" } };
+/// assert_eq!(
+///     html! { {ld} }.to_html(),
+///     r#"<script type="application/ld+json">{"@type":"Product","name":"\u003c/script>\u003cb>"}</script>"#
+/// );
+/// ```
+///
+/// An expression inside `<script>` or `<style>` would be escaped as HTML text, which neither
+/// reads back, so it does not compile:
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// let ld = r#"{"@type":"Product"}"#;
+/// let head = html! { <script type="application/ld+json">{ld}</script> };
+/// ```
+#[cfg(feature = "json")]
+pub struct JsonLd<'a, T: ?Sized> {
+    /// The structured data.
+    pub value: &'a T,
+}
+
+#[cfg(feature = "json")]
+impl<T: crate::json::ToJson + ?Sized> Render for JsonLd<'_, T> {
+    fn render(&self, out: &mut String) {
+        let json = crate::json::to_vec(self.value);
+        let json = std::str::from_utf8(&json).expect("ToJson writes UTF-8");
+        out.push_str(r#"<script type="application/ld+json">"#);
+        // `<` is only ever inside a JSON string, where `\u003c` reads the same.
+        let mut parts = json.split('<');
+        out.push_str(parts.next().unwrap_or(""));
+        for part in parts {
+            out.push_str("\\u003c");
+            out.push_str(part);
+        }
+        out.push_str("</script>");
+    }
+}
 /// A part of a document, for [`Req::render_into`].
 struct Parted<D>(D, Part);
 
