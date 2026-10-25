@@ -1,6 +1,6 @@
 use corten::prelude::*;
 
-use super::{AlertForm, AlertFormView, AlertMessage, ListingSort, OfferList};
+use super::{AlertForm, AlertFormView, AlertMessage, Layout, ListingSort, OfferList};
 use crate::{
     model::{ItemView, Listing, sort_listings},
     routes,
@@ -24,10 +24,17 @@ impl<'a> ItemPage<'a> {
         ItemPage { t, item, listings, message, form }
     }
 
-    pub fn meta(&self) -> Meta {
-        Meta::new(format!("{} | Card Market", self.item.title))
-            .description(&self.item.description)
-            .canonical(&routes::Item { id: &self.item.id }.href())
+    /// The whole page in the app's layout, with the item's description and canonical link.
+    pub fn document<'r>(self, req: &'r Req) -> impl Document + 'r
+    where
+        'a: 'r,
+    {
+        let item = self.item;
+        let head = html! {
+            <meta name="description" content={&item.description}>
+            <link rel="canonical" href={routes::Item { id: &item.id }}>
+        };
+        Layout { req, title: &item.title, head, children: self.view() }
     }
 
     pub fn view(self) -> ItemDetail<'a> {

@@ -58,6 +58,31 @@ pub fn app() -> App {
     App::new(routes).components(COMPONENTS).components(corten_ui::COMPONENTS)
 }
 
+/// The document around every page.
+#[component]
+fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+    html! {
+        <!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <link rel="stylesheet" href={req.asset("style.css")}>
+                <title>{title}</title>
+                <Corten />
+            </head>
+            <body>
+                <main>{children}</main>
+            </body>
+        </html>
+    }
+}
+
+/// The gallery in the layout.
+fn gallery(req: &Req, gallery: Gallery<'_>) -> corten::Result {
+    req.page(Layout { req, title: TITLE, children: gallery })
+}
+
 #[derive(Deserialize)]
 struct HomeQuery {
     tab: Option<String>,
@@ -67,7 +92,7 @@ const TITLE: &str = "corten-ui";
 
 async fn home(req: Req, Query(q): Query<HomeQuery>) -> corten::Result {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
-    req.page(TITLE, Gallery { tab, result: "", toast: None })
+    gallery(&req, Gallery { tab, result: "", toast: None })
 }
 
 #[derive(Deserialize, Fields)]
@@ -82,7 +107,7 @@ async fn order(req: Req, Form(form): Form<OrderForm>) -> corten::Result {
     let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
     match req.mode {
         Mode::Action => req.patch(OrderResult { text: &text }),
-        _ => req.page(TITLE, Gallery { tab: 0, result: &text, toast: None }),
+        _ => gallery(&req, Gallery { tab: 0, result: &text, toast: None }),
     }
 }
 
@@ -91,7 +116,7 @@ async fn save(req: Req) -> corten::Result {
     const SAVED: &str = "Draft saved.";
     match req.mode {
         Mode::Action => req.patch(Toast { message: Some(&SAVED) }),
-        _ => req.page(TITLE, Gallery { tab: 0, result: "", toast: Some(SAVED) }),
+        _ => gallery(&req, Gallery { tab: 0, result: "", toast: Some(SAVED) }),
     }
 }
 
@@ -103,13 +128,12 @@ async fn menu_action(req: Req, text: &'static str) -> corten::Result {
 }
 
 async fn help(req: Req) -> corten::Result {
-    req.page(
-        "Help | corten-ui",
-        html! {
+    req.page(html! {
+        <Layout req={&req} title="Help | corten-ui">
             <h1>"Help"</h1>
             <p><a href={url::Home { tab: None }}>"Back"</a></p>
-        },
-    )
+        </Layout>
+    })
 }
 
 #[cfg(test)]

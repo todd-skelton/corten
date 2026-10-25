@@ -667,7 +667,7 @@ async function run(browser) {
   check("data saver: hovering a link fetches nothing", savingRequests.length === 0, savingRequests.join());
   await saver.close();
 
-  // A page that waits for a write (Meta::read_again) reads itself again until the write is in,
+  // A page that waits for a write (ReadAgain) reads itself again until the write is in,
   // however it was reached: a full load, or the runtime's navigation (a link, or a data-patch
   // form's corten-location, which navigates the same way). Each read is the same URL in place of
   // the history entry, and a navigation away stops it.

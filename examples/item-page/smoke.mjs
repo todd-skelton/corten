@@ -119,8 +119,8 @@ try {
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   await context.setOffline(true);
   await page.click('header a[href="/"]');
-  await page.waitForFunction(() => document.querySelector("h1")?.textContent === "You are offline", null, { timeout: 10_000 }).catch(() => {});
-  check("offline navigation shows the offline page", (await page.textContent("h1")) === "You are offline");
+  await page.waitForFunction(() => document.querySelector("h1")?.textContent === "Not available", null, { timeout: 10_000 }).catch(() => {});
+  check("offline navigation shows the offline page", (await page.textContent("h1")) === "Not available");
   await context.setOffline(false);
 
   const csp = errors.filter((e) => /Content Security Policy|Refused to/.test(e));

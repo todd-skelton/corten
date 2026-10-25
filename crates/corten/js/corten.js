@@ -21,7 +21,7 @@
 //    shell links with `data-nav`, and the service worker when the shell names one (corten::pwa).
 // 7. A page response whose shell key differs from this page's (the user signed in or out, or a
 //    deploy changed the runtime or assets) is loaded in full instead of swapped.
-// 8. A page that asks to be read again (Meta::read_again) is fetched again after its delay and
+// 8. A page that asks to be read again (`ReadAgain`) is fetched again after its delay and
 //    swapped in place, however it was reached.
 // Without JavaScript, links and forms still work as plain HTML.
 
@@ -955,7 +955,7 @@ document.addEventListener("touchstart", (event) => prefetch(event.target), { pas
  * @param {AbortSignal} signal
  * @param {Response} [redirected] the answer to this URL, already fetched by a navigation that
  *   the server redirected here
- * @param {boolean} [again] the page reading itself again (Meta::read_again): never a prefetched
+ * @param {boolean} [again] the page reading itself again (`ReadAgain`): never a prefetched
  *   answer, not marked busy, and not swapped when nothing changed
  */
 async function visit(url, signal, redirected, again) {
@@ -1017,7 +1017,7 @@ const READ_AGAIN = Symbol("corten.readAgain");
 
 /**
  * When this page's head asks for it (`<noscript data-corten-read-again="2">`, written by
- * `Meta::read_again`), reads the page again after that many seconds, once the tab is visible:
+ * `ReadAgain`), reads the page again after that many seconds, once the tab is visible:
  * the same URL, in place of this history entry, keeping scroll and focus. A navigation away (or
  * a page that no longer asks) stops it.
  */

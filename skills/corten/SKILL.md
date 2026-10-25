@@ -43,7 +43,7 @@ These are what the framework is built around. Code that breaks them fights the f
 
 | You need | Use | Recipe |
 |---|---|---|
-| a page or a link to one | a handler returning `req.page`, a `Route` type | [pages-and-routes.md](references/pages-and-routes.md) |
+| a page or a link to one | a route in the `#[corten::routes]` module, its handler returning `req.page(<Layout ..>)` | [pages-and-routes.md](references/pages-and-routes.md) |
 | text in more than one language | `messages!` and `req.t()` | [pages-and-routes.md](references/pages-and-routes.md) |
 | to sort, filter, select or total what the page already shows | a handler, with `#[component(view)]` rows when there are many; no request | [scripts.md](references/scripts.md) |
 | a write that updates part of the page | `data-patch` plus `req.patch`, `req.invalid` for errors | [forms.md](references/forms.md) |
@@ -54,7 +54,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | many rows a script reads or changes (a grid) | `#[component(view)]` rows, `rows(body, Row)` in the handler | [scripts.md](references/scripts.md) |
 | a number field, combobox, tabs, menu button or toast | `corten-ui` first, the platform otherwise | [scripts.md](references/scripts.md) |
 | styles for a component | `#[component(css)]`, a CSS file next to it, design tokens | [styles.md](references/styles.md) |
-| JSON for a native client or an agent | `req.screen(title, &data, view)` | [pages-and-routes.md](references/pages-and-routes.md) |
+| JSON for a native client or an agent | `req.screen(&data, doc)` | [pages-and-routes.md](references/pages-and-routes.md) |
 | a route with no screen (webhook, public API, service call) | `App::api("/api", routes)`, handlers return `Json` (the prelude's `corten::Json`) | [pages-and-routes.md](references/pages-and-routes.md) |
 | routes that need sign-in or a permission | an area with a guard, `.area::<Prefix>(\|area\| area.route::<R>(get(h)).guard(\|ctx, req\| Access::..))` (`req.writes()` for read/write rules; `App::guard` plus `App::unguarded` for a private app), not a check in each handler | [pages-and-routes.md](references/pages-and-routes.md) |
 | data from another service's JSON | structs of only the fields you read (`#[derive(Deserialize, FromJson)]`, read with `corten::json::from_slice`), not `serde_json::Value` | [pages-and-routes.md](references/pages-and-routes.md) |

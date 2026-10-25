@@ -21,6 +21,27 @@ pub use price::Price;
 /// generated types.
 pub const COMPONENTS: &[Component] = &[theme::TOKENS, ItemDetail, AlertForm, Price, Home, ListingSort, OfferList];
 
+/// The page for a failed request (`App::error_page`), in the layout; under `corten dev` it shows
+/// the error. The PWA's offline page is its 503.
+pub fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
+    let t: Msg = req.t();
+    let (title, text) = match failure.status.as_u16() {
+        404 => (t.error_not_found(), t.error_not_found_text()),
+        503 => (t.error_unavailable(), t.error_unavailable_text()),
+        _ => (t.error_failed(), t.error_failed_text()),
+    };
+    let detail = failure.detail;
+    html! {
+        <Layout req={req} title={title} head="">
+            <h1>{title}</h1>
+            <p>{text}</p>
+            if let Some(detail) = &detail {
+                <pre>{detail}</pre>
+            }
+        </Layout>
+    }
+}
+
 pub fn category(t: Msg, slug: &str) -> impl Render + '_ {
     html! {
         <h1>{t.category_title(slug)}</h1>
@@ -28,22 +49,27 @@ pub fn category(t: Msg, slug: &str) -> impl Render + '_ {
     }
 }
 
-/// The document around every page. The app's stylesheet comes before `{doc.head}`, which links
-/// the components' stylesheet, so a component's rules win ties with element defaults.
-pub fn shell(doc: Document) -> impl Render {
+/// The document around every page: `title`, the page's own `head` tags and the page itself
+/// (`children`). A client navigation gets only the title, the head tags and `<main>`'s children.
+/// The app's stylesheet comes before `<Corten />`, which links the components' stylesheet, so a
+/// component's rules win ties with element defaults.
+#[component]
+pub fn Layout<'a, H: Render, C: Render>(req: &'a Req, title: &'a str, head: H, children: C) -> impl Document + 'a {
     html! {
         <!DOCTYPE html>
-        <html lang={doc.lang()}>
+        <html lang={req.lang()}>
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={doc.asset("style.css")}>
-                {doc.head}
-                <script type="module" src={doc.asset("app.js")}></script>
+                <link rel="stylesheet" href={req.asset("style.css")}>
+                <title>{title}" | Card Market"</title>
+                {head}
+                <Corten />
+                <script type="module" src={req.asset("app.js")}></script>
             </head>
             <body>
                 <header class="site"><a href={routes::Home}>"Card Market"</a></header>
-                <main>{doc.main}</main>
+                <main>{children}</main>
             </body>
         </html>
     }

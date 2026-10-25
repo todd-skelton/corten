@@ -21,6 +21,59 @@ render of the same call site.
 component renders inside a page and on its own as a patch, and the two cannot drift. A view owns
 what it captures and renders once, so it can be returned from a function.
 
+## The document
+
+A page is a whole HTML document, built from components like everything else: the app's layout
+component with the page in it. `corten new` writes the layout in `src/views.rs`, and it is the
+app's to change; Corten adds nothing around it.
+
+```rust
+use corten::prelude::*;
+
+#[component]
+fn Layout<'a, H: Render, C: Render>(req: &'a Req, title: &'a str, head: H, children: C) -> impl Document + 'a {
+    html! {
+        <!DOCTYPE html>
+        <html lang={req.lang()}>
+            <head>
+                <meta charset="utf-8">
+                <link rel="stylesheet" href={req.asset("style.css")}>
+                <title>{title}" | Shop"</title>
+                {head}
+                <Corten />
+            </head>
+            <body>
+                <header>"Shop"</header>
+                <main>{children}</main>
+            </body>
+        </html>
+    }
+}
+
+async fn about(req: Req) -> Result {
+    let head = html! { <meta name="description" content="Who we are"> };
+    req.page(html! { <Layout req={&req} title="About" head={head}><h1>"About"</h1></Layout> })
+}
+```
+
+`html!` that starts with `<html>` (or `<!DOCTYPE html>`) is a `Document`, and so is a component
+that returns `impl Document`; `req.page`, `req.screen` and the error page take one. The
+markup is checked when it compiles: one `<head>` with one `<title>` and one `<Corten />`, and
+one `<main>`, not inside a `for`, `if` or `match`. Each part renders for the requests that use it:
+
+| Part | Full load | Client navigation | Data client (`req.screen`) |
+|---|---|---|---|
+| `<title>`'s text | yes | yes | yes, as `"title"` |
+| an expression or component in `<head>` (`{head}`): the page's own tags | yes | yes, each marked `data-corten-head` so the next page's replace them | no |
+| `<Corten />`: the runtime, the import map, the page's scripts and stylesheets | yes | the area stylesheets the page needs | no |
+| `<main>`'s children: the page | yes | yes | no |
+| everything else: the header, the footer, the layout's own tags | yes | no: the runtime keeps what the page has | no |
+
+So the layout costs a navigation nothing, and what the layout shows that a navigation cannot
+update (the signed-in user, from `req.context`) is covered by the page key: when it changes, the
+runtime loads the next page in full. Keep a layout's props to what most pages set (the title,
+their head tags); a page that needs a different document uses another layout.
+
 ## Typed links and messages
 
 The strings that usually drift between files are Rust types, checked when the app compiles.
@@ -35,6 +88,7 @@ corten::i18n::messages! {
 }
 
 Router::new().route(ItemRoute::PATH, get(show));                            // the path axum matches
+// or every route in one module, each with a handler the compiler asks for (corten::routes)
 
 #[derive(Id)]
 pub struct OfferId<'a>(pub &'a str);                                          // offer-{key}

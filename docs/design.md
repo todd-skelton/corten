@@ -37,10 +37,10 @@ framework's shape, and what it does not do yet.
    (`tokio::join!`) and rendering in microseconds, the most it saves is the slowest source's
    wait. A part that is slow and optional is a `<corten-live>` whose stream sends it when it is
    ready and ends.
-8. **Static file names are checked when the shell renders, not when it compiles.** The static
+8. **Static file names are checked when the layout renders, not when it compiles.** The static
    directory is chosen at run time (`App::assets`, `STATIC_DIR`), so a compile-time check would
-   look in the wrong place for some apps, and an app names only a few files, all in its shell.
-   `doc.asset("style.css")` panics on a missing file in debug builds, so `corten dev` and the
+   look in the wrong place for some apps, and an app names only a few files, all in its layout.
+   `req.asset("style.css")` panics on a missing file in debug builds, so `corten dev` and the
    page test `corten new` writes find a typo on the first render.
 
 9. **Work happens where it is fastest for the user.** The server renders the first page, so it
@@ -51,6 +51,16 @@ framework's shape, and what it does not do yet.
    because it is the fastest renderer there, and plain JavaScript runs in the browser because no
    framework or WASM layer is faster than the platform's own DOM calls. The scripts guide has the
    table for choosing ([Server or browser](guide/scripts.md#server-or-browser)).
+10. **The document is a component the app owns, not a shell Corten configures.** A page hands
+   `req.page` its whole document, the app's layout with the page in it, and the head is markup
+   like the rest (`<title>`, the page's tags, `<Corten />` where Corten adds its own), so there is
+   no metadata builder, no shell hook and no second way to change the document. The default
+   layout and error page live in the `corten new` template, where the app can read and change
+   them, not in the crate. `html!` splits a document into the parts each request needs (the
+   title for a data client; the title, head tags and `<main>` for a navigation), so a layout
+   costs a navigation nothing: on the item page a full document got about 7% faster than with
+   the shell and a navigation stayed within noise (`render_cost` medians of alternating runs,
+   same bytes).
 
 ## Rules
 
@@ -85,6 +95,9 @@ framework's shape, and what it does not do yet.
    trait bound, or a `const` assertion over a route's `PATH`. One it cannot see (two settings
    that clash, a file missing from `static/`) fails at startup, and only what depends on the
    request is checked per request. A check that moves earlier also leaves the request path.
+9. A layout's props are what most pages set: the title and the page's own head tags. A page that
+   needs a different document (a print view, an embed) uses another layout component; a layout
+   does not grow a flag per page.
 
 ## Limits
 

@@ -36,5 +36,13 @@
   },
   "home": {
     "title": "Articles populaires"
+  },
+  "error": {
+    "not_found": "Introuvable",
+    "not_found_text": "Aucune carte à cette adresse.",
+    "unavailable": "Indisponible",
+    "unavailable_text": "Vérifiez votre connexion et réessayez.",
+    "failed": "Une erreur est survenue",
+    "failed_text": "Veuillez réessayer."
   }
 }

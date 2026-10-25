@@ -36,7 +36,7 @@ backend.
    with an offline fallback page; the item-page smoke test checks both in Chromium.
 6. JSON-only routes (`App::api`): endpoints with no screen (webhooks, OAuth callbacks, calls
    between services, public APIs, the MCP endpoint) under a prefix where every failure is JSON
-   and there is no shell, nonce or context. `examples/item-page` mounts its MCP endpoint this
+   and there is no document, nonce or context. `examples/item-page` mounts its MCP endpoint this
    way, and lets agents' pages on `AGENT_ORIGINS` call it from the browser.
 
 ## Native apps (next, not built)
@@ -130,8 +130,8 @@ library. Measured against a production marketplace app:
 | Need | Owner | Why |
 |---|---|---|
 | Pages, patches, handlers, feeds across instances, CSP and CSRF, assets, head tags, PWA, catalog, sitemap, health, shutdown, agent tools | Framework | Built and tested earlier. |
-| Shell data on client navigation | Framework: `App::context`, shell key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the shell went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
-| Which nav items show for which roles | App | Roles and permissions are the app's model; the shell view decides. |
+| Layout data on client navigation | Framework: `App::context`, page key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the layout went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
+| Which nav items show for which roles | App | Roles and permissions are the app's model; the layout component decides. |
 | Which routes need sign-in or a permission | Framework: `Area::guard`, `App::guard`, `Api::guard`; the decision is the app's | The answer has to come out right in each request mode (a redirect, `corten-location`, a JSON 401, the error page) and before the handler reads the body, which only the framework sees. Who passes is the app's model, read from its context. |
 | Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
 | Routes with no screen (webhooks, public APIs) | Framework: `App::api` | The framework's error pages, nonce and context assume a browser asking for a page; only the framework can switch them off for a prefix and answer every failure as JSON instead. |
@@ -153,11 +153,11 @@ library. Measured against a production marketplace app:
 | Design tokens to Swift and Kotlin | Build tooling | Same JSON, other languages; a build step per platform, not part of the server. |
 | A component library (buttons, dialogs, menus) | App or a library crate | Look and domain vary per product. The framework gives the parts (scoped CSS, handlers, `COMPONENTS` lists); it ships no widgets. |
 | Behavior of widgets the browser lacks (number field, combobox, tabs, menu button) | `corten-ui`, a separate crate in this repo | Focus, keys and ARIA are the same in every product and hard to get right, so each app should not write them; but they are optional, change faster than the core and add client code. So they live outside `corten` (not re-exported, depends only on `corten`), headless (no CSS: the design system styles them by role and ARIA state), and each one is removed when the platform's own element is good enough. Dialogs, popovers, accordions, selects, switches and sliders are already the platform's. |
-| Sessions and authentication | App | Only cookie helpers and the shell context hook are provided. |
+| Sessions and authentication | App | Only cookie helpers and the context hook are provided. |
 
 ## Open decisions
 
 1. Native navigation: Turbo Drive in shell pages versus a Turbo-compatible adapter in `corten.js`.
 2. Auth across surfaces: session cookies for web and native shells, tokens for native screens
    and agents. Whatever is chosen, the app turns it into the context (`App::context`) that
-   shells, guards (`Area::guard`, one permission check per prefix) and handlers read.
+   layouts, guards (`Area::guard`, one permission check per prefix) and handlers read.

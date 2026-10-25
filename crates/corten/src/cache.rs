@@ -3,14 +3,14 @@
 //! Static files and the runtime are content-addressed and cached forever ([`crate::assets`]).
 //! Every other response [`crate::App`] serves that does not say otherwise gets
 //! `Cache-Control: private, no-cache`: the browser may keep it but asks the server before reusing
-//! it, and no shared cache (a CDN, a proxy) stores it, since a page carries the shell built from
-//! [`crate::App::context`] and may carry the signed-in user's data.
+//! it, and no shared cache (a CDN, a proxy) stores it, since a page's layout may read
+//! [`crate::App::context`] and the page may carry the signed-in user's data.
 //!
 //! A response the same for everyone opts in with [`Cache::public`], returned next to it:
 //!
 //! ```ignore
 //! async fn home(req: Req) -> corten::Result<(Cache, Response)> {
-//!     Ok((Cache::public(Duration::from_secs(60)), req.page("Home", view)?))
+//!     Ok((Cache::public(Duration::from_secs(60)), req.page(html! { <Layout req={&req} title="Home">{view}</Layout> })?))
 //! }
 //! ```
 //!
@@ -28,7 +28,7 @@
 //!
 //! Two things are never shared or kept, whoever set the header (a `Cache` or the handler's own
 //! `Cache-Control`): a response that sets a cookie, and HTML with this request's CSP nonce
-//! (`doc.nonce()` in the shell, or a handler that takes [`crate::security::Nonce`]). They get
+//! (`req.nonce()` in the layout, or a handler that takes [`crate::security::Nonce`]). They get
 //! `private, no-cache`, and `corten dev` logs why.
 //!
 //! What Corten checks is what it can see. A handler that reads a cookie through its own extractor
@@ -139,7 +139,7 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
         return;
     }
     let bug = if seen.nonce {
-        Some("its HTML has this request's CSP nonce (doc.nonce() in the shell, or a handler that takes Nonce)")
+        Some("its HTML has this request's CSP nonce (req.nonce() in the layout, or a handler that takes Nonce)")
     } else if headers.contains_key(header::SET_COOKIE) {
         Some("it sets a cookie")
     } else {

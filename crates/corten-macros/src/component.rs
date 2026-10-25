@@ -130,6 +130,8 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     i += 1;
     let mut where_clause = Vec::new();
     let mut in_where = false;
+    // `-> impl Document`: a layout, which renders a whole document.
+    let mut returns_doc = false;
     let body = loop {
         match tokens.get(i) {
             Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace && i + 1 == tokens.len() => break g.clone(),
@@ -138,6 +140,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
                 where_clause.push(tokens[i].clone());
             }
             Some(token) if in_where => where_clause.push(token.clone()),
+            Some(TokenTree::Ident(id)) if id.to_string() == "Document" => returns_doc = true,
             Some(_) => {}
             None => return err(span, "expected the function body"),
         }
@@ -316,6 +319,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         }
         None => TokenStream::new(),
     };
+    let doc_body = body.clone();
     let draw = if scoped {
         q(
             "::corten::script::__private::scoped(__A1, || ::corten::view::Render::render(&__A0, __corten_component_out));",
@@ -330,6 +334,27 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     let mut markup = scope;
     markup.extend(draw);
     let markup = TokenTree::Group(Group::new(Delimiter::Brace, markup));
+    if returns_doc {
+        let render_part = q(
+            "fn render_part(&self, __corten_component_out: &mut ::std::string::String, __corten_part: ::corten::view::Part) {
+                #[allow(unused_imports)]
+                use ::corten::view::__private::{ParamCopy as _, ParamRef as _};
+                __A0
+                ::corten::view::Document::render_part(&__A1, __corten_component_out, __corten_part);
+            }",
+            &[lets.clone(), TokenTree::Group(doc_body).into()],
+        );
+        out.extend(q(
+            "#[automatically_derived] impl __A0 ::corten::view::Document for __A1 __A2 __A3",
+            &[
+                impl_generics.clone(),
+                TokenTree::Ident(Ident::new(&name.to_string(), name.span())).into(),
+                type_generics.clone(),
+                stream(where_clause.clone()),
+            ],
+        ));
+        out.extend([TokenTree::Group(Group::new(Delimiter::Brace, render_part))]);
+    }
     let render = q(
         "fn render(&self, __corten_component_out: &mut ::std::string::String) {
             #[allow(unused_imports)]

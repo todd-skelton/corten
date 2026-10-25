@@ -70,6 +70,85 @@ use std::fmt;
 /// Derives [`Route`](trait@Route) for a struct: `#[derive(Route)] #[route("/items/{id}")]`.
 pub use corten_macros::Route;
 
+/// The app's routes in one module, each with a handler the compiler asks for.
+///
+/// Each `#[route("/..")]` struct in the module is a typed route (it gets `#[derive(Route)]`) and a
+/// method of the module's `Handlers` trait, named like the struct (`ItemOffers` is
+/// `item_offers`), that returns its `MethodRouter`. The app implements `Handlers`, and
+/// `router(..)` puts each handler at its route's path, for [`crate::App::new`]:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/")]
+///     pub struct Home;
+///
+///     #[route("/items/{id}")]
+///     pub struct Item<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+///
+/// struct Site;
+///
+/// impl url::Handlers for Site {
+///     fn home(&self) -> MethodRouter {
+///         get(|| async { "home" })
+///     }
+///     fn item(&self) -> MethodRouter {
+///         get(|Path(id): Path<String>| async move { id })
+///     }
+/// }
+///
+/// let app = App::new(url::router(Site));
+/// # let _ = app.router();
+/// assert_eq!(url::Item { id: "a b" }.to_string(), "/items/a%20b");
+/// ```
+///
+/// Handlers that share something (a database pool, a client) take it from `self`:
+/// `get(show).with_state(self.db.clone())`. A route the module does not route (an area's page,
+/// an API route, a feed) derives `Route` itself, `#[derive(Route)] #[route("/admin")]`, and gets
+/// no method: the area or API that serves it registers it.
+///
+/// A route without a handler does not compile:
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/")]
+///     pub struct Home;
+///
+///     #[route("/about")]
+///     pub struct About;
+/// }
+///
+/// struct Site;
+///
+/// impl url::Handlers for Site {
+///     fn home(&self) -> MethodRouter {
+///         get(|| async { "home" })
+///     }
+/// }
+/// ```
+///
+/// Nor do two routes a request could not tell apart, which axum would refuse when the app starts:
+///
+/// ```compile_fail
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}")]
+///     pub struct Item<'a> { pub id: &'a str }
+///
+///     #[route("/items/{slug}")]
+///     pub struct ItemBySlug<'a> { pub slug: &'a str }
+/// }
+/// ```
+pub use corten_macros::routes;
+
 /// A URL built from a typed value. Implemented by `#[derive(Route)]`, together with `Render`,
 /// `AttrValue` (so `href={route}` works) and `Display` (the plain URL).
 pub trait Route {
@@ -249,7 +328,7 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 /// Where a redirect or a current-page check points: a typed route, or an `axum::http::Uri` for a
 /// URL the app does not route (a payment page, a sign-in provider). Text is neither, so a path
 /// typed as a string does not compile. Used by [`crate::Req::redirect`] and
-/// [`crate::Document::current`].
+/// [`crate::Req::current`].
 pub trait Href {
     /// Calls `f` with the URL.
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T;

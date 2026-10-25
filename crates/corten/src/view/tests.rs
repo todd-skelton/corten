@@ -292,3 +292,79 @@ fn floats_match_display_across_their_range() {
         assert_eq!(float.to_html(), float.to_string(), "{:#x}", float.to_bits());
     }
 }
+
+#[test]
+fn a_page_s_head_tags_are_marked_at_the_top_level_and_raw_text_is_left_alone() {
+    let cases = [
+        (
+            r#"<meta name="description" content="a &lt;b&gt;">"#,
+            r#"<meta name="description" content="a &lt;b&gt;" data-corten-head>"#,
+        ),
+        (
+            "<link rel=canonical href=/a><meta charset=utf-8>",
+            "<link rel=canonical href=/a data-corten-head><meta charset=utf-8 data-corten-head>",
+        ),
+        ("<noscript><style>p{}</style></noscript>", "<noscript data-corten-head><style>p{}</style></noscript>"),
+        (
+            r#"<script type="application/ld+json">{"a":"<b>"}</script><meta x>"#,
+            r#"<script type="application/ld+json" data-corten-head>{"a":"<b>"}</script><meta x data-corten-head>"#,
+        ),
+        ("<style>a>b{}</style>", "<style data-corten-head>a>b{}</style>"),
+        ("<!-- a --><meta x/>", "<!-- a --><meta x data-corten-head/>"),
+        ("", ""),
+    ];
+    for (page, marked) in cases {
+        let mut out = String::new();
+        crate::view::__private::head_slot(|out| out.push_str(page), &mut out);
+        assert_eq!(out, marked, "{page}");
+    }
+}
+
+/// Text that counts how often it renders.
+struct Count<'a>(&'a std::cell::Cell<u32>);
+
+impl Render for Count<'_> {
+    fn render(&self, out: &mut String) {
+        self.0.set(self.0.get() + 1);
+        out.push_str("Shop");
+    }
+}
+
+/// A layout whose header counts its renders: a navigation must not run it.
+#[component]
+fn Counted<'a, C: Render>(title: &'a str, renders: &'a std::cell::Cell<u32>, children: C) -> impl crate::Document + 'a {
+    html! {
+        <html>
+            <head>
+                <title>{title}" | Shop"</title>
+                <crate::Corten />
+            </head>
+            <body>
+                <header>{Count(renders)}</header>
+                <main>{children}</main>
+                <footer>"(c)"</footer>
+            </body>
+        </html>
+    }
+}
+
+#[test]
+fn a_document_renders_each_part_and_a_swap_skips_the_layout() {
+    use crate::view::{Document, Part};
+    let renders = std::cell::Cell::new(0);
+    let doc = || Counted { title: "Lamp", renders: &renders, children: html! { <h1>"Lamp"</h1> } };
+    let part = |part| {
+        let mut out = String::new();
+        doc().render_part(&mut out, part);
+        out
+    };
+    assert_eq!(
+        part(Part::Full),
+        "<html><head><title>Lamp | Shop</title></head><body><header>Shop</header><main><h1>Lamp</h1></main><footer>(c)</footer></body></html>"
+    );
+    assert_eq!(renders.get(), 1);
+    assert_eq!(part(Part::Swap), "<title>Lamp | Shop</title><h1>Lamp</h1>");
+    assert_eq!(part(Part::Title), "Lamp | Shop");
+    assert_eq!(renders.get(), 1, "only the full document runs the layout");
+    assert_eq!(doc().to_html(), part(Part::Full), "Render is the full document");
+}

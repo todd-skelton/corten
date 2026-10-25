@@ -11,7 +11,7 @@
 //! }
 //!
 //! async fn home(req: Req) -> corten::Result {
-//!     req.page("Home", html! { <h1>"Hello"</h1> })
+//!     req.page(html! { <Layout req={&req} title="Home"><h1>"Hello"</h1></Layout> })
 //! }
 //! ```
 //!
@@ -19,8 +19,8 @@
 //!
 //! | Mode | Sent by | Response |
 //! |---|---|---|
-//! | `Document` | the browser, first load or no JavaScript | the app's shell around the page |
-//! | `Navigation` | the runtime, same-origin link click | `<title>` plus the page, swapped into `<main>` |
+//! | `Document` | the browser, first load or no JavaScript | the whole document: the app's layout with the page in it |
+//! | `Navigation` | the runtime, same-origin link click | `<title>`, the page's head tags and `<main>`'s children, swapped in |
 //! | `Action` | the runtime, `<form data-patch>` submit | fragments that replace elements with the same `id` |
 //! | `Data` | a native screen, an agent or a test, with `Accept: application/json` | the screen's data as JSON ([`Req::screen`]) |
 //!
@@ -35,7 +35,7 @@
 //!
 //! Modules: [`api`] (JSON-only routes), [`cache`] (HTTP caching), [`view`] (markup), [`script`]
 //! (handlers: behavior in the browser), [`style`] (component stylesheets and design tokens), [`route`] (typed links),
-//! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`meta`], [`form`], [`seo`].
+//! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`form`], [`seo`].
 //! Features: `json` (handler values, data screens), `feed` (live rows), `types` (TypeScript
 //! declarations from Rust types), `agent` (MCP tools), `compress`, `log` (a log subscriber in
 //! [`serve`]).
@@ -59,7 +59,6 @@ mod html;
 pub mod i18n;
 #[cfg(feature = "json")]
 pub mod json;
-pub mod meta;
 mod page;
 pub mod pwa;
 pub mod route;
@@ -102,13 +101,12 @@ pub use form::{Errors, FieldName, Form, Query, SubmitKey};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};
-pub use meta::Meta;
-pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
-pub use route::{Href, Route};
+pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, Req, MODE_HEADER};
+pub use route::{routes, Href, Route};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
-pub use view::{component, html, raw, Render};
+pub use view::{component, html, raw, Document, Render};
 
 /// What a component sends to the browser: its handlers' script (`#[component(js)]` or
 /// [`script::script!`]), its stylesheet (`#[component(css)]`, or a token file's), its view class
@@ -134,7 +132,7 @@ pub mod prelude {
     pub use crate::{
         axum::{
             extract::{Path, State},
-            routing::{delete, get, post, put},
+            routing::{delete, get, post, put, MethodRouter},
             Router,
         },
         component, html,
@@ -142,8 +140,8 @@ pub mod prelude {
         raw,
         script::{el, refs, Handler, Ref},
         view::Id,
-        Access, Api, App, Area, Cache, Document, Errors, FieldName, Fields, Form, Meta, Mode, Query, Render, Req, Result, Route,
-        SubmitKey,
+        Access, Api, App, Area, Cache, Corten, Document, Errors, Failure, FieldName, Fields, Form, Mode, Query, ReadAgain,
+        Render, Req, Result, Route, SubmitKey,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, ToJson};

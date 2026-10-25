@@ -6,20 +6,20 @@
 
 | Request | Sent by | Handler returns | Client does |
 |---|---|---|---|
-| `GET`, no `corten` header | first load, reload, no JavaScript | `req.page(meta, view)`: the shell around the page | renders HTML |
+| `GET`, no `corten` header | first load, reload, no JavaScript | `req.page(doc)`: the app's layout with the page in it | renders HTML |
 | `GET` with `corten: nav` | runtime, same-origin link or back/forward | the same call: `<title>`, head tags and the page only | swaps `<main>` |
 | `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch(view)` | replaces each element by `id`; `view::Remove(id)` removes one (ids are `#[derive(Id)]` types) |
 | `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(&route)` | renders the page |
-| any, `Accept: application/json` | native screen, agent, test | `req.screen(meta, &data, view)` (`data` a `ToJson`): `{"title", "data"}` | renders natively, or reasons over it |
+| any, `Accept: application/json` | native screen, agent, test | `req.screen(&data, doc)` (`data` a `ToJson`): `{"title", "data"}`, the title from the document's `<title>` | renders natively, or reasons over it |
 | any, under an `App::api` prefix | a webhook, a service, a partner's site | JSON (`corten::Json`), errors as `{"error": ...}` | reads the JSON |
 | SSE | `<corten-live src>` | `corten::live(stream_of_views)` | applies each like a patch |
 | `GET {feed}`, `{feed}/live` | a handler's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |
 
 One handler serves every mode, and `req.mode` says which. A route with no screen goes under
-[`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The shell renders on full loads only;
-every page carries a key hashed from the context and the deploy, and when a navigation answers
-with a different key (sign-in, a new release) the runtime loads the whole document instead, so
-the shell is never stale.
+[`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The layout around `<main>` renders on full
+loads only ([the document](views.md#the-document)); every page carries a key hashed from the
+context and the deploy, and when a navigation answers with a different key (sign-in, a new
+release) the runtime loads the whole document instead, so the layout is never stale.
 
 ## Forms
 
@@ -190,12 +190,12 @@ needs is a field of its route; the old URL's other parameters are not carried ov
 ## A read that has not caught up yet
 
 A write is often read back from a projection that is a moment behind: the page after the
-redirect says "saved, updating" and should read itself again shortly. Its `Meta` asks for that:
+redirect says "saved, updating" and should read itself again shortly. `ReadAgain`, among the
+page's head tags, asks for that:
 
 ```rust,ignore
-let meta = Meta::new("Cart");
-let meta = if cart.behind(&receipt) { meta.read_again(Duration::from_secs(2)) } else { meta };
-req.page(meta, cart_view(&cart))
+let again = cart.behind(&receipt).then_some(ReadAgain { after: Duration::from_secs(2) });
+req.page(html! { <Layout req={&req} title="Cart" head={again}>{cart_view(&cart)}</Layout> })
 ```
 
 However the page was reached (a full load, a link, a `data-patch` form's redirect), the runtime

@@ -80,7 +80,7 @@ impl Desk {
 }
 
 pub fn app(desk: Desk) -> App {
-    App::new(routes(desk)).shell(views::shell).components(views::COMPONENTS)
+    App::new(routes(desk)).components(views::COMPONENTS)
 }
 
 /// Every URL the app serves and links to.
@@ -124,7 +124,8 @@ async fn home(req: Req, State(desk): State<Desk>) -> corten::Result {
     let qty = desk.quantities();
     let items = desk.items.lock().expect("items").clone();
     let lines: Vec<Line> = items.iter().filter(|i| !i.archived).map(|item| Line { item, qty: qty[&item.id] }).collect();
-    req.page(Meta::new("Inventory"), views::desk(&lines))
+    let view = views::desk(&lines);
+    req.page(html! { <views::Layout req={&req} title="Inventory">{view}</views::Layout> })
 }
 
 #[derive(Deserialize, Fields)]

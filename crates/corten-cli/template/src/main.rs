@@ -9,28 +9,42 @@ async fn main() -> std::io::Result<()> {
 }
 
 /// Every URL the app serves. Views link to these types, so a link cannot point at a route that
-/// does not exist, and changing a path here changes every link to it.
-#[derive(Route)]
-#[route("/")]
-pub struct Home;
+/// does not exist, changing a path here changes every link to it, and a route without a handler
+/// below does not compile.
+#[corten::routes]
+pub mod url {
+    #[route("/")]
+    pub struct Home;
 
-#[derive(Route)]
-#[route("/greet")]
-pub struct Greet;
+    #[route("/greet")]
+    pub struct Greet;
+}
 
-/// The routes and the shell. Security headers, error pages, static files, health checks,
-/// compression and live reload are Corten's defaults; see `App` to change them.
+/// The app's handlers, one per route.
+struct Site;
+
+impl url::Handlers for Site {
+    fn home(&self) -> MethodRouter {
+        get(home)
+    }
+
+    fn greet(&self) -> MethodRouter {
+        post(greet)
+    }
+}
+
+/// The routes, the error page and the components with scripts or styles. Security headers, static
+/// files, health checks, compression and live reload are Corten's defaults; see `App` to change
+/// them.
 fn app() -> App {
-    let routes = Router::new()
-        .route(Home::PATH, get(home))
-        .route(Greet::PATH, post(greet));
+    let routes = url::router(Site);
     App::new(routes)
-        .shell(views::shell)
+        .error_page(views::error_page)
         .components(&[views::ClickCounter])
 }
 
 async fn home(req: Req) -> corten::Result {
-    req.page("{{name}}", views::home(""))
+    req.page(views::home(&req, ""))
 }
 
 #[derive(Deserialize, Fields)]
@@ -44,7 +58,7 @@ async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
     let name = form.name.trim();
     match req.mode {
         Mode::Action => req.patch(views::Greeting { name }),
-        _ => req.page("{{name}}", views::home(name)),
+        _ => req.page(views::home(&req, name)),
     }
 }
 
@@ -62,9 +76,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn home_page_renders_in_the_shell() {
+    async fn home_page_renders_in_the_layout() {
         let html = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(html.contains("<title>{{name}}</title>"));
+        assert!(html.contains("<header>"));
         assert!(
             html.contains("click_counter.count(@total)"),
             "the counter's handler: {html}"
@@ -82,5 +97,11 @@ mod tests {
             send(req).await,
             r#"<p id="greeting" aria-live="polite">Hello, Ada!</p>"#
         );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_url_gets_the_error_page_in_the_layout() {
+        let html = send(Request::get("/nope").body(Body::empty()).unwrap()).await;
+        assert!(html.contains("<h1>Not found</h1>") && html.contains("<header>"));
     }
 }

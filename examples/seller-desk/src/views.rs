@@ -24,18 +24,21 @@ pub struct Line<'a> {
     pub qty: u32,
 }
 
-pub fn shell(doc: Document) -> impl Render {
+/// The document around every page.
+#[component]
+pub fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
     html! {
         <!DOCTYPE html>
         <html lang="en">
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={doc.asset("style.css")}>
-                {doc.head}
+                <link rel="stylesheet" href={req.asset("style.css")}>
+                <title>{title}</title>
+                <Corten />
             </head>
             <body>
-                <main>{doc.main}</main>
+                <main>{children}</main>
             </body>
         </html>
     }

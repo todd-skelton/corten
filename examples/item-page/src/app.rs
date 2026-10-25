@@ -21,10 +21,10 @@ use crate::{
     routes,
     source::Source,
     text::Msg,
-    views::{self, AlertForm, AlertFormView, AlertMessage, Home, ItemPage},
+    views::{self, AlertForm, AlertFormView, AlertMessage, Home, ItemPage, Layout},
 };
 
-/// The app, assembled: routes plus the shell, catalogs and PWA settings. Corten adds the rest.
+/// The app, assembled: routes plus the error page, catalogs and PWA settings. Corten adds the rest.
 pub fn app(source: Source) -> App {
     let tokens = std::env::var("AGENT_TOKENS").unwrap_or_else(|_| "dev-token".into());
     let tokens: Arc<[String]> = tokens.split(',').map(str::to_string).collect();
@@ -39,13 +39,13 @@ pub fn app(source: Source) -> App {
     let origins = std::env::var("AGENT_ORIGINS").unwrap_or_default();
     let tools = tools(source.clone(), tokens).route();
     let item_json = get(item_json).with_state(source.clone());
-    App::new(routes(source))
+    App::new(routes(source.clone()))
         .api::<routes::ApiRoot>(|api| api.route::<routes::ItemJson>(item_json))
         .api::<routes::Mcp>(|mcp| {
             let mcp = mcp.route::<routes::Mcp>(tools);
             origins.split(',').filter(|o| !o.is_empty()).fold(mcp, |mcp, origin| mcp.allow_origin(origin))
         })
-        .shell(views::shell)
+        .error_page(views::error_page)
         .messages::<Msg>()
         .components(views::COMPONENTS)
         .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(routes::Mcp::PATH))
@@ -78,18 +78,19 @@ fn shared() -> Cache {
 }
 
 async fn home(req: Req) -> corten::Result<(Cache, Response)> {
-    Ok((shared(), req.page("Card Market", Home { t: req.t() })?))
+    let t = req.t();
+    Ok((shared(), req.page(html! { <Layout req={&req} title="Home" head=""><Home t={t} /></Layout> })?))
 }
 
 async fn category(req: Req, Path(slug): Path<String>) -> corten::Result<(Cache, Response)> {
     let t: Msg = req.t();
-    Ok((shared(), req.page(t.category_title(&slug).to_string(), views::category(t, &slug))?))
+    let title = t.category_title(&slug).to_string();
+    Ok((shared(), req.page(html! { <Layout req={&req} title={&title} head="">{views::category(t, &slug)}</Layout> })?))
 }
 
 async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> corten::Result {
     let item = source.item(&id).await?.ok_or_else(not_found)?;
-    let page = ItemPage::new(req.t(), &item, String::new());
-    req.page(page.meta(), page.view())
+    req.page(ItemPage::new(req.t(), &item, String::new()).document(&req))
 }
 
 /// The cached item, serialized where it is.
@@ -113,7 +114,7 @@ async fn create_alert(
             let page = || async {
                 let item = source.item(&id).await?.ok_or_else(not_found)?;
                 let page = ItemPage { form: view.clone(), ..ItemPage::new(t, &item, String::new()) };
-                req.page(page.meta(), page.view())
+                req.page(page.document(&req))
             };
             return req.invalid(&view.errors, AlertForm { t, form: view.clone() }, page).await;
         }
@@ -124,8 +125,7 @@ async fn create_alert(
     }
     // Without JavaScript the browser posted a plain form: answer with the whole page.
     let item = source.item(&id).await?.ok_or_else(not_found)?;
-    let page = ItemPage::new(t, &item, message);
-    req.page(page.meta(), page.view())
+    req.page(ItemPage::new(t, &item, message).document(&req))
 }
 
 /// Which item, for `items.get`.
@@ -464,11 +464,6 @@ mod tests {
         }
     }
 
-    /// One route in a loop, for `perf stat` and `perf record`: LOOP_TARGET is `json` (the item
-    /// through `App`), `bare-json` (the same handler on a plain axum router), `page` (a client
-    /// navigation) or `document`; LOOP_SECONDS how long. Count instructions per request as the
-    /// difference between a long and a short run, so startup cancels out.
-    /// `CORTEN_FIXTURE=/path/items.json LOOP_TARGET=json cargo test --release -p item-page -- --ignored route_loop --nocapture`
     #[tokio::test]
     #[ignore]
     async fn route_loop() {
@@ -523,12 +518,12 @@ mod tests {
         );
         let (status, _, offline) = send(Request::get("/offline").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
-        assert!(offline.contains("You are offline"));
+        assert!(offline.contains("<h1>Not available</h1>"), "{offline}");
         assert_eq!(send(Request::get("/health/ready").body(Body::empty()).unwrap()).await.0, StatusCode::OK);
         assert!(send(Request::get("/robots.txt").body(Body::empty()).unwrap()).await.2.contains("Disallow: /mcp"));
-        let (status, _, body) = send(Request::get("/items/nope").body(Body::empty()).unwrap()).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        assert!(body.contains(r#"content="noindex""#));
+        let (status, headers, body) = send(Request::get("/items/nope").body(Body::empty()).unwrap()).await;
+        assert_eq!((status, &headers["x-robots-tag"]), (StatusCode::NOT_FOUND, &"noindex".parse().unwrap()));
+        assert!(body.contains("<h1>Not found</h1>"), "{body}");
     }
 
     #[tokio::test]

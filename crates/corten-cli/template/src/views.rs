@@ -1,40 +1,67 @@
 use corten::prelude::*;
 
-use crate::{Greet, GreetForm, Home};
+use crate::{GreetForm, url};
 
-/// The document around every page. Client navigation swaps `<main>`.
-pub fn shell(doc: Document) -> impl Render {
+/// The document around every page; it is yours to change. `<Corten />` is where Corten adds the
+/// runtime and the page's scripts and stylesheets. A client navigation gets only the `<title>`
+/// and `<main>`'s children, so the rest runs on full page loads only. For tags a page sets itself
+/// (a description, a canonical link), add a prop and put it in `<head>`: `{head}`.
+#[component]
+pub fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
     html! {
         <!DOCTYPE html>
-        <html lang={doc.lang()}>
+        <html lang={req.lang()}>
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={doc.asset("style.css")}>
-                {doc.head}
+                <link rel="stylesheet" href={req.asset("style.css")}>
+                <title>{title}</title>
+                <Corten />
             </head>
             <body>
-                <header><a href={Home}>"{{name}}"</a></header>
-                <main>{doc.main}</main>
+                <header><a href={url::Home}>"{{name}}"</a></header>
+                <main>{children}</main>
             </body>
         </html>
     }
 }
 
-pub fn home(name: &str) -> impl Render {
+/// The page for a failed request: an unknown URL, a handler's error or panic, the offline page
+/// (503). Under `corten dev`, `failure.detail` is the error; in production it is only logged.
+pub fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
+    let (title, text) = match failure.status.as_u16() {
+        404 => ("Not found", "There is nothing at this address."),
+        503 => ("Not available", "Check your connection and try again."),
+        _ => ("Something went wrong", "Please try again."),
+    };
+    let detail = failure.detail;
+    html! {
+        <Layout req={req} title={title}>
+            <h1>{title}</h1>
+            <p>{text}</p>
+            if let Some(detail) = &detail {
+                <pre>{detail}</pre>
+            }
+        </Layout>
+    }
+}
+
+pub fn home<'a>(req: &'a Req, name: &'a str) -> impl Document + 'a {
     let f = GreetForm::FIELDS;
     html! {
-        <h1>"Welcome to Corten"</h1>
-        <p>
-            "This page is rendered on the server. Edit " <code>"src/views.rs"</code>
-            " and save: the page reloads."
-        </p>
-        <form method="post" action={Greet} data-patch>
-            <label>"Your name " <input name={f.name} value={name} required></label>
-            <button>"Greet me"</button>
-        </form>
-        <Greeting name={name} />
-        <ClickCounter />
+        <Layout req={req} title="{{name}}">
+            <h1>"Welcome to Corten"</h1>
+            <p>
+                "This page is rendered on the server. Edit " <code>"src/views.rs"</code>
+                " and save: the page reloads."
+            </p>
+            <form method="post" action={url::Greet} data-patch>
+                <label>"Your name " <input name={f.name} value={name} required></label>
+                <button>"Greet me"</button>
+            </form>
+            <Greeting name={name} />
+            <ClickCounter />
+        </Layout>
     }
 }
 
