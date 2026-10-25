@@ -637,6 +637,19 @@ const formProperty = (form, name) => Reflect.get(HTMLFormElement.prototype, name
  */
 const formCall = (form, name, ...args) => formProperty(form, name).call(form, ...args);
 
+/**
+ * Gives the form's submit keys (`SubmitKey::field`, `data-submit`) new values once a submission
+ * has its answer, so the next submit is a new one. Until then a retry sends the same key.
+ * @param {HTMLFormElement} form
+ */
+function renewSubmitKeys(form) {
+  for (const field of Array.from(/** @type {HTMLFormControlsCollection} */ (formProperty(form, "elements")))) {
+    if (field instanceof HTMLInputElement && field.hasAttribute("data-submit")) {
+      field.value = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+  }
+}
+
 /** The fields of a form and their state, when it is sent. @param {HTMLFormElement} form */
 function sentState(form) {
   /** @type {Map<Element, string | undefined>} */
@@ -983,6 +996,9 @@ document.addEventListener("submit", async (event) => {
   }
   try {
     const res = await fetch(url, init);
+    // An answer below 500 is definitive: the write applied or was refused. A 5xx (a 502 from a
+    // proxy can hide a committed write), a network error or an abort keeps the key for a retry.
+    if (res.status < 500) renewSubmitKeys(form);
     const location_ = res.headers.get("corten-location");
     if (location_) {
       submits.delete(form);

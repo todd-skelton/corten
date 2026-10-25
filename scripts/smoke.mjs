@@ -2,6 +2,8 @@
 // and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
 // Usage: node scripts/smoke.mjs [http://localhost:18480] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
+import http from "node:http";
+import zlib from "node:zlib";
 
 const base = process.argv[2] ?? "http://localhost:18480";
 const engines = { chromium, firefox, webkit };
@@ -18,6 +20,38 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };
+
+// A live stream is compressed for clients that accept it and flushed after each event: the
+// first event decodes while the stream is still open.
+engine = "http";
+/** @param {string} accept @returns {Promise<{ coding: string | undefined, first: string }>} */
+const liveEvent = (accept) =>
+  new Promise((resolve, reject) => {
+    const req = http.get(`${base}/live/trades`, { headers: { "accept-encoding": accept } }, (res) => {
+      const coding = res.headers["content-encoding"];
+      const body = coding === "br" ? res.pipe(zlib.createBrotliDecompress()) : res;
+      let text = "";
+      const timer = setTimeout(() => (req.destroy(), resolve({ coding, first: text })), 5000);
+      body.on("data", (chunk) => {
+        text += chunk.toString();
+        if (text.includes("event: patch")) {
+          clearTimeout(timer);
+          req.destroy();
+          resolve({ coding, first: text });
+        }
+      });
+      body.on("error", () => {});
+    });
+    req.on("error", (e) => (e.message.includes("socket hang up") ? undefined : reject(e)));
+  });
+{
+  const zstd = await liveEvent("gzip, deflate, br, zstd");
+  check("a live stream is zstd for a client that accepts it", zstd.coding === "zstd", String(zstd.coding));
+  const br = await liveEvent("gzip, br");
+  check("a live stream's first event decodes before the stream ends (brotli, flushed per event)", br.coding === "br" && br.first.includes("Last trade"), `${br.coding}: ${br.first.slice(0, 60)}`);
+  const plain = await liveEvent("gzip");
+  check("a gzip-only client gets the stream as it is", plain.coding === undefined && plain.first.includes("event: patch"), String(plain.coding));
+}
 
 for (engine of names) {
   const browser = await engines[engine].launch({ headless: true });
@@ -208,6 +242,34 @@ async function run(browser) {
     "a failed submit leaves the page and the form as they were",
     (await page.textContent("#watch-message")) === messageBefore && (await page.getAttribute("main form[data-patch]", "aria-busy")) === null,
   );
+
+  // A submit key (SubmitKey::field) is sent again until the submission has an answer, then renewed.
+  const zero = "0".repeat(32);
+  await page.evaluate((zero) =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      `<form id="keyed" method="post" action="/watch" data-patch><input type="hidden" name="id" value="s1"><input type="hidden" name="submit" data-submit value="${zero}"><button>Watch</button></form>`,
+    ), zero);
+  /** @type {(string | null)[]} */
+  const keys = [];
+  /** @param {import("@playwright/test").Request} r */
+  const keyOf = (r) => r.method() === "POST" && r.url().endsWith("/watch") && keys.push(new URLSearchParams(r.postData() ?? "").get("submit"));
+  page.on("request", keyOf);
+  const keyedFailed = page.evaluate(() => new Promise((resolve) => document.addEventListener("corten:error", resolve, { once: true })));
+  failWatch = true;
+  await page.click("#keyed button");
+  await keyedFailed;
+  const kept = await page.inputValue("#keyed [name=submit]");
+  await page.click("#keyed button");
+  await page.waitForFunction((zero) => /** @type {HTMLInputElement | null} */ (document.querySelector("#keyed [name=submit]"))?.value !== zero, zero, { timeout: 5000 }).catch(() => {});
+  const renewed = await page.inputValue("#keyed [name=submit]");
+  page.off("request", keyOf);
+  check(
+    "a submit key is sent again after a failed submit and renewed once the submit is answered",
+    kept === zero && keys.length === 2 && keys.every((k) => k === zero) && /^[0-9a-f]{32}$/.test(renewed) && renewed !== zero,
+    `${keys.join(", ")} -> ${renewed}`,
+  );
+  await page.evaluate(() => document.querySelector("#keyed")?.remove());
 
   // A submit button's formaction and formmethod win over the form's, as in a plain post.
   await page.evaluate(() =>

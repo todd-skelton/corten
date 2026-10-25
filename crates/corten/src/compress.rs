@@ -8,13 +8,24 @@
 //! they are compressed once, at brotli 11 and gzip 9, the first time a client asks for them (in
 //! a background thread, so startup is not delayed; until then they go out as dynamic responses).
 //!
-//! `corten::compress::apply(router)` wraps the whole app. Event streams, images, fonts, bodies
-//! under 1 KiB and responses that are already encoded or marked `no-transform` pass through.
+//! Event streams ([`crate::live`], feeds) are compressed as one stream per connection, flushed
+//! after every event so it arrives at once, with the context kept between events: a redraw that
+//! repeats the last one costs tens of bytes. A stream holds its context while it is open, so
+//! streams use small windows (zstd 1 with a 64 KiB window, about 470 KiB; brotli 4, about 800 KiB;
+//! gzip clients get the stream as it is) and share a budget of 256 MiB (about 550 streams): past
+//! it a new stream goes out uncompressed. An event repeats cheaply when the one before it is within the
+//! window, so events up to about 64 KB.
+//!
+//! `corten::compress::apply(router)` wraps the whole app. Images, fonts, bodies under 1 KiB and
+//! responses that are already encoded or marked `no-transform` pass through.
 
 use std::{
     cell::RefCell,
     io::Write,
-    sync::{atomic::AtomicBool, atomic::Ordering, Arc, OnceLock},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, OnceLock,
+    },
 };
 
 use axum::{
@@ -31,6 +42,14 @@ const MIN_SIZE: u64 = 1024;
 const ZSTD_LEVEL: i32 = 1;
 const BROTLI_LEVEL: u32 = 2;
 const GZIP_LEVEL: u32 = 1;
+
+/// Memory all compressed event streams may hold at once, in bytes. Each open stream holds its
+/// coder's context ([`StreamCoder`]); a stream that would pass this is sent uncompressed.
+const STREAM_BUDGET: usize = 256 << 20;
+/// What one stream's context holds, measured with the settings in [`StreamCoder::new`].
+const ZSTD_STREAM_BYTES: usize = 480 << 10;
+const BROTLI_STREAM_BYTES: usize = 1000 << 10;
+static STREAM_BYTES: AtomicUsize = AtomicUsize::new(0);
 
 /// A content coding Corten writes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,6 +176,10 @@ pub(crate) fn negotiate(headers: &HeaderMap) -> Option<Coding> {
 pub(crate) async fn finish(res: Response, coding: Option<Coding>) -> Response {
     let headers = res.headers();
     let content_type = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let event_stream = content_type.split(';').next().unwrap_or("").trim() == "text/event-stream";
+    if event_stream {
+        return stream(res, coding);
+    }
     if !compressible(content_type)
         || headers.contains_key(header::CONTENT_ENCODING)
         || headers.contains_key(header::CONTENT_RANGE)
@@ -186,6 +209,126 @@ pub(crate) async fn finish(res: Response, coding: Option<Coding>) -> Response {
         }
     }
     Response::from_parts(parts, Body::from(encoded))
+}
+
+/// An event stream, compressed one event at a time with the context kept between them.
+fn stream(res: Response, coding: Option<Coding>) -> Response {
+    let headers = res.headers();
+    if headers.contains_key(header::CONTENT_ENCODING)
+        || headers.get(header::CACHE_CONTROL).and_then(|v| v.to_str().ok()).is_some_and(|v| v.contains("no-transform"))
+    {
+        return res;
+    }
+    let (mut parts, body) = res.into_parts();
+    vary(&mut parts.headers);
+    let Some(mut coder) = coding.and_then(StreamCoder::new) else {
+        return Response::from_parts(parts, body);
+    };
+    parts.headers.insert(header::CONTENT_ENCODING, coder.coding().header());
+    parts.headers.remove(header::CONTENT_LENGTH);
+    let chunks = futures_util::StreamExt::filter_map(body.into_data_stream(), move |chunk| {
+        let out = chunk.map(|data| coder.event(&data));
+        std::future::ready(match out {
+            Ok(bytes) if bytes.is_empty() => None,
+            other => Some(other),
+        })
+    });
+    Response::from_parts(parts, Body::from_stream(chunks))
+}
+
+/// One event stream's coder: everything written so far is its context, so an event like an
+/// earlier one costs only what differs. Holds its share of `STREAM_BUDGET` until dropped.
+pub(crate) enum StreamCoder {
+    Zstd(zstd::zstd_safe::CCtx<'static>),
+    Brotli(Box<brotli::CompressorWriter<Vec<u8>>>),
+}
+
+impl StreamCoder {
+    /// A coder for `coding`, or `None` when the stream should go out as it is: a gzip client
+    /// (deflate repeats an event poorly at a level worth its time), or the budget is spent.
+    pub(crate) fn new(coding: Coding) -> Option<StreamCoder> {
+        let cost = match coding {
+            Coding::Zstd => ZSTD_STREAM_BYTES,
+            Coding::Brotli => BROTLI_STREAM_BYTES,
+            Coding::Gzip => return None,
+        };
+        if !reserve(&STREAM_BYTES, cost, STREAM_BUDGET) {
+            return None;
+        }
+        Some(match coding {
+            Coding::Zstd => {
+                use zstd::zstd_safe::CParameter;
+                let mut cx = zstd::zstd_safe::CCtx::create();
+                for p in [CParameter::CompressionLevel(ZSTD_LEVEL), CParameter::WindowLog(16), CParameter::HashLog(12)] {
+                    cx.set_parameter(p).expect("a valid zstd parameter");
+                }
+                StreamCoder::Zstd(cx)
+            }
+            _ => StreamCoder::Brotli(Box::new(brotli::CompressorWriter::new(Vec::new(), 4096, 4, 16))),
+        })
+    }
+
+    fn coding(&self) -> Coding {
+        match self {
+            StreamCoder::Zstd(_) => Coding::Zstd,
+            StreamCoder::Brotli(_) => Coding::Brotli,
+        }
+    }
+
+    fn cost(&self) -> usize {
+        match self {
+            StreamCoder::Zstd(_) => ZSTD_STREAM_BYTES,
+            StreamCoder::Brotli(_) => BROTLI_STREAM_BYTES,
+        }
+    }
+
+    /// `data` compressed and flushed, so the client can decode everything sent so far.
+    pub(crate) fn event(&mut self, data: &[u8]) -> Bytes {
+        match self {
+            StreamCoder::Zstd(cx) => {
+                use zstd::zstd_safe::{zstd_sys::ZSTD_EndDirective, InBuffer, OutBuffer};
+                let mut out = Vec::with_capacity(zstd::zstd_safe::compress_bound(data.len()) + 32);
+                let mut input = InBuffer::around(data);
+                loop {
+                    let at = out.len();
+                    let mut buf = OutBuffer::around_pos(&mut out, at);
+                    let left = cx
+                        .compress_stream2(&mut buf, &mut input, ZSTD_EndDirective::ZSTD_e_flush)
+                        .expect("zstd compresses in memory");
+                    if left == 0 {
+                        break;
+                    }
+                    out.reserve(left);
+                }
+                out.into()
+            }
+            StreamCoder::Brotli(writer) => {
+                writer.write_all(data).expect("brotli writes to memory");
+                writer.flush().expect("brotli writes to memory");
+                std::mem::take(writer.get_mut()).into()
+            }
+        }
+    }
+}
+
+/// Adds `cost` to `held` unless that would pass `budget`.
+fn reserve(held: &AtomicUsize, cost: usize, budget: usize) -> bool {
+    let mut now = held.load(Ordering::Acquire);
+    loop {
+        if now + cost > budget {
+            return false;
+        }
+        match held.compare_exchange_weak(now, now + cost, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return true,
+            Err(actual) => now = actual,
+        }
+    }
+}
+
+impl Drop for StreamCoder {
+    fn drop(&mut self) {
+        STREAM_BYTES.fetch_sub(self.cost(), Ordering::AcqRel);
+    }
 }
 
 /// Adds `accept-encoding` to `Vary`, so a cache keeps one copy per coding.
@@ -334,6 +477,89 @@ mod tests {
         let (headers, body) = get_with("/png", "zstd").await;
         assert!(!headers.contains_key("content-encoding") && !headers.contains_key("vary"));
         assert_eq!(body.len(), 4096);
+    }
+
+    /// A row list redrawn: the same markup with one price changed.
+    fn redraw(changed: usize) -> String {
+        let rows: String = (0..40)
+            .map(|i| {
+                format!(
+                    r#"<li id="row-{i}"><a href="/items/{i}">Item {i}</a><span>{}</span></li>"#,
+                    if i == changed { 999 } else { i }
+                )
+            })
+            .collect();
+        format!("event: patch\ndata: <ul id=\"rows\">{rows}</ul>\n\n")
+    }
+
+    async fn events(encoding: &str) -> (HeaderMap, Vec<Bytes>) {
+        let chunks = futures_util::stream::iter(
+            [redraw(1), redraw(2), redraw(2)].map(|e| Ok::<_, std::convert::Infallible>(Bytes::from(e))),
+        );
+        let app = apply(Router::new().route(
+            "/live",
+            get(move || async move { ([(header::CONTENT_TYPE, "text/event-stream")], Body::from_stream(chunks)) }),
+        ));
+        let req = Request::get("/live").header("accept-encoding", encoding).body(Body::empty()).unwrap();
+        let (parts, body) = app.oneshot(req).await.unwrap().into_parts();
+        let mut frames = Vec::new();
+        let mut body = body.into_data_stream();
+        while let Some(frame) = futures_util::StreamExt::next(&mut body).await {
+            frames.push(frame.unwrap());
+        }
+        (parts.headers, frames)
+    }
+
+    #[tokio::test]
+    async fn an_event_stream_is_compressed_per_event_with_the_context_kept() {
+        let sent = [redraw(1), redraw(2), redraw(2)];
+        let (headers, frames) = events("gzip, deflate, br, zstd").await;
+        assert_eq!(headers["content-encoding"], "zstd");
+        assert_eq!(headers["vary"], "accept-encoding");
+        assert_eq!(frames.len(), 3, "one compressed chunk per event");
+        // Each chunk decodes as soon as it arrives: the stream is flushed after every event.
+        let mut decoder = zstd::stream::write::Decoder::new(Vec::new()).unwrap();
+        for (frame, event) in frames.iter().zip(&sent) {
+            decoder.write_all(frame).unwrap();
+            decoder.flush().unwrap();
+            assert_eq!(String::from_utf8(std::mem::take(decoder.get_mut())).unwrap(), *event);
+        }
+        assert!(frames[0].len() < sent[0].len() / 4, "first event {} of {}", frames[0].len(), sent[0].len());
+        assert!(frames[1].len() < sent[1].len() / 10, "a redraw costs about what changed: {}", frames[1].len());
+        assert!(frames[2].len() < 40, "a repeated redraw costs next to nothing: {}", frames[2].len());
+
+        let (headers, frames) = events("gzip, br").await;
+        assert_eq!(headers["content-encoding"], "br");
+        let mut decoder = brotli::DecompressorWriter::new(Vec::new(), 4096);
+        for (frame, event) in frames.iter().zip(&sent) {
+            decoder.write_all(frame).unwrap();
+            decoder.flush().unwrap();
+            assert_eq!(String::from_utf8(std::mem::take(decoder.get_mut())).unwrap(), *event);
+        }
+        assert!(frames[2].len() < 40, "{}", frames[2].len());
+
+        // Deflate repeats a 4 KB event poorly at a level worth its time: gzip clients get it as it is.
+        let (headers, frames) = events("gzip").await;
+        assert!(!headers.contains_key("content-encoding"));
+        assert_eq!(headers["vary"], "accept-encoding");
+        assert_eq!(frames.concat(), sent.concat().into_bytes());
+    }
+
+    #[test]
+    fn stream_contexts_share_a_budget_and_return_it_when_dropped() {
+        let held = AtomicUsize::new(0);
+        assert!(reserve(&held, 600, 1000));
+        assert!(!reserve(&held, 600, 1000), "past the budget the stream goes out uncompressed");
+        assert!(reserve(&held, 400, 1000));
+        assert_eq!(held.load(Ordering::Acquire), 1000);
+        assert!(StreamCoder::new(Coding::Gzip).is_none());
+        // What a zstd stream reserves covers its context once it has seen large events.
+        let mut coder = StreamCoder::new(Coding::Zstd).unwrap();
+        for _ in 0..3 {
+            coder.event(redraw(3).repeat(40).as_bytes());
+        }
+        let StreamCoder::Zstd(cx) = &coder else { unreachable!() };
+        assert!(cx.sizeof() <= ZSTD_STREAM_BYTES, "{} bytes", cx.sizeof());
     }
 
     #[test]
