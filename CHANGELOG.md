@@ -305,6 +305,19 @@ Corten is pre-1.0, so any minor version may change the API.
     pilot, whose cart's Check out form posts to marketplace's origin and was blocked by the
     browser before the request was sent
     ([#64 A page cannot send a form to another origin, and a post cannot redirect to one (form-action is always 'self')](https://github.com/todd-skelton/corten/issues/64)).
+44. Numbers, money and dates in the request's locale, on the server: `t.number(n)`,
+    `t.money(Minor(123450), USD)` (`$1,234.50` in en, `1 234,50 $US` in fr; or a `Decimal` an API
+    sends as text, never a float), `t.date(at, DateStyle::Medium)`, `t.time(at, TimeStyle::Short)`
+    and `t.date_time(..)` (`Mar 22, 2026, 12:00 PM UTC`), in UTC unless `.zone(..)`, rendered
+    escaped and usable as message arguments. `corten::i18n` adds `Decimal`, `Minor`, `Currency`,
+    `DateStyle`, `TimeStyle`, `Zone`, `Utc`, `Offset` and `parse_timestamp`. Each locale's data is
+    CLDR's from Intl (`scripts/locale-data.mjs`, 108 locales, checked against Intl on 113,080
+    values; the Rust test checks 9,828), and `messages!` puts only the listed locales' into the
+    app. A tag with no data of its own uses its language's; a language with none is a build
+    error. `number`, `money`, `date`, `time` and `date_time` are no longer catalog keys. Asked for
+    by the Chase Sets pilot, which wrote `en` dates and prices by hand
+    ([#60 A page cannot write a date and time in the request's locale](https://github.com/todd-skelton/corten/issues/60),
+    [#63 A page cannot write an amount of money in the request's locale](https://github.com/todd-skelton/corten/issues/63)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
