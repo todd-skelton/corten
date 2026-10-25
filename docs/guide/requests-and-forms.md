@@ -145,6 +145,12 @@ A patch replaces markup but not the user's work: a field typed into after the fo
 in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret
 stay on the matching element. Everything else is the server's.
 
+Each top-level element of a patch replaces the element with its `id`, and the browser drops one
+without an id (and any text outside an element), so a refusal drawn inside a wrapper `<div>`
+never shows. In debug builds, router tests included, such a patch is an error that names the
+element (a `corten::live` fragment panics), so make the element with the id the root of a
+component a patch sends. Release builds do not check.
+
 ## Redirects
 
 After a successful write, `req.redirect(&route)` sends the browser on (post/redirect/get), with
