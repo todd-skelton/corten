@@ -506,6 +506,15 @@ Corten is pre-1.0, so any minor version may change the API.
     an error about refs it did not have. The error for a scoped component with several roots now
     names both causes. Found in the Chase Sets pilot
     ([#26 A component that names a variable scope is treated as scoped](https://github.com/todd-skelton/corten/issues/26)).
+15. An image built from one checkout no longer gets the crates another checkout built. The
+    Dockerfiles (the examples', the benchmarks' and the one `corten new` writes) keep `target/` in a
+    cache every build on the machine shares, and cargo decides a crate is current by file times,
+    so a checkout whose files were older than the last build compiled against that build's
+    crates (an item page image failed with `FromJson` missing from `corten`), and two builds at
+    once wrote the same `target/` (a test build lost an rlib another was replacing). Each build now
+    touches the sources it copied first and takes the cache alone (`sharing=locked`), so builds
+    wait for each other; a rebuild with no change compiles the workspace's own crates again (the
+    item page: 137 s, where it took 6 s), and the registry's stay cached.
 
 ### Documentation
 
