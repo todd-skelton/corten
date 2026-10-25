@@ -474,6 +474,15 @@ Corten is pre-1.0, so any minor version may change the API.
     came from, on the same types and text: the pilot took 654,700 and the reader 686,650 (4.9%
     more); these three close 14,000 of the 32,000, and the rest is spread thin.
 
+37. Field errors are read within the form's id: `errors.within(PriceId(id))` (a `#[derive(Id)]`,
+    the element a refusal replaces) gives `aria(field)` and `message(field)`, and a message's
+    id is `{form id}-{field}-error` (`price-s1-price-error`), where it was `{field}-error`. Two
+    refused forms with a field of the same name (a price in every row) gave two elements the same
+    id, and the second field was described by the first form's message. `Errors::aria` and
+    `Errors::message` are gone: write `let e = errors.within(FormId);` and `e.aria(..)`,
+    `e.message(..)`. Found by the Chase Sets pilot, whose item page has two forms with a `text`
+    field
+    ([#45 Field error ids are only the field's name, so two forms on a page share them](https://github.com/todd-skelton/corten/issues/45)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

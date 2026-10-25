@@ -15,6 +15,7 @@ pub fn PriceCell<'a>(id: &'a str, cents: Option<u32>, typed: &'a str, errors: &'
     let save = refs();
     let f = PriceInput::FIELDS;
     let saved = cents.map(money);
+    let e = errors.within(PriceId(id));
     html! {
         // Borrowed from `saved`, which the markup owns.
         let shown = saved.as_deref().unwrap_or(typed);
@@ -26,10 +27,10 @@ pub fn PriceCell<'a>(id: &'a str, cents: Option<u32>, typed: &'a str, errors: &'
                 aria-label="Price"
                 on:input={js::edited(target, save)}
                 on:keydown={js::revert(event, target, save)}
-                {..errors.aria(f.price)}
+                {..e.aria(f.price)}
             >
             <button ref={save} hidden={errors.is_empty()}>"Save"</button>
-            {errors.message(f.price)}
+            {e.message(f.price)}
         </form>
     }
 }

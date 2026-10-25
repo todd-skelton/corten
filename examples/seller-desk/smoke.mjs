@@ -108,6 +108,21 @@ try {
   await page.click(`${cell} button`);
   await page.waitForSelector(`${cell} input[aria-invalid=true]`, { timeout: 5000 }).catch(() => {});
   check("an invalid price comes back with its error, focused", (await page.evaluate(() => document.activeElement?.getAttribute("aria-invalid"))) === "true");
+  // A second row refused too: each field is described by its own row's message.
+  const second = "tbody tr:nth-child(3) td:last-child";
+  await page.fill(`${second} input`, "xyz");
+  await page.click(`${second} button`);
+  await page.waitForSelector(`${second} input[aria-invalid=true]`, { timeout: 5000 }).catch(() => {});
+  const described = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("input[aria-invalid=true]"), (input) => {
+      const message = document.getElementById(input.getAttribute("aria-describedby") ?? "");
+      return { own: !!message && input.closest("form")?.contains(message), ids: document.querySelectorAll(`[id="${message?.id}"]`).length };
+    }),
+  );
+  check("two refused rows: each field is described by its own message", described.length === 2 && described.every((d) => d.own && d.ids === 1), JSON.stringify(described));
+  await page.fill(`${second} input`, "3");
+  await page.click(`${second} button`);
+  await page.waitForFunction((sel) => document.querySelector(sel)?.getAttribute("aria-invalid") === null, `${second} input`, { timeout: 5000 }).catch(() => {});
   await page.fill(`${cell} input`, "7.5");
   await page.click(`${cell} button`);
   await page.waitForFunction((sel) => document.querySelector(sel)?.getAttribute("aria-invalid") === null, `${cell} input`, { timeout: 5000 }).catch(() => {});

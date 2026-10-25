@@ -75,11 +75,14 @@ pub fn check(t: Msg, input: &AlertInput) -> Result<f64, Errors> {
 }
 ```
 
-The form component shows them next to each field:
+The form component shows them next to each field, read within the id of the element a refusal
+replaces (so two forms with a field of the same name have different message ids):
 
 ```rust
-<input type="email" name={f.email} value={form.email} required {..form.errors.aria(f.email)}>
-{form.errors.message(f.email)}
+let e = form.errors.within(AlertFormId);
+// in html!:
+<input type="email" name={f.email} value={form.email} required {..e.aria(f.email)}>
+{e.message(f.email)}
 ```
 
 A refusal that belongs to no field (a cross-field rule, or the backend saying no) is

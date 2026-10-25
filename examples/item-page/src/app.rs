@@ -348,12 +348,12 @@ mod tests {
         let (status, headers, body) = send(post(Some("action"), None)).await;
         assert_eq!((status, &headers["corten-patch"]), (StatusCode::UNPROCESSABLE_ENTITY, &"1".parse().unwrap()));
         assert!(body.starts_with(r#"<div class="alert-form__form" id="alert-form">"#), "{body}");
+        assert!(body.contains(
+            r#"value="abc" inputmode="decimal" required aria-invalid="true" aria-describedby="alert-form-target_price-error">"#
+        ));
         assert!(
-            body.contains(
-                r#"value="abc" inputmode="decimal" required aria-invalid="true" aria-describedby="target_price-error">"#
-            )
+            body.contains(r#"<p class="field-error" id="alert-form-target_price-error">Enter a target price above zero.</p>"#)
         );
-        assert!(body.contains(r#"<p class="field-error" id="target_price-error">Enter a target price above zero.</p>"#));
         assert!(body.contains(r#"value="a@b.c" required>"#), "a valid field keeps its value and no error");
 
         let (status, _, body) = send(post(None, Some("application/json"))).await;
@@ -363,7 +363,7 @@ mod tests {
 
         let (status, _, body) = send(post(None, None)).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert!(body.contains("<html") && body.contains("Show all 7 offers") && body.contains("target_price-error"));
+        assert!(body.contains("<html") && body.contains("Show all 7 offers") && body.contains("alert-form-target_price-error"));
     }
 
     /// Where the time for one item page goes. Release build, benchmark fixture:

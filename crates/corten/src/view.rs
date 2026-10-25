@@ -36,7 +36,7 @@
 //! - Attributes: `class="x"`, `required`, `href={url}`, `href={("/items/", &item.id)}` (a tuple
 //!   prints its parts in order, without building a string). A `bool` value prints the bare name when
 //!   true and nothing when false; `None` leaves the attribute out. `{..attrs}` spreads an
-//!   [`Attrs`] value (`<input {..errors.aria(field)}>`).
+//!   [`Attrs`] value (`<input {..e.aria(field)}>`, [`crate::Errors::within`]).
 //! - `for`, `if`/`else`, `match` and `let` are written as in Rust, with markup in their braces.
 //! - `class={..}` takes a list: a class constant of the component's stylesheet (`class={Title}`,
 //!   see [`crate::style`]), utility classes, text, an `Option` of one, or a tuple of them, joined

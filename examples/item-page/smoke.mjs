@@ -78,8 +78,8 @@ try {
   await page.fill('input[name="email"]', "buyer@example.com");
   await page.fill('input[name="target_price"]', "abc");
   await page.click('form[data-patch] button[type="submit"]');
-  await page.waitForSelector("#target_price-error", { timeout: 5000 }).catch(() => {});
-  check("an invalid field shows its error from the server", ((await page.textContent("#target_price-error").catch(() => "")) ?? "").includes("above zero"));
+  await page.waitForSelector("#alert-form-target_price-error", { timeout: 5000 }).catch(() => {});
+  check("an invalid field shows its error from the server", ((await page.textContent("#alert-form-target_price-error").catch(() => "")) ?? "").includes("above zero"));
   check("focus moves to the invalid field", await page.evaluate(() => document.activeElement?.getAttribute("name") === "target_price"));
   check("valid input survives the error patch", (await page.inputValue('input[name="email"]')) === "buyer@example.com");
   await page.fill('input[name="target_price"]', "4.5");
