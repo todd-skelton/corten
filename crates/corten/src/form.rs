@@ -331,6 +331,92 @@ impl Render for FieldMessage<'_> {
     }
 }
 
+/// One submission of a form, so a write whose answer was lost and is sent again applies once.
+///
+/// Put a `SubmitKey` field in the form struct and draw it with [`SubmitKey::field`]: a hidden
+/// input with 128 fresh random bits, named by the field's [`FieldName`].
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Alert {
+///     email: String,
+///     submit: SubmitKey,
+/// }
+///
+/// let f = Alert::FIELDS;
+/// let form = html! {
+///     <form method="post" data-patch>
+///         {SubmitKey::field(f.submit)}
+///         <input name={f.email}>
+///     </form>
+/// };
+/// let html = form.to_html();
+/// assert!(html.contains(r#"<input type="hidden" name="submit" data-submit value=""#));
+///
+/// let posted: Alert = corten::form::from_bytes(b"email=a%40b.c&submit=0123456789abcdef0123456789abcdef").unwrap();
+/// assert_eq!(posted.submit.as_str(), "0123456789abcdef0123456789abcdef");
+/// assert!(corten::form::from_bytes::<Alert>(b"email=a%40b.c&submit=x").is_err(), "not a key: a 422 naming the field");
+/// ```
+///
+/// The browser sends the same key for as long as the submission has no answer: a page reloaded
+/// after a post sends it again, and so does the runtime when a `data-patch` form is sent again
+/// after a network error, a 5xx or an abort. Once an answer arrives (any status below 500) the
+/// runtime gives the form a new key, so the next submit is a new one. The app keeps the keys it
+/// has applied (next to the write, in the same transaction) and answers a repeat with what it did
+/// the first time; Corten keeps no store. [`corten_cluster`]'s `begin` takes one as its
+/// idempotency key.
+///
+/// [`corten_cluster`]: https://docs.rs/corten-cluster
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SubmitKey(Box<str>);
+
+impl SubmitKey {
+    /// The hidden input that carries a new key: `<input type="hidden" name=".." data-submit value="..">`.
+    pub fn field(name: FieldName) -> SubmitField {
+        SubmitField { name, key: crate::security::random_hex() }
+    }
+
+    /// The 32 lowercase hex digits, for the app's store.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for SubmitKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SubmitKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        let text = <std::borrow::Cow<'de, str>>::deserialize(deserializer)?;
+        if text.len() == 32 && text.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+            Ok(SubmitKey(text.into()))
+        } else {
+            Err(serde::de::Error::custom("a submit key is 32 lowercase hex digits"))
+        }
+    }
+}
+
+/// [`SubmitKey::field`]'s hidden input.
+pub struct SubmitField {
+    name: FieldName,
+    key: [u8; 32],
+}
+
+impl Render for SubmitField {
+    fn render(&self, out: &mut String) {
+        out.push_str(r#"<input type="hidden" name=""#);
+        escape_into(self.name.as_str(), out);
+        out.push_str(r#"" data-submit value=""#);
+        out.push_str(std::str::from_utf8(&self.key).expect("hex is ASCII"));
+        out.push_str(r#"">"#);
+    }
+}
+
 /// The form's message, from [`Errors::form_message`].
 pub struct FormMessage<'a> {
     message: Option<&'a str>,

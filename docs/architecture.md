@@ -109,7 +109,8 @@ back silently), and logic a script repeats from Rust (the listing sort rule in t
 2. A screen's page struct is its whole view model ([design rule 6](design.md#rules)). Displayed text, prices
    included, is a field.
 3. Actions are idempotent or carry an idempotency key, because native and agent clients retry
-   (a 502 can hide a committed write).
+   (a 502 can hide a committed write). A browser form carries one as a `SubmitKey`
+   ([Forms](guide/requests-and-forms.md#forms)).
 4. A screen is never also an API route. `/api/items/{id}` next to `/items/{id}` is a second
    backend for the same screen; a native screen reads `req.screen` instead. `App::api` is for
    endpoints that have no screen.

@@ -243,6 +243,34 @@ async function run(browser) {
     (await page.textContent("#watch-message")) === messageBefore && (await page.getAttribute("main form[data-patch]", "aria-busy")) === null,
   );
 
+  // A submit key (SubmitKey::field) is sent again until the submission has an answer, then renewed.
+  const zero = "0".repeat(32);
+  await page.evaluate((zero) =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      `<form id="keyed" method="post" action="/watch" data-patch><input type="hidden" name="id" value="s1"><input type="hidden" name="submit" data-submit value="${zero}"><button>Watch</button></form>`,
+    ), zero);
+  /** @type {(string | null)[]} */
+  const keys = [];
+  /** @param {import("@playwright/test").Request} r */
+  const keyOf = (r) => r.method() === "POST" && r.url().endsWith("/watch") && keys.push(new URLSearchParams(r.postData() ?? "").get("submit"));
+  page.on("request", keyOf);
+  const keyedFailed = page.evaluate(() => new Promise((resolve) => document.addEventListener("corten:error", resolve, { once: true })));
+  failWatch = true;
+  await page.click("#keyed button");
+  await keyedFailed;
+  const kept = await page.inputValue("#keyed [name=submit]");
+  await page.click("#keyed button");
+  await page.waitForFunction((zero) => /** @type {HTMLInputElement | null} */ (document.querySelector("#keyed [name=submit]"))?.value !== zero, zero, { timeout: 5000 }).catch(() => {});
+  const renewed = await page.inputValue("#keyed [name=submit]");
+  page.off("request", keyOf);
+  check(
+    "a submit key is sent again after a failed submit and renewed once the submit is answered",
+    kept === zero && keys.length === 2 && keys.every((k) => k === zero) && /^[0-9a-f]{32}$/.test(renewed) && renewed !== zero,
+    `${keys.join(", ")} -> ${renewed}`,
+  );
+  await page.evaluate(() => document.querySelector("#keyed")?.remove());
+
   // A submit button's formaction and formmethod win over the form's, as in a plain post.
   await page.evaluate(() =>
     document.querySelector("main")?.insertAdjacentHTML(
