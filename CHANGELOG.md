@@ -373,6 +373,20 @@ Corten is pre-1.0, so any minor version may change the API.
 51. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
 52. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
     `corten dev` only, the error. Every error page is sent with `X-Robots-Tag: noindex`.
+53. `JsonLd { value: &product }` (or `<JsonLd value={&product} />`), feature `json`: structured
+    data among a page's head tags, as `<script type="application/ld+json">`, with `<` written
+    `\u003c` so no text in it can end the element, as `Meta::json_ld` did before item 49 removed
+    `Meta`. An expression, component or block inside `<script>` or `<style>` in `html!` is now a
+    compile error: it was escaped as HTML, which neither reads back (JSON with `&quot;` is not
+    JSON). Found by the Chase Sets pilot, whose item page wrote its own escaping in front of `raw`
+    ([#76 A page cannot write JSON-LD in its head since Meta was removed (an expression in <script> is escaped as HTML)](https://github.com/todd-skelton/corten/issues/76)).
+54. `#[corten::routes(area = Admin)] mod admin { .. }`: an area's routes name their handlers too.
+    The module's `Handlers` trait has a method per route and `admin::area(area, handlers)` mounts
+    each in the area: `.area::<admin::Admin>(|area| admin::area(area, Staff).guard(..))`. A route
+    without a handler, two routes with one path, and a route outside the area's prefix do not
+    compile. Found by the Chase Sets pilot, which serves every route from an area, so item 50
+    covered none of them
+    ([#78 An area's routes cannot name their handlers (#[corten::routes] covers only App::new)](https://github.com/todd-skelton/corten/issues/78)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -608,6 +622,14 @@ Corten is pre-1.0, so any minor version may change the API.
     is always in the page key.
 42. The error page shows the error under `corten dev` only if it prints `failure.detail` (the default
     and the `corten new` page do); the offline page is the error page for 503 ("Not available").
+43. Since item 49, `html!` that is one component is that component, its props evaluated where
+    the markup is (so `req={&req}` borrows the handler's `req` and a layout stays a document).
+    A prop that borrows a local the view's function made (`let title = format!(..); html! {
+    <Dialog title={&title} /> }`) is E0515 there, as it compiled before as a closure. Make it
+    in the markup instead, `html! { let title = format!(..); <Dialog title={&title} /> }`: the
+    `let`s and the component are a view that owns them, and a document when the component is
+    one. Found by the Chase Sets pilot, four of whose views broke this way
+    ([#77 A view that is one component cannot pass a reference to its own locals (E0515 since the document change)](https://github.com/todd-skelton/corten/issues/77)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
