@@ -100,7 +100,9 @@ market.stocks.write(|tx| if let Some(s) = tx.get_mut("s1") { s.set_price(13_250)
 ```
 
 Feed guarantees: every `write` is one numbered patch carrying the final value of each row it
-touched, encoded once and sent as the same bytes to every subscriber. A subscriber gets the
+touched, encoded once and sent as the same bytes to every subscriber. A snapshot is serialized
+once per change too: its body is kept (in memory, the size of the JSON) until the next write,
+`apply` or `reset`, so pages that subscribe between two writes cost no serialization. A subscriber gets the
 snapshot and then each later patch exactly once, in order; reconnects resume from
 `Last-Event-ID`, and an unknown cursor or a gap ends in a fresh snapshot. `corten-cluster`
 runs one feed across instances (Postgres outbox, a leased relay to NATS JetStream): in the

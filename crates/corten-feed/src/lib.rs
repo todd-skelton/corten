@@ -113,6 +113,22 @@ struct State<T> {
     rows: BTreeMap<String, T>,
     log: VecDeque<Arc<Batch>>,
     log_bytes: usize,
+    snapshot: Cached,
+}
+
+/// The last snapshot's body, kept until the rows or `seq` change. `version` counts the changes,
+/// so a body serialized while a write happened is not kept.
+#[derive(Default)]
+struct Cached {
+    version: u64,
+    body: Option<Bytes>,
+}
+
+impl Cached {
+    fn stale(&mut self) {
+        self.version += 1;
+        self.body = None;
+    }
 }
 
 /// One write, encoded once as a complete SSE frame. Every subscriber sends the same bytes.
@@ -137,7 +153,7 @@ impl<T: Row> Feed<T> {
         assert!(!epoch.contains('-'), "a feed generation cannot contain '-'");
         let rows = rows.into_iter().map(|r| (r.id().to_string(), r)).collect();
         let (tx, _) = broadcast::channel(BACKLOG);
-        let state = State { seq, rows, log: VecDeque::new(), log_bytes: 0 };
+        let state = State { seq, rows, log: VecDeque::new(), log_bytes: 0, snapshot: Cached::default() };
         Feed { inner: Arc::new(Inner { epoch, state: Mutex::new(state), tx }) }
     }
 
@@ -172,7 +188,7 @@ impl<T: Row> Feed<T> {
     pub fn write<R>(&self, f: impl FnOnce(&mut Tx<'_, T>) -> R) -> R {
         let mut state = self.lock();
         let state = &mut *state;
-        let mut tx = Tx { rows: &mut state.rows, touched: Vec::new(), seen: HashSet::new() };
+        let mut tx = Tx { rows: &mut state.rows, snapshot: &mut state.snapshot, touched: Vec::new(), seen: HashSet::new() };
         let out = f(&mut tx);
         let Tx { rows, touched, .. } = tx;
         if touched.is_empty() {
@@ -204,6 +220,8 @@ impl<T: Row> Feed<T> {
         if check_seq(state.seq, patch.seq)? == Applied::Duplicate {
             return Ok(Applied::Duplicate);
         }
+        // Before the rows change, as in a write.
+        state.snapshot.stale();
         apply_ops(&mut state.rows, patch.changes);
         self.publish(&mut state, patch.seq, json);
         Ok(Applied::Applied)
@@ -214,6 +232,7 @@ impl<T: Row> Feed<T> {
         let mut state = self.lock();
         state.rows = rows.into_iter().map(|r| (r.id().to_string(), r)).collect();
         state.seq = seq;
+        state.snapshot.stale();
         state.log.clear();
         state.log_bytes = 0;
         let _ = self.inner.tx.send(Arc::new(Batch { seq, frame: sync_frame(SyncReason::CursorExpired), ends: true }));
@@ -262,6 +281,7 @@ impl<T: Row> Feed<T> {
     fn publish(&self, state: &mut State<T>, seq: u64, json: &str) {
         let batch = Arc::new(Batch { seq, frame: self.frame(seq, json), ends: false });
         state.seq = seq;
+        state.snapshot.stale();
         state.log_bytes += batch.frame.len();
         state.log.push_back(batch.clone());
         while state.log.len() > REPLAY || (state.log_bytes > REPLAY_BYTES && state.log.len() > 1) {
@@ -273,23 +293,32 @@ impl<T: Row> Feed<T> {
         let _ = self.inner.tx.send(batch);
     }
 
-    /// `GET {url}`: every row with the epoch and sequence number they are current at.
+    /// `GET {url}`: every row with the epoch and sequence number they are current at. The body is
+    /// kept until the next change, so the snapshots between two writes share one serialization.
     pub fn snapshot(&self) -> Response {
         // Clone under the lock and serialize outside it, so large snapshots do not block writes.
-        let (seq, rows) = {
+        let (version, seq, rows) = {
             let state = self.lock();
-            (state.seq, state.rows.values().cloned().collect::<Vec<_>>())
+            if let Some(body) = &state.snapshot.body {
+                return snapshot_response(body.clone());
+            }
+            (state.snapshot.version, state.seq, state.rows.values().cloned().collect::<Vec<_>>())
         };
-        let body = serde_json::to_string(&SnapshotRef { epoch: &self.inner.epoch, seq, rows: &rows })
-            .expect("feed rows serialize to JSON");
-        (
-            [
-                (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
-                (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
-            ],
-            body,
-        )
-            .into_response()
+        let body = Bytes::from(
+            serde_json::to_string(&SnapshotRef { epoch: &self.inner.epoch, seq, rows: &rows })
+                .expect("feed rows serialize to JSON"),
+        );
+        drop(rows);
+        self.keep_snapshot(version, &body);
+        snapshot_response(body)
+    }
+
+    /// Keeps a snapshot body written from the rows at `version`, unless they changed since.
+    fn keep_snapshot(&self, version: u64, body: &Bytes) {
+        let mut state = self.lock();
+        if state.snapshot.version == version {
+            state.snapshot.body = Some(body.clone());
+        }
     }
 
     /// `GET {url}/live`: patches after the client's cursor, then new patches as they happen.
@@ -479,9 +508,21 @@ fn sync_frame(reason: SyncReason) -> Bytes {
     Bytes::from(format!("event: sync\ndata: {{\"reason\":\"{}\"}}\n\n", reason.as_str()))
 }
 
+fn snapshot_response(body: Bytes) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+        ],
+        body,
+    )
+        .into_response()
+}
+
 /// Rows inside [`Feed::write`]. Reads are free; anything that may change a row marks it.
 pub struct Tx<'a, T> {
     rows: &'a mut BTreeMap<String, T>,
+    snapshot: &'a mut Cached,
     touched: Vec<String>,
     seen: HashSet<String>,
 }
@@ -490,6 +531,8 @@ impl<T: Row> Tx<'_, T> {
     fn touch(&mut self, id: &str) {
         if self.seen.insert(id.to_string()) {
             self.touched.push(id.to_string());
+            // Before the row changes: a closure that panics still leaves no stale snapshot.
+            self.snapshot.stale();
         }
     }
 
@@ -600,6 +643,75 @@ mod tests {
         assert_eq!(json["seq"], 1);
         assert_eq!(json["epoch"], feed.inner.epoch.as_str());
         assert_eq!(json["rows"][1], serde_json::json!({ "id": "i2", "n": 20 }));
+    }
+
+    fn kept(feed: &Feed<Item>) -> bool {
+        feed.lock().snapshot.body.is_some()
+    }
+
+    /// The rows a snapshot sends, and its seq.
+    async fn snapshot_of(feed: &Feed<Item>) -> (u64, Vec<Item>) {
+        let snap: corten_protocol::Snapshot<Item> = serde_json::from_str(&body_text(feed.snapshot()).await).unwrap();
+        (snap.seq, snap.rows)
+    }
+
+    #[tokio::test]
+    async fn a_snapshot_is_kept_until_the_rows_or_seq_change() {
+        let feed = feed();
+        let first = body_text(feed.snapshot()).await;
+        assert!(kept(&feed));
+        assert_eq!(body_text(feed.snapshot()).await, first);
+        // A write that touches nothing publishes nothing and keeps it.
+        feed.write(|tx| assert_eq!(tx.get("i1").unwrap().n, 1));
+        assert!(kept(&feed));
+        feed.write(|tx| tx.get_mut("i2").unwrap().n = 20);
+        assert!(!kept(&feed));
+        assert_eq!(snapshot_of(&feed).await.1[1].n, 20);
+        feed.write(|tx| tx.insert(Item { id: "i4".into(), n: 4 }));
+        assert_eq!(snapshot_of(&feed).await.1.len(), 4);
+        feed.write(|tx| tx.remove("i1"));
+        let (seq, rows) = snapshot_of(&feed).await;
+        assert_eq!((seq, rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>()), (3, vec!["i2", "i3", "i4"]));
+        // A write that panics after changing a row leaves the row changed, as the feed serves it.
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            feed.write(|tx| {
+                tx.get_mut("i2").unwrap().n = 99;
+                panic!("mid-write");
+            })
+        }));
+        assert!(panicked.is_err());
+        assert_eq!(snapshot_of(&feed).await.1[0].n, 99);
+    }
+
+    #[tokio::test]
+    async fn a_follower_s_snapshot_follows_apply_and_reset() {
+        let (feed, _) = followers();
+        assert_eq!(snapshot_of(&feed).await.0, 10);
+        feed.apply(&patch(11, "i1", 100)).unwrap();
+        assert_eq!(
+            snapshot_of(&feed).await,
+            (11, vec![Item { id: "i1".into(), n: 100 }, Item { id: "i2".into(), n: 2 }, Item { id: "i3".into(), n: 3 },])
+        );
+        // A duplicate changes nothing and keeps it.
+        feed.apply(&patch(11, "i1", 7)).unwrap();
+        assert!(kept(&feed));
+        // A reset to the same seq with other rows is a change all the same.
+        feed.reset(11, [Item { id: "z".into(), n: 0 }]);
+        assert!(!kept(&feed));
+        assert_eq!(snapshot_of(&feed).await, (11, vec![Item { id: "z".into(), n: 0 }]));
+    }
+
+    #[test]
+    fn a_snapshot_written_while_the_rows_changed_is_not_kept() {
+        let feed = feed();
+        let version = feed.lock().snapshot.version;
+        // A write lands between reading the rows and keeping the body.
+        feed.write(|tx| tx.get_mut("i1").unwrap().n = 10);
+        feed.keep_snapshot(version, &Bytes::from_static(b"old rows"));
+        assert!(!kept(&feed));
+        let version = feed.lock().snapshot.version;
+        feed.keep_snapshot(version, &Bytes::from_static(b"current rows"));
+        assert!(kept(&feed));
     }
 
     #[test]
