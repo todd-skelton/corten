@@ -135,11 +135,15 @@ fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Docu
     }
 }
 
+/// The greeting's id, a type: the page and the patch name the element the same way.
+#[derive(Id)]
+struct GreetingId;
+
 /// Rendered by the page and by the patch, so the two cannot drift.
 #[component]
 fn Greeting(name: &str) -> impl Render {
     html! {
-        <p id="greeting" aria-live="polite">
+        <p id={GreetingId} aria-live="polite">
             if !name.is_empty() {
                 "Hello, " {name} "!"
             }
@@ -148,10 +152,10 @@ fn Greeting(name: &str) -> impl Render {
 }
 ```
 
-A misspelled route, field or prop does not compile, and neither does a route without a handler
-or a document without its `<title>`, `<Corten />` (where the runtime and the page's scripts go)
-or `<main>`. Behavior lives in a script next to the
-component: plain functions the markup calls with the elements they use.
+A misspelled route, field, prop or id does not compile, and neither does a route without a
+handler or a document without its `<title>`, `<Corten />` (where the runtime and the page's
+scripts go) or `<main>`. Behavior lives in a script next to the component: plain functions the
+markup calls with the elements they use.
 
 ```rust,ignore
 // src/click_counter.rs

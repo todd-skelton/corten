@@ -101,9 +101,12 @@ async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
     }
 }
 
+#[derive(Id)]
+struct GreetingId;
+
 #[component]
 fn Greeting(name: &str) -> impl Render {
-    html! { <p id="greeting" aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
+    html! { <p id={GreetingId} aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
 }
 
 /// The whole document. `<Corten />` is where Corten adds the runtime and the page's scripts and
