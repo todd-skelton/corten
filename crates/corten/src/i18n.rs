@@ -27,6 +27,31 @@
 //! negotiated locale (`t.locale()` is a BCP 47 tag for a CLDR library such as ICU4X). Plural
 //! rules are not built in: use a key per form.
 //!
+//! # Text a script fills in
+//!
+//! Text that depends on what a script computed ("3 selected") is a message too. `t.js()` has
+//! the messages with arguments unfilled, and a handler takes one as a function: the markup passes
+//! `js::count(total, t.js().rows_selected())`, the script's JSDoc says
+//! `@param {Message<"count">} label` (`Message` from `"corten"`) and it shows
+//! `label({ count: 3 })` with `textContent`. Only the messages a page passes are sent, in the
+//! request's locale, as their text and argument names, in the `data-on` attribute
+//! (`%["","count"," selected"]`), so the browser formats it with no catalog and no round trip.
+//!
+//! ```
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! use corten::script::{message_id, ts::Message, Arg};
+//! fn wants_a_count(_: impl Arg<Message<{ message_id(&["count"]) }>>) {}
+//! wants_a_count(Msg::default().js().item_listing_count()); // "{count} listings"
+//! ```
+//!
+//! A message whose arguments are not the ones the JSDoc names does not compile:
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! fn wants_a_count(_: impl corten::script::Arg<corten::script::ts::Message<{ corten::script::message_id(&["count"]) }>>) {}
+//! wants_a_count(Msg::default().js().item_image()); // takes {title} and {n}
+//! ```
+//!
 //! ```
 //! corten::i18n::messages! {
 //!     struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" }
@@ -146,6 +171,24 @@ impl Sink<'_> {
         } else {
             let _ = fmt::Write::write_fmt(self.out, format_args!("{value}"));
         }
+    }
+}
+
+/// A message with arguments, unfilled (`t.js().key()`): the argument a handler whose JSDoc says
+/// `Message<"a" | "b">` takes, when the message's arguments are exactly `a` and `b` (`ARGS` is
+/// [`crate::script::message_id`] of their names). Its text is made when the crate compiles.
+#[derive(Clone, Copy, Debug)]
+pub struct Template<const ARGS: u64>(&'static str);
+
+impl<const ARGS: u64> Template<ARGS> {
+    #[doc(hidden)]
+    pub const fn new(wire: &'static str) -> Self {
+        Template(wire)
+    }
+
+    /// The text `data-on` carries, HTML-escaped.
+    pub(crate) fn wire(self) -> &'static str {
+        self.0
     }
 }
 

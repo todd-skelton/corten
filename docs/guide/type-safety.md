@@ -15,7 +15,7 @@ checked on the other side.
 | Tokens to views | `tokens!`: scales are enums and utilities take them, per breakpoint |
 | Text to catalogs | `messages!`: every locale has every key with the same arguments |
 | Form to handler | `#[derive(Fields)]` names are `FieldName`s, the only key `name=`, `Errors` and corten-ui's fields take; serde parses the post |
-| Handler to JSON client | `Json<T>` and `req.screen` take a `ToJson`; `#[derive(ToJson)]` reads `#[serde(...)]` and refuses one it cannot write as serde does (`flatten`, `serialize_with`), so what it writes is what serde reads back |
+| Handler to JSON client | `Json<T>` and `req.screen` take a `ToJson`; `#[derive(ToJson)]` reads `#[serde(...)]` and refuses one it cannot write as serde does (`flatten` of anything but a derived struct, `serialize_with`), so what it writes is what serde reads back |
 | Another service's JSON to a page | `corten::json::from_slice` takes a `FromJson`; `#[derive(FromJson)]` reads `#[serde(...)]` and refuses one it cannot read as serde does (`flatten`, `deserialize_with`), and needs `Deserialize` too, which reads whatever its reader gives up on |
 | Server to script | `corten::types::Types::new().add::<Row>().components(COMPONENTS).sync(path)` in a test writes TypeScript declarations and fails while they are stale; `corten check` then fails in every script that reads an old name (it runs TypeScript's `tsc` over `src/` and `static/` when `tsc` is installed, and says so when it is not) |
 | Server to agent | tool input and output schemas generated from the structs (feature `agent`) |

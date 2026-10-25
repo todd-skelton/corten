@@ -22,6 +22,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
+corten::i18n::messages! {
+    /// The app's text. One locale here; a real app lists each catalog.
+    pub struct Msg { "en" => "locales/en.json" }
+}
+
 #[derive(Clone)]
 pub struct Market {
     pub stocks: Feed<Stock>,
@@ -241,11 +246,11 @@ impl Home {
     }
 }
 
-fn home_view(home: &Home) -> impl Render {
+fn home_view(home: &Home, t: Msg) -> impl Render {
     let f = WatchForm::FIELDS;
     html! {
         <h1>"Watchlist"</h1>
-        <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} />
+        <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} t={t} />
         <corten-live src={url::Trades} since={home.trades_seen}><LastTrade text={&home.last_trade} /></corten-live>
         <form method="post" action={url::Watch} data-patch>
             <label>
@@ -258,13 +263,15 @@ fn home_view(home: &Home) -> impl Render {
 }
 
 /// The prices, rendered here first and then kept current by `live_prices.js` from the feed. The
-/// pause button shows only when the script runs, since nothing updates without it. Styled by
-/// `live_prices.css`.
+/// pause button shows only when the script runs, since nothing updates without it. The script
+/// counts the updates and shows the count with a message of the page's locale (`t.js()`), so
+/// the text a script computes still comes from the catalog. Styled by `live_prices.css`.
 #[component(css, js)]
-fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str) -> impl Render {
-    let (pause, price) = refs();
+fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Render {
+    let (pause, price, updates) = refs();
+    let updated = t.js().prices_updates();
     html! {
-        <div on:connect={js::watch(scope, pause, price, feed, signal)}>
+        <div on:connect={js::watch(scope, pause, price, feed, signal, updates, updated)}>
             <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price)}>
                 "Pause updates"
             </button>
@@ -284,6 +291,7 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str) -> impl Render {
                     }
                 </tbody>
             </table>
+            <output ref={updates} aria-live="polite"></output>
         </div>
     }
 }
@@ -312,7 +320,7 @@ const HOME_TITLE: &str = "Watchlist | Corten";
 
 async fn home(req: Req, State(market): State<Market>) -> corten::Result {
     let home = Home::new(&market, String::new());
-    req.screen(HOME_TITLE, &home, home_view(&home))
+    req.screen(HOME_TITLE, &home, home_view(&home, req.t()))
 }
 
 #[derive(Deserialize, Fields)]
@@ -330,7 +338,7 @@ async fn watch(req: Req, State(market): State<Market>, Form(form): Form<WatchFor
         // No JavaScript, or a native screen or agent: the whole screen with the message.
         _ => {
             let home = Home::new(&market, message);
-            req.screen(HOME_TITLE, &home, home_view(&home))
+            req.screen(HOME_TITLE, &home, home_view(&home, req.t()))
         }
     }
 }
@@ -403,7 +411,10 @@ mod tests {
         let (kind, body) = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/scripts/live_prices.js\">"), "the script module is preloaded: {body}");
-        assert!(body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,&quot;/feed/stocks&quot;,$s)""#), "{body}");
+        assert!(
+            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
+            "the script gets the message it fills in: {body}"
+        );
         assert!(
             body.contains(r#"<td data-ref="price" class="live-prices__amount" data-key="s1">$129.99</td>"#),
             "server renders prices first: {body}"

@@ -532,6 +532,13 @@ fn param_type(ty: &str) -> Param {
             _ => Param::Any,
         };
     }
+    // `Message<"count">` (corten): a message of the app's catalog with exactly these arguments.
+    if let Some(inner) = ty.strip_prefix("Message<").and_then(|t| t.strip_suffix('>')) {
+        return match message_names(inner) {
+            Some(names) => Param::Checked(format!("ts::Message<{}u64>", message_id(&names))),
+            None => Param::Any,
+        };
+    }
     if let Some(value) = ty.strip_prefix("Map<").and_then(|t| t.strip_suffix('>')).and_then(|t| t.trim().strip_prefix("string,"))
     {
         return match common(value.trim(), element) {
@@ -560,6 +567,27 @@ fn param_type(ty: &str) -> Param {
         "boolean" => Param::Checked("ts::Boolean".into()),
         _ => Param::Any,
     }
+}
+
+/// What a `Message<"a" | "b">` parameter and a message with the arguments `a` and `b` are both
+/// checked by: FNV-1a of the names, sorted and joined by commas.
+pub(crate) fn message_id(names: &[&str]) -> u64 {
+    let mut names = names.to_vec();
+    names.sort_unstable();
+    names.dedup();
+    view_id(&names.join(","))
+}
+
+/// The argument names of `"a" | "b"`, or `None` when it is not a union of string literals.
+fn message_names(union: &str) -> Option<Vec<&str>> {
+    union
+        .split('|')
+        .map(|part| {
+            let part = part.trim();
+            let name = part.strip_prefix('"').and_then(|p| p.strip_suffix('"'))?;
+            (!name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')).then_some(name)
+        })
+        .collect()
 }
 
 /// `corten::script::view_id`: FNV-1a of a view's name.
@@ -664,6 +692,17 @@ function helper() {}
                 "url:ts::String",
             ]
         );
+    }
+
+    #[test]
+    fn a_message_parameter_is_checked_by_its_argument_names() {
+        let (handlers, _) = parse(
+            "/** @param {Message<\"total\" | \"count\">} label @param {Message<count>} odd */\nexport function f(label, odd) {}",
+        )
+        .unwrap();
+        assert_eq!(handlers[0].params[0].1, Param::Checked(format!("ts::Message<{}u64>", message_id(&["count", "total"]))));
+        assert_eq!(message_id(&["total", "count"]), message_id(&["count", "total"]), "the order does not matter");
+        assert_eq!(handlers[0].params[1].1, Param::Any, "not a union of names");
     }
 
     #[test]

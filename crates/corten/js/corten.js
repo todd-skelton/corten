@@ -220,6 +220,28 @@ function closestRef(el, owner, name, event) {
 }
 
 /**
+ * A message of the app's catalog with the arguments `K`, which a handler fills in and shows with
+ * `textContent`: `label({ count: rows.length })`. The markup passes it in the page's locale
+ * (`js::count(total, t.js().rows_selected())`), and the compiler checks that the message's
+ * arguments are the ones named here.
+ * @template {string} K
+ * @typedef {(args: Record<K, string | number>) => string} Message
+ */
+
+/**
+ * The function a `Message` argument is: its text with each argument put in.
+ * @param {string[]} parts text and argument names, alternating, text first and last
+ * @returns {(args: Record<string, string | number>) => string}
+ */
+function message(parts) {
+  return (args) => {
+    let text = parts[0];
+    for (let i = 1; i < parts.length; i += 2) text += String(args[parts[i]]) + parts[i + 1];
+    return text;
+  };
+}
+
+/**
  * The value of one argument.
  * @param {Arg} arg @param {Element} el @param {Event} event @param {Binding} binding
  * @returns {unknown}
@@ -228,6 +250,8 @@ function resolve(arg, el, event, binding) {
   switch (arg.kind) {
     case "v":
       return arg.value;
+    case "%":
+      return message(arg.parts);
     case "$e":
       return event;
     case "$t":

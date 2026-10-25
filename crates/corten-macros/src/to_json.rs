@@ -3,8 +3,11 @@
 //! The keys, quotes, colons and commas between two values are merged into one byte string, so the
 //! generated code copies a literal, writes a value, copies the next literal: `{"id":"`, the id,
 //! `","count":`, the count, `}`. A string field's quotes go in the literals around it. Commas are
-//! decided here too, except after a field that may be left out (`skip_serializing_if`) before any
-//! that is always written, where a flag decides them.
+//! decided here too, except after a field that may be left out (`skip_serializing_if`) or a
+//! flattened one before any that is always written, where a flag decides them.
+//!
+//! A struct with named fields also implements `ToJsonMembers`: its members without the braces,
+//! which a `#[serde(flatten)]` field of another derived struct writes in place.
 //!
 //! `#[serde(...)]` is read so the JSON is what serde writes; an attribute that changes serde's
 //! output in a way this does not follow is a compile error.
@@ -20,6 +23,8 @@ use crate::{
 pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     let item = parse_item(input, "ToJson", true)?;
     let container = Container::read(&item.attrs, item.is_enum)?;
+    // A struct with named fields: what writes its members alone, for a struct that flattens it.
+    let mut members_body = None;
     let body = if item.is_enum {
         let Some(body) = &item.body else { return err(item.name.span(), "ToJson: expected the enum's variants") };
         enumeration(&container, body)?
@@ -39,6 +44,10 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         } else {
             let mut gen = Gen::default();
             object(&mut gen, b"{", Comma::First, &fields, container.rename_all.as_deref(), self_field);
+            let mut inner = Gen::default();
+            let end = members(&mut inner, Comma::Runtime, &fields, container.rename_all.as_deref(), self_field);
+            inner.code(if end == Comma::After { q("false", &[]) } else { q("__corten_first", &[]) });
+            members_body = Some(inner.finish());
             gen.finish()
         }
     } else {
@@ -64,7 +73,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     out.extend(q("::corten::json::ToJson for", &[]));
     out.extend([TokenTree::Ident(item.name.clone())]);
     out.extend(item.type_generics.clone());
-    out.extend(where_clause);
+    out.extend(where_clause.clone());
     out.extend([TokenTree::Group(Group::new(
         Delimiter::Brace,
         q(
@@ -80,6 +89,25 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             &[body],
         ),
     ))]);
+    if let Some(members_body) = members_body {
+        out.extend(q("#[automatically_derived] impl", &[]));
+        out.extend(item.impl_generics.clone());
+        out.extend(q("::corten::json::ToJsonMembers for", &[]));
+        out.extend([TokenTree::Ident(item.name.clone())]);
+        out.extend(item.type_generics.clone());
+        out.extend(where_clause);
+        out.extend([TokenTree::Group(Group::new(
+            Delimiter::Brace,
+            q(
+                "#[allow(unused_assignments, unused_mut, unused_variables)]
+                fn write_json_members(&self, __OUT: &mut ::std::vec::Vec<u8>, mut __corten_first: bool) -> bool {
+                    use ::corten::json::__private::{ViaSerialize as _, ViaToJson as _};
+                    __A0
+                }",
+                &[members_body],
+            ),
+        ))]);
+    }
     Ok(out)
 }
 
@@ -211,6 +239,8 @@ struct Field {
     rename: Option<String>,
     skip: bool,
     skip_if: Option<TokenStream>,
+    /// `#[serde(flatten)]`: the field's members written in this object's braces.
+    flatten: bool,
     ty: Vec<TokenTree>,
 }
 
@@ -244,9 +274,14 @@ fn parse_fields(group: &Group, named: bool) -> Result<Vec<Field>, Error> {
         } else {
             (None, TokenTree::Literal(Literal::usize_unsuffixed(index)), tokens[j..].to_vec())
         };
-        let mut field = Field { name, member, rename: None, skip: false, skip_if: None, ty };
+        let mut field = Field { name, member, rename: None, skip: false, skip_if: None, flatten: false, ty };
+        let mut flatten_span = None;
         for arg in serde_args(&attrs)? {
             match arg.key.as_str() {
+                "flatten" if named => {
+                    field.flatten = true;
+                    flatten_span = Some(arg.span);
+                }
                 "rename" => field.rename = Some(arg.string()?),
                 "skip" | "skip_serializing" => field.skip = true,
                 "skip_serializing_if" if named => match arg.string()?.parse::<TokenStream>() {
@@ -257,6 +292,12 @@ fn parse_fields(group: &Group, named: bool) -> Result<Vec<Field>, Error> {
                 "default" | "alias" | "skip_deserializing" | "deserialize_with" | "borrow" => {}
                 _ => return arg.unsupported(),
             }
+        }
+        if let (Some(span), true) = (flatten_span, field.rename.is_some() || field.skip_if.is_some()) {
+            return err(
+                span,
+                "ToJson: a flattened field has no key of its own and is always written; remove rename or skip_serializing_if",
+            );
         }
         fields.push(field);
     }
@@ -464,12 +505,33 @@ fn object(
     access: impl Fn(&Field) -> TokenStream,
 ) {
     gen.lit(open);
+    members(gen, start, fields, rule, access);
+    gen.lit(b"}");
+}
+
+/// The fields as `"key":value` pairs, from `start`; returns where the commas stand after them. A
+/// flattened field writes its type's members (`ToJsonMembers`), and whether it wrote any is known
+/// only when it runs, as for a field that may be left out.
+fn members(gen: &mut Gen, start: Comma, fields: &[Field], rule: Option<&str>, access: impl Fn(&Field) -> TokenStream) -> Comma {
     let mut comma = start;
     let shown = fields.iter().filter(|f| !f.skip);
-    if start == Comma::First && shown.clone().next().is_some_and(|f| f.skip_if.is_some()) {
+    if start == Comma::First && shown.clone().next().is_some_and(|f| f.skip_if.is_some() || f.flatten) {
         gen.code(q("let mut __corten_first = true;", &[]));
     }
     for field in shown {
+        if field.flatten {
+            let write = q(
+                "::corten::json::ToJsonMembers::write_json_members(__A0, __OUT, __A1)",
+                &[access(field), if comma == Comma::After { q("false", &[]) } else { q("__corten_first", &[]) }],
+            );
+            if comma == Comma::After {
+                gen.code(q("__A0;", &[write]));
+            } else {
+                gen.code(q("__corten_first = __A0;", &[write]));
+                comma = Comma::Runtime;
+            }
+            continue;
+        }
         let name = field.name.as_deref().expect("named fields");
         let mut key = json_string(&match (&field.rename, rule) {
             (Some(rename), _) => rename.clone(),
@@ -499,7 +561,7 @@ fn object(
             }
         }
     }
-    gen.lit(b"}");
+    comma
 }
 
 /// A tuple: one field is its value (a newtype), more are an array.

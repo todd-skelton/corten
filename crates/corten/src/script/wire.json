@@ -337,6 +337,80 @@
         }
       ],
       "from": "corten-ui"
+    },
+    {
+      "name": "a message for the handler to fill in",
+      "attr": "connect:shared.say(@out,%[\"\",\"count\",\" listings\"])",
+      "parsed": [
+        {
+          "type": "connect",
+          "module": "shared",
+          "name": "say",
+          "args": [
+            {
+              "kind": "@",
+              "owner": null,
+              "name": "out"
+            },
+            {
+              "kind": "%",
+              "parts": [
+                "",
+                "count",
+                " listings"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a message in another locale",
+      "attr": "connect:shared.say(@out,%[\"\",\"count\",\" annonces\"])",
+      "parsed": [
+        {
+          "type": "connect",
+          "module": "shared",
+          "name": "say",
+          "args": [
+            {
+              "kind": "@",
+              "owner": null,
+              "name": "out"
+            },
+            {
+              "kind": "%",
+              "parts": [
+                "",
+                "count",
+                " annonces"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a message with quotes, braces and commas",
+      "from": "messages.rs",
+      "attr": "click:m.f(%[\"\\\"a\\\" {x}, \",\"n\",\"),\\\\\"])",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "m",
+          "name": "f",
+          "args": [
+            {
+              "kind": "%",
+              "parts": [
+                "\"a\" {x}, ",
+                "n",
+                "),\\"
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }
