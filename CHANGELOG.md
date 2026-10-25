@@ -252,6 +252,12 @@ Corten is pre-1.0, so any minor version may change the API.
     error, a 5xx or an abort keeps it), then renews it. The app stores keys with its writes; Corten
     keeps none. Asked for by the Chase Sets pilot, which wrote about 150 lines for it
     ([#9 Forms have no per-submission idempotency key](https://github.com/todd-skelton/corten/issues/9)).
+37. `<corten-live>` shows its connection: a `status` attribute of `connecting`, `live`,
+    `reconnecting`, `closed` (the browser gave up) or `ended` (the server finished the stream), and
+    `stale-since`, the ISO time a live stream dropped, until it is live again. A page can mark a
+    stale part with CSS alone. Asked for by the Chase Sets pilot, whose lists showed a dropped
+    stream the same as an unchanged one
+    ([#33 A page cannot tell whether a <corten-live> element is connected](https://github.com/todd-skelton/corten/issues/33)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

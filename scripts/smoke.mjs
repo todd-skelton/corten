@@ -70,8 +70,9 @@ async function run(browser) {
   const page = await browser.newPage();
   const errors = [];
   // Firefox logs an open stream that a full page load cuts (data-reload, an error page, a section
-  // stylesheet that failed) as an error, in one of two wordings.
-  const cut = /was interrupted while the page was loading|can.t establish a connection to the server at \S+\/live\/trades/;
+  // stylesheet that failed), and the stream the status check drops on purpose, as an error, in one
+  // of two wordings.
+  const cut = /was interrupted while the page was loading|can.t establish a connection to the server at \S+\/live\/(trades|flaky)/;
   page.on("console", (m) => m.type() === "error" && !cut.test(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
   // Every EventSource the page opens, to see which are still open.
@@ -427,10 +428,38 @@ async function run(browser) {
   await page.waitForTimeout(4500);
   check(
     "a <corten-live> stream that ends is applied once and not reopened",
-    (await page.textContent("#once")) === "Ready" && onceRequests === 1 && (await openStreams("/live/once")) === 0,
+    (await page.textContent("#once")) === "Ready" && onceRequests === 1 && (await openStreams("/live/once")) === 0 && (await page.getAttribute("#once-live", "status")) === "ended",
     `${await page.textContent("#once")}, ${onceRequests} requests`,
   );
   await page.evaluate(() => document.querySelector("#once-live")?.remove());
+
+  // <corten-live> shows its connection: connecting, live once open, reconnecting (with when it
+  // dropped) when the stream breaks, closed when the server answers it with no stream.
+  let flaky = 0;
+  await page.route("**/live/flaky", (route) =>
+    (flaky += 1) === 1
+      ? route.fulfill({ status: 200, contentType: "text/event-stream", body: 'retry: 300\nevent: patch\ndata: <p id="flaky">One</p>\n\n' })
+      : route.fulfill({ status: 204, body: "" }),
+  );
+  await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    w.__liveStates = [];
+    document.querySelector("main")?.insertAdjacentHTML("beforeend", '<corten-live id="flaky-live" src="/live/flaky"><p id="flaky">Waiting</p></corten-live>');
+    const el = /** @type {Element} */ (document.querySelector("#flaky-live"));
+    const record = () => w.__liveStates.push(`${el.getAttribute("status")}${el.hasAttribute("stale-since") ? "+stale" : ""}`);
+    record();
+    new MutationObserver(record).observe(el, { attributes: true, attributeFilter: ["status"] });
+  });
+  await page.waitForFunction(() => document.querySelector("#flaky-live")?.getAttribute("status") === "closed", null, { timeout: 5000 }).catch(() => {});
+  const liveStates = await page.evaluate(() => (/** @type {any} */ (window)).__liveStates.join(" "));
+  const staleSince = await page.getAttribute("#flaky-live", "stale-since");
+  check(
+    "<corten-live> shows connecting, live, reconnecting since it dropped, then closed",
+    liveStates === "connecting live reconnecting+stale closed+stale" && !Number.isNaN(Date.parse(staleSince ?? "")) && (await page.textContent("#flaky")) === "One",
+    `${liveStates}; stale since ${staleSince}`,
+  );
+  await page.evaluate(() => document.querySelector("#flaky-live")?.remove());
+  await page.unroute("**/live/flaky");
 
   // A <corten-live since> sends the page's cursor on its first connection; a fragment's id is the
   // cursor a reconnect sends back as Last-Event-ID, so the stream resumes there.
