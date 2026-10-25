@@ -299,6 +299,26 @@ Corten is pre-1.0, so any minor version may change the API.
     catalog lacks or when an argument is missing, and renders escaped like any message. Asked for
     by the Chase Sets pilot, whose attention queue matched 20 API keys to methods by hand
     ([#54 A page cannot show a catalog message chosen at run time by its key](https://github.com/todd-skelton/corten/issues/54)).
+43. The page is a document made of components. `req.page`, `req.screen` and the error page take a
+    `Document`: `html!` that starts with `<html>` (one `<head>` with one `<title>` and one
+    `<Corten />`, one `<main>` outside any `for`, `if` or `match`, all checked when it compiles), or
+    a component that returns `impl Document`, such as the app's `Layout`. `html!` renders only the
+    parts a request needs: the title for a data client; the title, the page's head tags (expressions
+    and components in `<head>`, marked `data-corten-head`) and `<main>`'s children for a client
+    navigation. `<Corten />` is where Corten adds the runtime and the page's scripts and stylesheets.
+    `req.asset`, `req.has_asset`, `req.current`, `req.is_current`, `req.nonce` and `req.lang` are what
+    a layout reads. On the item page (release, `render_cost`, eight alternating runs against the
+    commit before, Windows) a full document is about 7% faster (median 57.5 to 53.8 us) and a
+    navigation within noise (47.0 to 47.8 us; another eight runs gave 48.4 to 48.3), with the same
+    bytes, compressed or not.
+44. `#[corten::routes]` on a module of routes: each `#[route("/..")]` struct in it is a typed route and
+    a method of the module's `Handlers` trait, and `url::router(handlers)` puts each handler at its
+    path for `App::new`. A route without a handler, or two routes with the same path, does not
+    compile. A struct in the module that derives `Route` itself is a link only (an area's page, an
+    API route). `MethodRouter` is in the prelude. `corten new`, `examples/hello` and the README use it.
+45. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
+46. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
+    `corten dev` only, the error. Every error page is sent with `X-Robots-Tag: noindex`.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -310,6 +330,9 @@ Corten is pre-1.0, so any minor version may change the API.
    server-rendered rows) and lighter (116 bytes a row against 927), and the framework no longer
    ships a third-party JavaScript bundle. Solid stays in `bench/browser` as a comparison.
 3. The `memchr` dependency of `corten`, which no code used.
+4. `App::shell`, `Meta` (`corten::meta`) and the shell's `Document` struct (`doc.head`, `doc.main`,
+   `doc.asset`, `doc.current`, `doc.nonce`): the app's layout component replaces them. Corten
+   has no built-in shell; an app without `App::error_page` gets a plain error document.
 
 ### Changed
 
@@ -514,6 +537,14 @@ Corten is pre-1.0, so any minor version may change the API.
     snapshot with no write since the last 444,927 before and 1,272 after at 100 rows (18 KB), and
     4,424,419 and 1,274 at 1,000 rows (187 KB); a snapshot right after a write 458,893 and 461,114
     (+0.5%), 4,433,932 and 4,440,648 (+0.2%); a write alone 9,664 and 9,705.
+39. `req.page(title, view)` is `req.page(doc)` and `req.screen(title, &data, view)` is
+    `req.screen(&data, doc)`, the title read from the document's `<title>`. Migrate by writing a
+    `Layout` component (the old shell, with `<title>{title}</title>` and `<Corten />` in `<head>`
+    and `{children}` in `<main>`) and wrapping each page in it.
+40. `App::context` needs the context to be `Hash` as well as `Clone`: any layout may show it, so its hash
+    is always in the page key.
+41. The error page shows the error under `corten dev` only if it prints `failure.detail` (the default
+    and the `corten new` page do); the offline page is the error page for 503 ("Not available").
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -618,6 +649,8 @@ Corten is pre-1.0, so any minor version may change the API.
     `{updated_at}`) are an error naming both. Found by the Chase Sets pilot, whose shared catalogs
     have 365 camelCase arguments
     ([#58 A catalog message cannot take a camelCase argument ({updatedAt})](https://github.com/todd-skelton/corten/issues/58)).
+21. A handler that panics is answered as a 500 with the error page in the request's mode, and the
+    panic is logged, instead of the connection closing with no response.
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

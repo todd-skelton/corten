@@ -403,7 +403,7 @@ mod tests {
         use http_body_util::BodyExt;
         use tower::ServiceExt;
 
-        let page = |req: crate::Req| async move { req.page("Badges", BadgeCount { n: 1 }) };
+        let page = |req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Badges", BadgeCount { n: 1 }) };
         let routes = || Router::new().route("/", get(page));
         let get_page = |app: Router| async move {
             let res = app.oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
@@ -448,7 +448,7 @@ mod tests {
             event: None,
             view: None,
         };
-        let page = |req: crate::Req| async move { req.page("Badges", BadgeCount { n: 1 }) };
+        let page = |req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Badges", BadgeCount { n: 1 }) };
         let app = |dev: bool| {
             App::new(Router::new().route("/", get(page)).route("/administrator", get(page)))
                 .dev(dev)

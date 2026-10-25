@@ -6,11 +6,11 @@
 //! ```
 //!
 //! Corten's own inline tag (the import map) is the same on every page of a deploy, so the CSP
-//! allows it by its SHA-256 hash. [`crate::Document::nonce`] gives the shell a nonce for any
+//! allows it by its SHA-256 hash. [`crate::Req::nonce`] gives the layout a nonce for any
 //! inline script the app adds. Nothing else inline runs, so an HTML injection cannot execute
 //! script even if a template escapes wrongly.
 //!
-//! The nonce is made the first time something asks for it (the shell, or a handler that takes
+//! The nonce is made the first time something asks for it (the layout, or a handler that takes
 //! [`Nonce`]). A response nothing asked for (most pages, JSON, a patch, a static file) gets the
 //! policy without a nonce source: it allows less, costs no random bytes, and the same page is the
 //! same bytes for every request, so a cache may share it ([`crate::App`], caching).
@@ -29,7 +29,7 @@ use axum::{
     Router,
 };
 
-/// The CSP nonce for this request: `Document::nonce` in a shell, or `nonce: Nonce` as an
+/// The CSP nonce for this request: `req.nonce()` in a layout, or `nonce: Nonce` as an
 /// extractor in a handler that writes HTML itself. Asking for it is what puts it in the
 /// response's CSP.
 #[derive(Clone, Debug)]

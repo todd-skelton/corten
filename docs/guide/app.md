@@ -8,13 +8,13 @@ axum routes. Each default can be replaced in one line.
 | Concern | Default | Override |
 |---|---|---|
 | Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
-| Shell | a minimal HTML document | `.shell(fn(Document) -> impl Render)`, or `fn(Document, Option<C>)` with a context |
-| Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`, first: it makes the app an `App<Viewer>`, and shells, guards, page handlers (`req.context::<C>()`) and error pages see it; Corten's own routes and API routes skip it |
+| The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
+| Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`, first: it makes the app an `App<Viewer>` (`Viewer: Clone + Hash`), and layouts, guards, page handlers (`req.context::<C>()`) and error pages see it; Corten's own routes and API routes skip it |
 | A part of the app | none | `.area::<Admin>(\|admin\| admin.route::<AdminUser>(get(user)))`: its routes under the prefix `Admin::PATH` (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `.guard(\|viewer, req\| ..)` for who may use it ([below](#areas-and-guarded-routes)) |
 | Who may use the app | anyone | `.guard(\|viewer, req\| ..)`: every route needs the guard's `Access::ALLOW`; `.unguarded::<SignIn>()` opens one route ([below](#areas-and-guarded-routes)) |
-| Error pages | 404, 405 and 500 inside the shell, in the request's mode (page, swap or JSON); the error is logged, never shown | `.error_page(\|status\| (title, view))` |
-| JSON-only routes | none | `.api::<ApiRoot>(\|api\| api.route::<ItemJson>(get(item_json)))`: every failure under the prefix is JSON, with no shell and no context ([below](#json-only-routes)) |
-| Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the shell or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods | `.policy(Policy::new()...)` |
+| Error pages | 404, 405, 500 (a handler's error or panic) and 503 in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(fn(&Req, Failure) -> impl Document)`, in the app's layout; `corten new` writes one |
+| JSON-only routes | none | `.api::<ApiRoot>(\|api\| api.route::<ItemJson>(get(item_json)))`: every failure under the prefix is JSON, with no document and no context ([below](#json-only-routes)) |
+| Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the layout or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods | `.policy(Policy::new()...)` |
 | Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Cache::public(max_age)` next to a response that is the same for everyone |
 | Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file, plus one per area that lists components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
 | Middleware of your own | none | tower layers on the routes run inside Corten's (after the context and guards); layers around `app.router()` run outside it, given to `corten::serve` ([below](#your-own-middleware)) |
@@ -23,27 +23,28 @@ axum routes. Each default can be replaced in one line.
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the context kept, so a redraw costs what changed (zstd or brotli; feature `compress`) | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
-| Languages | none | `.messages::<Msg>()`: `req.t()`, `doc.t()` and `doc.lang()` follow `Accept-Language` |
+| Languages | none | `.messages::<Msg>()`: `req.t()` and `req.lang()` follow `Accept-Language` |
 | Dev mode | when `CORTEN_DEV` is set (`corten dev` sets it): errors shown on the page, open pages reload after a rebuild | `.dev(bool)` |
 
 `App::deadline` (30 seconds unless set) bounds how long a handler may take to start its answer;
 see [Cancellation](cancellation.md).
 
 ```rust,ignore
-let app = App::new(routes)
+let app = App::new(url::router(Site))
     .context(|headers| viewer_from(headers))       // who is asking: the app is an App<Viewer>
-    .shell(shell)                                  // the document around every page
+    .error_page(views::error_page)                 // in the app's layout
     .components(&[TOKENS, OfferList])              // components with scripts or styles
     .area::<Admin>(|admin| admin::routes(admin).components(&[SalesChart]).guard(staff_only))
-    .messages::<Msg>()                             // the locales the shell's lang follows
+    .messages::<Msg>()                             // the locales req.lang() follows
     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")));
 corten::serve(app).await
 ```
 
-The shell renders on full page loads only; client navigation swaps `<main>`. Every page
-carries a key hashed from the context and the deploy, and when a navigation or a form answer
-arrives with a different key (sign-in, sign-out, a new release), the runtime loads the whole
-document, so the shell is never stale.
+The layout around `<main>` renders on full page loads only; a client navigation gets the
+`<title>`, the page's head tags and `<main>`'s children. Every page carries a key hashed from the
+context and the deploy, and when a navigation or a form answer arrives with a different key
+(sign-in, sign-out, a new release), the runtime loads the whole document, so the layout is never
+stale.
 
 ## The request path
 
@@ -52,7 +53,7 @@ context, the deadline, error pages, security headers and compression run in one 
 request. It is a tower layer of its own rather than axum's `from_fn`, which boxes the rest of the
 stack again for every request (about 700 instructions). Corten's own inline tag (the import map) is the same on every page of a deploy, so the
 CSP allows it by its SHA-256 hash, computed once at startup. A nonce is made only when something asks for one
-(`doc.nonce()` in the shell, or a handler that takes `Nonce`). Static files, the runtime and the
+(`req.nonce()` in the layout, or a handler that takes `Nonce`). Static files, the runtime and the
 health checks skip `App::context`, so a session lookup runs only for the requests that can use
 it.
 
@@ -93,7 +94,7 @@ Static files, component scripts, the components' stylesheet and the runtime have
 URLs and are sent `public, max-age=31536000, immutable`; the PWA's worker keeps them. Everything
 else `App` serves that does not set `Cache-Control` is sent `private, no-cache`: the browser
 may keep it but asks again before using it, and no shared cache (a CDN, a proxy) stores it. A
-page carries the shell built from `App::context`, so a shared copy could show one user's shell
+page's layout may show what `App::context` found, so a shared copy could show one user's page
 to another.
 
 A page that is the same for every visitor says so:
@@ -101,7 +102,7 @@ A page that is the same for every visitor says so:
 ```rust,ignore
 async fn home(req: Req) -> corten::Result<(Cache, Response)> {
     let cache = Cache::public(Duration::from_secs(60)).stale_while_revalidate(Duration::from_secs(600));
-    Ok((cache, req.page("Home", view)?))
+    Ok((cache, req.page(html! { <Layout req={&req} title="Home">{view}</Layout> })?))
 }
 ```
 
@@ -170,7 +171,7 @@ Under the prefix:
    log except under `corten dev`. A failure answered with a JSON body of the handler's own
    passes through, and validation errors are `Errors` as the error, which adds
    `"fields": {"email": "..."}`.
-2. There is no shell, no nonce and no context, and responses are `private, no-cache` unless
+2. There is no document, no nonce and no context, and responses are `private, no-cache` unless
    the handler returns a `Cache`. The CSP is `default-src 'none'; frame-ancestors
    'none'`. `.context()` in the API's chain runs `App::context` for an API that serves the app's
    own signed-in users.
@@ -221,7 +222,7 @@ context and decides; Corten answers for it, in the request's mode:
 ```rust
 use corten::{axum::http::StatusCode, prelude::*, Error};
 
-#[derive(Clone)]
+#[derive(Clone, Hash)]
 struct Viewer { staff: bool, editor: bool }
 
 #[derive(Route)]
@@ -237,11 +238,16 @@ struct Admin;
 struct AdminUser<'a> { id: &'a str }
 
 async fn dashboard(req: Req) -> Result {
-    req.page("Admin", html! { <h1>"Admin"</h1> })
+    req.page(html! { <Layout req={&req} title="Admin"><h1>"Admin"</h1></Layout> })
 }
 
 async fn user(req: Req, Path(id): Path<String>) -> Result {
-    req.page("User", html! { <h1>{id}</h1> })
+    req.page(html! { <Layout req={&req} title="User"><h1>{id}</h1></Layout> })
+}
+
+#[component]
+fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+    html! { <html lang={req.lang()}><head><title>{title}</title><Corten /></head><body><main>{children}</main></body></html> }
 }
 
 fn app(pages: Router) -> App<Viewer> {

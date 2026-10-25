@@ -1,11 +1,15 @@
-//! Pages, patches and the shell: what a handler returns and how it reaches each kind of client.
+//! Pages and patches: what a handler returns and how it reaches each kind of client.
 
 use std::{
     any::Any,
+    cell::Cell,
     convert::Infallible,
     future::Future,
     hash::{Hash, Hasher},
-    sync::{Arc, LazyLock},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, LazyLock,
+    },
 };
 
 use axum::{
@@ -19,8 +23,8 @@ use crate::{
     app::Next,
     assets::Assets,
     security::NonceSlot,
-    view::{html, Render},
-    Error, Meta, Result,
+    view::{html, Document, Part, Render},
+    Error, Result,
 };
 
 /// Request header the runtime sets: `nav` for navigations, `action` for form submits.
@@ -66,106 +70,9 @@ fn accepts_json(headers: &HeaderMap) -> bool {
     accept.split(',').next().is_some_and(|first| first.split(';').next().unwrap_or("").trim() == "application/json")
 }
 
-/// The document around a page, given to the app's shell function (see [`crate::App::shell`]).
-///
-/// Print `{doc.head}` inside `<head>` before any other script and `{doc.main}` inside `<main>`.
-pub struct Document {
-    /// Title, the page's [`Meta`] tags, the runtime, the handler modules, the manifest. Print it
-    /// before any other module script.
-    pub head: Head,
-    /// The page's HTML, already rendered.
-    pub main: Main,
-    lang: &'static str,
-    path: String,
-    nonce: Option<NonceSlot>,
-    shared: Arc<Shared>,
-}
-
-impl Document {
-    /// The page title, as in `<title>`.
-    pub fn title(&self) -> &str {
-        &self.head.title
-    }
-
-    /// The request path, for links that mark the current section.
-    pub fn path(&self) -> &str {
-        &self.path
-    }
-
-    /// The negotiated locale (`"en"` without [`crate::App::messages`]), for `<html lang>`.
-    pub fn lang(&self) -> &str {
-        self.lang
-    }
-
-    /// True when `href` (a typed route) is the current page, or with `section` any page
-    /// under it: the rule the runtime applies to `<a data-nav>` (`data-nav="section"`) after each
-    /// navigation.
-    pub fn is_current(&self, href: &(impl crate::route::Href + ?Sized), section: bool) -> bool {
-        href.with_href(|href| is_current(&self.path, href, section))
-    }
-
-    /// `aria-current="page"` for a nav link when [`Document::is_current`]:
-    /// `<a href={About} data-nav aria-current={doc.current(&About)}>`.
-    pub fn current(&self, href: &(impl crate::route::Href + ?Sized)) -> Option<&'static str> {
-        self.is_current(href, false).then_some("page")
-    }
-
-    /// The app's messages in this document's locale, for text in the shell.
-    pub fn t<M: crate::i18n::Messages>(&self) -> M {
-        M::for_locale(self.lang)
-    }
-
-    /// This request's CSP nonce, for the shell's own inline scripts. Empty without a policy.
-    ///
-    /// Asking for it makes one and puts it in the CSP, so the page is different bytes on every
-    /// request and is never cached for other users (see [`crate::App`], caching). Prefer a
-    /// script file from the static directory.
-    pub fn nonce(&self) -> &str {
-        self.nonce.as_ref().map_or("", |slot| &slot.get().0)
-    }
-
-    /// The versioned URL of a static file: `doc.asset("style.css")`. A missing file is a bug:
-    /// it panics in debug builds, and in release the error is logged and the page still renders
-    /// (with a link that 404s) rather than failing every request.
-    pub fn asset(&self, path: &str) -> String {
-        match &self.shared.assets {
-            Some(assets) => assets.url(path),
-            None => {
-                let message = format!("corten: no static directory is loaded, so there is no {path:?}; see App::assets");
-                if cfg!(debug_assertions) {
-                    panic!("{message}");
-                }
-                tracing::error!("{message}");
-                format!("/{path}")
-            }
-        }
-    }
-
-    /// True when the static directory has `path`.
-    pub fn has_asset(&self, path: &str) -> bool {
-        self.shared.assets.as_ref().is_some_and(|a| a.contains(path))
-    }
-}
-
-/// The tags Corten owns in `<head>`, rendered once per document.
-pub struct Head {
-    title: String,
-    html: String,
-}
-
-impl Render for Head {
-    fn render(&self, out: &mut String) {
-        out.push_str(&self.html)
-    }
-}
-
-/// The page's rendered HTML, for `<main>`.
-pub struct Main(String);
-
-impl Render for Main {
-    fn render(&self, out: &mut String) {
-        out.push_str(&self.0)
-    }
+fn is_current(path: &str, href: &str, section: bool) -> bool {
+    let href = href.split(['?', '#']).next().unwrap_or(href);
+    path == href || (section && path.strip_prefix(href.trim_end_matches('/')).is_some_and(|rest| rest.starts_with('/')))
 }
 
 #[cfg(test)]
@@ -173,12 +80,7 @@ pub(crate) fn is_current_for_tests(path: &str, href: &str, section: bool) -> boo
     is_current(path, href, section)
 }
 
-fn is_current(path: &str, href: &str, section: bool) -> bool {
-    let href = href.split(['?', '#']).next().unwrap_or(href);
-    path == href || (section && path.strip_prefix(href.trim_end_matches('/')).is_some_and(|rest| rest.starts_with('/')))
-}
-
-/// The shell's per-request context, taken from the request extensions when the request arrives.
+/// The context for this request, taken from the request extensions when the request arrives.
 pub(crate) struct Captured {
     /// The shell key, printed as 16 hex digits.
     key: u64,
@@ -196,101 +98,98 @@ impl Captured {
     }
 }
 
-type RenderShell = dyn Fn(Document, Option<&(dyn Any + Send + Sync)>) -> String + Send + Sync;
-type CaptureContext = dyn Fn(&Extensions) -> Option<(u64, Box<dyn Any + Send + Sync>)> + Send + Sync;
+/// Copies the app's context (`App::context`) out of the request with its hash, which goes into
+/// the key that tells the runtime whether the page around `<main>` is still current.
+pub(crate) type CaptureContext = dyn Fn(&Extensions) -> Option<(u64, Box<dyn Any + Send + Sync>)> + Send + Sync;
 
-/// A shell function with its context type erased.
-pub struct ShellFn {
-    render: Box<RenderShell>,
-    capture: Box<CaptureContext>,
+/// A failed request, given to the app's error page ([`crate::App::error_page`]).
+#[derive(Clone, Debug)]
+pub struct Failure {
+    /// What went wrong: 404 for an unknown URL, 405 for a wrong method, 422 for input that did not
+    /// parse, 503 past the deadline or offline (the PWA's offline page), 500 for a handler's error
+    /// or panic, or the status a handler's [`Error::status`] gave.
+    pub status: StatusCode,
+    /// The error itself, under `corten dev` only, for the page to show the developer. Never set
+    /// in production, where it is logged instead.
+    pub detail: Option<Arc<str>>,
 }
 
-/// A function that renders the document around every page of an app whose context is `C`.
-/// Implemented for `fn(Document) -> impl Render` and, for a shell that shows per-request data
-/// such as the signed-in user, `fn(Document, Option<C>) -> impl Render`, where `C` is the type
-/// [`crate::App::context`] gives (see [`crate::App::shell`]).
-#[diagnostic::on_unimplemented(
-    message = "`{Self}` is not a shell for an app whose context is `{C}`",
-    label = "a shell is `fn(Document) -> impl Render`, or `fn(Document, Option<{C}>) -> impl Render`",
-    note = "a shell that reads the context takes the type `App::context` gives; call `.context(..)` before `.shell(..)`"
-)]
-pub trait IntoShell<C, Marker>: Send + Sync + 'static {
-    fn into_shell(self) -> ShellFn;
-}
-
-impl<C, F, V> IntoShell<C, fn(Document) -> V> for F
-where
-    F: Fn(Document) -> V + Send + Sync + 'static,
-    V: Render,
-{
-    fn into_shell(self) -> ShellFn {
-        ShellFn { render: Box::new(move |doc, _| self(doc).to_html()), capture: Box::new(|_| None) }
-    }
-}
-
-impl<F, V, C> IntoShell<C, fn(Document, Option<C>) -> V> for F
-where
-    F: Fn(Document, Option<C>) -> V + Send + Sync + 'static,
-    V: Render,
-    C: Clone + Hash + Send + Sync + 'static,
-{
-    fn into_shell(self) -> ShellFn {
-        ShellFn {
-            render: Box::new(move |doc, context| {
-                let context = context.and_then(|c| c.downcast_ref::<C>()).cloned();
-                self(doc, context).to_html()
-            }),
-            capture: Box::new(|extensions| {
-                let context = extensions.get::<C>()?;
-                let mut hasher = std::hash::DefaultHasher::new();
-                context.hash(&mut hasher);
-                Some((hasher.finish(), Box::new(context.clone())))
-            }),
-        }
-    }
-}
-
-/// The shell used when the app sets none: a plain document that links `style.css` when the
-/// static directory has one.
-pub fn default_shell(doc: Document) -> impl Render {
-    let style = doc.has_asset("style.css").then(|| doc.asset("style.css"));
+/// The error page of an app that gives none ([`crate::App::error_page`]): a plain document. An app
+/// made by `corten new` has its own, in its layout. Every error page is sent with
+/// `X-Robots-Tag: noindex`.
+pub(crate) fn default_error_page(req: &Req, failure: Failure) -> impl crate::view::Document + '_ {
+    let (title, text) = match failure.status {
+        StatusCode::NOT_FOUND => ("Not found", "There is nothing at this address."),
+        StatusCode::FORBIDDEN => ("Not allowed", "You do not have access to this page."),
+        StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
+        StatusCode::SERVICE_UNAVAILABLE => ("Not available", "Check your connection and try again."),
+        _ => ("Something went wrong", "Please try again."),
+    };
     html! {
         <!DOCTYPE html>
-        <html lang={doc.lang()}>
+        <html lang={req.lang()}>
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                if let Some(href) = &style { <link rel="stylesheet" href={href}> }
-                {doc.head}
+                <title>{title}</title>
+                <Corten />
             </head>
-            <body><main>{doc.main}</main></body>
+            <body>
+                <main>
+                    <h1>{title}</h1>
+                    <p>{text}</p>
+                    if let Some(detail) = &failure.detail {
+                        <pre>{detail}</pre>
+                    }
+                </main>
+            </body>
         </html>
     }
 }
 
-/// The error page used when the app sets none.
-pub fn default_error_page(status: StatusCode) -> (Meta, impl Render) {
-    let (title, text) = match status {
-        StatusCode::NOT_FOUND => ("Not found", "There is nothing at this address."),
-        StatusCode::FORBIDDEN => ("Not allowed", "You do not have access to this page."),
-        StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
-        _ => ("Something went wrong", "Please try again."),
-    };
-    (
-        Meta::from(title),
-        html! {
-            <h1>{title}</h1>
-            <p>{text}</p>
-        },
-    )
+/// An error page with its document type erased: the response for a failed request.
+pub(crate) type ErrorPage = dyn Fn(&Req, Failure) -> Response + Send + Sync;
+
+/// A function from a failed request to its page, as [`crate::App::error_page`] takes it:
+/// `fn error_page(req: &Req, failure: Failure) -> impl Document + '_`.
+pub trait ErrorPageFn<'a>: Fn(&'a Req, Failure) -> <Self as ErrorPageFn<'a>>::Page {
+    /// The document it returns.
+    type Page: crate::view::Document + 'a;
 }
 
-pub(crate) type ErrorPage = dyn Fn(StatusCode) -> (Meta, String) + Send + Sync;
+impl<'a, F, D> ErrorPageFn<'a> for F
+where
+    F: Fn(&'a Req, Failure) -> D,
+    D: crate::view::Document + 'a,
+{
+    type Page = D;
+}
 
-/// Everything a request needs from the app: the shell, the error page, where scripts live.
+pub(crate) fn error_page_fn<F>(page: F) -> Box<ErrorPage>
+where
+    F: for<'a> ErrorPageFn<'a> + Send + Sync + 'static,
+{
+    Box::new(move |req: &Req, failure: Failure| {
+        let status = failure.status;
+        let mut res = match req.page_with_status(status, page(req, failure)) {
+            Ok(res) => res,
+            Err(error) => {
+                // The error page itself failed (under `corten dev`, a component the app does not
+                // list): plain text, so a broken error page cannot fail again.
+                tracing::error!("corten: the error page failed: {error:?}");
+                (status, "The page could not be shown.").into_response()
+            }
+        };
+        // Search engines skip it, whatever the layout says: the offline page is a 200.
+        res.headers_mut().insert(HeaderName::from_static("x-robots-tag"), HeaderValue::from_static("noindex"));
+        res
+    })
+}
+
+/// Everything a request needs from the app: the error page, where scripts live, the context.
 pub(crate) struct Shared {
-    pub shell: ShellFn,
     pub error_page: Box<ErrorPage>,
+    pub capture: Box<CaptureContext>,
     pub assets: Option<Arc<Assets>>,
     pub scripts_dir: String,
     /// The import map's JSON: the runtime, the app's typed events and views.
@@ -298,7 +197,8 @@ pub(crate) struct Shared {
     /// Extra `<head>` tags from the app's configuration (manifest link, theme color, service
     /// worker), rendered once.
     pub head_extra: String,
-    /// Hash of what the shell shows that a navigation cannot update: runtime and asset versions.
+    /// Hash of what the page around `<main>` shows that a navigation cannot update: runtime and
+    /// asset versions.
     pub key_base: u64,
     /// The PWA's offline page path; Corten answers it when the app has no route for it.
     pub offline: Option<String>,
@@ -315,7 +215,12 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
-    pub(crate) fn new(shell: ShellFn, error_page: Box<ErrorPage>, assets: Option<Arc<Assets>>, head_extra: String) -> Self {
+    pub(crate) fn new(
+        error_page: Box<ErrorPage>,
+        capture: Box<CaptureContext>,
+        assets: Option<Arc<Assets>>,
+        head_extra: String,
+    ) -> Self {
         let scripts_dir = assets.as_ref().map_or_else(|| "/assets/scripts/".to_string(), |a| a.scripts_dir().to_string());
         let import_map = crate::import_map(
             assets.as_ref().and_then(|a| a.events()).as_deref(),
@@ -327,8 +232,8 @@ impl Shared {
         import_map.hash(&mut hasher);
         head_extra.hash(&mut hasher);
         Shared {
-            shell,
             error_page,
+            capture,
             assets,
             scripts_dir,
             import_map,
@@ -345,21 +250,8 @@ impl Shared {
 }
 
 /// Used by handlers that run without an [`crate::App`] (unit tests of a bare router).
-static DEFAULT: LazyLock<Arc<Shared>> = LazyLock::new(|| {
-    let shell = IntoShell::<crate::NoContext, _>::into_shell(default_shell);
-    Arc::new(Shared::new(shell, error_page_fn(default_error_page), None, String::new()))
-});
-
-pub(crate) fn error_page_fn<F, V>(page: F) -> Box<ErrorPage>
-where
-    F: Fn(StatusCode) -> (Meta, V) + Send + Sync + 'static,
-    V: Render,
-{
-    Box::new(move |status| {
-        let (meta, view) = page(status);
-        (meta.noindex(), view.to_html())
-    })
-}
+static DEFAULT: LazyLock<Arc<Shared>> =
+    LazyLock::new(|| Arc::new(Shared::new(error_page_fn(default_error_page), Box::new(|_| None), None, String::new())));
 
 /// The request as a handler answers it: which [`Mode`] the client asked in, and the methods
 /// that build each kind of response. Every handler that returns HTML takes one.
@@ -383,9 +275,9 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
 }
 
 impl Req {
-    /// Nothing here allocates unless the shell takes a context (which is copied).
+    /// Nothing here allocates unless the app has a context (which is copied).
     pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>) -> Self {
-        let (hash, context) = match (shared.shell.capture)(extensions) {
+        let (hash, context) = match (shared.capture)(extensions) {
             Some((hash, context)) => (hash, Some(context)),
             None => (0, None),
         };
@@ -407,7 +299,7 @@ impl Req {
         &self.signal
     }
 
-    /// The shell's context for this request (what the app's middleware inserted), if any:
+    /// The app's context for this request ([`crate::App::context`]), if it found one:
     /// `req.context::<Viewer>()`.
     pub fn context<C: 'static>(&self) -> Option<&C> {
         self.captured.context.as_ref()?.downcast_ref()
@@ -428,32 +320,93 @@ impl Req {
         self.accept_language.as_ref().and_then(|v| v.to_str().ok())
     }
 
-    fn lang(&self) -> &'static str {
+    /// The negotiated locale (`"en"` without [`crate::App::messages`]), for `<html lang>`.
+    pub fn lang(&self) -> &'static str {
         match self.shared.locales {
             Some(locales) => locales[crate::i18n::negotiate(locales, self.accept_language())],
             None => "en",
         }
     }
 
-    /// A page: the whole document for a browser, only the page for a client navigation. `meta`
-    /// is the title (`"About"`) or a [`Meta`] with the head tags.
-    pub fn page(&self, meta: impl Into<Meta>, view: impl Render) -> Result {
-        self.page_with_status(StatusCode::OK, meta, view)
+    /// A page: `doc` is the whole document, the app's layout with the page in it
+    /// (`html! { <Layout req={req} title="About">..</Layout> }`). A browser gets all of it; a
+    /// client navigation gets the title, the page's head tags and `<main>`'s children, and the rest
+    /// of the layout does not run.
+    pub fn page(&self, doc: impl Document) -> Result {
+        self.page_with_status(StatusCode::OK, doc)
     }
 
-    pub fn page_with_status(&self, status: StatusCode, meta: impl Into<Meta>, view: impl Render) -> Result {
-        let meta = meta.into();
-        if matches!(self.mode, Mode::Navigation | Mode::Action) {
-            // The runtime swaps the page into <main>, so render it straight after the title.
-            let mut body = String::with_capacity(16 * 1024);
-            swap_prefix(&meta, &mut body);
-            self.section_links(&mut body);
-            self.render_into(view, &mut body)?;
-            return Ok(self.finish(html_response(status, body, Some(PAGE_HEADER))));
+    /// [`Req::page`] with another status.
+    pub fn page_with_status(&self, status: StatusCode, doc: impl Document) -> Result {
+        // The last size of each part, so the buffer is allocated once.
+        static FULL: AtomicUsize = AtomicUsize::new(16 * 1024);
+        static SWAP: AtomicUsize = AtomicUsize::new(16 * 1024);
+        let swap = matches!(self.mode, Mode::Navigation | Mode::Action);
+        let (part, size) = if swap { (Part::Swap, &SWAP) } else { (Part::Full, &FULL) };
+        let mut out = String::with_capacity(size.load(Ordering::Relaxed));
+        HEAD_AT.set(None);
+        let modules = self.render_into(Parted(doc, part), &mut out)?;
+        let Some(at) = HEAD_AT.take() else {
+            return Err(Error::new("corten: the document's <head> has no <Corten />"));
+        };
+        let mut tags = String::new();
+        if swap {
+            self.section_links(&mut tags);
+        } else {
+            tags.reserve(1024);
+            self.head_tags(&modules, &mut tags);
         }
-        let mut main = String::new();
-        let modules = self.render_into(view, &mut main)?;
-        Ok(self.respond_with(status, meta, main, &modules))
+        if !tags.is_empty() {
+            out.insert_str(at, &tags);
+        }
+        size.store(out.len() + out.len() / 8, Ordering::Relaxed);
+        // Only a swap says it is one: a document a cache gave to a navigation fetch by mistake
+        // makes the runtime load the URL in full.
+        Ok(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER))))
+    }
+
+    /// The versioned URL of a static file: `req.asset("style.css")`. A missing file is a bug: it
+    /// panics in debug builds, and in release the error is logged and the page still renders
+    /// (with a link that 404s) rather than failing every request.
+    pub fn asset(&self, path: &str) -> String {
+        match &self.shared.assets {
+            Some(assets) => assets.url(path),
+            None => {
+                let message = format!("corten: no static directory is loaded, so there is no {path:?}; see App::assets");
+                if cfg!(debug_assertions) {
+                    panic!("{message}");
+                }
+                tracing::error!("{message}");
+                format!("/{path}")
+            }
+        }
+    }
+
+    /// True when the static directory has `path`.
+    pub fn has_asset(&self, path: &str) -> bool {
+        self.shared.assets.as_ref().is_some_and(|a| a.contains(path))
+    }
+
+    /// True when `href` (a typed route) is the current page, or with `section` any page under
+    /// it: the rule the runtime applies to `<a data-nav>` (`data-nav="section"`) after each
+    /// navigation.
+    pub fn is_current(&self, href: &(impl crate::route::Href + ?Sized), section: bool) -> bool {
+        href.with_href(|href| is_current(self.uri.path(), href, section))
+    }
+
+    /// `aria-current="page"` for a nav link when [`Req::is_current`]:
+    /// `<a href={About} data-nav aria-current={req.current(&About)}>`.
+    pub fn current(&self, href: &(impl crate::route::Href + ?Sized)) -> Option<&'static str> {
+        self.is_current(href, false).then_some("page")
+    }
+
+    /// This request's CSP nonce, for the layout's own inline scripts. Empty without a policy.
+    ///
+    /// Asking for it makes one and puts it in the CSP, so the page is different bytes on every
+    /// request and is never cached for other users (see [`crate::App`], caching). Prefer a
+    /// script file from the static directory.
+    pub fn nonce(&self) -> &str {
+        self.nonce.as_ref().map_or("", |slot| &slot.get().0)
     }
 
     /// Renders `view` and returns the script modules its handlers use, for the page to load.
@@ -519,44 +472,7 @@ impl Req {
         }
     }
 
-    /// The response for already-rendered `<main>` HTML.
-    fn respond(&self, status: StatusCode, meta: Meta, main: String) -> Response {
-        self.respond_with(status, meta, main, &[])
-    }
-
-    /// The same, loading the script modules `modules`.
-    fn respond_with(&self, status: StatusCode, meta: Meta, main: String, modules: &[&'static str]) -> Response {
-        let body = match self.mode {
-            // The runtime swaps the page into <main> and the head tags into <head>; an action
-            // that answers with a page (a form with errors, say) is swapped the same way.
-            Mode::Navigation | Mode::Action => {
-                let mut body = String::with_capacity(main.len() + 256);
-                swap_prefix(&meta, &mut body);
-                self.section_links(&mut body);
-                body.push_str(&main);
-                body
-            }
-            Mode::Document | Mode::Data => {
-                let head = self.head(&meta, modules);
-                let doc = Document {
-                    head: Head { title: meta.title().to_string(), html: head },
-                    main: Main(main),
-                    lang: self.lang(),
-                    path: self.uri.path().to_string(),
-                    nonce: self.nonce.clone(),
-                    shared: self.shared.clone(),
-                };
-                let context = self.captured.context.as_deref();
-                (self.shared.shell.render)(doc, context.map(|c| c as &(dyn Any + Send + Sync)))
-            }
-        };
-        // Only a swap says it is one: a document a cache gave to a navigation fetch by mistake
-        // makes the runtime load the URL in full.
-        let kind = matches!(self.mode, Mode::Navigation | Mode::Action).then_some(PAGE_HEADER);
-        self.finish(html_response(status, body, kind))
-    }
-
-    /// Adds the shell key, which tells the runtime whether the shell is still current.
+    /// Adds the shell key, which tells the runtime whether the page around `<main>` is still current.
     fn finish(&self, mut res: Response) -> Response {
         res.headers_mut().insert(SHELL_HEADER, self.captured.key());
         res.headers_mut().insert(header::VARY, self.vary());
@@ -567,13 +483,10 @@ impl Req {
         HeaderValue::from_static(if self.shared.locales.is_some() { VARY_LANGUAGE } else { VARY })
     }
 
-    fn head(&self, meta: &Meta, modules: &[&'static str]) -> String {
+    /// The tags Corten needs in `<head>` after the page's own: script settings, the shell key,
+    /// the app's configured tags, section stylesheets, the import map, the runtime and modules.
+    fn head_tags(&self, modules: &[&'static str], out: &mut String) {
         use std::fmt::Write;
-        let mut out = String::with_capacity(1024);
-        out.push_str("<title>");
-        crate::view::escape_into(meta.title(), &mut out);
-        out.push_str("</title>");
-        out.push_str(meta.tags());
         let dir = &self.shared.scripts_dir;
         let _ = write!(
             out,
@@ -581,7 +494,7 @@ impl Req {
             self.captured.key
         );
         out.push_str(&self.shared.head_extra);
-        self.section_links(&mut out);
+        self.section_links(out);
         out.push_str(r#"<script type="importmap">"#);
         out.push_str(&self.shared.import_map);
         out.push_str(r#"</script><script type="module" src=""#);
@@ -602,35 +515,34 @@ impl Req {
                 out.push_str(views);
             }
         }
-        out
     }
 
     /// [`Req::page`] for a page other clients read too: a browser gets HTML as usual, and a
-    /// [`Mode::Data`] request gets `{"title": ..., "data": data}`. `data` is the screen's view
-    /// model, so a native screen or an agent sees exactly what the view shows; `view` is only
-    /// rendered for browsers.
+    /// [`Mode::Data`] request gets `{"title": ..., "data": data}`, the title being the text of the
+    /// document's `<title>`. `data` is the screen's view model, so a native screen or an agent sees
+    /// exactly what the view shows; for it, only the document's `<title>` renders.
     #[cfg(feature = "json")]
-    pub fn screen<T: crate::json::ToJson + ?Sized>(&self, meta: impl Into<Meta>, data: &T, view: impl Render) -> Result {
-        self.screen_with_status(StatusCode::OK, meta, data, view)
+    pub fn screen<T: crate::json::ToJson + ?Sized>(&self, data: &T, doc: impl Document) -> Result {
+        self.screen_with_status(StatusCode::OK, data, doc)
     }
 
     #[cfg(feature = "json")]
     pub fn screen_with_status<T: crate::json::ToJson + ?Sized>(
         &self,
         status: StatusCode,
-        meta: impl Into<Meta>,
         data: &T,
-        view: impl Render,
+        doc: impl Document,
     ) -> Result {
-        let meta = meta.into();
         if self.mode != Mode::Data {
-            return self.page_with_status(status, meta, view);
+            return self.page_with_status(status, doc);
         }
         use crate::json::ToJson;
+        let mut title = String::new();
+        doc.render_part(&mut title, Part::Title);
         // `{"title":...,"data":...}`, as serde_json writes the pair.
         let mut body = Vec::with_capacity(T::__json_size().map_or(128, |s| s.load(std::sync::atomic::Ordering::Relaxed) + 64));
         body.extend_from_slice(br#"{"title":"#);
-        meta.title().write_json(&mut body);
+        crate::html::unescape(&title).as_ref().write_json(&mut body);
         body.extend_from_slice(br#","data":"#);
         data.write_json(&mut body);
         body.push(b'}');
@@ -744,27 +656,50 @@ pub(crate) async fn render_errors(
     }
     let req = failed_req;
     if offline && status == StatusCode::NOT_FOUND {
-        let view = html! {
-            <h1>"You are offline"</h1>
-            <p>"Check your connection and try again."</p>
-        };
-        return req.respond(StatusCode::OK, Meta::new("Offline").noindex(), view.to_html());
+        // The PWA's offline page, which the service worker keeps: the error page for 503.
+        let mut res = (shared.error_page)(&req, Failure { status: StatusCode::SERVICE_UNAVAILABLE, detail: None });
+        *res.status_mut() = StatusCode::OK;
+        return res;
     }
-    let (meta, mut main) = (shared.error_page)(status);
-    if let Some(crate::Failed(message)) = failed.filter(|_| shared.dev) {
-        // Dev mode only: the error itself, under the page the user would see.
-        let detail = html! { <pre class="corten-error">{message}</pre> };
-        detail.render(&mut main);
-    }
-    let mut res = req.respond(status, meta, main);
+    // Dev mode only: the error itself, for the page to show.
+    let detail = failed.filter(|_| shared.dev).map(|crate::Failed(message)| message);
+    let mut res = (shared.error_page)(&req, Failure { status, detail });
     if let Some(allow) = allow {
         res.headers_mut().insert(header::ALLOW, allow);
     }
     res
 }
 
-/// The handler's response, or an empty 503 once it has waited past `deadline`.
+/// The handler's response, through [`within_deadline`]; a handler that panics is answered as a
+/// handler error (500), whose message only `corten dev` shows.
 async fn run(req: Request, next: Next, deadline: Option<std::time::Duration>, signal: &crate::Signal) -> Response {
+    use std::{future::Future, panic::AssertUnwindSafe, pin::pin, task::Poll};
+    let (method, path) = (req.method().clone(), req.uri().path().to_string());
+    // A handler that panics fails its request like one that returned an error, instead of
+    // dropping the connection with no answer. Nothing runs unless it panics.
+    let mut fut = pin!(within_deadline(req, next, deadline, signal));
+    let outcome = std::future::poll_fn(|cx| match std::panic::catch_unwind(AssertUnwindSafe(|| fut.as_mut().poll(cx))) {
+        Ok(Poll::Ready(res)) => Poll::Ready(Ok(res)),
+        Ok(Poll::Pending) => Poll::Pending,
+        Err(panic) => Poll::Ready(Err(panic)),
+    })
+    .await;
+    match outcome {
+        Ok(res) => res,
+        Err(panic) => {
+            let message = panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "a panic with no message".to_string());
+            tracing::error!("corten: {method} {path} panicked: {message}");
+            Error::new(format!("the handler panicked: {message}")).into_response()
+        }
+    }
+}
+
+/// The handler's response, or an empty 503 once it has waited past `deadline`.
+async fn within_deadline(req: Request, next: Next, deadline: Option<std::time::Duration>, signal: &crate::Signal) -> Response {
     let Some(limit) = deadline else {
         return next.run(req).await;
     };
@@ -805,12 +740,32 @@ async fn within<F: std::future::Future>(limit: std::time::Duration, fut: F) -> O
     .await
 }
 
-/// `<title>` and the head tags, which the runtime moves into `<head>` when it swaps a page.
-fn swap_prefix(meta: &Meta, out: &mut String) {
-    out.push_str("<title>");
-    crate::view::escape_into(meta.title(), out);
-    out.push_str("</title>");
-    out.push_str(meta.tags());
+thread_local! {
+    /// Where `<Corten />` was written in the document being rendered.
+    static HEAD_AT: Cell<Option<usize>> = const { Cell::new(None) };
+}
+
+/// Where Corten writes its tags in a document's `<head>`: the import map, the runtime, the
+/// page's script modules, the app's configured tags (manifest, theme color) and the key that
+/// tells the runtime whether the page around `<main>` is current. A document holds it once, after
+/// its `<title>`: `<head>..<title>{title}</title>{head}<Corten /></head>`.
+pub struct Corten;
+
+impl Render for Corten {
+    #[inline]
+    fn render(&self, out: &mut String) {
+        HEAD_AT.set(Some(out.len()));
+    }
+}
+
+/// A part of a document, for [`Req::render_into`].
+struct Parted<D>(D, Part);
+
+impl<D: Document> Render for Parted<D> {
+    #[inline]
+    fn render(&self, out: &mut String) {
+        self.0.render_part(out, self.1)
+    }
 }
 
 pub(crate) fn html_response(status: StatusCode, body: String, kind: Option<HeaderName>) -> Response {

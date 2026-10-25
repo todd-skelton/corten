@@ -56,25 +56,37 @@ posts and the whole page comes back. One handler serves both.
 ```rust,no_run
 use corten::prelude::*;
 
-#[derive(Route)]
-#[route("/")]
-struct Home;
+// Every URL, typed. Each needs a handler below, or the app does not compile.
+#[corten::routes]
+mod url {
+    #[route("/")]
+    pub struct Home;
 
-#[derive(Route)]
-#[route("/greet")]
-struct Greet;
+    #[route("/greet")]
+    pub struct Greet;
+}
+
+struct Site;
+
+impl url::Handlers for Site {
+    fn home(&self) -> MethodRouter {
+        get(home)
+    }
+
+    fn greet(&self) -> MethodRouter {
+        post(greet)
+    }
+}
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let routes = Router::new()
-        .route(Home::PATH, get(home))
-        .route(Greet::PATH, post(greet));
-
-    corten::serve(App::new(routes)).await
+    let routes = url::router(Site);
+    let app = App::new(routes);
+    corten::serve(app).await
 }
 
 async fn home(req: Req) -> corten::Result {
-    req.page("Home", page(""))
+    req.page(page(&req, ""))
 }
 
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
@@ -82,7 +94,7 @@ async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
         // With JavaScript: send only the greeting, swapped in by its id.
         Mode::Action => req.patch(Greeting { name: &form.name }),
         // Without: the whole page.
-        _ => req.page("Home", page(&form.name)),
+        _ => req.page(page(&req, &form.name)),
     }
 }
 
@@ -91,15 +103,35 @@ struct GreetForm {
     name: String,
 }
 
-fn page(name: &str) -> impl Render + '_ {
+fn page<'a>(req: &'a Req, name: &'a str) -> impl Document + 'a {
     let f = GreetForm::FIELDS;
     html! {
-        <h1>"Welcome"</h1>
-        <form method="post" action={Greet} data-patch>
-            <input name={f.name} required>
-            <button>"Greet me"</button>
-        </form>
-        <Greeting name={name} />
+        <Layout req={req} title="Welcome">
+            <h1>"Welcome"</h1>
+            <form method="post" action={url::Greet} data-patch>
+                <input name={f.name} required>
+                <button>"Greet me"</button>
+            </form>
+            <Greeting name={name} />
+        </Layout>
+    }
+}
+
+/// The whole document, a component like any other: `corten new` writes one for you to change.
+/// A client navigation gets only the `<title>` and `<main>`'s children.
+#[component]
+fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+    html! {
+        <!DOCTYPE html>
+        <html lang={req.lang()}>
+            <head>
+                <title>{title}</title>
+                <Corten />
+            </head>
+            <body>
+                <main>{children}</main>
+            </body>
+        </html>
     }
 }
 
@@ -116,7 +148,9 @@ fn Greeting(name: &str) -> impl Render {
 }
 ```
 
-A misspelled route, field or prop does not compile. Behavior lives in a script next to the
+A misspelled route, field or prop does not compile, and neither does a route without a handler
+or a document without its `<title>`, `<Corten />` (where the runtime and the page's scripts go)
+or `<main>`. Behavior lives in a script next to the
 component: plain functions the markup calls with the elements they use.
 
 ```rust,ignore

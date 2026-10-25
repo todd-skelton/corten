@@ -55,8 +55,9 @@ The page is dark when it says `data-theme="dark"`, or when the system is dark an
 not choose `light`. `color-scheme` (which themes form controls and scrollbars) is a property,
 not a token, so it goes in `static/style.css` next to the same selectors.
 
-`static/style.css` holds what belongs to no component: element defaults, fonts and the shell.
-Link it before `{doc.head}` so component rules win ties. Inline `style=` stays blocked by the
+`static/style.css` holds what belongs to no component: element defaults, fonts and the layout.
+Link it before `<Corten />` in the layout, which links the components' stylesheet, so component
+rules win ties. Inline `style=` stays blocked by the
 CSP; one-off values come from the token utilities instead.
 
 ## Areas

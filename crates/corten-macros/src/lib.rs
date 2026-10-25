@@ -17,6 +17,7 @@ mod json;
 mod messages;
 mod names;
 mod route;
+mod routes;
 mod script;
 mod style;
 mod theme;
@@ -41,6 +42,12 @@ pub fn component(args: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(Route, attributes(route))]
 pub fn derive_route(input: TokenStream) -> TokenStream {
     route::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// A module of routes and the trait of their handlers. Documented at `corten::route::routes`.
+#[proc_macro_attribute]
+pub fn routes(args: TokenStream, item: TokenStream) -> TokenStream {
+    routes::expand(args, item).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// An element id as a type. Documented at `corten::view::Id`.

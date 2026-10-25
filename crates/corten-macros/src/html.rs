@@ -29,6 +29,39 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
         Ok(nodes)
     }) {
+        Ok(nodes) if is_document(&nodes) => {
+            if let Err((span, message)) = check_document(&nodes) {
+                return compile_error(span, &message);
+            }
+            let mut gen = Gen::default();
+            gen.doc_nodes(&nodes);
+            q(
+                "::corten::view::DocHtml::new({
+                    static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
+                    &SIZE
+                }, move |__OUT: &mut ::std::string::String, __PART: ::corten::view::Part| {
+                    #[allow(unused_imports)]
+                    use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _};
+                    __A0
+                })",
+                &[gen.finish()],
+            )
+        }
+        // One component: the component itself, so a layout stays a document. Its children own
+        // what they use, as a view does.
+        Ok(nodes) if matches!(nodes.as_slice(), [Node::Component { .. }]) => {
+            let [Node::Component { path, props, children }] = nodes.as_slice() else { unreachable!() };
+            let gen = Gen::default();
+            let built = gen.component(path, props, children, true);
+            q(
+                "{
+                    #[allow(unused_imports)]
+                    use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _};
+                    __A0
+                }",
+                &[built],
+            )
+        }
         Ok(nodes) => {
             let mut gen = Gen::default();
             gen.nodes(&nodes, false);
@@ -912,19 +945,150 @@ struct Gen {
     /// Type checks that print nothing, emitted before the writes so they do not split runs of
     /// static markup.
     checks: TokenStream,
+    /// In a document, which parts what is written now belongs to.
+    level: Level,
+}
+
+/// The parts of a document (`corten::view::Part`) a piece of its markup is written in.
+#[derive(Clone, Copy, Default, PartialEq)]
+enum Level {
+    /// Every part: markup outside documents, the text of `<title>`, `let`.
+    #[default]
+    Always,
+    /// The whole document and a navigation's swap: `<title>`, the page's head tags, `<main>`'s
+    /// children.
+    Page,
+    /// The whole document only: the rest of the layout.
+    Layout,
 }
 
 impl Gen {
     fn flush(&mut self) {
         if !self.text.is_empty() {
             let text = std::mem::take(&mut self.text);
-            self.out.extend(q("__OUT.push_str(__A0);", &[literal(&text)]));
+            let write = q("__OUT.push_str(__A0);", &[literal(&text)]);
+            self.emit(write);
         }
     }
 
     fn code(&mut self, tokens: TokenStream) {
         self.flush();
-        self.out.extend(tokens);
+        self.emit(tokens);
+    }
+
+    fn emit(&mut self, tokens: TokenStream) {
+        let block = stream([TokenTree::Group(Group::new(Delimiter::Brace, tokens.clone()))]);
+        match self.level {
+            Level::Always => self.out.extend(tokens),
+            Level::Page => self.out.extend(q("if __PART != ::corten::view::Part::Title __A0", &[block])),
+            Level::Layout => self.out.extend(q("if __PART == ::corten::view::Part::Full __A0", &[block])),
+        }
+    }
+
+    /// Switches the parts what follows is written in.
+    fn level(&mut self, level: Level) {
+        if self.level != level {
+            self.flush();
+            self.level = level;
+        }
+    }
+
+    /// A document's nodes (see `check_document`): the element path down to `<main>` is the
+    /// layout's, except `<title>`, the expressions and components in `<head>` and the children
+    /// of `<main>`, which are the page's. A `let` always runs.
+    fn doc_nodes(&mut self, nodes: &[Node]) {
+        for node in nodes {
+            match node {
+                Node::Let(tokens) => {
+                    let level = self.level;
+                    self.level(Level::Always);
+                    self.code(tokens.clone());
+                    self.level(level);
+                }
+                Node::Element { name, attrs, children } if name == "main" => {
+                    self.level(Level::Layout);
+                    self.open_tag(name, attrs, children);
+                    self.level(Level::Page);
+                    self.nodes(children, false);
+                    self.level(Level::Layout);
+                    self.text.push_str("</main>");
+                }
+                Node::Element { name, attrs, children } if name == "head" => {
+                    self.level(Level::Layout);
+                    self.open_tag(name, attrs, children);
+                    for child in children {
+                        match child {
+                            Node::Element { name, attrs, children } if name == "title" => {
+                                self.level(Level::Page);
+                                self.open_tag(name, attrs, children);
+                                self.level(Level::Always);
+                                self.nodes(children, false);
+                                self.level(Level::Page);
+                                self.text.push_str("</title>");
+                            }
+                            Node::Component { path, .. } if is_corten(path) => {
+                                self.level(Level::Page);
+                                self.node(child, false);
+                            }
+                            // The page's own tags: marked so a navigation replaces them.
+                            Node::Expr(_) | Node::Component { .. } => {
+                                self.level(Level::Page);
+                                let body = self.body(std::slice::from_ref(child), false);
+                                self.code(q(
+                                    "::corten::view::__private::head_slot(|__OUT: &mut ::std::string::String| __A0, __OUT);",
+                                    &[body.into()],
+                                ));
+                            }
+                            Node::Let(_) => self.doc_nodes(std::slice::from_ref(child)),
+                            _ => {
+                                self.level(Level::Layout);
+                                self.node(child, false);
+                            }
+                        }
+                    }
+                    self.level(Level::Layout);
+                    self.text.push_str("</head>");
+                }
+                Node::Element { name, attrs, children } if holds_main(children) => {
+                    self.level(Level::Layout);
+                    self.open_tag(name, attrs, children);
+                    self.doc_nodes(children);
+                    self.level(Level::Layout);
+                    self.text.push_str(&format!("</{name}>"));
+                }
+                _ => {
+                    self.level(Level::Layout);
+                    self.node(node, false);
+                }
+            }
+        }
+        self.level(Level::Layout);
+    }
+
+    /// `Path { prop: value, .., children }`: a component built from its tag.
+    fn component(
+        &self,
+        path: &TokenStream,
+        props: &[(TokenStream, TokenStream)],
+        children: &Option<Vec<Node>>,
+        moving: bool,
+    ) -> TokenStream {
+        let mut fields = TokenStream::new();
+        for (field, value) in props {
+            fields.extend(q("__A0: __A1,", &[field.clone(), value.clone()]));
+        }
+        if let Some(children) = children {
+            let body = stream([self.body(children, false)]);
+            let capture = if moving { "move " } else { "" };
+            fields.extend(q(
+                &format!("children: ::corten::view::Html::child({capture}|__OUT: &mut ::std::string::String| __A0),"),
+                &[body],
+            ));
+        }
+        let literal = stream([TokenTree::Group(Group::new(Delimiter::Brace, fields))]);
+        let mut out = path.clone();
+        out.extend(literal);
+        out
     }
 
     fn finish(mut self) -> TokenStream {
@@ -946,6 +1110,90 @@ impl Gen {
         }
     }
 
+    /// `<name attrs>`: the start tag of an element, whose children only matter for a ref's rows.
+    fn open_tag(&mut self, name: &str, attrs: &[Attr], children: &[Node]) {
+        self.text.push('<');
+        self.text.push_str(name);
+        let mut actions_printed = false;
+        for attr in attrs {
+            match attr {
+                Attr::Bare(attr) => {
+                    self.text.push(' ');
+                    self.text.push_str(attr);
+                }
+                Attr::Static(attr, value) => {
+                    self.text.push_str(&format!(" {attr}=\"{}\"", escape(value)));
+                }
+                Attr::Ref(expr, wide) => {
+                    let el: TokenStream =
+                        format!("::corten::script::el::{}", crate::dom::element(name)).parse().expect("a path parses");
+                    // What the element holds: one view's rows, for a handler's Holds<Row, ..>.
+                    let holds: TokenStream = match rows_of(children) {
+                        Some(view) => format!("::corten::script::RowsOf<{}u64>", crate::script::view_id(&view)),
+                        None => "::corten::script::NoRows".to_string(),
+                    }
+                    .parse()
+                    .expect("a path parses");
+                    match wide {
+                        // `ref={trigger as HTMLElement}`: a ref on several kinds of element, typed as one they all are.
+                        Some(wide) => {
+                            let ty: TokenStream = format!("::corten::script::el::{wide}").parse().expect("a path parses");
+                            let ty: TokenStream = ty
+                                .into_iter()
+                                .map(|mut t| {
+                                    t.set_span(wide.span());
+                                    t
+                                })
+                                .collect();
+                            self.code(q(
+                                "::corten::script::__private::ref_attr_as::<__A1, __A2, __A3>(&(__A0), __OUT);",
+                                &[expr.clone(), el, ty, holds],
+                            ))
+                        }
+                        None => self.code(q(
+                            "::corten::script::__private::ref_attr::<__A1, __A2>(&(__A0), __OUT);",
+                            &[expr.clone(), el, holds],
+                        )),
+                    }
+                }
+                Attr::On(..) if actions_printed => {}
+                Attr::On(..) => {
+                    actions_printed = true;
+                    let target: TokenStream =
+                        format!("::corten::script::el::{}", crate::dom::element(name)).parse().expect("a path parses");
+                    let mut binds = TokenStream::new();
+                    for attr in attrs {
+                        let Attr::On(event, span, expr) = attr else { continue };
+                        let (printed, ty) = if event.starts_with(|c: char| c.is_ascii_uppercase()) {
+                            let ty: TokenStream = TokenTree::Ident(Ident::new(event, *span)).into();
+                            self.checks.extend(q("::corten::script::__private::is_event::<__A0>();", std::slice::from_ref(&ty)));
+                            (crate::names::kebab(event), ty)
+                        } else {
+                            let ty: TokenStream =
+                                format!("::corten::script::ev::{}", crate::dom::event(event)).parse().expect("a path parses");
+                            (event.clone(), ty)
+                        };
+                        let expr = keywords(expr.clone(), &ty, &target);
+                        binds.extend(q("(__A0, &(__A1) as &dyn ::corten::script::Bind),", &[literal(&printed), expr]));
+                    }
+                    self.code(q("::corten::script::__private::data_on(__OUT, &[__A0]);", &[binds]));
+                }
+                // Classes are a list (see `corten::style::ClassList`): `class={(Row, hot.then_some(Hot))}`.
+                Attr::Expr(attr, expr) if attr == "class" => {
+                    self.code(q("::corten::style::__private::class_attr(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                }
+                Attr::Expr(attr, expr) => self.code(q(
+                    "(&::corten::view::__private::Attr(&(__A0))).__attr(__A1, __OUT);",
+                    &[expr.clone(), literal(&format!(" {attr}"))],
+                )),
+                Attr::Spread(expr) => {
+                    self.code(q("::corten::view::Attrs::render_attrs(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                }
+            }
+        }
+        self.text.push('>');
+    }
+
     fn node(&mut self, node: &Node, raw: bool) {
         match node {
             Node::Text(text) if raw => self.text.push_str(text),
@@ -956,104 +1204,15 @@ impl Gen {
             }
             Node::Let(tokens) => self.code(tokens.clone()),
             Node::Element { name, attrs, children } => {
-                self.text.push('<');
-                self.text.push_str(name);
-                let mut actions_printed = false;
-                for attr in attrs {
-                    match attr {
-                        Attr::Bare(attr) => {
-                            self.text.push(' ');
-                            self.text.push_str(attr);
-                        }
-                        Attr::Static(attr, value) => {
-                            self.text.push_str(&format!(" {attr}=\"{}\"", escape(value)));
-                        }
-                        Attr::Ref(expr, wide) => {
-                            let el: TokenStream =
-                                format!("::corten::script::el::{}", crate::dom::element(name)).parse().expect("a path parses");
-                            // What the element holds: one view's rows, for a handler's Holds<Row, ..>.
-                            let holds: TokenStream = match rows_of(children) {
-                                Some(view) => format!("::corten::script::RowsOf<{}u64>", crate::script::view_id(&view)),
-                                None => "::corten::script::NoRows".to_string(),
-                            }
-                            .parse()
-                            .expect("a path parses");
-                            match wide {
-                                // `ref={trigger as HTMLElement}`: a ref on several kinds of element, typed as one they all are.
-                                Some(wide) => {
-                                    let ty: TokenStream = format!("::corten::script::el::{wide}").parse().expect("a path parses");
-                                    let ty: TokenStream = ty
-                                        .into_iter()
-                                        .map(|mut t| {
-                                            t.set_span(wide.span());
-                                            t
-                                        })
-                                        .collect();
-                                    self.code(q(
-                                        "::corten::script::__private::ref_attr_as::<__A1, __A2, __A3>(&(__A0), __OUT);",
-                                        &[expr.clone(), el, ty, holds],
-                                    ))
-                                }
-                                None => self.code(q(
-                                    "::corten::script::__private::ref_attr::<__A1, __A2>(&(__A0), __OUT);",
-                                    &[expr.clone(), el, holds],
-                                )),
-                            }
-                        }
-                        Attr::On(..) if actions_printed => {}
-                        Attr::On(..) => {
-                            actions_printed = true;
-                            let target: TokenStream =
-                                format!("::corten::script::el::{}", crate::dom::element(name)).parse().expect("a path parses");
-                            let mut binds = TokenStream::new();
-                            for attr in attrs {
-                                let Attr::On(event, span, expr) = attr else { continue };
-                                let (printed, ty) = if event.starts_with(|c: char| c.is_ascii_uppercase()) {
-                                    let ty: TokenStream = TokenTree::Ident(Ident::new(event, *span)).into();
-                                    self.checks
-                                        .extend(q("::corten::script::__private::is_event::<__A0>();", std::slice::from_ref(&ty)));
-                                    (crate::names::kebab(event), ty)
-                                } else {
-                                    let ty: TokenStream = format!("::corten::script::ev::{}", crate::dom::event(event))
-                                        .parse()
-                                        .expect("a path parses");
-                                    (event.clone(), ty)
-                                };
-                                let expr = keywords(expr.clone(), &ty, &target);
-                                binds.extend(q("(__A0, &(__A1) as &dyn ::corten::script::Bind),", &[literal(&printed), expr]));
-                            }
-                            self.code(q("::corten::script::__private::data_on(__OUT, &[__A0]);", &[binds]));
-                        }
-                        // Classes are a list (see `corten::style::ClassList`): `class={(Row, hot.then_some(Hot))}`.
-                        Attr::Expr(attr, expr) if attr == "class" => {
-                            self.code(q("::corten::style::__private::class_attr(&(__A0), __OUT);", std::slice::from_ref(expr)))
-                        }
-                        Attr::Expr(attr, expr) => self.code(q(
-                            "(&::corten::view::__private::Attr(&(__A0))).__attr(__A1, __OUT);",
-                            &[expr.clone(), literal(&format!(" {attr}"))],
-                        )),
-                        Attr::Spread(expr) => {
-                            self.code(q("::corten::view::Attrs::render_attrs(&(__A0), __OUT);", std::slice::from_ref(expr)))
-                        }
-                    }
-                }
-                self.text.push('>');
+                self.open_tag(name, attrs, children);
                 if !VOID.contains(&name.as_str()) {
                     self.nodes(children, RAW_TEXT.contains(&name.as_str()));
                     self.text.push_str(&format!("</{name}>"));
                 }
             }
             Node::Component { path, props, children } => {
-                let mut fields = TokenStream::new();
-                for (field, value) in props {
-                    fields.extend(q("__A0: __A1,", &[field.clone(), value.clone()]));
-                }
-                if let Some(children) = children {
-                    let body = stream([self.body(children, false)]);
-                    fields.extend(q("children: ::corten::view::Html::child(|__OUT: &mut ::std::string::String| __A0),", &[body]));
-                }
-                let literal = stream([TokenTree::Group(Group::new(Delimiter::Brace, fields))]);
-                self.code(q("::corten::view::Render::render(&__A0 __A1, __OUT);", &[path.clone(), literal]));
+                let built = self.component(path, props, children, false);
+                self.code(q("::corten::view::Render::render(&__A0, __OUT);", &[built]));
             }
             Node::Block { head, bodies, arms } => {
                 if *arms {
@@ -1079,6 +1238,88 @@ impl Gen {
             }
         }
     }
+}
+
+/// True when `<main>` is among `nodes` or inside one of their elements.
+fn holds_main(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| match node {
+        Node::Element { name, children, .. } => name == "main" || holds_main(children),
+        _ => false,
+    })
+}
+
+/// True for `<Corten />`, where Corten writes its tags in a document's `<head>`.
+fn is_corten(path: &TokenStream) -> bool {
+    let path = path.to_string();
+    path == "Corten" || path.ends_with(":: Corten")
+}
+
+/// True when the markup is a document: `<!DOCTYPE html>` (optional) and `<html>`.
+fn is_document(nodes: &[Node]) -> bool {
+    let mut roots = nodes.iter().filter(|n| !matches!(n, Node::Let(_)));
+    let first = roots.next();
+    let root = match first {
+        Some(Node::Markup(_)) => roots.next(),
+        other => other,
+    };
+    matches!(root, Some(Node::Element { name, .. }) if name == "html")
+}
+
+/// What `corten::view::Document` needs, checked here so a mistake does not compile: the doctype
+/// at most, then `<html>` holding one `<head>` (with one `<title>` and `<Corten />`) and one
+/// `<main>`, reached through elements alone so every part knows where it is.
+fn check_document(nodes: &[Node]) -> Result<(), Error> {
+    let fail = |message: &str| err(Span::call_site(), message);
+    let roots: Vec<&Node> = nodes.iter().filter(|n| !matches!(n, Node::Let(_) | Node::Markup(_))).collect();
+    let [Node::Element { children, .. }] = roots.as_slice() else {
+        return fail("a document is <!DOCTYPE html> and one <html> element, with nothing after it");
+    };
+    let heads: Vec<&Vec<Node>> = children
+        .iter()
+        .filter_map(|n| match n {
+            Node::Element { name, children, .. } if name == "head" => Some(children),
+            _ => None,
+        })
+        .collect();
+    let [head] = heads.as_slice() else {
+        return fail("a document's <html> holds one <head>, with its <title> and <Corten />");
+    };
+    let titles = head.iter().filter(|n| matches!(n, Node::Element { name, .. } if name == "title")).count();
+    if titles != 1 {
+        return fail("a document's <head> holds one <title>: <title>{title}</title>");
+    }
+    let cortens = head.iter().filter(|n| matches!(n, Node::Component { path, .. } if is_corten(path))).count();
+    if cortens != 1 {
+        return fail("a document's <head> holds <Corten /> once, where Corten writes the runtime and the page's scripts");
+    }
+    fn mains(nodes: &[Node], in_block: bool, found: &mut usize) -> Result<(), &'static str> {
+        for node in nodes {
+            match node {
+                Node::Element { name, children, .. } => {
+                    if name == "main" {
+                        if in_block {
+                            return Err("a document's <main> is not inside for, if or match: a navigation swaps it");
+                        }
+                        *found += 1;
+                    }
+                    mains(children, in_block, found)?;
+                }
+                Node::Block { bodies, .. } => {
+                    for body in bodies {
+                        mains(body, true, found)?;
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+    let mut found = 0;
+    mains(children, false, &mut found).or_else(fail)?;
+    if found != 1 {
+        return fail("a document holds one <main>, which a client navigation swaps: <main>{children}</main>");
+    }
+    Ok(())
 }
 
 /// The view every child of an element is, when the markup puts only components of one name in it

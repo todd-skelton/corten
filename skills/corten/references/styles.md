@@ -30,8 +30,8 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 4. A helper in the same module that shares the file: `#[component(css = OfferList)]`.
 5. Design tokens: `corten::style::tokens!("tokens.json")` gives custom properties, themes
    (`[data-theme="dark"]`) and typed scales. Put `TOKENS` first in `App::components`.
-6. `static/style.css` holds only element defaults, fonts and the shell. It is linked before
-   `{doc.head}`.
+6. `static/style.css` holds only element defaults, fonts and the layout. It is linked
+   before `<Corten />` in the layout.
 7. Inline `style=` is blocked by the CSP. Use a class or a token utility instead.
 8. Every component's CSS ships in one `components.css`. Only when a part of the app most
    visitors never open (an admin area) adds CSS worth measuring, make it an area and list its

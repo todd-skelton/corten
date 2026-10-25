@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    page::Document,
-    view::{html, Render},
-};
+use crate::view::{html, Render};
 use axum::{body::Body, http::Request, routing::get, Router};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
@@ -13,10 +10,6 @@ fn demo(text: &str) -> impl Render + '_ {
         <sort-table><b>"x"</b></sort-table>
         <corten-live src="/x"></corten-live>
     }
-}
-
-fn demo_meta() -> Meta {
-    Meta::new("A & B").description("About A")
 }
 
 /// Typed routes with no parameters, for the tests' areas and APIs: `paths! { Api = "/api" }`.
@@ -52,16 +45,57 @@ paths! {
 #[derive(Clone, Hash, PartialEq, Debug)]
 struct Viewer(&'static str);
 
-fn test_shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
-    let who = viewer.map_or("guest", |v| v.0);
+/// The tests' layout: the page's title and head tags, and a header that names the context's viewer
+/// and marks the current page.
+#[crate::component]
+pub(crate) fn Shell<'a, H: Render, C: Render>(req: &'a Req, title: &'a str, head: H, children: C) -> impl Document + 'a {
+    let who = req.context::<Viewer>().map_or("guest", |v| v.0);
     html! {
-        <html>
-            <head>{doc.head}</head>
+        <!DOCTYPE html>
+        <html lang={req.lang()}>
+            <head>
+                <meta charset="utf-8">
+                <title>{title}</title>
+                {head}
+                <Corten />
+            </head>
             <body>
-                <header><a href={Root} aria-current={doc.current(&Root)}>{who}</a></header>
-                <main>{doc.main}</main>
+                <header><a href={Root} aria-current={req.current(&Root)}>{who}</a></header>
+                <main>{children}</main>
             </body>
         </html>
+    }
+}
+
+/// `req.page` in the tests' layout with no head tags of the page's own.
+pub(crate) trait TestPage {
+    fn test_page(&self, title: &str, main: impl Render) -> Result;
+}
+
+impl TestPage for Req {
+    fn test_page(&self, title: &str, main: impl Render) -> Result {
+        self.page(Shell { req: self, title, head: "", children: main })
+    }
+}
+
+/// The tests' error page, in their layout, with the error under `corten dev`.
+fn test_error_page(req: &Req, failure: Failure) -> impl Document + '_ {
+    let title = match failure.status {
+        StatusCode::NOT_FOUND => "Not found",
+        StatusCode::FORBIDDEN => "Not allowed",
+        _ => "Something went wrong",
+    };
+    let detail = failure.detail;
+    Shell {
+        req,
+        title,
+        head: "",
+        children: html! {
+            <h1>{title}</h1>
+            if let Some(detail) = &detail {
+                <pre>{detail}</pre>
+            }
+        },
     }
 }
 
@@ -106,7 +140,11 @@ async fn call_with(
 fn routes() -> Router {
     Router::new().route(
         "/",
-        get(|req: Req| async move { req.page(demo_meta(), demo("<script>")) }).post(|req: Req| async move {
+        get(|req: Req| async move {
+            let head = html! { <meta name="description" content="About A"> };
+            req.page(Shell { req: &req, title: "A & B", head, children: demo("<script>") })
+        })
+        .post(|req: Req| async move {
             if req.mode == Mode::Action {
                 req.patch(html! { <p id="msg">"saved"</p> })
             } else {
@@ -116,9 +154,9 @@ fn routes() -> Router {
     )
 }
 
-/// The app as `App` assembles it, with the test shell and a fixed viewer.
+/// The app as `App` assembles it, with the tests' error page and a fixed viewer.
 fn app(routes: Router, viewer: Option<&'static str>) -> Router {
-    App::new(routes).context(move |_| async move { viewer.map(Viewer) }).shell(test_shell).router()
+    App::new(routes).context(move |_| async move { viewer.map(Viewer) }).error_page(test_error_page).router()
 }
 
 #[tokio::test]
@@ -176,7 +214,7 @@ fn a_cursor_that_would_end_its_event_is_left_off_in_release() {
 }
 
 #[tokio::test]
-async fn a_bare_router_renders_in_the_default_shell_without_a_policy() {
+async fn a_bare_router_renders_the_page_s_document_without_a_policy() {
     let (status, headers, body) = call(routes(), "GET", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers["vary"], "corten, accept");
@@ -193,7 +231,7 @@ async fn navigation_returns_title_head_tags_and_page_only() {
     let (_, headers, body) = call(app(routes(), None), "GET", Some("nav")).await;
     assert_eq!(headers["corten-page"], "1");
     assert!(body.starts_with(r#"<title>A &amp; B</title><meta name="description" content="About A" data-corten-head><p>"#));
-    assert!(!body.contains("<html>"));
+    assert!(!body.contains("<html"), "{body}");
 }
 
 #[tokio::test]
@@ -220,7 +258,7 @@ async fn screen_is_html_for_browsers_and_json_for_data_clients() {
             "/",
             get(|req: Req| async move {
                 let data = Data { text: "<b>" };
-                req.screen(demo_meta(), &data, demo(data.text))
+                req.screen(&data, Shell { req: &req, title: "A & B", head: "", children: demo(data.text) })
             }),
         ),
         None,
@@ -228,7 +266,7 @@ async fn screen_is_html_for_browsers_and_json_for_data_clients() {
     let browser = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
     let (_, headers, body) = call_with(router.clone(), "GET", "/", None, Some(browser)).await;
     assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"));
-    assert!(body.starts_with("<html>"));
+    assert!(body.starts_with("<!DOCTYPE html>"));
     let (_, headers, body) = call_with(router.clone(), "GET", "/", Some("nav"), Some("application/json")).await;
     assert_eq!(headers["corten-page"], "1", "the runtime's mode header wins over Accept");
     assert!(body.starts_with("<title>"));
@@ -243,7 +281,7 @@ async fn screen_is_html_for_browsers_and_json_for_data_clients() {
 async fn page_answers_data_requests_with_the_document() {
     let (_, headers, body) = call_with(app(routes(), None), "GET", "/", None, Some("application/json")).await;
     assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"));
-    assert!(body.starts_with("<html>"));
+    assert!(body.starts_with("<!DOCTYPE html>"));
 }
 
 #[tokio::test]
@@ -254,17 +292,24 @@ async fn runtime_is_served_at_a_versioned_immutable_url() {
     assert_eq!(res.headers()["cache-control"], "public, max-age=31536000, immutable");
 }
 
-/// A shell with an inline script of its own, which takes the request's nonce.
-fn inline_shell(doc: Document) -> impl Render {
+/// A layout with an inline script of its own, which takes the request's nonce.
+#[crate::component]
+fn Inline<'a>(req: &'a Req) -> impl Document + 'a {
     html! {
         <html>
             <head>
-                {doc.head}
-                <script nonce={doc.nonce()}>"1"</script>
+                <title>"Inline"</title>
+                <Corten />
+                <script nonce={req.nonce()}>"1"</script>
             </head>
-            <body><main>{doc.main}</main></body>
+            <body><main></main></body>
         </html>
     }
+}
+
+/// A page in the `Inline` layout, marked for shared caches.
+async fn inline_page(req: Req) -> Result<(Cache, Response)> {
+    Ok((Cache::public(std::time::Duration::from_secs(60)), req.page(Inline { req: &req })?))
 }
 
 #[tokio::test]
@@ -283,7 +328,7 @@ async fn the_csp_allows_the_import_map_by_hash_and_a_nonce_only_when_the_shell_a
         "the same bytes"
     );
 
-    let inline = || App::new(routes()).shell(inline_shell).router();
+    let inline = || App::new(Router::new().route("/", get(inline_page))).router();
     let (_, headers, body) = call(inline(), "GET", None).await;
     let csp = headers["content-security-policy"].to_str().unwrap();
     let nonce = csp.split("'nonce-").nth(1).unwrap().split('\'').next().unwrap();
@@ -317,8 +362,8 @@ async fn errors_render_in_the_shell_for_each_mode_without_leaking_the_message() 
     let (status, headers, body) = call(app(failing(), None), "GET", None).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"));
-    assert!(body.starts_with("<html><head><title>Something went wrong</title>"), "{body}");
-    assert!(body.contains(r#"<meta name="robots" content="noindex" data-corten-head>"#));
+    assert!(body.contains("<title>Something went wrong</title>"), "{body}");
+    assert_eq!(headers["x-robots-tag"], "noindex", "search engines skip every error page");
     assert!(!body.contains("database"), "the error message stays in the log");
     let (_, headers, body) = call(app(failing(), None), "GET", Some("nav")).await;
     assert_eq!(headers["corten-page"], "1");
@@ -339,11 +384,11 @@ async fn an_extractor_rejection_gets_the_error_page_in_a_browser_and_its_text_in
     let (status, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", None, html).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"));
-    assert!(body.starts_with("<html><head><title>") && !body.contains("parse"), "{body}");
+    assert!(body.contains("<title>Something went wrong</title>") && !body.contains("parse"), "{body}");
     let (_, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", Some("nav"), None).await;
     assert_eq!(headers["corten-page"], "1", "a navigation swaps the error page in: {body}");
     let (_, _, body) = call_with(App::new(routes()).dev(true).router(), "GET", "/n/abc", None, html).await;
-    assert!(body.contains(r#"<pre class="corten-error">Invalid URL"#), "{body}");
+    assert!(body.contains("<pre>Invalid URL"), "the default error page shows it: {body}");
     let (status, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", None, Some("application/json")).await;
     assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::BAD_REQUEST, "application/json"));
     assert!(body.starts_with(r#"{"error":{"status":400,"message":"Invalid URL"#), "a data client gets the text as JSON: {body}");
@@ -355,9 +400,9 @@ async fn an_extractor_rejection_gets_the_error_page_in_a_browser_and_its_text_in
 
 #[tokio::test]
 async fn dev_mode_shows_errors_and_reloads_pages_when_the_server_restarts() {
-    let dev = || App::new(failing().route("/ok", get(|req: Req| async move { req.page("ok", html! { "ok" }) }))).dev(true);
+    let dev = || App::new(failing().route("/ok", get(|req: Req| async move { req.test_page("ok", html! { "ok" }) }))).dev(true);
     let (_, _, body) = call(dev().router(), "GET", None).await;
-    assert!(body.contains(r#"<pre class="corten-error">database is down</pre>"#), "{body}");
+    assert!(body.contains("<pre>database is down</pre>"), "{body}");
 
     let router = dev().router();
     let (_, _, page) = call_with(router.clone(), "GET", "/ok", None, None).await;
@@ -387,10 +432,71 @@ async fn unknown_urls_and_methods_get_the_error_page_and_the_app_can_replace_it(
     let (status, headers, body) = call_with(app(routes(), None), "DELETE", "/", None, None).await;
     assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
     assert!(headers.contains_key("allow") && body.contains("Something went wrong"));
-    let custom =
-        App::new(routes()).error_page(|status| (format!("Oops {}", status.as_u16()), html! { <h1>"Lost?"</h1> })).router();
+    let custom = App::new(routes()).error_page(oops).router();
     let (_, _, body) = call_with(custom, "GET", "/nope", None, None).await;
     assert!(body.contains("<title>Oops 404</title>") && body.contains("<h1>Lost?</h1>"));
+}
+
+/// An error page of the app's own.
+fn oops(_: &Req, failure: Failure) -> impl Document {
+    let code = failure.status.as_u16();
+    html! {
+        <html>
+            <head>
+                <title>"Oops "{code}</title>
+                <Corten />
+            </head>
+            <body><main><h1>"Lost?"</h1></main></body>
+        </html>
+    }
+}
+
+#[tokio::test]
+async fn a_handler_that_panics_gets_the_error_page_and_the_server_keeps_serving() {
+    let routes = Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) })).route(
+        "/panic",
+        get(|| async {
+            if true {
+                panic!("index out of bounds")
+            } else {
+                "never"
+            }
+        }),
+    );
+    let router = app(routes, None);
+    let (status, headers, body) = call_with(router.clone(), "GET", "/panic", None, None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"));
+    assert!(body.contains("<title>Something went wrong</title>") && !body.contains("bounds"), "{body}");
+    let (_, headers, body) = call_with(router.clone(), "GET", "/panic", Some("nav"), None).await;
+    assert_eq!(headers["corten-page"], "1", "a navigation swaps the error page in: {body}");
+    let (status, _, body) = call_with(router.clone(), "GET", "/panic", None, Some("application/json")).await;
+    assert_eq!(
+        (status, &body[..]),
+        (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":{"status":500,"message":"Internal Server Error"}}"#)
+    );
+    let (status, _, _) = call(router, "GET", None).await;
+    assert_eq!(status, StatusCode::OK, "the next request is served");
+    let (_, _, body) = call_with(
+        App::new(Router::new().route(
+            "/",
+            get(|| async {
+                if true {
+                    panic!("index out of bounds")
+                } else {
+                    "never"
+                }
+            }),
+        ))
+        .dev(true)
+        .router(),
+        "GET",
+        "/",
+        None,
+        None,
+    )
+    .await;
+    assert!(body.contains("index out of bounds"), "under corten dev the page shows the panic: {body}");
 }
 
 #[tokio::test]
@@ -426,7 +532,7 @@ async fn handlers_read_the_context() {
         "/",
         get(|req: Req| async move {
             let viewer = req.context::<Viewer>().map(|v| v.0);
-            req.page("x", html! { {viewer} })
+            req.test_page("x", html! { {viewer} })
         }),
     );
     let (_, _, body) = call(app(router, Some("ada")), "GET", Some("nav")).await;
@@ -459,7 +565,7 @@ fn invalid_routes() -> Router {
         get(|req: Req| async move {
             let mut errors = Errors::new();
             errors.add(SignUp::FIELDS.email, "Enter an email address.");
-            let page = || async { req.page("Alert", html! { <p>"page with errors"</p> }) };
+            let page = || async { req.test_page("Alert", html! { <p>"page with errors"</p> }) };
             req.invalid(&errors, alert_form(&errors), page).await
         }),
     )
@@ -477,7 +583,7 @@ async fn invalid_input_answers_422_in_each_mode() {
 
     let (status, _, body) = call(app(invalid_routes(), None), "GET", None).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(body.contains("<p>page with errors</p>") && body.contains("<html>"), "no JavaScript: the whole page");
+    assert!(body.contains("<p>page with errors</p>") && body.contains("<html"), "no JavaScript: the whole page");
 
     #[cfg(feature = "json")]
     {
@@ -536,9 +642,9 @@ async fn the_pwa_links_its_manifest_and_corten_answers_offline() {
     let (_, _, body) = call(router.clone(), "GET", None).await;
     assert!(body.contains(r##"<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#123">"##));
     assert!(body.contains(r#"<meta name="corten-sw" content="/service-worker.js">"#));
-    let (status, _, body) = call_with(router.clone(), "GET", "/offline", None, None).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("You are offline") && body.contains("noindex"));
+    let (status, headers, body) = call_with(router.clone(), "GET", "/offline", None, None).await;
+    assert_eq!((status, &headers["x-robots-tag"]), (StatusCode::OK, &"noindex".parse().unwrap()));
+    assert!(body.contains("Check your connection"), "{body}");
     let (status, _, _) = call_with(router, "GET", "/manifest.webmanifest", None, None).await;
     assert_eq!(status, StatusCode::OK);
 }
@@ -553,9 +659,9 @@ struct ApiItem<'a> {
 
 /// A page, and API routes for each way an API request can fail; `settings` adds the API's.
 fn api_app(settings: impl FnOnce(crate::Api<Viewer, ApiRoot>) -> crate::Api<Viewer, ApiRoot>) -> Router {
-    App::new(Router::new().route("/", get(|req: Req| async move { req.page("Home", html! { <p>"home"</p> }) })))
+    App::new(Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) })))
         .context(|_| async { Some(Viewer("ada")) })
-        .shell(test_shell)
+        .error_page(test_error_page)
         .deadline(std::time::Duration::from_millis(50))
         .api::<ApiRoot>(|api| {
             let api = api
@@ -779,18 +885,18 @@ fn cached_routes() -> Router {
     let minute = std::time::Duration::from_secs(60);
     let home = || html! { <p>"home"</p> };
     Router::new()
-        .route("/", get(move |req: Req| async move { Ok::<_, Error>((Cache::public(minute), req.page("Home", home())?)) }))
+        .route("/", get(move |req: Req| async move { Ok::<_, Error>((Cache::public(minute), req.test_page("Home", home())?)) }))
         .route(
             "/cookie",
             get(move |req: Req| async move {
-                Ok::<_, Error>((Cache::public(minute), [(header::SET_COOKIE, "seen=1")], req.page("Home", home())?))
+                Ok::<_, Error>((Cache::public(minute), [(header::SET_COOKIE, "seen=1")], req.test_page("Home", home())?))
             }),
         )
         .route(
             "/statement",
-            get(move |req: Req| async move { Ok::<_, Error>((Cache::no_store(), req.page("Statement", home())?)) }),
+            get(move |req: Req| async move { Ok::<_, Error>((Cache::no_store(), req.test_page("Statement", home())?)) }),
         )
-        .route("/plain", get(|req: Req| async move { req.page("Plain", html! { <p>"plain"</p> }) }))
+        .route("/plain", get(|req: Req| async move { req.test_page("Plain", html! { <p>"plain"</p> }) }))
 }
 
 async fn cache_control(router: &Router, uri: &str, extra: &[(&'static str, &'static str)]) -> String {
@@ -828,8 +934,8 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
     assert_eq!(cache_control(&router, "/cookie", &[]).await, "private, no-cache", "it sets a cookie");
     let signed_in = app(cached_routes(), Some("ada"));
     assert_eq!(cache_control(&signed_in, "/", &[]).await, "private, no-cache", "the context found someone");
-    let inline = App::new(cached_routes()).shell(inline_shell).router();
-    assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the shell took the nonce");
+    let inline = App::new(Router::new().route("/", get(inline_page))).router();
+    assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the layout took the nonce");
 
     let minute = std::time::Duration::from_secs(60);
     // The app has a context, but this mount does not run it.
@@ -864,7 +970,7 @@ fn guarded_app(dev: bool) -> (Router, Arc<std::sync::atomic::AtomicUsize>) {
         let ran = ran.clone();
         move |req: Req| {
             ran.fetch_add(1, Ordering::SeqCst);
-            async move { req.page("Admin", html! { <p>"admin"</p> }) }
+            async move { req.test_page("Admin", html! { <p>"admin"</p> }) }
         }
     };
     let form = |ran: &Arc<AtomicUsize>| {
@@ -875,7 +981,7 @@ fn guarded_app(dev: bool) -> (Router, Arc<std::sync::atomic::AtomicUsize>) {
         }
     };
     let pages = Router::new()
-        .route("/", get(|req: Req| async move { req.page("Home", html! { <p>"home"</p> }) }))
+        .route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) }))
         .route("/administrators", get(count(&ran)));
     let viewer = |headers: &HeaderMap| headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
     let router = App::new(pages)
@@ -884,7 +990,7 @@ fn guarded_app(dev: bool) -> (Router, Arc<std::sync::atomic::AtomicUsize>) {
             let viewer = viewer(headers);
             async move { viewer }
         })
-        .shell(test_shell)
+        .error_page(test_error_page)
         .api::<ApiRoot>(|api| {
             api.route::<ApiStats>(get(count(&ran))).guard(|viewer, _| match viewer {
                 Some(_) => Access::ALLOW,
@@ -1065,11 +1171,11 @@ fn reviews_app() -> Router {
             let viewer = headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
             async move { viewer }
         })
-        .shell(test_shell)
+        .error_page(test_error_page)
         .area::<Reviews>(|reviews| {
             reviews
                 .route::<Review>(
-                    get(|req: Req| async move { req.page("Review", html! { <p>"review"</p> }) })
+                    get(|req: Req| async move { req.test_page("Review", html! { <p>"review"</p> }) })
                         .post(|| async { "saved" })
                         .delete(|| async { "deleted" }),
                 )
@@ -1110,7 +1216,7 @@ struct Hook<'a> {
 
 /// An app private everywhere: sign in, a webhook and Corten's own routes stay open.
 fn private_app(open_sign_in: bool) -> Router {
-    let page = |text: &'static str| get(move |req: Req| async move { req.page(text, html! { <p>{text}</p> }) });
+    let page = |text: &'static str| get(move |req: Req| async move { req.test_page(text, html! { <p>{text}</p> }) });
     let routes = Router::new()
         .route("/", page("home"))
         .route(SignIn::PATH, page("sign in").post(|| async { "signed in" }))
@@ -1121,7 +1227,7 @@ fn private_app(open_sign_in: bool) -> Router {
             let viewer = headers.get("viewer").and_then(|v| v.to_str().ok()).map(|v| Viewer(v.to_owned().leak()));
             async move { viewer }
         })
-        .shell(test_shell)
+        .error_page(test_error_page)
         .api::<Hooks>(|hooks| hooks)
         .guard(|viewer, _| match viewer {
             Some(_) => Access::ALLOW,

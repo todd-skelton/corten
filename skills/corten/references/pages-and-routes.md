@@ -5,32 +5,47 @@
 ```rust
 use corten::prelude::*;
 
-#[derive(Route)]
-#[route("/items/{id}")]
-pub struct Item<'a> {
-    pub id: &'a str,
+#[corten::routes]
+pub mod url {
+    #[route("/items/{id}")]
+    pub struct Item<'a> {
+        pub id: &'a str,
+    }
 }
 
-// Router::new().route(Item::PATH, get(show))
+impl url::Handlers for Site {
+    fn item(&self) -> MethodRouter {
+        get(show)
+    }
+}
+
 async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
     // Any std::error::Error converts with `?` (a 500 and the error page). For a 404:
     // .ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?
     let item = load(&id).await?;
-    req.page(item.title.as_str(), html! {
-        <h1>{item.title}</h1>
-        <a href={Item { id: &item.related }}>"Related"</a>
+    let head = html! { <meta name="description" content={&item.summary}> };
+    req.page(html! {
+        <Layout req={&req} title={&item.title} head={head}>
+            <h1>{&item.title}</h1>
+            <a href={url::Item { id: &item.related }}>"Related"</a>
+        </Layout>
     })
 }
 ```
 
-1. Mount the route with `Item::PATH`; link with the struct. Fields not in the path are query
-   parameters (`pub tab: Option<&'a str>`). Redirect with `req.redirect(&Item { id })`.
-2. The first argument of `req.page` is the title, or a `Meta` for description, canonical and
-   social tags.
-3. The shell (`App::shell`) wraps every page; client navigation swaps only `<main>`. Mark the
-   current link with `aria-current={doc.current(&Item { id })}` in the shell.
+1. Every route is a struct in the `#[corten::routes]` module, and each needs a method in
+   `impl url::Handlers` (a missing one does not compile); `App::new(url::router(Site))`. Link
+   with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
+   Redirect with `req.redirect(&url::Item { id })`. A route an area or an API serves derives
+   `Route` itself and gets no method.
+2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
+   with the page as its children. The title and the page's head tags (description, canonical,
+   social) are the layout's props. Never build a document outside a layout component.
+3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
+   the layout renders on full loads. Mark the current link with
+   `aria-current={req.current(&url::Item { id })}` in the layout.
 4. Read everything from `req` before building the view: `html!` views render once and own what
-   they capture.
+   they capture (`let t = req.t();` first, then `<Layout req={&req} ..>`).
 
 Routes that carry the same query parameters (a list's filters on its live, bulk and confirm
 routes) share one `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` as a
@@ -80,7 +95,8 @@ pub struct Home { stocks: Vec<Stock>, message: String }
 
 async fn home(req: Req, State(m): State<Market>) -> corten::Result {
     let home = Home::new(&m, String::new());
-    req.screen("Watchlist", &home, home_view(&home))   // HTML, or {"title","data"} for Accept: application/json
+    let view = home_view(&home);
+    req.screen(&home, html! { <Layout req={&req} title="Watchlist" head="">{view}</Layout> })   // HTML, or {"title","data"}
 }
 ```
 
@@ -116,7 +132,7 @@ derives `ToJson` next to `Serialize` (`#[derive(Serialize, ToJson)] struct Price
 same `#[serde(...)]` attributes, and one it cannot write as serde does is a compile error.
 Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
 a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
-is no shell and no `App::context` (add `.context()` to the API's chain if it serves your own
+is no document and no `App::context` (add `.context()` to the API's chain if it serves your own
 signed-in users). Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
 
@@ -176,12 +192,12 @@ for every visitor may be shared by a CDN:
 ```rust
 async fn home(req: Req) -> corten::Result<(Cache, Response)> {
     let cache = Cache::public(Duration::from_secs(60)).stale_while_revalidate(Duration::from_secs(600));
-    Ok((cache, req.page("Home", view)?))
+    Ok((cache, req.page(html! { <Layout req={&req} title="Home" head="">{view}</Layout> })?))
 }
 ```
 
 `App` still sends it `private, no-cache` when the request has a cookie or `Authorization`, the
-context found someone, the response sets a cookie or the shell took `doc.nonce()`; a client
+context found someone, the response sets a cookie or the layout took `req.nonce()`; a client
 navigation or a data request gets `private` with the same lifetime. It cannot see a cookie your
 own extractor reads, so never mark such a handler public. `Cache::no_store()` is for one-time
 secrets. Do not build a server-side page cache: cache the data the page reads instead.

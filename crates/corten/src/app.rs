@@ -3,6 +3,7 @@
 use std::{
     convert::Infallible,
     future::Future,
+    hash::{Hash, Hasher},
     marker::PhantomData,
     path::PathBuf,
     pin::Pin,
@@ -27,13 +28,12 @@ use crate::{
     api::{Api, Mount},
     assets::Assets,
     cache::{self, Seen},
-    page::{self, default_error_page, default_shell, error_page_fn, IntoShell, Shared, ShellFn},
+    page::{self, default_error_page, error_page_fn, CaptureContext, ErrorPageFn, Shared},
     pwa::Pwa,
     route::{Href, Route as TypedRoute},
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
-    view::Render,
-    Error, Meta, Mode, Signal,
+    Error, Mode, Signal,
 };
 
 /// Puts the context's value in the request, and says whether there was one.
@@ -128,7 +128,7 @@ impl Guard {
 /// ```
 /// use corten::{axum::http::StatusCode, prelude::*, Error};
 ///
-/// #[derive(Clone)]
+/// #[derive(Clone, Hash)]
 /// struct Viewer { staff: bool }
 ///
 /// #[derive(Route)]
@@ -144,8 +144,12 @@ impl Guard {
 /// struct SignIn;
 ///
 /// async fn dashboard(req: Req) -> Result {
-///     req.page("Admin", html! { <h1>"Admin"</h1> })
+///     req.page(html! { <Layout req={&req} title="Admin"><h1>"Admin"</h1></Layout> })
 /// }
+/// # #[component]
+/// # fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+/// #     html! { <html lang={req.lang()}><head><title>{title}</title><Corten /></head><body><main>{children}</main></body></html> }
+/// # }
 ///
 /// fn app(pages: Router) -> App<Viewer> {
 ///     App::new(pages).context(|_headers| async { None::<Viewer> }).area::<Admin>(|admin| {
@@ -244,11 +248,11 @@ struct Placed {
 }
 
 /// The context type of an [`App`] that has no [`App::context`]: nothing can read one, so a guard
-/// and a shell that takes a context do not compile until `.context(..)` gives the app its type.
+/// that reads one does not compile until `.context(..)` gives the app its type.
 ///
 /// ```compile_fail
 /// # use corten::prelude::*;
-/// #[derive(Clone)]
+/// #[derive(Clone, Hash)]
 /// struct Viewer;
 /// let app = App::new(Router::new()).guard(|_: Option<&Viewer>, _| Access::ALLOW);
 /// ```
@@ -256,17 +260,16 @@ pub enum NoContext {}
 
 /// An app: its routes, plus everything around them that every production app needs, on by
 /// default. `C` is the type [`App::context`] gives ([`NoContext`] until it is called), and a
-/// guard or a shell reading the context takes that type or does not compile.
+/// guard reading the context takes that type or does not compile.
 /// `corten::serve(App::new(routes)).await` gives:
 ///
-/// - security headers, a CSP (Corten's inline tags allowed by hash, a nonce only when the shell
+/// - security headers, a CSP (Corten's inline tags allowed by hash, a nonce only when the page
 ///   asks for one), and a check that refuses cross-site writes ([`Policy::new`]; change it with
 ///   [`App::policy`]);
 /// - `Cache-Control: private, no-cache` on what the app renders, unless a handler returns a
 ///   [`crate::Cache`] (see [`crate::cache`]);
-/// - the shell around every page ([`crate::default_shell`] until [`App::shell`]);
-/// - error pages for failed requests and unknown URLs, in the request's mode, with the error
-///   shown under `corten dev`;
+/// - error pages for failed requests, unknown URLs and handlers that panic, in the request's mode
+///   ([`App::error_page`], the app's own in its layout), with the error shown under `corten dev`;
 /// - the files in `static/` (or `STATIC_DIR`), the scripts of the app's components and its
 ///   components' stylesheets joined into one file ([`App::components`]), at content-versioned,
 ///   immutable URLs, each script preloaded on the pages whose handlers use it;
@@ -276,16 +279,16 @@ pub enum NoContext {}
 ///
 /// ```ignore
 /// App::new(routes)
-///     .context(|headers| viewer_from(headers))       // who is asking, for the shell and handlers
-///     .shell(shell)                                  // the document around every page
+///     .context(|headers| viewer_from(headers))       // who is asking, for the layout and handlers
+///     .error_page(views::error_page)                 // failed requests, in the app's layout
 ///     .area::<Admin>(|admin| admin.route::<AdminUser>(get(user)).guard(staff_only))
 ///     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")))
 /// ```
 pub struct App<C = NoContext> {
     routes: Router,
-    shell: ShellFn,
     error_page: Option<Box<page::ErrorPage>>,
     context: Option<ContextFn>,
+    capture: Option<Box<CaptureContext>>,
     policy: Policy,
     static_dir: Option<PathBuf>,
     pwa: Option<Pwa>,
@@ -306,9 +309,9 @@ impl App {
     pub fn new(routes: Router) -> Self {
         App {
             routes,
-            shell: IntoShell::<NoContext, _>::into_shell(default_shell),
             error_page: None,
             context: None,
+            capture: None,
             policy: Policy::new(),
             static_dir: None,
             pwa: None,
@@ -326,15 +329,18 @@ impl App {
     }
 
     /// Who is asking: `context(headers)` runs before every page request (outside the error pages,
-    /// so they see it too), and a `Some` value is put in the request extensions, where the shell's
-    /// second parameter, `req.context::<C>()` and axum's `Extension<C>` find it. Typically the
+    /// so they see it too), and a `Some` value is put in the request extensions, where
+    /// `req.context::<C>()` (in a layout too) and axum's `Extension<C>` find it. Typically the
     /// signed-in user, read from a session cookie. Corten's own routes (static files, the
     /// runtime, health checks) skip it, and so do [`App::api`] routes unless [`Api::context`].
     ///
     /// The function reads what it needs from the headers and returns a future that owns it:
     /// `|h| { let sid = cookie::get(h, "sid").map(str::to_owned); async move { load(sid).await } }`.
     ///
-    /// It gives the app its context type, `App<C>`: call it before [`App::shell`] and
+    /// Its hash is part of the key every page carries, so when it changes (sign-in, sign-out) the
+    /// runtime loads the next page in full and the layout shows the new context.
+    ///
+    /// It gives the app its context type, `App<C>`: call it before
     /// [`App::guard`], which read that type, and before [`App::area`] for an area with a guard.
     /// It is called once:
     ///
@@ -346,8 +352,14 @@ impl App {
     where
         F: Fn(&HeaderMap) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Option<C>> + Send + 'static,
-        C: Clone + Send + Sync + 'static,
+        C: Clone + Hash + Send + Sync + 'static,
     {
+        let capture: Box<CaptureContext> = Box::new(|extensions| {
+            let context = extensions.get::<C>()?;
+            let mut hasher = std::hash::DefaultHasher::new();
+            context.hash(&mut hasher);
+            Some((hasher.finish(), Box::new(context.clone())))
+        });
         let context: ContextFn = Arc::new(move |headers| {
             let value = context(headers);
             Box::pin(async move {
@@ -363,9 +375,9 @@ impl App {
         });
         App {
             routes: self.routes,
-            shell: self.shell,
             error_page: self.error_page,
             context: Some(context),
+            capture: Some(capture),
             policy: self.policy,
             static_dir: self.static_dir,
             pwa: self.pwa,
@@ -394,7 +406,7 @@ impl<C: Clone + Send + Sync + 'static> App<C> {
     /// ```
     /// use corten::{axum::http::StatusCode, prelude::*, Error};
     ///
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Hash)]
     /// struct Viewer { editor: bool }
     ///
     /// #[derive(Route)]
@@ -429,7 +441,7 @@ impl<C: Clone + Send + Sync + 'static> App<C> {
     ///
     /// ```compile_fail
     /// # use corten::prelude::*;
-    /// #[derive(Clone)]
+    /// #[derive(Clone, Hash)]
     /// struct Viewer;
     /// let app = App::new(Router::new())
     ///     .context(|_| async { Some(Viewer) })
@@ -558,47 +570,24 @@ impl<C> App<C> {
         self
     }
 
-    /// The app's messages (a type from [`crate::i18n::messages!`]): the shell's `doc.lang()` is
-    /// the locale negotiated from `Accept-Language`, as `req.t()` and `doc.t()` pick it.
+    /// The app's messages (a type from [`crate::i18n::messages!`]): `req.lang()`, for the layout's
+    /// `<html lang>`, is the locale negotiated from `Accept-Language`, as `req.t()` picks it.
     pub fn messages<M: crate::i18n::Messages>(mut self) -> Self {
         self.locales = Some(M::LOCALES);
         self
     }
 
-    /// The document around every page: a function from [`crate::Document`] to a view, printing
-    /// `{doc.head}` in `<head>` and `{doc.main}` in `<main>`. With a second parameter,
-    /// `Option<C>`, it also gets the request's context (see [`App::context`]), whose type it must
-    /// be:
-    ///
-    /// ```compile_fail
-    /// # use corten::prelude::*;
-    /// fn shell(doc: Document, viewer: Option<String>) -> impl Render {
-    ///     html! { <html><body>{doc.main}</body></html> }
-    /// }
-    /// let app = App::new(Router::new()).context(|_| async { Some(1_u32) }).shell(shell);
-    /// ```
-    ///
-    /// The shell renders on full page loads only; client navigation swaps `<main>`. Every page
-    /// carries a key hashed from the context and the deploy, and when a navigation or a form
-    /// answer arrives with a different key (sign-in, sign-out, a new release), the runtime
-    /// reloads the document, so the shell is never stale.
-    pub fn shell<M>(mut self, shell: impl IntoShell<C, M>) -> Self {
-        self.shell = shell.into_shell();
-        self
-    }
-
-    /// The page for failed requests and unknown URLs: a function from the status to a title (or
-    /// [`Meta`]) and a view, shown inside the shell. Pages are marked `noindex`.
-    pub fn error_page<F, T, V>(mut self, page: F) -> Self
+    /// The page for failed requests: unknown URLs, wrong methods, input that does not parse,
+    /// handlers that return an error or panic, the deadline, and the PWA's offline page. A
+    /// function from the request and the [`Failure`](crate::page::Failure) to a document, in the
+    /// app's layout: `fn error_page(req: &Req, failure: Failure) -> impl Document + '_`. It is sent
+    /// in the request's mode, like any page; `failure.detail` is the error, set only under
+    /// `corten dev`. `corten new` writes one. Without it, Corten sends a plain document.
+    pub fn error_page<F>(mut self, page: F) -> Self
     where
-        F: Fn(StatusCode) -> (T, V) + Send + Sync + 'static,
-        T: Into<Meta>,
-        V: Render,
+        F: for<'a> ErrorPageFn<'a> + Send + Sync + 'static,
     {
-        self.error_page = Some(error_page_fn(move |status| {
-            let (meta, view) = page(status);
-            (meta.into(), view)
-        }));
+        self.error_page = Some(error_page_fn(page));
         self
     }
 
@@ -701,7 +690,8 @@ impl<C> App<C> {
         routes = routes.merge(crate::health(move || ready()));
 
         let error_page = self.error_page.unwrap_or_else(|| error_page_fn(default_error_page));
-        let mut shared = Shared::new(self.shell, error_page, assets, head);
+        let capture = self.capture.unwrap_or_else(|| Box::new(|_| None));
+        let mut shared = Shared::new(error_page, capture, assets, head);
         shared.offline = offline;
         shared.locales = self.locales;
         shared.dev = dev;

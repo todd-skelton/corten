@@ -7,7 +7,7 @@
 //! | `GET /feed/stocks`, `/feed/stocks/live` | the live feed `<live-prices>` subscribes to |
 //! | `GET /live/trades` | fragments streamed to `<corten-live>`: the last trade, no script of its own |
 //! | `GET /about` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only |
-//! | `POST /sign-in` | sets a cookie; the shell shows the viewer, and the runtime reloads the document |
+//! | `POST /sign-in` | sets a cookie; the layout shows the viewer, and the runtime reloads the document |
 //! | `GET /account` | an area only someone signed in may use (`Area::guard`): anyone else is sent to the watchlist, where the sign-in button is |
 use std::{sync::Arc, time::Duration};
 
@@ -45,16 +45,16 @@ impl Market {
     }
 }
 
-/// The app: routes, the shell, and who is signed in. Everything else is Corten's defaults.
+/// The app: routes and who is signed in. Every page brings its document, `Layout` with the page
+/// in it. Everything else is Corten's defaults.
 pub fn app(market: Market) -> App<Viewer> {
-    App::new(routes(market))
+    App::new(url::router(Site { market }))
         .context(|headers| {
             // A real app reads its session here; the example trusts a cookie, which is fine for a
             // demo and nothing else.
             let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
             async move { viewer }
         })
-        .shell(shell)
         .components(&[LivePrices])
         .area::<url::About>(|about_area| about_area.route::<url::About>(get(about)).components(&[AboutNote]))
         // Every route under /account, now and later, needs someone signed in.
@@ -66,85 +66,105 @@ pub fn app(market: Market) -> App<Viewer> {
         })
 }
 
-/// Every URL the app serves and links to; links built from these cannot drift from the router.
+/// Every URL the app serves and links to; links built from these cannot drift from the router,
+/// and each route needs a handler in `Site` below. The pages of an area derive `Route`
+/// themselves: their area serves them.
+#[corten::routes]
 mod url {
     use corten::Route;
 
-    #[derive(Route)]
     #[route("/")]
     pub struct Home;
 
-    #[derive(Route)]
     #[route("/watch")]
     pub struct Watch;
+
+    #[route("/sign-in")]
+    pub struct SignIn;
+
+    #[route("/feed/stocks")]
+    pub struct Stocks;
+
+    #[route("/feed/stocks/live")]
+    pub struct StocksLive;
+
+    #[route("/live/trades")]
+    pub struct Trades;
 
     #[derive(Route)]
     #[route("/about")]
     pub struct About;
 
     #[derive(Route)]
-    #[route("/sign-in")]
-    pub struct SignIn;
-
-    #[derive(Route)]
     #[route("/account")]
     pub struct Account;
-
-    #[derive(Route)]
-    #[route("/feed/stocks")]
-    pub struct Stocks;
-
-    #[derive(Route)]
-    #[route("/feed/stocks/live")]
-    pub struct StocksLive;
-
-    #[derive(Route)]
-    #[route("/live/trades")]
-    pub struct Trades;
 }
 
-fn routes(market: Market) -> Router {
-    Router::new()
-        .route(url::Home::PATH, get(home))
-        .route(url::Watch::PATH, post(watch))
-        .route(url::SignIn::PATH, post(sign_in))
-        .route(url::Stocks::PATH, get(|State(m): State<Market>| async move { m.stocks.snapshot() }))
-        .route(url::StocksLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }))
-        .route(url::Trades::PATH, get(trades))
-        .with_state(market)
+/// The app's handlers, which share the market.
+struct Site {
+    market: Market,
 }
 
-/// Who is looking: the shell's context.
+impl url::Handlers for Site {
+    fn home(&self) -> MethodRouter {
+        get(home).with_state(self.market.clone())
+    }
+
+    fn watch(&self) -> MethodRouter {
+        post(watch).with_state(self.market.clone())
+    }
+
+    fn sign_in(&self) -> MethodRouter {
+        post(sign_in)
+    }
+
+    fn stocks(&self) -> MethodRouter {
+        get(|State(m): State<Market>| async move { m.stocks.snapshot() }).with_state(self.market.clone())
+    }
+
+    fn stocks_live(&self) -> MethodRouter {
+        get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }).with_state(self.market.clone())
+    }
+
+    fn trades(&self) -> MethodRouter {
+        get(trades).with_state(self.market.clone())
+    }
+}
+
+/// Who is looking: the app's context, which the layout shows.
 #[derive(Clone, Hash)]
 pub struct Viewer {
     pub name: String,
 }
 
-/// The document around every page. Client navigation swaps `<main>` only; signing in changes
-/// the viewer, which makes the runtime load the next page in full.
-fn shell(doc: Document, viewer: Option<Viewer>) -> impl Render {
+/// The document around every page. Client navigation swaps the title and `<main>` only;
+/// signing in changes the viewer, which makes the runtime load the next page in full.
+#[component]
+fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+    let viewer = req.context::<Viewer>();
     html! {
         <!DOCTYPE html>
         <html lang="en">
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={doc.asset("style.css")}>
-                {doc.head}
+                <link rel="stylesheet" href={req.asset("style.css")}>
+                <title>{title}" | Corten"</title>
+                <Corten />
             </head>
             <body>
                 <header>
                     <nav>
-                        <a href={url::Home} data-nav aria-current={doc.current(&url::Home)}>"Watchlist"</a>
-                        <a href={url::About} data-nav aria-current={doc.current(&url::About)}>"About"</a>
-                        <a href={url::Account} data-nav aria-current={doc.current(&url::Account)}>"Account"</a>
+                        <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Watchlist"</a>
+                        <a href={url::About} data-nav aria-current={req.current(&url::About)}>"About"</a>
+                        <a href={url::Account} data-nav aria-current={req.current(&url::Account)}>"Account"</a>
                     </nav>
                     match viewer {
-                        Some(viewer) => <span>"Signed in as "{viewer.name}</span>,
+                        Some(viewer) => <span>"Signed in as "{&viewer.name}</span>,
                         None => <form method="post" action={url::SignIn} data-patch><button>"Sign in as Ada"</button></form>,
                     }
                 </header>
-                <main>{doc.main}</main>
+                <main>{children}</main>
             </body>
         </html>
     }
@@ -316,11 +336,10 @@ fn LastTrade(text: &str) -> impl Render {
     html! { <p id={LastTradeId} aria-live="polite">{text}</p> }
 }
 
-const HOME_TITLE: &str = "Watchlist | Corten";
-
 async fn home(req: Req, State(market): State<Market>) -> corten::Result {
     let home = Home::new(&market, String::new());
-    req.screen(HOME_TITLE, &home, home_view(&home, req.t()))
+    let view = home_view(&home, req.t());
+    req.screen(&home, html! { <Layout req={&req} title="Watchlist">{view}</Layout> })
 }
 
 #[derive(Deserialize, Fields)]
@@ -338,32 +357,31 @@ async fn watch(req: Req, State(market): State<Market>, Form(form): Form<WatchFor
         // No JavaScript, or a native screen or agent: the whole screen with the message.
         _ => {
             let home = Home::new(&market, message);
-            req.screen(HOME_TITLE, &home, home_view(&home, req.t()))
+            let view = home_view(&home, req.t());
+            req.screen(&home, html! { <Layout req={&req} title="Watchlist">{view}</Layout> })
         }
     }
 }
 
 async fn about(req: Req) -> corten::Result {
-    req.page(
-        "About | Corten",
-        html! {
+    req.page(html! {
+        <Layout req={&req} title="About">
             <h1>"About"</h1>
             <p>"Rendered on the server and swapped into the page by the runtime."</p>
             <AboutNote />
-        },
-    )
+        </Layout>
+    })
 }
 
 /// The guard on `/account` has let only a signed-in viewer through.
 async fn account(req: Req) -> corten::Result {
     let name = req.context::<Viewer>().map_or("", |viewer| &viewer.name);
-    req.page(
-        "Account | Corten",
-        html! {
+    req.page(html! {
+        <Layout req={&req} title="Account">
             <h1>"Account"</h1>
             <p>"Signed in as "{name}"."</p>
-        },
-    )
+        </Layout>
+    })
 }
 
 /// A note only the about page shows. Its stylesheet, `about_note.css`, is in the `/about`

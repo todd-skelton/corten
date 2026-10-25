@@ -36,5 +36,13 @@
   },
   "home": {
     "title": "Popular items"
+  },
+  "error": {
+    "not_found": "Not found",
+    "not_found_text": "There is no card at this address.",
+    "unavailable": "Not available",
+    "unavailable_text": "Check your connection and try again.",
+    "failed": "Something went wrong",
+    "failed_text": "Please try again."
   }
 }

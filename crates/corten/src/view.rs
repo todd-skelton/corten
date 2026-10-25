@@ -138,6 +138,166 @@ impl<F: FnOnce(&mut String)> Render for Html<F> {
     }
 }
 
+/// Which part of a [`Document`] to render.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Part {
+    /// The whole document, for a browser's first load.
+    Full,
+    /// What a client navigation swaps: the `<title>`, the tags the page puts in `<head>`,
+    /// Corten's tags and the children of `<main>`.
+    Swap,
+    /// The text of the `<title>` alone (escaped), for [`crate::Req::screen`].
+    Title,
+}
+
+/// A whole HTML document: what [`crate::Req::page`] sends. `html!` markup whose root is
+/// `<html>` is one, and so is a component that returns one (`-> impl Document`), used as
+/// `html! { <Layout title="Home">..</Layout> }`. Besides the whole document it renders the
+/// parts a client navigation and a data client need, without running the rest of the layout.
+///
+/// The markup is checked when it compiles: one `<head>` holding one `<title>` and `<Corten />`
+/// (where Corten's tags go), and one `<main>`, which a navigation swaps:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// let doc = html! {
+///     <!DOCTYPE html>
+///     <html lang="en">
+///         <head><title>"Home"</title><Corten /></head>
+///         <body><main><h1>"Home"</h1></main></body>
+///     </html>
+/// };
+/// assert_eq!(doc.to_html(), "<!DOCTYPE html><html lang=\"en\"><head><title>Home</title></head><body><main><h1>Home</h1></main></body></html>");
+/// ```
+///
+/// A document without a `<title>` does not compile:
+///
+/// ```compile_fail
+/// # use corten::prelude::*;
+/// let doc = html! { <html><head><Corten /></head><body><main></main></body></html> };
+/// ```
+///
+/// Nor does one without `<Corten />` in its `<head>`, or without a `<main>`:
+///
+/// ```compile_fail
+/// # use corten::prelude::*;
+/// let doc = html! { <html><head><title>"Home"</title></head><body><main></main></body></html> };
+/// ```
+///
+/// ```compile_fail
+/// # use corten::prelude::*;
+/// let doc = html! { <html><head><title>"Home"</title><Corten /></head><body></body></html> };
+/// ```
+///
+/// And a page that is not a document is not a page:
+///
+/// ```compile_fail
+/// # use corten::prelude::*;
+/// async fn home(req: Req) -> Result {
+///     req.page(html! { <h1>"Home"</h1> })
+/// }
+/// ```
+pub trait Document: Render {
+    /// Writes `part` of the document.
+    fn render_part(&self, out: &mut String, part: Part);
+}
+
+impl<T: Document + ?Sized> Document for &T {
+    #[inline]
+    fn render_part(&self, out: &mut String, part: Part) {
+        (**self).render_part(out, part)
+    }
+}
+
+/// A document view from `html!` (see [`Document`]).
+pub struct DocHtml<F> {
+    render: Cell<Option<F>>,
+    size: &'static AtomicUsize,
+}
+
+impl<F: FnOnce(&mut String, Part)> DocHtml<F> {
+    /// Used by `html!`, which gives every call site its own `size`.
+    pub fn new(size: &'static AtomicUsize, render: F) -> Self {
+        DocHtml { render: Cell::new(Some(render)), size }
+    }
+}
+
+impl<F: FnOnce(&mut String, Part)> Render for DocHtml<F> {
+    #[inline]
+    fn render(&self, out: &mut String) {
+        self.render_part(out, Part::Full)
+    }
+
+    fn to_html(&self) -> String {
+        let mut out = String::with_capacity(self.size.load(Ordering::Relaxed).max(256));
+        self.render(&mut out);
+        self.size.store(out.len() + out.len() / 8, Ordering::Relaxed);
+        out
+    }
+}
+
+impl<F: FnOnce(&mut String, Part)> Document for DocHtml<F> {
+    #[inline]
+    fn render_part(&self, out: &mut String, part: Part) {
+        match self.render.take() {
+            Some(render) => render(out, part),
+            None => panic!("a view from html! renders once; call the function that builds it again"),
+        }
+    }
+}
+
+/// Copies `html`, the tags a page put in a document's `<head>`, to `out` with
+/// `data-corten-head` at the end of each top-level element's start tag, so a client navigation
+/// replaces them with the next page's. `html` is markup Corten wrote: text and attribute values
+/// are escaped, so every `<` starts a tag, a comment or the end of one and every `>` ends one;
+/// `<script>` and `<style>` text is copied as it is.
+fn mark_head_tags(html: &str, out: &mut String) {
+    const VOID: &[&str] = &["base", "link", "meta", "area", "br", "col", "embed", "hr", "img", "input", "source", "track", "wbr"];
+    let bytes = html.as_bytes();
+    let mut depth = 0usize;
+    let mut i = 0;
+    while let Some(at) = bytes[i..].iter().position(|&b| b == b'<') {
+        let lt = i + at;
+        match bytes.get(lt + 1) {
+            Some(b'/') => {
+                depth = depth.saturating_sub(1);
+                out.push_str(&html[i..lt + 2]);
+                i = lt + 2;
+            }
+            Some(c) if c.is_ascii_alphabetic() => {
+                let end = bytes[lt + 1..]
+                    .iter()
+                    .position(|b| !(b.is_ascii_alphanumeric() || *b == b'-'))
+                    .map_or(bytes.len(), |n| lt + 1 + n);
+                let name = &html[lt + 1..end];
+                // The start tag's `>`, or its `/>`.
+                let gt = bytes[end..].iter().position(|&b| b == b'>').map_or(bytes.len(), |n| end + n);
+                let gt = if gt > end && bytes[gt - 1] == b'/' { gt - 1 } else { gt };
+                out.push_str(&html[i..gt]);
+                if depth == 0 {
+                    out.push_str(" data-corten-head");
+                }
+                i = gt;
+                if name.eq_ignore_ascii_case("script") || name.eq_ignore_ascii_case("style") {
+                    // Raw text: copied to its end tag, which closes the element.
+                    let close = if name.eq_ignore_ascii_case("script") { "</script>" } else { "</style>" };
+                    let stop = html[i..].find(close).map_or(html.len(), |n| i + n + close.len());
+                    out.push_str(&html[i..stop]);
+                    i = stop;
+                } else if !VOID.iter().any(|v| name.eq_ignore_ascii_case(v)) {
+                    depth += 1;
+                }
+            }
+            _ => {
+                out.push_str(&html[i..lt + 1]);
+                i = lt + 1;
+            }
+        }
+    }
+    out.push_str(&html[i..]);
+}
+
 /// An element id as a type, from `#[derive(Id)]`: the markup that renders an element and the
 /// patch that replaces or removes it name it the same way, so they cannot drift.
 ///
@@ -642,6 +802,20 @@ pub mod __private {
     use std::fmt::Display;
 
     use super::{escape_display, AttrValue, Render};
+
+    thread_local! {
+        static HEAD_SCRATCH: std::cell::Cell<String> = const { std::cell::Cell::new(String::new()) };
+    }
+
+    /// What a page puts in its document's `<head>` (an expression or component there), written
+    /// with each element marked for client navigations (see `mark_head_tags`).
+    pub fn head_slot(render: impl FnOnce(&mut String), out: &mut String) {
+        let mut scratch = HEAD_SCRATCH.take();
+        scratch.clear();
+        render(&mut scratch);
+        super::mark_head_tags(&scratch, out);
+        HEAD_SCRATCH.set(scratch);
+    }
 
     // Method resolution picks `ViaRender` when the value implements Render (it matches without
     // an extra reference) and falls back to `ViaDisplay`, so `{x}` works for both.

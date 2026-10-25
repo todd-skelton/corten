@@ -6,14 +6,16 @@
 #[derive(serde::Deserialize, Fields)]
 struct GreetForm { name: String }
 
-fn page(name: &str) -> impl Render + '_ {
+fn page<'a>(req: &'a Req, name: &'a str) -> impl Document + 'a {
     let f = GreetForm::FIELDS;
     html! {
-        <form method="post" action={Greet} data-patch>
-            <input name={f.name} required>
-            <button>"Greet me"</button>
-        </form>
-        <Greeting name={name} />
+        <Layout req={req} title="Home">
+            <form method="post" action={url::Greet} data-patch>
+                <input name={f.name} required>
+                <button>"Greet me"</button>
+            </form>
+            <Greeting name={name} />
+        </Layout>
     }
 }
 
@@ -25,7 +27,7 @@ fn Greeting(name: &str) -> impl Render {
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
     match req.mode {
         Mode::Action => req.patch(Greeting { name: &form.name }),  // the runtime swaps #greeting
-        _ => req.page("Home", page(&form.name)),                    // no JavaScript: the whole page
+        _ => req.page(page(&req, &form.name)),                      // no JavaScript: the whole page
     }
 }
 ```
@@ -103,7 +105,7 @@ let price = match check(t, &form) {
     Ok(price) => price,
     Err(errors) => {
         let view = AlertFormView { errors, ..AlertFormView::from(&form) };
-        let page = || async { req.page("Item", item_page(&load(&id).await?, view.clone())) };
+        let page = || async { req.page(item_page(&req, &load(&id).await?, view.clone())) };
         return req.invalid(&view.errors, AlertForm { t, form: view.clone() }, page).await;
     }
 };
