@@ -252,6 +252,14 @@ Corten is pre-1.0, so any minor version may change the API.
     error, a 5xx or an abort keeps it), then renews it. The app stores keys with its writes; Corten
     keeps none. Asked for by the Chase Sets pilot, which wrote about 150 lines for it
     ([#9 Forms have no per-submission idempotency key](https://github.com/todd-skelton/corten/issues/9)).
+37. Query sets: `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` declares parameters that
+    several routes carry, and `#[route(query)] filters: ItemQuery` on a route's field writes each of
+    them as the route's own parameter (`corten::route::Params`). A list's filters are declared once
+    for its page, its live rows and its bulk routes, so a route cannot drop one, and making one
+    route's URL from another's copies one value. Handlers read `Query<ItemQuery>`. A
+    `#[route(query)]` field of another type does not compile. Asked for by the Chase Sets pilot,
+    whose 10 item filters were repeated on 5 routes by a `macro_rules!`
+    ([#32 A route cannot share a set of query parameters with another route](https://github.com/todd-skelton/corten/issues/32)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
