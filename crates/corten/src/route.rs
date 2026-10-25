@@ -70,81 +70,119 @@ use std::fmt;
 /// Derives [`Route`](trait@Route) for a struct: `#[derive(Route)] #[route("/items/{id}")]`.
 pub use corten_macros::Route;
 
-/// The app's routes in one module, each with a handler the compiler asks for.
+/// The app's routes in one module, each with the handlers that serve it.
 ///
-/// Each `#[route("/..")]` struct in the module is a typed route (it gets `#[derive(Route)]`) and a
-/// method of the module's `Handlers` trait, named like the struct (`ItemOffers` is
-/// `item_offers`), that returns its `MethodRouter`. The app implements `Handlers`, and
-/// `router(..)` puts each handler at its route's path, for [`crate::App::new`]:
+/// Each `#[route("/..", get = show)]` struct in the module is a typed route (it gets
+/// `#[derive(Route)]`) served by the handlers it names, one per method (`get`, `post`, `put`,
+/// `delete`, `patch`, `head`, `options`, `trace`). Handlers are functions, named from where
+/// the module is declared, so the module needs no `use super::*`. `router()` puts each one at its
+/// route's path, for [`crate::App::new`]:
 ///
 /// ```
 /// use corten::prelude::*;
 ///
 /// #[corten::routes]
 /// mod url {
-///     #[route("/")]
+///     #[route("/", get = home)]
 ///     pub struct Home;
 ///
-///     #[route("/items/{id}")]
+///     #[route("/items/{id}", get = item, post = save)]
 ///     pub struct Item<'a> {
 ///         pub id: &'a str,
 ///     }
 /// }
 ///
-/// struct Site;
-///
-/// impl url::Handlers for Site {
-///     fn home(&self) -> MethodRouter {
-///         get(|| async { "home" })
-///     }
-///     fn item(&self) -> MethodRouter {
-///         get(|Path(id): Path<String>| async move { id })
-///     }
+/// async fn home() -> &'static str {
+///     "home"
+/// }
+/// async fn item(Path(id): Path<String>) -> String {
+///     id
+/// }
+/// async fn save(Path(id): Path<String>) -> String {
+///     format!("saved {id}")
 /// }
 ///
-/// let app = App::new(url::router(Site));
+/// let app = App::new(url::router());
 /// # let _ = app.router();
 /// assert_eq!(url::Item { id: "a b" }.to_string(), "/items/a%20b");
 /// ```
 ///
-/// Handlers that share something (a database pool, a client) take it from `self`:
-/// `get(show).with_state(self.db.clone())`. A route the module does not route (an area's page,
-/// an API route, a feed) derives `Route` itself, `#[derive(Route)] #[route("/admin")]`, and gets
-/// no method: the area or API that serves it registers it.
+/// Handlers that share something (a database pool, a client) take it as `State`: the module
+/// names its type, `#[corten::routes(state = Db)]`, and `router` takes it,
+/// `App::new(url::router(db))`, so it cannot be forgotten. A route another router serves (an
+/// area's page, an API route) is a link only and says so, `#[route("/admin", link)]`: the area or
+/// API registers it.
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(Clone)]
+/// struct Db;
+///
+/// #[corten::routes(state = Db)]
+/// mod url {
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+///
+/// async fn home(State(_db): State<Db>) -> &'static str {
+///     "home"
+/// }
+///
+/// let app = App::new(url::router(Db));
+/// # let _ = app.router();
+/// ```
 ///
 /// A route without a handler does not compile:
 ///
 /// ```compile_fail
+/// #[corten::routes]
+/// mod url {
+///     #[route("/about")]
+///     pub struct About;
+/// }
+/// ```
+///
+/// Nor does a handler whose arguments a request cannot fill:
+///
+/// ```compile_fail,E0277
 /// use corten::prelude::*;
 ///
 /// #[corten::routes]
 /// mod url {
-///     #[route("/")]
+///     #[route("/", get = home)]
 ///     pub struct Home;
-///
-///     #[route("/about")]
-///     pub struct About;
 /// }
 ///
-/// struct Site;
+/// async fn home(_: u32) -> &'static str {
+///     "home"
+/// }
+/// # fn main() { let _ = url::router(); }
+/// ```
 ///
-/// impl url::Handlers for Site {
-///     fn home(&self) -> MethodRouter {
-///         get(|| async { "home" })
-///     }
+/// Nor two routes a request could not tell apart, which axum would refuse when the app starts:
+///
+/// ```compile_fail
+/// # async fn item() {}
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = item)]
+///     pub struct Item<'a> { pub id: &'a str }
+///
+///     #[route("/items/{slug}", get = item)]
+///     pub struct ItemBySlug<'a> { pub slug: &'a str }
 /// }
 /// ```
 ///
-/// Nor do two routes a request could not tell apart, which axum would refuse when the app starts:
+/// Nor a struct that derives `Route` itself in the module, the way a link-only route used to be
+/// written:
 ///
 /// ```compile_fail
 /// #[corten::routes]
 /// mod url {
-///     #[route("/items/{id}")]
-///     pub struct Item<'a> { pub id: &'a str }
-///
-///     #[route("/items/{slug}")]
-///     pub struct ItemBySlug<'a> { pub slug: &'a str }
+///     #[derive(corten::Route)]
+///     #[route("/admin")]
+///     pub struct Admin;
 /// }
 /// ```
 pub use corten_macros::routes;
@@ -451,7 +489,46 @@ pub mod __private {
         fmt::{self, Display, Write as _},
     };
 
+    use axum::{handler::Handler, routing::MethodRouter};
+
     use super::{Encode, REST, SEGMENT};
+
+    // `#[corten::routes]` names each handler through one of these, so a handler that cannot serve
+    // the route is an error that says why, at the handler's name in `#[route(..)]`.
+    macro_rules! methods {
+        ($($method:ident),*) => {$(
+            #[inline]
+            pub fn $method<H, T, S>(handler: H) -> MethodRouter<S>
+            where
+                H: RouteHandler<T, S>,
+                T: 'static,
+                S: Clone + Send + Sync + 'static,
+            {
+                axum::routing::$method(handler.into_handler())
+            }
+        )*};
+    }
+    methods!(get, post, put, delete, patch, head, options, trace);
+
+    /// A handler a route names: an async function whose arguments a request fills (extractors,
+    /// `Req`, `State<..>` of the routes module's state) and whose result is a response.
+    #[diagnostic::on_unimplemented(
+        message = "`{Self}` cannot serve this route",
+        label = "not a handler for these routes",
+        note = "a handler is an async fn whose arguments are extractors (Req, Path, Query, Form, ..), with a State<T> only for the module's #[corten::routes(state = T)], and whose result is a response"
+    )]
+    pub trait RouteHandler<T, S> {
+        type Handler: Handler<T, S>;
+        fn into_handler(self) -> Self::Handler;
+    }
+
+    impl<H: Handler<T, S>, T, S> RouteHandler<T, S> for H {
+        type Handler = H;
+        #[inline(always)]
+        fn into_handler(self) -> H {
+            self
+        }
+    }
 
     // A path parameter: one segment, percent-encoded (a `/` in the value is `%2F`), or with
     // `rest` the rest of the path (`{*rest}`), slashes kept. A text field is encoded straight from

@@ -88,7 +88,7 @@ corten::i18n::messages! {
 }
 
 Router::new().route(ItemRoute::PATH, get(show));                            // the path axum matches
-// or every route in one module, each with a handler the compiler asks for (corten::routes)
+// or every route in one module, each naming its handler: #[route("/items/{id}", get = show)] (corten::routes)
 
 #[derive(Id)]
 pub struct OfferId<'a>(pub &'a str);                                          // offer-{key}

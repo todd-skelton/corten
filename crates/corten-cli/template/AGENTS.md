@@ -19,7 +19,7 @@ agent's skill installer, or read it there.
    The patch is a component declared `-> impl Patch`, rooted at an element with a `#[derive(Id)]` id,
    and the page renders the same component; one that is not a patch does not compile.
 3. URLs are the structs in `mod url` (`#[corten::routes]`): `href={url::Home}`,
-   `req.redirect(&url::Home)`, and each route's handler is a method of `impl url::Handlers for Site`.
+   `req.redirect(&url::Home)`, and each names its handlers, `#[route("/", get = home)]`.
    Field names come from `#[derive(Fields)]` (`Form::FIELDS.name`); neither is ever typed as a
    string.
 4. Behavior in the browser is a `#[component(js)]`: `snake_name.js` next to it exports plain

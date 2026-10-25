@@ -132,7 +132,7 @@ pub mod prelude {
     pub use crate::{
         axum::{
             extract::{Path, State},
-            routing::{delete, get, post, put, MethodRouter},
+            routing::{delete, get, post, put},
             Router,
         },
         component, html,

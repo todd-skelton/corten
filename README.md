@@ -56,32 +56,19 @@ posts and the whole page comes back. One handler serves both.
 ```rust,no_run,edition2024
 use corten::prelude::*;
 
-// Every URL, typed. Each needs a handler below, or the app does not compile.
+// Every URL, typed, with the handler that serves it. A route without one does not compile.
 #[corten::routes]
 mod url {
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home;
 
-    #[route("/greet")]
+    #[route("/greet", post = greet)]
     pub struct Greet;
-}
-
-struct Site;
-
-impl url::Handlers for Site {
-    fn home(&self) -> MethodRouter {
-        get(home)
-    }
-
-    fn greet(&self) -> MethodRouter {
-        post(greet)
-    }
 }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let routes = url::router(Site);
-    let app = App::new(routes);
+    let app = App::new(url::router());
     corten::serve(app).await
 }
 

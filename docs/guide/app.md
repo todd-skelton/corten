@@ -30,7 +30,7 @@ axum routes. Each default can be replaced in one line.
 see [Cancellation](cancellation.md).
 
 ```rust,ignore
-let app = App::new(url::router(Site))
+let app = App::new(url::router())
     .context(|headers| viewer_from(headers))       // who is asking: the app is an App<Viewer>
     .error_page(views::error_page)                 // in the app's layout
     .components(&[TOKENS, OfferList])              // components with scripts or styles

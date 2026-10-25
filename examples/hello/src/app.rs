@@ -53,7 +53,7 @@ impl Market {
 /// The app: routes and who is signed in. Every page brings its document, `Layout` with the page
 /// in it. Everything else is Corten's defaults.
 pub fn app(market: Market) -> App<Viewer> {
-    App::new(url::router(Site { market }))
+    App::new(url::router(market))
         .context(|headers| {
             // A real app reads its session here; the example trusts a cookie, which is fine for a
             // demo and nothing else.
@@ -71,78 +71,48 @@ pub fn app(market: Market) -> App<Viewer> {
         })
 }
 
-/// Every URL the app serves and links to; links built from these cannot drift from the router,
-/// and each route needs a handler in `Site` below. The pages of an area derive `Route`
-/// themselves: their area serves them.
-#[corten::routes]
+/// Every URL the app serves and links to, with its handlers, which share the market; links built
+/// from these cannot drift from the router. The pages of an area are links here: their area
+/// serves them.
+#[corten::routes(state = Market)]
 mod url {
-    use corten::Route;
-
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home;
 
-    #[route("/watch")]
+    #[route("/watch", post = watch)]
     pub struct Watch;
 
-    #[route("/sign-in")]
+    #[route("/sign-in", post = sign_in)]
     pub struct SignIn;
 
-    #[route("/feed/stocks")]
+    #[route("/feed/stocks", get = stocks)]
     pub struct Stocks;
 
-    #[route("/feed/stocks/live")]
+    #[route("/feed/stocks/live", get = stocks_live)]
     pub struct StocksLive;
 
-    #[route("/live/trades")]
+    #[route("/live/trades", get = trades)]
     pub struct Trades;
 
-    #[derive(Route)]
-    #[route("/about")]
+    #[route("/about", link)]
     pub struct About;
 
-    #[derive(Route)]
-    #[route("/account")]
+    #[route("/account", link)]
     pub struct Account;
 
-    #[route("/saved")]
+    #[route("/saved", get = saved)]
     pub struct Saved {
         pub until: Option<u64>,
     }
 }
 
-/// The app's handlers, which share the market.
-struct Site {
-    market: Market,
+/// The stocks feed: a snapshot, then live changes from a cursor.
+async fn stocks(State(market): State<Market>) -> impl IntoResponse {
+    market.stocks.snapshot()
 }
 
-impl url::Handlers for Site {
-    fn home(&self) -> MethodRouter {
-        get(home).with_state(self.market.clone())
-    }
-
-    fn watch(&self) -> MethodRouter {
-        post(watch).with_state(self.market.clone())
-    }
-
-    fn sign_in(&self) -> MethodRouter {
-        post(sign_in)
-    }
-
-    fn stocks(&self) -> MethodRouter {
-        get(|State(m): State<Market>| async move { m.stocks.snapshot() }).with_state(self.market.clone())
-    }
-
-    fn stocks_live(&self) -> MethodRouter {
-        get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }).with_state(self.market.clone())
-    }
-
-    fn trades(&self) -> MethodRouter {
-        get(trades).with_state(self.market.clone())
-    }
-
-    fn saved(&self) -> MethodRouter {
-        get(saved)
-    }
+async fn stocks_live(State(market): State<Market>, since: Since) -> impl IntoResponse {
+    market.stocks.live(since)
 }
 
 /// Who is looking: the app's context, which the layout shows.

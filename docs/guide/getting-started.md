@@ -39,8 +39,8 @@ The CLI is a convenience over cargo, not a build system: an app is an ordinary c
 
 ## A whole app in one file
 
-Every route is a struct in the routes module, and each needs a handler: a method of the module's
-`Handlers` trait. Every page is a handler that returns `req.page(document)`, the app's layout
+Every route is a struct in the routes module, and its attribute names the handler for each method
+(`get = home`). Every page is a handler that returns `req.page(document)`, the app's layout
 with the page in it. A form with `data-patch` is submitted by the runtime, and its handler
 answers with the fragment to replace; without JavaScript the same handler returns the whole page.
 
@@ -49,29 +49,16 @@ use corten::prelude::*;
 
 #[corten::routes]
 mod url {
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home;
 
-    #[route("/greet")]
+    #[route("/greet", post = greet)]
     pub struct Greet;
-}
-
-struct Site;
-
-impl url::Handlers for Site {
-    fn home(&self) -> MethodRouter {
-        get(home)
-    }
-
-    fn greet(&self) -> MethodRouter {
-        post(greet)
-    }
 }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let routes = url::router(Site);
-    let app = App::new(routes).error_page(error_page);
+    let app = App::new(url::router()).error_page(error_page);
     corten::serve(app).await
 }
 

@@ -365,11 +365,13 @@ Corten is pre-1.0, so any minor version may change the API.
     commit before, Windows) a full document is about 7% faster (median 57.5 to 53.8 us) and a
     navigation within noise (47.0 to 47.8 us; another eight runs gave 48.4 to 48.3), with the same
     bytes, compressed or not.
-50. `#[corten::routes]` on a module of routes: each `#[route("/..")]` struct in it is a typed route and
-    a method of the module's `Handlers` trait, and `url::router(handlers)` puts each handler at its
-    path for `App::new`. A route without a handler, or two routes with the same path, does not
-    compile. A struct in the module that derives `Route` itself is a link only (an area's page, an
-    API route). `MethodRouter` is in the prelude. `corten new`, `examples/hello` and the README use it.
+50. `#[corten::routes]` on a module of routes: each `#[route("/..", get = home, post = save)]` struct in
+    it is a typed route that names its handlers, and `url::router()` puts each at its path for
+    `App::new` (`#[corten::routes(state = Db)]` gives `url::router(db)`, and every handler may take
+    `State<Db>`). A handler that cannot serve its route points its error at the handler's name; a
+    route without a handler (`link` marks one that is only linked to, such as an area's page),
+    two routes with the same path, or a method named twice does not compile. `corten new`,
+    `examples/hello` and the README use it.
 51. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
 52. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
     `corten dev` only, the error. Every error page is sent with `X-Robots-Tag: noindex`.

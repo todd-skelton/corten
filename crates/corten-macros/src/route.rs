@@ -39,6 +39,19 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             ),
         ));
     }
+    // `#[route("/..", get = show)]` outside a routes module: only a routes module routes.
+    for attr in &item.attrs {
+        let tokens: Vec<TokenTree> = attr.stream().into_iter().collect();
+        if let [TokenTree::Ident(name), TokenTree::Group(args)] = tokens.as_slice() {
+            let args: Vec<TokenTree> = args.stream().into_iter().collect();
+            if name.to_string() == "route" && args.len() > 1 && matches!(args.first(), Some(TokenTree::Literal(_))) {
+                return err(
+                    args[1].span(),
+                    "a handler (get = show) or link is named in a #[corten::routes] module; a route outside one is only its path, #[route(\"/..\")]",
+                );
+            }
+        }
+    }
     let Some((path, span)) = item.attr_string("route")? else {
         return err(
             item.name.span(),

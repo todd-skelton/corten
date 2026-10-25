@@ -7,15 +7,9 @@ use corten::prelude::*;
 
 #[corten::routes]
 pub mod url {
-    #[route("/items/{id}")]
+    #[route("/items/{id}", get = show)]
     pub struct Item<'a> {
         pub id: &'a str,
-    }
-}
-
-impl url::Handlers for Site {
-    fn item(&self) -> MethodRouter {
-        get(show)
     }
 }
 
@@ -33,12 +27,13 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
 }
 ```
 
-1. Every route is a struct in the `#[corten::routes]` module, and each needs a method in
-   `impl url::Handlers` (a missing one does not compile); `App::new(url::router(Site))`. Link
-   with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
+1. Every route is a struct in the `#[corten::routes]` module that names its handlers,
+   `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile);
+   `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
+   `#[corten::routes(state = Db)]` and `url::router(db)`. Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
-   answers `req.moved(&url::Item { id })`, a 301. A route an area or an API serves derives
-   `Route` itself and gets no method.
+   answers `req.moved(&url::Item { id })`, a 301. A route an area or an API serves is a link
+   only: `#[route("/admin", link)]`.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
    social) are the layout's props. Never build a document outside a layout component. A page
