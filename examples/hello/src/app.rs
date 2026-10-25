@@ -9,7 +9,11 @@
 //! | `GET /about` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only |
 //! | `POST /sign-in` | sets a cookie; the shell shows the viewer, and the runtime reloads the document |
 //! | `GET /account` | an area only someone signed in may use (`Area::guard`): anyone else is sent to the watchlist, where the sign-in button is |
-use std::{sync::Arc, time::Duration};
+//! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`Meta::read_again`), however it was reached |
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use corten::{
     Fragment, LiveSince,
@@ -92,6 +96,12 @@ mod url {
     pub struct Account;
 
     #[derive(Route)]
+    #[route("/saved")]
+    pub struct Saved {
+        pub until: Option<u64>,
+    }
+
+    #[derive(Route)]
     #[route("/feed/stocks")]
     pub struct Stocks;
 
@@ -109,6 +119,7 @@ fn routes(market: Market) -> Router {
         .route(url::Home::PATH, get(home))
         .route(url::Watch::PATH, post(watch))
         .route(url::SignIn::PATH, post(sign_in))
+        .route(url::Saved::PATH, get(saved))
         .route(url::Stocks::PATH, get(|State(m): State<Market>| async move { m.stocks.snapshot() }))
         .route(url::StocksLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }))
         .route(url::Trades::PATH, get(trades))
@@ -360,6 +371,28 @@ async fn about(req: Req) -> corten::Result {
         },
     )
 }
+
+#[derive(Deserialize)]
+struct SavedQuery {
+    until: Option<u64>,
+}
+
+/// A page that reads a write which has not landed yet. A real app's address carries the write's
+/// receipt; here it is the time the write lands, in milliseconds since 1970. Until then the page
+/// says so and asks to be read again, which the runtime does in place however the page was
+/// reached; once the write is in, the page stops asking.
+async fn saved(req: Req, Query(query): Query<SavedQuery>) -> corten::Result {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let pending = query.until.is_some_and(|until| now < until);
+    let meta = Meta::new("Saved | Corten");
+    let meta = if pending { meta.read_again(Duration::from_secs(1)) } else { meta };
+    let text = if pending { "Saving your change..." } else { "Your change is saved." };
+    req.page(meta, html! { <p id={SavedId} role="status">{text}</p> })
+}
+
+/// The saved page's status line.
+#[derive(Id)]
+struct SavedId;
 
 /// The guard on `/account` has let only a signed-in viewer through.
 async fn account(req: Req) -> corten::Result {

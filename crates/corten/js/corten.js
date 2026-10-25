@@ -21,6 +21,8 @@
 //    shell links with `data-nav`, and the service worker when the shell names one (corten::pwa).
 // 7. A page response whose shell key differs from this page's (the user signed in or out, or a
 //    deploy changed the runtime or assets) is loaded in full instead of swapped.
+// 8. A page that asks to be read again (Meta::read_again) is fetched again after its delay and
+//    swapped in place, however it was reached.
 // Without JavaScript, links and forms still work as plain HTML.
 
 import { formatter } from "./format.js";
@@ -589,10 +591,17 @@ export function subscribe(url, handlers, { signal } = {}) {
   sync();
 }
 
-/** @param {string} html */
+/**
+ * Markup from the server, as a fragment. A template parses it with scripting off, so a
+ * `<noscript>`'s content would come out as live elements (a `<meta http-equiv="refresh">`
+ * reloads the page once it is in the document); with scripting on a browser never shows it, so
+ * it is dropped.
+ * @param {string} html
+ */
 function parse(html) {
   const template = document.createElement("template");
   template.innerHTML = html;
+  for (const noscript of Array.from(template.content.querySelectorAll("noscript"))) noscript.replaceChildren();
   return template.content;
 }
 
@@ -813,7 +822,9 @@ async function swapPage(html, signal) {
   const main = document.querySelector("main");
   if (!main) throw new Error("corten: the shell must render a <main> element");
   main.replaceChildren(content);
+  swapped = html;
   markCurrent();
+  readAgainLater();
 }
 
 /**
@@ -944,16 +955,18 @@ document.addEventListener("touchstart", (event) => prefetch(event.target), { pas
  * @param {AbortSignal} signal
  * @param {Response} [redirected] the answer to this URL, already fetched by a navigation that
  *   the server redirected here
+ * @param {boolean} [again] the page reading itself again (Meta::read_again): never a prefetched
+ *   answer, not marked busy, and not swapped when nothing changed
  */
-async function visit(url, signal, redirected) {
+async function visit(url, signal, redirected, again) {
   const key = pageKey(url);
-  const hit = prefetched.get(key);
+  const hit = again ? undefined : prefetched.get(key);
   prefetched.delete(key);
   const fresh = hit && performance.now() - hit.at < PREFETCH_FRESH_MS;
   if (!fresh) discard(hit);
   /** @type {Response} */
   let res;
-  const main = document.querySelector("main");
+  const main = again ? null : document.querySelector("main");
   main?.setAttribute("aria-busy", "true");
   try {
     res = redirected
@@ -984,7 +997,51 @@ async function visit(url, signal, redirected) {
     navigation.navigate(res.url, { history: "replace", info: { [REDIRECTED]: page } });
     return;
   }
-  await swapPage(await res.text(), signal);
+  const html = await res.text();
+  signal.throwIfAborted();
+  // Read again with nothing new (the write has not landed yet): the page stays as it is, with
+  // what the user typed and its live streams.
+  if (again && html === swapped) {
+    readAgainLater();
+    return;
+  }
+  await swapPage(html, signal);
+}
+
+/** The last page `visit` swapped in, as the server sent it. */
+let swapped = "";
+
+/** Bumped by each page, so a read-again timer of an earlier one does nothing. */
+let readAgainPage = 0;
+const READ_AGAIN = Symbol("corten.readAgain");
+
+/**
+ * When this page's head asks for it (`<noscript data-corten-read-again="2">`, written by
+ * `Meta::read_again`), reads the page again after that many seconds, once the tab is visible:
+ * the same URL, in place of this history entry, keeping scroll and focus. A navigation away (or
+ * a page that no longer asks) stops it.
+ */
+function readAgainLater() {
+  const page = ++readAgainPage;
+  const tag = document.head.querySelector("noscript[data-corten-read-again]");
+  const seconds = Number(tag?.getAttribute("data-corten-read-again"));
+  if (!(seconds > 0)) return;
+  const url = location.href;
+  const read = () => {
+    if (page !== readAgainPage || location.href !== url) return;
+    if (document.hidden) {
+      document.addEventListener("visibilitychange", read, { once: true });
+      return;
+    }
+    // A form's answer is on its way and will change the page: read after it.
+    if (submits.size) {
+      setTimeout(read, seconds * 1000);
+      return;
+    }
+    if (navigation) navigation.navigate(url, { history: "replace", info: { [READ_AGAIN]: true } });
+    else location.reload();
+  };
+  setTimeout(read, seconds * 1000);
 }
 
 /** @type {any} */
@@ -1015,6 +1072,16 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
     event.navigationType === "reload" ||
     event.sourceElement?.closest?.("[data-reload]");
   if (skip) return;
+  if (event.info?.[READ_AGAIN]) {
+    // The same page, read again: where the user was reading and what they had focused stay.
+    const focused = document.activeElement?.id;
+    const handler = async () => {
+      await visit(new URL(event.destination.url), event.signal, undefined, true);
+      if (focused && document.activeElement === document.body) document.getElementById(focused)?.focus({ preventScroll: true });
+    };
+    event.intercept({ handler, scroll: "manual", focusReset: "manual" });
+    return;
+  }
   // The page is about to change: replies to its pending submits would patch the wrong page.
   for (const pending of submits.values()) pending.controller.abort();
   const redirected = event.info?.[REDIRECTED];
@@ -1149,6 +1216,7 @@ customElements.define(
 
 markCurrent();
 scan(document.documentElement, new Set());
+readAgainLater();
 
 /** Resolves once the script modules the first page's handlers use are imported. */
 export const ready = Promise.all(loading.values()).then(() => undefined);

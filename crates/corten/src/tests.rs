@@ -490,6 +490,57 @@ async fn invalid_input_answers_422_in_each_mode() {
     }
 }
 
+#[tokio::test]
+async fn a_page_that_reads_again_says_so_in_its_head_on_every_surface() {
+    use std::time::Duration;
+    let routes = Router::new().route(
+        "/",
+        get(
+            |req: Req| async move { req.page(Meta::new("Saving").read_again(Duration::from_secs(2)), html! { <p>"Saving"</p> }) },
+        ),
+    );
+    let tag = r#"<noscript data-corten-read-again="2" data-corten-head><meta http-equiv="refresh" content="2"></noscript>"#;
+    let (_, headers, document) = call(app(routes.clone(), None), "GET", None).await;
+    assert!(
+        document.contains(&format!("<title>Saving</title>{tag}")),
+        "in <head>, where the browser reads it without JavaScript: {document}"
+    );
+    assert!(!headers.contains_key("refresh"), "not the header, which outlives the runtime's navigations");
+    let (_, _, swap) = call(app(routes, None), "GET", Some("nav")).await;
+    assert!(swap.starts_with(&format!("<title>Saving</title>{tag}<p>")), "a navigation's head tags: {swap}");
+}
+
+/// Browsers keep a full load's `Refresh` after the runtime navigates away, then load it again.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_page_with_a_refresh_header_is_an_error_in_debug_builds() {
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            let mut res = req.page("Saving", html! { <p>"Saving"</p> })?;
+            res.headers_mut().insert("refresh", axum::http::HeaderValue::from_static("2"));
+            Ok::<_, crate::Error>(res)
+        }),
+    );
+    for mode in [None, Some("nav")] {
+        let res = app(routes.clone(), None).oneshot(request_in(mode)).await.unwrap();
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR, "{mode:?}");
+        assert!(!res.headers().contains_key("refresh"), "{mode:?}");
+    }
+    let api = Router::new().route("/", get(|| async { ([("refresh", "2")], "ok") }));
+    assert_eq!(call(app(api, None), "GET", None).await.0, StatusCode::OK, "only pages are checked");
+}
+
+fn request_in(mode: Option<&str>) -> Request<Body> {
+    let req = Request::builder().uri("/").header("accept", "text/html");
+    match mode {
+        Some(mode) => req.header("corten", mode),
+        None => req,
+    }
+    .body(Body::empty())
+    .unwrap()
+}
+
 #[cfg(debug_assertions)]
 #[tokio::test]
 async fn a_patch_whose_top_level_element_has_no_id_is_an_error_in_debug_builds() {

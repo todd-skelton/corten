@@ -4,8 +4,11 @@
 //! adds tags. They are printed after `<title>` on a full document and sent with every navigation,
 //! where the runtime replaces the previous page's tags, so crawlers and link previews see the
 //! same tags however the page was reached.
+//!
+//! A page that shows a read still catching up with a write ("saved, updating") asks to be read
+//! again with [`Meta::read_again`], however it was reached.
 
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use crate::view::escape_into;
 
@@ -103,6 +106,30 @@ impl Meta {
         self
     }
 
+    /// Read this page again after `after` (whole seconds, at least one): for a page that shows a
+    /// read still catching up with a write. The runtime fetches the same URL and swaps it in,
+    /// replacing the history entry and keeping the scroll position and the focused element (by
+    /// its id), however the page
+    /// was reached (a full load, a navigation, a form's redirect); a navigation away stops it,
+    /// and a hidden tab waits until it is shown. Without JavaScript the browser reloads it
+    /// (`<meta http-equiv="refresh">` in `<noscript>`). The page asks again each time it is
+    /// read, so it stops when the server stops asking (the write has landed, or is too old to
+    /// wait for).
+    ///
+    /// Not the `Refresh` header: browsers keep a full load's header after the runtime has
+    /// navigated away, and then load that first URL again. Debug builds answer 500 to a page
+    /// that sends one.
+    pub fn read_again(mut self, after: Duration) -> Self {
+        use fmt::Write;
+        let seconds = after.as_secs() + u64::from(after.subsec_nanos() > 0);
+        let seconds = seconds.max(1);
+        let _ = write!(
+            self.tags,
+            r#"<noscript data-corten-read-again="{seconds}" data-corten-head><meta http-equiv="refresh" content="{seconds}"></noscript>"#
+        );
+        self
+    }
+
     /// True when there are no tags (the title does not count).
     pub fn is_empty(&self) -> bool {
         self.tags.is_empty()
@@ -131,6 +158,17 @@ mod tests {
                 r#"<meta property="og:title" content="A" data-corten-head>"#
             )
         );
+    }
+
+    #[test]
+    fn read_again_is_whole_seconds_and_works_without_javascript() {
+        let tag = |after| Meta::new("T").read_again(after).to_string();
+        assert_eq!(
+            tag(Duration::from_secs(2)),
+            r#"<noscript data-corten-read-again="2" data-corten-head><meta http-equiv="refresh" content="2"></noscript>"#
+        );
+        assert!(tag(Duration::from_millis(1500)).contains(r#"read-again="2""#), "rounded up");
+        assert!(tag(Duration::ZERO).contains(r#"read-again="1""#), "never sooner than a second");
     }
 
     #[cfg(feature = "json")]
