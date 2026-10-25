@@ -198,6 +198,16 @@ Corten is pre-1.0, so any minor version may change the API.
     6,930-6,943 and 6,909, a guard on an `/items` area 7,169-7,176 and 7,159, the item route
     inside that area 7,195 and 7,159, `App::guard` with one unguarded route 7,222-7,229 and
     7,212-7,219. (These count more than item 27's figures, which were taken by another script.)
+31. `#[derive(ToJson)]` and `corten::json::ToJson` (feature `json`, in the prelude): a struct or an
+    enum written as JSON with the layout decided when the crate compiles, so between two values
+    the response copies one byte string (`","count":`) instead of writing each key, quote, colon
+    and comma, and string values are tested for characters to escape eight bytes at a time. It
+    reads `#[serde(...)]` (`rename`, `rename_all`, `skip`, `skip_serializing_if`, `transparent`, and an
+    enum's `tag`, `content` and `untagged`) and writes the bytes serde_json writes; an attribute it
+    cannot follow (`flatten`, `serialize_with`, `into` ...) does not compile. A field whose type only
+    implements `Serialize` is written by serde_json. `corten::json::to_vec` writes any `ToJson`.
+    `examples/item-page` derives it on its view model, and its `render_cost` checks the 500 benchmark
+    items against serde_json byte for byte and times the JSON.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -354,7 +364,21 @@ Corten is pre-1.0, so any minor version may change the API.
     app: 134,682 instructions per item page request before, 120,175 after (-10.8%), and 95,398 on
     the home page (50 item links) before, 85,261 after (-10.6%). The item view's `render_cost` is unchanged within noise (median 20.0 µs before,
     20.2 µs after, 15 runs each).
-32. A route parameter with nothing to percent-encode (most ids and slugs) is tested with one table
+32. `Json<T>` responses need `T: ToJson` instead of `T: Serialize`: add `#[derive(ToJson)]` next to
+    `Serialize` (`serde_json::Value` already is one). A value that cannot be JSON (a map with tuple keys)
+    no longer compiles, where it answered 500. Measured on the item page's view model (the
+    benchmark's 500 items, 6.6 KB of JSON on average), user-mode instructions per request in process
+    (`perf_event`, release build, the lowest of each run's repeated passes): a JSON request 114,157
+    before, 58,259 after (-49%); `render_cost` (median of 3) puts the item as JSON at 33.2 µs before and 12.7 µs after,
+    and the whole JSON request at 77.4 µs and 32.1 µs.
+33. `escape_into` tests a string for characters to escape in one or two reads when it is under
+    eight bytes, where it checked each byte (most of a page's strings are short: 188 per item
+    page, 11 bytes on average), and integers are written two digits at a time. The item page's
+    body went from 56,280 instructions to 51,171 (-9.1%), a document request from 96,918 to
+    90,528 (-6.6%) and a navigation from 87,249 to 81,649 (-6.4%), measured as above;
+    `render_cost` puts build + render main at 28.9 µs before and 19.8 µs after (median of 3, noisy on
+    this machine).
+34. A route parameter with nothing to percent-encode (most ids and slugs) is tested with one table
     lookup per byte and no branch, then copied once, where the encoder searched it byte by byte.
     The bytes written are unchanged. Measured in process on the item page (11 route links), user
     instructions (`perf_event`, release build, lowest of 3 runs): the page body 56,275 before and

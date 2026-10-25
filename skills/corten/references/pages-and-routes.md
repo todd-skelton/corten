@@ -102,7 +102,9 @@ The prefix and every route are route types, so a route outside the prefix does n
 A handler that takes `State` gets it on its method router: `get(price).with_state(db)`.
 
 `Json` is the prelude's `corten::Json`: axum's extractor, and a response written in one buffer
-(faster than `axum::Json`; keep the prelude's unless a crate hands you axum's).
+(faster than `axum::Json`; keep the prelude's unless a crate hands you axum's). The response type
+derives `ToJson` next to `Serialize` (`#[derive(Serialize, ToJson)] struct Price ..`); it reads the
+same `#[serde(...)]` attributes, and one it cannot write as serde does is a compile error.
 Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
 a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
 is no shell and no `App::context` (add `.context()` to the API's chain if it serves your own

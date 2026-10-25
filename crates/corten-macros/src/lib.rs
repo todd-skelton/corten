@@ -1,5 +1,5 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
-//! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(Route)]` (see
+//! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(ToJson)]` (see `corten::json`), `#[derive(Route)]` (see
 //! `corten::route`), `#[derive(Id)]` (see `corten::view::Id`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
 //! `tokens!` and component stylesheets (see `corten::style`).
 //!
@@ -19,6 +19,7 @@ mod route;
 mod script;
 mod style;
 mod theme;
+mod to_json;
 mod tokens;
 
 use proc_macro::{Delimiter, Group, Spacing, TokenStream, TokenTree};
@@ -45,6 +46,13 @@ pub fn derive_route(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Id)]
 pub fn derive_id(input: TokenStream) -> TokenStream {
     id::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// A struct or an enum written as JSON, laid out when the crate compiles. Documented at
+/// `corten::json`.
+#[proc_macro_derive(ToJson, attributes(serde))]
+pub fn derive_to_json(input: TokenStream) -> TokenStream {
+    to_json::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// A struct as a typed DOM event. Documented at `corten::script`.

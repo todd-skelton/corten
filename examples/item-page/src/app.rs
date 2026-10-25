@@ -384,6 +384,14 @@ mod tests {
         for id in &ids {
             items.push(source.item(id).await.unwrap().unwrap());
         }
+        for item in &items {
+            assert_eq!(
+                corten::json::to_vec(item),
+                serde_json::to_vec(item).unwrap(),
+                "ToJson differs from serde_json on {}",
+                item.id
+            );
+        }
         let start = Instant::now();
         for _ in 0..rounds {
             for item in &items {
@@ -400,18 +408,27 @@ mod tests {
         }
         let render = per(start);
         println!("build view: {build:.1} us, build + render main: {render:.1} us ({} bytes avg)", bytes / (rounds * ids.len()));
-        for (label, mode, encoding) in [
-            ("navigation, identity", Some("nav"), "identity"),
-            ("document, identity", None, "identity"),
-            ("document, zstd", None, "gzip, deflate, br, zstd"),
-            ("document, br", None, "gzip, deflate, br"),
-            ("document, gzip", None, "gzip"),
+        let start = Instant::now();
+        let mut bytes = 0;
+        for _ in 0..rounds {
+            for item in &items {
+                bytes += std::hint::black_box(corten::json::to_vec(item)).len();
+            }
+        }
+        println!("item as JSON: {:.1} us ({} bytes avg)", per(start), bytes / (rounds * ids.len()));
+        for (label, prefix, mode, encoding) in [
+            ("navigation, identity", "/items/", Some("nav"), "identity"),
+            ("document, identity", "/items/", None, "identity"),
+            ("document, zstd", "/items/", None, "gzip, deflate, br, zstd"),
+            ("document, br", "/items/", None, "gzip, deflate, br"),
+            ("document, gzip", "/items/", None, "gzip"),
+            ("json, identity", "/api/items/", None, "identity"),
         ] {
             let start = Instant::now();
             let mut size = 0;
             for _ in 0..rounds {
                 for id in &ids {
-                    let mut req = Request::get(format!("/items/{id}")).header("accept-encoding", encoding);
+                    let mut req = Request::get(format!("{prefix}{id}")).header("accept-encoding", encoding);
                     if let Some(mode) = mode {
                         req = req.header("corten", mode);
                     }
@@ -535,6 +552,10 @@ mod tests {
         assert_eq!((status, &headers["content-type"]), (StatusCode::OK, &"application/json".parse().unwrap()));
         let item: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!((item["id"].as_str(), item["listings"].as_array().map(Vec::len)), (Some("item_9"), Some(2)));
+        // The derived writer gives serde_json's bytes, escapes included.
+        let view: ItemView = serde_json::from_str(&body).unwrap();
+        assert_eq!(body, serde_json::to_string(&view).unwrap());
+        assert!(body.contains(r#""title":"Pika <Promo> & \"Friends\"""#), "{body}");
         let (status, _, body) = send(Request::get("/api/items/nope").header("accept", "*/*").body(Body::empty()).unwrap()).await;
         assert_eq!((status, body.as_str()), (StatusCode::NOT_FOUND, r#"{"error":{"status":404,"message":"Not Found"}}"#));
     }
