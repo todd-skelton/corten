@@ -44,6 +44,13 @@ fn Count(t: Msg) -> impl Render {
 }
 
 #[test]
+fn a_live_elements_status_event_takes_a_handler() {
+    let html =
+        scoped("x", || html! { <corten-live src="/live" on:corten-status={shared::log("x", 1, true)}></corten-live> }.to_html());
+    assert_eq!(html, r#"<corten-live src="/live" data-on="corten-status:shared.log(&quot;x&quot;,1,true)"></corten-live>"#);
+}
+
+#[test]
 fn handlers_are_calls_with_refs_keywords_and_values() {
     let html = LineItem { name: "a\"b", quantity: 2 }.to_html();
     assert_eq!(
