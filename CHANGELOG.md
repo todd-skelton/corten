@@ -342,7 +342,18 @@ Corten is pre-1.0, so any minor version may change the API.
     otherwise make live. The runtime is 282 B larger gzipped (7,525 to 7,807 B). hello's
     `/saved` shows it
     ([#69 A page cannot ask to be read again shortly, and the Refresh header only works on a full load](https://github.com/todd-skelton/corten/issues/69)).
-47. The page is a document made of components. `req.page`, `req.screen` and the error page take a
+47. A typed route can carry query parameters whose names are data: a field marked
+    `#[route(prefix = "dimension.")]` (a `BTreeMap`, or a `Vec` or slice of pairs) writes each
+    entry as `dimension.<key>=<value>`, in order, both encoded. A `HashMap` (whose order would make
+    the same link differ), a prefix with a character a URL escapes, and a prefix that overlaps
+    another parameter's name are compile errors. Found by the Chase Sets pilot, whose variant
+    links built `dimension.<id>=<option>` by hand
+    ([#71 A typed route cannot carry query parameters whose names are data (dimension.<id>=<option>)](https://github.com/todd-skelton/corten/issues/71)).
+48. `req.moved(&route)`: a `301 Moved Permanently` for a page that moved for good (an old slug, an
+    item asked for by its id), kept by the browser for a day (`private, max-age=86400`); a
+    `data-patch` form is sent on as by `redirect`, which stays a 303
+    ([#72 A page that moved cannot redirect permanently (Req::redirect is always 303)](https://github.com/todd-skelton/corten/issues/72)).
+49. The page is a document made of components. `req.page`, `req.screen` and the error page take a
     `Document`: `html!` that starts with `<html>` (one `<head>` with one `<title>` and one
     `<Corten />`, one `<main>` outside any `for`, `if` or `match`, all checked when it compiles), or
     a component that returns `impl Document`, such as the app's `Layout`. `html!` renders only the
@@ -354,13 +365,13 @@ Corten is pre-1.0, so any minor version may change the API.
     commit before, Windows) a full document is about 7% faster (median 57.5 to 53.8 us) and a
     navigation within noise (47.0 to 47.8 us; another eight runs gave 48.4 to 48.3), with the same
     bytes, compressed or not.
-48. `#[corten::routes]` on a module of routes: each `#[route("/..")]` struct in it is a typed route and
+50. `#[corten::routes]` on a module of routes: each `#[route("/..")]` struct in it is a typed route and
     a method of the module's `Handlers` trait, and `url::router(handlers)` puts each handler at its
     path for `App::new`. A route without a handler, or two routes with the same path, does not
     compile. A struct in the module that derives `Route` itself is a link only (an area's page, an
     API route). `MethodRouter` is in the prelude. `corten new`, `examples/hello` and the README use it.
-49. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
-50. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
+51. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
+52. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
     `corten dev` only, the error. Every error page is sent with `X-Robots-Tag: noindex`.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

@@ -36,7 +36,8 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
 1. Every route is a struct in the `#[corten::routes]` module, and each needs a method in
    `impl url::Handlers` (a missing one does not compile); `App::new(url::router(Site))`. Link
    with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
-   Redirect with `req.redirect(&url::Item { id })`. A route an area or an API serves derives
+   Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
+   answers `req.moved(&url::Item { id })`, a 301. A route an area or an API serves derives
    `Route` itself and gets no method.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
@@ -54,7 +55,9 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
 Routes that carry the same query parameters (a list's filters on its live, bulk and confirm
 routes) share one `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` as a
 `#[route(query)] filters: ItemQuery` field; handlers read `Query<ItemQuery>`. Never repeat the
-filter fields in each route.
+filter fields in each route. Parameters whose names are data (an option per dimension) are a
+`#[route(prefix = "dimension.")] dimensions: &BTreeMap<String, String>` field, never a query string
+built by hand.
 
 ## A component
 
