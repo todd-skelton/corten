@@ -58,6 +58,17 @@ so `cursor` refuses it (a panic in debug builds; in release the fragment goes wi
 
 [examples/hello](../../examples/hello) has this running.
 
+### Redrawing is cheap
+
+With feature `compress`, a live stream is compressed as one stream per connection and flushed
+after every event, so each event arrives at once and the compressor remembers the ones before it.
+A fragment drawn again with one value changed costs about what changed: on a 6 KB list of 33
+rows, the first event is 425 bytes with zstd and each redraw 16 to 23. So drawing a whole region
+again is usually cheaper on the wire than it looks, and needs no script. The context is kept for
+events up to about 64 KB apart. Each open stream holds about 0.5 MB (zstd) or 1 MB (brotli) while it
+is open; past 256 MB for all of them, new streams go out uncompressed. Browsers that only accept
+gzip get streams as they are, since deflate repeats a fragment poorly.
+
 ## Rows: feeds
 
 For scripts that keep state (a table of live prices, a grid), a `corten::feed::Feed<Row>`

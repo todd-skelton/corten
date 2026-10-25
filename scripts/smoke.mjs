@@ -2,6 +2,8 @@
 // and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
 // Usage: node scripts/smoke.mjs [http://localhost:18480] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
+import http from "node:http";
+import zlib from "node:zlib";
 
 const base = process.argv[2] ?? "http://localhost:18480";
 const engines = { chromium, firefox, webkit };
@@ -18,6 +20,38 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };
+
+// A live stream is compressed for clients that accept it and flushed after each event: the
+// first event decodes while the stream is still open.
+engine = "http";
+/** @param {string} accept @returns {Promise<{ coding: string | undefined, first: string }>} */
+const liveEvent = (accept) =>
+  new Promise((resolve, reject) => {
+    const req = http.get(`${base}/live/trades`, { headers: { "accept-encoding": accept } }, (res) => {
+      const coding = res.headers["content-encoding"];
+      const body = coding === "br" ? res.pipe(zlib.createBrotliDecompress()) : res;
+      let text = "";
+      const timer = setTimeout(() => (req.destroy(), resolve({ coding, first: text })), 5000);
+      body.on("data", (chunk) => {
+        text += chunk.toString();
+        if (text.includes("event: patch")) {
+          clearTimeout(timer);
+          req.destroy();
+          resolve({ coding, first: text });
+        }
+      });
+      body.on("error", () => {});
+    });
+    req.on("error", (e) => (e.message.includes("socket hang up") ? undefined : reject(e)));
+  });
+{
+  const zstd = await liveEvent("gzip, deflate, br, zstd");
+  check("a live stream is zstd for a client that accepts it", zstd.coding === "zstd", String(zstd.coding));
+  const br = await liveEvent("gzip, br");
+  check("a live stream's first event decodes before the stream ends (brotli, flushed per event)", br.coding === "br" && br.first.includes("Last trade"), `${br.coding}: ${br.first.slice(0, 60)}`);
+  const plain = await liveEvent("gzip");
+  check("a gzip-only client gets the stream as it is", plain.coding === undefined && plain.first.includes("event: patch"), String(plain.coding));
+}
 
 for (engine of names) {
   const browser = await engines[engine].launch({ headless: true });

@@ -236,6 +236,14 @@ Corten is pre-1.0, so any minor version may change the API.
     `FromJson` (-20.4%), 913,151 and 733,130 with the conversion into the view model;
     `render_cost` (median of 3) reads one in 304.8 µs through serde_json and 185.5 µs. Its
     `render_cost` checks the 500 responses read the same both ways.
+35. Live streams are compressed (feature `compress`). A `corten::live` or feed response to a client
+    that accepts zstd or brotli is one compressed stream per connection, flushed after every
+    event, with the context kept between events. On a 33-row list (6,126 B an event), measured:
+    the first event 425 B with zstd 1 and each redraw 16-23 B, where every event was 6,126 B;
+    brotli 4 gives 376 B, then 13-23 B. A stream holds about 470 KiB (zstd, 64 KiB window) or
+    800 KiB (brotli) while open, and all of them share a 256 MiB budget past which a new stream is
+    sent as it is. Gzip-only clients get streams as they are. Asked for by the Chase Sets pilot
+    ([#24 corten::live responses are never compressed](https://github.com/todd-skelton/corten/issues/24)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
