@@ -72,6 +72,26 @@ struct Search { q: Option<String>, #[serde(default)] condition: Vec<String> }
 async fn search(req: Req, Query(search): Query<Search>) -> corten::Result { .. }
 ```
 
+When several routes carry the same parameters (a list's filters, which its `<corten-live>` rows,
+its bulk preview and its confirm need too), declare them once as a query set and include it:
+
+```rust,ignore
+#[derive(Clone, Default, serde::Deserialize, Route, Fields)]
+#[route(query)]
+struct ItemQuery { search: Option<String>, page: Option<u32>, #[serde(default)] status: Vec<String> }
+
+#[derive(Route)] #[route("/items")]      struct Items     { #[route(query)] filters: ItemQuery }
+#[derive(Route)] #[route("/items/live")] struct ItemsLive { #[route(query)] filters: ItemQuery }
+
+// ItemsLive { filters: items.filters.clone() } is /items/live?search=..&page=..
+async fn items(req: Req, Query(filters): Query<ItemQuery>) -> corten::Result { .. }
+```
+
+Each of `ItemQuery`'s fields is written as the route's own parameter, so a route that must carry
+the filters cannot leave one out: a filter added to `ItemQuery` is in every route at once. The
+handler reads `Query<ItemQuery>`, and the filter form names its inputs `ItemQuery::FIELDS`. A
+`#[route(query)]` field whose type is not a query set does not compile.
+
 Measured in a release build (Docker on a Windows workstation, best of five runs): the item page's two-field
 alert form reads in 673 ns with `corten::Form` and 871 ns with axum's `Form`, request included.
 200 ids read into a `Vec<String>` in 22.3 µs; one comma-joined field split in the handler took

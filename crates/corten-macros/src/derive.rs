@@ -144,15 +144,23 @@ impl Item {
 pub struct Field {
     pub name: String,
     pub ident: Ident,
+    /// The field's attributes, `#[..]`'s brackets.
+    pub attrs: Vec<Group>,
 }
 
 pub fn named_fields(body: &Group) -> Result<Vec<Field>, Error> {
     let mut fields = Vec::new();
     for field in split(body.stream(), ',') {
         let mut j = 0;
+        let mut attrs = Vec::new();
         loop {
             match field.get(j) {
-                Some(TokenTree::Punct(p)) if p.as_char() == '#' => j += 2,
+                Some(TokenTree::Punct(p)) if p.as_char() == '#' => {
+                    if let Some(TokenTree::Group(g)) = field.get(j + 1) {
+                        attrs.push(g.clone());
+                    }
+                    j += 2;
+                }
                 Some(TokenTree::Ident(id)) if id.to_string() == "pub" => {
                     j += 1;
                     if matches!(field.get(j), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis) {
@@ -161,7 +169,7 @@ pub fn named_fields(body: &Group) -> Result<Vec<Field>, Error> {
                 }
                 Some(TokenTree::Ident(id)) if is_punct(field.get(j + 1), ':') => {
                     let text = id.to_string();
-                    fields.push(Field { name: text.strip_prefix("r#").unwrap_or(&text).to_string(), ident: id.clone() });
+                    fields.push(Field { name: text.strip_prefix("r#").unwrap_or(&text).to_string(), ident: id.clone(), attrs });
                     break;
                 }
                 Some(other) => return err(other.span(), "expected a named field"),

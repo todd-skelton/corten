@@ -86,6 +86,52 @@ pub trait Route {
     }
 }
 
+/// Query parameters that several routes carry: a list's filters, which its live rows, its bulk
+/// preview and its confirm need too. Declared once with `#[derive(Route)] #[route(query)]`, and
+/// included in a route with `#[route(query)]` on a field, which writes each of them as the route's
+/// own parameters. A route that must carry them cannot leave one out, and making one route's URL
+/// from another's copies one value. Handlers read them as `Query<ItemQuery>`.
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(Clone, Default, serde::Deserialize, Route, Fields)]
+/// #[route(query)]
+/// struct ItemQuery { search: Option<String>, page: Option<u32> }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// struct Items { #[route(query)] filters: ItemQuery }
+///
+/// #[derive(Route)]
+/// #[route("/items/live")]
+/// struct ItemsLive { #[route(query)] filters: ItemQuery, since: Option<u64> }
+///
+/// let filters = ItemQuery { search: Some("red & blue".into()), page: Some(2) };
+/// assert_eq!(Items { filters: filters.clone() }.href(), "/items?search=red%20%26%20blue&page=2");
+/// assert_eq!(ItemsLive { filters, since: Some(7) }.href(), "/items/live?search=red%20%26%20blue&page=2&since=7");
+/// assert_eq!(Items { filters: ItemQuery::default() }.href(), "/items");
+///
+/// // The handler reads the same struct back: `Query(filters): Query<ItemQuery>`.
+/// let read: ItemQuery = corten::form::from_bytes(b"search=red%20%26%20blue&page=2").unwrap();
+/// assert_eq!((read.search.as_deref(), read.page), (Some("red & blue"), Some(2)));
+/// ```
+///
+/// A `#[route(query)]` field whose type is not a set of query parameters does not compile:
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// struct Items { #[route(query)] search: Option<String> }
+/// ```
+pub trait Params {
+    /// Writes each parameter as `?key=value` or `&key=value` (`&amp;` with `html`), `first`
+    /// saying which. Implemented by `#[derive(Route)] #[route(query)]`.
+    fn write_params(&self, first: &mut bool, html: bool, out: &mut String);
+}
+
 /// Where a redirect or a current-page check points: a typed route, or an `axum::http::Uri` for a
 /// URL the app does not route (a payment page, a sign-in provider). Text is neither, so a path
 /// typed as a string does not compile. Used by [`crate::Req::redirect`] and

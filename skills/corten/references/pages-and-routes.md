@@ -32,6 +32,11 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
 4. Read everything from `req` before building the view: `html!` views render once and own what
    they capture.
 
+Routes that carry the same query parameters (a list's filters on its live, bulk and confirm
+routes) share one `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` as a
+`#[route(query)] filters: ItemQuery` field; handlers read `Query<ItemQuery>`. Never repeat the
+filter fields in each route.
+
 ## A component
 
 ```rust
