@@ -72,6 +72,11 @@ const RESERVED: &[&str] = &[
     "negotiate",
     "js",
     "by_key",
+    "number",
+    "money",
+    "date",
+    "time",
+    "date_time",
 ];
 
 #[derive(Debug, PartialEq)]
@@ -85,6 +90,8 @@ struct Locale {
     span: Span,
     file: String,
     messages: Vec<(String, Vec<Part>)>,
+    /// Its number, currency and date data, as the tokens of a `LocaleData`.
+    data: &'static str,
 }
 
 pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
@@ -142,7 +149,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         if locales.iter().any(|l: &Locale| l.tag == tag_text) {
             return err(tag.span(), format!("{tag_text:?} is listed twice"));
         }
-        locales.push(Locale { tag: tag_text, span: path.span(), file: file.display().to_string(), messages });
+        let data = locale_data(&tag_text).map_err(|e| (tag.span(), e))?;
+        locales.push(Locale { tag: tag_text, span: path.span(), file: file.display().to_string(), messages, data });
         j += 4;
         if is_punct(entries.get(j), ',') {
             j += 1;
@@ -295,6 +303,45 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     }
     let name_tokens: TokenStream = TokenTree::Ident(name.clone()).into();
     let count = locales.len();
+    let mut data = TokenStream::new();
+    for locale in &locales {
+        let tokens: TokenStream = locale.data.parse().map_err(|_| (locale.span, "corten: bad locale data".to_string()))?;
+        data.extend(q("&__A0,", &[tokens]));
+    }
+    methods.extend(q(
+        "#[doc(hidden)] #[inline] fn __corten_locale(self) -> &'static ::corten::i18n::__private::LocaleData {
+            static DATA: [&::corten::i18n::__private::LocaleData; __A1] = [__A0];
+            DATA[self.0 as usize]
+        }
+        /// `n` (an integer or a `corten::i18n::Decimal`) in this locale: `1,234,567` in en.
+        #[inline] __A2 fn number(self, n: impl ::corten::i18n::Number) -> ::corten::i18n::Formatted {
+            ::corten::i18n::Formatted::number(self.__corten_locale(), n.to_decimal())
+        }
+        /// An amount of money in this locale: `t.money(Minor(123450), USD)` is `$1,234.50` in en and
+        /// `1 234,50 $US` in fr.
+        #[inline] __A2 fn money(self, amount: impl ::corten::i18n::Amount, currency: ::corten::i18n::Currency) -> ::corten::i18n::Formatted {
+            ::corten::i18n::Formatted::money(self.__corten_locale(), &amount, currency)
+        }
+        /// A date in this locale, in UTC unless `.zone(..)` says otherwise: `Mar 22, 2026` (en, `Medium`).
+        #[inline] __A2 fn date(self, at: impl ::core::convert::Into<::std::time::SystemTime>, style: ::corten::i18n::DateStyle) -> ::corten::i18n::When {
+            ::corten::i18n::When::date(self.__corten_locale(), at.into(), style)
+        }
+        /// A time with its zone in this locale, in UTC unless `.zone(..)` says otherwise: `3:04 PM UTC` (en, `Short`).
+        #[inline] __A2 fn time(self, at: impl ::core::convert::Into<::std::time::SystemTime>, style: ::corten::i18n::TimeStyle) -> ::corten::i18n::When {
+            ::corten::i18n::When::time(self.__corten_locale(), at.into(), style)
+        }
+        /// A date and a time with its zone in this locale, in UTC unless `.zone(..)` says otherwise:
+        /// `Mar 22, 2026, 3:04 PM UTC` (en, `Medium`, `Short`).
+        #[inline] __A2 fn date_time(
+            self,
+            at: impl ::core::convert::Into<::std::time::SystemTime>,
+            date: ::corten::i18n::DateStyle,
+            time: ::corten::i18n::TimeStyle,
+        ) -> ::corten::i18n::When {
+            ::corten::i18n::When::date_time(self.__corten_locale(), at.into(), date, time)
+        }",
+        &[data, TokenTree::Literal(proc_macro::Literal::usize_unsuffixed(count)).into(), vis.clone()],
+    ));
     methods.extend(q(
         "/// The message whose catalog key (the dotted key, as in the JSON) is `key`, with its
         /// arguments taken by name from `args`: for a key an API answers with. `None` when the
@@ -344,12 +391,45 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     Ok(out)
 }
 
+/// The number, currency and date data for `tag`: its own, its alias's, or (without either) that
+/// of the tag without its last subtag (`fr-LU` has `fr`'s).
+fn locale_data(tag: &str) -> Result<&'static str, String> {
+    use crate::locale_data::{ALIASES, LOCALES};
+    let mut candidate = tag;
+    loop {
+        let same = |t: &&str| t.eq_ignore_ascii_case(candidate);
+        let target = ALIASES.iter().find(|(a, _)| same(a)).map_or(candidate, |(_, b)| *b);
+        if let Some((_, data)) = LOCALES.iter().find(|(t, _)| t.eq_ignore_ascii_case(target)) {
+            return Ok(data);
+        }
+        match candidate.rfind('-') {
+            Some(dash) => candidate = &candidate[..dash],
+            None => {
+                return Err(format!(
+                    "corten has no number and date data for {tag:?} or its language: the locales it has are the ones in scripts/locale-data.mjs"
+                ))
+            }
+        }
+    }
+}
+
+/// Every locale's data, `&[(tag, &LocaleData)]`: for corten's own test against Intl.
+pub fn all_locales() -> TokenStream {
+    let mut list = TokenStream::new();
+    for (tag, data) in crate::locale_data::LOCALES {
+        let tokens: TokenStream = data.parse().expect("locale data");
+        list.extend(q("(__A0, &__A1),", &[string(tag).into(), tokens]));
+    }
+    q("&[__A0]", &[list])
+}
+
 fn ident(name: &str) -> TokenTree {
     TokenTree::Ident(Ident::new(name, Span::call_site()))
 }
 
 /// Names that are a method of the messages type but not a Rust keyword: an argument may use them.
-const METHODS: &[&str] = &["locale", "index", "from_index", "negotiate", "js", "by_key"];
+const METHODS: &[&str] =
+    &["locale", "index", "from_index", "negotiate", "js", "by_key", "number", "money", "date", "time", "date_time"];
 
 /// An argument's parameter: the catalog's name in snake case (`{updatedAt}` is `updated_at`), raw
 /// when it is a Rust keyword (`{type}` is `r#type`), so a catalog shared with other apps compiles

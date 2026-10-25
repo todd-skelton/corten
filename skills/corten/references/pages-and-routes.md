@@ -69,6 +69,12 @@ When an API answers with a message key and its arguments, show it with
 `t.by_key(&row.title_key, &row.title_params)` (an `Option`: `None` for an unknown key or a missing
 argument; choose the fallback). Never write a `match` from key strings to methods.
 
+Numbers, money and dates come from `t` too, never `format!`: `t.number(n)`, `t.money(Minor(cents),
+USD)` or `t.money(Decimal::parse(&api.amount)?, USD)` (`const USD: Currency = Currency::new("USD")`;
+never a float), `t.date(at, DateStyle::Medium)`, `t.time(at, TimeStyle::Short)` and
+`t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;
+`corten::i18n::parse_timestamp` reads an API's RFC 3339 text). Each is a message argument too.
+
 ## A data screen
 
 A screen that native clients or agents also read derives `Serialize`, and its fields are the

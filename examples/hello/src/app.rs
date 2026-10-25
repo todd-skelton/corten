@@ -15,6 +15,7 @@ use corten::{
     Fragment, LiveSince,
     axum::{http::header, response::IntoResponse},
     feed::{Feed, Row, Since},
+    i18n::{Currency, Minor},
     prelude::*,
     security::cookie::{self, SetCookie},
 };
@@ -183,8 +184,10 @@ impl Row for Stock {
     }
 }
 
+/// The feed's one text for every viewer, in the app's default locale (`$1,234.50`).
 fn format_price(cents: u32) -> String {
-    format!("${}.{:02}", cents / 100, cents % 100)
+    const USD: Currency = Currency::new("USD");
+    Msg::default().money(Minor(cents), USD).to_string()
 }
 
 /// Moves one price per second, so the live prices and the last trade have something to show.
