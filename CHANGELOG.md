@@ -612,6 +612,12 @@ Corten is pre-1.0, so any minor version may change the API.
     compile; only `self`, `super`, `crate` and `_` remain, with an error that says to rename
     them. Found by the Chase Sets pilot, whose shared catalog has `{type}`
     ([#56 A catalog message cannot take an argument named like a Rust keyword ({type})](https://github.com/todd-skelton/corten/issues/56)).
+20. A catalog argument may be camelCase (`{updatedAt}`): the method's parameter is `updated_at`,
+    and `by_key` and `Message<"updatedAt">` use the catalog's name, so an API's params with the
+    same names fill it. Two names that make one parameter in a message (`{updatedAt}` and
+    `{updated_at}`) are an error naming both. Found by the Chase Sets pilot, whose shared catalogs
+    have 365 camelCase arguments
+    ([#58 A catalog message cannot take a camelCase argument ({updatedAt})](https://github.com/todd-skelton/corten/issues/58)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

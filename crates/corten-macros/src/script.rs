@@ -588,7 +588,7 @@ fn message_names(union: &str) -> Option<Vec<&str>> {
         .map(|part| {
             let part = part.trim();
             let name = part.strip_prefix('"').and_then(|p| p.strip_suffix('"'))?;
-            (!name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')).then_some(name)
+            (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')).then_some(name)
         })
         .collect()
 }
@@ -706,6 +706,12 @@ function helper() {}
         assert_eq!(handlers[0].params[0].1, Param::Checked(format!("ts::Message<{}u64>", message_id(&["count", "total"]))));
         assert_eq!(message_id(&["total", "count"]), message_id(&["count", "total"]), "the order does not matter");
         assert_eq!(handlers[0].params[1].1, Param::Any, "not a union of names");
+        let (camel, _) = parse("/** @param {Message<\"updatedAt\">} label */\nexport function f(label) {}").unwrap();
+        assert_eq!(
+            camel[0].params[0].1,
+            Param::Checked(format!("ts::Message<{}u64>", message_id(&["updatedAt"]))),
+            "the catalog's name"
+        );
     }
 
     #[test]

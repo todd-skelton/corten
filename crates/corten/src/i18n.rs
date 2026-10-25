@@ -15,8 +15,9 @@
 //! Catalogs are JSON objects of strings; nested objects make dotted keys, and each key is a method
 //! (`item.listing_count` is `item_listing_count`). `{name}` in a message is an argument, so
 //! `"{count} listings"` takes one parameter, `count`, of any `Display` type; `{{` is a brace. An
-//! argument may be named like a Rust keyword (`{type}` is the parameter `r#type`), so a catalog
-//! shared with other apps compiles as it is.
+//! argument may be named like a Rust keyword (`{type}` is the parameter `r#type`) or in camel
+//! case (`{updatedAt}` is the parameter `updated_at`), so a catalog shared with other apps
+//! compiles as it is; `by_key` and `Message<"updatedAt">` use the catalog's names.
 //!
 //! What fails the build: a key one catalog has and another lacks, a message whose arguments
 //! differ between locales, a misspelled key or a missing argument at the call site, a brace that
@@ -412,6 +413,11 @@ mod tests {
         assert_eq!(en.attention_detail("TCGplayer", "alias", 0.9).to_string(), "TCGplayer · alias · confidence 0.9");
         let by_key = fr.by_key("attention.detail", &[("provider", "P"), ("type", "alias"), ("match", "1")]);
         assert_eq!(by_key.unwrap().to_string(), "P · alias · confiance 1");
+        // camelCase arguments: snake case parameters, the catalog's names by key.
+        assert_eq!(en.attention_updated("today", "<Pika>").to_html(), "Updated today by &lt;Pika&gt;");
+        let params = [("updatedAt", "hier"), ("itemTitle", "Pika")];
+        assert_eq!(fr.by_key("attention.updated", &params).unwrap().to_string(), "Mis à jour hier par Pika");
+        assert!(fr.by_key("attention.updated", &[("updated_at", "x"), ("item_title", "y")]).is_none(), "by the catalog's names");
     }
 
     #[test]
