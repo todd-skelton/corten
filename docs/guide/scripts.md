@@ -172,7 +172,7 @@ runs only for events inside such an element:
 The rows need no handler of their own, so a row component can be markup only.
 
 **Groups.** When several handlers need the same elements, describe them once in the script with
-a `@typedef`. Each one with an element among its properties becomes a struct in `js`, checked
+a `@typedef`. Each one with an element (or a `Message`) among its properties becomes a struct in `js`, checked
 field by field, built once and passed as one argument:
 
 ```js
@@ -192,7 +192,11 @@ let sel = js::Selection { rows: row, boxes: select, count };
 // on:click={js::toggle(event, select.closest(), sel)}, on:change={js::selectAll(sel)}, ..
 ```
 
-The page gets `{rows:*row,boxes:*select,count:@count}`; the script gets an object.
+The page gets `{rows:*row,boxes:*select,count:@count}`; the script gets an object. A catalog
+message (`Message<"count">`, see [Text a script computes](#text-a-script-computes)) makes a typedef a
+group too, so text and the values it goes with travel together:
+`js::Counted { entity: "Levels", label: t.js().rows_selected() }`. A typedef of plain values
+only (strings, numbers) is not a group; it is one JSON value, any `ToJson` of that shape.
 
 **Keys.** `key={item.id}` on the elements of a ref (`data-key` in the page) lets a parameter
 typed `Map<string, HTMLTableCellElement>` get them by key, so rows from a [feed](live-data.md)

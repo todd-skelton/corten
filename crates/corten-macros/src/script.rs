@@ -381,8 +381,9 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
         i += 1;
     }
 
-    // A typedef is a group when one of its properties is something only the browser has (an
-    // element, an event, a signal); one of plain values stays a JSON value.
+    // A typedef is a group when one of its properties is not JSON: something only the browser
+    // has (an element, an event, a signal) or a catalog message; one of plain values stays a
+    // JSON value.
     let event_of = |ty: &str| events.iter().find(|(local, _)| local == ty).map(|(_, class)| class.clone());
     let plain_type = |ty: &str| match param_type(ty) {
         Param::Any => event_of(ty.trim()).map_or(Param::Any, Param::Event),
@@ -396,7 +397,7 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
             continue;
         }
         let fields: Vec<(String, Param)> = props.iter().map(|(n, t)| (n.clone(), plain_type(t))).collect();
-        if !fields.iter().any(|(_, p)| browser_only(p)) {
+        if !fields.iter().any(|(_, p)| not_json(p)) {
             continue;
         }
         for (field, _) in &fields {
@@ -421,11 +422,13 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
     Ok((handlers, groups))
 }
 
-/// True for a type only the browser can supply: an element (or several), an event, a signal.
-fn browser_only(param: &Param) -> bool {
+/// True for a type that is not written as JSON: one only the browser can supply (an element or
+/// several, an event, a signal), or a catalog message (`Message<..>`, its own `%[..]` form).
+fn not_json(param: &Param) -> bool {
     match param {
         Param::Checked(path) => {
-            path.starts_with("el::")
+            path.starts_with("ts::Message")
+                || path.starts_with("el::")
                 || path.starts_with("ts::Holds")
                 || path.starts_with("ev::")
                 || path.starts_with("ts::Array")
@@ -751,13 +754,18 @@ import { RowToggled, Saved as Done } from "corten/events";
 
 /** @typedef {{ count: HTMLOutputElement; label: string }} Counter */
 /** @typedef {{ id: string, qty: number }} Level */
+/** @typedef {{ entity: string, selected: Message<"count"> }} Count */
 
-/** @param {RowToggled} event @param {Selection} sel @param {Counter} c @param {Level} level @param {Done} done @param {Cleared} cleared */
-export function toggled(event, sel, c, level, done, cleared) {}
+/** @param {RowToggled} event @param {Selection} sel @param {Counter} c @param {Level} level @param {Done} done @param {Cleared} cleared @param {Count} n */
+export function toggled(event, sel, c, level, done, cleared, n) {}
 "#;
         let (handlers, groups) = parse(source).unwrap();
         let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
-        assert_eq!(names, ["Selection", "Counter"], "a typedef of plain values stays JSON");
+        assert_eq!(
+            names,
+            ["Selection", "Counter", "Count"],
+            "a typedef of plain values stays JSON; one with a message is a group"
+        );
         assert_eq!(groups[0].doc, "The grid's selection controls.");
         assert_eq!(
             groups[0].fields[0],
@@ -774,6 +782,7 @@ export function toggled(event, sel, c, level, done, cleared) {}
                 &Param::Any,
                 &Param::Event("Saved".into()),
                 &Param::Event("Cleared".into()),
+                &Param::Group("Count".into()),
             ]
         );
     }

@@ -15,3 +15,10 @@ export function watch(signal, options) {
 export function say(out, label) {
   out.textContent = label({ count: 3 });
 }
+
+/** @typedef {{ entity: string, label: Message<"count"> }} Counted */
+
+/** @param {HTMLOutputElement} out @param {Counted} counted */
+export function tally(out, counted) {
+  out.textContent = `${counted.entity}: ${counted.label({ count: 2 })}`;
+}
