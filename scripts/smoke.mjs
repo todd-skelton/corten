@@ -244,8 +244,9 @@ async function run(browser) {
     (await page.textContent("#watch-message")) === messageBefore && (await page.getAttribute("main form[data-patch]", "aria-busy")) === null,
   );
 
-  // A submit key (SubmitKey::field) is sent again until the submission has an answer, then renewed.
-  const zero = "0".repeat(32);
+  // A submit key (SubmitKey::field) is sent again until the submission has an answer, then renewed
+  // as another UUID v4.
+  const zero = "00000000-0000-4000-8000-000000000000";
   await page.evaluate((zero) =>
     document.querySelector("main")?.insertAdjacentHTML(
       "beforeend",
@@ -267,7 +268,7 @@ async function run(browser) {
   page.off("request", keyOf);
   check(
     "a submit key is sent again after a failed submit and renewed once the submit is answered",
-    kept === zero && keys.length === 2 && keys.every((k) => k === zero) && /^[0-9a-f]{32}$/.test(renewed) && renewed !== zero,
+    kept === zero && keys.length === 2 && keys.every((k) => k === zero) && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(renewed) && renewed !== zero,
     `${keys.join(", ")} -> ${renewed}`,
   );
   await page.evaluate(() => document.querySelector("#keyed")?.remove());

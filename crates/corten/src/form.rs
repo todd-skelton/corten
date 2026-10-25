@@ -334,7 +334,8 @@ impl Render for FieldMessage<'_> {
 /// One submission of a form, so a write whose answer was lost and is sent again applies once.
 ///
 /// Put a `SubmitKey` field in the form struct and draw it with [`SubmitKey::field`]: a hidden
-/// input with 128 fresh random bits, named by the field's [`FieldName`].
+/// input with a fresh random UUID v4 (122 random bits), named by the field's [`FieldName`]. A
+/// UUID because that is what APIs take as an idempotency key, so the app sends it on unchanged.
 ///
 /// ```
 /// use corten::prelude::*;
@@ -355,9 +356,15 @@ impl Render for FieldMessage<'_> {
 /// let html = form.to_html();
 /// assert!(html.contains(r#"<input type="hidden" name="submit" data-submit value=""#));
 ///
-/// let posted: Alert = corten::form::from_bytes(b"email=a%40b.c&submit=0123456789abcdef0123456789abcdef").unwrap();
-/// assert_eq!(posted.submit.as_str(), "0123456789abcdef0123456789abcdef");
-/// assert!(corten::form::from_bytes::<Alert>(b"email=a%40b.c&submit=x").is_err(), "not a key: a 422 naming the field");
+/// let key = &html[html.find("value=\"").unwrap() + 7..][..36];
+/// assert!(key.as_bytes()[14] == b'4' && b"89ab".contains(&key.as_bytes()[19]), "a version 4 UUID: {key}");
+///
+/// let posted: Alert = corten::form::from_bytes(b"email=a%40b.c&submit=3F2504E0-4F89-41D3-9A0C-0305E82C3301").unwrap();
+/// assert_eq!(posted.submit.as_str(), "3f2504e0-4f89-41d3-9a0c-0305e82c3301", "read in either case, kept lowercase");
+/// for bad in ["x", "3f2504e04f8941d39a0c0305e82c3301", "3f2504e0-4f89-11d3-9a0c-0305e82c3301"] {
+///     let body = format!("email=a%40b.c&submit={bad}");
+///     assert!(corten::form::from_bytes::<Alert>(body.as_bytes()).is_err(), "{bad}: not a UUID v4, a 422 naming the field");
+/// }
 /// ```
 ///
 /// The browser sends the same key for as long as the submission has no answer: a page reloaded
@@ -375,10 +382,10 @@ pub struct SubmitKey(Box<str>);
 impl SubmitKey {
     /// The hidden input that carries a new key: `<input type="hidden" name=".." data-submit value="..">`.
     pub fn field(name: FieldName) -> SubmitField {
-        SubmitField { name, key: crate::security::random_hex() }
+        SubmitField { name, key: uuid_v4(crate::security::random_hex()) }
     }
 
-    /// The 32 lowercase hex digits, for the app's store.
+    /// The UUID, lowercase and hyphenated: `3f2504e0-4f89-41d3-9a0c-0305e82c3301`.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -393,18 +400,41 @@ impl fmt::Display for SubmitKey {
 impl<'de> serde::Deserialize<'de> for SubmitKey {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         let text = <std::borrow::Cow<'de, str>>::deserialize(deserializer)?;
-        if text.len() == 32 && text.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
-            Ok(SubmitKey(text.into()))
+        let bytes = text.as_bytes();
+        let shaped = bytes.len() == 36
+            && bytes
+                .iter()
+                .enumerate()
+                .all(|(i, b)| if matches!(i, 8 | 13 | 18 | 23) { *b == b'-' } else { b.is_ascii_hexdigit() });
+        if shaped && bytes[14] == b'4' && b"89abAB".contains(&bytes[19]) {
+            Ok(SubmitKey(text.to_ascii_lowercase().into()))
         } else {
-            Err(serde::de::Error::custom("a submit key is 32 lowercase hex digits"))
+            Err(serde::de::Error::custom("a submit key is a UUID v4, like 3f2504e0-4f89-41d3-9a0c-0305e82c3301"))
         }
     }
+}
+
+/// 32 random hex digits as a version 4 UUID: the version and variant digits set, hyphens added.
+fn uuid_v4(hex: [u8; 32]) -> [u8; 36] {
+    let mut out = [b'-'; 36];
+    let mut digits = hex;
+    digits[12] = b'4';
+    digits[16] = b"89ab"[(digits[16] as usize) % 4];
+    let mut at = 0;
+    for (i, digit) in digits.iter().enumerate() {
+        if matches!(i, 8 | 12 | 16 | 20) {
+            at += 1;
+        }
+        out[at] = *digit;
+        at += 1;
+    }
+    out
 }
 
 /// [`SubmitKey::field`]'s hidden input.
 pub struct SubmitField {
     name: FieldName,
-    key: [u8; 32],
+    key: [u8; 36],
 }
 
 impl Render for SubmitField {
