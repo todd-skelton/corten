@@ -23,6 +23,26 @@
 //! arguments is a `&'static str`, and one with arguments writes its pieces straight into the page,
 //! escaped, with no lookup and no intermediate string.
 //!
+//! # A message chosen at run time
+//!
+//! An API that answers with a message key and its arguments, for the client to show in the user's
+//! locale, names a message the page cannot name in its source. `t.by_key(key, &args)` finds it by
+//! its catalog key (the dotted key as written in the JSON) and fills its arguments by name from
+//! `args` (an [`Args`]: pairs, a map, or a JSON object of the answer). It is `None` when the
+//! catalog has no such key or `args` lacks one of the message's arguments, so the page decides what
+//! to show instead, and it renders escaped like any other message:
+//!
+//! ```
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+//! use corten::i18n::Messages as _;
+//!
+//! let fr = Msg::for_locale("fr");
+//! let found = fr.by_key("item.image", &[("title", "<Pika>"), ("n", "2")]).unwrap();
+//! assert_eq!(found.to_string(), "Image 2 de <Pika>");
+//! assert!(fr.by_key("item.missing", &[("n", 1)]).is_none(), "no such key");
+//! assert!(fr.by_key("item.image", &[("n", 1)]).is_none(), "no title");
+//! ```
+//!
 //! Numbers, money and dates are formatted by the app before they are passed in, with the
 //! negotiated locale (`t.locale()` is a BCP 47 tag for a CLDR library such as ICU4X). Plural
 //! rules are not built in: use a key per form.
@@ -192,6 +212,135 @@ impl<const ARGS: u64> Template<ARGS> {
     }
 }
 
+/// The arguments of a message found by its key (`by_key`, from [`messages!`]), by name: pairs
+/// (`[("count", 3)]`), a map, or a JSON object (feature `json`; a string is written without its
+/// quotes, any other value as its JSON).
+pub trait Args {
+    /// Calls `write` with the argument `name` and returns true, or returns false when there is none.
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool;
+}
+
+impl<K: AsRef<str>, V: Display> Args for [(K, V)] {
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool {
+        self.iter().find(|(k, _)| k.as_ref() == name).map(|(_, v)| write(v)).is_some()
+    }
+}
+
+impl<K: AsRef<str>, V: Display, const N: usize> Args for [(K, V); N] {
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool {
+        self.as_slice().arg(name, write)
+    }
+}
+
+impl<K: AsRef<str>, V: Display> Args for Vec<(K, V)> {
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool {
+        self.as_slice().arg(name, write)
+    }
+}
+
+impl<K: std::borrow::Borrow<str> + Ord, V: Display> Args for std::collections::BTreeMap<K, V> {
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool {
+        self.get(name).map(|v| write(v)).is_some()
+    }
+}
+
+impl<K: std::borrow::Borrow<str> + Eq + std::hash::Hash, V: Display, S: std::hash::BuildHasher> Args
+    for std::collections::HashMap<K, V, S>
+{
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool {
+        self.get(name).map(|v| write(v)).is_some()
+    }
+}
+
+#[cfg(feature = "json")]
+impl Args for serde_json::Map<String, serde_json::Value> {
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool {
+        match self.get(name) {
+            Some(serde_json::Value::String(text)) => write(text),
+            Some(value) => write(value),
+            None => return false,
+        }
+        true
+    }
+}
+
+/// An object's members (another value has none).
+#[cfg(feature = "json")]
+impl Args for serde_json::Value {
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool {
+        self.as_object().is_some_and(|members| members.arg(name, write))
+    }
+}
+
+impl<A: Args + ?Sized> Args for &A {
+    fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool {
+        (**self).arg(name, write)
+    }
+}
+
+/// A message found by its key, with its arguments: what `by_key` returns. In `html!` it renders
+/// escaped; `to_string()` gives the plain text.
+pub struct Found<'a, A: ?Sized> {
+    pieces: &'static [__private::Piece],
+    args: &'a A,
+}
+
+impl<'a, A: Args + ?Sized> Found<'a, A> {
+    /// The message, or `None` when `args` lacks one of its arguments.
+    #[doc(hidden)]
+    pub fn new(pieces: &'static [__private::Piece], args: &'a A) -> Option<Self> {
+        let complete = pieces.iter().all(|piece| match piece {
+            __private::Piece::Arg(name) => args.arg(name, &mut |_| {}),
+            __private::Piece::Text(..) => true,
+        });
+        complete.then_some(Found { pieces, args })
+    }
+
+    fn write(&self, sink: &mut Sink<'_>) {
+        for piece in self.pieces {
+            match piece {
+                __private::Piece::Text(plain, html) => sink.text(plain, html),
+                __private::Piece::Arg(name) => {
+                    self.args.arg(name, &mut |value| sink.arg(value));
+                }
+            }
+        }
+    }
+}
+
+impl<A: Args + ?Sized> Render for Found<'_, A> {
+    fn render(&self, out: &mut String) {
+        self.write(&mut Sink { out, html: true })
+    }
+}
+
+impl<A: Args + ?Sized> AttrValue for Found<'_, A> {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        out.push_str(name);
+        out.push_str("=\"");
+        self.render(out);
+        out.push('"');
+    }
+}
+
+impl<A: Args + ?Sized> Display for Found<'_, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut out = String::new();
+        self.write(&mut Sink { out: &mut out, html: false });
+        f.write_str(&out)
+    }
+}
+
+/// Used by the code `messages!` generates. Not a public API.
+#[doc(hidden)]
+pub mod __private {
+    /// A run of a message: its text (plain and escaped) or an argument's name.
+    pub enum Piece {
+        Text(&'static str, &'static str),
+        Arg(&'static str),
+    }
+}
+
 /// A message with its arguments, from a [`messages!`] method. In `html!` it renders escaped (as
 /// text or an attribute value); `to_string()` gives the plain text.
 pub struct Text<F>(F);
@@ -257,6 +406,27 @@ mod tests {
         assert_eq!(view.to_html(), r#"<img alt="Image 1 de A &amp; B"><p>1 listings</p>"#);
         assert_eq!(Msg::for_locale("FR"), fr);
         assert_eq!(Msg::default().locale(), "en");
+    }
+
+    #[test]
+    fn a_message_is_found_by_its_catalog_key_with_named_arguments() {
+        let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+        let args = [("title", "<Pika>"), ("n", "2")];
+        assert_eq!(en.by_key("item.image", &args).unwrap().to_html(), "&lt;Pika&gt; image 2", "escaped in a page");
+        assert_eq!(fr.by_key("item.image", &args).unwrap().to_string(), "Image 2 de <Pika>");
+        assert_eq!(en.by_key("item.listings", &[("unused", 1)]).unwrap().to_string(), "Listings", "no arguments");
+        assert_eq!(en.by_key("brace", &[("x", 0)]).unwrap().to_html(), "{literal} &amp; more");
+        assert!(en.by_key("item_listings", &args).is_none(), "the catalog key, not the method name");
+        assert!(en.by_key("item.listing_count", &[("total", 3)]).is_none(), "an argument is missing");
+        let mut map = std::collections::HashMap::new();
+        map.insert("count".to_string(), 3);
+        assert_eq!(fr.by_key("item.listing_count", &map).unwrap().to_string(), "3 annonces");
+        #[cfg(feature = "json")]
+        {
+            let answer: serde_json::Value = serde_json::from_str(r#"{"titleParams":{"title":"A & B","n":4}}"#).unwrap();
+            let view = crate::html! { <p>{en.by_key("item.image", &answer["titleParams"])}</p> };
+            assert_eq!(view.to_html(), "<p>A &amp; B image 4</p>", "a JSON string without quotes, a number as written");
+        }
     }
 
     #[test]
