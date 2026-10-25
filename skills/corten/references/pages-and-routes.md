@@ -24,7 +24,8 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
 ```
 
 1. Mount the route with `Item::PATH`; link with the struct. Fields not in the path are query
-   parameters (`pub tab: Option<&'a str>`). Redirect with `req.redirect(&Item { id })`.
+   parameters (`pub tab: Option<&'a str>`). Redirect with `req.redirect(&Item { id })`; a page
+   that moved for good (an old slug) answers `req.moved(&Item { id })`, a 301.
 2. The first argument of `req.page` is the title, or a `Meta` for description, canonical and
    social tags. A page showing a read that has not caught up with a write yet adds
    `.read_again(Duration::from_secs(2))` while it is behind (and stops after a time limit); the
@@ -37,7 +38,9 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
 Routes that carry the same query parameters (a list's filters on its live, bulk and confirm
 routes) share one `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` as a
 `#[route(query)] filters: ItemQuery` field; handlers read `Query<ItemQuery>`. Never repeat the
-filter fields in each route.
+filter fields in each route. Parameters whose names are data (an option per dimension) are a
+`#[route(prefix = "dimension.")] dimensions: &BTreeMap<String, String>` field, never a query string
+built by hand.
 
 ## A component
 

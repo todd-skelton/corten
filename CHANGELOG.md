@@ -341,6 +341,17 @@ Corten is pre-1.0, so any minor version may change the API.
     otherwise make live. The runtime is 282 B larger gzipped (7,525 to 7,807 B). hello's
     `/saved` shows it
     ([#69 A page cannot ask to be read again shortly, and the Refresh header only works on a full load](https://github.com/todd-skelton/corten/issues/69)).
+47. A typed route can carry query parameters whose names are data: a field marked
+    `#[route(prefix = "dimension.")]` (a `BTreeMap`, or a `Vec` or slice of pairs) writes each
+    entry as `dimension.<key>=<value>`, in order, both encoded. A `HashMap` (whose order would make
+    the same link differ), a prefix with a character a URL escapes, and a prefix that overlaps
+    another parameter's name are compile errors. Found by the Chase Sets pilot, whose variant
+    links built `dimension.<id>=<option>` by hand
+    ([#71 A typed route cannot carry query parameters whose names are data (dimension.<id>=<option>)](https://github.com/todd-skelton/corten/issues/71)).
+48. `req.moved(&route)`: a `301 Moved Permanently` for a page that moved for good (an old slug, an
+    item asked for by its id), kept by the browser for a day (`private, max-age=86400`); a
+    `data-patch` form is sent on as by `redirect`, which stays a 303
+    ([#72 A page that moved cannot redirect permanently (Req::redirect is always 303)](https://github.com/todd-skelton/corten/issues/72)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

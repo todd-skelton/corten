@@ -92,6 +92,25 @@ the filters cannot leave one out: a filter added to `ItemQuery` is in every rout
 handler reads `Query<ItemQuery>`, and the filter form names its inputs `ItemQuery::FIELDS`. A
 `#[route(query)]` field whose type is not a query set does not compile.
 
+When the parameters' names are data (an option per product dimension, a filter per attribute),
+mark a map field with a prefix, and each entry is written as `prefix` + key = value, in order:
+
+```rust,ignore
+#[derive(Route)]
+#[route("/items/{slug}")]
+struct Item<'a> { slug: &'a str, #[route(prefix = "dimension.")] dimensions: &'a BTreeMap<String, String> }
+
+// Item { slug: "pika", dimensions: &picked } is /items/pika?dimension.form=graded&dimension.grade=PSA%208
+#[derive(serde::Deserialize)]
+struct ItemQuery { #[serde(flatten)] rest: BTreeMap<String, String> }  // keep the keys that start with the prefix
+```
+
+The field is a `BTreeMap`, or a `Vec` or slice of pairs (kept in its order, repeats and all);
+a `HashMap` does not compile, because its order would make the same link differ between
+renders. The key and the value are percent-encoded. The prefix is letters, digits and `-._~`;
+no other parameter's name may start with it, and no two prefixes may start one another, because
+the handler could not tell them apart: both are compile errors.
+
 Measured in a release build (Docker on a Windows workstation, best of five runs): the item page's two-field
 alert form reads in 673 ns with `corten::Form` and 871 ns with axum's `Form`, request included.
 200 ids read into a `Vec<String>` in 22.3 µs; one comma-joined field split in the handler took
@@ -161,6 +180,13 @@ A page handler may redirect too (an old URL, a guard sending someone to sign in)
 navigation follows it: the page it was sent to is swapped in and replaces the requested URL
 in the history, so Back skips the URL that redirected.
 
+When a page has moved for good (an item asked for by an old slug or its id, a renamed
+category), answer `req.moved(&route)`: a `301 Moved Permanently`, so search engines give the
+old URL's place to the new one, and the browser keeps the redirect for a day (its own copy
+only; a shared cache does not) and goes straight there next time. Any parameter the new URL
+needs is a field of its route; the old URL's other parameters are not carried over. A
+`data-patch` form that gets it is sent on, as by `redirect`. Use `redirect` after a write.
+
 ## A read that has not caught up yet
 
 A write is often read back from a projection that is a moment behind: the page after the
@@ -182,6 +208,7 @@ Without JavaScript the browser reloads the page (`<meta http-equiv="refresh">` i
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
 the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
 page that sends one.
+
 
 ## Errors
 
