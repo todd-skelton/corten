@@ -586,6 +586,11 @@ Corten is pre-1.0, so any minor version may change the API.
     where a patch carries over what the user typed (which lost the text in a form like that
     inside a patched block)
     ([#44 A form with a control named id cannot be patched](https://github.com/todd-skelton/corten/issues/44)).
+18. A `@typedef` with a `Message` property is a group (`js::Counted { entity, label: t.js().x() }`),
+    as one with an element is: a message is not JSON, so the typedef stayed a JSON value, no
+    `js::Counted` existed, and the compiler said only that it could not find it. Found by the
+    Chase Sets pilot, which passed a count's texts as three parameters
+    ([#50 A @typedef of plain values and a Message is not a group, and the error does not say why](https://github.com/todd-skelton/corten/issues/50)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

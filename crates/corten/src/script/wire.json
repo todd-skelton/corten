@@ -411,6 +411,88 @@
           ]
         }
       ]
+    },
+    {
+      "name": "a group with a message",
+      "attr": "connect:shared.tally(@out,{entity:\"Levels\",label:%[\"\",\"count\",\" listings\"]})",
+      "parsed": [
+        {
+          "type": "connect",
+          "module": "shared",
+          "name": "tally",
+          "args": [
+            {
+              "kind": "@",
+              "owner": null,
+              "name": "out"
+            },
+            {
+              "kind": "{",
+              "fields": [
+                [
+                  "entity",
+                  {
+                    "kind": "v",
+                    "value": "Levels"
+                  }
+                ],
+                [
+                  "label",
+                  {
+                    "kind": "%",
+                    "parts": [
+                      "",
+                      "count",
+                      " listings"
+                    ]
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a group with a message in another locale",
+      "attr": "connect:shared.tally(@out,{entity:\"Levels\",label:%[\"\",\"count\",\" annonces\"]})",
+      "parsed": [
+        {
+          "type": "connect",
+          "module": "shared",
+          "name": "tally",
+          "args": [
+            {
+              "kind": "@",
+              "owner": null,
+              "name": "out"
+            },
+            {
+              "kind": "{",
+              "fields": [
+                [
+                  "entity",
+                  {
+                    "kind": "v",
+                    "value": "Levels"
+                  }
+                ],
+                [
+                  "label",
+                  {
+                    "kind": "%",
+                    "parts": [
+                      "",
+                      "count",
+                      " annonces"
+                    ]
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }

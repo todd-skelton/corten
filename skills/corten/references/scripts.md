@@ -67,7 +67,7 @@ export function showAll(rows, rest, button) {
 1. One handler for a list: put it on the container with `row.closest()`, the element with ref
    `row` around the event's target: `<tbody on:click={js::toggle(event, select.closest(), sel)}>`.
    Rows then need no handlers (a row component can be plain `#[component]`).
-2. Elements several handlers need: a `@typedef {object} Selection` with `@property` lines in the
+2. Elements (or messages) several handlers need: a `@typedef {object} Selection` with `@property` lines in the
    script becomes `js::Selection { rows: row, count }`; build it once, pass it as one argument.
 3. Rows a feed updates by id: `key={item.id}` on the cells, a `Map<string, HTMLTableCellElement>`
    parameter, `cells.get(row.id)`. Do not read `data-*` attributes for this.
