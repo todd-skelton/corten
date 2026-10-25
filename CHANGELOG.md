@@ -246,8 +246,9 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#24 corten::live responses are never compressed](https://github.com/todd-skelton/corten/issues/24)).
 36. `SubmitKey` (in the prelude): one submission of a form, so a write whose answer was lost and
     is sent again applies once. A form struct takes a `SubmitKey` field and draws it with
-    `SubmitKey::field(f.submit)`, a hidden input with 128 random bits; a value that is not 32
-    lowercase hex digits is a 422 naming the field. A reloaded post sends the same key, and the
+    `SubmitKey::field(f.submit)`, a hidden input with a random UUID v4 (the form most APIs take an
+    idempotency key in, [#35 A SubmitKey can only be 32 hex digits, so an API that takes a UUID cannot use it](https://github.com/todd-skelton/corten/issues/35));
+    a value that is not a UUID v4 is a 422 naming the field. A reloaded post sends the same key, and the
     runtime keeps it for a `data-patch` form until a submit gets an answer below 500 (a network
     error, a 5xx or an abort keeps it), then renews it. The app stores keys with its writes; Corten
     keeps none. Asked for by the Chase Sets pilot, which wrote about 150 lines for it
