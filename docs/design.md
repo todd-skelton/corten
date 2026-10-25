@@ -43,18 +43,32 @@ framework's shape, and what it does not do yet.
    `doc.asset("style.css")` panics on a missing file in debug builds, so `corten dev` and the
    page test `corten new` writes find a typo on the first render.
 
+9. **Work happens where it is fastest for the user.** The server renders the first page, so it
+   arrives finished, and answers what only it can: a write, and data the page does not have. What
+   the page can do with what it already has (sorting, filtering, selecting, a total, showing and
+   hiding) is a handler, since no render is faster than no round trip; a view makes even 1,000
+   rows fast to change ([README](../README.md#client-heavy-screens)). Rust renders on the server
+   because it is the fastest renderer there, and plain JavaScript runs in the browser because no
+   framework or WASM layer is faster than the platform's own DOM calls. The scripts guide has the
+   table for choosing ([Server or browser](guide/scripts.md#server-or-browser)).
+
 ## Rules
 
-1. HTML comes from the server, in `html!`. Scripts never build markup from strings; they move,
-   show or hide server-rendered nodes. Extra rows ship in a `<template ref={rest}>`. (One
-   exception: `ComboBox` mirrors the server's `<option>`s into its listbox, so each option is
-   sent once.)
+1. Markup is written in `html!`, never built from strings in a script. A script makes new
+   elements by cloning markup the server rendered (a `<template ref={rest}>`, or a view's rows,
+   `rows(..).push(items)`, filled through typed holes), and moves, shows, hides or writes the
+   ones on the page. (One exception: `ComboBox` mirrors the server's `<option>`s into its
+   listbox, so each option is sent once.)
 2. A fragment that can be patched is a component, rendered by the page and by the patch, so the
    two cannot drift.
 3. A handler reaches the page only through its arguments: refs, `event`, `target`, `signal`,
    `scope` and values. State that outlives an event is the DOM itself or `state(el, init)`.
-4. User-facing text lives in views or the view model, never in scripts.
-5. Everything works without JavaScript: links are links and forms post.
+4. User-facing text lives in views or the view model, never in scripts. A script shows text the
+   server rendered; text that depends on what a script computed ("3 selected") has no typed way
+   in yet ([#17 Scripts have no typed way to show user-facing text they compute](https://github.com/todd-skelton/corten/issues/17)).
+5. Pages and actions work without JavaScript: links are links and forms post. A feature only a
+   browser can provide (drag and drop, a canvas) needs JavaScript; one that makes a server action
+   instant (filtering the rows on the page as you type) keeps the form that does it without.
 6. A page another surface reads derives `Serialize`, and its fields are its whole view model
    (formatted text included). Then `req.screen` gives every surface the same data.
 7. `App` configures the whole app; a part of it under a URL prefix is an `Area` (or an `Api`

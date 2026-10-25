@@ -71,6 +71,25 @@ modules are compiled into the binary, served at versioned URLs, loaded as module
 pages that render them and imported when markup that names them joins later. List each component once,
 `App::new(routes).components(&[OfferList])`.
 
+## Server or browser
+
+Do the work where it is fastest for the user. A round trip costs a network hop and a render
+(tens of milliseconds on a phone, more on a poor connection); a handler changing the page costs
+microseconds, and a [view](#views) changes 1,000 rows in a few milliseconds. So the server
+answers what only it can, and the browser does the rest.
+
+| The page needs | Do it with | Why |
+|---|---|---|
+| to sort, filter, select or page through rows it already has | a handler, and a `#[component(view)]` for many rows | no request |
+| to show, hide or expand what it already has | `<details>`, `popover`, `<dialog>`, or a handler with a `<template>` | the platform does it |
+| a value computed from what is on the page (a total, a preview) | a handler | no request |
+| to save, buy, sign in or change anything | a form the server answers, `data-patch` | the server decides what a write does |
+| data it does not have (the next results, a search across everything) | a link, or a `GET` form | only the server has it |
+| data that changes on the server | a [feed](live-data.md) or `<corten-live>` | sent when it changes |
+
+A handler that makes a server action instant keeps the action: rows a handler filters as the
+user types sit in a `GET` form that filters them on the server without JavaScript.
+
 ## Components and their roots
 
 A component with refs, or whose handlers take `scope`, has one root element. The root is
@@ -233,11 +252,14 @@ from `corten` gives the same object for the same element until it is gone.
 
 ## Rules
 
-1. HTML comes from the server, in `html!`. Scripts never build markup from strings; they move,
-   show or hide server-rendered nodes. Extra rows ship in a `<template ref={rest}>`.
+1. Markup is written in `html!`, never built from strings in a script. A script makes new
+   elements by cloning markup the server rendered (a `<template ref={rest}>`, or a view's rows,
+   `rows(..).push(items)`), and moves, shows, hides or writes the ones on the page.
 2. A script reaches the page only through its arguments: refs, `event`, `target`, `signal`,
    `scope`, values. A handler that looks elements up by selector is a smell.
-3. User-facing text lives in views or the view model, never in scripts.
+3. User-facing text lives in views or the view model, never in scripts. Text that depends on
+   what a script computed has no typed way in yet
+   ([#17 Scripts have no typed way to show user-facing text they compute](https://github.com/todd-skelton/corten/issues/17)).
 4. Cleanup is `signal` alone: pass it to `addEventListener`, `fetch`, `subscribe` and `mount`.
    See [Cancellation](cancellation.md).
 

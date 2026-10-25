@@ -5,9 +5,11 @@ description: Build or change web apps on the Corten Rust framework (html! views,
 
 # Corten
 
-Corten renders every page on the server with `html!`. The browser gets HTML, a small runtime and
-the handler scripts the page names, and live data arrives as patches over server-sent events. One handler
-answers a full page, a client navigation, a form patch and a JSON data request.
+Corten is built for speed at the user's end. Rust renders the first page on the server with
+`html!`; in the browser, the handler scripts the page names do everything the page can do with
+what it already has, with no request. The server answers writes and data the page lacks, and
+live data arrives as patches over server-sent events. One request handler answers a full page,
+a client navigation, a form patch and a JSON data request.
 
 ## Rules
 
@@ -18,19 +20,23 @@ These are what the framework is built around. Code that breaks them fights the f
    `let (a, b) = refs();`, handlers are `on:event={js::name(..)}` calls checked against the
    script's JSDoc, and user-facing text comes from `messages!`. If you are typing a path, field name, class or key as a string, stop and find
    the typed form.
-2. **Markup is Rust.** Every element comes from `html!`. Scripts move, show, hide or fill
-   server-rendered nodes; they never build HTML from strings. Extra rows ship inside
-   `<template ref={rest}>`.
+2. **Markup is Rust.** Every element comes from `html!`. Scripts never build HTML from strings:
+   they clone markup the server rendered (`<template ref={rest}>`, a view's `rows(..).push(..)`)
+   and move, show, hide or fill what is on the page.
 3. **A patched fragment is a component** with an `id`, rendered by the page and by the patch, so
    the two cannot drift.
-4. **Everything works without JavaScript.** Links are links, and forms post and get the whole
-   page back. `data-patch` and handlers only make the page better.
-5. **Cleanup is `signal`.** A handler that takes `signal` gets an `AbortSignal` that aborts
+4. **Work goes where it is fastest.** Sorting, filtering, selecting, totals, showing and hiding
+   what the page already has are handlers, not round trips. Writes and data the page does not
+   have go to the server. Do not default to a server patch for something the browser can do.
+5. **Pages and actions work without JavaScript.** Links are links, and forms post and get the
+   whole page back. A handler that makes a server action instant keeps the form that does it
+   without; a feature only a browser can provide (drag and drop, a canvas) needs JavaScript.
+6. **Cleanup is `signal`.** A handler that takes `signal` gets an `AbortSignal` that aborts
    when its element leaves the page; pass it to `addEventListener`, `fetch`, `subscribe` and
    `mount`. On the server, spawned work watches `req.signal()`.
-6. **Text lives in views or the view model**, never in scripts. A value every surface
+7. **Text lives in views or the view model**, never in scripts. A value every surface
    shows (a formatted price) is a field the server fills.
-7. **Prefer the platform.** Use `<dialog>`, `popover`, `<details>`, form validation attributes
+8. **Prefer the platform.** Use `<dialog>`, `popover`, `<details>`, form validation attributes
    and CSS before writing a handler.
 
 ## Decision table
@@ -39,7 +45,8 @@ These are what the framework is built around. Code that breaks them fights the f
 |---|---|---|
 | a page or a link to one | a handler returning `req.page`, a `Route` type | [pages-and-routes.md](references/pages-and-routes.md) |
 | text in more than one language | `messages!` and `req.t()` | [pages-and-routes.md](references/pages-and-routes.md) |
-| a form that updates part of the page | `data-patch` plus `req.patch`, `req.invalid` for errors | [forms.md](references/forms.md) |
+| to sort, filter, select or total what the page already shows | a handler, with `#[component(view)]` rows when there are many; no request | [scripts.md](references/scripts.md) |
+| a write that updates part of the page | `data-patch` plus `req.patch`, `req.invalid` for errors | [forms.md](references/forms.md) |
 | behavior in the browser | `#[component(js)]`, exported functions in a script next to it | [scripts.md](references/scripts.md) |
 | a child that reports to its parent | a `Handler` prop, or an `#[event]` | [scripts.md](references/scripts.md) |
 | a fragment the server keeps current | `<corten-live src={Route}>` plus `corten::live` | [scripts.md](references/scripts.md) |
