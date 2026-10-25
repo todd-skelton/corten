@@ -107,7 +107,7 @@ fn build(root: &Path) -> Result<PathBuf, String> {
 }
 
 /// The string value of `"field":"..."` in a line of cargo's JSON output.
-fn json_string_field(line: &str, field: &str) -> Option<String> {
+pub(crate) fn json_string_field(line: &str, field: &str) -> Option<String> {
     let start = line.find(&format!(r#""{field}":""#))? + field.len() + 4;
     let mut out = String::new();
     let mut chars = line[start..].chars();

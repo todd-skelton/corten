@@ -215,7 +215,14 @@ Corten is pre-1.0, so any minor version may change the API.
     handler sends only what changed after it, so a page view or a reconnect costs no extra read
     or render. Asked for by the Chase Sets pilot, whose catalog lists drew every row on each
     connection ([#15 A <corten-live> stream cannot resume after a reconnect](https://github.com/todd-skelton/corten/issues/15)).
-33. `#[derive(FromJson)]`, `corten::json::from_slice` and `from_str` (feature `json`, the derive in the
+33. `corten check` type-checks the app's scripts: TypeScript's `tsc` (from the app's `node_modules`
+    or the `PATH`) runs in strict JavaScript mode over every `.js` file in `src/` and `static/`,
+    against the DOM's types, the `corten` runtime's JSDoc and the app's generated `types/*.d.ts`,
+    with a config it writes under `target/corten/`. The compiler already checked each handler's
+    call; this checks its body. TypeScript stays optional: without `tsc` the check passes and says
+    how many scripts were not checked. Asked for by the Chase Sets pilot
+    ([#20 corten check does not type-check an app's scripts](https://github.com/todd-skelton/corten/issues/20)).
+34. `#[derive(FromJson)]`, `corten::json::from_slice` and `from_str` (feature `json`, the derive in the
     prelude): JSON read by Corten's reader, which matches each key against the type's fields, makes
     each value straight from the text and skips (validating) the rest. Where it meets anything it
     does not follow (an escaped key, a missing or duplicate field, a number it does not parse
