@@ -89,9 +89,17 @@ impl Meta {
     /// Structured data as `<script type="application/ld+json">`. It is data, not script, so the
     /// CSP does not apply; `<` is escaped so no value can end the element.
     #[cfg(feature = "json")]
-    pub fn json_ld(mut self, value: &impl serde::Serialize) -> Self {
-        let json = serde_json::to_string(value).expect("JSON-LD serializes").replace('<', "\\u003c");
-        self.tags.push_str(&format!(r#"<script type="application/ld+json" data-corten-head>{json}</script>"#));
+    pub fn json_ld(mut self, value: &(impl crate::json::ToJson + ?Sized)) -> Self {
+        let json = value.to_json();
+        self.tags.push_str(r#"<script type="application/ld+json" data-corten-head>"#);
+        // `<` only ever appears inside a JSON string, where `\u003c` reads the same.
+        for (i, part) in json.split('<').enumerate() {
+            if i > 0 {
+                self.tags.push_str("\\u003c");
+            }
+            self.tags.push_str(part);
+        }
+        self.tags.push_str("</script>");
         self
     }
 

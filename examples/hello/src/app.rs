@@ -153,7 +153,7 @@ async fn sign_in(req: Req) -> corten::Result {
 
 /// A feed row. `price` is the display text, kept with the cents so every surface shows the
 /// same string and no client re-implements the formatting.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Stock {
     pub id: String,
     pub name: String,
@@ -223,7 +223,7 @@ async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> im
 }
 
 /// The watchlist screen's data: what the view shows, and what a data client gets.
-#[derive(Serialize)]
+#[derive(ToJson)]
 pub struct Home {
     stocks: Vec<Stock>,
     last_trade: String,

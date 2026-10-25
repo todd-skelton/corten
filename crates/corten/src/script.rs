@@ -50,7 +50,7 @@
 //!   `on:`), `signal` (aborts when that element leaves the page) and `scope` (the root element of
 //!   the component that made the handler). Their types come from the event and the tag.
 //! - Other arguments are values, sent as JSON: strings, numbers, booleans, typed routes (their
-//!   URL), and with feature `json` anything `Serialize`.
+//!   URL), and with feature `json` anything `ToJson`.
 //! - `on:connect` runs when the element joins the page (its `signal` aborts when it leaves).
 //! - A handler is a value: a component takes one as a prop (`on_remove: Handler`) and puts it on
 //!   an element (`on:click={on_remove}`); the parent sets it with `on:remove={js::submit(form)}`.
@@ -1394,12 +1394,11 @@ pub mod __private {
         }
     }
 
-    /// Any `Serialize` value, as JSON, for a parameter whose JSDoc type Corten does not check.
+    /// Any `ToJson` value, as JSON, for a parameter whose JSDoc type Corten does not check.
     #[cfg(feature = "json")]
-    impl<T: serde::Serialize> Arg<ts::Any> for T {
+    impl<T: crate::json::ToJson> Arg<ts::Any> for T {
         fn write_arg(&self, _: &Ctx, out: &mut String) {
-            let json = serde_json::to_string(self).expect("a handler argument serializes");
-            crate::view::escape_into(&json, out);
+            crate::view::escape_into(&self.to_json(), out);
         }
     }
 

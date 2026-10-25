@@ -180,8 +180,10 @@ Under the prefix:
    its CORS preflight, adds `Access-Control-Allow-Origin` and lets its writes through. The
    pages keep refusing that site's writes. The site authenticates with a token: a write from it
    that carries the user's cookies is refused, and no `Access-Control-Allow-Credentials` is sent.
-5. `Json` in the prelude is `corten::Json` (feature `json`). It reads a request body as
-   axum's `Json` does, with the same rejections. What it writes is a `ToJson`: derive it
+5. `Json` in the prelude is `corten::Json` (feature `json`). It reads a request body into a
+   `FromJson` (item 6) with the value and the rejections axum's `Json` gives: Corten's reader takes
+   an `application/json` body, and axum (`serde_json`) any other JSON content type and any body
+   the reader gives up on. What it writes is a `ToJson`: derive it
    (`#[derive(ToJson)]`, also in the prelude) on the response type, next to `Serialize` if other
    surfaces read it too. The derive lays the JSON out when the crate compiles, so a response
    copies one byte string between each pair of values instead of writing every key, quote and

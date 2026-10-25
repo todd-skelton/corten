@@ -120,12 +120,11 @@ use std::{
 };
 
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     extract::{rejection::JsonRejection, FromRequest, Request},
     http::{header, HeaderValue},
     response::{IntoResponse, Response},
 };
-use serde::de::DeserializeOwned;
 
 pub use corten_macros::{FromJson, ToJson};
 
@@ -577,11 +576,23 @@ pub mod __private {
     }
 }
 
-impl<T: DeserializeOwned, S: Send + Sync> FromRequest<S> for Json<T> {
+/// A body read by Corten's reader, or by axum (serde_json) where the reader gives up: the same
+/// value, or the same rejection, as `axum::Json`.
+impl<T: FromJson, S: Send + Sync> FromRequest<S> for Json<T> {
     type Rejection = JsonRejection;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
-        let axum::Json(value) = axum::Json::<T>::from_request(req, state).await?;
+        // Any other content type, `application/json` with parameters among them, is axum's to
+        // judge: it parses the media type.
+        if req.headers().get(header::CONTENT_TYPE).is_none_or(|ct| ct.as_bytes() != crate::api::JSON.as_bytes()) {
+            let axum::Json(value) = axum::Json::<T>::from_request(req, state).await?;
+            return Ok(Json(value));
+        }
+        let bytes = Bytes::from_request(req, state).await?;
+        if let Some(value) = std::str::from_utf8(&bytes).ok().and_then(read::fast) {
+            return Ok(Json(value));
+        }
+        let axum::Json(value) = axum::Json::<T>::from_bytes(&bytes)?;
         Ok(Json(value))
     }
 }
@@ -864,16 +875,76 @@ mod tests {
         assert_eq!(<Arc<Id>>::__json_size().map(|s| s as *const _), Id::__json_size().map(|s| s as *const _));
     }
 
+    #[derive(Debug, PartialEq, serde::Deserialize, FromJson)]
+    struct Alert {
+        email: String,
+        target: Option<u32>,
+    }
+
+    /// The extractor's answer for one request: the value, or the rejection's status and text.
+    async fn read<T: FromJson + std::fmt::Debug>(ct: Option<&str>, body: &'static [u8]) -> (String, String) {
+        let mut req = Request::post("/");
+        if let Some(ct) = ct {
+            req = req.header(header::CONTENT_TYPE, ct);
+        }
+        let ours = Json::<T>::from_request(req.body(Body::from(body)).unwrap(), &()).await;
+        match ours {
+            Ok(Json(v)) => ("ok".into(), format!("{v:?}")),
+            Err(e) => (e.status().to_string(), e.body_text()),
+        }
+    }
+
+    async fn axum_reads<T: serde::de::DeserializeOwned + std::fmt::Debug>(
+        ct: Option<&str>,
+        body: &'static [u8],
+    ) -> (String, String) {
+        let mut req = Request::post("/");
+        if let Some(ct) = ct {
+            req = req.header(header::CONTENT_TYPE, ct);
+        }
+        match axum::Json::<T>::from_request(req.body(Body::from(body)).unwrap(), &()).await {
+            Ok(axum::Json(v)) => ("ok".into(), format!("{v:?}")),
+            Err(e) => (e.status().to_string(), e.body_text()),
+        }
+    }
+
     #[tokio::test]
     async fn reads_a_body_as_axum_does() {
-        use axum::http::StatusCode;
-        let req =
-            |ct: &str, body: &'static str| Request::post("/").header(header::CONTENT_TYPE, ct).body(Body::from(body)).unwrap();
-        let Json(v): Json<serde_json::Value> = Json::from_request(req("application/json", r#"{"a":1}"#), &()).await.unwrap();
-        assert_eq!(v["a"], 1);
-        let missing = Json::<serde_json::Value>::from_request(req("text/plain", "{}"), &()).await.unwrap_err();
-        assert_eq!(missing.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
-        let bad = Json::<serde_json::Value>::from_request(req("application/json", "{"), &()).await.unwrap_err();
-        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        let types = [
+            None,
+            Some("application/json"),
+            Some("application/json; charset=utf-8"),
+            Some("APPLICATION/JSON"),
+            Some("application/problem+json"),
+            Some("application/json;;"),
+            Some("text/plain"),
+            Some("application/jsonx"),
+        ];
+        let bodies: [&[u8]; 12] = [
+            br#"{"email":"a@b.c","target":5}"#,
+            br#"{"target":null,"email":"a@b.c","extra":[1,{"x":2}]}"#,
+            br#"{"email":"a@b.c"}"#,
+            br#" {"email" : "a\u0040b.c" , "target" : 7 } "#,
+            br#"{"target":5}"#,
+            br#"{"email":"a@b.c","target":-1}"#,
+            br#"{"email":"a@b.c","target":5,"email":"x"}"#,
+            br#"{"email":"a@b.c""#,
+            br#"{"email":"a@b.c"} x"#,
+            br#"["a@b.c",5]"#,
+            b"{\"email\":\"\xff\"}",
+            b"",
+        ];
+        for ct in types {
+            for body in bodies {
+                let text = String::from_utf8_lossy(body);
+                assert_eq!(read::<Alert>(ct, body).await, axum_reads::<Alert>(ct, body).await, "{ct:?} {text}");
+                assert_eq!(
+                    read::<serde_json::Value>(ct, body).await,
+                    axum_reads::<serde_json::Value>(ct, body).await,
+                    "{ct:?} {text}"
+                );
+            }
+        }
+        assert_eq!(read::<Alert>(Some("application/json"), bodies[0]).await.0, "ok");
     }
 }

@@ -413,6 +413,17 @@ Corten is pre-1.0, so any minor version may change the API.
     55,658 after (-1.1%), a document request 94,815 and 93,953, a navigation 86,966 and 86,362;
     `render_cost` is unchanged within noise (build + render main, median of 3: 14.3 µs before,
     16.0 µs after).
+35. The JSON a request reads or answers with goes through Corten's own JSON code where it still
+    went through `serde_json`: the `Json` extractor needs `T: FromJson` (derive it next to
+    `Deserialize`) and reads an `application/json` body with Corten's reader, leaving any other
+    JSON content type, and any body the reader gives up on, to axum, so the value and every
+    rejection are axum's; `req.screen`'s data, `Meta::json_ld` and a handler argument of a JSDoc
+    type Corten does not check need `ToJson` instead of `Serialize`, with the same bytes out.
+    Measured on the benchmark's 500 items (`perf_event`, user-mode instructions, release build,
+    lowest of each run's passes, three runs within 0.5%): reading an item API response (55 KB)
+    through the extractor 1,616,862 before and 725,531 after (-55%; axum's `Json` tracks the path
+    to an error as it reads), `json_ld` of the item's view model 106,164 and 50,265 (-53%), and a
+    whole `Accept: application/json` request for a `req.screen` of it 123,664 and 69,200 (-44%).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

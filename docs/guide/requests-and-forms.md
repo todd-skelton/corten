@@ -10,7 +10,7 @@
 | `GET` with `corten: nav` | runtime, same-origin link or back/forward | the same call: `<title>`, head tags and the page only | swaps `<main>` |
 | `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch(view)` | replaces each element by `id`; `view::Remove(id)` removes one (ids are `#[derive(Id)]` types) |
 | `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(&route)` | renders the page |
-| any, `Accept: application/json` | native screen, agent, test | `req.screen(meta, &data, view)`: `{"title", "data"}` | renders natively, or reasons over it |
+| any, `Accept: application/json` | native screen, agent, test | `req.screen(meta, &data, view)` (`data` a `ToJson`): `{"title", "data"}` | renders natively, or reasons over it |
 | any, under an `App::api` prefix | a webhook, a service, a partner's site | JSON (`corten::Json`), errors as `{"error": ...}` | reads the JSON |
 | SSE | `<corten-live src>` | `corten::live(stream_of_views)` | applies each like a patch |
 | `GET {feed}`, `{feed}/live` | a handler's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |

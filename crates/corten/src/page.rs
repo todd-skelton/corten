@@ -610,12 +610,12 @@ impl Req {
     /// model, so a native screen or an agent sees exactly what the view shows; `view` is only
     /// rendered for browsers.
     #[cfg(feature = "json")]
-    pub fn screen<T: serde::Serialize>(&self, meta: impl Into<Meta>, data: &T, view: impl Render) -> Result {
+    pub fn screen<T: crate::json::ToJson + ?Sized>(&self, meta: impl Into<Meta>, data: &T, view: impl Render) -> Result {
         self.screen_with_status(StatusCode::OK, meta, data, view)
     }
 
     #[cfg(feature = "json")]
-    pub fn screen_with_status<T: serde::Serialize>(
+    pub fn screen_with_status<T: crate::json::ToJson + ?Sized>(
         &self,
         status: StatusCode,
         meta: impl Into<Meta>,
@@ -626,12 +626,14 @@ impl Req {
         if self.mode != Mode::Data {
             return self.page_with_status(status, meta, view);
         }
-        #[derive(serde::Serialize)]
-        struct Screen<'a, T> {
-            title: &'a str,
-            data: &'a T,
-        }
-        let body = serde_json::to_string(&Screen { title: meta.title(), data })?;
+        use crate::json::ToJson;
+        // `{"title":...,"data":...}`, as serde_json writes the pair.
+        let mut body = Vec::with_capacity(T::__json_size().map_or(128, |s| s.load(std::sync::atomic::Ordering::Relaxed) + 64));
+        body.extend_from_slice(br#"{"title":"#);
+        meta.title().write_json(&mut body);
+        body.extend_from_slice(br#","data":"#);
+        data.write_json(&mut body);
+        body.push(b'}');
         let headers = [(header::CONTENT_TYPE, HeaderValue::from_static("application/json")), (header::VARY, self.vary())];
         Ok((status, headers, body).into_response())
     }
