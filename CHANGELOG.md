@@ -567,6 +567,15 @@ Corten is pre-1.0, so any minor version may change the API.
     snapshot with no write since the last 444,927 before and 1,272 after at 100 rows (18 KB), and
     4,424,419 and 1,274 at 1,000 rows (187 KB); a snapshot right after a write 458,893 and 461,114
     (+0.5%), 4,433,932 and 4,440,648 (+0.2%); a write alone 9,664 and 9,705.
+39. Escaping text for HTML is cheaper: the eight-byte test for a byte to escape is two compares
+    instead of four (`"` and `&` fold into `'`, `<` into `>`; a `#` also matches and is then
+    written as it is), the loop over text that has one is a function of its own so text with
+    none (most of it) skips saving the loop's registers, and that loop uses the same test.
+    Measured with callgrind on the item page (release build, the bench fixture, instructions
+    per request): escaping 25,036 to 20,218 (-19%), the whole request 111,932 to 107,267
+    (-4.2%); the home page, which escapes little, is unchanged (81,291 and 81,548, the
+    difference in the allocator). Wall-clock `render_cost` on a busy host could not tell the two
+    apart (24.6 and 24.4 µs best of 8).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

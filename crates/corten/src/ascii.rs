@@ -16,11 +16,13 @@ fn has(x: u64, b: u8) -> u64 {
     below(x ^ (ONES * b as u64), 1)
 }
 
-/// Some byte of `x` is one HTML escapes: `&`, `'`, `<`, `>` or `"`. `| 1` turns `&` (0x26)
-/// into `'` (0x27), so one test finds either.
+/// Some byte of `x` may be one HTML escapes: `&`, `'`, `<`, `>` or `"`. `| 5` turns `"` (0x22)
+/// and `&` (0x26) into `'` (0x27), and `| 2` turns `<` (0x3c) into `>` (0x3e), so two tests find
+/// all five. The first finds `#` (0x23) too, which is written as it is: a `#` only costs the
+/// byte-exact path.
 #[inline(always)]
 pub(crate) fn html(x: u64) -> bool {
-    (has(x, b'"') | has(x | ONES, b'\'') | has(x, b'<') | has(x, b'>')) != 0
+    (has(x | (ONES * 5), b'\'') | has(x | (ONES * 2), b'>')) != 0
 }
 
 /// Some byte of `x` is one JSON escapes: a control character, `"` or `\`.
@@ -108,6 +110,14 @@ mod tests {
             assert!(!any(&vec![b'a'; len], html));
             // Bytes next to the special ones, and UTF-8, are not hits.
             assert!(!any(&"%(;=?é日".repeat(len).into_bytes()[..len.min(7 * len)], html));
+        }
+    }
+
+    #[test]
+    fn the_html_test_finds_the_five_and_only_hash_besides() {
+        for b in 0..=255u8 {
+            let alone = u64::from_le_bytes([b, b'a', b'a', b'a', b'a', b'a', b'a', b'a']);
+            assert_eq!(html(alone), b"&'<>\"#".contains(&b), "{b:#x}");
         }
     }
 

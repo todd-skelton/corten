@@ -268,13 +268,20 @@ const ENTITIES: [&str; 5] = ["&amp;", "&lt;", "&gt;", "&quot;", "&#39;"];
 /// Appends `text` to `out`, escaped for HTML text and double-quoted attribute values.
 #[inline]
 pub fn escape_into(text: &str, out: &mut String) {
-    let bytes = text.as_bytes();
     // Most text has nothing to escape; a short string is one test (`next_escaped` would check
-    // anything under eight bytes one byte at a time).
-    if !crate::ascii::any(bytes, crate::ascii::html) {
-        out.push_str(text);
-        return;
+    // anything under eight bytes one byte at a time). The loop is a function of its own, so text
+    // with nothing to escape does not save and restore the registers the loop needs.
+    if crate::ascii::any(text.as_bytes(), crate::ascii::html) {
+        escape_each(text, out)
+    } else {
+        out.push_str(text)
     }
+}
+
+/// [`escape_into`] for text that may have a byte to escape.
+#[inline(never)]
+fn escape_each(text: &str, out: &mut String) {
+    let bytes = text.as_bytes();
     let mut start = 0;
     while let Some(i) = next_escaped(bytes, start) {
         out.push_str(&text[start..i]);
@@ -285,26 +292,22 @@ pub fn escape_into(text: &str, out: &mut String) {
 }
 
 /// The index of the first byte from `from` on that `escape_into` replaces. Most text has none, so
-/// it skips eight bytes at a time while none of them is one, then finds it with the table.
+/// it skips eight bytes at a time while none of them is one, and finds it in those eight with the
+/// table.
 #[inline]
 fn next_escaped(bytes: &[u8], from: usize) -> Option<usize> {
-    const ONES: u64 = u64::from_ne_bytes([1; 8]);
-    // Nonzero exactly when some byte of `x` is zero.
-    let zero = |x: u64| x.wrapping_sub(ONES) & !x & (ONES << 7);
+    let escaped = |chunk: &[u8]| chunk.iter().position(|&byte| ESCAPES[byte as usize] != 0);
     let mut i = from;
     while let Some(chunk) = bytes.get(i..i + 8) {
-        let x = u64::from_ne_bytes(chunk.try_into().expect("eight bytes"));
-        // `|` with 1 makes `&` (0x26) into `'` (0x27), so one test finds either.
-        let found = zero(x ^ (ONES * b'"' as u64))
-            | zero((x | ONES) ^ (ONES * b'\'' as u64))
-            | zero(x ^ (ONES * b'<' as u64))
-            | zero(x ^ (ONES * b'>' as u64));
-        if found != 0 {
-            break;
+        // The word test can also stop at a `#`; the table then finds nothing and the skip goes on.
+        if crate::ascii::html(u64::from_le_bytes(chunk.try_into().expect("eight bytes"))) {
+            if let Some(at) = escaped(chunk) {
+                return Some(i + at);
+            }
         }
         i += 8;
     }
-    bytes[i..].iter().position(|&byte| ESCAPES[byte as usize] != 0).map(|at| i + at)
+    escaped(&bytes[i..]).map(|at| i + at)
 }
 
 /// `value`'s `Display` output, escaped, without an intermediate string.
