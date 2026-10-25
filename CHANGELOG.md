@@ -432,11 +432,11 @@ Corten is pre-1.0, so any minor version may change the API.
     boolean attribute before toggling it. On a droplet, creating 10,000 rows took 79 ms instead of
     90 ms (Solid 64, plain JavaScript 61), a row took 101 bytes of heap instead of 116, and
     takeover was unchanged.
-25. The README's browser and client-heavy tables are from round `browser-3` (Creating 10,000 rows
+25. The README's client-heavy table is from round `browser-3` (Creating 10,000 rows
     68.9 ms, against 87.5 in `browser-1`; Solid 59.2). `bench/browser/ssr.mjs` takes the loads of
     every app in turns and `run-all.mjs` takes 30, after one app's takeover median in a round
-    moved with a slow stretch of the machine. The README's server highlight now quotes round r4
-    (18,043 pages a second, 1.1 MiB), the round its server table is from.
+    moved with a slow stretch of the machine. The README's server highlight quotes the round
+    its server table is from.
 
 26. `corten new` makes the app depend on the `corten` release on crates.io that matches the
     command's version (`corten = { version = "0.1.0", ... }`) instead of the repository's `main`
@@ -642,14 +642,15 @@ Corten is pre-1.0, so any minor version may change the API.
 4. New `CONTRIBUTING.md`, `SECURITY.md` and this changelog.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
-6. The full-stack benchmark tables in the README and `bench/fullstack` are from round r4
-   (2026-10-23, one c-8 droplet, Xeon Platinum 8168), measured with the typed item-API parse;
-   `bench/live` is still r3 (Xeon Platinum 8280). On r4's slower CPU Corten serves 18,043 item
-   pages and 18,934 JSON responses a second from memory at 64 users (r3: 23,086 and 24,338 on the
-   8280), and 2,142 item-API pages against ASP.NET Core's 915 (r3: 1,175 and 1,209). A page costs
-   123,693 user instructions and the JSON 133,308 (r3: 123,665 and 133,588). Django and Nuxt
-   failed r4's in-memory page test, which they passed in r3 near their limit. The item page
-   loads 6.2 KB of JavaScript (gzip).
+6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
+   from round r5 (2026-10-25, one c-8 droplet, Xeon Platinum 8168 as in r4, the tree at
+   `f80d4a1`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 21,735 item pages
+   and 25,200 JSON responses a second from memory at 64 users (r4: 18,043 and 18,934), and 3,240
+   item-API pages against ASP.NET Core's 998 (r4: 2,142 and 915). A page costs 103,877 user
+   instructions and the JSON 69,291 (r4: 123,693 and 133,308). The unchanged apps moved by up to
+   17% between the two droplets. Django passed the in-memory page test it failed in r4; Nuxt,
+   Next.js and Laravel failed as before. The item page loads 7.3 KB of JavaScript (gzip; r4
+   6.2 KB).
 7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
