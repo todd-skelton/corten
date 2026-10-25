@@ -58,6 +58,20 @@ so `cursor` refuses it (a panic in debug builds; in release the fragment goes wi
 
 [examples/hello](../../examples/hello) has this running.
 
+### Connection
+
+`<corten-live>` shows its connection on itself, so a page can say a part is stale with CSS alone:
+`status` is `connecting`, `live` once the stream is open, `reconnecting` while the browser
+retries after a drop, `closed` when it gave up (the server answered with no stream: an error, a
+204) and `ended` when the server finished the stream (`end`). After a live stream drops,
+`stale-since` holds when (an ISO time), until it is live again; a page that shows "Stale since
+10:42" reads it.
+
+```css
+corten-live[status="reconnecting"]::before { content: "Reconnecting"; }
+corten-live[status="closed"] .reload { display: inline; }
+```
+
 ### Redrawing is cheap
 
 With feature `compress`, a live stream is compressed as one stream per connection and flushed

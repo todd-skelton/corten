@@ -253,6 +253,20 @@ Corten is pre-1.0, so any minor version may change the API.
     error, a 5xx or an abort keeps it), then renews it. The app stores keys with its writes; Corten
     keeps none. Asked for by the Chase Sets pilot, which wrote about 150 lines for it
     ([#9 Forms have no per-submission idempotency key](https://github.com/todd-skelton/corten/issues/9)).
+37. `<corten-live>` shows its connection: a `status` attribute of `connecting`, `live`,
+    `reconnecting`, `closed` (the browser gave up) or `ended` (the server finished the stream), and
+    `stale-since`, the ISO time a live stream dropped, until it is live again. A page can mark a
+    stale part with CSS alone. Asked for by the Chase Sets pilot, whose lists showed a dropped
+    stream the same as an unchanged one
+    ([#33 A page cannot tell whether a <corten-live> element is connected](https://github.com/todd-skelton/corten/issues/33)).
+38. Query sets: `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` declares parameters that
+    several routes carry, and `#[route(query)] filters: ItemQuery` on a route's field writes each of
+    them as the route's own parameter (`corten::route::Params`). A list's filters are declared once
+    for its page, its live rows and its bulk routes, so a route cannot drop one, and making one
+    route's URL from another's copies one value. Handlers read `Query<ItemQuery>`. A
+    `#[route(query)]` field of another type does not compile. Asked for by the Chase Sets pilot,
+    whose 10 item filters were repeated on 5 routes by a `macro_rules!`
+    ([#32 A route cannot share a set of query parameters with another route](https://github.com/todd-skelton/corten/issues/32)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -441,6 +455,15 @@ Corten is pre-1.0, so any minor version may change the API.
     through the extractor 1,616,862 before and 725,531 after (-55%; axum's `Json` tracks the path
     to an error as it reads), `json_ld` of the item's view model 106,164 and 50,265 (-53%), and a
     whole `Accept: application/json` request for a `req.screen` of it 123,664 and 69,200 (-44%).
+36. `FromJson` reads with less work per value: skipping a value tests for whitespace with one
+    compare where it tested four, a number no longer skips whitespace its caller already skipped,
+    and a struct with a container `#[serde(default)]` is read over that default (each field written
+    in place) instead of into one `Option` per field that is moved out at the end. The values and
+    errors are unchanged. Measured as in item 34 under Added: an item API response 698,733
+    instructions before, 684,106 after (-2.1%; -22.1% against serde_json's 878,078), 733,130 and
+    718,504 with the conversion into the view model. Found comparing the reader with the pilot it
+    came from, on the same types and text: the pilot took 654,700 and the reader 686,650 (4.9%
+    more); these three close 14,000 of the 32,000, and the rest is spread thin.
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -507,6 +530,15 @@ Corten is pre-1.0, so any minor version may change the API.
     an error about refs it did not have. The error for a scoped component with several roots now
     names both causes. Found in the Chase Sets pilot
     ([#26 A component that names a variable scope is treated as scoped](https://github.com/todd-skelton/corten/issues/26)).
+15. An image built from one checkout no longer gets the crates another checkout built. The
+    Dockerfiles (the examples', the benchmarks' and the one `corten new` writes) keep `target/` in a
+    cache every build on the machine shares, and cargo decides a crate is current by file times,
+    so a checkout whose files were older than the last build compiled against that build's
+    crates (an item page image failed with `FromJson` missing from `corten`), and two builds at
+    once wrote the same `target/` (a test build lost an rlib another was replacing). Each build now
+    touches the sources it copied first and takes the cache alone (`sharing=locked`), so builds
+    wait for each other; a rebuild with no change compiles the workspace's own crates again (the
+    item page: 137 s, where it took 6 s), and the registry's stay cached.
 
 ### Documentation
 

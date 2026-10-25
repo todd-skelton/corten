@@ -3,9 +3,13 @@
 FROM rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
+# Every build on this machine shares the target cache: one at a time (`locked`), and with the
+# sources touched first, since cargo goes by file times and a checkout older than the last build
+# would get that build's crates.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
-    cargo test --release --workspace --all-features && cargo build --release -p hello \
+    --mount=type=cache,target=/src/target,sharing=locked \
+    find . -name target -prune -o -type f -exec touch {} + \
+    && cargo test --release --workspace --all-features && cargo build --release -p hello \
     && mkdir -p /out && cp target/release/hello /out/server
 
 FROM debian:bookworm-slim

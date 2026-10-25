@@ -124,6 +124,10 @@ each item, `<corten-live src={Trades} since={v}>` in the page, and a `LiveSince(
 argument that says where the browser is (the page's `since`, or `Last-Event-ID` after a
 reconnect). Send nothing until the next change when it is current. See the live-data guide.
 
+The element shows its connection as `status` (`connecting`, `live`, `reconnecting`, `closed`,
+`ended`) and `stale-since` (when a live stream dropped): style a stale part with
+`corten-live[status=reconnecting]`, not with a script that watches for patches.
+
 ## Live rows (feature `feed`)
 
 ```rust

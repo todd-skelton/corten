@@ -1052,13 +1052,29 @@ customElements.define(
       const since = this.getAttribute("since");
       const url = new URL(src, location.href);
       if (since) url.searchParams.set("since", since);
-      this.source = new EventSource(url);
-      this.source.addEventListener("patch", (event) => {
+      // The connection shows on the element, for CSS and scripts: `status` is connecting, live,
+      // reconnecting (the browser retries), closed (it gave up) or ended (the server finished), and
+      // `stale-since` is when a live stream dropped, until it is live again.
+      const source = (this.source = new EventSource(url));
+      this.setAttribute("status", "connecting");
+      source.addEventListener("open", () => {
+        this.setAttribute("status", "live");
+        this.removeAttribute("stale-since");
+      });
+      source.addEventListener("error", () => {
+        if (this.getAttribute("status") === "ended") return;
+        if (this.getAttribute("status") === "live") this.setAttribute("stale-since", new Date().toISOString());
+        this.setAttribute("status", source.readyState === EventSource.CLOSED ? "closed" : "reconnecting");
+      });
+      source.addEventListener("patch", (event) => {
         const html = /** @type {MessageEvent} */ (event).data;
         this.applied = this.applied.then(() => patch(html)).catch(reportError);
       });
       // The server's stream finished: stay as it is instead of reconnecting.
-      this.source.addEventListener("end", () => this.source?.close());
+      source.addEventListener("end", () => {
+        source.close();
+        this.setAttribute("status", "ended");
+      });
     }
     disconnectedCallback() {
       this.source?.close();
