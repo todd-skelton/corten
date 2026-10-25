@@ -20,7 +20,7 @@ test and a Dockerfile.
 | `corten new <dir>` | Creates an app that depends on the `corten` release matching the command's version. `--name` sets the crate name, `--corten-path` uses a local checkout instead. |
 | `corten dev` | Builds and runs the app, rebuilds and restarts on every change in the app's directory or a local package its build reads, like a workspace's shared crate (a failed build keeps the last good server running), and reloads open pages. `--port` or `PORT`. |
 | `corten fmt` | Lays out the markup inside `html!`, which rustfmt leaves alone (`--check` only reports). |
-| `corten check` | `cargo fmt --check`, `corten fmt --check`, `cargo clippy -D warnings`, `cargo test`. |
+| `corten check` | `cargo fmt --check`, `corten fmt --check`, `cargo clippy -D warnings`, `tsc` over the app's scripts (when TypeScript is installed; otherwise a note says they were not checked), `cargo test`. |
 | `corten build` | The release binary. |
 
 The CLI is a convenience over cargo, not a build system: an app is an ordinary crate, and

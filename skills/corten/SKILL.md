@@ -69,7 +69,7 @@ Read only the recipe the task needs. For concepts, read the guides in the Corten
 1. List every component with a script or styles, and every `#[event]`, once in `App::components` (an unlisted one is an
    error under `corten dev`).
 2. Run `corten fmt`, then `corten check`: `cargo fmt --check`, `corten fmt --check` (the markup
-   in `html!`), clippy with warnings denied, and the tests. The
-   compiler checks each `js::` call against the script's JSDoc; `tsc --checkJs` (or the
-   editor) checks the function bodies.
+   in `html!`), clippy with warnings denied, `tsc` over the scripts in `src/` and `static/`, and the
+   tests. The compiler checks each `js::` call against the script's JSDoc; `tsc` checks the
+   function bodies (install TypeScript; without it `corten check` prints that they were not checked).
 3. When behavior changed, load the page in a browser both with JavaScript and without it.

@@ -21,6 +21,7 @@
     "examples/*/src/**/*.js",
     "examples/*/static/**/*.js",
     "examples/*/types/*.d.ts",
+    "crates/corten-cli/template/src/**/*.js",
     "scripts/typecheck-fixture.js"
   ]
 }
