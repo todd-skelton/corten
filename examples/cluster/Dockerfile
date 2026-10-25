@@ -3,9 +3,12 @@
 FROM rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
+# Every build on this machine shares the target cache, and cargo goes by file times: touching
+# the sources first keeps a checkout older than the last build from getting that build's crates.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo build --release -p cluster \
+    find . -name target -prune -o -type f -exec touch {} + \
+    && cargo build --release -p cluster \
     && mkdir -p /out && cp target/release/cluster /out/server
 
 FROM debian:bookworm-slim
