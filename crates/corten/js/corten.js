@@ -1021,7 +1021,13 @@ customElements.define(
     connectedCallback() {
       const src = this.getAttribute("src");
       if (!src) throw new Error("corten: <corten-live> needs a src attribute");
-      this.source = new EventSource(src);
+      // `since` is the app's cursor the page was rendered at: the first connection sends it, so
+      // the server only sends what changed after it. A reconnect sends the last fragment's id as
+      // Last-Event-ID, which the server reads first.
+      const since = this.getAttribute("since");
+      const url = new URL(src, location.href);
+      if (since) url.searchParams.set("since", since);
+      this.source = new EventSource(url);
       this.source.addEventListener("patch", (event) => {
         const html = /** @type {MessageEvent} */ (event).data;
         this.applied = this.applied.then(() => patch(html)).catch(reportError);
