@@ -637,6 +637,15 @@ const formProperty = (form, name) => Reflect.get(HTMLFormElement.prototype, name
  */
 const formCall = (form, name, ...args) => formProperty(form, name).call(form, ...args);
 
+/** A random UUID v4. `crypto.randomUUID` is only there in secure contexts. */
+function uuid() {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const hex = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /**
  * Gives the form's submit keys (`SubmitKey::field`, `data-submit`) new values once a submission
  * has its answer, so the next submit is a new one. Until then a retry sends the same key.
@@ -645,7 +654,7 @@ const formCall = (form, name, ...args) => formProperty(form, name).call(form, ..
 function renewSubmitKeys(form) {
   for (const field of Array.from(/** @type {HTMLFormControlsCollection} */ (formProperty(form, "elements")))) {
     if (field instanceof HTMLInputElement && field.hasAttribute("data-submit")) {
-      field.value = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+      field.value = uuid();
     }
   }
 }
