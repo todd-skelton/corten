@@ -288,6 +288,11 @@ Corten is pre-1.0, so any minor version may change the API.
     in each live event)
     ([#17 Scripts have no typed way to show user-facing text they compute](https://github.com/todd-skelton/corten/issues/17)).
 
+41. `<corten-live>` dispatches a bubbling `corten-status` event each time its `status` changes, so
+    a handler hears it with `on:corten-status={js::stale(target, ..)}` and reads `status` and
+    `stale-since`, as a feed's `subscribe` calls its `status` callback. Asked for by the Chase
+    Sets pilot, whose "Stale since {time}" banner watched the attributes with a `MutationObserver`
+    ([#49 A script cannot hear a <corten-live> element's status change](https://github.com/todd-skelton/corten/issues/49)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

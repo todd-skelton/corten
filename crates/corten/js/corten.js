@@ -1069,6 +1069,16 @@ document.addEventListener("submit", async (event) => {
   }
 });
 
+/**
+ * Sets a `<corten-live>`'s `status` and says so with a bubbling `corten-status` event, which a
+ * handler takes like any other (`on:corten-status={js::show(target)}`) and reads the attributes.
+ * @param {Element} el @param {string} status
+ */
+function liveStatus(el, status) {
+  el.setAttribute("status", status);
+  el.dispatchEvent(new Event("corten-status", { bubbles: true }));
+}
+
 customElements.define(
   "corten-live",
   class extends HTMLElement {
@@ -1087,17 +1097,18 @@ customElements.define(
       if (since) url.searchParams.set("since", since);
       // The connection shows on the element, for CSS and scripts: `status` is connecting, live,
       // reconnecting (the browser retries), closed (it gave up) or ended (the server finished), and
-      // `stale-since` is when a live stream dropped, until it is live again.
+      // `stale-since` is when a live stream dropped, until it is live again. Each change of
+      // `status` dispatches `corten-status`.
       const source = (this.source = new EventSource(url));
-      this.setAttribute("status", "connecting");
+      liveStatus(this, "connecting");
       source.addEventListener("open", () => {
-        this.setAttribute("status", "live");
         this.removeAttribute("stale-since");
+        liveStatus(this, "live");
       });
       source.addEventListener("error", () => {
         if (this.getAttribute("status") === "ended") return;
         if (this.getAttribute("status") === "live") this.setAttribute("stale-since", new Date().toISOString());
-        this.setAttribute("status", source.readyState === EventSource.CLOSED ? "closed" : "reconnecting");
+        liveStatus(this, source.readyState === EventSource.CLOSED ? "closed" : "reconnecting");
       });
       source.addEventListener("patch", (event) => {
         const html = /** @type {MessageEvent} */ (event).data;
@@ -1106,7 +1117,7 @@ customElements.define(
       // The server's stream finished: stay as it is instead of reconnecting.
       source.addEventListener("end", () => {
         source.close();
-        this.setAttribute("status", "ended");
+        liveStatus(this, "ended");
       });
     }
     disconnectedCallback() {
