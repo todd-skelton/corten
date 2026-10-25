@@ -299,6 +299,12 @@ Corten is pre-1.0, so any minor version may change the API.
     catalog lacks or when an argument is missing, and renders escaped like any message. Asked for
     by the Chase Sets pilot, whose attention queue matched 20 API keys to methods by hand
     ([#54 A page cannot show a catalog message chosen at run time by its key](https://github.com/todd-skelton/corten/issues/54)).
+43. `Policy::form_action(origin)` adds an origin to the CSP's `form-action`, so a page can send a
+    form to a hosted checkout, an identity provider or a sibling app, and a form's handler can
+    `req.redirect` there; the rest stay blocked (`form-action 'self'`). Found by the Chase Sets
+    pilot, whose cart's Check out form posts to marketplace's origin and was blocked by the
+    browser before the request was sent
+    ([#64 A page cannot send a form to another origin, and a post cannot redirect to one (form-action is always 'self')](https://github.com/todd-skelton/corten/issues/64)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
