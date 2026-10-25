@@ -22,15 +22,26 @@
 //! The derive reads `#[serde(...)]`, so a type that also derives `Serialize` or `Deserialize` writes
 //! what serde writes and reads back what it wrote: `rename`, `rename_all`, `skip`,
 //! `skip_serializing`, `skip_serializing_if` and `transparent`, and on an enum `tag`, `content` and
-//! `untagged` (serde's default, a variant's name as the key, otherwise). One that changes what
-//! serde writes and the derive cannot follow (`flatten`, `serialize_with`, `into` ...) is a
-//! compile error rather than different JSON:
+//! `untagged` (serde's default, a variant's name as the key, otherwise), and `flatten` of a struct
+//! that derives `ToJson` ([`ToJsonMembers`]). One that changes what serde writes and the derive
+//! cannot follow (`flatten` of a map, `serialize_with`, `into` ...) is a compile error rather
+//! than different JSON:
 //!
 //! ```compile_fail
 //! #[derive(corten::ToJson)]
 //! struct Page {
 //!     #[serde(flatten)]
 //!     extra: std::collections::HashMap<String, String>,
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! #[derive(corten::ToJson)]
+//! struct Named { id: u32 }
+//! #[derive(corten::ToJson)]
+//! struct Page {
+//!     #[serde(flatten, rename = "named")]
+//!     named: Named,
 //! }
 //! ```
 //!
@@ -177,6 +188,68 @@ pub trait ToJson {
     #[doc(hidden)]
     fn __json_size() -> Option<&'static AtomicUsize> {
         None
+    }
+}
+
+/// A struct whose members another object can hold: what a `#[serde(flatten)]` field writes.
+/// `#[derive(ToJson)]` implements it for a struct with named fields, so
+///
+/// ```
+/// #[derive(serde::Serialize, corten::ToJson)]
+/// struct Dimension { id: u32, name: String }
+///
+/// #[derive(serde::Serialize, corten::ToJson)]
+/// struct DimensionDetail {
+///     #[serde(flatten)]
+///     dimension: Dimension,
+///     options: Vec<String>,
+/// }
+///
+/// use corten::json::ToJson;
+/// let detail = DimensionDetail { dimension: Dimension { id: 7, name: "Size".into() }, options: vec![] };
+/// assert_eq!(detail.to_json(), r#"{"id":7,"name":"Size","options":[]}"#);
+/// ```
+///
+/// writes the dimension's members in the detail's braces, as serde does, with the layout still
+/// decided when the crate compiles. `Option` and `Box` of such a struct flatten too (`None`
+/// writes nothing). Flattening anything else, a map or an enum, which serde lays out only when it
+/// runs, does not compile:
+///
+/// ```compile_fail
+/// #[derive(serde::Serialize, corten::ToJson)]
+/// enum Kind { Size, Color }
+///
+/// #[derive(serde::Serialize, corten::ToJson)]
+/// struct Detail {
+///     #[serde(flatten)]
+///     kind: Kind,
+/// }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`#[serde(flatten)]` needs a struct with named fields that derives ToJson; `{Self}` is not one",
+    label = "flattened here",
+    note = "a map or an enum is laid out only when serde runs; implement ToJson by hand for the outer type"
+)]
+pub trait ToJsonMembers {
+    /// Appends the members, `"key":value` each, without braces: a comma before the first one
+    /// unless `first` (nothing is in the object yet). Returns whether the object is still empty.
+    fn write_json_members(&self, out: &mut Vec<u8>, first: bool) -> bool;
+}
+
+impl<T: ToJsonMembers> ToJsonMembers for Option<T> {
+    #[inline]
+    fn write_json_members(&self, out: &mut Vec<u8>, first: bool) -> bool {
+        match self {
+            Some(value) => value.write_json_members(out, first),
+            None => first,
+        }
+    }
+}
+
+impl<T: ToJsonMembers + ?Sized> ToJsonMembers for Box<T> {
+    #[inline]
+    fn write_json_members(&self, out: &mut Vec<u8>, first: bool) -> bool {
+        (**self).write_json_members(out, first)
     }
 }
 
@@ -750,6 +823,86 @@ mod tests {
     struct WithForeign {
         when: Foreign,
         many: Vec<Foreign>,
+    }
+
+    /// A struct flattened into others: `Sparse`'s members may all be left out.
+    #[derive(Serialize, ToJson)]
+    #[serde(rename_all = "camelCase")]
+    struct Flat {
+        #[serde(flatten)]
+        sparse: Sparse,
+        item_id: u8,
+        #[serde(flatten)]
+        maybe: Option<Id2>,
+        #[serde(flatten)]
+        boxed: Box<Id2>,
+    }
+
+    #[derive(Serialize, ToJson)]
+    struct Id2 {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<u8>,
+        #[serde(rename = "Kind")]
+        kind: &'static str,
+    }
+
+    /// Only flattened fields, the first of which may write nothing.
+    #[derive(Serialize, ToJson)]
+    struct OnlyFlat {
+        #[serde(flatten)]
+        empty: AllOptional,
+        #[serde(flatten)]
+        after: AllOptional,
+    }
+
+    #[derive(Serialize, ToJson)]
+    struct AllOptional {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        a: Option<u8>,
+    }
+
+    #[derive(Serialize, ToJson)]
+    struct Empty {}
+
+    #[derive(Serialize, ToJson)]
+    struct AroundEmpty {
+        #[serde(flatten)]
+        empty: Empty,
+        x: u8,
+        #[serde(flatten)]
+        again: Empty,
+    }
+
+    #[derive(Serialize, ToJson)]
+    #[serde(tag = "op")]
+    enum FlatChange {
+        Set {
+            #[serde(flatten)]
+            id: Id2,
+            n: i8,
+        },
+        Wrap {
+            #[serde(flatten)]
+            only: AllOptional,
+        },
+    }
+
+    #[test]
+    fn flattened_structs_write_what_serde_json_writes() {
+        let id = |id| Id2 { id, kind: "k" };
+        for (a, b, d) in [(None, None, None), (Some(1), None, Some(4)), (None, Some(2), None)] {
+            for maybe in [None, Some(id(Some(9))), Some(id(None))] {
+                same(&Flat { sparse: Sparse { a, b, c: 3, d }, item_id: 5, maybe, boxed: Box::new(id(None)) });
+            }
+        }
+        for (a, b) in [(None, None), (Some(1), None), (None, Some(2)), (Some(1), Some(2))] {
+            same(&OnlyFlat { empty: AllOptional { a }, after: AllOptional { a: b } });
+        }
+        same(&AroundEmpty { empty: Empty {}, x: 1, again: Empty {} });
+        same(&FlatChange::Set { id: id(Some(1)), n: -1 });
+        same(&FlatChange::Set { id: id(None), n: 0 });
+        same(&FlatChange::Wrap { only: AllOptional { a: None } });
+        same(&FlatChange::Wrap { only: AllOptional { a: Some(3) } });
     }
 
     #[test]

@@ -188,8 +188,9 @@ Under the prefix:
    surfaces read it too. The derive lays the JSON out when the crate compiles, so a response
    copies one byte string between each pair of values instead of writing every key, quote and
    comma, into a `Vec` sized from the type's last response that the body keeps. It reads
-   `#[serde(...)]` and writes the bytes `serde_json` would; an attribute it cannot follow
-   (`flatten`, `serialize_with`) does not compile. A field whose type has only `Serialize` (an id or a
+   `#[serde(...)]` and writes the bytes `serde_json` would. A `#[serde(flatten)]` field whose type
+   is a struct that derives `ToJson` is written in place, its members laid out the same way; an
+   attribute it cannot follow (`flatten` of a map or an enum, `serialize_with`) does not compile. A field whose type has only `Serialize` (an id or a
    date from another crate) is written by `serde_json`. `serde_json::Value` is a `ToJson`, as above.
    axum's `Json` works too, and writes any `Serialize` through `serde_json` and a `BytesMut`.
 6. To read JSON another service answers, derive `FromJson` (in the prelude) next to `Deserialize`
