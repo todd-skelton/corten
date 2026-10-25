@@ -139,18 +139,21 @@ stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
 
 ## Data from another service
 
-A page built from another service's JSON deserializes the response into structs holding only
-the fields the page reads, not a `serde_json::Value`. serde skips the other fields without
-building them; for the example item page's 55 KB response that is a third of the work.
-`#[serde(default)]` keeps a missing field from failing the page; a field that may be null is an
-`Option`, and one the service sends as either a string or a number can stay a `Value`:
+A page built from another service's JSON reads the response into structs holding only the
+fields the page reads, not a `serde_json::Value`, with `corten::json::from_slice` on a type that
+derives `FromJson` next to `Deserialize`. The other fields are skipped without building them;
+for the example item page's 55 KB response that is a quarter of the work of a `Value`, and a
+fifth less than serde_json into the same structs. `#[serde(default)]` keeps a missing field
+from failing the page; a field that may be null is an `Option`, and one the service sends as
+either a string or a number can stay a `Value`:
 
 ```rust
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, FromJson, Default)]
 #[serde(default)]
 struct ApiListing { listing_id: String, price_amount: serde_json::Value }
 
-let listings: Vec<ApiListing> = client.get(url).send().await?.error_for_status()?.json().await?;
+let body = client.get(url).send().await?.error_for_status()?.bytes().await?;
+let listings: Vec<ApiListing> = corten::json::from_slice(&body)?;
 ```
 
 Convert those into the view model once, where the data is loaded, so views read plain fields.

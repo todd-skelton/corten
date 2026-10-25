@@ -373,7 +373,7 @@ mod tests {
     async fn render_cost() {
         use std::time::Instant;
         let path = std::env::var("CORTEN_FIXTURE").expect("CORTEN_FIXTURE");
-        let source = Source::fixture(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let source = Source::fixture(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let ids: Vec<String> = (1..=500).map(|n| format!("item_{n}")).collect();
         let router = super::app(source.clone()).router();
         let t = Msg::default();
@@ -416,6 +416,30 @@ mod tests {
             }
         }
         println!("item as JSON: {:.1} us ({} bytes avg)", per(start), bytes / (rounds * ids.len()));
+        // The item API's responses, read as the API source reads them: the same items as serde_json.
+        let text = std::fs::read_to_string(&path).unwrap();
+        let raw: std::collections::HashMap<String, &serde_json::value::RawValue> = serde_json::from_str(&text).unwrap();
+        let responses: Vec<&str> = ids.iter().map(|id| raw[id].get()).collect();
+        for (id, response) in ids.iter().zip(&responses) {
+            let ours = ItemView::from(corten::json::from_str::<crate::model::ApiItem>(response).unwrap());
+            let theirs = ItemView::from(serde_json::from_str::<crate::model::ApiItem>(response).unwrap());
+            // Compared as text: a NaN price is not equal to itself.
+            assert_eq!(format!("{ours:?}"), format!("{theirs:?}"), "FromJson reads {id} differently from serde_json");
+        }
+        let parse_rounds = 5;
+        let parse = |read: &dyn Fn(&str) -> usize| {
+            let start = Instant::now();
+            for _ in 0..parse_rounds {
+                for response in &responses {
+                    std::hint::black_box(read(std::hint::black_box(response)));
+                }
+            }
+            start.elapsed().as_secs_f64() * 1e6 / (parse_rounds * responses.len()) as f64
+        };
+        let serde = parse(&|r| serde_json::from_str::<crate::model::ApiItem>(r).is_ok() as usize);
+        let ours = parse(&|r| corten::json::from_str::<crate::model::ApiItem>(r).is_ok() as usize);
+        let size = responses.iter().map(|r| r.len()).sum::<usize>() / responses.len();
+        println!("item API response read: serde_json {serde:.1} us, FromJson {ours:.1} us ({size} bytes avg)");
         for (label, prefix, mode, encoding) in [
             ("navigation, identity", "/items/", Some("nav"), "identity"),
             ("document, identity", "/items/", None, "identity"),

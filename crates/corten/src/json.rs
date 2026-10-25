@@ -1,4 +1,5 @@
-//! [`Json`]: a JSON response or request body, and [`ToJson`]: a value that writes itself as JSON.
+//! [`Json`]: a JSON response or request body, [`ToJson`]: a value that writes itself as JSON, and
+//! [`FromJson`]: a value read from JSON by Corten's reader, with serde_json where it gives up.
 //!
 //! `#[derive(ToJson)]` writes a struct or an enum as `serde_json` would, with the layout decided when
 //! the crate compiles: the keys, quotes, colons and commas between two values are one byte string,
@@ -58,6 +59,55 @@
 //!
 //! As an extractor `Json` is axum's, with the same rejections (under [`crate::App::api`] they are
 //! answered as JSON errors).
+//!
+//! # Reading
+//!
+//! [`from_slice`] and [`from_str`] read a [`FromJson`] type, which `#[derive(FromJson)]` implements next to
+//! serde's `Deserialize`: another service's response, read into structs of only the fields a page
+//! uses. Corten's reader matches each key against the fields, makes each value straight from the
+//! text and skips (validating) the rest; where it meets anything it does not follow (an escaped
+//! key, a missing or duplicate field, a number it does not parse itself) serde_json reads the text
+//! instead, so the value, and every error, is `serde_json::from_slice`'s. The item page's 55 KB API
+//! response takes a fifth fewer instructions than through serde_json (see the changelog).
+//!
+//! ```
+//! use corten::FromJson;
+//!
+//! #[derive(serde::Deserialize, FromJson, Debug, PartialEq)]
+//! #[serde(rename_all = "camelCase")]
+//! struct Listing { listing_id: String, price: Option<f64> }
+//!
+//! let listing: Listing = corten::json::from_str(r#"{"listingId":"l1","seller":{"id":7},"price":2.5}"#).unwrap();
+//! assert_eq!(listing, Listing { listing_id: "l1".into(), price: Some(2.5) });
+//! ```
+//!
+//! It reads `rename`, `rename_all`, `alias`, `default`, `skip`, `skip_deserializing`,
+//! `deny_unknown_fields` and `transparent`, on structs with named fields, tuple and unit structs, and
+//! enums of unit variants. A field's type is a `FromJson` (strings, numbers, `bool`, `char`, `Option`,
+//! `Vec`, `Box`, maps with `String` keys, `serde_json::Value` and derived types) or else any
+//! `Deserialize` type, which serde_json reads from that field's text. An attribute that changes how
+//! serde reads in a way the derive does not follow, or an enum with data, does not compile; derive
+//! `Deserialize` alone for that type and it is still read, by serde_json, as a field:
+//!
+//! ```compile_fail
+//! #[derive(serde::Deserialize, corten::FromJson)]
+//! struct Page {
+//!     #[serde(flatten)]
+//!     extra: std::collections::HashMap<String, String>,
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! #[derive(serde::Deserialize, corten::FromJson)]
+//! enum Event { Sold { price: f64 } }
+//! ```
+//!
+//! A type that only derives `FromJson` does not compile either: serde's `Deserialize` is the fallback.
+//!
+//! ```compile_fail
+//! #[derive(corten::FromJson)]
+//! struct Price { amount: f64 }
+//! ```
 
 use std::{
     borrow::Cow,
@@ -77,7 +127,14 @@ use axum::{
 };
 use serde::de::DeserializeOwned;
 
-pub use corten_macros::ToJson;
+pub use corten_macros::{FromJson, ToJson};
+
+mod read;
+pub use read::{from_slice, from_str, FromJson};
+
+/// Used by the code `#[derive(FromJson)]` generates. Not a public API.
+#[doc(hidden)]
+pub use read::__private as __read;
 
 /// JSON out (`application/json`) or in (a request body with a JSON content type).
 #[derive(Clone, Copy, Debug, Default)]

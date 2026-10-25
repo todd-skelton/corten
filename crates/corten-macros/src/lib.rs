@@ -1,5 +1,5 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
-//! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(ToJson)]` (see `corten::json`), `#[derive(Route)]` (see
+//! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(ToJson)]` and `#[derive(FromJson)]` (see `corten::json`), `#[derive(Route)]` (see
 //! `corten::route`), `#[derive(Id)]` (see `corten::view::Id`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
 //! `tokens!` and component stylesheets (see `corten::style`).
 //!
@@ -10,6 +10,7 @@ mod component;
 mod derive;
 mod dom;
 mod event;
+mod from_json;
 mod html;
 mod id;
 mod json;
@@ -53,6 +54,13 @@ pub fn derive_id(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(ToJson, attributes(serde))]
 pub fn derive_to_json(input: TokenStream) -> TokenStream {
     to_json::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// A struct, or an enum of unit variants, read from JSON with serde_json as the fallback.
+/// Documented at `corten::json`.
+#[proc_macro_derive(FromJson, attributes(serde))]
+pub fn derive_from_json(input: TokenStream) -> TokenStream {
+    from_json::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// A struct as a typed DOM event. Documented at `corten::script`.

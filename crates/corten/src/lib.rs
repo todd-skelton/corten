@@ -101,7 +101,7 @@ pub use corten_macros::Fields;
 pub use form::{Errors, FieldName, Form, Query};
 pub use html::escape;
 #[cfg(feature = "json")]
-pub use json::{Json, ToJson};
+pub use json::{FromJson, Json, ToJson};
 pub use meta::Meta;
 pub use page::{default_error_page, default_shell, Document, Head, IntoShell, Main, Mode, Req, ShellFn, MODE_HEADER};
 pub use route::{Href, Route};
@@ -145,7 +145,7 @@ pub mod prelude {
         Access, Api, App, Area, Cache, Document, Errors, FieldName, Fields, Form, Meta, Mode, Query, Render, Req, Result, Route,
     };
     #[cfg(feature = "json")]
-    pub use crate::{Json, ToJson};
+    pub use crate::{FromJson, Json, ToJson};
 }
 
 /// The runtime, embedded so apps never copy it: `js/corten.js` minified by `scripts/build-js.mjs`

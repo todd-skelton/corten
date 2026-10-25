@@ -190,6 +190,12 @@ Under the prefix:
    (`flatten`, `serialize_with`) does not compile. A field whose type has only `Serialize` (an id or a
    date from another crate) is written by `serde_json`. `serde_json::Value` is a `ToJson`, as above.
    axum's `Json` works too, and writes any `Serialize` through `serde_json` and a `BytesMut`.
+6. To read JSON another service answers, derive `FromJson` (in the prelude) next to `Deserialize`
+   and read it with `corten::json::from_slice` or `from_str`. Corten's reader takes the fields the
+   type declares and skips the rest; on anything it does not follow (an escaped key, a missing or
+   duplicate field) `serde_json` reads the text instead, so the value and every error are
+   `serde_json`'s. It reads `#[serde(...)]` as `Deserialize` does and refuses one it cannot follow
+   (`flatten`, `deserialize_with`); a field of a type with only `Deserialize` is read by `serde_json`.
 
 Each route is a `#[derive(Route)]` struct, and the API's prefix is one too (`ApiRoot` above), so
 the router and the links name the same URL, and a route outside the prefix (`/apis/items`
