@@ -354,6 +354,13 @@ Corten is pre-1.0, so any minor version may change the API.
     app: 134,682 instructions per item page request before, 120,175 after (-10.8%), and 95,398 on
     the home page (50 item links) before, 85,261 after (-10.6%). The item view's `render_cost` is unchanged within noise (median 20.0 µs before,
     20.2 µs after, 15 runs each).
+32. A route parameter with nothing to percent-encode (most ids and slugs) is tested with one table
+    lookup per byte and no branch, then copied once, where the encoder searched it byte by byte.
+    The bytes written are unchanged. Measured in process on the item page (11 route links), user
+    instructions (`perf_event`, release build, lowest of 3 runs): the page body 56,275 before and
+    55,658 after (-1.1%), a document request 94,815 and 93,953, a navigation 86,966 and 86,362;
+    `render_cost` is unchanged within noise (build + render main, median of 3: 14.3 µs before,
+    16.0 µs after).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
