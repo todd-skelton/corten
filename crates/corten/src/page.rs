@@ -706,6 +706,19 @@ fn check_patch(body: &str) -> Result<()> {
     }
 }
 
+/// A page with a `Refresh` header: browsers keep a full load's after the runtime navigates
+/// away, then load that URL again (Chromium, Firefox, WebKit). `Meta::read_again` is the way.
+#[cfg(debug_assertions)]
+fn refresh_header_is_an_error(res: Response) -> Response {
+    if !(res.headers().contains_key(SHELL_HEADER) && res.headers().contains_key("refresh")) {
+        return res;
+    }
+    Error::new(
+        "corten: this page sends a Refresh header, which the browser keeps after the runtime navigates away and then loads this URL again: use Meta::read_again(after) instead",
+    )
+    .into_response()
+}
+
 /// A redirect in `mode`: `corten-location` for a form patch (the runtime navigates), a 303
 /// otherwise.
 pub(crate) fn redirect(mode: Mode, to: HeaderValue) -> Response {
@@ -741,6 +754,8 @@ pub(crate) async fn render_errors(
     // the shell takes a context.
     let failed_req = Req::new(req.headers(), req.extensions(), req.uri(), shared.clone());
     let res = run(req, next, deadline, signal).await;
+    #[cfg(debug_assertions)]
+    let res = refresh_header_is_an_error(res);
     let status = res.status();
     let mut failed = res.extensions().get::<crate::Failed>().cloned();
     let error = status.is_client_error() || status.is_server_error();

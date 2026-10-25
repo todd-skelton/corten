@@ -667,6 +667,58 @@ async function run(browser) {
   check("data saver: hovering a link fetches nothing", savingRequests.length === 0, savingRequests.join());
   await saver.close();
 
+  // A page that waits for a write (Meta::read_again) reads itself again until the write is in,
+  // however it was reached: a full load, or the runtime's navigation (a link, or a data-patch
+  // form's corten-location, which navigates the same way). Each read is the same URL in place of
+  // the history entry, and a navigation away stops it.
+  {
+    const due = (/** @type {number} */ ms) => `${base}/saved?until=${Date.now() + ms}`;
+    /** Navigates the runtime's way, and waits until the page is there, still saving. @param {string} url */
+    const go = async (url) => {
+      await page.evaluate((url) => (/** @type {any} */ (window)).navigation.navigate(url), url);
+      await page.waitForFunction((url) => location.href === url && document.getElementById("saved")?.textContent === "Saving your change...", url);
+    };
+    const saved = () => page.textContent("#saved");
+    const savedSoon = () =>
+      page.waitForFunction(() => document.getElementById("saved")?.textContent === "Your change is saved.", null, { timeout: 6000 }).catch(() => {});
+    /** @type {string[]} */
+    const reads = [];
+    const onSaved = (/** @type {import("@playwright/test").Request} */ r) => r.url().includes("/saved") && reads.push(r.url());
+    page.on("request", onSaved);
+    await page.goto(due(1500));
+    const waiting = await saved();
+    await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 5));
+    await savedSoon();
+    check("a page waiting for a write reads itself again after a full load", waiting === "Saving your change..." && (await saved()) === "Your change is saved.", `${waiting} -> ${await saved()}`);
+    if (swaps) check("reading again keeps the document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 5));
+    else skip("reading again keeps the document", noSwaps);
+    const settled = reads.length;
+    await page.waitForTimeout(2200);
+    check("it stops once the page no longer asks", reads.length === settled, `${reads.length - settled} more reads`);
+    if (swaps) {
+      await page.evaluate(() => (/** @type {any} */ (window)).__marker = 6);
+      const entries = await page.evaluate(() => history.length);
+      await go(due(1500));
+      const reached = await saved();
+      await savedSoon();
+      check(
+        "a page reached by the runtime's navigation reads itself again in place",
+        reached === "Saving your change..." && (await saved()) === "Your change is saved." && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 6)),
+        `${reached} -> ${await saved()}`,
+      );
+      check("each read replaces the history entry", (await page.evaluate(() => history.length)) === entries + 1, `${entries} -> ${await page.evaluate(() => history.length)}`);
+      await go(due(10_000));
+      await page.click('header a[href="/about"]');
+      await page.waitForFunction(() => document.title === "About | Corten");
+      const left = reads.length;
+      await page.waitForTimeout(2200);
+      check("navigating away stops the reads", reads.length === left, `${reads.length - left} more reads`);
+    } else {
+      for (const name of ["a page reached by the runtime's navigation reads itself again in place", "each read replaces the history entry", "navigating away stops the reads"]) skip(name, noSwaps);
+    }
+    page.off("request", onSaved);
+  }
+
   // data-reload: the link loads the whole document instead of swapping <main>.
   await page.evaluate(() => {
     (/** @type {any} */ (window)).__marker = 4;

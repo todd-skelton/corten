@@ -161,6 +161,28 @@ A page handler may redirect too (an old URL, a guard sending someone to sign in)
 navigation follows it: the page it was sent to is swapped in and replaces the requested URL
 in the history, so Back skips the URL that redirected.
 
+## A read that has not caught up yet
+
+A write is often read back from a projection that is a moment behind: the page after the
+redirect says "saved, updating" and should read itself again shortly. Its `Meta` asks for that:
+
+```rust,ignore
+let meta = Meta::new("Cart");
+let meta = if cart.behind(&receipt) { meta.read_again(Duration::from_secs(2)) } else { meta };
+req.page(meta, cart_view(&cart))
+```
+
+However the page was reached (a full load, a link, a `data-patch` form's redirect), the runtime
+fetches the same URL after the delay and swaps it in: the history entry is replaced, the scroll
+position stays, the focused element (found again by its id) keeps focus, an answer the same as
+the last read's is not swapped, and a hidden tab waits until it is shown. Each answer asks again or not, so the reads stop once the write is in; give up after a
+while (the receipt's age) so a page never polls without end. A navigation away stops them.
+Without JavaScript the browser reloads the page (`<meta http-equiv="refresh">` in `<noscript>`).
+
+Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
+the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
+page that sends one.
+
 ## Errors
 
 A handler returns `corten::Result`; any `std::error::Error` converts with `?` and becomes a

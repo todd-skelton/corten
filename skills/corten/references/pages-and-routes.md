@@ -26,7 +26,9 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
 1. Mount the route with `Item::PATH`; link with the struct. Fields not in the path are query
    parameters (`pub tab: Option<&'a str>`). Redirect with `req.redirect(&Item { id })`.
 2. The first argument of `req.page` is the title, or a `Meta` for description, canonical and
-   social tags.
+   social tags. A page showing a read that has not caught up with a write yet adds
+   `.read_again(Duration::from_secs(2))` while it is behind (and stops after a time limit); the
+   runtime reads it again in place however it was reached. Never a `Refresh` header.
 3. The shell (`App::shell`) wraps every page; client navigation swaps only `<main>`. Mark the
    current link with `aria-current={doc.current(&Item { id })}` in the shell.
 4. Read everything from `req` before building the view: `html!` views render once and own what

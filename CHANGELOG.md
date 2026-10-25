@@ -329,6 +329,18 @@ Corten is pre-1.0, so any minor version may change the API.
     (6,748 to 7,525 B). hello's live prices use it
     ([#60 A page cannot write a date and time in the request's locale](https://github.com/todd-skelton/corten/issues/60),
     [#63 A page cannot write an amount of money in the request's locale](https://github.com/todd-skelton/corten/issues/63)).
+46. `Meta::read_again(after)`: a page showing a read that has not caught up with a write asks to
+    be read again. The runtime fetches the same URL after the delay and swaps it in (history entry
+    replaced, scroll kept, focus kept by id, no swap when the answer matches the last read's, a
+    hidden tab waits),
+    however the page was reached: a full load, a link or a `data-patch` form's redirect. A
+    navigation away stops it; without JavaScript it is a `<meta http-equiv="refresh">` in
+    `<noscript>`. A `Refresh` header on a page is a 500 in debug builds: Chromium, Firefox and
+    WebKit keep a full load's after the runtime navigates away and load that URL again (probed).
+    The runtime drops `<noscript>` content from the markup it swaps in, which a template would
+    otherwise make live. The runtime is 282 B larger gzipped (7,525 to 7,807 B). hello's
+    `/saved` shows it
+    ([#69 A page cannot ask to be read again shortly, and the Refresh header only works on a full load](https://github.com/todd-skelton/corten/issues/69)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
