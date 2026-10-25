@@ -105,14 +105,14 @@ async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
 struct GreetingId;
 
 #[component]
-fn Greeting(name: &str) -> impl Render {
+fn Greeting(name: &str) -> impl Patch {
     html! { <p id={GreetingId} aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
 }
 
 /// The whole document. `<Corten />` is where Corten adds the runtime and the page's scripts and
 /// stylesheets; a client navigation gets only the `<title>` and `<main>`'s children.
 #[component]
-fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     html! {
         <!DOCTYPE html>
         <html lang={req.lang()}>

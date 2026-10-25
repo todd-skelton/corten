@@ -71,11 +71,12 @@ pub use corten_macros::html;
 ///
 /// ```ignore
 /// #[component]
-/// pub fn Panel<'a, C: Render>(title: &'a str, children: C) -> impl Render {
+/// pub fn Panel(title: &str, children: impl Render) -> impl Render {
 ///     html! { <section><h2>{title}</h2>{children}</section> }
 /// }
 /// ```
 ///
+/// A parameter written `impl Render` (or any `impl Trait`) is a type parameter of the struct.
 /// Parameters that are `Copy` (references, numbers, `bool`) arrive with their declared type;
 /// others arrive by reference. The function body runs when the component renders.
 ///
@@ -109,7 +110,7 @@ pub struct Html<F> {
 
 static NO_SIZE: AtomicUsize = AtomicUsize::new(0);
 
-impl<F: FnOnce(&mut String)> Html<F> {
+impl<F> Html<F> {
     /// Used by `html!`, which gives every call site its own `size`.
     pub fn new(size: &'static AtomicUsize, render: F) -> Self {
         Html { render: Cell::new(Some(render)), size }
@@ -121,11 +122,14 @@ impl<F: FnOnce(&mut String)> Html<F> {
     }
 }
 
-impl<F: FnOnce(&mut String)> Render for Html<F> {
+// The closure returns the view's shape (see `Patch`): `()` for children, which are never a patch.
+impl<F: FnOnce(&mut String) -> S, S> Render for Html<F> {
     #[inline]
     fn render(&self, out: &mut String) {
         match self.render.take() {
-            Some(render) => render(out),
+            Some(render) => {
+                render(out);
+            }
             None => panic!("a view from html! renders once; call the function that builds it again"),
         }
     }
@@ -398,6 +402,113 @@ impl<T: Id> Render for Remove<T> {
         out.push_str("\" data-remove></template>");
     }
 }
+
+/// What a `<form data-patch>` answer sends ([`crate::Req::patch`]): elements the runtime puts in
+/// place of the page's elements with the same ids. An element without an id would be dropped in
+/// the browser, so a view is a patch only when the compiler can see that each of its top-level
+/// elements has one:
+///
+/// - `html!` whose top-level elements each have `id={..}` with a [`#[derive(Id)]`](Id) type, and
+///   whose other top-level parts (expressions, components, the bodies of `for`, `if` and
+///   `match`) are patches too. `let` is allowed; text is not.
+/// - A component declared `-> impl Patch`, whose markup is such an `html!`.
+/// - [`Remove`], and a reference, `Option` (`None` sends nothing), `Vec` or slice of patches.
+///
+/// ```
+/// use corten::{prelude::*, view::Remove};
+///
+/// #[derive(Id)]
+/// struct RowId<'a>(&'a str);
+/// #[derive(Id)]
+/// struct StatusId;
+///
+/// #[component]
+/// fn Status(text: &str) -> impl Patch {
+///     html! { <p id={StatusId} role="status">{text}</p> }
+/// }
+///
+/// fn archived<'a>(done: &'a [&'a str]) -> impl Patch + 'a {
+///     html! {
+///         for id in done { {Remove(RowId(id))} }
+///         <Status text="Archived." />
+///     }
+/// }
+/// # let _ = archived(&["7"]);
+/// ```
+///
+/// An element without an id is not a patch, and neither is one whose id is text, nor text:
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// fn send(_: impl Patch) {}
+/// send(html! { <p>"Saved"</p> });
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// fn send(_: impl Patch) {}
+/// send(html! { <p id={"status"}>"Saved"</p> });
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// #[derive(Id)]
+/// struct StatusId;
+/// fn send(_: impl Patch) {}
+/// send(html! { <p id={StatusId}>"Saved"</p> "and more" });
+/// ```
+///
+/// A branch counts too, whether or not it runs:
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// #[derive(Id)]
+/// struct StatusId;
+/// fn send(_: impl Patch) {}
+/// let saved = true;
+/// send(html! { if saved { <p id={StatusId}>"Saved"</p> } else { <p>"Not saved"</p> } });
+/// ```
+///
+/// A component is a patch only when it says so, and then its markup must be one:
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// #[derive(Id)]
+/// struct StatusId;
+/// #[component]
+/// fn Status(text: &str) -> impl Render {
+///     html! { <p id={StatusId}>{text}</p> }
+/// }
+/// fn send(_: impl Patch) {}
+/// send(Status { text: "Saved" });
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// #[component]
+/// fn Status(text: &str) -> impl Patch {
+///     html! { <p role="status">{text}</p> }
+/// }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a patch",
+    label = "a patch replaces elements by id",
+    note = "give each top-level element an id={{..}} with a #[derive(Id)] type, and declare a component sent as a patch `-> impl Patch`"
+)]
+pub trait Patch: Render + __private::PatchSealed {}
+
+impl<F: FnOnce(&mut String) -> S, S: __private::PatchShape> __private::PatchSealed for Html<F> {}
+impl<F: FnOnce(&mut String) -> S, S: __private::PatchShape> Patch for Html<F> {}
+impl<T: Id> __private::PatchSealed for Remove<T> {}
+impl<T: Id> Patch for Remove<T> {}
+impl<T: Patch + ?Sized> __private::PatchSealed for &T {}
+impl<T: Patch + ?Sized> Patch for &T {}
+impl<T: Patch> __private::PatchSealed for Option<T> {}
+impl<T: Patch> Patch for Option<T> {}
+impl<T: Patch> __private::PatchSealed for [T] {}
+impl<T: Patch> Patch for [T] {}
+impl<T: Patch> __private::PatchSealed for Vec<T> {}
+impl<T: Patch> Patch for Vec<T> {}
 
 /// Trusted HTML, written without escaping. Only for markup the app produced itself.
 pub struct Raw<T>(pub T);
@@ -818,6 +929,70 @@ pub mod __private {
         render(&mut scratch);
         super::mark_head_tags(&scratch, out);
         HEAD_SCRATCH.set(scratch);
+    }
+
+    /// Implemented only by Corten and `#[component]`: what makes [`super::Patch`] a promise
+    /// the compiler checked.
+    pub trait PatchSealed {}
+
+    // The shape of a view from `html!`, returned by its closure: one per top-level part, `Yes`
+    // when the part is a patch and `No` when it is not, a `for`, `if` or `match` body's as an
+    // `Option` (it may not run), in nested pairs that end in `End`. A view is a patch when all
+    // of its shape is. Each is a zero-sized type, so working it out costs nothing at run time.
+    pub struct Yes;
+    pub struct No;
+    pub struct End;
+
+    #[diagnostic::on_unimplemented(
+        message = "this view is not a patch: one of its top-level parts is not an element with a #[derive(Id)] id",
+        label = "a patch replaces elements by id",
+        note = "give each top-level element an id={{..}} with a #[derive(Id)] type; text, and an id written as text, cannot be a patch's top level"
+    )]
+    pub trait PatchShape {}
+    impl PatchShape for Yes {}
+    impl PatchShape for End {}
+    impl<T: PatchShape> PatchShape for Option<T> {}
+    impl<A: PatchShape, B: PatchShape> PatchShape for (A, B) {}
+
+    // `(&Proof(&value)).__shape()` is `Yes` when the value is a patch (`ProofPatch` matches
+    // without an extra reference) and `No` otherwise; `IdProof` likewise for an element id.
+    pub struct Proof<'a, T: ?Sized>(pub &'a T);
+    pub trait ProofPatch {
+        #[inline(always)]
+        fn __shape(&self) -> Yes {
+            Yes
+        }
+    }
+    impl<T: super::Patch + ?Sized> ProofPatch for Proof<'_, T> {}
+    pub trait ProofOther {
+        #[inline(always)]
+        fn __shape(&self) -> No {
+            No
+        }
+    }
+    impl<T: ?Sized> ProofOther for &Proof<'_, T> {}
+
+    pub struct IdProof<'a, T: ?Sized>(pub &'a T);
+    pub trait ProofId {
+        #[inline(always)]
+        fn __id_shape(&self) -> Yes {
+            Yes
+        }
+    }
+    impl<T: super::Id + ?Sized> ProofId for IdProof<'_, T> {}
+    pub trait ProofNotId {
+        #[inline(always)]
+        fn __id_shape(&self) -> No {
+            No
+        }
+    }
+    impl<T: ?Sized> ProofNotId for &IdProof<'_, T> {}
+
+    /// A component declared `-> impl Patch` renders its markup through this, so markup that is
+    /// not a patch does not compile.
+    #[inline(always)]
+    pub fn render_patch<T: super::Patch + ?Sized>(view: &T, out: &mut String) {
+        view.render(out)
     }
 
     /// `html!` that is `let`s and then one component: built when it renders, as any view is, so

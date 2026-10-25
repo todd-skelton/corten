@@ -70,7 +70,9 @@ framework's shape, and what it does not do yet.
    ones on the page. (One exception: `ComboBox` mirrors the server's `<option>`s into its
    listbox, so each option is sent once.)
 2. A fragment that can be patched is a component, rendered by the page and by the patch, so the
-   two cannot drift.
+   two cannot drift. It is declared `-> impl Patch`, and its markup's top-level elements each have
+   a `#[derive(Id)]` id, which the compiler checks (`view::Patch`), so no patch loses an element in
+   the browser.
 3. A handler reaches the page only through its arguments: refs, `event`, `target`, `signal`,
    `scope` and values. State that outlives an event is the DOM itself or `state(el, init)`.
 4. User-facing text lives in views, the view model or the catalog, never in scripts. Text that

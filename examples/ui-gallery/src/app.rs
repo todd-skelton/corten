@@ -60,7 +60,7 @@ pub fn app() -> App {
 
 /// The document around every page.
 #[component]
-fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     html! {
         <!DOCTYPE html>
         <html lang="en">

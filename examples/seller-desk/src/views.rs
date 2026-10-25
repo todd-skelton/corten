@@ -26,7 +26,7 @@ pub struct Line<'a> {
 
 /// The document around every page.
 #[component]
-pub fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     html! {
         <!DOCTYPE html>
         <html lang="en">
@@ -58,7 +58,7 @@ pub struct DeskStatusId;
 
 /// What the last bulk action did; the server patches it by `id`.
 #[component]
-pub fn StatusLine<'a>(text: &'a str) -> impl Render {
+pub fn StatusLine<'a>(text: &'a str) -> impl Patch {
     html! { <p id={DeskStatusId} role="status">{text}</p> }
 }
 

@@ -6,7 +6,7 @@
 #[derive(serde::Deserialize, Fields)]
 struct GreetForm { name: String }
 
-fn page<'a>(req: &'a Req, name: &'a str) -> impl Document + 'a {
+fn page(req: &Req, name: &str) -> impl Document {
     let f = GreetForm::FIELDS;
     html! {
         <Layout req={req} title="Home">
@@ -19,9 +19,12 @@ fn page<'a>(req: &'a Req, name: &'a str) -> impl Document + 'a {
     }
 }
 
+#[derive(Id)]
+struct GreetingId;
+
 #[component]
-fn Greeting(name: &str) -> impl Render {
-    html! { <p id="greeting" aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
+fn Greeting(name: &str) -> impl Patch {
+    html! { <p id={GreetingId} aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
 }
 
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
@@ -33,9 +36,9 @@ async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
 ```
 
 A patch may hold several top-level elements; each replaces the element with the same `id`, so
-each needs one (a component a patch sends is rooted at the element with the id). In debug builds a
-top-level element without an id, or text outside an element, makes the patch an error naming it,
-since the browser would drop it. Fields
+each needs one, a `#[derive(Id)]` type: `req.patch` and `req.invalid` take a `Patch`, and a view
+whose top level has text, an element without an id or an id written as text does not compile. A
+component a patch sends is rooted at the element with the id and declared `-> impl Patch`. Fields
 the user edited (after the form was sent) and the focus carry over to the new markup, so a patch
 can include the form the user is typing in.
 After a write that should change the URL, use `req.redirect(&Route)` instead.

@@ -48,7 +48,7 @@ struct Viewer(&'static str);
 /// The tests' layout: the page's title and head tags, and a header that names the context's viewer
 /// and marks the current page.
 #[crate::component]
-pub(crate) fn Shell<'a, H: Render, C: Render>(req: &'a Req, title: &'a str, head: H, children: C) -> impl Document + 'a {
+pub(crate) fn Shell(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
     let who = req.context::<Viewer>().map_or("guest", |v| v.0);
     html! {
         <!DOCTYPE html>
@@ -146,7 +146,7 @@ fn routes() -> Router {
         })
         .post(|req: Req| async move {
             if req.mode == Mode::Action {
-                req.patch(html! { <p id="msg">"saved"</p> })
+                req.patch(html! { <p id={MsgId}>"saved"</p> })
             } else {
                 req.redirect(&Done)
             }
@@ -553,7 +553,10 @@ fn current_links_match_the_page_or_its_section() {
 #[derive(crate::view::Id)]
 struct SignUpId;
 
-fn alert_form(errors: &Errors) -> impl Render + '_ {
+#[derive(crate::view::Id)]
+struct MsgId;
+
+fn alert_form(errors: &Errors) -> impl crate::Patch + '_ {
     let f = SignUp::FIELDS;
     let e = errors.within(SignUpId);
     html! { <form id={SignUpId}><input name={f.email} {..e.aria(f.email)}>{e.message(f.email)}</form> }
@@ -681,31 +684,6 @@ async fn a_page_that_moved_answers_301_in_every_mode_and_a_form_navigates() {
     let (status, headers, _) = call(app(routes, None), "GET", Some("action")).await;
     assert_eq!(status, StatusCode::NO_CONTENT, "a data-patch form is sent on, as by redirect");
     assert_eq!(headers["corten-location"], "/items/pika%20chu");
-}
-
-#[cfg(debug_assertions)]
-#[tokio::test]
-async fn a_patch_whose_top_level_element_has_no_id_is_an_error_in_debug_builds() {
-    let routes = Router::new().route(
-        "/",
-        get(|req: Req| async move {
-            let errors = &Errors::new();
-            let wrapped = html! {
-                <p id="recovery">"ok"</p>
-                <div class="write-off">{alert_form(errors)}</div>
-            };
-            req.invalid(errors, wrapped, || async { req.test_page("Alert", html! { <p>"page"</p> }) }).await
-        }),
-    );
-    let (status, _, _) = call(app(routes.clone(), None), "GET", None).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "a page is not a patch");
-    let router = Router::new().route("/", get(|req: Req| async move { req.patch(html! { <p id="msg">"saved"</p> }) }));
-    assert_eq!(call(router, "GET", Some("action")).await.0, StatusCode::OK);
-
-    let res = routes.oneshot(Request::builder().uri("/").header("corten", "action").body(Body::empty()).unwrap()).await.unwrap();
-    assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR, "not a 422 the browser would drop");
-    let failed = res.extensions().get::<crate::Failed>().expect("the error").0.to_string();
-    assert!(failed.contains(r#"top-level <div class="write-off"> has no id"#), "{failed}");
 }
 
 #[cfg(debug_assertions)]

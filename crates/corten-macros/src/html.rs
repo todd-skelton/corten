@@ -87,17 +87,31 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
         Ok(nodes) => {
             let mut gen = Gen::default();
-            gen.nodes(&nodes, false);
+            // The closure returns the view's shape, which says whether it is a patch (see
+            // `corten::view::Patch`). A view with a part that cannot be one is written as before.
+            let body = if could_patch(&nodes) {
+                let mut slots = Slots::default();
+                let shape = gen.top_nodes(&nodes, &mut slots);
+                let mut body = slots.lets;
+                body.extend(gen.finish());
+                body.extend(shape);
+                body
+            } else {
+                gen.nodes(&nodes, false);
+                let mut body = gen.finish();
+                body.extend(q("::corten::view::__private::No", &[]));
+                body
+            };
             q(
                 "::corten::view::Html::new({
                     static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
                     &SIZE
                 }, move |__OUT: &mut ::std::string::String| {
                     #[allow(unused_imports)]
-                    use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _};
+                    use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _, ProofPatch as _, ProofOther as _, ProofId as _, ProofNotId as _};
                     __A0
                 })",
-                &[gen.finish()],
+                &[body],
             )
         }
         Err((span, message)) => compile_error(span, &message),
@@ -977,6 +991,57 @@ struct Gen {
     checks: TokenStream,
     /// In a document, which parts what is written now belongs to.
     level: Level,
+    /// Set while a patch's top-level element opens: the local its `id={..}` binds its shape to.
+    id_shape: Option<TokenStream>,
+}
+
+/// The locals a view's shape is gathered in: one `Option` per body of a `for`, `if` or `match`
+/// at its top level, declared before the markup, and a count for every local's name.
+#[derive(Default)]
+struct Slots {
+    lets: TokenStream,
+    count: usize,
+}
+
+impl Slots {
+    fn name(&mut self) -> TokenStream {
+        self.count += 1;
+        TokenTree::Ident(Ident::new(&format!("__corten_shape_{}", self.count), Span::call_site())).into()
+    }
+
+    /// An `Option` a body of a block sets to its shape when it runs.
+    fn slot(&mut self) -> TokenStream {
+        let name = self.name();
+        self.lets.extend(q(
+            "#[allow(unused_mut, unused_assignments)] let mut __A0 = ::core::option::Option::None;",
+            std::slice::from_ref(&name),
+        ));
+        name
+    }
+}
+
+/// Whether a view's top level could be a patch: no text, no `<!DOCTYPE>` and no element without
+/// `id={..}` at its top level or in the bodies of its blocks. Anything else is settled by types.
+fn could_patch(nodes: &[Node]) -> bool {
+    nodes.iter().all(|node| match node {
+        Node::Text(text) => text.trim().is_empty(),
+        Node::Markup(_) => false,
+        Node::Element { attrs, .. } => attrs.iter().any(|a| matches!(a, Attr::Expr(name, _) if name == "id")),
+        Node::Block { bodies, .. } => bodies.iter().all(|body| could_patch(body)),
+        Node::Expr(_) | Node::Component { .. } | Node::Let(_) => true,
+    })
+}
+
+/// `(a, (b, (c, End)))`: a view's shape from its parts' shapes.
+fn shape_of(shapes: Vec<TokenStream>) -> TokenStream {
+    let mut shape = q("::corten::view::__private::End", &[]);
+    for part in shapes.into_iter().rev() {
+        let mut pair = part;
+        pair.extend(q(",", &[]));
+        pair.extend(shape);
+        shape = stream([TokenTree::Group(Group::new(Delimiter::Parenthesis, pair))]);
+    }
+    shape
 }
 
 /// The parts of a document (`corten::view::Part`) a piece of its markup is written in.
@@ -1128,6 +1193,80 @@ impl Gen {
         out
     }
 
+    /// The top level of a view that could be a patch (see `could_patch`), written as `nodes`
+    /// writes it, with each part's shape bound to a local: an element's from its `id={..}`
+    /// (`Yes` for an `Id`), an expression's or component's from its type (`Yes` for a `Patch`),
+    /// a block's from the `Option` each of its bodies sets. Returns the view's shape.
+    fn top_nodes(&mut self, nodes: &[Node], slots: &mut Slots) -> TokenStream {
+        let mut shapes = Vec::new();
+        for node in nodes {
+            match node {
+                Node::Text(_) | Node::Markup(_) | Node::Let(_) => self.node(node, false),
+                Node::Expr(expr) => {
+                    let name = slots.name();
+                    self.code(q(
+                        "let __A1 = {
+                            let __corten_part = &(__A0);
+                            (&::corten::view::__private::Wrap(__corten_part)).__render(__OUT);
+                            (&::corten::view::__private::Proof(__corten_part)).__shape()
+                        };",
+                        &[expr.clone(), name.clone()],
+                    ));
+                    shapes.push(name);
+                }
+                Node::Component { path, props, children } => {
+                    let built = self.component(path, props, children, false);
+                    let name = slots.name();
+                    self.code(q(
+                        "let __A1 = {
+                            let __corten_part = __A0;
+                            ::corten::view::Render::render(&__corten_part, __OUT);
+                            (&::corten::view::__private::Proof(&__corten_part)).__shape()
+                        };",
+                        &[built, name.clone()],
+                    ));
+                    shapes.push(name);
+                }
+                Node::Element { .. } => {
+                    let name = slots.name();
+                    self.id_shape = Some(name.clone());
+                    self.node(node, false);
+                    // `could_patch` saw an `id={..}`, so `open_tag` bound it.
+                    self.id_shape = None;
+                    shapes.push(name);
+                }
+                Node::Block { head, bodies, arms } => {
+                    let mut tokens = if *arms { TokenStream::new() } else { head[0].clone() };
+                    let mut inner = TokenStream::new();
+                    for (i, body) in bodies.iter().enumerate() {
+                        let slot = slots.slot();
+                        let mut gen = Gen::default();
+                        let shape = gen.top_nodes(body, slots);
+                        let mut code = gen.finish();
+                        code.extend(q("__A0 = ::core::option::Option::Some(__A1);", &[slot.clone(), shape]));
+                        let group = TokenTree::Group(Group::new(Delimiter::Brace, code));
+                        if *arms {
+                            inner.extend(head[i + 1].clone());
+                            inner.extend([group, TokenTree::Punct(proc_macro::Punct::new(',', proc_macro::Spacing::Alone))]);
+                        } else {
+                            if i > 0 {
+                                tokens.extend(head[i].clone());
+                            }
+                            tokens.extend([group]);
+                        }
+                        shapes.push(slot);
+                    }
+                    if *arms {
+                        tokens = head[0].clone();
+                        tokens.extend([TokenTree::Group(Group::new(Delimiter::Brace, inner))]);
+                    }
+                    self.code(tokens);
+                }
+            }
+        }
+        shape_of(shapes)
+    }
+
     fn body(&self, nodes: &[Node], raw: bool) -> TokenTree {
         let mut gen = Gen::default();
         gen.nodes(nodes, raw);
@@ -1211,6 +1350,18 @@ impl Gen {
                 // Classes are a list (see `corten::style::ClassList`): `class={(Row, hot.then_some(Hot))}`.
                 Attr::Expr(attr, expr) if attr == "class" => {
                     self.code(q("::corten::style::__private::class_attr(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                }
+                // A patch's top-level element: the id also says whether it is a `#[derive(Id)]`.
+                Attr::Expr(attr, expr) if attr == "id" && self.id_shape.is_some() => {
+                    let name = self.id_shape.take().expect("checked");
+                    self.code(q(
+                        "let __A2 = {
+                            let __corten_id = &(__A0);
+                            (&::corten::view::__private::Attr(__corten_id)).__attr(__A1, __OUT);
+                            (&::corten::view::__private::IdProof(__corten_id)).__id_shape()
+                        };",
+                        &[expr.clone(), literal(" id"), name],
+                    ))
                 }
                 Attr::Expr(attr, expr) => self.code(q(
                     "(&::corten::view::__private::Attr(&(__A0))).__attr(__A1, __OUT);",
