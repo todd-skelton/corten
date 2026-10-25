@@ -23,6 +23,7 @@
 //    deploy changed the runtime or assets) is loaded in full instead of swapped.
 // Without JavaScript, links and forms still work as plain HTML.
 
+import { formatter } from "./format.js";
 import { parseOn } from "./on.js";
 
 const scriptsDir = document.querySelector('meta[name="corten-scripts"]')?.getAttribute("content") ?? "/assets/scripts/";
@@ -229,6 +230,24 @@ function closestRef(el, owner, name, event) {
  */
 
 /**
+ * The page's number format: `format(1234)` is `1,234` in en, as the server's `t.number` writes it.
+ * The markup passes it (`t.js().number()`); a decimal is passed as its text (`"21.5"`).
+ * @typedef {(n: number | string) => string} NumberFormat
+ */
+
+/**
+ * An amount's format in one currency: `format(123450)` (minor units, an integer) is `$1,234.50`
+ * in en, as `t.money(Minor(123450), USD)` writes it. The markup passes it (`t.js().money(USD)`).
+ * @typedef {(minor: number) => string} MoneyFormat
+ */
+
+/**
+ * A date's format: `format(at)` (a `Date`, milliseconds or ISO text) as the server's `t.date`,
+ * `t.time` or `t.date_time` writes it, in the zone the markup chose (`t.js().date(DateStyle::Medium)`).
+ * @typedef {(at: Date | number | string) => string} DateFormat
+ */
+
+/**
  * The function a `Message` argument is: its text with each argument put in.
  * @param {string[]} parts text and argument names, alternating, text first and last
  * @returns {(args: Record<string, string | number>) => string}
@@ -252,6 +271,8 @@ function resolve(arg, el, event, binding) {
       return arg.value;
     case "%":
       return message(arg.parts);
+    case "f":
+      return formatter(arg.spec);
     case "$e":
       return event;
     case "$t":

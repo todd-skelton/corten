@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build:js": "node scripts/build-js.mjs",
-    "check": "tsc -p jsconfig.json && node scripts/build-js.mjs --check && node scripts/wire.mjs",
+    "check": "tsc -p jsconfig.json && node scripts/build-js.mjs --check && node scripts/wire.mjs && node scripts/format.mjs",
     "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {

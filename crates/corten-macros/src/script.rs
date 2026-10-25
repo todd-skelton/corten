@@ -423,11 +423,13 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
 }
 
 /// True for a type that is not written as JSON: one only the browser can supply (an element or
-/// several, an event, a signal), or a catalog message (`Message<..>`, its own `%[..]` form).
+/// several, an event, a signal), a catalog message (`Message<..>`, its own `%[..]` form) or a
+/// format (`NumberFormat`, `MoneyFormat`, `DateFormat`: `%{..}`).
 fn not_json(param: &Param) -> bool {
     match param {
         Param::Checked(path) => {
             path.starts_with("ts::Message")
+                || path.ends_with("Format")
                 || path.starts_with("el::")
                 || path.starts_with("ts::Holds")
                 || path.starts_with("ev::")
@@ -565,6 +567,8 @@ fn param_type(ty: &str) -> Param {
     }
     match ty {
         "AbortSignal" => Param::Checked("ts::AbortSignal".into()),
+        // From `corten`: the page's formats, `t.js().number()`, `.money(USD)`, `.date(..)`.
+        "NumberFormat" | "MoneyFormat" | "DateFormat" => Param::Checked(format!("ts::{ty}")),
         "string" => Param::Checked("ts::String".into()),
         "number" => Param::Checked("ts::Number".into()),
         "boolean" => Param::Checked("ts::Boolean".into()),

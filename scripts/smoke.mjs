@@ -181,7 +181,8 @@ async function run(browser) {
     (await page.getAttribute(`${live} button`, "aria-pressed")) === "true" && JSON.stringify(await prices()) === JSON.stringify(paused),
   );
   await page.click(`${live} button`);
-  // The page's prices by stock id, and the feed's.
+  // The page's prices by stock id, written by the script with the page's money format
+  // (t.js().money(USD)), and the feed's, which the server wrote.
   const shown = () => page.$$eval('[data-ref="price"]', (cells) => JSON.stringify(cells.map((c) => [c.getAttribute("data-key"), c.textContent]).sort()));
   const latest = async () => {
     const snap = await (await fetch(`${base}/feed/stocks`, { headers: { accept: "application/json" } })).json();

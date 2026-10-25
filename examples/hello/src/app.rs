@@ -157,8 +157,9 @@ async fn sign_in(req: Req) -> corten::Result {
     Ok(res.into_response())
 }
 
-/// A feed row. `price` is the display text, kept with the cents so every surface shows the
-/// same string and no client re-implements the formatting.
+/// A feed row. `price` is the display text, for clients with no formatting of their own (a
+/// native screen, an agent); the page's script writes `price_cents` with the page's format
+/// (`t.js().money(USD)`), which writes what the server does.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Stock {
     pub id: String,
@@ -184,9 +185,11 @@ impl Row for Stock {
     }
 }
 
+/// The currency of every price.
+const USD: Currency = Currency::new("USD");
+
 /// The feed's one text for every viewer, in the app's default locale (`$1,234.50`).
 fn format_price(cents: u32) -> String {
-    const USD: Currency = Currency::new("USD");
     Msg::default().money(Minor(cents), USD).to_string()
 }
 
@@ -267,15 +270,16 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 
 /// The prices, rendered here first and then kept current by `live_prices.js` from the feed. The
 /// pause button shows only when the script runs, since nothing updates without it. The script
-/// counts the updates and shows the count with a message of the page's locale (`t.js()`), so
-/// the text a script computes still comes from the catalog. Styled by `live_prices.css`.
+/// counts the updates and shows the count with a message of the page's locale (`t.js()`), and
+/// writes each price with the page's money format, so the text a script computes is the
+/// server's. Styled by `live_prices.css`.
 #[component(css, js)]
 fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Render {
     let (pause, price, updates) = refs();
-    let updated = t.js().prices_updates();
+    let (updated, money) = (t.js().prices_updates(), t.js().money(USD));
     html! {
-        <div on:connect={js::watch(scope, pause, price, feed, signal, updates, updated)}>
-            <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price)}>
+        <div on:connect={js::watch(scope, pause, price, money, feed, signal, updates, updated)}>
+            <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price, money)}>
                 "Pause updates"
             </button>
             <table class={Table}>
@@ -415,8 +419,8 @@ mod tests {
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/scripts/live_prices.js\">"), "the script module is preloaded: {body}");
         assert!(
-            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
-            "the script gets the message it fills in: {body}"
+            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
+            "the script gets the money format and the message it fills in: {body}"
         );
         assert!(
             body.contains(r#"<td data-ref="price" class="live-prices__amount" data-key="s1">$129.99</td>"#),

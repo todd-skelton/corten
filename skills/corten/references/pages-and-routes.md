@@ -73,7 +73,8 @@ Numbers, money and dates come from `t` too, never `format!`: `t.number(n)`, `t.m
 USD)` or `t.money(Decimal::parse(&api.amount)?, USD)` (`const USD: Currency = Currency::new("USD")`;
 never a float), `t.date(at, DateStyle::Medium)`, `t.time(at, TimeStyle::Short)` and
 `t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;
-`corten::i18n::parse_timestamp` reads an API's RFC 3339 text). Each is a message argument too.
+`corten::i18n::parse_timestamp` reads an API's RFC 3339 text). Each is a message argument too. A
+script gets the same formats from `t.js()` (`references/scripts.md`).
 
 ## A data screen
 

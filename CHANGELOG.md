@@ -303,7 +303,8 @@ Corten is pre-1.0, so any minor version may change the API.
     form to a hosted checkout, an identity provider or a sibling app, and a form's handler can
     `req.redirect` there; the rest stay blocked (`form-action 'self'`). Found by the Chase Sets
     pilot, whose cart's Check out form posts to marketplace's origin and was blocked by the
-    browser before the request was sent
+    browser before the request was sent; a form posted straight to another app also needs that app
+    to accept this origin, so posting here and redirecting is usually simpler
     ([#64 A page cannot send a form to another origin, and a post cannot redirect to one (form-action is always 'self')](https://github.com/todd-skelton/corten/issues/64)).
 44. Numbers, money and dates in the request's locale, on the server: `t.number(n)`,
     `t.money(Minor(123450), USD)` (`$1,234.50` in en, `1 234,50 $US` in fr; or a `Decimal` an API
@@ -316,6 +317,16 @@ Corten is pre-1.0, so any minor version may change the API.
     app. A tag with no data of its own uses its language's; a language with none is a build
     error. `number`, `money`, `date`, `time` and `date_time` are no longer catalog keys. Asked for
     by the Chase Sets pilot, which wrote `en` dates and prices by hand
+    ([#60 A page cannot write a date and time in the request's locale](https://github.com/todd-skelton/corten/issues/60),
+    [#63 A page cannot write an amount of money in the request's locale](https://github.com/todd-skelton/corten/issues/63)).
+45. The same formats for a script: `t.js().number()`, `t.js().money(USD)` and
+    `t.js().date(DateStyle::Medium)` (`.time`, `.date_time`, `.zone(Offset)`) pass a handler whose
+    JSDoc takes a `NumberFormat`, `MoneyFormat` or `DateFormat` (from `"corten"`) a function that
+    writes what the server writes (`money(123450)` is `$1,234.50` in en), from the locale data sent
+    in `data-on` (`%{..}`); a format of the wrong kind does not compile. `scripts/format.mjs` (in
+    `npm run check`) runs the runtime's formatter on all 9,828 cases with the formats the server
+    sends (`src/i18n/specs.tsv`, which a Rust test rewrites). The runtime is 777 B larger gzipped
+    (6,748 to 7,525 B). hello's live prices use it
     ([#60 A page cannot write a date and time in the request's locale](https://github.com/todd-skelton/corten/issues/60),
     [#63 A page cannot write an amount of money in the request's locale](https://github.com/todd-skelton/corten/issues/63)).
 ### Removed

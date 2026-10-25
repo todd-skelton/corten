@@ -1,8 +1,9 @@
 // @ts-check
 // LivePrices (app.rs): keeps the server-rendered prices current from the feed. While paused it
-// keeps the latest rows and shows them on resume.
+// keeps the latest rows and shows them on resume. Prices are written with the page's money
+// format (t.js().money(USD)), which writes what the server rendered.
 import { state, subscribe } from "corten";
-/** @import { Message } from "corten" */
+/** @import { Message, MoneyFormat } from "corten" */
 
 /** @typedef {import("../types/app").Stock} Stock Generated from `Stock` in src/app.rs. */
 
@@ -11,16 +12,16 @@ const prices = (root) => state(root, () => ({ paused: false, updates: 0, latest:
 
 /**
  * @param {HTMLElement} root @param {HTMLButtonElement} pause @param {Map<string, HTMLTableCellElement>} cells
- * @param {string} feed @param {AbortSignal} signal
+ * @param {MoneyFormat} money @param {string} feed @param {AbortSignal} signal
  * @param {HTMLOutputElement} updates @param {Message<"count">} updated the count's text, in the page's locale
  */
-export function watch(root, pause, cells, feed, signal, updates, updated) {
+export function watch(root, pause, cells, money, feed, signal, updates, updated) {
   const s = prices(root);
   pause.hidden = false;
   /** @param {Stock} stock */
   const show = (stock) => {
     s.latest.set(stock.id, stock);
-    if (!s.paused) paint(cells, stock);
+    if (!s.paused) paint(cells, money, stock);
   };
   subscribe(
     feed,
@@ -40,16 +41,17 @@ export function watch(root, pause, cells, feed, signal, updates, updated) {
   );
 }
 
-/** @param {HTMLElement} root @param {HTMLButtonElement} button @param {Map<string, HTMLTableCellElement>} cells */
-export function pause(root, button, cells) {
+/** @param {HTMLElement} root @param {HTMLButtonElement} button @param {Map<string, HTMLTableCellElement>} cells @param {MoneyFormat} money */
+export function pause(root, button, cells, money) {
   const s = prices(root);
   s.paused = !s.paused;
   button.setAttribute("aria-pressed", String(s.paused));
-  if (!s.paused) for (const stock of s.latest.values()) paint(cells, stock);
+  if (!s.paused) for (const stock of s.latest.values()) paint(cells, money, stock);
 }
 
-/** @param {Map<string, HTMLTableCellElement>} cells @param {Stock} stock */
-function paint(cells, stock) {
+/** @param {Map<string, HTMLTableCellElement>} cells @param {MoneyFormat} money @param {Stock} stock */
+function paint(cells, money, stock) {
   const cell = cells.get(stock.id);
-  if (cell && cell.textContent !== stock.price) cell.textContent = stock.price;
+  const text = money(stock.price_cents);
+  if (cell && cell.textContent !== text) cell.textContent = text;
 }
