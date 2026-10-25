@@ -208,6 +208,13 @@ Corten is pre-1.0, so any minor version may change the API.
     implements `Serialize` is written by serde_json. `corten::json::to_vec` writes any `ToJson`.
     `examples/item-page` derives it on its view model, and its `render_cost` checks the 500 benchmark
     items against serde_json byte for byte and times the JSON.
+32. A `<corten-live>` stream resumes after a reconnect: `corten::live` takes `Fragment`s
+    as well as HTML, `Fragment::new(html).cursor(seq)` sends the app's cursor as the event's
+    `id`, `<corten-live since={seq}>` gives the first connection the cursor the page was
+    rendered at, and the `LiveSince` extractor reads either (`Last-Event-ID` first). A
+    handler sends only what changed after it, so a page view or a reconnect costs no extra read
+    or render. Asked for by the Chase Sets pilot, whose catalog lists drew every row on each
+    connection ([#15 A <corten-live> stream cannot resume after a reconnect](https://github.com/todd-skelton/corten/issues/15)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

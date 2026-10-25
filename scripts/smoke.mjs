@@ -370,6 +370,31 @@ async function run(browser) {
   );
   await page.evaluate(() => document.querySelector("#once-live")?.remove());
 
+  // A <corten-live since> sends the page's cursor on its first connection; a fragment's id is the
+  // cursor a reconnect sends back as Last-Event-ID, so the stream resumes there.
+  /** @type {{ since: string | null, last: string | null }[]} */
+  const resumes = [];
+  await page.route("**/live/resume*", (route) => {
+    const req = route.request();
+    resumes.push({ since: new URL(req.url()).searchParams.get("since"), last: req.headers()["last-event-id"] ?? null });
+    // The first answer ends without `end`, as a server that shuts down does: the browser reconnects.
+    const body =
+      resumes.length === 1
+        ? 'retry: 100\n\nevent: patch\nid: c8\ndata: <p id="resume">At 8</p>\n\n'
+        : 'event: patch\nid: c9\ndata: <p id="resume">At 9</p>\n\nevent: end\ndata: end\n\n';
+    return route.fulfill({ status: 200, headers: { "content-type": "text/event-stream" }, body });
+  });
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML("beforeend", '<corten-live id="resume-live" src="/live/resume" since="c7"><p id="resume">At 7</p></corten-live>'),
+  );
+  await page.waitForFunction(() => document.querySelector("#resume")?.textContent === "At 9", null, { timeout: 8000 }).catch(() => {});
+  check(
+    "<corten-live since> starts from the page's cursor and resumes from the last fragment's",
+    (await page.textContent("#resume")) === "At 9" && resumes.length === 2 && resumes[0].since === "c7" && resumes[0].last === null && resumes[1].last === "c8",
+    JSON.stringify(resumes),
+  );
+  await page.evaluate(() => document.querySelector("#resume-live")?.remove());
+
   // A patch replaces markup but keeps what the user is doing: edited fields keep their state,
   // untouched ones take the server's, and focus and caret stay put (here a <corten-live> style
   // patch, with no form sent).

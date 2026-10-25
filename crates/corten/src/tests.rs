@@ -132,6 +132,43 @@ async fn a_live_stream_that_finishes_tells_the_element_to_stop() {
 }
 
 #[tokio::test]
+async fn a_live_fragment_carries_its_cursor_and_a_reconnect_reads_it_back() {
+    use crate::{Fragment, LiveSince};
+    let fragments = || {
+        futures_util::stream::iter([
+            Fragment::new(r#"<p id="n">7</p>"#.into()).cursor("v7"),
+            Fragment::new(r#"<p id="n">8</p>"#.into()),
+        ])
+    };
+    let router = Router::new().route("/", get(move || async move { crate::live(fragments()) }));
+    let (_, _, body) = call(router, "GET", None).await;
+    // The id carries over in the browser to a fragment that has none, as SSE defines.
+    assert_eq!(
+        body,
+        "event: patch\nid: v7\ndata: <p id=\"n\">7</p>\n\nevent: patch\ndata: <p id=\"n\">8</p>\n\nevent: end\ndata: end\n\n"
+    );
+
+    let since = |uri: &str, header: Option<&str>| {
+        let mut req = Request::builder().uri(uri);
+        if let Some(header) = header {
+            req = req.header("last-event-id", header);
+        }
+        let (mut parts, ()) = req.body(()).unwrap().into_parts();
+        async move { <LiveSince as axum::extract::FromRequestParts<()>>::from_request_parts(&mut parts, &()).await.unwrap().0 }
+    };
+    assert_eq!(since("/live", None).await, None, "a first connection without since");
+    assert_eq!(since("/live?since=a%20b&x=1", None).await.as_deref(), Some("a b"), "the page's cursor");
+    assert_eq!(since("/live?since=page", Some("v9")).await.as_deref(), Some("v9"), "a reconnect's cursor wins");
+    assert_eq!(since("/live?since=page", Some("")).await.as_deref(), Some("page"), "an empty Last-Event-ID is none");
+}
+
+#[test]
+#[should_panic(expected = "line break")]
+fn a_cursor_cannot_end_its_event() {
+    let _ = crate::Fragment::new(String::new()).cursor("a\nevent: patch");
+}
+
+#[tokio::test]
 async fn a_bare_router_renders_in_the_default_shell_without_a_policy() {
     let (status, headers, body) = call(routes(), "GET", None).await;
     assert_eq!(status, StatusCode::OK);

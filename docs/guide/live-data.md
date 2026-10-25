@@ -28,6 +28,34 @@ async fn trades(State(market): State<Market>) -> impl IntoResponse {
 html! { <corten-live src={url::Trades}><LastTrade text={&last_trade} /></corten-live> }
 ```
 
+### Resuming
+
+A part whose data changes rarely should not be drawn again on every page view and reconnect. Give
+each fragment the app's cursor after it, `Fragment::new(html).cursor(seq)` (a version, a
+sequence number, a realtime stream's position; Corten only carries it), and the page the cursor
+it was rendered at, `<corten-live src={..} since={seq}>`. The handler's `LiveSince` is that
+cursor on the first connection, and on a reconnect the last fragment's (the browser sends it
+back as `Last-Event-ID`); `None` when there is neither. Send what changed after it, or nothing
+until the next change when it is current:
+
+```rust,ignore
+async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> impl IntoResponse {
+    let mut next = market.trades.subscribe();
+    if since.as_deref() != Some(next.borrow().0.to_string().as_str()) {
+        next.mark_changed(); // the browser is behind: send the current trade first
+    }
+    corten::live(futures_util::stream::unfold(next, |mut next| async move {
+        next.changed().await.ok()?;
+        let (n, text) = next.borrow_and_update().clone();
+        Some((Fragment::new(LastTrade { text: &text }.to_html()).cursor(n.to_string()), next))
+    }))
+}
+```
+
+A cursor the app no longer knows (too old, another deploy's) is the handler's to handle; drawing
+the part as it is now is always correct. A cursor with a line break or NUL would end its event,
+so `cursor` refuses it (a panic in debug builds; in release the fragment goes without it).
+
 [examples/hello](../../examples/hello) has this running.
 
 ## Rows: feeds

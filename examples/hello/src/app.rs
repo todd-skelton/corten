@@ -12,6 +12,7 @@
 use std::{sync::Arc, time::Duration};
 
 use corten::{
+    Fragment, LiveSince,
     axum::{http::header, response::IntoResponse},
     feed::{Feed, Row, Since},
     prelude::*,
@@ -24,8 +25,9 @@ use tokio::sync::watch;
 #[derive(Clone)]
 pub struct Market {
     pub stocks: Feed<Stock>,
-    /// The last trade, as text: what `<corten-live>` shows.
-    pub trades: Arc<watch::Sender<String>>,
+    /// The last trade, as text: what `<corten-live>` shows, and how many trades came before it
+    /// (the stream's cursor).
+    pub trades: Arc<watch::Sender<(u64, String)>>,
 }
 
 impl Market {
@@ -33,7 +35,7 @@ impl Market {
         let stocks = [("s1", "Acme Corp", 12_999), ("s2", "Globex", 54_000), ("s3", "Initech", 31_050)];
         Market {
             stocks: Feed::new(stocks.map(|(id, name, cents)| Stock::new(id, name, cents))),
-            trades: Arc::new(watch::Sender::new("No trades yet.".into())),
+            trades: Arc::new(watch::Sender::new((0, "No trades yet.".into()))),
         }
     }
 }
@@ -195,19 +197,28 @@ pub async fn simulate_market(market: Market) {
             Some(format!("Last trade: {} at {}.", stock.name, stock.price))
         });
         if let Some(trade) = trade {
-            market.trades.send_replace(trade);
+            market.trades.send_modify(|(n, text)| {
+                *n += 1;
+                *text = trade;
+            });
         }
     }
 }
 
 /// The last trade as each one happens, for `<corten-live src>`: every item is a fragment the
-/// runtime swaps in by `id`, like a form's patch.
-async fn trades(State(market): State<Market>) -> impl IntoResponse {
-    let next = market.trades.subscribe();
+/// runtime swaps in by `id`, like a form's patch, with the trade count as its cursor. The page
+/// says which trade it shows (`since`), and a reconnect which one it last got, so the first
+/// fragment is only sent when the browser is behind; otherwise the stream waits for the next.
+async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> impl IntoResponse {
+    let mut next = market.trades.subscribe();
+    let current = next.borrow().0.to_string();
+    if since.as_deref() != Some(current.as_str()) {
+        next.mark_changed();
+    }
     corten::live(futures_util::stream::unfold(next, |mut next| async move {
         next.changed().await.ok()?;
-        let html = LastTrade { text: &next.borrow_and_update() }.to_html();
-        Some((html, next))
+        let (n, text) = next.borrow_and_update().clone();
+        Some((Fragment::new(LastTrade { text: &text }.to_html()).cursor(n.to_string()), next))
     }))
 }
 
@@ -216,13 +227,17 @@ async fn trades(State(market): State<Market>) -> impl IntoResponse {
 pub struct Home {
     stocks: Vec<Stock>,
     last_trade: String,
+    /// The trade count `last_trade` is at, where the page's live stream starts from.
+    #[serde(skip)]
+    trades_seen: u64,
     message: String,
 }
 
 impl Home {
     fn new(market: &Market, message: String) -> Self {
         let stocks = market.stocks.read(|rows| rows.values().cloned().collect());
-        Home { stocks, last_trade: market.trades.borrow().clone(), message }
+        let (trades_seen, last_trade) = market.trades.borrow().clone();
+        Home { stocks, last_trade, trades_seen, message }
     }
 }
 
@@ -231,7 +246,7 @@ fn home_view(home: &Home) -> impl Render {
     html! {
         <h1>"Watchlist"</h1>
         <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} />
-        <corten-live src={url::Trades}><LastTrade text={&home.last_trade} /></corten-live>
+        <corten-live src={url::Trades} since={home.trades_seen}><LastTrade text={&home.last_trade} /></corten-live>
         <form method="post" action={url::Watch} data-patch>
             <label>
                 "Stock "<select name={f.id}>for stock in &home.stocks { <option value={stock.id}>{stock.name}</option> }</select>
@@ -394,7 +409,7 @@ mod tests {
             "server renders prices first: {body}"
         );
         assert!(body.contains(
-            r#"<corten-live src="/live/trades"><p id="last-trade" aria-live="polite">No trades yet.</p></corten-live>"#
+            r#"<corten-live src="/live/trades" since="0"><p id="last-trade" aria-live="polite">No trades yet.</p></corten-live>"#
         ));
     }
 
