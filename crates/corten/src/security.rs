@@ -169,8 +169,10 @@ impl Policy {
     /// Another origin a form may send the user to (`form-action`): a hosted checkout, an identity
     /// provider's `form_post`, a sibling app. It also allows a form's handler to redirect there
     /// (`req.redirect(&uri)`), since Chromium and WebKit apply `form-action` to the redirects a
-    /// submission follows. Without it a form goes to this origin only. Writes coming in from another site
-    /// are [`Policy::allow_origin`].
+    /// submission follows. Without it a form goes to this origin only. A form posted straight to
+    /// another app also needs that app to accept posts from this origin (most frameworks refuse a
+    /// cross-origin post as CSRF), so posting here and redirecting is usually simpler. Writes
+    /// coming in from another site are [`Policy::allow_origin`].
     pub fn form_action(mut self, source: &str) -> Self {
         self.form_action.push(checked(source));
         self

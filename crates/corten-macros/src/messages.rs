@@ -356,9 +356,26 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         }",
         &[vis.clone(), key_arms],
     ));
-    if !js_methods.is_empty() {
+    {
         let js_tokens: TokenStream = TokenTree::Ident(Ident::new(&format!("{name}Js"), name.span())).into();
-        let doc = format!(" The messages of {name} with arguments, unfilled, for handlers to fill in from a script.");
+        js_methods.extend(q(
+            "#[doc(hidden)] #[inline] fn __corten_locale(self) -> &'static ::corten::i18n::__private::LocaleData { __A0(self.0).__corten_locale() }
+            /// This locale's number format, for a handler whose JSDoc takes a NumberFormat: it writes format(n) as t.number(n) does.
+            #[inline] __A1 fn number(self) -> ::corten::i18n::NumberFormat { ::corten::i18n::NumberFormat::new(self.__corten_locale()) }
+            /// An amount's format in `currency`, for a handler whose JSDoc takes a MoneyFormat: it writes format(minor) as t.money(Minor(minor), currency) does.
+            #[inline] __A1 fn money(self, currency: ::corten::i18n::Currency) -> ::corten::i18n::MoneyFormat { ::corten::i18n::MoneyFormat::new(self.__corten_locale(), currency) }
+            /// A date's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.date(at, style) does.
+            #[inline] __A1 fn date(self, style: ::corten::i18n::DateStyle) -> ::corten::i18n::DateFormat { ::corten::i18n::DateFormat::date(self.__corten_locale(), style) }
+            /// A time's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.time(at, style) does.
+            #[inline] __A1 fn time(self, style: ::corten::i18n::TimeStyle) -> ::corten::i18n::DateFormat { ::corten::i18n::DateFormat::time(self.__corten_locale(), style) }
+            /// A date and time's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.date_time(at, date, time) does.
+            #[inline] __A1 fn date_time(self, date: ::corten::i18n::DateStyle, time: ::corten::i18n::TimeStyle) -> ::corten::i18n::DateFormat {
+                ::corten::i18n::DateFormat::date_time(self.__corten_locale(), date, time)
+            }",
+            &[name_tokens.clone(), vis.clone()],
+        ));
+        let doc =
+            format!(" The messages of {name} with arguments, unfilled, and its formats, for handlers to fill in from a script.");
         let to_js = " This locale's messages with arguments, for a handler to fill in: js::count(total, t.js().rows_selected()) passes one, and the script calls label({ count }).";
         methods.extend(q(
             "#[doc = __A0] #[inline] __A1 const fn js(self) -> __A2 { __A2(self.0) }",

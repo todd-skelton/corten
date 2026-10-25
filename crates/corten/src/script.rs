@@ -968,6 +968,12 @@ pub mod ts {
     /// `Message<"count">` (from `corten`): a message of the app's catalog whose arguments are
     /// exactly these ([`super::message_id`] of the names), unfilled: `t.js().rows_selected()`.
     pub enum Message<const ARGS: u64> {}
+    /// `NumberFormat` (from `corten`): the page's number format, `t.js().number()`.
+    pub enum NumberFormat {}
+    /// `MoneyFormat` (from `corten`): an amount's format in a currency, `t.js().money(USD)`.
+    pub enum MoneyFormat {}
+    /// `DateFormat` (from `corten`): a date's format, `t.js().date(DateStyle::Medium)`.
+    pub enum DateFormat {}
 }
 
 /// What a `Message<"a" | "b">` parameter and a message with the arguments `a` and `b` are both

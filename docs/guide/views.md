@@ -91,4 +91,6 @@ shown with (0 for JPY, 3 for KWD). A date is in UTC unless `.zone(Offset::hours(
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
 Each listed locale's separators, currency symbols and date patterns are CLDR's, checked against
-Intl, and only the locales `messages!` lists are in the app.
+Intl, and only the locales `messages!` lists are in the app. A script that writes a number, an
+amount or a date takes the page's format (`t.js().money(USD)`) and writes the same text
+([Scripts](scripts.md#numbers-money-and-dates-a-script-writes)).

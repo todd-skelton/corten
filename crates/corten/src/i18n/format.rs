@@ -674,6 +674,200 @@ impl Display for When {
     }
 }
 
+/// `t.js().number()`: the locale's number format, for a handler whose JSDoc takes a
+/// `NumberFormat` (from `corten`), which writes `format(n)` as `t.number(n)` does.
+#[derive(Clone, Copy)]
+pub struct NumberFormat {
+    data: &'static __private::LocaleData,
+}
+
+/// `t.js().money(currency)`: an amount's format, for a handler whose JSDoc takes a `MoneyFormat`
+/// (from `corten`), which writes `format(minor)` as `t.money(Minor(minor), currency)` does.
+#[derive(Clone, Copy)]
+pub struct MoneyFormat {
+    data: &'static __private::LocaleData,
+    currency: Currency,
+}
+
+/// `t.js().date(style)` (or `time`, `date_time`): a date's format, for a handler whose JSDoc
+/// takes a `DateFormat` (from `corten`), which writes `format(at)` (a `Date`, milliseconds or ISO
+/// text) as `t.date(at, style)` does. In UTC unless [`DateFormat::zone`] gives an offset; a zone
+/// with daylight saving time is not one, since its offset depends on the instant.
+#[derive(Clone, Copy)]
+pub struct DateFormat {
+    data: &'static __private::LocaleData,
+    style: u8,
+    offset: i32,
+}
+
+impl NumberFormat {
+    #[doc(hidden)]
+    pub fn new(data: &'static __private::LocaleData) -> Self {
+        NumberFormat { data }
+    }
+}
+
+impl MoneyFormat {
+    #[doc(hidden)]
+    pub fn new(data: &'static __private::LocaleData, currency: Currency) -> Self {
+        MoneyFormat { data, currency }
+    }
+}
+
+impl DateFormat {
+    #[doc(hidden)]
+    pub fn date(data: &'static __private::LocaleData, date: DateStyle) -> Self {
+        DateFormat { data, style: date as u8, offset: 0 }
+    }
+
+    #[doc(hidden)]
+    pub fn date_time(data: &'static __private::LocaleData, date: DateStyle, time: TimeStyle) -> Self {
+        DateFormat { data, style: 4 + date as u8 * 2 + time as u8, offset: 0 }
+    }
+
+    #[doc(hidden)]
+    pub fn time(data: &'static __private::LocaleData, time: TimeStyle) -> Self {
+        DateFormat { data, style: 12 + time as u8, offset: 0 }
+    }
+
+    /// At a fixed offset instead of UTC.
+    pub fn zone(mut self, offset: Offset) -> Self {
+        self.offset = offset.0;
+        self
+    }
+}
+
+/// The `%{..}` argument of `data-on` (`crates/corten/js/format.js` reads it), escaped for the
+/// attribute.
+mod wire {
+    use super::__private::{Field, LocaleData, Separators};
+    use crate::script::__private::json_str;
+    use std::fmt::Write;
+
+    pub(super) fn open(data: &LocaleData, out: &mut String) {
+        out.push_str("%{&quot;z&quot;:");
+        let mut zero = [0u8; 4];
+        json_str(data.zero.encode_utf8(&mut zero), out);
+    }
+
+    pub(super) fn separators(s: &Separators, templates: [&str; 2], out: &mut String) {
+        out.push_str(",&quot;s&quot;:[");
+        json_str(s.decimal, out);
+        out.push(',');
+        json_str(s.group, out);
+        let _ = write!(out, ",{},{},{}]", s.grouping[0], s.grouping[1], s.grouping[2]);
+        out.push_str(",&quot;t&quot;:[");
+        json_str(templates[0], out);
+        out.push(',');
+        json_str(templates[1], out);
+        out.push(']');
+    }
+
+    pub(super) fn fields(data: &LocaleData, fields: &[Field], out: &mut String) {
+        out.push_str(",&quot;f&quot;:[");
+        for (i, field) in fields.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            let (code, names) = match *field {
+                Field::Text(text) => {
+                    out.push_str("[&quot;&quot;,");
+                    json_str(text, out);
+                    out.push(']');
+                    continue;
+                }
+                Field::Hour(cycle, two) => {
+                    let _ = write!(out, "[&quot;h&quot;,{cycle},{}]", u8::from(two));
+                    continue;
+                }
+                // A name for each of the 24 hours, as runs: ["P","AM",12,"PM",24].
+                Field::Period(at) => {
+                    out.push_str("[&quot;P&quot;");
+                    let names = &data.names[usize::from(at)..usize::from(at) + 24];
+                    for (hour, name) in names.iter().enumerate() {
+                        if names.get(hour + 1) != Some(name) {
+                            out.push(',');
+                            json_str(name, out);
+                            let _ = write!(out, ",{}", hour + 1);
+                        }
+                    }
+                    out.push(']');
+                    continue;
+                }
+                Field::Year => ("y", None),
+                Field::Year2 => ("yy", None),
+                Field::Month => ("M", None),
+                Field::Month2 => ("MM", None),
+                Field::MonthName(at) => ("N", Some((at, 12))),
+                Field::Day => ("d", None),
+                Field::Day2 => ("dd", None),
+                Field::Weekday(at) => ("W", Some((at, 7))),
+                Field::Minute => ("m", None),
+                Field::Minute2 => ("mm", None),
+                Field::Second => ("s", None),
+                Field::Second2 => ("ss", None),
+                Field::Zone => ("z", None),
+            };
+            let _ = write!(out, "[&quot;{code}&quot;");
+            if let Some((at, count)) = names {
+                for name in &data.names[usize::from(at)..usize::from(at) + count] {
+                    out.push(',');
+                    json_str(name, out);
+                }
+            }
+            out.push(']');
+        }
+        out.push(']');
+    }
+}
+
+impl crate::script::Arg<crate::script::ts::NumberFormat> for NumberFormat {
+    fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
+        wire::open(self.data, out);
+        wire::separators(&self.data.plain, self.data.number, out);
+        out.push('}');
+    }
+}
+
+impl crate::script::Arg<crate::script::ts::MoneyFormat> for MoneyFormat {
+    fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
+        let data = self.data;
+        let code = self.currency.code();
+        // The currency in place: its own templates, or the locale's for one written by its code.
+        let [pos, neg] = match data.currencies.binary_search_by(|(c, ..)| (*c).cmp(code)) {
+            Ok(i) => [data.currencies[i].1.to_string(), data.currencies[i].2.to_string()],
+            Err(_) => data.money.map(|t| t.replace('\u{2}', code)),
+        };
+        wire::open(data, out);
+        wire::separators(&data.money_separators, [&pos, &neg], out);
+        let _ = write!(out, ",&quot;d&quot;:{}}}", self.currency.digits());
+    }
+}
+
+impl crate::script::Arg<crate::script::ts::DateFormat> for DateFormat {
+    fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
+        let data = self.data;
+        wire::open(data, out);
+        let fields = data.dates[usize::from(self.style)];
+        wire::fields(data, fields, out);
+        let _ = write!(out, ",&quot;o&quot;:{}", self.offset);
+        // The zone's names, for a pattern that shows it.
+        if fields.iter().any(|f| matches!(f, __private::Field::Zone)) {
+            out.push_str(",&quot;u&quot;:");
+            crate::script::__private::json_str(data.utc, out);
+            out.push_str(",&quot;g&quot;:[");
+            for (i, template) in data.gmt.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                crate::script::__private::json_str(template, out);
+            }
+            out.push(']');
+        }
+        out.push('}');
+    }
+}
+
 /// The data `messages!` writes for each locale. Not a public API.
 #[doc(hidden)]
 pub mod __private {

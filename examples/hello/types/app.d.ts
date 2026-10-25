@@ -2,8 +2,9 @@
 // Types::sync rewrites this file when they change.
 
 /**
- * A feed row. `price` is the display text, kept with the cents so every surface shows the
- * same string and no client re-implements the formatting.
+ * A feed row. `price` is the display text, for clients with no formatting of their own (a
+ * native screen, an agent); the page's script writes `price_cents` with the page's format
+ * (`t.js().money(USD)`), which writes what the server does.
  */
 export interface Stock {
   id: string;

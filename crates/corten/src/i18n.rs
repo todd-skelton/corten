@@ -138,6 +138,32 @@
 //! wants_a_count(Msg::default().js().item_image()); // takes {title} and {n}
 //! ```
 //!
+//! A number, an amount or a date a script works out is written with the page's format, so it is
+//! what the server would have rendered: `t.js().number()`, `t.js().money(USD)` and
+//! `t.js().date(DateStyle::Short)` (or `.time(..)`, `.date_time(..)`, in UTC unless
+//! `.zone(Offset::hours(-5))`) are passed to a handler whose JSDoc takes a `NumberFormat`,
+//! `MoneyFormat` or `DateFormat` (from `"corten"`), and the script calls `price(123450)` (minor
+//! units) or `when(Date.now())`. The format is sent as the locale's separators, templates and
+//! names (`%{..}`), and the runtime writes with the same algorithm (`scripts/format.mjs` checks
+//! it on every case the server is checked on), not the browser's `Intl`, whose data differs by
+//! browser and version. A zone with daylight saving time has no fixed offset to send: write
+//! those dates on the server.
+//!
+//! ```
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! use corten::script::{ts, Arg};
+//! fn wants_money(_: impl Arg<ts::MoneyFormat>) {}
+//! wants_money(Msg::default().js().money(corten::i18n::Currency::new("USD")));
+//! ```
+//!
+//! A format of another kind does not compile:
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! fn wants_money(_: impl corten::script::Arg<corten::script::ts::MoneyFormat>) {}
+//! wants_money(Msg::default().js().number());
+//! ```
+//!
 //! ```
 //! corten::i18n::messages! {
 //!     struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" }
@@ -184,8 +210,8 @@ mod display_digits;
 mod format;
 
 pub use format::{
-    parse_timestamp, Amount, Currency, DateStyle, Decimal, Formatted, InvalidDecimal, Minor, Number, Offset, TimeStyle, Utc,
-    When, Zone,
+    parse_timestamp, Amount, Currency, DateFormat, DateStyle, Decimal, Formatted, InvalidDecimal, Minor, MoneyFormat, Number,
+    NumberFormat, Offset, TimeStyle, Utc, When, Zone,
 };
 
 /// Compiles catalogs into a messages type. See the [module docs](self).
@@ -550,6 +576,67 @@ mod tests {
             checked += 1;
         }
         assert!(checked > 9000, "{checked}");
+    }
+
+    /// The format each case's page would send a script (`t.js().number()`, `.money(..)`,
+    /// `.date(..)`), by locale: `scripts/format.mjs` runs `crates/corten/js/format.js` with them
+    /// on the same cases, so the browser writes what the server does. Rewritten here when the
+    /// data changes, failing the test until the new file is committed (as `corten::types` does).
+    #[test]
+    fn the_formats_scripts_get_are_the_ones_the_cases_check() {
+        use crate::script::{__private::Ctx, ts, Arg};
+        let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
+        let ctx = Ctx { current: None, home: None };
+        let styles = [DateStyle::Short, DateStyle::Medium, DateStyle::Long, DateStyle::Full];
+        let times = [TimeStyle::Short, TimeStyle::Medium];
+        let mut specs = std::collections::BTreeMap::new();
+        for line in include_str!("i18n/cases.tsv").lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
+            let mut cols = line.split('\t');
+            let (tag, kind, input) = (cols.next().unwrap(), cols.next().unwrap(), cols.next().unwrap());
+            let data = locales.iter().find(|(t, _)| *t == tag).expect(tag).1;
+            let mut out = String::new();
+            let key = match kind.split(' ').collect::<Vec<_>>()[..] {
+                ["number"] => {
+                    Arg::<ts::NumberFormat>::write_arg(&NumberFormat::new(data), &ctx, &mut out);
+                    "number".to_string()
+                }
+                ["money"] => {
+                    let code = input.split_once(' ').unwrap().1;
+                    Arg::<ts::MoneyFormat>::write_arg(&MoneyFormat::new(data, Currency::parse(code).unwrap()), &ctx, &mut out);
+                    format!("money {code}")
+                }
+                ["date", style, ..] => {
+                    let style: usize = style.parse().unwrap();
+                    let format = match style {
+                        0..=3 => DateFormat::date(data, styles[style]),
+                        4..=11 => DateFormat::date_time(data, styles[(style - 4) / 2], times[(style - 4) % 2]),
+                        _ => DateFormat::time(data, times[style - 12]),
+                    };
+                    // In UTC: scripts/format.mjs sets each case's offset (wire.json has one written).
+                    Arg::<ts::DateFormat>::write_arg(&format, &ctx, &mut out);
+                    format!("date {style}")
+                }
+                _ => panic!("{line}"),
+            };
+            let json = out[1..]
+                .replace("&quot;", "\"")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&#39;", "'")
+                .replace("&amp;", "&");
+            specs.insert((tag, key), json);
+        }
+        let mut file =
+            String::from("# Written by i18n.rs (the_formats_scripts_get_are_the_ones_the_cases_check). Do not edit.\n");
+        file.push_str("# locale\tcase\tthe format a script gets\n");
+        for ((tag, key), json) in &specs {
+            file.push_str(&format!("{tag}\t{key}\t{json}\n"));
+        }
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/i18n/specs.tsv");
+        if std::fs::read_to_string(path).ok().as_deref() != Some(file.as_str()) {
+            std::fs::write(path, &file).unwrap();
+            panic!("src/i18n/specs.tsv was out of date and is rewritten: commit it");
+        }
     }
 
     mod regional {
