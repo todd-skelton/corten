@@ -43,6 +43,31 @@ fn Count(t: Msg) -> impl Render {
     }
 }
 
+const USD: crate::i18n::Currency = crate::i18n::Currency::new("USD");
+
+/// A count, an amount and a date a script computes, in the page's locale.
+#[component]
+fn Priced(t: Msg) -> impl Render {
+    use crate::i18n::{DateStyle, Offset};
+    let out = refs();
+    let when = t.js().date(DateStyle::Short).zone(Offset::hours(-5));
+    html! { <output ref={out} on:connect={shared::priced(out, t.js().number(), t.js().money(USD), when)}></output> }
+}
+
+#[test]
+fn a_script_gets_the_pages_formats() {
+    let en = Priced { t: Msg::for_locale("en") }.to_html();
+    assert_eq!(
+        en,
+        concat!(
+            r#"<output data-scope="priced" data-ref="out" data-on="connect:shared.priced(@out,"#,
+            r#"%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;\u0001&quot;,&quot;-\u0001&quot;]},"#,
+            r#"%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},"#,
+            r#"%{&quot;z&quot;:&quot;0&quot;,&quot;f&quot;:[[&quot;M&quot;],[&quot;&quot;,&quot;/&quot;],[&quot;d&quot;],[&quot;&quot;,&quot;/&quot;],[&quot;y&quot;]],&quot;o&quot;:-18000})"></output>"#
+        )
+    );
+}
+
 #[test]
 fn a_live_elements_status_event_takes_a_handler() {
     let html =
@@ -298,6 +323,8 @@ fn handlers_write_the_shared_wire_vectors() {
         }),
         Count { t: Msg::for_locale("en") }.to_html(),
         Count { t: Msg::for_locale("fr") }.to_html(),
+        Priced { t: Msg::for_locale("en") }.to_html(),
+        Priced { t: Msg::for_locale("fr") }.to_html(),
     ];
     let mut written = Vec::new();
     for page in &pages {

@@ -40,7 +40,11 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
    `Route` itself and gets no method.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
-   social) are the layout's props. Never build a document outside a layout component.
+   social) are the layout's props. Never build a document outside a layout component. A page
+   showing a read that has not caught up with a write yet adds
+   `ReadAgain { after: Duration::from_secs(2) }` to its head tags while it is behind (and stops
+   after a time limit); the runtime reads it again in place however it was reached. Never a
+   `Refresh` header.
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
    the layout renders on full loads. Mark the current link with
    `aria-current={req.current(&url::Item { id })}` in the layout.
@@ -83,6 +87,13 @@ compile. Pass `t: Msg` into components that show text.
 When an API answers with a message key and its arguments, show it with
 `t.by_key(&row.title_key, &row.title_params)` (an `Option`: `None` for an unknown key or a missing
 argument; choose the fallback). Never write a `match` from key strings to methods.
+
+Numbers, money and dates come from `t` too, never `format!`: `t.number(n)`, `t.money(Minor(cents),
+USD)` or `t.money(Decimal::parse(&api.amount)?, USD)` (`const USD: Currency = Currency::new("USD")`;
+never a float), `t.date(at, DateStyle::Medium)`, `t.time(at, TimeStyle::Short)` and
+`t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;
+`corten::i18n::parse_timestamp` reads an API's RFC 3339 text). Each is a message argument too. A
+script gets the same formats from `t.js()` (`references/scripts.md`).
 
 ## A data screen
 

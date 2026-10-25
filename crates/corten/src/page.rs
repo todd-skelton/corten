@@ -551,7 +551,9 @@ impl Req {
     }
 
     /// Answers a `<form data-patch>` submit with fragments. Every top-level element in `view`
-    /// must carry an `id`; the runtime replaces the element with that `id` on the page.
+    /// must carry an `id`; the runtime replaces the element with that `id` on the page. One
+    /// without an id (or text outside an element) would be dropped in the browser, so in debug
+    /// builds, router tests included, the patch is an error that names it.
     pub fn patch(&self, view: impl Render) -> Result {
         self.patch_with_status(StatusCode::OK, view)
     }
@@ -560,6 +562,8 @@ impl Req {
     pub fn patch_with_status(&self, status: StatusCode, view: impl Render) -> Result {
         let mut body = String::new();
         self.render_into(view, &mut body)?;
+        #[cfg(debug_assertions)]
+        check_patch(&body)?;
         Ok(html_response(status, body, Some(PATCH_HEADER)))
     }
 
@@ -601,6 +605,32 @@ impl Req {
     }
 }
 
+/// A patch the browser would apply only in part: an error naming what it would drop.
+#[cfg(debug_assertions)]
+#[cold]
+#[inline(never)]
+fn check_patch(body: &str) -> Result<()> {
+    match crate::html::patch_problem(body) {
+        None => Ok(()),
+        Some(problem) => Err(Error::new(format!(
+            "corten: this patch's top-level {problem}, so the browser would drop it: give each top-level element a #[derive(Id)] id the page has (make the element with the id the component's root)"
+        ))),
+    }
+}
+
+/// A page with a `Refresh` header: browsers keep a full load's after the runtime navigates
+/// away, then load that URL again (Chromium, Firefox, WebKit). [`ReadAgain`] is the way.
+#[cfg(debug_assertions)]
+fn refresh_header_is_an_error(res: Response) -> Response {
+    if !(res.headers().contains_key(SHELL_HEADER) && res.headers().contains_key("refresh")) {
+        return res;
+    }
+    Error::new(
+        "corten: this page sends a Refresh header, which the browser keeps after the runtime navigates away and then loads this URL again: put <ReadAgain after={..} /> in the page's head tags instead",
+    )
+    .into_response()
+}
+
 /// A redirect in `mode`: `corten-location` for a form patch (the runtime navigates), a 303
 /// otherwise.
 pub(crate) fn redirect(mode: Mode, to: HeaderValue) -> Response {
@@ -636,6 +666,8 @@ pub(crate) async fn render_errors(
     // the shell takes a context.
     let failed_req = Req::new(req.headers(), req.extensions(), req.uri(), shared.clone());
     let res = run(req, next, deadline, signal).await;
+    #[cfg(debug_assertions)]
+    let res = refresh_header_is_an_error(res);
     let status = res.status();
     let mut failed = res.extensions().get::<crate::Failed>().cloned();
     let error = status.is_client_error() || status.is_server_error();
@@ -755,6 +787,36 @@ impl Render for Corten {
     #[inline]
     fn render(&self, out: &mut String) {
         HEAD_AT.set(Some(out.len()));
+    }
+}
+
+/// A page that shows a read still catching up with a write ("saved, updating") asks to be read
+/// again after `after` (whole seconds, at least one), however it was reached (a full load, a
+/// navigation, a form's redirect). It goes among the page's head tags, which the layout puts in
+/// `<head>`: `head={pending.then_some(ReadAgain { after: Duration::from_secs(2) })}`.
+///
+/// The runtime fetches the same URL and swaps it in, replacing the history entry and keeping the
+/// scroll position and the focused element (by its id); a navigation away stops it, and a hidden
+/// tab waits until it is shown. Without JavaScript the browser reloads the page
+/// (`<meta http-equiv="refresh">` in `<noscript>`). The page asks again each time it is read, so
+/// it stops when the server stops asking (the write has landed, or is too old to wait for).
+///
+/// Not the `Refresh` header: browsers keep a full load's header after the runtime has navigated
+/// away, and then load that first URL again. Debug builds answer 500 to a page that sends one.
+#[derive(Clone, Copy, Debug)]
+pub struct ReadAgain {
+    /// How long until the page is read again.
+    pub after: std::time::Duration,
+}
+
+impl Render for ReadAgain {
+    fn render(&self, out: &mut String) {
+        use std::fmt::Write;
+        let seconds = (self.after.as_secs() + u64::from(self.after.subsec_nanos() > 0)).max(1);
+        let _ = write!(
+            out,
+            r#"<noscript data-corten-read-again="{seconds}"><meta http-equiv="refresh" content="{seconds}"></noscript>"#
+        );
     }
 }
 

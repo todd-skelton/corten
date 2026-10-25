@@ -46,9 +46,72 @@
 //! assert!(fr.by_key("item.image", &[("n", 1)]).is_none(), "no title");
 //! ```
 //!
-//! Numbers, money and dates are formatted by the app before they are passed in, with the
-//! negotiated locale (`t.locale()` is a BCP 47 tag for a CLDR library such as ICU4X). Plural
-//! rules are not built in: use a key per form.
+//! Plural rules are not built in: use a key per form.
+//!
+//! # Numbers, money and dates
+//!
+//! `t` writes them in its locale too, on the server, so a page shows a price or a time in the
+//! reader's form with no script and nothing that changes after it loads:
+//!
+//! ```
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+//! use corten::i18n::{Currency, DateStyle, Decimal, Messages as _, Minor, Offset, TimeStyle};
+//! const USD: Currency = Currency::new("USD");
+//!
+//! let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+//! assert_eq!(en.number(1234567).to_string(), "1,234,567");
+//! assert_eq!(en.money(Minor(123450), USD).to_string(), "$1,234.50");
+//! assert_eq!(fr.money(Minor(123450), USD).to_string(), "1\u{202f}234,50\u{a0}$US");
+//! // An amount an API sends as text: never a float.
+//! assert_eq!(en.money(Decimal::parse("21.50").unwrap(), Currency::new("EUR")).to_string(), "€21.50");
+//!
+//! let at = corten::i18n::parse_timestamp("2026-03-22T12:00:00Z").unwrap(); // or any Into<SystemTime>
+//! assert_eq!(en.date_time(at, DateStyle::Medium, TimeStyle::Short).to_string(), "Mar 22, 2026, 12:00 PM UTC");
+//! assert_eq!(fr.date(at, DateStyle::Long).to_string(), "22 mars 2026");
+//! assert_eq!(en.time(at, TimeStyle::Short).zone(Offset::hours(-5)).to_string(), "7:00 AM GMT-5");
+//! // A message argument like any other ("{count} listings").
+//! assert_eq!(en.item_listing_count(en.number(1234)).to_string(), "1,234 listings");
+//! ```
+//!
+//! Each renders escaped in `html!`, as text or an attribute value. The data (separators, currency
+//! symbols, date patterns, month names) is CLDR's, as Intl in Node writes it, checked against Intl
+//! for every locale (`scripts/locale-data.mjs`). `messages!` puts in the app only the locales it
+//! lists, and it is linked only when the app formats something (measured: `examples/hello`, `en`,
+//! grew 22.9 KB with the code; item-page, `en` and `fr`, not at all). A tag without data of its
+//! own has its language's (`fr-LU` is `fr`), and a language Corten has no data for is a build
+//! error. Numbers are written in the locale's digits (`fa` has `۱٬۲۳۴`), dates in the Gregorian
+//! calendar.
+//!
+//! - `t.number(n)`: an integer or a [`Decimal`], with the fraction digits it has.
+//! - `t.money(amount, currency)`: [`Minor`] units (`Minor(123450)` cents) or a [`Decimal`] in the
+//!   major unit, with the digits the [`Currency`] is shown with (2, 0 for JPY, 3 for KWD), rounded
+//!   half away from zero. A bare integer does not compile, since it could be either:
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! let price = Msg::default().money(123450, corten::i18n::Currency::new("USD"));
+//! ```
+//!
+//! - `t.date(at, DateStyle)`, `t.time(at, TimeStyle)` and `t.date_time(at, DateStyle,
+//!   TimeStyle)`: Intl's date styles (`Short` is `3/22/2026`, `Medium` `Mar 22, 2026`, `Long`
+//!   `March 22, 2026`, `Full` with the weekday) and a time with its zone (`3:04 PM UTC`, `Medium`
+//!   with seconds). `at` is a `SystemTime` or anything that converts to one (`chrono`'s, `jiff`'s
+//!   and `time`'s timestamps do), and [`parse_timestamp`] reads RFC 3339 text. The zone is UTC,
+//!   so a page reads the same wherever it is rendered; `.zone(z)` takes a [`Zone`]: an
+//!   [`Offset`], or a zone with daylight saving time (from `chrono-tz` or `jiff`) that gives its
+//!   offset at the instant. Another zone is written as its offset (`GMT-5`).
+//!
+//! Nor does a locale with no data, or its language's:
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "tlh" => "src/i18n/en.json" } }
+//! ```
+//!
+//! A currency is a valid code, checked when the build evaluates the `const`:
+//!
+//! ```compile_fail
+//! const USD: corten::i18n::Currency = corten::i18n::Currency::new("US");
+//! ```
 //!
 //! # Text a script fills in
 //!
@@ -73,6 +136,32 @@
 //! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
 //! fn wants_a_count(_: impl corten::script::Arg<corten::script::ts::Message<{ corten::script::message_id(&["count"]) }>>) {}
 //! wants_a_count(Msg::default().js().item_image()); // takes {title} and {n}
+//! ```
+//!
+//! A number, an amount or a date a script works out is written with the page's format, so it is
+//! what the server would have rendered: `t.js().number()`, `t.js().money(USD)` and
+//! `t.js().date(DateStyle::Short)` (or `.time(..)`, `.date_time(..)`, in UTC unless
+//! `.zone(Offset::hours(-5))`) are passed to a handler whose JSDoc takes a `NumberFormat`,
+//! `MoneyFormat` or `DateFormat` (from `"corten"`), and the script calls `price(123450)` (minor
+//! units) or `when(Date.now())`. The format is sent as the locale's separators, templates and
+//! names (`%{..}`), and the runtime writes with the same algorithm (`scripts/format.mjs` checks
+//! it on every case the server is checked on), not the browser's `Intl`, whose data differs by
+//! browser and version. A zone with daylight saving time has no fixed offset to send: write
+//! those dates on the server.
+//!
+//! ```
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! use corten::script::{ts, Arg};
+//! fn wants_money(_: impl Arg<ts::MoneyFormat>) {}
+//! wants_money(Msg::default().js().money(corten::i18n::Currency::new("USD")));
+//! ```
+//!
+//! A format of another kind does not compile:
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! fn wants_money(_: impl corten::script::Arg<corten::script::ts::MoneyFormat>) {}
+//! wants_money(Msg::default().js().number());
 //! ```
 //!
 //! ```
@@ -116,6 +205,14 @@
 use std::fmt::{self, Display};
 
 use crate::view::{escape_display, AttrValue, Render};
+
+mod display_digits;
+mod format;
+
+pub use format::{
+    parse_timestamp, Amount, Currency, DateFormat, DateStyle, Decimal, Formatted, InvalidDecimal, Minor, MoneyFormat, Number,
+    NumberFormat, Offset, TimeStyle, Utc, When, Zone,
+};
 
 /// Compiles catalogs into a messages type. See the [module docs](self).
 pub use corten_macros::messages;
@@ -337,6 +434,8 @@ impl<A: Args + ?Sized> Display for Found<'_, A> {
 /// Used by the code `messages!` generates. Not a public API.
 #[doc(hidden)]
 pub mod __private {
+    pub use super::format::__private::{Field, LocaleData, Separators};
+
     /// A run of a message: its text (plain and escaped) or an argument's name.
     pub enum Piece {
         Text(&'static str, &'static str),
@@ -439,6 +538,177 @@ mod tests {
             let view = crate::html! { <p>{en.by_key("item.image", &answer["titleParams"])}</p> };
             assert_eq!(view.to_html(), "<p>A &amp; B image 4</p>", "a JSON string without quotes, a number as written");
         }
+    }
+
+    /// Every case `scripts/locale-data.mjs` had Intl write, for every locale: numbers, money and
+    /// dates in fixed zones.
+    #[test]
+    fn every_locale_writes_numbers_money_and_dates_as_intl_does() {
+        let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
+        let mut checked = 0;
+        for line in include_str!("i18n/cases.tsv").lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
+            let mut cols = line.split('\t');
+            let (tag, kind, input, expected) =
+                (cols.next().unwrap(), cols.next().unwrap(), cols.next().unwrap(), cols.next().unwrap());
+            let data = locales.iter().find(|(t, _)| *t == tag).expect(tag).1;
+            let ours = match kind.split(' ').collect::<Vec<_>>()[..] {
+                ["number"] => Formatted::number(data, Decimal::parse(input).unwrap()).to_string(),
+                ["money"] => {
+                    let (amount, code) = input.split_once(' ').unwrap();
+                    Formatted::money(data, &Decimal::parse(amount).unwrap(), Currency::parse(code).unwrap()).to_string()
+                }
+                ["date", style, ref offset @ ..] => {
+                    let at = parse_timestamp(input).unwrap();
+                    let style: u8 = style.parse().unwrap();
+                    let styles = [DateStyle::Short, DateStyle::Medium, DateStyle::Long, DateStyle::Full];
+                    let times = [TimeStyle::Short, TimeStyle::Medium];
+                    let when = match style {
+                        0..=3 => When::date(data, at, styles[style as usize]),
+                        4..=11 => When::date_time(data, at, styles[(style as usize - 4) / 2], times[(style as usize - 4) % 2]),
+                        _ => When::time(data, at, times[style as usize - 12]),
+                    };
+                    let offset = offset.first().map_or(0, |o| o.parse().unwrap());
+                    when.zone(Offset::seconds(offset)).to_string()
+                }
+                _ => panic!("{line}"),
+            };
+            assert_eq!(ours, expected, "{tag} {kind} {input}");
+            checked += 1;
+        }
+        assert!(checked > 9000, "{checked}");
+    }
+
+    /// The format each case's page would send a script (`t.js().number()`, `.money(..)`,
+    /// `.date(..)`), by locale: `scripts/format.mjs` runs `crates/corten/js/format.js` with them
+    /// on the same cases, so the browser writes what the server does. Rewritten here when the
+    /// data changes, failing the test until the new file is committed (as `corten::types` does).
+    #[test]
+    fn the_formats_scripts_get_are_the_ones_the_cases_check() {
+        use crate::script::{__private::Ctx, ts, Arg};
+        let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
+        let ctx = Ctx { current: None, home: None };
+        let styles = [DateStyle::Short, DateStyle::Medium, DateStyle::Long, DateStyle::Full];
+        let times = [TimeStyle::Short, TimeStyle::Medium];
+        let mut specs = std::collections::BTreeMap::new();
+        for line in include_str!("i18n/cases.tsv").lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
+            let mut cols = line.split('\t');
+            let (tag, kind, input) = (cols.next().unwrap(), cols.next().unwrap(), cols.next().unwrap());
+            let data = locales.iter().find(|(t, _)| *t == tag).expect(tag).1;
+            let mut out = String::new();
+            let key = match kind.split(' ').collect::<Vec<_>>()[..] {
+                ["number"] => {
+                    Arg::<ts::NumberFormat>::write_arg(&NumberFormat::new(data), &ctx, &mut out);
+                    "number".to_string()
+                }
+                ["money"] => {
+                    let code = input.split_once(' ').unwrap().1;
+                    Arg::<ts::MoneyFormat>::write_arg(&MoneyFormat::new(data, Currency::parse(code).unwrap()), &ctx, &mut out);
+                    format!("money {code}")
+                }
+                ["date", style, ..] => {
+                    let style: usize = style.parse().unwrap();
+                    let format = match style {
+                        0..=3 => DateFormat::date(data, styles[style]),
+                        4..=11 => DateFormat::date_time(data, styles[(style - 4) / 2], times[(style - 4) % 2]),
+                        _ => DateFormat::time(data, times[style - 12]),
+                    };
+                    // In UTC: scripts/format.mjs sets each case's offset (wire.json has one written).
+                    Arg::<ts::DateFormat>::write_arg(&format, &ctx, &mut out);
+                    format!("date {style}")
+                }
+                _ => panic!("{line}"),
+            };
+            let json = out[1..]
+                .replace("&quot;", "\"")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&#39;", "'")
+                .replace("&amp;", "&");
+            specs.insert((tag, key), json);
+        }
+        let mut file =
+            String::from("# Written by i18n.rs (the_formats_scripts_get_are_the_ones_the_cases_check). Do not edit.\n");
+        file.push_str("# locale\tcase\tthe format a script gets\n");
+        for ((tag, key), json) in &specs {
+            file.push_str(&format!("{tag}\t{key}\t{json}\n"));
+        }
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/i18n/specs.tsv");
+        if std::fs::read_to_string(path).ok().as_deref() != Some(file.as_str()) {
+            std::fs::write(path, &file).unwrap();
+            panic!("src/i18n/specs.tsv was out of date and is rewritten: commit it");
+        }
+    }
+
+    mod regional {
+        crate::i18n::messages! { pub struct Msg { "en-GB" => "src/i18n/en.json", "fr-LU" => "src/i18n/fr.json" } }
+    }
+
+    #[test]
+    fn a_region_has_its_own_data_or_its_languages() {
+        use regional::Msg;
+        let at = parse_timestamp("2026-03-22T12:00:00Z").unwrap();
+        assert_eq!(Msg::for_locale("en-GB").date(at, DateStyle::Short).to_string(), "22/03/2026", "en-GB's own");
+        assert_eq!(Msg::for_locale("fr-LU").date(at, DateStyle::Long).to_string(), "22 mars 2026", "fr's");
+    }
+
+    #[test]
+    fn decimals_round_half_away_from_zero_and_timestamps_parse_as_rfc_3339() {
+        let d = |s| Decimal::parse(s).unwrap();
+        assert_eq!(d("21.505").in_digits(2).to_string(), "21.51");
+        assert_eq!(d("-21.505").in_digits(2).to_string(), "-21.51");
+        assert_eq!(d("21.5049").in_digits(2).to_string(), "21.50");
+        assert_eq!(d("9.995").in_digits(2).to_string(), "10.00");
+        assert_eq!(d(".5").in_digits(0).to_string(), "1");
+        assert_eq!(d("3").in_digits(3).to_string(), "3.000");
+        assert_eq!(Minor(-5).in_digits(2).to_string(), "-0.05");
+        assert_eq!(d("-0.25").to_string(), "-0.25");
+        for bad in ["", "-", ".", "1e5", "1,5", " 1", "1.2.3", &"9".repeat(39)] {
+            assert_eq!(Decimal::parse(bad), None, "{bad:?}");
+        }
+        assert_eq!("21.5".parse::<Decimal>(), Ok(Decimal::new(215, 1)));
+        assert_eq!(Currency::parse("usd"), Some(Currency::new("USD")));
+        assert_eq!(Currency::parse("US"), None);
+        assert_eq!((Currency::new("JPY").digits(), Currency::new("KWD").digits(), Currency::new("XYZ").digits()), (0, 3, 2));
+
+        let secs = |s| parse_timestamp(s).map(super::format::unix_seconds_for_test);
+        assert_eq!(secs("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(secs("2026-03-22T12:00:00.000Z"), Some(1_774_180_800));
+        assert_eq!(secs("2026-03-22t17:30:00+05:30"), Some(1_774_180_800));
+        assert_eq!(secs("2026-03-22 07:00:00.123456-05"), Some(1_774_180_800));
+        assert_eq!(secs("2026-03-22T07:00:00-0500"), Some(1_774_180_800));
+        assert_eq!(secs("1969-12-31T23:59:59Z"), Some(-1));
+        assert!(secs("2024-02-29T00:00:00Z").is_some());
+        for bad in [
+            "2026-02-29T00:00:00Z",
+            "2026-13-01T00:00:00Z",
+            "2026-03-22T24:00:00Z",
+            "2026-03-22",
+            "2026-03-22T12:00:00",
+            "2026-03-22T12:00:00Zx",
+            "2026-03-22T12:00:00+5",
+        ] {
+            assert_eq!(parse_timestamp(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn numbers_money_and_dates_render_in_a_page_and_as_arguments() {
+        let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+        let usd = Currency::new("USD");
+        let at = parse_timestamp("2026-03-22T12:00:00Z").unwrap();
+        let view = crate::html! {
+            <p title={fr.money(Minor(-123450), usd)}>{en.item_listing_count(en.number(1234))}</p>
+            <time>{en.date_time(at, DateStyle::Medium, TimeStyle::Short)}</time>
+        };
+        assert_eq!(
+            view.to_html(),
+            "<p title=\"-1\u{202f}234,50\u{a0}$US\">1,234 listings</p><time>Mar 22, 2026, 12:00 PM UTC</time>"
+        );
+        assert_eq!(fr.number(Decimal::parse("-1234.5").unwrap()).to_string(), "-1\u{202f}234,5");
+        assert_eq!(
+            en.date(std::time::UNIX_EPOCH - std::time::Duration::from_secs(1), DateStyle::Full).to_string(),
+            "Wednesday, December 31, 1969"
+        );
     }
 
     #[test]

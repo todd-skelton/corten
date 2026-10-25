@@ -274,9 +274,40 @@ passes it, as its text and argument names in `data-on`; there is no catalog modu
 lookup in the browser. `Message<"count">` names the arguments, and a message whose arguments are
 not exactly those does not compile at the call (`Message<"shown" | "total">` takes a message with
 both). Inside the script, `tsc` checks that `label` is given each of them. Write it with
-`textContent`, which does not read it as markup. Format numbers before passing them in when the
-locale needs it (`Intl.NumberFormat` with `document.documentElement.lang`); plural forms are a
-key per form, as on the server.
+`textContent`, which does not read it as markup. A number in it is written with the page's
+format (below); plural forms are a key per form, as on the server.
+
+## Numbers, money and dates a script writes
+
+A total the browser adds up, a price from a live feed, or a time an event happened is written in
+the page's locale, as the server writes it. The markup passes the page's format and the script
+calls it:
+
+```rust,ignore
+const USD: Currency = Currency::new("USD");
+let t: Msg = req.t();
+html! { <tbody on:change={js::total(rows, out, t.js().money(USD), t.js().date(DateStyle::Medium))}>..</tbody> }
+```
+
+```js
+/** @import { MoneyFormat, DateFormat } from "corten" */
+/** @param {HTMLInputElement[]} rows @param {HTMLOutputElement} out @param {MoneyFormat} money @param {DateFormat} day */
+export function total(rows, out, money, day) {
+  const cents = rows.filter((row) => row.checked).reduce((sum, row) => sum + Number(row.value), 0);
+  out.textContent = `${money(cents)} on ${day(Date.now())}`; // $1,234.50 on Mar 22, 2026
+}
+```
+
+`t.js().number()` is a `NumberFormat` (`format(1234)`, or a decimal as its text, `format("21.5")`),
+`t.js().money(USD)` a `MoneyFormat` (`format(minor)`: an integer of minor units, as
+`t.money(Minor(..), USD)` takes; a float is rounded to one), and `t.js().date(DateStyle)`,
+`.time(TimeStyle)` and `.date_time(..)` a `DateFormat` (`format(at)`: a `Date`, milliseconds or
+ISO text), in UTC unless `.zone(Offset::hours(-5))`. A format of the wrong kind does not compile
+at the call. Each is sent in `data-on` as the locale's separators, templates and names, and the
+runtime writes with the server's algorithm, so the text a script writes is the text the server
+rendered (`scripts/format.mjs` checks the two on every case), not what the browser's `Intl`
+writes, which differs by browser and version. A zone with daylight saving time has no fixed
+offset to send: write those dates on the server.
 
 ## State
 

@@ -145,6 +145,12 @@ A patch replaces markup but not the user's work: a field typed into after the fo
 in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret
 stay on the matching element. Everything else is the server's.
 
+Each top-level element of a patch replaces the element with its `id`, and the browser drops one
+without an id (and any text outside an element), so a refusal drawn inside a wrapper `<div>`
+never shows. In debug builds, router tests included, such a patch is an error that names the
+element (a `corten::live` fragment panics), so make the element with the id the root of a
+component a patch sends. Release builds do not check.
+
 ## Redirects
 
 After a successful write, `req.redirect(&route)` sends the browser on (post/redirect/get), with
@@ -154,6 +160,28 @@ app; a path written as text does not compile.
 A page handler may redirect too (an old URL, a guard sending someone to sign in). A client
 navigation follows it: the page it was sent to is swapped in and replaces the requested URL
 in the history, so Back skips the URL that redirected.
+
+## A read that has not caught up yet
+
+A write is often read back from a projection that is a moment behind: the page after the
+redirect says "saved, updating" and should read itself again shortly. `ReadAgain`, among the
+page's head tags, asks for that:
+
+```rust,ignore
+let again = cart.behind(&receipt).then_some(ReadAgain { after: Duration::from_secs(2) });
+req.page(html! { <Layout req={&req} title="Cart" head={again}>{cart_view(&cart)}</Layout> })
+```
+
+However the page was reached (a full load, a link, a `data-patch` form's redirect), the runtime
+fetches the same URL after the delay and swaps it in: the history entry is replaced, the scroll
+position stays, the focused element (found again by its id) keeps focus, an answer the same as
+the last read's is not swapped, and a hidden tab waits until it is shown. Each answer asks again or not, so the reads stop once the write is in; give up after a
+while (the receipt's age) so a page never polls without end. A navigation away stops them.
+Without JavaScript the browser reloads the page (`<meta http-equiv="refresh">` in `<noscript>`).
+
+Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
+the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
+page that sends one.
 
 ## Errors
 

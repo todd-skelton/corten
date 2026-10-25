@@ -596,6 +596,107 @@ async fn invalid_input_answers_422_in_each_mode() {
     }
 }
 
+#[tokio::test]
+async fn a_page_that_reads_again_says_so_in_its_head_on_every_surface() {
+    use std::time::Duration;
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            req.page(Shell {
+                req: &req,
+                title: "Saving",
+                head: ReadAgain { after: Duration::from_secs(2) },
+                children: html! { <p>"Saving"</p> },
+            })
+        }),
+    );
+    let tag = r#"<noscript data-corten-read-again="2" data-corten-head><meta http-equiv="refresh" content="2"></noscript>"#;
+    let (_, headers, document) = call(app(routes.clone(), None), "GET", None).await;
+    assert!(
+        document.contains(&format!("<title>Saving</title>{tag}")),
+        "in <head>, where the browser reads it without JavaScript: {document}"
+    );
+    assert!(!headers.contains_key("refresh"), "not the header, which outlives the runtime's navigations");
+    let (_, _, swap) = call(app(routes, None), "GET", Some("nav")).await;
+    assert!(swap.starts_with(&format!("<title>Saving</title>{tag}<p>")), "a navigation's head tags: {swap}");
+}
+
+#[test]
+fn read_again_is_whole_seconds_and_works_without_javascript() {
+    use std::time::Duration;
+    let tag = |after| ReadAgain { after }.to_html();
+    assert_eq!(
+        tag(Duration::from_secs(2)),
+        r#"<noscript data-corten-read-again="2"><meta http-equiv="refresh" content="2"></noscript>"#
+    );
+    assert!(tag(Duration::from_millis(1500)).contains(r#"read-again="2""#), "rounded up");
+    assert!(tag(Duration::ZERO).contains(r#"read-again="1""#), "never sooner than a second");
+}
+
+/// Browsers keep a full load's `Refresh` after the runtime navigates away, then load it again.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_page_with_a_refresh_header_is_an_error_in_debug_builds() {
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            let mut res = req.test_page("Saving", html! { <p>"Saving"</p> })?;
+            res.headers_mut().insert("refresh", axum::http::HeaderValue::from_static("2"));
+            Ok::<_, crate::Error>(res)
+        }),
+    );
+    for mode in [None, Some("nav")] {
+        let res = app(routes.clone(), None).oneshot(request_in(mode)).await.unwrap();
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR, "{mode:?}");
+        assert!(!res.headers().contains_key("refresh"), "{mode:?}");
+    }
+    let api = Router::new().route("/", get(|| async { ([("refresh", "2")], "ok") }));
+    assert_eq!(call(app(api, None), "GET", None).await.0, StatusCode::OK, "only pages are checked");
+}
+
+fn request_in(mode: Option<&str>) -> Request<Body> {
+    let req = Request::builder().uri("/").header("accept", "text/html");
+    match mode {
+        Some(mode) => req.header("corten", mode),
+        None => req,
+    }
+    .body(Body::empty())
+    .unwrap()
+}
+
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_patch_whose_top_level_element_has_no_id_is_an_error_in_debug_builds() {
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            let errors = &Errors::new();
+            let wrapped = html! {
+                <p id="recovery">"ok"</p>
+                <div class="write-off">{alert_form(errors)}</div>
+            };
+            req.invalid(errors, wrapped, || async { req.test_page("Alert", html! { <p>"page"</p> }) }).await
+        }),
+    );
+    let (status, _, _) = call(app(routes.clone(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "a page is not a patch");
+    let router = Router::new().route("/", get(|req: Req| async move { req.patch(html! { <p id="msg">"saved"</p> }) }));
+    assert_eq!(call(router, "GET", Some("action")).await.0, StatusCode::OK);
+
+    let res = routes.oneshot(Request::builder().uri("/").header("corten", "action").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR, "not a 422 the browser would drop");
+    let failed = res.extensions().get::<crate::Failed>().expect("the error").0.to_string();
+    assert!(failed.contains(r#"top-level <div class="write-off"> has no id"#), "{failed}");
+}
+
+#[cfg(debug_assertions)]
+#[tokio::test]
+#[should_panic(expected = "top-level text \"saved\" outside an element")]
+async fn a_live_fragment_the_browser_would_drop_panics_in_debug_builds() {
+    let router = Router::new().route("/", get(|| async { crate::live(futures_util::stream::iter([String::from("saved")])) }));
+    let _ = call(router, "GET", None).await;
+}
+
 #[derive(Fields)]
 #[allow(dead_code)]
 struct SignUp {

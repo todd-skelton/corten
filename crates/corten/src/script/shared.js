@@ -22,3 +22,10 @@ export function say(out, label) {
 export function tally(out, counted) {
   out.textContent = `${counted.entity}: ${counted.label({ count: 2 })}`;
 }
+
+/** @import { NumberFormat, MoneyFormat, DateFormat } from "corten" */
+
+/** @param {HTMLOutputElement} out @param {NumberFormat} count @param {MoneyFormat} price @param {DateFormat} when */
+export function priced(out, count, price, when) {
+  out.textContent = `${count(1234)} at ${price(123450)}, ${when(0)}`;
+}

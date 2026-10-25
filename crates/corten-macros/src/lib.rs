@@ -14,6 +14,7 @@ mod from_json;
 mod html;
 mod id;
 mod json;
+mod locale_data;
 mod messages;
 mod names;
 mod route;
@@ -93,6 +94,13 @@ pub fn tokens(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn messages(input: TokenStream) -> TokenStream {
     messages::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// Every locale's number, currency and date data, for corten's test against Intl. Not a public API.
+#[doc(hidden)]
+#[proc_macro]
+pub fn __all_locales(_: TokenStream) -> TokenStream {
+    messages::all_locales()
 }
 
 /// Field names of a form input struct as constants: `Input::FIELDS.email` is the

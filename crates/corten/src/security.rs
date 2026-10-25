@@ -100,6 +100,7 @@ pub struct Policy {
     connect: Vec<String>,
     frame: Vec<String>,
     font: Vec<String>,
+    form_action: Vec<String>,
     style_attributes: bool,
     hsts: bool,
     allowed_origins: Vec<String>,
@@ -123,6 +124,7 @@ impl Policy {
             connect: Vec::new(),
             frame: Vec::new(),
             font: Vec::new(),
+            form_action: Vec::new(),
             style_attributes: false,
             hsts: false,
             allowed_origins: Vec::new(),
@@ -161,6 +163,18 @@ impl Policy {
 
     pub fn font_src(mut self, source: &str) -> Self {
         self.font.push(checked(source));
+        self
+    }
+
+    /// Another origin a form may send the user to (`form-action`): a hosted checkout, an identity
+    /// provider's `form_post`, a sibling app. It also allows a form's handler to redirect there
+    /// (`req.redirect(&uri)`), since Chromium and WebKit apply `form-action` to the redirects a
+    /// submission follows. Without it a form goes to this origin only. A form posted straight to
+    /// another app also needs that app to accept posts from this origin (most frameworks refuse a
+    /// cross-origin post as CSRF), so posting here and redirecting is usually simpler. Writes
+    /// coming in from another site are [`Policy::allow_origin`].
+    pub fn form_action(mut self, source: &str) -> Self {
+        self.form_action.push(checked(source));
         self
     }
 
@@ -210,7 +224,7 @@ impl Policy {
         let import_map = hash_source(import_map);
         let mut csp = format!(
             "default-src 'self'; script-src 'self' {import_map}{nonce}{}; style-src 'self'{nonce}{}; img-src 'self'{}; \
-             connect-src 'self'{}; font-src 'self'{}; frame-src {}; object-src 'none'; base-uri 'self'; form-action 'self'; \
+             connect-src 'self'{}; font-src 'self'{}; frame-src {}; object-src 'none'; base-uri 'self'; form-action 'self'{}; \
              frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'",
             list(&self.script),
             list(&self.style),
@@ -218,6 +232,7 @@ impl Policy {
             list(&self.connect),
             list(&self.font),
             if self.frame.is_empty() { "'none'".to_string() } else { list(&self.frame).trim_start().to_string() },
+            list(&self.form_action),
         );
         if self.style_attributes {
             csp.push_str("; style-src-attr 'unsafe-inline'");
@@ -605,6 +620,9 @@ mod tests {
         assert!(csp.contains("frame-src https://js.stripe.com;"));
         assert!(Policy::new().csp("x").contains("frame-src 'none';"));
         assert!(!csp.contains("unsafe-inline"));
+        assert!(csp.contains("form-action 'self';"), "a form goes to this origin only: {csp}");
+        let checkout = Policy::new().form_action("https://pay.example").form_action("https://id.example").csp("abc");
+        assert!(checkout.contains("form-action 'self' https://pay.example https://id.example;"), "{checkout}");
     }
 
     #[test]

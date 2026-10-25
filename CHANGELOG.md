@@ -299,7 +299,50 @@ Corten is pre-1.0, so any minor version may change the API.
     catalog lacks or when an argument is missing, and renders escaped like any message. Asked for
     by the Chase Sets pilot, whose attention queue matched 20 API keys to methods by hand
     ([#54 A page cannot show a catalog message chosen at run time by its key](https://github.com/todd-skelton/corten/issues/54)).
-43. The page is a document made of components. `req.page`, `req.screen` and the error page take a
+43. `Policy::form_action(origin)` adds an origin to the CSP's `form-action`, so a page can send a
+    form to a hosted checkout, an identity provider or a sibling app, and a form's handler can
+    `req.redirect` there; the rest stay blocked (`form-action 'self'`). Found by the Chase Sets
+    pilot, whose cart's Check out form posts to marketplace's origin and was blocked by the
+    browser before the request was sent; a form posted straight to another app also needs that app
+    to accept this origin, so posting here and redirecting is usually simpler
+    ([#64 A page cannot send a form to another origin, and a post cannot redirect to one (form-action is always 'self')](https://github.com/todd-skelton/corten/issues/64)).
+44. Numbers, money and dates in the request's locale, on the server: `t.number(n)`,
+    `t.money(Minor(123450), USD)` (`$1,234.50` in en, `1 234,50 $US` in fr; or a `Decimal` an API
+    sends as text, never a float), `t.date(at, DateStyle::Medium)`, `t.time(at, TimeStyle::Short)`
+    and `t.date_time(..)` (`Mar 22, 2026, 12:00 PM UTC`), in UTC unless `.zone(..)`, rendered
+    escaped and usable as message arguments. `corten::i18n` adds `Decimal`, `Minor`, `Currency`,
+    `DateStyle`, `TimeStyle`, `Zone`, `Utc`, `Offset` and `parse_timestamp`. Each locale's data is
+    CLDR's from Intl (`scripts/locale-data.mjs`, 108 locales, checked against Intl on 113,080
+    values; the Rust test checks 9,828), and `messages!` puts only the listed locales' into the
+    app. A tag with no data of its own uses its language's; a language with none is a build
+    error. `number`, `money`, `date`, `time` and `date_time` are no longer catalog keys. Asked for
+    by the Chase Sets pilot, which wrote `en` dates and prices by hand
+    ([#60 A page cannot write a date and time in the request's locale](https://github.com/todd-skelton/corten/issues/60),
+    [#63 A page cannot write an amount of money in the request's locale](https://github.com/todd-skelton/corten/issues/63)).
+45. The same formats for a script: `t.js().number()`, `t.js().money(USD)` and
+    `t.js().date(DateStyle::Medium)` (`.time`, `.date_time`, `.zone(Offset)`) pass a handler whose
+    JSDoc takes a `NumberFormat`, `MoneyFormat` or `DateFormat` (from `"corten"`) a function that
+    writes what the server writes (`money(123450)` is `$1,234.50` in en), from the locale data sent
+    in `data-on` (`%{..}`); a format of the wrong kind does not compile. `scripts/format.mjs` (in
+    `npm run check`) runs the runtime's formatter on all 9,828 cases with the formats the server
+    sends (`src/i18n/specs.tsv`, which a Rust test rewrites). The runtime is 777 B larger gzipped
+    (6,748 to 7,525 B). hello's live prices use it
+    ([#60 A page cannot write a date and time in the request's locale](https://github.com/todd-skelton/corten/issues/60),
+    [#63 A page cannot write an amount of money in the request's locale](https://github.com/todd-skelton/corten/issues/63)).
+46. `<ReadAgain after={..} />` (`Meta::read_again(after)` before item 47 removed `Meta`), among a
+    page's head tags: a page showing a read that has not caught up with a write asks to be read
+    again. The runtime fetches the same URL after the delay and swaps it in (history entry
+    replaced, scroll kept, focus kept by id, no swap when the answer matches the last read's, a
+    hidden tab waits),
+    however the page was reached: a full load, a link or a `data-patch` form's redirect. A
+    navigation away stops it; without JavaScript it is a `<meta http-equiv="refresh">` in
+    `<noscript>`. A `Refresh` header on a page is a 500 in debug builds: Chromium, Firefox and
+    WebKit keep a full load's after the runtime navigates away and load that URL again (probed).
+    The runtime drops `<noscript>` content from the markup it swaps in, which a template would
+    otherwise make live. The runtime is 282 B larger gzipped (7,525 to 7,807 B). hello's
+    `/saved` shows it
+    ([#69 A page cannot ask to be read again shortly, and the Refresh header only works on a full load](https://github.com/todd-skelton/corten/issues/69)).
+47. The page is a document made of components. `req.page`, `req.screen` and the error page take a
     `Document`: `html!` that starts with `<html>` (one `<head>` with one `<title>` and one
     `<Corten />`, one `<main>` outside any `for`, `if` or `match`, all checked when it compiles), or
     a component that returns `impl Document`, such as the app's `Layout`. `html!` renders only the
@@ -311,13 +354,13 @@ Corten is pre-1.0, so any minor version may change the API.
     commit before, Windows) a full document is about 7% faster (median 57.5 to 53.8 us) and a
     navigation within noise (47.0 to 47.8 us; another eight runs gave 48.4 to 48.3), with the same
     bytes, compressed or not.
-44. `#[corten::routes]` on a module of routes: each `#[route("/..")]` struct in it is a typed route and
+48. `#[corten::routes]` on a module of routes: each `#[route("/..")]` struct in it is a typed route and
     a method of the module's `Handlers` trait, and `url::router(handlers)` puts each handler at its
     path for `App::new`. A route without a handler, or two routes with the same path, does not
     compile. A struct in the module that derives `Route` itself is a link only (an area's page, an
     API route). `MethodRouter` is in the prelude. `corten new`, `examples/hello` and the README use it.
-45. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
-46. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
+49. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
+50. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
     `corten dev` only, the error. Every error page is sent with `X-Robots-Tag: noindex`.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -449,11 +492,11 @@ Corten is pre-1.0, so any minor version may change the API.
     boolean attribute before toggling it. On a droplet, creating 10,000 rows took 79 ms instead of
     90 ms (Solid 64, plain JavaScript 61), a row took 101 bytes of heap instead of 116, and
     takeover was unchanged.
-25. The README's browser and client-heavy tables are from round `browser-3` (Creating 10,000 rows
+25. The README's client-heavy table is from round `browser-3` (Creating 10,000 rows
     68.9 ms, against 87.5 in `browser-1`; Solid 59.2). `bench/browser/ssr.mjs` takes the loads of
     every app in turns and `run-all.mjs` takes 30, after one app's takeover median in a round
-    moved with a slow stretch of the machine. The README's server highlight now quotes round r4
-    (18,043 pages a second, 1.1 MiB), the round its server table is from.
+    moved with a slow stretch of the machine. The README's server highlight quotes the round
+    its server table is from.
 
 26. `corten new` makes the app depend on the `corten` release on crates.io that matches the
     command's version (`corten = { version = "0.1.0", ... }`) instead of the repository's `main`
@@ -649,7 +692,14 @@ Corten is pre-1.0, so any minor version may change the API.
     `{updated_at}`) are an error naming both. Found by the Chase Sets pilot, whose shared catalogs
     have 365 camelCase arguments
     ([#58 A catalog message cannot take a camelCase argument ({updatedAt})](https://github.com/todd-skelton/corten/issues/58)).
-21. A handler that panics is answered as a 500 with the error page in the request's mode, and the
+21. A patch with a top-level element the browser would drop (no `id`, or text outside an
+    element) is an error in debug builds that names it: `req.patch`, `patch_with_status` and
+    `req.invalid`'s form answer 500 instead of a patch, so a router test or the first request in
+    development fails, and a `corten::live` fragment panics. Release builds send the patch as
+    before, with no check. Found by the Chase Sets pilot, whose refused write-off answered 422
+    with the API's message in a `<div>` without an id, which the page never showed
+    ([#61 A patch element without an id is dropped in the browser, and nothing says so before](https://github.com/todd-skelton/corten/issues/61)).
+22. A handler that panics is answered as a 500 with the error page in the request's mode, and the
     panic is logged, instead of the connection closing with no response.
 ### Documentation
 
@@ -662,14 +712,15 @@ Corten is pre-1.0, so any minor version may change the API.
 4. New `CONTRIBUTING.md`, `SECURITY.md` and this changelog.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
-6. The full-stack benchmark tables in the README and `bench/fullstack` are from round r4
-   (2026-10-23, one c-8 droplet, Xeon Platinum 8168), measured with the typed item-API parse;
-   `bench/live` is still r3 (Xeon Platinum 8280). On r4's slower CPU Corten serves 18,043 item
-   pages and 18,934 JSON responses a second from memory at 64 users (r3: 23,086 and 24,338 on the
-   8280), and 2,142 item-API pages against ASP.NET Core's 915 (r3: 1,175 and 1,209). A page costs
-   123,693 user instructions and the JSON 133,308 (r3: 123,665 and 133,588). Django and Nuxt
-   failed r4's in-memory page test, which they passed in r3 near their limit. The item page
-   loads 6.2 KB of JavaScript (gzip).
+6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
+   from round r5 (2026-10-25, one c-8 droplet, Xeon Platinum 8168 as in r4, the tree at
+   `f80d4a1`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 21,735 item pages
+   and 25,200 JSON responses a second from memory at 64 users (r4: 18,043 and 18,934), and 3,240
+   item-API pages against ASP.NET Core's 998 (r4: 2,142 and 915). A page costs 103,877 user
+   instructions and the JSON 69,291 (r4: 123,693 and 133,308). The unchanged apps moved by up to
+   17% between the two droplets. Django passed the in-memory page test it failed in r4; Nuxt,
+   Next.js and Laravel failed as before. The item page loads 7.3 KB of JavaScript (gzip; r4
+   6.2 KB).
 7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a

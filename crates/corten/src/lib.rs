@@ -101,7 +101,7 @@ pub use form::{Errors, FieldName, Form, Query, SubmitKey};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};
-pub use page::{Corten, ErrorPageFn, Failure, Mode, Req, MODE_HEADER};
+pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, Req, MODE_HEADER};
 pub use route::{routes, Href, Route};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
@@ -140,8 +140,8 @@ pub mod prelude {
         raw,
         script::{el, refs, Handler, Ref},
         view::Id,
-        Access, Api, App, Area, Cache, Corten, Document, Errors, Failure, FieldName, Fields, Form, Mode, Query, Render, Req,
-        Result, Route, SubmitKey,
+        Access, Api, App, Area, Cache, Corten, Document, Errors, Failure, FieldName, Fields, Form, Mode, Query, ReadAgain,
+        Render, Req, Result, Route, SubmitKey,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, ToJson};
@@ -191,7 +191,9 @@ pub(crate) fn import_map(events: Option<&str>, views: Option<&str>) -> String {
 }
 
 /// Streams fragments to `<corten-live src="...">` as server-sent events. Each item is applied like a
-/// form patch: top-level elements replace the elements with the same `id`.
+/// form patch: top-level elements replace the elements with the same `id`. In debug builds a
+/// fragment with a top-level element the browser would drop (no id, or text outside an element)
+/// panics, naming it.
 ///
 /// An item is rendered HTML (a `String`), or a [`Fragment`] that also carries the app's cursor
 /// after it, so a reconnect resumes there ([`LiveSince`]).
@@ -206,6 +208,11 @@ where
 {
     let patches = fragments.map(|fragment| {
         let Fragment { html, cursor } = fragment.into();
+        // A top-level element without an id would be dropped in the browser: a bug in the view.
+        #[cfg(debug_assertions)]
+        if let Some(problem) = crate::html::patch_problem(&html) {
+            panic!("corten: a live fragment's top-level {problem}, so the browser would drop it: give each top-level element a #[derive(Id)] id the page has");
+        }
         let event = Event::default().event("patch");
         match cursor {
             Some(cursor) => event.id(cursor),

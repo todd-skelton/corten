@@ -51,3 +51,14 @@ export function selected(out, label) {
   // @ts-expect-error Each of them.
   out.textContent = label({});
 }
+
+/** @import { NumberFormat, MoneyFormat, DateFormat } from "corten" */
+
+/** @param {HTMLOutputElement} out @param {NumberFormat} count @param {MoneyFormat} price @param {DateFormat} when */
+export function formatted(out, count, price, when) {
+  out.textContent = `${count(1234)} ${count("21.5")} ${price(123450)} ${when(Date.now())} ${when(new Date())}`;
+  // @ts-expect-error An amount is an integer of minor units, not its text.
+  price("12.50");
+  // @ts-expect-error A date's format takes a date, not an object.
+  when({ at: 0 });
+}

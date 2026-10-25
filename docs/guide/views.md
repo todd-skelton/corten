@@ -125,3 +125,26 @@ message with that catalog key (dotted, as in the JSON) in the request's locale, 
 taken by name from `args` (pairs, a map or a JSON object). It is `None` when the catalog has no
 such key or `args` lacks one of its arguments (an `Option` renders nothing when `None`), so the
 page chooses what to show instead. Prefer the methods wherever the page knows the message.
+
+Numbers, money and dates are written by `t` in the request's locale too, on the server, so a
+price or a time is right on the first paint with no script:
+
+```rust,ignore
+const USD: Currency = Currency::new("USD");
+html! {
+    <td>{t.money(Minor(line.cents), USD)}</td>                           // $1,234.50, 1 234,50 $US
+    <td>{t.money(Decimal::parse(&api.amount).unwrap_or_default(), USD)}</td> // "21.50" from an API
+    <td>{t.number(listing.count)}</td>                                     // 1,234
+    <p>{t.item_pending(t.date_time(at, DateStyle::Medium, TimeStyle::Short))}</p> // Mar 22, 2026, 12:00 PM UTC
+}
+```
+
+`t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
+a bare integer (it could be either, so it does not compile), with the digits the currency is
+shown with (0 for JPY, 3 for KWD). A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
+of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
+reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
+Each listed locale's separators, currency symbols and date patterns are CLDR's, checked against
+Intl, and only the locales `messages!` lists are in the app. A script that writes a number, an
+amount or a date takes the page's format (`t.js().money(USD)`) and writes the same text
+([Scripts](scripts.md#numbers-money-and-dates-a-script-writes)).

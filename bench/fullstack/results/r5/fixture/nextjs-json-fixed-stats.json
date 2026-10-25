@@ -1,0 +1,9 @@
+{
+ "fsw-nextjs": {
+  "samples": 123,
+  "cpuAvgPct": 32.8,
+  "cpuMaxPct": 41.57,
+  "memAvgMiB": 169.6,
+  "memMaxMiB": 170.2
+ }
+}

@@ -84,6 +84,13 @@ A count or total the script works out is still a catalog message: pass `t.js().r
 message with other arguments does not compile at the call. Never write the text in the script,
 and do not render every variant in a `<template>` for the script to copy.
 
+A number, amount or date the script works out is written with the page's format, never
+`Intl` or `toFixed`: pass `t.js().number()`, `t.js().money(USD)` or `t.js().date(DateStyle::Medium)`
+(`.time(..)`, `.date_time(..)`, `.zone(Offset::hours(-5))`) and take it as
+`@param {NumberFormat}`, `{MoneyFormat}` or `{DateFormat}` (from `"corten"`); call `money(cents)`
+or `when(Date.now())`. It writes what the server's `t.money` and `t.date` write. A zone with
+daylight saving time stays on the server.
+
 ## A child that reports to its parent
 
 A handler prop: the child takes `on_confirm: Handler<'a>` and puts it on an element with

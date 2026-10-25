@@ -32,7 +32,10 @@ async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
 }
 ```
 
-A patch may hold several top-level elements; each replaces the element with the same `id`. Fields
+A patch may hold several top-level elements; each replaces the element with the same `id`, so
+each needs one (a component a patch sends is rooted at the element with the id). In debug builds a
+top-level element without an id, or text outside an element, makes the patch an error naming it,
+since the browser would drop it. Fields
 the user edited (after the form was sent) and the focus carry over to the new markup, so a patch
 can include the form the user is typing in.
 After a write that should change the URL, use `req.redirect(&Route)` instead.

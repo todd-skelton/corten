@@ -9,12 +9,17 @@
 //! | `GET /about` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only |
 //! | `POST /sign-in` | sets a cookie; the layout shows the viewer, and the runtime reloads the document |
 //! | `GET /account` | an area only someone signed in may use (`Area::guard`): anyone else is sent to the watchlist, where the sign-in button is |
-use std::{sync::Arc, time::Duration};
+//! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use corten::{
     Fragment, LiveSince,
     axum::{http::header, response::IntoResponse},
     feed::{Feed, Row, Since},
+    i18n::{Currency, Minor},
     prelude::*,
     security::cookie::{self, SetCookie},
 };
@@ -98,6 +103,11 @@ mod url {
     #[derive(Route)]
     #[route("/account")]
     pub struct Account;
+
+    #[route("/saved")]
+    pub struct Saved {
+        pub until: Option<u64>,
+    }
 }
 
 /// The app's handlers, which share the market.
@@ -129,6 +139,10 @@ impl url::Handlers for Site {
     fn trades(&self) -> MethodRouter {
         get(trades).with_state(self.market.clone())
     }
+
+    fn saved(&self) -> MethodRouter {
+        get(saved)
+    }
 }
 
 /// Who is looking: the app's context, which the layout shows.
@@ -137,10 +151,10 @@ pub struct Viewer {
     pub name: String,
 }
 
-/// The document around every page. Client navigation swaps the title and `<main>` only;
-/// signing in changes the viewer, which makes the runtime load the next page in full.
+/// The document around every page: its title, its own `head` tags and the page. Client navigation
+/// swaps those only; signing in changes the viewer, which makes the runtime load the next page in full.
 #[component]
-fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+fn Layout<'a, H: Render, C: Render>(req: &'a Req, title: &'a str, head: H, children: C) -> impl Document + 'a {
     let viewer = req.context::<Viewer>();
     html! {
         <!DOCTYPE html>
@@ -150,6 +164,7 @@ fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Docu
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <link rel="stylesheet" href={req.asset("style.css")}>
                 <title>{title}" | Corten"</title>
+                {head}
                 <Corten />
             </head>
             <body>
@@ -176,8 +191,9 @@ async fn sign_in(req: Req) -> corten::Result {
     Ok(res.into_response())
 }
 
-/// A feed row. `price` is the display text, kept with the cents so every surface shows the
-/// same string and no client re-implements the formatting.
+/// A feed row. `price` is the display text, for clients with no formatting of their own (a
+/// native screen, an agent); the page's script writes `price_cents` with the page's format
+/// (`t.js().money(USD)`), which writes what the server does.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Stock {
     pub id: String,
@@ -203,8 +219,12 @@ impl Row for Stock {
     }
 }
 
+/// The currency of every price.
+const USD: Currency = Currency::new("USD");
+
+/// The feed's one text for every viewer, in the app's default locale (`$1,234.50`).
 fn format_price(cents: u32) -> String {
-    format!("${}.{:02}", cents / 100, cents % 100)
+    Msg::default().money(Minor(cents), USD).to_string()
 }
 
 /// Moves one price per second, so the live prices and the last trade have something to show.
@@ -284,15 +304,16 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 
 /// The prices, rendered here first and then kept current by `live_prices.js` from the feed. The
 /// pause button shows only when the script runs, since nothing updates without it. The script
-/// counts the updates and shows the count with a message of the page's locale (`t.js()`), so
-/// the text a script computes still comes from the catalog. Styled by `live_prices.css`.
+/// counts the updates and shows the count with a message of the page's locale (`t.js()`), and
+/// writes each price with the page's money format, so the text a script computes is the
+/// server's. Styled by `live_prices.css`.
 #[component(css, js)]
 fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Render {
     let (pause, price, updates) = refs();
-    let updated = t.js().prices_updates();
+    let (updated, money) = (t.js().prices_updates(), t.js().money(USD));
     html! {
-        <div on:connect={js::watch(scope, pause, price, feed, signal, updates, updated)}>
-            <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price)}>
+        <div on:connect={js::watch(scope, pause, price, money, feed, signal, updates, updated)}>
+            <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price, money)}>
                 "Pause updates"
             </button>
             <table class={Table}>
@@ -339,7 +360,7 @@ fn LastTrade(text: &str) -> impl Render {
 async fn home(req: Req, State(market): State<Market>) -> corten::Result {
     let home = Home::new(&market, String::new());
     let view = home_view(&home, req.t());
-    req.screen(&home, html! { <Layout req={&req} title="Watchlist">{view}</Layout> })
+    req.screen(&home, html! { <Layout req={&req} title="Watchlist" head="">{view}</Layout> })
 }
 
 #[derive(Deserialize, Fields)]
@@ -358,14 +379,14 @@ async fn watch(req: Req, State(market): State<Market>, Form(form): Form<WatchFor
         _ => {
             let home = Home::new(&market, message);
             let view = home_view(&home, req.t());
-            req.screen(&home, html! { <Layout req={&req} title="Watchlist">{view}</Layout> })
+            req.screen(&home, html! { <Layout req={&req} title="Watchlist" head="">{view}</Layout> })
         }
     }
 }
 
 async fn about(req: Req) -> corten::Result {
     req.page(html! {
-        <Layout req={&req} title="About">
+        <Layout req={&req} title="About" head="">
             <h1>"About"</h1>
             <p>"Rendered on the server and swapped into the page by the runtime."</p>
             <AboutNote />
@@ -373,11 +394,36 @@ async fn about(req: Req) -> corten::Result {
     })
 }
 
+#[derive(Deserialize)]
+struct SavedQuery {
+    until: Option<u64>,
+}
+
+/// A page that reads a write which has not landed yet. A real app's address carries the write's
+/// receipt; here it is the time the write lands, in milliseconds since 1970. Until then the page
+/// says so and asks to be read again, which the runtime does in place however the page was
+/// reached; once the write is in, the page stops asking.
+async fn saved(req: Req, Query(query): Query<SavedQuery>) -> corten::Result {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let pending = query.until.is_some_and(|until| now < until);
+    let again = pending.then_some(ReadAgain { after: Duration::from_secs(1) });
+    let text = if pending { "Saving your change..." } else { "Your change is saved." };
+    req.page(html! {
+        <Layout req={&req} title="Saved" head={again}>
+            <p id={SavedId} role="status">{text}</p>
+        </Layout>
+    })
+}
+
+/// The saved page's status line.
+#[derive(Id)]
+struct SavedId;
+
 /// The guard on `/account` has let only a signed-in viewer through.
 async fn account(req: Req) -> corten::Result {
     let name = req.context::<Viewer>().map_or("", |viewer| &viewer.name);
     req.page(html! {
-        <Layout req={&req} title="Account">
+        <Layout req={&req} title="Account" head="">
             <h1>"Account"</h1>
             <p>"Signed in as "{name}"."</p>
         </Layout>
@@ -430,8 +476,8 @@ mod tests {
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/scripts/live_prices.js\">"), "the script module is preloaded: {body}");
         assert!(
-            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
-            "the script gets the message it fills in: {body}"
+            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
+            "the script gets the money format and the message it fills in: {body}"
         );
         assert!(
             body.contains(r#"<td data-ref="price" class="live-prices__amount" data-key="s1">$129.99</td>"#),

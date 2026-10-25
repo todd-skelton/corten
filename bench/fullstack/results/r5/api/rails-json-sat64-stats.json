@@ -1,0 +1,16 @@
+{
+ "fsw-rails": {
+  "samples": 123,
+  "cpuAvgPct": 100.8,
+  "cpuMaxPct": 101.36,
+  "memAvgMiB": 82.3,
+  "memMaxMiB": 83.2
+ },
+ "item-api": {
+  "samples": 123,
+  "cpuAvgPct": 6,
+  "cpuMaxPct": 7.84,
+  "memAvgMiB": 112.3,
+  "memMaxMiB": 112.6
+ }
+}
