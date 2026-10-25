@@ -8,7 +8,7 @@ pub struct ToastId;
 /// An action answers with it as a patch, `req.patch(Toast { message: Some(&text) })`, which
 /// replaces the toaster's message; `None` renders it `hidden` and empty.
 #[component]
-pub fn Toast<'a>(message: Option<&'a dyn Render>) -> impl Render {
+pub fn Toast<'a>(message: Option<&'a dyn Render>) -> impl Patch {
     html! {
         <div id={ToastId} hidden={message.is_none()}>
             if let Some(message) = message { {message} }

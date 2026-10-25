@@ -373,6 +373,19 @@ Corten is pre-1.0, so any minor version may change the API.
 51. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
 52. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
     `corten dev` only, the error. Every error page is sent with `X-Robots-Tag: noindex`.
+53. `view::Patch` (in the prelude): a view a `data-patch` answer can send, checked when it compiles.
+    `html!` is a patch when each of its top-level elements has `id={..}` with a `#[derive(Id)]` type
+    and its other top-level parts (expressions, components, every branch of a `for`, `if` or
+    `match`) are patches; a component is one when declared `-> impl Patch`, and then its markup must
+    be. Text, an element without an id and an id written as text are compile errors, each with a
+    `compile_fail` doctest. Each `html!` returns its shape, zero-sized types, so the check costs
+    nothing at run time: seller-desk's `render_cost` (rows rooted at `<tr id={RowId(..)}>`, the
+    path the check adds code to) is 1,967,358,212 instructions before and 1,967,337,624 after under
+    callgrind (release), with the same bytes; the item page's whole `render_cost` is 34,210,499,634
+    and 34,188,947,492 (-0.06%).
+54. A component parameter can be `impl Render` (any `impl Trait`), a type parameter of its struct:
+    `fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document`. The README's example
+    compiles as edition 2024, as apps are, so its functions return `impl Document` without lifetimes.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -608,6 +621,10 @@ Corten is pre-1.0, so any minor version may change the API.
     is always in the page key.
 42. The error page shows the error under `corten dev` only if it prints `failure.detail` (the default
     and the `corten new` page do); the offline page is the error page for 503 ("Not available").
+43. `req.patch`, `req.patch_with_status` and `req.invalid` take an `impl Patch` instead of an
+    `impl Render`, and debug builds no longer scan a patch for a top-level element without an id
+    (a `corten::live` fragment, which is text, is still scanned). Migrate by declaring each
+    component a patch sends `-> impl Patch` and writing its ids as `#[derive(Id)]` types.
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

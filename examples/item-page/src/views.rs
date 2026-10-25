@@ -54,7 +54,7 @@ pub fn category(t: Msg, slug: &str) -> impl Render + '_ {
 /// The app's stylesheet comes before `<Corten />`, which links the components' stylesheet, so a
 /// component's rules win ties with element defaults.
 #[component]
-pub fn Layout<'a, H: Render, C: Render>(req: &'a Req, title: &'a str, head: H, children: C) -> impl Document + 'a {
+pub fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
     html! {
         <!DOCTYPE html>
         <html lang={req.lang()}>

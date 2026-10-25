@@ -11,7 +11,7 @@ pub struct PriceId<'a>(pub &'a str);
 /// `value` attribute, its `defaultValue`), and the form posts to the item's price route, which
 /// answers with this cell (or the cell with its error).
 #[component(css, js)]
-pub fn PriceCell<'a>(id: &'a str, cents: Option<u32>, typed: &'a str, errors: &'a Errors) -> impl Render {
+pub fn PriceCell<'a>(id: &'a str, cents: Option<u32>, typed: &'a str, errors: &'a Errors) -> impl Patch {
     let save = refs();
     let f = PriceInput::FIELDS;
     let saved = cents.map(money);

@@ -31,7 +31,7 @@ app's to change; Corten adds nothing around it.
 use corten::prelude::*;
 
 #[component]
-fn Layout<'a, H: Render, C: Render>(req: &'a Req, title: &'a str, head: H, children: C) -> impl Document + 'a {
+fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
     html! {
         <!DOCTYPE html>
         <html lang={req.lang()}>

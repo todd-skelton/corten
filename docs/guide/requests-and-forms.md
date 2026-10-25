@@ -166,9 +166,22 @@ stay on the matching element. Everything else is the server's.
 
 Each top-level element of a patch replaces the element with its `id`, and the browser drops one
 without an id (and any text outside an element), so a refusal drawn inside a wrapper `<div>`
-never shows. In debug builds, router tests included, such a patch is an error that names the
-element (a `corten::live` fragment panics), so make the element with the id the root of a
-component a patch sends. Release builds do not check.
+would never show. `req.patch`, `req.patch_with_status` and `req.invalid` therefore take a
+`Patch`, which the compiler checks: `html!` whose top-level elements each have `id={..}` with a
+`#[derive(Id)]` type (in every branch of an `if` or `match` among them, whether or not it runs),
+`Remove`, or a component declared `-> impl Patch`, whose markup must be such an `html!`:
+
+```rust,ignore
+#[component]
+pub fn Status(text: &str) -> impl Patch {
+    html! { <p id={StatusId} role="status">{text}</p> }   // the root has the id
+}
+```
+
+A component that says `-> impl Render` is not a patch, so one that is drawn by the page and sent
+by an action says `-> impl Patch`, as a layout says `-> impl Document`. A `corten::live`
+fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
+element).
 
 ## Redirects
 

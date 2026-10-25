@@ -22,7 +22,7 @@ pub struct AlertFormId;
 pub struct AlertMessageId;
 
 #[component(css)]
-pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Render {
+pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Patch {
     let f = AlertInput::FIELDS;
     let e = form.errors.within(AlertFormId);
     html! {
@@ -54,6 +54,6 @@ pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Render {
 /// The price-alert result, inside the item page and on its own as a patch. It shares the
 /// form's stylesheet.
 #[component(css = AlertForm)]
-pub fn AlertMessage(message: &str) -> impl Render {
+pub fn AlertMessage(message: &str) -> impl Patch {
     html! { <p class={Message} id={AlertMessageId} aria-live="polite">{message}</p> }
 }

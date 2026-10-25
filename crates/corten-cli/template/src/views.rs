@@ -7,7 +7,7 @@ use crate::{GreetForm, url};
 /// and `<main>`'s children, so the rest runs on full page loads only. For tags a page sets itself
 /// (a description, a canonical link), add a prop and put it in `<head>`: `{head}`.
 #[component]
-pub fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     html! {
         <!DOCTYPE html>
         <html lang={req.lang()}>
@@ -28,7 +28,7 @@ pub fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl 
 
 /// The page for a failed request: an unknown URL, a handler's error or panic, the offline page
 /// (503). Under `corten dev`, `failure.detail` is the error; in production it is only logged.
-pub fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
+pub fn error_page(req: &Req, failure: Failure) -> impl Document {
     let (title, text) = match failure.status.as_u16() {
         404 => ("Not found", "There is nothing at this address."),
         503 => ("Not available", "Check your connection and try again."),
@@ -46,7 +46,7 @@ pub fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
     }
 }
 
-pub fn home<'a>(req: &'a Req, name: &'a str) -> impl Document + 'a {
+pub fn home(req: &Req, name: &str) -> impl Document {
     let f = GreetForm::FIELDS;
     html! {
         <Layout req={req} title="{{name}}">
@@ -86,7 +86,7 @@ pub struct GreetingId;
 
 /// Inside the page, and on its own as the form's patch (the runtime swaps it in by `id`).
 #[component]
-pub fn Greeting(name: &str) -> impl Render {
+pub fn Greeting(name: &str) -> impl Patch {
     html! {
         <p id={GreetingId} aria-live="polite">
             if !name.is_empty() { "Hello, "{name}"!" }

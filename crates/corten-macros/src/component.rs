@@ -130,8 +130,10 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     i += 1;
     let mut where_clause = Vec::new();
     let mut in_where = false;
-    // `-> impl Document`: a layout, which renders a whole document.
+    // `-> impl Document`: a layout, which renders a whole document. `-> impl Patch`: markup a
+    // `data-patch` answer can send, which must be a patch (see `corten::view::Patch`).
     let mut returns_doc = false;
+    let mut returns_patch = false;
     let body = loop {
         match tokens.get(i) {
             Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace && i + 1 == tokens.len() => break g.clone(),
@@ -141,6 +143,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             }
             Some(token) if in_where => where_clause.push(token.clone()),
             Some(TokenTree::Ident(id)) if id.to_string() == "Document" => returns_doc = true,
+            Some(TokenTree::Ident(id)) if id.to_string() == "Patch" => returns_patch = true,
             Some(_) => {}
             None => return err(span, "expected the function body"),
         }
@@ -150,6 +153,8 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     let mut fields = TokenStream::new();
     let mut lets = TokenStream::new();
     let mut elided = false;
+    // `impl Trait` parameters, each a type parameter named after its field, with its bounds.
+    let mut impl_params: Vec<(Ident, TokenStream)> = Vec::new();
     // Each parameter's name and type as written, for a view's holes.
     let mut typed: Vec<(String, Vec<TokenTree>)> = Vec::new();
     for param in split(params.stream(), ',') {
@@ -173,7 +178,14 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             return err(span, "component parameters are `name: Type`");
         };
         typed.push((field.to_string(), param[p + 2..].to_vec()));
-        let ty = name_elided_lifetimes(param[p + 2..].to_vec(), &mut elided);
+        let mut ty = name_elided_lifetimes(param[p + 2..].to_vec(), &mut elided);
+        // `children: impl Render` is a type parameter of the struct, as `C: Render` would be.
+        let written: Vec<TokenTree> = ty.clone().into_iter().collect();
+        if is_ident(written.first(), "impl") {
+            let param_name = Ident::new(&format!("__CortenParam{}", impl_params.len()), field.span());
+            impl_params.push((param_name.clone(), stream(written[1..].iter().cloned())));
+            ty = TokenTree::Ident(param_name).into();
+        }
         fields.extend(stream(field_attrs));
         fields.extend(stream(vis.iter().cloned()));
         fields.extend(q("__A0: __A1,", &[TokenTree::Ident(field.clone()).into(), ty]));
@@ -194,6 +206,25 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             named.push(TokenTree::Punct(Punct::new('>', Spacing::Alone)));
         }
         generics = named;
+    }
+    if !impl_params.is_empty() {
+        let mut list: Vec<TokenTree> = if generics.len() > 2 {
+            let mut list = generics[..generics.len() - 1].to_vec();
+            list.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
+            list
+        } else {
+            vec![TokenTree::Punct(Punct::new('<', Spacing::Alone))]
+        };
+        for (i, (param_name, bounds)) in impl_params.iter().enumerate() {
+            if i > 0 {
+                list.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
+            }
+            list.push(TokenTree::Ident(param_name.clone()));
+            list.push(TokenTree::Punct(Punct::new(':', Spacing::Alone)));
+            list.extend(bounds.clone());
+        }
+        list.push(TokenTree::Punct(Punct::new('>', Spacing::Alone)));
+        generics = list;
     }
     let (impl_generics, type_generics) = split_generics(&generics);
 
@@ -320,13 +351,14 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         None => TokenStream::new(),
     };
     let doc_body = body.clone();
+    let render_fn = if returns_patch { "::corten::view::__private::render_patch" } else { "::corten::view::Render::render" };
     let draw = if scoped {
         q(
-            "::corten::script::__private::scoped(__A1, || ::corten::view::Render::render(&__A0, __corten_component_out));",
+            &format!("::corten::script::__private::scoped(__A1, || {render_fn}(&__A0, __corten_component_out));"),
             &[TokenTree::Group(body).into(), literal(&scope_name)],
         )
     } else {
-        q("::corten::view::Render::render(&__A0, __corten_component_out);", &[TokenTree::Group(body).into()])
+        q(&format!("{render_fn}(&__A0, __corten_component_out);"), &[TokenTree::Group(body).into()])
     };
     // The stylesheet's classes are in scope only around the markup: a class named like the
     // component (`.card` in `Card`'s stylesheet) is what `{Card}` means there, while the
@@ -334,6 +366,19 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     let mut markup = scope;
     markup.extend(draw);
     let markup = TokenTree::Group(Group::new(Delimiter::Brace, markup));
+    if returns_patch {
+        for path in ["::corten::view::__private::PatchSealed", "::corten::view::Patch"] {
+            out.extend(q(
+                &format!("#[automatically_derived] impl __A0 {path} for __A1 __A2 __A3 {{}}"),
+                &[
+                    impl_generics.clone(),
+                    TokenTree::Ident(Ident::new(&name.to_string(), name.span())).into(),
+                    type_generics.clone(),
+                    stream(where_clause.clone()),
+                ],
+            ));
+        }
+    }
     if returns_doc {
         let render_part = q(
             "fn render_part(&self, __corten_component_out: &mut ::std::string::String, __corten_part: ::corten::view::Part) {

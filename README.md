@@ -53,7 +53,7 @@ component with a script, a test and a Dockerfile. See [Getting started](docs/gui
 A page with a form. With JavaScript, submitting it swaps in the greeting; without JavaScript it
 posts and the whole page comes back. One handler serves both.
 
-```rust,no_run
+```rust,no_run,edition2024
 use corten::prelude::*;
 
 // Every URL, typed. Each needs a handler below, or the app does not compile.
@@ -103,7 +103,7 @@ struct GreetForm {
     name: String,
 }
 
-fn page<'a>(req: &'a Req, name: &'a str) -> impl Document + 'a {
+fn page(req: &Req, name: &str) -> impl Document {
     let f = GreetForm::FIELDS;
     html! {
         <Layout req={req} title="Welcome">
@@ -120,7 +120,7 @@ fn page<'a>(req: &'a Req, name: &'a str) -> impl Document + 'a {
 /// The whole document, a component like any other: `corten new` writes one for you to change.
 /// A client navigation gets only the `<title>` and `<main>`'s children.
 #[component]
-fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     html! {
         <!DOCTYPE html>
         <html lang={req.lang()}>
@@ -141,7 +141,7 @@ struct GreetingId;
 
 /// Rendered by the page and by the patch, so the two cannot drift.
 #[component]
-fn Greeting(name: &str) -> impl Render {
+fn Greeting(name: &str) -> impl Patch {
     html! {
         <p id={GreetingId} aria-live="polite">
             if !name.is_empty() {
@@ -153,8 +153,9 @@ fn Greeting(name: &str) -> impl Render {
 ```
 
 A misspelled route, field, prop or id does not compile, and neither does a route without a
-handler or a document without its `<title>`, `<Corten />` (where the runtime and the page's
-scripts go) or `<main>`. Behavior lives in a script next to the component: plain functions the
+handler, a patch with a top-level element the browser would drop (one without an id), or a
+document without its `<title>`, `<Corten />` (where the runtime and the page's scripts go) or
+`<main>`. Behavior lives in a script next to the component: plain functions the
 markup calls with the elements they use.
 
 ```rust,ignore

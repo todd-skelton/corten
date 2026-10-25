@@ -154,7 +154,7 @@ pub struct Viewer {
 /// The document around every page: its title, its own `head` tags and the page. Client navigation
 /// swaps those only; signing in changes the viewer, which makes the runtime load the next page in full.
 #[component]
-fn Layout<'a, H: Render, C: Render>(req: &'a Req, title: &'a str, head: H, children: C) -> impl Document + 'a {
+fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
     let viewer = req.context::<Viewer>();
     html! {
         <!DOCTYPE html>
@@ -343,7 +343,7 @@ struct WatchMessageId;
 
 /// The watch result: rendered inside the home page, and on its own as a patch.
 #[component]
-fn WatchMessage(message: &str) -> impl Render {
+fn WatchMessage(message: &str) -> impl Patch {
     html! { <p id={WatchMessageId} aria-live="polite">{message}</p> }
 }
 

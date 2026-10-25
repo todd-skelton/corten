@@ -106,7 +106,7 @@ pub use route::{routes, Href, Route};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
-pub use view::{component, html, raw, Document, Render};
+pub use view::{component, html, raw, Document, Patch, Render};
 
 /// What a component sends to the browser: its handlers' script (`#[component(js)]` or
 /// [`script::script!`]), its stylesheet (`#[component(css)]`, or a token file's), its view class
@@ -140,7 +140,7 @@ pub mod prelude {
         raw,
         script::{el, refs, Handler, Ref},
         view::Id,
-        Access, Api, App, Area, Cache, Corten, Document, Errors, Failure, FieldName, Fields, Form, Mode, Query, ReadAgain,
+        Access, Api, App, Area, Cache, Corten, Document, Errors, Failure, FieldName, Fields, Form, Mode, Patch, Query, ReadAgain,
         Render, Req, Result, Route, SubmitKey,
     };
     #[cfg(feature = "json")]

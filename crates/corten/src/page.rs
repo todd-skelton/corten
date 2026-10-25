@@ -550,20 +550,18 @@ impl Req {
         Ok((status, headers, body).into_response())
     }
 
-    /// Answers a `<form data-patch>` submit with fragments. Every top-level element in `view`
-    /// must carry an `id`; the runtime replaces the element with that `id` on the page. One
-    /// without an id (or text outside an element) would be dropped in the browser, so in debug
-    /// builds, router tests included, the patch is an error that names it.
-    pub fn patch(&self, view: impl Render) -> Result {
+    /// Answers a `<form data-patch>` submit with fragments: the runtime replaces each element on
+    /// the page that has the id of one of `view`'s top-level elements. One without an id would
+    /// be dropped in the browser, so `view` is a [`Patch`](crate::view::Patch), which the compiler
+    /// checks: usually a component declared `-> impl Patch` whose root has a `#[derive(Id)]` id.
+    pub fn patch(&self, view: impl crate::view::Patch) -> Result {
         self.patch_with_status(StatusCode::OK, view)
     }
 
     /// Same as [`Req::patch`] with another status.
-    pub fn patch_with_status(&self, status: StatusCode, view: impl Render) -> Result {
+    pub fn patch_with_status(&self, status: StatusCode, view: impl crate::view::Patch) -> Result {
         let mut body = String::new();
         self.render_into(view, &mut body)?;
-        #[cfg(debug_assertions)]
-        check_patch(&body)?;
         Ok(html_response(status, body, Some(PATCH_HEADER)))
     }
 
@@ -576,7 +574,7 @@ impl Req {
     /// - Otherwise (no JavaScript): `page()`, usually `req.page(..)` for the whole page with the
     ///   form showing the errors; a success status becomes 422. It is only called here, so an
     ///   action never loads data for a page it does not send.
-    pub async fn invalid<F, Fut>(&self, errors: &crate::Errors, form: impl Render, page: F) -> Result
+    pub async fn invalid<F, Fut>(&self, errors: &crate::Errors, form: impl crate::view::Patch, page: F) -> Result
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result>,
@@ -618,19 +616,6 @@ impl Req {
         }
         let headers = [(header::LOCATION, value), (header::CACHE_CONTROL, HeaderValue::from_static(MOVED_CACHE))];
         Ok((StatusCode::MOVED_PERMANENTLY, headers).into_response())
-    }
-}
-
-/// A patch the browser would apply only in part: an error naming what it would drop.
-#[cfg(debug_assertions)]
-#[cold]
-#[inline(never)]
-fn check_patch(body: &str) -> Result<()> {
-    match crate::html::patch_problem(body) {
-        None => Ok(()),
-        Some(problem) => Err(Error::new(format!(
-            "corten: this patch's top-level {problem}, so the browser would drop it: give each top-level element a #[derive(Id)] id the page has (make the element with the id the component's root)"
-        ))),
     }
 }
 

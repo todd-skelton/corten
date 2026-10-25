@@ -246,7 +246,7 @@ async fn user(req: Req, Path(id): Path<String>) -> Result {
 }
 
 #[component]
-fn Layout<'a, C: Render>(req: &'a Req, title: &'a str, children: C) -> impl Document + 'a {
+fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     html! { <html lang={req.lang()}><head><title>{title}</title><Corten /></head><body><main>{children}</main></body></html> }
 }
 

@@ -16,7 +16,8 @@ agent's skill installer, or read it there.
    happen in the browser, in a component's script (4); a write, or data the page does not have, goes to the server.
    A form that writes and updates part of a page has `data-patch`; its handler answers
    `req.patch(view)` when `req.mode == Mode::Action` and the whole page otherwise, so it works without JavaScript.
-   Each patched element has an `id`, and the page renders the same component.
+   The patch is a component declared `-> impl Patch`, rooted at an element with a `#[derive(Id)]` id,
+   and the page renders the same component; one that is not a patch does not compile.
 3. URLs are the structs in `mod url` (`#[corten::routes]`): `href={url::Home}`,
    `req.redirect(&url::Home)`, and each route's handler is a method of `impl url::Handlers for Site`.
    Field names come from `#[derive(Fields)]` (`Form::FIELDS.name`); neither is ever typed as a
