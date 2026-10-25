@@ -101,6 +101,8 @@ pub use form::{Errors, FieldName, Form, Query, SubmitKey};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};
+#[cfg(feature = "json")]
+pub use page::JsonLd;
 pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, Req, MODE_HEADER};
 pub use route::{routes, Href, Route};
 pub use script::{event, Handler, Ref, Script};
@@ -144,7 +146,7 @@ pub mod prelude {
         Render, Req, Result, Route, SubmitKey,
     };
     #[cfg(feature = "json")]
-    pub use crate::{FromJson, Json, ToJson};
+    pub use crate::{FromJson, Json, JsonLd, ToJson};
 }
 
 /// The runtime, embedded so apps never copy it: `js/corten.js` minified by `scripts/build-js.mjs`

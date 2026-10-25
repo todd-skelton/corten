@@ -9,7 +9,7 @@ render of the same call site.
 | Write | Means |
 |---|---|
 | `"Price"` | text (source whitespace between tags is never output) |
-| `{expr}` | an expression, escaped: anything that implements `Render` (strings, numbers, `Option`, other views) or else `Display`. `raw(html)` prints trusted HTML |
+| `{expr}` | an expression, escaped: anything that implements `Render` (strings, numbers, `Option`, other views) or else `Display`. `raw(html)` prints trusted HTML. Not inside `<script>` or `<style>`, which do not read escaped text back: there it does not compile |
 | `href={url}`, `href={("/items/", &id)}` | an attribute; a tuple prints its parts without building a string |
 | `hidden={flag}`, `class={maybe}` | `bool` prints the bare name or nothing; `None` leaves the attribute out |
 | `<input {..e.aria(field)}>` | spreads `Attrs` |
@@ -74,6 +74,26 @@ update (the signed-in user, from `req.context`) is covered by the page key: when
 runtime loads the next page in full. Keep a layout's props to what most pages set (the title,
 their head tags); a page that needs a different document uses another layout.
 
+Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`
+(feature `json`) writes a `ToJson` value in `<script type="application/ld+json">` with `<` as
+`\u003c`, so a description that says `</script>` cannot end it. An expression written inside
+`<script>` in `html!` does not compile, because it would be escaped as HTML.
+
+`html!` that is one component is that component: its props are evaluated where the markup is,
+so `req={&req}` borrows the handler's `req`. A prop that borrows something the function made
+for the view is made inside the markup, where the view owns it:
+
+```rust,ignore
+fn job_dialog(job: &Job) -> impl Render + '_ {
+    html! {
+        let title = format!("{} rows", job.rows);   // owned by the view
+        <Dialog title={&title}>{job.summary}</Dialog>
+    }
+}
+```
+
+With the `let` outside the `html!`, the view would borrow a local of a function that has
+returned (E0515). `let`s and a layout component are a document, like the layout alone.
 ## Typed links and messages
 
 The strings that usually drift between files are Rust types, checked when the app compiles.

@@ -161,6 +161,30 @@ fn app(pages: Router) -> App {
 # let _ = app(Router::new()).router();
 ```
 
+An area's routes name their handlers as the app's do: put them in a module of their own with
+`#[corten::routes(area = Admin)]`, where `Admin` is the route at the prefix, and mount them with
+the module's `area` function. A route without a handler, two routes with one path, and a route
+outside the prefix do not compile, so a link from an area's page cannot reach a route nobody
+serves:
+
+```rust,ignore
+#[corten::routes(area = Admin)]
+mod admin {
+    #[route("/admin")]
+    pub struct Admin;
+
+    #[route("/admin/users/{id}")]
+    pub struct User<'a> { pub id: &'a str }
+}
+
+impl admin::Handlers for Staff {
+    fn admin(&self) -> MethodRouter { get(dashboard) }
+    fn user(&self) -> MethodRouter { get(user) }
+}
+
+App::new(url::router(Site)).area::<admin::Admin>(|area| admin::area(area, Staff).guard(staff_only))
+```
+
 Under the prefix:
 
 1. Every failure is one JSON shape, whatever the client accepts:
@@ -260,6 +284,30 @@ fn app(pages: Router) -> App<Viewer> {
     })
 }
 # let _ = app(Router::new()).router();
+```
+
+An area's routes name their handlers as the app's do: put them in a module of their own with
+`#[corten::routes(area = Admin)]`, where `Admin` is the route at the prefix, and mount them with
+the module's `area` function. A route without a handler, two routes with one path, and a route
+outside the prefix do not compile, so a link from an area's page cannot reach a route nobody
+serves:
+
+```rust,ignore
+#[corten::routes(area = Admin)]
+mod admin {
+    #[route("/admin")]
+    pub struct Admin;
+
+    #[route("/admin/users/{id}")]
+    pub struct User<'a> { pub id: &'a str }
+}
+
+impl admin::Handlers for Staff {
+    fn admin(&self) -> MethodRouter { get(dashboard) }
+    fn user(&self) -> MethodRouter { get(user) }
+}
+
+App::new(url::router(Site)).area::<admin::Admin>(|area| admin::area(area, Staff).guard(staff_only))
 ```
 
 | The guard says | Page, or a form post without JavaScript | Form patch | Data client, `App::api` route |

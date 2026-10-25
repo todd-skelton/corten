@@ -147,6 +147,61 @@ pub use corten_macros::Route;
 ///     pub struct ItemBySlug<'a> { pub slug: &'a str }
 /// }
 /// ```
+///
+/// The routes of an [`crate::App::area`] are a module of their own, `#[corten::routes(area =
+/// Admin)]`, where `Admin` is the route at the area's prefix. Its `area(area, handlers)` mounts
+/// each route in the area, behind the area's guard and with its stylesheet, so every route the
+/// area's pages link to has a handler there too:
+///
+/// ```n/// use corten::axum::http::StatusCode;
+/// use corten::prelude::*;
+///
+/// #[corten::routes(area = Admin)]
+/// mod admin {
+///     #[route("/admin")]
+///     pub struct Admin;
+///
+///     #[route("/admin/users/{id}")]
+///     pub struct User<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+///
+/// struct Staff;
+///
+/// impl admin::Handlers for Staff {
+///     fn admin(&self) -> MethodRouter {
+///         get(|| async { "admin" })
+///     }
+///     fn user(&self) -> MethodRouter {
+///         get(|Path(id): Path<String>| async move { id })
+///     }
+/// }
+///
+/// #[derive(Clone, Hash)]
+/// struct Viewer { staff: bool }
+///
+/// let app = App::new(Router::new())
+///     .context(|_headers| async { None::<Viewer> })
+///     .area::<admin::Admin>(|area| admin::area(area, Staff).guard(|viewer, _| match viewer {
+///         Some(v) if v.staff => Access::ALLOW,
+///         _ => Access::refuse(corten::Error::status(StatusCode::FORBIDDEN)),
+///     }));
+/// # let _ = app.router();
+/// ```
+///
+/// A route of the module outside the area's prefix does not compile:
+///
+/// ```compile_fail
+/// #[corten::routes(area = Admin)]
+/// mod admin {
+///     #[route("/admin")]
+///     pub struct Admin;
+///
+///     #[route("/admins/list")]
+///     pub struct Admins;
+/// }
+/// ```
 pub use corten_macros::routes;
 
 /// A URL built from a typed value. Implemented by `#[derive(Route)]`, together with `Render`,

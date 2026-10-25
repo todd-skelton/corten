@@ -1,6 +1,7 @@
 //! `#[corten::routes]` on a module of routes: each `#[route("/..")]` struct in it is a typed route
 //! (`#[derive(Route)]`) and a method of the module's `Handlers` trait, so a route with no handler
-//! does not compile; `router(handlers)` puts each method's `MethodRouter` at its route's path.
+//! does not compile; `router(handlers)` puts each method's `MethodRouter` at its route's path, or with
+//! `#[corten::routes(area = Admin)]`, `area(area, handlers)` does in that area.
 
 use proc_macro::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
 
@@ -17,10 +18,8 @@ struct Routed {
 }
 
 pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
-    if let Some(token) = args.into_iter().next() {
-        return err(token.span(), "#[corten::routes] takes no arguments");
-    }
-    let mut tokens: Vec<TokenTree> = item.into_iter().collect();
+    let area = area_arg(args)?;
+    let tokens: Vec<TokenTree> = item.into_iter().collect();
     let Some(TokenTree::Group(body)) = tokens.last().cloned().filter(|_| is_mod(&tokens)) else {
         let span = tokens.first().map_or(Span::call_site(), TokenTree::span);
         return err(
@@ -55,25 +54,99 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             &[TokenTree::Ident(route.name.clone()).into(), method.into()],
         ));
     }
+    let Some(area) = area else {
+        items.extend(q(
+            "/// The handler of each route in this module, one method per route: implement it for the
+            /// app (a unit struct, or one that holds what the handlers share) and pass that to [`router`].
+            /// A route with no handler is a compile error.
+            pub trait Handlers {
+                __A0
+            }
+
+            /// The routes of this module, each at its path with its handler: what `App::new` takes.
+            #[allow(dead_code)]
+            pub fn router(handlers: impl Handlers) -> ::corten::axum::Router {
+                ::corten::axum::Router::new() __A1
+            }",
+            &[methods, calls],
+        ));
+        return Ok(finish(tokens, body, items));
+    };
+    // The area's prefix, when its route is in the module: each route is checked against it here,
+    // where the error can point at the route (`Area::route` checks every route when it builds).
+    let name = area.to_string().replace(' ', "");
+    if let Some(prefix) = routed.iter().find(|r| r.name.to_string() == name) {
+        if let Some(outside) = routed.iter().find(|r| !under(&prefix.path, &r.path)) {
+            return err(
+                outside.span,
+                format!(
+                    "{} is in the area {} ({}), so its path is at or under {}: {}",
+                    outside.name, prefix.name, prefix.path, prefix.path, outside.path
+                ),
+            );
+        }
+    }
     items.extend(q(
-        "/// The handler of each route in this module, one method per route: implement it for the
-        /// app (a unit struct, or one that holds what the handlers share) and pass that to [`router`].
+        "/// The handler of each route in this area, one method per route: implement it for the
+        /// app (a unit struct, or one that holds what the handlers share) and pass that to [`area`].
         /// A route with no handler is a compile error.
         pub trait Handlers {
             __A0
         }
 
-        /// The routes of this module, each at its path with its handler: what `App::new` takes.
+        /// The routes of this module in their area, each at its path with its handler:
+        /// `.area::<Admin>(|area| url::area(area, Pages).guard(..))`. A route outside the area's
+        /// prefix is a compile error.
         #[allow(dead_code)]
-        pub fn router(handlers: impl Handlers) -> ::corten::axum::Router {
-            ::corten::axum::Router::new() __A1
+        pub fn area<C>(area: ::corten::Area<C, __A2>, handlers: impl Handlers) -> ::corten::Area<C, __A2> {
+            area __A1
         }",
-        &[methods, calls],
+        &[methods, area_calls(&routed), area],
     ));
+    Ok(finish(tokens, body, items))
+}
+
+/// The module with its new body.
+fn finish(mut tokens: Vec<TokenTree>, body: Group, items: TokenStream) -> TokenStream {
     let mut module = Group::new(Delimiter::Brace, items);
     module.set_span(body.span());
     *tokens.last_mut().expect("the module body") = TokenTree::Group(module);
-    Ok(tokens.into_iter().collect())
+    tokens.into_iter().collect()
+}
+
+/// `area = Admin`: the route whose path is the area's prefix, or nothing.
+fn area_arg(args: TokenStream) -> Result<Option<TokenStream>, Error> {
+    let args: Vec<TokenTree> = args.into_iter().collect();
+    match args.as_slice() {
+        [] => Ok(None),
+        [TokenTree::Ident(name), TokenTree::Punct(eq), path @ ..]
+            if name.to_string() == "area" && eq.as_char() == '=' && !path.is_empty() =>
+        {
+            Ok(Some(path.iter().cloned().collect()))
+        }
+        [first, ..] => {
+            err(first.span(), "#[corten::routes] takes nothing, or the area its routes are in: #[corten::routes(area = Admin)]")
+        }
+    }
+}
+
+/// `.route::<Item>(Handlers::item(&handlers))` for each route, on an `Area`.
+fn area_calls(routed: &[Routed]) -> TokenStream {
+    let mut calls = TokenStream::new();
+    for route in routed {
+        let method = TokenTree::Ident(Ident::new(&snake(&route.name.to_string()), route.name.span()));
+        calls.extend(q(
+            ".route::<__A0>(Handlers::__A1(&handlers))",
+            &[TokenTree::Ident(route.name.clone()).into(), method.into()],
+        ));
+    }
+    calls
+}
+
+/// `path` is `prefix` or under it, a segment at a time (`/admin` holds `/admin/users`, not
+/// `/admins`).
+fn under(prefix: &str, path: &str) -> bool {
+    prefix == "/" || path == prefix || path.strip_prefix(prefix).is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// `[attributes] [pub[(..)]] mod name { .. }`.
