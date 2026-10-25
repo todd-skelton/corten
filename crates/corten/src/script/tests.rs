@@ -6,6 +6,9 @@ use crate::{
 
 script::script!(mod shared = "shared.js");
 
+crate::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+use crate::i18n::Messages as _;
+
 #[script::event]
 #[allow(dead_code)]
 struct RowToggled {
@@ -24,6 +27,13 @@ fn LineItem<'a>(name: &'a str, quantity: u32) -> impl Render {
             <dialog ref={dialog}>"Sure?"</dialog>
         </li>
     }
+}
+
+/// A count a script computes, shown with a message of the page's locale.
+#[component]
+fn Count(t: Msg) -> impl Render {
+    let out = refs();
+    html! { <output ref={out} on:connect={shared::say(out, t.js().item_listing_count())}></output> }
 }
 
 #[test]
@@ -266,6 +276,8 @@ fn handlers_write_the_shared_wire_vectors() {
             }
             .to_html()
         }),
+        Count { t: Msg::for_locale("en") }.to_html(),
+        Count { t: Msg::for_locale("fr") }.to_html(),
     ];
     let mut written = Vec::new();
     for page in &pages {

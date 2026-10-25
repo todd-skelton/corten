@@ -76,6 +76,14 @@ export function showAll(rows, rest, button) {
    (`corten::view::Remove`), with `#[derive(Id)] struct RowId<'a>(&'a str);` and
    `<tr id={RowId(&item.id)}>` on the row.
 
+## Text a script computes
+
+A count or total the script works out is still a catalog message: pass `t.js().rows_selected()`
+(the message unfilled, in the page's locale) and take it as `@param {Message<"count">} label`
+(`/** @import { Message } from "corten" */`); show `label({ count })` with `textContent`. A
+message with other arguments does not compile at the call. Never write the text in the script,
+and do not render every variant in a `<template>` for the script to copy.
+
 ## A child that reports to its parent
 
 A handler prop: the child takes `on_confirm: Handler<'a>` and puts it on an element with

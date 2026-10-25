@@ -965,6 +965,64 @@ pub mod ts {
     /// `Holds<Row, HTMLTableSectionElement>` (from `corten/views`): an element `T` whose children
     /// are rows of the view `Row` ([`super::view_id`] of its name), what `rows(body, Row)` takes.
     pub struct Holds<T, const VIEW: u64>(std::marker::PhantomData<T>);
+    /// `Message<"count">` (from `corten`): a message of the app's catalog whose arguments are
+    /// exactly these ([`super::message_id`] of the names), unfilled: `t.js().rows_selected()`.
+    pub enum Message<const ARGS: u64> {}
+}
+
+/// What a `Message<"a" | "b">` parameter and a message with the arguments `a` and `b` are both
+/// checked by: FNV-1a of the names, sorted and joined by commas. Used by the code
+/// `messages!` and `#[component(js)]` generate.
+#[doc(hidden)]
+pub const fn message_id(names: &[&str]) -> u64 {
+    // Sorted without allocating: each round takes the smallest name above the last one taken.
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    let mut last: Option<&str> = None;
+    let mut first = true;
+    loop {
+        let mut next: Option<&str> = None;
+        let mut i = 0;
+        while i < names.len() {
+            let name = names[i];
+            let above = match last {
+                Some(last) => less(last, name),
+                None => true,
+            };
+            let below = match next {
+                Some(next) => less(name, next),
+                None => true,
+            };
+            if above && below {
+                next = Some(name);
+            }
+            i += 1;
+        }
+        let Some(name) = next else { return hash };
+        if !first {
+            hash = (hash ^ b',' as u64).wrapping_mul(0x0100_0000_01b3);
+        }
+        first = false;
+        let bytes = name.as_bytes();
+        let mut j = 0;
+        while j < bytes.len() {
+            hash = (hash ^ bytes[j] as u64).wrapping_mul(0x0100_0000_01b3);
+            j += 1;
+        }
+        last = Some(name);
+    }
+}
+
+/// `a < b`, byte by byte, in a const fn.
+const fn less(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut i = 0;
+    while i < a.len() && i < b.len() {
+        if a[i] != b[i] {
+            return a[i] < b[i];
+        }
+        i += 1;
+    }
+    a.len() < b.len()
 }
 
 thread_local! {
@@ -1385,6 +1443,13 @@ pub mod __private {
     // JSON has no NaN or infinity.
     values!(ts::Number, |v, out| if v.is_finite() { use std::fmt::Write; let _ = write!(out, "{v}"); } else { out.push_str("null") }; f32, f64);
     values!(ts::Boolean, |v, out| out.push_str(if *v { "true" } else { "false" }); bool);
+
+    /// A message for the script to fill in: its text and argument names, made when the crate compiled.
+    impl<const ARGS: u64> Arg<ts::Message<ARGS>> for crate::i18n::Template<ARGS> {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            out.push_str(self.wire());
+        }
+    }
 
     impl<R: crate::Route> Arg<ts::String> for R {
         fn write_arg(&self, _: &Ctx, out: &mut String) {

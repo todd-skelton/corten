@@ -63,9 +63,11 @@ framework's shape, and what it does not do yet.
    two cannot drift.
 3. A handler reaches the page only through its arguments: refs, `event`, `target`, `signal`,
    `scope` and values. State that outlives an event is the DOM itself or `state(el, init)`.
-4. User-facing text lives in views or the view model, never in scripts. A script shows text the
-   server rendered; text that depends on what a script computed ("3 selected") has no typed way
-   in yet ([#17 Scripts have no typed way to show user-facing text they compute](https://github.com/todd-skelton/corten/issues/17)).
+4. User-facing text lives in views, the view model or the catalog, never in scripts. Text that
+   depends on what a script computed ("3 selected") is a catalog message the markup passes
+   unfilled (`t.js().rows_selected()`) and the script fills in (`label({ count })`): the
+   browser formats it with no round trip, and the compiler checks its arguments against the
+   handler's `Message<"count">` (`docs/guide/scripts.md`, Text a script computes).
 5. Pages and actions work without JavaScript: links are links and forms post. A feature only a
    browser can provide (drag and drop, a canvas) needs JavaScript; one that makes a server action
    instant (filtering the rows on the page as you type) keeps the form that does it without.
