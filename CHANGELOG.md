@@ -539,6 +539,12 @@ Corten is pre-1.0, so any minor version may change the API.
     touches the sources it copied first and takes the cache alone (`sharing=locked`), so builds
     wait for each other; a rebuild with no change compiles the workspace's own crates again (the
     item page: 137 s, where it took 6 s), and the registry's stay cached.
+16. `corten check` at a workspace root type-checks the scripts of every member that depends on
+    `corten`, each against its own `types/`, as `cargo test` there tests each member; it found
+    none before and passed without a word. Without `tsc` the note names the members. The CLI reads
+    `cargo metadata` with a small JSON reader instead of searching its text. Found by the Chase
+    Sets pilot, whose CI ran `corten check` once at the root of its three-member workspace
+    ([#39 corten check at a workspace root type-checks none of the members' scripts](https://github.com/todd-skelton/corten/issues/39)).
 
 ### Documentation
 

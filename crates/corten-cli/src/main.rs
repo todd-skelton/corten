@@ -9,6 +9,7 @@
 
 mod dev;
 mod fmt;
+mod json;
 mod new;
 mod scripts;
 
@@ -29,7 +30,8 @@ Usage:
                    --check reports files that need it instead of writing them.
   corten check     cargo fmt --check, corten fmt --check, cargo clippy -D warnings, a type check
                    of the scripts in src/ and static/ (TypeScript's tsc, from node_modules or
-                   the PATH; without it, a note says they were not checked), cargo test.
+                   the PATH; without it, a note says they were not checked), cargo test. At a
+                   workspace root it checks the scripts of each member that uses corten.
   corten help      This text.
   corten --version
 ";
