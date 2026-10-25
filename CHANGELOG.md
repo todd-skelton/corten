@@ -246,8 +246,9 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#24 corten::live responses are never compressed](https://github.com/todd-skelton/corten/issues/24)).
 36. `SubmitKey` (in the prelude): one submission of a form, so a write whose answer was lost and
     is sent again applies once. A form struct takes a `SubmitKey` field and draws it with
-    `SubmitKey::field(f.submit)`, a hidden input with 128 random bits; a value that is not 32
-    lowercase hex digits is a 422 naming the field. A reloaded post sends the same key, and the
+    `SubmitKey::field(f.submit)`, a hidden input with a random UUID v4 (the form most APIs take an
+    idempotency key in, [#35 A SubmitKey can only be 32 hex digits, so an API that takes a UUID cannot use it](https://github.com/todd-skelton/corten/issues/35));
+    a value that is not a UUID v4 is a 422 naming the field. A reloaded post sends the same key, and the
     runtime keeps it for a `data-patch` form until a submit gets an answer below 500 (a network
     error, a 5xx or an abort keeps it), then renews it. The app stores keys with its writes; Corten
     keeps none. Asked for by the Chase Sets pilot, which wrote about 150 lines for it
@@ -258,6 +259,14 @@ Corten is pre-1.0, so any minor version may change the API.
     stale part with CSS alone. Asked for by the Chase Sets pilot, whose lists showed a dropped
     stream the same as an unchanged one
     ([#33 A page cannot tell whether a <corten-live> element is connected](https://github.com/todd-skelton/corten/issues/33)).
+38. Query sets: `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` declares parameters that
+    several routes carry, and `#[route(query)] filters: ItemQuery` on a route's field writes each of
+    them as the route's own parameter (`corten::route::Params`). A list's filters are declared once
+    for its page, its live rows and its bulk routes, so a route cannot drop one, and making one
+    route's URL from another's copies one value. Handlers read `Query<ItemQuery>`. A
+    `#[route(query)]` field of another type does not compile. Asked for by the Chase Sets pilot,
+    whose 10 item filters were repeated on 5 routes by a `macro_rules!`
+    ([#32 A route cannot share a set of query parameters with another route](https://github.com/todd-skelton/corten/issues/32)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -446,6 +455,15 @@ Corten is pre-1.0, so any minor version may change the API.
     through the extractor 1,616,862 before and 725,531 after (-55%; axum's `Json` tracks the path
     to an error as it reads), `json_ld` of the item's view model 106,164 and 50,265 (-53%), and a
     whole `Accept: application/json` request for a `req.screen` of it 123,664 and 69,200 (-44%).
+36. `FromJson` reads with less work per value: skipping a value tests for whitespace with one
+    compare where it tested four, a number no longer skips whitespace its caller already skipped,
+    and a struct with a container `#[serde(default)]` is read over that default (each field written
+    in place) instead of into one `Option` per field that is moved out at the end. The values and
+    errors are unchanged. Measured as in item 34 under Added: an item API response 698,733
+    instructions before, 684,106 after (-2.1%; -22.1% against serde_json's 878,078), 733,130 and
+    718,504 with the conversion into the view model. Found comparing the reader with the pilot it
+    came from, on the same types and text: the pilot took 654,700 and the reader 686,650 (4.9%
+    more); these three close 14,000 of the 32,000, and the rest is spread thin.
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

@@ -72,6 +72,26 @@ struct Search { q: Option<String>, #[serde(default)] condition: Vec<String> }
 async fn search(req: Req, Query(search): Query<Search>) -> corten::Result { .. }
 ```
 
+When several routes carry the same parameters (a list's filters, which its `<corten-live>` rows,
+its bulk preview and its confirm need too), declare them once as a query set and include it:
+
+```rust,ignore
+#[derive(Clone, Default, serde::Deserialize, Route, Fields)]
+#[route(query)]
+struct ItemQuery { search: Option<String>, page: Option<u32>, #[serde(default)] status: Vec<String> }
+
+#[derive(Route)] #[route("/items")]      struct Items     { #[route(query)] filters: ItemQuery }
+#[derive(Route)] #[route("/items/live")] struct ItemsLive { #[route(query)] filters: ItemQuery }
+
+// ItemsLive { filters: items.filters.clone() } is /items/live?search=..&page=..
+async fn items(req: Req, Query(filters): Query<ItemQuery>) -> corten::Result { .. }
+```
+
+Each of `ItemQuery`'s fields is written as the route's own parameter, so a route that must carry
+the filters cannot leave one out: a filter added to `ItemQuery` is in every route at once. The
+handler reads `Query<ItemQuery>`, and the filter form names its inputs `ItemQuery::FIELDS`. A
+`#[route(query)]` field whose type is not a query set does not compile.
+
 Measured in a release build (Docker on a Windows workstation, best of five runs): the item page's two-field
 alert form reads in 673 ns with `corten::Form` and 871 ns with axum's `Form`, request included.
 200 ids read into a `Vec<String>` in 22.3 µs; one comma-joined field split in the handler took
@@ -90,7 +110,8 @@ saying no: "The policy was retired meanwhile.") is the form's own message:
 A write that must not apply twice (an order, a payment, a message sent) carries a `SubmitKey`.
 A 502 or a dropped connection can hide a write that committed, and the user, the browser or the
 runtime then sends it again. Add a `SubmitKey` field to the form struct and draw it with
-`SubmitKey::field`, a hidden input with 128 fresh random bits:
+`SubmitKey::field`, a hidden input with a fresh random UUID v4. A UUID is what most APIs take as
+an idempotency key, so the app passes the key on as it is:
 
 ```rust,ignore
 #[derive(Deserialize, Fields)]
@@ -112,9 +133,9 @@ status below 500, the runtime gives the form a new key, so the next submit is a 
 patch the server draws has a new key anyway. A form changed and sent again before the first had an
 answer is the same submission: the app answers it with what it did the first time, and the user
 sees that and can send the change. The key is the app's to store, next to the write (Corten keeps
-no store); `corten_cluster::begin` takes it as its idempotency key. A field that is not 32
-lowercase hex digits is a 422 that names it. Make the field `Option<SubmitKey>` when data clients
-post the same form without one.
+no store); `corten_cluster::begin` takes it as its idempotency key. A field that is not a UUID v4
+(in either case; it is kept lowercase) is a 422 that names it. Make the field
+`Option<SubmitKey>` when data clients post the same form without one.
 
 A patch replaces markup but not the user's work: a field typed into after the form was sent (or,
 in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret

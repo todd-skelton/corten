@@ -7,7 +7,7 @@
 use proc_macro::TokenStream;
 
 use crate::{
-    derive::{named_fields, parse, string},
+    derive::{named_fields, parse, string, Field},
     tokens::{err, q, Error},
 };
 
@@ -16,18 +16,44 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     if item.is_enum {
         return err(item.name.span(), "Route is derived for a struct: #[route(\"/items/{id}\")] struct Item<'a> { id: &'a str }");
     }
-    let Some((path, span)) = item.attr_string("route")? else {
-        return err(item.name.span(), "Route needs the path: #[route(\"/items/{id}\")]");
-    };
-    let segments = parse_path(&path).map_err(|message| (span, message))?;
     let fields = match &item.body {
         Some(body) => named_fields(body)?,
         None => Vec::new(),
     };
+    // `#[route(query)]`: query parameters shared by several routes, with no path of their own.
+    if item.attrs.iter().any(is_route_query) {
+        let body = query_body(&fields);
+        return Ok(item.impl_block(
+            "::corten::route::Params",
+            q(
+                "#[allow(unused_variables)]
+                fn write_params(&self, __corten_first: &mut bool, __corten_html: bool, __OUT: &mut ::std::string::String) {
+                    #[allow(unused_imports)]
+                    use ::corten::route::__private::{QueryOption as _, QueryValue as _};
+                    __A0
+                }",
+                &[body],
+            ),
+        ));
+    }
+    let Some((path, span)) = item.attr_string("route")? else {
+        return err(
+            item.name.span(),
+            "Route needs the path: #[route(\"/items/{id}\")], or #[route(query)] for parameters routes share",
+        );
+    };
+    let segments = parse_path(&path).map_err(|message| (span, message))?;
     for segment in &segments {
         if let Segment::Param(name) | Segment::Rest(name) = segment {
-            if !fields.iter().any(|f| f.name == *name) {
-                return err(span, format!("the path has {{{name}}} but {} has no field {name}", item.name));
+            match fields.iter().find(|f| f.name == *name) {
+                None => return err(span, format!("the path has {{{name}}} but {} has no field {name}", item.name)),
+                Some(f) if f.attrs.iter().any(is_route_query) => {
+                    return err(
+                        f.ident.span(),
+                        format!("{name} is #[route(query)], so it is query parameters, not {{{name}}} in the path"),
+                    );
+                }
+                Some(_) => {}
             }
         }
     }
@@ -59,13 +85,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         .filter(|f| !segments.iter().any(|s| matches!(s, Segment::Param(n) | Segment::Rest(n) if *n == f.name)))
         .collect();
     if !query.is_empty() {
-        body.extend(q("let mut __corten_first = true;", &[]));
-        for field in query {
-            body.extend(q(
-                "(&::corten::route::__private::Query(&self.__A0)).__query(__A1, &mut __corten_first, __corten_html, __OUT);",
-                &[proc_macro::TokenTree::Ident(field.ident.clone()).into(), string(&format!("{}=", field.name)).into()],
-            ));
-        }
+        body.extend(q("let mut __corten_first = true; let __corten_first = &mut __corten_first;", &[]));
+        body.extend(query_writes(&query));
     }
     let mut out = item.impl_block(
         "::corten::route::Route",
@@ -106,6 +127,35 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         ),
     ));
     Ok(out)
+}
+
+/// `#[route(query)]`.
+fn is_route_query(attr: &proc_macro::Group) -> bool {
+    let tokens: Vec<proc_macro::TokenTree> = attr.stream().into_iter().collect();
+    matches!(tokens.as_slice(), [proc_macro::TokenTree::Ident(name), proc_macro::TokenTree::Group(args)]
+        if name.to_string() == "route" && args.stream().to_string().trim() == "query")
+}
+
+fn query_body(fields: &[Field]) -> TokenStream {
+    query_writes(&fields.iter().collect::<Vec<_>>())
+}
+
+/// Each field as `key=value` (or, for a `#[route(query)]` field, the parameters it holds), with
+/// `__corten_first: &mut bool` choosing `?` or `&`.
+fn query_writes(fields: &[&Field]) -> TokenStream {
+    let mut body = TokenStream::new();
+    for field in fields {
+        let ident: TokenStream = proc_macro::TokenTree::Ident(field.ident.clone()).into();
+        if field.attrs.iter().any(is_route_query) {
+            body.extend(q("::corten::route::Params::write_params(&self.__A0, __corten_first, __corten_html, __OUT);", &[ident]));
+        } else {
+            body.extend(q(
+                "(&::corten::route::__private::Query(&self.__A0)).__query(__A1, __corten_first, __corten_html, __OUT);",
+                &[ident, string(&format!("{}=", field.name)).into()],
+            ));
+        }
+    }
+    body
 }
 
 #[derive(Debug, PartialEq)]
