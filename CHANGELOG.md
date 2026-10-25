@@ -606,6 +606,12 @@ Corten is pre-1.0, so any minor version may change the API.
     `js::Counted` existed, and the compiler said only that it could not find it. Found by the
     Chase Sets pilot, which passed a count's texts as three parameters
     ([#50 A @typedef of plain values and a Message is not a group, and the error does not say why](https://github.com/todd-skelton/corten/issues/50)).
+19. A catalog message may take an argument named like a Rust keyword (`{type}`, `{match}`,
+    `{ref}`): its parameter is the raw `r#type`, and `by_key` and `Message<"type">` keep the
+    catalog's name. `messages!` refused 59 names, so a catalog shared with another app failed to
+    compile; only `self`, `super`, `crate` and `_` remain, with an error that says to rename
+    them. Found by the Chase Sets pilot, whose shared catalog has `{type}`
+    ([#56 A catalog message cannot take an argument named like a Rust keyword ({type})](https://github.com/todd-skelton/corten/issues/56)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

@@ -4,5 +4,8 @@
     "listing_count": "{total} Angebote",
     "image": "{title} Bild {n}"
   },
-  "brace": "{{Wort}} & mehr"
+  "brace": "{{Wort}} & mehr",
+  "attention": {
+    "detail": "{provider} · {type} · Konfidenz {match}"
+  }
 }

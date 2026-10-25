@@ -209,7 +209,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                     Part::Text(text) => {
                         body.extend(q("__corten_sink.text(__A0, __A1);", &[string(text).into(), string(&escape(text)).into()]))
                     }
-                    Part::Arg(arg) => body.extend(q("__corten_sink.arg(&__A0);", &[ident(arg).into()])),
+                    Part::Arg(arg) => body.extend(q("__corten_sink.arg(&__A0);", &[arg_ident(arg).into()])),
                 }
             }
             stream([TokenTree::Group(Group::new(Delimiter::Brace, body))])
@@ -268,7 +268,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         } else {
             let mut params = TokenStream::new();
             for arg in &args {
-                params.extend(q("__A0: impl ::std::fmt::Display,", &[ident(arg).into()]));
+                params.extend(q("__A0: impl ::std::fmt::Display,", &[arg_ident(arg).into()]));
             }
             by_locale = q(
                 "::corten::i18n::Text::new(move |__corten_sink: &mut ::corten::i18n::Sink<'_>| __A0)",
@@ -348,6 +348,19 @@ fn ident(name: &str) -> TokenTree {
     TokenTree::Ident(Ident::new(name, Span::call_site()))
 }
 
+/// Names that are a method of the messages type but not a Rust keyword: an argument may use them.
+const METHODS: &[&str] = &["locale", "index", "from_index", "negotiate", "js", "by_key"];
+
+/// An argument's parameter: the catalog's name, raw when it is a Rust keyword (`{type}` is the
+/// parameter `r#type`), so a catalog shared with other apps compiles as it is.
+fn arg_ident(name: &str) -> TokenTree {
+    if RESERVED.contains(&name) && !METHODS.contains(&name) {
+        TokenTree::Ident(Ident::new_raw(name, Span::call_site()))
+    } else {
+        ident(name)
+    }
+}
+
 /// Nested objects become dotted keys, in file order.
 fn flatten(prefix: &str, value: Value, out: &mut Vec<(String, String)>) -> Result<(), String> {
     match value {
@@ -395,10 +408,14 @@ pub fn parse_message(message: &str) -> Result<Vec<Part>, String> {
                     }
                 }
                 let valid = name.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
-                    && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-                    && !RESERVED.contains(&name.as_str());
+                    && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
                 if !valid {
                     return Err(format!("{{{name}}} is not an argument name like {{count}} (write {{{{ for a brace)"));
+                }
+                // The only names Rust cannot give a parameter, even as `r#name`, and the generated
+                // code's own.
+                if matches!(name.as_str(), "self" | "super" | "crate" | "_") || name.starts_with("__corten") {
+                    return Err(format!("{{{name}}} cannot be an argument's name in Rust; rename it in the catalog"));
                 }
                 if !text.is_empty() {
                     parts.push(Part::Text(std::mem::take(&mut text)));
@@ -540,7 +557,13 @@ mod tests {
         assert!(parse_message("{open").is_err());
         assert!(parse_message("close}").is_err());
         assert!(parse_message("{Count}").is_err());
-        assert!(parse_message("{type}").is_err());
+        assert_eq!(
+            parse_message("a {type}").unwrap(),
+            vec![Part::Text("a ".into()), Part::Arg("type".into())],
+            "a keyword is a raw parameter"
+        );
+        assert!(parse_message("{self}").unwrap_err().contains("rename it in the catalog"));
+        assert!(parse_message("{_}").is_err());
         assert_eq!(arg_names(&parse_message("{a} {b} {a}").unwrap()), vec!["a", "b"]);
     }
 

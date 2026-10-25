@@ -14,7 +14,9 @@
 //!
 //! Catalogs are JSON objects of strings; nested objects make dotted keys, and each key is a method
 //! (`item.listing_count` is `item_listing_count`). `{name}` in a message is an argument, so
-//! `"{count} listings"` takes one parameter, `count`, of any `Display` type; `{{` is a brace.
+//! `"{count} listings"` takes one parameter, `count`, of any `Display` type; `{{` is a brace. An
+//! argument may be named like a Rust keyword (`{type}` is the parameter `r#type`), so a catalog
+//! shared with other apps compiles as it is.
 //!
 //! What fails the build: a key one catalog has and another lacks, a message whose arguments
 //! differ between locales, a misspelled key or a missing argument at the call site, a brace that
@@ -406,6 +408,10 @@ mod tests {
         assert_eq!(view.to_html(), r#"<img alt="Image 1 de A &amp; B"><p>1 listings</p>"#);
         assert_eq!(Msg::for_locale("FR"), fr);
         assert_eq!(Msg::default().locale(), "en");
+        // Arguments named like Rust keywords are raw parameters; the catalog keeps its names.
+        assert_eq!(en.attention_detail("TCGplayer", "alias", 0.9).to_string(), "TCGplayer · alias · confidence 0.9");
+        let by_key = fr.by_key("attention.detail", &[("provider", "P"), ("type", "alias"), ("match", "1")]);
+        assert_eq!(by_key.unwrap().to_string(), "P · alias · confiance 1");
     }
 
     #[test]
