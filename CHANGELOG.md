@@ -424,6 +424,15 @@ Corten is pre-1.0, so any minor version may change the API.
     through the extractor 1,616,862 before and 725,531 after (-55%; axum's `Json` tracks the path
     to an error as it reads), `json_ld` of the item's view model 106,164 and 50,265 (-53%), and a
     whole `Accept: application/json` request for a `req.screen` of it 123,664 and 69,200 (-44%).
+36. `FromJson` reads with less work per value: skipping a value tests for whitespace with one
+    compare where it tested four, a number no longer skips whitespace its caller already skipped,
+    and a struct with a container `#[serde(default)]` is read over that default (each field written
+    in place) instead of into one `Option` per field that is moved out at the end. The values and
+    errors are unchanged. Measured as in item 34 under Added: an item API response 698,733
+    instructions before, 684,106 after (-2.1%; -22.1% against serde_json's 878,078), 733,130 and
+    718,504 with the conversion into the view model. Found comparing the reader with the pilot it
+    came from, on the same types and text: the pilot took 654,700 and the reader 686,650 (4.9%
+    more); these three close 14,000 of the 32,000, and the rest is spread thin.
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

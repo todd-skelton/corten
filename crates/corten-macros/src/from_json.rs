@@ -247,6 +247,9 @@ fn byte_string(text: &str) -> TokenStream {
 
 /// A struct with named fields, from an object.
 fn object(container: &Container, fields: &[Field]) -> TokenStream {
+    if container.default.is_some() {
+        return object_over_default(container, fields);
+    }
     let mut vars = TokenStream::new();
     let mut arms = TokenStream::new();
     let mut build = TokenStream::new();
@@ -300,6 +303,77 @@ fn object(container: &Container, fields: &[Field]) -> TokenStream {
         __A2
         ::core::result::Result::Ok(Self { __A3 })",
         &[vars, arms, container_default(container), build],
+    )
+}
+
+/// A struct with a container default, read over that default: each field the object has is
+/// written in place, and one it leaves out keeps the default's value (or takes its own default).
+fn object_over_default(container: &Container, fields: &[Field]) -> TokenStream {
+    let mut vars = TokenStream::new();
+    let mut arms = TokenStream::new();
+    let mut after = TokenStream::new();
+    for (index, field) in fields.iter().enumerate() {
+        let member: TokenStream = field.member.clone().into();
+        let own_default = match &field.default {
+            Some(DefaultValue::Trait) => Some(q("::core::default::Default::default()", &[])),
+            Some(DefaultValue::Path(path)) => Some(q("__A0()", std::slice::from_ref(path))),
+            None => None,
+        };
+        if field.skip {
+            if let Some(value) = own_default {
+                after.extend(q("__out.__A0 = __A1;", &[member, value]));
+            }
+            continue;
+        }
+        let name = field.name.as_deref().unwrap_or_default();
+        let key = field
+            .rename
+            .clone()
+            .unwrap_or_else(|| container.rename_all.as_deref().map_or(name.to_string(), |rule| field_rule(name, rule)));
+        let mut pattern = byte_string(&key);
+        for alias in &field.aliases {
+            pattern.extend(q("|", &[]));
+            pattern.extend(byte_string(alias));
+        }
+        vars.extend(q("let mut __A0 = false;", &[var(index)]));
+        arms.extend(q(
+            "__A0 => {
+                if __A1 {
+                    return ::core::result::Result::Err(::corten::json::__read::Fallback);
+                }
+                __A1 = true;
+                __out.__A2 = __A3;
+            }",
+            &[pattern, var(index), member.clone(), read(field)],
+        ));
+        if let Some(value) = own_default {
+            after.extend(q("if !__A0 { __out.__A1 = __A2; }", &[var(index), member, value]));
+        }
+    }
+    let unknown = if container.deny_unknown_fields {
+        q("_ => return ::core::result::Result::Err(::corten::json::__read::Fallback),", &[])
+    } else {
+        q("_ => __r.skip()?,", &[])
+    };
+    arms.extend(unknown);
+    let start = match &container.default {
+        Some(DefaultValue::Path(path)) => q("__A0()", std::slice::from_ref(path)),
+        _ => q("::core::default::Default::default()", &[]),
+    };
+    q(
+        "let mut __out: Self = __A0;
+        __A1
+        if __r.object()? {
+            loop {
+                match __r.key()? { __A2 }
+                if !__r.more()? {
+                    break;
+                }
+            }
+        }
+        __A3
+        ::core::result::Result::Ok(__out)",
+        &[start, vars, arms, after],
     )
 }
 

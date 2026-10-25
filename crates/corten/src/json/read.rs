@@ -298,9 +298,9 @@ impl<'a> Reader<'a> {
         Ok(out)
     }
 
-    /// A number, its grammar checked; returns its text.
+    /// A number at the position (whitespace already skipped), its grammar checked; returns its
+    /// text.
     fn number(&mut self) -> R<&'a str> {
-        self.ws();
         let b = self.b;
         let start = self.i;
         let mut i = start;
@@ -349,6 +349,7 @@ impl<'a> Reader<'a> {
     /// it, and so is anything with a fraction or exponent; those give up.
     #[inline]
     fn integer<T: std::str::FromStr>(&mut self) -> R<T> {
+        self.ws();
         let text = self.number()?;
         if text == "-0" || text.bytes().any(|b| matches!(b, b'.' | b'e' | b'E')) {
             return Err(Fallback);
@@ -382,7 +383,10 @@ impl<'a> Reader<'a> {
         let mut depth = start_depth;
         macro_rules! ws {
             () => {
-                while matches!(b.get(i), Some(b' ' | b'\n' | b'\r' | b'\t')) {
+                while let Some(&c) = b.get(i) {
+                    if c > b' ' || !matches!(c, b' ' | b'\n' | b'\r' | b'\t') {
+                        break;
+                    }
                     i += 1;
                 }
             };
@@ -560,6 +564,7 @@ impl FromJson for f64 {
     /// A plain integer becomes the float serde_json makes of it (`n as f64`); any other number is
     /// parsed by serde_json, whose float parsing rounds its own way.
     fn __read(r: &mut Reader<'_>) -> R<Self> {
+        r.ws();
         let text = r.number()?;
         if text.len() <= 19 && text.bytes().all(|b| b.is_ascii_digit()) {
             return text.parse::<u64>().map(|n| n as f64).map_err(|_| Fallback);
@@ -570,6 +575,7 @@ impl FromJson for f64 {
 
 impl FromJson for f32 {
     fn __read(r: &mut Reader<'_>) -> R<Self> {
+        r.ws();
         let text = r.number()?;
         serde_json::from_str(text).map_err(|_| Fallback)
     }
@@ -829,6 +835,26 @@ mod tests {
         date: Foreign,
     }
 
+    /// A container default from a path, read over: a field's own default wins where the object
+    /// leaves it out, and a skipped field keeps the container's value unless it has its own.
+    #[derive(Debug, PartialEq, Deserialize, FromJson)]
+    #[serde(default = "shelf")]
+    struct Shelf {
+        name: String,
+        #[serde(default = "seven")]
+        size: i64,
+        #[serde(skip)]
+        kept: u8,
+        #[serde(skip_deserializing, default = "seven")]
+        own: i64,
+        #[serde(alias = "labels")]
+        tags: Vec<String>,
+    }
+
+    fn shelf() -> Shelf {
+        Shelf { name: "shelf".into(), size: 3, kept: 9, own: 4, tags: vec!["t".into()] }
+    }
+
     #[derive(Debug, PartialEq, Default, Deserialize, FromJson)]
     struct Pair(i8, String);
 
@@ -881,6 +907,16 @@ mod tests {
             r#"{{"itemCount":-4,"title":"T","lines":[{LINE},{LINE}],"byId":{{"a":1,"b":2,"a":3,"\u00e9":4}},"counts":{{"x":null,"y":true}},"inner":{{"title":"in","inner":null}},"letter":"é","pair":[-128,"p"],"id":18446744073709551615,"nothing":null,"any":[[],{{}},0,-1.5,"s"],"date":{{"y":2026,"m":10}}}}"#
         )));
         assert!(same::<Page>("{}"));
+        for text in [
+            "{}",
+            r#"{"name":"a"}"#,
+            r#"{"size":1,"name":"b","kept":5,"own":6,"labels":["x"]}"#,
+            r#"{"tags":[],"other":{"deep":[1]}}"#,
+        ] {
+            assert!(same::<Shelf>(text), "{text}");
+        }
+        assert!(!same::<Shelf>(r#"{"name":"a","name":"b"}"#));
+        assert!(!same::<Shelf>(r#"{"tags":["a"],"labels":["b"]}"#));
         assert!(same::<Strict>(r#"{"a":1}"#));
         assert!(same::<Wrapper>("[1,-2,3]"));
         assert!(same::<Generic<String>>(r#"{"value":"v","list":["a","b"]}"#));
