@@ -185,14 +185,15 @@ async fn an_unused_feed_is_unloaded_and_loads_again_with_its_replay_log() {
     let options = Options { instance: "idle".into(), idle_unload: Some(Duration::from_millis(200)), ..Options::default() };
     let cluster = Cluster::start(pool.clone(), async_nats::connect(&nats).await.unwrap(), Items, options).await.unwrap();
     let loaded = cluster.feed(&feed).await.unwrap().unwrap();
+    let generation = loaded.generation().to_string();
+
+    // A live stream keeps it loaded: a handle alone does not, so without the stream the feed
+    // could be unloaded (and stop following) before the relay publishes the patches.
+    let stream = loaded.live(Since(Some(corten_feed::Cursor::new(&generation, 0))));
     for n in 1..=3 {
         set(&pool, &feed, n, None).await;
     }
     eventually("seq 3", || loaded.seq() == 3).await;
-    let generation = loaded.generation().to_string();
-
-    // A live stream keeps it loaded.
-    let stream = loaded.live(Since(Some(corten_feed::Cursor::new(&generation, 3))));
     drop(loaded);
     tokio::time::sleep(Duration::from_millis(600)).await;
     assert!(cluster.stats().iter().any(|(k, _, subscribers)| k == &feed && *subscribers == 1), "kept while streamed");
