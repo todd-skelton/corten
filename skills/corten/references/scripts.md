@@ -134,7 +134,9 @@ reconnect). Send nothing until the next change when it is current. See the live-
 
 The element shows its connection as `status` (`connecting`, `live`, `reconnecting`, `closed`,
 `ended`) and `stale-since` (when a live stream dropped): style a stale part with
-`corten-live[status=reconnecting]`, not with a script that watches for patches.
+`corten-live[status=reconnecting]`, not with a script that watches for patches. A script that
+must react (writing "Stale since 10:42") takes `on:corten-status={js::stale(target, ..)}` on the
+element (a bubbling event on each change) and reads the attributes; never a `MutationObserver`.
 
 ## Live rows (feature `feed`)
 

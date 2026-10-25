@@ -448,6 +448,12 @@ async function run(browser) {
   await page.evaluate(() => {
     const w = /** @type {any} */ (window);
     w.__liveStates = [];
+    w.__statusEvents = [];
+    // Each change also dispatches a bubbling corten-status, which a handler takes with on:corten-status.
+    document.addEventListener("corten-status", (event) => {
+      const live = /** @type {Element} */ (event.target);
+      if (live.id === "flaky-live") w.__statusEvents.push(`${live.getAttribute("status")}${live.hasAttribute("stale-since") ? "+stale" : ""}`);
+    });
     document.querySelector("main")?.insertAdjacentHTML("beforeend", '<corten-live id="flaky-live" src="/live/flaky"><p id="flaky">Waiting</p></corten-live>');
     const el = /** @type {Element} */ (document.querySelector("#flaky-live"));
     const record = () => w.__liveStates.push(`${el.getAttribute("status")}${el.hasAttribute("stale-since") ? "+stale" : ""}`);
@@ -462,6 +468,8 @@ async function run(browser) {
     liveStates === "connecting live reconnecting+stale closed+stale" && !Number.isNaN(Date.parse(staleSince ?? "")) && (await page.textContent("#flaky")) === "One",
     `${liveStates}; stale since ${staleSince}`,
   );
+  const statusEvents = await page.evaluate(() => (/** @type {any} */ (window)).__statusEvents.join(" "));
+  check("each status change dispatches a bubbling corten-status", statusEvents === liveStates, `${statusEvents} against ${liveStates}`);
   await page.evaluate(() => document.querySelector("#flaky-live")?.remove());
   await page.unroute("**/live/flaky");
 

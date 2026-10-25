@@ -64,13 +64,35 @@ so `cursor` refuses it (a panic in debug builds; in release the fragment goes wi
 `status` is `connecting`, `live` once the stream is open, `reconnecting` while the browser
 retries after a drop, `closed` when it gave up (the server answered with no stream: an error, a
 204) and `ended` when the server finished the stream (`end`). After a live stream drops,
-`stale-since` holds when (an ISO time), until it is live again; a page that shows "Stale since
-10:42" reads it.
+`stale-since` holds when (an ISO time), until it is live again.
 
 ```css
 corten-live[status="reconnecting"]::before { content: "Reconnecting"; }
 corten-live[status="closed"] .reload { display: inline; }
 ```
+
+Each change of `status` also dispatches a bubbling `corten-status` event on the element, for a
+script that writes text CSS cannot ("Stale since 10:42", in the user's time zone). A handler
+takes it like any other and reads the attributes, which hold the state:
+
+```rust,ignore
+let note = refs();
+html! {
+    <corten-live src={url::Trades} on:corten-status={js::stale(target, note, t.js().stale_since())}>..</corten-live>
+    <output ref={note}></output>
+}
+```
+
+```js
+/** @param {HTMLElement} live @param {HTMLOutputElement} note @param {Message<"time">} since */
+export function stale(live, note, since) {
+  const at = live.getAttribute("stale-since");
+  note.textContent = at ? since({ time: new Date(at).toLocaleTimeString() }) : "";
+}
+```
+
+An event before the page's scripts have loaded runs nothing, as for any event; read the
+attributes in `on:connect` too when the first state matters.
 
 ### Redrawing is cheap
 
