@@ -169,13 +169,18 @@ struct Encode<'a> {
 }
 
 impl Encode<'_> {
-    /// Copies each run of bytes kept as they are at once, so a value with nothing to encode (most
-    /// ids and slugs) is one copy. A run is ASCII; between two encoded bytes of one character it
-    /// is empty, and is skipped there, since that index is not a character boundary.
+    /// A value with nothing to encode (most ids and slugs) is one copy, found by ANDing every
+    /// byte's table entry, with no branch per byte. Otherwise each run of bytes kept as they are is
+    /// copied at once. A run is ASCII; between two encoded bytes of one character it is empty, and
+    /// is skipped there, since that index is not a character boundary.
     #[inline]
     fn push(&mut self, s: &str) {
         const HEX: &[u8; 16] = b"0123456789ABCDEF";
         let bytes = s.as_bytes();
+        if bytes.iter().fold(self.keep, |all, &b| all & KEEP[b as usize]) != 0 {
+            self.out.push_str(s);
+            return;
+        }
         let mut start = 0;
         while let Some(at) = bytes[start..].iter().position(|&b| KEEP[b as usize] & self.keep == 0) {
             let i = start + at;
@@ -407,5 +412,40 @@ mod tests {
         let query = search.href();
         let back: Search = crate::form::from_bytes(query.split_once('?').unwrap().1.as_bytes()).unwrap();
         assert_eq!((back.q.as_deref(), back.condition), (Some("charizard ex"), vec!["nm".to_string(), "lp&mp".to_string()]));
+    }
+
+    /// Every byte, alone and inside kept text, at every position of short and long values, encodes
+    /// as RFC 3986 says: unreserved bytes (and `/` in a rest value) as they are, the rest %XX.
+    #[test]
+    fn every_byte_encodes_at_every_position() {
+        use super::{Encode, REST, SEGMENT};
+        fn reference(s: &str, rest: bool) -> String {
+            s.bytes()
+                .map(|b| {
+                    if b.is_ascii_alphanumeric() || b"-._~".contains(&b) || (rest && b == b'/') {
+                        (b as char).to_string()
+                    } else {
+                        format!("%{b:02X}")
+                    }
+                })
+                .collect()
+        }
+        let mut values: Vec<String> = vec![String::new(), "é".into(), "日本語".into(), "a/é b".into()];
+        for b in 0u8..128 {
+            for len in [1, 2, 7, 8, 9, 17] {
+                for at in [0, len / 2, len - 1] {
+                    let mut v = vec![b'k'; len];
+                    v[at] = b;
+                    values.push(String::from_utf8(v).unwrap());
+                }
+            }
+        }
+        for v in &values {
+            for (keep, rest) in [(SEGMENT, false), (REST, true)] {
+                let mut out = String::new();
+                Encode { out: &mut out, keep }.push(v);
+                assert_eq!(out, reference(v, rest), "{v:?}");
+            }
+        }
     }
 }
