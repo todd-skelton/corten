@@ -541,6 +541,25 @@ fn request_in(mode: Option<&str>) -> Request<Body> {
     .unwrap()
 }
 
+#[tokio::test]
+async fn a_page_that_moved_answers_301_in_every_mode_and_a_form_navigates() {
+    #[derive(crate::Route)]
+    #[route("/items/{slug}")]
+    struct Item<'a> {
+        slug: &'a str,
+    }
+    let routes = Router::new().route("/", get(|req: Req| async move { req.moved(&Item { slug: "pika chu" }) }));
+    for (mode, accept) in [(None, Some("text/html")), (Some("nav"), None), (None, Some("application/json"))] {
+        let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/", mode, accept).await;
+        assert_eq!(status, StatusCode::MOVED_PERMANENTLY, "{mode:?} {accept:?}");
+        assert_eq!(headers["location"], "/items/pika%20chu");
+        assert_eq!(headers["cache-control"], "private, max-age=86400", "the browser keeps it, no shared cache");
+    }
+    let (status, headers, _) = call(app(routes, None), "GET", Some("action")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "a data-patch form is sent on, as by redirect");
+    assert_eq!(headers["corten-location"], "/items/pika%20chu");
+}
+
 #[cfg(debug_assertions)]
 #[tokio::test]
 async fn a_patch_whose_top_level_element_has_no_id_is_an_error_in_debug_builds() {

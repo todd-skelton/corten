@@ -6,9 +6,11 @@
 
 use proc_macro::TokenStream;
 
+use proc_macro::{Delimiter, Span, TokenTree};
+
 use crate::{
     derive::{named_fields, parse, string, Field},
-    tokens::{err, q, Error},
+    tokens::{err, is_ident, is_punct, q, string_value, Error},
 };
 
 pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
@@ -20,6 +22,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         Some(body) => named_fields(body)?,
         None => Vec::new(),
     };
+    check_prefixes(&fields)?;
     // `#[route(query)]`: query parameters shared by several routes, with no path of their own.
     if item.attrs.iter().any(is_route_query) {
         let body = query_body(&fields);
@@ -51,6 +54,12 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                     return err(
                         f.ident.span(),
                         format!("{name} is #[route(query)], so it is query parameters, not {{{name}}} in the path"),
+                    );
+                }
+                Some(f) if route_prefix(f)?.is_some() => {
+                    return err(
+                        f.ident.span(),
+                        format!("{name} is #[route(prefix = ..)], so it is query parameters, not {{{name}}} in the path"),
                     );
                 }
                 Some(_) => {}
@@ -136,6 +145,66 @@ fn is_route_query(attr: &proc_macro::Group) -> bool {
         if name.to_string() == "route" && args.stream().to_string().trim() == "query")
 }
 
+/// `#[route(prefix = "dim.")]`: the prefix and its span.
+fn route_prefix(field: &Field) -> Result<Option<(String, Span)>, Error> {
+    for attr in &field.attrs {
+        let tokens: Vec<TokenTree> = attr.stream().into_iter().collect();
+        let [route, TokenTree::Group(args)] = tokens.as_slice() else { continue };
+        if !is_ident(Some(route), "route") || args.delimiter() != Delimiter::Parenthesis {
+            continue;
+        }
+        let args: Vec<TokenTree> = args.stream().into_iter().collect();
+        if !is_ident(args.first(), "prefix") {
+            continue;
+        }
+        let literal = match args.as_slice() {
+            [_, eq, TokenTree::Literal(literal)] if is_punct(Some(eq), '=') => literal,
+            _ => return err(attr.span(), "expected #[route(prefix = \"dim.\")]"),
+        };
+        let Some(prefix) = string_value(literal) else { return err(literal.span(), "expected a string") };
+        return Ok(Some((prefix, literal.span())));
+    }
+    Ok(None)
+}
+
+/// Each prefix is written as it is, so it has only characters a query key keeps (letters, digits,
+/// `-._~`), and names no other parameter: reading `dim.x` back, a parameter `dimmed` beside a
+/// prefix `dim` would be one of the family, and so would every key of a longer prefix.
+fn check_prefixes(fields: &[Field]) -> Result<(), Error> {
+    let mut prefixes = Vec::new();
+    for field in fields {
+        if let Some((prefix, span)) = route_prefix(field)? {
+            if field.attrs.iter().any(is_route_query) {
+                return err(span, "a field is #[route(query)] or #[route(prefix = ..)], not both");
+            }
+            if prefix.is_empty() || !prefix.chars().all(|c| c.is_ascii_alphanumeric() || "-._~".contains(c)) {
+                return err(span, format!("a prefix is letters, digits and -._~, which a URL writes as they are: {prefix:?}"));
+            }
+            prefixes.push((prefix, span, field.name.clone()));
+        }
+    }
+    for (prefix, span, name) in &prefixes {
+        for field in fields.iter().filter(|f| f.name != *name) {
+            let other = match route_prefix(field)? {
+                Some((other, _)) => other,
+                None if field.attrs.iter().any(is_route_query) => continue,
+                None => field.name.clone(),
+            };
+            // Checked from both sides, so one prefix inside another is found from the shorter.
+            if other.starts_with(prefix.as_str()) {
+                return err(
+                    *span,
+                    format!(
+                        "the prefix {prefix:?} of {name} and {other:?} of {} overlap: a parameter read back could be either's",
+                        field.name
+                    ),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn query_body(fields: &[Field]) -> TokenStream {
     query_writes(&fields.iter().collect::<Vec<_>>())
 }
@@ -148,6 +217,11 @@ fn query_writes(fields: &[&Field]) -> TokenStream {
         let ident: TokenStream = proc_macro::TokenTree::Ident(field.ident.clone()).into();
         if field.attrs.iter().any(is_route_query) {
             body.extend(q("::corten::route::Params::write_params(&self.__A0, __corten_first, __corten_html, __OUT);", &[ident]));
+        } else if let Ok(Some((prefix, _))) = route_prefix(field) {
+            body.extend(q(
+                "::corten::route::Pairs::write_pairs(&self.__A0, __A1, __corten_first, __corten_html, __OUT);",
+                &[ident, string(&prefix).into()],
+            ));
         } else {
             body.extend(q(
                 "(&::corten::route::__private::Query(&self.__A0)).__query(__A1, __corten_first, __corten_html, __OUT);",

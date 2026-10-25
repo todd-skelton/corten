@@ -14,7 +14,8 @@
 //! Fields named in the path fill it, percent-encoded (`{*rest}` keeps its slashes); every other
 //! field is a query parameter, left out when it is `None`; a list (`Vec` or a slice) is the
 //! parameter once per item, `?condition=nm&condition=lp`, and left out when empty (what
-//! [`crate::Query`] reads back into a `Vec`). Field types only need `Display`, so a
+//! [`crate::Query`] reads back into a `Vec`); a map marked `#[route(prefix = "dim.")]` is a parameter
+//! per entry, `?dim.form=graded` ([`Pairs`]). Field types only need `Display`, so a
 //! link borrows (`&str`) and copies nothing. The derive checks the path when it compiles: a
 //! parameter without a field, a parameter that is not a whole segment, or a character that would
 //! need escaping is an error. Renaming the route's path changes every link with it.
@@ -130,6 +131,119 @@ pub trait Params {
     /// Writes each parameter as `?key=value` or `&key=value` (`&amp;` with `html`), `first`
     /// saying which. Implemented by `#[derive(Route)] #[route(query)]`.
     fn write_params(&self, first: &mut bool, html: bool, out: &mut String);
+}
+
+/// Query parameters whose names are data: a filter per attribute, an option per product
+/// dimension, where the keys come from the data, not the code. A field marked
+/// `#[route(prefix = "dim.")]` writes each entry as `dim.<key>=<value>`, in order, the key and
+/// the value percent-encoded; an empty one writes nothing. A `BTreeMap`, a `Vec` or slice of
+/// pairs, or a reference to one; not a `HashMap`, whose order would make the same link differ
+/// from one render to the next.
+///
+/// ```
+/// use std::collections::BTreeMap;
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route("/items/{slug}")]
+/// struct Item<'a> {
+///     slug: &'a str,
+///     #[route(prefix = "dimension.")]
+///     dimensions: &'a BTreeMap<String, String>,
+/// }
+///
+/// let dimensions = BTreeMap::from([("form".to_string(), "graded".to_string()), ("grade".to_string(), "PSA 8".to_string())]);
+/// let link = Item { slug: "pika", dimensions: &dimensions };
+/// assert_eq!(link.href(), "/items/pika?dimension.form=graded&dimension.grade=PSA%208");
+///
+/// // The handler reads them back with the other parameters, and keeps the prefixed ones.
+/// #[derive(serde::Deserialize)]
+/// struct ItemQuery {
+///     #[serde(flatten)]
+///     rest: BTreeMap<String, String>,
+/// }
+/// let read: ItemQuery = corten::form::from_bytes(b"dimension.form=graded&dimension.grade=PSA%208").unwrap();
+/// let read: BTreeMap<String, String> =
+///     read.rest.into_iter().filter_map(|(k, v)| Some((k.strip_prefix("dimension.")?.to_string(), v))).collect();
+/// assert_eq!(read, dimensions);
+/// ```
+///
+/// A prefix another parameter's name starts with would read that parameter as one of the family,
+/// so it does not compile; nor does a prefix with a character a URL would have to escape:
+///
+/// ```compile_fail
+/// use std::collections::BTreeMap;
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// struct Items<'a> {
+///     #[route(prefix = "dim")]
+///     dimensions: &'a BTreeMap<String, String>,
+///     dimmed: Option<bool>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use std::collections::BTreeMap;
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// struct Items<'a> {
+///     #[route(prefix = "dim[")]
+///     dimensions: &'a BTreeMap<String, String>,
+/// }
+/// ```
+///
+/// And a `HashMap` is not one:
+///
+/// ```compile_fail
+/// use std::collections::HashMap;
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// struct Items<'a> {
+///     #[route(prefix = "dim.")]
+///     dimensions: &'a HashMap<String, String>,
+/// }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "a #[route(prefix = ..)] field is a BTreeMap or a list of (key, value) pairs, not {Self}",
+    note = "a HashMap's order changes from one render to the next, so the same link would differ: use a BTreeMap"
+)]
+pub trait Pairs {
+    #[doc(hidden)]
+    fn write_pairs(&self, prefix: &str, first: &mut bool, html: bool, out: &mut String);
+}
+
+impl<K: fmt::Display, V: fmt::Display> Pairs for std::collections::BTreeMap<K, V> {
+    fn write_pairs(&self, prefix: &str, first: &mut bool, html: bool, out: &mut String) {
+        for (key, value) in self {
+            __private::keyed(prefix, key, value, first, html, out);
+        }
+    }
+}
+
+impl<K: fmt::Display, V: fmt::Display> Pairs for [(K, V)] {
+    fn write_pairs(&self, prefix: &str, first: &mut bool, html: bool, out: &mut String) {
+        for (key, value) in self {
+            __private::keyed(prefix, key, value, first, html, out);
+        }
+    }
+}
+
+impl<K: fmt::Display, V: fmt::Display> Pairs for Vec<(K, V)> {
+    fn write_pairs(&self, prefix: &str, first: &mut bool, html: bool, out: &mut String) {
+        self.as_slice().write_pairs(prefix, first, html, out)
+    }
+}
+
+impl<T: Pairs + ?Sized> Pairs for &T {
+    fn write_pairs(&self, prefix: &str, first: &mut bool, html: bool, out: &mut String) {
+        (**self).write_pairs(prefix, first, html, out)
+    }
 }
 
 /// Where a redirect or a current-page check points: a typed route, or an `axum::http::Uri` for a
@@ -312,14 +426,27 @@ pub mod __private {
         }
     }
 
-    fn pair(key: &str, value: &dyn Display, first: &mut bool, html: bool, out: &mut String) {
+    fn separator(first: &mut bool, html: bool, out: &mut String) {
         out.push_str(match (*first, html) {
             (true, _) => "?",
             (false, true) => "&amp;",
             (false, false) => "&",
         });
         *first = false;
+    }
+
+    fn pair(key: &str, value: &dyn Display, first: &mut bool, html: bool, out: &mut String) {
+        separator(first, html, out);
         out.push_str(key);
+        let _ = fmt::write(&mut Encode { out, keep: SEGMENT }, format_args!("{value}"));
+    }
+
+    /// `{prefix}{key}={value}`, the key and value encoded (the prefix is checked when it compiles).
+    pub(super) fn keyed(prefix: &str, key: &dyn Display, value: &dyn Display, first: &mut bool, html: bool, out: &mut String) {
+        separator(first, html, out);
+        out.push_str(prefix);
+        let _ = fmt::write(&mut Encode { out, keep: SEGMENT }, format_args!("{key}"));
+        out.push('=');
         let _ = fmt::write(&mut Encode { out, keep: SEGMENT }, format_args!("{value}"));
     }
 
@@ -448,6 +575,38 @@ mod tests {
         ids: &'a [&'a str],
     }
 
+    #[derive(corten::Route)]
+    #[route("/items/{slug}")]
+    struct Variant<'a> {
+        slug: &'a str,
+        sort: Option<&'a str>,
+        #[route(prefix = "dimension.")]
+        dimensions: &'a std::collections::BTreeMap<&'a str, &'a str>,
+    }
+
+    #[derive(corten::Route)]
+    #[route("/items")]
+    struct Pairs {
+        #[route(prefix = "d.")]
+        options: Vec<(String, u32)>,
+    }
+
+    #[test]
+    fn prefixed_parameters_write_each_entry_in_order_encoded() {
+        let dimensions = std::collections::BTreeMap::from([("grade", "PSA 8"), ("form", "a&b/c=d")]);
+        let link = Variant { slug: "pika", sort: Some("new"), dimensions: &dimensions };
+        assert_eq!(link.href(), "/items/pika?sort=new&dimension.form=a%26b%2Fc%3Dd&dimension.grade=PSA%208");
+        assert_eq!(link.to_html(), "/items/pika?sort=new&amp;dimension.form=a%26b%2Fc%3Dd&amp;dimension.grade=PSA%208");
+        let empty = std::collections::BTreeMap::new();
+        assert_eq!(Variant { slug: "pika", sort: None, dimensions: &empty }.href(), "/items/pika");
+        let keys = std::collections::BTreeMap::from([("a b", "x"), ("é=", "y")]);
+        assert_eq!(
+            Variant { slug: "p", sort: None, dimensions: &keys }.href(),
+            "/items/p?dimension.a%20b=x&dimension.%C3%A9%3D=y"
+        );
+        let pairs = Pairs { options: vec![("z".into(), 2), ("a".into(), 1), ("z".into(), 3)] };
+        assert_eq!(pairs.href(), "/items?d.z=2&d.a=1&d.z=3", "a list keeps its order and its repeats");
+    }
     #[test]
     fn a_list_is_the_parameter_once_per_item_and_reads_back() {
         let search = Search { q: Some("charizard ex".into()), condition: vec!["nm".into(), "lp&mp".into()] };

@@ -691,6 +691,22 @@ impl Req {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         Ok(redirect(self.mode, value))
     }
+
+    /// The page is at `to` for good (an item asked for by its id or an old slug, a renamed
+    /// category): `301 Moved Permanently`, so search engines move the old URL's place to `to` and
+    /// the browser keeps the redirect for a day (privately; a shared cache does not), skipping the
+    /// round trip next time. A client navigation follows it and puts `to` in the address; a
+    /// `data-patch` form is sent there as by [`Req::redirect`]. For a `GET`: after a write,
+    /// [`Req::redirect`]. Parameters the old URL had are the route's to carry
+    /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
+    pub fn moved(&self, to: &(impl crate::route::Href + ?Sized)) -> Result {
+        let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
+        if self.mode == Mode::Action {
+            return Ok(redirect(self.mode, value));
+        }
+        let headers = [(header::LOCATION, value), (header::CACHE_CONTROL, HeaderValue::from_static(MOVED_CACHE))];
+        Ok((StatusCode::MOVED_PERMANENTLY, headers).into_response())
+    }
 }
 
 /// A patch the browser would apply only in part: an error naming what it would drop.
@@ -718,6 +734,9 @@ fn refresh_header_is_an_error(res: Response) -> Response {
     )
     .into_response()
 }
+
+/// How long the browser keeps a [`Req::moved`] redirect: a day, its own copy only.
+const MOVED_CACHE: &str = "private, max-age=86400";
 
 /// A redirect in `mode`: `corten-location` for a form patch (the runtime navigates), a 303
 /// otherwise.
