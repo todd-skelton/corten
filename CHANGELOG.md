@@ -921,6 +921,9 @@ Corten is pre-1.0, so any minor version may change the API.
     work without JavaScript; a feature only a browser can provide may need it. The missing piece
     for rich client text is
     [#17 Scripts have no typed way to show user-facing text they compute](https://github.com/todd-skelton/corten/issues/17).
+11. The README's example names its view `home_page` (it was `page`), so `home` serving it reads as
+    `req.page(home_page(&req, ""))` rather than `req.page(page(..))`; the forms recipe in the agent
+    skill follows.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

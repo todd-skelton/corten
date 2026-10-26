@@ -75,7 +75,7 @@ async fn main() -> std::io::Result<()> {
 // The return type is what the route answers: a page, a patch or a redirect, and on failure the
 // app's error page. `JsonResult<T>` answers JSON, failures included.
 async fn home(req: Req) -> HtmlResult {
-    req.page(page(&req, ""))
+    req.page(home_page(&req, ""))
 }
 
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
@@ -83,7 +83,7 @@ async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
         // With JavaScript: send only the greeting, swapped in by its id.
         Mode::Action => req.patch(Greeting { name: &form.name }),
         // Without: the whole page.
-        _ => req.page(page(&req, &form.name)),
+        _ => req.page(home_page(&req, &form.name)),
     }
 }
 
@@ -92,7 +92,7 @@ struct GreetForm {
     name: String,
 }
 
-fn page(req: &Req, name: &str) -> impl Document {
+fn home_page(req: &Req, name: &str) -> impl Document {
     let f = GreetForm::FIELDS;
     html! {
         <Layout req={req} title="Welcome">
