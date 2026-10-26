@@ -972,6 +972,10 @@ Corten is pre-1.0, so any minor version may change the API.
 13. The app guide says why a JSON 400 under `App::api` costs about 500 instructions more since
     every route goes through the checks (Added 65): the checked `get` marks a JSON route's
     failed response with an extension, profiled under callgrind in place of "most likely".
+14. The checks in `CONTRIBUTING.md` build into volumes named after the checkout's folder
+    (`corten-target-<folder>`, `corten-msrv-target-<folder>`) instead of one `corten-target` for
+    every checkout, where cargo could take one checkout's build for another's and fail to compile
+    code that was fine.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

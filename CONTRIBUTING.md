@@ -45,12 +45,21 @@ the framework itself.
 ## Checks
 
 All of these must pass before a pull request is ready. Run each command separately (shown for
-PowerShell from the repository root; in another shell use `$PWD` for `${PWD}`).
+PowerShell from the repository root; in another shell use `$PWD` for `${PWD}` and
+`checkout=$(basename "$PWD")` for the first line).
+
+Each checkout builds into its own volumes, named after its folder (`corten-target-<folder>`,
+`corten-msrv-target-<folder>`), so two checkouts or worktrees never share one: every checkout is
+mounted at `/src`, and cargo could take one checkout's build for another's and stop with an error
+the code does not have. The folder name must be one Docker accepts in a volume name (letters,
+digits, `_`, `.` and `-`). The registry volume, `corten-cargo`, holds only downloaded crates and
+is shared. When you remove a checkout, remove its two volumes too.
 
 ```powershell
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo fmt --all --check && cargo run -q -p corten-cli -- fmt --check crates examples bench && cargo clippy --workspace --all-features --all-targets -- -D warnings && cargo test --workspace --all-features"
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check && cd /src && cargo publish --workspace --dry-run --locked --allow-dirty"
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-msrv-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1.88-bookworm cargo check --locked --workspace --all-features --all-targets
+$checkout = Split-Path -Leaf $PWD
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo fmt --all --check && cargo run -q -p corten-cli -- fmt --check crates examples bench && cargo clippy --workspace --all-features --all-targets -- -D warnings && cargo test --workspace --all-features"
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check && cd /src && cargo publish --workspace --dry-run --locked --allow-dirty"
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-msrv-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1.88-bookworm cargo check --locked --workspace --all-features --all-targets
 npm run check
 docker build -f examples/hello/Dockerfile -t corten-hello .
 docker run -d --name corten-hello -p 18480:8080 corten-hello
@@ -79,13 +88,14 @@ builds on the oldest supported Rust, `rust-version` in the root `Cargo.toml`. Th
 ## Cluster integration tests
 
 `corten-cluster`'s tests run against real Postgres and NATS JetStream when two variables are
-set, and are skipped otherwise:
+set, and are skipped otherwise (`$checkout` as in [Checks](#checks)):
 
 ```powershell
+$checkout = Split-Path -Leaf $PWD
 docker network create corten-test
 docker run -d --name corten-test-pg --network corten-test -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=feeds postgres:16-alpine
 docker run -d --name corten-test-nats --network corten-test nats:2-alpine -js
-docker run --rm --network corten-test -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -e CORTEN_TEST_DATABASE_URL=postgres://postgres:postgres@corten-test-pg/feeds -e CORTEN_TEST_NATS_URL=nats://corten-test-nats:4222 -w /src rust:1-bookworm cargo test -p corten-cluster -- --test-threads=1
+docker run --rm --network corten-test -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -e CORTEN_TEST_DATABASE_URL=postgres://postgres:postgres@corten-test-pg/feeds -e CORTEN_TEST_NATS_URL=nats://corten-test-nats:4222 -w /src rust:1-bookworm cargo test -p corten-cluster -- --test-threads=1
 docker rm -f corten-test-pg corten-test-nats
 docker network rm corten-test
 ```
