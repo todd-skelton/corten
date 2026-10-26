@@ -402,7 +402,15 @@ Corten is pre-1.0, so any minor version may change the API.
 56. A component parameter can be `impl Render` (any `impl Trait`), a type parameter of its struct:
     `fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document`. The README's example
     compiles as edition 2024, as apps are, so its functions return `impl Document` without lifetimes.
-57. A handler's return type is what its route answers (`corten::answer`): `HtmlResult` (a page, a
+57. `corten_ui::dialog::modal`: `<dialog open={refused} on:connect={dialog::modal(target)}>` makes a
+    dialog the server draws open (a refused form, in a whole page or a patch) modal when it joins
+    the page, with focus on the first field marked invalid in it. `open` alone is the platform's
+    non-modal state: no focus trap, the page behind not inert, no backdrop. It is a handler module
+    in `corten_ui::COMPONENTS` (`script!`), takes `HTMLDialogElement` (on another element it does not
+    compile) and is 593 bytes as served (measured), loaded only by pages that use it. `examples/ui-gallery`
+    refuses a rename in a dialog and its smoke test checks it is modal, with or without the runtime
+    for the post, in Chromium, Firefox and WebKit.
+58. A handler's return type is what its route answers (`corten::answer`): `HtmlResult` (a page, a
     patch or a redirect, `Result<HtmlResponse>`; failures are the app's error page) or
     `JsonResult<T>` (every failure of the route is JSON, a path that does not parse included),
     and `Public<..>` around either for an answer a shared cache may keep (`Public::new(max_age,
@@ -411,7 +419,7 @@ Corten is pre-1.0, so any minor version may change the API.
     and neither does a `Public` handler that takes a `Caller`, a `HeaderMap` or any input not
     marked `Anonymous`. `corten::live` returns `LiveResponse` and a feed's snapshot and stream
     `FeedResponse`.
-58. `Caller<T>` (`corten::caller`): who is asking, found by `T: Identify` (a session cookie, an
+59. `Caller<T>` (`corten::caller`): who is asking, found by `T: Identify` (a session cookie, an
     API key) only when a handler or middleware takes one, once per request. `Refused::sign_in`
     sends a browser to sign in (303, or `corten-location` for a patch; a JSON 401 for data and
     JSON routes), `unauthorized` and `forbidden` give the error page for 401 and 403, and
@@ -420,7 +428,7 @@ Corten is pre-1.0, so any minor version may change the API.
     holds every handler in the module to taking `Caller<Staff>` (a compile error at the handler
     otherwise). `examples/hello` reads its viewer this way and its account area says
     `caller = Viewer`.
-59. `Middleware` and `App::middleware((RequestId, RateLimit))`: the app's own steps, run in order
+60. `Middleware` and `App::middleware((RequestId, RateLimit))`: the app's own steps, run in order
     at one fixed place in every request (after the cross-site check, the deadline and the panic
     catch; before the handler, the error page, the security headers and `Cache-Control`). The
     tuple is resolved when the crate compiles; one that only passes the request on costs about
@@ -809,6 +817,13 @@ Corten is pre-1.0, so any minor version may change the API.
     value and passed it to a patch component did not compile. Found by the Chase Sets pilot, which
     wrapped four views in `match () { () => { .. } }` to get past it
     ([#82 A view that is lets then one patch component is not a patch (One<F> never implements Patch)](https://github.com/todd-skelton/corten/issues/82)).
+24. A patch or a `<corten-live>` fragment no longer closes what the user opened: a `<dialog>` stays
+    open (`showModal()` again when it was modal, so the page behind stays inert), a `<details>` stays
+    unfolded and a shown popover stays shown. One the user did not touch takes the new markup's
+    state, so the server can still close a dialog it sent open. The runtime is 268 B larger gzipped
+    (7,807 to 8,075 B). Found by the Chase Sets pilot, whose item page's live market book closed a
+    reference dialog the user was reading
+    ([#84 A patch or live fragment closes a <dialog> the user opened and folds a <details> they unfolded](https://github.com/todd-skelton/corten/issues/84)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

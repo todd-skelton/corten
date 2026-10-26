@@ -162,7 +162,11 @@ no store); `corten_cluster::begin` takes it as its idempotency key. A field that
 
 A patch replaces markup but not the user's work: a field typed into after the form was sent (or,
 in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret
-stay on the matching element. Everything else is the server's.
+stay on the matching element. What the user opened stays open: a `<dialog>` (modal again if it
+was modal), a `<details>` they unfolded and a shown popover, matched by id (a `<details>` also by
+its place). One the user left as the server sent it takes the new markup's state, so a dialog
+the server sent open and now sends closed closes. A dialog the server draws `open` is open but not
+modal; give it `on:connect={corten_ui::dialog::modal(target)}` ([headless components](ui.md)). Everything else is the server's.
 
 Each top-level element of a patch replaces the element with its `id`, and the browser drops one
 without an id (and any text outside an element), so a refusal drawn inside a wrapper `<div>`

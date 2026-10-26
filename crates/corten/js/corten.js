@@ -624,7 +624,9 @@ function modulesOf(node) {
  * Applies a patch: every top-level element in `html` replaces the element with its id, and a
  * `<template id="row-7" data-remove>` removes it. The modules the new markup's handlers name are
  * imported first, so its handlers run from the first event. The server's markup wins, except for
- * what the user is doing: a field they edited keeps their text, and focus stays where it was.
+ * what the user is doing: a field they edited keeps their text, a dialog, `<details>` or popover
+ * they opened stays open (a modal dialog modal) unless the server changed it, and focus stays where
+ * it was.
  * @param {string} html
  * @param {AbortSignal} [signal] Nothing changes once it aborts.
  */
@@ -763,12 +765,71 @@ function counterpart(root, fresh, el, exact) {
   }
 }
 
+/** Whether each `<details>` and `<dialog>` was open as the server sent it (its `open` attribute
+ * follows the user, so the markup's is kept here). */
+const served = new WeakMap();
+
+/** Records what `root` and the elements in it were sent as. @param {ParentNode} root */
+function serve(root) {
+  for (const el of [root, ...Array.from(root.querySelectorAll("details, dialog"))]) {
+    if (el instanceof HTMLDetailsElement || el instanceof HTMLDialogElement) served.set(el, el.open);
+  }
+}
+
+/**
+ * What the user opened or closed in `root` (a `<dialog>`, modal or not, a `<details>`, a shown
+ * popover), applied to its counterpart in `fresh` once that is in the page. One the user left as
+ * the server sent it takes the fresh markup's state, so a server that sends a dialog closed after
+ * sending it open closes it.
+ * @param {Element} root @param {Element} fresh @returns {() => void}
+ */
+function opened(root, fresh) {
+  /** @type {(() => void)[]} */
+  const later = [];
+  for (const el of [root, ...Array.from(root.querySelectorAll("details, dialog, [popover]"))]) {
+    const dialog = el instanceof HTMLDialogElement;
+    // A dialog or popover only by id: by place, another row's could open over the page.
+    const to = counterpart(root, fresh, el, dialog || el.hasAttribute("popover"));
+    if (!to || to.localName !== el.localName) continue;
+    if (el.hasAttribute("popover") && el.matches(":popover-open") && to.hasAttribute("popover")) {
+      later.push(() => /** @type {HTMLElement} */ (to).showPopover());
+    }
+    if (!(dialog || el instanceof HTMLDetailsElement)) continue;
+    const now = /** @type {HTMLDialogElement} */ (el).open;
+    // Unchanged since the server sent it (or unknown, markup a script added): the fresh markup
+    // says. Changed by the user: theirs, which is also what a server that changed it now says.
+    if (now === (served.has(el) ? served.get(el) : /** @type {HTMLDialogElement} */ (to).open)) continue;
+    if (!dialog) /** @type {HTMLDetailsElement} */ (to).open = now;
+    else if (!now) to.removeAttribute("open");
+    else {
+      const modal = el.matches(":modal");
+      const dialogTo = /** @type {HTMLDialogElement} */ (to);
+      // Modal again, not just open: the top layer, the backdrop and the rest of the page inert.
+      later.push(() => {
+        if (!modal) return dialogTo.show();
+        dialogTo.removeAttribute("open");
+        dialogTo.showModal();
+      });
+    }
+  }
+  return () => {
+    for (const open of later) {
+      try {
+        open();
+      } catch {}
+    }
+  };
+}
+
 /**
  * Replaces `root` with `fresh`, carrying over the fields the user edited (since `sent`, for a
- * field the form sent; else since the markup set them), the focus and the caret.
+ * field the form sent; else since the markup set them), what the user opened, the focus and the
+ * caret.
  * @param {Element} root @param {Element} fresh @param {Map<Element, string | undefined> | null} sent
  */
 function keep(root, fresh, sent) {
+  serve(fresh);
+  const reopen = opened(root, fresh);
   const focused = document.activeElement;
   const next = focused !== document.body && focused && root.contains(focused) ? counterpart(root, fresh, focused) : null;
   for (const f of [root, ...Array.from(root.querySelectorAll("input, textarea, select"))]) {
@@ -786,6 +847,7 @@ function keep(root, fresh, sent) {
     else /** @type {HTMLInputElement} */ (to).value = field.value;
   }
   root.replaceWith(fresh);
+  reopen();
   if (next instanceof HTMLElement) {
     next.focus({ preventScroll: true });
     try {
@@ -821,6 +883,7 @@ async function swapPage(html, signal) {
   document.head.append(...tags);
   const main = document.querySelector("main");
   if (!main) throw new Error("corten: the shell must render a <main> element");
+  serve(content);
   main.replaceChildren(content);
   swapped = html;
   markCurrent();
@@ -1216,6 +1279,7 @@ customElements.define(
 
 markCurrent();
 scan(document.documentElement, new Set());
+serve(document);
 readAgainLater();
 
 /** Resolves once the script modules the first page's handlers use are imported. */

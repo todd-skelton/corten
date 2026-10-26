@@ -1,9 +1,9 @@
 //! The page: every corten-ui component, wrapped and styled as a design system would.
 use corten::prelude::*;
-use corten_ui::{Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster};
+use corten_ui::{Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster, dialog};
 
 use crate::{
-    app::{OrderForm, url},
+    app::{OrderForm, RenameForm, url},
     field::Field,
 };
 
@@ -18,7 +18,7 @@ pub const COLORS: [Choice; 4] = [
 pub const TABS: [&str; 3] = ["listings", "offers", "sales"];
 
 #[component(css)]
-pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>) -> impl Render {
+pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, rename: RenameDialog<'a>) -> impl Render {
     let f = OrderForm::FIELDS;
     let qty = Number {
         value: Some(1.0),
@@ -62,6 +62,8 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>) -> impl 
         <div class={Actions}><MenuButton id="actions" label={&"Actions"} items={&items} /></div>
         <MenuResult text="" />
         <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
+        <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
+        {rename}
         <div class={Toasts}>
             <Toaster close={&"Dismiss"} seconds={2} toast={Toast { message: toast.as_ref().map(|t| t as &dyn Render) }} />
         </div>
@@ -85,3 +87,27 @@ pub fn MenuResult<'a>(text: &'a str) -> impl Patch {
 
 #[derive(Id)]
 struct MenuResultId;
+
+/// The rename dialog's id: the refused form's patch replaces the dialog by it.
+#[derive(Id)]
+pub struct RenameId;
+
+/// Naming the draft, in a modal dialog. Refused, the server draws it open with the error, as the
+/// form's patch or in the page a post without the runtime answers with, and `dialog::modal`
+/// makes it modal again when it joins the page.
+#[component]
+pub fn RenameDialog<'a>(name: &'a str, errors: &'a Errors) -> impl Patch {
+    let f = RenameForm::FIELDS;
+    let e = errors.within(RenameId);
+    html! {
+        <dialog id={RenameId} open={!errors.is_empty()} aria-label="Rename the draft" on:connect={dialog::modal(target)}>
+            <form method="post" action={url::Rename} data-patch>
+                <label for="draft-name">"Name"</label>
+                <input id="draft-name" name={f.name} value={name} {..e.aria(f.name)}>
+                {e.message(f.name)}
+                <button>"Rename"</button>
+            </form>
+            <form method="dialog"><button>"Cancel"</button></form>
+        </dialog>
+    }
+}
