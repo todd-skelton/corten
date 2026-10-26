@@ -10,6 +10,7 @@
 //! | `POST /sign-in` | sets a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
 //! | `GET /account` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
+//! | `POST /saved` | a write answered in place while its read catches up: the status line, as a patch that is read again from `/saved?until=..` (`ReadAgain::from`) until the write is in |
 use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -106,7 +107,7 @@ mod url {
     #[route("/live/trades", get = trades)]
     pub struct Trades;
 
-    #[route("/saved", get = saved)]
+    #[route("/saved", get = saved, post = save)]
     pub struct Saved {
         pub until: Option<u64>,
     }
@@ -511,16 +512,53 @@ struct SavedQuery {
 /// says so and asks to be read again, which the runtime does in place however the page was
 /// reached; once the write is in, the page stops asking.
 async fn saved(req: Req, viewer: Option<Caller<Viewer>>, Query(query): Query<SavedQuery>) -> HtmlResult {
+    if req.mode == Mode::Action {
+        return saved_status(&req, query.until);
+    }
     let viewer = viewer.map(|Caller(v)| v);
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
-    let pending = query.until.is_some_and(|until| now < until);
+    let pending = landing(query.until);
     let again = pending.then_some(ReadAgain { after: Duration::from_secs(1) });
     let text = if pending { "Saving your change..." } else { "Your change is saved." };
     req.page(html! {
         <Layout req={&req} title="Saved" viewer={viewer.as_ref()} head={again}>
             <p id={SavedId} role="status">{text}</p>
+            <form method="post" action={url::Saved { until: None }} data-patch>
+                <button>"Save again"</button>
+            </form>
         </Layout>
     })
+}
+
+/// A write that lands in a second and a half. With JavaScript the form's answer is the status
+/// line, read again until the write is in; without, the saved page, which reads itself again.
+async fn save(req: Req) -> HtmlResult {
+    let until = Some(now_millis() + 1500);
+    if req.mode == Mode::Action {
+        return saved_status(&req, until);
+    }
+    req.redirect(&url::Saved { until })
+}
+
+/// The status line alone, as a patch: while the write is pending it asks to be read again from
+/// the saved route with the write's time in it, which answers this again.
+fn saved_status(req: &Req, until: Option<u64>) -> HtmlResult {
+    let pending = landing(until);
+    let text = if pending { "Saving your change..." } else { "Your change is saved." };
+    let from = url::Saved { until };
+    let again = pending.then(|| ReadAgain { after: Duration::from_secs(1) }.from(&from));
+    req.patch(html! {
+        <p id={SavedId} role="status">{text}</p>
+        {again}
+    })
+}
+
+/// True while a write that lands at `until` (milliseconds since 1970) has not.
+fn landing(until: Option<u64>) -> bool {
+    until.is_some_and(|until| now_millis() < until)
+}
+
+fn now_millis() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 /// The saved page's status line.

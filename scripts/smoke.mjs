@@ -864,6 +864,41 @@ async function run(browser) {
       for (const name of ["a page reached by the runtime's navigation reads itself again in place", "each read replaces the history entry", "navigating away stops the reads"]) skip(name, noSwaps);
     }
     page.off("request", onSaved);
+
+    // A data-patch write answered in place while its read catches up (ReadAgain::from): the
+    // status line is patched, then read again from its route (`corten: action`) until the write
+    // is in, with no navigation; the button keeps focus, and a navigation away stops the reads.
+    /** @type {string[]} */
+    const again = [];
+    const onAgain = (/** @type {import("@playwright/test").Request} */ r) =>
+      r.method() === "GET" && r.url().includes("/saved?until=") && r.headers()["corten"] === "action" && again.push(r.url());
+    page.on("request", onAgain);
+    const save = 'form[action="/saved"] button';
+    const submit = async () => {
+      await page.focus(save);
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => document.getElementById("saved")?.textContent === "Saving your change...");
+    };
+    await page.goto(`${base}/saved`);
+    await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 7));
+    await submit();
+    await savedSoon();
+    check(
+      "a patch waiting for a write is read again from its route until the write is in",
+      (await saved()) === "Your change is saved." && again.length > 0 && page.url() === `${base}/saved` && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 7)),
+      `${await saved()} after ${again.length} reads at ${page.url()}`,
+    );
+    check("reading a patch again keeps focus", await page.evaluate(() => document.activeElement?.textContent === "Save again"));
+    const done = again.length;
+    await page.waitForTimeout(2200);
+    check("it stops once the patch no longer asks", again.length === done, `${again.length - done} more reads`);
+    await submit();
+    await page.click('header a[href="/about"]');
+    await page.waitForFunction(() => document.title === "About | Corten");
+    const away = again.length;
+    await page.waitForTimeout(2200);
+    check("navigating away stops a patch's reads", again.length === away, `${again.length - away} more reads`);
+    page.off("request", onAgain);
   }
 
   // data-reload: the link loads the whole document instead of swapping <main>.

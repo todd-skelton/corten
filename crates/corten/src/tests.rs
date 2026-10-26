@@ -1036,6 +1036,12 @@ fn cached_routes() -> Router {
                 Ok::<_, Error>((Cache::public(minute), [(header::SET_COOKIE, "seen=1")], req.test_page("Home", home())?))
             }),
         )
+        .route(
+            "/catalog",
+            get(move |req: Req| async move {
+                Public::new(minute, req.test_page("Catalog", home())).shared(std::time::Duration::from_secs(86_400))
+            }),
+        )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
         .route("/plain", get(|req: Req| async move { req.test_page("Plain", html! { <p>"plain"</p> }) }))
 }
@@ -1073,6 +1079,9 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
         assert_eq!(cache_control(&router, "/", &[partial]).await, "private, max-age=60", "only the document: {partial:?}");
     }
     assert_eq!(cache_control(&router, "/cookie", &[]).await, "private, no-cache", "it sets a cookie");
+    assert_eq!(cache_control(&router, "/catalog", &[]).await, "public, max-age=60, s-maxage=86400");
+    assert_eq!(cache_control(&router, "/catalog", &[("corten", "nav")]).await, "private, max-age=60", "the browser's lifetime");
+    assert_eq!(cache_control(&router, "/catalog", &[("cookie", "session=abc")]).await, "private, no-cache");
     let inline = App::new(Routes::from(Router::new().route("/", get(inline_page)))).router();
     assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the layout took the nonce");
 

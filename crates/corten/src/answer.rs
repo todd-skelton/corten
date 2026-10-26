@@ -225,6 +225,17 @@ impl<A> Public<A> {
         self.cache = self.cache.stale_while_revalidate(stale);
         self
     }
+
+    /// A shared cache (a CDN, a proxy) may keep it for `shared` (`s-maxage`, whole seconds), while
+    /// the browser keeps `max_age`: a catalog page a CDN serves for a day that a browser checks
+    /// again after a minute. `public, max-age=60, s-maxage=86400`. A lifetime known only when the
+    /// request is answered (an API's own `s-maxage`) is passed the same way. When the answer is
+    /// sent privately (a client navigation, a request with a cookie), `s-maxage` is dropped with
+    /// `public`.
+    pub fn shared(mut self, shared: Duration) -> Self {
+        self.cache = self.cache.shared(shared);
+        self
+    }
 }
 
 impl<A: IntoResponse> IntoResponse for Public<A> {

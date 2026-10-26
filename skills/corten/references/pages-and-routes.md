@@ -47,8 +47,10 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    social) are the layout's props. Never build a document outside a layout component. A page
    showing a read that has not caught up with a write yet adds
    `ReadAgain { after: Duration::from_secs(2) }` to its head tags while it is behind (and stops
-   after a time limit); the runtime reads it again in place however it was reached. Never a
-   `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
+   after a time limit); the runtime reads it again in place however it was reached. A
+   `data-patch` answer in the same state puts `{ReadAgain { after }.from(&route)}` in the patch,
+   where `route` carries the write's receipt and its handler answers `req.patch(..)` in
+   `Mode::Action`; never redirect only to show "saving". Never a `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
    `raw` or an expression inside `<script>` (that does not compile).
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
    the layout renders on full loads. Mark the current link with
@@ -251,5 +253,6 @@ Its handler may only take inputs that cannot tell who is asking (`Path`, `Query`
 `State`, `Req`, ...): a `Caller`, a `HeaderMap` or a cookie there does not compile. `App` still
 sends it `private, no-cache` when the request has a cookie or `Authorization`, the response sets
 a cookie or the layout took `req.nonce()`; a client navigation or a data request gets `private`
-with the same lifetime. Only a success or a redirect is shared. `NoStore<HtmlResult>` is for one-time
+with the same lifetime. `.shared(Duration)` gives shared caches a longer lifetime than the
+browser's (`s-maxage`; a private answer drops it). Only a success or a redirect is shared. `NoStore<HtmlResult>` is for one-time
 secrets. Do not build a server-side page cache: cache the data the page reads instead.

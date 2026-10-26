@@ -279,6 +279,37 @@ the last read's is not swapped, and a hidden tab waits until it is shown. Each a
 while (the receipt's age) so a page never polls without end. A navigation away stops them.
 Without JavaScript the browser reloads the page (`<meta http-equiv="refresh">` in `<noscript>`).
 
+A `data-patch` form's answer can be in the same state: the write is in, but the read that
+draws the part it replaces is behind. Rather than wait for the read, or redirect to a page only
+to show "saving", the patch says where to read it again: `ReadAgain { after }.from(&route)`, a
+patch instruction like `Remove` and `Append`. After the delay the runtime fetches the route as a
+GET `data-patch` form would (`corten: action`) and applies the patch it answers, which asks again
+while it is still behind. The route's URL carries what the read waits for (the write's receipt),
+since the page's address does not; its handler answers the part with `req.patch` in
+`Mode::Action`, and the page otherwise, so the same URL works without JavaScript too:
+
+```rust,ignore
+async fn pause(req: Req, Path(id): Path<String>) -> HtmlResult {
+    let receipt = alerts::pause(&id).await?;
+    let from = url::Alerts { after: Some(&receipt) };
+    if req.mode != Mode::Action {
+        return req.redirect(&from);
+    }
+    let alerts = alerts::read(&receipt).await?;
+    let again = alerts.behind.then(|| ReadAgain { after: Duration::from_secs(2) }.from(&from));
+    req.patch(html! { <AlertList alerts={&alerts} /> {again} })
+}
+
+async fn alerts(req: Req, Query(q): Query<AlertsQuery>) -> HtmlResult {
+    // Mode::Action: the list (with `ReadAgain::from` while behind); otherwise the page.
+}
+```
+
+The reads wait while the tab is hidden or a form's answer is on its way, keep what the user
+typed, opened and focused, as any patch does, and stop once an element the patch put on the
+page is replaced (a later patch of it, a navigation away) or a read fails. `examples/hello`'s
+saved page has both.
+
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
 the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
 page that sends one.

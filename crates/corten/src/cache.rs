@@ -55,7 +55,12 @@ pub(crate) struct Cache {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
-    Public { max_age: u64, stale: u64 },
+    /// `shared` is `s-maxage` (a shared cache's own lifetime) when it is not `max_age`.
+    Public {
+        max_age: u64,
+        shared: Option<u64>,
+        stale: u64,
+    },
     NoStore,
 }
 
@@ -63,14 +68,25 @@ impl Cache {
     /// Any cache may keep the response for `max_age` (whole seconds) and give it to anyone, when
     /// nothing about the request makes it personal.
     pub(crate) fn public(max_age: Duration) -> Self {
-        Cache { kind: Kind::Public { max_age: max_age.as_secs(), stale: 0 } }
+        Cache { kind: Kind::Public { max_age: max_age.as_secs(), shared: None, stale: 0 } }
+    }
+
+    /// A shared cache (a CDN, a proxy) keeps the response for `shared` instead (`s-maxage`), while
+    /// the browser keeps `max_age`.
+    pub(crate) fn shared(self, shared: Duration) -> Self {
+        match self.kind {
+            Kind::Public { max_age, stale, .. } => {
+                Cache { kind: Kind::Public { max_age, shared: Some(shared.as_secs()), stale } }
+            }
+            Kind::NoStore => self,
+        }
     }
 
     /// After `max_age`, a cache may still serve the response for up to `stale` while it fetches
     /// a fresh one in the background.
     pub(crate) fn stale_while_revalidate(self, stale: Duration) -> Self {
         match self.kind {
-            Kind::Public { max_age, .. } => Cache { kind: Kind::Public { max_age, stale: stale.as_secs() } },
+            Kind::Public { max_age, shared, .. } => Cache { kind: Kind::Public { max_age, shared, stale: stale.as_secs() } },
             Kind::NoStore => self,
         }
     }
@@ -82,13 +98,22 @@ impl Cache {
     }
 
     fn header(self) -> HeaderValue {
-        match self.kind {
-            Kind::Public { max_age, stale: 0 } => format!("public, max-age={max_age}"),
-            Kind::Public { max_age, stale } => format!("public, max-age={max_age}, stale-while-revalidate={stale}"),
-            Kind::NoStore => return HeaderValue::from_static("no-store"),
+        let Kind::Public { max_age, shared, stale } = self.kind else {
+            return HeaderValue::from_static("no-store");
+        };
+        let mut text = Vec::with_capacity(80);
+        let mut push = |name: &str, n: u64| {
+            text.extend_from_slice(name.as_bytes());
+            text.extend_from_slice(crate::ascii::digits(n, &mut [0; 20]));
+        };
+        push("public, max-age=", max_age);
+        if let Some(shared) = shared {
+            push(", s-maxage=", shared);
         }
-        .try_into()
-        .expect("digits are a valid header")
+        if stale > 0 {
+            push(", stale-while-revalidate=", stale);
+        }
+        HeaderValue::from_maybe_shared(axum::body::Bytes::from(text)).expect("digits are a valid header")
     }
 }
 
@@ -231,6 +256,14 @@ mod tests {
         );
         assert_eq!(Cache::public(Duration::from_millis(1500)).header(), "public, max-age=1", "whole seconds");
         assert_eq!(Cache::no_store().stale_while_revalidate(minute).header(), "no-store");
+        let day = Duration::from_secs(86_400);
+        assert_eq!(Cache::public(minute).shared(day).header(), "public, max-age=60, s-maxage=86400");
+        assert_eq!(
+            Cache::public(minute).stale_while_revalidate(Duration::from_secs(3600)).shared(day).header(),
+            "public, max-age=60, s-maxage=86400, stale-while-revalidate=3600",
+            "in either order"
+        );
+        assert_eq!(Cache::no_store().shared(day).header(), "no-store");
     }
 
     #[test]
@@ -256,6 +289,21 @@ mod tests {
         }
         assert_eq!(settled(Some("Private, max-age=60"), true, Seen { nonce: true, ..seen() }, true), "Private, max-age=60");
         assert_eq!(settled(Some("no-store"), true, Seen { caller: true, ..seen() }, true), "no-store");
+    }
+
+    #[test]
+    fn a_shared_lifetime_is_only_for_shared_caches() {
+        let send = |seen: Seen| {
+            let cache = Cache::public(Duration::from_secs(60)).shared(Duration::from_secs(86_400));
+            let mut res = (cache, "x").into_response();
+            settle(&mut res, seen, "/x");
+            res.headers()[header::CACHE_CONTROL].to_str().unwrap().to_string()
+        };
+        assert_eq!(send(seen()), "public, max-age=60, s-maxage=86400");
+        assert_eq!(send(Seen { partial: true, ..seen() }), "private, max-age=60", "the browser's lifetime only");
+        for seen in [Seen { credentials: true, ..seen() }, Seen { caller: true, ..seen() }, Seen { nonce: true, ..seen() }] {
+            assert_eq!(send(seen), "private, no-cache");
+        }
     }
 
     #[test]
