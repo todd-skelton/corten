@@ -1,14 +1,14 @@
 //! An item detail page with every production piece Corten offers switched on: security
 //! policy (CSP nonce, cross-site write check), versioned assets, error pages, health, PWA with
 //! push, head tags, an i18n catalog, robots/sitemap, compression, the home and category pages
-//! cached by CDNs (`Cache::public`), an item as JSON for other services and the price-alert
+//! cached by CDNs (`Public`), an item as JSON for other services and the price-alert
 //! action as an MCP tool for agents, both mounted as JSON-only routes (`App::api`).
 use std::{sync::Arc, time::Duration};
 
 use corten::{
     Error,
     agent::{ToolError, Tools},
-    axum::{http::StatusCode, response::Response},
+    axum::http::StatusCode,
     prelude::*,
     pwa::{Manifest, Pwa},
     seo::{self, SitemapUrl},
@@ -39,7 +39,7 @@ pub fn app(source: Source) -> App {
     let origins = std::env::var("AGENT_ORIGINS").unwrap_or_default();
     let tools = tools(source.clone(), tokens).route();
     let item_json = get(item_json).with_state(source.clone());
-    App::new(routes(source.clone()))
+    App::new(routes::router(source))
         .api::<routes::ApiRoot>(|api| api.route::<routes::ItemJson>(item_json))
         .api::<routes::Mcp>(|mcp| {
             let mcp = mcp.route::<routes::Mcp>(tools);
@@ -51,17 +51,12 @@ pub fn app(source: Source) -> App {
         .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(routes::Mcp::PATH))
 }
 
-fn routes(source: Source) -> Router {
-    Router::new()
-        .route(routes::Home::PATH, get(home))
-        .route(routes::Item::PATH, get(show).post(create_alert))
-        .route(routes::Category::PATH, get(category))
-        .route(routes::Robots::PATH, get(|| async { seo::robots(&[routes::Mcp::PATH], Some(routes::Sitemap::PATH)) }))
-        .route(routes::Sitemap::PATH, get(sitemap))
-        .with_state(source)
+/// Crawlers may read everything but the agents' endpoint.
+pub(crate) async fn robots() -> Public<seo::File> {
+    seo::robots(&[routes::Mcp::PATH], Some(routes::Sitemap::PATH))
 }
 
-async fn sitemap() -> corten::axum::response::Response {
+pub(crate) async fn sitemap() -> Public<seo::File> {
     let urls: Vec<String> =
         (1..=50).map(|n| format!("https://cards.example.com{}", routes::Item { id: &format!("item_{n}") })).collect();
     seo::sitemap(urls.iter().map(|loc| SitemapUrl { loc, lastmod: None }))
@@ -71,39 +66,39 @@ fn not_found() -> Error {
     Error::status(StatusCode::NOT_FOUND)
 }
 
-/// Pages that are the same for every visitor: a CDN may serve them for a minute, and an older
-/// copy for ten more while it fetches a fresh one.
-fn shared() -> Cache {
-    Cache::public(Duration::from_secs(60)).stale_while_revalidate(Duration::from_secs(600))
+/// A page that is the same for every visitor: a CDN may serve it for a minute, and an older copy
+/// for ten more while it fetches a fresh one.
+fn shared(page: HtmlResult) -> Public<HtmlResult> {
+    Public::new(Duration::from_secs(60), page).stale_while_revalidate(Duration::from_secs(600))
 }
 
-async fn home(req: Req) -> corten::Result<(Cache, Response)> {
+pub(crate) async fn home(req: Req) -> Public<HtmlResult> {
     let t = req.t();
-    Ok((shared(), req.page(html! { <Layout req={&req} title="Home" head=""><Home t={t} /></Layout> })?))
+    shared(req.page(html! { <Layout req={&req} title="Home" head=""><Home t={t} /></Layout> }))
 }
 
-async fn category(req: Req, Path(slug): Path<String>) -> corten::Result<(Cache, Response)> {
+pub(crate) async fn category(req: Req, Path(slug): Path<String>) -> Public<HtmlResult> {
     let t: Msg = req.t();
     let title = t.category_title(&slug).to_string();
-    Ok((shared(), req.page(html! { <Layout req={&req} title={&title} head="">{views::category(t, &slug)}</Layout> })?))
+    shared(req.page(html! { <Layout req={&req} title={&title} head="">{views::category(t, &slug)}</Layout> }))
 }
 
-async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> corten::Result {
+pub(crate) async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> HtmlResult {
     let item = source.item(&id).await?.ok_or_else(not_found)?;
     req.page(ItemPage::new(req.t(), &item, String::new()).document(&req))
 }
 
 /// The cached item, serialized where it is.
-async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> corten::Result<Json<Arc<ItemView>>> {
+async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> JsonResult<Arc<ItemView>> {
     Ok(Json(source.item(&id).await?.ok_or_else(not_found)?))
 }
 
-async fn create_alert(
+pub(crate) async fn create_alert(
     req: Req,
     State(source): State<Source>,
     Path(id): Path<String>,
     Form(form): Form<AlertInput>,
-) -> corten::Result {
+) -> HtmlResult {
     let t = req.t();
     let price = match check_alert(t, &form.email, &form.target_price) {
         Ok(price) => price,
@@ -195,6 +190,7 @@ fn tools(source: Source, tokens: Arc<[String]>) -> Tools {
 #[cfg(test)]
 mod tests {
     use corten::axum::{
+        Router,
         body::Body,
         http::{HeaderMap, Request},
     };
@@ -475,7 +471,9 @@ mod tests {
         let (router, prefix, mode) = match target.as_str() {
             "json" => (super::app(source.clone()).router(), "/api/items/", None),
             "bare-json" => {
-                (Router::new().route(routes::ItemJson::PATH, get(item_json)).with_state(source.clone()), "/api/items/", None)
+                // Axum alone, without Corten around the handler: what Corten's layer costs.
+                let bare = corten::axum::routing::get(item_json);
+                (Router::new().route(routes::ItemJson::PATH, bare).with_state(source.clone()), "/api/items/", None)
             }
             "page" => (super::app(source.clone()).router(), "/items/", Some("nav")),
             "document" => (super::app(source.clone()).router(), "/items/", None),

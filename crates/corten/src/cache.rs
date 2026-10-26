@@ -3,22 +3,25 @@
 //! Static files and the runtime are content-addressed and cached forever ([`crate::assets`]).
 //! Every other response [`crate::App`] serves that does not say otherwise gets
 //! `Cache-Control: private, no-cache`: the browser may keep it but asks the server before reusing
-//! it, and no shared cache (a CDN, a proxy) stores it, since a page's layout may read
-//! [`crate::App::context`] and the page may carry the signed-in user's data.
+//! it, and no shared cache (a CDN, a proxy) stores it, since a page may carry the signed-in
+//! user's data.
 //!
-//! A response the same for everyone opts in with [`Cache::public`], returned next to it:
+//! A route whose answer is the same for everyone says so in its type, [`crate::Public`], whose
+//! handler cannot read who is asking (that does not compile), and one that nothing may keep, a
+//! statement or a one-time code, says [`crate::NoStore`]:
 //!
 //! ```ignore
-//! async fn home(req: Req) -> corten::Result<(Cache, Response)> {
-//!     Ok((Cache::public(Duration::from_secs(60)), req.page(html! { <Layout req={&req} title="Home">{view}</Layout> })?))
+//! async fn home(req: Req) -> Public<HtmlResult> {
+//!     Public::new(Duration::from_secs(60), req.page(html! { <Layout req={&req} title="Home">{view}</Layout> }))
 //! }
 //! ```
 //!
 //! `App` lets shared caches keep it only when nothing about the request could make it differ
 //! between users:
 //!
-//! - when the request carried credentials (`Cookie` or `Authorization`), or the context function
-//!   returned a value for it, the response is `private, no-cache`;
+//! - when the request carried credentials (`Cookie` or `Authorization`), or anything read a
+//!   [`crate::Caller`] for it (an API key in a header of the app's own included), the response is
+//!   `private, no-cache`;
 //! - when it is not the full document (a client navigation, a form answer, a data client's JSON
 //!   from the same URL as the page), only the browser keeps it (`private`, same lifetime), so a
 //!   cache that ignores `Vary` cannot hand one form to another client. An [`crate::App::api`]
@@ -26,15 +29,15 @@
 //! - a response that keeps a lifetime also varies on `cookie`: after the user signs in or out,
 //!   the browser fetches the page again instead of reusing the other one.
 //!
-//! Two things are never shared or kept, whoever set the header (a `Cache` or the handler's own
-//! `Cache-Control`): a response that sets a cookie, and HTML with this request's CSP nonce
-//! (`req.nonce()` in the layout, or a handler that takes [`crate::security::Nonce`]). They get
-//! `private, no-cache`, and `corten dev` logs why.
+//! Some things are never shared, whoever set the header (`Public`, or a `Cache-Control` written by
+//! hand, by a middleware or on an [`crate::HtmlResponse`]): a response that sets a cookie, HTML
+//! with this request's CSP nonce (`req.nonce()` in the layout, or a handler that takes
+//! [`crate::security::Nonce`]), and an answer to a request whose handler or middleware read a
+//! [`crate::Caller`]. They get `private, no-cache`, and `corten dev` logs the first two.
 //!
-//! What Corten checks is what it can see. A handler that reads a cookie through its own extractor
-//! is personal too: do not mark it public. A `Cache-Control` the handler writes itself is the
-//! app's own choice apart from the two rules above (a file route with `public, max-age=...` stays
-//! shared). A cache in front must key on `Vary` (`corten`, `accept`, `accept-encoding`, and
+//! A `Public` handler cannot read a cookie or a header through an extractor of the app's own unless
+//! the app marks it [`crate::answer::Anonymous`]. A `Cache-Control` written by hand is the app's
+//! own choice apart from the rules above. A cache in front must key on `Vary` (`corten`, `accept`, `accept-encoding`, and
 //! `accept-language` with [`crate::App::messages`]).
 
 use std::time::Duration;
@@ -44,9 +47,9 @@ use axum::{
     response::{IntoResponseParts, Response, ResponseParts},
 };
 
-/// What caches may do with a response; see [`crate::cache`].
+/// What caches may do with a response, as [`crate::Public`] and [`crate::NoStore`] set it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cache {
+pub(crate) struct Cache {
     kind: Kind,
 }
 
@@ -59,13 +62,13 @@ enum Kind {
 impl Cache {
     /// Any cache may keep the response for `max_age` (whole seconds) and give it to anyone, when
     /// nothing about the request makes it personal.
-    pub fn public(max_age: Duration) -> Self {
+    pub(crate) fn public(max_age: Duration) -> Self {
         Cache { kind: Kind::Public { max_age: max_age.as_secs(), stale: 0 } }
     }
 
     /// After `max_age`, a cache may still serve the response for up to `stale` while it fetches
     /// a fresh one in the background.
-    pub fn stale_while_revalidate(self, stale: Duration) -> Self {
+    pub(crate) fn stale_while_revalidate(self, stale: Duration) -> Self {
         match self.kind {
             Kind::Public { max_age, .. } => Cache { kind: Kind::Public { max_age, stale: stale.as_secs() } },
             Kind::NoStore => self,
@@ -74,7 +77,7 @@ impl Cache {
 
     /// Nothing keeps the response, not even the browser's own cache (a statement, a one-time
     /// code). The browser's back/forward cache may not restore such a page either.
-    pub fn no_store() -> Self {
+    pub(crate) fn no_store() -> Self {
         Cache { kind: Kind::NoStore }
     }
 
@@ -86,6 +89,14 @@ impl Cache {
         }
         .try_into()
         .expect("digits are a valid header")
+    }
+}
+
+impl Cache {
+    /// Sets the response's `Cache-Control` to this, as [`settle`] reads it.
+    pub(crate) fn apply(self, res: &mut Response) {
+        res.headers_mut().insert(header::CACHE_CONTROL, self.header());
+        res.extensions_mut().insert(Typed);
     }
 }
 
@@ -108,8 +119,10 @@ pub(crate) const PRIVATE: HeaderValue = HeaderValue::from_static("private, no-ca
 
 /// What the layer knows about a request, for [`settle`].
 pub(crate) struct Seen {
-    /// A `Cookie` or `Authorization` header, or a value from the context function.
-    pub personal: bool,
+    /// A `Cookie` or `Authorization` header.
+    pub credentials: bool,
+    /// Something read a [`crate::Caller`]: the answer is that caller's, whoever set the header.
+    pub caller: bool,
     /// Not the full document of a page route (a navigation, a form answer, JSON for a data client).
     pub partial: bool,
     /// The response's HTML has this request's nonce.
@@ -152,11 +165,11 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
         headers.insert(header::CACHE_CONTROL, PRIVATE);
         return;
     }
-    if !typed {
+    if seen.caller || (typed && seen.credentials) {
+        headers.insert(header::CACHE_CONTROL, PRIVATE);
         return;
     }
-    if seen.personal {
-        headers.insert(header::CACHE_CONTROL, PRIVATE);
+    if !typed {
         return;
     }
     if seen.partial {
@@ -189,7 +202,7 @@ mod tests {
     use axum::response::IntoResponse;
 
     fn seen() -> Seen {
-        Seen { personal: false, partial: false, nonce: false, dev: false }
+        Seen { credentials: false, caller: false, partial: false, nonce: false, dev: false }
     }
 
     /// The `Cache-Control` sent for a response with `cache` (from a [`Cache`] when `typed`).
@@ -229,9 +242,12 @@ mod tests {
         let partial = Seen { partial: true, ..seen() };
         assert_eq!(settled(public, true, partial, false), "private, max-age=60, stale-while-revalidate=30");
         assert_eq!(settled(Some("max-age=60"), true, Seen { partial: true, ..seen() }, false), "private, max-age=60");
-        assert_eq!(settled(public, true, Seen { personal: true, ..seen() }, false), "private, no-cache");
-        for personal in [Seen { personal: true, ..seen() }, Seen { partial: true, ..seen() }] {
-            assert_eq!(settled(public, false, personal, false), PUBLIC, "the handler's own header is its choice");
+        assert_eq!(settled(public, true, Seen { credentials: true, ..seen() }, false), "private, no-cache");
+        for seen in [Seen { credentials: true, ..seen() }, Seen { partial: true, ..seen() }] {
+            assert_eq!(settled(public, false, seen, false), PUBLIC, "Corten's own header (a file's) is its choice");
+        }
+        for typed in [true, false] {
+            assert_eq!(settled(public, typed, Seen { caller: true, ..seen() }, false), "private, no-cache", "it read a caller");
         }
         for typed in [true, false] {
             assert_eq!(settled(public, typed, Seen { nonce: true, ..seen() }, false), "private, no-cache");
@@ -239,7 +255,7 @@ mod tests {
             assert_eq!(settled(public, typed, seen(), true), "private, no-cache", "it sets a cookie");
         }
         assert_eq!(settled(Some("Private, max-age=60"), true, Seen { nonce: true, ..seen() }, true), "Private, max-age=60");
-        assert_eq!(settled(Some("no-store"), true, Seen { personal: true, ..seen() }, true), "no-store");
+        assert_eq!(settled(Some("no-store"), true, Seen { caller: true, ..seen() }, true), "no-store");
     }
 
     #[test]
@@ -250,6 +266,6 @@ mod tests {
             res.headers().get_all(header::VARY).iter().any(|v| v == "cookie")
         };
         assert!(vary(seen()) && vary(Seen { partial: true, ..seen() }));
-        assert!(!vary(Seen { personal: true, ..seen() }), "no-cache: nothing to reuse");
+        assert!(!vary(Seen { credentials: true, ..seen() }), "no-cache: nothing to reuse");
     }
 }

@@ -39,8 +39,8 @@ The CLI is a convenience over cargo, not a build system: an app is an ordinary c
 
 ## A whole app in one file
 
-Every route is a struct in the routes module, and each needs a handler: a method of the module's
-`Handlers` trait. Every page is a handler that returns `req.page(document)`, the app's layout
+Every route is a struct in the routes module, and its attribute names the handler for each method
+(`get = home`). Every page is a handler that returns `req.page(document)`, the app's layout
 with the page in it. A form with `data-patch` is submitted by the runtime, and its handler
 answers with the fragment to replace; without JavaScript the same handler returns the whole page.
 
@@ -49,33 +49,20 @@ use corten::prelude::*;
 
 #[corten::routes]
 mod url {
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home;
 
-    #[route("/greet")]
+    #[route("/greet", post = greet)]
     pub struct Greet;
-}
-
-struct Site;
-
-impl url::Handlers for Site {
-    fn home(&self) -> MethodRouter {
-        get(home)
-    }
-
-    fn greet(&self) -> MethodRouter {
-        post(greet)
-    }
 }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let routes = url::router(Site);
-    let app = App::new(routes).error_page(error_page);
+    let app = App::new(url::router()).error_page(error_page);
     corten::serve(app).await
 }
 
-async fn home(req: Req) -> corten::Result {
+async fn home(req: Req) -> HtmlResult {
     let name = GreetForm::FIELDS.name;
     req.page(html! {
         <Layout req={&req} title="Home">
@@ -94,7 +81,7 @@ struct GreetForm { name: String }
 
 /// With JavaScript the runtime swaps in the patch; without it the form posts and the whole page
 /// comes back. One handler serves both.
-async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
+async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     match req.mode {
         Mode::Action => req.patch(Greeting { name: &form.name }),
         _ => req.page(html! { <Layout req={&req} title="Home"><Greeting name={&form.name} /></Layout> }),
@@ -128,12 +115,16 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 }
 
 /// The page for a failed request, in the layout: an unknown URL, a handler's error or panic.
+/// `corten new` writes one that names every `Failure`.
 fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
-    let title = if failure.status.as_u16() == 404 { "Not found" } else { "Something went wrong" };
+    let title = if matches!(failure, Failure::NotFound) { "Not found" } else { "Something went wrong" };
     html! { <Layout req={req} title={title}><h1>{title}</h1></Layout> }
 }
 ```
 
-Handlers are plain axum handlers. `App` adds everything a production app needs around them.
+Handlers are async functions whose arguments are extractors (axum's, and Corten's `Req`,
+`Form`, `Caller`, ...) and whose return type says what the route answers: `HtmlResult` for a
+page, a patch or a redirect, `JsonResult<T>` for JSON. The routes module checks both when the
+app compiles, and `App` adds everything a production app needs around them.
 
 Next: [the app's defaults](app.md), then [views](views.md).

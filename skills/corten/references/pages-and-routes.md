@@ -7,19 +7,13 @@ use corten::prelude::*;
 
 #[corten::routes]
 pub mod url {
-    #[route("/items/{id}")]
+    #[route("/items/{id}", get = show)]
     pub struct Item<'a> {
         pub id: &'a str,
     }
 }
 
-impl url::Handlers for Site {
-    fn item(&self) -> MethodRouter {
-        get(show)
-    }
-}
-
-async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
+async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
     // Any std::error::Error converts with `?` (a 500 and the error page). For a 404:
     // .ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?
     let item = load(&id).await?;
@@ -33,14 +27,21 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
 }
 ```
 
-1. Every route is a struct in the `#[corten::routes]` module, and each needs a method in
-   `impl url::Handlers` (a missing one does not compile); `App::new(url::router(Site))`. Link
-   with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
+1. Every route is a struct in the `#[corten::routes]` module that names its handlers,
+   `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile);
+   `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
+   `#[corten::routes(state = Db)]` and `url::router(db)`. Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
    answers `req.moved(&url::Item { id })`, a 301. An area's routes are a module of their own,
-   `#[corten::routes(area = Admin)] mod admin`, mounted with
-   `.area::<admin::Admin>(|area| admin::area(area, Staff).guard(..))`. A route an API serves
-   derives `Route` itself and gets no method.
+   `#[corten::routes(area = Admin, caller = Staff)] mod admin` whose routes name their handlers
+   the same way, mounted with `.area::<admin::Admin>(admin::area)`.
+   A handler's return type is what the route answers: `HtmlResult` (a page, a patch, a
+   redirect; failures are the app's error page), `JsonResult<T>` (failures are JSON), or
+   `Public<..>` of either for an answer a CDN may share (`NoStore<..>` for one nothing may keep).
+   `Response` or `impl IntoResponse` there does not compile. `App::new` takes only a routes
+   module's `router()` (`Routes`), and `Area::route`/`Api::route` only Corten's `get(h)`,
+   `post(h)`, ... (`Methods`), which check handlers the same way: never build an axum `Router`. A route an API
+   serves is a link only: `#[route("/api", link)]`.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
    social) are the layout's props. Never build a document outside a layout component. A page
@@ -113,7 +114,7 @@ whole view model, formatted text included:
 #[derive(Serialize)]
 pub struct Home { stocks: Vec<Stock>, message: String }
 
-async fn home(req: Req, State(m): State<Market>) -> corten::Result {
+async fn home(req: Req, State(m): State<Market>) -> HtmlResult {
     let home = Home::new(&m, String::new());
     let view = home_view(&home);
     req.screen(&home, html! { <Layout req={&req} title="Watchlist" head="">{view}</Layout> })   // HTML, or {"title","data"}
@@ -122,8 +123,10 @@ async fn home(req: Req, State(m): State<Market>) -> corten::Result {
 
 ## A route with no screen
 
-Webhooks, OAuth callbacks, calls from other services and public APIs answer only JSON. Mount
-them under a prefix; their paths stay whole, so route structs still work:
+Webhooks, OAuth callbacks, calls from other services and public APIs answer only JSON: their
+handlers return `JsonResult<T>`, so every failure of the route is JSON wherever it is. Routes
+that share a prefix and its settings (a partner site's CORS) mount under it; their paths stay
+whole, so route structs still work:
 
 ```rust
 #[derive(Route)]
@@ -134,7 +137,7 @@ pub struct ApiRoot;
 #[route("/api/items/{id}/price")]
 pub struct PriceApi<'a> { pub id: &'a str }
 
-async fn price(Path(id): Path<String>) -> corten::Result<Json<Price>> {
+async fn price(Path(id): Path<String>) -> JsonResult<Price> {
     let price = load(&id).await?.ok_or_else(|| Error::new(format!("no item {id}")).with_status(StatusCode::NOT_FOUND))?;
     Ok(Json(price))
 }
@@ -144,7 +147,8 @@ App::new(pages)
 ```
 
 The prefix and every route are route types, so a route outside the prefix does not compile.
-A handler that takes `State` gets it on its method router: `get(price).with_state(db)`.
+A handler that takes `State` gets it on its `Methods`: `get(price).with_state(db)` (`get` is
+Corten's, from the prelude, and checks the handler as a routes module does).
 
 `Json` is the prelude's `corten::Json`: axum's extractor, and a response written in one buffer
 (faster than `axum::Json`; keep the prelude's unless a crate hands you axum's). The response type
@@ -152,35 +156,62 @@ derives `ToJson` next to `Serialize` (`#[derive(Serialize, ToJson)] struct Price
 same `#[serde(...)]` attributes, and one it cannot write as serde does is a compile error.
 Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
 a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
-is no document and no `App::context` (add `.context()` to the API's chain if it serves your own
-signed-in users). Do not add an API route for a screen: a native client reads the page with
+is no document; a handler that needs to know who calls takes a `Caller` (an API key's partner
+type), and a refusal is a JSON 401 or 403. Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
 
 ## Routes only some callers may use
 
-Put the routes in an area with a guard instead of checking in each handler; Corten answers in
-each request mode (303 to sign in, `corten-location` for a patch, JSON 401 for data and API
-routes, the error page for a refusal), and a refused request never reaches the handler:
+A handler that needs to know who is asking takes `Caller<T>`; `T`'s `Identify` finds the caller
+(the session store, an API key) or refuses, and Corten answers in each request mode (303 to sign
+in, `corten-location` for a patch, JSON 401 for data and JSON routes, the error page for a
+refusal). The lookup runs only when a handler reads it, once per request, and makes the answer
+private:
 
 ```rust
-App::new(routes)
-    .context(|headers| viewer_from(headers))   // first: the app becomes an App<Viewer>
-    .area::<Admin>(|admin| {
-        admin.route::<Admin>(get(dashboard)).route::<AdminUser>(get(user).post(save_user)).guard(|viewer, req| match viewer {
-            None => Access::sign_in(&SignIn),
-            Some(v) if v.can(Permission::View) && (!req.writes() || v.can(Permission::Edit)) => Access::ALLOW,
-            Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
-        })
-    })
+#[derive(Clone, Hash)]
+pub struct Staff { pub id: u64, pub editor: bool }
+
+impl Identify<Db> for Staff {
+    async fn identify(parts: &Parts, db: &Db) -> Result<Self, Refused> {
+        let Some(session) = cookie::get(&parts.headers, "session") else {
+            return Err(Refused::sign_in(&url::SignIn { next: Some(parts.uri.path()) }));
+        };
+        match db.staff_for(session).await {
+            Ok(Some(staff)) => Ok(staff),
+            Ok(None) => Err(Refused::forbidden()),
+            Err(error) => Err(Refused::unavailable(error)),   // the store is down: a 503, not sign-in
+        }
+    }
+}
+
+#[corten::routes(state = Db, area = Admin, caller = Staff)]
+mod admin {
+    #[route("/admin", get = dashboard)]
+    pub struct Admin;
+
+    #[route("/admin/users/{id}", get = user, post = save_user)]
+    pub struct AdminUser<'a> { pub id: &'a str }
+}
+
+async fn save_user(req: Req, Caller(staff): Caller<Staff>, Form(input): Form<UserInput>) -> HtmlResult {
+    if !staff.editor {
+        return Err(Error::status(StatusCode::FORBIDDEN));
+    }
+    ..
+}
+
+App::new(url::router(db.clone())).area::<admin::Admin>(|area| admin::area(area, db))
 ```
 
-The area's prefix (`Admin`, a plain path, no parameters) and each of its routes are route types:
-a route outside the prefix, or a prefix with a parameter, does not build. The guard reads the
-context's fields without naming its type. A prefix covers whole segments. `req.writes()` is every method but GET, HEAD and OPTIONS, so reads and writes at one
-URL get different rules; `req.is::<Export>()` names one route. `App::guard(|viewer, req| ..)`
-guards the whole app; open the sign-in page and webhooks with `.unguarded::<SignIn>()`. An API
-takes `.guard(..)` in its chain. A check that needs the record (only its author may edit it)
-stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
+`caller = Staff` holds every handler in the module to taking `Caller<Staff>`: one added later
+without it does not compile. The area's prefix (`Admin`, a plain path, no parameters) and each
+of its routes are route types: a route outside the prefix, or a prefix with a parameter, does
+not build. A page that shows something either way (a layout's "Sign in") takes
+`Option<Caller<Viewer>>`. Reads and writes at one URL are separate handlers (`get = show,
+post = save`), so each takes what it needs. A private app puts `caller = Staff` on its routes
+module and the sign-in route in a module without it. A check that needs the record (only its
+author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
 
 ## Data from another service
 
@@ -207,17 +238,18 @@ Convert those into the view model once, where the data is loaded, so views read 
 
 Everything the app renders is `private, no-cache` unless the handler says otherwise; static
 files and the runtime are cached forever by their versioned URLs. A page or JSON that is the same
-for every visitor may be shared by a CDN:
+for every visitor says so in its type, and a CDN may share it:
 
 ```rust
-async fn home(req: Req) -> corten::Result<(Cache, Response)> {
-    let cache = Cache::public(Duration::from_secs(60)).stale_while_revalidate(Duration::from_secs(600));
-    Ok((cache, req.page(html! { <Layout req={&req} title="Home" head="">{view}</Layout> })?))
+async fn home(req: Req) -> Public<HtmlResult> {
+    let page = req.page(html! { <Layout req={&req} title="Home" head="">{view}</Layout> });
+    Public::new(Duration::from_secs(60), page).stale_while_revalidate(Duration::from_secs(600))
 }
 ```
 
-`App` still sends it `private, no-cache` when the request has a cookie or `Authorization`, the
-context found someone, the response sets a cookie or the layout took `req.nonce()`; a client
-navigation or a data request gets `private` with the same lifetime. It cannot see a cookie your
-own extractor reads, so never mark such a handler public. `Cache::no_store()` is for one-time
+Its handler may only take inputs that cannot tell who is asking (`Path`, `Query`, `Form`,
+`State`, `Req`, ...): a `Caller`, a `HeaderMap` or a cookie there does not compile. `App` still
+sends it `private, no-cache` when the request has a cookie or `Authorization`, the response sets
+a cookie or the layout took `req.nonce()`; a client navigation or a data request gets `private`
+with the same lifetime. Only a success or a redirect is shared. `NoStore<HtmlResult>` is for one-time
 secrets. Do not build a server-side page cache: cache the data the page reads instead.

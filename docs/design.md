@@ -89,8 +89,9 @@ framework's shape, and what it does not do yet.
    for routes that answer only JSON), which owns its routes. Its prefix and its routes are route
    types (`.area::<Admin>(|admin| admin.route::<AdminUser>(..))`), so a route outside the prefix
    does not compile. A new setting that applies to a prefix goes on `Area` or `Api`, never on
-   `App` as a method taking a prefix string; one that reads who is asking takes the context type
-   from `App<C>`, so a mismatch does not compile. Before adding to `App`, check whether the
+   `App` as a method taking a prefix string. Who is asking is not a setting: a handler takes
+   `Caller<T>`, and an area's routes module says `caller = T`, so a handler there that does not
+   take it does not compile. Before adding to `App`, check whether the
    setting belongs on one of those, and whether the builder still reads as one list of settings
    with one way to give each; reorganize it when it does not, rather than add a second way.
 8. A mistake the compiler can see is a compile error, with a `compile_fail` doctest: a type, a
@@ -144,12 +145,20 @@ framework's shape, and what it does not do yet.
     Its names in the page are prefixed (`ui.combo_box.js`, `data-scope="ui-combo-box"`) through
     `[package.metadata.corten] scripts = "ui"`, so an app's own components never collide with
     them. Two of an app's own scripts with one file name are a startup error that names both.
-11. A guard (`App::guard` for the whole app, `Area::guard` and `Api::guard` for a prefix) covers
-    a URL prefix, not a route list: a route is opened with `App::unguarded`, not left out of a
-    list, so one added later is covered. A guard sees the context, the URI and whether the
-    request writes, not the record a route loads, so a check that depends on the record (the
+11. Who may use a route is in its handler's type: it takes `Caller<T>`, whose `Identify` finds
+    the caller or refuses (sign in, 401, 403, 503), and a routes module's `caller = T` holds
+    every handler in it to that, checked at compile time, so a route added later is covered.
+    The lookup runs only when a handler or middleware reads it, once per request, and reading
+    it makes the answer private. A route's answer type says how it fails (`HtmlResult`: the
+    error page; `JsonResult<T>`: JSON) and whether a shared cache may keep it (`Public<..>`,
+    whose handler may only take `Anonymous` inputs). A check that depends on the record (the
     author, the organization) stays in its handler. That an area's or an API's routes are
     under its prefix is a `const` assertion, which the compiler evaluates when it builds the
-    app (`cargo build`, `cargo test`, `corten check`), not under `cargo check` alone. Routes
-    given to `App::new` are a plain axum `Router`, which no check sees into: one under an
-    area's prefix still gets its guard and stylesheet, which follow the path.
+    app (`cargo build`, `cargo test`, `corten check`), not under `cargo check` alone. Every
+    route reaches the app through these checks: `App::new` takes the `Routes` a
+    `#[corten::routes]` module makes, and `Area::route` and `Api::route` take `Methods`, made
+    by Corten's `get`, `post` and the others, which check the same things. A plain axum
+    `Router` or method router does not fit any of them, so there is no unchecked way in.
+12. A request goes through fixed stages in one order (`corten::middleware`); the app's own
+    steps are a `Middleware` tuple at one place in it, resolved at compile time, not hooks at
+    several.

@@ -36,7 +36,7 @@ backend.
    with an offline fallback page; the item-page smoke test checks both in Chromium.
 6. JSON-only routes (`App::api`): endpoints with no screen (webhooks, OAuth callbacks, calls
    between services, public APIs, the MCP endpoint) under a prefix where every failure is JSON
-   and there is no document, nonce or context. `examples/item-page` mounts its MCP endpoint this
+   and there is no document or nonce. `examples/item-page` mounts its MCP endpoint this
    way, and lets agents' pages on `AGENT_ORIGINS` call it from the browser.
 
 ## Native apps (next, not built)
@@ -96,8 +96,8 @@ Not checked: `data-*` attributes a script reads through `dataset` (strings on bo
 the value as a handler argument instead), that a ref inside an `if` is present when a handler
 runs (the call throws when it is not; the type says it is always there), the parameter type of a
 handler that takes a typed event (`@param {RowToggled} event` is checked by `tsc`, not at the
-call), that a handler is mounted at every route struct's `PATH` (the
-router's tests cover that), that every component a page renders is listed in
+call), that a route marked `link` in a routes module (or a plain `#[derive(Route)]` struct) is
+served by the API or area that should serve it (the app's tests cover that), that every component a page renders is listed in
 `App::components`, or in an area (`Area::components`) the page is under (checked at run time, only under
 `corten dev` in debug builds: the page fails and names it), that a CSS custom property a stylesheet reads exists (a misspelled `var()` falls
 back silently), and logic a script repeats from Rust (the listing sort rule in the item page).
@@ -130,13 +130,13 @@ library. Measured against a production marketplace app:
 | Need | Owner | Why |
 |---|---|---|
 | Pages, patches, handlers, feeds across instances, CSP and CSRF, assets, head tags, PWA, catalog, sitemap, health, shutdown, agent tools | Framework | Built and tested earlier. |
-| Layout data on client navigation | Framework: `App::context`, page key, `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the layout went stale. It reloads when the context or deploy changes and keeps `aria-current` right. |
+| Layout data on client navigation | Framework: page key (from the `Caller` a handler read), `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the layout went stale. It reloads when the caller or deploy changes and keeps `aria-current` right. |
 | Which nav items show for which roles | App | Roles and permissions are the app's model; the layout component decides. |
-| Which routes need sign-in or a permission | Framework: `Area::guard`, `App::guard`, `Api::guard`; the decision is the app's | The answer has to come out right in each request mode (a redirect, `corten-location`, a JSON 401, the error page) and before the handler reads the body, which only the framework sees. Who passes is the app's model, read from its context. |
+| Which routes need sign-in or a permission | Framework: `Caller<T>` and `Identify`, `caller = T` on a routes module; the decision is the app's | The answer has to come out right in each request mode (a redirect, `corten-location`, a JSON 401, the error page) and before the handler reads the body, and a route that forgets it should not compile, which only the framework can check. Who passes is the app's model, in its `Identify`. |
 | Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
-| Routes with no screen (webhooks, public APIs) | Framework: `App::api` | The framework's error pages, nonce and context assume a browser asking for a page; only the framework can switch them off for a prefix and answer every failure as JSON instead. |
-| HTTP caching of pages and JSON | Framework: `Cache`, `private, no-cache` by default | Only the framework sees everything that makes a response personal (the context, the request's credentials, the mode, the nonce, a cookie set), so only it can refuse to mark such a response shareable. What to cache on the server (data, queries) is the app's, since only the app knows when its data changes. |
-| Cross-origin calls to those routes (CORS) | Framework: `Api::allow_origin` | The framework's same-origin check refuses cross-site writes, so it is the only layer that can let one site's calls through for some routes while the pages keep refusing them. Anything beyond one allowed site and its preflight is `tower-http`'s CORS layer on the app's routes. |
+| Routes with no screen (webhooks, public APIs) | Framework: `JsonResult<T>`, `App::api` | The framework's error pages and nonce assume a browser asking for a page; only the framework can switch them off for a prefix and answer every failure as JSON instead. |
+| HTTP caching of pages and JSON | Framework: `Public<..>`, `private, no-cache` by default | Only the framework sees everything that makes a response personal (a caller read, the request's credentials, the mode, the nonce, a cookie set), so only it can refuse to mark such a response shareable. What to cache on the server (data, queries) is the app's, since only the app knows when its data changes. |
+| Cross-origin calls to those routes (CORS) | Framework: `Api::allow_origin` | The framework's same-origin check refuses cross-site writes, so it is the only layer that can let one site's calls through for some routes while the pages keep refusing them. Anything beyond one allowed site and its preflight is `tower-http`'s CORS layer around the app (`app.router().layer(..)`). |
 | Types across the server/browser seam | Framework: `corten::types` (TypeScript from the Rust types), `#[component(js)]` handler calls checked against JSDoc, `#[event]`, `subscribe<Row>`, `#[derive(Fields)]` | The framework defines the seams (handler calls, events, feeds, form posts, tools), so it is the only layer that can type both ends. |
 | Response compression | Framework: `corten::compress` | The framework serves the runtime and assets and knows they never change (compress once, best level) and that pages are generated per request (fastest level that pays). A generic layer re-compresses static files on every request at a level tuned for neither. |
 | Validation rules and messages | App | Domain rules; messages come from the app's catalog. |
@@ -153,11 +153,11 @@ library. Measured against a production marketplace app:
 | Design tokens to Swift and Kotlin | Build tooling | Same JSON, other languages; a build step per platform, not part of the server. |
 | A component library (buttons, dialogs, menus) | App or a library crate | Look and domain vary per product. The framework gives the parts (scoped CSS, handlers, `COMPONENTS` lists); it ships no widgets. |
 | Behavior of widgets the browser lacks (number field, combobox, tabs, menu button) | `corten-ui`, a separate crate in this repo | Focus, keys and ARIA are the same in every product and hard to get right, so each app should not write them; but they are optional, change faster than the core and add client code. So they live outside `corten` (not re-exported, depends only on `corten`), headless (no CSS: the design system styles them by role and ARIA state), and each one is removed when the platform's own element is good enough. Dialogs, popovers, accordions, selects, switches and sliders are already the platform's. |
-| Sessions and authentication | App | Only cookie helpers and the context hook are provided. |
+| Sessions and authentication | App | Only cookie helpers and `Identify` (how a `Caller` is found) are provided. |
 
 ## Open decisions
 
 1. Native navigation: Turbo Drive in shell pages versus a Turbo-compatible adapter in `corten.js`.
 2. Auth across surfaces: session cookies for web and native shells, tokens for native screens
-   and agents. Whatever is chosen, the app turns it into the context (`App::context`) that
-   layouts, guards (`Area::guard`, one permission check per prefix) and handlers read.
+   and agents. Whatever is chosen, the app turns it into a caller type (`Identify`) that
+   handlers take as `Caller<T>`, one type per kind of caller.

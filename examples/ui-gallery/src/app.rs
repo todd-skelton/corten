@@ -15,37 +15,30 @@ use corten_ui::Toast;
 
 use crate::gallery::{COLORS, Gallery, MenuResult, OrderResult, RenameDialog, TABS};
 
+/// Every URL the gallery serves and links to, with the handlers that serve it.
+#[corten::routes]
 pub mod url {
-    use corten::Route;
-
-    #[derive(Route)]
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home<'a> {
         pub tab: Option<&'a str>,
     }
 
-    #[derive(Route)]
-    #[route("/order")]
+    #[route("/order", post = order)]
     pub struct Order;
 
-    #[derive(Route)]
-    #[route("/help")]
+    #[route("/help", get = help)]
     pub struct Help;
 
-    #[derive(Route)]
-    #[route("/archive")]
+    #[route("/archive", post = archive)]
     pub struct Archive;
 
-    #[derive(Route)]
-    #[route("/watch")]
+    #[route("/watch", post = watch)]
     pub struct Watch;
 
-    #[derive(Route)]
-    #[route("/save")]
+    #[route("/save", post = save)]
     pub struct Save;
 
-    #[derive(Route)]
-    #[route("/rename")]
+    #[route("/rename", post = rename)]
     pub struct Rename;
 }
 
@@ -53,15 +46,7 @@ pub mod url {
 pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery];
 
 pub fn app() -> App {
-    let routes = Router::new()
-        .route(url::Home::PATH, get(home))
-        .route(url::Order::PATH, post(order))
-        .route(url::Help::PATH, get(help))
-        .route(url::Archive::PATH, post(|req: Req| menu_action(req, "Archived.")))
-        .route(url::Watch::PATH, post(|req: Req| menu_action(req, "Watching.")))
-        .route(url::Save::PATH, post(save))
-        .route(url::Rename::PATH, post(rename));
-    App::new(routes).components(COMPONENTS).components(corten_ui::COMPONENTS)
+    App::new(url::router()).components(COMPONENTS).components(corten_ui::COMPONENTS)
 }
 
 /// The document around every page.
@@ -85,7 +70,7 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 }
 
 /// The gallery in the layout.
-fn gallery(req: &Req, gallery: Gallery<'_>) -> corten::Result {
+fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
     req.page(Layout { req, title: TITLE, children: gallery })
 }
 
@@ -96,7 +81,7 @@ struct HomeQuery {
 
 const TITLE: &str = "corten-ui";
 
-async fn home(req: Req, Query(q): Query<HomeQuery>) -> corten::Result {
+async fn home(req: Req, Query(q): Query<HomeQuery>) -> HtmlResult {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
     gallery(&req, Gallery { tab, result: "", toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } })
 }
@@ -108,7 +93,7 @@ pub struct OrderForm {
     pub color: String,
 }
 
-async fn order(req: Req, Form(form): Form<OrderForm>) -> corten::Result {
+async fn order(req: Req, Form(form): Form<OrderForm>) -> HtmlResult {
     let color = COLORS.iter().find(|c| c.value == form.color).map_or("no color", |c| c.label);
     let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
     match req.mode {
@@ -121,7 +106,7 @@ async fn order(req: Req, Form(form): Form<OrderForm>) -> corten::Result {
 }
 
 /// Answers with a toast: the message as a patch, or in the page without JavaScript.
-async fn save(req: Req) -> corten::Result {
+async fn save(req: Req) -> HtmlResult {
     const SAVED: &str = "Draft saved.";
     match req.mode {
         Mode::Action => req.patch(Toast { message: Some(&SAVED) }),
@@ -139,7 +124,7 @@ pub struct RenameForm {
 
 /// A name is required: refused, the dialog comes back drawn open with the error, as a patch or in
 /// the whole page.
-async fn rename(req: Req, Form(form): Form<RenameForm>) -> corten::Result {
+async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
     let name = form.name.trim();
     if !name.is_empty() {
         return req.redirect(&url::Home { tab: None });
@@ -151,14 +136,22 @@ async fn rename(req: Req, Form(form): Form<RenameForm>) -> corten::Result {
     req.invalid(&errors, RenameDialog { name, errors: &errors }, page).await
 }
 
-async fn menu_action(req: Req, text: &'static str) -> corten::Result {
+async fn archive(req: Req) -> HtmlResult {
+    menu_action(req, "Archived.")
+}
+
+async fn watch(req: Req) -> HtmlResult {
+    menu_action(req, "Watching.")
+}
+
+fn menu_action(req: Req, text: &'static str) -> HtmlResult {
     match req.mode {
         Mode::Action => req.patch(MenuResult { text }),
         _ => req.redirect(&url::Home { tab: None }),
     }
 }
 
-async fn help(req: Req) -> corten::Result {
+async fn help(req: Req) -> HtmlResult {
     req.page(html! {
         <Layout req={&req} title="Help | corten-ui">
             <h1>"Help"</h1>

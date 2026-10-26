@@ -19,7 +19,7 @@
 //! async fn archive(Form(form): Form<Archive>) -> String {
 //!     format!("{} items, notify: {}", form.ids.len(), form.notify)
 //! }
-//! # let _: Router = Router::new().route("/archive", post(archive));
+//! # let _: Methods = post(archive);
 //! ```
 //!
 //! A browser leaves out a checkbox nobody checked and a list with nothing selected, so a `bool`

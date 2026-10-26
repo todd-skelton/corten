@@ -1,7 +1,6 @@
 //! Pages and patches: what a handler returns and how it reaches each kind of client.
 
 use std::{
-    any::Any,
     cell::Cell,
     convert::Infallible,
     future::Future,
@@ -20,6 +19,7 @@ use axum::{
 };
 
 use crate::{
+    answer::{HtmlResponse, HtmlResult},
     app::Next,
     assets::Assets,
     security::NonceSlot,
@@ -80,50 +80,101 @@ pub(crate) fn is_current_for_tests(path: &str, href: &str, section: bool) -> boo
     is_current(path, href, section)
 }
 
-/// The context for this request, taken from the request extensions when the request arrives.
-pub(crate) struct Captured {
-    /// The shell key, printed as 16 hex digits.
-    key: u64,
-    context: Option<Box<dyn Any + Send + Sync>>,
+/// The page's key, printed as 16 hex digits.
+fn key_header(key: u64) -> HeaderValue {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut text = [0u8; 16];
+    for (i, digit) in text.iter_mut().enumerate() {
+        *digit = HEX[(key >> (60 - 4 * i) & 15) as usize];
+    }
+    HeaderValue::from_bytes(&text).expect("hex is a valid header")
 }
 
-impl Captured {
-    fn key(&self) -> HeaderValue {
-        const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut text = [0u8; 16];
-        for (i, digit) in text.iter_mut().enumerate() {
-            *digit = HEX[(self.key >> (60 - 4 * i) & 15) as usize];
+/// Every way a request can fail, given to the app's error page ([`crate::App::error_page`]) for a
+/// browser. A JSON route's failures, and a data client's, are JSON instead. A page that matches
+/// each variant without `_` does not compile when Corten adds one, so it cannot miss it.
+#[derive(Clone, Debug)]
+pub enum Failure {
+    /// Nothing is at this URL (404): no route has it, or its handler returned
+    /// `Error::status(StatusCode::NOT_FOUND)` (the error is logged).
+    NotFound,
+    /// A route has this URL but not this method (405; the `Allow` header is kept).
+    WrongMethod,
+    /// A write another site sent (403), refused before anything else ran.
+    CrossSite,
+    /// The handler needs a [`crate::Caller`] the request does not have, or one who may not do
+    /// this, and there is nowhere to sign in: 401 or 403 ([`crate::Refused`]).
+    Refused { status: StatusCode },
+    /// The path, the query or the body did not parse (400, 415 or 422). The detail is the
+    /// extractor's text, written for a developer.
+    Rejected { status: StatusCode, detail: Option<Arc<str>> },
+    /// The handler returned an [`Error`]: 500, or the status [`Error::status`] gave (a 404 is
+    /// [`Failure::NotFound`]).
+    Failed { status: StatusCode, detail: Option<Arc<str>> },
+    /// The handler panicked (500).
+    Panicked { detail: Option<Arc<str>> },
+    /// The handler ran past the deadline ([`crate::App::deadline`], 503).
+    TimedOut,
+    /// The PWA's offline page, which the service worker shows when the network is down (sent
+    /// with 200 so the worker keeps it).
+    Offline,
+}
+
+impl Failure {
+    /// The status the error page is sent with (the offline page's is 200).
+    pub fn status(&self) -> StatusCode {
+        match self {
+            Failure::NotFound => StatusCode::NOT_FOUND,
+            Failure::WrongMethod => StatusCode::METHOD_NOT_ALLOWED,
+            Failure::CrossSite => StatusCode::FORBIDDEN,
+            Failure::Refused { status } | Failure::Rejected { status, .. } | Failure::Failed { status, .. } => *status,
+            Failure::Panicked { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Failure::TimedOut => StatusCode::SERVICE_UNAVAILABLE,
+            Failure::Offline => StatusCode::OK,
         }
-        HeaderValue::from_bytes(&text).expect("hex is a valid header")
+    }
+
+    /// What went wrong, for the developer: set under `corten dev` only, and logged instead in
+    /// production.
+    pub fn detail(&self) -> Option<&str> {
+        match self {
+            Failure::Rejected { detail, .. } | Failure::Failed { detail, .. } | Failure::Panicked { detail } => detail.as_deref(),
+            _ => None,
+        }
+    }
+
+    fn without_detail(self) -> Self {
+        match self {
+            Failure::Rejected { status, .. } => Failure::Rejected { status, detail: None },
+            Failure::Failed { status, .. } => Failure::Failed { status, detail: None },
+            Failure::Panicked { .. } => Failure::Panicked { detail: None },
+            other => other,
+        }
     }
 }
 
-/// Copies the app's context (`App::context`) out of the request with its hash, which goes into
-/// the key that tells the runtime whether the page around `<main>` is still current.
-pub(crate) type CaptureContext = dyn Fn(&Extensions) -> Option<(u64, Box<dyn Any + Send + Sync>)> + Send + Sync;
-
-/// A failed request, given to the app's error page ([`crate::App::error_page`]).
-#[derive(Clone, Debug)]
-pub struct Failure {
-    /// What went wrong: 404 for an unknown URL, 405 for a wrong method, 422 for input that did not
-    /// parse, 503 past the deadline or offline (the PWA's offline page), 500 for a handler's error
-    /// or panic, or the status a handler's [`Error::status`] gave.
-    pub status: StatusCode,
-    /// The error itself, under `corten dev` only, for the page to show the developer. Never set
-    /// in production, where it is logged instead.
-    pub detail: Option<Arc<str>>,
+/// Why a failed response failed, when its status and body do not say: set by the stage that
+/// answered it, read when the error page is chosen.
+#[derive(Clone, Copy)]
+pub(crate) enum Cause {
+    Panicked,
+    TimedOut,
+    Refused,
 }
 
 /// The error page of an app that gives none ([`crate::App::error_page`]): a plain document. An app
 /// made by `corten new` has its own, in its layout. Every error page is sent with
 /// `X-Robots-Tag: noindex`.
 pub(crate) fn default_error_page(req: &Req, failure: Failure) -> impl crate::view::Document + '_ {
-    let (title, text) = match failure.status {
-        StatusCode::NOT_FOUND => ("Not found", "There is nothing at this address."),
-        StatusCode::FORBIDDEN => ("Not allowed", "You do not have access to this page."),
-        StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
-        StatusCode::SERVICE_UNAVAILABLE => ("Not available", "Check your connection and try again."),
-        _ => ("Something went wrong", "Please try again."),
+    let (title, text) = match failure {
+        Failure::NotFound => ("Not found", "There is nothing at this address."),
+        Failure::CrossSite => ("Not allowed", "This request came from another site."),
+        Failure::Refused { status } if status == StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
+        Failure::Refused { .. } => ("Not allowed", "You do not have access to this page."),
+        Failure::TimedOut | Failure::Offline => ("Not available", "Check your connection and try again."),
+        Failure::WrongMethod | Failure::Rejected { .. } | Failure::Failed { .. } | Failure::Panicked { .. } => {
+            ("Something went wrong", "Please try again.")
+        }
     };
     html! {
         <!DOCTYPE html>
@@ -138,7 +189,7 @@ pub(crate) fn default_error_page(req: &Req, failure: Failure) -> impl crate::vie
                 <main>
                     <h1>{title}</h1>
                     <p>{text}</p>
-                    if let Some(detail) = &failure.detail {
+                    if let Some(detail) = failure.detail() {
                         <pre>{detail}</pre>
                     }
                 </main>
@@ -170,9 +221,9 @@ where
     F: for<'a> ErrorPageFn<'a> + Send + Sync + 'static,
 {
     Box::new(move |req: &Req, failure: Failure| {
-        let status = failure.status;
+        let status = failure.status();
         let mut res = match req.page_with_status(status, page(req, failure)) {
-            Ok(res) => res,
+            Ok(HtmlResponse(res)) => res,
             Err(error) => {
                 // The error page itself failed (under `corten dev`, a component the app does not
                 // list): plain text, so a broken error page cannot fail again.
@@ -186,10 +237,9 @@ where
     })
 }
 
-/// Everything a request needs from the app: the error page, where scripts live, the context.
+/// Everything a request needs from the app: the error page, where scripts live.
 pub(crate) struct Shared {
     pub error_page: Box<ErrorPage>,
-    pub capture: Box<CaptureContext>,
     pub assets: Option<Arc<Assets>>,
     pub scripts_dir: String,
     /// The import map's JSON: the runtime, the app's typed events and views.
@@ -215,12 +265,7 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
-    pub(crate) fn new(
-        error_page: Box<ErrorPage>,
-        capture: Box<CaptureContext>,
-        assets: Option<Arc<Assets>>,
-        head_extra: String,
-    ) -> Self {
+    pub(crate) fn new(error_page: Box<ErrorPage>, assets: Option<Arc<Assets>>, head_extra: String) -> Self {
         let scripts_dir = assets.as_ref().map_or_else(|| "/assets/scripts/".to_string(), |a| a.scripts_dir().to_string());
         let import_map = crate::import_map(
             assets.as_ref().and_then(|a| a.events()).as_deref(),
@@ -233,7 +278,6 @@ impl Shared {
         head_extra.hash(&mut hasher);
         Shared {
             error_page,
-            capture,
             assets,
             scripts_dir,
             import_map,
@@ -251,7 +295,7 @@ impl Shared {
 
 /// Used by handlers that run without an [`crate::App`] (unit tests of a bare router).
 static DEFAULT: LazyLock<Arc<Shared>> =
-    LazyLock::new(|| Arc::new(Shared::new(error_page_fn(default_error_page), Box::new(|_| None), None, String::new())));
+    LazyLock::new(|| Arc::new(Shared::new(error_page_fn(default_error_page), None, String::new())));
 
 /// The request as a handler answers it: which [`Mode`] the client asked in, and the methods
 /// that build each kind of response. Every handler that returns HTML takes one.
@@ -261,7 +305,6 @@ pub struct Req {
     uri: Uri,
     accept_language: Option<HeaderValue>,
     shared: Arc<Shared>,
-    captured: Captured,
     signal: crate::Signal,
 }
 
@@ -275,34 +318,27 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
 }
 
 impl Req {
-    /// Nothing here allocates unless the app has a context (which is copied).
     pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>) -> Self {
-        let (hash, context) = match (shared.capture)(extensions) {
-            Some((hash, context)) => (hash, Some(context)),
-            None => (0, None),
-        };
-        let key = shared.key_base ^ hash.rotate_left(1);
         Req {
             mode: mode_of(headers),
             nonce: extensions.get::<NonceSlot>().cloned(),
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
             shared,
-            captured: Captured { key, context },
             signal: extensions.get::<crate::Signal>().cloned().unwrap_or_default(),
         }
+    }
+
+    /// The key of the page around `<main>`: the app's versions and who it is for (the callers
+    /// the request read), read when the page renders, after the handler's extractors ran.
+    fn key(&self) -> u64 {
+        self.shared.key_base ^ self.signal.callers().rotate_left(1)
     }
 
     /// When the work for this request should stop, and why: the server's `request.signal`. See
     /// [`crate::Signal`]; work the handler awaits stops without it.
     pub fn signal(&self) -> &crate::Signal {
         &self.signal
-    }
-
-    /// The app's context for this request ([`crate::App::context`]), if it found one:
-    /// `req.context::<Viewer>()`.
-    pub fn context<C: 'static>(&self) -> Option<&C> {
-        self.captured.context.as_ref()?.downcast_ref()
     }
 
     /// The request path.
@@ -332,12 +368,12 @@ impl Req {
     /// (`html! { <Layout req={req} title="About">..</Layout> }`). A browser gets all of it; a
     /// client navigation gets the title, the page's head tags and `<main>`'s children, and the rest
     /// of the layout does not run.
-    pub fn page(&self, doc: impl Document) -> Result {
+    pub fn page(&self, doc: impl Document) -> HtmlResult {
         self.page_with_status(StatusCode::OK, doc)
     }
 
     /// [`Req::page`] with another status.
-    pub fn page_with_status(&self, status: StatusCode, doc: impl Document) -> Result {
+    pub fn page_with_status(&self, status: StatusCode, doc: impl Document) -> HtmlResult {
         // The last size of each part, so the buffer is allocated once.
         static FULL: AtomicUsize = AtomicUsize::new(16 * 1024);
         static SWAP: AtomicUsize = AtomicUsize::new(16 * 1024);
@@ -362,7 +398,7 @@ impl Req {
         size.store(out.len() + out.len() / 8, Ordering::Relaxed);
         // Only a swap says it is one: a document a cache gave to a navigation fetch by mistake
         // makes the runtime load the URL in full.
-        Ok(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER))))
+        Ok(HtmlResponse(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)))))
     }
 
     /// The versioned URL of a static file: `req.asset("style.css")`. A missing file is a bug: it
@@ -475,7 +511,7 @@ impl Req {
 
     /// Adds the shell key, which tells the runtime whether the page around `<main>` is still current.
     fn finish(&self, mut res: Response) -> Response {
-        res.headers_mut().insert(SHELL_HEADER, self.captured.key());
+        res.headers_mut().insert(SHELL_HEADER, key_header(self.key()));
         res.headers_mut().insert(header::VARY, self.vary());
         res
     }
@@ -492,7 +528,7 @@ impl Req {
         let _ = write!(
             out,
             r#"<meta name="corten-scripts" content="{dir}"><meta name="corten-shell" content="{:016x}">"#,
-            self.captured.key
+            self.key()
         );
         out.push_str(&self.shared.head_extra);
         self.section_links(out);
@@ -523,7 +559,7 @@ impl Req {
     /// document's `<title>`. `data` is the screen's view model, so a native screen or an agent sees
     /// exactly what the view shows; for it, only the document's `<title>` renders.
     #[cfg(feature = "json")]
-    pub fn screen<T: crate::json::ToJson + ?Sized>(&self, data: &T, doc: impl Document) -> Result {
+    pub fn screen<T: crate::json::ToJson + ?Sized>(&self, data: &T, doc: impl Document) -> HtmlResult {
         self.screen_with_status(StatusCode::OK, data, doc)
     }
 
@@ -533,7 +569,7 @@ impl Req {
         status: StatusCode,
         data: &T,
         doc: impl Document,
-    ) -> Result {
+    ) -> HtmlResult {
         if self.mode != Mode::Data {
             return self.page_with_status(status, doc);
         }
@@ -548,22 +584,22 @@ impl Req {
         data.write_json(&mut body);
         body.push(b'}');
         let headers = [(header::CONTENT_TYPE, HeaderValue::from_static("application/json")), (header::VARY, self.vary())];
-        Ok((status, headers, body).into_response())
+        Ok(HtmlResponse((status, headers, body).into_response()))
     }
 
     /// Answers a `<form data-patch>` submit with fragments: the runtime replaces each element on
     /// the page that has the id of one of `view`'s top-level elements. One without an id would
     /// be dropped in the browser, so `view` is a [`Patch`](crate::view::Patch), which the compiler
     /// checks: usually a component declared `-> impl Patch` whose root has a `#[derive(Id)]` id.
-    pub fn patch(&self, view: impl crate::view::Patch) -> Result {
+    pub fn patch(&self, view: impl crate::view::Patch) -> HtmlResult {
         self.patch_with_status(StatusCode::OK, view)
     }
 
     /// Same as [`Req::patch`] with another status.
-    pub fn patch_with_status(&self, status: StatusCode, view: impl crate::view::Patch) -> Result {
+    pub fn patch_with_status(&self, status: StatusCode, view: impl crate::view::Patch) -> HtmlResult {
         let mut body = String::new();
         self.render_into(view, &mut body)?;
-        Ok(html_response(status, body, Some(PATCH_HEADER)))
+        Ok(HtmlResponse(html_response(status, body, Some(PATCH_HEADER))))
     }
 
     /// Answers a submit whose input failed validation, with 422 Unprocessable Content:
@@ -575,16 +611,16 @@ impl Req {
     /// - Otherwise (no JavaScript): `page()`, usually `req.page(..)` for the whole page with the
     ///   form showing the errors; a success status becomes 422. It is only called here, so an
     ///   action never loads data for a page it does not send.
-    pub async fn invalid<F, Fut>(&self, errors: &crate::Errors, form: impl crate::view::Patch, page: F) -> Result
+    pub async fn invalid<F, Fut>(&self, errors: &crate::Errors, form: impl crate::view::Patch, page: F) -> HtmlResult
     where
         F: FnOnce() -> Fut,
-        Fut: Future<Output = Result>,
+        Fut: Future<Output = HtmlResult>,
     {
         let status = StatusCode::UNPROCESSABLE_ENTITY;
         match self.mode {
             Mode::Action => self.patch_with_status(status, form),
             #[cfg(feature = "json")]
-            Mode::Data => Ok(errors.response()),
+            Mode::Data => Ok(HtmlResponse(errors.response())),
             _ => {
                 let _ = errors;
                 let mut res = page().await?;
@@ -598,9 +634,9 @@ impl Req {
 
     /// After a successful write, send the browser to `to` (post/redirect/get): a typed route, or
     /// an `axum::http::Uri` to leave the app. Works with and without JavaScript.
-    pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> Result {
+    pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
-        Ok(redirect(self.mode, value))
+        Ok(HtmlResponse(redirect(self.mode, value)))
     }
 
     /// The page is at `to` for good (an item asked for by its id or an old slug, a renamed
@@ -610,13 +646,13 @@ impl Req {
     /// `data-patch` form is sent there as by [`Req::redirect`]. For a `GET`: after a write,
     /// [`Req::redirect`]. Parameters the old URL had are the route's to carry
     /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
-    pub fn moved(&self, to: &(impl crate::route::Href + ?Sized)) -> Result {
+    pub fn moved(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         if self.mode == Mode::Action {
-            return Ok(redirect(self.mode, value));
+            return Ok(HtmlResponse(redirect(self.mode, value)));
         }
         let headers = [(header::LOCATION, value), (header::CACHE_CONTROL, HeaderValue::from_static(MOVED_CACHE))];
-        Ok((StatusCode::MOVED_PERMANENTLY, headers).into_response())
+        Ok(HtmlResponse((StatusCode::MOVED_PERMANENTLY, headers).into_response()))
     }
 }
 
@@ -648,12 +684,13 @@ pub(crate) fn redirect(mode: Mode, to: HeaderValue) -> Response {
 /// Middleware the app installs: a failed request (an [`Error`] from a handler, or an empty error
 /// response such as axum's 404 for an unknown URL or 405 for a wrong method) renders the error
 /// page in the request's mode, and the PWA's offline path gets Corten's offline page when the app
-/// has no route for it. A [`Mode::Data`] request, and every request on an `api` route, gets the
-/// failure as JSON instead ([`crate::api`]).
-pub(crate) async fn render_errors(
+/// has no route for it. A [`Mode::Data`] request, every request on an `api` route and every
+/// failure of a JSON route ([`crate::JsonResult`]) gets the failure as JSON instead
+/// ([`crate::api`]). A request a [`crate::Caller`] sent to sign in is redirected there.
+pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     shared: &Arc<Shared>,
     req: Request,
-    next: Next,
+    next: Next<'_, M>,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
     api: bool,
@@ -667,21 +704,38 @@ pub(crate) async fn render_errors(
     // A browser: the runtime, or a document request that asks for HTML (a health probe or a
     // webhook sender does not).
     let browser = matches!(mode, Mode::Navigation | Mode::Action) || (mode == Mode::Document && accepts_html(req.headers()));
-    // Taken now, while the request (its context, its nonce) is here; it allocates nothing unless
-    // the shell takes a context.
+    // Taken now, while the request (its nonce) is here; it allocates nothing.
     let failed_req = Req::new(req.headers(), req.extensions(), req.uri(), shared.clone());
     let res = run(req, next, deadline, signal).await;
     #[cfg(debug_assertions)]
     let res = refresh_header_is_an_error(res);
     let status = res.status();
-    let mut failed = res.extensions().get::<crate::Failed>().cloned();
     let error = status.is_client_error() || status.is_server_error();
-    let empty_error = error && res.body().size_hint().exact() == Some(0);
+    if !error {
+        return res;
+    }
+    // A JSON route answers every failure as JSON, a path that did not parse included.
+    if res.extensions().get::<crate::answer::Answered>().is_some() {
+        // Not kept across the await, so the request's future stays as small as it was.
+        drop(failed_req);
+        return crate::api::json_failure(res, shared.dev).await;
+    }
+    if let Some(crate::caller::SignIn(to)) = res.extensions().get::<crate::caller::SignIn>().cloned() {
+        let Some(message) = sign_in_loops(failed_req.path(), &to) else {
+            return redirect(mode, to);
+        };
+        tracing::error!("corten: {message}");
+        let failure = Failure::Failed { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Some(Arc::from(message)) };
+        return error_page(shared, &failed_req, failure);
+    }
+    let mut failed = res.extensions().get::<crate::Failed>().cloned();
+    let cause = res.extensions().get::<Cause>().copied();
+    let empty_error = res.body().size_hint().exact() == Some(0);
     // An extractor's rejection (a form field missing, a path segment that does not parse) is
     // plain text written for a developer. A browser gets the error page instead, with the text
     // under it in dev mode; any other client (probes, webhooks) still gets the text.
-    let rejection = error && failed.is_none() && browser && crate::api::is_plain_text(res.headers());
-    if failed.is_none() && !empty_error && !rejection {
+    let rejection = failed.is_none() && cause.is_none() && browser && crate::api::is_plain_text(res.headers());
+    if failed.is_none() && cause.is_none() && !empty_error && !rejection {
         return res;
     }
     let allow = res.headers().get(header::ALLOW).cloned();
@@ -689,32 +743,63 @@ pub(crate) async fn render_errors(
         let text = axum::body::to_bytes(res.into_body(), 16 * 1024).await.unwrap_or_default();
         let text = String::from_utf8_lossy(&text);
         tracing::debug!(status = status.as_u16(), "corten: request rejected: {text}");
-        failed = Some(crate::Failed(Arc::from(text.as_ref())));
+        failed = Some(crate::Failed(Arc::from(text.trim())));
     }
     let req = failed_req;
     if offline && status == StatusCode::NOT_FOUND {
-        // The PWA's offline page, which the service worker keeps: the error page for 503.
-        let mut res = (shared.error_page)(&req, Failure { status: StatusCode::SERVICE_UNAVAILABLE, detail: None });
-        *res.status_mut() = StatusCode::OK;
-        return res;
+        // The PWA's offline page, which the service worker keeps: a 200.
+        return (shared.error_page)(&req, Failure::Offline);
     }
-    // Dev mode only: the error itself, for the page to show.
-    let detail = failed.filter(|_| shared.dev).map(|crate::Failed(message)| message);
-    let mut res = (shared.error_page)(&req, Failure { status, detail });
+    let detail = failed.map(|crate::Failed(message)| message);
+    let failure = match cause {
+        Some(Cause::Panicked) => Failure::Panicked { detail },
+        Some(Cause::TimedOut) => Failure::TimedOut,
+        Some(Cause::Refused) => Failure::Refused { status },
+        None if rejection => Failure::Rejected { status, detail },
+        // Nothing is here, whether no route has the URL or the handler found nothing.
+        None if status == StatusCode::NOT_FOUND => Failure::NotFound,
+        None if detail.is_some() => Failure::Failed { status, detail },
+        None => match status {
+            StatusCode::METHOD_NOT_ALLOWED => Failure::WrongMethod,
+            status => Failure::Failed { status, detail: None },
+        },
+    };
+    let mut res = error_page(shared, &req, failure);
     if let Some(allow) = allow {
         res.headers_mut().insert(header::ALLOW, allow);
     }
     res
 }
 
+/// The app's error page for `failure`, with its detail under `corten dev` only.
+fn error_page(shared: &Shared, req: &Req, failure: Failure) -> Response {
+    let failure = if shared.dev { failure } else { failure.without_detail() };
+    (shared.error_page)(req, failure)
+}
+
+/// Why a request a [`crate::Caller`] sent to sign in at `to` would loop: the sign-in page itself
+/// needs a caller, so the browser would be sent round until it gives up. `None` when it does not.
+fn sign_in_loops(path: &str, to: &HeaderValue) -> Option<String> {
+    let target = to.to_str().unwrap_or("");
+    (target.split(['?', '#']).next() == Some(path)).then(|| {
+        format!("{path} needs a caller and sends to sign in at {target}, itself: the sign-in page's handler cannot take Caller")
+    })
+}
+
 /// The handler's response, through [`within_deadline`]; a handler that panics is answered as a
 /// handler error (500), whose message only `corten dev` shows.
-async fn run(req: Request, next: Next, deadline: Option<std::time::Duration>, signal: &crate::Signal) -> Response {
+async fn run<M: crate::middleware::Middleware>(
+    req: Request,
+    next: Next<'_, M>,
+    deadline: Option<std::time::Duration>,
+    signal: &crate::Signal,
+) -> Response {
     use std::{future::Future, panic::AssertUnwindSafe, pin::pin, task::Poll};
-    let (method, path) = (req.method().clone(), req.uri().path().to_string());
+    // For the log only: a method and a URI clone without allocating.
+    let (method, uri) = (req.method().clone(), req.uri().clone());
     // A handler that panics fails its request like one that returned an error, instead of
     // dropping the connection with no answer. Nothing runs unless it panics.
-    let mut fut = pin!(within_deadline(req, next, deadline, signal));
+    let mut fut = pin!(within_deadline(req, next, deadline, signal, (&method, &uri)));
     let outcome = std::future::poll_fn(|cx| match std::panic::catch_unwind(AssertUnwindSafe(|| fut.as_mut().poll(cx))) {
         Ok(Poll::Ready(res)) => Poll::Ready(Ok(res)),
         Ok(Poll::Pending) => Poll::Pending,
@@ -729,24 +814,33 @@ async fn run(req: Request, next: Next, deadline: Option<std::time::Duration>, si
                 .map(|s| s.to_string())
                 .or_else(|| panic.downcast_ref::<String>().cloned())
                 .unwrap_or_else(|| "a panic with no message".to_string());
-            tracing::error!("corten: {method} {path} panicked: {message}");
-            Error::new(format!("the handler panicked: {message}")).into_response()
+            tracing::error!("corten: {method} {} panicked: {message}", uri.path());
+            let mut res = Error::new(format!("the handler panicked: {message}")).into_response();
+            res.extensions_mut().insert(Cause::Panicked);
+            res
         }
     }
 }
 
 /// The handler's response, or an empty 503 once it has waited past `deadline`.
-async fn within_deadline(req: Request, next: Next, deadline: Option<std::time::Duration>, signal: &crate::Signal) -> Response {
+async fn within_deadline<M: crate::middleware::Middleware>(
+    req: Request,
+    next: Next<'_, M>,
+    deadline: Option<std::time::Duration>,
+    signal: &crate::Signal,
+    (method, uri): (&axum::http::Method, &Uri),
+) -> Response {
     let Some(limit) = deadline else {
         return next.run(req).await;
     };
-    let (method, uri) = (req.method().clone(), req.uri().clone());
     match within(limit, next.run(req)).await {
         Some(res) => res,
         None => {
             signal.abort(crate::Abort::Deadline);
             tracing::warn!("corten: {method} {} passed its {limit:?} deadline", uri.path());
-            StatusCode::SERVICE_UNAVAILABLE.into_response()
+            let mut res = StatusCode::SERVICE_UNAVAILABLE.into_response();
+            res.extensions_mut().insert(Cause::TimedOut);
+            res
         }
     }
 }

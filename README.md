@@ -56,40 +56,29 @@ posts and the whole page comes back. One handler serves both.
 ```rust,no_run,edition2024
 use corten::prelude::*;
 
-// Every URL, typed. Each needs a handler below, or the app does not compile.
+// Every URL, typed, with the handler that serves it. A route without one does not compile.
 #[corten::routes]
 mod url {
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home;
 
-    #[route("/greet")]
+    #[route("/greet", post = greet)]
     pub struct Greet;
-}
-
-struct Site;
-
-impl url::Handlers for Site {
-    fn home(&self) -> MethodRouter {
-        get(home)
-    }
-
-    fn greet(&self) -> MethodRouter {
-        post(greet)
-    }
 }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let routes = url::router(Site);
-    let app = App::new(routes);
+    let app = App::new(url::router());
     corten::serve(app).await
 }
 
-async fn home(req: Req) -> corten::Result {
+// The return type is what the route answers: a page, a patch or a redirect, and on failure the
+// app's error page. `JsonResult<T>` answers JSON, failures included.
+async fn home(req: Req) -> HtmlResult {
     req.page(page(&req, ""))
 }
 
-async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
+async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     match req.mode {
         // With JavaScript: send only the greeting, swapped in by its id.
         Mode::Action => req.patch(Greeting { name: &form.name }),
@@ -216,8 +205,10 @@ static site (a static site generator is simpler).
 4. **Mistakes fail at compile time.** No strings at the seams between server and client: routes,
    handler calls, refs, class names, form fields and messages are all typed. TypeScript types are
    generated from Rust, never written by hand. The app's own setup is held to the same bar: a
-   route outside its area, a guard of the wrong context type or a prefix with a parameter does
-   not build. Where the compiler cannot see a mistake, it fails at startup, and only what depends
+   route outside its area, a signed-in route whose handler does not take the caller, a public
+   (cacheable) answer whose handler reads who is asking, a handler that hides what its route
+   answers, or a prefix with a parameter does not build, and no route reaches the app another
+   way. Where the compiler cannot see a mistake, it fails at startup, and only what depends
    on the request is checked per request. If a guarantee exists, a test proves it fails to
    compile when broken.
 5. **One way to do each thing.** Behavior is a function the markup calls, cleanup has one hook,

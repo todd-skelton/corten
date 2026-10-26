@@ -260,14 +260,14 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
                 crate::tests::TestPage::test_page(&req, "Cart", LineItem { name: "Lamp", quantity: 2 })
             }),
         );
-    let body = get_page(crate::App::new(handlers).components(&[LineItem, Badge]).router()).await;
+    let body = get_page(crate::App::new(Routes::from(handlers)).components(&[LineItem, Badge]).router()).await;
     let views = body.split_once(r#""corten/views":""#).expect("the import map maps corten/views").1.split_once('"').unwrap().0;
     assert!(views.ends_with("/views.js"), "{body}");
     assert!(body.contains(&format!(r#"<link rel="modulepreload" href="{views}">"#)), "{body}");
     // The handler module is a module script of the page, and hands its exports to the runtime as it runs.
     let module = views.replace("/views.js", "/scripts/line_item.js");
     assert!(body.contains(&format!(r#"<script type="module" src="{module}"></script>"#)), "{body}");
-    let app = crate::App::new(Router::new()).components(&[LineItem, Badge]).router();
+    let app = crate::App::new(Routes::new()).components(&[LineItem, Badge]).router();
     let res = app.oneshot(Request::get(&module).body(Body::empty()).unwrap()).await.unwrap();
     let source = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
     assert!(
@@ -281,7 +281,7 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
     // A page whose handlers need no module has nothing to import the views.
     let plain = Router::new()
         .route("/", get(|req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Badge", Badge { n: 1 }) }));
-    let body = get_page(crate::App::new(plain).components(&[LineItem, Badge]).router()).await;
+    let body = get_page(crate::App::new(Routes::from(plain)).components(&[LineItem, Badge]).router()).await;
     assert!(!body.contains("modulepreload") && !body.contains(r#"src="/assets/"#), "{body}");
 }
 

@@ -8,42 +8,28 @@ async fn main() -> std::io::Result<()> {
     corten::serve(app()).await
 }
 
-/// Every URL the app serves. Views link to these types, so a link cannot point at a route that
-/// does not exist, changing a path here changes every link to it, and a route without a handler
-/// below does not compile.
+/// Every URL the app serves, with the handler that serves it. Views link to these types, so a
+/// link cannot point at a route that does not exist, changing a path here changes every link to
+/// it, and a route without a handler does not compile.
 #[corten::routes]
 pub mod url {
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home;
 
-    #[route("/greet")]
+    #[route("/greet", post = greet)]
     pub struct Greet;
-}
-
-/// The app's handlers, one per route.
-struct Site;
-
-impl url::Handlers for Site {
-    fn home(&self) -> MethodRouter {
-        get(home)
-    }
-
-    fn greet(&self) -> MethodRouter {
-        post(greet)
-    }
 }
 
 /// The routes, the error page and the components with scripts or styles. Security headers, static
 /// files, health checks, compression and live reload are Corten's defaults; see `App` to change
 /// them.
 fn app() -> App {
-    let routes = url::router(Site);
-    App::new(routes)
+    App::new(url::router())
         .error_page(views::error_page)
         .components(&[views::ClickCounter])
 }
 
-async fn home(req: Req) -> corten::Result {
+async fn home(req: Req) -> HtmlResult {
     req.page(views::home(&req, ""))
 }
 
@@ -54,7 +40,7 @@ struct GreetForm {
 
 /// With JavaScript the runtime swaps in the greeting; without it the form posts and the whole
 /// page comes back. One handler serves both.
-async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
+async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     let name = form.name.trim();
     match req.mode {
         Mode::Action => req.patch(views::Greeting { name }),

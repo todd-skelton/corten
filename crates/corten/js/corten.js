@@ -1060,7 +1060,7 @@ async function visit(url, signal, redirected, again, place) {
     location.reload();
     return;
   }
-  // The server redirected (a guard sending someone to sign in). Changing the address with
+  // The server redirected (a `Caller` sending someone to sign in). Changing the address with
   // history.replaceState would abort this navigation and the body with it, so read the body,
   // then navigate again to where it came from, in place of this entry, with the page in hand.
   if (res.redirected && !redirected) {

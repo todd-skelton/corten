@@ -7,8 +7,8 @@
 //! | `GET /feed/stocks`, `/feed/stocks/live` | the live feed `<live-prices>` subscribes to |
 //! | `GET /live/trades` | fragments streamed to `<corten-live>`: the last trade, no script of its own |
 //! | `GET /about?history=on` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only; a filter applied on change keeps the user's place (`data-keep-place`), and Load more adds only the new rows (`view::Append`) |
-//! | `POST /sign-in` | sets a cookie; the layout shows the viewer, and the runtime reloads the document |
-//! | `GET /account` | an area only someone signed in may use (`Area::guard`): anyone else is sent to the watchlist, where the sign-in button is |
+//! | `POST /sign-in` | sets a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
+//! | `GET /account` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
 use std::{
     sync::Arc,
@@ -16,9 +16,9 @@ use std::{
 };
 
 use corten::{
-    Fragment, LiveSince,
-    axum::{http::header, response::IntoResponse},
-    feed::{Feed, Row, Since},
+    Fragment, LiveResponse, LiveSince,
+    axum::http::{header, request::Parts},
+    feed::{Feed, FeedResponse, Row, Since},
     i18n::{Currency, Minor},
     prelude::*,
     security::cookie::{self, SetCookie},
@@ -51,112 +51,95 @@ impl Market {
     }
 }
 
-/// The app: routes and who is signed in. Every page brings its document, `Layout` with the page
-/// in it. Everything else is Corten's defaults.
-pub fn app(market: Market) -> App<Viewer> {
-    App::new(url::router(Site { market }))
-        .context(|headers| {
-            // A real app reads its session here; the example trusts a cookie, which is fine for a
-            // demo and nothing else.
-            let viewer = cookie::get(headers, "viewer").filter(|n| !n.is_empty()).map(|name| Viewer { name: name.into() });
-            async move { viewer }
-        })
+/// The app: its routes and areas. Every page brings its document, `Layout` with the page in it.
+/// Everything else is Corten's defaults.
+pub fn app(market: Market) -> App {
+    App::new(url::router(market))
         .components(&[LivePrices])
-        .area::<url::About>(|about_area| about_area.route::<url::About>(get(about)).components(&[AboutNote, AboutFilter]))
-        // Every route under /account, now and later, needs someone signed in.
-        .area::<url::Account>(|account_area| {
-            account_area.route::<url::Account>(get(account)).guard(|viewer, _| match viewer {
-                Some(_) => Access::ALLOW,
-                None => Access::sign_in(&url::Home),
-            })
-        })
+        .area::<about::About>(|area| about::area(area).components(&[AboutNote, AboutFilter]))
+        .area::<account::Account>(account::area)
 }
 
-/// Every URL the app serves and links to; links built from these cannot drift from the router,
-/// and each route needs a handler in `Site` below. The pages of an area derive `Route`
-/// themselves: their area serves them.
-#[corten::routes]
+/// Every URL the app serves and links to, with its handlers, which share the market; links built
+/// from these cannot drift from the router.
+#[corten::routes(state = Market)]
 mod url {
-    use corten::Route;
-
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home;
 
-    #[route("/watch")]
+    #[route("/watch", post = watch)]
     pub struct Watch;
 
-    #[route("/sign-in")]
+    #[route("/sign-in", post = sign_in)]
     pub struct SignIn;
 
-    #[route("/feed/stocks")]
+    #[route("/feed/stocks", get = stocks)]
     pub struct Stocks;
 
-    #[route("/feed/stocks/live")]
+    #[route("/feed/stocks/live", get = stocks_live)]
     pub struct StocksLive;
 
-    #[route("/live/trades")]
+    #[route("/live/trades", get = trades)]
     pub struct Trades;
 
-    #[derive(Route)]
-    #[route("/about")]
-    pub struct About;
-
-    #[derive(Route)]
-    #[route("/account")]
-    pub struct Account;
-
-    #[route("/saved")]
+    #[route("/saved", get = saved)]
     pub struct Saved {
         pub until: Option<u64>,
     }
 }
 
-/// The app's handlers, which share the market.
-struct Site {
-    market: Market,
+/// A page with a stylesheet of its own: an area, so other pages do not download it.
+#[corten::routes(area = About)]
+mod about {
+    #[route("/about", get = about)]
+    pub struct About;
 }
 
-impl url::Handlers for Site {
-    fn home(&self) -> MethodRouter {
-        get(home).with_state(self.market.clone())
-    }
-
-    fn watch(&self) -> MethodRouter {
-        post(watch).with_state(self.market.clone())
-    }
-
-    fn sign_in(&self) -> MethodRouter {
-        post(sign_in)
-    }
-
-    fn stocks(&self) -> MethodRouter {
-        get(|State(m): State<Market>| async move { m.stocks.snapshot() }).with_state(self.market.clone())
-    }
-
-    fn stocks_live(&self) -> MethodRouter {
-        get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }).with_state(self.market.clone())
-    }
-
-    fn trades(&self) -> MethodRouter {
-        get(trades).with_state(self.market.clone())
-    }
-
-    fn saved(&self) -> MethodRouter {
-        get(saved)
-    }
+/// Someone's own pages: every route here, now and later, takes the viewer, so no one signed out
+/// reaches one (they are sent to the watchlist, where the sign-in button is).
+#[corten::routes(area = Account, caller = Viewer)]
+mod account {
+    #[route("/account", get = account)]
+    pub struct Account;
 }
 
-/// Who is looking: the app's context, which the layout shows.
+/// The stocks feed: a snapshot, then live changes from a cursor.
+async fn stocks(State(market): State<Market>) -> FeedResponse {
+    market.stocks.snapshot()
+}
+
+async fn stocks_live(State(market): State<Market>, since: Since) -> FeedResponse {
+    market.stocks.live(since)
+}
+
+/// Who is looking, which the layout shows.
 #[derive(Clone, Hash)]
 pub struct Viewer {
     pub name: String,
 }
 
-/// The document around every page: its title, its own `head` tags and the page. Client navigation
-/// swaps those only; signing in changes the viewer, which makes the runtime load the next page in full.
+/// A real app reads its session here; the example trusts a cookie, which is fine for a demo and
+/// nothing else.
+impl<S: Sync> Identify<S> for Viewer {
+    async fn identify(parts: &Parts, _: &S) -> Result<Self, Refused> {
+        match cookie::get(&parts.headers, "viewer").filter(|name| !name.is_empty()) {
+            Some(name) => Ok(Viewer { name: name.into() }),
+            None => Err(Refused::sign_in(&url::Home)),
+        }
+    }
+}
+
+/// The document around every page: its title, its own `head` tags, who is looking and the page.
+/// Client navigation swaps the title, the tags and the page only; signing in changes the viewer,
+/// which makes the runtime load the next page in full.
 #[component]
-fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
-    let viewer = req.context::<Viewer>();
+fn Layout<'a>(
+    req: &'a Req,
+    title: &'a str,
+    viewer: Option<&'a Viewer>,
+    head: impl Render,
+    children: impl Render,
+) -> impl Document {
     html! {
         <!DOCTYPE html>
         <html lang="en">
@@ -172,8 +155,8 @@ fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> i
                 <header>
                     <nav>
                         <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Watchlist"</a>
-                        <a href={url::About} data-nav aria-current={req.current(&url::About)}>"About"</a>
-                        <a href={url::Account} data-nav aria-current={req.current(&url::Account)}>"Account"</a>
+                        <a href={about::About} data-nav aria-current={req.current(&about::About)}>"About"</a>
+                        <a href={account::Account} data-nav aria-current={req.current(&account::Account)}>"Account"</a>
                     </nav>
                     match viewer {
                         Some(viewer) => <span>"Signed in as "{&viewer.name}</span>,
@@ -186,10 +169,10 @@ fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> i
     }
 }
 
-async fn sign_in(req: Req) -> corten::Result {
+async fn sign_in(req: Req) -> HtmlResult {
     let mut res = req.redirect(&url::Home)?;
     res.headers_mut().append(header::SET_COOKIE, SetCookie::new("viewer", "Ada").header());
-    Ok(res.into_response())
+    Ok(res)
 }
 
 /// A feed row. `price` is the display text, for clients with no formatting of their own (a
@@ -255,7 +238,7 @@ pub async fn simulate_market(market: Market) {
 /// runtime swaps in by `id`, like a form's patch, with the trade count as its cursor. The page
 /// says which trade it shows (`since`), and a reconnect which one it last got, so the first
 /// fragment is only sent when the browser is behind; otherwise the stream waits for the next.
-async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> impl IntoResponse {
+async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> LiveResponse {
     let mut next = market.trades.subscribe();
     let current = next.borrow().0.to_string();
     if since.as_deref() != Some(current.as_str()) {
@@ -358,10 +341,11 @@ fn LastTrade(text: &str) -> impl Render {
     html! { <p id={LastTradeId} aria-live="polite">{text}</p> }
 }
 
-async fn home(req: Req, State(market): State<Market>) -> corten::Result {
+async fn home(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>) -> HtmlResult {
     let home = Home::new(&market, String::new());
     let view = home_view(&home, req.t());
-    req.screen(&home, html! { <Layout req={&req} title="Watchlist" head="">{view}</Layout> })
+    let viewer = viewer.map(|Caller(v)| v);
+    req.screen(&home, html! { <Layout req={&req} title="Watchlist" viewer={viewer.as_ref()} head="">{view}</Layout> })
 }
 
 #[derive(Deserialize, Fields)]
@@ -369,7 +353,12 @@ struct WatchForm {
     id: String,
 }
 
-async fn watch(req: Req, State(market): State<Market>, Form(form): Form<WatchForm>) -> corten::Result {
+async fn watch(
+    req: Req,
+    viewer: Option<Caller<Viewer>>,
+    State(market): State<Market>,
+    Form(form): Form<WatchForm>,
+) -> HtmlResult {
     let message = market
         .stocks
         .read(|rows| rows.get(&form.id).map(|c| format!("Watching {} at {}.", c.name, c.price)))
@@ -380,7 +369,8 @@ async fn watch(req: Req, State(market): State<Market>, Form(form): Form<WatchFor
         _ => {
             let home = Home::new(&market, message);
             let view = home_view(&home, req.t());
-            req.screen(&home, html! { <Layout req={&req} title="Watchlist" head="">{view}</Layout> })
+            let viewer = viewer.map(|Caller(v)| v);
+            req.screen(&home, html! { <Layout req={&req} title="Watchlist" viewer={viewer.as_ref()} head="">{view}</Layout> })
         }
     }
 }
@@ -399,7 +389,8 @@ const HISTORY: [&str; 6] =
     ["Corten began as a watchlist.", "Then came forms.", "Then live prices.", "Then areas.", "Then handlers.", "Then this list."];
 const HISTORY_PAGE: usize = 2;
 
-async fn about(req: Req, Query(q): Query<AboutQuery>) -> corten::Result {
+async fn about(req: Req, viewer: Option<Caller<Viewer>>, Query(q): Query<AboutQuery>) -> HtmlResult {
+    let viewer = viewer.map(|Caller(v)| v);
     let shown = q.shown.unwrap_or(0).min(HISTORY.len());
     let next = (shown + HISTORY_PAGE).min(HISTORY.len());
     // Load more with JavaScript: only the next page of the history, after the rows the page has,
@@ -413,7 +404,7 @@ async fn about(req: Req, Query(q): Query<AboutQuery>) -> corten::Result {
     // The whole page, with every row shown so far: a first load, a reload, no JavaScript.
     let shown = if q.history { next } else { 0 };
     req.page(html! {
-        <Layout req={&req} title="About" head="">
+        <Layout req={&req} title="About" viewer={viewer.as_ref()} head="">
             <h1>"About"</h1>
             <p>"Rendered on the server and swapped into the page by the runtime."</p>
             <AboutNote />
@@ -438,7 +429,7 @@ struct LoadMoreId;
 fn LoadMore(shown: usize) -> impl Patch {
     let f = AboutQuery::FIELDS;
     html! {
-        <form id={LoadMoreId} method="get" action={url::About} data-patch>
+        <form id={LoadMoreId} method="get" action={about::About} data-patch>
             <input type="hidden" name={f.history} value="on">
             <input type="hidden" name={f.shown} value={shown}>
             <button hidden={shown >= HISTORY.len()}>"Load more"</button>
@@ -453,7 +444,7 @@ fn LoadMore(shown: usize) -> impl Patch {
 fn AboutFilter(history: bool) -> impl Render {
     let f = AboutQuery::FIELDS;
     html! {
-        <form method="get" action={url::About} data-keep-place on:change={js::apply(target)}>
+        <form method="get" action={about::About} data-keep-place on:change={js::apply(target)}>
             <label><input type="checkbox" name={f.history} checked={history}>" Show the history"</label>
             <button>"Apply"</button>
         </form>
@@ -469,13 +460,14 @@ struct SavedQuery {
 /// receipt; here it is the time the write lands, in milliseconds since 1970. Until then the page
 /// says so and asks to be read again, which the runtime does in place however the page was
 /// reached; once the write is in, the page stops asking.
-async fn saved(req: Req, Query(query): Query<SavedQuery>) -> corten::Result {
+async fn saved(req: Req, viewer: Option<Caller<Viewer>>, Query(query): Query<SavedQuery>) -> HtmlResult {
+    let viewer = viewer.map(|Caller(v)| v);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
     let pending = query.until.is_some_and(|until| now < until);
     let again = pending.then_some(ReadAgain { after: Duration::from_secs(1) });
     let text = if pending { "Saving your change..." } else { "Your change is saved." };
     req.page(html! {
-        <Layout req={&req} title="Saved" head={again}>
+        <Layout req={&req} title="Saved" viewer={viewer.as_ref()} head={again}>
             <p id={SavedId} role="status">{text}</p>
         </Layout>
     })
@@ -485,13 +477,13 @@ async fn saved(req: Req, Query(query): Query<SavedQuery>) -> corten::Result {
 #[derive(Id)]
 struct SavedId;
 
-/// The guard on `/account` has let only a signed-in viewer through.
-async fn account(req: Req) -> corten::Result {
-    let name = req.context::<Viewer>().map_or("", |viewer| &viewer.name);
+/// Only someone signed in gets here: the handler takes the viewer.
+async fn account(req: Req, Caller(viewer): Caller<Viewer>) -> HtmlResult {
+    let viewer = &viewer;
     req.page(html! {
-        <Layout req={&req} title="Account" head="">
+        <Layout req={&req} title="Account" viewer={Some(viewer)} head="">
             <h1>"Account"</h1>
-            <p>"Signed in as "{name}"."</p>
+            <p>"Signed in as "{&viewer.name}"."</p>
         </Layout>
     })
 }

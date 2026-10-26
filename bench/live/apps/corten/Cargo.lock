@@ -79,15 +79,18 @@ dependencies = [
  "axum",
  "corten-feed",
  "corten-macros",
+ "form_urlencoded",
  "futures-util",
  "getrandom",
  "http-body",
- "memchr",
  "serde",
  "serde_json",
  "tokio",
+ "tower-layer",
+ "tower-service",
  "tracing",
  "tracing-subscriber",
+ "zmij",
 ]
 
 [[package]]

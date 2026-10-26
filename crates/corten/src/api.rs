@@ -12,8 +12,8 @@
 //!   `corten dev`; the response's other headers (`Allow`, `WWW-Authenticate`) are kept. A failure
 //!   the handler answered with a JSON body of its own passes through unchanged.
 //! - Responses carry a fixed CSP, `default-src 'none'; frame-ancestors 'none'`, and no nonce.
-//!   The shell, the error page and [`crate::App::context`] are skipped ([`Api::context`] runs
-//!   the context for routes that need the signed-in user).
+//!   The shell and the error page are skipped. A route that needs to know who is calling takes a
+//!   [`crate::Caller`], as any handler does.
 //! - The deadline, the request [`crate::Signal`], compression, shutdown and the same-origin
 //!   check on writes work as they do for pages.
 //!
@@ -39,32 +39,28 @@ use axum::{
     body::{Body, HttpBody},
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
-    routing::MethodRouter,
     Router,
 };
 
 use crate::{html::json_string, route::Route as TypedRoute};
 
 /// Routes that answer only JSON, with their settings, under the prefix `P`: what
-/// [`crate::App::api`] gives its function to fill in. `C` is the app's context type, which
-/// [`Api::guard`] reads, as an [`crate::Area`]'s is.
-pub struct Api<C, P> {
+/// [`crate::App::api`] gives its function to fill in.
+pub struct Api<P> {
     pub(crate) routes: Router,
     pub(crate) origins: Vec<String>,
-    pub(crate) context: bool,
-    pub(crate) guard: Option<crate::app::GuardFn>,
-    types: PhantomData<fn() -> (C, P)>,
+    types: PhantomData<fn() -> P>,
 }
 
-impl<C, P: TypedRoute> Api<C, P> {
+impl<P: TypedRoute> Api<P> {
     pub(crate) fn new() -> Self {
-        Api { routes: Router::new(), origins: Vec::new(), context: false, guard: None, types: PhantomData }
+        Api { routes: Router::new(), origins: Vec::new(), types: PhantomData }
     }
 
     /// A route of the API, at `R::PATH`: `.route::<ItemJson>(get(item_json))`, with
-    /// `.with_state(state)` on the method router when its handlers take `State`. `R`'s path is at
+    /// `.with_state(state)` on the [`crate::Methods`] when its handlers take `State`. `R`'s path is at
     /// or under the prefix, or the app does not build, so no route of the API is served outside
-    /// it (and its settings and guard).
+    /// it (and its settings).
     ///
     /// ```compile_fail,E0080
     /// # use corten::prelude::*;
@@ -76,17 +72,17 @@ impl<C, P: TypedRoute> Api<C, P> {
     /// #[route("/apis/items")]
     /// struct Items;
     ///
-    /// let app = App::new(Router::new()).api::<ApiRoot>(|api| api.route::<Items>(get(|| async { "items" })));
+    /// let app = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<Items>(get(|| async { "items" })));
     /// # let _ = app.router();
     /// ```
-    pub fn route<R: TypedRoute>(mut self, method_router: MethodRouter) -> Self {
+    pub fn route<R: TypedRoute>(mut self, methods: crate::Methods) -> Self {
         const {
             assert!(
                 under_const(P::PATH, R::PATH),
                 "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
             )
         };
-        self.routes = self.routes.route(R::PATH, method_router);
+        self.routes = self.routes.route(R::PATH, methods.0);
         self
     }
 
@@ -106,41 +102,17 @@ impl<C, P: TypedRoute> Api<C, P> {
         self.origins.push(origin);
         self
     }
-
-    /// Runs [`crate::App::context`] for these routes too, for an API that serves the app's own
-    /// signed-in users (`req.context::<C>()` or axum's `Extension<C>`). Without it, the context
-    /// function is not called, which saves its work (a session lookup) on every request that
-    /// authenticates another way. An API under a guard runs it anyway, for the guard.
-    pub fn context(mut self) -> Self {
-        self.context = true;
-        self
-    }
-}
-
-impl<C: Clone + Send + Sync + 'static, P> Api<C, P> {
-    /// Who may call these routes: every route under the prefix, including unknown URLs and wrong
-    /// methods there, needs `check`'s [`crate::Access::ALLOW`], as with [`crate::App::guard`]. A
-    /// caller sent to sign in gets a JSON 401, since a JSON client follows no redirect. Given once.
-    pub fn guard<F>(mut self, check: F) -> Self
-    where
-        F: Fn(Option<&C>, &crate::Guarded) -> crate::Access + Send + Sync + 'static,
-    {
-        assert!(self.guard.is_none(), "corten: an API's guard is given once");
-        self.guard = Some(Box::new(move |extensions, req| check(extensions.get::<C>(), req)));
-        self
-    }
 }
 
 /// An [`Api`] in use: its prefix and settings, without the routes.
 pub(crate) struct Mount {
     pub prefix: String,
     origins: Vec<String>,
-    pub context: bool,
 }
 
 impl Mount {
-    pub fn new<C, P>(prefix: String, api: &Api<C, P>) -> Self {
-        Mount { prefix, origins: api.origins.clone(), context: api.context }
+    pub fn new<P>(prefix: String, api: &Api<P>) -> Self {
+        Mount { prefix, origins: api.origins.clone() }
     }
 
     pub fn contains(&self, path: &str) -> bool {
@@ -338,7 +310,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "overlap")]
     fn prefixes_cannot_overlap() {
-        let _ = crate::App::new(Router::new()).api::<ApiRoot>(|api| api).api::<V2>(|api| api);
+        let _ = crate::App::new(crate::Routes::new()).api::<ApiRoot>(|api| api).api::<V2>(|api| api);
     }
 
     #[test]
@@ -355,7 +327,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "a scheme and a host")]
     fn an_allowed_origin_is_one_origin() {
-        let _ = Api::<crate::NoContext, ApiRoot>::new().allow_origin("*");
+        let _ = Api::<ApiRoot>::new().allow_origin("*");
     }
 
     #[test]

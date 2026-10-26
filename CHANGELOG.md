@@ -365,11 +365,13 @@ Corten is pre-1.0, so any minor version may change the API.
     commit before, Windows) a full document is about 7% faster (median 57.5 to 53.8 us) and a
     navigation within noise (47.0 to 47.8 us; another eight runs gave 48.4 to 48.3), with the same
     bytes, compressed or not.
-50. `#[corten::routes]` on a module of routes: each `#[route("/..")]` struct in it is a typed route and
-    a method of the module's `Handlers` trait, and `url::router(handlers)` puts each handler at its
-    path for `App::new`. A route without a handler, or two routes with the same path, does not
-    compile. A struct in the module that derives `Route` itself is a link only (an area's page, an
-    API route). `MethodRouter` is in the prelude. `corten new`, `examples/hello` and the README use it.
+50. `#[corten::routes]` on a module of routes: each `#[route("/..", get = home, post = save)]` struct in
+    it is a typed route that names its handlers, and `url::router()` puts each at its path for
+    `App::new` (`#[corten::routes(state = Db)]` gives `url::router(db)`, and every handler may take
+    `State<Db>`). A handler that cannot serve its route points its error at the handler's name; a
+    route without a handler (`link` marks one that is only linked to, such as an area's page),
+    two routes with the same path, or a method named twice does not compile. `corten new`,
+    `examples/hello` and the README use it.
 51. `corten new` writes the app's `Layout` and `error_page` in `src/views.rs`, for the app to change.
 52. `App::error_page` takes `fn(&Req, Failure) -> impl Document`: `Failure` has the status and, under
     `corten dev` only, the error. Every error page is sent with `X-Robots-Tag: noindex`.
@@ -427,6 +429,43 @@ Corten is pre-1.0, so any minor version may change the API.
     stylesheet those areas share, `sections/search+categories.css`, linked from their pages only,
     instead of a startup error that sent it to `App::components` and every page ([#93 An area has one prefix, so a screen at two addresses (/search, /categories/{slug}) puts its stylesheet on every page](https://github.com/todd-skelton/corten/issues/93)).
     The runtime for 58 and 59 is 287 B larger gzipped (8,075 to 8,362 B, measured).
+62. A handler's return type is what its route answers (`corten::answer`): `HtmlResult` (a page, a
+    patch or a redirect, `Result<HtmlResponse>`; failures are the app's error page) or
+    `JsonResult<T>` (every failure of the route is JSON, a path that does not parse included),
+    and `Public<..>` around either for an answer a shared cache may keep (`Public::new(max_age,
+    answer)`, `.stale_while_revalidate(..)`; only a success or a redirect is shared). A handler
+    named in `#[corten::routes]` that returns `Response` or `impl IntoResponse` does not compile,
+    and neither does a `Public` handler that takes a `Caller`, a `HeaderMap` or any input not
+    marked `Anonymous`. `corten::live` returns `LiveResponse` and a feed's snapshot and stream
+    `FeedResponse`.
+63. `Caller<T>` (`corten::caller`): who is asking, found by `T: Identify` (a session cookie, an
+    API key) only when a handler or middleware takes one, once per request. `Refused::sign_in`
+    sends a browser to sign in (303, or `corten-location` for a patch; a JSON 401 for data and
+    JSON routes), `unauthorized` and `forbidden` give the error page for 401 and 403, and
+    `unavailable` a 503. Reading one makes the answer private and puts the caller in the page's
+    key. `Option<Caller<T>>` runs the handler either way. `#[corten::routes(caller = Staff)]`
+    holds every handler in the module to taking `Caller<Staff>` (a compile error at the handler
+    otherwise). `examples/hello` reads its viewer this way and its account area says
+    `caller = Viewer`.
+64. `Middleware` and `App::middleware((RequestId, RateLimit))`: the app's own steps, run in order
+    at one fixed place in every request (after the cross-site check, the deadline and the panic
+    catch; before the handler, the error page, the security headers and `Cache-Control`). The
+    tuple is resolved when the crate compiles; one that only passes the request on costs about
+    230 instructions, where axum's `from_fn` costs about 700. `corten::middleware` lists the order.
+65. Every route reaches the app through the same compile-time checks. `App::new` takes `Routes`,
+    which a `#[corten::routes]` module's `router()` makes (`Routes::new()` for an app whose routes
+    are all in areas and APIs), and `Area::route` and `Api::route` take `Methods`, which
+    Corten's `get`, `post`, `put`, `delete`, `patch`, `head`, `options` and `trace` make
+    (`corten::route`, the first four in the prelude), checking each handler as a routes module
+    does: its result is an `Answer` and a `Public` answer's inputs are `Anonymous`. An axum
+    `Router` or method router does not compile in any of them, so a route can no longer escape
+    the answer, caller and cache checks by being registered by hand.
+    The checks are at compile time: a page is 22,954 instructions after and 23,530 before, and a
+    JSON 400 under `App::api` 28,268 after and 27,776 before (callgrind medians of three runs;
+    the app guide's table has the rest).
+66. `NoStore<A>`: an answer nothing may keep (`Cache-Control: no-store`), `NoStore<HtmlResult>`
+    for a statement or a one-time code, in place of `Cache::no_store()`. A bare `StatusCode` is
+    an answer too (`StatusCode::NO_CONTENT` for a write with nothing to say).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -441,6 +480,17 @@ Corten is pre-1.0, so any minor version may change the API.
 4. `App::shell`, `Meta` (`corten::meta`) and the shell's `Document` struct (`doc.head`, `doc.main`,
    `doc.asset`, `doc.current`, `doc.nonce`): the app's layout component replaces them. Corten
    has no built-in shell; an app without `App::error_page` gets a plain error document.
+5. `App::context`, `App<C>`, `Req::context`, `Area::guard`, `App::guard`, `App::unguarded`,
+   `Api::guard`, `Api::context` and `Access`: a handler takes `Caller<T>` instead, and an area's
+   routes module says `caller = T`. Migrate a context to an `Identify` impl, a guard on an area to
+   `caller = ..` on its routes module (with a caller type per role), and `App::guard` to
+   `caller = ..` on the app's routes module with the sign-in route in a module of its own.
+6. `Cache` from the public API and the prelude, and axum's `Router`, `get`, `post`, `put` and
+   `delete` from the prelude (`get` and the others there are Corten's now). Return `Public<..>`
+   instead of `(Cache::public(..), page)` and `NoStore<..>` instead of `(Cache::no_store(),
+   page)`; build routes in a `#[corten::routes]` module instead of an axum `Router`. A layer on
+   one route's method router has no replacement: a route's needs are its handler's extractors
+   and answer, and the app's own steps are `Middleware`.
 
 ### Changed
 
@@ -674,6 +724,25 @@ Corten is pre-1.0, so any minor version may change the API.
     `impl Render`, and debug builds no longer scan a patch for a top-level element without an id
     (a `corten::live` fragment, which is text, is still scanned). Migrate by declaring each
     component a patch sends `-> impl Patch` and writing its ids as `#[derive(Id)]` types.
+45. `Failure` is an enum of every way a request can fail (`NotFound`, `WrongMethod`, `CrossSite`,
+    `Refused`, `Rejected`, `Failed`, `Panicked`, `TimedOut`, `Offline`), with `status()` and
+    `detail()` in place of the fields, so an error page that names each case stops compiling
+    when one is added; `corten new` writes one. A handler's 404 is `NotFound` like an unknown
+    URL, and the offline page's `status()` is 200. `req.page`, `req.patch`, `req.redirect` and
+    the rest return `HtmlResult`; migrate `-> corten::Result` page handlers to `-> HtmlResult`.
+46. A cross-site form post from a browser gets the app's error page (`Failure::CrossSite`, 403)
+    instead of a bare status line.
+47. The security headers reserve room only for the headers they add, so an error page's header
+    map is not reallocated, and the route is called without an `async` layer around it: a page
+    is about 500 instructions cheaper (24,021 to 23,525), an HTML 404 about 700 (21,849 to
+    21,125) and JSON about 270 (19,579 to 19,307), callgrind medians of three runs (the app
+    guide's table). The item page's whole `render_cost` (release, under callgrind) is
+    34,215,143,042 instructions before and 34,138,183,828 after (-0.22%).
+48. `seo::robots`, `seo::sitemap` and `seo::sitemap_index` return `Public<seo::File>`, an answer
+    a route can name (`async fn robots() -> Public<seo::File>`), shared for an hour as before.
+    `agent::Tools::route` returns `Methods`, for `Api::route`.
+49. Reading a `Caller` makes the answer private even when its `Cache-Control` was written by
+    hand (by a middleware, or on an `HtmlResponse`), not only when it came from `Public`.
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

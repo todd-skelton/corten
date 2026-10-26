@@ -128,7 +128,7 @@ impl<S: Source> Cluster<S> {
     /// `GET {url}`: [`Feed::snapshot`], 404 for an unknown feed, 503 when Postgres is unreachable.
     pub async fn snapshot(&self, key: &str) -> Response {
         match self.feed(key).await {
-            Ok(Some(feed)) => feed.snapshot(),
+            Ok(Some(feed)) => feed.snapshot().into_response(),
             other => unavailable(key, other.err()),
         }
     }
@@ -141,7 +141,7 @@ impl<S: Source> Cluster<S> {
     /// [`Cluster::live`] holding `guard` (a `corten_feed::Permit`) until the stream ends.
     pub async fn live_with(&self, key: &str, since: Since, guard: impl Send + 'static) -> Response {
         match self.feed(key).await {
-            Ok(Some(feed)) => feed.live_with(since, guard),
+            Ok(Some(feed)) => feed.live_with(since, guard).into_response(),
             other => unavailable(key, other.err()),
         }
     }

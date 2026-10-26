@@ -2,7 +2,7 @@
 //! and a request that is answered.
 use std::{io::Write, time::Duration};
 
-use axum::{body::Body, extract::State, http::Request, routing::get, Router};
+use axum::{body::Body, extract::State, http::Request, Router};
 use corten::{Abort, App, Signal};
 use http_body_util::BodyExt;
 use tokio::sync::mpsc;
@@ -19,23 +19,26 @@ fn report(signal: Signal, tx: Tx) {
 
 fn app(deadline: Duration) -> (Router, mpsc::UnboundedReceiver<Abort>) {
     let (tx, rx) = mpsc::unbounded_channel();
-    let routes = Router::new()
-        .route(
-            "/slow",
-            get(|signal: Signal, State(tx): State<Tx>| async move {
-                report(signal, tx);
-                std::future::pending::<&str>().await
-            }),
-        )
-        .route(
-            "/quick",
-            get(|req: corten::Req, State(tx): State<Tx>| async move {
-                report(req.signal().clone(), tx);
-                "done"
-            }),
-        )
-        .with_state(tx);
-    (App::new(routes).deadline(deadline).router(), rx)
+    (App::new(url::router(tx)).deadline(deadline).router(), rx)
+}
+
+#[corten::routes(state = Tx)]
+mod url {
+    #[route("/slow", get = slow)]
+    pub struct Slow;
+
+    #[route("/quick", get = quick)]
+    pub struct Quick;
+}
+
+async fn slow(signal: Signal, State(tx): State<Tx>) -> &'static str {
+    report(signal, tx);
+    std::future::pending::<&str>().await
+}
+
+async fn quick(req: corten::Req, State(tx): State<Tx>) -> &'static str {
+    report(req.signal().clone(), tx);
+    "done"
 }
 
 async fn next(rx: &mut mpsc::UnboundedReceiver<Abort>) -> Abort {

@@ -64,7 +64,7 @@ CSP; one-off values come from the token utilities instead.
 
 Every page links `components.css`, so a large part of the app that most visitors never open (an
 admin console, seller tools) adds its CSS to every first load. An area
-([app guide](app.md#areas-and-guarded-routes)) gives that part its routes under one prefix and
+([app guide](app.md#areas)) gives that part its routes under one prefix and
 a stylesheet of its own:
 
 ```rust,ignore
