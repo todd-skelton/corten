@@ -410,7 +410,26 @@ Corten is pre-1.0, so any minor version may change the API.
     compile) and is 593 bytes as served (measured), loaded only by pages that use it. `examples/ui-gallery`
     refuses a rename in a dialog and its smoke test checks it is modal, with or without the runtime
     for the post, in Chromium, Firefox and WebKit.
-58. A handler's return type is what its route answers (`corten::answer`): `HtmlResult` (a page, a
+58. `data-keep-place` on a form or link: the navigation it starts keeps the scroll position and
+    puts focus back on the control the user changed (by id, else by name, and value for a checkbox
+    or radio), with its caret, also across a redirect. A list's filters are a GET form applied on
+    `change` (`form.requestSubmit()`), so keyboard and screen-reader users no longer start again
+    from the top of the page after every filter. A navigation without it still goes to the top.
+    `examples/hello`'s about page has a filter that the smoke test checks in Chromium and Firefox
+    ([#92 A GET form that applies a filter on change loses the user's place: its navigation scrolls to the top and moves focus to the body](https://github.com/todd-skelton/corten/issues/92)).
+59. `view::Append(RowsId, rows)`: a patch that adds rows at the end of the element with that id
+    (`<template id data-append>`), so Load more reads and renders one page instead of every row
+    shown and the rows the page has stay as they are. `examples/hello`'s about page loads its
+    history a page at a time with a GET `data-patch` form, checked by the smoke test ([#90 An answer cannot add rows to a list (Load more re-reads and re-renders every row shown)](https://github.com/todd-skelton/corten/issues/90)).
+60. A route's query parameter is named as serde reads its field: `#[serde(rename_all = "camelCase")]`
+    and `#[serde(rename = "..")]` rename it in links too (`?priceMin=`), so addresses already shared
+    keep working without a hand-written `Params`. A renamed path parameter, or a name a URL would
+    have to escape, does not compile (`compile_fail` doctests) ([#91 A query parameter cannot have a name other than its field's (#[route(query)] has no name =), so camelCase URLs need a hand-written Params](https://github.com/todd-skelton/corten/issues/91)).
+61. A component several areas list (one screen at `/search` and `/categories/{slug}`) is in a
+    stylesheet those areas share, `sections/search+categories.css`, linked from their pages only,
+    instead of a startup error that sent it to `App::components` and every page ([#93 An area has one prefix, so a screen at two addresses (/search, /categories/{slug}) puts its stylesheet on every page](https://github.com/todd-skelton/corten/issues/93)).
+    The runtime for 58 and 59 is 287 B larger gzipped (8,075 to 8,362 B, measured).
+62. A handler's return type is what its route answers (`corten::answer`): `HtmlResult` (a page, a
     patch or a redirect, `Result<HtmlResponse>`; failures are the app's error page) or
     `JsonResult<T>` (every failure of the route is JSON, a path that does not parse included),
     and `Public<..>` around either for an answer a shared cache may keep (`Public::new(max_age,
@@ -419,7 +438,7 @@ Corten is pre-1.0, so any minor version may change the API.
     and neither does a `Public` handler that takes a `Caller`, a `HeaderMap` or any input not
     marked `Anonymous`. `corten::live` returns `LiveResponse` and a feed's snapshot and stream
     `FeedResponse`.
-59. `Caller<T>` (`corten::caller`): who is asking, found by `T: Identify` (a session cookie, an
+63. `Caller<T>` (`corten::caller`): who is asking, found by `T: Identify` (a session cookie, an
     API key) only when a handler or middleware takes one, once per request. `Refused::sign_in`
     sends a browser to sign in (303, or `corten-location` for a patch; a JSON 401 for data and
     JSON routes), `unauthorized` and `forbidden` give the error page for 401 and 403, and
@@ -428,12 +447,12 @@ Corten is pre-1.0, so any minor version may change the API.
     holds every handler in the module to taking `Caller<Staff>` (a compile error at the handler
     otherwise). `examples/hello` reads its viewer this way and its account area says
     `caller = Viewer`.
-60. `Middleware` and `App::middleware((RequestId, RateLimit))`: the app's own steps, run in order
+64. `Middleware` and `App::middleware((RequestId, RateLimit))`: the app's own steps, run in order
     at one fixed place in every request (after the cross-site check, the deadline and the panic
     catch; before the handler, the error page, the security headers and `Cache-Control`). The
     tuple is resolved when the crate compiles; one that only passes the request on costs about
     230 instructions, where axum's `from_fn` costs about 700. `corten::middleware` lists the order.
-61. Every route reaches the app through the same compile-time checks. `App::new` takes `Routes`,
+65. Every route reaches the app through the same compile-time checks. `App::new` takes `Routes`,
     which a `#[corten::routes]` module's `router()` makes (`Routes::new()` for an app whose routes
     are all in areas and APIs), and `Area::route` and `Api::route` take `Methods`, which
     Corten's `get`, `post`, `put`, `delete`, `patch`, `head`, `options` and `trace` make
@@ -444,7 +463,7 @@ Corten is pre-1.0, so any minor version may change the API.
     The checks are at compile time: a page is 22,954 instructions after and 23,530 before, and a
     JSON 400 under `App::api` 28,268 after and 27,776 before (callgrind medians of three runs;
     the app guide's table has the rest).
-62. `NoStore<A>`: an answer nothing may keep (`Cache-Control: no-store`), `NoStore<HtmlResult>`
+66. `NoStore<A>`: an answer nothing may keep (`Cache-Control: no-store`), `NoStore<HtmlResult>`
     for a statement or a one-time code, in place of `Cache::no_store()`. A bare `StatusCode` is
     an answer too (`StatusCode::NO_CONTENT` for a write with nothing to say).
 ### Removed
@@ -849,6 +868,9 @@ Corten is pre-1.0, so any minor version may change the API.
     (7,807 to 8,075 B). Found by the Chase Sets pilot, whose item page's live market book closed a
     reference dialog the user was reading
     ([#84 A patch or live fragment closes a <dialog> the user opened and folds a <details> they unfolded](https://github.com/todd-skelton/corten/issues/84)).
+25. A checkbox or radio without a `value` attribute is found by its name when a patch keeps what
+    the user changed (its selector asked for `[value="on"]`, which only the attribute matches, so
+    it fell back to its place).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

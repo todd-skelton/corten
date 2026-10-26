@@ -164,6 +164,7 @@ mod tests {
     fn a_patch_names_its_first_top_level_element_without_an_id() {
         assert_eq!(patch_problem(r#"<div id="a"><p>x</p></div> <form id="f"><input name="q"></form>"#), None);
         assert_eq!(patch_problem(r#"<template id="row-7" data-remove></template>"#), None);
+        assert_eq!(patch_problem(r#"<template id="rows" data-append><tr><td>8</td></tr></template>"#), None);
         assert_eq!(patch_problem(""), None, "an empty patch changes nothing, and says so");
         assert_eq!(patch_problem("<!-- note --><p id=b>1</p>\n"), None);
         assert_eq!(

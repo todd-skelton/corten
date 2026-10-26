@@ -2,7 +2,9 @@
 //!
 //! `#[route("/items/{id}")] struct Item<'a> { id: &'a str, tab: Option<&'a str> }`: fields named in
 //! the path fill it (percent-encoded); the rest are query parameters (`None` leaves one out).
-//! The path is checked here, so a link cannot name a parameter the route does not have.
+//! The path is checked here, so a link cannot name a parameter the route does not have. A query
+//! parameter's name is the one serde reads (`rename`, `rename_all`), so the link and the handler
+//! that deserializes the struct agree.
 
 use proc_macro::TokenStream;
 
@@ -22,6 +24,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         Some(body) => named_fields(body)?,
         None => Vec::new(),
     };
+    let mut fields = fields;
+    serde_names(&item.attrs, &mut fields)?;
     check_prefixes(&fields)?;
     // `#[route(query)]`: query parameters shared by several routes, with no path of their own.
     if item.attrs.iter().any(is_route_query) {
@@ -73,6 +77,15 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                     return err(
                         f.ident.span(),
                         format!("{name} is #[route(prefix = ..)], so it is query parameters, not {{{name}}} in the path"),
+                    );
+                }
+                Some(f) if f.key != f.name => {
+                    return err(
+                        f.ident.span(),
+                        format!(
+                            "serde reads {name} as {:?}, but the path names it {{{name}}}: rename it #[serde(rename = \"{name}\")] or name the path's parameter {{{}}}",
+                            f.key, f.key
+                        ),
                     );
                 }
                 Some(_) => {}
@@ -151,6 +164,48 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     Ok(out)
 }
 
+/// Each field's query key: the name serde reads it by, with the struct's `rename_all` and the
+/// field's `rename` applied (a field's `skip` is not a parameter; it is left as it is).
+fn serde_names(attrs: &[proc_macro::Group], fields: &mut [Field]) -> Result<(), Error> {
+    let mut rule = None;
+    for attr in attrs {
+        for (key, value) in crate::serde_args(attr).map_err(|m| (attr.span(), m))? {
+            if key == "rename_all" {
+                let Some(value) = value else {
+                    return err(attr.span(), "use rename_all = \"camelCase\"; rename_all(deserialize = ..) is not supported");
+                };
+                rule = Some(value);
+            }
+        }
+    }
+    for field in fields {
+        let mut rename = None;
+        for attr in &field.attrs {
+            for (key, value) in crate::serde_args(attr).map_err(|m| (attr.span(), m))? {
+                if key == "rename" {
+                    let Some(value) = value else {
+                        return err(attr.span(), "use rename = \"priceMin\"; rename(deserialize = ..) is not supported");
+                    };
+                    rename = Some(value);
+                }
+            }
+        }
+        field.key = match (rename, &rule) {
+            (Some(name), _) => name,
+            (None, Some(rule)) => crate::apply_rule(&field.name, rule).map_err(|m| (field.ident.span(), m))?,
+            (None, None) => field.name.clone(),
+        };
+        // Written into links as it is.
+        if field.key.is_empty() || !field.key.chars().all(|c| c.is_ascii_alphanumeric() || "-._~".contains(c)) {
+            return err(
+                field.ident.span(),
+                format!("a query parameter's name is letters, digits and -._~, which a URL writes as they are: {:?}", field.key),
+            );
+        }
+    }
+    Ok(())
+}
+
 /// `#[route(query)]`.
 fn is_route_query(attr: &proc_macro::Group) -> bool {
     let tokens: Vec<proc_macro::TokenTree> = attr.stream().into_iter().collect();
@@ -201,7 +256,7 @@ fn check_prefixes(fields: &[Field]) -> Result<(), Error> {
             let other = match route_prefix(field)? {
                 Some((other, _)) => other,
                 None if field.attrs.iter().any(is_route_query) => continue,
-                None => field.name.clone(),
+                None => field.key.clone(),
             };
             // Checked from both sides, so one prefix inside another is found from the shorter.
             if other.starts_with(prefix.as_str()) {
@@ -238,7 +293,7 @@ fn query_writes(fields: &[&Field]) -> TokenStream {
         } else {
             body.extend(q(
                 "(&::corten::route::__private::Query(&self.__A0)).__query(__A1, __corten_first, __corten_html, __OUT);",
-                &[ident, string(&format!("{}=", field.name)).into()],
+                &[ident, string(&format!("{}=", field.key)).into()],
             ));
         }
     }

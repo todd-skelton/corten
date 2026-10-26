@@ -78,8 +78,11 @@ App::new(routes)
 - A client navigation into the area adds the stylesheet to `<head>` and waits for it before
   swapping the page in, so the page never shows unstyled; if it fails to load, the runtime loads
   the page in full. The stylesheet then stays: its rules match only its components' classes.
-- A component that pages in several areas render belongs in `App::components`, and so do
-  tokens, which style every page. A patch is styled by the page it lands on and is checked
+- A component that pages in several areas render is listed in each of those areas: its rules
+  go in a file the areas share (`sections/search+categories.css` for one screen at `/search`
+  and `/categories/{slug}`), linked from their pages only, with any other component the same
+  areas list. One most pages render belongs in `App::components` instead, and so do tokens,
+  which style every page; a component is in one or the other, not both. A patch is styled by the page it lands on and is checked
   against its own URL, so a form whose action sits outside the page's area should answer with
   components from `App::components`.
 

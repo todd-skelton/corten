@@ -6,7 +6,7 @@
 //! | `POST /watch` | form patch with JavaScript, full page without, JSON for data clients |
 //! | `GET /feed/stocks`, `/feed/stocks/live` | the live feed `<live-prices>` subscribes to |
 //! | `GET /live/trades` | fragments streamed to `<corten-live>`: the last trade, no script of its own |
-//! | `GET /about` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only |
+//! | `GET /about?history=on` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only; a filter applied on change keeps the user's place (`data-keep-place`), and Load more adds only the new rows (`view::Append`) |
 //! | `POST /sign-in` | sets a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
 //! | `GET /account` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
@@ -22,6 +22,7 @@ use corten::{
     i18n::{Currency, Minor},
     prelude::*,
     security::cookie::{self, SetCookie},
+    view::Append,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -55,7 +56,7 @@ impl Market {
 pub fn app(market: Market) -> App {
     App::new(url::router(market))
         .components(&[LivePrices])
-        .area::<about::About>(|area| about::area(area).components(&[AboutNote]))
+        .area::<about::About>(|area| about::area(area).components(&[AboutNote, AboutFilter]))
         .area::<account::Account>(account::area)
 }
 
@@ -374,15 +375,80 @@ async fn watch(
     }
 }
 
-async fn about(req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult {
+/// The about page's filter and how much of the history it shows: a GET form, so both are in
+/// the address.
+#[derive(Deserialize, Fields)]
+struct AboutQuery {
+    #[serde(default)]
+    history: bool,
+    shown: Option<usize>,
+}
+
+/// The project's history, one page of it at a time.
+const HISTORY: [&str; 6] =
+    ["Corten began as a watchlist.", "Then came forms.", "Then live prices.", "Then areas.", "Then handlers.", "Then this list."];
+const HISTORY_PAGE: usize = 2;
+
+async fn about(req: Req, viewer: Option<Caller<Viewer>>, Query(q): Query<AboutQuery>) -> HtmlResult {
     let viewer = viewer.map(|Caller(v)| v);
+    let shown = q.shown.unwrap_or(0).min(HISTORY.len());
+    let next = (shown + HISTORY_PAGE).min(HISTORY.len());
+    // Load more with JavaScript: only the next page of the history, after the rows the page has,
+    // and the button for the page after it.
+    if req.mode == Mode::Action {
+        return req.patch(html! {
+            {Append(HistoryId, html! { for event in &HISTORY[shown..next] { <li>{event}</li> } })}
+            <LoadMore shown={next} />
+        });
+    }
+    // The whole page, with every row shown so far: a first load, a reload, no JavaScript.
+    let shown = if q.history { next } else { 0 };
     req.page(html! {
         <Layout req={&req} title="About" viewer={viewer.as_ref()} head="">
             <h1>"About"</h1>
             <p>"Rendered on the server and swapped into the page by the runtime."</p>
             <AboutNote />
+            <AboutFilter history={q.history} />
+            if q.history {
+                <ol id={HistoryId}>for event in &HISTORY[..shown] { <li>{event}</li> }</ol>
+                <LoadMore shown={shown} />
+            }
         </Layout>
     })
+}
+
+#[derive(Id)]
+struct HistoryId;
+
+#[derive(Id)]
+struct LoadMoreId;
+
+/// Loads the next page of the history: a GET form, so without JavaScript it is the page with one
+/// page more, and with it (`data-patch`) the answer adds only the new rows (`view::Append`).
+#[component]
+fn LoadMore(shown: usize) -> impl Patch {
+    let f = AboutQuery::FIELDS;
+    html! {
+        <form id={LoadMoreId} method="get" action={about::About} data-patch>
+            <input type="hidden" name={f.history} value="on">
+            <input type="hidden" name={f.shown} value={shown}>
+            <button hidden={shown >= HISTORY.len()}>"Load more"</button>
+        </form>
+    }
+}
+
+/// A filter applied as soon as it changes: the form is submitted on change by its handler, and
+/// data-keep-place keeps the user where they were, on the box they checked, while the page
+/// changes under them.
+#[component(js)]
+fn AboutFilter(history: bool) -> impl Render {
+    let f = AboutQuery::FIELDS;
+    html! {
+        <form method="get" action={about::About} data-keep-place on:change={js::apply(target)}>
+            <label><input type="checkbox" name={f.history} checked={history}>" Show the history"</label>
+            <button>"Apply"</button>
+        </form>
+    }
 }
 
 #[derive(Deserialize)]
@@ -499,6 +565,24 @@ mod tests {
         let (_, about) = send(Request::get("/about").body(Body::empty()).unwrap()).await;
         assert!(about.contains(r#"/sections/about.css" data-corten-style>"#), "{about}");
         assert!(about.contains(r#"<p class="about-note__note">"#), "{about}");
+    }
+
+    #[tokio::test]
+    async fn load_more_sends_only_the_new_rows() {
+        let more = Request::get("/about?history=on&shown=2").header("corten", "action").body(Body::empty()).unwrap();
+        let (_, patch) = send(more).await;
+        assert_eq!(
+            patch,
+            concat!(
+                r#"<template id="history" data-append><li>Then live prices.</li><li>Then areas.</li></template>"#,
+                r#"<form id="load-more" method="get" action="/about" data-patch><input type="hidden" name="history" value="on">"#,
+                r#"<input type="hidden" name="shown" value="4"><button>Load more</button></form>"#
+            )
+        );
+        // Without JavaScript the same form loads the page with every row so far.
+        let (_, page) = send(Request::get("/about?history=on&shown=2").body(Body::empty()).unwrap()).await;
+        assert_eq!(page.matches("<li>").count(), 4, "{page}");
+        assert!(page.contains(r#"<input type="checkbox" name="history" checked>"#), "{page}");
     }
 
     #[tokio::test]

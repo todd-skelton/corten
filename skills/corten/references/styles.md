@@ -37,4 +37,5 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
    visitors never open (an admin area) adds CSS worth measuring, make it an area and list its
    components there, `.area::<Admin>(|admin| admin.route::<..>(..).components(&[..]))`: their
    stylesheet is linked from pages under that prefix only. A component used in several areas
-   stays in `App::components`, and so do tokens. Details: `docs/guide/styles.md`, "Areas".
+   is listed in each (they share a file of its rules); one most pages use stays in
+   `App::components`, and so do tokens. Details: `docs/guide/styles.md`, "Areas".

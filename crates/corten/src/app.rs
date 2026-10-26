@@ -115,9 +115,11 @@ impl<P: TypedRoute> Area<P> {
     /// the stylesheet stays (its rules only match its components' classes). A page under nested
     /// areas (`/admin` and `/admin/reports`) links each one's stylesheet.
     ///
-    /// A component with a stylesheet is listed once: one that pages in several areas render
-    /// belongs in [`App::components`], and so does a token file (`tokens!`), which styles every
-    /// page. Under `corten dev` a page outside an area that renders one of its components is an
+    /// A component that pages in several areas render is listed in each of them: its rules are
+    /// in one file those areas share (`sections/search+categories.css`), linked from their pages
+    /// only, with any other component the same areas list. One that most pages render belongs in
+    /// [`App::components`] instead (a component with a stylesheet is in one or the other), and so
+    /// does a token file (`tokens!`), which styles every page. Under `corten dev` a page outside an area that renders one of its components is an
     /// error that names both; a patch is checked against its own URL. Without areas there is one
     /// stylesheet, which is the right choice until a part of the app most visitors never open
     /// adds enough CSS to measure (see the styles guide).
@@ -445,12 +447,11 @@ impl<M: Middleware> App<M> {
         shared.dev = dev;
         shared.components = self.components.iter().chain(sections.iter().flat_map(|(_, c)| c.iter())).map(|c| c.name).collect();
         if let Some(assets) = &shared.assets {
-            for (prefix, href) in assets.section_stylesheets() {
+            for section in assets.section_stylesheets() {
                 let index = shared.sections.len();
-                let listed = sections.iter().filter(|(p, _)| p == prefix).flat_map(|(_, c)| c.iter());
-                shared.section_of.extend(listed.filter(|c| c.style.is_some()).map(|c| (c.name, index)));
-                let link = format!(r#"<link rel="stylesheet" href="{}" data-corten-style>"#, crate::escape(href));
-                shared.sections.push((prefix.clone(), link));
+                shared.section_of.extend(section.components.iter().map(|name| (*name, index)));
+                let link = format!(r#"<link rel="stylesheet" href="{}" data-corten-style>"#, crate::escape(&section.href));
+                shared.sections.push((section.prefixes.clone(), link));
             }
         }
         let policy = Applied::new(self.policy, &shared.import_map);

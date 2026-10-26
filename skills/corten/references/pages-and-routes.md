@@ -61,7 +61,9 @@ routes) share one `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` as 
 `#[route(query)] filters: ItemQuery` field; handlers read `Query<ItemQuery>`. Never repeat the
 filter fields in each route. Parameters whose names are data (an option per dimension) are a
 `#[route(prefix = "dimension.")] dimensions: &BTreeMap<String, String>` field, never a query string
-built by hand.
+built by hand. A parameter whose URL name is not the field's (`?priceMin=`) is renamed with serde
+(`#[serde(rename_all = "camelCase")]` or `#[serde(rename = "..")]`), which the link follows; never
+implement `Params` by hand for it.
 
 ## A component
 

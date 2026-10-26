@@ -501,14 +501,63 @@ mod tests {
         {
             let (status, body) = get_page(app(true), "/", false).await;
             assert_eq!(status, 500);
-            assert!(
-                body.contains("/ renders BadgeList, whose stylesheet is in the area /admin, which is not linked here"),
-                "{body}"
-            );
+            assert!(body.contains("/ renders BadgeList, whose stylesheet is linked from the area /admin only"), "{body}");
         }
 
         let twice = std::panic::catch_unwind(|| App::new(Routes::new()).area::<Admin>(|a| a).area::<Admin>(|a| a));
         assert!(twice.is_err(), "an area is given once");
+    }
+
+    #[derive(crate::Route)]
+    #[route("/shop")]
+    struct Shop;
+
+    /// One screen at two addresses (`/search` and `/categories/{slug}`) is two areas listing the
+    /// same components: their rules are in a file the two share, linked from their pages only.
+    #[tokio::test]
+    async fn areas_that_list_the_same_component_share_its_stylesheet() {
+        use axum::{body::Body, http::Request, routing::get};
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        const REPORT: crate::Component = crate::Component {
+            name: "Report",
+            script: None,
+            style: Some(Style { name: "report", file: "report.css", css: ".report__a{}", classes: &["a"] }),
+            event: None,
+            view: None,
+        };
+        let page = |req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Badges", BadgeCount { n: 1 }) };
+        let app = || {
+            App::new(Routes::from(axum::Router::new().route("/", get(|| async { "home" }))))
+                .dev(true)
+                .components(&[theme::TOKENS])
+                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(page))).components(&[BadgeList]))
+                .area::<Shop>(|shop| shop.route::<Shop>(crate::Methods(get(page))).components(&[BadgeList, REPORT]))
+                .router()
+        };
+        let get_page = |path: &str| {
+            let req = Request::get(path).body(Body::empty()).unwrap();
+            async move {
+                let res = app().oneshot(req).await.unwrap();
+                let status = res.status();
+                (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+            }
+        };
+        let links = |body: &str| -> Vec<String> {
+            body.split(r#"<link rel="stylesheet" href=""#)
+                .skip(1)
+                .map(|rest| {
+                    rest.split_once('"').unwrap().0.split_once("/sections/").map_or("components.css", |s| s.1).to_string()
+                })
+                .collect()
+        };
+        let (status, admin) = get_page("/admin").await;
+        assert_eq!(status, 200, "a page of either area renders the shared component: {admin}");
+        assert_eq!(links(&admin), ["components.css", "admin+shop.css"]);
+        let (status, shop) = get_page("/shop").await;
+        assert_eq!(status, 200, "{shop}");
+        assert_eq!(links(&shop), ["components.css", "admin+shop.css", "shop.css"], "its own after the shared one");
     }
 
     #[cfg(debug_assertions)]

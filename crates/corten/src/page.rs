@@ -258,8 +258,8 @@ pub(crate) struct Shared {
     pub dev: bool,
     /// The names of the components the app lists (`App::components` and `Area::components`).
     pub components: std::collections::HashSet<&'static str>,
-    /// Each area with a stylesheet (`Area::components`): its prefix and the stylesheet's `<link>`.
-    pub sections: Vec<(String, String)>,
+    /// Each area stylesheet (`Area::components`): the prefixes whose pages link it and its `<link>`.
+    pub sections: Vec<(Vec<String>, String)>,
     /// The section (an index in `sections`) whose stylesheet has a component's rules.
     pub section_of: std::collections::HashMap<&'static str, usize>,
 }
@@ -485,12 +485,13 @@ impl Req {
         }
         for component in used {
             let Some(&index) = self.shared.section_of.get(component.name) else { continue };
-            let prefix = &self.shared.sections[index].0;
-            if !crate::api::under(prefix, self.path()) {
+            let prefixes = &self.shared.sections[index].0;
+            if !prefixes.iter().any(|prefix| crate::api::under(prefix, self.path())) {
                 return Err(Error::new(format!(
-                    "{path} renders {name}, whose stylesheet is in the area {prefix}, which is not linked here: list {name} in App::components, or route the page in that area",
+                    "{path} renders {name}, whose stylesheet is linked from the area {areas} only: list {name} in this page's area too, or route the page in that area",
                     path = self.path(),
-                    name = component.name
+                    name = component.name,
+                    areas = prefixes.join(" and the area ")
                 )));
             }
         }
@@ -501,8 +502,8 @@ impl Req {
     #[inline]
     fn section_links(&self, out: &mut String) {
         let path = self.uri.path();
-        for (prefix, link) in &self.shared.sections {
-            if crate::api::under(prefix, path) {
+        for (prefixes, link) in &self.shared.sections {
+            if prefixes.iter().any(|prefix| crate::api::under(prefix, path)) {
                 out.push_str(link);
             }
         }

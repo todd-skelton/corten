@@ -24,6 +24,47 @@
 //! fields that also derives `Deserialize` can be the extractor's type. A route struct says where a
 //! link goes; that a handler is registered at `PATH` is the router's job (and its tests').
 //!
+//! A query parameter is named as serde reads the field: `#[serde(rename_all = "camelCase")]` on the
+//! struct and `#[serde(rename = "..")]` on a field rename it in links too, so addresses that
+//! already exist (`?priceMin=`) keep working and the link and the handler cannot disagree:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[derive(Route, serde::Deserialize)]
+//! #[route("/search")]
+//! #[serde(rename_all = "camelCase")]
+//! struct Search {
+//!     price_min: Option<u32>,
+//!     in_stock: Option<bool>,
+//!     #[serde(rename = "q")]
+//!     text: Option<String>,
+//! }
+//!
+//! let link = Search { price_min: Some(5), in_stock: Some(true), text: Some("pika".into()) };
+//! assert_eq!(link.href(), "/search?priceMin=5&inStock=true&q=pika");
+//! ```
+//!
+//! A path parameter keeps the name the path gives it, so a field serde reads by another name does
+//! not compile, and neither does a name a URL would have to escape:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[derive(Route, serde::Deserialize)]
+//! #[route("/items/{item_id}")]
+//! #[serde(rename_all = "camelCase")]
+//! struct Item { item_id: String }
+//! ```
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[derive(Route, serde::Deserialize)]
+//! #[route("/search")]
+//! struct Search { #[serde(rename = "price min")] price_min: Option<u32> }
+//! ```
+//!
 //! ```
 //! use corten::prelude::*;
 //!
