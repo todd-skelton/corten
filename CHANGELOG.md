@@ -924,6 +924,8 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#96 A data-keep-place navigation resets a scrolling container (a filter rail), so the control it focuses is out of view](https://github.com/todd-skelton/corten/issues/96),
     [#97 A data-keep-place navigation folds the <details> the user unfolded, so focus can fall to the body](https://github.com/todd-skelton/corten/issues/97)).
     The runtime notes the elements that scroll as they do, so keeping a place reads only those (0.1 ms on a page of 4,770 elements in Chromium, against 15 ms reading every element's scroll; measured), and is 167 B larger gzipped (8,362 to 8,529 B, measured).
+27. A release build of `corten` compiles without a warning: the check that a patch has an id on
+    each top-level element, which runs in debug builds only, is no longer compiled into release.
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -967,6 +969,9 @@ Corten is pre-1.0, so any minor version may change the API.
 12. The brand pack is in `docs/brand/` (mark, lockups, favicon, palette, traced from
     `corten-weathering-concept.png`), and the README opens with the lockup, in its light version
     when the reader's system is in dark mode.
+13. The app guide says why a JSON 400 under `App::api` costs about 500 instructions more since
+    every route goes through the checks (Added 65): the checked `get` marks a JSON route's
+    failed response with an extension, profiled under callgrind in place of "most likely".
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

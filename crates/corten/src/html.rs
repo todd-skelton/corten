@@ -69,6 +69,7 @@ pub(crate) fn json_string(text: &str) -> String {
 /// replaces each top-level element by its id and ignores the rest, so either is a view that never
 /// shows. Reads markup as `html!` writes it (attribute values quoted, `<` escaped in text).
 /// Checked in debug builds only.
+#[cfg(any(debug_assertions, test))]
 pub(crate) fn patch_problem(html: &str) -> Option<String> {
     const VOID: &[&str] = &["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"];
     const RAW_TEXT: &[&str] = &["script", "style", "textarea", "title"];
