@@ -66,6 +66,7 @@ mod tests {
         let html = send(Request::get("/").body(Body::empty()).unwrap()).await;
         assert!(html.contains("<title>{{name}}</title>"));
         assert!(html.contains("<header>"));
+        assert!(html.contains(r#"<link rel="icon" type="image/svg+xml""#));
         assert!(
             html.contains("click_counter.count(@total)"),
             "the counter's handler: {html}"
