@@ -174,6 +174,7 @@ fn Layout<'a>(
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <link rel="stylesheet" href={req.asset("style.css")}>
+                <link rel="icon" type="image/svg+xml" href={req.asset("favicon.svg")}>
                 <title>{title}" | Corten"</title>
                 {head}
                 <Corten />

@@ -68,6 +68,7 @@ pub fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) 
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <link rel="stylesheet" href={req.asset("style.css")}>
+                <link rel="icon" type="image/svg+xml" href={req.asset("favicon.svg")}>
                 <title>{title}" | Card Market"</title>
                 {head}
                 <Corten />

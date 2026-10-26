@@ -159,6 +159,9 @@ try {
     style.headers.get("content-encoding") === "br" && /-br"$/.test(style.headers.get("etag") ?? ""),
     `${style.headers.get("content-encoding")} ${style.headers.get("etag")}`,
   );
+  const iconUrl = await page.evaluate(() => /** @type {HTMLLinkElement} */ (document.querySelector('link[rel="icon"]')).href);
+  const icon = await fetch(iconUrl);
+  check("the favicon is a versioned SVG asset", icon.ok && /\/assets\//.test(iconUrl) && icon.headers.get("content-type") === "image/svg+xml", `${icon.status} ${iconUrl}`);
   const zstd = await fetch(`${base}/items/item_5`, { headers: { "accept-encoding": "zstd" } });
   check("pages are compressed with zstd when the client accepts it", zstd.headers.get("content-encoding") === "zstd" && /accept-encoding/.test(zstd.headers.get("vary") ?? ""));
   const br = await fetch(`${base}/items/item_5`, { headers: { "accept-encoding": "gzip, br" } });

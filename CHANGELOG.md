@@ -498,6 +498,9 @@ Corten is pre-1.0, so any minor version may change the API.
     it stopped after one read, since a navigation to the same address with a `#id` was taken for
     a scroll. The runtime is 8,670 B gzipped
     ([#107 ReadAgain never reads a page whose address has a #fragment, so a write redirected to route.at(..) stays on its catching-up state](https://github.com/todd-skelton/corten/issues/107)).
+73. `corten new` writes `static/favicon.svg` (Corten's mark) and links it from the layout; the
+    examples link the same icon.
+
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -951,6 +954,9 @@ Corten is pre-1.0, so any minor version may change the API.
 11. The README's example names its view `home_page` (it was `page`), so `home` serving it reads as
     `req.page(home_page(&req, ""))` rather than `req.page(page(..))`; the forms recipe in the agent
     skill follows.
+12. The brand pack is in `docs/brand/` (mark, lockups, favicon, palette, traced from
+    `corten-weathering-concept.png`), and the README opens with the lockup, in its light version
+    when the reader's system is in dark mode.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
