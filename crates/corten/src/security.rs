@@ -374,8 +374,10 @@ impl Applied {
     /// never a page (an API route, a refused write), which gets a CSP that allows nothing.
     pub fn headers(&self, res: &mut Response, nonce: Option<&NonceSlot>) {
         let headers = res.headers_mut();
-        // The headers below, `Cache-Control` and `Vary` from compression: one allocation, not a few.
-        headers.reserve(9);
+        // Room for the headers below and `Cache-Control` (`Vary` from compression is appended to an
+        // existing one, or added): the map grows at most once, and not at all when a page reserved
+        // enough. Asking for more than this reallocates an error page's map for nothing.
+        headers.reserve(6 + usize::from(self.hsts) + usize::from(!headers.contains_key(header::VARY)));
         let csp_header =
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
         let csp = match nonce.map(|slot| slot.taken()) {

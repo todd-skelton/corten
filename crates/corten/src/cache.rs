@@ -3,22 +3,26 @@
 //! Static files and the runtime are content-addressed and cached forever ([`crate::assets`]).
 //! Every other response [`crate::App`] serves that does not say otherwise gets
 //! `Cache-Control: private, no-cache`: the browser may keep it but asks the server before reusing
-//! it, and no shared cache (a CDN, a proxy) stores it, since a page's layout may read
-//! [`crate::App::context`] and the page may carry the signed-in user's data.
+//! it, and no shared cache (a CDN, a proxy) stores it, since a page may carry the signed-in
+//! user's data.
 //!
-//! A response the same for everyone opts in with [`Cache::public`], returned next to it:
+//! A route whose answer is the same for everyone says so in its type, [`crate::Public`], whose
+//! handler cannot read who is asking (that does not compile):
 //!
 //! ```ignore
-//! async fn home(req: Req) -> corten::Result<(Cache, Response)> {
-//!     Ok((Cache::public(Duration::from_secs(60)), req.page(html! { <Layout req={&req} title="Home">{view}</Layout> })?))
+//! async fn home(req: Req) -> Public<HtmlResult> {
+//!     Public::new(Duration::from_secs(60), req.page(html! { <Layout req={&req} title="Home">{view}</Layout> }))
 //! }
 //! ```
+//!
+//! [`Cache`] is the header itself, for a response outside a routes module (a file route).
 //!
 //! `App` lets shared caches keep it only when nothing about the request could make it differ
 //! between users:
 //!
-//! - when the request carried credentials (`Cookie` or `Authorization`), or the context function
-//!   returned a value for it, the response is `private, no-cache`;
+//! - when the request carried credentials (`Cookie` or `Authorization`), or anything read a
+//!   [`crate::Caller`] for it (an API key in a header of the app's own included), the response is
+//!   `private, no-cache`;
 //! - when it is not the full document (a client navigation, a form answer, a data client's JSON
 //!   from the same URL as the page), only the browser keeps it (`private`, same lifetime), so a
 //!   cache that ignores `Vary` cannot hand one form to another client. An [`crate::App::api`]
@@ -89,6 +93,14 @@ impl Cache {
     }
 }
 
+impl Cache {
+    /// Sets the response's `Cache-Control` to this, as [`settle`] reads it.
+    pub(crate) fn apply(self, res: &mut Response) {
+        res.headers_mut().insert(header::CACHE_CONTROL, self.header());
+        res.extensions_mut().insert(Typed);
+    }
+}
+
 impl IntoResponseParts for Cache {
     type Error = std::convert::Infallible;
 
@@ -108,7 +120,7 @@ pub(crate) const PRIVATE: HeaderValue = HeaderValue::from_static("private, no-ca
 
 /// What the layer knows about a request, for [`settle`].
 pub(crate) struct Seen {
-    /// A `Cookie` or `Authorization` header, or a value from the context function.
+    /// A `Cookie` or `Authorization` header, or something read a [`crate::Caller`].
     pub personal: bool,
     /// Not the full document of a page route (a navigation, a form answer, JSON for a data client).
     pub partial: bool,

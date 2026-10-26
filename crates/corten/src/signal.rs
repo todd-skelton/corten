@@ -27,7 +27,7 @@ use std::{
     convert::Infallible,
     pin::{pin, Pin},
     sync::{
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering},
         Arc,
     },
     task::{Context, Poll},
@@ -67,6 +67,11 @@ struct Inner {
     /// 0 while running, else an [`Abort`] + 1.
     reason: AtomicU8,
     notify: Notify,
+    /// Something read who is asking ([`crate::Caller`]), so the answer is theirs alone.
+    personal: AtomicBool,
+    /// The hashes of the callers it read, mixed: part of the page's key, so a page for someone
+    /// else (after signing in or out) is loaded in full.
+    callers: AtomicU64,
 }
 
 impl Signal {
@@ -95,6 +100,23 @@ impl Signal {
         }
         notified.await;
         self.reason().unwrap_or(Abort::Responded)
+    }
+
+    /// Marks the request as read by who is asking, whose hash is `hash` (each caller type is
+    /// marked once per request).
+    pub(crate) fn mark_caller(&self, hash: u64) {
+        self.0.personal.store(true, Ordering::Relaxed);
+        self.0.callers.fetch_xor(hash, Ordering::Relaxed);
+    }
+
+    /// True when something read who is asking.
+    pub(crate) fn is_personal(&self) -> bool {
+        self.0.personal.load(Ordering::Relaxed)
+    }
+
+    /// The callers read so far, as one hash (0 for none).
+    pub(crate) fn callers(&self) -> u64 {
+        self.0.callers.load(Ordering::Relaxed)
     }
 
     /// Aborts with `reason` unless it already aborted; the first reason stays.

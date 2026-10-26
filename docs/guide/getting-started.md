@@ -62,7 +62,7 @@ async fn main() -> std::io::Result<()> {
     corten::serve(app).await
 }
 
-async fn home(req: Req) -> corten::Result {
+async fn home(req: Req) -> HtmlResult {
     let name = GreetForm::FIELDS.name;
     req.page(html! {
         <Layout req={&req} title="Home">
@@ -81,7 +81,7 @@ struct GreetForm { name: String }
 
 /// With JavaScript the runtime swaps in the patch; without it the form posts and the whole page
 /// comes back. One handler serves both.
-async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
+async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     match req.mode {
         Mode::Action => req.patch(Greeting { name: &form.name }),
         _ => req.page(html! { <Layout req={&req} title="Home"><Greeting name={&form.name} /></Layout> }),
@@ -115,12 +115,15 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 }
 
 /// The page for a failed request, in the layout: an unknown URL, a handler's error or panic.
+/// `corten new` writes one that names every `Failure`.
 fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
-    let title = if failure.status.as_u16() == 404 { "Not found" } else { "Something went wrong" };
+    let title = if matches!(failure, Failure::NotFound) { "Not found" } else { "Something went wrong" };
     html! { <Layout req={req} title={title}><h1>{title}</h1></Layout> }
 }
 ```
 
-Handlers are plain axum handlers. `App` adds everything a production app needs around them.
+Handlers are plain axum handlers whose return type says what the route answers: `HtmlResult`
+for a page, a patch or a redirect, `JsonResult<T>` for JSON. `App` adds everything a production
+app needs around them.
 
 Next: [the app's defaults](app.md), then [views](views.md).

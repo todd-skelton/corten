@@ -79,7 +79,7 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 }
 
 /// The gallery in the layout.
-fn gallery(req: &Req, gallery: Gallery<'_>) -> corten::Result {
+fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
     req.page(Layout { req, title: TITLE, children: gallery })
 }
 
@@ -90,7 +90,7 @@ struct HomeQuery {
 
 const TITLE: &str = "corten-ui";
 
-async fn home(req: Req, Query(q): Query<HomeQuery>) -> corten::Result {
+async fn home(req: Req, Query(q): Query<HomeQuery>) -> HtmlResult {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
     gallery(&req, Gallery { tab, result: "", toast: None })
 }
@@ -102,7 +102,7 @@ pub struct OrderForm {
     pub color: String,
 }
 
-async fn order(req: Req, Form(form): Form<OrderForm>) -> corten::Result {
+async fn order(req: Req, Form(form): Form<OrderForm>) -> HtmlResult {
     let color = COLORS.iter().find(|c| c.value == form.color).map_or("no color", |c| c.label);
     let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
     match req.mode {
@@ -112,7 +112,7 @@ async fn order(req: Req, Form(form): Form<OrderForm>) -> corten::Result {
 }
 
 /// Answers with a toast: the message as a patch, or in the page without JavaScript.
-async fn save(req: Req) -> corten::Result {
+async fn save(req: Req) -> HtmlResult {
     const SAVED: &str = "Draft saved.";
     match req.mode {
         Mode::Action => req.patch(Toast { message: Some(&SAVED) }),
@@ -120,14 +120,14 @@ async fn save(req: Req) -> corten::Result {
     }
 }
 
-async fn menu_action(req: Req, text: &'static str) -> corten::Result {
+async fn menu_action(req: Req, text: &'static str) -> HtmlResult {
     match req.mode {
         Mode::Action => req.patch(MenuResult { text }),
         _ => req.redirect(&url::Home { tab: None }),
     }
 }
 
-async fn help(req: Req) -> corten::Result {
+async fn help(req: Req) -> HtmlResult {
     req.page(html! {
         <Layout req={&req} title="Help | corten-ui">
             <h1>"Help"</h1>

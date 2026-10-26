@@ -50,7 +50,7 @@ fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> i
     }
 }
 
-async fn about(req: Req) -> Result {
+async fn about(req: Req) -> HtmlResult {
     let head = html! { <meta name="description" content="Who we are"> };
     req.page(html! { <Layout req={&req} title="About" head={head}><h1>"About"</h1></Layout> })
 }
@@ -70,8 +70,8 @@ one `<main>`, not inside a `for`, `if` or `match`. Each part renders for the req
 | everything else: the header, the footer, the layout's own tags | yes | no: the runtime keeps what the page has | no |
 
 So the layout costs a navigation nothing, and what the layout shows that a navigation cannot
-update (the signed-in user, from `req.context`) is covered by the page key: when it changes, the
-runtime loads the next page in full. Keep a layout's props to what most pages set (the title,
+update (the signed-in user, from a `Caller` the handler took) is covered by the page key: when it
+changes, the runtime loads the next page in full. Keep a layout's props to what most pages set (the title,
 their head tags); a page that needs a different document uses another layout.
 
 Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`

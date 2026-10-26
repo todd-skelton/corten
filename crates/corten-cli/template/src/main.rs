@@ -29,7 +29,7 @@ fn app() -> App {
         .components(&[views::ClickCounter])
 }
 
-async fn home(req: Req) -> corten::Result {
+async fn home(req: Req) -> HtmlResult {
     req.page(views::home(&req, ""))
 }
 
@@ -40,7 +40,7 @@ struct GreetForm {
 
 /// With JavaScript the runtime swaps in the greeting; without it the form posts and the whole
 /// page comes back. One handler serves both.
-async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
+async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     let name = form.name.trim();
     match req.mode {
         Mode::Action => req.patch(views::Greeting { name }),

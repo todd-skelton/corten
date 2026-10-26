@@ -27,7 +27,7 @@ fn Greeting(name: &str) -> impl Patch {
     html! { <p id={GreetingId} aria-live="polite">if !name.is_empty() { "Hello, "{name}"!" }</p> }
 }
 
-async fn greet(req: Req, Form(form): Form<GreetForm>) -> corten::Result {
+async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     match req.mode {
         Mode::Action => req.patch(Greeting { name: &form.name }),  // the runtime swaps #greeting
         _ => req.page(page(&req, &form.name)),                      // no JavaScript: the whole page

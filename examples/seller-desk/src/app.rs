@@ -120,7 +120,7 @@ fn routes(desk: Desk) -> Router {
         .with_state(desk)
 }
 
-async fn home(req: Req, State(desk): State<Desk>) -> corten::Result {
+async fn home(req: Req, State(desk): State<Desk>) -> HtmlResult {
     let qty = desk.quantities();
     let items = desk.items.lock().expect("items").clone();
     let lines: Vec<Line> = items.iter().filter(|i| !i.archived).map(|item| Line { item, qty: qty[&item.id] }).collect();
@@ -145,7 +145,7 @@ fn parse_price(text: &str) -> Option<u32> {
     (value > 0).then_some(value)
 }
 
-async fn set_price(req: Req, State(desk): State<Desk>, Path(id): Path<String>, Form(input): Form<PriceInput>) -> corten::Result {
+async fn set_price(req: Req, State(desk): State<Desk>, Path(id): Path<String>, Form(input): Form<PriceInput>) -> HtmlResult {
     let f = PriceInput::FIELDS;
     let Some(cents) = parse_price(&input.price) else {
         let mut errors = Errors::new();
@@ -170,7 +170,7 @@ pub struct ArchiveInput {
     pub ids: Vec<String>,
 }
 
-async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveInput>) -> corten::Result {
+async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveInput>) -> HtmlResult {
     let mut items = desk.items.lock().expect("items");
     let mut done = Vec::new();
     for item in items.iter_mut().filter(|i| input.ids.contains(&i.id) && !i.archived) {

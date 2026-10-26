@@ -22,20 +22,24 @@ pub use price::Price;
 pub const COMPONENTS: &[Component] = &[theme::TOKENS, ItemDetail, AlertForm, Price, Home, ListingSort, OfferList];
 
 /// The page for a failed request (`App::error_page`), in the layout; under `corten dev` it shows
-/// the error. The PWA's offline page is its 503.
+/// the error. The PWA's offline page is `Failure::Offline`.
 pub fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
     let t: Msg = req.t();
-    let (title, text) = match failure.status.as_u16() {
-        404 => (t.error_not_found(), t.error_not_found_text()),
-        503 => (t.error_unavailable(), t.error_unavailable_text()),
-        _ => (t.error_failed(), t.error_failed_text()),
+    let (title, text) = match failure {
+        Failure::NotFound => (t.error_not_found(), t.error_not_found_text()),
+        Failure::TimedOut | Failure::Offline => (t.error_unavailable(), t.error_unavailable_text()),
+        Failure::WrongMethod
+        | Failure::CrossSite
+        | Failure::Refused { .. }
+        | Failure::Rejected { .. }
+        | Failure::Failed { .. }
+        | Failure::Panicked { .. } => (t.error_failed(), t.error_failed_text()),
     };
-    let detail = failure.detail;
     html! {
         <Layout req={req} title={title} head="">
             <h1>{title}</h1>
             <p>{text}</p>
-            if let Some(detail) = &detail {
+            if let Some(detail) = failure.detail() {
                 <pre>{detail}</pre>
             }
         </Layout>

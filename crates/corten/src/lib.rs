@@ -7,10 +7,17 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> std::io::Result<()> {
-//!     corten::serve(App::new(Router::new().route("/", get(home)))).await
+//!     corten::serve(App::new(url::router())).await
 //! }
 //!
-//! async fn home(req: Req) -> corten::Result {
+//! #[corten::routes]
+//! mod url {
+//!     #[route("/", get = home)]
+//!     pub struct Home;
+//! }
+//!
+//! // What the route answers: a page (failures are the app's error page).
+//! async fn home(req: Req) -> HtmlResult {
 //!     req.page(html! { <Layout req={&req} title="Home"><h1>"Hello"</h1></Layout> })
 //! }
 //! ```
@@ -24,16 +31,20 @@
 //! | `Action` | the runtime, `<form data-patch>` submit | fragments that replace elements with the same `id` |
 //! | `Data` | a native screen, an agent or a test, with `Accept: application/json` | the screen's data as JSON ([`Req::screen`]) |
 //!
-//! Routes with no screen (webhooks, OAuth callbacks, public APIs) answer only JSON: mount them
-//! under a prefix with [`App::api`] and every failure there is JSON ([`Api`]). A part of the app
-//! with its own stylesheet or guard (an admin area, an account) is an [`Area`].
+//! A handler's return type is what its route answers ([`answer`]): [`HtmlResult`] for a page,
+//! [`JsonResult<T>`] for JSON (every failure of the route is JSON too), [`Public`] around either
+//! for an answer a shared cache may keep. Who is asking is a [`Caller`], looked up only when a
+//! handler takes one. Routes that share a prefix and answer only JSON mount under [`App::api`];
+//! a part of the app with its own stylesheet or caller (an admin area, an account) is an
+//! [`Area`]. The app's own steps in every request are [`middleware`].
 //!
 //! [`App`] puts the production pieces around the app's routes with defaults: security headers
 //! and a CSP, a cross-site write check, error pages, versioned static files, cache headers
 //! ([`cache`]), health checks, compression (feature `compress`), and live reload under
 //! `corten dev`.
 //!
-//! Modules: [`api`] (JSON-only routes), [`cache`] (HTTP caching), [`view`] (markup), [`script`]
+//! Modules: [`answer`] (what a route answers), [`caller`] (who is asking), [`middleware`],
+//! [`api`] (JSON-only routes), [`cache`] (HTTP caching), [`view`] (markup), [`script`]
 //! (handlers: behavior in the browser), [`style`] (component stylesheets and design tokens), [`route`] (typed links),
 //! [`i18n`] (typed messages), [`security`], [`assets`], [`pwa`], [`form`], [`seo`].
 //! Features: `json` (handler values, data screens), `feed` (live rows), `types` (TypeScript
@@ -47,11 +58,13 @@ extern crate self as corten;
 pub use corten_feed as feed;
 #[cfg(feature = "agent")]
 pub mod agent;
+pub mod answer;
 pub mod api;
 mod app;
 mod ascii;
 pub mod assets;
 pub mod cache;
+pub mod caller;
 #[cfg(feature = "compress")]
 pub mod compress;
 pub mod form;
@@ -59,6 +72,7 @@ mod html;
 pub mod i18n;
 #[cfg(feature = "json")]
 pub mod json;
+pub mod middleware;
 mod page;
 pub mod pwa;
 pub mod route;
@@ -87,11 +101,15 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 
+#[cfg(feature = "json")]
+pub use answer::JsonResult;
+pub use answer::{Answer, HtmlResponse, HtmlResult, LiveResponse, Public};
 pub use api::Api;
-pub use app::{serve, Access, App, Area, Guarded, NoContext};
+pub use app::{serve, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 pub use cache::Cache;
+pub use caller::{Caller, Identify, Refused};
 /// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
 /// gives `AlertInput::FIELDS.email`, the [`FieldName`] `"email"` (serde `rename` and `rename_all`
 /// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled
@@ -101,6 +119,7 @@ pub use form::{Errors, FieldName, Form, Query, SubmitKey};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};
+pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
 pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, Req, MODE_HEADER};
@@ -142,11 +161,11 @@ pub mod prelude {
         raw,
         script::{el, refs, Handler, Ref},
         view::Id,
-        Access, Api, App, Area, Cache, Corten, Document, Errors, Failure, FieldName, Fields, Form, Mode, Patch, Query, ReadAgain,
-        Render, Req, Result, Route, SubmitKey,
+        Api, App, Area, Cache, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Form, HtmlResult, Identify,
+        Middleware, Mode, Next, Patch, Public, Query, ReadAgain, Refused, Render, Req, Result, Route, SubmitKey,
     };
     #[cfg(feature = "json")]
-    pub use crate::{FromJson, Json, JsonLd, ToJson};
+    pub use crate::{FromJson, Json, JsonLd, JsonResult, ToJson};
 }
 
 /// The runtime, embedded so apps never copy it: `js/corten.js` minified by `scripts/build-js.mjs`
@@ -203,7 +222,7 @@ pub(crate) fn import_map(events: Option<&str>, views: Option<&str>) -> String {
 /// When `fragments` ends, the element closes its connection instead of reconnecting, so a stream
 /// of one item is a part of the page sent when it is ready. When the server shuts down the stream
 /// ends without that, and the browser reconnects (to another instance, or this one restarted).
-pub fn live<S>(fragments: S) -> Sse<impl Stream<Item = std::result::Result<Event, Infallible>>>
+pub fn live<S>(fragments: S) -> LiveResponse
 where
     S: Stream + Send + 'static,
     S::Item: Into<Fragment>,
@@ -224,7 +243,11 @@ where
     });
     // An event with no data is never dispatched, so `end` carries some.
     let end = futures_util::stream::once(async { Event::default().event("end").data("end") });
-    Sse::new(patches.chain(end).map(Ok).take_until(draining())).keep_alive(KeepAlive::default())
+    LiveResponse(
+        Sse::new(patches.chain(end).map(Ok::<_, Infallible>).take_until(draining()))
+            .keep_alive(KeepAlive::default())
+            .into_response(),
+    )
 }
 
 /// One item of a [`live`] stream: rendered HTML, and the app's cursor after it.

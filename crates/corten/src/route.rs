@@ -49,7 +49,7 @@
 //! Nor does a link that leaves a parameter out, or a redirect to a path typed as text:
 //!
 //! ```compile_fail
-//! fn done(req: corten::Req) -> corten::Result {
+//! fn done(req: corten::Req) -> corten::HtmlResult {
 //!     req.redirect("/done")
 //! }
 //! ```
@@ -109,9 +109,12 @@ pub use corten_macros::Route;
 ///
 /// Handlers that share something (a database pool, a client) take it as `State`: the module
 /// names its type, `#[corten::routes(state = Db)]`, and `router` takes it,
-/// `App::new(url::router(db))`, so it cannot be forgotten. A route another router serves (an
-/// area's page, an API route) is a link only and says so, `#[route("/admin", link)]`: the area or
-/// API registers it.
+/// `App::new(url::router(db))`, so it cannot be forgotten. A route another router serves (an API
+/// route) is a link only and says so, `#[route("/api", link)]`: the API registers it.
+///
+/// What each handler returns names what the route answers ([`crate::answer`]): `HtmlResult`,
+/// `JsonResult<T>`, text, or `Public<..>` of one; a `Response` or `impl IntoResponse`, which
+/// hides it, does not compile.
 ///
 /// ```
 /// use corten::prelude::*;
@@ -188,14 +191,24 @@ pub use corten_macros::Route;
 ///
 /// The routes of an [`crate::App::area`] are a module of their own, `#[corten::routes(area =
 /// Admin)]`, where `Admin` is the route at the area's prefix. Its `area(area)` (`area(area,
-/// state)` with `state = ..`) mounts each route in the area, behind the area's guard and with its
-/// stylesheet, so every route the area's pages link to has a handler there too:
+/// state)` with `state = ..`) mounts each route in the area, with its stylesheet, so every route
+/// the area's pages link to has a handler there too. `caller = Staff` holds every handler in the
+/// module to taking `Caller<Staff>` ([`crate::Caller`]), so a route added to the area later cannot
+/// forget who may use it:
 ///
 /// ```
-/// use corten::axum::http::StatusCode;
-/// use corten::prelude::*;
+/// use corten::{axum::http::request::Parts, prelude::*};
 ///
-/// #[corten::routes(area = Admin)]
+/// #[derive(Clone, Hash)]
+/// struct Staff;
+///
+/// impl<S: Sync> Identify<S> for Staff {
+///     async fn identify(_parts: &Parts, _state: &S) -> Result<Self, Refused> {
+///         Err(Refused::forbidden())
+///     }
+/// }
+///
+/// #[corten::routes(area = Admin, caller = Staff)]
 /// mod admin {
 ///     #[route("/admin", get = dashboard)]
 ///     pub struct Admin;
@@ -206,23 +219,36 @@ pub use corten_macros::Route;
 ///     }
 /// }
 ///
-/// async fn dashboard() -> &'static str {
+/// async fn dashboard(_: Caller<Staff>) -> &'static str {
 ///     "admin"
 /// }
-/// async fn user(Path(id): Path<String>) -> String {
+/// async fn user(_: Caller<Staff>, Path(id): Path<String>) -> String {
 ///     id
 /// }
 ///
-/// #[derive(Clone, Hash)]
-/// struct Viewer { staff: bool }
-///
-/// let app = App::new(Router::new())
-///     .context(|_headers| async { None::<Viewer> })
-///     .area::<admin::Admin>(|area| admin::area(area).guard(|viewer, _| match viewer {
-///         Some(v) if v.staff => Access::ALLOW,
-///         _ => Access::refuse(corten::Error::status(StatusCode::FORBIDDEN)),
-///     }));
+/// let app = App::new(Router::new()).area::<admin::Admin>(admin::area);
 /// # let _ = app.router();
+/// ```
+///
+/// A handler there that does not take it does not compile:
+///
+/// ```compile_fail,E0277
+/// # use corten::{axum::http::request::Parts, prelude::*};
+/// # #[derive(Clone, Hash)]
+/// # struct Staff;
+/// # impl<S: Sync> Identify<S> for Staff {
+/// #     async fn identify(_parts: &Parts, _state: &S) -> Result<Self, Refused> { Err(Refused::forbidden()) }
+/// # }
+/// #[corten::routes(area = Admin, caller = Staff)]
+/// mod admin {
+///     #[route("/admin", get = dashboard)]
+///     pub struct Admin;
+/// }
+///
+/// async fn dashboard() -> &'static str {
+///     "open to anyone"
+/// }
+/// # fn main() { let _ = corten::App::new(Router::new()).area::<admin::Admin>(admin::area); }
 /// ```
 ///
 /// A route of the module outside the area's prefix does not compile:
@@ -437,42 +463,6 @@ impl<R: Route> Href for R {
     }
 }
 
-/// True when `path` (a request's path, not decoded) is one `pattern` (a route's `PATH`) routes,
-/// as axum matches it: a literal segment is itself, `{name}` is one segment that is not empty,
-/// and a final `{*name}` is the rest, not empty. Anything else in braces matches nothing, so a
-/// pattern this does not understand never opens or names more than it should.
-pub(crate) fn matches(pattern: &str, path: &str) -> bool {
-    // Most patterns a request is checked against are literal (`/sign-in`), and most paths do not
-    // share the literal start of the others: both are settled without splitting either.
-    let Some(brace) = pattern.find('{') else {
-        return pattern == path;
-    };
-    if !path.starts_with(&pattern[..brace]) {
-        return false;
-    }
-    let mut path = path.split('/');
-    for part in pattern.split('/') {
-        let param =
-            part.len() > 2 && part.starts_with('{') && part.ends_with('}') && !part[1..part.len() - 1].contains(['{', '}']);
-        if param && part.starts_with("{*") {
-            return match path.next() {
-                Some(first) => !first.is_empty() || path.next().is_some(),
-                None => false,
-            };
-        }
-        match path.next() {
-            Some(segment) if param => {
-                if segment.is_empty() {
-                    return false;
-                }
-            }
-            Some(segment) if !part.contains(['{', '}']) && segment == part => {}
-            _ => return false,
-        }
-    }
-    path.next().is_none()
-}
-
 /// For each byte, `SEGMENT` when it is written as it is in a path segment or query value
 /// (unreserved: letters, digits, `-._~`) and `REST` when it is in a `{*rest}` value (those and
 /// `/`); everything else is %XX.
@@ -547,17 +537,28 @@ pub mod __private {
     use super::{Encode, REST, SEGMENT};
 
     // `#[corten::routes]` names each handler through one of these, so a handler that cannot serve
-    // the route is an error that says why, at the handler's name in `#[route(..)]`.
+    // the route is an error that says why, at the handler's name in `#[route(..)]`: its arguments
+    // a request cannot fill, a result that is not an `Answer`, an input a `Public` answer may not
+    // read, or a module's `caller = ..` it does not take. `R` is that caller (`()` for none).
     macro_rules! methods {
         ($($method:ident),*) => {$(
             #[inline]
-            pub fn $method<H, T, S>(handler: H) -> MethodRouter<S>
+            pub fn $method<H, T, S, R, I>(handler: H) -> MethodRouter<S>
             where
-                H: RouteHandler<T, S>,
+                H: RouteHandler<T, S> + crate::answer::Signature<T>,
+                <H as RouteHandler<T, S>>::Handler: Handler<T, S>,
+                <<H as RouteHandler<T, S>>::Handler as Handler<T, S>>::Future: Unpin,
+                <H as crate::answer::Signature<T>>::Out: crate::answer::Answer + 'static,
+                <<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs:
+                    crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
+                <H as crate::answer::Signature<T>>::Args: crate::answer::Holds<R, I>,
                 T: 'static,
                 S: Clone + Send + Sync + 'static,
             {
-                axum::routing::$method(handler.into_handler())
+                axum::routing::$method(crate::answer::Endpoint::<_, <H as crate::answer::Signature<T>>::Out> {
+                    handler: handler.into_handler(),
+                    answer: std::marker::PhantomData,
+                })
             }
         )*};
     }
@@ -726,18 +727,6 @@ mod tests {
     #[route("/files/{*path}")]
     struct File {
         path: String,
-    }
-
-    #[test]
-    fn a_pattern_matches_the_paths_axum_routes_to_it() {
-        use super::matches;
-        assert!(matches("/", "/") && !matches("/", "/a"));
-        assert!(matches("/sign-in", "/sign-in") && !matches("/sign-in", "/sign-in/") && !matches("/sign-in", "/sign-in-now"));
-        assert!(matches("/items/{id}/offers", "/items/7/offers"));
-        assert!(!matches("/items/{id}/offers", "/items//offers") && !matches("/items/{id}/offers", "/items/7/offers/x"));
-        assert!(matches("/files/{*path}", "/files/a") && matches("/files/{*path}", "/files/a/b"));
-        assert!(!matches("/files/{*path}", "/files") && !matches("/files/{*path}", "/files/"));
-        assert!(!matches("/items/{id}.json", "/items/7.json"), "what it does not understand matches nothing");
     }
 
     #[test]

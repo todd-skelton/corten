@@ -18,7 +18,7 @@
 One handler serves every mode, and `req.mode` says which. A route with no screen goes under
 [`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The layout around `<main>` renders on full
 loads only ([the document](views.md#the-document)); every page carries a key hashed from the
-context and the deploy, and when a navigation answers with a different key (sign-in, a new
+caller its handler read (if any) and the deploy, and when a navigation answers with a different key (sign-in, a new
 release) the runtime loads the whole document instead, so the layout is never stale.
 
 ## Forms
@@ -69,7 +69,7 @@ that reads it agree:
 struct Search { q: Option<String>, #[serde(default)] condition: Vec<String> }
 
 // <a href={Search { q: None, condition: vec!["nm".into(), "lp".into()] }}> is /search?condition=nm&condition=lp
-async fn search(req: Req, Query(search): Query<Search>) -> corten::Result { .. }
+async fn search(req: Req, Query(search): Query<Search>) -> HtmlResult { .. }
 ```
 
 When several routes carry the same parameters (a list's filters, which its `<corten-live>` rows,
@@ -84,7 +84,7 @@ struct ItemQuery { search: Option<String>, page: Option<u32>, #[serde(default)] 
 #[derive(Route)] #[route("/items/live")] struct ItemsLive { #[route(query)] filters: ItemQuery }
 
 // ItemsLive { filters: items.filters.clone() } is /items/live?search=..&page=..
-async fn items(req: Req, Query(filters): Query<ItemQuery>) -> corten::Result { .. }
+async fn items(req: Req, Query(filters): Query<ItemQuery>) -> HtmlResult { .. }
 ```
 
 Each of `ItemQuery`'s fields is written as the route's own parameter, so a route that must carry
@@ -142,7 +142,7 @@ struct OrderInput { quantity: u32, submit: SubmitKey }
 
 html! { <form method="post" action={url::Order { id }} data-patch>{SubmitKey::field(f.submit)} .. </form> }
 
-async fn order(req: Req, State(db): State<Db>, Form(input): Form<OrderInput>) -> corten::Result {
+async fn order(req: Req, State(db): State<Db>, Form(input): Form<OrderInput>) -> HtmlResult {
     // In the same transaction as the write: a key seen before answers with the first outcome.
     let placed = db.place_once(input.submit.as_str(), input.quantity).await?;
     req.redirect(&url::Order { id: placed.id })
@@ -189,7 +189,8 @@ After a successful write, `req.redirect(&route)` sends the browser on (post/redi
 and without JavaScript. It takes a typed route, or an `axum::http::Uri` for a URL outside the
 app; a path written as text does not compile.
 
-A page handler may redirect too (an old URL, a guard sending someone to sign in). A client
+A page handler may redirect too (an old URL; a `Caller` sending someone to sign in does the
+same). A client
 navigation follows it: the page it was sent to is swapped in and replaces the requested URL
 in the history, so Back skips the URL that redirected.
 
@@ -225,15 +226,16 @@ page that sends one.
 
 ## Errors
 
-A handler returns `corten::Result`; any `std::error::Error` converts with `?` and becomes a
+A page handler returns `HtmlResult`; any `std::error::Error` converts with `?` and becomes a
 500, and `Error::status(StatusCode::NOT_FOUND)` (or `.with_status(..)` on an error) sets
 another status. The app's error page is rendered in the request's mode (a page or a swap) and
 the message is logged, never shown, except under `corten dev`. An extractor's own rejection (a
 path segment that does not parse, a form of the wrong type) gets the error page too when a
-browser asked.
+browser asked. The page is given a `Failure` that says which case it is
+([error pages](app.md#error-pages)).
 
-A client that asked for JSON, and every request under an [`App::api`](app.md#json-only-routes)
-prefix, gets every failure in one shape: `{"error":{"status":404,"message":"Not Found"}}`. A
+A client that asked for JSON, every route whose handler returns `JsonResult<T>`, and every
+request under an [`App::api`](app.md#json-only-routes) prefix, gets every failure in one shape: `{"error":{"status":404,"message":"Not Found"}}`. A
 4xx carries the error's message or the rejection's text; a 5xx carries only the status's
 reason. Validation errors add the fields:
 `{"error":{"status":422,"message":"email: ...","fields":{"email":"..."}}}`, and a message about

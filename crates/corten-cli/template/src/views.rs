@@ -1,4 +1,4 @@
-use corten::prelude::*;
+use corten::{axum::http::StatusCode, prelude::*};
 
 use crate::{GreetForm, url};
 
@@ -26,20 +26,30 @@ pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     }
 }
 
-/// The page for a failed request: an unknown URL, a handler's error or panic, the offline page
-/// (503). Under `corten dev`, `failure.detail` is the error; in production it is only logged.
+/// The page for every way a request can fail, sent with `failure.status()`. Each case is named,
+/// so when Corten adds one this stops compiling instead of showing the wrong text. Under
+/// `corten dev`, `failure.detail()` is what went wrong; in production it is only logged.
 pub fn error_page(req: &Req, failure: Failure) -> impl Document {
-    let (title, text) = match failure.status.as_u16() {
-        404 => ("Not found", "There is nothing at this address."),
-        503 => ("Not available", "Check your connection and try again."),
-        _ => ("Something went wrong", "Please try again."),
+    let (title, text) = match &failure {
+        Failure::NotFound => ("Not found", "There is nothing at this address."),
+        Failure::CrossSite => ("Not allowed", "This request came from another site."),
+        Failure::Refused { status } if *status == StatusCode::UNAUTHORIZED => {
+            ("Sign in needed", "Sign in to see this page.")
+        }
+        Failure::Refused { .. } => ("Not allowed", "You do not have access to this page."),
+        Failure::TimedOut | Failure::Offline => {
+            ("Not available", "Check your connection and try again.")
+        }
+        Failure::WrongMethod
+        | Failure::Rejected { .. }
+        | Failure::Failed { .. }
+        | Failure::Panicked { .. } => ("Something went wrong", "Please try again."),
     };
-    let detail = failure.detail;
     html! {
         <Layout req={req} title={title}>
             <h1>{title}</h1>
             <p>{text}</p>
-            if let Some(detail) = &detail {
+            if let Some(detail) = failure.detail() {
                 <pre>{detail}</pre>
             }
         </Layout>

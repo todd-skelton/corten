@@ -9,19 +9,19 @@ axum routes. Each default can be replaced in one line.
 |---|---|---|
 | Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
-| Who is asking | nothing | `.context(\|headers\| async { Some(viewer) })`, first: it makes the app an `App<Viewer>` (`Viewer: Clone + Hash`), and layouts, guards, page handlers (`req.context::<C>()`) and error pages see it; Corten's own routes and API routes skip it |
-| A part of the app | none | `.area::<Admin>(\|admin\| admin.route::<AdminUser>(get(user)))`: its routes under the prefix `Admin::PATH` (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `.guard(\|viewer, req\| ..)` for who may use it ([below](#areas-and-guarded-routes)) |
-| Who may use the app | anyone | `.guard(\|viewer, req\| ..)`: every route needs the guard's `Access::ALLOW`; `.unguarded::<SignIn>()` opens one route ([below](#areas-and-guarded-routes)) |
-| Error pages | 404, 405, 500 (a handler's error or panic) and 503 in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(fn(&Req, Failure) -> impl Document)`, in the app's layout; `corten new` writes one |
-| JSON-only routes | none | `.api::<ApiRoot>(\|api\| api.route::<ItemJson>(get(item_json)))`: every failure under the prefix is JSON, with no document and no context ([below](#json-only-routes)) |
+| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone ([below](#caching)) |
+| Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
+| A part of the app | none | `.area::<admin::Admin>(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
+| Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(fn(&Req, Failure) -> impl Document)`, in the app's layout; `corten new` writes one that names each case |
+| JSON-only routes | none | `.api::<ApiRoot>(\|api\| api.route::<ItemJson>(get(item_json)))`: every failure under the prefix is JSON, unknown URLs included, with no document ([below](#json-only-routes)) |
 | Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the layout or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods; forms go to this origin only | `.policy(Policy::new()...)`: another origin for scripts, styles, images, `fetch`, frames, fonts, or `.form_action("https://pay.example")` for a form (or a form's redirect) that hands the user to another site |
-| Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Cache::public(max_age)` next to a response that is the same for everyone |
+| Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Public<HtmlResult>` (or `Public<JsonResult<T>>`) for an answer that is the same for everyone |
 | Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file, plus one per area that lists components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
-| Middleware of your own | none | tower layers on the routes run inside Corten's (after the context and guards); layers around `app.router()` run outside it, given to `corten::serve` ([below](#your-own-middleware)) |
+| Middleware of your own | none | `.middleware((RequestId, RateLimit))`: steps of the app's own, at one place in Corten's order ([below](#your-own-middleware)) |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Shutdown | Ctrl-C and `SIGTERM` end live streams, then the server | |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
-| Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the context kept, so a redraw costs what changed (zstd or brotli; feature `compress`) | |
+| Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`) | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
 | Languages | none | `.messages::<Msg>()`: `req.t()` and `req.lang()` follow `Accept-Language` |
 | Dev mode | when `CORTEN_DEV` is set (`corten dev` sets it): errors shown on the page, open pages reload after a rebuild | `.dev(bool)` |
@@ -31,10 +31,10 @@ see [Cancellation](cancellation.md).
 
 ```rust,ignore
 let app = App::new(url::router())
-    .context(|headers| viewer_from(headers))       // who is asking: the app is an App<Viewer>
     .error_page(views::error_page)                 // in the app's layout
+    .middleware((RequestId, RateLimit))            // the app's own steps, in this order
     .components(&[TOKENS, OfferList])              // components with scripts or styles
-    .area::<Admin>(|admin| admin::routes(admin).components(&[SalesChart]).guard(staff_only))
+    .area::<admin::Admin>(|area| admin::area(area).components(&[SalesChart]))
     .messages::<Msg>()                             // the locales req.lang() follows
     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")));
 corten::serve(app).await
@@ -42,20 +42,20 @@ corten::serve(app).await
 
 The layout around `<main>` renders on full page loads only; a client navigation gets the
 `<title>`, the page's head tags and `<main>`'s children. Every page carries a key hashed from the
-context and the deploy, and when a navigation or a form answer arrives with a different key
+caller its handler read (if any) and the deploy, and when a navigation or a form answer arrives with a different key
 (sign-in, sign-out, a new release), the runtime loads the whole document, so the layout is never
 stale.
 
 ## The request path
 
 `App` is one middleware around the routes: the same-origin check, the request signal, the
-context, the deadline, error pages, security headers and compression run in one future per
-request. It is a tower layer of its own rather than axum's `from_fn`, which boxes the rest of the
+deadline, the app's middleware, error pages, security headers and compression run in one future
+per request, in a fixed order (`corten::middleware`). It is a tower layer of its own rather than axum's `from_fn`, which boxes the rest of the
 stack again for every request (about 700 instructions). Corten's own inline tag (the import map) is the same on every page of a deploy, so the
 CSP allows it by its SHA-256 hash, computed once at startup. A nonce is made only when something asks for one
-(`req.nonce()` in the layout, or a handler that takes `Nonce`). Static files, the runtime and the
-health checks skip `App::context`, so a session lookup runs only for the requests that can use
-it.
+(`req.nonce()` in the layout, or a handler that takes `Nonce`). A session lookup runs only for a
+handler that takes a `Caller`, so static files, the runtime, the health checks and public pages
+never touch the session store.
 
 Measured with callgrind (instructions per request, release build, in-process `oneshot`; `bare
 axum` is the same handler with no layers). "Three layers" and "one middleware" are one run each;
@@ -74,19 +74,87 @@ Caching adds one header lookup and insert to every response (`Cache-Control`) an
 the request's credentials: a few hundred instructions on JSON. Pages got cheaper, because a
 page no longer makes a nonce (16 random bytes, base64, and the CSP string around it).
 
+When the route's answer type, `Caller` and `Middleware` replaced the app's context and guards,
+the same requests were measured before and after (callgrind, release build, in-process
+`oneshot`, the difference between 1,200 and 200 requests over 1,000, median of three runs;
+range in parentheses):
+
+| Request | Before | After |
+|---|---|---|
+| a small page, full document, with a cookie | 24,021 (24,020-24,327) | 23,525 (23,514-23,555) |
+| the same page without a cookie | 23,116 (23,075-23,116) | 22,614 (22,608-22,615) |
+| JSON under `App::api` | 19,579 (19,579-19,758) | 19,307 (19,306-19,307) |
+| unknown URL, HTML 404 page | 21,849 (21,832-21,987) | 21,125 (21,122-21,157) |
+| a path that does not parse under `App::api` (JSON 400) | 27,657 (27,590-27,760) | 27,421 (27,322-27,857) |
+| a handler that panics (error page) | 91,926 (91,891-92,015) | 87,631 (87,619-87,658) |
+| a page whose handler reads who is asking (before: `App::context`) | 28,104 (27,938-28,237) | 26,315 (26,179-26,331) |
+| a page that does not, on an app that can tell | 28,190 (27,843-28,312) | 23,538 (23,516-23,865) |
+| a cross-site form post from a browser | 14,159 (14,159-14,165) | 21,339 (21,293-21,456) |
+
+Two changes made with it account for most of the gain on every request: the security headers
+reserve room only for what they add, so an error page's header map is no longer reallocated,
+and the route is called without an `async` layer around it, which moved the request once more.
+A lookup now runs only for a handler that takes a `Caller`. A cross-site post costs more
+because a browser now gets the app's error page (`Failure::CrossSite`) instead of a bare 403.
+
 ## Your own middleware
 
-Corten is one tower layer around a plain axum `Router`, so the app's own layers go in one of
-two places:
+Every request goes through the same stages in the same order, outside in, each needing the one
+before it:
 
-| Where | Runs | For |
-|---|---|---|
-| On the routes: `Router::new().route(..).layer(l)` for the app's router, `.route::<R>(get(h).layer(l))` in an area or an API | inside Corten's middleware, after the same-origin check, the context and the guards, so it sees the context in the request's extensions | a limit per user, a header on some routes, `tower-http`'s CORS beyond one allowed site |
-| Around the whole app: `corten::serve(app.router().layer(l))` | outside, before anything of Corten's and after its compression, for every request including Corten's own routes | a request id, a trace span, a limit per address, a cap on body size |
+1. Compression is negotiated (`Accept-Encoding`); it is applied last.
+2. A write another site sent is refused (`Failure::CrossSite`).
+3. The request gets its `Signal`, its nonce and the app.
+4. The deadline and the panic catch start (`Failure::TimedOut`, `Failure::Panicked`).
+5. The app's middleware, in the order given. The route has been matched, so axum's
+   `MatchedPath` names it.
+6. The handler's extractors (a `Caller` is looked up here, only when read), then the handler.
+7. A failure becomes its route's answer: JSON for a JSON route or a data client, the app's error
+   page for a browser.
+8. Security headers, `Cache-Control` (private when anything read a caller), compression.
 
-There are no hooks of Corten's own: a tower layer is the one way in. axum's `from_fn` boxes the
-rest of the stack again for every request (about 700 instructions, measured above), so a layer
-on a hot path is worth writing as a `tower::Layer`.
+A step of the app's own is a `Middleware`, given once to `App::middleware`; several are a tuple,
+run in order:
+
+```rust
+use corten::{axum::{extract::Request, http::{HeaderValue, StatusCode}, response::{IntoResponse, Response}}, prelude::*};
+
+struct RequestId;
+
+impl Middleware for RequestId {
+    async fn call(&self, req: Request, next: impl Next) -> Response {
+        let mut res = next.run(req).await;
+        res.headers_mut().insert("x-request-id", HeaderValue::from_static("r-1"));
+        res
+    }
+}
+
+struct RateLimit;
+
+impl Middleware for RateLimit {
+    async fn call(&self, req: Request, next: impl Next) -> Response {
+        if req.headers().contains_key("x-flood") {
+            return corten::Error::status(StatusCode::TOO_MANY_REQUESTS).into_response();
+        }
+        next.run(req).await
+    }
+}
+
+let app = App::new(Router::new()).middleware((RequestId, RateLimit));
+# let _ = app.router();
+```
+
+Whatever a middleware answers (the 429 above) leaves through stages 7 and 8 like a handler's
+answer, so it gets the error page, the security headers and `Cache-Control`. A middleware can
+read a `Caller` the same way a handler does (`Caller::<Viewer>::from_request_parts`), and the
+handler then reuses that lookup. The tuple is resolved when the crate compiles, so nothing is
+boxed: a middleware that only passes the request on costs about 230 instructions (its `async fn`
+moves the request into its future), where axum's `from_fn` boxes the rest of the stack again
+for every request (about 700).
+
+A tower layer still goes around the whole app (`corten::serve(app.router().layer(l))`), outside
+every stage, for what must see the raw request first: a cap on body size, a limit per address.
+A layer on one route's method router (`get(h).layer(l)`) runs inside stage 6.
 
 ## Caching
 
@@ -94,30 +162,34 @@ Static files, component scripts, the components' stylesheet and the runtime have
 URLs and are sent `public, max-age=31536000, immutable`; the PWA's worker keeps them. Everything
 else `App` serves that does not set `Cache-Control` is sent `private, no-cache`: the browser
 may keep it but asks again before using it, and no shared cache (a CDN, a proxy) stores it. A
-page's layout may show what `App::context` found, so a shared copy could show one user's page
-to another.
+page's layout may show who is asking, so a shared copy could show one user's page to another.
 
-A page that is the same for every visitor says so:
+An answer that is the same for every visitor says so in its type, `Public<..>`:
 
 ```rust,ignore
-async fn home(req: Req) -> corten::Result<(Cache, Response)> {
-    let cache = Cache::public(Duration::from_secs(60)).stale_while_revalidate(Duration::from_secs(600));
-    Ok((cache, req.page(html! { <Layout req={&req} title="Home">{view}</Layout> })?))
+async fn home(req: Req) -> Public<HtmlResult> {
+    let page = req.page(html! { <Layout req={&req} title="Home">{view}</Layout> });
+    Public::new(Duration::from_secs(60), page).stale_while_revalidate(Duration::from_secs(600))
 }
 ```
 
-`App` checks what it can see before it lets a shared cache keep the page:
+Its handler may only take inputs that cannot tell who is asking (`Path`, `Query`, `Form`,
+`State`, `Req`, `Signal`, `Json`, ..., marked `Anonymous`), so a `Caller`, a `HeaderMap` or a
+cookie in a public handler does not compile. Only a successful answer or a redirect is shared;
+a failure keeps `private, no-cache`.
+
+`App` still checks what it can see before it lets a shared cache keep the answer:
 
 | The request or response | Sent |
 |---|---|
-| a full document, no `Cookie` or `Authorization`, the context found no one | as asked, plus `Vary: cookie` |
-| a request with a `Cookie` or `Authorization`, or one the context found someone for | `private, no-cache` |
+| a full document, no `Cookie` or `Authorization`, nothing read a caller | as asked, plus `Vary: cookie` |
+| a request with a `Cookie` or `Authorization`, or one whose handler or middleware read a caller | `private, no-cache` |
 | a client navigation, a form answer or a data client's JSON from a page route | `private`, same lifetime: only the document is shared |
 | a response that sets a cookie, or HTML with the request's nonce | `private, no-cache`, logged under `corten dev` |
 
 The last row applies to a `Cache-Control` the handler wrote itself too; otherwise a handler's
-own header is its choice. Corten cannot see a cookie a handler reads through its own extractor:
-do not mark such a page public. An `App::api` route has one form only, so its public responses
+own header is its choice. An extractor of the app's own is not `Anonymous` until the app says
+so, so a public answer cannot read a credential through one by accident. An `App::api` route has one form only, so its public responses
 stay public for clients without credentials. A cache in front of the app must key on `Vary`
 (`corten`, `accept`, `accept-encoding`, and `accept-language` with `App::messages`).
 `Cache::no_store()` keeps a response out of every cache, the browser's back/forward cache
@@ -128,7 +200,7 @@ mistake, the runtime loads the URL as a whole page instead of swapping it in.
 
 There is no page cache on the server. Rendering is the cheap part of a page: the measured
 item page renders in about 15 µs and costs several times that to compress (see the
-`render_cost` test), and a server cache's key would have to cover the context, the locale, the
+`render_cost` test), and a server cache's key would have to cover the caller, the locale, the
 mode and the deploy, where a mistake shows one user's page to another. Cache the data a page
 reads in the app, where it knows when the data changes, and let a CDN keep public pages. There
 are no ETags on pages either, since they would save bytes but not the render.
@@ -138,7 +210,9 @@ are no ETags on pages either, since they would save bytes but not the render.
 A page answers every request mode, so how it fails depends on what the client asked for: the
 error page for a browser, JSON for `Accept: application/json`. A route with no screen (a
 webhook, an OAuth callback, a call between services, a public API) is called by programs, and
-most HTTP clients send `Accept: */*` or nothing. Mount those routes under a prefix:
+most HTTP clients send `Accept: */*` or nothing. A handler that returns `JsonResult<T>` answers
+every failure of its route as JSON, a path that does not parse included, wherever the route is.
+Routes that share a prefix and its settings (cross-origin callers) mount under it:
 
 ```rust
 use corten::prelude::*;
@@ -171,10 +245,10 @@ Under the prefix:
    log except under `corten dev`. A failure answered with a JSON body of the handler's own
    passes through, and validation errors are `Errors` as the error, which adds
    `"fields": {"email": "..."}`.
-2. There is no document, no nonce and no context, and responses are `private, no-cache` unless
-   the handler returns a `Cache`. The CSP is `default-src 'none'; frame-ancestors
-   'none'`. `.context()` in the API's chain runs `App::context` for an API that serves the app's
-   own signed-in users.
+2. There is no document and no nonce, and responses are `private, no-cache` unless the handler
+   returns `Public<..>`. The CSP is `default-src 'none'; frame-ancestors 'none'`. A handler
+   that needs to know who is calling takes a `Caller` ([below](#who-is-asking)); a refused one
+   is a JSON 401 or 403.
 3. The deadline, the request signal, compression and the same-origin check on writes are the
    same as for pages.
 4. `Api::allow_origin` lets one site's pages call these routes from the browser: Corten answers
@@ -206,70 +280,122 @@ the router and the links name the same URL, and a route outside the prefix (`/ap
 under `/api`) does not compile rather than be served as a page. A handler that takes `State`
 gets it on its method router: `.route::<ItemJson>(get(item_json).with_state(source))`. An API
 whose prefix is `/` makes the whole app an API (the health checks and the runtime keep their
-behavior). `Api::guard` decides who may call the routes, as
-an area's guard does below; a caller sent to sign in gets a JSON 401.
+behavior).
 
 A screen that a native app or an agent reads is not an API route: it stays a page that answers
 with `req.screen`, so every surface shares one handler (see [Surfaces](../architecture.md)).
 
-## Areas and guarded routes
+## Who is asking
 
-A part of the app with something of its own (an admin area, an account, seller tools) is an
-area: its routes under one prefix, and optionally a stylesheet only its pages load
-([styles](styles.md#areas)) and a guard that decides who may use it. The guard reads the
-context and decides; Corten answers for it, in the request's mode:
+A handler that needs to know who is asking takes a `Caller<T>`, where `T` says how one is
+found (`Identify`): a person by a session cookie, a partner by an API key. The handler's
+arguments say what the route needs, and Corten answers for it in the request's mode:
 
 ```rust
-use corten::{axum::http::StatusCode, prelude::*, Error};
+use corten::{axum::http::request::Parts, prelude::*, security::cookie};
 
 #[derive(Clone, Hash)]
-struct Viewer { staff: bool, editor: bool }
+struct Viewer { name: String }
 
-#[derive(Route)]
-#[route("/sign-in")]
-struct SignIn;
-
-#[derive(Route)]
-#[route("/admin")]
-struct Admin;
-
-#[derive(Route)]
-#[route("/admin/users/{id}")]
-struct AdminUser<'a> { id: &'a str }
-
-async fn dashboard(req: Req) -> Result {
-    req.page(html! { <Layout req={&req} title="Admin"><h1>"Admin"</h1></Layout> })
+impl<S: Sync> Identify<S> for Viewer {
+    async fn identify(parts: &Parts, _state: &S) -> Result<Self, Refused> {
+        // A real app reads its session store here (`S` is the routes' state).
+        match cookie::get(&parts.headers, "session") {
+            Some(name) => Ok(Viewer { name: name.to_string() }),
+            None => Err(Refused::sign_in(&url::SignIn)),
+        }
+    }
 }
 
-async fn user(req: Req, Path(id): Path<String>) -> Result {
-    req.page(html! { <Layout req={&req} title="User"><h1>{id}</h1></Layout> })
+#[corten::routes]
+mod url {
+    #[route("/", get = home)]
+    pub struct Home;
+
+    #[route("/account", get = account)]
+    pub struct Account;
+
+    #[route("/sign-in", get = sign_in)]
+    pub struct SignIn;
+}
+
+// "Sign in" or the name: the handler runs either way.
+async fn home(req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult {
+    let name = viewer.as_ref().map_or("Sign in", |Caller(v)| v.name.as_str());
+    req.page(html! { <Layout req={&req} title="Home"><p>{name}</p></Layout> })
+}
+
+// Someone signed in, or the browser goes to sign in: the handler never runs without one.
+async fn account(req: Req, Caller(viewer): Caller<Viewer>) -> HtmlResult {
+    req.page(html! { <Layout req={&req} title="Account"><h1>{&viewer.name}</h1></Layout> })
+}
+
+async fn sign_in(req: Req) -> HtmlResult {
+    req.page(html! { <Layout req={&req} title="Sign in"><h1>"Sign in"</h1></Layout> })
 }
 
 #[component]
 fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     html! { <html lang={req.lang()}><head><title>{title}</title><Corten /></head><body><main>{children}</main></body></html> }
 }
-
-fn app(pages: Router) -> App<Viewer> {
-    App::new(pages).context(|_headers| async { None::<Viewer> }).area::<Admin>(|admin| {
-        admin.route::<Admin>(get(dashboard)).route::<AdminUser>(get(user)).guard(|viewer, req| match viewer {
-            None => Access::sign_in(&SignIn),
-            Some(v) if v.staff && (v.editor || !req.writes()) => Access::ALLOW,
-            Some(_) => Access::refuse(Error::status(StatusCode::FORBIDDEN)),
-        })
-    })
-}
-# let _ = app(Router::new()).router();
+# let _ = App::new(url::router()).router();
 ```
 
-An area's routes name their handlers as the app's do: put them in a module of their own with
-`#[corten::routes(area = Admin)]`, where `Admin` is the route at the prefix, and mount them with
-the module's `area` function (`area(area, state)` with `state = Db`). A route without a handler,
-two routes with one path, and a route outside the prefix do not compile, so a link from an area's
-page cannot reach a route nobody serves:
+| `identify` says | Page, or a form post without JavaScript | Form patch | Data client, JSON route |
+|---|---|---|---|
+| `Ok(caller)` | the handler runs | the handler runs | the handler runs |
+| `Refused::sign_in(&route)` | 303 to the route | `corten-location`, and the runtime goes there | JSON 401 |
+| `Refused::unauthorized()`, `Refused::forbidden()` | the error page, `Failure::Refused` (401, 403) | the error page, swapped in | JSON 401, 403 |
+| `Refused::unavailable(error)` | the error page for 503 | the error page, swapped in | JSON 503 |
 
-```rust,ignore
-#[corten::routes(area = Admin)]
+1. Only a handler that takes a `Caller` pays for the lookup: a public landing page, static
+   files and the health checks never touch the session store. Several readers in one request
+   (a middleware and the handler) share one lookup.
+2. Reading one makes the answer private (`Cache-Control: private`) and puts the caller in the
+   page's key, so after signing in or out the runtime loads the next page in full and the layout
+   shows who is asking now. A `Public` answer's handler cannot take one: that does not compile.
+3. A refused request never reaches the handler's later extractors: the body is not read and
+   nothing is written. Refuse with `Refused::unavailable` when who they are cannot be known
+   now (the session store is down), so no one is sent to sign in again for nothing.
+4. Callers of different kinds are different types with their own lookup: `Caller<Viewer>` from
+   a session cookie on the pages, `Caller<Partner>` from an `X-Api-Key` header on a
+   `JsonResult` route, where a missing key is a JSON 401.
+5. A sign-in page whose handler needs a caller would send the browser round in a loop; Corten
+   answers it with a 500 instead, and under `corten dev` the page says why.
+6. A check that depends on the record (only the author may edit a draft) stays in the handler,
+   which loads the record; `Error::status(StatusCode::FORBIDDEN)` gives the same answers there.
+7. Test it the way a user meets it: a router test that sends each route signed out and signed
+   in without the permission.
+
+A page and the form that posts back to it share one URL (`get = show, post = save`), and each
+method names its handler, so who may read and who may write are each handler's arguments:
+`show` takes `Option<Caller<Viewer>>`, `save` takes `Caller<Viewer>`.
+
+## Areas
+
+A part of the app with something of its own (an admin area, an account, seller tools) is an
+area: its routes under one prefix, a stylesheet only its pages load
+([styles](styles.md#areas)) if it needs one, and the caller every route there needs. Its routes
+are a module of their own, `#[corten::routes(area = Admin)]`, where `Admin` is the route at
+the prefix, mounted with the module's `area` function (`area(area, state)` with
+`state = Db`). `caller = Staff` holds every handler in the module to taking
+`Caller<Staff>`:
+
+```rust
+use corten::{axum::http::request::Parts, prelude::*};
+
+/// Someone on the staff: anyone else is refused (403).
+#[derive(Clone, Hash)]
+struct Staff;
+
+impl<S: Sync> Identify<S> for Staff {
+    async fn identify(_parts: &Parts, _state: &S) -> Result<Self, Refused> {
+        // A real app reads the session and checks the role.
+        Err(Refused::forbidden())
+    }
+}
+
+#[corten::routes(area = Admin, caller = Staff)]
 mod admin {
     #[route("/admin", get = dashboard)]
     pub struct Admin;
@@ -278,83 +404,71 @@ mod admin {
     pub struct User<'a> { pub id: &'a str }
 }
 
-App::new(url::router()).area::<admin::Admin>(|area| admin::area(area).guard(staff_only))
+async fn dashboard(req: Req, _: Caller<Staff>) -> HtmlResult {
+    req.page(html! { <Layout req={&req} title="Admin"><h1>"Admin"</h1></Layout> })
+}
+
+async fn user(req: Req, _: Caller<Staff>, Path(id): Path<String>) -> HtmlResult {
+    req.page(html! { <Layout req={&req} title="User"><h1>{id}</h1></Layout> })
+}
+
+#[component]
+fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
+    html! { <html lang={req.lang()}><head><title>{title}</title><Corten /></head><body><main>{children}</main></body></html> }
+}
+
+fn app(pages: Router) -> App {
+    App::new(pages).area::<admin::Admin>(admin::area)
+}
+# let _ = app(Router::new()).router();
 ```
 
-| The guard says | Page, or a form post without JavaScript | Form patch | Data client, `App::api` route |
-|---|---|---|---|
-| `Access::ALLOW` | the handler runs | the handler runs | the handler runs |
-| `Access::sign_in(&route)` | 303 to the route | `corten-location`, and the runtime goes there | JSON 401 |
-| `Access::refuse(error)` | the error page for the error's status | the error page, swapped in | the JSON error |
-
-1. The guard covers every route at the prefix and below it, whole segments only (`/admin`
-   holds `/admin/users`, not `/administrators`), including routes added later, unknown URLs
-   and wrong methods. A handler there cannot forget the check, and a refused request never
-   reaches it or its extractors: the body is not read and nothing is written.
-2. The area's prefix is a route type (`Admin`, whose path is `/admin`), and so is each of its
-   routes, so the compiler holds them to it: a route typed wrong (`/admn/users` in the
-   `/admin` area) does not build, rather than be served without the guard, and neither does a
-   prefix that is not a plain path (`/admin/{id}`). The check runs when the app is built
-   (`cargo build`, `cargo test`, `corten check`); `cargo check` alone does not reach it. A
-   route the area cannot take (a `nest_service` of files under `/admin/files`) goes in the
-   app's router: the guard and the stylesheet follow the path, not the router.
-3. Who passes is the app's model. The guard gets the context `App::context` found (`None`
-   when it found no one) and the request: `req.uri()`, to send the caller back after signing
-   in (`Access::sign_in(&SignIn { next: Some(req.uri().path()) })`, or an
-   `axum::http::Uri` on another site); `req.writes()`; and `req.is::<Route>()`. Refuse with a
-   503 or a 502 when who they are cannot be known now (the session store is down), so no one
-   is sent to sign in again for nothing.
-4. The context's type is part of the app's: `App::context` turns `App` into `App<Viewer>`, so
-   a guard reading another type, or a guard on an app without a context, does not compile.
-   `App::area` hands its function an area of that type, so a guard reads the context's
-   fields (`v.staff`) without naming it. An area a library ships is a function the app passes
-   on, `.area::<Admin>(|admin| shop_admin::routes(admin).guard(staff_only))`.
-5. Areas nest (`/admin` and `/admin/billing`, each with its own routes): every guard over the
-   path must allow it, the outer one first. Under a guard the context runs for `App::api`
-   routes too, without `Api::context`.
-6. Under `corten dev` the error page and the JSON error say which guard refused, and every
-   refusal is logged at `debug`.
-7. Test it the way a user meets it: a router test that sends each route signed out and signed
-   in without the permission.
+1. A route added to the module later without `Caller<Staff>` does not compile, and the error
+   is at the handler's name in `#[route(..)]`. A handler cannot forget who may use it.
+2. A route without a handler, two routes with one path, and a route outside the prefix
+   (`/admn/users` in the `/admin` area) do not compile, so a link from an area's page cannot
+   reach a route nobody serves. Neither does a prefix that is not a plain path (`/admin/{id}`).
+3. Who passes is the app's model: `Staff::identify` reads the session and refuses with
+   `Refused::sign_in` (no one signed in) or `Refused::forbidden` (not staff). Stricter parts
+   are stricter types: `caller = Billing` on a `/admin/billing` area of its own.
+4. An area a library ships is a function the app passes on,
+   `.area::<shop_admin::Admin>(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route
+   by hand (a `nest_service` of files goes in the app's router instead: the stylesheet follows
+   the path, not the router).
+5. Areas nest (`/admin` and `/admin/billing`, each with its own routes and stylesheet).
 
 How the common cases look:
 
-| The app | Guard |
+| The app | How |
 |---|---|
-| A signed-in area (account, dashboard) | `.area::<Account>(\|account\| account.route::<..>(..).guard(..))`: `None` signs in, anyone else passes |
-| A role's area, stricter inside | an area on `/admin` and one on `/admin/billing`, each with a guard |
-| Anyone reads, signed-in users write (reviews, comments, a price alert posted back to its page) | the area's guard allows `!req.writes()` for everyone |
-| Viewers and editors on the same screens | `v.can(VIEW) && (!req.writes() \|\| v.can(EDIT))` |
-| Private everywhere (an internal tool) | `App::guard(..)` plus `.unguarded::<SignIn>()`, and any webhook the same way |
-| An API only some callers may use | `.api::<ApiRoot>(\|api\| api.route::<..>(..).guard(..))` |
-| One route under the prefix needs more | `req.is::<Export>()` inside the guard, or a nested area when the route has a prefix of its own |
+| A signed-in area (account, dashboard) | `#[corten::routes(area = Account, caller = Viewer)]`, whose `identify` sends anyone else to sign in |
+| A role's area, stricter inside | an area with `caller = Staff` and one on `/admin/billing` with `caller = Billing` |
+| Anyone reads, signed-in users write (reviews, a price alert posted back to its page) | the `get` handler takes `Option<Caller<Viewer>>`, the `post` handler `Caller<Viewer>` |
+| Private everywhere (an internal tool) | `caller = Staff` on the app's routes module, and the sign-in route (and any webhook) in a module without it |
+| An API only some callers may use | handlers that take `Caller<Partner>` and return `JsonResult<T>` |
 | Only the author edits, members see their organization's records | the handler, which loads the record |
 
-A page and the form that posts back to it share one URL in Corten (`get(show).post(save)`),
-so a path cannot tell a read from a write; `req.writes()` can. It counts every method but
-`GET`, `HEAD` and `OPTIONS` as a write, the same split as the same-origin check, so a method no
-rule names (`PATCH`, `DELETE`) is held to the stricter rule.
+## Error pages
 
-`App::guard` covers the whole app and denies by default: every route, every unknown URL and
-every API route is under it, so a route added later is private until it is marked, and it
-answers before any area's guard. Corten's own routes (static
-files, the runtime, health, the PWA's manifest, worker and offline page) are never under a
-guard. `.unguarded::<SignIn>()` takes a route type, matched as the router matches its path, for
-every method, so the sign-in form posts too. A sign-in answer that points at a URL a guard also
-sends to sign in would loop in the browser; Corten answers it with a 500 instead, and under
-`corten dev` the page says to mark the sign-in route.
+Every way a request can fail is a `Failure`, given to the app's error page for a browser
+(`App::error_page`), sent with `failure.status()` and `X-Robots-Tag: noindex`:
 
-A check that depends on the record (only the author may edit a draft) stays in the handler,
-which loads the record; `Error::status(StatusCode::FORBIDDEN)` gives the same answers there.
+| `Failure` | When | Status |
+|---|---|---|
+| `NotFound` | no route has the URL, or the handler returned a 404 | 404 |
+| `WrongMethod` | the route has the URL but not the method (`Allow` is kept) | 405 |
+| `CrossSite` | a write another site sent, refused before anything else ran | 403 |
+| `Refused { status }` | a `Caller` refused, with nowhere to sign in | 401, 403 |
+| `Rejected { status, detail }` | the path, the query or the body did not parse | 400, 415, 422 |
+| `Failed { status, detail }` | the handler returned an `Error` | 500, or its status |
+| `Panicked { detail }` | the handler panicked | 500 |
+| `TimedOut` | the handler ran past `App::deadline` | 503 |
+| `Offline` | the PWA's offline page | 200, so the worker keeps it |
 
-A guard costs a request under it about 300 instructions (the prefix match, the check, the
-context lookup). Measured with callgrind on the item page as a full document (release build, in
-process, no compression, instructions in Corten's middleware and axum's routing together, per
-request, two runs each): 3,968-3,975 with no guard, 4,059-4,066 with a context, 4,358 with a
-context and the item route in an `/items` area with a guard, and 4,384-4,391 with a context,
-`App::guard` reading `req.writes()` and one unguarded route. Before areas and the typed context
-the same setups (a prefix guard on `/items` for the third) measured 3,969, 4,061, 4,355 and
-4,399: the same, since the context type is checked by the compiler and an area is resolved at
-startup into what the middleware already read. Checking that a route given in an area or an API
-answers under its prefix adds no measurable work. A whole request is about 111,000
-instructions, which moves by up to 2,000 between runs.
+`failure.detail()` is what went wrong, under `corten dev` only; in production it is logged.
+The error page `corten new` writes names every case without `_`, so when Corten adds one the
+app stops compiling instead of showing the wrong text. A JSON route's failures, a data
+client's and every failure under `App::api` are JSON instead,
+`{"error":{"status","message"}}`.
+
+The cost of a request through all of this is measured in [the request path](#the-request-path).

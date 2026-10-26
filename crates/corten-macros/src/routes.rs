@@ -27,16 +27,18 @@ struct Serves {
     link: Option<Span>,
 }
 
-/// What `#[corten::routes(..)]` says: what the handlers share (`state = Db`), and the area the
-/// routes are in (`area = Admin`, the route at its prefix).
+/// What `#[corten::routes(..)]` says: what the handlers share (`state = Db`), the area the
+/// routes are in (`area = Admin`, the route at its prefix), and the caller every handler takes
+/// (`caller = Viewer`, as `Caller<Viewer>`).
 #[derive(Default)]
 struct Args {
     state: Option<TokenStream>,
     area: Option<TokenStream>,
+    caller: Option<TokenStream>,
 }
 
 fn parse_args(args: TokenStream) -> Result<Args, Error> {
-    const USAGE: &str = "#[corten::routes] takes the state the handlers share and the area the routes are in, if any: #[corten::routes(state = Db, area = Admin)]";
+    const USAGE: &str = "#[corten::routes] takes the state the handlers share, the area the routes are in and the caller every handler takes, if any: #[corten::routes(state = Db, area = Admin, caller = Staff)]";
     let tokens: Vec<TokenTree> = args.into_iter().collect();
     let mut out = Args::default();
     for part in tokens.split(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ',')) {
@@ -46,6 +48,7 @@ fn parse_args(args: TokenStream) -> Result<Args, Error> {
                 let slot = match key.to_string().as_str() {
                     "state" => &mut out.state,
                     "area" => &mut out.area,
+                    "caller" => &mut out.caller,
                     _ => return err(key.span(), USAGE),
                 };
                 if slot.is_some() {
@@ -60,7 +63,7 @@ fn parse_args(args: TokenStream) -> Result<Args, Error> {
 }
 
 pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
-    let Args { state, area } = parse_args(args)?;
+    let Args { state, area, caller } = parse_args(args)?;
     let mut tokens: Vec<TokenTree> = item.into_iter().collect();
     let Some(TokenTree::Group(body)) = tokens.last().cloned().filter(|_| is_mod(&tokens)) else {
         let span = tokens.first().map_or(Span::call_site(), TokenTree::span);
@@ -102,13 +105,21 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     // Each handler is checked against the module's state, named for every call, so one that wants
     // another state is an error at its name rather than a mismatch between routers.
     let state_ty = state.clone().unwrap_or_else(|| q("()", &[]));
+    // Each handler of a module with `caller = Viewer` takes `Caller<Viewer>`, checked at its name.
+    let required = match &caller {
+        Some(caller) => q("::corten::Caller<__A0>", std::slice::from_ref(caller)),
+        None => q("()", &[]),
+    };
     let mut calls = TokenStream::new();
     for route in &routed {
         let mut methods = TokenStream::new();
         for (i, (method, handler)) in route.handlers.iter().enumerate() {
             let at = handler.clone().into_iter().last().map_or(method.span(), |t| t.span());
             let call = respan(
-                q("::corten::route::__private::__A0::<_, _, __A1>", &[TokenTree::Ident(method.clone()).into(), state_ty.clone()]),
+                q(
+                    "::corten::route::__private::__A0::<_, _, __A1, __A2, _>",
+                    &[TokenTree::Ident(method.clone()).into(), state_ty.clone(), required.clone()],
+                ),
                 at,
             );
             let mut call = call;
@@ -206,23 +217,23 @@ fn expand_area(
             /// `.area::<Admin>(|area| admin::area(area))`. A route outside the area's prefix is a
             /// compile error.
             #[allow(dead_code)]
-            pub fn area<C>(area: ::corten::Area<C, __A0>) -> ::corten::Area<C, __A0> {
+            pub fn area(area: ::corten::Area<__A0>) -> ::corten::Area<__A0> {
                 <__CortenRoutes as __CortenArea<(), __A0>>::__area(area, ())
             }",
-            &[area.clone()],
+            std::slice::from_ref(&area),
         ),
         Some(_) => q(
             "/// The routes of this module in their area, each at its path with its handlers, which
             /// share `state`: `.area::<Admin>(|area| admin::area(area, db))`. A route outside the
             /// area's prefix is a compile error.
             #[allow(dead_code)]
-            pub fn area<C, S>(area: ::corten::Area<C, __A0>, state: S) -> ::corten::Area<C, __A0>
+            pub fn area<S>(area: ::corten::Area<__A0>, state: S) -> ::corten::Area<__A0>
             where
                 __CortenRoutes: __CortenArea<S, __A0>,
             {
                 <__CortenRoutes as __CortenArea<S, __A0>>::__area(area, state)
             }",
-            &[area.clone()],
+            std::slice::from_ref(&area),
         ),
     };
     items.extend(function);
@@ -232,7 +243,7 @@ fn expand_area(
 
         #[doc(hidden)]
         pub trait __CortenArea<S, P> {
-            fn __area<C>(area: ::corten::Area<C, P>, state: S) -> ::corten::Area<C, P>;
+            fn __area(area: ::corten::Area<P>, state: S) -> ::corten::Area<P>;
         }",
         &[],
     ));
@@ -247,7 +258,7 @@ fn expand_area(
         "#[automatically_derived]
         impl<P: ::corten::Route> __A0::__CortenArea<__A2, P> for __A0::__CortenRoutes {
             #[allow(unused_variables)]
-            fn __area<C>(area: ::corten::Area<C, P>, state: __A2) -> ::corten::Area<C, P> {
+            fn __area(area: ::corten::Area<P>, state: __A2) -> ::corten::Area<P> {
                 area __A1
             }
         }",

@@ -15,7 +15,7 @@ when it is ready. A server shutting down ends its streams first, and those brows
 
 ```rust,ignore
 // the route: each item replaces the element with the same id
-async fn trades(State(market): State<Market>) -> impl IntoResponse {
+async fn trades(State(market): State<Market>) -> LiveResponse {
     let next = market.trades.subscribe();
     corten::live(futures_util::stream::unfold(next, |mut next| async move {
         next.changed().await.ok()?;
@@ -39,7 +39,7 @@ back as `Last-Event-ID`); `None` when there is neither. Send what changed after 
 until the next change when it is current:
 
 ```rust,ignore
-async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> impl IntoResponse {
+async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> LiveResponse {
     let mut next = market.trades.subscribe();
     if since.as_deref() != Some(next.borrow().0.to_string().as_str()) {
         next.mark_changed(); // the browser is behind: send the current trade first
@@ -100,7 +100,7 @@ With feature `compress`, a live stream is compressed as one stream per connectio
 after every event, so each event arrives at once and the compressor remembers the ones before it.
 A fragment drawn again with one value changed costs about what changed: on a 6 KB list of 33
 rows, the first event is 425 bytes with zstd and each redraw 16 to 23. So drawing a whole region
-again is usually cheaper on the wire than it looks, and needs no script. The context is kept for
+again is usually cheaper on the wire than it looks, and needs no script. The compression context is kept for
 events up to about 64 KB apart. Each open stream holds about 0.5 MB (zstd) or 1 MB (brotli) while it
 is open; past 256 MB for all of them, new streams go out uncompressed. Browsers that only accept
 gzip get streams as they are, since deflate repeats a fragment poorly.

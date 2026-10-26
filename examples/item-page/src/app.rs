@@ -8,7 +8,7 @@ use std::{sync::Arc, time::Duration};
 use corten::{
     Error,
     agent::{ToolError, Tools},
-    axum::{http::StatusCode, response::Response},
+    axum::http::StatusCode,
     prelude::*,
     pwa::{Manifest, Pwa},
     seo::{self, SitemapUrl},
@@ -71,30 +71,30 @@ fn not_found() -> Error {
     Error::status(StatusCode::NOT_FOUND)
 }
 
-/// Pages that are the same for every visitor: a CDN may serve them for a minute, and an older
-/// copy for ten more while it fetches a fresh one.
-fn shared() -> Cache {
-    Cache::public(Duration::from_secs(60)).stale_while_revalidate(Duration::from_secs(600))
+/// A page that is the same for every visitor: a CDN may serve it for a minute, and an older copy
+/// for ten more while it fetches a fresh one.
+fn shared(page: HtmlResult) -> Public<HtmlResult> {
+    Public::new(Duration::from_secs(60), page).stale_while_revalidate(Duration::from_secs(600))
 }
 
-async fn home(req: Req) -> corten::Result<(Cache, Response)> {
+async fn home(req: Req) -> Public<HtmlResult> {
     let t = req.t();
-    Ok((shared(), req.page(html! { <Layout req={&req} title="Home" head=""><Home t={t} /></Layout> })?))
+    shared(req.page(html! { <Layout req={&req} title="Home" head=""><Home t={t} /></Layout> }))
 }
 
-async fn category(req: Req, Path(slug): Path<String>) -> corten::Result<(Cache, Response)> {
+async fn category(req: Req, Path(slug): Path<String>) -> Public<HtmlResult> {
     let t: Msg = req.t();
     let title = t.category_title(&slug).to_string();
-    Ok((shared(), req.page(html! { <Layout req={&req} title={&title} head="">{views::category(t, &slug)}</Layout> })?))
+    shared(req.page(html! { <Layout req={&req} title={&title} head="">{views::category(t, &slug)}</Layout> }))
 }
 
-async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> corten::Result {
+async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> HtmlResult {
     let item = source.item(&id).await?.ok_or_else(not_found)?;
     req.page(ItemPage::new(req.t(), &item, String::new()).document(&req))
 }
 
 /// The cached item, serialized where it is.
-async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> corten::Result<Json<Arc<ItemView>>> {
+async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> JsonResult<Arc<ItemView>> {
     Ok(Json(source.item(&id).await?.ok_or_else(not_found)?))
 }
 
@@ -103,7 +103,7 @@ async fn create_alert(
     State(source): State<Source>,
     Path(id): Path<String>,
     Form(form): Form<AlertInput>,
-) -> corten::Result {
+) -> HtmlResult {
     let t = req.t();
     let price = match check_alert(t, &form.email, &form.target_price) {
         Ok(price) => price,

@@ -295,12 +295,12 @@ impl<T: Row> Feed<T> {
 
     /// `GET {url}`: every row with the epoch and sequence number they are current at. The body is
     /// kept until the next change, so the snapshots between two writes share one serialization.
-    pub fn snapshot(&self) -> Response {
+    pub fn snapshot(&self) -> FeedResponse {
         // Clone under the lock and serialize outside it, so large snapshots do not block writes.
         let (version, seq, rows) = {
             let state = self.lock();
             if let Some(body) = &state.snapshot.body {
-                return snapshot_response(body.clone());
+                return FeedResponse(snapshot_response(body.clone()));
             }
             (state.snapshot.version, state.seq, state.rows.values().cloned().collect::<Vec<_>>())
         };
@@ -310,7 +310,7 @@ impl<T: Row> Feed<T> {
         );
         drop(rows);
         self.keep_snapshot(version, &body);
-        snapshot_response(body)
+        FeedResponse(snapshot_response(body))
     }
 
     /// Keeps a snapshot body written from the rows at `version`, unless they changed since.
@@ -322,12 +322,12 @@ impl<T: Row> Feed<T> {
     }
 
     /// `GET {url}/live`: patches after the client's cursor, then new patches as they happen.
-    pub fn live(&self, since: Since) -> Response {
+    pub fn live(&self, since: Since) -> FeedResponse {
         self.live_with(since, ())
     }
 
     /// [`Feed::live`] that keeps `guard` (a [`Permit`], say) alive until the stream ends.
-    pub fn live_with(&self, since: Since, guard: impl Send + 'static) -> Response {
+    pub fn live_with(&self, since: Since, guard: impl Send + 'static) -> FeedResponse {
         let state = self.lock();
         let rx = self.inner.tx.subscribe();
         let last = state.seq;
@@ -366,14 +366,33 @@ impl<T: Row> Feed<T> {
             let _held = &guard;
             Ok::<Bytes, Infallible>(chunk)
         });
-        (
-            [
-                (header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream")),
-                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
-            ],
-            Body::from_stream(chunks),
+        FeedResponse(
+            (
+                [
+                    (header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream")),
+                    (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+                ],
+                Body::from_stream(chunks),
+            )
+                .into_response(),
         )
-            .into_response()
+    }
+}
+
+/// A feed's snapshot ([`Feed::snapshot`]) or live stream ([`Feed::live`]): a response a route
+/// names by its type, so a handler that returns one says it serves a feed.
+pub struct FeedResponse(Response);
+
+impl FeedResponse {
+    /// The response's body.
+    pub fn into_body(self) -> Body {
+        self.0.into_body()
+    }
+}
+
+impl IntoResponse for FeedResponse {
+    fn into_response(self) -> Response {
+        self.0
     }
 }
 
@@ -611,7 +630,8 @@ mod tests {
         Feed::new((1..=3).map(|n| Item { id: format!("i{n}"), n }))
     }
 
-    async fn body_text(res: Response) -> String {
+    async fn body_text(res: impl IntoResponse) -> String {
+        let res = res.into_response();
         String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
     }
 
