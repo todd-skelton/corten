@@ -402,10 +402,36 @@ async function run(browser) {
     await page.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`header a[href="/about"]`)).click());
     await page.waitForFunction(() => location.search === "" && location.href.endsWith("/about") && scrollY === 0, null, { timeout: 5000 }).catch(() => {});
     check("a plain link still goes to the top", await page.evaluate(() => scrollY === 0));
+    // A write that sends the browser back to a place on the page (`About.at(ThanksId)`, below the
+    // fold): the address keeps `#thanks`, the page is fetched again and the form is in view. A
+    // second time, when only the `#id` matches the address, the page is still fetched again.
+    {
+      let loads = 0;
+      const onAbout = (/** @type {import("@playwright/test").Request} */ r) => r.method() === "GET" && new URL(r.url()).pathname === "/about" && loads++;
+      page.on("request", onAbout);
+      const back = () =>
+        page
+          .waitForFunction(() => {
+            const form = document.getElementById("thanks");
+            const top = form?.getBoundingClientRect().top ?? -1;
+            return location.hash === "#thanks" && !document.querySelector("main[aria-busy]") && scrollY > 0 && top >= 0 && top < innerHeight;
+          }, null, { timeout: 5000 })
+          .then(() => true, () => false);
+      const thank = () => page.evaluate(() => /** @type {HTMLButtonElement} */ (document.querySelector("#thanks button")).click());
+      await thank();
+      const first = await back();
+      check("a redirect to a place keeps its #id and scrolls to it", first && loads === 1, `${await page.evaluate(() => [location.href, scrollY])} loads ${loads}`);
+      await page.evaluate(() => scrollTo(0, 0));
+      await thank();
+      const second = await back();
+      check("the same place again fetches the page again", second && loads === 2, `loads ${loads}`);
+      check("both kept the document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
+      page.off("request", onAbout);
+    }
     if (size) await page.setViewportSize(size);
-    // Back over the three entries this added (checked, unchecked, the link) to the about page
-    // the watchlist led to.
-    await page.evaluate(() => history.go(-3));
+    // Back over the four entries this added (checked, unchecked, the link, the place) to the
+    // about page the watchlist led to.
+    await page.evaluate(() => history.go(-4));
     await page.waitForFunction((key) => navigation.currentEntry.key === key && !document.querySelector("main[aria-busy]"), entry);
   } else {
     for (const name of [

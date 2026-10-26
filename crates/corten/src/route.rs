@@ -321,6 +321,108 @@ pub trait Route {
         self.write_href(&mut out, false);
         out
     }
+
+    /// This URL with a place on its page: the element with `id`, a `#[derive(Id)]` type, the
+    /// one its markup prints (`<li id={ReviewId(&review.id)}>`). A redirect after a write
+    /// (`req.redirect(&account.at(ReviewId(&id)))`) or a link brings the browser back to it.
+    /// The markup and the URL cannot spell the id differently, and the browser scrolls to it on
+    /// a full load and after a client navigation alike.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/accounts/{slug}")]
+    /// struct Account<'a> { slug: &'a str, reported: Option<&'a str> }
+    ///
+    /// #[derive(Id)]
+    /// struct ReviewId<'a>(&'a str);
+    ///
+    /// let account = Account { slug: "ada", reported: Some("7") };
+    /// assert_eq!(account.at(ReviewId("7")).href(), "/accounts/ada?reported=7#review-7");
+    /// // Escaped once for the attribute; percent-encoded in the fragment, as the browser reads it.
+    /// let link = html! { <a href={account.at(ReviewId("7 & 8"))}>"Review"</a> };
+    /// assert_eq!(link.to_html(), r#"<a href="/accounts/ada?reported=7#review-7%20%26%208">Review</a>"#);
+    /// ```
+    ///
+    /// A place is an element id, so text does not compile:
+    ///
+    /// ```compile_fail
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/accounts")]
+    /// struct Accounts;
+    ///
+    /// let _ = Accounts.at("feedback");
+    /// ```
+    fn at<I: crate::view::Id>(&self, id: I) -> At<'_, Self, I> {
+        At { route: self, id }
+    }
+}
+
+/// A route and a place on its page, made by [`Route::at`]: what a redirect, `Req::moved`, a
+/// current-page check and `href={..}` take, written `/path?query#id`.
+pub struct At<'a, R: ?Sized, I> {
+    route: &'a R,
+    id: I,
+}
+
+impl<R: Route + ?Sized, I: crate::view::Id> At<'_, R, I> {
+    fn write_href(&self, out: &mut String, html: bool) {
+        self.route.write_href(out, html);
+        out.push('#');
+        write_fragment(&self.id, out);
+    }
+
+    /// The URL as a string.
+    pub fn href(&self) -> String {
+        let mut out = String::with_capacity(R::PATH.len() + 24);
+        self.write_href(&mut out, false);
+        out
+    }
+}
+
+/// Writes `id` as a fragment: the id as the element's markup has it, percent-encoded, which the
+/// browser decodes to find the element. `write_id` escapes for an attribute (`&amp;`), so an id
+/// with a character the URL must encode is unescaped first; most ids (`review-7`) need neither.
+fn write_fragment(id: &(impl crate::view::Id + ?Sized), out: &mut String) {
+    let start = out.len();
+    id.write_id(out);
+    if out.as_bytes()[start..].iter().all(|&b| KEEP[b as usize] & SEGMENT != 0) {
+        return;
+    }
+    let escaped = out.split_off(start);
+    let text =
+        escaped.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
+    Encode { out, keep: SEGMENT }.push(&text);
+}
+
+impl<R: Route + ?Sized, I: crate::view::Id> Href for At<'_, R, I> {
+    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
+        f(&self.href())
+    }
+}
+
+impl<R: Route + ?Sized, I: crate::view::Id> crate::view::Render for At<'_, R, I> {
+    fn render(&self, out: &mut String) {
+        self.write_href(out, true)
+    }
+}
+
+impl<R: Route + ?Sized, I: crate::view::Id> crate::view::AttrValue for At<'_, R, I> {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        out.push_str(name);
+        out.push_str("=\"");
+        self.write_href(out, true);
+        out.push('"');
+    }
+}
+
+impl<R: Route + ?Sized, I: crate::view::Id> fmt::Display for At<'_, R, I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.href())
+    }
 }
 
 /// Query parameters that several routes carry: a list's filters, which its live rows, its bulk
@@ -482,10 +584,10 @@ impl<T: Pairs + ?Sized> Pairs for &T {
     }
 }
 
-/// Where a redirect or a current-page check points: a typed route, or an `axum::http::Uri` for a
-/// URL the app does not route (a payment page, a sign-in provider). Text is neither, so a path
-/// typed as a string does not compile. Used by [`crate::Req::redirect`] and
-/// [`crate::Req::current`].
+/// Where a redirect or a current-page check points: a typed route, a place on its page
+/// ([`Route::at`]), or an `axum::http::Uri` for a URL the app does not route (a payment page, a
+/// sign-in provider). Text is none of them, so a path typed as a string does not compile. Used by
+/// [`crate::Req::redirect`] and [`crate::Req::current`].
 pub trait Href {
     /// Calls `f` with the URL.
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T;

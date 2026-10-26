@@ -41,7 +41,9 @@ whose top level has text, an element without an id or an id written as text does
 component a patch sends is rooted at the element with the id and declared `-> impl Patch`. Fields
 the user edited (after the form was sent) and the focus carry over to the new markup, so a patch
 can include the form the user is typing in.
-After a write that should change the URL, use `req.redirect(&Route)` instead.
+After a write that should change the URL, use `req.redirect(&Route)` instead. To come back to
+the element the user acted on, redirect to `route.at(RowId(&id))` (the route with `#row-7`,
+from the element's `#[derive(Id)]`); never format a `#fragment` by hand.
 
 ## Checkboxes and lists
 

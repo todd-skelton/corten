@@ -471,6 +471,18 @@ Corten is pre-1.0, so any minor version may change the API.
     `#[serde(..)]`, so a link-only struct renames its parameters without a serde derive of its own
     ([#98 #[derive(Fields)] refuses a struct with a lifetime, so a borrowed query struct cannot name its form's controls](https://github.com/todd-skelton/corten/issues/98),
     [#99 #[derive(Route)] reads #[serde(rename_all)] but does not declare it, so a link-only struct must derive a serde trait](https://github.com/todd-skelton/corten/issues/99)).
+68. `Route::at(id)`: a route with a place on its page, `/accounts/ada#review-7`, from the
+    element's `#[derive(Id)]` type, for `req.redirect`, `req.moved`, `req.current` and
+    `href={..}`, so a redirect after a write brings the browser back to what the user acted on.
+    Text does not compile. A client navigation sent to a place gets `corten-location` (`fetch`
+    drops a redirect's fragment), and the runtime fetches the page again when the server sends it
+    to a URL that differs only in its `#id`, and scrolls to it (Firefox does not scroll to an
+    `#id` the address already had). The runtime is 8,666 B gzipped, from 8,529
+    ([#100 A typed route cannot carry a #fragment, so a redirect after a write cannot bring the browser back to the element it acted on](https://github.com/todd-skelton/corten/issues/100)).
+69. `MonthStyle::{Short, Long}`: `t.date(at, MonthStyle::Long)` and `t.js().date(..)` write the
+    month and year alone (`March 2025`) in each locale's order and words, checked against Intl
+    like the other styles; `t.date_time` does not take one
+    ([#101 t.date has no month-and-year style, so 'Member since March 2025' cannot be localized](https://github.com/todd-skelton/corten/issues/101)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

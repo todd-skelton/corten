@@ -254,6 +254,46 @@ pub enum DateStyle {
     Full,
 }
 
+/// The month and year without the day, for [`t.date`](super) (`en`): a "Member since" line, a
+/// set's release month, a statement's period. Written as Intl writes `{ year, month }`, in the
+/// locale's order and with its month names (which some languages inflect differently here).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MonthStyle {
+    /// `Mar 2026`
+    Short,
+    /// `March 2026`
+    Long,
+}
+
+/// What [`t.date`](super) and `t.js().date` take: a [`DateStyle`], or a [`MonthStyle`] for the
+/// month and year alone. `t.date_time` takes a `DateStyle` only, so a month and year with a
+/// time does not compile.
+pub trait DateOnly: Copy + sealed::Sealed {
+    #[doc(hidden)]
+    fn index(self) -> u8;
+}
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::DateStyle {}
+    impl Sealed for super::MonthStyle {}
+}
+
+impl DateOnly for DateStyle {
+    #[inline]
+    fn index(self) -> u8 {
+        self as u8
+    }
+}
+
+/// After the dates, each date with each time and the times (`LocaleData::dates`).
+impl DateOnly for MonthStyle {
+    #[inline]
+    fn index(self) -> u8 {
+        14 + self as u8
+    }
+}
+
 /// How much of the time [`t.time`](super) writes, with the zone (`en`):
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TimeStyle {
@@ -551,8 +591,8 @@ pub struct When {
 
 impl When {
     #[doc(hidden)]
-    pub fn date(data: &'static __private::LocaleData, at: SystemTime, date: DateStyle) -> Self {
-        When { data, at, offset: 0, style: date as u8 }
+    pub fn date(data: &'static __private::LocaleData, at: SystemTime, date: impl DateOnly) -> Self {
+        When { data, at, offset: 0, style: date.index() }
     }
 
     #[doc(hidden)]
@@ -716,8 +756,8 @@ impl MoneyFormat {
 
 impl DateFormat {
     #[doc(hidden)]
-    pub fn date(data: &'static __private::LocaleData, date: DateStyle) -> Self {
-        DateFormat { data, style: date as u8, offset: 0 }
+    pub fn date(data: &'static __private::LocaleData, date: impl DateOnly) -> Self {
+        DateFormat { data, style: date.index(), offset: 0 }
     }
 
     #[doc(hidden)]
@@ -916,8 +956,9 @@ pub mod __private {
         /// Each currency written otherwise, by code: positive and negative, the symbol in place.
         pub currencies: &'static [(&'static str, &'static str, &'static str)],
         pub names: &'static [&'static str],
-        /// Four dates, each with each time, two times (`DateStyle`, `TimeStyle` order).
-        pub dates: [&'static [Field]; 14],
+        /// Four dates, each with each time, two times (`DateStyle`, `TimeStyle` order), then the
+        /// month and year (`MonthStyle`).
+        pub dates: [&'static [Field]; 16],
         pub utc: &'static str,
         /// An offset (hours at `\u{1}`, minutes at `\u{3}`): whole hours east, west, then with
         /// minutes, east and west.

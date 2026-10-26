@@ -323,7 +323,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             ::corten::i18n::Formatted::money(self.__corten_locale(), &amount, currency)
         }
         /// A date in this locale, in UTC unless `.zone(..)` says otherwise: `Mar 22, 2026` (en, `Medium`).
-        #[inline] __A2 fn date(self, at: impl ::core::convert::Into<::std::time::SystemTime>, style: ::corten::i18n::DateStyle) -> ::corten::i18n::When {
+        #[inline] __A2 fn date(self, at: impl ::core::convert::Into<::std::time::SystemTime>, style: impl ::corten::i18n::DateOnly) -> ::corten::i18n::When {
             ::corten::i18n::When::date(self.__corten_locale(), at.into(), style)
         }
         /// A time with its zone in this locale, in UTC unless `.zone(..)` says otherwise: `3:04 PM UTC` (en, `Short`).
@@ -365,7 +365,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             /// An amount's format in `currency`, for a handler whose JSDoc takes a MoneyFormat: it writes format(minor) as t.money(Minor(minor), currency) does.
             #[inline] __A1 fn money(self, currency: ::corten::i18n::Currency) -> ::corten::i18n::MoneyFormat { ::corten::i18n::MoneyFormat::new(self.__corten_locale(), currency) }
             /// A date's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.date(at, style) does.
-            #[inline] __A1 fn date(self, style: ::corten::i18n::DateStyle) -> ::corten::i18n::DateFormat { ::corten::i18n::DateFormat::date(self.__corten_locale(), style) }
+            #[inline] __A1 fn date(self, style: impl ::corten::i18n::DateOnly) -> ::corten::i18n::DateFormat { ::corten::i18n::DateFormat::date(self.__corten_locale(), style) }
             /// A time's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.time(at, style) does.
             #[inline] __A1 fn time(self, style: ::corten::i18n::TimeStyle) -> ::corten::i18n::DateFormat { ::corten::i18n::DateFormat::time(self.__corten_locale(), style) }
             /// A date and time's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.date_time(at, date, time) does.

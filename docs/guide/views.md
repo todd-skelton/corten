@@ -157,12 +157,15 @@ html! {
     <td>{t.money(Decimal::parse(&api.amount).unwrap_or_default(), USD)}</td> // "21.50" from an API
     <td>{t.number(listing.count)}</td>                                     // 1,234
     <p>{t.item_pending(t.date_time(at, DateStyle::Medium, TimeStyle::Short))}</p> // Mar 22, 2026, 12:00 PM UTC
+    <p>{t.account_member_since(t.date(joined, MonthStyle::Long))}</p>     // Member since March 2025
 }
 ```
 
 `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
 a bare integer (it could be either, so it does not compile), with the digits the currency is
-shown with (0 for JPY, 3 for KWD). A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
+shown with (0 for JPY, 3 for KWD). `MonthStyle` writes the month and year without the day, in
+the locale's order and words (`Mar 2026`, `MÃ¤rz 2026`); it has no time, so `t.date_time` does
+not take one. A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
 Each listed locale's separators, currency symbols and date patterns are CLDR's, checked against

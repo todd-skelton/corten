@@ -233,6 +233,22 @@ After a successful write, `req.redirect(&route)` sends the browser on (post/redi
 and without JavaScript. It takes a typed route, or an `axum::http::Uri` for a URL outside the
 app; a path written as text does not compile.
 
+To bring the browser back to what the user acted on (a review on page 2 of a long list, a row
+after an edit), redirect to a place on the page: `route.at(ReviewId(&id))` is the route with
+`#review-7`, taken from the element's `#[derive(Id)]` type, so the markup and the URL cannot
+spell it differently. `href={route.at(..)}` links to one the same way. The browser scrolls to
+it after a full load and after the runtime's navigation alike; the runtime fetches the page
+again even when only the `#id` differs from the address, since the write may have changed it.
+A client navigation the server sends to a place gets `corten-location` instead of a 303,
+because `fetch` follows a redirect but drops its fragment.
+
+```rust,ignore
+async fn report(req: Req, Path((slug, review)): Path<(String, String)>) -> HtmlResult {
+    // ... record the report ...
+    req.redirect(&url::Account { slug: &slug, reported: Some(&review) }.at(ReviewId(&review)))
+}
+```
+
 A page handler may redirect too (an old URL; a `Caller` sending someone to sign in does the
 same). A client
 navigation follows it: the page it was sent to is swapped in and replaces the requested URL
