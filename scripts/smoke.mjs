@@ -544,6 +544,43 @@ async function run(browser) {
     afterLive.server === "new" && afterLive.q === "typed" && afterLive.r === "b" && afterLive.c && afterLive.s === "2" && afterLive.t === "2" && afterLive.m === "1,3" && afterLive.focused && afterLive.selection.join() === "1,3",
     JSON.stringify(afterLive),
   );
+
+  // What the user opened stays open across a patch (a modal dialog modal), and what the server
+  // sent open and then closes closes.
+  const block = (/** @type {number} */ n, /** @type {string} */ extra) =>
+    `<section id="opened"><p>${n}</p><dialog id="opened-modal"><button type="button" id="opened-in">In</button></dialog><dialog id="opened-plain"></dialog><details id="opened-more"><summary>More</summary><p>Folded</p></details><div id="opened-pop" popover>Pop</div><dialog id="opened-served"${extra}></dialog></section>`;
+  await page.evaluate((html) => document.querySelector("main")?.insertAdjacentHTML("beforeend", html), block(1, " open"));
+  const openedState = await page.evaluate(async ([first, second]) => {
+    const { patch } = await import("corten");
+    const $ = (/** @type {string} */ id) => /** @type {any} */ (document.getElementById(id));
+    // Markup a patch put in is what the server sent: open the served one, then the user's.
+    await patch(first);
+    $("opened-modal").showModal();
+    $("opened-plain").show();
+    $("opened-more").open = true;
+    $("opened-pop").showPopover();
+    // Last: opening a dialog moves focus.
+    $("opened-in").focus();
+    await patch(second);
+    return {
+      count: document.querySelector("#opened p")?.textContent,
+      modal: $("opened-modal").matches(":modal"),
+      plain: $("opened-plain").open && !$("opened-plain").matches(":modal"),
+      more: $("opened-more").open,
+      pop: $("opened-pop").matches(":popover-open"),
+      served: $("opened-served").open,
+      focused: document.activeElement?.id,
+    };
+  }, [block(2, " open"), block(3, "")]);
+  await page.evaluate(() => {
+    for (const d of Array.from(document.querySelectorAll("#opened dialog"))) /** @type {HTMLDialogElement} */ (d).close();
+    document.querySelector("#opened")?.remove();
+  });
+  check(
+    "a patch keeps a dialog, details and popover the user opened, and closes one the server closes",
+    openedState.count === "3" && openedState.modal && openedState.plain && openedState.more && openedState.pop && openedState.served === false && openedState.focused === "opened-in",
+    JSON.stringify(openedState),
+  );
   await page.focus("#kept button");
   const buttonFocus = await page.evaluate(async (html) => {
     const { patch } = await import("corten");

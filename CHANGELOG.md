@@ -765,6 +765,13 @@ Corten is pre-1.0, so any minor version may change the API.
     value and passed it to a patch component did not compile. Found by the Chase Sets pilot, which
     wrapped four views in `match () { () => { .. } }` to get past it
     ([#82 A view that is lets then one patch component is not a patch (One<F> never implements Patch)](https://github.com/todd-skelton/corten/issues/82)).
+24. A patch or a `<corten-live>` fragment no longer closes what the user opened: a `<dialog>` stays
+    open (`showModal()` again when it was modal, so the page behind stays inert), a `<details>` stays
+    unfolded and a shown popover stays shown. One the user did not touch takes the new markup's
+    state, so the server can still close a dialog it sent open. The runtime is 268 B larger gzipped
+    (7,807 to 8,075 B). Found by the Chase Sets pilot, whose item page's live market book closed a
+    reference dialog the user was reading
+    ([#84 A patch or live fragment closes a <dialog> the user opened and folds a <details> they unfolded](https://github.com/todd-skelton/corten/issues/84)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
