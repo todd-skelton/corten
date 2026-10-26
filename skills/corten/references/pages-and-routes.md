@@ -32,15 +32,18 @@ async fn show(req: Req, Path(id): Path<String>) -> corten::Result {
    `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
    `#[corten::routes(state = Db)]` and `url::router(db)`. Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
-   answers `req.moved(&url::Item { id })`, a 301. A route an area or an API serves is a link
-   only: `#[route("/admin", link)]`.
+   answers `req.moved(&url::Item { id })`, a 301. An area's routes are a module of their own,
+   `#[corten::routes(area = Admin)] mod admin` whose routes name their handlers the same way,
+   mounted with `.area::<admin::Admin>(|area| admin::area(area).guard(..))`. A route an API
+   serves is a link only: `#[route("/api", link)]`.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
    social) are the layout's props. Never build a document outside a layout component. A page
    showing a read that has not caught up with a write yet adds
    `ReadAgain { after: Duration::from_secs(2) }` to its head tags while it is behind (and stops
    after a time limit); the runtime reads it again in place however it was reached. Never a
-   `Refresh` header.
+   `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
+   `raw` or an expression inside `<script>` (that does not compile).
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
    the layout renders on full loads. Mark the current link with
    `aria-current={req.current(&url::Item { id })}` in the layout.
@@ -65,7 +68,8 @@ pub fn Price(amount: &str) -> impl Render {
 ```
 
 Text in `{...}` and attribute values are escaped. `raw(..)` is the only way around escaping;
-use it only for HTML the app produced itself.
+use it only for HTML the app produced itself. A view that is one component and passes it
+something it builds makes it in the markup: `html! { let title = format!(..); <Dialog title={&title} /> }`.
 
 ## Messages
 

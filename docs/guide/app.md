@@ -262,6 +262,25 @@ fn app(pages: Router) -> App<Viewer> {
 # let _ = app(Router::new()).router();
 ```
 
+An area's routes name their handlers as the app's do: put them in a module of their own with
+`#[corten::routes(area = Admin)]`, where `Admin` is the route at the prefix, and mount them with
+the module's `area` function (`area(area, state)` with `state = Db`). A route without a handler,
+two routes with one path, and a route outside the prefix do not compile, so a link from an area's
+page cannot reach a route nobody serves:
+
+```rust,ignore
+#[corten::routes(area = Admin)]
+mod admin {
+    #[route("/admin", get = dashboard)]
+    pub struct Admin;
+
+    #[route("/admin/users/{id}", get = user)]
+    pub struct User<'a> { pub id: &'a str }
+}
+
+App::new(url::router()).area::<admin::Admin>(|area| admin::area(area).guard(staff_only))
+```
+
 | The guard says | Page, or a form post without JavaScript | Form patch | Data client, `App::api` route |
 |---|---|---|---|
 | `Access::ALLOW` | the handler runs | the handler runs | the handler runs |

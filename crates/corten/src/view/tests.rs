@@ -1,6 +1,7 @@
 use std::fmt;
 
-use crate::view::{component, html, raw, Attrs, Render};
+use crate::view::{component, html, raw, Attrs, Document, Part, Render};
+use crate::Corten;
 
 struct Price(u32);
 
@@ -127,6 +128,55 @@ fn components_take_props_children_and_paths() {
     );
 }
 
+/// A view that is one component whose props borrow what it makes: the `let`s inside the markup
+/// belong to the view, so it can be returned (#77).
+fn counted(n: usize) -> impl Render {
+    html! {
+        let title = format!("{n} items");
+        let label = String::from("New");
+        <Panel title={&title} owned={label.clone()}>
+            <Badge label={&label} count={n} hot={false} />
+            {&title}
+        </Panel>
+    }
+}
+
+#[test]
+fn a_view_that_is_one_component_owns_what_its_props_borrow() {
+    assert_eq!(
+        counted(3).to_html(),
+        r#"<section data-owned="New"><h2>3 items</h2><span class="badge">New 3</span>3 items</section>"#
+    );
+}
+
+#[component]
+fn Doc<'a, C: Render>(title: &'a str, children: C) -> impl Document + 'a {
+    html! {
+        <html>
+            <head>
+                <title>{title}</title>
+                <Corten />
+            </head>
+            <body><main>{children}</main></body>
+        </html>
+    }
+}
+
+/// The same for a layout: `let`s and a component that is a document make a document.
+fn page(n: usize) -> impl Document {
+    html! {
+        let title = format!("{n} items");
+        <Doc title={&title}><p>{&title}</p></Doc>
+    }
+}
+
+#[test]
+fn a_document_that_is_one_component_owns_what_its_props_borrow() {
+    let mut title = String::new();
+    page(2).render_part(&mut title, Part::Title);
+    assert_eq!(title, "2 items");
+    assert!(page(2).to_html().starts_with("<html><head><title>2 items</title>"));
+}
 /// A plain function is a component too, and views compose without intermediate strings.
 fn rows<'a>(names: &'a [&'a str]) -> impl Render + 'a {
     html! { for name in names { <tr><td>{name}</td></tr> } }

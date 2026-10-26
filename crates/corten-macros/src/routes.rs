@@ -1,7 +1,8 @@
 //! `#[corten::routes]` on a module of routes: each `#[route("/..", get = show)]` struct in it is a
 //! typed route (`#[derive(Route)]`) with the handlers that serve it, so a route with no handler
-//! does not compile; `router()` puts each handler at its route's path. A route another router
-//! serves (an area, an API) says so: `#[route("/admin", link)]`.
+//! does not compile; `router()` puts each handler at its route's path, or with
+//! `#[corten::routes(area = Admin)]`, `area(area)` does in that area. A route another router
+//! serves (an API) says so: `#[route("/api", link)]`.
 
 use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
 
@@ -26,23 +27,40 @@ struct Serves {
     link: Option<Span>,
 }
 
+/// What `#[corten::routes(..)]` says: what the handlers share (`state = Db`), and the area the
+/// routes are in (`area = Admin`, the route at its prefix).
+#[derive(Default)]
+struct Args {
+    state: Option<TokenStream>,
+    area: Option<TokenStream>,
+}
+
+fn parse_args(args: TokenStream) -> Result<Args, Error> {
+    const USAGE: &str = "#[corten::routes] takes the state the handlers share and the area the routes are in, if any: #[corten::routes(state = Db, area = Admin)]";
+    let tokens: Vec<TokenTree> = args.into_iter().collect();
+    let mut out = Args::default();
+    for part in tokens.split(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ',')) {
+        match part {
+            [] => {}
+            [TokenTree::Ident(key), TokenTree::Punct(eq), value @ ..] if eq.as_char() == '=' && !value.is_empty() => {
+                let slot = match key.to_string().as_str() {
+                    "state" => &mut out.state,
+                    "area" => &mut out.area,
+                    _ => return err(key.span(), USAGE),
+                };
+                if slot.is_some() {
+                    return err(key.span(), format!("{key} is given twice"));
+                }
+                *slot = Some(stream(value.iter().cloned()));
+            }
+            [first, ..] => return err(first.span(), USAGE),
+        }
+    }
+    Ok(out)
+}
+
 pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
-    // `state = Market`: what the handlers share, which `router(state)` takes.
-    let args: Vec<TokenTree> = args.into_iter().collect();
-    let state = match args.as_slice() {
-        [] => None,
-        [TokenTree::Ident(key), TokenTree::Punct(eq), ty @ ..]
-            if key.to_string() == "state" && eq.as_char() == '=' && !ty.is_empty() =>
-        {
-            Some(stream(ty.iter().cloned()))
-        }
-        _ => {
-            return err(
-                args[0].span(),
-                "#[corten::routes] takes the state the handlers share, if any: #[corten::routes(state = Db)]",
-            )
-        }
-    };
+    let Args { state, area } = parse_args(args)?;
     let mut tokens: Vec<TokenTree> = item.into_iter().collect();
     let Some(TokenTree::Group(body)) = tokens.last().cloned().filter(|_| is_mod(&tokens)) else {
         let span = tokens.first().map_or(Span::call_site(), TokenTree::span);
@@ -59,6 +77,22 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
                 a.span,
                 format!("{} and {} have the same path, {}: a request could only reach one", b.name, a.name, a.path),
             );
+        }
+    }
+    // The area's prefix, when its route is in the module: each route is checked against it here,
+    // where the error can point at the route (`Area::route` checks every route when it builds).
+    if let Some(area) = &area {
+        let name = area.to_string().replace(' ', "");
+        if let Some(prefix) = routed.iter().find(|r| r.name.to_string() == name) {
+            if let Some(outside) = routed.iter().find(|r| !under(&prefix.path, &r.path)) {
+                return err(
+                    outside.span,
+                    format!(
+                        "{} is in the area {} ({}), so its path is at or under {}: {}",
+                        outside.name, prefix.name, prefix.path, prefix.path, outside.path
+                    ),
+                );
+            }
         }
     }
     // The router is written where the module is declared, so a handler is named from there, where
@@ -89,10 +123,18 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
                 methods.extend(call);
             }
         }
+        let template = if area.is_some() {
+            ".route::<__A0::__A1>(::corten::axum::routing::MethodRouter::with_state(__A2, state.clone()))"
+        } else {
+            ".route(<__A0::__A1 as ::corten::Route>::PATH, __A2)"
+        };
         calls.extend(q(
-            ".route(<__A0::__A1 as ::corten::Route>::PATH, __A2)",
+            template,
             &[TokenTree::Ident(module.clone()).into(), TokenTree::Ident(route.name.clone()).into(), methods],
         ));
+    }
+    if let Some(area) = area {
+        return Ok(expand_area(tokens, body, items, &module, calls, area, state));
     }
     let router = match &state {
         None => q(
@@ -145,6 +187,79 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         &[TokenTree::Ident(module.clone()).into(), calls, state],
     ));
     Ok(out)
+}
+
+/// The module of an area's routes: `area(area)` (or `area(area, state)`) adds each route to the
+/// `Area` that `App::area` gives, where the area's stylesheet and settings apply to it.
+fn expand_area(
+    mut tokens: Vec<TokenTree>,
+    body: Group,
+    mut items: TokenStream,
+    module: &Ident,
+    calls: TokenStream,
+    area: TokenStream,
+    state: Option<TokenStream>,
+) -> TokenStream {
+    let function = match &state {
+        None => q(
+            "/// The routes of this module in their area, each at its path with its handlers:
+            /// `.area::<Admin>(|area| admin::area(area))`. A route outside the area's prefix is a
+            /// compile error.
+            #[allow(dead_code)]
+            pub fn area<C>(area: ::corten::Area<C, __A0>) -> ::corten::Area<C, __A0> {
+                <__CortenRoutes as __CortenArea<(), __A0>>::__area(area, ())
+            }",
+            &[area.clone()],
+        ),
+        Some(_) => q(
+            "/// The routes of this module in their area, each at its path with its handlers, which
+            /// share `state`: `.area::<Admin>(|area| admin::area(area, db))`. A route outside the
+            /// area's prefix is a compile error.
+            #[allow(dead_code)]
+            pub fn area<C, S>(area: ::corten::Area<C, __A0>, state: S) -> ::corten::Area<C, __A0>
+            where
+                __CortenRoutes: __CortenArea<S, __A0>,
+            {
+                <__CortenRoutes as __CortenArea<S, __A0>>::__area(area, state)
+            }",
+            &[area.clone()],
+        ),
+    };
+    items.extend(function);
+    items.extend(q(
+        "#[doc(hidden)]
+        pub struct __CortenRoutes;
+
+        #[doc(hidden)]
+        pub trait __CortenArea<S, P> {
+            fn __area<C>(area: ::corten::Area<C, P>, state: S) -> ::corten::Area<C, P>;
+        }",
+        &[],
+    ));
+    let mut module_body = Group::new(Delimiter::Brace, items);
+    module_body.set_span(body.span());
+    *tokens.last_mut().expect("the module body") = TokenTree::Group(module_body);
+    let mut out: TokenStream = tokens.into_iter().collect();
+    let state = state.unwrap_or_else(|| q("()", &[]));
+    // The area is named where the module is declared too, so its type stays generic here; the
+    // area's own check (`Area::route`) holds each route under its prefix.
+    out.extend(q(
+        "#[automatically_derived]
+        impl<P: ::corten::Route> __A0::__CortenArea<__A2, P> for __A0::__CortenRoutes {
+            #[allow(unused_variables)]
+            fn __area<C>(area: ::corten::Area<C, P>, state: __A2) -> ::corten::Area<C, P> {
+                area __A1
+            }
+        }",
+        &[TokenTree::Ident(module.clone()).into(), calls, state],
+    ));
+    out
+}
+
+/// `path` is `prefix` or under it, a segment at a time (`/admin` holds `/admin/users`, not
+/// `/admins`).
+fn under(prefix: &str, path: &str) -> bool {
+    prefix == "/" || path == prefix || path.strip_prefix(prefix).is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// The tokens with every span set to `span`, so an error in them points there.

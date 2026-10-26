@@ -27,6 +27,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         if let Some(scope) = &scope {
             mark_scope(&mut nodes, scope)?;
         }
+        check_raw_text(&nodes, None)?;
         Ok(nodes)
     }) {
         Ok(nodes) if is_document(&nodes) => {
@@ -47,8 +48,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 &[gen.finish()],
             )
         }
-        // One component: the component itself, so a layout stays a document. Its children own
-        // what they use, as a view does.
+        // One component: the component itself, its props evaluated where the markup is, so a
+        // layout stays a document and borrows what the handler has (`req={&req}`). Its children
+        // own what they use, as a view does.
         Ok(nodes) if matches!(nodes.as_slice(), [Node::Component { .. }]) => {
             let [Node::Component { path, props, children }] = nodes.as_slice() else { unreachable!() };
             let gen = Gen::default();
@@ -60,6 +62,27 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     __A0
                 }",
                 &[built],
+            )
+        }
+        // `let`s, then one component: a view that owns what the `let`s make (a title it formats,
+        // a link it builds), and a document when the component is one.
+        Ok(nodes) if lets_then_component(&nodes) => {
+            let mut gen = Gen::default();
+            let (component, lets) = nodes.split_last().expect("a component");
+            gen.nodes(lets, false);
+            let Node::Component { path, props, children } = component else { unreachable!() };
+            let built = gen.component(path, props, children, false);
+            gen.code(q("(&::corten::view::__private::OneOf(&__A0)).__one(__OUT, __PART)", &[built]));
+            q(
+                "::corten::view::__private::One::new({
+                    static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
+                    &SIZE
+                }, move |__OUT: &mut ::std::string::String, __PART: ::std::option::Option<::corten::view::Part>| {
+                    #[allow(unused_imports)]
+                    use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _, ViaDocument as _, ViaView as _};
+                    __A0
+                })",
+                &[gen.finish()],
             )
         }
         Ok(nodes) => {
@@ -95,6 +118,13 @@ pub fn expand(input: TokenStream) -> TokenStream {
     }
 }
 
+/// One or more `let`s and then one component, nothing else.
+fn lets_then_component(nodes: &[Node]) -> bool {
+    match nodes.split_last() {
+        Some((Node::Component { .. }, lets)) => !lets.is_empty() && lets.iter().all(|n| matches!(n, Node::Let(_))),
+        _ => false,
+    }
+}
 /// `#[component]` starts the markup of a component with refs with `@scope "name";`.
 fn scope_marker(input: TokenStream) -> (Option<String>, TokenStream) {
     let tokens: Vec<TokenTree> = input.clone().into_iter().collect();
@@ -1391,6 +1421,47 @@ impl Gen {
     }
 }
 
+/// Inside `<script>` and `<style>` only literal text: the browser reads their text as it is, so
+/// an expression there, written escaped as HTML, would not read back as what it was (JSON with
+/// `&quot;` is not JSON), and written as it is it could end the element.
+fn check_raw_text(nodes: &[Node], inside: Option<&str>) -> Result<(), Error> {
+    for node in nodes {
+        let span = match node {
+            Node::Element { name, children, .. } => {
+                let inside = if RAW_TEXT.contains(&name.as_str()) { Some(name.as_str()) } else { inside };
+                check_raw_text(children, inside)?;
+                continue;
+            }
+            Node::Text(_) | Node::Markup(_) | Node::Let(_) => continue,
+            Node::Expr(tokens) | Node::Component { path: tokens, .. } => first_span(tokens),
+            Node::Block { head, bodies, .. } => {
+                if inside.is_none() {
+                    for body in bodies {
+                        check_raw_text(body, None)?;
+                    }
+                    continue;
+                }
+                head.first().map_or(Span::call_site(), first_span)
+            }
+        };
+        if let Some(name) = inside {
+            return err(
+                span,
+                format!(
+                    "<{name}> holds only literal text: an expression in it is escaped as HTML, which a {name} does not read back. Structured data is <JsonLd value={{..}} /> (corten::JsonLd), behavior a #[component(js)], styles a component's CSS file"
+                ),
+            );
+        }
+        if let Node::Component { children: Some(children), .. } = node {
+            check_raw_text(children, None)?;
+        }
+    }
+    Ok(())
+}
+
+fn first_span(tokens: &TokenStream) -> Span {
+    tokens.clone().into_iter().next().map_or(Span::call_site(), |t| t.span())
+}
 /// True when `<main>` is among `nodes` or inside one of their elements.
 fn holds_main(nodes: &[Node]) -> bool {
     nodes.iter().any(|node| match node {
