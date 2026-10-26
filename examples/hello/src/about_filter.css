@@ -1,0 +1,5 @@
+/* A filter rail that scrolls on its own, shorter than its groups. */
+.rail {
+  max-height: 3rem;
+  overflow-y: auto;
+}

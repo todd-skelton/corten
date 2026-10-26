@@ -367,12 +367,18 @@ async function run(browser) {
     const entry = await page.evaluate(() => navigation.currentEntry.key);
     const size = page.viewportSize();
     await page.setViewportSize({ width: 360, height: 160 });
-    await page.evaluate(() => {
+    // The user opens both groups of the filter rail (which scrolls on its own), scrolls to the
+    // box and checks it. The server draws a group open only when its box is checked.
+    const rail = ".about-filter__rail";
+    const groups = () => page.$$eval(`${rail} details`, (all) => all.map((d) => /** @type {HTMLDetailsElement} */ (d).open).join());
+    await page.evaluate((rail) => {
+      for (const group of Array.from(document.querySelectorAll(`${rail} details`))) /** @type {HTMLDetailsElement} */ (group).open = true;
       const box = /** @type {HTMLInputElement} */ (document.querySelector("main input[name=history]"));
       box.scrollIntoView({ block: "end" });
       box.focus();
-    });
+    }, rail);
     const before = await page.evaluate(() => scrollY);
+    const railBefore = await page.$eval(rail, (r) => r.scrollTop);
     await page.keyboard.press("Space");
     await page.waitForFunction(() => location.search === "?history=on" && document.querySelectorAll("#history li").length === 2);
     const after = await page.evaluate(() => ({
@@ -381,6 +387,9 @@ async function run(browser) {
       checked: /** @type {HTMLInputElement} */ (document.activeElement).checked,
       marker: (/** @type {any} */ (window)).__marker,
     }));
+    const railAfter = await page.$eval(rail, (r) => r.scrollTop);
+    check("the rail keeps its own scroll", railBefore > 0 && railAfter === railBefore, `${railBefore} -> ${railAfter}`);
+    check("a group the user opened stays open though the server drew it closed", (await groups()) === "true,true", await groups());
     check("a data-keep-place form swaps the page in place", after.marker === 1, JSON.stringify(after));
     check("it keeps the scroll position", before > 0 && after.y === before, `${before} -> ${after.y}`);
     check("focus stays on the control the user changed", after.focused === "history" && after.checked, JSON.stringify(after));
@@ -388,6 +397,7 @@ async function run(browser) {
     await page.keyboard.press("Space");
     await page.waitForFunction(() => location.search === "");
     check("unchecking applies again, focus still on it", await page.evaluate(() => document.activeElement?.getAttribute("name") === "history" && scrollY > 0));
+    check("the group of the box unchecked stays open, so focus is not lost to the body", (await groups()) === "true,true", await groups());
     // Clicked from the page, so Playwright does not scroll to the link first.
     await page.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`header a[href="/about"]`)).click());
     await page.waitForFunction(() => location.search === "" && location.href.endsWith("/about") && scrollY === 0, null, { timeout: 5000 }).catch(() => {});
@@ -402,6 +412,8 @@ async function run(browser) {
       "a data-keep-place form swaps the page in place",
       "it keeps the scroll position",
       "focus stays on the control the user changed",
+      "the rail keeps its own scroll",
+      "a group the user opened stays open though the server drew it closed",
     ])
       skip(name, noSwaps);
   }

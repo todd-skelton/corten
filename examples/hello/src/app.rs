@@ -439,13 +439,23 @@ fn LoadMore(shown: usize) -> impl Patch {
 
 /// A filter applied as soon as it changes: the form is submitted on change by its handler, and
 /// data-keep-place keeps the user where they were, on the box they checked, while the page
-/// changes under them.
-#[component(js)]
+/// changes under them: the rail keeps its scroll and the groups they opened stay open, though the
+/// server draws a group open only when its box is checked.
+#[component(css, js)]
 fn AboutFilter(history: bool) -> impl Render {
     let f = AboutQuery::FIELDS;
     html! {
         <form method="get" action={about::About} data-keep-place on:change={js::apply(target)}>
-            <label><input type="checkbox" name={f.history} checked={history}>" Show the history"</label>
+            <div class={Rail}>
+                <details>
+                    <summary>"About these filters"</summary>
+                    <p>"Each one applies as soon as it changes."</p>
+                </details>
+                <details open={history}>
+                    <summary>"History"</summary>
+                    <label><input type="checkbox" name={f.history} checked={history}>" Show the history"</label>
+                </details>
+            </div>
             <button>"Apply"</button>
         </form>
     }

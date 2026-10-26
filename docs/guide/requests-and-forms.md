@@ -199,7 +199,10 @@ bookmarked, reloaded and reached with Back, and the form works without a script.
 filter as soon as it changes, a handler submits the form (`form.requestSubmit()` on `change`).
 Mark the form `data-keep-place` and its navigation keeps the user where they were: the scroll
 position stays, and focus returns to the control they changed (by id, else by its name, and its
-value for a checkbox or radio), with its caret. Without the mark a navigation goes to the top of
+value for a checkbox or radio), with its caret. The page keeps what the user sees around it too: an element that
+scrolls on its own (a filter rail) keeps its scroll, and a `<details>` open on screen stays open
+while one they closed stays closed, so the control is in view and can take focus even when the
+server draws a group open only while one of its options is chosen. Without the mark a navigation goes to the top of
 the new page, as a link should. A link can carry the mark too.
 
 ```rust,ignore

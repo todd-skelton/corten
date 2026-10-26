@@ -868,7 +868,8 @@ function keep(root, fresh, sent) {
  * unstyled.
  * @param {string} html
  * @param {AbortSignal} [signal]
- * @param {boolean} [stay] keep the scroll position (Chromium can reset it when <main> empties)
+ * @param {boolean} [stay] keep the user's place: the scroll position (Chromium can reset it when
+ *   <main> empties), what scrolls inside the page and the `<details>` open on screen
  */
 async function swapPage(html, signal, stay) {
   const content = parse(html);
@@ -888,13 +889,54 @@ async function swapPage(html, signal, stay) {
   document.head.append(...tags);
   const main = document.querySelector("main");
   if (!main) throw new Error("corten: the shell must render a <main> element");
+  const view = stay ? viewOf(main, content) : null;
   serve(content);
   const [x, y] = [scrollX, scrollY];
   main.replaceChildren(content);
+  scrolledIn.clear();
+  view?.();
   if (stay) scrollTo(x, y);
   swapped = html;
   markCurrent();
   readAgainLater();
+}
+
+/**
+ * The elements the user (or a script) scrolled since the page was swapped in: noted as they
+ * scroll, so keeping a page's place does not read the scroll of every element in it.
+ * @type {Set<Element>}
+ */
+const scrolledIn = new Set();
+document.addEventListener("scroll", (event) => event.target instanceof Element && scrolledIn.add(event.target), { capture: true, passive: true });
+
+/**
+ * What the user sees in `root` that a swap to `fresh` keeps when it keeps their place: a
+ * `<details>` open on screen stays open, one they closed stays closed (the rest take the new
+ * markup's state), and an element that scrolls on its own (a filter rail) keeps its scroll, so
+ * the control focus returns to is open and in view. Each is matched as a patch matches it. Read
+ * before `fresh` is inserted; the function it returns applies it after.
+ * @param {Element} root @param {DocumentFragment} fresh @returns {() => void}
+ */
+function viewOf(root, fresh) {
+  const to = /** @type {Element} */ (/** @type {unknown} */ (fresh));
+  /** @type {[HTMLDetailsElement, boolean][]} */
+  const open = [];
+  for (const el of Array.from(root.querySelectorAll("details"))) {
+    if (!(el.open || served.get(el))) continue;
+    const there = counterpart(root, to, el);
+    if (there instanceof HTMLDetailsElement) open.push([there, el.open]);
+  }
+  /** @type {[Element, number, number][]} */
+  const scrolled = [];
+  for (const el of scrolledIn) {
+    if (!root.contains(el) || !(el.scrollTop || el.scrollLeft)) continue;
+    const there = counterpart(root, to, el);
+    if (there?.localName === el.localName) scrolled.push([/** @type {Element} */ (there), el.scrollTop, el.scrollLeft]);
+  }
+  return () => {
+    for (const [el, now] of open) el.open = now;
+    for (const [el, top, left] of scrolled) el.scrollTo(left, top);
+  };
 }
 
 /**
