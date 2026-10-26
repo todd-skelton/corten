@@ -204,5 +204,8 @@ export function select(link, body) {
 
 ## Widgets
 
-Use `corten-ui` (number field, combobox, tabs, menu button) before writing one. For anything
-else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS anchor positioning.
+Use `corten-ui` (number field, combobox, tabs, menu button, toaster) before writing one. For anything
+else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS anchor positioning. A
+`<dialog>` the server can draw `open` (a form it refuses) gets
+`on:connect={corten_ui::dialog::modal(target)}`, so it is modal, not just open; do not write that
+handler in the app.

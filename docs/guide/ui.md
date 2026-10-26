@@ -30,11 +30,26 @@ Everything else Base UI-style libraries provide is already the platform's: `<dia
 `command="show-modal"` for dialogs and alert dialogs, `popover` for popovers and tooltips,
 `<details name>` for accordions, toggletips as a `popover` opened by `popovertarget`, `<select>` (with `appearance: base-select` where supported),
 checkboxes, radios and `<input type="range">`. [examples/ui-gallery](../../examples/ui-gallery) shows
-all five styled by a small design system, with a browser test that runs in Chromium, Firefox and
+all five styled by a small design system, and a dialog the server refuses a form in, with a browser test that runs in Chromium, Firefox and
 WebKit. A tooltip shown on hover or focus is `interestfor` with `popover="hint"` once every
 browser has them (Safari has neither in October 2026); the crate does not add one meanwhile. The
 toaster is not in the top layer, so an open modal `<dialog>` covers it: a form in a dialog answers
 inside the dialog.
+
+A form in a dialog that the server refuses comes back with the dialog drawn `open`, and when the
+answer is a whole page (a post without the runtime) `open` is all the platform has: the dialog
+shows, but it is not modal, so focus and Tab leave it for the page behind, which is not inert,
+and there is no backdrop. `corten_ui::dialog::modal` makes such a dialog modal when it joins the
+page (a load, a navigation or a patch) and focuses the first field marked invalid in it; one drawn
+closed stays closed. It takes the dialog itself, so on any other element it does not compile.
+List `corten_ui::COMPONENTS` and it is served.
+
+```rust,ignore
+<button type="button" command="show-modal" commandfor={RenameId}>"Rename"</button>
+<dialog id={RenameId} open={!errors.is_empty()} on:connect={dialog::modal(target)}>
+    <form method="post" action={url::Rename} data-patch>..</form>
+</dialog>
+```
 
 The design system places popups with CSS anchor positioning (the script makes the control that
 opens each popup its anchor):

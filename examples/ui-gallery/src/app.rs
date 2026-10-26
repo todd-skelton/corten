@@ -6,13 +6,14 @@
 //! | `POST /order` | the form: a patch with JavaScript, the page without |
 //! | `POST /archive`, `POST /watch` | the menu's form actions |
 //! | `POST /save` | a form that answers with a toast |
+//! | `POST /rename` | the dialog's form: refused, the dialog drawn open; else back to the gallery |
 //! | `GET /help` | the menu's link |
 use corten::{Component, prelude::*};
 use serde::Deserialize;
 
 use corten_ui::Toast;
 
-use crate::gallery::{COLORS, Gallery, MenuResult, OrderResult, TABS};
+use crate::gallery::{COLORS, Gallery, MenuResult, OrderResult, RenameDialog, TABS};
 
 pub mod url {
     use corten::Route;
@@ -42,6 +43,10 @@ pub mod url {
     #[derive(Route)]
     #[route("/save")]
     pub struct Save;
+
+    #[derive(Route)]
+    #[route("/rename")]
+    pub struct Rename;
 }
 
 /// The app's components, then corten-ui's.
@@ -54,7 +59,8 @@ pub fn app() -> App {
         .route(url::Help::PATH, get(help))
         .route(url::Archive::PATH, post(|req: Req| menu_action(req, "Archived.")))
         .route(url::Watch::PATH, post(|req: Req| menu_action(req, "Watching.")))
-        .route(url::Save::PATH, post(save));
+        .route(url::Save::PATH, post(save))
+        .route(url::Rename::PATH, post(rename));
     App::new(routes).components(COMPONENTS).components(corten_ui::COMPONENTS)
 }
 
@@ -92,7 +98,7 @@ const TITLE: &str = "corten-ui";
 
 async fn home(req: Req, Query(q): Query<HomeQuery>) -> corten::Result {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
-    gallery(&req, Gallery { tab, result: "", toast: None })
+    gallery(&req, Gallery { tab, result: "", toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } })
 }
 
 #[derive(Deserialize, Fields)]
@@ -107,7 +113,10 @@ async fn order(req: Req, Form(form): Form<OrderForm>) -> corten::Result {
     let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
     match req.mode {
         Mode::Action => req.patch(OrderResult { text: &text }),
-        _ => gallery(&req, Gallery { tab: 0, result: &text, toast: None }),
+        _ => gallery(
+            &req,
+            Gallery { tab: 0, result: &text, toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } },
+        ),
     }
 }
 
@@ -116,8 +125,30 @@ async fn save(req: Req) -> corten::Result {
     const SAVED: &str = "Draft saved.";
     match req.mode {
         Mode::Action => req.patch(Toast { message: Some(&SAVED) }),
-        _ => gallery(&req, Gallery { tab: 0, result: "", toast: Some(SAVED) }),
+        _ => gallery(
+            &req,
+            Gallery { tab: 0, result: "", toast: Some(SAVED), rename: RenameDialog { name: "", errors: &Errors::new() } },
+        ),
     }
+}
+
+#[derive(Deserialize, Fields)]
+pub struct RenameForm {
+    pub name: String,
+}
+
+/// A name is required: refused, the dialog comes back drawn open with the error, as a patch or in
+/// the whole page.
+async fn rename(req: Req, Form(form): Form<RenameForm>) -> corten::Result {
+    let name = form.name.trim();
+    if !name.is_empty() {
+        return req.redirect(&url::Home { tab: None });
+    }
+    let mut errors = Errors::new();
+    errors.add(RenameForm::FIELDS.name, "Give the draft a name.");
+    let page =
+        || async { gallery(&req, Gallery { tab: 0, result: "", toast: None, rename: RenameDialog { name, errors: &errors } }) };
+    req.invalid(&errors, RenameDialog { name, errors: &errors }, page).await
 }
 
 async fn menu_action(req: Req, text: &'static str) -> corten::Result {
@@ -161,7 +192,7 @@ mod tests {
     #[tokio::test]
     async fn the_page_preloads_the_scripts_it_uses_and_selects_the_tab_in_the_url() {
         let page = send(Request::get("/?tab=offers").body(Body::empty()).unwrap()).await;
-        for name in ["ui.number_field", "ui.combo_box", "ui.tab_group", "ui.menu_button", "ui.toaster"] {
+        for name in ["ui.number_field", "ui.combo_box", "ui.tab_group", "ui.menu_button", "ui.toaster", "ui.dialog"] {
             assert!(page.contains(&format!("/scripts/{name}.js\">")), "{name} is preloaded: {page}");
         }
         assert!(
@@ -177,6 +208,21 @@ mod tests {
         assert_eq!(patch, r#"<p id="result" role="status">Ordered 2 in Desert Sand at $12.50.</p>"#);
         let page = send(form().body(Body::from("qty=2&price=12.50&color=sand")).unwrap()).await;
         assert!(page.contains("<html") && page.contains("Ordered 2 in Desert Sand"));
+    }
+
+    #[tokio::test]
+    async fn a_refused_rename_draws_the_dialog_open() {
+        let rename = || Request::post("/rename").header("content-type", "application/x-www-form-urlencoded");
+        let patch = send(rename().header("corten", "action").body(Body::from("name=+")).unwrap()).await;
+        assert!(
+            patch.starts_with(r#"<dialog id="rename" open aria-label="Rename the draft" data-on="connect:ui.dialog.modal($t)">"#),
+            "{patch}"
+        );
+        assert!(patch.contains("aria-invalid=\"true\"") && patch.contains("Give the draft a name."), "{patch}");
+        let page = send(rename().body(Body::from("name=")).unwrap()).await;
+        assert!(page.contains("<html") && page.contains(r#"<dialog id="rename" open"#), "{page}");
+        let home = send(Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(home.contains(r#"<dialog id="rename" aria-label"#), "drawn closed: {home}");
     }
 
     #[tokio::test]
