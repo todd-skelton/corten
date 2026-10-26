@@ -762,6 +762,11 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#61 A patch element without an id is dropped in the browser, and nothing says so before](https://github.com/todd-skelton/corten/issues/61)).
 22. A handler that panics is answered as a 500 with the error page in the request's mode, and the
     panic is logged, instead of the connection closing with no response.
+23. `html!` that is `let`s and then one component is a patch when the component is one, as it is
+    a document when the component is one: a component declared `-> impl Patch` whose markup made a
+    value and passed it to a patch component did not compile. Found by the Chase Sets pilot, which
+    wrapped four views in `match () { () => { .. } }` to get past it
+    ([#82 A view that is lets then one patch component is not a patch (One<F> never implements Patch)](https://github.com/todd-skelton/corten/issues/82)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

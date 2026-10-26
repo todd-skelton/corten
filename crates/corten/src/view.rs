@@ -490,6 +490,42 @@ impl<T: Id> Render for Remove<T> {
 ///     html! { <p role="status">{text}</p> }
 /// }
 /// ```
+///
+/// `let`s and then one component are a patch when the component is one, and not otherwise:
+///
+/// ```
+/// use corten::{prelude::*, view::Patch};
+/// #[derive(Id)]
+/// struct StatusId;
+/// #[component]
+/// fn Status(text: &str) -> impl Patch {
+///     html! { <p id={StatusId} role="status">{text}</p> }
+/// }
+/// #[component]
+/// fn Counted(n: u32) -> impl Patch {
+///     html! {
+///         let text = n.to_string();
+///         <Status text={&text} />
+///     }
+/// }
+/// fn send(view: impl Patch) -> String { view.to_html() }
+/// assert_eq!(send(Counted { n: 3 }), r#"<p id="status" role="status">3</p>"#);
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// #[component]
+/// fn Note(text: &str) -> impl Render {
+///     html! { <p>{text}</p> }
+/// }
+/// #[component]
+/// fn Counted(n: u32) -> impl Patch {
+///     html! {
+///         let text = n.to_string();
+///         <Note text={&text} />
+///     }
+/// }
+/// ```
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a patch",
     label = "a patch replaces elements by id",
@@ -997,8 +1033,8 @@ pub mod __private {
 
     /// `html!` that is `let`s and then one component: built when it renders, as any view is, so
     /// its props may borrow what the `let`s made. The closure returns [`IsDoc`] when the
-    /// component is a [`super::Document`] (a layout), so the view is one too, and [`IsView`]
-    /// otherwise.
+    /// component is a [`super::Document`] (a layout), so the view is one too, [`IsPatch`] when it
+    /// is a [`super::Patch`], so the view is one too, and [`IsView`] otherwise.
     pub struct One<F> {
         render: std::cell::Cell<Option<F>>,
         size: &'static std::sync::atomic::AtomicUsize,
@@ -1006,8 +1042,16 @@ pub mod __private {
 
     /// The component of a [`One`] is a document.
     pub struct IsDoc;
+    /// The component of a [`One`] is a patch.
+    pub struct IsPatch;
     /// The component of a [`One`] is a view.
     pub struct IsView;
+
+    // A `One` is a patch when its component is: `IsPatch` is a patch's shape, `IsView` is not,
+    // so a component that is not a patch gets the same error as any view that is not one.
+    impl PatchShape for IsPatch {}
+    impl<F: FnOnce(&mut String, Option<super::Part>) -> K, K: PatchShape> PatchSealed for One<F> {}
+    impl<F: FnOnce(&mut String, Option<super::Part>) -> K, K: PatchShape> super::Patch for One<F> {}
 
     impl<F> One<F> {
         /// Used by `html!`, which gives every call site its own `size`.
@@ -1047,15 +1091,16 @@ pub mod __private {
         }
     }
 
-    // Inside a `One`'s closure: `(&OneOf(&component)).__one(out, part)` picks `ViaDocument` when
-    // the component is a document and falls back to `ViaView`.
+    // Inside a `One`'s closure: `(&&&OneOf(&component)).__one(out, part)` picks `ViaDocument`
+    // when the component is a document, else `ViaPatch` when it is a patch, else `ViaView`: each
+    // impl is on one reference fewer, so method resolution tries them in that order.
     pub struct OneOf<'a, T: ?Sized>(pub &'a T);
 
     pub trait ViaDocument {
         fn __one(&self, out: &mut String, part: Option<super::Part>) -> IsDoc;
     }
 
-    impl<T: super::Document + ?Sized> ViaDocument for OneOf<'_, T> {
+    impl<T: super::Document + ?Sized> ViaDocument for &&OneOf<'_, T> {
         #[inline]
         fn __one(&self, out: &mut String, part: Option<super::Part>) -> IsDoc {
             match part {
@@ -1066,11 +1111,23 @@ pub mod __private {
         }
     }
 
+    pub trait ViaPatch {
+        fn __one(&self, out: &mut String, part: Option<super::Part>) -> IsPatch;
+    }
+
+    impl<T: super::Patch + ?Sized> ViaPatch for &OneOf<'_, T> {
+        #[inline]
+        fn __one(&self, out: &mut String, _: Option<super::Part>) -> IsPatch {
+            self.0.render(out);
+            IsPatch
+        }
+    }
+
     pub trait ViaView {
         fn __one(&self, out: &mut String, part: Option<super::Part>) -> IsView;
     }
 
-    impl<T: Render + ?Sized> ViaView for &OneOf<'_, T> {
+    impl<T: Render + ?Sized> ViaView for OneOf<'_, T> {
         #[inline]
         fn __one(&self, out: &mut String, _: Option<super::Part>) -> IsView {
             self.0.render(out);

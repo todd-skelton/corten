@@ -93,7 +93,8 @@ fn job_dialog(job: &Job) -> impl Render + '_ {
 ```
 
 With the `let` outside the `html!`, the view would borrow a local of a function that has
-returned (E0515). `let`s and a layout component are a document, like the layout alone.
+returned (E0515). `let`s and a layout component are a document, like the layout alone, and `let`s and a patch
+component are a patch.
 ## Typed links and messages
 
 The strings that usually drift between files are Rust types, checked when the app compiles.

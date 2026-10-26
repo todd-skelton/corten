@@ -72,14 +72,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
             gen.nodes(lets, false);
             let Node::Component { path, props, children } = component else { unreachable!() };
             let built = gen.component(path, props, children, false);
-            gen.code(q("(&::corten::view::__private::OneOf(&__A0)).__one(__OUT, __PART)", &[built]));
+            gen.code(q("(&&&::corten::view::__private::OneOf(&__A0)).__one(__OUT, __PART)", &[built]));
             q(
                 "::corten::view::__private::One::new({
                     static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
                     &SIZE
                 }, move |__OUT: &mut ::std::string::String, __PART: ::std::option::Option<::corten::view::Part>| {
                     #[allow(unused_imports)]
-                    use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _, ViaDocument as _, ViaView as _};
+                    use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _, ViaDocument as _, ViaPatch as _, ViaView as _};
                     __A0
                 })",
                 &[gen.finish()],
