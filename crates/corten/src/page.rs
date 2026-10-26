@@ -632,8 +632,10 @@ impl Req {
         }
     }
 
-    /// After a successful write, send the browser to `to` (post/redirect/get): a typed route, or
-    /// an `axum::http::Uri` to leave the app. Works with and without JavaScript.
+    /// After a successful write, send the browser to `to` (post/redirect/get): a typed route, a
+    /// place on its page (`route.at(RowId(&id))`, so the browser comes back to the element the
+    /// user acted on), or an `axum::http::Uri` to leave the app. Works with and without
+    /// JavaScript.
     pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         Ok(HtmlResponse(redirect(self.mode, value)))
@@ -648,7 +650,7 @@ impl Req {
     /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
     pub fn moved(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
-        if self.mode == Mode::Action {
+        if self.mode == Mode::Action || (self.mode == Mode::Navigation && has_fragment(&value)) {
             return Ok(HtmlResponse(redirect(self.mode, value)));
         }
         let headers = [(header::LOCATION, value), (header::CACHE_CONTROL, HeaderValue::from_static(MOVED_CACHE))];
@@ -673,12 +675,18 @@ fn refresh_header_is_an_error(res: Response) -> Response {
 const MOVED_CACHE: &str = "private, max-age=86400";
 
 /// A redirect in `mode`: `corten-location` for a form patch (the runtime navigates), a 303
-/// otherwise.
+/// otherwise. A client navigation sent to a place on a page (`#id`) gets `corten-location` too:
+/// `fetch` follows a 303 but drops its fragment, so the runtime would not know where to scroll.
 pub(crate) fn redirect(mode: Mode, to: HeaderValue) -> Response {
     match mode {
         Mode::Action => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response(),
+        Mode::Navigation if has_fragment(&to) => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response(),
         _ => (StatusCode::SEE_OTHER, [(header::LOCATION, to)]).into_response(),
     }
+}
+
+fn has_fragment(to: &HeaderValue) -> bool {
+    to.as_bytes().contains(&b'#')
 }
 
 /// Middleware the app installs: a failed request (an [`Error`] from a handler, or an empty error

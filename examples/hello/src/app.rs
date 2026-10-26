@@ -93,6 +93,9 @@ mod url {
 mod about {
     #[route("/about", get = about)]
     pub struct About;
+
+    #[route("/about/thanks", post = thank)]
+    pub struct Thank;
 }
 
 /// Someone's own pages: every route here, now and later, takes the viewer, so no one signed out
@@ -413,8 +416,21 @@ async fn about(req: Req, viewer: Option<Caller<Viewer>>, Query(q): Query<AboutQu
                 <ol id={HistoryId}>for event in &HISTORY[..shown] { <li>{event}</li> }</ol>
                 <LoadMore shown={shown} />
             }
+            <form id={ThanksId} method="post" action={about::Thank} data-patch>
+                <button>"Thank the authors"</button>
+            </form>
         </Layout>
     })
+}
+
+/// The form at the end of the about page.
+#[derive(Id)]
+struct ThanksId;
+
+/// A write that sends the browser back to the form it came from, at the end of a long page:
+/// `About.at(ThanksId)` is `/about#thanks`, the id the form's markup prints.
+async fn thank(req: Req) -> HtmlResult {
+    req.redirect(&about::About.at(ThanksId))
 }
 
 #[derive(Id)]

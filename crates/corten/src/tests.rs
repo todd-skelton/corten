@@ -713,6 +713,32 @@ async fn a_page_that_moved_answers_301_in_every_mode_and_a_form_navigates() {
     assert_eq!(headers["corten-location"], "/items/pika%20chu");
 }
 
+#[tokio::test]
+async fn a_redirect_to_a_place_keeps_its_fragment_in_every_mode() {
+    #[derive(crate::Route)]
+    #[route("/items/{slug}")]
+    struct Item<'a> {
+        slug: &'a str,
+    }
+    #[derive(crate::view::Id)]
+    struct PlaceId<'a>(&'a str);
+    let routes = Router::new()
+        .route("/", get(|req: Req| async move { req.redirect(&Item { slug: "pika chu" }.at(PlaceId("7 & 8"))) }))
+        .route("/old", get(|req: Req| async move { req.moved(&Item { slug: "pika" }.at(PlaceId("7"))) }));
+    let place = "/items/pika%20chu#place-7%20%26%208";
+    let (status, headers, _) = call(app(routes.clone(), None), "GET", None).await;
+    assert_eq!((status, &headers["location"]), (StatusCode::SEE_OTHER, &place.parse().unwrap()), "a full load follows it");
+    // fetch would follow a 303 and drop the fragment, so the runtime is told where to go.
+    for mode in ["nav", "action"] {
+        let (status, headers, _) = call(app(routes.clone(), None), "GET", Some(mode)).await;
+        assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &place.parse().unwrap()), "{mode}");
+    }
+    let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/old", Some("nav"), None).await;
+    assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &"/items/pika#place-7".parse().unwrap()));
+    let (status, headers, _) = call_with(app(routes, None), "GET", "/old", None, Some("text/html")).await;
+    assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &"/items/pika#place-7".parse().unwrap()));
+}
+
 #[cfg(debug_assertions)]
 #[tokio::test]
 #[should_panic(expected = "top-level text \"saved\" outside an element")]

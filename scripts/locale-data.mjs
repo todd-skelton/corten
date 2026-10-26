@@ -17,7 +17,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LANGUAGES = `af am ar as az be bg bn bs ca cs cy da de el en es et eu fa fi fil fr ga gl gu he hi hr hu hy id is it ja ka kk km kn ko ky lo lt lv mk ml mn mr ms my nb ne nl or pa pl ps pt ro ru si sk sl sq sr sv sw ta te th tr uk ur uz vi zh zu`.split(" ");
 const REGIONS = `en-GB en-AU en-CA en-IN en-IE en-NZ en-ZA en-SG en-PH es-MX es-419 es-AR es-CO es-CL es-US fr-CA fr-CH fr-BE de-AT de-CH it-CH nl-BE pt-PT zh-Hant zh-TW zh-HK sr-Latn ar-EG ar-SA ar-AE ar-MA ms-SG sv-FI`.split(" ");
 
-// The styles, in the order of LocaleData::dates: four dates, each date with each time, two times.
+// The styles, in the order of LocaleData::dates: four dates, each date with each time, two times,
+// then the month and year without the day, short and long (after the others, so their indices
+// stay as they were).
 const DATE = [
   { year: "numeric", month: "numeric", day: "numeric" },
   { year: "numeric", month: "short", day: "numeric" },
@@ -28,7 +30,11 @@ const TIME = [
   { hour: "numeric", minute: "2-digit", timeZoneName: "short" },
   { hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short" },
 ];
-const BAGS = [...DATE, ...DATE.flatMap((d) => TIME.map((t) => ({ ...d, ...t }))), ...TIME];
+const MONTH = [
+  { year: "numeric", month: "short" },
+  { year: "numeric", month: "long" },
+];
+const BAGS = [...DATE, ...DATE.flatMap((d) => TIME.map((t) => ({ ...d, ...t }))), ...TIME, ...MONTH];
 
 const at = (y, mo, d, h = 0, mi = 0, s = 0) => new Date(Date.UTC(y, mo - 1, d, h, mi, s));
 const SAMPLE = at(2026, 3, 22, 15, 4, 5); // a Sunday

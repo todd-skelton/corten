@@ -1098,6 +1098,13 @@ async function visit(url, signal, redirected, again, place) {
     main?.removeAttribute("aria-busy");
   }
   signal.throwIfAborted();
+  // Sent to a place on a page (`route.at(id)`): the server names it here, since `fetch` follows a
+  // redirect but drops its `#id`.
+  const to = res.headers.get("corten-location");
+  if (to) {
+    navigation.navigate(to, { history: "replace", info: { [LOAD]: true, [KEEP_PLACE]: place } });
+    return;
+  }
   if (!res.headers.has("corten-page") || shellChanged(res)) {
     location.reload();
     return;
@@ -1164,6 +1171,11 @@ const navigation = /** @type {any} */ (window).navigation;
 const REDIRECTED = Symbol("corten.redirected");
 /** Key of the place a `data-keep-place` navigation hands to the one a redirect starts. */
 const KEEP_PLACE = Symbol("corten.keepPlace");
+/**
+ * Key of a navigation the server sent the browser on (after a write): its page is fetched even
+ * when only the `#id` differs from the address, since the write may have changed the page.
+ */
+const LOAD = Symbol("corten.load");
 
 /**
  * Whether the first document has fired `load`. Before it, a navigation is the browser's own (a
@@ -1181,8 +1193,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   const skip =
     !event.canIntercept ||
     !loaded ||
-    event.hashChange ||
-    (event.destination.sameDocument && event.navigationType !== "traverse") ||
+    (!event.info?.[LOAD] && (event.hashChange || (event.destination.sameDocument && event.navigationType !== "traverse"))) ||
     event.downloadRequest !== null ||
     event.formData ||
     event.navigationType === "reload" ||
@@ -1198,6 +1209,21 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   // they used. Kept across a redirect the server answers with.
   const place = again || event.sourceElement?.closest?.("[data-keep-place]") ? placeOf(document.activeElement) : event.info?.[KEEP_PLACE];
   if (place === undefined) {
+    // Sent to a place on a page: scrolled to here, since Firefox does not scroll to an `#id` the
+    // address already had.
+    if (event.info?.[LOAD] && url.hash) {
+      const handler = async () => {
+        await visit(url, event.signal, redirected);
+        if (event.signal.aborted) return;
+        let id = url.hash.slice(1);
+        try {
+          id = decodeURIComponent(id);
+        } catch {}
+        document.getElementById(id)?.scrollIntoView();
+      };
+      event.intercept({ handler, scroll: "manual" });
+      return;
+    }
     event.intercept({ handler: () => visit(url, event.signal, redirected) });
     return;
   }
@@ -1290,8 +1316,14 @@ document.addEventListener("submit", async (event) => {
     const location_ = res.headers.get("corten-location");
     if (location_) {
       submits.delete(form);
-      if (navigation) navigation.navigate(location_);
-      else location.assign(location_);
+      if (navigation) navigation.navigate(location_, { info: { [LOAD]: true } });
+      else {
+        // Without the Navigation API, a URL that differs only in its `#id` would only scroll.
+        const to = new URL(location_, location.href);
+        const same = pageKey(to) === pageKey(new URL(location.href));
+        location.assign(to);
+        if (same) location.reload();
+      }
     } else if (res.headers.has("corten-page") && shellChanged(res)) {
       location.reload();
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
