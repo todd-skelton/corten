@@ -400,6 +400,14 @@ Corten is pre-1.0, so any minor version may change the API.
 56. A component parameter can be `impl Render` (any `impl Trait`), a type parameter of its struct:
     `fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document`. The README's example
     compiles as edition 2024, as apps are, so its functions return `impl Document` without lifetimes.
+57. `corten_ui::dialog::modal`: `<dialog open={refused} on:connect={dialog::modal(target)}>` makes a
+    dialog the server draws open (a refused form, in a whole page or a patch) modal when it joins
+    the page, with focus on the first field marked invalid in it. `open` alone is the platform's
+    non-modal state: no focus trap, the page behind not inert, no backdrop. It is a handler module
+    in `corten_ui::COMPONENTS` (`script!`), takes `HTMLDialogElement` (on another element it does not
+    compile) and is 593 bytes as served (measured), loaded only by pages that use it. `examples/ui-gallery`
+    refuses a rename in a dialog and its smoke test checks it is modal, with or without the runtime
+    for the post, in Chromium, Firefox and WebKit.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

@@ -9,11 +9,12 @@
 //! | [`TabGroup`] | tabs with arrow keys; tabs can be links, and the address follows | links to each tab's page |
 //! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
+//! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
 //!
 //! Each is tested in Chromium, Firefox and WebKit (`examples/ui-gallery/smoke.mjs`).
 //!
 //! Use the platform for everything else: `<dialog>` with `command="show-modal"` for dialogs and
-//! alert dialogs, `popover` for popovers and toggletips (`popovertarget`: shown on a click or
+//! alert dialogs (with [`dialog::modal`] on one the server can draw open), `popover` for popovers and toggletips (`popovertarget`: shown on a click or
 //! tap), `<details name>` for accordions,
 //! `<select>` (styled with `appearance: base-select` where supported) for selects, native
 //! checkboxes, radios and `<input type="range">` for switches, toggle groups and sliders. A
@@ -54,8 +55,39 @@
 //!
 //! let item = MenuItem { label: &"Orders", link: &"/orders", post: false };
 //! ```
+//!
+//! **Dialogs the server draws open.** A form in a `<dialog>` that the server refuses comes back
+//! with the dialog drawn `open` when the answer is a whole page (a post without the runtime). The
+//! platform has no markup that opens a dialog as a modal, so `open` alone does not hold focus,
+//! make the page inert or show the backdrop. [`dialog::modal`] does, when the dialog joins the
+//! page (a load, a navigation or a patch); a dialog drawn closed is left closed:
+//!
+//! ```
+//! use corten::prelude::*;
+//! use corten_ui::dialog;
+//!
+//! #[derive(Id)]
+//! struct RenameId; // ui-rename: ids in this crate start with its prefix
+//!
+//! let refused = true;
+//! let html = html! {
+//!     <button type="button" command="show-modal" commandfor={RenameId}>"Rename"</button>
+//!     <dialog id={RenameId} open={refused} on:connect={dialog::modal(target)}>".."</dialog>
+//! }
+//! .to_html();
+//! assert!(html.contains(r#"<dialog id="ui-rename" open data-on="connect:ui.dialog.modal($t)">"#), "{html}");
+//! ```
+//!
+//! It takes the dialog itself, so on any other element it does not compile:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//! use corten_ui::dialog;
+//!
+//! let html = html! { <div open on:connect={dialog::modal(target)}></div> };
+//! ```
 
-use corten::{view::AttrValue, Component, Route};
+use corten::{script::script, view::AttrValue, Component, Route};
 
 mod combo_box;
 mod menu_button;
@@ -69,8 +101,11 @@ pub use number_field::{Number, NumberField, Step};
 pub use tab_group::{Tab, TabGroup};
 pub use toaster::{Toast, ToastId, Toaster};
 
-/// Every component in this crate with a script, for `App::components`.
-pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton, Toaster];
+script!(pub mod dialog = "dialog.js");
+
+/// Every component in this crate with a script, and the [`dialog`] handlers, for
+/// `App::components`.
+pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton, Toaster, dialog::COMPONENT];
 
 /// A typed route a component links to (`#[derive(Route)]`), as a trait object so a list of
 /// items can hold different routes. A string is not a `Link`.

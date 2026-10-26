@@ -37,7 +37,7 @@ async function run(browser) {
   await page.goto(`${base}/`);
   await page.waitForFunction(() => document.querySelector('[data-scope=ui-combo-box] [role="combobox"]:not([hidden])') !== null);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the five scripts load and connect", loaded === 5, `${loaded} script(s)`);
+  check("the six scripts load and connect", loaded === 6, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -201,7 +201,48 @@ async function run(browser) {
   check("it is still there just after the pointer leaves (the rest of its time)", await toast.isVisible());
   await toast.waitFor({ state: "hidden", timeout: 4000 }).catch(() => {});
   check("then it goes after its time", (await toast.isHidden()) && (await dismiss.isHidden()));
-  check("no console errors", errors.length === 0, errors.join(" | "));
+
+  // dialog::modal: a dialog the server draws open is modal.
+  const rename = page.locator("#rename");
+  const isModal = () => rename.evaluate((d) => d.matches(":modal"));
+  check("drawn closed, the dialog stays closed", !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
+  await page.getByRole("button", { name: "Rename draft" }).click();
+  check("the button opens it as a modal (command=show-modal)", await isModal());
+  await page.getByRole("button", { name: "Rename", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("#rename [aria-invalid=true]") !== null);
+  check("a refused patch keeps it modal, with the error", (await isModal()) && (await rename.textContent())?.includes("Give the draft a name."));
+  check("focus is on the refused field", await page.evaluate(() => document.activeElement?.id === "draft-name"));
+  await page.keyboard.press("Escape");
+  check("Escape closes it", !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
+  // A post without the runtime (no data-patch): the whole page, the dialog drawn open.
+  await page.getByRole("button", { name: "Rename draft" }).click();
+  await Promise.all([
+    page.waitForURL("**/rename"),
+    page.locator("#rename form[action]").evaluate((f) => {
+      f.removeAttribute("data-patch");
+      /** @type {HTMLFormElement} */ (f).requestSubmit();
+    }),
+  ]);
+  await page.waitForFunction(() => document.querySelector("#rename")?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  check("drawn open in a whole page, it becomes modal", await isModal());
+  check("focus goes to the refused field", await page.evaluate(() => document.activeElement?.id === "draft-name"));
+  const trapped = [];
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press("Tab");
+    trapped.push(await page.evaluate(() => !!document.activeElement?.closest("#rename") || document.activeElement === document.body));
+  }
+  check("Tab stays in the dialog (the page behind is inert)", trapped.every(Boolean), trapped.join());
+  check("the page behind is inert to clicks", await page.evaluate(() => {
+    const h1 = /** @type {HTMLElement} */ (document.querySelector("h1"));
+    const r = h1.getBoundingClientRect();
+    // The backdrop covers it: the point hits the dialog (its ::backdrop), not the heading.
+    return document.elementFromPoint(r.left + 2, r.top + 2) === document.querySelector("#rename");
+  }));
+  await page.keyboard.press("Escape");
+  check("Escape closes the page's dialog", !(await isModal()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
+  // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
+  const unexpected = errors.filter((e) => !/status of 422/.test(e));
+  check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
   // Without JavaScript
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
@@ -219,4 +260,8 @@ async function run(browser) {
   await plain.goto(`${base}/`);
   await Promise.all([plain.waitForURL("**/save"), plain.getByRole("button", { name: "Save draft" }).click()]);
   check("no script: the page the post answers with shows the toast", (await plain.locator("#ui-toast").textContent()) === "Draft saved." && (await plain.locator("#ui-toast").isVisible()));
+  await plain.getByRole("button", { name: "Rename draft" }).click();
+  check("no script: the button opens the dialog", await plain.locator("#rename").isVisible());
+  await Promise.all([plain.waitForURL("**/rename"), plain.getByRole("button", { name: "Rename", exact: true }).click()]);
+  check("no script: refused, the dialog is open with the error", (await plain.locator("#rename").isVisible()) && ((await plain.locator("#rename").textContent()) ?? "").includes("Give the draft a name."));
 }

@@ -20,11 +20,13 @@ struct Form {
 #[test]
 fn every_component_has_its_script_and_no_css() {
     let names: Vec<_> = COMPONENTS.iter().map(|c| c.script.expect("a script").name).collect();
-    assert_eq!(names, ["ui.number_field", "ui.combo_box", "ui.tab_group", "ui.menu_button", "ui.toaster"]);
+    assert_eq!(names, ["ui.number_field", "ui.combo_box", "ui.tab_group", "ui.menu_button", "ui.toaster", "ui.dialog"]);
     for c in COMPONENTS {
         let script = c.script.unwrap();
         assert!(c.style.is_none(), "{} ships no CSS", c.name);
-        assert!(script.handlers.contains(&"connect"), "{} sets itself up when it joins the page", script.file);
+        // The dialog module is handlers markup calls, not a component that sets itself up.
+        let first = if script.name == "ui.dialog" { "modal" } else { "connect" };
+        assert!(script.handlers.contains(&first), "{} has {first}", script.file);
     }
 }
 
