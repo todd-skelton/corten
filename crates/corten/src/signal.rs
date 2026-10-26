@@ -72,6 +72,11 @@ struct Inner {
     /// The hashes of the callers it read, mixed: part of the page's key, so a page for someone
     /// else (after signing in or out) is loaded in full.
     callers: AtomicU64,
+    /// The app's error page is answering it.
+    error_page: AtomicBool,
+    /// The first callers marked, so the error page, which looks them up again, does not mark one
+    /// twice (the key mixes them by XOR, so a second mark would take it out).
+    marked: [AtomicU64; 4],
 }
 
 impl Signal {
@@ -105,8 +110,26 @@ impl Signal {
     /// Marks the request as read by who is asking, whose hash is `hash` (each caller type is
     /// marked once per request).
     pub(crate) fn mark_caller(&self, hash: u64) {
+        let marked = &self.0.marked;
+        if self.is_error_page() && marked.iter().any(|m| m.load(Ordering::Relaxed) == hash) {
+            return;
+        }
+        if let Some(free) = marked.iter().find(|m| m.load(Ordering::Relaxed) == 0) {
+            free.store(hash, Ordering::Relaxed);
+        }
         self.0.personal.store(true, Ordering::Relaxed);
         self.0.callers.fetch_xor(hash, Ordering::Relaxed);
+    }
+
+    /// The app's error page is answering the request.
+    pub(crate) fn mark_error_page(&self) {
+        self.0.error_page.store(true, Ordering::Relaxed);
+    }
+
+    /// True while the app's error page answers the request: an optional caller that cannot be
+    /// looked up is none there.
+    pub(crate) fn is_error_page(&self) -> bool {
+        self.0.error_page.load(Ordering::Relaxed)
     }
 
     /// True when something read who is asking.

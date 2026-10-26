@@ -45,7 +45,7 @@ pub fn app(source: Source) -> App {
             let mcp = mcp.route::<routes::Mcp>(tools);
             origins.split(',').filter(|o| !o.is_empty()).fold(mcp, |mcp, origin| mcp.allow_origin(origin))
         })
-        .error_page(views::error_page)
+        .error_page(views::error_page, ())
         .messages::<Msg>()
         .components(views::COMPONENTS)
         .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(routes::Mcp::PATH))

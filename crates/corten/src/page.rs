@@ -5,6 +5,7 @@ use std::{
     convert::Infallible,
     future::Future,
     hash::{Hash, Hasher},
+    pin::Pin,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, LazyLock,
@@ -105,6 +106,10 @@ pub enum Failure {
     /// The handler needs a [`crate::Caller`] the request does not have, or one who may not do
     /// this, and there is nowhere to sign in: 401 or 403 ([`crate::Refused`]).
     Refused { status: StatusCode },
+    /// Who is asking could not be found out now ([`crate::Refused::unavailable`]: the session
+    /// store is down), so the request was neither let through nor sent to sign in (503). Not a
+    /// handler's own 503, which is [`Failure::Failed`]. The detail is the lookup's error.
+    Unidentified { detail: Option<Arc<str>> },
     /// The path, the query or the body did not parse (400, 415 or 422). The detail is the
     /// extractor's text, written for a developer.
     Rejected { status: StatusCode, detail: Option<Arc<str>> },
@@ -129,7 +134,7 @@ impl Failure {
             Failure::CrossSite => StatusCode::FORBIDDEN,
             Failure::Refused { status } | Failure::Rejected { status, .. } | Failure::Failed { status, .. } => *status,
             Failure::Panicked { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-            Failure::TimedOut => StatusCode::SERVICE_UNAVAILABLE,
+            Failure::TimedOut | Failure::Unidentified { .. } => StatusCode::SERVICE_UNAVAILABLE,
             Failure::Offline => StatusCode::OK,
         }
     }
@@ -138,7 +143,10 @@ impl Failure {
     /// production.
     pub fn detail(&self) -> Option<&str> {
         match self {
-            Failure::Rejected { detail, .. } | Failure::Failed { detail, .. } | Failure::Panicked { detail } => detail.as_deref(),
+            Failure::Rejected { detail, .. }
+            | Failure::Failed { detail, .. }
+            | Failure::Panicked { detail }
+            | Failure::Unidentified { detail } => detail.as_deref(),
             _ => None,
         }
     }
@@ -148,6 +156,7 @@ impl Failure {
             Failure::Rejected { status, .. } => Failure::Rejected { status, detail: None },
             Failure::Failed { status, .. } => Failure::Failed { status, detail: None },
             Failure::Panicked { .. } => Failure::Panicked { detail: None },
+            Failure::Unidentified { .. } => Failure::Unidentified { detail: None },
             other => other,
         }
     }
@@ -160,17 +169,23 @@ pub(crate) enum Cause {
     Panicked,
     TimedOut,
     Refused,
+    Unidentified,
 }
 
 /// The error page of an app that gives none ([`crate::App::error_page`]): a plain document. An app
 /// made by `corten new` has its own, in its layout. Every error page is sent with
 /// `X-Robots-Tag: noindex`.
-pub(crate) fn default_error_page(req: &Req, failure: Failure) -> impl crate::view::Document + '_ {
+pub(crate) async fn default_error_page(failure: Failure, req: Req) -> HtmlResult {
+    req.page(default_error_document(&req, failure))
+}
+
+fn default_error_document(req: &Req, failure: Failure) -> impl crate::view::Document + '_ {
     let (title, text) = match failure {
         Failure::NotFound => ("Not found", "There is nothing at this address."),
         Failure::CrossSite => ("Not allowed", "This request came from another site."),
         Failure::Refused { status } if status == StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
         Failure::Refused { .. } => ("Not allowed", "You do not have access to this page."),
+        Failure::Unidentified { .. } => ("Not available", "We could not check who you are. Try again in a moment."),
         Failure::TimedOut | Failure::Offline => ("Not available", "Check your connection and try again."),
         Failure::WrongMethod | Failure::Rejected { .. } | Failure::Failed { .. } | Failure::Panicked { .. } => {
             ("Something went wrong", "Please try again.")
@@ -198,43 +213,172 @@ pub(crate) fn default_error_page(req: &Req, failure: Failure) -> impl crate::vie
     }
 }
 
-/// An error page with its document type erased: the response for a failed request.
-pub(crate) type ErrorPage = dyn Fn(&Req, Failure) -> Response + Send + Sync;
+/// An error page with its arguments and state erased: the page's answer for a failed request,
+/// from the failure and the request as [`Asked`] kept it ([`error_page`] finishes it).
+pub(crate) type ErrorPage = dyn Fn(Failure, Parts) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync;
 
-/// A function from a failed request to its page, as [`crate::App::error_page`] takes it:
-/// `fn error_page(req: &Req, failure: Failure) -> impl Document + '_`.
-pub trait ErrorPageFn<'a>: Fn(&'a Req, Failure) -> <Self as ErrorPageFn<'a>>::Page {
-    /// The document it returns.
-    type Page: crate::view::Document + 'a;
+/// The app's error page, as [`crate::App::error_page`] takes it: an async function of the
+/// [`Failure`] and then extractors, as a handler's arguments are (`Req`, the caller who is
+/// asking with `Option<Caller<Viewer>>`, `State<..>` of the state it is given), that answers
+/// `req.page(..)`:
+///
+/// ```ignore
+/// async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult {
+///     let viewer = viewer.map(|Caller(v)| v);
+///     req.page(html! { <Layout req={&req} viewer={viewer.as_ref()} title="..">..</Layout> })
+/// }
+/// ```
+///
+/// It is sent with the failure's status (or as it answers, when it redirects). The extractors see
+/// the request's URL, `Cookie` and `Authorization` (so a caller is found as for the handler),
+/// `Accept-Language` and its mode; not its other headers or its body:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// async fn error_page(failure: Failure, req: Req) -> HtmlResult {
+///     req.page(html! { <html><head><title>"Error"</title><Corten /></head><body><main>{failure.status().as_str()}</main></body></html> })
+/// }
+/// let _ = App::new(Routes::new()).error_page(error_page, ());
+/// ```
+///
+/// So one that reads the body does not compile:
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// async fn error_page(failure: Failure, req: Req, Form(_): Form<std::collections::HashMap<String, String>>) -> HtmlResult {
+///     req.page(html! { <html><head><title>"Error"</title><Corten /></head><body><main>{failure.status().as_str()}</main></body></html> })
+/// }
+/// let _ = App::new(Routes::new()).error_page(error_page, ());
+/// ```
+pub trait ErrorPageFn<T, S>: Clone + Send + Sync + 'static {
+    #[doc(hidden)]
+    fn answer(self, failure: Failure, parts: Parts, state: S) -> impl Future<Output = Response> + Send + 'static;
 }
 
-impl<'a, F, D> ErrorPageFn<'a> for F
-where
-    F: Fn(&'a Req, Failure) -> D,
-    D: crate::view::Document + 'a,
-{
-    type Page = D;
-}
-
-pub(crate) fn error_page_fn<F>(page: F) -> Box<ErrorPage>
-where
-    F: for<'a> ErrorPageFn<'a> + Send + Sync + 'static,
-{
-    Box::new(move |req: &Req, failure: Failure| {
-        let status = failure.status();
-        let mut res = match req.page_with_status(status, page(req, failure)) {
-            Ok(HtmlResponse(res)) => res,
-            Err(error) => {
-                // The error page itself failed (under `corten dev`, a component the app does not
-                // list): plain text, so a broken error page cannot fail again.
-                tracing::error!("corten: the error page failed: {error:?}");
-                (status, "The page could not be shown.").into_response()
+macro_rules! error_page_fn {
+    ($($t:ident),*) => {
+        #[allow(non_snake_case, unused_mut, unused_variables)]
+        impl<F, Fut, S, $($t,)*> ErrorPageFn<($($t,)*), S> for F
+        where
+            F: FnOnce(Failure, $($t,)*) -> Fut + Clone + Send + Sync + 'static,
+            Fut: Future<Output = HtmlResult> + Send + 'static,
+            S: Send + Sync + 'static,
+            $($t: FromRequestParts<S> + Send + 'static,)*
+        {
+            fn answer(self, failure: Failure, mut parts: Parts, state: S) -> impl Future<Output = Response> + Send + 'static {
+                async move {
+                $(
+                    let $t = match $t::from_request_parts(&mut parts, &state).await {
+                        Ok(value) => value,
+                        Err(rejection) => return rejection.into_response(),
+                    };
+                )*
+                match self(failure, $($t,)*).await {
+                    Ok(HtmlResponse(res)) => res,
+                    Err(error) => error.into_response(),
+                }
+                }
             }
+        }
+    };
+}
+error_page_fn!();
+error_page_fn!(T1);
+error_page_fn!(T1, T2);
+error_page_fn!(T1, T2, T3);
+error_page_fn!(T1, T2, T3, T4);
+error_page_fn!(T1, T2, T3, T4, T5);
+error_page_fn!(T1, T2, T3, T4, T5, T6);
+
+pub(crate) fn error_page_fn<H, T, S>(page: H, state: S) -> Box<ErrorPage>
+where
+    H: ErrorPageFn<T, S>,
+    S: Clone + Send + Sync + 'static,
+{
+    Box::new(move |failure: Failure, parts: Parts| Box::pin(page.clone().answer(failure, parts, state.clone())))
+}
+
+/// The app's error page for `failure`, sent with its status.
+pub(crate) async fn error_page(shared: &Shared, asked: Asked, failure: Failure) -> Response {
+    let status = failure.status();
+    let mut res = (shared.error_page)(failure, asked.parts()).await;
+    if res.status().is_success() {
+        *res.status_mut() = status;
+    } else if !res.status().is_redirection() {
+        // The error page itself failed (under `corten dev`, a component the app does not list):
+        // plain text, so a broken error page cannot fail again.
+        tracing::error!(status = res.status().as_u16(), "corten: the error page failed");
+        res = (status, "The page could not be shown.").into_response();
+    }
+    // Search engines skip it, whatever the layout says: the offline page is a 200.
+    res.headers_mut().insert(HeaderName::from_static("x-robots-tag"), HeaderValue::from_static("noindex"));
+    res
+}
+
+/// The request's credentials, `Cookie` and `Authorization`: read once, for the cache rules and for
+/// the error page's caller. Values already in the request, shared, not copied.
+#[derive(Clone, Default)]
+pub(crate) struct Credentials {
+    cookie: Option<HeaderValue>,
+    authorization: Option<HeaderValue>,
+}
+
+impl Credentials {
+    pub(crate) fn of(headers: &HeaderMap) -> Self {
+        Credentials { cookie: headers.get(header::COOKIE).cloned(), authorization: headers.get(header::AUTHORIZATION).cloned() }
+    }
+}
+
+/// What the error page's extractors see of a request, kept before the handler took it: what
+/// [`Req`] reads and the credentials a caller is found by.
+pub(crate) struct Asked {
+    req: Req,
+    credentials: Credentials,
+}
+
+impl Asked {
+    pub(crate) fn new(req: &Request, shared: Arc<Shared>, credentials: Credentials) -> Self {
+        Asked { req: Req::new(req.headers(), req.extensions(), req.uri(), shared), credentials }
+    }
+
+    fn path(&self) -> &str {
+        self.req.path()
+    }
+
+    /// The request again, for the error page's extractors.
+    pub(crate) fn parts(self) -> Parts {
+        let Asked { req, credentials: Credentials { cookie, authorization } } = self;
+        let (mut parts, ()) = Request::new(()).into_parts();
+        parts.uri = req.uri.clone();
+        let mode = match req.mode {
+            Mode::Navigation => Some(HeaderValue::from_static("nav")),
+            Mode::Action => Some(HeaderValue::from_static("action")),
+            Mode::Document | Mode::Data => None,
         };
-        // Search engines skip it, whatever the layout says: the offline page is a 200.
-        res.headers_mut().insert(HeaderName::from_static("x-robots-tag"), HeaderValue::from_static("noindex"));
-        res
-    })
+        let kept = [
+            (MODE_HEADER, mode),
+            (header::ACCEPT_LANGUAGE, req.accept_language.clone()),
+            (header::COOKIE, cookie),
+            (header::AUTHORIZATION, authorization),
+        ];
+        parts.headers.reserve(kept.iter().filter(|(_, value)| value.is_some()).count());
+        for (name, value) in kept {
+            if let Some(value) = value {
+                parts.headers.insert(name, value);
+            }
+        }
+        if let Some(nonce) = req.nonce.clone() {
+            parts.extensions.insert(nonce);
+        }
+        // An optional caller that cannot be looked up is none there, so the page is drawn signed
+        // out rather than not at all.
+        req.signal.mark_error_page();
+        parts.extensions.insert(req.signal);
+        parts.extensions.insert(req.shared);
+        parts
+    }
 }
 
 /// Everything a request needs from the app: the error page, where scripts live.
@@ -295,7 +439,7 @@ impl Shared {
 
 /// Used by handlers that run without an [`crate::App`] (unit tests of a bare router).
 static DEFAULT: LazyLock<Arc<Shared>> =
-    LazyLock::new(|| Arc::new(Shared::new(error_page_fn(default_error_page), None, String::new())));
+    LazyLock::new(|| Arc::new(Shared::new(error_page_fn(default_error_page, ()), None, String::new())));
 
 /// The request as a handler answers it: which [`Mode`] the client asked in, and the methods
 /// that build each kind of response. Every handler that returns HTML takes one.
@@ -712,8 +856,8 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     // A browser: the runtime, or a document request that asks for HTML (a health probe or a
     // webhook sender does not).
     let browser = matches!(mode, Mode::Navigation | Mode::Action) || (mode == Mode::Document && accepts_html(req.headers()));
-    // Taken now, while the request (its nonce) is here; it allocates nothing.
-    let failed_req = Req::new(req.headers(), req.extensions(), req.uri(), shared.clone());
+    // Taken now, while the request (its nonce, its credentials) is here; it allocates nothing.
+    let asked = Asked::new(&req, shared.clone(), Credentials::of(req.headers()));
     let res = run(req, next, deadline, signal).await;
     #[cfg(debug_assertions)]
     let res = refresh_header_is_an_error(res);
@@ -725,16 +869,17 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     // A JSON route answers every failure as JSON, a path that did not parse included.
     if res.extensions().get::<crate::answer::Answered>().is_some() {
         // Not kept across the await, so the request's future stays as small as it was.
-        drop(failed_req);
+        drop(asked);
         return crate::api::json_failure(res, shared.dev).await;
     }
     if let Some(crate::caller::SignIn(to)) = res.extensions().get::<crate::caller::SignIn>().cloned() {
-        let Some(message) = sign_in_loops(failed_req.path(), &to) else {
+        let Some(message) = sign_in_loops(asked.path(), &to) else {
             return redirect(mode, to);
         };
         tracing::error!("corten: {message}");
         let failure = Failure::Failed { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Some(Arc::from(message)) };
-        return error_page(shared, &failed_req, failure);
+        let failure = if shared.dev { failure } else { failure.without_detail() };
+        return error_page(shared, asked, failure).await;
     }
     let mut failed = res.extensions().get::<crate::Failed>().cloned();
     let cause = res.extensions().get::<Cause>().copied();
@@ -753,16 +898,16 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
         tracing::debug!(status = status.as_u16(), "corten: request rejected: {text}");
         failed = Some(crate::Failed(Arc::from(text.trim())));
     }
-    let req = failed_req;
     if offline && status == StatusCode::NOT_FOUND {
         // The PWA's offline page, which the service worker keeps: a 200.
-        return (shared.error_page)(&req, Failure::Offline);
+        return error_page(shared, asked, Failure::Offline).await;
     }
     let detail = failed.map(|crate::Failed(message)| message);
     let failure = match cause {
         Some(Cause::Panicked) => Failure::Panicked { detail },
         Some(Cause::TimedOut) => Failure::TimedOut,
         Some(Cause::Refused) => Failure::Refused { status },
+        Some(Cause::Unidentified) => Failure::Unidentified { detail },
         None if rejection => Failure::Rejected { status, detail },
         // Nothing is here, whether no route has the URL or the handler found nothing.
         None if status == StatusCode::NOT_FOUND => Failure::NotFound,
@@ -772,17 +917,12 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
             status => Failure::Failed { status, detail: None },
         },
     };
-    let mut res = error_page(shared, &req, failure);
+    let failure = if shared.dev { failure } else { failure.without_detail() };
+    let mut res = error_page(shared, asked, failure).await;
     if let Some(allow) = allow {
         res.headers_mut().insert(header::ALLOW, allow);
     }
     res
-}
-
-/// The app's error page for `failure`, with its detail under `corten dev` only.
-fn error_page(shared: &Shared, req: &Req, failure: Failure) -> Response {
-    let failure = if shared.dev { failure } else { failure.without_detail() };
-    (shared.error_page)(req, failure)
 }
 
 /// Why a request a [`crate::Caller`] sent to sign in at `to` would loop: the sign-in page itself

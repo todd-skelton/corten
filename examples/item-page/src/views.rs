@@ -23,11 +23,13 @@ pub const COMPONENTS: &[Component] = &[theme::TOKENS, ItemDetail, AlertForm, Pri
 
 /// The page for a failed request (`App::error_page`), in the layout; under `corten dev` it shows
 /// the error. The PWA's offline page is `Failure::Offline`.
-pub fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
+pub async fn error_page(failure: Failure, req: Req) -> HtmlResult {
     let t: Msg = req.t();
     let (title, text) = match failure {
         Failure::NotFound => (t.error_not_found(), t.error_not_found_text()),
-        Failure::TimedOut | Failure::Offline => (t.error_unavailable(), t.error_unavailable_text()),
+        Failure::TimedOut | Failure::Offline | Failure::Unidentified { .. } => {
+            (t.error_unavailable(), t.error_unavailable_text())
+        }
         Failure::WrongMethod
         | Failure::CrossSite
         | Failure::Refused { .. }
@@ -35,15 +37,15 @@ pub fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
         | Failure::Failed { .. }
         | Failure::Panicked { .. } => (t.error_failed(), t.error_failed_text()),
     };
-    html! {
-        <Layout req={req} title={title} head="">
+    req.page(html! {
+        <Layout req={&req} title={title} head="">
             <h1>{title}</h1>
             <p>{text}</p>
             if let Some(detail) = failure.detail() {
                 <pre>{detail}</pre>
             }
         </Layout>
-    }
+    })
 }
 
 pub fn category(t: Msg, slug: &str) -> impl Render + '_ {

@@ -58,7 +58,7 @@ mod url {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let app = App::new(url::router()).error_page(error_page);
+    let app = App::new(url::router()).error_page(error_page, ());
     corten::serve(app).await
 }
 
@@ -115,10 +115,11 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 }
 
 /// The page for a failed request, in the layout: an unknown URL, a handler's error or panic.
-/// `corten new` writes one that names every `Failure`.
-fn error_page(req: &Req, failure: Failure) -> impl Document + '_ {
+/// `corten new` writes one that names every `Failure`. It takes extractors as a handler does
+/// (`viewer: Option<Caller<Viewer>>` to draw it for who is asking).
+async fn error_page(failure: Failure, req: Req) -> HtmlResult {
     let title = if matches!(failure, Failure::NotFound) { "Not found" } else { "Something went wrong" };
-    html! { <Layout req={req} title={title}><h1>{title}</h1></Layout> }
+    req.page(html! { <Layout req={&req} title={title}><h1>{title}</h1></Layout> })
 }
 ```
 

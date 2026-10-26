@@ -58,6 +58,30 @@ pub fn app(market: Market) -> App {
         .components(&[LivePrices])
         .area::<about::About>(|area| about::area(area).components(&[AboutNote, AboutFilter]))
         .area::<account::Account>(account::area)
+        .error_page(error_page, ())
+}
+
+/// The page for a failed request, in the layout, for who is asking: a signed-in user who mistypes
+/// a URL still sees themselves signed in. The viewer is looked up only for a failure.
+async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult {
+    let viewer = viewer.map(|Caller(v)| v);
+    let (title, text) = match failure {
+        Failure::NotFound => ("Not found", "There is nothing at this address."),
+        Failure::Refused { .. } | Failure::CrossSite => ("Not allowed", "You do not have access to this page."),
+        Failure::Unidentified { .. } | Failure::TimedOut | Failure::Offline => ("Not available", "Try again in a moment."),
+        Failure::WrongMethod | Failure::Rejected { .. } | Failure::Failed { .. } | Failure::Panicked { .. } => {
+            ("Something went wrong", "Please try again.")
+        }
+    };
+    req.page(html! {
+        <Layout req={&req} title={title} viewer={viewer.as_ref()} head="">
+            <h1>{title}</h1>
+            <p>{text}</p>
+            if let Some(detail) = failure.detail() {
+                <pre>{detail}</pre>
+            }
+        </Layout>
+    })
 }
 
 /// Every URL the app serves and links to, with its handlers, which share the market; links built
@@ -582,6 +606,10 @@ mod tests {
         let signed_in = Request::get("/").header("cookie", "viewer=Ada").body(Body::empty()).unwrap();
         let (_, ada) = send(signed_in).await;
         assert!(ada.contains("Signed in as Ada") && !ada.contains("Sign in as Ada"));
+        let lost =
+            Request::get("/nope").header("cookie", "viewer=Ada").header("accept", "text/html").body(Body::empty()).unwrap();
+        let (_, lost) = send(lost).await;
+        assert!(lost.contains("<h1>Not found</h1>") && lost.contains("Signed in as Ada"), "the error page too: {lost}");
     }
 
     #[tokio::test]

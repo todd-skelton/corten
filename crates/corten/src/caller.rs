@@ -184,11 +184,19 @@ impl<S: Send + Sync, T: Identify<S>> FromRequestParts<S> for Caller<T> {
             }
             Why::Unauthorized => refused(StatusCode::UNAUTHORIZED),
             Why::Forbidden => refused(StatusCode::FORBIDDEN),
-            Why::Unavailable(message) => Error::new(format!("who is asking cannot be known: {message}"))
-                .with_status(StatusCode::SERVICE_UNAVAILABLE)
-                .into_response(),
+            Why::Unavailable(message) => unidentified(&message),
         })
     }
+}
+
+/// A 503 for a request whose caller could not be looked up: the error page's
+/// [`crate::Failure::Unidentified`], not a handler's own 503.
+fn unidentified(message: &str) -> Response {
+    let mut res = Error::new(format!("who is asking cannot be known: {message}"))
+        .with_status(StatusCode::SERVICE_UNAVAILABLE)
+        .into_response();
+    res.extensions_mut().insert(crate::page::Cause::Unidentified);
+    res
 }
 
 /// A 401 or 403 for a request without the caller its handler reads.
@@ -204,9 +212,8 @@ impl<S: Send + Sync, T: Identify<S>> OptionalFromRequestParts<S> for Caller<T> {
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Response> {
         match find::<S, T>(parts, state).await {
             Ok(caller) => Ok(Some(Caller(caller))),
-            Err(Why::Unavailable(message)) => Err(Error::new(format!("who is asking cannot be known: {message}"))
-                .with_status(StatusCode::SERVICE_UNAVAILABLE)
-                .into_response()),
+            Err(Why::Unavailable(_)) if parts.extensions.get::<Signal>().is_some_and(Signal::is_error_page) => Ok(None),
+            Err(Why::Unavailable(message)) => Err(unidentified(&message)),
             Err(_) => Ok(None),
         }
     }

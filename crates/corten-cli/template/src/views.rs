@@ -29,8 +29,10 @@ pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 
 /// The page for every way a request can fail, sent with `failure.status()`. Each case is named,
 /// so when Corten adds one this stops compiling instead of showing the wrong text. Under
-/// `corten dev`, `failure.detail()` is what went wrong; in production it is only logged.
-pub fn error_page(req: &Req, failure: Failure) -> impl Document {
+/// `corten dev`, `failure.detail()` is what went wrong; in production it is only logged. It takes
+/// extractors as a handler does: add `viewer: Option<Caller<Viewer>>` to draw it for who is
+/// asking, once the app has a caller.
+pub async fn error_page(failure: Failure, req: Req) -> HtmlResult {
     let (title, text) = match &failure {
         Failure::NotFound => ("Not found", "There is nothing at this address."),
         Failure::CrossSite => ("Not allowed", "This request came from another site."),
@@ -38,6 +40,10 @@ pub fn error_page(req: &Req, failure: Failure) -> impl Document {
             ("Sign in needed", "Sign in to see this page.")
         }
         Failure::Refused { .. } => ("Not allowed", "You do not have access to this page."),
+        Failure::Unidentified { .. } => (
+            "Not available",
+            "We could not check who you are. Try again in a moment.",
+        ),
         Failure::TimedOut | Failure::Offline => {
             ("Not available", "Check your connection and try again.")
         }
@@ -46,15 +52,15 @@ pub fn error_page(req: &Req, failure: Failure) -> impl Document {
         | Failure::Failed { .. }
         | Failure::Panicked { .. } => ("Something went wrong", "Please try again."),
     };
-    html! {
-        <Layout req={req} title={title}>
+    req.page(html! {
+        <Layout req={&req} title={title}>
             <h1>{title}</h1>
             <p>{text}</p>
             if let Some(detail) = failure.detail() {
                 <pre>{detail}</pre>
             }
         </Layout>
-    }
+    })
 }
 
 pub fn home(req: &Req, name: &str) -> impl Document {

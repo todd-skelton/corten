@@ -13,7 +13,7 @@ your routes. Each default can be replaced in one line.
 | What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
 | Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
 | A part of the app | none | `.area::<admin::Admin>(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
-| Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(fn(&Req, Failure) -> impl Document)`, in the app's layout; `corten new` writes one that names each case |
+| Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(page, state)`: `async fn(Failure, Req, ..extractors) -> HtmlResult`, in the app's layout and for who is asking; `corten new` writes one that names each case |
 | JSON-only routes | none | `.api::<ApiRoot>(\|api\| api.route::<ItemJson>(get(item_json)))`: every failure under the prefix is JSON, unknown URLs included, with no document ([below](#json-only-routes)) |
 | Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the layout or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods; forms go to this origin only | `.policy(Policy::new()...)`: another origin for scripts, styles, images, `fetch`, frames, fonts, or `.form_action("https://pay.example")` for a form (or a form's redirect) that hands the user to another site |
 | Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Public<HtmlResult>` (or `Public<JsonResult<T>>`) for an answer that is the same for everyone |
@@ -32,7 +32,7 @@ see [Cancellation](cancellation.md).
 
 ```rust,ignore
 let app = App::new(url::router())
-    .error_page(views::error_page)                 // in the app's layout
+    .error_page(views::error_page, db.clone())     // in the app's layout, for who is asking
     .middleware((RequestId, RateLimit))            // the app's own steps, in this order
     .components(&[TOKENS, OfferList])              // components with scripts or styles
     .area::<admin::Admin>(|area| admin::area(area).components(&[SalesChart]))
@@ -373,7 +373,7 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 | `Ok(caller)` | the handler runs | the handler runs | the handler runs |
 | `Refused::sign_in(&route)` | 303 to the route | `corten-location`, and the runtime goes there | JSON 401 |
 | `Refused::unauthorized()`, `Refused::forbidden()` | the error page, `Failure::Refused` (401, 403) | the error page, swapped in | JSON 401, 403 |
-| `Refused::unavailable(error)` | the error page for 503 | the error page, swapped in | JSON 503 |
+| `Refused::unavailable(error)` | the error page, `Failure::Unidentified` (503) | the error page, swapped in | JSON 503 |
 
 1. Only a handler that takes a `Caller` pays for the lookup: a public landing page, static
    files and the health checks never touch the session store. Several readers in one request
@@ -485,16 +485,51 @@ Every way a request can fail is a `Failure`, given to the app's error page for a
 | `WrongMethod` | the route has the URL but not the method (`Allow` is kept) | 405 |
 | `CrossSite` | a write another site sent, refused before anything else ran | 403 |
 | `Refused { status }` | a `Caller` refused, with nowhere to sign in | 401, 403 |
+| `Unidentified { detail }` | who is asking could not be looked up (`Refused::unavailable`), unlike a handler's own 503 | 503 |
 | `Rejected { status, detail }` | the path, the query or the body did not parse | 400, 415, 422 |
 | `Failed { status, detail }` | the handler returned an `Error` | 500, or its status |
 | `Panicked { detail }` | the handler panicked | 500 |
 | `TimedOut` | the handler ran past `App::deadline` | 503 |
 | `Offline` | the PWA's offline page | 200, so the worker keeps it |
 
+The error page is an async function of the `Failure` and then extractors, as a handler's
+arguments are, with the state they read given beside it (`()` for none). A layout that shows
+who is asking takes the caller as a page does, so a signed-in user who mistypes a URL or is
+refused still sees themselves signed in, in their theme:
+
+```rust,ignore
+async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult {
+    let viewer = viewer.map(|Caller(v)| v);
+    req.page(html! { <Layout req={&req} viewer={viewer.as_ref()} title="Not found">..</Layout> })
+}
+// App::new(url::router()).error_page(error_page, store.clone())
+```
+
+Its extractors see the request's URL, `Cookie`, `Authorization`, `Accept-Language` and mode,
+not its body (a body extractor does not compile). The caller is looked up only when the error
+page takes one and only for a failure: an unknown URL looks it up once, and a handler that read
+it and then failed has it looked up again, since the error page reads a request of its own.
+When the lookup itself fails, an optional caller is `None` there, so the page is drawn signed
+out rather than not at all. Keeping the credentials for it is measured below.
+
 `failure.detail()` is what went wrong, under `corten dev` only; in production it is logged.
 The error page `corten new` writes names every case without `_`, so when Corten adds one the
 app stops compiling instead of showing the wrong text. A JSON route's failures, a data
 client's and every failure under `App::api` are JSON instead,
 `{"error":{"status","message"}}`.
+
+When the error page came to take extractors (callgrind, release build, in-process `oneshot`,
+the difference between 1,200 and 200 requests over 1,000, three runs each, a minimal app with
+the default error page):
+
+| Request | Before | After |
+|---|---|---|
+| a small page, full document | 21,100 (20,836-21,155) | 21,201 (21,150-21,203) |
+| the same page with a cookie | 21,639 (21,601-21,654) | 22,030 (21,713-22,087) |
+| a page whose handler reads who is asking | 24,969 (24,955-24,992) | 25,369 (25,346-25,395) |
+| unknown URL, HTML 404 page | 20,650 (20,650-20,716) | 26,122 (26,097-26,150) |
+
+A page keeps the request's credentials for the error page (two header lookups and a reference
+count each); a failure rebuilds the request for the error page's extractors and runs them.
 
 The cost of a request through all of this is measured in [the request path](#the-request-path).
