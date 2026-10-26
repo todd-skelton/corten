@@ -96,8 +96,8 @@ Not checked: `data-*` attributes a script reads through `dataset` (strings on bo
 the value as a handler argument instead), that a ref inside an `if` is present when a handler
 runs (the call throws when it is not; the type says it is always there), the parameter type of a
 handler that takes a typed event (`@param {RowToggled} event` is checked by `tsc`, not at the
-call), that a handler is mounted at every route struct's `PATH` (the
-router's tests cover that), that every component a page renders is listed in
+call), that a route marked `link` in a routes module (or a plain `#[derive(Route)]` struct) is
+served by the API or area that should serve it (the app's tests cover that), that every component a page renders is listed in
 `App::components`, or in an area (`Area::components`) the page is under (checked at run time, only under
 `corten dev` in debug builds: the page fails and names it), that a CSS custom property a stylesheet reads exists (a misspelled `var()` falls
 back silently), and logic a script repeats from Rust (the listing sort rule in the item page).
@@ -136,7 +136,7 @@ library. Measured against a production marketplace app:
 | Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
 | Routes with no screen (webhooks, public APIs) | Framework: `JsonResult<T>`, `App::api` | The framework's error pages and nonce assume a browser asking for a page; only the framework can switch them off for a prefix and answer every failure as JSON instead. |
 | HTTP caching of pages and JSON | Framework: `Public<..>`, `private, no-cache` by default | Only the framework sees everything that makes a response personal (a caller read, the request's credentials, the mode, the nonce, a cookie set), so only it can refuse to mark such a response shareable. What to cache on the server (data, queries) is the app's, since only the app knows when its data changes. |
-| Cross-origin calls to those routes (CORS) | Framework: `Api::allow_origin` | The framework's same-origin check refuses cross-site writes, so it is the only layer that can let one site's calls through for some routes while the pages keep refusing them. Anything beyond one allowed site and its preflight is `tower-http`'s CORS layer on the app's routes. |
+| Cross-origin calls to those routes (CORS) | Framework: `Api::allow_origin` | The framework's same-origin check refuses cross-site writes, so it is the only layer that can let one site's calls through for some routes while the pages keep refusing them. Anything beyond one allowed site and its preflight is `tower-http`'s CORS layer around the app (`app.router().layer(..)`). |
 | Types across the server/browser seam | Framework: `corten::types` (TypeScript from the Rust types), `#[component(js)]` handler calls checked against JSDoc, `#[event]`, `subscribe<Row>`, `#[derive(Fields)]` | The framework defines the seams (handler calls, events, feeds, form posts, tools), so it is the only layer that can type both ends. |
 | Response compression | Framework: `corten::compress` | The framework serves the runtime and assets and knows they never change (compress once, best level) and that pages are generated per request (fastest level that pays). A generic layer re-compresses static files on every request at a level tuned for neither. |
 | Validation rules and messages | App | Domain rules; messages come from the app's catalog. |

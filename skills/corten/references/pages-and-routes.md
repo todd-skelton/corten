@@ -37,8 +37,10 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    the same way, mounted with `.area::<admin::Admin>(admin::area)`.
    A handler's return type is what the route answers: `HtmlResult` (a page, a patch, a
    redirect; failures are the app's error page), `JsonResult<T>` (failures are JSON), or
-   `Public<..>` of either for an answer a CDN may share. `Response` or `impl IntoResponse` there
-   does not compile. A route an API
+   `Public<..>` of either for an answer a CDN may share (`NoStore<..>` for one nothing may keep).
+   `Response` or `impl IntoResponse` there does not compile. `App::new` takes only a routes
+   module's `router()` (`Routes`), and `Area::route`/`Api::route` only Corten's `get(h)`,
+   `post(h)`, ... (`Methods`), which check handlers the same way: never build an axum `Router`. A route an API
    serves is a link only: `#[route("/api", link)]`.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
@@ -143,7 +145,8 @@ App::new(pages)
 ```
 
 The prefix and every route are route types, so a route outside the prefix does not compile.
-A handler that takes `State` gets it on its method router: `get(price).with_state(db)`.
+A handler that takes `State` gets it on its `Methods`: `get(price).with_state(db)` (`get` is
+Corten's, from the prelude, and checks the handler as a routes module does).
 
 `Json` is the prelude's `corten::Json`: axum's extractor, and a response written in one buffer
 (faster than `axum::Json`; keep the prelude's unless a crate hands you axum's). The response type
@@ -246,5 +249,5 @@ Its handler may only take inputs that cannot tell who is asking (`Path`, `Query`
 `State`, `Req`, ...): a `Caller`, a `HeaderMap` or a cookie there does not compile. `App` still
 sends it `private, no-cache` when the request has a cookie or `Authorization`, the response sets
 a cookie or the layout took `req.nonce()`; a client navigation or a data request gets `private`
-with the same lifetime. Only a success or a redirect is shared. `Cache::no_store()` is for one-time
+with the same lifetime. Only a success or a redirect is shared. `NoStore<HtmlResult>` is for one-time
 secrets. Do not build a server-side page cache: cache the data the page reads instead.

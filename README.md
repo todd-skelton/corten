@@ -206,8 +206,9 @@ static site (a static site generator is simpler).
    handler calls, refs, class names, form fields and messages are all typed. TypeScript types are
    generated from Rust, never written by hand. The app's own setup is held to the same bar: a
    route outside its area, a signed-in route whose handler does not take the caller, a public
-   (cacheable) answer whose handler reads who is asking, or a prefix with a parameter does not
-   build. Where the compiler cannot see a mistake, it fails at startup, and only what depends
+   (cacheable) answer whose handler reads who is asking, a handler that hides what its route
+   answers, or a prefix with a parameter does not build, and no route reaches the app another
+   way. Where the compiler cannot see a mistake, it fails at startup, and only what depends
    on the request is checked per request. If a guarantee exists, a test proves it fails to
    compile when broken.
 5. **One way to do each thing.** Behavior is a function the markup calls, cleanup has one hook,

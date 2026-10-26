@@ -16,7 +16,7 @@
 //!     .tool("inventory.adjust", "Change the quantity of an inventory item", |user: User, input: Adjust| async move {
 //!         Ok(Adjusted { quantity: inventory::adjust(&user, input).await? })
 //!     });
-//! let app = router.route("/mcp", tools.route());
+//! let app = App::new(url::router()).api::<Mcp>(|mcp| mcp.route::<Mcp>(tools.route()));
 //! ```
 //!
 //! A screen's data is already available to agents through [`crate::Req::screen`]; tools cover
@@ -31,7 +31,7 @@ use axum::{
     body::Bytes,
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{post, MethodRouter},
+    routing::post,
 };
 use schemars::{generate::SchemaSettings, JsonSchema};
 use serde::{de::DeserializeOwned, Serialize};
@@ -189,15 +189,17 @@ impl<A: Send + 'static> Tools<A> {
         self
     }
 
-    /// The `POST` route for the endpoint, usually mounted at `/mcp`.
-    pub fn route<S: Clone + Send + Sync + 'static>(self) -> MethodRouter<S>
+    /// The `POST` route for the endpoint, usually mounted at `/mcp` under [`crate::App::api`]:
+    /// `.api::<Mcp>(|mcp| mcp.route::<Mcp>(tools.route()))`.
+    pub fn route<S: Clone + Send + Sync + 'static>(self) -> crate::Methods<S>
     where
         A: 'static,
     {
-        post(move |headers: HeaderMap, body: Bytes| {
+        // Corten's own handler: it answers JSON-RPC errors in the protocol's shape itself.
+        crate::Methods(post(move |headers: HeaderMap, body: Bytes| {
             let tools = self.clone();
             async move { tools.handle(headers, &body).await }
-        })
+        }))
     }
 
     async fn handle(&self, headers: HeaderMap, body: &[u8]) -> Response {
@@ -367,7 +369,7 @@ mod tests {
                 Ok(Adjusted { id: input.id, quantity: 10 + input.delta })
             })
             .read_tool("ping", "Answers pong", |_: Agent, _: Nothing| async { Ok(Pong { pong: true }) });
-        Router::new().route("/mcp", tools.route())
+        Router::new().route("/mcp", tools.route().0)
     }
 
     async fn rpc(body: Value, auth: bool) -> (StatusCode, Value) {

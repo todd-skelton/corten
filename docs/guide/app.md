@@ -2,14 +2,15 @@
 
 [Back to the guides](../../README.md#documentation)
 
-`corten::serve(App::new(routes)).await` puts everything a production app needs around your
-axum routes. Each default can be replaced in one line.
+`corten::serve(App::new(url::router())).await` puts everything a production app needs around
+your routes. Each default can be replaced in one line.
 
 | Concern | Default | Override |
 |---|---|---|
 | Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
-| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone ([below](#caching)) |
+| Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
+| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
 | Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
 | A part of the app | none | `.area::<admin::Admin>(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
 | Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(fn(&Req, Failure) -> impl Document)`, in the app's layout; `corten new` writes one that names each case |
@@ -97,6 +98,28 @@ and the route is called without an `async` layer around it, which moved the requ
 A lookup now runs only for a handler that takes a `Caller`. A cross-site post costs more
 because a browser now gets the app's error page (`Failure::CrossSite`) instead of a bare 403.
 
+When every route came to go through the same checks (`App::new` taking `Routes`, `Area::route`
+and `Api::route` taking `Methods`), the same requests were measured again the same way:
+
+| Request | Before | After |
+|---|---|---|
+| a small page, full document, with a cookie | 23,530 (23,454-23,882) | 22,954 (22,821-23,186) |
+| the same page without a cookie | 22,738 (22,609-22,763) | 21,949 (21,946-21,995) |
+| JSON under `App::api` | 19,306 (19,306-19,306) | 19,205 (19,202-19,205) |
+| JSON from a routes module (`JsonResult`) | 20,027 (19,964-20,057) | 19,298 (19,287-19,350) |
+| unknown URL, HTML 404 page | 21,099 (21,083-21,294) | 21,014 (21,000-21,016) |
+| a path that does not parse under `App::api` (JSON 400) | 27,776 (27,742-27,784) | 28,268 (27,965-28,320) |
+| a handler that panics (error page) | 87,566 (87,487-87,594) | 86,619 (86,615-86,753) |
+| a page whose handler reads who is asking | 26,177 (26,163-26,200) | 26,288 (25,890-26,323) |
+| a page that does not, on an app that can tell | 23,525 (23,466-23,885) | 22,902 (22,817-22,970) |
+| a cross-site form post from a browser | 21,430 (21,313-21,450) | 20,883 (20,803-20,890) |
+
+The checks happen when the app compiles, so nothing was added to the request path for them. The
+JSON 400 costs about 500 more, most likely because the API's `get` is now Corten's, which marks
+a JSON route's failure with an extension on the response as a routes module's handler always
+did (before, it was axum's). The other differences, a few hundred either way, were not profiled;
+the cross-site post among them never reaches a route.
+
 ## Your own middleware
 
 Every request goes through the same stages in the same order, outside in, each needing the one
@@ -140,7 +163,7 @@ impl Middleware for RateLimit {
     }
 }
 
-let app = App::new(Router::new()).middleware((RequestId, RateLimit));
+let app = App::new(Routes::new()).middleware((RequestId, RateLimit));
 # let _ = app.router();
 ```
 
@@ -154,7 +177,8 @@ for every request (about 700).
 
 A tower layer still goes around the whole app (`corten::serve(app.router().layer(l))`), outside
 every stage, for what must see the raw request first: a cap on body size, a limit per address.
-A layer on one route's method router (`get(h).layer(l)`) runs inside stage 6.
+There is no layer for one route: what a route needs is in its handler's arguments (an
+extractor) and its return type.
 
 ## Caching
 
@@ -187,13 +211,15 @@ a failure keeps `private, no-cache`.
 | a client navigation, a form answer or a data client's JSON from a page route | `private`, same lifetime: only the document is shared |
 | a response that sets a cookie, or HTML with the request's nonce | `private, no-cache`, logged under `corten dev` |
 
-The last row applies to a `Cache-Control` the handler wrote itself too; otherwise a handler's
-own header is its choice. An extractor of the app's own is not `Anonymous` until the app says
+A `Cache-Control` written by hand (by a middleware, or on an `HtmlResponse`) is kept as written,
+except that the last row applies to it, and a caller read makes it private. An extractor of the app's own is not `Anonymous` until the app says
 so, so a public answer cannot read a credential through one by accident. An `App::api` route has one form only, so its public responses
 stay public for clients without credentials. A cache in front of the app must key on `Vary`
 (`corten`, `accept`, `accept-encoding`, and `accept-language` with `App::messages`).
-`Cache::no_store()` keeps a response out of every cache, the browser's back/forward cache
-included.
+`NoStore<..>` keeps an answer out of every cache, the browser's back/forward cache included:
+`async fn statement(req: Req) -> NoStore<HtmlResult>`. A handler cannot mark an answer public
+any other way: a response it builds by hand is not an answer a route can name, and if anything
+read a caller the answer is private whatever its header says.
 
 A full document never carries `corten-page`, so if a cache hands one to a client navigation by
 mistake, the runtime loads the URL as a whole page instead of swapping it in.
@@ -229,10 +255,10 @@ struct ApiRoot;
 #[route("/api/items/{id}/price")]
 struct ItemPrice<'a> { id: &'a str }
 
-fn app(pages: Router) -> App {
+fn app(pages: Routes) -> App {
     App::new(pages).api::<ApiRoot>(|api| api.route::<ItemPrice>(get(price)).allow_origin("https://partner.example"))
 }
-# let _ = app(Router::new()).router();
+# let _ = app(Routes::new()).router();
 ```
 
 Under the prefix:
@@ -278,7 +304,8 @@ Under the prefix:
 Each route is a `#[derive(Route)]` struct, and the API's prefix is one too (`ApiRoot` above), so
 the router and the links name the same URL, and a route outside the prefix (`/apis/items`
 under `/api`) does not compile rather than be served as a page. A handler that takes `State`
-gets it on its method router: `.route::<ItemJson>(get(item_json).with_state(source))`. An API
+gets it on its `Methods`: `.route::<ItemJson>(get(item_json).with_state(source))`. `get`
+(and `post`, ...) is Corten's, which checks the handler as a routes module does. An API
 whose prefix is `/` makes the whole app an API (the health checks and the runtime keep their
 behavior).
 
@@ -417,10 +444,10 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     html! { <html lang={req.lang()}><head><title>{title}</title><Corten /></head><body><main>{children}</main></body></html> }
 }
 
-fn app(pages: Router) -> App {
+fn app(pages: Routes) -> App {
     App::new(pages).area::<admin::Admin>(admin::area)
 }
-# let _ = app(Router::new()).router();
+# let _ = app(Routes::new()).router();
 ```
 
 1. A route added to the module later without `Caller<Staff>` does not compile, and the error
@@ -433,8 +460,7 @@ fn app(pages: Router) -> App {
    are stricter types: `caller = Billing` on a `/admin/billing` area of its own.
 4. An area a library ships is a function the app passes on,
    `.area::<shop_admin::Admin>(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route
-   by hand (a `nest_service` of files goes in the app's router instead: the stylesheet follows
-   the path, not the router).
+   by hand; Corten's `get` checks the handler as a routes module does.
 5. Areas nest (`/admin` and `/admin/billing`, each with its own routes and stylesheet).
 
 How the common cases look:

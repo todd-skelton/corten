@@ -399,7 +399,7 @@ mod tests {
     #[cfg(debug_assertions)]
     #[tokio::test]
     async fn under_corten_dev_a_page_with_an_unlisted_styled_component_fails_and_names_it() {
-        use axum::{body::Body, http::Request, routing::get};
+        use axum::{body::Body, http::Request, routing::get, Router};
         use http_body_util::BodyExt;
         use tower::ServiceExt;
 
@@ -410,14 +410,15 @@ mod tests {
             let status = res.status();
             (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
         };
-        let (status, body) = get_page(App::new(routes()).dev(true).router()).await;
+        let (status, body) = get_page(App::new(Routes::from(routes())).dev(true).router()).await;
         assert_eq!(status, 500);
         assert!(body.contains("renders BadgeList, which the app does not list"), "{body}");
-        let (status, body) = get_page(App::new(routes()).dev(true).components(&[theme::TOKENS, BadgeList]).router()).await;
+        let (status, body) =
+            get_page(App::new(Routes::from(routes())).dev(true).components(&[theme::TOKENS, BadgeList]).router()).await;
         assert_eq!(status, 200);
         let link = body.split_once(r#"<link rel="stylesheet" href=""#).expect("the stylesheet is linked").1;
         assert!(link.split_once('"').unwrap().0.ends_with("/components.css"), "{body}");
-        let (status, _) = get_page(App::new(routes()).dev(false).router()).await;
+        let (status, _) = get_page(App::new(Routes::from(routes())).dev(false).router()).await;
         assert_eq!(status, 200, "outside corten dev nothing is checked");
     }
 
@@ -437,7 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_area_links_its_stylesheet_from_its_pages_only() {
-        use axum::{body::Body, http::Request, routing::get};
+        use axum::{body::Body, http::Request, routing::get, Router};
         use http_body_util::BodyExt;
         use tower::ServiceExt;
 
@@ -450,11 +451,11 @@ mod tests {
         };
         let page = |req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Badges", BadgeCount { n: 1 }) };
         let app = |dev: bool| {
-            App::new(Router::new().route("/", get(page)).route("/administrator", get(page)))
+            App::new(Routes::from(Router::new().route("/", get(page)).route("/administrator", get(page))))
                 .dev(dev)
                 .components(&[theme::TOKENS])
-                .area::<Admin>(|admin| admin.route::<Admin>(get(page)).components(&[BadgeList]))
-                .area::<Reports>(|reports| reports.route::<Report>(get(page)).components(&[REPORT]))
+                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(page))).components(&[BadgeList]))
+                .area::<Reports>(|reports| reports.route::<Report>(crate::Methods(get(page))).components(&[REPORT]))
                 .router()
         };
         let get_page = |app: Router, path: &str, nav: bool| {
@@ -506,7 +507,7 @@ mod tests {
             );
         }
 
-        let twice = std::panic::catch_unwind(|| App::new(Router::new()).area::<Admin>(|a| a).area::<Admin>(|a| a));
+        let twice = std::panic::catch_unwind(|| App::new(Routes::new()).area::<Admin>(|a| a).area::<Admin>(|a| a));
         assert!(twice.is_err(), "an area is given once");
     }
 

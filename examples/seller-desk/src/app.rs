@@ -14,7 +14,7 @@ use std::{
 
 use corten::{
     axum::http::StatusCode,
-    feed::{Feed, Row, Since},
+    feed::{Feed, FeedResponse, Row, Since},
     prelude::*,
     view::Remove,
 };
@@ -80,44 +80,37 @@ impl Desk {
 }
 
 pub fn app(desk: Desk) -> App {
-    App::new(routes(desk)).components(views::COMPONENTS)
+    App::new(url::router(desk)).components(views::COMPONENTS)
 }
 
-/// Every URL the app serves and links to.
+/// Every URL the app serves and links to, with the handlers that serve it, which share the desk.
+#[corten::routes(state = Desk)]
 pub mod url {
-    use corten::Route;
-
-    #[derive(Route)]
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home;
 
-    #[derive(Route)]
-    #[route("/items/{id}/price")]
+    #[route("/items/{id}/price", post = set_price)]
     pub struct SetPrice<'a> {
         pub id: &'a str,
     }
 
-    #[derive(Route)]
-    #[route("/archive")]
+    #[route("/archive", post = archive)]
     pub struct Archive;
 
-    #[derive(Route)]
-    #[route("/feed/levels")]
+    #[route("/feed/levels", get = levels)]
     pub struct Levels;
 
-    #[derive(Route)]
-    #[route("/feed/levels/live")]
+    #[route("/feed/levels/live", get = levels_live)]
     pub struct LevelsLive;
 }
 
-fn routes(desk: Desk) -> Router {
-    Router::new()
-        .route(url::Home::PATH, get(home))
-        .route(url::SetPrice::PATH, post(set_price))
-        .route(url::Archive::PATH, post(archive))
-        .route(url::Levels::PATH, get(|State(d): State<Desk>| async move { d.levels.snapshot() }))
-        .route(url::LevelsLive::PATH, get(|State(d): State<Desk>, since: Since| async move { d.levels.live(since) }))
-        .with_state(desk)
+/// The stock levels feed: a snapshot, then live changes from a cursor.
+async fn levels(State(desk): State<Desk>) -> FeedResponse {
+    desk.levels.snapshot()
+}
+
+async fn levels_live(State(desk): State<Desk>, since: Since) -> FeedResponse {
+    desk.levels.live(since)
 }
 
 async fn home(req: Req, State(desk): State<Desk>) -> HtmlResult {

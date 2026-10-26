@@ -60,11 +60,11 @@ use std::{
 use axum::{
     extract::{Request, State},
     handler::Handler,
-    http::{Method, Uri},
+    http::{Method, StatusCode, Uri},
     response::{IntoResponse, Response},
 };
 
-use crate::{Cache, Error, Req, Signal};
+use crate::{cache::Cache, Error, Req, Signal};
 
 /// How a route's failures are answered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,8 +78,8 @@ pub enum Format {
 
 /// What a handler named in `#[corten::routes]` returns: the type says how the route's failures are
 /// answered ([`Answer::FORMAT`]) and what the handler may read ([`Answer::Inputs`]). Implemented
-/// for [`HtmlResult`], [`JsonResult<T>`], [`Public`], text, [`LiveResponse`] and feeds; a crate
-/// may add its own.
+/// for [`HtmlResult`], [`JsonResult<T>`], [`Public`], [`NoStore`], text, a bare `StatusCode`,
+/// [`LiveResponse`], feeds and [`crate::seo::File`]; a crate may add its own.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer a route can name",
     label = "the handler returns this",
@@ -152,6 +152,13 @@ impl Answer for &'static str {
 }
 
 impl Answer for String {
+    const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+}
+
+/// A status and no body: `StatusCode::NO_CONTENT` for a write that has nothing to say. An error
+/// status is answered as any failure of the route is.
+impl Answer for StatusCode {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
 }
@@ -233,6 +240,31 @@ impl<A: IntoResponse> IntoResponse for Public<A> {
 impl<A: Answer> Answer for Public<A> {
     const FORMAT: Format = A::FORMAT;
     type Inputs = AnonymousInputs;
+}
+
+/// An answer nothing may keep, not even the browser's own cache (`Cache-Control: no-store`): a
+/// statement, a one-time code. `async fn statement(req: Req) -> NoStore<HtmlResult>`. The browser's
+/// back/forward cache may not restore the page either. It applies to a failure too.
+pub struct NoStore<A>(pub A);
+
+impl<A> NoStore<A> {
+    /// `answer`, which nothing may keep.
+    pub fn new(answer: A) -> Self {
+        NoStore(answer)
+    }
+}
+
+impl<A: IntoResponse> IntoResponse for NoStore<A> {
+    fn into_response(self) -> Response {
+        let mut res = self.0.into_response();
+        Cache::no_store().apply(&mut res);
+        res
+    }
+}
+
+impl<A: Answer> Answer for NoStore<A> {
+    const FORMAT: Format = A::FORMAT;
+    type Inputs = A::Inputs;
 }
 
 /// A handler may read anything.

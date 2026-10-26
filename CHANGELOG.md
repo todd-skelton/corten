@@ -433,6 +433,20 @@ Corten is pre-1.0, so any minor version may change the API.
     catch; before the handler, the error page, the security headers and `Cache-Control`). The
     tuple is resolved when the crate compiles; one that only passes the request on costs about
     230 instructions, where axum's `from_fn` costs about 700. `corten::middleware` lists the order.
+61. Every route reaches the app through the same compile-time checks. `App::new` takes `Routes`,
+    which a `#[corten::routes]` module's `router()` makes (`Routes::new()` for an app whose routes
+    are all in areas and APIs), and `Area::route` and `Api::route` take `Methods`, which
+    Corten's `get`, `post`, `put`, `delete`, `patch`, `head`, `options` and `trace` make
+    (`corten::route`, the first four in the prelude), checking each handler as a routes module
+    does: its result is an `Answer` and a `Public` answer's inputs are `Anonymous`. An axum
+    `Router` or method router does not compile in any of them, so a route can no longer escape
+    the answer, caller and cache checks by being registered by hand.
+    The checks are at compile time: a page is 22,954 instructions after and 23,530 before, and a
+    JSON 400 under `App::api` 28,268 after and 27,776 before (callgrind medians of three runs;
+    the app guide's table has the rest).
+62. `NoStore<A>`: an answer nothing may keep (`Cache-Control: no-store`), `NoStore<HtmlResult>`
+    for a statement or a one-time code, in place of `Cache::no_store()`. A bare `StatusCode` is
+    an answer too (`StatusCode::NO_CONTENT` for a write with nothing to say).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -452,6 +466,12 @@ Corten is pre-1.0, so any minor version may change the API.
    routes module says `caller = T`. Migrate a context to an `Identify` impl, a guard on an area to
    `caller = ..` on its routes module (with a caller type per role), and `App::guard` to
    `caller = ..` on the app's routes module with the sign-in route in a module of its own.
+6. `Cache` from the public API and the prelude, and axum's `Router`, `get`, `post`, `put` and
+   `delete` from the prelude (`get` and the others there are Corten's now). Return `Public<..>`
+   instead of `(Cache::public(..), page)` and `NoStore<..>` instead of `(Cache::no_store(),
+   page)`; build routes in a `#[corten::routes]` module instead of an axum `Router`. A layer on
+   one route's method router has no replacement: a route's needs are its handler's extractors
+   and answer, and the app's own steps are `Middleware`.
 
 ### Changed
 
@@ -699,6 +719,11 @@ Corten is pre-1.0, so any minor version may change the API.
     21,125) and JSON about 270 (19,579 to 19,307), callgrind medians of three runs (the app
     guide's table). The item page's whole `render_cost` (release, under callgrind) is
     34,215,143,042 instructions before and 34,138,183,828 after (-0.22%).
+48. `seo::robots`, `seo::sitemap` and `seo::sitemap_index` return `Public<seo::File>`, an answer
+    a route can name (`async fn robots() -> Public<seo::File>`), shared for an hour as before.
+    `agent::Tools::route` returns `Methods`, for `Api::route`.
+49. Reading a `Caller` makes the answer private even when its `Cache-Control` was written by
+    hand (by a middleware, or on an `HtmlResponse`), not only when it came from `Public`.
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

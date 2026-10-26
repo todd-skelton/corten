@@ -42,7 +42,7 @@
 //!     }
 //! }
 //!
-//! let app = App::new(Router::new()).middleware((RequestId, RateLimit));
+//! let app = App::new(Routes::new()).middleware((RequestId, RateLimit));
 //! # let _ = app.router();
 //! ```
 //!

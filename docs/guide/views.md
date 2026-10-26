@@ -108,8 +108,8 @@ corten::i18n::messages! {
     pub struct Msg { "en" => "locales/en.json", "fr" => "locales/fr.json" }
 }
 
-Router::new().route(ItemRoute::PATH, get(show));                            // the path axum matches
-// or every route in one module, each naming its handler: #[route("/items/{id}", get = show)] (corten::routes)
+// in the app's #[corten::routes] module, each route names its handler:
+// #[route("/items/{id}", get = show)] pub struct ItemRoute<'a> { .. }
 
 #[derive(Id)]
 pub struct OfferId<'a>(pub &'a str);                                          // offer-{key}

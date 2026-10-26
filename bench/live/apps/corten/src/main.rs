@@ -3,7 +3,7 @@
 //! `POST /live/publish` is one write, so one numbered patch, encoded once for every client.
 use corten::{
     axum::{Json, http::StatusCode},
-    feed::{Feed, Row, Since},
+    feed::{Feed, FeedResponse, Row, Since},
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
@@ -33,19 +33,41 @@ struct Publish {
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let feed: Feed<Tick> = Feed::new([]);
-    let routes = Router::new()
-        .route("/", get(|| async { "live" }))
-        .route("/live/feed", get(|State(feed): State<Feed<Tick>>| async move { feed.snapshot() }))
-        .route("/live/feed/live", get(|State(feed): State<Feed<Tick>>, since: Since| async move { feed.live(since) }))
-        .with_state(feed.clone());
-    let publish = post(|State(feed): State<Feed<Tick>>, Json(p): Json<Publish>| async move {
-        feed.write(|tx| tx.insert(Tick { id: "lst_1".into(), seq: p.seq, sent: p.sent, price: p.price }));
-        StatusCode::NO_CONTENT
-    })
-    .with_state(feed);
-    corten::serve(App::new(routes).api::<PublishRoute>(|api| api.route::<PublishRoute>(publish))).await
+    corten::serve(App::new(url::router(feed.clone())).api::<url::Publish>(|api| api.route::<url::Publish>(post(publish).with_state(feed))))
+        .await
 }
 
-#[derive(Route)]
-#[route("/live/publish")]
-struct PublishRoute;
+/// The page, the feed's snapshot and its live stream, and the publish route, which `App::api`
+/// serves (so a failure there is JSON).
+#[corten::routes(state = Feed<Tick>)]
+mod url {
+    #[route("/", get = home)]
+    pub struct Home;
+
+    #[route("/live/feed", get = snapshot)]
+    pub struct Snapshot;
+
+    #[route("/live/feed/live", get = live)]
+    pub struct Live;
+
+    #[route("/live/publish", link)]
+    pub struct Publish;
+}
+
+async fn home() -> &'static str {
+    "live"
+}
+
+async fn snapshot(State(feed): State<Feed<Tick>>) -> FeedResponse {
+    feed.snapshot()
+}
+
+async fn live(State(feed): State<Feed<Tick>>, since: Since) -> FeedResponse {
+    feed.live(since)
+}
+
+/// One write: one numbered patch, encoded once for every client.
+async fn publish(State(feed): State<Feed<Tick>>, Json(p): Json<Publish>) -> StatusCode {
+    feed.write(|tx| tx.insert(Tick { id: "lst_1".into(), seq: p.seq, sent: p.sent, price: p.price }));
+    StatusCode::NO_CONTENT
+}

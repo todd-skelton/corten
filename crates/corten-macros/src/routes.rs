@@ -127,7 +127,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             if i > 0 {
                 methods.extend([
                     TokenTree::Punct(Punct::new('.', Spacing::Alone)),
-                    TokenTree::Ident(Ident::new("merge", Span::call_site())),
+                    TokenTree::Ident(Ident::new("__merge", Span::call_site())),
                 ]);
                 methods.extend([TokenTree::Group(Group::new(Delimiter::Parenthesis, call))]);
             } else {
@@ -135,9 +135,9 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             }
         }
         let template = if area.is_some() {
-            ".route::<__A0::__A1>(::corten::axum::routing::MethodRouter::with_state(__A2, state.clone()))"
+            ".route::<__A0::__A1>(::corten::Methods::with_state(__A2, state.clone()))"
         } else {
-            ".route(<__A0::__A1 as ::corten::Route>::PATH, __A2)"
+            ".__route::<__A0::__A1>(::corten::Methods::with_state(__A2, state.clone()))"
         };
         calls.extend(q(
             template,
@@ -151,8 +151,8 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         None => q(
             "/// The routes of this module, each at its path with its handlers: what `App::new` takes.
             #[allow(dead_code)]
-            pub fn router() -> ::corten::axum::Router {
-                <__CortenRoutes as __CortenRouter<()>>::__router()
+            pub fn router() -> ::corten::Routes {
+                <__CortenRoutes as __CortenRouter<()>>::__routes(())
             }",
             &[],
         ),
@@ -162,12 +162,11 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             "/// The routes of this module, each at its path with its handlers, which share `state`
             /// (`State<..>` in a handler): what `App::new` takes.
             #[allow(dead_code)]
-            pub fn router<S>(state: S) -> ::corten::axum::Router
+            pub fn router<S>(state: S) -> ::corten::Routes
             where
-                S: ::core::clone::Clone + ::core::marker::Send + ::core::marker::Sync + 'static,
                 __CortenRoutes: __CortenRouter<S>,
             {
-                <__CortenRoutes as __CortenRouter<S>>::__router().with_state(state)
+                <__CortenRoutes as __CortenRouter<S>>::__routes(state)
             }",
             &[],
         ),
@@ -179,7 +178,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
 
         #[doc(hidden)]
         pub trait __CortenRouter<S> {
-            fn __router() -> ::corten::axum::Router<S>;
+            fn __routes(state: S) -> ::corten::Routes;
         }",
         &[],
     ));
@@ -191,8 +190,9 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     out.extend(q(
         "#[automatically_derived]
         impl __A0::__CortenRouter<__A2> for __A0::__CortenRoutes {
-            fn __router() -> ::corten::axum::Router<__A2> {
-                ::corten::axum::Router::new() __A1
+            #[allow(unused_variables)]
+            fn __routes(state: __A2) -> ::corten::Routes {
+                ::corten::Routes::new() __A1
             }
         }",
         &[TokenTree::Ident(module.clone()).into(), calls, state],

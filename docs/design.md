@@ -154,9 +154,11 @@ framework's shape, and what it does not do yet.
     whose handler may only take `Anonymous` inputs). A check that depends on the record (the
     author, the organization) stays in its handler. That an area's or an API's routes are
     under its prefix is a `const` assertion, which the compiler evaluates when it builds the
-    app (`cargo build`, `cargo test`, `corten check`), not under `cargo check` alone. Routes
-    given to `App::new` as a plain axum `Router` keep whatever their handlers return: only
-    `#[corten::routes]` checks the answer and the caller.
+    app (`cargo build`, `cargo test`, `corten check`), not under `cargo check` alone. Every
+    route reaches the app through these checks: `App::new` takes the `Routes` a
+    `#[corten::routes]` module makes, and `Area::route` and `Api::route` take `Methods`, made
+    by Corten's `get`, `post` and the others, which check the same things. A plain axum
+    `Router` or method router does not fit any of them, so there is no unchecked way in.
 12. A request goes through fixed stages in one order (`corten::middleware`); the app's own
     steps are a `Middleware` tuple at one place in it, resolved at compile time, not hooks at
     several.

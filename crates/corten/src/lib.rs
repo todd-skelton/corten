@@ -103,12 +103,11 @@ use futures_util::{Stream, StreamExt};
 
 #[cfg(feature = "json")]
 pub use answer::JsonResult;
-pub use answer::{Answer, HtmlResponse, HtmlResult, LiveResponse, Public};
+pub use answer::{Answer, HtmlResponse, HtmlResult, LiveResponse, NoStore, Public};
 pub use api::Api;
 pub use app::{serve, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
-pub use cache::Cache;
 pub use caller::{Caller, Identify, Refused};
 /// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
 /// gives `AlertInput::FIELDS.email`, the [`FieldName`] `"email"` (serde `rename` and `rename_all`
@@ -123,7 +122,7 @@ pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
 pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, Req, MODE_HEADER};
-pub use route::{routes, Href, Route};
+pub use route::{routes, Href, Methods, Route, Routes};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
@@ -151,18 +150,15 @@ pub struct Component {
 /// What most files need: `use corten::prelude::*;`.
 pub mod prelude {
     pub use crate::{
-        axum::{
-            extract::{Path, State},
-            routing::{delete, get, post, put},
-            Router,
-        },
+        axum::extract::{Path, State},
         component, html,
         i18n::Messages as _,
         raw,
+        route::{delete, get, post, put},
         script::{el, refs, Handler, Ref},
         view::Id,
-        Api, App, Area, Cache, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Form, HtmlResult, Identify,
-        Middleware, Mode, Next, Patch, Public, Query, ReadAgain, Refused, Render, Req, Result, Route, SubmitKey,
+        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Form, HtmlResult, Identify, Methods,
+        Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Result, Route, Routes, SubmitKey,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, JsonLd, JsonResult, ToJson};

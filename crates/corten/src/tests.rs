@@ -1,4 +1,5 @@
 use super::*;
+use crate::cache::Cache;
 use crate::view::{html, Render};
 use axum::{body::Body, extract::Path, http::Request, routing::get, Router};
 use http_body_util::BodyExt;
@@ -177,7 +178,7 @@ fn routes() -> Router {
 
 /// The app as `App` assembles it, with the tests' error page, every request sent as `viewer`.
 fn app(routes: Router, viewer: Option<&'static str>) -> Router {
-    App::new(routes).error_page(test_error_page).middleware(AsViewer(viewer)).router()
+    App::new(Routes::from(routes)).error_page(test_error_page).middleware(AsViewer(viewer)).router()
 }
 
 #[tokio::test]
@@ -349,14 +350,14 @@ async fn the_csp_allows_the_import_map_by_hash_and_a_nonce_only_when_the_shell_a
         "the same bytes"
     );
 
-    let inline = || App::new(Router::new().route("/", get(inline_page))).router();
+    let inline = || App::new(Routes::from(Router::new().route("/", get(inline_page)))).router();
     let (_, headers, body) = call(inline(), "GET", None).await;
     let csp = headers["content-security-policy"].to_str().unwrap();
     let nonce = csp.split("'nonce-").nth(1).unwrap().split('\'').next().unwrap();
     assert!(body.contains(&format!(r#"<script nonce="{nonce}">1</script>"#)), "{body}");
     let (_, again, _) = call(inline(), "GET", None).await;
     assert_ne!(again["content-security-policy"], headers["content-security-policy"], "a fresh nonce per request");
-    let popups = App::new(routes()).policy(security::Policy::new().allow_popups()).router();
+    let popups = App::new(Routes::from(routes())).policy(security::Policy::new().allow_popups()).router();
     let (_, popups, _) = call(popups, "GET", None).await;
     assert_eq!(popups["cross-origin-opener-policy"], "same-origin-allow-popups");
 }
@@ -408,7 +409,7 @@ async fn an_extractor_rejection_gets_the_error_page_in_a_browser_and_its_text_in
     assert!(body.contains("<title>Something went wrong</title>") && !body.contains("parse"), "{body}");
     let (_, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", Some("nav"), None).await;
     assert_eq!(headers["corten-page"], "1", "a navigation swaps the error page in: {body}");
-    let (_, _, body) = call_with(App::new(routes()).dev(true).router(), "GET", "/n/abc", None, html).await;
+    let (_, _, body) = call_with(App::new(Routes::from(routes())).dev(true).router(), "GET", "/n/abc", None, html).await;
     assert!(body.contains("<pre>Invalid URL"), "the default error page shows it: {body}");
     let (status, headers, body) = call_with(app(routes(), None), "GET", "/n/abc", None, Some("application/json")).await;
     assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::BAD_REQUEST, "application/json"));
@@ -421,7 +422,10 @@ async fn an_extractor_rejection_gets_the_error_page_in_a_browser_and_its_text_in
 
 #[tokio::test]
 async fn dev_mode_shows_errors_and_reloads_pages_when_the_server_restarts() {
-    let dev = || App::new(failing().route("/ok", get(|req: Req| async move { req.test_page("ok", html! { "ok" }) }))).dev(true);
+    let dev = || {
+        App::new(Routes::from(failing().route("/ok", get(|req: Req| async move { req.test_page("ok", html! { "ok" }) }))))
+            .dev(true)
+    };
     let (_, _, body) = call(dev().router(), "GET", None).await;
     assert!(body.contains("<pre>database is down</pre>"), "{body}");
 
@@ -438,7 +442,7 @@ async fn dev_mode_shows_errors_and_reloads_pages_when_the_server_restarts() {
     // Each server start has its own boot id; the page compares it to the one it was served with.
     assert!(!boot.is_empty() && events.contains(&format!("data: {boot}\n")), "{events}");
 
-    let prod = App::new(failing()).dev(false).router();
+    let prod = App::new(Routes::from(failing())).dev(false).router();
     let (_, _, body) = call(prod.clone(), "GET", None).await;
     assert!(!body.contains("database") && !body.contains("corten-dev"));
     let (status, _, _) = call_with(prod, "GET", "/corten/dev", None, None).await;
@@ -453,7 +457,7 @@ async fn unknown_urls_and_methods_get_the_error_page_and_the_app_can_replace_it(
     let (status, headers, body) = call_with(app(routes(), None), "DELETE", "/", None, None).await;
     assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
     assert!(headers.contains_key("allow") && body.contains("Something went wrong"));
-    let custom = App::new(routes()).error_page(oops).router();
+    let custom = App::new(Routes::from(routes())).error_page(oops).router();
     let (_, _, body) = call_with(custom, "GET", "/nope", None, None).await;
     assert!(body.contains("<title>Oops 404</title>") && body.contains("<h1>Lost?</h1>"));
 }
@@ -499,7 +503,7 @@ async fn a_handler_that_panics_gets_the_error_page_and_the_server_keeps_serving(
     let (status, _, _) = call(router, "GET", None).await;
     assert_eq!(status, StatusCode::OK, "the next request is served");
     let (_, _, body) = call_with(
-        App::new(Router::new().route(
+        App::new(Routes::from(Router::new().route(
             "/",
             get(|| async {
                 if true {
@@ -508,7 +512,7 @@ async fn a_handler_that_panics_gets_the_error_page_and_the_server_keeps_serving(
                     "never"
                 }
             }),
-        ))
+        )))
         .dev(true)
         .router(),
         "GET",
@@ -522,7 +526,7 @@ async fn a_handler_that_panics_gets_the_error_page_and_the_server_keeps_serving(
 
 #[tokio::test]
 async fn health_reports_liveness_and_readiness() {
-    let router = App::new(Router::new()).ready(|| async { false }).router();
+    let router = App::new(Routes::new()).ready(|| async { false }).router();
     let get = |uri: &'static str| router.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap());
     assert_eq!(get("/health/live").await.unwrap().status(), StatusCode::OK);
     let ready = get("/health/ready").await.unwrap();
@@ -759,7 +763,7 @@ async fn error_pages_render_in_the_shell() {
 #[tokio::test]
 async fn the_pwa_links_its_manifest_and_corten_answers_offline() {
     let pwa = crate::pwa::Pwa::new(crate::pwa::Manifest::new("A", "A").theme_color("#123"));
-    let router = App::new(routes()).pwa(pwa).router();
+    let router = App::new(Routes::from(routes())).pwa(pwa).router();
     let (_, _, body) = call(router.clone(), "GET", None).await;
     assert!(body.contains(r##"<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#123">"##));
     assert!(body.contains(r#"<meta name="corten-sw" content="/service-worker.js">"#));
@@ -780,24 +784,28 @@ struct ApiItem<'a> {
 
 /// A page, and API routes for each way an API request can fail; `settings` adds the API's.
 fn api_app(settings: impl FnOnce(crate::Api<ApiRoot>) -> crate::Api<ApiRoot>) -> Router {
-    App::new(Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) })))
-        .error_page(test_error_page)
-        .deadline(std::time::Duration::from_millis(50))
-        .api::<ApiRoot>(|api| {
-            let api = api
-                .route::<ApiItem>(get(|axum::extract::Path(id): axum::extract::Path<u32>| async move { format!("item {id}") }))
-                .route::<ApiMissing>(get(|| async {
-                    Err::<Response, _>(Error::new("no item 7").with_status(StatusCode::NOT_FOUND))
-                }))
-                .route::<ApiDown>(get(|| async { Err::<Response, _>(Error::new("database password wrong")) }))
-                .route::<ApiTeapot>(get(|| async {
-                    (StatusCode::IM_A_TEAPOT, [("content-type", "application/json")], r#"{"mine":1}"#)
-                }))
-                .route::<ApiSlow>(get(std::future::pending::<&'static str>))
-                .route::<ApiPost>(axum::routing::post(|| async { "posted" }));
-            settings(api)
-        })
-        .router()
+    App::new(Routes::from(
+        Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) })),
+    ))
+    .error_page(test_error_page)
+    .deadline(std::time::Duration::from_millis(50))
+    .api::<ApiRoot>(|api| {
+        let api = api
+            .route::<ApiItem>(crate::Methods(get(|axum::extract::Path(id): axum::extract::Path<u32>| async move {
+                format!("item {id}")
+            })))
+            .route::<ApiMissing>(crate::Methods(get(|| async {
+                Err::<Response, _>(Error::new("no item 7").with_status(StatusCode::NOT_FOUND))
+            })))
+            .route::<ApiDown>(crate::Methods(get(|| async { Err::<Response, _>(Error::new("database password wrong")) })))
+            .route::<ApiTeapot>(crate::Methods(get(|| async {
+                (StatusCode::IM_A_TEAPOT, [("content-type", "application/json")], r#"{"mine":1}"#)
+            })))
+            .route::<ApiSlow>(crate::Methods(get(std::future::pending::<&'static str>)))
+            .route::<ApiPost>(crate::Methods(axum::routing::post(|| async { "posted" })));
+        settings(api)
+    })
+    .router()
 }
 
 /// What most HTTP clients send: `*/*`, or no `Accept` at all, or a browser's own.
@@ -865,7 +873,7 @@ async fn a_handler_that_takes_the_nonce_gets_the_one_in_the_csp() {
         "/raw",
         get(|nonce: security::Nonce| async move { axum::response::Html(format!(r#"<script nonce="{}">1</script>"#, nonce.0)) }),
     );
-    let (_, headers, body) = call_with(App::new(routes).router(), "GET", "/raw", None, None).await;
+    let (_, headers, body) = call_with(App::new(Routes::from(routes)).router(), "GET", "/raw", None, None).await;
     let nonce = body.split(r#"nonce=""#).nth(1).unwrap().split('"').next().unwrap();
     assert!(headers["content-security-policy"].to_str().unwrap().contains(&format!("'nonce-{nonce}'")));
 }
@@ -932,7 +940,8 @@ async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pa
 
 #[tokio::test]
 async fn an_api_at_the_root_makes_the_whole_app_json() {
-    let router = App::new(Router::new()).api::<Root>(|api| api.route::<Items>(get(|| async { "items" }))).router();
+    let router =
+        App::new(Routes::new()).api::<Root>(|api| api.route::<Items>(crate::Methods(get(|| async { "items" })))).router();
     let (status, headers, body) = call_with(router.clone(), "GET", "/nope", None, Some("text/html")).await;
     assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::NOT_FOUND, "application/json"));
     assert_eq!(body, r#"{"error":{"status":404,"message":"Not Found"}}"#);
@@ -943,13 +952,13 @@ async fn an_api_at_the_root_makes_the_whole_app_json() {
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn validation_errors_are_the_json_error_with_fields() {
-    let router = App::new(Router::new())
+    let router = App::new(Routes::new())
         .api::<ApiRoot>(|api| {
-            api.route::<ApiSignUp>(axum::routing::post(|| async {
+            api.route::<ApiSignUp>(crate::Methods(axum::routing::post(|| async {
                 let mut errors = Errors::new();
                 errors.add(SignUp::FIELDS.email, "Enter an email address.");
                 Err::<&str, _>(errors)
-            }))
+            })))
         })
         .router();
     let (status, _, body) = call_with(router, "POST", "/api/sign-up", None, None).await;
@@ -963,11 +972,11 @@ async fn validation_errors_are_the_json_error_with_fields() {
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn a_json_body_that_does_not_parse_is_a_json_400() {
-    let router = App::new(Router::new())
+    let router = App::new(Routes::new())
         .api::<ApiRoot>(|api| {
-            api.route::<ApiItems>(axum::routing::post(
+            api.route::<ApiItems>(crate::Methods(axum::routing::post(
                 |axum::Json(v): axum::Json<serde_json::Value>| async move { v.to_string() },
-            ))
+            )))
         })
         .router();
     let req = Request::post("/api/items").header("content-type", "application/json").body(Body::from("{nope")).unwrap();
@@ -983,17 +992,14 @@ fn cached_routes() -> Router {
     let minute = std::time::Duration::from_secs(60);
     let home = || html! { <p>"home"</p> };
     Router::new()
-        .route("/", get(move |req: Req| async move { Ok::<_, Error>((Cache::public(minute), req.test_page("Home", home())?)) }))
+        .route("/", get(move |req: Req| async move { Public::new(minute, req.test_page("Home", home())) }))
         .route(
             "/cookie",
             get(move |req: Req| async move {
                 Ok::<_, Error>((Cache::public(minute), [(header::SET_COOKIE, "seen=1")], req.test_page("Home", home())?))
             }),
         )
-        .route(
-            "/statement",
-            get(move |req: Req| async move { Ok::<_, Error>((Cache::no_store(), req.test_page("Statement", home())?)) }),
-        )
+        .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
         .route("/plain", get(|req: Req| async move { req.test_page("Plain", html! { <p>"plain"</p> }) }))
 }
 
@@ -1030,12 +1036,12 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
         assert_eq!(cache_control(&router, "/", &[partial]).await, "private, max-age=60", "only the document: {partial:?}");
     }
     assert_eq!(cache_control(&router, "/cookie", &[]).await, "private, no-cache", "it sets a cookie");
-    let inline = App::new(Router::new().route("/", get(inline_page))).router();
+    let inline = App::new(Routes::from(Router::new().route("/", get(inline_page)))).router();
     assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the layout took the nonce");
 
     let minute = std::time::Duration::from_secs(60);
-    let api = App::new(Router::new())
-        .api::<ApiRoot>(|api| api.route::<ApiRates>(get(move || async move { (Cache::public(minute), "rates") })))
+    let api = App::new(Routes::new())
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods(get(move || async move { (Cache::public(minute), "rates") }))))
         .router();
     assert_eq!(cache_control(&api, "/api/rates", &[("accept", "application/json")]).await, "public, max-age=60");
     assert_eq!(cache_control(&api, "/api/rates", &[("authorization", "Bearer t")]).await, "private, no-cache");
@@ -1250,19 +1256,24 @@ async fn reading_a_caller_makes_the_answer_private_and_a_public_one_is_shared() 
     assert_eq!(cache_control(&router, "/catalog/1", &[("x-api-key", "k1")]).await, "public, max-age=60");
     assert_eq!(cache_control(&router, "/catalog/1", &[("cookie", "session=abc")]).await, "private, no-cache");
     assert_eq!(cache_control(&router, "/catalog/nope", &[]).await, "private, no-cache", "a failure is never shared");
-    // Outside a routes module nothing stops a handler that reads a key from marking itself
-    // public, and the answer is still private: the key could be anyone's.
+    // A handler that reads a caller cannot return `Public` (that does not compile). A response that
+    // says public anyway, by `Cache` or by a header written by hand (`HtmlResponse` derefs to the
+    // response), is still private: the key could be anyone's.
     let minute = std::time::Duration::from_secs(60);
-    let leaky = App::new(
-        Router::new().route("/rates", get(move |Caller(p): Caller<Partner>| async move { (Cache::public(minute), p.0) })),
-    )
+    let leaky = App::new(Routes::from(
+        Router::new().route("/rates", get(move |Caller(p): Caller<Partner>| async move { (Cache::public(minute), p.0) })).route(
+            "/by-hand",
+            get(|Caller(p): Caller<Partner>| async move { ([(header::CACHE_CONTROL, "public, max-age=60")], p.0) }),
+        ),
+    ))
     .router();
     assert_eq!(cache_control(&leaky, "/rates", &[("x-api-key", "k1")]).await, "private, no-cache");
+    assert_eq!(cache_control(&leaky, "/by-hand", &[("x-api-key", "k1")]).await, "private, no-cache");
 }
 
 #[tokio::test]
 async fn a_caller_with_nowhere_to_sign_in_is_a_401_page() {
-    let router = App::new(Router::new().route("/partner", get(|Caller(p): Caller<Partner>| async move { p.0 })))
+    let router = App::new(Routes::from(Router::new().route("/partner", get(|Caller(p): Caller<Partner>| async move { p.0 }))))
         .error_page(test_error_page)
         .router();
     let (status, res, body) = guarded(&router, "GET", "/partner", None, &[("accept", "text/html")]).await;
@@ -1274,7 +1285,8 @@ async fn a_caller_with_nowhere_to_sign_in_is_a_401_page() {
 
 #[tokio::test]
 async fn a_sign_in_page_that_needs_a_caller_is_an_error_not_a_loop() {
-    let router = App::new(Router::new().route("/sign-in", get(|Caller(v): Caller<Viewer>| async move { v.0 }))).router();
+    let router =
+        App::new(Routes::from(Router::new().route("/sign-in", get(|Caller(v): Caller<Viewer>| async move { v.0 })))).router();
     let (status, res, body) = guarded(&router, "GET", "/sign-in", None, &[("accept", "text/html")]).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "not a redirect the browser follows forever");
     assert!(!res.contains_key("location") && !body.contains("itself"), "the message stays in the log: {body}");
@@ -1331,14 +1343,14 @@ paths! { ApiAdmin = "/api/admin" }
 #[test]
 #[should_panic(expected = "the area \"/api/admin\" is under App::api(\"/api\")")]
 fn an_area_under_an_api_prefix_fails_at_startup() {
-    let _ = App::new(Router::new()).api::<ApiRoot>(|api| api).area::<ApiAdmin>(|admin| admin).router();
+    let _ = App::new(Routes::new()).api::<ApiRoot>(|api| api).area::<ApiAdmin>(|admin| admin).router();
 }
 
 #[tokio::test]
 async fn the_app_answers_unknown_urls_under_an_area_or_api() {
     let fallback = || async { "the app's fallback" };
-    let router = App::new(Router::new().route("/", get(|| async { "home" })).fallback(fallback))
-        .area::<Admin>(|admin| admin.route::<Admin>(get(|| async { "admin" })))
+    let router = App::new(Routes::from(Router::new().route("/", get(|| async { "home" })).fallback(fallback)))
+        .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(|| async { "admin" }))))
         .router();
     for uri in ["/nope", "/admin/nope"] {
         let (status, _, body) = call_with(router.clone(), "GET", uri, None, None).await;

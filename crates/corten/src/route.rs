@@ -6,7 +6,7 @@
 //! #[route("/items/{id}")]
 //! pub struct ItemRoute<'a> { pub id: &'a str, pub tab: Option<&'a str> }
 //!
-//! Router::new().route(ItemRoute::PATH, get(show));               // the same path axum matches
+//! // #[corten::routes]: #[route("/items/{id}", get = show)] pub struct ItemRoute<'a> { .. }
 //! html! { <a href={ItemRoute { id: &item.id, tab: None }}>{item.title}</a> }
 //! req.redirect(&ItemRoute { id, tab: Some("offers") })            // "/items/x?tab=offers"
 //! ```
@@ -33,7 +33,6 @@
 //!
 //! let link = html! { <a href={ItemRoute { id: "a b", tab: Some("offers") }}>"Item"</a> };
 //! assert_eq!(link.to_html(), r#"<a href="/items/a%20b?tab=offers">Item</a>"#);
-//! let _router: Router = Router::new().route(ItemRoute::PATH, get(|| async { "item" }));
 //! ```
 //!
 //! A path parameter the struct has no field for does not compile:
@@ -226,7 +225,7 @@ pub use corten_macros::Route;
 ///     id
 /// }
 ///
-/// let app = App::new(Router::new()).area::<admin::Admin>(admin::area);
+/// let app = App::new(Routes::new()).area::<admin::Admin>(admin::area);
 /// # let _ = app.router();
 /// ```
 ///
@@ -248,7 +247,7 @@ pub use corten_macros::Route;
 /// async fn dashboard() -> &'static str {
 ///     "open to anyone"
 /// }
-/// # fn main() { let _ = corten::App::new(Router::new()).area::<admin::Admin>(admin::area); }
+/// # fn main() { let _ = corten::App::new(Routes::new()).area::<admin::Admin>(admin::area); }
 /// ```
 ///
 /// A route of the module outside the area's prefix does not compile:
@@ -524,6 +523,148 @@ impl fmt::Write for Encode<'_> {
     }
 }
 
+/// A route's handlers, one per method: `get(show)`, `get(show).post(save)`. What
+/// [`crate::Area::route`] and [`crate::Api::route`] take, and what `#[corten::routes]` builds for
+/// each route it names. Each handler is checked when the crate compiles, as a routes module checks
+/// it: its arguments are extractors a request fills, and its result is an [`Answer`](crate::Answer)
+/// (`HtmlResult`, `JsonResult<T>`, `Public<..>` of one, ...), so a handler that hides what it
+/// answers does not compile:
+///
+/// ```compile_fail,E0277
+/// use corten::{axum::response::Response, prelude::*};
+///
+/// async fn rates() -> Response {
+///     Response::default()
+/// }
+/// let _ = get(rates);
+/// ```
+///
+/// and neither does a `Public` answer whose handler may read who is asking:
+///
+/// ```compile_fail,E0277
+/// use std::time::Duration;
+/// use corten::{axum::http::HeaderMap, prelude::*};
+///
+/// async fn rates(headers: HeaderMap) -> Public<&'static str> {
+///     let _ = headers.get("x-api-key");
+///     Public::new(Duration::from_secs(60), "rates")
+/// }
+/// let _ = get(rates);
+/// ```
+///
+/// Nor does a method router made by axum's own `get`, which checks nothing:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route("/admin")]
+/// struct Admin;
+///
+/// async fn dashboard() -> &'static str {
+///     "admin"
+/// }
+/// let app = App::new(Routes::new()).area::<Admin>(|admin| admin.route::<Admin>(corten::axum::routing::get(dashboard)));
+/// ```
+///
+/// `S` is the state its handlers take (`State<S>`), given with [`Methods::with_state`].
+pub struct Methods<S = ()>(pub(crate) axum::routing::MethodRouter<S>);
+
+impl<S: Clone + Send + Sync + 'static> Methods<S> {
+    /// The handlers with the state they take (`State<S>`), for a router without it:
+    /// `get(item_json).with_state(source)`.
+    pub fn with_state<S2>(self, state: S) -> Methods<S2> {
+        Methods(self.0.with_state(state))
+    }
+
+    /// Used by `#[corten::routes]`: a route's handlers for two sets of methods. Not a public API.
+    #[doc(hidden)]
+    pub fn __merge(self, other: Methods<S>) -> Self {
+        Methods(self.0.merge(other.0))
+    }
+}
+
+macro_rules! methods {
+    ($($method:ident),*) => {
+        $(
+            #[doc = concat!("The handler for `", stringify!($method), "` requests to a route, checked when the crate compiles; see [`Methods`].")]
+            #[inline]
+            pub fn $method<H, T, S>(handler: H) -> Methods<S>
+            where
+                H: __private::RouteHandler<T, S> + crate::answer::Signature<T>,
+                <H as __private::RouteHandler<T, S>>::Handler: axum::handler::Handler<T, S>,
+                <<H as __private::RouteHandler<T, S>>::Handler as axum::handler::Handler<T, S>>::Future: Unpin,
+                <H as crate::answer::Signature<T>>::Out: crate::answer::Answer + 'static,
+                <<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs:
+                    crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
+                T: 'static,
+                S: Clone + Send + Sync + 'static,
+            {
+                Methods(axum::routing::$method(__private::endpoint(handler)))
+            }
+        )*
+
+        impl<S: Clone + Send + Sync + 'static> Methods<S> {
+            $(
+                #[doc = concat!("This route's handler for `", stringify!($method), "` requests too, checked as [`", stringify!($method), "()`] checks it.")]
+                #[inline]
+                pub fn $method<H, T>(self, handler: H) -> Self
+                where
+                    H: __private::RouteHandler<T, S> + crate::answer::Signature<T>,
+                    <H as __private::RouteHandler<T, S>>::Handler: axum::handler::Handler<T, S>,
+                    <<H as __private::RouteHandler<T, S>>::Handler as axum::handler::Handler<T, S>>::Future: Unpin,
+                    <H as crate::answer::Signature<T>>::Out: crate::answer::Answer + 'static,
+                    <<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs:
+                        crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
+                    T: 'static,
+                {
+                    Methods(self.0.$method(__private::endpoint(handler)))
+                }
+            )*
+        }
+    };
+}
+methods!(get, post, put, delete, patch, head, options, trace);
+
+/// The app's routes, each at its path with its handlers: what [`crate::App::new`] takes, made by a
+/// `#[corten::routes]` module's `router()`. An app whose every route is under
+/// [`crate::App::api`] or [`crate::App::area`] starts from `Routes::new()`, which has none.
+///
+/// It is the only thing `App::new` takes, so no route reaches the app without its handler checked;
+/// an axum `Router` does not compile there:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+///
+/// async fn home() -> &'static str {
+///     "home"
+/// }
+/// let app = App::new(corten::axum::Router::new().route("/", corten::axum::routing::get(home)));
+/// ```
+#[derive(Default)]
+pub struct Routes(pub(crate) axum::Router);
+
+impl Routes {
+    /// No routes.
+    pub fn new() -> Self {
+        Routes::default()
+    }
+
+    /// Used by `#[corten::routes]`: `R`'s handlers at its path. Not a public API.
+    #[doc(hidden)]
+    pub fn __route<R: Route>(self, methods: Methods) -> Self {
+        Routes(self.0.route(R::PATH, methods.0))
+    }
+}
+
+/// The crate's tests build routers by hand, to test what `App` does with any response.
+#[cfg(test)]
+impl From<axum::Router> for Routes {
+    fn from(router: axum::Router) -> Self {
+        Routes(router)
+    }
+}
+
 /// Used by the code `#[derive(Route)]` generates. Not a public API.
 #[doc(hidden)]
 pub mod __private {
@@ -532,37 +673,47 @@ pub mod __private {
         fmt::{self, Display, Write as _},
     };
 
-    use axum::{handler::Handler, routing::MethodRouter};
+    use axum::handler::Handler;
 
-    use super::{Encode, REST, SEGMENT};
+    use super::{Encode, Methods, REST, SEGMENT};
 
     // `#[corten::routes]` names each handler through one of these, so a handler that cannot serve
     // the route is an error that says why, at the handler's name in `#[route(..)]`: its arguments
     // a request cannot fill, a result that is not an `Answer`, an input a `Public` answer may not
     // read, or a module's `caller = ..` it does not take. `R` is that caller (`()` for none).
+    // `super::get` and the others are the same check without a caller.
     macro_rules! methods {
-        ($($method:ident),*) => {$(
-            #[inline]
-            pub fn $method<H, T, S, R, I>(handler: H) -> MethodRouter<S>
-            where
-                H: RouteHandler<T, S> + crate::answer::Signature<T>,
-                <H as RouteHandler<T, S>>::Handler: Handler<T, S>,
-                <<H as RouteHandler<T, S>>::Handler as Handler<T, S>>::Future: Unpin,
-                <H as crate::answer::Signature<T>>::Out: crate::answer::Answer + 'static,
-                <<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs:
-                    crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
-                <H as crate::answer::Signature<T>>::Args: crate::answer::Holds<R, I>,
-                T: 'static,
-                S: Clone + Send + Sync + 'static,
-            {
-                axum::routing::$method(crate::answer::Endpoint::<_, <H as crate::answer::Signature<T>>::Out> {
-                    handler: handler.into_handler(),
-                    answer: std::marker::PhantomData,
-                })
-            }
-        )*};
+        ($($method:ident),*) => {
+            $(
+                #[inline]
+                pub fn $method<H, T, S, R, I>(handler: H) -> Methods<S>
+                where
+                    H: RouteHandler<T, S> + crate::answer::Signature<T>,
+                    <H as RouteHandler<T, S>>::Handler: Handler<T, S>,
+                    <<H as RouteHandler<T, S>>::Handler as Handler<T, S>>::Future: Unpin,
+                    <H as crate::answer::Signature<T>>::Out: crate::answer::Answer + 'static,
+                    <<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs:
+                        crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
+                    <H as crate::answer::Signature<T>>::Args: crate::answer::Holds<R, I>,
+                    T: 'static,
+                    S: Clone + Send + Sync + 'static,
+                {
+                    Methods(axum::routing::$method(endpoint(handler)))
+                }
+            )*
+
+        };
     }
     methods!(get, post, put, delete, patch, head, options, trace);
+
+    /// The handler with its answer in its type, so a JSON route's failures are marked as JSON.
+    #[inline]
+    pub(crate) fn endpoint<H, T, S>(handler: H) -> crate::answer::Endpoint<H::Handler, <H as crate::answer::Signature<T>>::Out>
+    where
+        H: RouteHandler<T, S> + crate::answer::Signature<T>,
+    {
+        crate::answer::Endpoint { handler: handler.into_handler(), answer: std::marker::PhantomData }
+    }
 
     /// A handler a route names: an async function whose arguments a request fills (extractors,
     /// `Req`, `State<..>` of the routes module's state) and whose result is a response.

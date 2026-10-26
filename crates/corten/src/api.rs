@@ -39,7 +39,6 @@ use axum::{
     body::{Body, HttpBody},
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
-    routing::MethodRouter,
     Router,
 };
 
@@ -59,7 +58,7 @@ impl<P: TypedRoute> Api<P> {
     }
 
     /// A route of the API, at `R::PATH`: `.route::<ItemJson>(get(item_json))`, with
-    /// `.with_state(state)` on the method router when its handlers take `State`. `R`'s path is at
+    /// `.with_state(state)` on the [`crate::Methods`] when its handlers take `State`. `R`'s path is at
     /// or under the prefix, or the app does not build, so no route of the API is served outside
     /// it (and its settings).
     ///
@@ -73,17 +72,17 @@ impl<P: TypedRoute> Api<P> {
     /// #[route("/apis/items")]
     /// struct Items;
     ///
-    /// let app = App::new(Router::new()).api::<ApiRoot>(|api| api.route::<Items>(get(|| async { "items" })));
+    /// let app = App::new(Routes::new()).api::<ApiRoot>(|api| api.route::<Items>(get(|| async { "items" })));
     /// # let _ = app.router();
     /// ```
-    pub fn route<R: TypedRoute>(mut self, method_router: MethodRouter) -> Self {
+    pub fn route<R: TypedRoute>(mut self, methods: crate::Methods) -> Self {
         const {
             assert!(
                 under_const(P::PATH, R::PATH),
                 "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
             )
         };
-        self.routes = self.routes.route(R::PATH, method_router);
+        self.routes = self.routes.route(R::PATH, methods.0);
         self
     }
 
@@ -311,7 +310,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "overlap")]
     fn prefixes_cannot_overlap() {
-        let _ = crate::App::new(Router::new()).api::<ApiRoot>(|api| api).api::<V2>(|api| api);
+        let _ = crate::App::new(crate::Routes::new()).api::<ApiRoot>(|api| api).api::<V2>(|api| api);
     }
 
     #[test]

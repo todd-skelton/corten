@@ -18,7 +18,7 @@ use axum::{
         sse::{Event, KeepAlive, Sse},
         Response,
     },
-    routing::{get, MethodRouter, Route},
+    routing::{get, Route},
     Router,
 };
 use futures_util::{stream, StreamExt};
@@ -30,7 +30,7 @@ use crate::{
     middleware::Middleware,
     page::{self, default_error_page, error_page_fn, ErrorPageFn, Failure, Shared},
     pwa::Pwa,
-    route::Route as TypedRoute,
+    route::{Methods, Route as TypedRoute, Routes},
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
     Mode, Signal,
@@ -62,10 +62,10 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 /// #     html! { <html lang={req.lang()}><head><title>{title}</title><Corten /></head><body><main>{children}</main></body></html> }
 /// # }
 ///
-/// fn app(pages: Router) -> App {
+/// fn app(pages: Routes) -> App {
 ///     App::new(pages).area::<Admin>(|admin| admin.route::<Admin>(get(dashboard)).route::<AdminUser>(get(dashboard)))
 /// }
-/// # let _ = app(Router::new()).router();
+/// # let _ = app(Routes::new()).router();
 /// ```
 ///
 /// A library that ships an area is a function, `pub fn admin(area: Area<Admin>) -> Area<Admin>`,
@@ -78,7 +78,7 @@ pub struct Area<P> {
 
 impl<P: TypedRoute> Area<P> {
     /// A route of the area, at `R::PATH`: `.route::<AdminUser>(get(user).post(save))`, with
-    /// `.with_state(state)` on the method router when its handlers take `State`. `R`'s path is at
+    /// `.with_state(state)` on the [`Methods`] when its handlers take `State`. `R`'s path is at
     /// or under the area's prefix, or the app does not build, so no route of the area is served
     /// outside its stylesheet:
     ///
@@ -92,17 +92,17 @@ impl<P: TypedRoute> Area<P> {
     /// #[route("/admn/users")]
     /// struct Users;
     ///
-    /// let app = App::new(Router::new()).area::<Admin>(|admin| admin.route::<Users>(get(|| async { "users" })));
+    /// let app = App::new(Routes::new()).area::<Admin>(|admin| admin.route::<Users>(get(|| async { "users" })));
     /// # let _ = app.router();
     /// ```
-    pub fn route<R: TypedRoute>(mut self, method_router: MethodRouter) -> Self {
+    pub fn route<R: TypedRoute>(mut self, methods: Methods) -> Self {
         const {
             assert!(
                 crate::api::under_const(P::PATH, R::PATH),
                 "corten: a route of an area is at or under its prefix (the note below names the area's prefix and the route)"
             )
         };
-        self.routes = self.routes.route(R::PATH, method_router);
+        self.routes = self.routes.route(R::PATH, methods.0);
         self
     }
 
@@ -179,10 +179,10 @@ pub struct App<M = ()> {
 }
 
 impl App {
-    /// The app with these routes and every default.
-    pub fn new(routes: Router) -> Self {
+    /// The app with these routes (a `#[corten::routes]` module's `router()`) and every default.
+    pub fn new(routes: Routes) -> Self {
         App {
-            routes,
+            routes: routes.0,
             error_page: None,
             policy: Policy::new(),
             static_dir: None,
@@ -204,7 +204,7 @@ impl App {
     ///
     /// ```compile_fail,E0599
     /// # use corten::prelude::*;
-    /// let app = App::new(Router::new()).middleware(((),)).middleware(());
+    /// let app = App::new(Routes::new()).middleware(((),)).middleware(());
     /// ```
     pub fn middleware<M: Middleware>(self, middleware: M) -> App<M> {
         App {
@@ -246,7 +246,7 @@ impl<M: Middleware> App<M> {
     /// #[route("/items/{id}")]
     /// struct Item<'a> { id: &'a str }
     ///
-    /// let app = App::new(Router::new()).area::<Item>(|items| items);
+    /// let app = App::new(Routes::new()).area::<Item>(|items| items);
     /// # let _ = app.router();
     /// ```
     pub fn area<P: TypedRoute>(mut self, build: impl FnOnce(Area<P>) -> Area<P>) -> Self {
@@ -709,11 +709,12 @@ impl<M: Middleware> Layer<M> {
         let cors = mount.and_then(|mount| mount.allowed_origin(req.headers()));
         let credentials = cache::credentials(req.headers());
         let path = self.shared.dev.then(|| req.uri().path().to_string());
-        let (mut res, personal, mode) = self.run(req, route, mount.is_some()).await;
+        let (mut res, caller, mode) = self.run(req, route, mount.is_some()).await;
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
         self.policy.headers(&mut res, nonce.as_ref());
         let seen = Seen {
-            personal: credentials || personal,
+            credentials,
+            caller,
             // A page route answers several forms at one URL; only the full document may be shared.
             partial: mount.is_none() && mode != Mode::Document,
             nonce: nonce.as_ref().is_some_and(|slot| slot.taken().is_some()),

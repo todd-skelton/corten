@@ -113,9 +113,9 @@ handler calls `subscribe(url, { snapshot, patch, status }, { signal })`.
 
 ```rust,ignore
 let stocks = Feed::new(rows);
-Router::new()
-    .route(url::Stocks::PATH, get(|State(m): State<Market>| async move { m.stocks.snapshot() }))
-    .route(url::StocksLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }));
+// in the routes module: #[route("/feed/stocks", get = stocks)] and #[route("/feed/stocks/live", get = stocks_live)]
+async fn stocks(State(m): State<Market>) -> FeedResponse { m.stocks.snapshot() }
+async fn stocks_live(State(m): State<Market>, since: Since) -> FeedResponse { m.stocks.live(since) }
 
 // a write: one numbered patch with the final value of every row it touched
 market.stocks.write(|tx| if let Some(s) = tx.get_mut("s1") { s.set_price(13_250) });

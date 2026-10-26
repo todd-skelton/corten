@@ -15,37 +15,30 @@ use corten_ui::Toast;
 
 use crate::gallery::{COLORS, Gallery, MenuResult, OrderResult, RenameDialog, TABS};
 
+/// Every URL the gallery serves and links to, with the handlers that serve it.
+#[corten::routes]
 pub mod url {
-    use corten::Route;
-
-    #[derive(Route)]
-    #[route("/")]
+    #[route("/", get = home)]
     pub struct Home<'a> {
         pub tab: Option<&'a str>,
     }
 
-    #[derive(Route)]
-    #[route("/order")]
+    #[route("/order", post = order)]
     pub struct Order;
 
-    #[derive(Route)]
-    #[route("/help")]
+    #[route("/help", get = help)]
     pub struct Help;
 
-    #[derive(Route)]
-    #[route("/archive")]
+    #[route("/archive", post = archive)]
     pub struct Archive;
 
-    #[derive(Route)]
-    #[route("/watch")]
+    #[route("/watch", post = watch)]
     pub struct Watch;
 
-    #[derive(Route)]
-    #[route("/save")]
+    #[route("/save", post = save)]
     pub struct Save;
 
-    #[derive(Route)]
-    #[route("/rename")]
+    #[route("/rename", post = rename)]
     pub struct Rename;
 }
 
@@ -53,15 +46,7 @@ pub mod url {
 pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery];
 
 pub fn app() -> App {
-    let routes = Router::new()
-        .route(url::Home::PATH, get(home))
-        .route(url::Order::PATH, post(order))
-        .route(url::Help::PATH, get(help))
-        .route(url::Archive::PATH, post(|req: Req| menu_action(req, "Archived.")))
-        .route(url::Watch::PATH, post(|req: Req| menu_action(req, "Watching.")))
-        .route(url::Save::PATH, post(save))
-        .route(url::Rename::PATH, post(rename));
-    App::new(routes).components(COMPONENTS).components(corten_ui::COMPONENTS)
+    App::new(url::router()).components(COMPONENTS).components(corten_ui::COMPONENTS)
 }
 
 /// The document around every page.
@@ -151,7 +136,15 @@ async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
     req.invalid(&errors, RenameDialog { name, errors: &errors }, page).await
 }
 
-async fn menu_action(req: Req, text: &'static str) -> HtmlResult {
+async fn archive(req: Req) -> HtmlResult {
+    menu_action(req, "Archived.")
+}
+
+async fn watch(req: Req) -> HtmlResult {
+    menu_action(req, "Watching.")
+}
+
+fn menu_action(req: Req, text: &'static str) -> HtmlResult {
     match req.mode {
         Mode::Action => req.patch(MenuResult { text }),
         _ => req.redirect(&url::Home { tab: None }),
