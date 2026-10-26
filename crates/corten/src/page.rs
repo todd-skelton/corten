@@ -1050,22 +1050,101 @@ impl Render for Corten {
 ///
 /// Not the `Refresh` header: browsers keep a full load's header after the runtime has navigated
 /// away, and then load that first URL again. Debug builds answer 500 to a page that sends one.
+///
+/// A `data-patch` form's answer asks the same with [`ReadAgain::from`].
 #[derive(Clone, Copy, Debug)]
 pub struct ReadAgain {
     /// How long until the page is read again.
     pub after: std::time::Duration,
 }
 
+impl ReadAgain {
+    /// Whole seconds, at least one.
+    fn seconds(self) -> u64 {
+        (self.after.as_secs() + u64::from(self.after.subsec_nanos() > 0)).max(1)
+    }
+
+    /// In a patch (a `data-patch` form's answer, [`Req::patch`]) whose part shows a read still
+    /// catching up with the write: after `after`, the runtime fetches `route` as a GET
+    /// `data-patch` form would (`corten: action`) and applies the patch it answers, which asks
+    /// again while it is behind. The route's handler answers [`Req::patch`] in [`Mode::Action`]
+    /// (the page otherwise), and its URL carries what the read waits for (the write's receipt),
+    /// since the page's own address does not.
+    ///
+    /// The read waits while the tab is hidden or a form's answer is on its way, keeps what the
+    /// user typed, opened and focused as any patch does, and stops once an element the patch put
+    /// on the page is replaced (a later patch, a navigation away) or the read fails. Without
+    /// JavaScript a form gets a page, never a patch, so the page's own [`ReadAgain`] applies.
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use corten::{prelude::*, view::Patch};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/alerts", get = alerts)]
+    ///     pub struct Alerts<'a> {
+    ///         pub after: Option<&'a str>,
+    ///     }
+    /// }
+    /// # async fn alerts(req: Req) -> HtmlResult { req.patch(html! {}) }
+    ///
+    /// #[derive(Id)]
+    /// struct AlertsId;
+    ///
+    /// fn saving<'a>(from: &'a url::Alerts<'a>) -> impl Patch + 'a {
+    ///     let again = ReadAgain { after: Duration::from_secs(2) };
+    ///     html! { <section id={AlertsId}>"Saving..."</section> {again.from(from)} }
+    /// }
+    /// let from = url::Alerts { after: Some("r7") };
+    /// assert_eq!(
+    ///     saving(&from).to_html(),
+    ///     r#"<section id="alerts">Saving...</section><template data-corten-read-again="2" data-from="/alerts?after=r7"></template>"#
+    /// );
+    /// ```
+    ///
+    /// A URL written as text does not compile:
+    ///
+    /// ```compile_fail,E0277
+    /// use std::time::Duration;
+    /// use corten::prelude::*;
+    ///
+    /// let _ = ReadAgain { after: Duration::from_secs(2) }.from("/alerts?after=r7");
+    /// ```
+    pub fn from<R: crate::route::Route + ?Sized>(self, route: &R) -> ReadAgainFrom<'_, R> {
+        ReadAgainFrom { again: self, route }
+    }
+}
+
 impl Render for ReadAgain {
     fn render(&self, out: &mut String) {
         use std::fmt::Write;
-        let seconds = (self.after.as_secs() + u64::from(self.after.subsec_nanos() > 0)).max(1);
+        let seconds = self.seconds();
         let _ = write!(
             out,
             r#"<noscript data-corten-read-again="{seconds}"><meta http-equiv="refresh" content="{seconds}"></noscript>"#
         );
     }
 }
+
+/// A patch's request to be read again from a route, made by [`ReadAgain::from`]:
+/// `<template data-corten-read-again="2" data-from="/alerts?after=r7">`.
+pub struct ReadAgainFrom<'a, R: ?Sized> {
+    again: ReadAgain,
+    route: &'a R,
+}
+
+impl<R: crate::route::Route + ?Sized> Render for ReadAgainFrom<'_, R> {
+    fn render(&self, out: &mut String) {
+        use std::fmt::Write;
+        let _ = write!(out, r#"<template data-corten-read-again="{}" data-from=""#, self.again.seconds());
+        self.route.write_href(out, true);
+        out.push_str(r#""></template>"#);
+    }
+}
+
+impl<R: crate::route::Route + ?Sized> crate::view::__private::PatchSealed for ReadAgainFrom<'_, R> {}
+impl<R: crate::route::Route + ?Sized> crate::view::Patch for ReadAgainFrom<'_, R> {}
 
 /// Structured data for search engines (a product, its breadcrumbs), as
 /// `<script type="application/ld+json">`, among a page's head tags:

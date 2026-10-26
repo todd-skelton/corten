@@ -22,7 +22,8 @@
 // 7. A page response whose shell key differs from this page's (the user signed in or out, or a
 //    deploy changed the runtime or assets) is loaded in full instead of swapped.
 // 8. A page that asks to be read again (`ReadAgain`) is fetched again after its delay and
-//    swapped in place, however it was reached.
+//    swapped in place, however it was reached; a patch that asks (`ReadAgain::from`) is read
+//    again from its route and applied.
 // Without JavaScript, links and forms still work as plain HTML.
 
 import { formatter } from "./format.js";
@@ -622,8 +623,9 @@ function modulesOf(node) {
 
 /**
  * Applies a patch: every top-level element in `html` replaces the element with its id, a
- * `<template id="row-7" data-remove>` removes it, and a `<template id="rows" data-append>` adds
- * its content at the end of it. The modules the new markup's handlers name are
+ * `<template id="row-7" data-remove>` removes it, a `<template id="rows" data-append>` adds
+ * its content at the end of it, and a `<template data-corten-read-again>` reads the patch again
+ * ({@link readPatchAgain}). The modules the new markup's handlers name are
  * imported first, so its handlers run from the first event. The server's markup wins, except for
  * what the user is doing: a field they edited keeps their text, a dialog, `<details>` or popover
  * they opened stays open (a modal dialog modal) unless the server changed it, and focus stays where
@@ -644,16 +646,47 @@ async function apply(html, signal, sent) {
   const content = parse(html);
   await modulesOf(content);
   if (signal?.aborted) return;
+  /** The elements this patch puts on the page. @type {Element[]} */
+  const put = [];
+  let again;
   for (const el of Array.from(content.children)) {
     const id = idOf(el);
     const target = id ? document.getElementById(id) : null;
-    if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) target?.remove();
+    if (el.hasAttribute("data-corten-read-again")) again = el;
+    else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) target?.remove();
     else if (!target) console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
     else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-append")) {
+      put.push(...Array.from(el.content.children));
       serve(el.content);
       target.append(el.content);
-    } else keep(target, el, sent);
+    } else {
+      keep(target, el, sent);
+      put.push(el);
+    }
   }
+  if (again) readPatchAgain(again, put);
+}
+
+/**
+ * A patch's `ReadAgain` (`<template data-corten-read-again="2" data-from="/alerts?after=r7">`):
+ * after that many seconds, once the tab is visible and no form's answer is on its way, fetches
+ * `data-from` as a GET `data-patch` form would and applies the patch it answers, which may ask
+ * again. It lasts while the page and the elements the patch put on it are there: a later patch
+ * of them or a page swapped in stops it, and so does a read that fails.
+ * @param {Element} tag @param {Element[]} put
+ */
+function readPatchAgain(tag, put) {
+  const from = /** @type {string} */ (tag.getAttribute("data-from"));
+  const page = swapped;
+  const here = () => page === swapped && put.every((el) => el.isConnected);
+  readLater(Number(tag.getAttribute("data-corten-read-again")), here, async () => {
+    // Offline or unreachable: the part stays as it is.
+    const res = await fetch(from, { headers: { corten: "action" } }).catch(() => {});
+    if (!res) return;
+    if (!res.headers.has("corten-patch")) return console.error("corten: ReadAgain needs a patch from", from, res);
+    const html = await res.text();
+    if (here()) await apply(html, undefined, null);
+  });
 }
 
 /**
@@ -1148,21 +1181,26 @@ function readAgainLater() {
   const seconds = Number(tag?.getAttribute("data-corten-read-again"));
   if (!(seconds > 0)) return;
   const url = location.href;
-  const read = () => {
-    if (page !== readAgainPage || location.href !== url) return;
-    if (document.hidden) {
-      document.addEventListener("visibilitychange", read, { once: true });
-      return;
-    }
-    // A form's answer is on its way and will change the page: read after it.
-    if (submits.size) {
-      setTimeout(read, seconds * 1000);
-      return;
-    }
-    if (navigation) navigation.navigate(url, { history: "replace", info: { [READ_AGAIN]: true } });
-    else location.reload();
+  readLater(
+    seconds,
+    () => page === readAgainPage && location.href === url,
+    () => (navigation ? navigation.navigate(url, { history: "replace", info: { [READ_AGAIN]: true } }) : location.reload()),
+  );
+}
+
+/**
+ * Calls `read` after `seconds` while `wanted()`, once the tab is visible and no form's answer is
+ * on its way (it will change the page: read after it).
+ * @param {number} seconds @param {() => boolean} wanted @param {() => unknown} read
+ */
+function readLater(seconds, wanted, read) {
+  const wait = () => {
+    if (!wanted()) return;
+    if (document.hidden) document.addEventListener("visibilitychange", wait, { once: true });
+    else if (submits.size) setTimeout(wait, seconds * 1000);
+    else read();
   };
-  setTimeout(read, seconds * 1000);
+  setTimeout(wait, seconds * 1000);
 }
 
 /** @type {any} */

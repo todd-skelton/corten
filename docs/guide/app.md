@@ -202,6 +202,21 @@ Its handler may only take inputs that cannot tell who is asking (`Path`, `Query`
 cookie in a public handler does not compile. Only a successful answer or a redirect is shared;
 a failure keeps `private, no-cache`.
 
+`max_age` is the browser's lifetime and every shared cache's. A page whose data changes slowly
+(a catalog, a help article) can let a CDN keep it longer than a browser with `.shared(..)`, so the
+origin renders it once a day instead of once a minute for each edge:
+
+```rust,ignore
+Public::new(Duration::from_secs(60), page)
+    .shared(Duration::from_secs(86_400))
+    .stale_while_revalidate(Duration::from_secs(3600))
+// public, max-age=60, s-maxage=86400, stale-while-revalidate=3600
+```
+
+The lifetimes are values, so one known only when the request is answered (an API's own
+`s-maxage`, an operator's setting) is passed the same way. A response sent privately (the rows
+below) drops `s-maxage` with `public`.
+
 `App` still checks what it can see before it lets a shared cache keep the answer:
 
 | The request or response | Sent |
