@@ -6,7 +6,7 @@
 #[derive(serde::Deserialize, Fields)]
 struct GreetForm { name: String }
 
-fn page(req: &Req, name: &str) -> impl Document {
+fn home_page(req: &Req, name: &str) -> impl Document {
     let f = GreetForm::FIELDS;
     html! {
         <Layout req={req} title="Home">
@@ -30,7 +30,7 @@ fn Greeting(name: &str) -> impl Patch {
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     match req.mode {
         Mode::Action => req.patch(Greeting { name: &form.name }),  // the runtime swaps #greeting
-        _ => req.page(page(&req, &form.name)),                      // no JavaScript: the whole page
+        _ => req.page(home_page(&req, &form.name)),                 // no JavaScript: the whole page
     }
 }
 ```
