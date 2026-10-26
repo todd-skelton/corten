@@ -33,7 +33,7 @@ The CLI is a convenience over cargo, not a build system: an app is an ordinary c
 | `src/main.rs` | the routes (`#[corten::routes] mod url`), their handlers and `App` |
 | `src/views.rs` | the layout (the whole document), the error page and the pages, in `html!` |
 | `src/click_counter.js`, `.css` | the `ClickCounter` component's handlers and stylesheet, next to it |
-| `static/` | the app's own CSS (element defaults, the layout), images; served at versioned URLs |
+| `static/` | the app's own CSS (element defaults, the layout), its favicon (`favicon.svg`, Corten's mark until you replace it), images; served at versioned URLs |
 | `AGENTS.md` | the rules for an AI agent working on the app |
 | `Dockerfile` | a release build in a slim image |
 

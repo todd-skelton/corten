@@ -9,6 +9,7 @@ const FILES: &[(&str, &str)] = &[
     ("src/main.rs", include_str!("../template/src/main.rs")),
     ("src/views.rs", include_str!("../template/src/views.rs")),
     ("static/style.css", include_str!("../template/static/style.css")),
+    ("static/favicon.svg", include_str!("../template/static/favicon.svg")),
     ("src/click_counter.js", include_str!("../template/src/click_counter.js")),
     ("src/click_counter.css", include_str!("../template/src/click_counter.css")),
     ("AGENTS.md", include_str!("../template/AGENTS.md")),

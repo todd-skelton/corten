@@ -498,16 +498,18 @@ Corten is pre-1.0, so any minor version may change the API.
     it stopped after one read, since a navigation to the same address with a `#id` was taken for
     a scroll. The runtime is 8,670 B gzipped
     ([#107 ReadAgain never reads a page whose address has a #fragment, so a write redirected to route.at(..) stays on its catching-up state](https://github.com/todd-skelton/corten/issues/107)).
-73. `Public::shared(Duration)`: a shared cache's own lifetime (`s-maxage`) apart from the
+73. `corten new` writes `static/favicon.svg` (Corten's mark) and links it from the layout; the
+    examples link the same icon.
+74. `Public::shared(Duration)`: a shared cache's own lifetime (`s-maxage`) apart from the
     browser's, so a CDN can keep a slowly changing page for a day while a browser checks again
     after a minute. A response sent privately (a cookie, a client navigation) drops it with
     `public`
     ([#106 Public has no shared-cache lifetime (s-maxage) apart from the browser's, so a CDN cannot keep a page longer than a browser](https://github.com/todd-skelton/corten/issues/106)).
-74. `ReadAgain { after }.from(&route)` in a patch: a `data-patch` write whose read is catching up
+75. `ReadAgain { after }.from(&route)` in a patch: a `data-patch` write whose read is catching up
     answers in place, and the runtime reads the part again from `route` (`corten: action`) until
     it stops asking, instead of the handler waiting for the read or redirecting to a page only to
     show "saving". The reads stop when the part is replaced or the page changes.
-    `examples/hello`'s saved page has a form that does it
+    `examples/hello`'s saved page has a form that does it. The runtime is 8,829 B gzipped
     ([#104 A data-patch answer cannot ask to be read again, so a write whose read is catching up has to navigate](https://github.com/todd-skelton/corten/issues/104)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -962,6 +964,9 @@ Corten is pre-1.0, so any minor version may change the API.
 11. The README's example names its view `home_page` (it was `page`), so `home` serving it reads as
     `req.page(home_page(&req, ""))` rather than `req.page(page(..))`; the forms recipe in the agent
     skill follows.
+12. The brand pack is in `docs/brand/` (mark, lockups, favicon, palette, traced from
+    `corten-weathering-concept.png`), and the README opens with the lockup, in its light version
+    when the reader's system is in dark mode.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

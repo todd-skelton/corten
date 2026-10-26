@@ -1,4 +1,9 @@
-# Corten
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/corten-weathering-lockup-light.svg">
+    <img src="docs/brand/corten-weathering-lockup.svg" alt="Corten" width="420">
+  </picture>
+</h1>
 
 **Fast web apps: Rust on the server, plain JavaScript in the browser, and each doing the work it is fastest at.**
 
