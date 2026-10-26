@@ -77,7 +77,8 @@ export function showAll(rows, rest, button) {
    `<tr id={RowId(&item.id)}>` on the row. Rows Load more adds: `view::Append(RowsId, rows)`,
    only the new page, never the whole list again.
 6. Filters applied on change: a GET form with `data-keep-place` and a handler that calls
-   `form.requestSubmit()`; the runtime keeps the scroll position and focus. Never save and
+   `form.requestSubmit()`; the runtime keeps the scroll position, a
+   scrolling rail's scroll, the groups (`<details>`) the user opened and focus. Never save and
    restore them yourself.
 
 ## Text a script computes

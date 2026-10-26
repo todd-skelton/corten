@@ -40,7 +40,7 @@ pub fn component(args: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// A struct whose fields are a URL's parameters. Documented at `corten::route`.
-#[proc_macro_derive(Route, attributes(route))]
+#[proc_macro_derive(Route, attributes(route, serde))]
 pub fn derive_route(input: TokenStream) -> TokenStream {
     route::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
@@ -116,6 +116,7 @@ pub fn derive_fields(input: TokenStream) -> TokenStream {
 }
 
 fn fields(input: TokenStream) -> Result<String, String> {
+    let source = input.clone();
     let tokens: Vec<TokenTree> = input.into_iter().collect();
     let mut rename_all = None;
     let mut container_default = false;
@@ -158,10 +159,18 @@ fn fields(input: TokenStream) -> Result<String, String> {
             None => return Err("Fields: expected a struct".into()),
         }
     };
-    let body = match tokens.get(i) {
-        Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace => g,
-        Some(TokenTree::Punct(p)) if p.as_char() == '<' => return Err("Fields: generic structs are not supported".into()),
-        _ => return Err("Fields can only be derived for a struct with named fields".into()),
+    // A struct with generics (a query struct that borrows): the names do not depend on them.
+    let generic = matches!(tokens.get(i), Some(TokenTree::Punct(p)) if p.as_char() == '<');
+    let item = if generic { Some(derive::parse(source, "Fields").map_err(|(_, message)| message)?) } else { None };
+    let named = "Fields can only be derived for a struct with named fields";
+    let body = match (&item, tokens.get(i)) {
+        (Some(item), _) => item.body.clone().ok_or(named)?,
+        (None, Some(TokenTree::Group(g))) if g.delimiter() == Delimiter::Brace => g.clone(),
+        _ => return Err(named.into()),
+    };
+    let (impl_generics, type_generics, where_clause) = match &item {
+        Some(item) => (item.impl_generics.to_string(), item.type_generics.to_string(), item.where_clause.to_string()),
+        None => Default::default(),
     };
     let mut names = Vec::new();
     for field in split_fields(body.stream()) {
@@ -236,7 +245,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
     for (ident, _) in &names {
         out += &format!("    pub {ident}: ::corten::form::FieldName,\n");
     }
-    out += &format!("}}\n#[allow(dead_code)]\nimpl {name} {{\n    /// Each field's name as the form posts it.\n    pub const FIELDS: {fields_type} = {fields_type} {{\n");
+    out += &format!("}}\n#[allow(dead_code)]\nimpl {impl_generics} {name} {type_generics} {where_clause} {{\n    /// Each field's name as the form posts it.\n    pub const FIELDS: {fields_type} = {fields_type} {{\n");
     for (ident, wire) in &names {
         out += &format!("        {ident}: ::corten::form::FieldName::__new({wire:?}),\n");
     }

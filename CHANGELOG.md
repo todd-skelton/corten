@@ -466,6 +466,11 @@ Corten is pre-1.0, so any minor version may change the API.
 66. `NoStore<A>`: an answer nothing may keep (`Cache-Control: no-store`), `NoStore<HtmlResult>`
     for a statement or a one-time code, in place of `Cache::no_store()`. A bare `StatusCode` is
     an answer too (`StatusCode::NO_CONTENT` for a write with nothing to say).
+67. `#[derive(Fields)]` takes a struct with lifetimes or type parameters, so a query struct that
+    borrows the page's values names its form's controls too, and `#[derive(Route)]` declares
+    `#[serde(..)]`, so a link-only struct renames its parameters without a serde derive of its own
+    ([#98 #[derive(Fields)] refuses a struct with a lifetime, so a borrowed query struct cannot name its form's controls](https://github.com/todd-skelton/corten/issues/98),
+    [#99 #[derive(Route)] reads #[serde(rename_all)] but does not declare it, so a link-only struct must derive a serde trait](https://github.com/todd-skelton/corten/issues/99)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -871,6 +876,14 @@ Corten is pre-1.0, so any minor version may change the API.
 25. A checkbox or radio without a `value` attribute is found by its name when a patch keeps what
     the user changed (its selector asked for `[value="on"]`, which only the attribute matches, so
     it fell back to its place).
+26. A `data-keep-place` navigation keeps what the user sees around the control it focuses: an
+    element that scrolls on its own (a filter rail) keeps its scroll, and a `<details>` open on
+    screen stays open (one the user closed stays closed), so the control is in view and focus is not
+    lost to `<body>` when the server draws its group closed. `examples/hello`'s filter is in a
+    scrolling rail of two groups, checked by the smoke test
+    ([#96 A data-keep-place navigation resets a scrolling container (a filter rail), so the control it focuses is out of view](https://github.com/todd-skelton/corten/issues/96),
+    [#97 A data-keep-place navigation folds the <details> the user unfolded, so focus can fall to the body](https://github.com/todd-skelton/corten/issues/97)).
+    The runtime notes the elements that scroll as they do, so keeping a place reads only those (0.1 ms on a page of 4,770 elements in Chromium, against 15 ms reading every element's scroll; measured), and is 167 B larger gzipped (8,362 to 8,529 B, measured).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

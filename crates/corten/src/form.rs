@@ -40,6 +40,26 @@
 //! }
 //! ```
 //!
+//! A list's filters are a GET form whose controls are named as its links write the parameters.
+//! One struct gives both, and it can borrow, so a page that writes many links copies nothing: its
+//! `FIELDS` name the form's controls and its `#[derive(Route)]` writes the links, both renamed by
+//! the same `#[serde(..)]`, which needs no serde derive of its own:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[derive(Route, Fields)]
+//! #[route("/search")]
+//! #[serde(rename_all = "camelCase")]
+//! struct Terms<'a> {
+//!     price_min: Option<&'a str>,
+//!     in_stock: Option<&'a str>,
+//! }
+//!
+//! assert_eq!(Terms::FIELDS.price_min.as_str(), "priceMin");
+//! assert_eq!(Terms { price_min: Some("5"), in_stock: None }.href(), "/search?priceMin=5");
+//! ```
+//!
 //! The rest of this module carries validation errors to each surface.
 //!
 //! The rules stay in the app (they are business rules); Corten only carries the result to each
