@@ -28,7 +28,7 @@ use crate::{
     assets::Assets,
     cache::{self, Seen},
     middleware::Middleware,
-    page::{self, default_error_page, error_page_fn, ErrorPageFn, Failure, Shared},
+    page::{self, default_error_page, error_page_fn, Asked, Credentials, ErrorPageFn, Failure, Shared},
     pwa::Pwa,
     route::{Methods, Route as TypedRoute, Routes},
     security::{Applied, NonceSlot, Policy},
@@ -159,7 +159,7 @@ struct Placed {
 ///
 /// ```ignore
 /// App::new(url::router())
-///     .error_page(views::error_page)                 // failed requests, in the app's layout
+///     .error_page(views::error_page, db.clone())     // failed requests, in the app's layout
 ///     .middleware((RequestId, RateLimit))            // the app's own steps, in this order
 ///     .area::<admin::Admin>(|area| admin::area(area).components(&[SalesChart]))
 ///     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")))
@@ -328,17 +328,21 @@ impl<M: Middleware> App<M> {
 
     /// The page for a failed request from a browser: every [`Failure`] (an unknown URL, a wrong
     /// method, a cross-site write, a missing caller, input that does not parse, a handler's error
-    /// or panic, the deadline, the PWA's offline page). A function from the request and the
-    /// failure to a document, in the app's layout:
-    /// `fn error_page(req: &Req, failure: Failure) -> impl Document + '_`. It is sent in the
+    /// or panic, the deadline, the PWA's offline page), in the app's layout, for who is asking.
+    /// An async function of the failure and then extractors, as a handler's are, with the state
+    /// they read (`()` for none): `.error_page(views::error_page, db)` for
+    /// `async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult`
+    /// ([`ErrorPageFn`]). Its caller is looked up only when it asks for one, so an unknown URL
+    /// costs a session lookup only for an error page that shows who is asking. It is sent in the
     /// request's mode, like any page, with the failure's status; `failure.detail()` is the error,
     /// set only under `corten dev`. A JSON route's failures, and a data client's, are JSON instead.
     /// `corten new` writes one. Without it, Corten sends a plain document.
-    pub fn error_page<F>(mut self, page: F) -> Self
+    pub fn error_page<H, T, S>(mut self, page: H, state: S) -> Self
     where
-        F: for<'a> ErrorPageFn<'a> + Send + Sync + 'static,
+        H: ErrorPageFn<T, S>,
+        S: Clone + Send + Sync + 'static,
     {
-        self.error_page = Some(error_page_fn(page));
+        self.error_page = Some(error_page_fn(page, state));
         self
     }
 
@@ -440,7 +444,7 @@ impl<M: Middleware> App<M> {
         let ready = self.ready.unwrap_or_else(|| Arc::new(|| Box::pin(async { true })));
         routes = routes.merge(crate::health(move || ready()));
 
-        let error_page = self.error_page.unwrap_or_else(|| error_page_fn(default_error_page));
+        let error_page = self.error_page.unwrap_or_else(|| error_page_fn(default_error_page, ()));
         let mut shared = Shared::new(error_page, assets, head);
         shared.offline = offline;
         shared.locales = self.locales;
@@ -701,7 +705,10 @@ impl<M: Middleware> Layer<M> {
         if let Some(refused) = self.policy.refuse(req.method(), req.headers(), origins) {
             let mut refused = match mount {
                 Some(_) => crate::api::json_failure(refused, false).await,
-                None => self.cross_site(&req, refused),
+                None => match self.cross_site(&req) {
+                    Some(asked) => page::error_page(&self.shared, asked, Failure::CrossSite).await,
+                    None => refused,
+                },
             };
             self.policy.headers(&mut refused, nonce.as_ref());
             refused.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
@@ -730,18 +737,14 @@ impl<M: Middleware> Layer<M> {
         res
     }
 
-    /// A write another site sent, to a page route: the error page for a browser
-    /// ([`Failure::CrossSite`]), the JSON error for a data client, the status line otherwise.
-    fn cross_site(&self, req: &Request, refused: Response) -> Response {
+    /// A write another site sent, to a page route: the request for the error page when a browser
+    /// sent it ([`Failure::CrossSite`]); otherwise the status line answers it.
+    fn cross_site(&self, req: &Request) -> Option<Asked> {
         let mode = page::mode_of(req.headers());
         let browser = matches!(mode, Mode::Navigation | Mode::Action)
             || (mode == Mode::Document
                 && req.headers().get(header::ACCEPT).and_then(|v| v.to_str().ok()).is_some_and(|v| v.contains("text/html")));
-        if !browser {
-            return refused;
-        }
-        let asked = crate::Req::new(req.headers(), req.extensions(), req.uri(), self.shared.clone());
-        (self.shared.error_page)(&asked, Failure::CrossSite)
+        browser.then(|| Asked::new(req, self.shared.clone(), Credentials::of(req.headers())))
     }
 
     /// The response, whether anything read who is asking, and the request's mode.

@@ -25,7 +25,7 @@ pub mod url {
 /// them.
 fn app() -> App {
     App::new(url::router())
-        .error_page(views::error_page)
+        .error_page(views::error_page, ())
         .components(&[views::ClickCounter])
 }
 

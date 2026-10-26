@@ -483,6 +483,21 @@ Corten is pre-1.0, so any minor version may change the API.
     month and year alone (`March 2025`) in each locale's order and words, checked against Intl
     like the other styles; `t.date_time` does not take one
     ([#101 t.date has no month-and-year style, so 'Member since March 2025' cannot be localized](https://github.com/todd-skelton/corten/issues/101)).
+70. The error page takes extractors, as a handler does: `App::error_page(page, state)` takes
+    `async fn(Failure, Req, ..) -> HtmlResult`, so it can take the caller
+    (`Option<Caller<Viewer>>`) and draw the layout for who is asking. The lookup runs only for a
+    failure, and an optional caller whose lookup fails is `None` there. A body extractor does not
+    compile. Callgrind, per request: a page 21,100 -> 21,201 instructions, with a cookie 21,639 ->
+    22,030, an unknown URL's error page 20,650 -> 26,122
+    ([#88 An error page cannot show who is asking (App::error_page has no Caller), so a signed-in user's 404 is drawn signed out](https://github.com/todd-skelton/corten/issues/88)).
+71. `Failure::Unidentified`: a caller whose lookup failed (`Refused::unavailable`) reaches the
+    error page as its own case, not as a handler's 503 (`Failure::Failed`); an error page that
+    names every case stops compiling until it says what to show
+    ([#89 Refused::unavailable reaches the error page as Failure::Failed (503), the same as a handler's own 503](https://github.com/todd-skelton/corten/issues/89)).
+72. `ReadAgain` reads a page at a place (`/saved#saved`, a write redirected to `route.at(..)`) again;
+    it stopped after one read, since a navigation to the same address with a `#id` was taken for
+    a scroll. The runtime is 8,670 B gzipped
+    ([#107 ReadAgain never reads a page whose address has a #fragment, so a write redirected to route.at(..) stays on its catching-up state](https://github.com/todd-skelton/corten/issues/107)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

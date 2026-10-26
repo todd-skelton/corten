@@ -42,14 +42,16 @@ std::thread_local! {
     static LOOKUPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// The signed-in user, found by the `viewer` header (an app reads its session cookie).
+/// The signed-in user, found by the `viewer` header or, as an app finds its session, the
+/// `viewer` cookie.
 #[derive(Clone, Hash, PartialEq, Debug)]
 struct Viewer(&'static str);
 
 impl<S: Sync> crate::Identify<S> for Viewer {
     async fn identify(parts: &axum::http::request::Parts, _: &S) -> std::result::Result<Self, crate::Refused> {
         LOOKUPS.with(|n| n.set(n.get() + 1));
-        match parts.headers.get("viewer").and_then(|v| v.to_str().ok()) {
+        let header = parts.headers.get("viewer").and_then(|v| v.to_str().ok());
+        match header.or_else(|| crate::security::cookie::get(&parts.headers, "viewer")) {
             None => Err(crate::Refused::sign_in(&caller_url::SignIn)),
             Some("down") => Err(crate::Refused::unavailable("the session store is down")),
             Some(name) => Ok(Viewer(name.to_owned().leak())),
@@ -100,11 +102,17 @@ impl TestPage for Req {
     }
 }
 
-/// The tests' error page, in their layout, with the error under `corten dev`.
-fn test_error_page(req: &Req, failure: Failure) -> impl Document + '_ {
-    let title = match failure.status() {
-        StatusCode::NOT_FOUND => "Not found",
-        StatusCode::FORBIDDEN => "Not allowed",
+/// The tests' error page, in their layout, for who is asking, with the error under `corten dev`.
+async fn test_error_page(failure: Failure, req: Req, viewer: Option<crate::Caller<Viewer>>) -> HtmlResult {
+    let viewer = viewer.map(|crate::Caller(Viewer(name))| name);
+    req.page(test_error_document(&req, failure, viewer))
+}
+
+fn test_error_document<'a>(req: &'a Req, failure: Failure, viewer: Option<&'static str>) -> impl Document + 'a {
+    let title = match (&failure, failure.status()) {
+        (Failure::Unidentified { .. }, _) => "Who you are cannot be checked",
+        (_, StatusCode::NOT_FOUND) => "Not found",
+        (_, StatusCode::FORBIDDEN) => "Not allowed",
         _ => "Something went wrong",
     };
     let detail = failure.detail().map(str::to_owned);
@@ -114,6 +122,9 @@ fn test_error_page(req: &Req, failure: Failure) -> impl Document + '_ {
         head: "",
         children: html! {
             <h1>{title}</h1>
+            if let Some(viewer) = viewer {
+                <p>"Signed in as "{viewer}</p>
+            }
             if let Some(detail) = &detail {
                 <pre>{detail}</pre>
             }
@@ -178,7 +189,7 @@ fn routes() -> Router {
 
 /// The app as `App` assembles it, with the tests' error page, every request sent as `viewer`.
 fn app(routes: Router, viewer: Option<&'static str>) -> Router {
-    App::new(Routes::from(routes)).error_page(test_error_page).middleware(AsViewer(viewer)).router()
+    App::new(Routes::from(routes)).error_page(test_error_page, ()).middleware(AsViewer(viewer)).router()
 }
 
 #[tokio::test]
@@ -457,15 +468,15 @@ async fn unknown_urls_and_methods_get_the_error_page_and_the_app_can_replace_it(
     let (status, headers, body) = call_with(app(routes(), None), "DELETE", "/", None, None).await;
     assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
     assert!(headers.contains_key("allow") && body.contains("Something went wrong"));
-    let custom = App::new(Routes::from(routes())).error_page(oops).router();
+    let custom = App::new(Routes::from(routes())).error_page(oops, ()).router();
     let (_, _, body) = call_with(custom, "GET", "/nope", None, None).await;
     assert!(body.contains("<title>Oops 404</title>") && body.contains("<h1>Lost?</h1>"));
 }
 
-/// An error page of the app's own.
-fn oops(_: &Req, failure: Failure) -> impl Document {
+/// An error page of the app's own, with no arguments but the failure and the request.
+async fn oops(failure: Failure, req: Req) -> HtmlResult {
     let code = failure.status().as_u16();
-    html! {
+    req.page(html! {
         <html>
             <head>
                 <title>"Oops "{code}</title>
@@ -473,7 +484,7 @@ fn oops(_: &Req, failure: Failure) -> impl Document {
             </head>
             <body><main><h1>"Lost?"</h1></main></body>
         </html>
-    }
+    })
 }
 
 #[tokio::test]
@@ -813,7 +824,7 @@ fn api_app(settings: impl FnOnce(crate::Api<ApiRoot>) -> crate::Api<ApiRoot>) ->
     App::new(Routes::from(
         Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) })),
     ))
-    .error_page(test_error_page)
+    .error_page(test_error_page, ())
     .deadline(std::time::Duration::from_millis(50))
     .api::<ApiRoot>(|api| {
         let api = api
@@ -1182,7 +1193,7 @@ async fn admin_user(Path(id): Path<u32>, Caller(_): Caller<Staff>) -> String {
 }
 
 fn caller_app() -> Router {
-    App::new(caller_url::router()).error_page(test_error_page).area::<admin_url::Admin>(admin_url::area).router()
+    App::new(caller_url::router()).error_page(test_error_page, ()).area::<admin_url::Admin>(admin_url::area).router()
 }
 
 async fn guarded(
@@ -1258,7 +1269,54 @@ async fn a_refused_caller_gets_the_error_page_in_its_mode() {
     let (status, _, body) = guarded(&router, "GET", "/admin", Some("down"), &[("accept", "text/html")]).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "who they are cannot be known now");
     assert!(!body.contains("session store"), "the message stays in the log: {body}");
+    assert!(body.contains("Who you are cannot be checked"), "Failure::Unidentified, not a handler's 503: {body}");
     assert_eq!(WROTE.with(|n| n.get()), 0);
+}
+
+#[tokio::test]
+async fn the_error_page_shows_who_is_asking() {
+    let router = caller_app();
+    let html = [("accept", "text/html")];
+    LOOKUPS.with(|n| n.set(0));
+    let (status, _, body) = guarded(&router, "GET", "/nope", None, &[("cookie", "viewer=ada"), html[0]]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body.contains("Signed in as ada"), "an unknown URL, drawn for who is asking: {body}");
+    assert_eq!(LOOKUPS.with(|n| n.get()), 1, "looked up once, by the error page");
+    let (status, _, body) = guarded(&router, "GET", "/nope", None, &[html[0]]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!body.contains("Signed in"), "no one: {body}");
+    let (status, _, body) = guarded(&router, "GET", "/admin", Some("eve"), &[("cookie", "viewer=eve"), html[0]]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(body.contains("Not allowed") && body.contains("Signed in as eve"), "a refusal, for who was refused: {body}");
+    let (status, _, body) = guarded(&router, "GET", "/nope", None, &[("cookie", "viewer=down"), html[0]]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "a lookup that fails draws the page signed out: {body}");
+    assert!(body.contains("Not found") && !body.contains("Signed in"), "{body}");
+    let (status, res, _) = guarded(&router, "GET", "/nope", None, &[("cookie", "viewer=ada"), ("corten", "nav")]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(res["x-robots-tag"], "noindex");
+    assert!(res.contains_key("corten-page"), "in the request's mode");
+}
+
+#[tokio::test]
+async fn the_error_page_after_a_handler_that_read_the_caller_keeps_the_pages_key() {
+    let routes = Router::new()
+        .route("/", get(|req: Req, _: Option<crate::Caller<Viewer>>| async move { req.test_page("Home", "") }))
+        .route("/fail", get(|_: Option<crate::Caller<Viewer>>| async { Err::<Response, _>(Error::new("down")) }));
+    let ada = [("cookie", "viewer=ada"), ("corten", "nav")];
+    let (_, page, _) = guarded(&app(routes.clone(), None), "GET", "/", None, &ada).await;
+    let (status, failed, body) = guarded(&app(routes, None), "GET", "/fail", None, &ada).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(body.contains("Signed in as ada"), "{body}");
+    // Marked by the handler and the error page alike, the caller would cancel out of the key.
+    assert_eq!(failed["corten-shell"], page["corten-shell"], "the same shell, so the runtime swaps it in");
+}
+
+#[tokio::test]
+async fn a_handlers_own_503_is_not_an_unknown_caller() {
+    let routes = Router::new().route("/", get(|| async { Err::<Response, _>(Error::status(StatusCode::SERVICE_UNAVAILABLE)) }));
+    let (status, _, body) = call(app(routes, None), "GET", None).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(body.contains("Something went wrong") && !body.contains("cannot be checked"), "Failure::Failed: {body}");
 }
 
 #[tokio::test]
@@ -1300,7 +1358,7 @@ async fn reading_a_caller_makes_the_answer_private_and_a_public_one_is_shared() 
 #[tokio::test]
 async fn a_caller_with_nowhere_to_sign_in_is_a_401_page() {
     let router = App::new(Routes::from(Router::new().route("/partner", get(|Caller(p): Caller<Partner>| async move { p.0 }))))
-        .error_page(test_error_page)
+        .error_page(test_error_page, ())
         .router();
     let (status, res, body) = guarded(&router, "GET", "/partner", None, &[("accept", "text/html")]).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -1342,7 +1400,7 @@ async fn price(Path(id): Path<u32>, Caller(partner): Caller<Partner>) -> JsonRes
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn a_json_route_answers_every_failure_as_json_whatever_the_client_accepts() {
-    let router = App::new(json_url::router()).error_page(test_error_page).router();
+    let router = App::new(json_url::router()).error_page(test_error_page, ()).router();
     for accept in ACCEPTS {
         let headers: &[(&str, &str)] = match accept {
             Some(accept) => &[("accept", accept)],

@@ -1193,7 +1193,9 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   const skip =
     !event.canIntercept ||
     !loaded ||
-    (!event.info?.[LOAD] && (event.hashChange || (event.destination.sameDocument && event.navigationType !== "traverse"))) ||
+    // A navigation the server sent, or the page reading itself again, is fetched even when only
+    // the `#id` differs from the address, or nothing does.
+    (!event.info?.[LOAD] && !event.info?.[READ_AGAIN] && (event.hashChange || (event.destination.sameDocument && event.navigationType !== "traverse"))) ||
     event.downloadRequest !== null ||
     event.formData ||
     event.navigationType === "reload" ||

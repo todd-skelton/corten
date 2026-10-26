@@ -838,6 +838,10 @@ async function run(browser) {
     const settled = reads.length;
     await page.waitForTimeout(2200);
     check("it stops once the page no longer asks", reads.length === settled, `${reads.length - settled} more reads`);
+    // At a place on the page (a write redirected to `route.at(..)`): read again all the same.
+    await page.goto(`${due(1500)}#saved`);
+    await savedSoon();
+    check("a page at a place (#id) reads itself again too", (await saved()) === "Your change is saved." && new URL(page.url()).hash === "#saved", `${await saved()} ${page.url()}`);
     if (swaps) {
       await page.evaluate(() => (/** @type {any} */ (window)).__marker = 6);
       const entries = await page.evaluate(() => history.length);
@@ -888,7 +892,7 @@ async function run(browser) {
   await page.waitForFunction(() => document.title !== "Watchlist | Corten", null, { timeout: 4000 }).catch(() => {});
   page.off("request", onRequest);
   check("a multipart form is posted as multipart/form-data", types.length === 1 && types[0].startsWith("multipart/form-data"), types.join());
-  check("a request the server rejects shows the app's error page", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong");
+  check("a request the server rejects shows the app's error page, in its layout", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong | Corten", await page.title());
 
   // The multipart post was answered 415 on purpose; the browser logs that as a failed resource.
   check("no console errors after the injected forms", errors.every((e) => e.includes("415")), errors.join(" | "));
