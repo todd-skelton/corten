@@ -408,6 +408,25 @@ Corten is pre-1.0, so any minor version may change the API.
     compile) and is 593 bytes as served (measured), loaded only by pages that use it. `examples/ui-gallery`
     refuses a rename in a dialog and its smoke test checks it is modal, with or without the runtime
     for the post, in Chromium, Firefox and WebKit.
+58. `data-keep-place` on a form or link: the navigation it starts keeps the scroll position and
+    puts focus back on the control the user changed (by id, else by name, and value for a checkbox
+    or radio), with its caret, also across a redirect. A list's filters are a GET form applied on
+    `change` (`form.requestSubmit()`), so keyboard and screen-reader users no longer start again
+    from the top of the page after every filter. A navigation without it still goes to the top.
+    `examples/hello`'s about page has a filter that the smoke test checks in Chromium and Firefox
+    ([#92 A GET form that applies a filter on change loses the user's place: its navigation scrolls to the top and moves focus to the body](https://github.com/todd-skelton/corten/issues/92)).
+59. `view::Append(RowsId, rows)`: a patch that adds rows at the end of the element with that id
+    (`<template id data-append>`), so Load more reads and renders one page instead of every row
+    shown and the rows the page has stay as they are. `examples/hello`'s about page loads its
+    history a page at a time with a GET `data-patch` form, checked by the smoke test ([#90 An answer cannot add rows to a list (Load more re-reads and re-renders every row shown)](https://github.com/todd-skelton/corten/issues/90)).
+60. A route's query parameter is named as serde reads its field: `#[serde(rename_all = "camelCase")]`
+    and `#[serde(rename = "..")]` rename it in links too (`?priceMin=`), so addresses already shared
+    keep working without a hand-written `Params`. A renamed path parameter, or a name a URL would
+    have to escape, does not compile (`compile_fail` doctests) ([#91 A query parameter cannot have a name other than its field's (#[route(query)] has no name =), so camelCase URLs need a hand-written Params](https://github.com/todd-skelton/corten/issues/91)).
+61. A component several areas list (one screen at `/search` and `/categories/{slug}`) is in a
+    stylesheet those areas share, `sections/search+categories.css`, linked from their pages only,
+    instead of a startup error that sent it to `App::components` and every page ([#93 An area has one prefix, so a screen at two addresses (/search, /categories/{slug}) puts its stylesheet on every page](https://github.com/todd-skelton/corten/issues/93)).
+    The runtime for 58 and 59 is 287 B larger gzipped (8,075 to 8,362 B, measured).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -780,6 +799,9 @@ Corten is pre-1.0, so any minor version may change the API.
     (7,807 to 8,075 B). Found by the Chase Sets pilot, whose item page's live market book closed a
     reference dialog the user was reading
     ([#84 A patch or live fragment closes a <dialog> the user opened and folds a <details> they unfolded](https://github.com/todd-skelton/corten/issues/84)).
+25. A checkbox or radio without a `value` attribute is found by its name when a patch keeps what
+    the user changed (its selector asked for `[value="on"]`, which only the attribute matches, so
+    it fell back to its place).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

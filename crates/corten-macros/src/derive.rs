@@ -146,6 +146,8 @@ pub struct Field {
     pub ident: Ident,
     /// The field's attributes, `#[..]`'s brackets.
     pub attrs: Vec<Group>,
+    /// Its name in a URL's query: `name`, or the name serde reads it by (`Route` sets it).
+    pub key: String,
 }
 
 pub fn named_fields(body: &Group) -> Result<Vec<Field>, Error> {
@@ -169,7 +171,8 @@ pub fn named_fields(body: &Group) -> Result<Vec<Field>, Error> {
                 }
                 Some(TokenTree::Ident(id)) if is_punct(field.get(j + 1), ':') => {
                     let text = id.to_string();
-                    fields.push(Field { name: text.strip_prefix("r#").unwrap_or(&text).to_string(), ident: id.clone(), attrs });
+                    let name = text.strip_prefix("r#").unwrap_or(&text).to_string();
+                    fields.push(Field { key: name.clone(), name, ident: id.clone(), attrs });
                     break;
                 }
                 Some(other) => return err(other.span(), "expected a named field"),

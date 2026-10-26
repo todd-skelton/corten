@@ -361,6 +361,74 @@ async function run(browser) {
   if (swaps) check("client navigation keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
   else check("without the Navigation API a link loads the whole page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
   check("navigation updates the URL", new URL(page.url()).pathname === "/about");
+  // A filter applied on change (data-keep-place): the page changes under the user, who stays
+  // where they were, on the box they checked.
+  if (swaps) {
+    const entry = await page.evaluate(() => navigation.currentEntry.key);
+    const size = page.viewportSize();
+    await page.setViewportSize({ width: 360, height: 160 });
+    await page.evaluate(() => {
+      const box = /** @type {HTMLInputElement} */ (document.querySelector("main input[name=history]"));
+      box.scrollIntoView({ block: "end" });
+      box.focus();
+    });
+    const before = await page.evaluate(() => scrollY);
+    await page.keyboard.press("Space");
+    await page.waitForFunction(() => location.search === "?history=on" && document.querySelectorAll("#history li").length === 2);
+    const after = await page.evaluate(() => ({
+      y: scrollY,
+      focused: document.activeElement?.getAttribute("name"),
+      checked: /** @type {HTMLInputElement} */ (document.activeElement).checked,
+      marker: (/** @type {any} */ (window)).__marker,
+    }));
+    check("a data-keep-place form swaps the page in place", after.marker === 1, JSON.stringify(after));
+    check("it keeps the scroll position", before > 0 && after.y === before, `${before} -> ${after.y}`);
+    check("focus stays on the control the user changed", after.focused === "history" && after.checked, JSON.stringify(after));
+    await page.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("main input[name=history]")).focus());
+    await page.keyboard.press("Space");
+    await page.waitForFunction(() => location.search === "");
+    check("unchecking applies again, focus still on it", await page.evaluate(() => document.activeElement?.getAttribute("name") === "history" && scrollY > 0));
+    // Clicked from the page, so Playwright does not scroll to the link first.
+    await page.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`header a[href="/about"]`)).click());
+    await page.waitForFunction(() => location.search === "" && location.href.endsWith("/about") && scrollY === 0, null, { timeout: 5000 }).catch(() => {});
+    check("a plain link still goes to the top", await page.evaluate(() => scrollY === 0));
+    if (size) await page.setViewportSize(size);
+    // Back over the three entries this added (checked, unchecked, the link) to the about page
+    // the watchlist led to.
+    await page.evaluate(() => history.go(-3));
+    await page.waitForFunction((key) => navigation.currentEntry.key === key && !document.querySelector("main[aria-busy]"), entry);
+  } else {
+    for (const name of [
+      "a data-keep-place form swaps the page in place",
+      "it keeps the scroll position",
+      "focus stays on the control the user changed",
+    ])
+      skip(name, noSwaps);
+  }
+  // Load more (view::Append): the answer adds only the new rows; the ones the page has stay. In a
+  // page of its own, so it runs in every engine and leaves this page's history as it is.
+  {
+    const more = await browser.newPage();
+    const moreNavs = [];
+    more.on("request", (request) => request.headers()["corten"] === "nav" && moreNavs.push(request.url()));
+    await more.goto(`${base}/about?history=on`);
+    await more.waitForFunction(() => document.querySelectorAll("#history li").length === 2);
+    await more.evaluate(() => ((/** @type {any} */ (document.querySelector("#history li"))).__kept = true));
+    await more.click("#load-more button");
+    await more.waitForFunction(() => document.querySelectorAll("#history li").length === 4);
+    const grown = await more.evaluate(() => ({
+      rows: Array.from(document.querySelectorAll("#history li"), (li) => li.textContent).join("|"),
+      kept: (/** @type {any} */ (document.querySelector("#history li"))).__kept === true,
+      search: location.search,
+    }));
+    check("Load more appends the next rows in order", grown.rows === "Corten began as a watchlist.|Then came forms.|Then live prices.|Then areas.", grown.rows);
+    check("the rows the page had are the same elements", grown.kept);
+    check("Load more is a patch, not a navigation", moreNavs.length === 0 && grown.search === "?history=on", `${moreNavs.length} nav(s), ${grown.search}`);
+    await more.click("#load-more button");
+    await more.waitForFunction(() => document.querySelectorAll("#history li").length === 6);
+    check("the last page hides the button", await more.locator("#load-more button").isHidden());
+    await more.close();
+  }
 
   await page.goBack();
   await page.waitForFunction(() => document.title === "Watchlist | Corten");

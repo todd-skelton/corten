@@ -287,7 +287,7 @@ fn split_fields(stream: TokenStream) -> Vec<Vec<TokenTree>> {
 }
 
 /// `key` or `key = "value"` pairs of a `#[serde(...)]` attribute group; other attributes yield nothing.
-fn serde_args(attribute: &Group) -> Result<Vec<(String, Option<String>)>, String> {
+pub(crate) fn serde_args(attribute: &Group) -> Result<Vec<(String, Option<String>)>, String> {
     let tokens: Vec<TokenTree> = attribute.stream().into_iter().collect();
     let (Some(TokenTree::Ident(path)), Some(TokenTree::Group(args))) = (tokens.first(), tokens.get(1)) else {
         return Ok(Vec::new());
@@ -328,11 +328,11 @@ fn unquote(literal: &str) -> Result<String, String> {
         .and_then(|s| s.strip_suffix('"'))
         .filter(|s| !s.contains('\\'))
         .map(str::to_string)
-        .ok_or_else(|| format!("Fields: expected a plain string literal, found {literal}"))
+        .ok_or_else(|| format!("expected a plain string literal, found {literal}"))
 }
 
 /// serde's `rename_all` rules, applied to a snake_case field name.
-fn apply_rule(field: &str, rule: &str) -> Result<String, String> {
+pub(crate) fn apply_rule(field: &str, rule: &str) -> Result<String, String> {
     let words: Vec<&str> = field.split('_').filter(|w| !w.is_empty()).collect();
     let capitalized = |w: &str| {
         let mut c = w.chars();
@@ -351,6 +351,6 @@ fn apply_rule(field: &str, rule: &str) -> Result<String, String> {
             let mut c = pascal.chars();
             c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default()
         }
-        other => return Err(format!("Fields: unknown rename_all rule {other:?}")),
+        other => return Err(format!("unknown rename_all rule {other:?}")),
     })
 }

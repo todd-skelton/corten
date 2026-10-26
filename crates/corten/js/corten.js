@@ -5,7 +5,7 @@
 // What it does, and nothing else:
 // 1. Same-origin navigations: fetch the next page with `corten: nav` and swap it into <main>.
 // 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id (a
-//    `<template id data-remove>` removes its element). The latest submit of a form wins; a
+//    `<template id data-remove>` removes its element, `<template id data-append>` adds to it). The latest submit of a form wins; a
 //    navigation abandons pending ones.
 // 3. <corten-live src>: apply fragments streamed as server-sent `patch` events, until an `end`.
 // 4. Handlers: `data-on="click:cart_line.confirm($e,@dialog)"` (what `on:click={js::confirm(event, dialog)}`
@@ -621,8 +621,9 @@ function modulesOf(node) {
 }
 
 /**
- * Applies a patch: every top-level element in `html` replaces the element with its id, and a
- * `<template id="row-7" data-remove>` removes it. The modules the new markup's handlers name are
+ * Applies a patch: every top-level element in `html` replaces the element with its id, a
+ * `<template id="row-7" data-remove>` removes it, and a `<template id="rows" data-append>` adds
+ * its content at the end of it. The modules the new markup's handlers name are
  * imported first, so its handlers run from the first event. The server's markup wins, except for
  * what the user is doing: a field they edited keeps their text, a dialog, `<details>` or popover
  * they opened stays open (a modal dialog modal) unless the server changed it, and focus stays where
@@ -647,8 +648,11 @@ async function apply(html, signal, sent) {
     const id = idOf(el);
     const target = id ? document.getElementById(id) : null;
     if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) target?.remove();
-    else if (target) keep(target, el, sent);
-    else console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
+    else if (!target) console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
+    else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-append")) {
+      serve(el.content);
+      target.append(el.content);
+    } else keep(target, el, sent);
   }
 }
 
@@ -749,7 +753,7 @@ function counterpart(root, fresh, el, exact) {
   const name = el.getAttribute("name");
   if (!home) return null;
   if (name) {
-    const selector = `${el.localName}[name="${CSS.escape(name)}"]${/^(checkbox|radio)$/.test(el.getAttribute("type") ?? "") ? `[value="${CSS.escape(/** @type {HTMLInputElement} */ (el).value)}"]` : ""}`;
+    const selector = named(el, name);
     const theirs = home.querySelectorAll(selector);
     if (theirs.length === 1 && anchor.querySelectorAll(selector).length === 1) return theirs[0];
   }
@@ -864,8 +868,9 @@ function keep(root, fresh, sent) {
  * unstyled.
  * @param {string} html
  * @param {AbortSignal} [signal]
+ * @param {boolean} [stay] keep the scroll position (Chromium can reset it when <main> empties)
  */
-async function swapPage(html, signal) {
+async function swapPage(html, signal, stay) {
   const content = parse(html);
   const [, styled] = await Promise.all([modulesOf(content), stylesOf(content)]);
   signal?.throwIfAborted();
@@ -884,7 +889,9 @@ async function swapPage(html, signal) {
   const main = document.querySelector("main");
   if (!main) throw new Error("corten: the shell must render a <main> element");
   serve(content);
+  const [x, y] = [scrollX, scrollY];
   main.replaceChildren(content);
+  if (stay) scrollTo(x, y);
   swapped = html;
   markCurrent();
   readAgainLater();
@@ -1020,8 +1027,10 @@ document.addEventListener("touchstart", (event) => prefetch(event.target), { pas
  *   the server redirected here
  * @param {boolean} [again] the page reading itself again (`ReadAgain`): never a prefetched
  *   answer, not marked busy, and not swapped when nothing changed
+ * @param {ReturnType<typeof placeOf>} [place] where a `data-keep-place` navigation leaves the
+ *   user, handed on when the server redirects
  */
-async function visit(url, signal, redirected, again) {
+async function visit(url, signal, redirected, again, place) {
   const key = pageKey(url);
   const hit = again ? undefined : prefetched.get(key);
   prefetched.delete(key);
@@ -1057,7 +1066,7 @@ async function visit(url, signal, redirected, again) {
   if (res.redirected && !redirected) {
     const page = new Response(await res.text(), { headers: res.headers });
     signal.throwIfAborted();
-    navigation.navigate(res.url, { history: "replace", info: { [REDIRECTED]: page } });
+    navigation.navigate(res.url, { history: "replace", info: { [REDIRECTED]: page, [KEEP_PLACE]: place } });
     return;
   }
   const html = await res.text();
@@ -1068,7 +1077,7 @@ async function visit(url, signal, redirected, again) {
     readAgainLater();
     return;
   }
-  await swapPage(html, signal);
+  await swapPage(html, signal, again || place !== undefined);
 }
 
 /** The last page `visit` swapped in, as the server sent it. */
@@ -1111,6 +1120,8 @@ function readAgainLater() {
 const navigation = /** @type {any} */ (window).navigation;
 /** Key of the response a redirected navigation hands to the next one, in its `info`. */
 const REDIRECTED = Symbol("corten.redirected");
+/** Key of the place a `data-keep-place` navigation hands to the one a redirect starts. */
+const KEEP_PLACE = Symbol("corten.keepPlace");
 
 /**
  * Whether the first document has fired `load`. Before it, a navigation is the browser's own (a
@@ -1135,22 +1146,64 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
     event.navigationType === "reload" ||
     event.sourceElement?.closest?.("[data-reload]");
   if (skip) return;
-  if (event.info?.[READ_AGAIN]) {
-    // The same page, read again: where the user was reading and what they had focused stay.
-    const focused = document.activeElement?.id;
-    const handler = async () => {
-      await visit(new URL(event.destination.url), event.signal, undefined, true);
-      if (focused && document.activeElement === document.body) document.getElementById(focused)?.focus({ preventScroll: true });
-    };
-    event.intercept({ handler, scroll: "manual", focusReset: "manual" });
+  const url = new URL(event.destination.url);
+  const again = event.info?.[READ_AGAIN];
+  // The page is about to change: replies to its pending submits would patch the wrong page.
+  if (!again) for (const pending of submits.values()) pending.controller.abort();
+  const redirected = event.info?.[REDIRECTED];
+  // The same page read again, or a form or link marked `data-keep-place` (filters applied as they
+  // change): the page changes under the user, who stays where they were reading, on the control
+  // they used. Kept across a redirect the server answers with.
+  const place = again || event.sourceElement?.closest?.("[data-keep-place]") ? placeOf(document.activeElement) : event.info?.[KEEP_PLACE];
+  if (place === undefined) {
+    event.intercept({ handler: () => visit(url, event.signal, redirected) });
     return;
   }
-  // The page is about to change: replies to its pending submits would patch the wrong page.
-  for (const pending of submits.values()) pending.controller.abort();
-  const redirected = event.info?.[REDIRECTED];
-  event.intercept({ handler: () => visit(new URL(event.destination.url), event.signal, redirected) });
+  const handler = async () => {
+    await visit(url, event.signal, redirected, again, place);
+    // Back to the control, unless the user has moved on meanwhile.
+    const now = document.activeElement;
+    const el = /** @type {HTMLInputElement | undefined} */ (place && (!now || now === document.body) ? document.querySelectorAll(place.at)[place.nth] : undefined);
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    try {
+      const [start, end, direction] = place.caret;
+      if (start !== null) el.setSelectionRange(start, end, direction);
+    } catch {}
+  };
+  event.intercept({ handler, scroll: "manual", focusReset: "manual" });
 });
 
+/**
+ * The control that has focus, as a selector that finds it again in a swapped page (by id, else by
+ * its name in <main>, and which of the controls with that name it is), and its caret. Null when
+ * nothing is focused.
+ * @param {Element | null} el
+ * @returns {{ at: string, nth: number, caret: [number | null, number | null, any] } | null}
+ */
+function placeOf(el) {
+  const name = el?.getAttribute("name");
+  const at = el?.id ? `#${CSS.escape(el.id)}` : name && el ? `main ${named(el, name)}` : "";
+  if (!at) return null;
+  const f = /** @type {HTMLInputElement} */ (el);
+  /** @type {[number | null, number | null, any]} */
+  let caret = [null, null, null];
+  try {
+    caret = [f.selectionStart, f.selectionEnd, f.selectionDirection];
+  } catch {}
+  return { at, nth: Array.prototype.indexOf.call(document.querySelectorAll(at), el), caret };
+}
+
+/**
+ * The selector of the controls named `name` like `el` (with its value attribute, for a checkbox
+ * or radio: one without it has the value "on" but does not match `[value="on"]`).
+ * @param {Element} el @param {string} name
+ */
+function named(el, name) {
+  const value = el.getAttribute("value");
+  const choice = /^(checkbox|radio)$/.test(el.getAttribute("type") ?? "") ? (value === null ? ":not([value])" : `[value="${CSS.escape(value)}"]`) : "";
+  return `${el.localName}[name="${CSS.escape(name)}"]${choice}`;
+}
 /**
  * The pending submit of each `data-patch` form. Like a browser's own form navigation, the latest
  * submit wins: a newer one aborts the older request, and a navigation aborts them all, so a late
