@@ -115,10 +115,13 @@ and `Api::route` taking `Methods`), the same requests were measured again the sa
 | a cross-site form post from a browser | 21,430 (21,313-21,450) | 20,883 (20,803-20,890) |
 
 The checks happen when the app compiles, so nothing was added to the request path for them. The
-JSON 400 costs about 500 more, most likely because the API's `get` is now Corten's, which marks
-a JSON route's failure with an extension on the response as a routes module's handler always
-did (before, it was axum's). The other differences, a few hundred either way, were not profiled;
-the cross-site post among them never reaches a route.
+JSON 400 costs about 500 more because the API's `get` is now Corten's (before, it was axum's),
+which marks a JSON route's failed response with an extension, as a routes module's handler always
+did, so the app answers it as JSON wherever the route is mounted. Profiled in an app with only
+that route (26,781 before and 27,509 after, medians of three runs), almost all of the difference
+is that insert: the extension map's allocation, growth and free, about 550 a request. Only a
+failed response from a JSON route pays it. The other differences, a few hundred either way,
+were not profiled; the cross-site post among them never reaches a route.
 
 ## Your own middleware
 
