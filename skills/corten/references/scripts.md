@@ -74,7 +74,11 @@ export function showAll(rows, rest, button) {
 4. A value borrowed from one the view owns: compute it inside `html!` with `let`.
 5. Rows a write removes: `req.patch(html! { for id in &done { {Remove(RowId(id))} } })`
    (`corten::view::Remove`), with `#[derive(Id)] struct RowId<'a>(&'a str);` and
-   `<tr id={RowId(&item.id)}>` on the row.
+   `<tr id={RowId(&item.id)}>` on the row. Rows Load more adds: `view::Append(RowsId, rows)`,
+   only the new page, never the whole list again.
+6. Filters applied on change: a GET form with `data-keep-place` and a handler that calls
+   `form.requestSubmit()`; the runtime keeps the scroll position and focus. Never save and
+   restore them yourself.
 
 ## Text a script computes
 

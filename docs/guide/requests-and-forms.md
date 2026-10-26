@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `GET`, no `corten` header | first load, reload, no JavaScript | `req.page(doc)`: the app's layout with the page in it | renders HTML |
 | `GET` with `corten: nav` | runtime, same-origin link or back/forward | the same call: `<title>`, head tags and the page only | swaps `<main>` |
-| `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch(view)` | replaces each element by `id`; `view::Remove(id)` removes one (ids are `#[derive(Id)]` types) |
+| `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch(view)` | replaces each element by `id`; `view::Remove(id)` removes one, `view::Append(id, rows)` adds rows at its end (ids are `#[derive(Id)]` types) |
 | `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(&route)` | renders the page |
 | any, `Accept: application/json` | native screen, agent, test | `req.screen(&data, doc)` (`data` a `ToJson`): `{"title", "data"}`, the title from the document's `<title>` | renders natively, or reasons over it |
 | any, under an `App::api` prefix | a webhook, a service, a partner's site | JSON (`corten::Json`), errors as `{"error": ...}` | reads the JSON |
@@ -91,6 +91,11 @@ Each of `ItemQuery`'s fields is written as the route's own parameter, so a route
 the filters cannot leave one out: a filter added to `ItemQuery` is in every route at once. The
 handler reads `Query<ItemQuery>`, and the filter form names its inputs `ItemQuery::FIELDS`. A
 `#[route(query)]` field whose type is not a query set does not compile.
+
+A parameter is named as serde reads its field, so `#[serde(rename_all = "camelCase")]` or a
+field's `#[serde(rename = "priceMin")]` renames it in links as well: addresses that are already
+shared or indexed keep working, and the link and the handler cannot disagree. A path parameter
+keeps the name the path gives it, so renaming one does not compile.
 
 When the parameters' names are data (an option per product dimension, a filter per attribute),
 mark a map field with a prefix, and each entry is written as `prefix` + key = value, in order:
@@ -186,6 +191,38 @@ A component that says `-> impl Render` is not a patch, so one that is drawn by t
 by an action says `-> impl Patch`, as a layout says `-> impl Document`. A `corten::live`
 fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
 element).
+
+## Filters and lists that grow
+
+A list's filters are a GET form: every choice is in the address, so the results can be shared,
+bookmarked, reloaded and reached with Back, and the form works without a script. To apply a
+filter as soon as it changes, a handler submits the form (`form.requestSubmit()` on `change`).
+Mark the form `data-keep-place` and its navigation keeps the user where they were: the scroll
+position stays, and focus returns to the control they changed (by id, else by its name, and its
+value for a checkbox or radio), with its caret. Without the mark a navigation goes to the top of
+the new page, as a link should. A link can carry the mark too.
+
+```rust,ignore
+<form method="get" action={url::Search} data-keep-place on:change={js::apply(target)}>
+    <label><input type="checkbox" name={f.in_stock} checked={q.in_stock}>"In stock"</label>
+    <button>"Apply"</button>
+</form>
+```
+
+A list that grows (Load more, the next page of results) answers with only the new rows:
+`view::Append(ResultsId, rows)` adds them at the end of the element with that id, and the rows
+the page has stay as they are. Load more is a GET form with `data-patch`, so without JavaScript
+it loads the page with one page more, and the handler tells the two apart by `req.mode`:
+
+```rust,ignore
+if req.mode == Mode::Action {
+    return req.patch(html! { {Append(ResultsId, html! { for r in &page { <Result r={r} /> } })} <LoadMore next={next} /> });
+}
+```
+
+The address does not change with an appended page, so a reload shows the first page again;
+a list whose length must survive a reload puts it in the address with a link instead.
+`examples/hello`'s about page has both.
 
 ## Redirects
 

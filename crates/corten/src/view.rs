@@ -403,6 +403,47 @@ impl<T: Id> Render for Remove<T> {
     }
 }
 
+/// In a patch, adds `children` at the end of the element with this id, after what it has:
+/// `<template id="results" data-append>..</template>`. A list that grows (Load more, the next
+/// page of results) gets only its new rows: the server reads and renders one page, and the rows
+/// the page has stay as they are, with what the user did to them.
+///
+/// ```
+/// use corten::{prelude::*, view::{Append, Id}};
+///
+/// #[derive(Id)]
+/// struct ResultsId;
+///
+/// #[derive(Id)]
+/// struct ResultId(u32);
+///
+/// let more = [25, 26];
+/// let patch = html! { {Append(ResultsId, html! { for n in more { <li id={ResultId(n)}>{n}</li> } })} };
+/// assert_eq!(
+///     patch.to_html(),
+///     r#"<template id="results" data-append><li id="result-25">25</li><li id="result-26">26</li></template>"#
+/// );
+/// ```
+///
+/// The list is named by its id type, so an id written as text does not compile:
+///
+/// ```compile_fail
+/// use corten::{prelude::*, view::Append};
+///
+/// let patch = html! { {Append("results", html! { <li>"25"</li> })} };
+/// ```
+pub struct Append<T, V>(pub T, pub V);
+
+impl<T: Id, V: Render> Render for Append<T, V> {
+    fn render(&self, out: &mut String) {
+        out.push_str("<template id=\"");
+        self.0.write_id(out);
+        out.push_str("\" data-append>");
+        self.1.render(out);
+        out.push_str("</template>");
+    }
+}
+
 /// What a `<form data-patch>` answer sends ([`crate::Req::patch`]): elements the runtime puts in
 /// place of the page's elements with the same ids. An element without an id would be dropped in
 /// the browser, so a view is a patch only when the compiler can see that each of its top-level
@@ -537,6 +578,8 @@ impl<F: FnOnce(&mut String) -> S, S: __private::PatchShape> __private::PatchSeal
 impl<F: FnOnce(&mut String) -> S, S: __private::PatchShape> Patch for Html<F> {}
 impl<T: Id> __private::PatchSealed for Remove<T> {}
 impl<T: Id> Patch for Remove<T> {}
+impl<T: Id, V: Render> __private::PatchSealed for Append<T, V> {}
+impl<T: Id, V: Render> Patch for Append<T, V> {}
 impl<T: Patch + ?Sized> __private::PatchSealed for &T {}
 impl<T: Patch + ?Sized> Patch for &T {}
 impl<T: Patch> __private::PatchSealed for Option<T> {}
