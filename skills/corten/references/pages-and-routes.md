@@ -30,7 +30,7 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
 1. Every route is a struct in the `#[corten::routes]` module that names its handlers,
    `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile);
    `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
-   `#[corten::routes(state = Db)]` and `url::router(db)`. Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
+   `#[corten::routes(state = Db)]` and `url::router(db)`. Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`). An enum field (`pub tab: Option<Tab>`) derives `UrlValue` with `Deserialize`, never a hand-written `Display`: it writes the words serde reads.
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
    answers `req.moved(&url::Item { id })`, a 301. An area's routes are a module of their own,
    `#[corten::routes(area = Admin, caller = Staff)] mod admin` whose routes name their handlers

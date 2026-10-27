@@ -127,6 +127,7 @@ req.patch(html! { {Remove(OfferId(&sold.id))} })                             // 
 |---|---|
 | `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
 | `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument |
+| `#[derive(UrlValue)]` | the enum has a variant with fields, a variant serde does not read (`skip_deserializing`), or a serde attribute that changes its words in a way it does not follow |
 | `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol); the struct holds more than one key |
 
 An id is the type's name without `Id`, in kebab case (`OfferId` is `offer-`, then the key; a
@@ -136,7 +137,10 @@ symbol, so two copies of one library in a program (two versions) that both defin
 not link.
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
-parameters left out). Messages are split into text and arguments when the crate compiles: one
+parameters left out). A query field is anything `Display`; an enum in an address (a tab, a sort,
+what a redirect says happened) derives `UrlValue` beside `Deserialize`, which writes each
+variant as the word serde reads (`#[serde(rename_all = "kebab-case")]`: `AwaitingLabel` is
+`awaiting-label`), so the link and the handler cannot disagree. Messages are split into text and arguments when the crate compiles: one
 without arguments is a `&'static str`, one with arguments writes its pieces into the page,
 escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
 

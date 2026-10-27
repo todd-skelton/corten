@@ -24,6 +24,7 @@ mod style;
 mod theme;
 mod to_json;
 mod tokens;
+mod url_value;
 
 use proc_macro::{Delimiter, Group, Spacing, TokenStream, TokenTree};
 
@@ -49,6 +50,13 @@ pub fn derive_route(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, item: TokenStream) -> TokenStream {
     routes::expand(args, item).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// An enum of unit variants written in URLs as the words serde reads. Documented at
+/// `corten::route::UrlValue`.
+#[proc_macro_derive(UrlValue, attributes(serde))]
+pub fn derive_url_value(input: TokenStream) -> TokenStream {
+    url_value::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// An element id as a type. Documented at `corten::view::Id`.

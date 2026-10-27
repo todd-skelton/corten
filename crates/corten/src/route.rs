@@ -110,6 +110,48 @@ use std::fmt;
 /// Derives [`Route`](trait@Route) for a struct: `#[derive(Route)] #[route("/items/{id}")]`.
 pub use corten_macros::Route;
 
+/// Derives `Display` for an enum of unit variants as the words serde reads for them, so a route
+/// field of that type (a tab, a sort, a filter, what a redirect says happened) writes the word its
+/// handler reads back, and the words are written once, in `#[serde(rename_all)]` and
+/// `#[serde(rename)]`:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(Clone, Copy, UrlValue, serde::Deserialize)]
+/// #[serde(rename_all = "kebab-case")]
+/// enum Tab { Open, AwaitingLabel, #[serde(rename = "done")] Shipped }
+///
+/// #[derive(Route, serde::Deserialize)]
+/// #[route("/orders")]
+/// struct Orders { tab: Option<Tab> }
+///
+/// assert_eq!(Orders { tab: Some(Tab::AwaitingLabel) }.href(), "/orders?tab=awaiting-label");
+/// assert_eq!(Orders { tab: Some(Tab::Shipped) }.href(), "/orders?tab=done");
+/// ```
+///
+/// A variant with fields is not one word, and one serde does not read would make a link its
+/// handler refuses; neither compiles:
+///
+/// ```compile_fail
+/// #[derive(corten::UrlValue, serde::Deserialize)]
+/// enum Sort { Price { descending: bool } }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(corten::UrlValue, serde::Deserialize)]
+/// enum Tab { Open, #[serde(skip_deserializing)] Draft }
+/// ```
+///
+/// Nor does an attribute that changes the words in a way it does not follow:
+///
+/// ```compile_fail
+/// #[derive(corten::UrlValue, serde::Deserialize)]
+/// #[serde(rename_all(deserialize = "kebab-case"))]
+/// enum Tab { Open, AwaitingLabel }
+/// ```
+pub use corten_macros::UrlValue;
+
 /// The app's routes in one module, each with the handlers that serve it.
 ///
 /// Each `#[route("/..", get = show)]` struct in the module is a typed route (it gets
@@ -1043,6 +1085,76 @@ mod tests {
         n: u32,
         name: std::borrow::Cow<'a, str>,
         label: &'a String,
+    }
+
+    macro_rules! words {
+        ($($name:ident = $rule:literal),*) => {$(
+            #[derive(Clone, Copy, PartialEq, Debug, corten::UrlValue, serde::Deserialize)]
+            #[serde(rename_all = $rule)]
+            #[allow(clippy::upper_case_acronyms)]
+            enum $name {
+                Open,
+                AwaitingLabel,
+                HTTPCode,
+                XRay2,
+                #[serde(rename = "kept-as-is")]
+                Renamed,
+                #[serde(alias = "old")]
+                Aliased,
+            }
+
+            impl $name {
+                const ALL: [Self; 6] = [Self::Open, Self::AwaitingLabel, Self::HTTPCode, Self::XRay2, Self::Renamed, Self::Aliased];
+            }
+        )*};
+    }
+
+    words!(
+        Lower = "lowercase",
+        Upper = "UPPERCASE",
+        Pascal = "PascalCase",
+        Camel = "camelCase",
+        Snake = "snake_case",
+        ScreamingSnake = "SCREAMING_SNAKE_CASE",
+        Kebab = "kebab-case",
+        ScreamingKebab = "SCREAMING-KEBAB-CASE"
+    );
+
+    #[derive(corten::UrlValue, serde::Deserialize, Clone, Copy, PartialEq, Debug)]
+    enum Plain {
+        Open,
+        AwaitingLabel,
+    }
+
+    /// Each word `UrlValue` writes is the one serde reads back as the same variant, under every
+    /// rule, through the reader `Query` uses.
+    #[test]
+    fn url_values_are_the_words_serde_reads() {
+        fn round_trip<E: std::fmt::Display + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug + Copy>(
+            all: &[E],
+        ) -> Vec<String> {
+            #[derive(serde::Deserialize)]
+            struct Back<E> {
+                v: E,
+            }
+            all.iter()
+                .map(|value| {
+                    let word = value.to_string();
+                    let back: Back<E> = crate::form::from_bytes(format!("v={word}").as_bytes()).unwrap();
+                    assert_eq!(back.v, *value, "{word}");
+                    word
+                })
+                .collect()
+        }
+        assert_eq!(round_trip(&Kebab::ALL), ["open", "awaiting-label", "h-t-t-p-code", "x-ray2", "kept-as-is", "aliased"]);
+        assert_eq!(round_trip(&Camel::ALL), ["open", "awaitingLabel", "hTTPCode", "xRay2", "kept-as-is", "aliased"]);
+        round_trip(&Lower::ALL);
+        round_trip(&Upper::ALL);
+        round_trip(&Pascal::ALL);
+        round_trip(&Snake::ALL);
+        round_trip(&ScreamingSnake::ALL);
+        round_trip(&ScreamingKebab::ALL);
+        assert_eq!(round_trip(&[Plain::Open, Plain::AwaitingLabel]), ["Open", "AwaitingLabel"]);
     }
 
     #[test]
