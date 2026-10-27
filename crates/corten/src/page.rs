@@ -473,10 +473,11 @@ impl Req {
         }
     }
 
-    /// The key of the page around `<main>`: the app's versions and who it is for (the callers
-    /// the request read), read when the page renders, after the handler's extractors ran.
-    fn key(&self) -> u64 {
-        self.shared.key_base ^ self.signal.callers().rotate_left(1)
+    /// The key of the page around `<main>`: the app's versions, who it is for (the callers the
+    /// request read, read when the page renders, after the handler's extractors ran) and which
+    /// layout rendered it (`shell`, from the document's `html!`).
+    fn key(&self, shell: u64) -> u64 {
+        self.shared.key_base ^ self.signal.callers().rotate_left(1) ^ shell
     }
 
     /// When the work for this request should stop, and why: the server's `request.signal`. See
@@ -525,16 +526,18 @@ impl Req {
         let (part, size) = if swap { (Part::Swap, &SWAP) } else { (Part::Full, &FULL) };
         let mut out = String::with_capacity(size.load(Ordering::Relaxed));
         HEAD_AT.set(None);
+        crate::view::SHELL.set(0);
         let modules = self.render_into(Parted(doc, part), &mut out)?;
         let Some(at) = HEAD_AT.take() else {
             return Err(Error::new("corten: the document's <head> has no <Corten />"));
         };
+        let key = self.key(crate::view::SHELL.get());
         let mut tags = String::new();
         if swap {
             self.section_links(&mut tags);
         } else {
             tags.reserve(1024);
-            self.head_tags(&modules, &mut tags);
+            self.head_tags(&modules, key, &mut tags);
         }
         if !tags.is_empty() {
             out.insert_str(at, &tags);
@@ -542,7 +545,7 @@ impl Req {
         size.store(out.len() + out.len() / 8, Ordering::Relaxed);
         // Only a swap says it is one: a document a cache gave to a navigation fetch by mistake
         // makes the runtime load the URL in full.
-        Ok(HtmlResponse(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)))))
+        Ok(HtmlResponse(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)), key)))
     }
 
     /// The versioned URL of a static file: `req.asset("style.css")`. A missing file is a bug: it
@@ -654,8 +657,8 @@ impl Req {
     }
 
     /// Adds the shell key, which tells the runtime whether the page around `<main>` is still current.
-    fn finish(&self, mut res: Response) -> Response {
-        res.headers_mut().insert(SHELL_HEADER, key_header(self.key()));
+    fn finish(&self, mut res: Response, key: u64) -> Response {
+        res.headers_mut().insert(SHELL_HEADER, key_header(key));
         res.headers_mut().insert(header::VARY, self.vary());
         res
     }
@@ -666,14 +669,10 @@ impl Req {
 
     /// The tags Corten needs in `<head>` after the page's own: script settings, the shell key,
     /// the app's configured tags, section stylesheets, the import map, the runtime and modules.
-    fn head_tags(&self, modules: &[&'static str], out: &mut String) {
+    fn head_tags(&self, modules: &[&'static str], key: u64, out: &mut String) {
         use std::fmt::Write;
         let dir = &self.shared.scripts_dir;
-        let _ = write!(
-            out,
-            r#"<meta name="corten-scripts" content="{dir}"><meta name="corten-shell" content="{:016x}">"#,
-            self.key()
-        );
+        let _ = write!(out, r#"<meta name="corten-scripts" content="{dir}"><meta name="corten-shell" content="{key:016x}">"#);
         out.push_str(&self.shared.head_extra);
         self.section_links(out);
         out.push_str(r#"<script type="importmap">"#);

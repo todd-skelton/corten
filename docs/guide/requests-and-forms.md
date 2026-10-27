@@ -18,8 +18,9 @@
 One handler serves every mode, and `req.mode` says which. A route with no screen goes under
 [`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The layout around `<main>` renders on full
 loads only ([the document](views.md#the-document)); every page carries a key hashed from the
-caller its handler read (if any) and the deploy, and when a navigation answers with a different key (sign-in, a new
-release) the runtime loads the whole document instead, so the layout is never stale.
+caller its handler read (if any), the deploy and its layout, and when a navigation answers with a different key
+(sign-in, a new release, a page in another layout) the runtime loads the whole document instead, so the layout is
+never stale.
 
 ## Forms
 
