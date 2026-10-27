@@ -66,7 +66,9 @@ pub struct Api<P> {
 /// How an API writes the failures Corten answers for it ([`Api::errors`]): a status and a
 /// message to a JSON body.
 #[derive(Clone)]
-pub(crate) struct ErrorShape(std::sync::Arc<dyn Fn(StatusCode, &str) -> Vec<u8> + Send + Sync>);
+pub(crate) struct ErrorShape(std::sync::Arc<WriteError>);
+
+type WriteError = dyn Fn(StatusCode, &str) -> Vec<u8> + Send + Sync;
 
 impl<P: Prefix> Api<P> {
     pub(crate) fn new() -> Self {
