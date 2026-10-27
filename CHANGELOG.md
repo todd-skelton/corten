@@ -967,6 +967,12 @@ Corten is pre-1.0, so any minor version may change the API.
     header and footer no longer stay around the next page's `<main>`, and links between layouts
     need no `data-reload`. The default error document is a layout of its own too
     ([#122 Client navigation between pages with different layouts keeps the first layout, because the shell key does not include the layout](https://github.com/todd-skelton/corten/issues/122)).
+30. A link to a route that redirects to another site (`req.redirect(&uri)` or `req.moved(&uri)`)
+    leaves the app in one request: a client navigation gets `corten-location` and the browser
+    goes there, where before the runtime's `fetch` followed the redirect, the CSP's `connect-src`
+    refused it with a console error (the hover's prefetch too), and the page reloaded to follow it
+    again
+    ([#131 A client navigation to a route that redirects to another origin is blocked by connect-src, then reloads](https://github.com/todd-skelton/corten/issues/131)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

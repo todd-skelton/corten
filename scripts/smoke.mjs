@@ -486,6 +486,28 @@ async function run(browser) {
     check("the last page hides the button", await more.locator("#load-more button").isHidden());
     await more.close();
   }
+  // A link to a route that redirects to another site (`/about/source`): the runtime's fetch cannot
+  // follow it (connect-src, CORS), so the server names the address and the browser goes there, in
+  // one request to the app and without a console error, the hover's prefetch included.
+  {
+    const away = await browser.newPage();
+    const awayErrors = [];
+    away.on("console", (m) => m.type() === "error" && awayErrors.push(m.text()));
+    await away.route("https://github.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Elsewhere</title>" }));
+    let asked = 0;
+    away.on("request", (r) => new URL(r.url()).pathname === "/about/source" && asked++);
+    await away.goto(`${base}/about`);
+    await away.hover(`main a[href="/about/source"]`);
+    await away.waitForTimeout(300);
+    // The browser's request to the other site is what matters, not that site's load (WebKit does
+    // not always hand a redirected navigation to the route above), so the click does not wait.
+    const left = away.waitForRequest((r) => r.url() === "https://github.com/todd-skelton/corten", { timeout: 5000 }).then(() => true, () => false);
+    await away.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`main a[href="/about/source"]`)).click());
+    const arrived = await left;
+    check("a redirect to another site leaves the app in one request", arrived && asked === 1, `left ${arrived} requests ${asked}`);
+    check("without a console error", awayErrors.length === 0, awayErrors.join(" | "));
+    await away.close();
+  }
 
   await page.goBack();
   await page.waitForFunction(() => document.title === "Watchlist | Corten");

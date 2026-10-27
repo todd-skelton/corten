@@ -241,7 +241,10 @@ spell it differently. `href={route.at(..)}` links to one the same way. The brows
 it after a full load and after the runtime's navigation alike; the runtime fetches the page
 again even when only the `#id` differs from the address, since the write may have changed it.
 A client navigation the server sends to a place gets `corten-location` instead of a 303,
-because `fetch` follows a redirect but drops its fragment.
+because `fetch` follows a redirect but drops its fragment. So does one sent to another site
+(an `axum::http::Uri` such as `https://pay.example/..`), which `fetch` may not read (the CSP's
+`connect-src`, else CORS): the browser goes there itself, in one request to the app. The same
+holds for `req.moved`.
 
 ```rust,ignore
 async fn report(req: Req, Path((slug, review)): Path<(String, String)>) -> HtmlResult {
