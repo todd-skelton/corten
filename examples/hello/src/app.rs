@@ -7,6 +7,7 @@
 //! | `GET /feed/stocks`, `/feed/stocks/live` | the live feed `<live-prices>` subscribes to |
 //! | `GET /live/trades` | fragments streamed to `<corten-live>`: the last trade, no script of its own |
 //! | `GET /about?history=on` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only; a filter applied on change keeps the user's place (`data-keep-place`), and Load more adds only the new rows (`view::Append`) |
+//! | `GET /about/source` | a redirect to another site, which a client navigation follows in one request |
 //! | `POST /sign-in` | sets a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
 //! | `GET /account` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
@@ -18,7 +19,7 @@ use std::{
 
 use corten::{
     Fragment, LiveResponse, LiveSince,
-    axum::http::{header, request::Parts},
+    axum::http::{Uri, header, request::Parts},
     feed::{Feed, FeedResponse, Row, Since},
     i18n::{Currency, Minor},
     prelude::*,
@@ -121,6 +122,9 @@ mod about {
 
     #[route("/about/thanks", post = thank)]
     pub struct Thank;
+
+    #[route("/about/source", get = source)]
+    pub struct Source;
 }
 
 /// Someone's own pages: every route here, now and later, takes the viewer, so no one signed out
@@ -436,6 +440,7 @@ async fn about(req: Req, viewer: Option<Caller<Viewer>>, Query(q): Query<AboutQu
         <Layout req={&req} title="About" viewer={viewer.as_ref()} head="">
             <h1>"About"</h1>
             <p>"Rendered on the server and swapped into the page by the runtime."</p>
+            <p><a href={about::Source}>"The source"</a></p>
             <AboutNote />
             <AboutFilter history={q.history} />
             if q.history {
@@ -457,6 +462,12 @@ struct ThanksId;
 /// `About.at(ThanksId)` is `/about#thanks`, the id the form's markup prints.
 async fn thank(req: Req) -> HtmlResult {
     req.redirect(&about::About.at(ThanksId))
+}
+
+/// Where the project's source lives: another site. A client navigation's `fetch` cannot follow a
+/// redirect there, so the runtime is told the address and the browser goes there itself.
+async fn source(req: Req) -> HtmlResult {
+    req.redirect(&Uri::from_static("https://github.com/todd-skelton/corten"))
 }
 
 #[derive(Id)]

@@ -793,7 +793,7 @@ impl Req {
     /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
     pub fn moved(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
-        if self.mode == Mode::Action || (self.mode == Mode::Navigation && has_fragment(&value)) {
+        if self.mode == Mode::Action || (self.mode == Mode::Navigation && (has_fragment(&value) || elsewhere(&value))) {
             return Ok(HtmlResponse(redirect(self.mode, value)));
         }
         let headers = [(header::LOCATION, value), (header::CACHE_CONTROL, HeaderValue::from_static(MOVED_CACHE))];
@@ -818,18 +818,31 @@ fn refresh_header_is_an_error(res: Response) -> Response {
 const MOVED_CACHE: &str = "private, max-age=86400";
 
 /// A redirect in `mode`: `corten-location` for a form patch (the runtime navigates), a 303
-/// otherwise. A client navigation sent to a place on a page (`#id`) gets `corten-location` too:
-/// `fetch` follows a 303 but drops its fragment, so the runtime would not know where to scroll.
+/// otherwise. A client navigation sent to a place on a page (`#id`) or to another site gets
+/// `corten-location` too: `fetch` follows a 303 but drops its fragment, so the runtime would not
+/// know where to scroll, and may not read another origin's answer.
 pub(crate) fn redirect(mode: Mode, to: HeaderValue) -> Response {
     match mode {
         Mode::Action => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response(),
-        Mode::Navigation if has_fragment(&to) => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response(),
+        // `fetch` follows a redirect but drops its `#id`, and one to another origin is refused
+        // (the CSP's `connect-src`, else CORS): the runtime navigates there itself.
+        Mode::Navigation if has_fragment(&to) || elsewhere(&to) => {
+            (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response()
+        }
         _ => (StatusCode::SEE_OTHER, [(header::LOCATION, to)]).into_response(),
     }
 }
 
 fn has_fragment(to: &HeaderValue) -> bool {
     to.as_bytes().contains(&b'#')
+}
+
+/// An address outside the app: anything but a path on this origin (`https://..`, `//host/..`).
+/// A route's address always starts with one `/`, and an `axum::http::Uri` is a path or absolute
+/// (it cannot be relative).
+fn elsewhere(to: &HeaderValue) -> bool {
+    let to = to.as_bytes();
+    to.first() != Some(&b'/') || to.get(1) == Some(&b'/')
 }
 
 /// Middleware the app installs: a failed request (an [`Error`] from a handler, or an empty error

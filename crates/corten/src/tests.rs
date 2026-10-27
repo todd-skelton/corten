@@ -918,6 +918,34 @@ async fn a_redirect_to_a_place_keeps_its_fragment_in_every_mode() {
     assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &"/items/pika#place-7".parse().unwrap()));
 }
 
+/// A client navigation's `fetch` cannot follow a redirect to another origin (the CSP's
+/// `connect-src`, else CORS), so it is told where to go and the browser goes there itself; a full
+/// load still gets the 303 or 301.
+#[tokio::test]
+async fn a_redirect_to_another_origin_is_named_to_a_client_navigation() {
+    use axum::http::Uri;
+    let routes = Router::new()
+        .route("/away", get(|req: Req| async move { req.redirect(&"https://shop.example/sales?x=1".parse::<Uri>().unwrap()) }))
+        .route("/moved", get(|req: Req| async move { req.moved(&"//shop.example/sales".parse::<Uri>().unwrap()) }))
+        .route("/here", get(|req: Req| async move { req.redirect(&Done) }));
+    for (uri, to, full) in [
+        ("/away", "https://shop.example/sales?x=1", StatusCode::SEE_OTHER),
+        ("/moved", "//shop.example/sales", StatusCode::MOVED_PERMANENTLY),
+    ] {
+        for mode in ["nav", "action"] {
+            let (status, headers, _) = call_with(app(routes.clone(), None), "GET", uri, Some(mode), None).await;
+            assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &to.parse().unwrap()), "{uri} {mode}");
+            assert!(!headers.contains_key("location"), "{uri} {mode}: nothing for fetch to follow");
+        }
+        let (status, headers, _) = call_with(app(routes.clone(), None), "GET", uri, None, Some("text/html")).await;
+        assert_eq!((status, &headers["location"]), (full, &to.parse().unwrap()), "{uri}: a full load follows it");
+    }
+    // A path on this origin is still a redirect fetch follows, in one round trip.
+    let (status, headers, _) = call_with(app(routes, None), "GET", "/here", Some("nav"), None).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(!headers.contains_key("corten-location"));
+}
+
 #[cfg(debug_assertions)]
 #[tokio::test]
 #[should_panic(expected = "top-level text \"saved\" outside an element")]
