@@ -51,7 +51,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             if name.to_string() == "route" && args.len() > 1 && matches!(args.first(), Some(TokenTree::Literal(_))) {
                 return err(
                     args[1].span(),
-                    "a handler (get = show) or link is named in a #[corten::routes] module; a route outside one is only its path, #[route(\"/..\")]",
+                    "a handler (get = show) is named in a #[corten::routes] module; a route outside one is only its path, #[route(\"/..\")]",
                 );
             }
         }

@@ -33,6 +33,16 @@ impl Source {
         Ok(Source::Fixture(Arc::new(items)))
     }
 
+    /// Whether items can be read: the fixture always, the item API when it answers at all (any
+    /// status). What `/health/ready` reports, so a load balancer sends no traffic to an instance
+    /// that would fail every item page.
+    pub async fn reachable(&self) -> bool {
+        match self {
+            Source::Fixture(_) => true,
+            Source::Api { client, base } => client.get(&**base).timeout(std::time::Duration::from_secs(2)).send().await.is_ok(),
+        }
+    }
+
     /// `None` when there is no such item. Shared, so a page borrows from it instead of copying.
     pub async fn item(&self, id: &str) -> Result<Option<Arc<ItemView>>, SourceError> {
         match self {

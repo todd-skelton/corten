@@ -150,7 +150,8 @@ The class bubbles and carries the fields; `Types::components` declares it with t
 (see [Type safety](type-safety.md)). List the event in `App::components` like a component. A
 handler parameter typed with a class imported from `"corten/events"` takes only the `event` of
 an `on:` for that type, a compile error otherwise; the `#[event]` type is in scope in the
-component's module.
+component's module. In `examples/seller-desk`, each price cell sends `PriceEdited` as its price
+is typed or put back, and the grid around the cells counts the prices not saved.
 
 ## Lists and larger components
 

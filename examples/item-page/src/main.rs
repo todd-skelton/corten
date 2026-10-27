@@ -18,6 +18,13 @@ mod routes {
         pub id: &'a str,
     }
 
+    /// Where an item was before the site moved to `/items/`: a permanent redirect, so links and
+    /// search results that still name it land on the page.
+    #[route("/item/{id}", get = app::old_item)]
+    pub struct OldItem<'a> {
+        pub id: &'a str,
+    }
+
     #[route("/categories/{slug}", get = app::category)]
     pub struct Category<'a> {
         pub slug: &'a str,
@@ -28,19 +35,26 @@ mod routes {
 
     #[route("/sitemap.xml", get = app::sitemap)]
     pub struct Sitemap;
+}
 
-    /// Where the JSON routes are: `App::api`'s prefix.
-    #[route("/api", link)]
+/// The JSON routes, for other services: every failure under `/api` is JSON, whatever the client
+/// accepts. `ApiRoot` is the prefix, so it needs no handler of its own.
+#[corten::routes(api = ApiRoot, state = source::Source)]
+mod api {
+    #[route("/api")]
     pub struct ApiRoot;
 
-    /// An item as JSON, for other services (the same data the page shows), served by the API.
-    #[route("/api/items/{id}", link)]
+    /// An item as JSON (the same data the page shows).
+    #[route("/api/items/{id}", get = app::item_json)]
     pub struct ItemJson<'a> {
         pub id: &'a str,
     }
+}
 
-    /// The MCP endpoint for agents, served by its API.
-    #[route("/mcp", link)]
+/// The MCP endpoint for agents: an API of one route, which `app::tools` serves.
+#[corten::routes(api = Mcp)]
+mod mcp {
+    #[route("/mcp")]
     pub struct Mcp;
 }
 

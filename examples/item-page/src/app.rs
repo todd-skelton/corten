@@ -11,12 +11,14 @@ use corten::{
     axum::http::StatusCode,
     prelude::*,
     pwa::{Manifest, Pwa},
+    security::Policy,
     seo::{self, SitemapUrl},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    api, mcp,
     model::{AlertInput, ItemView, alert_set, check_alert},
     routes,
     source::Source,
@@ -38,27 +40,39 @@ pub fn app(source: Source) -> App {
     // Agents in a browser on another site (AGENT_ORIGINS, comma separated) may call the tools.
     let origins = std::env::var("AGENT_ORIGINS").unwrap_or_default();
     let tools = tools(source.clone(), tokens).route();
-    let item_json = get(item_json).with_state(source.clone());
-    App::new(routes::router(source))
-        .api::<routes::ApiRoot>(|api| api.route::<routes::ItemJson>(item_json))
-        .api::<routes::Mcp>(|mcp| {
-            let mcp = mcp.route::<routes::Mcp>(tools);
-            origins.split(',').filter(|o| !o.is_empty()).fold(mcp, |mcp, origin| mcp.allow_origin(origin))
+    // Served over HTTPS in production (`HTTPS=1`): browsers are told to use it from then on.
+    let policy = if std::env::var_os("HTTPS").is_some() { Policy::new().hsts() } else { Policy::new() };
+    let ready = source.clone();
+    App::new(routes::router(source.clone()))
+        .api(|routes| api::api(routes, source))
+        .api(|routes| {
+            let routes = mcp::api(routes).route::<mcp::Mcp>(tools);
+            origins.split(',').filter(|o| !o.is_empty()).fold(routes, |routes, origin| routes.allow_origin(origin))
         })
         .error_page(views::error_page, ())
         .messages::<Msg>()
         .components(views::COMPONENTS)
-        .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(routes::Mcp::PATH))
+        .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(mcp::Mcp::PATH))
+        .policy(policy)
+        // An item page waits on the item API: past 10 seconds the visitor gets the 503 page.
+        .deadline(Duration::from_secs(10))
+        // Not ready while the item API is unreachable, so a load balancer sends no traffic here.
+        .ready(move || {
+            let source = ready.clone();
+            async move { source.reachable().await }
+        })
 }
+
+/// The site's address, for the absolute URLs search engines read (the sitemap, structured data).
+const SITE: &str = "https://cards.example.com";
 
 /// Crawlers may read everything but the agents' endpoint.
 pub(crate) async fn robots() -> Public<seo::File> {
-    seo::robots(&[routes::Mcp::PATH], Some(routes::Sitemap::PATH))
+    seo::robots(&[mcp::Mcp::PATH], Some(routes::Sitemap::PATH))
 }
 
 pub(crate) async fn sitemap() -> Public<seo::File> {
-    let urls: Vec<String> =
-        (1..=50).map(|n| format!("https://cards.example.com{}", routes::Item { id: &format!("item_{n}") })).collect();
+    let urls: Vec<String> = (1..=50).map(|n| format!("{SITE}{}", routes::Item { id: &format!("item_{n}") })).collect();
     seo::sitemap(urls.iter().map(|loc| SitemapUrl { loc, lastmod: None }))
 }
 
@@ -77,10 +91,53 @@ pub(crate) async fn home(req: Req) -> Public<HtmlResult> {
     shared(req.page(html! { <Layout req={&req} title="Home" head=""><Home t={t} /></Layout> }))
 }
 
+/// The trail a search engine shows for a page (schema.org `BreadcrumbList`), as structured data.
+#[derive(Serialize, ToJson)]
+struct Breadcrumbs {
+    #[serde(rename = "@context")]
+    context: &'static str,
+    #[serde(rename = "@type")]
+    kind: &'static str,
+    #[serde(rename = "itemListElement")]
+    items: Vec<Crumb>,
+}
+
+#[derive(Serialize, ToJson)]
+struct Crumb {
+    #[serde(rename = "@type")]
+    kind: &'static str,
+    position: usize,
+    name: String,
+    item: String,
+}
+
+impl Breadcrumbs {
+    /// Each page's name and path, outermost first.
+    fn new(pages: impl IntoIterator<Item = (String, String)>) -> Self {
+        let items = pages
+            .into_iter()
+            .enumerate()
+            .map(|(i, (name, path))| Crumb { kind: "ListItem", position: i + 1, name, item: format!("{SITE}{path}") })
+            .collect();
+        Breadcrumbs { context: "https://schema.org", kind: "BreadcrumbList", items }
+    }
+}
+
+/// A category changes less often than the home page: a CDN keeps it for an hour, while a browser
+/// still checks again after a minute.
 pub(crate) async fn category(req: Req, Path(slug): Path<String>) -> Public<HtmlResult> {
     let t: Msg = req.t();
     let title = t.category_title(&slug).to_string();
-    shared(req.page(html! { <Layout req={&req} title={&title} head="">{views::category(t, &slug)}</Layout> }))
+    let here = routes::Category { slug: &slug }.to_string();
+    let crumbs = Breadcrumbs::new([(t.home_title().to_string(), routes::Home.to_string()), (title.clone(), here)]);
+    let head = JsonLd { value: &crumbs };
+    let page = req.page(html! { <Layout req={&req} title={&title} head={head}>{views::category(t, &slug)}</Layout> });
+    shared(page).shared(Duration::from_secs(3600))
+}
+
+/// The item's old address, moved for good.
+pub(crate) async fn old_item(req: Req, Path(id): Path<String>) -> HtmlResult {
+    req.moved(&routes::Item { id: &id })
 }
 
 pub(crate) async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> HtmlResult {
@@ -89,7 +146,7 @@ pub(crate) async fn show(req: Req, State(source): State<Source>, Path(id): Path<
 }
 
 /// The cached item, serialized where it is.
-async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> JsonResult<Arc<ItemView>> {
+pub(crate) async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> JsonResult<Arc<ItemView>> {
     Ok(Json(source.item(&id).await?.ok_or_else(not_found)?))
 }
 
@@ -100,14 +157,15 @@ pub(crate) async fn create_alert(
     Form(form): Form<AlertInput>,
 ) -> HtmlResult {
     let t = req.t();
-    let price = match check_alert(t, &form.email, &form.target_price) {
+    // An alert on an item that does not exist is a 404, whatever its fields say.
+    let item = source.item(&id).await?.ok_or_else(not_found)?;
+    let price = match check_alert(t, &form.email, &form.target_price).and_then(|price| listed(t, &item, price)) {
         Ok(price) => price,
         Err(errors) => {
             let view =
                 AlertFormView { id: &id, title: &form.title, email: &form.email, target_price: &form.target_price, errors };
             // Without JavaScript the whole page comes back, with the form showing the errors.
             let page = || async {
-                let item = source.item(&id).await?.ok_or_else(not_found)?;
                 let page = ItemPage { form: view.clone(), ..ItemPage::new(t, &item, String::new()) };
                 req.page(page.document(&req))
             };
@@ -119,8 +177,18 @@ pub(crate) async fn create_alert(
         return req.patch(AlertMessage { message: &message });
     }
     // Without JavaScript the browser posted a plain form: answer with the whole page.
-    let item = source.item(&id).await?.ok_or_else(not_found)?;
     req.page(ItemPage::new(t, &item, message).document(&req))
+}
+
+/// An alert watches the item's lowest price, so an item with no listings has none to watch. No
+/// one field is wrong, so the message is the whole form's, at its top.
+fn listed(t: Msg, item: &ItemView, price: f64) -> Result<f64, Errors> {
+    if !item.listings.is_empty() {
+        return Ok(price);
+    }
+    let mut errors = Errors::new();
+    errors.add_form(t.alert_no_listings());
+    Err(errors)
 }
 
 /// Which item, for `items.get`.
@@ -215,7 +283,8 @@ mod tests {
             ],
             "offer_demand_matches": offers
         });
-        let source = Source::fixture(&json!({ "item_9": item }).to_string()).unwrap();
+        let bare = json!({ "catalog_item_id": "item_10", "title": "Bare", "market_summary": null });
+        let source = Source::fixture(&json!({ "item_9": item, "item_10": bare }).to_string()).unwrap();
         super::app(source).router()
     }
 
@@ -473,7 +542,7 @@ mod tests {
             "bare-json" => {
                 // Axum alone, without Corten around the handler: what Corten's layer costs.
                 let bare = corten::axum::routing::get(item_json);
-                (Router::new().route(routes::ItemJson::PATH, bare).with_state(source.clone()), "/api/items/", None)
+                (Router::new().route(api::ItemJson::PATH, bare).with_state(source.clone()), "/api/items/", None)
             }
             "page" => (super::app(source.clone()).router(), "/items/", Some("nav")),
             "document" => (super::app(source.clone()).router(), "/items/", None),
@@ -494,6 +563,50 @@ mod tests {
             count += paths.len() as u64;
         }
         println!("{target}: {count} requests, {:.2} us per request", start.elapsed().as_secs_f64() * 1e6 / count as f64);
+    }
+
+    #[tokio::test]
+    async fn an_alert_on_an_item_with_no_listings_is_a_message_for_the_whole_form() {
+        let req = Request::post("/items/item_10")
+            .header("corten", "action")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("sec-fetch-site", "same-origin")
+            .body(Body::from("title=Bare&email=a%40b.c&target_price=2"))
+            .unwrap();
+        let (status, _, body) = send(req).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            body.contains(
+                r#"<p class="form-error" role="alert">This item has no listings yet, so there is no price to watch.</p>"#
+            ),
+            "{body}"
+        );
+        assert!(!body.contains("aria-invalid"), "no field is marked: {body}");
+    }
+
+    #[tokio::test]
+    async fn an_alert_on_an_item_that_does_not_exist_is_not_found() {
+        let req = Request::post("/items/item_404")
+            .header("corten", "action")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("sec-fetch-site", "same-origin")
+            .body(Body::from("title=Gone&email=a%40b.c&target_price=2"))
+            .unwrap();
+        let (status, _, _) = send(req).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn an_old_item_address_moves_for_good_and_a_category_carries_its_trail() {
+        let (status, headers, _) = send(Request::get("/item/item_9").body(Body::empty()).unwrap()).await;
+        assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &"/items/item_9".parse().unwrap()));
+        let (_, headers, html) = send(Request::get("/categories/promo").body(Body::empty()).unwrap()).await;
+        let cache = headers["cache-control"].to_str().unwrap();
+        assert!(cache.starts_with("public, max-age=60,") && cache.contains("s-maxage=3600"), "{cache}");
+        assert!(
+            html.contains(r#"<script type="application/ld+json" data-corten-head>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Popular items","item":"https://cards.example.com/"},{"@type":"ListItem","position":2,"name":"Category promo","item":"https://cards.example.com/categories/promo"}]}</script>"#),
+            "{html}"
+        );
     }
 
     #[tokio::test]

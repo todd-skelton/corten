@@ -28,6 +28,7 @@ pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Patch {
     html! {
         <div class={Form} id={AlertFormId}>
             <form method="post" action={routes::Item { id: form.id }} data-patch>
+                {form.errors.form_message()}
                 <input type="hidden" name={f.title} value={form.title}>
                 <label>
                     {t.alert_email()}<input type="email" name={f.email} value={form.email} required {..e.aria(f.email)}>

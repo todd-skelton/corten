@@ -6,6 +6,7 @@
 import { state, subscribe } from "corten";
 import { InventoryRow, rows } from "corten/views";
 /** @import { Holds } from "corten/views" */
+/** @import { PriceEdited } from "corten/events" */
 
 /** @typedef {import("../../types/app").Level} Level Generated from `Level` in src/app.rs. */
 
@@ -21,6 +22,9 @@ import { InventoryRow, rows } from "corten/views";
 
 /** @param {HTMLElement} root */
 const last = (root) => state(root, () => ({ index: -1 }));
+
+/** The rows whose price was typed and not saved. @param {HTMLElement} root */
+const unsentRows = (root) => state(root, () => /** @type {Set<HTMLTableRowElement>} */ (new Set()));
 
 /**
  * Keeps the stock cells current from the levels feed until the grid leaves the page.
@@ -137,6 +141,42 @@ export function confirm(dialog) {
 export function archive(root, form, sel) {
   form.requestSubmit();
   clear(root, sel);
+}
+
+/**
+ * A price cell says whether its price is not saved yet (it bubbles up from the cell's input).
+ * @param {PriceEdited} event @param {HTMLElement} root
+ * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {HTMLOutputElement} note
+ */
+export function priceEdited(event, root, body, note) {
+  const row = rows(body, InventoryRow).of(event.target);
+  if (!row) return;
+  const unsent = unsentRows(root);
+  if (event.unsent) unsent.add(row.el);
+  else unsent.delete(row.el);
+  showUnsent(unsent, note);
+}
+
+/**
+ * A form in the grid was sent: when it is a row's price, the price is on its way. The server
+ * answers with the cell, or the cell with its error.
+ * @param {SubmitEvent} event @param {HTMLElement} root
+ * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {HTMLOutputElement} note
+ */
+export function priceSent(event, root, body, note) {
+  const row = rows(body, InventoryRow).of(event.target);
+  if (!row) return;
+  const unsent = unsentRows(root);
+  unsent.delete(row.el);
+  showUnsent(unsent, note);
+}
+
+/** @param {Set<HTMLTableRowElement>} unsent @param {HTMLOutputElement} note */
+function showUnsent(unsent, note) {
+  // An archived row has left the page, and its edit with it.
+  for (const el of unsent) if (!el.isConnected) unsent.delete(el);
+  note.value = unsent.size === 1 ? "1 price not saved" : `${unsent.size} prices not saved`;
+  note.hidden = unsent.size === 0;
 }
 
 /**

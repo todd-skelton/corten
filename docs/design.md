@@ -87,8 +87,8 @@ framework's shape, and what it does not do yet.
    (formatted text included). Then `req.screen` gives every surface the same data.
 7. `App` configures the whole app; a part of it under a URL prefix is an `Area` (or an `Api`
    for routes that answer only JSON), which owns its routes. Its prefix and its routes are route
-   types (`.area::<Admin>(|admin| admin.route::<AdminUser>(..))`), so a route outside the prefix
-   does not compile. A new setting that applies to a prefix goes on `Area` or `Api`, never on
+   types (`#[corten::routes(area = Admin)]` or `(api = ApiRoot)` on the module of its routes,
+   `.area(admin::area)`), so a route outside the prefix does not compile. A new setting that applies to a prefix goes on `Area` or `Api`, never on
    `App` as a method taking a prefix string. Who is asking is not a setting: a handler takes
    `Caller<T>`, and an area's routes module says `caller = T`, so a handler there that does not
    take it does not compile. Before adding to `App`, check whether the

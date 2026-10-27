@@ -986,6 +986,38 @@ async fn an_api_at_the_root_makes_the_whole_app_json() {
     assert_eq!((status, &body[..]), (StatusCode::OK, "ok"), "Corten's own routes keep their behavior");
 }
 
+/// An API's routes in a module of their own, sharing the module's state; its prefix route names
+/// no handler.
+#[crate::routes(api = ModRoot, state = u32)]
+mod api_module {
+    #[route("/v1")]
+    pub struct ModRoot;
+
+    #[route("/v1/items/{id}", get = module_item)]
+    pub struct ModItem<'a> {
+        pub id: &'a str,
+    }
+}
+
+async fn module_item(axum::extract::State(base): axum::extract::State<u32>, Path(id): Path<u32>) -> String {
+    format!("item {}", base + id)
+}
+
+#[tokio::test]
+async fn an_api_module_serves_its_routes_and_answers_its_failures_as_json() {
+    let router = App::new(Routes::new()).api(|routes| api_module::api(routes, 100)).router();
+    let (status, _, body) = call_with(router.clone(), "GET", "/v1/items/7", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "item 107"), "the handler gets the module's state");
+    for (uri, status) in
+        [("/v1/items/seven", StatusCode::BAD_REQUEST), ("/v1", StatusCode::NOT_FOUND), ("/v1/nope", StatusCode::NOT_FOUND)]
+    {
+        let (got, headers, body) = call_with(router.clone(), "GET", uri, None, Some("text/html")).await;
+        assert_eq!((got, headers["content-type"].to_str().unwrap()), (status, "application/json"), "{uri}");
+        assert!(body.starts_with(r#"{"error":{"status":"#), "{uri}: {body}");
+    }
+    assert_eq!(api_module::ModItem { id: "a b" }.to_string(), "/v1/items/a%20b", "the structs still build links");
+}
+
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn validation_errors_are_the_json_error_with_fields() {

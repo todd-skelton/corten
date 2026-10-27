@@ -198,7 +198,7 @@ pub enum Part {
 ///
 /// ```compile_fail
 /// # use corten::prelude::*;
-/// async fn home(req: Req) -> Result {
+/// async fn home(req: Req) -> HtmlResult {
 ///     req.page(html! { <h1>"Home"</h1> })
 /// }
 /// ```

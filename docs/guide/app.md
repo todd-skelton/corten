@@ -12,9 +12,9 @@ your routes. Each default can be replaced in one line.
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
 | What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
 | Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
-| A part of the app | none | `.area::<admin::Admin>(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
+| A part of the app | none | `.area(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
 | Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(page, state)`: `async fn(Failure, Req, ..extractors) -> HtmlResult`, in the app's layout and for who is asking; `corten new` writes one that names each case |
-| JSON-only routes | none | `.api::<ApiRoot>(\|api\| api.route::<ItemJson>(get(item_json)))`: every failure under the prefix is JSON, unknown URLs included, with no document ([below](#json-only-routes)) |
+| JSON-only routes | none | `.api(api::api)` for a `#[corten::routes(api = ApiRoot)]` module: every failure under the prefix is JSON, unknown URLs included, with no document ([below](#json-only-routes)) |
 | Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the layout or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods; forms go to this origin only | `.policy(Policy::new()...)`: another origin for scripts, styles, images, `fetch`, frames, fonts, or `.form_action("https://pay.example")` for a form (or a form's redirect) that hands the user to another site |
 | Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Public<HtmlResult>` (or `Public<JsonResult<T>>`) for an answer that is the same for everyone |
 | Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file, plus one per area that lists components and one per set of areas that list the same components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
@@ -35,7 +35,7 @@ let app = App::new(url::router())
     .error_page(views::error_page, db.clone())     // in the app's layout, for who is asking
     .middleware((RequestId, RateLimit))            // the app's own steps, in this order
     .components(&[TOKENS, OfferList])              // components with scripts or styles
-    .area::<admin::Admin>(|area| admin::area(area).components(&[SalesChart]))
+    .area(|area| admin::area(area).components(&[SalesChart]))
     .messages::<Msg>()                             // the locales req.lang() follows
     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")));
 corten::serve(app).await
@@ -256,28 +256,42 @@ error page for a browser, JSON for `Accept: application/json`. A route with no s
 webhook, an OAuth callback, a call between services, a public API) is called by programs, and
 most HTTP clients send `Accept: */*` or nothing. A handler that returns `JsonResult<T>` answers
 every failure of its route as JSON, a path that does not parse included, wherever the route is.
-Routes that share a prefix and its settings (cross-origin callers) mount under it:
+Routes that share a prefix and its settings (cross-origin callers) go in a module of their own,
+`#[corten::routes(api = ApiRoot)]`, whose `api` function `App::api` takes. Each route names its
+handler, as any routes module's does, so an API route nobody serves does not compile; the
+prefix's own route is the one that may name none:
 
 ```rust
 use corten::prelude::*;
+
+#[corten::routes(api = ApiRoot)]
+mod api {
+    #[route("/api")]
+    pub struct ApiRoot;
+
+    #[route("/api/items/{id}/price", get = price)]
+    pub struct ItemPrice<'a> { pub id: &'a str }
+}
 
 async fn price(Path(id): Path<String>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "id": id, "lowest": "$0.50" }))
 }
 
-#[derive(Route)]
-#[route("/api")]
-struct ApiRoot;
-
-#[derive(Route)]
-#[route("/api/items/{id}/price")]
-struct ItemPrice<'a> { id: &'a str }
-
 fn app(pages: Routes) -> App {
-    App::new(pages).api::<ApiRoot>(|api| api.route::<ItemPrice>(get(price)).allow_origin("https://partner.example"))
+    App::new(pages).api(|routes| api::api(routes).allow_origin("https://partner.example"))
 }
 # let _ = app(Routes::new()).router();
 ```
+
+An endpoint built from a value rather than a function, the MCP endpoint (`agent::Tools`), is
+added to its API with `Api::route`: `.api(|routes| mcp::api(routes).route::<mcp::Mcp>(tools.route()))`.
+Corten's `get` and the others check its handlers as a routes module does.
+
+A module costs nothing per request: its `api` function adds the same routes a hand-written
+`Api::route` would. Measured with callgrind (instructions per request, release build, in-process
+`oneshot`, the difference between 1,200 and 200 requests over 1,000, median of three runs;
+range in parentheses), the item page's `/api/items/{id}` under an app with nothing else is
+21,913 (21,816-22,228) added by hand and 21,836 (21,808-21,862) from its module.
 
 Under the prefix:
 
@@ -366,7 +380,7 @@ mod url {
 
 // "Sign in" or the name: the handler runs either way.
 async fn home(req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult {
-    let name = viewer.as_ref().map_or("Sign in", |Caller(v)| v.name.as_str());
+    let name = viewer.as_deref().map_or("Sign in", |v| v.name.as_str());
     req.page(html! { <Layout req={&req} title="Home"><p>{name}</p></Layout> })
 }
 
@@ -463,7 +477,7 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 }
 
 fn app(pages: Routes) -> App {
-    App::new(pages).area::<admin::Admin>(admin::area)
+    App::new(pages).area(admin::area)
 }
 # let _ = app(Routes::new()).router();
 ```
@@ -477,8 +491,8 @@ fn app(pages: Routes) -> App {
    `Refused::sign_in` (no one signed in) or `Refused::forbidden` (not staff). Stricter parts
    are stricter types: `caller = Billing` on a `/admin/billing` area of its own.
 4. An area a library ships is a function the app passes on,
-   `.area::<shop_admin::Admin>(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route
-   by hand; Corten's `get` checks the handler as a routes module does.
+   `.area(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route by hand; Corten's `get`
+   checks the handler as a routes module does.
 5. Areas nest (`/admin` and `/admin/billing`, each with its own routes and stylesheet).
 
 How the common cases look:
@@ -517,8 +531,7 @@ refused still sees themselves signed in, in their theme:
 
 ```rust,ignore
 async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult {
-    let viewer = viewer.map(|Caller(v)| v);
-    req.page(html! { <Layout req={&req} viewer={viewer.as_ref()} title="Not found">..</Layout> })
+    req.page(html! { <Layout req={&req} viewer={viewer.as_deref()} title="Not found">..</Layout> })
 }
 // App::new(url::router()).error_page(error_page, store.clone())
 ```
