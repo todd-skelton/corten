@@ -130,6 +130,10 @@ let e = form.errors.within(AlertFormId);
 {e.message(f.email)}
 ```
 
+A field with a hint of its own gives the hint's id to the spread,
+`{..e.aria(f.email).hint(&EmailHintId)}`, never a second `aria-describedby` on the tag (the
+browser keeps only the first, and `html!` refuses it).
+
 A refusal that belongs to no field (a cross-field rule, or the backend saying no) is
 `errors.add_form(text)`, shown once at the top of the form with `{form.errors.form_message()}`.
 Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
