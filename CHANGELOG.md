@@ -508,8 +508,10 @@ Corten is pre-1.0, so any minor version may change the API.
 75. `ReadAgain { after }.from(&route)` in a patch: a `data-patch` write whose read is catching up
     answers in place, and the runtime reads the part again from `route` (`corten: action`) until
     it stops asking, instead of the handler waiting for the read or redirecting to a page only to
-    show "saving". The reads stop when the part is replaced or the page changes.
-    `examples/hello`'s saved page has a form that does it. The runtime is 8,829 B gzipped
+    show "saving". The reads stop when the part is replaced or the page changes, or when a read
+    fails without a patch (the error page, offline), quietly: a handler that cannot read says so
+    as a patch, which is applied whatever its status. `examples/hello`'s saved page has a form
+    that does it. The runtime is 8,834 B gzipped
     ([#104 A data-patch answer cannot ask to be read again, so a write whose read is catching up has to navigate](https://github.com/todd-skelton/corten/issues/104)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

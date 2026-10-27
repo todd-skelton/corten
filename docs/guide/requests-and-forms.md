@@ -307,7 +307,12 @@ async fn alerts(req: Req, Query(q): Query<AlertsQuery>) -> HtmlResult {
 
 The reads wait while the tab is hidden or a form's answer is on its way, keep what the user
 typed, opened and focused, as any patch does, and stop once an element the patch put on the
-page is replaced (a later patch of it, a navigation away) or a read fails. `examples/hello`'s
+page is replaced (a later patch of it, a navigation away) or a read fails. A read that fails without a
+patch (the error page: the server has logged it) or offline stops them quietly and leaves the
+part as it was; any answer that is a patch is applied whatever its status, so a handler whose
+read failed after the write can say so in place (`req.patch_with_status(StatusCode::BAD_GATEWAY,
+..)` in `Mode::Action`: "Saved; reload to see it"). Only a success that is not a patch is logged
+in the console: the route answered its page, not the part. `examples/hello`'s
 saved page has both.
 
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after

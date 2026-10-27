@@ -898,6 +898,27 @@ async function run(browser) {
     const away = again.length;
     await page.waitForTimeout(2200);
     check("navigating away stops a patch's reads", again.length === away, `${again.length - away} more reads`);
+    // A read the server fails (its error page, not a patch) stops the reads without a console
+    // error: the server logged the failure, and the part stays as it was.
+    const errorsBefore = errors.length;
+    const failRead = (/** @type {import("@playwright/test").Route} */ route) =>
+      route.request().headers()["corten"] === "action" ? route.fulfill({ status: 502, contentType: "text/html", body: "<p>Bad gateway</p>" }) : route.fallback();
+    await page.route("**/saved?until=*", failRead);
+    await page.goto(`${base}/saved`);
+    const readsBefore = again.length;
+    await submit();
+    for (let i = 0; i < 40 && again.length === readsBefore; i++) await page.waitForTimeout(100);
+    const failedAt = again.length;
+    await page.waitForTimeout(2200);
+    // The browser itself reports the 502 as a failed resource; Corten adds nothing.
+    const logged = errors.slice(errorsBefore).filter((e) => !e.includes("502"));
+    check(
+      "a read the server fails stops the reads, without a console error",
+      failedAt === readsBefore + 1 && again.length === failedAt && (await saved()) === "Saving your change..." && logged.length === 0,
+      `${failedAt - readsBefore} then ${again.length - failedAt} reads, ${logged.join(" | ")}`,
+    );
+    errors.splice(errorsBefore);
+    await page.unroute("**/saved?until=*", failRead);
     page.off("request", onAgain);
   }
 
