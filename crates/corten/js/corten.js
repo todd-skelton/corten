@@ -964,7 +964,9 @@ document.addEventListener("scroll", (event) => event.target instanceof Element &
  * `<details>` open on screen stays open, one they closed stays closed (the rest take the new
  * markup's state), and an element that scrolls on its own (a filter rail) keeps its scroll, so
  * the control focus returns to is open and in view. Each is matched as a patch matches it. Read
- * before `fresh` is inserted; the function it returns applies it after.
+ * before `fresh` is inserted; the function it returns applies it after. The scrolled elements are
+ * those a `scroll` event named and the ones around the focused control, since that event comes at
+ * the next frame and a swap can land first (a control focus scrolled into view, a slow machine).
  * @param {Element} root @param {DocumentFragment} fresh @returns {() => void}
  */
 function viewOf(root, fresh) {
@@ -978,14 +980,17 @@ function viewOf(root, fresh) {
   }
   /** @type {[Element, number, number][]} */
   const scrolled = [];
-  for (const el of scrolledIn) {
+  const around = new Set(scrolledIn);
+  for (let el = document.activeElement; el && el !== root; el = el.parentElement) around.add(el);
+  for (const el of around) {
     if (!root.contains(el) || !(el.scrollTop || el.scrollLeft)) continue;
     const there = counterpart(root, to, el);
     if (there?.localName === el.localName) scrolled.push([/** @type {Element} */ (there), el.scrollTop, el.scrollLeft]);
   }
   return () => {
     for (const [el, now] of open) el.open = now;
-    for (const [el, top, left] of scrolled) el.scrollTo(left, top);
+    // A restored scroll's event comes later too, and the next swap may come first.
+    for (const [el, top, left] of scrolled) el.scrollTo(left, top), scrolledIn.add(el);
   };
 }
 

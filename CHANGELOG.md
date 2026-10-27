@@ -1020,6 +1020,12 @@ Corten is pre-1.0, so any minor version may change the API.
     refused upload redraws its input marked invalid with the files still chosen; a successful
     answer to the form that sent them clears them. The runtime grows by 47 bytes gzipped
     ([#143 A patch drops the files chosen in a file input it replaces, so a refused upload cannot mark its input invalid](https://github.com/todd-skelton/corten/issues/143)).
+33. A `data-keep-place` swap keeps the scroll of an element that scrolls on its own (a filter
+    rail) when the swap lands before that element's `scroll` event, which comes at the next
+    frame: a control focus scrolled into view, or a slow machine. It counts the focused control's
+    ancestors as scrolled, and an element whose scroll it restored. The runtime grows by 38 bytes
+    gzipped
+    ([#130 Firefox sometimes loses the filter rail's own scroll after a data-keep-place swap (smoke: 76 -> 0)](https://github.com/todd-skelton/corten/issues/130)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
