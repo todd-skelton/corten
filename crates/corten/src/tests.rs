@@ -2012,6 +2012,28 @@ async fn a_relay_passes_the_upstreams_answer_on() {
         assert!(headers.contains_key("x-content-type-options"), "the app's security headers still apply");
     }
 
+    // A relayed page keeps the upstream's own CSP, which its scripts were written for; without one
+    // the app's applies.
+    let page = |csp: Option<&'static str>| {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("content-type", "text/html".parse().unwrap());
+        if let Some(csp) = csp {
+            headers.insert("content-security-policy", csp.parse().unwrap());
+        }
+        crate::Relay::new(StatusCode::OK, headers, Body::from("<script nonce=upstream></script>"))
+    };
+    let router = App::new(Routes::from(
+        Router::new()
+            .route("/own", get(move || async move { page(Some("script-src 'nonce-upstream'")) }))
+            .route("/none", get(move || async move { page(None) })),
+    ))
+    .router();
+    let (_, headers, _) = call_with(router.clone(), "GET", "/own", None, Some("text/html")).await;
+    assert_eq!(headers["content-security-policy"], "script-src 'nonce-upstream'");
+    assert_eq!(headers["x-frame-options"], "DENY", "the app's other headers still apply");
+    let (_, headers, _) = call_with(router, "GET", "/none", None, Some("text/html")).await;
+    assert!(headers["content-security-policy"].to_str().unwrap().starts_with("default-src 'self'"));
+
     // An upstream's event stream reaches the client a piece at a time, not when it ends.
     let (send, receive) = tokio::sync::mpsc::channel::<Result<&'static str, std::io::Error>>(1);
     let stream = std::sync::Arc::new(std::sync::Mutex::new(Some(tokio_stream_of(receive))));

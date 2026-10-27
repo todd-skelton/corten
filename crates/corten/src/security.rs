@@ -471,9 +471,8 @@ impl Applied {
             Some(None) => Some(self.without_nonce.clone()),
             Some(Some(nonce)) => HeaderValue::try_from(self.csp_parts.join(&*nonce.0)).ok(),
         };
-        if let Some(csp) = csp {
-            headers.insert(csp_header, csp);
-        }
+        // A response that brought its own policy is rare: only a relayed page keeps it (below).
+        let brought = csp.and_then(|csp| headers.insert(csp_header.clone(), csp));
         headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
         headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("strict-origin-when-cross-origin"));
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
@@ -481,6 +480,13 @@ impl Applied {
         headers.insert(HeaderName::from_static("cross-origin-opener-policy"), HeaderValue::from_static(opener));
         if self.hsts {
             headers.insert(header::STRICT_TRANSPORT_SECURITY, HeaderValue::from_static("max-age=31536000; includeSubDomains"));
+        }
+        // A relayed page keeps the policy its own HTML was written for (its scripts' nonces and
+        // hosts); the app's would block them.
+        if let Some(brought) = brought {
+            if res.extensions().get::<crate::answer::Relayed>().is_some() {
+                res.headers_mut().insert(csp_header, brought);
+            }
         }
     }
 }

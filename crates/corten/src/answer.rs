@@ -168,7 +168,9 @@ impl Answer for StatusCode {
 /// the headers it names, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`,
 /// `Trailer`, `Transfer-Encoding`, `Upgrade`), and its body as it arrives. A failure status is
 /// passed on with the upstream's body, never replaced by the error page or the JSON error, and
-/// the app's security and cache rules still apply to it. When the client leaves, the body is
+/// the app's security and cache rules still apply to it, except that a `Content-Security-Policy`
+/// the upstream sent is kept in place of the app's: a relayed page needs the policy its own HTML
+/// was written for (its scripts' nonces and hosts). Without one, the app's applies. When the client leaves, the body is
 /// dropped, and with it the upstream request. What else to drop (`Set-Cookie`, say) is the
 /// route's to decide before it builds the answer.
 ///
