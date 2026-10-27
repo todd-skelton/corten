@@ -761,9 +761,9 @@ where
     let (stopped, watch) = tokio::sync::watch::channel(false);
     let open = connections.max.map(|max| Arc::new(tokio::sync::Semaphore::new(max)));
     let clock = connections.header_timeout.map(crate::watch::Clock::start);
-    let servers = listeners.into_iter().map(|listener| {
-        serve_listener(listener, router.clone(), clock.clone(), open.clone(), watch.clone())
-    });
+    let servers = listeners
+        .into_iter()
+        .map(|listener| serve_listener(listener, router.clone(), clock.clone(), open.clone(), watch.clone()));
     let servers = std::pin::pin!(try_join_all(servers));
     match select(std::pin::pin!(stop), servers).await {
         Either::Left(((), servers)) => {
@@ -811,7 +811,8 @@ where
             None => Peer::Unknown,
         };
         let watch = clock.as_ref().map(crate::watch::Clock::watch);
-        let service = hyper_util::service::TowerToHyperService::new(Connection { router: router.clone(), peer, watch: watch.clone() });
+        let service =
+            hyper_util::service::TowerToHyperService::new(Connection { router: router.clone(), peer, watch: watch.clone() });
         let io = hyper_util::rt::TokioIo::new(crate::watch::Watched { io, watch });
         let (alive, mut stop) = (alive.clone(), stop.clone());
         tokio::spawn(async move {

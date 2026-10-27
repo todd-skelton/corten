@@ -4,8 +4,9 @@
 //! coarse clock a few times a second and expires the connections idle past the timeout; the
 //! connection's next read then fails and hyper closes it. hyper's own header timer was measured
 //! first: about 900 instructions a keep-alive request with a coarse timer of Corten's (1,400 with
-//! tokio's), since it sets up a sleep for every head and reads once more to start it; this is a
-//! store per request and a load per read (callgrind, over TCP).
+//! tokio's), since it sets up a sleep for every head and reads once more to start it. This costs
+//! about 300 (callgrind, keep-alive requests over TCP), which Corten's accept loop saves against
+//! `axum::serve`.
 
 use axum::body::{Body, Bytes};
 use futures_util::task::AtomicWaker;
@@ -61,7 +62,12 @@ impl Clock {
 
     /// A watch for a connection that has just opened: idle from now.
     pub fn watch(self: &Arc<Self>) -> Arc<Watch> {
-        let watch = Arc::new(Watch { since: AtomicU64::new(self.now.load(Relaxed)), heads: AtomicU64::new(0), waker: AtomicWaker::new(), clock: self.clone() });
+        let watch = Arc::new(Watch {
+            since: AtomicU64::new(self.now.load(Relaxed)),
+            heads: AtomicU64::new(0),
+            waker: AtomicWaker::new(),
+            clock: self.clone(),
+        });
         self.watches.lock().expect("never poisoned").push(Arc::downgrade(&watch));
         watch
     }
@@ -75,7 +81,10 @@ impl Clock {
             let Some(watch) = watch.upgrade() else { return false };
             let since = watch.since.load(Relaxed);
             // A head that arrives meanwhile makes it busy, and the exchange fails.
-            if since < EXPIRED && now.saturating_sub(since) >= self.timeout && watch.since.compare_exchange(since, EXPIRED, Relaxed, Relaxed).is_ok() {
+            if since < EXPIRED
+                && now.saturating_sub(since) >= self.timeout
+                && watch.since.compare_exchange(since, EXPIRED, Relaxed, Relaxed).is_ok()
+            {
                 watch.waker.wake();
             }
             true

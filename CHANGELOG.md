@@ -1113,8 +1113,8 @@ Corten is pre-1.0, so any minor version may change the API.
     liked (measured: 150 s and counting), since `serve` never bounded it. A head now
     has 30 seconds (`App::header_timeout`), after which the connection is closed, and
     `App::max_connections(n)` caps how many are open. Both apply to `serve_on` too: Corten now
-    accepts connections itself instead of through `axum::serve`, and the check costs a
-    keep-alive request about 50 instructions
+    accepts connections itself instead of through `axum::serve`; the check costs a keep-alive
+    request about 300 instructions, which the accept loop saves, so a request costs what it did
     ([#170 A client that never finishes its request head holds a connection open forever](https://github.com/todd-skelton/corten/issues/170)).
 ### Documentation
 
