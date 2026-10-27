@@ -1178,8 +1178,8 @@ Corten is pre-1.0, so any minor version may change the API.
     request template asks for the checks, the measurements and the findings.
 17. `examples/watchlist` is a stock watchlist whose pages each do a job a user has. You watch
     and remove stocks from a market of eight; each browser's list is kept on the server under a
-    random id in a `list` cookie and changed under a lock, so two removals sent at once both
-    land. Each row's Remove button submits the watch form (`formaction`), and the list and the
+    random id in a `list` cookie (the 10,000 used most recently) and changed under a lock, so two
+    removals sent at once both land. Each row's Remove button submits the watch form (`formaction`), and the list and the
     form are patched in place. Each row shows today's change, from the server (`t.percent`) and
     from the script (`t.js().percent(2)`). The market moves from a task of the app's
     (`App::task`, which stops at shutdown) rather than `tokio::spawn`. The About page is now

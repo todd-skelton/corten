@@ -1092,6 +1092,9 @@ async function run(browser) {
       `${await saved()} after ${again.length} reads at ${page.url()}`,
     );
     check("reading a patch again keeps focus", await page.evaluate(() => document.activeElement?.textContent === "Save alert"));
+    // The save after the refusal above answered the whole form, so the field is no longer marked.
+    const cleared = await page.evaluate(() => !document.querySelector("#alert-form [aria-invalid]") && !document.getElementById("alert-form-above-error"));
+    check("a save after a refusal clears the field's error", cleared);
     const done = again.length;
     await page.waitForTimeout(2200);
     check("it stops once the patch no longer asks", again.length === done, `${again.length - done} more reads`);

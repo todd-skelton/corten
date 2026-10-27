@@ -353,7 +353,9 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 /// button submits the watch form (`form={WatchFormId}`) to `/unwatch`, so every change to the
 /// list is one form's submit, and the runtime keeps only the newest answer. A change replaces
 /// the component, whose new rows subscribe again (a snapshot, then the stream); it starts
-/// unpaused. Styled by `live_prices.css`.
+/// unpaused, and a removed row's button takes focus with it (the message says what changed).
+/// The cells print the text the market wrote when the price moved (`Stock::price`,
+/// `Stock::change`), in the app's one locale. Styled by `live_prices.css`.
 #[component(css, js)]
 fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Patch {
     let (pause, price, change, updates) = refs();
@@ -388,9 +390,7 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Patch {
                                 <span class={Ticker}>{stock.id}</span>
                             </td>
                             <td ref={price} class={Amount} key={stock.id}>{stock.price}</td>
-                            <td ref={change} class={Change} key={stock.id} data-trend={stock.trend()}>
-                                {t.percent(stock.ratio(), 2)}
-                            </td>
+                            <td ref={change} class={Change} key={stock.id} data-trend={stock.trend()}>{&stock.change}</td>
                             <td>
                                 <button
                                     class={Remove}
@@ -465,7 +465,7 @@ fn LastTrade(text: &str) -> impl Render {
 
 /// The whole watchlist screen, for a browser or a data client, with the list's cookie for a
 /// browser that had none.
-fn home_screen(req: &Req, viewer: Option<&Viewer>, watching: &Watching, home: &Home) -> HtmlResult {
+fn home_screen(req: &Req, viewer: Option<&Viewer>, watching: &mut Watching, home: &Home) -> HtmlResult {
     let view = home_view(home, req.t());
     let mut res = req.screen(home, html! { <Layout req={req} title="Watchlist" viewer={viewer} head="">{view}</Layout> })?;
     if let Some(cookie) = watching.cookie() {
@@ -474,8 +474,9 @@ fn home_screen(req: &Req, viewer: Option<&Viewer>, watching: &Watching, home: &H
     Ok(res)
 }
 
-async fn home(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>, watching: Watching) -> HtmlResult {
-    home_screen(&req, viewer.as_deref(), &watching, &Home::new(&market, &watching, String::new()))
+async fn home(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>, mut watching: Watching) -> HtmlResult {
+    let home = Home::new(&market, &watching, String::new());
+    home_screen(&req, viewer.as_deref(), &mut watching, &home)
 }
 
 /// The stock a watch adds.
@@ -506,7 +507,7 @@ async fn watch(
         }
         None => "That stock is not on the market.".into(),
     };
-    changed(&req, viewer.as_deref(), &market, &watching, message)
+    changed(&req, viewer.as_deref(), &market, &mut watching, message)
 }
 
 async fn unwatch(
@@ -522,12 +523,12 @@ async fn unwatch(
         .read(|rows| rows.get(&form.remove).map(|s| format!("Stopped watching {}.", s.name)))
         .unwrap_or_else(|| "That stock is not on the market.".into());
     watching.remove(&lists, &form.remove);
-    changed(&req, viewer.as_deref(), &market, &watching, message)
+    changed(&req, viewer.as_deref(), &market, &mut watching, message)
 }
 
 /// The answer to a change of the list: with JavaScript, the prices and the form as a patch; without
 /// it, or to a native screen or an agent, the whole screen.
-fn changed(req: &Req, viewer: Option<&Viewer>, market: &Market, watching: &Watching, message: String) -> HtmlResult {
+fn changed(req: &Req, viewer: Option<&Viewer>, market: &Market, watching: &mut Watching, message: String) -> HtmlResult {
     let home = Home::new(market, watching, message);
     if req.mode != Mode::Action {
         return home_screen(req, viewer, watching, &home);
@@ -618,7 +619,7 @@ fn AlertForm<'a>(input: &'a AlertInput, errors: &'a Errors, until: Option<u64>) 
                 <input type="text" inputmode="decimal" name={f.above} value={&input.above} required {..e.aria(f.above)}>
             </label>
             {e.message(f.above)}
-            <button>"Save alert"</button>
+            <button id={SaveAlertId}>"Save alert"</button>
             <AlertStatus until={until} />
         </form>
     }
@@ -651,8 +652,9 @@ fn alerts_page(req: &Req, viewer: Option<&Viewer>, input: &AlertInput, errors: &
     })
 }
 
-/// An alert that lands in a second and a half. With JavaScript the form's answer is the status
-/// line, read again until the alert is in; without, the alerts page, which reads itself again.
+/// An alert that lands in a second and a half. With JavaScript the form's answer is the form,
+/// with any field a refused submit marked cleared, and its status line is then read again
+/// until the alert is in; without, the alerts page, which reads itself again.
 /// The server checks the price and says what is wrong next to the field.
 async fn save_alert(req: Req, viewer: Option<Caller<Viewer>>, Form(input): Form<AlertInput>) -> HtmlResult {
     let f = AlertInput::FIELDS;
@@ -671,7 +673,15 @@ async fn save_alert(req: Req, viewer: Option<Caller<Viewer>>, Form(input): Form<
     }
     let until = Some(now_millis() + 1500);
     if req.mode == Mode::Action {
-        return alert_status(&req, until);
+        // The whole form, so a field a refused submit marked is cleared; the reads that follow
+        // answer the status line alone.
+        let from = url::Alerts { until };
+        let again = ReadAgain { after: Duration::from_secs(1) }.from(&from);
+        let none = Errors::new();
+        return req.patch(html! {
+            <AlertForm input={&input} errors={&none} until={until} />
+            {again}
+        });
     }
     req.redirect(&url::Alerts { until })
 }
@@ -706,6 +716,11 @@ fn alert_status(req: &Req, until: Option<u64>) -> HtmlResult {
 /// The alerts page's status line.
 #[derive(Id)]
 struct AlertStatusId;
+
+/// The alert form's button: a save answers the whole form, and the button keeps focus by its id
+/// though a cleared error moves it up the form.
+#[derive(Id)]
+struct SaveAlertId;
 
 /// What became of the last alert saved: landing, saved, or none yet.
 #[component]
@@ -1093,8 +1108,10 @@ mod tests {
         for price in ["150", "150.5", ".5", "$1,299.99"] {
             let body: &'static str = Box::leak(format!("id=ACME&above={price}").into_boxed_str());
             let (_, patch) = send(post("/alerts", Some("action"), None, body)).await;
+            // The whole form, unmarked, as the user left it.
+            assert!(patch.starts_with(r#"<form id="alert-form""#) && !patch.contains("aria-invalid"), "{price}: {patch}");
             assert!(
-                patch.starts_with(r#"<p id="alert-status" role="status">Saving your alert...</p><template data-corten-read-again="1" data-from="/alerts?until="#),
+                patch.contains(r#"<p id="alert-status" role="status">Saving your alert...</p></form><template data-corten-read-again="1" data-from="/alerts?until="#),
                 "{price}: {patch}"
             );
         }

@@ -2703,7 +2703,6 @@ version = "0.1.0"
 dependencies = [
  "corten",
  "futures-util",
- "getrandom 0.3.4",
  "http-body-util",
  "schemars",
  "serde",
