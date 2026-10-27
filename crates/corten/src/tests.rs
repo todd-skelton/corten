@@ -1426,10 +1426,7 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
     assert_eq!(cache_control(&router, "/catalog", &[("cookie", "session=abc")]).await, "private, no-cache");
     // App::client_zone's cookie says where the visitor is, not who: alone, it shares as before.
     assert_eq!(cache_control(&router, "/", &[("cookie", "corten-zone=America/Chicago")]).await, "public, max-age=60");
-    assert_eq!(
-        cache_control(&router, "/", &[("cookie", "corten-zone=America/Chicago; session=abc")]).await,
-        "private, no-cache"
-    );
+    assert_eq!(cache_control(&router, "/", &[("cookie", "corten-zone=America/Chicago; session=abc")]).await, "private, no-cache");
     let inline = App::new(Routes::from(Router::new().route("/", get(inline_page)))).router();
     assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the layout took the nonce");
 
@@ -1449,12 +1446,10 @@ async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
     use crate::ClientZone;
     let routes = || {
         Routes::from(
-            Router::new()
-                .route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) }))
-                .route(
-                    "/zone",
-                    get(|zone: Option<ClientZone>| async move { zone.map_or_else(|| "none".to_string(), |ClientZone(zone)| zone) }),
-                ),
+            Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) })).route(
+                "/zone",
+                get(|zone: Option<ClientZone>| async move { zone.map_or_else(|| "none".to_string(), |ClientZone(zone)| zone) }),
+            ),
         )
     };
     let get_with = |router: Router, uri: &'static str, cookie: Option<&'static str>| async move {

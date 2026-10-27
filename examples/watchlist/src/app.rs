@@ -502,7 +502,8 @@ async fn watch(
     zone: Option<ClientZone>,
     Form(form): Form<StockForm>,
 ) -> HtmlResult {
-    let mut message = match market.stocks.read(|rows| rows.get(&form.id).map(|s| format!("Watching {} at {}.", s.name, s.price))) {
+    let mut message = match market.stocks.read(|rows| rows.get(&form.id).map(|s| format!("Watching {} at {}.", s.name, s.price)))
+    {
         Some(message) => {
             watching.add(&lists, &form.id);
             message
