@@ -168,7 +168,11 @@ no store); `corten_cluster::begin` takes it as its idempotency key. A field that
 
 A patch replaces markup but not the user's work: a field typed into after the form was sent (or,
 in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret
-stay on the matching element. What the user opened stays open: a `<dialog>` (modal again if it
+stay on the matching element. A file input keeps the files the user chose, which markup cannot
+give back, so a refusal can redraw the input with `aria-invalid` and its message and the files
+are still there to send again; only a successful answer to the form that sent them takes them
+(found by first file name, so files chosen again under the same name while it was on its way go
+too). What the user opened stays open: a `<dialog>` (modal again if it
 was modal), a `<details>` they unfolded and a shown popover, matched by id (a `<details>` also by
 its place). One the user left as the server sent it takes the new markup's state, so a dialog
 the server sent open and now sends closed closes. A dialog the server draws `open` is open but not
