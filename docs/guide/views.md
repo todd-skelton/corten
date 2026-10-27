@@ -185,8 +185,9 @@ For dates where the visitor is ("your listings come back on Nov 2"), the app set
 form posts and pages after it carry it. `None` is a first load or a browser without
 JavaScript. The app's time zone library (`jiff`, `chrono-tz`) turns the name into its `Zone`
 (a newtype that implements `corten::i18n::Zone`) and a picked date into the instant it means
-there, with no script per form. A handler that takes it is private to that zone, so a
-`Public` one cannot.
+there, with no script per form. A handler that takes it answers privately (`Cache-Control:
+private`), so a `Public` one cannot; the layout around `<main>` is the same in every zone, so
+reading it does not make the runtime load the next page in full.
 Each listed locale's separators, currency symbols and date patterns are CLDR's, checked against
 Intl, and only the locales `messages!` lists are in the app. A script that writes a number, an
 amount or a date takes the page's format (`t.js().money(USD)`) and writes the same text

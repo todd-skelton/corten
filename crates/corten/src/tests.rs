@@ -1449,6 +1449,10 @@ async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
             Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) })).route(
                 "/zone",
                 get(|zone: Option<ClientZone>| async move { zone.map_or_else(|| "none".to_string(), |ClientZone(zone)| zone) }),
+            )
+            .route(
+                "/zone-page",
+                get(|req: Req, zone: Option<ClientZone>| async move { req.test_page("Zone", html! { <p>{format!("{zone:?}")}</p> }) }),
             ),
         )
     };
@@ -1462,6 +1466,19 @@ async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
         (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
     };
     let router = App::new(routes()).client_zone().router();
+    // Reading the zone keeps the answer private but not out of the layout: the page around
+    // `<main>` is the same, so the runtime swaps it in rather than loading it in full.
+    let shell = |uri: &'static str| {
+        let router = router.clone();
+        async move {
+            let req = Request::get(uri).header("corten", "nav").header("cookie", "corten-zone=America/Chicago");
+            let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            (res.headers().get("corten-shell").cloned(), res.headers().get("cache-control").cloned())
+        }
+    };
+    let (home, zoned) = (shell("/").await, shell("/zone-page").await);
+    assert!(home.0.is_some() && home.0 == zoned.0, "same layout: {home:?} {zoned:?}");
+    assert!(zoned.1.as_ref().is_some_and(|v| v.to_str().unwrap().contains("private")), "{zoned:?}");
     let (_, page) = get_with(router.clone(), "/", None).await;
     assert!(page.contains(r#"<meta name="corten-zone">"#), "the runtime is asked to keep it: {page}");
     assert_eq!(get_with(router.clone(), "/zone", None).await.1, "none", "before the runtime has run");

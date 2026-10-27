@@ -192,12 +192,11 @@ impl<S: Send + Sync> OptionalFromRequestParts<S> for ClientZone {
             return Ok(None);
         }
         let zone = crate::security::cookie::get(&parts.headers, ZONE_COOKIE).filter(|name| zone_name(name)).map(str::to_string);
-        // The answer is for this zone: private, and keyed by it like a caller.
+        // The answer is for this zone: private. Not part of the page's key, as a caller is: the
+        // layout does not change with it, and the cookie arrives after the first page, so keying
+        // by it would load the next page in full, and the error page after a handler read it.
         if let Some(signal) = signal {
-            let mut hasher = std::hash::DefaultHasher::new();
-            "corten::ClientZone".hash(&mut hasher);
-            zone.hash(&mut hasher);
-            signal.mark_caller(hasher.finish());
+            signal.mark_personal();
         }
         Ok(zone.map(ClientZone))
     }
