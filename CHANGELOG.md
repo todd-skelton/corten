@@ -1106,6 +1106,9 @@ Corten is pre-1.0, so any minor version may change the API.
     rendered with a 200 and only the browser found the 404, after which the module's handlers did
     nothing
     ([#157 A page that names a script! module the app does not serve renders fine; only the browser finds the 404, and its handlers silently do nothing](https://github.com/todd-skelton/corten/issues/157)).
+38. A `Relay` keeps the upstream's `Content-Security-Policy` in place of the app's, so a relayed
+    page's own scripts run. Before, the app's policy replaced it and blocked them
+    ([#164 A Relay loses the upstream's Content-Security-Policy, so a relayed page's own scripts are blocked](https://github.com/todd-skelton/corten/issues/164)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

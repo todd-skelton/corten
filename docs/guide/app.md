@@ -564,7 +564,9 @@ async fn echo(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Switch
 for a gateway or a backend for a frontend: its status, its headers less the hop-by-hop ones, and
 its body as it arrives (`Body::from_stream(res.bytes_stream())` from reqwest). A failure status
 keeps the upstream's body, never the error page or the JSON error. The app's security and cache
-rules still apply. A streamed body is passed on as each piece arrives: it is not compressed,
+rules still apply, except that a `Content-Security-Policy` the upstream sent replaces the app's:
+a relayed page's scripts were written for its own policy (their nonces and hosts), which the app's
+would block. Without one, the app's applies. A streamed body is passed on as each piece arrives: it is not compressed,
 except an event stream, compressed piece by piece; a body the upstream compressed is passed on
 as it is. When the client leaves, the body is dropped, and
 the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
