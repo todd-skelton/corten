@@ -1062,14 +1062,14 @@ Corten is pre-1.0, so any minor version may change the API.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
 6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
-   from round r5 (2026-10-25, one c-8 droplet, Xeon Platinum 8168 as in r4, the tree at
-   `f80d4a1`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 21,735 item pages
-   and 25,200 JSON responses a second from memory at 64 users (r4: 18,043 and 18,934), and 3,240
-   item-API pages against ASP.NET Core's 998 (r4: 2,142 and 915). A page costs 103,877 user
-   instructions and the JSON 69,291 (r4: 123,693 and 133,308). The unchanged apps moved by up to
-   17% between the two droplets. Django passed the in-memory page test it failed in r4; Nuxt,
-   Next.js and Laravel failed as before. The item page loads 7.3 KB of JavaScript (gzip; r4
-   6.2 KB).
+   from round r6 (2026-10-27, one c-8 droplet, Xeon Platinum 8280, faster than r5's 8168, the tree
+   at `cf8ac0f`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 23,416 item pages
+   and 27,625 JSON responses a second from memory at 64 users (r5: 21,735 and 25,200), and 3,615
+   item-API pages against ASP.NET Core's 1,171 (r5: 3,240 and 998). A page costs 95,038 user
+   instructions and the JSON 69,444 (r5: 103,877 and 69,291). The unchanged apps rose by a median
+   of 14-27% on the faster CPU, more than Corten's 8-12%, and Corten's item-API JSON held (3,753;
+   r5 3,787). Nuxt and Django passed the in-memory page test; Next.js and Laravel failed as
+   before. The item page loads 9.6 KB of JavaScript (gzip; r5 7.3 KB).
 7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
