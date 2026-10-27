@@ -1264,6 +1264,14 @@ Corten is pre-1.0, so any minor version may change the API.
     straight through, so pages a CDN keeps stay public, and agents answer to their token, which
     no longer defaults to `dev-token` (`AGENT_TOKENS`). The smoke test runs the container with
     Docker's networks as its proxies (`PROXIES`), so each forwarded address has its own count.
+19. The examples show believable data and fit a phone. card-market, run with no item source
+    (`API_BASE` or `ITEM_SOURCE`), serves a demo catalog built into it (`fixtures/demo.json`):
+    original cards in three sets, sellers, offers and a sealed box with its contents. Its home
+    page lists the source's items as cards (name, set, lowest price) and a category page lists
+    its items; against the item API, which has no list, the home page links the first ids as
+    before. Tables too wide for a phone scroll inside their panel (the item page) or their box
+    (seller-desk's grid). seller-desk's statement writes its amounts with `t.money` and its
+    words from a catalog, not a hand-written `$`.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -35,7 +35,7 @@ use crate::{
     routes,
     source::Source,
     text::Msg,
-    views::{self, AlertForm, AlertFormView, AlertMessage, Home, ItemPage, Layout},
+    views::{self, AlertForm, AlertFormView, AlertMessage, ItemList, ItemPage, Layout},
 };
 
 /// The app, assembled: routes plus the error page, catalogs and PWA settings. Corten adds the rest.
@@ -273,9 +273,14 @@ fn shared(page: HtmlResult) -> Public<HtmlResult> {
     Public::new(Duration::from_secs(60), page).stale_while_revalidate(Duration::from_secs(600))
 }
 
-pub(crate) async fn home(req: Req) -> Public<HtmlResult> {
-    let t = req.t();
-    shared(req.page(html! { <Layout req={&req} title="Home" head=""><Home t={t} /></Layout> }))
+pub(crate) async fn home(req: Req, State(source): State<Source>) -> Public<HtmlResult> {
+    let t: Msg = req.t();
+    shared(req.page(html! {
+        <Layout req={&req} title={t.home_title()} head="">
+            <h1>{t.home_title()}</h1>
+            <ItemList t={t} shelf={source.shelf()} />
+        </Layout>
+    }))
 }
 
 /// The trail a search engine shows for a page (schema.org `BreadcrumbList`), as structured data.
@@ -312,13 +317,17 @@ impl Breadcrumbs {
 
 /// A category changes less often than the home page: a CDN keeps it for an hour, while a browser
 /// still checks again after a minute.
-pub(crate) async fn category(req: Req, Path(slug): Path<String>) -> Public<HtmlResult> {
+pub(crate) async fn category(req: Req, State(source): State<Source>, Path(slug): Path<String>) -> Public<HtmlResult> {
     let t: Msg = req.t();
-    let title = t.category_title(&slug).to_string();
+    let items = source.in_category(&slug);
+    // The category's own name, when an item is in it; else its slug, as "Category {slug}".
+    let name = items.iter().flat_map(|item| &item.categories).find(|c| c.slug == slug).map(|c| c.name.clone());
+    let title = name.unwrap_or_else(|| t.category_title(&slug).to_string());
     let here = routes::Category { slug: &slug }.to_string();
     let crumbs = Breadcrumbs::new([(t.home_title().to_string(), routes::Home.to_string()), (title.clone(), here)]);
     let head = JsonLd { value: &crumbs };
-    let page = req.page(html! { <Layout req={&req} title={&title} head={head}>{views::category(t, &slug)}</Layout> });
+    let (title, items) = (title.as_str(), items.as_slice());
+    let page = req.page(html! { <Layout req={&req} title={title} head={head}>{views::category(t, title, items)}</Layout> });
     shared(page).shared(Duration::from_secs(3600))
 }
 
@@ -841,6 +850,39 @@ mod tests {
         let (status, headers, body) = send(Request::get("/items/nope").body(Body::empty()).unwrap()).await;
         assert_eq!((status, &headers["x-robots-tag"]), (StatusCode::NOT_FOUND, &"noindex".parse().unwrap()));
         assert!(body.contains("<h1>Not found</h1>"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn the_demo_catalog_lists_its_cards_on_the_home_and_category_pages() {
+        let source = Source::fixture(include_str!("../fixtures/demo.json")).unwrap();
+        let app = super::app(source).router();
+        let get = |uri: &'static str| app.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap());
+        let body = |res: corten::axum::response::Response| async move {
+            String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+        };
+        let home = body(get("/").await.unwrap()).await;
+        assert!(home.contains("<strong>Ashen Drake</strong>") && home.contains("From $42.50"), "{home}");
+        assert!(home.find(r#"href="/items/item_2""#).unwrap() < home.find(r#"href="/items/item_10""#).unwrap(), "in id order");
+        let category = body(get("/categories/tidebreak").await.unwrap()).await;
+        assert!(category.contains("<h1>Tidebreak</h1>") && category.contains("Salt Oracle"), "{category}");
+        assert!(!category.contains("Ashen Drake"), "only the category's cards");
+        let boxed = body(get("/items/item_12").await.unwrap()).await;
+        assert!(boxed.contains("Lantern Warden"), "a sealed box lists what it contains: {boxed}");
+    }
+
+    /// The item API has no list: the home page links the first ids, in the visitor's language.
+    #[tokio::test]
+    async fn against_the_item_api_the_home_page_links_the_first_ids() {
+        let source = Source::Api { client: reqwest::Client::new(), base: "http://127.0.0.1:9".into() };
+        let app = super::app(source).router();
+        let req = Request::get("/").header("accept-language", "fr").body(Body::empty()).unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        let home = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(home.contains(r#"<a href="/items/item_5">Article 5</a>"#), "{home}");
+        assert_eq!(home.matches("<li>").count(), 50);
+        let res = app.oneshot(Request::get("/categories/x").body(Body::empty()).unwrap()).await.unwrap();
+        let category = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(category.contains("<h1>Category x</h1>") && !category.contains("<ul"), "{category}");
     }
 
     #[tokio::test]
