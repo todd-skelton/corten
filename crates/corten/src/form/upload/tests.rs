@@ -142,6 +142,33 @@ async fn the_body_limit_is_a_413_and_the_default_is_2_mib() {
 }
 
 #[tokio::test]
+async fn a_body_over_its_limit_is_too_large_on_every_read_and_read_to_its_end() {
+    let bytes = body(&[("photos", Some("big.png"), None, &[0u8; 3000]), ("title", None, None, b"Mew")]);
+    let seen = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = seen.clone();
+    let pieces = bytes
+        .chunks(500)
+        .map(move |c| {
+            counted.fetch_add(c.len(), std::sync::atomic::Ordering::Relaxed);
+            Ok::<_, std::io::Error>(Bytes::copy_from_slice(c))
+        })
+        .collect::<Vec<_>>();
+    let req = Request::builder()
+        .method("POST")
+        .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={BOUNDARY}"))
+        .body(Body::from_stream(futures_util::stream::iter(pieces)))
+        .unwrap();
+    let mut upload = Upload::<Listing>::from_request(req, &()).await.unwrap();
+    upload.limit(1024);
+    let mut file = upload.next_file().await.unwrap().unwrap();
+    assert!(matches!(file.bytes_up_to(5000).await, Err(UploadError::TooLarge { limit: 1024 })));
+    // The browser sent the rest, which was read past, so it can read the answer.
+    assert_eq!(seen.load(std::sync::atomic::Ordering::Relaxed), bytes.len());
+    assert!(matches!(upload.next_file().await, Err(UploadError::TooLarge { .. })));
+    assert!(matches!(upload.fields().await, Err(UploadError::TooLarge { .. })));
+}
+
+#[tokio::test]
 async fn fields_that_do_not_fit_are_a_422() {
     let bytes = body(&[("title", None, None, b"Mew"), ("price", None, None, b"lots")]);
     assert_eq!(status(read(request(&bytes, 64), None).await.unwrap_err()), StatusCode::UNPROCESSABLE_ENTITY);
