@@ -39,8 +39,9 @@ A patch may hold several top-level elements; each replaces the element with the 
 each needs one, a `#[derive(Id)]` type: `req.patch` and `req.invalid` take a `Patch`, and a view
 whose top level has text, an element without an id or an id written as text does not compile. A
 component a patch sends is rooted at the element with the id and declared `-> impl Patch`. Fields
-the user edited (after the form was sent) and the focus carry over to the new markup, so a patch
-can include the form the user is typing in.
+the user edited (after the form was sent), the files chosen in a file input (until a successful
+answer to the form that sent them) and the focus carry over to the new markup, so a patch can
+include the form the user is typing in, and a refusal can mark a file input invalid.
 After a write that should change the URL, use `req.redirect(&Route)` instead. To come back to
 the element the user acted on, redirect to `route.at(RowId(&id))` (the route with `#row-7`,
 from the element's `#[derive(Id)]`); never format a `#fragment` by hand.

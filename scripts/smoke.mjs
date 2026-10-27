@@ -758,6 +758,44 @@ async function run(browser) {
     document.querySelector("#holds-named")?.remove();
   });
 
+  // A file input keeps the files the user chose across a patch, which markup cannot give back: a
+  // refusal redraws it marked invalid with the file still chosen, a live patch keeps it, and only
+  // the answer that took those files clears them.
+  const part = (/** @type {string} */ extra) => `<div id="upload-part"${extra}><input type="file" name="photo"${extra.includes("refused") ? ' aria-invalid="true"' : ""}></div>`;
+  await page.evaluate(
+    (html) => document.querySelector("main")?.insertAdjacentHTML("beforeend", `<form id="upload" method="post" action="/upload-test" enctype="multipart/form-data" data-patch>${html}<button>Send</button></form>`),
+    part(""),
+  );
+  const errorsBeforeUpload = errors.length;
+  let uploadStatus = 422;
+  await page.route("**/upload-test", (route) =>
+    route.fulfill({ status: uploadStatus, headers: { "corten-patch": "1", "content-type": "text/html; charset=utf-8" }, body: part(uploadStatus === 422 ? ' class="refused"' : ' class="taken"') }),
+  );
+  await page.setInputFiles("#upload [name=photo]", { name: "card.png", mimeType: "image/png", buffer: Buffer.from("png") });
+  const chosenFiles = () => page.evaluate(() => Array.from(/** @type {HTMLInputElement} */ (document.querySelector("#upload [name=photo]")).files ?? [], (f) => f.name).join());
+  await page.click("#upload button");
+  await page.waitForSelector("#upload-part.refused", { timeout: 4000 }).catch(() => {});
+  const refusedFiles = await chosenFiles();
+  const markedInvalid = await page.getAttribute("#upload [name=photo]", "aria-invalid");
+  await page.evaluate(async (html) => {
+    const { patch } = await import("corten");
+    await patch(html);
+  }, part(' class="live"'));
+  const liveFiles = await chosenFiles();
+  uploadStatus = 200;
+  await page.click("#upload button");
+  await page.waitForSelector("#upload-part.taken", { timeout: 4000 }).catch(() => {});
+  const takenFiles = await chosenFiles();
+  await page.unroute("**/upload-test");
+  await page.evaluate(() => document.querySelector("#upload")?.remove());
+  // The refusal is a 422 on purpose; the browser logs that as a failed resource.
+  errors.splice(errorsBeforeUpload, Infinity, ...errors.slice(errorsBeforeUpload).filter((e) => !e.includes("422")));
+  check(
+    "a patch keeps a file input's chosen files until the answer that took them",
+    refusedFiles === "card.png" && markedInvalid === "true" && liveFiles === "card.png" && takenFiles === "",
+    JSON.stringify({ refusedFiles, markedInvalid, liveFiles, takenFiles }),
+  );
+
   // Swaps only: these links live in the shell, which a full page load replaces.
   if (swaps) {
     // data-nav="section": current on its page and every page under it.

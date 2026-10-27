@@ -1007,6 +1007,10 @@ Corten is pre-1.0, so any minor version may change the API.
     and `for Point { x, y } in points { .. }` took the pattern's braces for the body and did not
     compile. `corten fmt` reads them the same way
     ([#142 html! if let cannot take a struct pattern: the pattern's braces are read as the body](https://github.com/todd-skelton/corten/issues/142)).
+32. A patch keeps the files chosen in a file input it replaces, as it keeps typed text, so a
+    refused upload redraws its input marked invalid with the files still chosen; a successful
+    answer to the form that sent them clears them. The runtime grows by 47 bytes gzipped
+    ([#143 A patch drops the files chosen in a file input it replaces, so a refused upload cannot mark its input invalid](https://github.com/todd-skelton/corten/issues/143)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
