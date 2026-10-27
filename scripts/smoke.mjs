@@ -462,6 +462,26 @@ async function run(browser) {
     ])
       skip(name, noSwaps);
   }
+  // The rail scrolled in the same frame as the change, so the swap lands before the `scroll` event
+  // that would name it (a slow machine, or a control focus scrolled into view): it keeps its scroll
+  // all the same. In a page of its own, so this page's history stays as it is.
+  if (swaps) {
+    const quick = await browser.newPage({ viewport: { width: 360, height: 160 } });
+    await quick.goto(`${base}/about`);
+    const top = await quick.evaluate(() => {
+      const rail = /** @type {Element} */ (document.querySelector(".about-filter__rail"));
+      for (const group of Array.from(rail.querySelectorAll("details"))) /** @type {HTMLDetailsElement} */ (group).open = true;
+      const box = /** @type {HTMLInputElement} */ (document.querySelector("main input[name=history]"));
+      box.scrollIntoView({ block: "end" });
+      box.focus();
+      box.click();
+      return rail.scrollTop;
+    });
+    await quick.waitForFunction(() => location.search === "?history=on" && document.querySelectorAll("#history li").length === 2);
+    const after = await quick.$eval(".about-filter__rail", (r) => r.scrollTop);
+    check("the rail keeps a scroll made in the same frame as the change", top > 0 && after === top, `${top} -> ${after}`);
+    await quick.close();
+  } else skip("the rail keeps a scroll made in the same frame as the change", noSwaps);
   // Load more (view::Append): the answer adds only the new rows; the ones the page has stay. In a
   // page of its own, so it runs in every engine and leaves this page's history as it is.
   {
