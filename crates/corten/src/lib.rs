@@ -106,7 +106,7 @@ use futures_util::{Stream, StreamExt};
 pub use answer::JsonResult;
 pub use answer::{Answer, HtmlResponse, HtmlResult, LiveResponse, NoStore, Public};
 pub use api::Api;
-pub use app::{serve, App, Area};
+pub use app::{listeners, serve, serve_on, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 pub use caller::{Caller, Identify, Refused};

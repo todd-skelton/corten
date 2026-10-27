@@ -7,7 +7,7 @@ your routes. Each default can be replaced in one line.
 
 | Concern | Default | Override |
 |---|---|---|
-| Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
+| Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment; `corten::serve_on(listeners, app)` for listeners of your own (HTTPS, a Unix socket) with the same shutdown ([below](#your-own-listeners)) |
 | Names it answers to | `localhost`, IP addresses; any other `Host` gets `421` ([below](#host-names)) | `HOSTS=shop.example,.shop.example` in the environment, or `Policy::host("shop.example")` |
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
@@ -105,6 +105,70 @@ and so is one that panics; whether to restart it is the app's choice.
 `/health/ready` does not turn 503 during shutdown: the listeners close when it begins, so a load
 balancer's next check is refused, which it treats the same way. A platform that needs time to
 stop sending first waits before it sends `SIGTERM` (a Kubernetes `preStop` sleep).
+
+## Your own listeners
+
+`corten::serve(app)` is `corten::serve_on(corten::listeners(3000).await?, app)`: `listeners(3000)`
+binds `HOST`:`PORT` (both loopback addresses without `HOST`, port 3000 without `PORT`), and `serve_on` serves the app on anything
+that implements axum's `axum::serve::Listener`, with `serve`'s shutdown across all of them
+(tasks told, live streams ended, every listener closed and drained, tasks waited for). HTTPS, a
+Unix socket, or a socket a supervisor hands over is a listener of the app's own; TLS stays the
+app's choice of library. With `tokio-rustls`, around the same loopback pair:
+
+```rust,ignore
+use std::{net::SocketAddr, sync::Arc, time::Duration};
+use tokio::{net::{TcpListener, TcpStream}, sync::mpsc};
+use tokio_rustls::{server::TlsStream, TlsAcceptor};
+
+/// Connections whose handshake is done. Each handshake runs on its own, so a slow client cannot
+/// hold up the next connection (`accept` is called one connection at a time).
+struct Tls(mpsc::Receiver<(TlsStream<TcpStream>, SocketAddr)>, SocketAddr);
+
+impl corten::axum::serve::Listener for Tls {
+    type Io = TlsStream<TcpStream>;
+    type Addr = SocketAddr;
+    async fn accept(&mut self) -> (Self::Io, SocketAddr) {
+        match self.0.recv().await {
+            Some(accepted) => accepted,
+            None => std::future::pending().await,
+        }
+    }
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok(self.1)
+    }
+}
+
+fn tls(tcp: TcpListener, acceptor: TlsAcceptor) -> std::io::Result<Tls> {
+    let (addr, (tx, rx)) = (tcp.local_addr()?, mpsc::channel(64));
+    tokio::spawn(async move {
+        // Ends when the server drops its side at shutdown.
+        while !tx.is_closed() {
+            let Ok((socket, peer)) = tcp.accept().await else {
+                // Out of file descriptors, say: wait rather than spin.
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                continue;
+            };
+            let (acceptor, tx) = (acceptor.clone(), tx.clone());
+            tokio::spawn(async move {
+                let handshake = tokio::time::timeout(Duration::from_secs(10), acceptor.accept(socket));
+                if let Ok(Ok(stream)) = handshake.await {
+                    let _ = tx.send((stream, peer)).await;
+                }
+            });
+        }
+    });
+    Ok(Tls(rx, addr))
+}
+
+let acceptor = TlsAcceptor::from(Arc::new(server_config)); // the app's rustls ServerConfig
+let listeners = corten::listeners(3000).await?.into_iter().map(|l| tls(l, acceptor.clone())).collect::<Result<_, _>>()?;
+corten::serve_on(listeners, app).await
+```
+
+An app behind a proxy that ends TLS needs none of this: `serve` is plain HTTP for the proxy.
+An app whose own default port is not 3000 (another service has it on that machine) passes its
+port, and `PORT` still overrides it: `corten::serve_on(corten::listeners(8320).await?, app)`,
+rather than setting `PORT` from the program, which is `unsafe` once threads may be running.
 
 ## The request path
 

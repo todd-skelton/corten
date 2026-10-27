@@ -531,6 +531,14 @@ Corten is pre-1.0, so any minor version may change the API.
     other route keeps `App::deadline`. In nested areas the innermost that sets one decides. The
     503 and `Abort::Deadline` are the same at every level
     ([#114 App::deadline is one value for the whole app, so one slow route (an upstream call, an upload) lifts it for every page](https://github.com/todd-skelton/corten/issues/114)).
+79. `corten::serve_on(listeners, app)` serves an app on listeners of its own (anything that
+    implements `axum::serve::Listener`: HTTPS with the app's TLS library, a Unix socket, a socket
+    a supervisor hands over) with `serve`'s shutdown across all of them, and
+    `corten::listeners(3000)` binds the ones `serve` uses (`HOST`:`PORT`, the loopback pair without
+    `HOST`, the port given without `PORT`) for the app to wrap. `serve` is the two together, and
+    an app with another default port serves `listeners(8320)` without setting `PORT` itself. The app guide shows HTTPS on
+    loopback with `tokio-rustls`
+    ([#115 corten::serve takes no listener, so an app that needs TLS or its own socket loses the loopback pair, the stream drain and graceful shutdown](https://github.com/todd-skelton/corten/issues/115)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

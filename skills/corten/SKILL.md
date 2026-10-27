@@ -62,6 +62,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | a test | `app().router().oneshot(..)` with the `corten` mode header | [testing.md](references/testing.md) |
 | deploying behind a domain | set `HOSTS=shop.example` (any other `Host` but `localhost` and IP addresses gets 421; never `HOSTS=*` to silence it) | the app guide, Host names |
 | routes slower than pages (a slow upstream, a report, uploads) | `.deadline(Duration)` on their `Area` or `Api` (`None` for none), never raising `App::deadline` for every page | the cancellation guide |
+| HTTPS on the app itself, a Unix socket, a socket handed over | `corten::serve_on(listeners, app)` (a listener of the app's own around `corten::listeners(3000)`; `listeners(port)` alone for another default port), never `axum::serve`, which loses the shutdown | the app guide, Your own listeners |
 | work on a timer or a child process, outside requests | `App::task("name", \|signal\| ..)`: return when `signal.aborted()` resolves (shutdown), within `App::shutdown_grace` | the app guide, Tasks |
 
 Read only the recipe the task needs. For concepts, read the guides in the Corten repository's
