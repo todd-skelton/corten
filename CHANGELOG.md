@@ -619,6 +619,12 @@ Corten is pre-1.0, so any minor version may change the API.
     failure why ("Invalid API key", in the API's error shape) and can be a 429 with `Retry-After`
     for too many failed attempts, so an API key check stays in `Identify`
     ([#177 A Caller refusal cannot say why (Invalid API key) or be a 429 for too many failed attempts, so an API key check stays outside Caller](https://github.com/todd-skelton/corten/issues/177)).
+94. A `var(--x)` without a fallback in a listed stylesheet that no stylesheet on the same pages
+    declares (the token file, a component's, a `.css` file in the static directory, an area's for
+    its own pages) fails `App::router` and names the file and the property, so a misspelled
+    token is not a wrong color found in a browser. Checked at startup, about 0.25 ms for 21 KB of
+    CSS, since a component's stylesheet compiles without the theme
+    ([#179 A stylesheet can use a token the theme does not define (var(--color-primary-contrast)), and nothing reports it until a browser draws the wrong color](https://github.com/todd-skelton/corten/issues/179)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
