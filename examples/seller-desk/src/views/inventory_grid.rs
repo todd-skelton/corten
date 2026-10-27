@@ -42,39 +42,41 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>]) -> impl Render {
                 />
                 <output ref={unsent} hidden></output>
             </div>
-            <table class={Table}>
-                <thead>
-                    <tr>
-                        <th>
-                            <input
-                                ref={all}
-                                type="checkbox"
-                                aria-label="Select all"
-                                on:change={js::selectAll(scope, sel)}
-                            >
-                        </th>
-                        <th><button type="button" on:click={js::sort(target, body, 1)}>"Name"</button></th>
-                        <th><button type="button" on:click={js::sort(target, body, 2)}>"Set"</button></th>
-                        <th>"Condition"</th>
-                        <th><button type="button" on:click={js::sort(target, body, 4)}>"Qty"</button></th>
-                        <th><button type="button" on:click={js::sort(target, body, 5)}>"Price"</button></th>
-                    </tr>
-                </thead>
-                <tbody ref={body} on:click={js::toggle(event, select.closest(), scope, sel)}>
-                    for line in lines {
-                        <InventoryRow
-                            id={&line.item.id}
-                            name={&line.item.name}
-                            set={&line.item.set}
-                            condition={line.item.condition}
-                            qty={line.qty}
-                            price_cents={line.item.price_cents}
-                            selected={false}
-                            select={select}
-                        />
-                    }
-                </tbody>
-            </table>
+            <div class={Scroll}>
+                <table class={Table}>
+                    <thead>
+                        <tr>
+                            <th>
+                                <input
+                                    ref={all}
+                                    type="checkbox"
+                                    aria-label="Select all"
+                                    on:change={js::selectAll(scope, sel)}
+                                >
+                            </th>
+                            <th><button type="button" on:click={js::sort(target, body, 1)}>"Name"</button></th>
+                            <th><button type="button" on:click={js::sort(target, body, 2)}>"Set"</button></th>
+                            <th>"Condition"</th>
+                            <th><button type="button" on:click={js::sort(target, body, 4)}>"Qty"</button></th>
+                            <th><button type="button" on:click={js::sort(target, body, 5)}>"Price"</button></th>
+                        </tr>
+                    </thead>
+                    <tbody ref={body} on:click={js::toggle(event, select.closest(), scope, sel)}>
+                        for line in lines {
+                            <InventoryRow
+                                id={&line.item.id}
+                                name={&line.item.name}
+                                set={&line.item.set}
+                                condition={line.item.condition}
+                                qty={line.qty}
+                                price_cents={line.item.price_cents}
+                                selected={false}
+                                select={select}
+                            />
+                        }
+                    </tbody>
+                </table>
+            </div>
             <p ref={empty} class={Empty} hidden>"No items match the filter."</p>
             // Each row's checkbox belongs to this form (`form=`), so it posts the checked ids. Its
             // submit key makes a resend (a lost answer, a retry) archive once.

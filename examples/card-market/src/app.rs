@@ -23,7 +23,7 @@ use crate::{
     routes,
     source::Source,
     text::Msg,
-    views::{self, AlertForm, AlertFormView, AlertMessage, Home, ItemPage, Layout},
+    views::{self, AlertForm, AlertFormView, AlertMessage, ItemList, ItemPage, Layout},
 };
 
 /// The app, assembled: routes plus the error page, catalogs and PWA settings. Corten adds the rest.
@@ -86,9 +86,14 @@ fn shared(page: HtmlResult) -> Public<HtmlResult> {
     Public::new(Duration::from_secs(60), page).stale_while_revalidate(Duration::from_secs(600))
 }
 
-pub(crate) async fn home(req: Req) -> Public<HtmlResult> {
-    let t = req.t();
-    shared(req.page(html! { <Layout req={&req} title="Home" head=""><Home t={t} /></Layout> }))
+pub(crate) async fn home(req: Req, State(source): State<Source>) -> Public<HtmlResult> {
+    let t: Msg = req.t();
+    shared(req.page(html! {
+        <Layout req={&req} title={t.home_title()} head="">
+            <h1>{t.home_title()}</h1>
+            <ItemList t={t} shelf={source.shelf()} />
+        </Layout>
+    }))
 }
 
 /// The trail a search engine shows for a page (schema.org `BreadcrumbList`), as structured data.
@@ -125,13 +130,17 @@ impl Breadcrumbs {
 
 /// A category changes less often than the home page: a CDN keeps it for an hour, while a browser
 /// still checks again after a minute.
-pub(crate) async fn category(req: Req, Path(slug): Path<String>) -> Public<HtmlResult> {
+pub(crate) async fn category(req: Req, State(source): State<Source>, Path(slug): Path<String>) -> Public<HtmlResult> {
     let t: Msg = req.t();
-    let title = t.category_title(&slug).to_string();
+    let items = source.in_category(&slug);
+    // The category's own name, when an item is in it.
+    let name = items.iter().flat_map(|item| &item.categories).find(|c| c.slug == slug).map_or(slug.as_str(), |c| &c.name);
+    let title = t.category_title(name).to_string();
     let here = routes::Category { slug: &slug }.to_string();
     let crumbs = Breadcrumbs::new([(t.home_title().to_string(), routes::Home.to_string()), (title.clone(), here)]);
     let head = JsonLd { value: &crumbs };
-    let page = req.page(html! { <Layout req={&req} title={&title} head={head}>{views::category(t, &slug)}</Layout> });
+    let (title, items) = (title.as_str(), items.as_slice());
+    let page = req.page(html! { <Layout req={&req} title={title} head={head}>{views::category(t, title, items)}</Layout> });
     shared(page).shared(Duration::from_secs(3600))
 }
 
@@ -635,6 +644,24 @@ mod tests {
         let (status, headers, body) = send(Request::get("/items/nope").body(Body::empty()).unwrap()).await;
         assert_eq!((status, &headers["x-robots-tag"]), (StatusCode::NOT_FOUND, &"noindex".parse().unwrap()));
         assert!(body.contains("<h1>Not found</h1>"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn the_demo_catalog_lists_its_cards_on_the_home_and_category_pages() {
+        let source = Source::fixture(include_str!("../fixtures/demo.json")).unwrap();
+        let app = super::app(source).router();
+        let get = |uri: &'static str| app.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap());
+        let body = |res: corten::axum::response::Response| async move {
+            String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+        };
+        let home = body(get("/").await.unwrap()).await;
+        assert!(home.contains("<strong>Ashen Drake</strong>") && home.contains("From $42.50"), "{home}");
+        assert!(home.find(r#"href="/items/item_2""#).unwrap() < home.find(r#"href="/items/item_10""#).unwrap(), "in id order");
+        let category = body(get("/categories/tidebreak").await.unwrap()).await;
+        assert!(category.contains("<h1>Category Tidebreak</h1>") && category.contains("Salt Oracle"), "{category}");
+        assert!(!category.contains("Ashen Drake"), "only the category's cards");
+        let boxed = body(get("/items/item_12").await.unwrap()).await;
+        assert!(boxed.contains("Lantern Warden"), "a sealed box lists what it contains: {boxed}");
     }
 
     #[tokio::test]

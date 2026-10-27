@@ -36,7 +36,11 @@
     "back": "Retour aux articles populaires"
   },
   "home": {
-    "title": "Articles populaires"
+    "title": "Articles populaires",
+    "item": "Article {n}"
+  },
+  "card": {
+    "from": "À partir de {price}"
   },
   "error": {
     "not_found": "Introuvable",

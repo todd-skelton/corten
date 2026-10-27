@@ -22,13 +22,17 @@ use corten::{
         response::Response,
     },
     feed::{Feed, FeedResponse, Row, Since},
+    i18n::Minor,
     prelude::*,
     view::Remove,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::views::{self, Line, PriceCell, RowId, StatusLine};
+use crate::{
+    text::{Msg, USD},
+    views::{self, Line, PriceCell, RowId, StatusLine},
+};
 
 /// An item a seller lists.
 #[derive(Clone, Debug)]
@@ -63,8 +67,18 @@ pub struct Desk {
     pub archived: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
-const NAMES: [&str; 8] = ["Pikachu", "Charizard", "Mewtwo", "Gengar", "Eevee", "Snorlax", "Lucario", "Gardevoir"];
-const SETS: [&str; 5] = ["Base Set", "Jungle", "Fossil", "Team Rocket", "Neo Genesis"];
+/// Cards of an invented game, the one card-market sells.
+const NAMES: [&str; 8] = [
+    "Ashen Drake",
+    "Lantern Warden",
+    "Salt Oracle",
+    "Gravel Sprite",
+    "Undertow Serpent",
+    "Cinder Cartographer",
+    "Moth Court Herald",
+    "Pearl Diver",
+];
+const SETS: [&str; 5] = ["Hollow Crown", "Tidebreak", "Ember Reach", "Saltglass Coast", "Ironwood Vale"];
 const CONDITIONS: [&str; 4] = ["Near Mint", "Lightly Played", "Moderately Played", "Damaged"];
 
 impl Desk {
@@ -90,7 +104,7 @@ impl Desk {
 }
 
 pub fn app(desk: Desk) -> App<ServerTiming> {
-    App::new(url::router(desk)).components(views::COMPONENTS).middleware(ServerTiming)
+    App::new(url::router(desk)).components(views::COMPONENTS).messages::<Msg>().middleware(ServerTiming)
 }
 
 /// Tells the browser's developer tools how long the server took to answer (`Server-Timing`): the
@@ -230,23 +244,24 @@ async fn statement(req: Req, State(desk): State<Desk>) -> NoStore<HtmlResult> {
         set.0 += 1;
         set.1 += u64::from(item.price_cents) * u64::from(qty[&item.id]);
     }
+    let t: Msg = req.t();
     NoStore(req.page(html! {
-        <views::Layout req={&req} title="Statement">
-            <h1>"Statement"</h1>
+        <views::Layout req={&req} title={t.statement_title()}>
+            <h1>{t.statement_title()}</h1>
             <table>
                 <thead>
                     <tr>
-                        <th>"Set"</th>
-                        <th>"Items"</th>
-                        <th>"Stock value"</th>
+                        <th>{t.statement_set()}</th>
+                        <th>{t.statement_items()}</th>
+                        <th>{t.statement_value()}</th>
                     </tr>
                 </thead>
                 <tbody>
                     for (name, (items, cents)) in &sets {
                         <tr>
                             <td>{name}</td>
-                            <td>{items}</td>
-                            <td>"$"{cents / 100}"."{format!("{:02}", cents % 100)}</td>
+                            <td>{t.number(*items)}</td>
+                            <td>{t.money(Minor(*cents), USD)}</td>
                         </tr>
                     }
                 </tbody>
@@ -393,7 +408,7 @@ mod tests {
         let (status, headers, html) = send_full(&desk, Request::get("/statement").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(headers["cache-control"], "no-store");
-        assert!(html.contains("<td>Base Set</td><td>2</td>"), "{html}");
+        assert!(html.contains("<td>Hollow Crown</td><td>2</td><td>$"), "the stock value in the locale's money format: {html}");
         let (_, headers, _) = send_full(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
         let timing = headers["server-timing"].to_str().unwrap();
         assert!(timing.starts_with("app;dur="), "{timing}");

@@ -1222,6 +1222,14 @@ Corten is pre-1.0, so any minor version may change the API.
     opens one new stream and closes the old one, the list survives a reload, the change cells
     follow the feed, a sector's box lists its stories, a refused price comes back marked with
     focus on it, and a story's place stays in the address.
+18. The examples show believable data and fit a phone. card-market, run with no item source
+    (`API_BASE` or `ITEM_SOURCE`), serves a demo catalog built into it (`fixtures/demo.json`):
+    original cards in three sets, sellers, offers and a sealed box with its contents. Its home
+    page lists the source's items as cards (name, set, lowest price) and a category page lists
+    its items; against the item API, which has no list, the home page links the first ids as
+    before. Tables too wide for a phone scroll inside their panel (the item page) or their box
+    (seller-desk's grid). seller-desk's statement writes its amounts with `t.money` and its
+    words from a catalog, not a hand-written `$`.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -77,12 +77,12 @@ try {
 
   await time("filter keystroke", () => {
     const input = /** @type {HTMLInputElement} */ (document.querySelector("input[type=search]"));
-    input.value = "jungle";
+    input.value = "tidebreak";
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   const visible = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).length);
-  const jungle = await page.$$eval("tbody tr", (rows) => rows.filter((r) => r.cells[2].textContent === "Jungle").length);
-  check("filter hides rows that do not match", visible === jungle && visible > 0, `${visible} of ${jungle}`);
+  const inSet = await page.$$eval("tbody tr", (rows) => rows.filter((r) => r.cells[2].textContent === "Tidebreak").length);
+  check("filter hides rows that do not match", visible === inSet && visible > 0, `${visible} of ${inSet}`);
   await page.click("thead input[type=checkbox]");
   check("select all with a filter selects only the visible rows", (await count()) === String(visible), await count());
   await page.click("[role=group] button:nth-of-type(2)");
