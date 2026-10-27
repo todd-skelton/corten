@@ -1452,7 +1452,9 @@ async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
             )
             .route(
                 "/zone-page",
-                get(|req: Req, zone: Option<ClientZone>| async move { req.test_page("Zone", html! { <p>{format!("{zone:?}")}</p> }) }),
+                get(|req: Req, zone: Option<ClientZone>| async move { req.test_page("Zone", html! {
+                    <p>{format!("{zone:?}")}</p>
+                }) }),
             ),
         )
     };
