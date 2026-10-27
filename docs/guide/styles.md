@@ -33,6 +33,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 | `#[component(css = OfferList)]` | a helper in the same module shares the stylesheet, and its uses count |
 | `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed responsive utilities: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
 | `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
+| `var(--color-accent)` in a component's stylesheet | a startup error unless a stylesheet on the same pages declares it (the token file, a listed component's, a `.css` file in the static directory, or for an area's component one linked from its area), naming the file and the property; `var(--x, fallback)` is not checked |
 | `App::area(\|area\| admin::area(area).components(&[SalesChart, ...]))` | those stylesheets in a file of their own, `sections/admin.css`, linked only from pages at and under `/admin`; a component listed in two places, or tokens in an area, is a startup error, and a page outside the area that renders one is an error under `corten dev` |
 
 Variants are Rust: `match tone { Tone::Danger => Danger, Tone::Neutral => Neutral }` picks the
@@ -54,6 +55,15 @@ values apply to under it, so they are written once.
 The page is dark when it says `data-theme="dark"`, or when the system is dark and the page did
 not choose `light`. `color-scheme` (which themes form controls and scrollbars) is a property,
 not a token, so it goes in `static/style.css` next to the same selectors.
+
+A misspelled token (`var(--color-primary-contrast)` where the file has
+`--color-primary-foreground`) would make the declaration invalid and the property inherit, which
+shows only as a wrong color. So when the app starts (`App::router`, which every test of the app
+builds), each `var(--x)` without a fallback in a listed stylesheet must name a property declared
+by a stylesheet on the same pages, or it fails with the file and the property. It is a startup
+check, not a compile error, because a component's stylesheet compiles without seeing the theme,
+which may be another crate's. A property a script sets (`el.style.setProperty`) takes a fallback,
+`var(--progress, 0)`.
 
 `static/style.css` holds what belongs to no component: element defaults, fonts and the layout.
 Link it before `<Corten />` in the layout, which links the components' stylesheet, so component

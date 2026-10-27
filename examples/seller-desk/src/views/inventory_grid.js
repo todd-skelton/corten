@@ -20,11 +20,15 @@ import { InventoryRow, rows } from "corten/views";
  * @property {HTMLDivElement} bar
  */
 
-/** @param {HTMLElement} root */
-const last = (root) => state(root, () => ({ index: -1 }));
+/**
+ * What the grid keeps between events: the last clicked row, for shift-click ranges, and the rows
+ * whose price was typed and not saved. One object, since an element has one state.
+ * @param {HTMLElement} root
+ */
+const kept = (root) => state(root, () => ({ index: -1, unsent: /** @type {Set<HTMLTableRowElement>} */ (new Set()) }));
 
-/** The rows whose price was typed and not saved. @param {HTMLElement} root */
-const unsentRows = (root) => state(root, () => /** @type {Set<HTMLTableRowElement>} */ (new Set()));
+/** @param {HTMLElement} root */
+const unsentRows = (root) => kept(root).unsent;
 
 /**
  * Keeps the stock cells current from the levels feed until the grid leaves the page.
@@ -60,7 +64,7 @@ export function toggle(event, box, root, sel) {
   const row = list.of(box);
   if (!row) return;
   const at = list.indexOf(row);
-  const s = last(root);
+  const s = kept(root);
   if (event.shiftKey && s.index >= 0) {
     const [from, to] = at < s.index ? [at, s.index] : [s.index, at];
     for (let i = from; i <= to; i += 1) {
@@ -80,14 +84,14 @@ export function toggle(event, box, root, sel) {
  */
 export function selectAll(root, sel) {
   for (const row of rows(sel.body, InventoryRow)) if (!row.el.hidden) row.selected = sel.all.checked;
-  last(root).index = -1;
+  kept(root).index = -1;
   tally(sel);
 }
 
 /** @param {HTMLElement} root @param {Selection} sel */
 export function clear(root, sel) {
   for (const row of rows(sel.body, InventoryRow)) row.selected = false;
-  last(root).index = -1;
+  kept(root).index = -1;
   tally(sel);
 }
 

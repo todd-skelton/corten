@@ -615,6 +615,16 @@ Corten is pre-1.0, so any minor version may change the API.
     run; a bare `ClientZone` and a `Public` handler taking it do not compile. That cookie alone does
     not make a public page private. The runtime is 78 B larger (gzip)
     ([#149 A handler cannot know the visitor's time zone, so a picked date needs a script to become an instant and every date is written in UTC](https://github.com/todd-skelton/corten/issues/149)).
+93. `Refused::message` and `Refused::too_many`: a `Caller` refusal tells a client that reads the
+    failure why ("Invalid API key", in the API's error shape) and can be a 429 with `Retry-After`
+    for too many failed attempts, so an API key check stays in `Identify`
+    ([#177 A Caller refusal cannot say why (Invalid API key) or be a 429 for too many failed attempts, so an API key check stays outside Caller](https://github.com/todd-skelton/corten/issues/177)).
+94. A `var(--x)` without a fallback in a listed stylesheet that no stylesheet on the same pages
+    declares (the token file, a component's, a `.css` file in the static directory, an area's for
+    its own pages) fails `App::router` and names the file and the property, so a misspelled
+    token is not a wrong color found in a browser. Checked at startup, about 0.25 ms for 21 KB of
+    CSS, since a component's stylesheet compiles without the theme
+    ([#179 A stylesheet can use a token the theme does not define (var(--color-primary-contrast)), and nothing reports it until a browser draws the wrong color](https://github.com/todd-skelton/corten/issues/179)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -929,6 +939,14 @@ Corten is pre-1.0, so any minor version may change the API.
     On Docker Desktop (shared with other work, so rough), pinned to two cores, it served
     4,400-6,600 items a second to 64 users in three runs against 3,600-4,000 in two with one
     process, using about 1.9 cores. Responses are byte for byte the same.
+56. `JsonResult<T>`'s error is `JsonError`: `check(&input)?` answers 422 with the fields
+    (`{"error":{..,"fields":{..}}}`), and `?` on any other error is answered as before. Before,
+    a JSON handler that checked its input and loaded a record could not `?` both, and the
+    `Result<Json<T>, Errors>` the docs named did not compile. On a page `?` on `Errors` still
+    does not compile (a `compile_fail` doctest): a page's form answers with `req.invalid`.
+    Migration: `return Err(Error::status(..))` in a `JsonResult` handler is `Err(Error::status(..))?`
+    (or `.into()`); `?` is unchanged.
+
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -1138,6 +1156,11 @@ Corten is pre-1.0, so any minor version may change the API.
     waits for its own answer, and the next one names each post's stock. The runtime never sent
     a post twice: the route the smoke intercepts saw one per submit
     ([#161 Firefox smoke: the shadowed-controls form is seen posting twice now and then](https://github.com/todd-skelton/corten/issues/161)).
+41. `examples/seller-desk`: typing a price threw `unsent.add is not a function` and the
+    "prices not saved" note never showed. The grid kept two `state(scope, ..)`s for one element,
+    and an element has one, so the second got the first's object. They are one object now, and
+    `state`'s docs say an element has one state. The seller-desk smoke test, which caught it, now
+    runs in CI, and waits for what it checks instead of fixed timers.
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1222,7 +1245,17 @@ Corten is pre-1.0, so any minor version may change the API.
     opens one new stream and closes the old one, the list survives a reload, the change cells
     follow the feed, a sector's box lists its stories, a refused price comes back marked with
     focus on it, and a story's place stays in the address.
-18. The examples show believable data and fit a phone. card-market, run with no item source
+18. `examples/card-market` shows a partner API and a write limit. `POST /api/alerts` sets an
+    alert for a partner's user: the handler takes `Caller<Partner>`, found by the `X-Api-Key`
+    header (`API_KEYS`, no partner without it), so a request without a known key is a JSON 401,
+    and the form's rules answer with the fields. A middleware of the app's (`WriteLimit`)
+    allows about 20 writes a minute from one client (`ClientIp`, an IPv6 address by its /64;
+    `WRITES_PER_MINUTE` to change it) and answers the next with a 429 and `Retry-After`; a
+    partner's alerts are counted by the partner, whatever address it sends from; reads pass
+    straight through, so pages a CDN keeps stay public, and agents answer to their token, which
+    no longer defaults to `dev-token` (`AGENT_TOKENS`). The smoke test runs the container with
+    Docker's networks as its proxies (`PROXIES`), so each forwarded address has its own count.
+19. The examples show believable data and fit a phone. card-market, run with no item source
     (`API_BASE` or `ITEM_SOURCE`), serves a demo catalog built into it (`fixtures/demo.json`):
     original cards in three sets, sellers, offers and a sealed box with its contents. Its home
     page lists the source's items as cards (name, set, lowest price) and a category page lists

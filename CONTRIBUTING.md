@@ -62,13 +62,17 @@ docker run -d --name corten-watchlist-dev -p 18483:8080 -e CORTEN_DEV=1 corten-w
 node scripts/smoke-dev.mjs http://localhost:18483 corten-watchlist-dev
 docker rm -f corten-watchlist-dev
 docker build -f examples/card-market/Dockerfile -t corten-card-market .
-docker run -d --name corten-card-market -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -e AGENT_ORIGINS=http://127.0.0.1:18481 -v "${PWD}/examples/card-market/fixtures:/fixtures:ro" corten-card-market
+docker run -d --name corten-card-market -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -e AGENT_ORIGINS=http://127.0.0.1:18481 -e PROXIES=172.16.0.0/12,192.168.0.0/16 -e API_KEYS=dev=dev-key -e AGENT_TOKENS=dev-token -v "${PWD}/examples/card-market/fixtures:/fixtures:ro" corten-card-market
 node examples/card-market/smoke.mjs http://localhost:18481
 docker rm -f corten-card-market
 docker build -f examples/ui-gallery/Dockerfile -t corten-ui-gallery .
 docker run -d --name corten-ui-gallery -p 18482:8080 corten-ui-gallery
 node examples/ui-gallery/smoke.mjs http://localhost:18482
 docker rm -f corten-ui-gallery
+docker build -f examples/seller-desk/Dockerfile -t corten-seller-desk .
+docker run -d --name corten-seller-desk -p 18484:8080 corten-seller-desk
+node examples/seller-desk/smoke.mjs http://localhost:18484
+docker rm -f corten-seller-desk
 ```
 
 The first command also compiles every `rust` code block in `README.md` and `docs/guide/` as a

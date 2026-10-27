@@ -241,6 +241,8 @@ impl Assets {
             }
             sources.push((VIEWS.to_string(), views.into_bytes()));
         }
+        let styles: Vec<(&str, crate::Style)> = seen.iter().filter_map(|(c, _)| Some((c.name, c.style?))).collect();
+        undeclared_properties(&sheets, &sources, &styles, sections)?;
         let css = sheets.iter().position(|(s, _, _)| s.is_empty()).map(|i| sheets.remove(i).1).unwrap_or_default();
         if !css.is_empty() {
             if sources.iter().any(|(u, _)| u == STYLESHEET) {
@@ -453,6 +455,82 @@ pub(crate) struct Section {
     pub components: Vec<&'static str>,
 }
 
+/// Each `var(--x)` with no fallback in a component's stylesheet (or the token file's) must name
+/// a custom property a stylesheet on the same pages declares: the token file's, a component's in
+/// `components.css`, a `.css` file in the static directory, or, for an area's component, one in
+/// a stylesheet linked from every one of its areas. Otherwise the value is invalid and the
+/// property inherits, which shows only as a wrong color in a browser. Checked here because a
+/// component's stylesheet is compiled without the theme; this runs once, at startup.
+fn undeclared_properties(
+    sheets: &[(Vec<usize>, String, Vec<&'static str>)],
+    sources: &[(String, Vec<u8>)],
+    styles: &[(&str, crate::Style)],
+    sections: &[(&str, &[Component])],
+) -> io::Result<()> {
+    use std::collections::HashSet;
+    let declared = |css: &str, into: &mut HashSet<String>| {
+        into.extend(crate::style::custom_properties(css).0.into_iter().map(str::to_string));
+    };
+    let mut everywhere = HashSet::new();
+    for (_, body) in sources.iter().filter(|(url, _)| url.ends_with(".css")) {
+        // A file that is not text declares nothing.
+        if let Ok(css) = std::str::from_utf8(body) {
+            declared(css, &mut everywhere);
+        }
+    }
+    for (_, css, _) in sheets.iter().filter(|(at, _, _)| at.is_empty()) {
+        declared(css, &mut everywhere);
+    }
+    // What each area's pages add: the section stylesheets linked from them, its own and those of
+    // the areas it is under (`/admin`'s on `/admin/reports`'s pages).
+    let in_area: Vec<HashSet<String>> = (1..=sections.len())
+        .map(|i| {
+            let mut set = HashSet::new();
+            let linked = |j: &usize| crate::api::under(sections[j - 1].0, sections[i - 1].0);
+            for (_, css, _) in sheets.iter().filter(|(at, _, _)| at.iter().any(linked)) {
+                declared(css, &mut set);
+            }
+            set
+        })
+        .collect();
+    let mut missing = Vec::new();
+    for (at, _, names) in sheets {
+        for (name, style) in names.iter().filter_map(|n| styles.iter().find(|(s, _)| s == n)) {
+            for property in crate::style::custom_properties(style.css).1 {
+                if everywhere.contains(property) {
+                    continue;
+                }
+                let lacking: Vec<&str> =
+                    at.iter().filter(|i| !in_area[**i - 1].contains(property)).map(|i| sections[i - 1].0).collect();
+                let line = if at.is_empty() {
+                    format!("{} ({name}) reads var({property}), which no stylesheet declares", style.file)
+                } else if !lacking.is_empty() {
+                    format!(
+                        "{} ({name}) reads var({property}), which no stylesheet on the pages of {} declares",
+                        style.file,
+                        lacking.join(", ")
+                    )
+                } else {
+                    continue;
+                };
+                if !missing.contains(&line) {
+                    missing.push(line);
+                }
+            }
+        }
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+            "{}. A custom property comes from tokens!, a component's stylesheet or a .css file in the static directory: fix the name, declare it, or give the var() a fallback (var(--x, ..)) when a script sets it",
+            missing.join("; ")
+        ),
+    ))
+}
+
 /// Where a section's stylesheet is served: `sections/admin.css` for `/admin`, and
 /// `sections/search+categories.css` for the components `/search` and `/categories` share.
 fn section_file(prefixes: &[String]) -> String {
@@ -638,6 +716,34 @@ mod tests {
             .err()
             .expect("one prefix, two components");
         assert!(error.to_string().contains("both style .card__*"), "{error}");
+    }
+
+    #[test]
+    fn a_stylesheet_reads_only_the_custom_properties_its_pages_declare() {
+        let tokens = styled("tokens.json", "tokens.json", ":root{--ink:#111;--space-1:4px}");
+        let card = styled("Card", "card", ".card__a{color:var(--ink);padding:var(--space-1)}");
+        assert!(Assets::build(None, &[tokens, card], "/assets").is_ok());
+        let typo = styled("Card", "card", ".card__a{color:var(--color-primary-contrast);margin:var(--gap, 0)}");
+        let error = Assets::build(None, &[tokens, typo], "/assets").err().expect("an undeclared property").to_string();
+        assert!(error.contains("x.css (Card) reads var(--color-primary-contrast), which no stylesheet declares"), "{error}");
+        assert!(!error.contains("--gap"), "a fallback is enough: {error}");
+        let root = dir("declared", &[("style.css", ":root {\n  --color-primary-contrast: white;\n}")]);
+        assert!(Assets::build(Some(&root), &[tokens, typo], "/assets").is_ok(), "a static .css file declares them too");
+
+        // An area's component reads what its pages declare, the areas around it included.
+        let admin = styled("Admin", "admin", ".admin__a{--admin-ink:red}");
+        let report = styled("Report", "report", ".report__a{color:var(--admin-ink)}");
+        let nested: &[(&str, &[Component])] = &[("/admin", &[admin]), ("/admin/reports", &[report])];
+        assert!(Assets::build_with(None, &[tokens], nested, "/assets").is_ok());
+        let apart: &[(&str, &[Component])] = &[("/admin", &[admin]), ("/reports", &[report])];
+        let error = Assets::build_with(None, &[tokens], apart, "/assets").err().expect("declared on other pages").to_string();
+        assert!(
+            error.contains("x.css (Report) reads var(--admin-ink), which no stylesheet on the pages of /reports declares"),
+            "{error}"
+        );
+        let error =
+            Assets::build_with(None, &[tokens, report], &[("/admin", &[admin])], "/assets").err().expect("an area's").to_string();
+        assert!(error.contains("x.css (Report) reads var(--admin-ink), which no stylesheet declares"), "{error}");
     }
 
     #[tokio::test]

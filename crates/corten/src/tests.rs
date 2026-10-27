@@ -1241,6 +1241,57 @@ async fn an_api_writes_the_failures_corten_answers_in_its_own_shape() {
     assert_eq!(body, r#"{"mine":1}"#, "a handler's own JSON failure passes through");
 }
 
+/// A key check that says why it refused, and locks out a client with too many failed attempts.
+#[derive(Clone, Hash, Debug)]
+struct Keyed;
+
+impl<S: Sync> crate::Identify<S> for Keyed {
+    async fn identify(parts: &axum::http::request::Parts, _: &S) -> std::result::Result<Self, crate::Refused> {
+        match parts.headers.get("x-api-key").map(|v| v.as_bytes()) {
+            Some(b"k1") => Ok(Keyed),
+            Some(b"locked") => Err(crate::Refused::too_many(std::time::Duration::from_millis(1500))
+                .message("Too many failed attempts; try again later")),
+            _ => Err(crate::Refused::unauthorized().message("Invalid API key")),
+        }
+    }
+}
+
+#[derive(crate::Route)]
+#[route("/api/keyed")]
+struct ApiKeyed;
+
+/// A refusal says why, in the API's own shape, and a lockout is a 429 that says when to try again.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_refusal_tells_the_client_why_and_when_to_try_again() {
+    let router = api_app(|api| {
+        api.route::<ApiKeyed>(crate::Methods(get(|_: Caller<Keyed>| async { "ok" }))).errors(|status, message| ShapedError {
+            r#type: "error",
+            error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+        })
+    });
+    let keyed = |key: Option<&'static str>| {
+        let mut req = Request::get("/api/keyed");
+        if let Some(key) = key {
+            req = req.header("x-api-key", key);
+        }
+        let router = router.clone();
+        async move {
+            let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            let (status, retry) = (res.status().as_u16(), res.headers().get("retry-after").cloned());
+            (status, retry, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+        }
+    };
+    assert_eq!(keyed(Some("k1")).await, (200, None, "ok".to_string()));
+    assert_eq!(
+        keyed(None).await,
+        (401, None, r#"{"type":"error","error":{"code":401,"message":"Invalid API key"}}"#.to_string())
+    );
+    let (status, retry, body) = keyed(Some("locked")).await;
+    assert_eq!((status, retry.as_ref().map(|v| v.to_str().unwrap())), (429, Some("2")), "whole seconds, rounded up");
+    assert_eq!(body, r#"{"type":"error","error":{"code":429,"message":"Too many failed attempts; try again later"}}"#);
+}
+
 #[tokio::test]
 async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pages() {
     let router = api_app(|api| api.allow_origin("https://partner.example/"));
@@ -1346,6 +1397,65 @@ async fn validation_errors_are_the_json_error_with_fields() {
         body,
         r#"{"error":{"status":422,"message":"email: Enter an email address.","fields":{"email":"Enter an email address."}}}"#
     );
+}
+
+/// A JSON route that checks its input and loads a record, each with `?`.
+#[cfg(feature = "json")]
+#[crate::routes(api = CheckedRoot)]
+mod checked_api {
+    #[route("/checked")]
+    pub struct CheckedRoot;
+
+    #[route("/checked/{n}", post = checked)]
+    pub struct Checked {
+        pub n: u32,
+    }
+}
+
+#[cfg(feature = "json")]
+async fn checked(Path(n): Path<u32>) -> crate::JsonResult<u32> {
+    let mut errors = Errors::new();
+    if n == 0 {
+        errors.add(SignUp::FIELDS.email, "Enter a number above zero.");
+    }
+    let n = errors.into_result(n)?;
+    // A load that fails, next to the check.
+    let n = n.checked_mul(1000).ok_or_else(|| Error::new("too large to load"))?;
+    Ok(crate::Json(n))
+}
+
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_json_handler_question_marks_field_errors_into_a_422_with_the_fields() {
+    let router = App::new(Routes::new()).api(checked_api::api).router();
+    let (status, _, body) = call_with(router.clone(), "POST", "/checked/2", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "2000"));
+    let (status, headers, body) = call_with(router.clone(), "POST", "/checked/0", None, Some("text/html")).await;
+    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::UNPROCESSABLE_ENTITY, "application/json"));
+    assert_eq!(
+        body,
+        r#"{"error":{"status":422,"message":"email: Enter a number above zero.","fields":{"email":"Enter a number above zero."}}}"#
+    );
+    // Any other error is still a 500, whose message a client does not see.
+    let (status, _, body) = call_with(router, "POST", "/checked/4294968", None, None).await;
+    assert_eq!(
+        (status, &body[..]),
+        (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":{"status":500,"message":"Internal Server Error"}}"#)
+    );
+    // An API with its own error shape writes the 500 in it; the fields keep Corten's shape.
+    let shaped = App::new(Routes::new())
+        .api(|api| {
+            checked_api::api(api).errors(|status, message| ShapedError {
+                r#type: "error",
+                error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+            })
+        })
+        .router();
+    let (_, _, body) = call_with(shaped.clone(), "POST", "/checked/4294968", None, None).await;
+    assert_eq!(body, r#"{"type":"error","error":{"code":500,"message":"Internal Server Error"}}"#);
+    let (status, _, body) = call_with(shaped, "POST", "/checked/0", None, None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body.ends_with(r#""fields":{"email":"Enter a number above zero."}}}"#), "{body}");
 }
 
 #[cfg(feature = "json")]

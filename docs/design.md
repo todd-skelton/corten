@@ -96,7 +96,8 @@ framework's shape, and what it does not do yet.
    with one way to give each; reorganize it when it does not, rather than add a second way.
 8. A mistake the compiler can see is a compile error, with a `compile_fail` doctest: a type, a
    trait bound, or a `const` assertion over a route's `PATH`. One it cannot see (two settings
-   that clash, a file missing from `static/`) fails at startup, and only what depends on the
+   that clash, a file missing from `static/`, a `var(--x)` no stylesheet on its pages declares)
+   fails at startup, and only what depends on the
    request is checked per request. A check that moves earlier also leaves the request path.
 9. A layout's props are what most pages set: the title and the page's own head tags. A page that
    needs a different document (a print view, an embed) uses another layout component; a layout

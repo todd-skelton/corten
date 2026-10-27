@@ -2,13 +2,25 @@
 //! policy (CSP nonce, cross-site write check), versioned assets, error pages, health, PWA with
 //! push, head tags, an i18n catalog, robots/sitemap, compression, the home and category pages
 //! cached by CDNs (`Public`), an item as JSON for other services and the price-alert
-//! action as an MCP tool for agents, both mounted as JSON-only routes (`App::api`).
-use std::{sync::Arc, time::Duration};
+//! action as an MCP tool for agents, both mounted as JSON-only routes (`App::api`). Partners'
+//! services set alerts with an API key (`Caller<Partner>`), and writes are limited per client
+//! address by a middleware of the app's (`WriteLimit`, `ClientIp`; `PROXIES` behind a load
+//! balancer).
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use corten::{
-    Error,
+    ClientIp, Error,
     agent::{ToolError, Tools},
-    axum::http::StatusCode,
+    axum::{
+        extract::{FromRef, FromRequestParts, Request},
+        http::{HeaderMap, HeaderValue, Method, StatusCode, header, request::Parts},
+        response::{IntoResponse, Response},
+    },
     prelude::*,
     pwa::{Manifest, Pwa},
     security::Policy,
@@ -27,9 +39,27 @@ use crate::{
 };
 
 /// The app, assembled: routes plus the error page, catalogs and PWA settings. Corten adds the rest.
-pub fn app(source: Source) -> App {
-    let tokens = std::env::var("AGENT_TOKENS").unwrap_or_else(|_| "dev-token".into());
-    let tokens: Arc<[String]> = tokens.split(',').map(str::to_string).collect();
+pub fn app(source: Source) -> App<WriteLimit> {
+    let writes = match std::env::var("WRITES_PER_MINUTE") {
+        Ok(n) => n.trim().parse().ok().filter(|&n| n > 0).expect("WRITES_PER_MINUTE is a whole number above zero"),
+        Err(_) => WRITES_PER_MINUTE,
+    };
+    let keys = |name: &str| std::env::var(name).unwrap_or_default();
+    app_with(source, Keys { partners: Partners::parse(&keys("API_KEYS")), agents: &keys("AGENT_TOKENS") }, writes)
+}
+
+/// Who may call the JSON routes: partners by API key, agents by token (`AGENT_TOKENS`, comma
+/// separated). Neither has a default, so a deploy that leaves them out lets no one in.
+struct Keys<'a> {
+    partners: Partners,
+    agents: &'a str,
+}
+
+/// The app with the keys and the writes a minute given, for tests.
+fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
+    let Keys { partners, agents } = keys;
+    let tokens: Arc<[String]> = agents.split(',').map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).collect();
+    let limit = WriteLimit::new(writes, partners.clone());
     let manifest = Manifest::new("Card Market", "Cards")
         .description("Buy and sell trading cards")
         .theme_color("#14213d")
@@ -44,7 +74,7 @@ pub fn app(source: Source) -> App {
     let policy = if std::env::var_os("HTTPS").is_some() { Policy::new().hsts() } else { Policy::new() };
     let ready = source.clone();
     App::new(routes::router(source.clone()))
-        .api(|routes| api::api(routes, source))
+        .api(|routes| api::api(routes, ApiState { source, partners }))
         .api(|routes| {
             let routes = mcp::api(routes).route::<mcp::Mcp>(tools);
             origins.split(',').filter(|o| !o.is_empty()).fold(routes, |routes, origin| routes.allow_origin(origin))
@@ -61,6 +91,167 @@ pub fn app(source: Source) -> App {
             let source = ready.clone();
             async move { source.reachable().await }
         })
+        .middleware(limit)
+}
+
+/// What the JSON routes share: the items, and the partners that may set alerts.
+#[derive(Clone)]
+pub struct ApiState {
+    source: Source,
+    partners: Partners,
+}
+
+impl FromRef<ApiState> for Source {
+    fn from_ref(state: &ApiState) -> Source {
+        state.source.clone()
+    }
+}
+
+/// The services that may set alerts for their users, by API key: `API_KEYS` is
+/// `name=key,name=key`, and without it no partner may. A real app keeps a hash of each key in
+/// its database.
+#[derive(Clone)]
+pub struct Partners(Arc<HashMap<String, Arc<str>>>);
+
+impl Partners {
+    /// `name=key` pairs, comma separated; a pair without a name or a key is left out.
+    fn parse(keys: &str) -> Self {
+        let pairs = keys.split(',').filter_map(|pair| pair.split_once('=')).map(|(name, key)| (name.trim(), key.trim()));
+        let pairs = pairs.filter(|(name, key)| !name.is_empty() && !key.is_empty());
+        Partners(Arc::new(pairs.map(|(name, key)| (key.to_string(), Arc::from(name))).collect()))
+    }
+
+    /// The partner whose key the request sends (`X-Api-Key`).
+    fn named(&self, headers: &HeaderMap) -> Option<&Arc<str>> {
+        self.0.get(headers.get("x-api-key")?.to_str().ok()?)
+    }
+}
+
+/// A service that sets alerts for its users, known by the API key it sends (`X-Api-Key`). A
+/// handler that takes `Caller<Partner>` never runs without one: the request is a JSON 401.
+#[derive(Clone, Hash)]
+pub(crate) struct Partner {
+    pub name: Arc<str>,
+}
+
+impl Identify<ApiState> for Partner {
+    async fn identify(parts: &Parts, state: &ApiState) -> Result<Self, Refused> {
+        match state.partners.named(&parts.headers) {
+            Some(name) => Ok(Partner { name: name.clone() }),
+            None => Err(Refused::unauthorized()),
+        }
+    }
+}
+
+/// Writes one client may make a minute (`WRITES_PER_MINUTE` to change it): alerts send email,
+/// so a script cannot set thousands.
+const WRITES_PER_MINUTE: u32 = 20;
+
+/// Alerts one partner may set a minute, for all its users together, from whatever addresses.
+const PARTNER_WRITES_PER_MINUTE: u32 = 600;
+
+/// Clients counted at most in a minute (a few megabytes); past it a new client waits for the
+/// next minute, so memory stays bounded however many write. A flood from that many addresses
+/// in one minute holds new writers off until the minute turns, and that is a botnet or under
+/// two IPv6 /48s (65,536 /64s each, what one customer may be given): a site that faces one
+/// limits at its edge (a CDN or load balancer) as well.
+const ADDRESSES: usize = 100_000;
+
+/// About `limit` writes a minute from one client: a form's post, or an alert with a key no
+/// partner has. A client is its address (`ClientIp`: behind a load balancer, the one it
+/// forwards, with `PROXIES` set), an IPv6 one by its /64, the block one host is given. A
+/// partner's alerts are counted by the partner instead, whatever address its servers send from
+/// (`PARTNER_WRITES_PER_MINUTE`). The count starts again each minute, so a burst across the
+/// turn of a minute can reach twice the limit. A write past it is a 429 with `Retry-After`: the
+/// error page for a browser, JSON for a partner. Reads pass straight through, so a page a CDN
+/// keeps stays public; agents (`/mcp`, all POST, reads included) answer to their token instead;
+/// and a request whose address cannot be known (a test without one) is not counted.
+pub struct WriteLimit {
+    limit: u32,
+    partners: Partners,
+    /// Clients counted at most in a minute ([`ADDRESSES`]).
+    clients: usize,
+    minute: Mutex<Minute>,
+}
+
+/// The writes of each client in the current minute.
+struct Minute {
+    started: Instant,
+    writes: HashMap<Client, u32>,
+}
+
+/// Who a limit counts.
+#[derive(PartialEq, Eq, Hash)]
+enum Client {
+    /// An IPv4 address, or an IPv6 address's /64.
+    Address(IpAddr),
+    Partner(Arc<str>),
+}
+
+impl Client {
+    fn address(ip: IpAddr) -> Self {
+        match ip {
+            IpAddr::V4(_) => Client::Address(ip),
+            IpAddr::V6(v6) => Client::Address(IpAddr::V6((u128::from(v6) & !((1u128 << 64) - 1)).into())),
+        }
+    }
+}
+
+impl WriteLimit {
+    fn new(limit: u32, partners: Partners) -> Self {
+        let minute = Mutex::new(Minute { started: Instant::now(), writes: HashMap::new() });
+        WriteLimit { limit, partners, clients: ADDRESSES, minute }
+    }
+
+    /// Counts a write from `client`: `None` when it may go ahead, else the seconds until it may.
+    fn count(&self, client: Client, now: Instant) -> Option<u64> {
+        let limit = if matches!(client, Client::Partner(_)) { PARTNER_WRITES_PER_MINUTE } else { self.limit };
+        let mut minute = self.minute.lock().unwrap_or_else(|e| e.into_inner());
+        let elapsed = now.duration_since(minute.started);
+        if elapsed >= Duration::from_secs(60) {
+            minute.started = now;
+            minute.writes.clear();
+        }
+        let wait = 60 - now.duration_since(minute.started).as_secs().min(59);
+        let full = minute.writes.len() >= self.clients;
+        match minute.writes.get_mut(&client) {
+            Some(writes) if *writes >= limit => Some(wait),
+            Some(writes) => {
+                *writes += 1;
+                None
+            }
+            // Partners are the few `API_KEYS` names, so they need no room kept.
+            None if full && !matches!(client, Client::Partner(_)) => Some(wait),
+            None => {
+                minute.writes.insert(client, 1);
+                None
+            }
+        }
+    }
+}
+
+impl Middleware for WriteLimit {
+    async fn call(&self, req: Request, next: impl Next) -> Response {
+        if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) || req.uri().path() == mcp::Mcp::PATH {
+            return next.run(req).await;
+        }
+        let (mut parts, body) = req.into_parts();
+        let partner = (parts.uri.path() == api::AlertsJson::PATH).then(|| self.partners.named(&parts.headers)).flatten();
+        let client = match partner {
+            Some(name) => Some(Client::Partner(name.clone())),
+            None => Option::<ClientIp>::from_request_parts(&mut parts, &())
+                .await
+                .ok()
+                .flatten()
+                .map(|ClientIp(ip)| Client::address(ip)),
+        };
+        if let Some(wait) = client.and_then(|client| self.count(client, Instant::now())) {
+            let mut res = Error::status(StatusCode::TOO_MANY_REQUESTS).into_response();
+            res.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from(wait));
+            return res;
+        }
+        next.run(Request::from_parts(parts, body)).await
+    }
 }
 
 /// The site's address, for the absolute URLs search engines read (the sitemap, structured data).
@@ -159,6 +350,20 @@ pub(crate) async fn item_json(State(source): State<Source>, Path(id): Path<Strin
     Ok(Json(source.item(&id).await?.ok_or_else(not_found)?))
 }
 
+/// A partner's alert for one of its users: the form's rules, as JSON. A field the rules refuse
+/// is a 422 with the fields (`?` on the rules' `Errors`), next to the `?` of the item's load.
+pub(crate) async fn alert_json(
+    Caller(partner): Caller<Partner>,
+    State(source): State<Source>,
+    Json(input): Json<CreateAlert>,
+) -> JsonResult<AlertSet> {
+    let t = Msg::default();
+    let price = check_alert(t, &input.email, &input.target_price)?;
+    let item = source.item(&input.id).await?.ok_or_else(not_found)?;
+    let price = listed(t, &item, price)?;
+    Ok(Json(AlertSet { message: alert_set(&item.title, &input.email, price), partner: Some(partner.name) }))
+}
+
 pub(crate) async fn create_alert(
     req: Req,
     State(source): State<Source>,
@@ -207,9 +412,10 @@ struct ItemId {
     id: String,
 }
 
-/// A price alert as an agent asks for it: the form's fields (same names, same rules) plus the item.
-#[derive(Deserialize, JsonSchema)]
-struct CreateAlert {
+/// A price alert as an agent or a partner asks for it: the form's fields (same names, same
+/// rules) plus the item.
+#[derive(Deserialize, JsonSchema, FromJson)]
+pub(crate) struct CreateAlert {
     /// Item id, like item_17.
     id: String,
     /// Where to send the alert.
@@ -219,9 +425,12 @@ struct CreateAlert {
     target_price: String,
 }
 
-#[derive(Serialize, JsonSchema)]
-struct AlertSet {
+#[derive(Serialize, JsonSchema, ToJson)]
+pub(crate) struct AlertSet {
     message: String,
+    /// The partner the alert was set for, when a partner set it; agents do not have one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    partner: Option<Arc<str>>,
 }
 
 /// The same read and write the page offers, as MCP tools. Agents authenticate with a bearer
@@ -258,7 +467,7 @@ fn tools(source: Source, tokens: Arc<[String]>) -> Tools {
                     let price = check_alert(Msg::default(), &input.email, &input.target_price)?;
                     let item = source.item(&input.id).await.map_err(ToolError::internal)?;
                     let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
-                    Ok(AlertSet { message: alert_set(&item.title, &input.email, price) })
+                    Ok(AlertSet { message: alert_set(&item.title, &input.email, price), partner: None })
                 }
             },
         )
@@ -294,7 +503,8 @@ mod tests {
         });
         let bare = json!({ "catalog_item_id": "item_10", "title": "Bare", "market_summary": null });
         let source = Source::fixture(&json!({ "item_9": item, "item_10": bare }).to_string()).unwrap();
-        super::app(source).router()
+        super::app_with(source, Keys { partners: Partners::parse("dev=dev-key"), agents: "dev-token" }, WRITES_PER_MINUTE)
+            .router()
     }
 
     async fn send(req: Request<Body>) -> (StatusCode, HeaderMap, String) {
@@ -749,5 +959,174 @@ mod tests {
             (status, &body[..]),
             (StatusCode::FORBIDDEN, r#"{"error":{"status":403,"message":"Cross-site request refused."}}"#)
         );
+    }
+
+    /// A partner's JSON write, with the key `key`.
+    fn partner(key: Option<&str>, body: &'static str) -> Request<Body> {
+        let mut req = Request::post("/api/alerts").header("content-type", "application/json");
+        if let Some(key) = key {
+            req = req.header("x-api-key", key);
+        }
+        req.body(Body::from(body)).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_partner_sets_an_alert_with_its_api_key() {
+        let alert = r#"{"id":"item_9","email":"ada@example.com","target_price":"0.40"}"#;
+        for key in [None, Some("wrong")] {
+            let (status, _, body) = send(partner(key, alert)).await;
+            assert_eq!(
+                (status, body.as_str()),
+                (StatusCode::UNAUTHORIZED, r#"{"error":{"status":401,"message":"Unauthorized"}}"#)
+            );
+        }
+        let (status, headers, body) = send(partner(Some("dev-key"), alert)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body,
+            r#"{"message":"Alert set: we will email ada@example.com when Pika <Promo> & \"Friends\" drops below $0.40.","partner":"dev"}"#
+        );
+        assert_eq!(headers["cache-control"], "private, no-cache", "an answer for one partner");
+        // The form's rules, as fields; a missing item; an item with no price to watch.
+        let (status, _, body) = send(partner(Some("dev-key"), r#"{"id":"item_9","email":"ada","target_price":"0"}"#)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            body.ends_with(
+                r#""fields":{"email":"Enter a valid email address.","target_price":"Enter a target price above zero."}}}"#
+            ),
+            "{body}"
+        );
+        let (status, _, _) = send(partner(Some("dev-key"), r#"{"id":"nope","email":"a@b.c","target_price":"1"}"#)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _, body) = send(partner(Some("dev-key"), r#"{"id":"item_10","email":"a@b.c","target_price":"1"}"#)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(body.contains(r#""form":"This item has no listings yet, so there is no price to watch.""#), "{body}");
+    }
+
+    /// The app at `ip`, limited to `writes` a minute.
+    fn limited(writes: u32, ip: [u8; 4]) -> Router {
+        use corten::axum::extract::connect_info::MockConnectInfo;
+        let json = json!({ "item_9": { "catalog_item_id": "item_9", "title": "Pika", "market_summary": null } }).to_string();
+        let keys = Keys { partners: Partners::parse("dev=dev-key"), agents: "dev-token" };
+        let app = super::app_with(Source::fixture(&json).unwrap(), keys, writes).router();
+        app.layer(MockConnectInfo(std::net::SocketAddr::from((ip, 4000))))
+    }
+
+    /// A browser's post of the alert form, with a price the rules refuse.
+    fn form_post() -> Request<Body> {
+        Request::post("/items/item_9")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("sec-fetch-site", "same-origin")
+            .header("accept", "text/html")
+            .body(Body::from("email=a%40b.c&target_price=abc"))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn writes_are_limited_per_client_address_and_reads_are_not() {
+        let one = limited(2, [203, 0, 113, 7]);
+        for _ in 0..2 {
+            assert_eq!(one.clone().oneshot(form_post()).await.unwrap().status(), StatusCode::UNPROCESSABLE_ENTITY);
+        }
+        // A browser past the limit gets the error page, told when to come back.
+        let (parts, body) = one.clone().oneshot(form_post()).await.unwrap().into_parts();
+        let wait: u64 = parts.headers["retry-after"].to_str().unwrap().parse().unwrap();
+        assert_eq!(parts.status, StatusCode::TOO_MANY_REQUESTS);
+        assert!((1..=60).contains(&wait), "{wait}");
+        let body = String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(body.contains("<html"), "{body}");
+        // A key no partner has is counted by address too, so guessing keys is limited.
+        let guess = one.clone().oneshot(partner(Some("guess"), "{}")).await.unwrap();
+        assert_eq!(guess.status(), StatusCode::TOO_MANY_REQUESTS);
+        let body = guess.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], br#"{"error":{"status":429,"message":"Too Many Requests"}}"#);
+        // Reads, preflights and agents still go through; a read keeps its cache headers.
+        let home = one.clone().oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(
+            (home.status(), &home.headers()["cache-control"]),
+            (StatusCode::OK, &"public, max-age=60, stale-while-revalidate=600".parse().unwrap())
+        );
+        let preflight = Request::options("/api/alerts").body(Body::empty()).unwrap();
+        assert_eq!(
+            one.clone().oneshot(preflight).await.unwrap().status(),
+            StatusCode::METHOD_NOT_ALLOWED,
+            "no site may call it from a browser"
+        );
+        let ping = Request::post("/mcp")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer dev-token")
+            .body(Body::from(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#))
+            .unwrap();
+        assert_eq!(one.clone().oneshot(ping).await.unwrap().status(), StatusCode::OK);
+        // Another address has its own count.
+        assert_eq!(limited(2, [203, 0, 113, 8]).oneshot(form_post()).await.unwrap().status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn a_partner_is_counted_as_itself_whatever_address_it_sends_from() {
+        let one = limited(1, [203, 0, 113, 9]);
+        let write = || partner(Some("dev-key"), r#"{"id":"nope","email":"a@b.c","target_price":"1"}"#);
+        for _ in 0..3 {
+            assert_eq!(one.clone().oneshot(write()).await.unwrap().status(), StatusCode::NOT_FOUND, "past the address's 1");
+        }
+        let limit = WriteLimit::new(1, Partners::parse("dev=dev-key"));
+        let now = Instant::now();
+        for _ in 0..PARTNER_WRITES_PER_MINUTE {
+            assert_eq!(limit.count(Client::Partner("dev".into()), now), None);
+        }
+        assert!(limit.count(Client::Partner("dev".into()), now).is_some(), "a partner has its own limit");
+    }
+
+    #[tokio::test]
+    async fn a_write_whose_address_is_not_known_is_not_counted() {
+        let json = json!({ "item_9": { "catalog_item_id": "item_9", "title": "Pika", "market_summary": null } }).to_string();
+        let keys = Keys { partners: Partners::parse(""), agents: "" };
+        let app = super::app_with(Source::fixture(&json).unwrap(), keys, 1).router();
+        for _ in 0..3 {
+            assert_eq!(app.clone().oneshot(form_post()).await.unwrap().status(), StatusCode::UNPROCESSABLE_ENTITY);
+        }
+    }
+
+    fn address(ip: &str) -> Client {
+        Client::address(ip.parse().unwrap())
+    }
+
+    #[test]
+    fn a_new_minute_starts_the_count_again() {
+        let limit = WriteLimit::new(2, Partners::parse(""));
+        let start = Instant::now();
+        let ip = || address("198.51.100.1");
+        assert_eq!((limit.count(ip(), start), limit.count(ip(), start)), (None, None));
+        assert_eq!(limit.count(ip(), start + Duration::from_secs(15)), Some(45), "seconds left in the minute");
+        assert_eq!(limit.count(address("198.51.100.2"), start), None, "another address has its own count");
+        assert_eq!(limit.count(ip(), start + Duration::from_secs(60)), None);
+    }
+
+    #[test]
+    fn past_the_cap_a_new_client_waits_for_the_next_minute_and_counted_ones_do_not() {
+        let limit = WriteLimit { clients: 2, ..WriteLimit::new(5, Partners::parse("")) };
+        let (start, ip) = (Instant::now(), |n: u8| Client::address(IpAddr::from([198, 51, 100, n])));
+        assert_eq!((limit.count(ip(1), start), limit.count(ip(2), start)), (None, None));
+        assert_eq!(limit.count(ip(3), start + Duration::from_secs(20)), Some(40), "a third client waits");
+        assert_eq!(limit.count(ip(1), start), None, "a counted client goes on");
+        assert_eq!(limit.count(Client::Partner("dev".into()), start), None, "a partner is not a stranger");
+        assert_eq!(limit.count(ip(3), start + Duration::from_secs(60)), None, "and the new minute has room");
+    }
+
+    #[test]
+    fn an_ipv6_client_is_counted_by_its_64() {
+        let limit = WriteLimit::new(1, Partners::parse(""));
+        let now = Instant::now();
+        assert_eq!(limit.count(address("2001:db8:1:2::1"), now), None);
+        assert!(limit.count(address("2001:db8:1:2:ffff::9"), now).is_some(), "the same /64 is the same client");
+        assert_eq!(limit.count(address("2001:db8:1:3::1"), now), None, "another /64 is another");
+    }
+
+    #[test]
+    fn api_keys_without_a_name_or_a_key_are_left_out() {
+        let partners = Partners::parse(" shop = k1 ,=k2,blank=, nokey");
+        assert_eq!(partners.0.len(), 1);
+        assert_eq!(partners.0.get("k1").map(|name| &**name), Some("shop"));
+        assert!(Partners::parse("").0.is_empty(), "no API_KEYS, no partners");
     }
 }

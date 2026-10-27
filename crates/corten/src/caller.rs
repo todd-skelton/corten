@@ -147,9 +147,13 @@ pub struct Refused(Why);
 
 #[derive(Clone, Debug)]
 enum Why {
-    SignIn(HeaderValue),
-    Unauthorized,
-    Forbidden,
+    SignIn(HeaderValue, Option<std::sync::Arc<str>>),
+    /// A 401, 403 or 429, with what the client is told and, for a 429, when to try again.
+    Refusal {
+        status: StatusCode,
+        message: Option<std::sync::Arc<str>>,
+        retry_after: Option<u64>,
+    },
     Unavailable(std::sync::Arc<str>),
 }
 
@@ -159,19 +163,41 @@ impl Refused {
     /// client and a JSON route get a 401.
     pub fn sign_in(to: &(impl Href + ?Sized)) -> Self {
         match to.with_href(|href| HeaderValue::try_from(href)) {
-            Ok(to) => Refused(Why::SignIn(to)),
+            Ok(to) => Refused(Why::SignIn(to, None)),
             Err(error) => Refused(Why::Unavailable(error.to_string().into())),
         }
     }
 
     /// No credentials, and nowhere to sign in (an API key that is missing or wrong): a 401.
     pub fn unauthorized() -> Self {
-        Refused(Why::Unauthorized)
+        Refused(Why::Refusal { status: StatusCode::UNAUTHORIZED, message: None, retry_after: None })
     }
 
     /// Someone is known but may not do this (not staff): a 403.
     pub fn forbidden() -> Self {
-        Refused(Why::Forbidden)
+        Refused(Why::Refusal { status: StatusCode::FORBIDDEN, message: None, retry_after: None })
+    }
+
+    /// Too many failed attempts from this client (counted by the app, by address or account):
+    /// a 429 with `Retry-After` (whole seconds, rounded up). A lookup that checks this before the
+    /// credentials tells a locked-out client nothing about them.
+    pub fn too_many(retry_after: std::time::Duration) -> Self {
+        let seconds = retry_after.as_secs() + u64::from(retry_after.subsec_nanos() > 0);
+        Refused(Why::Refusal { status: StatusCode::TOO_MANY_REQUESTS, message: None, retry_after: Some(seconds) })
+    }
+
+    /// What a client that reads the failure is told, in place of the status's reason: the JSON
+    /// error's message, and [`crate::Api::errors`]'s: `Refused::unauthorized().message("Invalid API key")`.
+    /// A browser gets the app's error page, which does not show it, and one sent to sign in is
+    /// sent there as before (a data client gets the 401 with it). An [`unavailable`](Refused::unavailable)
+    /// lookup's 503 keeps its status's reason: its error is logged, never sent.
+    pub fn message(self, message: impl Into<std::sync::Arc<str>>) -> Self {
+        let message = Some(message.into());
+        Refused(match self.0 {
+            Why::SignIn(to, _) => Why::SignIn(to, message),
+            Why::Refusal { status, retry_after, .. } => Why::Refusal { status, message, retry_after },
+            why @ Why::Unavailable(_) => why,
+        })
     }
 
     /// Who is asking cannot be known now (the session store is down): a 503, so no one is sent
@@ -212,13 +238,15 @@ impl<S: Send + Sync, T: Identify<S>> FromRequestParts<S> for Caller<T> {
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Response> {
         find::<S, T>(parts, state).await.map(Caller).map_err(|why| match why {
-            Why::SignIn(to) => {
+            Why::SignIn(to, message) => {
                 let mut res = StatusCode::UNAUTHORIZED.into_response();
                 res.extensions_mut().insert(SignIn(to));
+                if let Some(message) = message {
+                    res.extensions_mut().insert(crate::Failed(message));
+                }
                 res
             }
-            Why::Unauthorized => refused(StatusCode::UNAUTHORIZED),
-            Why::Forbidden => refused(StatusCode::FORBIDDEN),
+            Why::Refusal { status, message, retry_after } => refused(status, message, retry_after),
             Why::Unavailable(message) => unidentified(&message),
         })
     }
@@ -234,10 +262,17 @@ fn unidentified(message: &str) -> Response {
     res
 }
 
-/// A 401 or 403 for a request without the caller its handler reads.
-fn refused(status: StatusCode) -> Response {
+/// A 401, 403 or 429 for a request without the caller its handler reads, with what the client is
+/// told and when it may try again.
+fn refused(status: StatusCode, message: Option<std::sync::Arc<str>>, retry_after: Option<u64>) -> Response {
     let mut res = status.into_response();
     res.extensions_mut().insert(crate::page::Cause::Refused);
+    if let Some(message) = message {
+        res.extensions_mut().insert(crate::Failed(message));
+    }
+    if let Some(seconds) = retry_after {
+        res.headers_mut().insert(axum::http::header::RETRY_AFTER, seconds.into());
+    }
     res
 }
 

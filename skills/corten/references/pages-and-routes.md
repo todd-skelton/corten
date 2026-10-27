@@ -154,6 +154,10 @@ App::new(pages)
     .api(|routes| api::api(routes, db))   // .allow_origin(..) in the chain for a partner site
 ```
 
+A JSON handler `?`s its input's check as well: `check(&input)?` in a `JsonResult<T>` handler
+answers 422 with the fields (its error is a `JsonError`, an `Error` or the `Errors`). A page
+does not: there `?` on `Errors` does not compile, and the form answers with `req.invalid`.
+
 A route outside the prefix, or one without a handler, does not compile. An endpoint built from a
 value (the MCP endpoint) is added with `Api::route`: `mcp::api(routes).route::<mcp::Mcp>(tools.route())`.
 
@@ -203,6 +207,8 @@ impl Identify<Db> for Staff {
             Ok(Some(staff)) => Ok(staff),
             Ok(None) => Err(Refused::forbidden()),
             Err(error) => Err(Refused::unavailable(error)),   // the store is down: a 503, not sign-in
+            // An API key: Err(Refused::unauthorized().message("Invalid API key")), and after too many
+            // failures (the app counts them) Err(Refused::too_many(wait)): a 429 with Retry-After.
         }
     }
 }
