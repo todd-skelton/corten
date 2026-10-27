@@ -895,12 +895,13 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     next: Next<'_, M>,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
-    api: bool,
+    api: Option<&crate::api::Mount>,
     mode: Mode,
 ) -> Response {
     use axum::body::HttpBody;
-    if api || mode == Mode::Data {
-        return crate::api::json_failure(run(req, next, deadline, signal).await, shared.dev).await;
+    if api.is_some() || mode == Mode::Data {
+        let shape = api.and_then(|mount| mount.errors.as_ref());
+        return crate::api::json_failure(run(req, next, deadline, signal).await, shared.dev, shape).await;
     }
     let offline = req.method() == axum::http::Method::GET && shared.offline.as_deref() == Some(req.uri().path());
     // A browser: the runtime, or a document request that asks for HTML (a health probe or a
@@ -922,7 +923,7 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     if res.extensions().get::<crate::answer::Answered>().is_some() {
         // Not kept across the await, so the request's future stays as small as it was.
         drop(asked);
-        return crate::api::json_failure(res, shared.dev).await;
+        return crate::api::json_failure(res, shared.dev, None).await;
     }
     if let Some(crate::caller::SignIn(to)) = res.extensions().get::<crate::caller::SignIn>().cloned() {
         let kept = std::mem::take(res.headers_mut());

@@ -1194,6 +1194,50 @@ async fn a_caller_is_looked_up_only_by_the_handlers_that_read_it_and_once() {
     assert_eq!((body.as_str(), LOOKUPS.with(|n| n.get())), ("ada", 1), "two readers, one lookup");
 }
 
+#[derive(crate::ToJson)]
+struct ShapedError {
+    r#type: &'static str,
+    error: ShapedDetail,
+}
+
+#[derive(crate::ToJson)]
+struct ShapedDetail {
+    code: u16,
+    message: String,
+}
+
+/// `Api::errors` writes every failure Corten answers under the prefix in the API's own shape.
+#[tokio::test]
+async fn an_api_writes_the_failures_corten_answers_in_its_own_shape() {
+    let router = api_app(|api| {
+        api.errors(|status, message| ShapedError {
+            r#type: "error",
+            error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+        })
+    });
+    let shaped = |code: u16, message: &str| format!(r#"{{"type":"error","error":{{"code":{code},"message":{message:?}}}}}"#);
+    for (method, path, status, message) in [
+        ("GET", "/api/nope", 404, "Not Found"),
+        ("GET", "/api/post", 405, "Method Not Allowed"),
+        ("GET", "/api/missing", 404, "no item 7"),
+        ("GET", "/api/down", 500, "Internal Server Error"),
+        ("GET", "/api/items/x", 400, "Invalid URL: Cannot parse `x` to a `u32`"),
+        ("GET", "/api/slow", 503, "Service Unavailable"),
+    ] {
+        let (got, headers, body) = call_with(router.clone(), method, path, None, None).await;
+        assert_eq!((got.as_u16(), &body[..]), (status, &shaped(status, message)[..]), "{method} {path}");
+        assert_eq!(headers["content-type"], "application/json");
+    }
+    let (_, headers, _) = call_with(router.clone(), "GET", "/api/post", None, None).await;
+    assert_eq!(headers["allow"], "POST", "what the failure says besides its body stays");
+    let cross = Request::post("/api/post").header("origin", "https://evil.example").header("sec-fetch-site", "cross-site");
+    let res = router.clone().oneshot(cross.body(Body::empty()).unwrap()).await.unwrap();
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body, shaped(403, "Cross-site request refused."));
+    let (_, _, body) = call_with(router, "GET", "/api/teapot", None, None).await;
+    assert_eq!(body, r#"{"mine":1}"#, "a handler's own JSON failure passes through");
+}
+
 #[tokio::test]
 async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pages() {
     let router = api_app(|api| api.allow_origin("https://partner.example/"));
