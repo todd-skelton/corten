@@ -63,7 +63,10 @@ jobs:
         run: |
           image="mcr.microsoft.com/playwright:v$(node -p 'require("@playwright/test/package.json").version')-noble"
           docker pull "$image"
-          echo "PLAYWRIGHT=docker run --rm --network host --ipc host -v $PWD:/src -w /src $image" >> "$GITHUB_ENV"
+          run="docker run --rm --network host --ipc host -v $PWD:/src -w /src"
+          echo "PLAYWRIGHT=$run $image" >> "$GITHUB_ENV"
+          # For a test that restarts its server: the runner's docker CLI and socket as well.
+          echo "PLAYWRIGHT_WITH_DOCKER=$run -v $(command -v docker):/usr/local/bin/docker:ro -v /var/run/docker.sock:/var/run/docker.sock $image" >> "$GITHUB_ENV"
       - name: watchlist
         run: |
           docker build -f examples/watchlist/Dockerfile -t corten-watchlist .
@@ -71,12 +74,11 @@ jobs:
           timeout 120 sh -c 'until curl -so /dev/null http://localhost:18480/; do sleep 1; done'
           $PLAYWRIGHT npm run smoke -- http://localhost:18480
           docker rm -f corten-watchlist
-      # The test restarts the server, so the container has the runner's docker CLI and socket.
       - name: watchlist under corten dev
         run: |
           docker run -d --name corten-watchlist-dev -p 18483:8080 -e CORTEN_DEV=1 corten-watchlist
           timeout 120 sh -c 'until curl -so /dev/null http://localhost:18483/; do sleep 1; done'
-          $PLAYWRIGHT -v "$(command -v docker):/usr/local/bin/docker:ro" -v /var/run/docker.sock:/var/run/docker.sock node scripts/smoke-dev.mjs http://localhost:18483 corten-watchlist-dev
+          $PLAYWRIGHT_WITH_DOCKER node scripts/smoke-dev.mjs http://localhost:18483 corten-watchlist-dev
           docker rm -f corten-watchlist-dev
       - name: card-market
         run: |
