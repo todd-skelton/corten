@@ -1838,7 +1838,7 @@ async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
 
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let routes = Router::new().route("/", get(|| async { "hi" }));
-    let server = tokio::spawn(crate::app::serve_router(listeners, routes, async {
+    let server = tokio::spawn(crate::app::serve_router(listeners, routes, Default::default(), async {
         let _ = stopped.await;
     }));
     for addr in &addrs {
@@ -1874,6 +1874,64 @@ async fn raw_get(addr: std::net::SocketAddr, path: &str, headers: &str) -> Strin
     let mut answer = String::new();
     stream.read_to_string(&mut answer).await.unwrap();
     answer
+}
+
+/// `App::header_timeout` closes a connection that never finishes its request head, and
+/// `App::max_connections` accepts no more connections than it allows until one closes.
+#[tokio::test]
+async fn a_connection_is_held_only_as_long_and_as_many_as_the_app_allows() {
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let serve = |app: App| async move {
+        let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+        let addr = listeners[0].local_addr().unwrap();
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(crate::app::run(listeners, app, async {
+            let _ = stopped.await;
+        }));
+        (addr, stop, server)
+    };
+    let routes = || {
+        Routes::from(Router::new().route("/", get(|| async { "hi" })).route(
+            "/slow",
+            get(|| async {
+                tokio::time::sleep(Duration::from_millis(700)).await;
+                "slow"
+            }),
+        ))
+    };
+
+    let (addr, stop, server) = serve(App::new(routes()).header_timeout(Duration::from_millis(300))).await;
+    let mut slow = tokio::net::TcpStream::connect(addr).await.unwrap();
+    slow.write_all(b"GET / HTTP/1.1\r\nhost: localhost\r\n").await.unwrap();
+    let mut rest = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut rest)).await;
+    assert!(closed.is_ok(), "an unfinished head is not held past the timeout");
+    assert!(raw_get(addr, "/", "").await.ends_with("hi"), "a request that finishes its head is answered");
+    assert!(raw_get(addr, "/slow", "").await.ends_with("slow"), "a handler may take longer than the head's timeout");
+    let mut idle = tokio::net::TcpStream::connect(addr).await.unwrap();
+    idle.write_all(b"GET / HTTP/1.1\r\nhost: localhost\r\n\r\n").await.unwrap();
+    let mut answered = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), idle.read_to_end(&mut answered)).await;
+    assert!(closed.is_ok(), "an idle keep-alive connection is closed after the timeout");
+    assert!(String::from_utf8_lossy(&answered).ends_with("hi"), "after its answer");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    let (addr, stop, server) = serve(App::new(routes()).header_timeout(None).max_connections(1)).await;
+    let mut held = tokio::net::TcpStream::connect(addr).await.unwrap();
+    held.write_all(b"GET / HTTP/1.1\r\nhost: localhost\r\n\r\n").await.unwrap();
+    let mut first = [0u8; 12];
+    held.read_exact(&mut first).await.unwrap();
+    assert_eq!(&first, b"HTTP/1.1 200");
+    let second = tokio::spawn(raw_get(addr, "/", ""));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!second.is_finished(), "a second connection waits while the first is open");
+    drop(held);
+    let answer = tokio::time::timeout(Duration::from_secs(3), second).await.expect("answered once the first closes").unwrap();
+    assert!(answer.ends_with("hi"), "{answer}");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
 }
 
 /// A route that takes `Upgrade` switches the connection: a WebSocket handshake from the page's own

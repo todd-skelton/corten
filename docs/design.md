@@ -168,3 +168,6 @@ framework's shape, and what it does not do yet.
     and hands over the bytes: frames, message limits, buffering and per-message checks are the
     WebSocket library's and the route's. The work on a switched connection is told when shutdown
     begins and is not waited for.
+14. Connections are HTTP/1.1. A request's head must arrive within `App::header_timeout` (30
+    seconds), which also closes an idle keep-alive connection; how many may be open is
+    `App::max_connections`, unbounded unless set.
