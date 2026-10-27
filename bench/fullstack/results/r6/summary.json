@@ -15,7 +15,11 @@
      "failedPct": 0,
      "cpuPct": 4.1,
      "memMiB": 19.4,
-     "memMaxMiB": 20.2
+     "memMaxMiB": 20.2,
+     "perCpuSecond": 7317,
+     "cpuCounted": false,
+     "perMiB": 14.9,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 23416,
@@ -26,7 +30,11 @@
      "failedPct": 0,
      "cpuPct": 93.2,
      "memMiB": 20.3,
-     "memMaxMiB": 21.1
+     "memMaxMiB": 21.1,
+     "perCpuSecond": 25124,
+     "cpuCounted": false,
+     "perMiB": 1109.7,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 20831,
@@ -37,7 +45,11 @@
      "failedPct": 0,
      "cpuPct": 94.6,
      "memMiB": 23.6,
-     "memMaxMiB": 25.5
+     "memMaxMiB": 25.5,
+     "perCpuSecond": 22021,
+     "cpuCounted": false,
+     "perMiB": 816.9,
+     "apiCpuPct": null
     }
    },
    "nextjs": {
@@ -54,7 +66,11 @@
      "failedPct": 1.86,
      "cpuPct": 100.2,
      "memMiB": 197,
-     "memMaxMiB": 213.9
+     "memMaxMiB": 213.9,
+     "perCpuSecond": 151,
+     "cpuCounted": false,
+     "perMiB": 0.7,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 186,
@@ -65,7 +81,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 213.9,
-     "memMaxMiB": 214.3
+     "memMaxMiB": 214.3,
+     "perCpuSecond": 185,
+     "cpuCounted": false,
+     "perMiB": 0.9,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 184,
@@ -76,7 +96,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 220.1,
-     "memMaxMiB": 223.6
+     "memMaxMiB": 223.6,
+     "perCpuSecond": 184,
+     "cpuCounted": false,
+     "perMiB": 0.8,
+     "apiCpuPct": null
     },
     "failed": "served 151/s of the fixed rate, 38.56% never sent"
    },
@@ -94,7 +118,11 @@
      "failedPct": 0,
      "cpuPct": 48.7,
      "memMiB": 167.4,
-     "memMaxMiB": 167.7
+     "memMaxMiB": 167.7,
+     "perCpuSecond": 616,
+     "cpuCounted": false,
+     "perMiB": 1.8,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 705,
@@ -105,7 +133,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 167.6,
-     "memMaxMiB": 168.1
+     "memMaxMiB": 168.1,
+     "perCpuSecond": 701,
+     "cpuCounted": false,
+     "perMiB": 4.2,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 716,
@@ -116,7 +148,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 168.3,
-     "memMaxMiB": 168.6
+     "memMaxMiB": 168.6,
+     "perCpuSecond": 714,
+     "cpuCounted": false,
+     "perMiB": 4.2,
+     "apiCpuPct": null
     }
    },
    "sveltekit": {
@@ -133,7 +169,11 @@
      "failedPct": 0,
      "cpuPct": 36.4,
      "memMiB": 147.1,
-     "memMaxMiB": 147.6
+     "memMaxMiB": 147.6,
+     "perCpuSecond": 824,
+     "cpuCounted": false,
+     "perMiB": 2,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 986,
@@ -144,7 +184,11 @@
      "failedPct": 0,
      "cpuPct": 100.7,
      "memMiB": 147.5,
-     "memMaxMiB": 148
+     "memMaxMiB": 148,
+     "perCpuSecond": 979,
+     "cpuCounted": false,
+     "perMiB": 6.7,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 861,
@@ -155,7 +199,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 150.8,
-     "memMaxMiB": 151.1
+     "memMaxMiB": 151.1,
+     "perCpuSecond": 856,
+     "cpuCounted": false,
+     "perMiB": 5.7,
+     "apiCpuPct": null
     }
    },
    "react-router": {
@@ -172,7 +220,11 @@
      "failedPct": 0,
      "cpuPct": 60.4,
      "memMiB": 143.5,
-     "memMaxMiB": 143.9
+     "memMaxMiB": 143.9,
+     "perCpuSecond": 497,
+     "cpuCounted": false,
+     "perMiB": 2.1,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 550,
@@ -183,7 +235,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 143.4,
-     "memMaxMiB": 143.6
+     "memMaxMiB": 143.6,
+     "perCpuSecond": 548,
+     "cpuCounted": false,
+     "perMiB": 3.8,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 545,
@@ -194,7 +250,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 144.2,
-     "memMaxMiB": 144.8
+     "memMaxMiB": 144.8,
+     "perCpuSecond": 543,
+     "cpuCounted": false,
+     "perMiB": 3.8,
+     "apiCpuPct": null
     }
    },
    "leptos": {
@@ -211,7 +271,11 @@
      "failedPct": 0,
      "cpuPct": 22.9,
      "memMiB": 15.3,
-     "memMaxMiB": 15.8
+     "memMaxMiB": 15.8,
+     "perCpuSecond": 1310,
+     "cpuCounted": false,
+     "perMiB": 19,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 1487,
@@ -222,7 +286,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 16,
-     "memMaxMiB": 16.4
+     "memMaxMiB": 16.4,
+     "perCpuSecond": 1478,
+     "cpuCounted": false,
+     "perMiB": 90.7,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 1321,
@@ -233,7 +301,11 @@
      "failedPct": 0,
      "cpuPct": 100.7,
      "memMiB": 32.5,
-     "memMaxMiB": 32.8
+     "memMaxMiB": 32.8,
+     "perCpuSecond": 1312,
+     "cpuCounted": false,
+     "perMiB": 40.3,
+     "apiCpuPct": null
     }
    },
    "django": {
@@ -250,7 +322,11 @@
      "failedPct": 0,
      "cpuPct": 85,
      "memMiB": 343.5,
-     "memMaxMiB": 343.8
+     "memMaxMiB": 343.8,
+     "perCpuSecond": 353,
+     "cpuCounted": false,
+     "perMiB": 0.9,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 346,
@@ -261,7 +337,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 343.8,
-     "memMaxMiB": 344.3
+     "memMaxMiB": 344.3,
+     "perCpuSecond": 344,
+     "cpuCounted": false,
+     "perMiB": 1,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 342,
@@ -272,7 +352,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 344.1,
-     "memMaxMiB": 344.6
+     "memMaxMiB": 344.6,
+     "perCpuSecond": 341,
+     "cpuCounted": false,
+     "perMiB": 1,
+     "apiCpuPct": null
     }
    },
    "rails": {
@@ -289,7 +373,11 @@
      "failedPct": 0,
      "cpuPct": 65.2,
      "memMiB": 140.7,
-     "memMaxMiB": 142
+     "memMaxMiB": 142,
+     "perCpuSecond": 460,
+     "cpuCounted": false,
+     "perMiB": 2.1,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 537,
@@ -300,7 +388,11 @@
      "failedPct": 0,
      "cpuPct": 101.2,
      "memMiB": 136.1,
-     "memMaxMiB": 142
+     "memMaxMiB": 142,
+     "perCpuSecond": 531,
+     "cpuCounted": false,
+     "perMiB": 3.8,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 478,
@@ -311,7 +403,11 @@
      "failedPct": 0,
      "cpuPct": 101.2,
      "memMiB": 140.4,
-     "memMaxMiB": 141.4
+     "memMaxMiB": 141.4,
+     "perCpuSecond": 472,
+     "cpuCounted": false,
+     "perMiB": 3.4,
+     "apiCpuPct": null
     }
    },
    "laravel": {
@@ -355,7 +451,11 @@
      "failedPct": 0,
      "cpuPct": 17,
      "memMiB": 85.1,
-     "memMaxMiB": 85.4
+     "memMaxMiB": 85.4,
+     "perCpuSecond": 1765,
+     "cpuCounted": false,
+     "perMiB": 3.5,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 4298,
@@ -366,7 +466,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 85.6,
-     "memMaxMiB": 86.2
+     "memMaxMiB": 86.2,
+     "perCpuSecond": 4285,
+     "cpuCounted": false,
+     "perMiB": 49.9,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 4190,
@@ -377,7 +481,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 87.4,
-     "memMaxMiB": 88.8
+     "memMaxMiB": 88.8,
+     "perCpuSecond": 4182,
+     "cpuCounted": false,
+     "perMiB": 47.2,
+     "apiCpuPct": null
     }
    },
    "spring": {
@@ -394,7 +502,11 @@
      "failedPct": 0,
      "cpuPct": 40.3,
      "memMiB": 347.7,
-     "memMaxMiB": 354.2
+     "memMaxMiB": 354.2,
+     "perCpuSecond": 744,
+     "cpuCounted": false,
+     "perMiB": 0.8,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 1114,
@@ -405,7 +517,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 355.9,
-     "memMaxMiB": 356.3
+     "memMaxMiB": 356.3,
+     "perCpuSecond": 1109,
+     "cpuCounted": false,
+     "perMiB": 3.1,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 1111,
@@ -416,7 +532,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 379.7,
-     "memMaxMiB": 380
+     "memMaxMiB": 380,
+     "perCpuSecond": 1104,
+     "cpuCounted": false,
+     "perMiB": 2.9,
+     "apiCpuPct": null
     }
    },
    "phoenix": {
@@ -433,7 +553,11 @@
      "failedPct": 0,
      "cpuPct": 33.4,
      "memMiB": 284.4,
-     "memMaxMiB": 288.8
+     "memMaxMiB": 288.8,
+     "perCpuSecond": 898,
+     "cpuCounted": false,
+     "perMiB": 1,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 1614,
@@ -444,7 +568,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 280.4,
-     "memMaxMiB": 280.9
+     "memMaxMiB": 280.9,
+     "perCpuSecond": 1608,
+     "cpuCounted": false,
+     "perMiB": 5.7,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 1522,
@@ -455,7 +583,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 296.9,
-     "memMaxMiB": 297.4
+     "memMaxMiB": 297.4,
+     "perCpuSecond": 1513,
+     "cpuCounted": false,
+     "perMiB": 5.1,
+     "apiCpuPct": null
     }
    },
    "astro": {
@@ -472,7 +604,11 @@
      "failedPct": 0,
      "cpuPct": 30.7,
      "memMiB": 129.6,
-     "memMaxMiB": 130.1
+     "memMaxMiB": 130.1,
+     "perCpuSecond": 977,
+     "cpuCounted": false,
+     "perMiB": 2.3,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 1263,
@@ -483,7 +619,11 @@
      "failedPct": 0,
      "cpuPct": 100.8,
      "memMiB": 133.7,
-     "memMaxMiB": 134.1
+     "memMaxMiB": 134.1,
+     "perCpuSecond": 1253,
+     "cpuCounted": false,
+     "perMiB": 9.4,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 1230,
@@ -494,7 +634,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 134.2,
-     "memMaxMiB": 134.7
+     "memMaxMiB": 134.7,
+     "perCpuSecond": 1222,
+     "cpuCounted": false,
+     "perMiB": 9.1,
+     "apiCpuPct": null
     }
    },
    "nuxt": {
@@ -511,7 +655,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 129,
-     "memMaxMiB": 129.5
+     "memMaxMiB": 129.5,
+     "perCpuSecond": 290,
+     "cpuCounted": false,
+     "perMiB": 2.2,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 325,
@@ -522,7 +670,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 131.5,
-     "memMaxMiB": 131.8
+     "memMaxMiB": 131.8,
+     "perCpuSecond": 324,
+     "cpuCounted": false,
+     "perMiB": 2.5,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 304,
@@ -533,7 +685,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 134.6,
-     "memMaxMiB": 135.6
+     "memMaxMiB": 135.6,
+     "perCpuSecond": 304,
+     "cpuCounted": false,
+     "perMiB": 2.2,
+     "apiCpuPct": null
     }
    }
   },
@@ -552,7 +708,11 @@
      "failedPct": 0,
      "cpuPct": 6.6,
      "memMiB": 13.7,
-     "memMaxMiB": 13.9
+     "memMaxMiB": 13.9,
+     "perCpuSecond": 2273,
+     "cpuCounted": false,
+     "perMiB": 10.8,
+     "apiCpuPct": 3.4
     },
     "sat64": {
      "rps": 3615,
@@ -563,7 +723,11 @@
      "failedPct": 0,
      "cpuPct": 102,
      "memMiB": 18.1,
-     "memMaxMiB": 20.8
+     "memMaxMiB": 20.8,
+     "perCpuSecond": 3544,
+     "cpuCounted": false,
+     "perMiB": 173.8,
+     "apiCpuPct": 38.8
     },
     "sat256": {
      "rps": 3506,
@@ -574,7 +738,11 @@
      "failedPct": 0,
      "cpuPct": 102.2,
      "memMiB": 53.6,
-     "memMaxMiB": 61
+     "memMaxMiB": 61,
+     "perCpuSecond": 3431,
+     "cpuCounted": false,
+     "perMiB": 57.5,
+     "apiCpuPct": 38.3
     }
    },
    "nextjs": {
@@ -591,7 +759,11 @@
      "failedPct": 1.72,
      "cpuPct": 100.3,
      "memMiB": 235.9,
-     "memMaxMiB": 260.9
+     "memMaxMiB": 260.9,
+     "perCpuSecond": 78,
+     "cpuCounted": false,
+     "perMiB": 0.3,
+     "apiCpuPct": 1.8
     },
     "sat64": {
      "rps": 112,
@@ -602,7 +774,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 207.3,
-     "memMaxMiB": 208.8
+     "memMaxMiB": 208.8,
+     "perCpuSecond": 111,
+     "cpuCounted": false,
+     "perMiB": 0.5,
+     "apiCpuPct": 1.7
     },
     "sat256": {
      "rps": 105,
@@ -613,7 +789,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 242.4,
-     "memMaxMiB": 251
+     "memMaxMiB": 251,
+     "perCpuSecond": 105,
+     "cpuCounted": false,
+     "perMiB": 0.4,
+     "apiCpuPct": 1.8
     },
     "failed": "served 79/s of the fixed rate, 23.85% never sent"
    },
@@ -631,7 +811,11 @@
      "failedPct": 0,
      "cpuPct": 51.3,
      "memMiB": 128.6,
-     "memMaxMiB": 129.6
+     "memMaxMiB": 129.6,
+     "perCpuSecond": 292,
+     "cpuCounted": false,
+     "perMiB": 1.2,
+     "apiCpuPct": 3.2
     },
     "sat64": {
      "rps": 325,
@@ -642,7 +826,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 135,
-     "memMaxMiB": 136.4
+     "memMaxMiB": 136.4,
+     "perCpuSecond": 323,
+     "cpuCounted": false,
+     "perMiB": 2.4,
+     "apiCpuPct": 3.2
     },
     "sat256": {
      "rps": 304,
@@ -653,7 +841,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 158.4,
-     "memMaxMiB": 166.8
+     "memMaxMiB": 166.8,
+     "perCpuSecond": 303,
+     "cpuCounted": false,
+     "perMiB": 1.8,
+     "apiCpuPct": 3.5
     }
    },
    "sveltekit": {
@@ -670,7 +862,11 @@
      "failedPct": 0,
      "cpuPct": 43.9,
      "memMiB": 130.1,
-     "memMaxMiB": 132.4
+     "memMaxMiB": 132.4,
+     "perCpuSecond": 342,
+     "cpuCounted": false,
+     "perMiB": 1.1,
+     "apiCpuPct": 3.5
     },
     "sat64": {
      "rps": 392,
@@ -681,7 +877,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 143.4,
-     "memMaxMiB": 145.5
+     "memMaxMiB": 145.5,
+     "perCpuSecond": 390,
+     "cpuCounted": false,
+     "perMiB": 2.7,
+     "apiCpuPct": 3.8
     },
     "sat256": {
      "rps": 371,
@@ -692,7 +892,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 150.7,
-     "memMaxMiB": 157.8
+     "memMaxMiB": 157.8,
+     "perCpuSecond": 370,
+     "cpuCounted": false,
+     "perMiB": 2.4,
+     "apiCpuPct": 4.1
     }
    },
    "react-router": {
@@ -709,7 +913,11 @@
      "failedPct": 0,
      "cpuPct": 59.7,
      "memMiB": 131.2,
-     "memMaxMiB": 132
+     "memMaxMiB": 132,
+     "perCpuSecond": 251,
+     "cpuCounted": false,
+     "perMiB": 1.1,
+     "apiCpuPct": 3.2
     },
     "sat64": {
      "rps": 283,
@@ -720,7 +928,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 136.6,
-     "memMaxMiB": 139.6
+     "memMaxMiB": 139.6,
+     "perCpuSecond": 282,
+     "cpuCounted": false,
+     "perMiB": 2,
+     "apiCpuPct": 3.2
     },
     "sat256": {
      "rps": 295,
@@ -731,7 +943,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 148.4,
-     "memMaxMiB": 153.5
+     "memMaxMiB": 153.5,
+     "perCpuSecond": 294,
+     "cpuCounted": false,
+     "perMiB": 1.9,
+     "apiCpuPct": 3.4
     }
    },
    "leptos": {
@@ -748,7 +964,11 @@
      "failedPct": 0,
      "cpuPct": 21.5,
      "memMiB": 11.8,
-     "memMaxMiB": 12.4
+     "memMaxMiB": 12.4,
+     "perCpuSecond": 698,
+     "cpuCounted": false,
+     "perMiB": 12.1,
+     "apiCpuPct": 3.4
     },
     "sat64": {
      "rps": 787,
@@ -759,7 +979,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 15.2,
-     "memMaxMiB": 17.6
+     "memMaxMiB": 17.6,
+     "perCpuSecond": 783,
+     "cpuCounted": false,
+     "perMiB": 44.7,
+     "apiCpuPct": 9.8
     },
     "sat256": {
      "rps": 665,
@@ -770,7 +994,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 49.7,
-     "memMaxMiB": 54.5
+     "memMaxMiB": 54.5,
+     "perCpuSecond": 661,
+     "cpuCounted": false,
+     "perMiB": 12.2,
+     "apiCpuPct": 10.4
     }
    },
    "django": {
@@ -787,7 +1015,11 @@
      "failedPct": 0,
      "cpuPct": 76.2,
      "memMiB": 127,
-     "memMaxMiB": 127.4
+     "memMaxMiB": 127.4,
+     "perCpuSecond": 197,
+     "cpuCounted": false,
+     "perMiB": 1.2,
+     "apiCpuPct": 3.5
     },
     "sat64": {
      "rps": 183,
@@ -798,7 +1030,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 127.2,
-     "memMaxMiB": 127.8
+     "memMaxMiB": 127.8,
+     "perCpuSecond": 182,
+     "cpuCounted": false,
+     "perMiB": 1.4,
+     "apiCpuPct": 3.9
     },
     "sat256": {
      "rps": 185,
@@ -809,7 +1045,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 127.2,
-     "memMaxMiB": 127.8
+     "memMaxMiB": 127.8,
+     "perCpuSecond": 184,
+     "cpuCounted": false,
+     "perMiB": 1.4,
+     "apiCpuPct": 3.9
     }
    },
    "rails": {
@@ -826,7 +1066,11 @@
      "failedPct": 0,
      "cpuPct": 50.9,
      "memMiB": 105.7,
-     "memMaxMiB": 108.6
+     "memMaxMiB": 108.6,
+     "perCpuSecond": 295,
+     "cpuCounted": false,
+     "perMiB": 1.4,
+     "apiCpuPct": 3.6
     },
     "sat64": {
      "rps": 387,
@@ -837,7 +1081,11 @@
      "failedPct": 0,
      "cpuPct": 100.9,
      "memMiB": 106.7,
-     "memMaxMiB": 108.2
+     "memMaxMiB": 108.2,
+     "perCpuSecond": 383,
+     "cpuCounted": false,
+     "perMiB": 3.6,
+     "apiCpuPct": 6.2
     },
     "sat256": {
      "rps": 332,
@@ -848,7 +1096,11 @@
      "failedPct": 0,
      "cpuPct": 100.9,
      "memMiB": 109.3,
-     "memMaxMiB": 109.8
+     "memMaxMiB": 109.8,
+     "perCpuSecond": 329,
+     "cpuCounted": false,
+     "perMiB": 3,
+     "apiCpuPct": 5.8
     }
    },
    "laravel": {
@@ -865,7 +1117,11 @@
      "failedPct": 0,
      "cpuPct": 99.1,
      "memMiB": 149.7,
-     "memMaxMiB": 172.1
+     "memMaxMiB": 172.1,
+     "perCpuSecond": 103,
+     "cpuCounted": false,
+     "perMiB": 0.6,
+     "apiCpuPct": 6.9
     },
     "sat64": {
      "rps": 102,
@@ -876,7 +1132,11 @@
      "failedPct": 0,
      "cpuPct": 99.2,
      "memMiB": 117.2,
-     "memMaxMiB": 173.8
+     "memMaxMiB": 173.8,
+     "perCpuSecond": 102,
+     "cpuCounted": false,
+     "perMiB": 0.6,
+     "apiCpuPct": 6.8
     },
     "sat256": {
      "rps": 101,
@@ -887,7 +1147,11 @@
      "failedPct": 0,
      "cpuPct": 99.2,
      "memMiB": 123.3,
-     "memMaxMiB": 125.3
+     "memMaxMiB": 125.3,
+     "perCpuSecond": 102,
+     "cpuCounted": false,
+     "perMiB": 0.8,
+     "apiCpuPct": 6.7
     },
     "failed": "served 103/s of the fixed rate, 20.69% never sent"
    },
@@ -905,7 +1169,11 @@
      "failedPct": 0,
      "cpuPct": 34.5,
      "memMiB": 59.6,
-     "memMaxMiB": 62.7
+     "memMaxMiB": 62.7,
+     "perCpuSecond": 435,
+     "cpuCounted": false,
+     "perMiB": 2.4,
+     "apiCpuPct": 3.5
     },
     "sat64": {
      "rps": 1171,
@@ -916,7 +1184,11 @@
      "failedPct": 0,
      "cpuPct": 100.8,
      "memMiB": 71.5,
-     "memMaxMiB": 74.6
+     "memMaxMiB": 74.6,
+     "perCpuSecond": 1162,
+     "cpuCounted": false,
+     "perMiB": 15.7,
+     "apiCpuPct": 13.4
     },
     "sat256": {
      "rps": 1029,
@@ -927,7 +1199,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 90.6,
-     "memMaxMiB": 98.8
+     "memMaxMiB": 98.8,
+     "perCpuSecond": 1023,
+     "cpuCounted": false,
+     "perMiB": 10.4,
+     "apiCpuPct": 11.8
     }
    },
    "spring": {
@@ -944,7 +1220,11 @@
      "failedPct": 0,
      "cpuPct": 56.3,
      "memMiB": 406.8,
-     "memMaxMiB": 410
+     "memMaxMiB": 410,
+     "perCpuSecond": 266,
+     "cpuCounted": false,
+     "perMiB": 0.4,
+     "apiCpuPct": 4.3
     },
     "sat64": {
      "rps": 484,
@@ -955,7 +1235,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 425.3,
-     "memMaxMiB": 429
+     "memMaxMiB": 429,
+     "perCpuSecond": 481,
+     "cpuCounted": false,
+     "perMiB": 1.1,
+     "apiCpuPct": 6.3
     },
     "sat256": {
      "rps": 403,
@@ -966,7 +1250,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 452.9,
-     "memMaxMiB": 456
+     "memMaxMiB": 456,
+     "perCpuSecond": 401,
+     "cpuCounted": false,
+     "perMiB": 0.9,
+     "apiCpuPct": 4.6
     }
    },
    "phoenix": {
@@ -983,7 +1271,11 @@
      "failedPct": 0,
      "cpuPct": 45.4,
      "memMiB": 251.5,
-     "memMaxMiB": 276.7
+     "memMaxMiB": 276.7,
+     "perCpuSecond": 330,
+     "cpuCounted": false,
+     "perMiB": 0.5,
+     "apiCpuPct": 3.6
     },
     "sat64": {
      "rps": 406,
@@ -994,7 +1286,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 211.5,
-     "memMaxMiB": 215.7
+     "memMaxMiB": 215.7,
+     "perCpuSecond": 404,
+     "cpuCounted": false,
+     "perMiB": 1.9,
+     "apiCpuPct": 5.2
     },
     "sat256": {
      "rps": 408,
@@ -1005,7 +1301,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 318.9,
-     "memMaxMiB": 334.8
+     "memMaxMiB": 334.8,
+     "perCpuSecond": 406,
+     "cpuCounted": false,
+     "perMiB": 1.2,
+     "apiCpuPct": 4.9
     }
    },
    "astro": {
@@ -1022,7 +1322,11 @@
      "failedPct": 0,
      "cpuPct": 45,
      "memMiB": 116.8,
-     "memMaxMiB": 118.2
+     "memMaxMiB": 118.2,
+     "perCpuSecond": 333,
+     "cpuCounted": false,
+     "perMiB": 1.3,
+     "apiCpuPct": 3.2
     },
     "sat64": {
      "rps": 450,
@@ -1033,7 +1337,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 127.7,
-     "memMaxMiB": 129.4
+     "memMaxMiB": 129.4,
+     "perCpuSecond": 449,
+     "cpuCounted": false,
+     "perMiB": 3.5,
+     "apiCpuPct": 4.4
     },
     "sat256": {
      "rps": 437,
@@ -1044,7 +1352,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 142.6,
-     "memMaxMiB": 147.4
+     "memMaxMiB": 147.4,
+     "perCpuSecond": 435,
+     "cpuCounted": false,
+     "perMiB": 3,
+     "apiCpuPct": 4.5
     }
    },
    "nuxt": {
@@ -1061,7 +1373,11 @@
      "failedPct": 0,
      "cpuPct": 77.7,
      "memMiB": 130.1,
-     "memMaxMiB": 131.6
+     "memMaxMiB": 131.6,
+     "perCpuSecond": 193,
+     "cpuCounted": false,
+     "perMiB": 1.1,
+     "apiCpuPct": 3.2
     },
     "sat64": {
      "rps": 203,
@@ -1072,7 +1388,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 131.7,
-     "memMaxMiB": 133.5
+     "memMaxMiB": 133.5,
+     "perCpuSecond": 202,
+     "cpuCounted": false,
+     "perMiB": 1.5,
+     "apiCpuPct": 2.3
     },
     "sat256": {
      "rps": 197,
@@ -1083,7 +1403,11 @@
      "failedPct": 0,
      "cpuPct": 100.1,
      "memMiB": 161.4,
-     "memMaxMiB": 189.2
+     "memMaxMiB": 189.2,
+     "perCpuSecond": 197,
+     "cpuCounted": false,
+     "perMiB": 1,
+     "apiCpuPct": 2.4
     }
    }
   },
@@ -1102,7 +1426,11 @@
      "failedPct": 0,
      "cpuPct": 3.6,
      "memMiB": 19.4,
-     "memMaxMiB": 20.4
+     "memMaxMiB": 20.4,
+     "perCpuSecond": 8334,
+     "cpuCounted": false,
+     "perMiB": 14.7,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 27625,
@@ -1113,7 +1441,11 @@
      "failedPct": 0,
      "cpuPct": 87.5,
      "memMiB": 20.2,
-     "memMaxMiB": 21
+     "memMaxMiB": 21,
+     "perCpuSecond": 31572,
+     "cpuCounted": false,
+     "perMiB": 1315.5,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 23081,
@@ -1124,7 +1456,11 @@
      "failedPct": 0,
      "cpuPct": 89.3,
      "memMiB": 23.6,
-     "memMaxMiB": 24.9
+     "memMaxMiB": 24.9,
+     "perCpuSecond": 25847,
+     "cpuCounted": false,
+     "perMiB": 927,
+     "apiCpuPct": null
     }
    },
    "nextjs": {
@@ -1141,7 +1477,11 @@
      "failedPct": 0,
      "cpuPct": 31.1,
      "memMiB": 172.5,
-     "memMaxMiB": 173
+     "memMaxMiB": 173,
+     "perCpuSecond": 964,
+     "cpuCounted": false,
+     "perMiB": 1.7,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 1140,
@@ -1152,7 +1492,11 @@
      "failedPct": 0,
      "cpuPct": 101,
      "memMiB": 172.7,
-     "memMaxMiB": 173
+     "memMaxMiB": 173,
+     "perCpuSecond": 1129,
+     "cpuCounted": false,
+     "perMiB": 6.6,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 1137,
@@ -1163,7 +1507,11 @@
      "failedPct": 0,
      "cpuPct": 100.8,
      "memMiB": 173.5,
-     "memMaxMiB": 173.6
+     "memMaxMiB": 173.6,
+     "perCpuSecond": 1128,
+     "cpuCounted": false,
+     "perMiB": 6.5,
+     "apiCpuPct": null
     }
    },
    "tanstack-start": {
@@ -1180,7 +1528,11 @@
      "failedPct": 0,
      "cpuPct": 12.9,
      "memMiB": 138.7,
-     "memMaxMiB": 139
+     "memMaxMiB": 139,
+     "perCpuSecond": 2326,
+     "cpuCounted": false,
+     "perMiB": 2.2,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 3691,
@@ -1191,7 +1543,11 @@
      "failedPct": 0,
      "cpuPct": 101.5,
      "memMiB": 140.4,
-     "memMaxMiB": 140.8
+     "memMaxMiB": 140.8,
+     "perCpuSecond": 3636,
+     "cpuCounted": false,
+     "perMiB": 26.2,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 3585,
@@ -1202,7 +1558,11 @@
      "failedPct": 0,
      "cpuPct": 101.8,
      "memMiB": 141.4,
-     "memMaxMiB": 141.9
+     "memMaxMiB": 141.9,
+     "perCpuSecond": 3522,
+     "cpuCounted": false,
+     "perMiB": 25.3,
+     "apiCpuPct": null
     }
    },
    "sveltekit": {
@@ -1219,7 +1579,11 @@
      "failedPct": 0,
      "cpuPct": 13,
      "memMiB": 121.7,
-     "memMaxMiB": 122.1
+     "memMaxMiB": 122.1,
+     "perCpuSecond": 2308,
+     "cpuCounted": false,
+     "perMiB": 2.5,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 3411,
@@ -1230,7 +1594,11 @@
      "failedPct": 0,
      "cpuPct": 101.2,
      "memMiB": 122.4,
-     "memMaxMiB": 122.9
+     "memMaxMiB": 122.9,
+     "perCpuSecond": 3371,
+     "cpuCounted": false,
+     "perMiB": 27.8,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 3310,
@@ -1241,7 +1609,11 @@
      "failedPct": 0,
      "cpuPct": 102,
      "memMiB": 125,
-     "memMaxMiB": 125.3
+     "memMaxMiB": 125.3,
+     "perCpuSecond": 3246,
+     "cpuCounted": false,
+     "perMiB": 26.4,
+     "apiCpuPct": null
     }
    },
    "react-router": {
@@ -1258,7 +1630,11 @@
      "failedPct": 0,
      "cpuPct": 17.9,
      "memMiB": 116.8,
-     "memMaxMiB": 117.4
+     "memMaxMiB": 117.4,
+     "perCpuSecond": 1676,
+     "cpuCounted": false,
+     "perMiB": 2.6,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 2534,
@@ -1269,7 +1645,11 @@
      "failedPct": 0,
      "cpuPct": 101.2,
      "memMiB": 117.2,
-     "memMaxMiB": 117.9
+     "memMaxMiB": 117.9,
+     "perCpuSecond": 2504,
+     "cpuCounted": false,
+     "perMiB": 21.5,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 2452,
@@ -1280,7 +1660,11 @@
      "failedPct": 0,
      "cpuPct": 101.5,
      "memMiB": 118.6,
-     "memMaxMiB": 120.3
+     "memMaxMiB": 120.3,
+     "perCpuSecond": 2416,
+     "cpuCounted": false,
+     "perMiB": 20.4,
+     "apiCpuPct": null
     }
    },
    "leptos": {
@@ -1297,7 +1681,11 @@
      "failedPct": 0,
      "cpuPct": 4.2,
      "memMiB": 13.7,
-     "memMaxMiB": 14.4
+     "memMaxMiB": 14.4,
+     "perCpuSecond": 7143,
+     "cpuCounted": false,
+     "perMiB": 20.8,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 21360,
@@ -1308,7 +1696,11 @@
      "failedPct": 0,
      "cpuPct": 96.9,
      "memMiB": 14.5,
-     "memMaxMiB": 15.1
+     "memMaxMiB": 15.1,
+     "perCpuSecond": 22044,
+     "cpuCounted": false,
+     "perMiB": 1414.6,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 20524,
@@ -1319,7 +1711,11 @@
      "failedPct": 0,
      "cpuPct": 97.2,
      "memMiB": 16.9,
-     "memMaxMiB": 17.7
+     "memMaxMiB": 17.7,
+     "perCpuSecond": 21115,
+     "cpuCounted": false,
+     "perMiB": 1159.5,
+     "apiCpuPct": null
     }
    },
    "django": {
@@ -1336,7 +1732,11 @@
      "failedPct": 0,
      "cpuPct": 25.5,
      "memMiB": 296.4,
-     "memMaxMiB": 296.8
+     "memMaxMiB": 296.8,
+     "perCpuSecond": 1176,
+     "cpuCounted": false,
+     "perMiB": 1,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 1356,
@@ -1347,7 +1747,11 @@
      "failedPct": 0,
      "cpuPct": 101.1,
      "memMiB": 296.5,
-     "memMaxMiB": 296.9
+     "memMaxMiB": 296.9,
+     "perCpuSecond": 1342,
+     "cpuCounted": false,
+     "perMiB": 4.6,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 1332,
@@ -1358,7 +1762,11 @@
      "failedPct": 0,
      "cpuPct": 101.2,
      "memMiB": 296.5,
-     "memMaxMiB": 297.2
+     "memMaxMiB": 297.2,
+     "perCpuSecond": 1317,
+     "cpuCounted": false,
+     "perMiB": 4.5,
+     "apiCpuPct": null
     }
    },
    "rails": {
@@ -1375,7 +1783,11 @@
      "failedPct": 0,
      "cpuPct": 34,
      "memMiB": 131.3,
-     "memMaxMiB": 132.7
+     "memMaxMiB": 132.7,
+     "perCpuSecond": 882,
+     "cpuCounted": false,
+     "perMiB": 2.3,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 1065,
@@ -1386,7 +1798,11 @@
      "failedPct": 0,
      "cpuPct": 101.9,
      "memMiB": 129.2,
-     "memMaxMiB": 131.2
+     "memMaxMiB": 131.2,
+     "perCpuSecond": 1045,
+     "cpuCounted": false,
+     "perMiB": 8.1,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 1051,
@@ -1397,7 +1813,11 @@
      "failedPct": 0,
      "cpuPct": 101.8,
      "memMiB": 129.7,
-     "memMaxMiB": 130.3
+     "memMaxMiB": 130.3,
+     "perCpuSecond": 1032,
+     "cpuCounted": false,
+     "perMiB": 8.1,
+     "apiCpuPct": null
     }
    },
    "laravel": {
@@ -1441,7 +1861,11 @@
      "failedPct": 0,
      "cpuPct": 10.6,
      "memMiB": 76.9,
-     "memMaxMiB": 77.3
+     "memMaxMiB": 77.3,
+     "perCpuSecond": 2830,
+     "cpuCounted": false,
+     "perMiB": 3.9,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 14541,
@@ -1452,7 +1876,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 77.7,
-     "memMaxMiB": 79.3
+     "memMaxMiB": 79.3,
+     "perCpuSecond": 14512,
+     "cpuCounted": false,
+     "perMiB": 183.4,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 12703,
@@ -1463,7 +1891,11 @@
      "failedPct": 0,
      "cpuPct": 99.8,
      "memMiB": 80.3,
-     "memMaxMiB": 80.9
+     "memMaxMiB": 80.9,
+     "perCpuSecond": 12728,
+     "cpuCounted": false,
+     "perMiB": 157,
+     "apiCpuPct": null
     }
    },
    "spring": {
@@ -1480,7 +1912,11 @@
      "failedPct": 0,
      "cpuPct": 13.6,
      "memMiB": 347.8,
-     "memMaxMiB": 350.9
+     "memMaxMiB": 350.9,
+     "perCpuSecond": 2206,
+     "cpuCounted": false,
+     "perMiB": 0.9,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 7970,
@@ -1491,7 +1927,11 @@
      "failedPct": 0,
      "cpuPct": 100.8,
      "memMiB": 353.1,
-     "memMaxMiB": 353.9
+     "memMaxMiB": 353.9,
+     "perCpuSecond": 7907,
+     "cpuCounted": false,
+     "perMiB": 22.5,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 7890,
@@ -1502,7 +1942,11 @@
      "failedPct": 0,
      "cpuPct": 100,
      "memMiB": 374.8,
-     "memMaxMiB": 375.8
+     "memMaxMiB": 375.8,
+     "perCpuSecond": 7890,
+     "cpuCounted": false,
+     "perMiB": 21,
+     "apiCpuPct": null
     }
    },
    "phoenix": {
@@ -1519,7 +1963,11 @@
      "failedPct": 0,
      "cpuPct": 22.5,
      "memMiB": 314.3,
-     "memMaxMiB": 321.4
+     "memMaxMiB": 321.4,
+     "perCpuSecond": 1333,
+     "cpuCounted": false,
+     "perMiB": 0.9,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 2500,
@@ -1530,7 +1978,11 @@
      "failedPct": 0,
      "cpuPct": 100.8,
      "memMiB": 292.7,
-     "memMaxMiB": 308.1
+     "memMaxMiB": 308.1,
+     "perCpuSecond": 2480,
+     "cpuCounted": false,
+     "perMiB": 8.1,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 2445,
@@ -1541,7 +1993,11 @@
      "failedPct": 0,
      "cpuPct": 101.2,
      "memMiB": 325.2,
-     "memMaxMiB": 325.7
+     "memMaxMiB": 325.7,
+     "perCpuSecond": 2416,
+     "cpuCounted": false,
+     "perMiB": 7.5,
+     "apiCpuPct": null
     }
    },
    "astro": {
@@ -1558,7 +2014,11 @@
      "failedPct": 0,
      "cpuPct": 22,
      "memMiB": 135.4,
-     "memMaxMiB": 135.9
+     "memMaxMiB": 135.9,
+     "perCpuSecond": 1364,
+     "cpuCounted": false,
+     "perMiB": 2.2,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 1962,
@@ -1569,7 +2029,11 @@
      "failedPct": 0,
      "cpuPct": 101.1,
      "memMiB": 136.1,
-     "memMaxMiB": 136.6
+     "memMaxMiB": 136.6,
+     "perCpuSecond": 1941,
+     "cpuCounted": false,
+     "perMiB": 14.4,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 1963,
@@ -1580,7 +2044,11 @@
      "failedPct": 0,
      "cpuPct": 101.2,
      "memMiB": 136.7,
-     "memMaxMiB": 137.6
+     "memMaxMiB": 137.6,
+     "perCpuSecond": 1940,
+     "cpuCounted": false,
+     "perMiB": 14.3,
+     "apiCpuPct": null
     }
    },
    "nuxt": {
@@ -1597,7 +2065,11 @@
      "failedPct": 0,
      "cpuPct": 10,
      "memMiB": 99.9,
-     "memMaxMiB": 100.4
+     "memMaxMiB": 100.4,
+     "perCpuSecond": 3000,
+     "cpuCounted": false,
+     "perMiB": 3,
+     "apiCpuPct": null
     },
     "sat64": {
      "rps": 7285,
@@ -1608,7 +2080,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 100.1,
-     "memMaxMiB": 100.7
+     "memMaxMiB": 100.7,
+     "perCpuSecond": 7256,
+     "cpuCounted": false,
+     "perMiB": 72.3,
+     "apiCpuPct": null
     },
     "sat256": {
      "rps": 6378,
@@ -1619,7 +2095,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 100.9,
-     "memMaxMiB": 101.5
+     "memMaxMiB": 101.5,
+     "perCpuSecond": 6340,
+     "cpuCounted": false,
+     "perMiB": 62.8,
+     "apiCpuPct": null
     }
    }
   },
@@ -1638,7 +2118,11 @@
      "failedPct": 0,
      "cpuPct": 6.5,
      "memMiB": 14,
-     "memMaxMiB": 14.7
+     "memMaxMiB": 14.7,
+     "perCpuSecond": 2308,
+     "cpuCounted": false,
+     "perMiB": 10.2,
+     "apiCpuPct": 3.5
     },
     "sat64": {
      "rps": 3753,
@@ -1649,7 +2133,11 @@
      "failedPct": 0,
      "cpuPct": 102.1,
      "memMiB": 17.4,
-     "memMaxMiB": 19.7
+     "memMaxMiB": 19.7,
+     "perCpuSecond": 3676,
+     "cpuCounted": false,
+     "perMiB": 190.5,
+     "apiCpuPct": 40.2
     },
     "sat256": {
      "rps": 3628,
@@ -1660,7 +2148,11 @@
      "failedPct": 0,
      "cpuPct": 102.4,
      "memMiB": 54.4,
-     "memMaxMiB": 60.6
+     "memMaxMiB": 60.6,
+     "perCpuSecond": 3543,
+     "cpuCounted": false,
+     "perMiB": 59.9,
+     "apiCpuPct": 40.9
     }
    },
    "nextjs": {
@@ -1677,7 +2169,11 @@
      "failedPct": 0,
      "cpuPct": 43.8,
      "memMiB": 147,
-     "memMaxMiB": 148.4
+     "memMaxMiB": 148.4,
+     "perCpuSecond": 342,
+     "cpuCounted": false,
+     "perMiB": 1,
+     "apiCpuPct": 3.2
     },
     "sat64": {
      "rps": 355,
@@ -1688,7 +2184,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 149.7,
-     "memMaxMiB": 152.2
+     "memMaxMiB": 152.2,
+     "perCpuSecond": 354,
+     "cpuCounted": false,
+     "perMiB": 2.3,
+     "apiCpuPct": 3.4
     },
     "sat256": {
      "rps": 330,
@@ -1699,7 +2199,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 177.3,
-     "memMaxMiB": 185.5
+     "memMaxMiB": 185.5,
+     "perCpuSecond": 329,
+     "cpuCounted": false,
+     "perMiB": 1.8,
+     "apiCpuPct": 3.7
     }
    },
    "tanstack-start": {
@@ -1716,7 +2220,11 @@
      "failedPct": 0,
      "cpuPct": 28.9,
      "memMiB": 109,
-     "memMaxMiB": 110.2
+     "memMaxMiB": 110.2,
+     "perCpuSecond": 519,
+     "cpuCounted": false,
+     "perMiB": 1.4,
+     "apiCpuPct": 3.3
     },
     "sat64": {
      "rps": 690,
@@ -1727,7 +2235,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 119.6,
-     "memMaxMiB": 123.6
+     "memMaxMiB": 123.6,
+     "perCpuSecond": 687,
+     "cpuCounted": false,
+     "perMiB": 5.6,
+     "apiCpuPct": 6.8
     },
     "sat256": {
      "rps": 601,
@@ -1738,7 +2250,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 138.4,
-     "memMaxMiB": 144.7
+     "memMaxMiB": 144.7,
+     "perCpuSecond": 600,
+     "cpuCounted": false,
+     "perMiB": 4.2,
+     "apiCpuPct": 6.5
     }
    },
    "sveltekit": {
@@ -1755,7 +2271,11 @@
      "failedPct": 0,
      "cpuPct": 27.8,
      "memMiB": 112.3,
-     "memMaxMiB": 114.3
+     "memMaxMiB": 114.3,
+     "perCpuSecond": 540,
+     "cpuCounted": false,
+     "perMiB": 1.3,
+     "apiCpuPct": 3.1
     },
     "sat64": {
      "rps": 695,
@@ -1766,7 +2286,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 121.8,
-     "memMaxMiB": 124.3
+     "memMaxMiB": 124.3,
+     "perCpuSecond": 691,
+     "cpuCounted": false,
+     "perMiB": 5.6,
+     "apiCpuPct": 6.6
     },
     "sat256": {
      "rps": 619,
@@ -1777,7 +2301,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 138.4,
-     "memMaxMiB": 145
+     "memMaxMiB": 145,
+     "perCpuSecond": 616,
+     "cpuCounted": false,
+     "perMiB": 4.3,
+     "apiCpuPct": 6.4
     }
    },
    "react-router": {
@@ -1794,7 +2322,11 @@
      "failedPct": 0,
      "cpuPct": 36.2,
      "memMiB": 104.7,
-     "memMaxMiB": 106.3
+     "memMaxMiB": 106.3,
+     "perCpuSecond": 414,
+     "cpuCounted": false,
+     "perMiB": 1.4,
+     "apiCpuPct": 3.3
     },
     "sat64": {
      "rps": 572,
@@ -1805,7 +2337,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 120.9,
-     "memMaxMiB": 123.4
+     "memMaxMiB": 123.4,
+     "perCpuSecond": 568,
+     "cpuCounted": false,
+     "perMiB": 4.6,
+     "apiCpuPct": 5.9
     },
     "sat256": {
      "rps": 504,
@@ -1816,7 +2352,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 133.8,
-     "memMaxMiB": 137.7
+     "memMaxMiB": 137.7,
+     "perCpuSecond": 501,
+     "cpuCounted": false,
+     "perMiB": 3.7,
+     "apiCpuPct": 5.1
     }
    },
    "leptos": {
@@ -1833,7 +2373,11 @@
      "failedPct": 0,
      "cpuPct": 15.4,
      "memMiB": 12.2,
-     "memMaxMiB": 12.6
+     "memMaxMiB": 12.6,
+     "perCpuSecond": 974,
+     "cpuCounted": false,
+     "perMiB": 11.9,
+     "apiCpuPct": 3.5
     },
     "sat64": {
      "rps": 1194,
@@ -1844,7 +2388,11 @@
      "failedPct": 0,
      "cpuPct": 101.1,
      "memMiB": 15.5,
-     "memMaxMiB": 17.2
+     "memMaxMiB": 17.2,
+     "perCpuSecond": 1181,
+     "cpuCounted": false,
+     "perMiB": 69.4,
+     "apiCpuPct": 14.2
     },
     "sat256": {
      "rps": 1149,
@@ -1855,7 +2403,11 @@
      "failedPct": 0,
      "cpuPct": 100.8,
      "memMiB": 50.8,
-     "memMaxMiB": 56.4
+     "memMaxMiB": 56.4,
+     "perCpuSecond": 1140,
+     "cpuCounted": false,
+     "perMiB": 20.4,
+     "apiCpuPct": 14.2
     }
    },
    "django": {
@@ -1872,7 +2424,11 @@
      "failedPct": 0,
      "cpuPct": 45.2,
      "memMiB": 76.7,
-     "memMaxMiB": 77
+     "memMaxMiB": 77,
+     "perCpuSecond": 332,
+     "cpuCounted": false,
+     "perMiB": 1.9,
+     "apiCpuPct": 3.5
     },
     "sat64": {
      "rps": 337,
@@ -1883,7 +2439,11 @@
      "failedPct": 0,
      "cpuPct": 100.3,
      "memMiB": 76.8,
-     "memMaxMiB": 77.2
+     "memMaxMiB": 77.2,
+     "perCpuSecond": 336,
+     "cpuCounted": false,
+     "perMiB": 4.4,
+     "apiCpuPct": 5.6
     },
     "sat256": {
      "rps": 330,
@@ -1894,7 +2454,11 @@
      "failedPct": 0,
      "cpuPct": 100.1,
      "memMiB": 77,
-     "memMaxMiB": 77.6
+     "memMaxMiB": 77.6,
+     "perCpuSecond": 329,
+     "cpuCounted": false,
+     "perMiB": 4.2,
+     "apiCpuPct": 6
     }
    },
    "rails": {
@@ -1911,7 +2475,11 @@
      "failedPct": 0,
      "cpuPct": 37.3,
      "memMiB": 82.8,
-     "memMaxMiB": 84.7
+     "memMaxMiB": 84.7,
+     "perCpuSecond": 402,
+     "cpuCounted": false,
+     "perMiB": 1.8,
+     "apiCpuPct": 3.6
     },
     "sat64": {
      "rps": 470,
@@ -1922,7 +2490,11 @@
      "failedPct": 0,
      "cpuPct": 100.8,
      "memMiB": 83.1,
-     "memMaxMiB": 85.7
+     "memMaxMiB": 85.7,
+     "perCpuSecond": 466,
+     "cpuCounted": false,
+     "perMiB": 5.5,
+     "apiCpuPct": 7.1
     },
     "sat256": {
      "rps": 464,
@@ -1933,7 +2505,11 @@
      "failedPct": 0,
      "cpuPct": 101.2,
      "memMiB": 84.2,
-     "memMaxMiB": 87.5
+     "memMaxMiB": 87.5,
+     "perCpuSecond": 459,
+     "cpuCounted": false,
+     "perMiB": 5.3,
+     "apiCpuPct": 7.1
     }
    },
    "laravel": {
@@ -1950,7 +2526,11 @@
      "failedPct": 0,
      "cpuPct": 57.7,
      "memMiB": 104.8,
-     "memMaxMiB": 105.4
+     "memMaxMiB": 105.4,
+     "perCpuSecond": 260,
+     "cpuCounted": false,
+     "perMiB": 1.4,
+     "apiCpuPct": 5.7
     },
     "sat64": {
      "rps": 262,
@@ -1961,7 +2541,11 @@
      "failedPct": 0,
      "cpuPct": 99.5,
      "memMiB": 101.8,
-     "memMaxMiB": 104
+     "memMaxMiB": 104,
+     "perCpuSecond": 263,
+     "cpuCounted": false,
+     "perMiB": 2.5,
+     "apiCpuPct": 8.3
     },
     "sat256": {
      "rps": 253,
@@ -1972,7 +2556,11 @@
      "failedPct": 0,
      "cpuPct": 99.6,
      "memMiB": 116.8,
-     "memMaxMiB": 117.3
+     "memMaxMiB": 117.3,
+     "perCpuSecond": 254,
+     "cpuCounted": false,
+     "perMiB": 2.2,
+     "apiCpuPct": 9.1
     }
    },
    "aspnet": {
@@ -1989,7 +2577,11 @@
      "failedPct": 0,
      "cpuPct": 22.5,
      "memMiB": 55.1,
-     "memMaxMiB": 55.6
+     "memMaxMiB": 55.6,
+     "perCpuSecond": 667,
+     "cpuCounted": false,
+     "perMiB": 2.7,
+     "apiCpuPct": 3.5
     },
     "sat64": {
      "rps": 1695,
@@ -2000,7 +2592,11 @@
      "failedPct": 0,
      "cpuPct": 100.9,
      "memMiB": 59.1,
-     "memMaxMiB": 64.7
+     "memMaxMiB": 64.7,
+     "perCpuSecond": 1680,
+     "cpuCounted": false,
+     "perMiB": 26.2,
+     "apiCpuPct": 17.6
     },
     "sat256": {
      "rps": 1570,
@@ -2011,7 +2607,11 @@
      "failedPct": 0,
      "cpuPct": 100.9,
      "memMiB": 78.9,
-     "memMaxMiB": 85.6
+     "memMaxMiB": 85.6,
+     "perCpuSecond": 1556,
+     "cpuCounted": false,
+     "perMiB": 18.3,
+     "apiCpuPct": 16
     }
    },
    "spring": {
@@ -2028,7 +2628,11 @@
      "failedPct": 0,
      "cpuPct": 33.1,
      "memMiB": 392.8,
-     "memMaxMiB": 393.6
+     "memMaxMiB": 393.6,
+     "perCpuSecond": 453,
+     "cpuCounted": false,
+     "perMiB": 0.4,
+     "apiCpuPct": 4
     },
     "sat64": {
      "rps": 846,
@@ -2039,7 +2643,11 @@
      "failedPct": 0,
      "cpuPct": 100.8,
      "memMiB": 412.6,
-     "memMaxMiB": 415.3
+     "memMaxMiB": 415.3,
+     "perCpuSecond": 839,
+     "cpuCounted": false,
+     "perMiB": 2,
+     "apiCpuPct": 9.7
     },
     "sat256": {
      "rps": 732,
@@ -2050,7 +2658,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 441.9,
-     "memMaxMiB": 447.6
+     "memMaxMiB": 447.6,
+     "perCpuSecond": 728,
+     "cpuCounted": false,
+     "perMiB": 1.6,
+     "apiCpuPct": 8
     }
    },
    "phoenix": {
@@ -2067,7 +2679,11 @@
      "failedPct": 0,
      "cpuPct": 40.3,
      "memMiB": 253.5,
-     "memMaxMiB": 291.6
+     "memMaxMiB": 291.6,
+     "perCpuSecond": 372,
+     "cpuCounted": false,
+     "perMiB": 0.5,
+     "apiCpuPct": 3.7
     },
     "sat64": {
      "rps": 454,
@@ -2078,7 +2694,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 226.4,
-     "memMaxMiB": 231.8
+     "memMaxMiB": 231.8,
+     "perCpuSecond": 452,
+     "cpuCounted": false,
+     "perMiB": 2,
+     "apiCpuPct": 5.7
     },
     "sat256": {
      "rps": 456,
@@ -2089,7 +2709,11 @@
      "failedPct": 0,
      "cpuPct": 100.6,
      "memMiB": 303.1,
-     "memMaxMiB": 310.7
+     "memMaxMiB": 310.7,
+     "perCpuSecond": 453,
+     "cpuCounted": false,
+     "perMiB": 1.5,
+     "apiCpuPct": 5.7
     }
    },
    "astro": {
@@ -2106,7 +2730,11 @@
      "failedPct": 0,
      "cpuPct": 37.6,
      "memMiB": 111.3,
-     "memMaxMiB": 112.7
+     "memMaxMiB": 112.7,
+     "perCpuSecond": 399,
+     "cpuCounted": false,
+     "perMiB": 1.3,
+     "apiCpuPct": 3.2
     },
     "sat64": {
      "rps": 554,
@@ -2117,7 +2745,11 @@
      "failedPct": 0,
      "cpuPct": 100.5,
      "memMiB": 124.6,
-     "memMaxMiB": 127.1
+     "memMaxMiB": 127.1,
+     "perCpuSecond": 552,
+     "cpuCounted": false,
+     "perMiB": 4.4,
+     "apiCpuPct": 5.9
     },
     "sat256": {
      "rps": 497,
@@ -2128,7 +2760,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 137.8,
-     "memMaxMiB": 141.7
+     "memMaxMiB": 141.7,
+     "perCpuSecond": 495,
+     "cpuCounted": false,
+     "perMiB": 3.5,
+     "apiCpuPct": 5.5
     }
    },
    "nuxt": {
@@ -2145,7 +2781,11 @@
      "failedPct": 0,
      "cpuPct": 26.9,
      "memMiB": 100.8,
-     "memMaxMiB": 102.3
+     "memMaxMiB": 102.3,
+     "perCpuSecond": 558,
+     "cpuCounted": false,
+     "perMiB": 1.5,
+     "apiCpuPct": 3.2
     },
     "sat64": {
      "rps": 799,
@@ -2156,7 +2796,11 @@
      "failedPct": 0,
      "cpuPct": 100.4,
      "memMiB": 120.9,
-     "memMaxMiB": 124.4
+     "memMaxMiB": 124.4,
+     "perCpuSecond": 796,
+     "cpuCounted": false,
+     "perMiB": 6.4,
+     "apiCpuPct": 8.9
     },
     "sat256": {
      "rps": 695,
@@ -2167,7 +2811,11 @@
      "failedPct": 0,
      "cpuPct": 100.2,
      "memMiB": 135.5,
-     "memMaxMiB": 141.7
+     "memMaxMiB": 141.7,
+     "perCpuSecond": 694,
+     "cpuCounted": false,
+     "perMiB": 4.9,
+     "apiCpuPct": 7.2
     }
    }
   }
