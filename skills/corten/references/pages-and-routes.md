@@ -43,7 +43,9 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    `Response` or `impl IntoResponse` there does not compile. `App::new` takes only a routes
    module's `router()` (`Routes`), and `Area::route`/`Api::route` only Corten's `get(h)`,
    `post(h)`, ... (`Methods`), which check handlers the same way: never build an axum `Router`. Every
-   route names its handler except an API's prefix route, which may name none.
+   route names its handler except an area's or API's prefix route, which may name none; an
+   area's prefix with no handler is not a link (no `href`), so never declare a link-only struct
+   outside the module for it.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
    social) are the layout's props. Never build a document outside a layout component. A page

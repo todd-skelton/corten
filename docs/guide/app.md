@@ -707,6 +707,10 @@ fn app(pages: Routes) -> App {
 2. A route without a handler, two routes with one path, and a route outside the prefix
    (`/admn/users` in the `/admin` area) do not compile, so a link from an area's page cannot
    reach a route nobody serves. Neither does a prefix that is not a plain path (`/admin/{id}`).
+   An area with no page at its prefix (`/docs/{page}` and nothing at `/docs`) gives the prefix
+   route no handler, `#[route("/docs")] pub struct Docs;`: it is then only the prefix (a
+   `corten::Prefix`), not a link, so `Docs.href()` does not compile and the app's 404 answers
+   `/docs`.
 3. Who passes is the app's model: `Staff::identify` reads the session and refuses with
    `Refused::sign_in` (no one signed in) or `Refused::forbidden` (not staff). Stricter parts
    are stricter types: `caller = Billing` on a `/admin/billing` area of its own.

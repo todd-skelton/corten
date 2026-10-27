@@ -48,7 +48,10 @@ use axum::{
     Router,
 };
 
-use crate::{html::json_string, route::Route as TypedRoute};
+use crate::{
+    html::json_string,
+    route::{Prefix, Route as TypedRoute},
+};
 
 /// Routes that answer only JSON, with their settings, under the prefix `P`: what
 /// [`crate::App::api`] gives its function to fill in.
@@ -59,7 +62,7 @@ pub struct Api<P> {
     types: PhantomData<fn() -> P>,
 }
 
-impl<P: TypedRoute> Api<P> {
+impl<P: Prefix> Api<P> {
     pub(crate) fn new() -> Self {
         Api { routes: Router::new(), origins: Vec::new(), deadline: None, types: PhantomData }
     }
@@ -88,7 +91,7 @@ impl<P: TypedRoute> Api<P> {
     pub fn route<R: TypedRoute>(mut self, methods: crate::Methods) -> Self {
         const {
             assert!(
-                under_const(P::PATH, R::PATH),
+                under_const(P::PREFIX, R::PATH),
                 "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
             )
         };
