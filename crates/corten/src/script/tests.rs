@@ -285,6 +285,49 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
     assert!(!body.contains("modulepreload") && !body.contains(r#"src="/assets/"#), "{body}");
 }
 
+/// The formatter a format argument needs is a module of its own: a page whose handlers take a
+/// format loads it with theirs, and a page whose handlers take none does not.
+#[tokio::test]
+async fn a_page_loads_the_format_module_only_when_its_handlers_take_a_format() {
+    use axum::{body::Body, http::Request, routing::get, Router};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let fetch = |app: Router, uri: String| async move {
+        let res = app.oneshot(Request::get(uri).body(Body::empty()).unwrap()).await.unwrap();
+        String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+    };
+    let routes = Router::new()
+        .route(
+            "/priced",
+            get(|req: crate::Req| async move {
+                crate::tests::TestPage::test_page(&req, "Priced", Priced { t: Msg::for_locale("en") })
+            }),
+        )
+        .route(
+            "/cart",
+            get(|req: crate::Req| async move {
+                crate::tests::TestPage::test_page(&req, "Cart", LineItem { name: "Lamp", quantity: 2 })
+            }),
+        );
+    let app = || crate::App::new(Routes::from(routes.clone())).components(&[shared::COMPONENT, LineItem, Badge]).router();
+    let priced = fetch(app(), "/priced".into()).await;
+    let src = |name: &str| {
+        priced
+            .split(r#"<script type="module" src=""#)
+            .skip(1)
+            .map(|s| s.split('"').next().unwrap())
+            .find(|s| s.ends_with(name))
+            .map(str::to_string)
+    };
+    assert!(src("/scripts/shared.js").is_some(), "{priced}");
+    let format = src("/scripts/corten-format.js").expect("the format module is a module script of the page");
+    let cart = fetch(app(), "/cart".into()).await;
+    assert!(cart.contains("/scripts/line_item.js") && !cart.contains("corten-format"), "{cart}");
+    let source = fetch(app(), format).await;
+    assert!(source.contains("formatter") && source.contains(r#"name: "corten-format""#), "{source}");
+}
+
 /// A page whose handlers call a module the app does not serve fails in a debug build (a router
 /// test finds it), instead of rendering a page whose handlers would do nothing.
 #[cfg(debug_assertions)]

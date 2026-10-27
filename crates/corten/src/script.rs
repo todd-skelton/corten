@@ -1040,6 +1040,26 @@ thread_local! {
     static MODULES: RefCell<Option<Vec<&'static str>>> = const { RefCell::new(None) };
 }
 
+/// The module of numbers, money and dates for a script (`js/format.js`, minified into
+/// `js/dist/format.js`): served with the app's scripts, and loaded by the pages whose handlers
+/// take a format (`t.js().money(USD)`), not by every page with the runtime. Not a name a
+/// component's script can have (they are snake_case).
+pub(crate) const FORMAT_MODULE: &str = "corten-format";
+
+/// [`FORMAT_MODULE`]'s source.
+pub(crate) const FORMAT_JS: &str = include_str!("../js/dist/format.js");
+
+/// Notes that the page rendering uses script module `name`, so its head loads it.
+pub(crate) fn uses(name: &'static str) {
+    MODULES.with(|m| {
+        if let Some(list) = m.borrow_mut().as_mut() {
+            if !list.contains(&name) {
+                list.push(name);
+            }
+        }
+    });
+}
+
 /// Runs `render` and returns the script modules its handlers use, in first-use order.
 pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, Vec<&'static str>) {
     let previous = MODULES.with(|m| m.replace(Some(Vec::new())));
@@ -1157,13 +1177,7 @@ pub mod __private {
 
     impl<A: Args> Bind for Call<A> {
         fn write_bind(&self, out: &mut String) {
-            MODULES.with(|m| {
-                if let Some(list) = m.borrow_mut().as_mut() {
-                    if !list.contains(&self.module) {
-                        list.push(self.module);
-                    }
-                }
-            });
+            uses(self.module);
             #[cfg(debug_assertions)]
             if let Some(owner) = self.owner {
                 crate::style::__private::rendered(owner);
