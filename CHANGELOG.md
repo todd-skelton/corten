@@ -1272,6 +1272,9 @@ Corten is pre-1.0, so any minor version may change the API.
     before. Tables too wide for a phone scroll inside their panel (the item page) or their box
     (seller-desk's grid). seller-desk's statement writes its amounts with `t.money` and its
     words from a catalog, not a hand-written `$`.
+20. `examples/cluster` is `examples/listings-feed`, named for what it is (a seller's listings
+    feed served by several instances), like the other examples; the crate it shows is still
+    `corten-cluster`. Its package and image are `listings-feed` and `corten-listings-feed`.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

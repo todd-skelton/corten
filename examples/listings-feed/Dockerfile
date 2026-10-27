@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build from the repository root: docker build -f examples/cluster/Dockerfile -t corten-cluster .
+# Build from the repository root: docker build -f examples/listings-feed/Dockerfile -t corten-listings-feed .
 FROM rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
@@ -9,8 +9,8 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target,sharing=locked \
     find . -name target -prune -o -type f -exec touch {} + \
-    && cargo build --release -p cluster \
-    && mkdir -p /out && cp target/release/cluster /out/server
+    && cargo build --release -p listings-feed \
+    && mkdir -p /out && cp target/release/listings-feed /out/server
 
 FROM debian:bookworm-slim
 WORKDIR /app
