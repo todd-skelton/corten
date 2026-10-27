@@ -1424,6 +1424,12 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
     assert_eq!(cache_control(&router, "/catalog", &[]).await, "public, max-age=60, s-maxage=86400");
     assert_eq!(cache_control(&router, "/catalog", &[("corten", "nav")]).await, "private, max-age=60", "the browser's lifetime");
     assert_eq!(cache_control(&router, "/catalog", &[("cookie", "session=abc")]).await, "private, no-cache");
+    // App::client_zone's cookie says where the visitor is, not who: alone, it shares as before.
+    assert_eq!(cache_control(&router, "/", &[("cookie", "corten-zone=America/Chicago")]).await, "public, max-age=60");
+    assert_eq!(
+        cache_control(&router, "/", &[("cookie", "corten-zone=America/Chicago; session=abc")]).await,
+        "private, no-cache"
+    );
     let inline = App::new(Routes::from(Router::new().route("/", get(inline_page)))).router();
     assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the layout took the nonce");
 
@@ -1433,6 +1439,53 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
         .router();
     assert_eq!(cache_control(&api, "/api/rates", &[("accept", "application/json")]).await, "public, max-age=60");
     assert_eq!(cache_control(&api, "/api/rates", &[("authorization", "Bearer t")]).await, "private, no-cache");
+}
+
+/// `App::client_zone` asks the runtime for the browser's time zone, and `Option<ClientZone>` reads
+/// it: a name the browser could write, otherwise `None`. Taking it without the setting is a 500 in
+/// a debug build.
+#[tokio::test]
+async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
+    use crate::ClientZone;
+    let routes = || {
+        Routes::from(
+            Router::new()
+                .route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) }))
+                .route(
+                    "/zone",
+                    get(|zone: Option<ClientZone>| async move { zone.map_or_else(|| "none".to_string(), |ClientZone(zone)| zone) }),
+                ),
+        )
+    };
+    let get_with = |router: Router, uri: &'static str, cookie: Option<&'static str>| async move {
+        let mut req = Request::get(uri);
+        if let Some(cookie) = cookie {
+            req = req.header("cookie", cookie);
+        }
+        let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let status = res.status();
+        (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+    };
+    let router = App::new(routes()).client_zone().router();
+    let (_, page) = get_with(router.clone(), "/", None).await;
+    assert!(page.contains(r#"<meta name="corten-zone">"#), "the runtime is asked to keep it: {page}");
+    assert_eq!(get_with(router.clone(), "/zone", None).await.1, "none", "before the runtime has run");
+    for (cookie, zone) in [
+        ("corten-zone=America/Chicago", "America/Chicago"),
+        ("session=abc; corten-zone=Etc/GMT+5", "Etc/GMT+5"),
+        ("corten-zone=America/Argentina/Buenos_Aires", "America/Argentina/Buenos_Aires"),
+        ("corten-zone=<script>", "none"),
+        ("corten-zone=../../etc/passwd", "none"),
+        ("corten-zone=", "none"),
+    ] {
+        assert_eq!(get_with(router.clone(), "/zone", Some(cookie)).await.1, zone, "{cookie}");
+    }
+
+    let without = App::new(routes()).router();
+    let (_, page) = get_with(without.clone(), "/", None).await;
+    assert!(!page.contains("corten-zone"), "no cookie unless the app asks");
+    let (status, _) = get_with(without, "/zone", Some("corten-zone=America/Chicago")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "a debug build names the missing App::client_zone()");
 }
 
 #[tokio::test]

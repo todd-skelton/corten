@@ -1217,8 +1217,22 @@ async function run(browser) {
   await plain.selectOption("select[name=id]", "SOLR");
   await Promise.all([plain.waitForNavigation(), plain.click("#watch-form button")]);
   check("without JavaScript the form posts and renders the page", ((await plain.textContent("#watch-message")) ?? "").startsWith("Watching Sunreach Solar"));
+  check("without JavaScript the visitor's time zone is not known", !((await plain.textContent("#watch-message")) ?? "").includes("Alerts follow"));
   check("the page it renders has the stock on the list", (await plain.$('[data-ref="price"][data-key="SOLR"]')) !== null);
   await noJs.close();
+
+  // App::client_zone: the runtime keeps the browser's time zone in a cookie once a page has
+  // loaded, so the next request (a form's post) tells the server where the visitor is.
+  const abroad = await browser.newContext({ timezoneId: "Pacific/Auckland" });
+  const kiwi = await abroad.newPage();
+  await kiwi.goto(base);
+  await kiwi.waitForFunction(() => document.cookie.includes("corten-zone="), null, { timeout: 4000 }).catch(() => {});
+  await kiwi.selectOption("select[name=id]", "SOLR");
+  await kiwi.click("#watch-form button");
+  await kiwi.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Sunreach Solar"), null, { timeout: 4000 }).catch(() => {});
+  const zoned = (await kiwi.textContent("#watch-message")) ?? "";
+  check("a post after the first page knows the visitor's time zone", zoned.includes("Alerts follow Pacific/Auckland time."), zoned);
+  await abroad.close();
 
   // A navigation started before the first document has loaded is the browser's own: a script's
   // form submit (one made from on:connect) makes Chromium stop loading the document, and a page

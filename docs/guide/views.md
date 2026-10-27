@@ -179,6 +179,14 @@ the locale's order and words (`Mar 2026`, `MÃ¤rz 2026`); it has no time, so `t
 not take one. A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
+For dates where the visitor is ("your listings come back on Nov 2"), the app sets
+`App::client_zone()` and a handler takes `Option<ClientZone>`: the browser's IANA name
+(`America/Chicago`), which the runtime keeps in a cookie from the first page it loads, so the
+form posts and pages after it carry it. `None` is a first load or a browser without
+JavaScript. The app's time zone library (`jiff`, `chrono-tz`) turns the name into its `Zone`
+(a newtype that implements `corten::i18n::Zone`) and a picked date into the instant it means
+there, with no script per form. A handler that takes it is private to that zone, so a
+`Public` one cannot.
 Each listed locale's separators, currency symbols and date patterns are CLDR's, checked against
 Intl, and only the locales `messages!` lists are in the app. A script that writes a number, an
 amount or a date takes the page's format (`t.js().money(USD)`) and writes the same text

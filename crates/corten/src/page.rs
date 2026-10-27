@@ -397,6 +397,8 @@ pub(crate) struct Shared {
     pub offline: Option<String>,
     /// The app's message catalogs, negotiated per request by [`Req::t`].
     pub locales: Option<&'static [&'static str]>,
+    /// [`crate::App::client_zone`]: the runtime keeps the browser's time zone in a cookie.
+    pub client_zone: bool,
     /// Dev mode: error pages show the error.
     pub dev: bool,
     /// The names of the components the app lists (`App::components` and `Area::components`).
@@ -435,6 +437,7 @@ impl Shared {
             key_base: hasher.finish(),
             offline: None,
             locales: None,
+            client_zone: false,
             dev: false,
             components: Default::default(),
             sections: Vec::new(),

@@ -178,6 +178,10 @@ not add an `Origin` check of your own. A URL that is also a page or a relayed an
 `corten::Relay::new(status, headers, body)`, never a `Response`; never merge a router after
 `app.router()` for either.
 
+A date the visitor picks, or a time shown where they are, needs their time zone: set
+`App::client_zone()` and take `Option<ClientZone>` (`None` on a first load), then convert with the
+app's time zone library. Never add a page script that converts dates.
+
 ## Routes only some callers may use
 
 A handler that needs to know who is asking takes `Caller<T>`; `T`'s `Identify` finds the caller
