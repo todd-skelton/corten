@@ -11,7 +11,7 @@
 //! | `POST /sign-in` | sets a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
 //! | `GET /account` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
-//! | `POST /avatar` | a form with a file (`Upload`): the picture is read as it arrives, then the other fields |
+//! | `POST /avatar` | a form with a file (`Upload`): the picture is read as it arrives, then the other fields; a body over its limit is answered with a message in the form (`UploadError::TooLarge`) |
 //! | `POST /saved` | a write answered in place while its read catches up: the status line, as a patch that is read again from `/saved?until=..` (`ReadAgain::from`) until the write is in |
 use std::{
     sync::Arc,
@@ -20,7 +20,7 @@ use std::{
 
 use corten::{
     Fragment, LiveResponse, LiveSince,
-    axum::http::{Uri, header, request::Parts},
+    axum::http::{StatusCode, Uri, header, request::Parts},
     feed::{Feed, FeedResponse, Row, Since},
     i18n::{Currency, Minor},
     prelude::*,
@@ -448,19 +448,33 @@ struct AvatarForm {
 struct AvatarResultId;
 
 /// A form with a file: what came, read as it arrives (a picture over 64 KB is refused, the form
-/// still read).
+/// still read). A body over 1 MiB is answered with the form's message, not the error page.
 async fn avatar(req: Req, mut upload: Upload<AvatarForm>) -> HtmlResult {
     let f = AvatarForm::FIELDS;
-    let mut pictures = Vec::new();
-    while let Some(mut file) = upload.next_file().await? {
-        if file.is(f.picture) {
-            let size =
-                file.bytes_up_to(64 << 10).await?.map_or_else(|| "too large".to_string(), |b| format!("{} bytes", b.len()));
-            pictures.push(format!("{} ({}, {size})", file.filename(), file.content_type()));
+    upload.limit(1 << 20);
+    // Every read can find the body over its limit, so they are one block and its outcome is
+    // matched once.
+    let read = async {
+        let mut pictures = Vec::new();
+        while let Some(mut file) = upload.next_file().await? {
+            if file.is(f.picture) {
+                let size =
+                    file.bytes_up_to(64 << 10).await?.map_or_else(|| "too large".to_string(), |b| format!("{} bytes", b.len()));
+                pictures.push(format!("{} ({}, {size})", file.filename(), file.content_type()));
+            }
         }
+        Ok::<_, UploadError>((upload.fields().await?, pictures))
+    };
+    match read.await {
+        Ok((form, pictures)) => {
+            req.patch(html! { <p id={AvatarResultId}>{format!("{}: {}", form.name, pictures.join(", "))}</p> })
+        }
+        Err(UploadError::TooLarge { .. }) => {
+            let message = html! { <p id={AvatarResultId}>"The pictures are over 1 MB together."</p> };
+            req.patch_with_status(StatusCode::PAYLOAD_TOO_LARGE, message)
+        }
+        Err(error) => Err(error.into()),
     }
-    let form = upload.fields().await?;
-    req.patch(html! { <p id={AvatarResultId}>{format!("{}: {}", form.name, pictures.join(", "))}</p> })
 }
 
 /// The about page's filter and how much of the history it shows: a GET form, so both are in

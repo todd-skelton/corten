@@ -875,6 +875,11 @@ Corten is pre-1.0, so any minor version may change the API.
     own, so its extensions fit their first allocation: 207 fewer instructions for a page, 647 for
     a signed-in page and 849 for the error page (callgrind, release build, in-process `oneshot`,
     median of three).
+53. CI runs the browser smoke tests in Playwright's image for the `@playwright/test` version in
+    `package.json`, which has the three browsers and their system libraries. Installing them on
+    the runner (`npx playwright install --with-deps`) fetched about a hundred packages from the
+    Ubuntu mirror on every run, and stalled until it was cancelled when the mirror slowed to a few
+    KB/s (twice on 2026-10-27, 15 and 5 minutes).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -1056,6 +1061,13 @@ Corten is pre-1.0, so any minor version may change the API.
     A start tag that writes `aria-describedby` or `aria-invalid` beside `e.aria(..)` no longer
     compiles, since the browser would keep only one of them
     ([#147 A field with its own hint cannot also point at its error: Within::aria writes a second aria-describedby, which the browser drops](https://github.com/todd-skelton/corten/issues/147)).
+36. A body over `Upload::limit` can be answered with the form and a message. `Upload`'s reads
+    return `UploadError` (`TooLarge`, `Malformed`, `Fields`), which `?` still turns into a 413,
+    400 or 422; a handler matches `UploadError::TooLarge` instead of comparing statuses or reading
+    `Content-Length`. The rest of an over-limit body is now read past (up to 64 MiB) before the
+    answer: before, Chromium (and Firefox, for a 20 MB body) took the closed connection for a
+    network error and showed nothing, not even the error page
+    ([#150 A handler cannot read an Error's status, so an upload over Upload::limit (413) cannot draw the form again with a message](https://github.com/todd-skelton/corten/issues/150)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
