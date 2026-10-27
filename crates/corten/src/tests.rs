@@ -1194,12 +1194,14 @@ async fn a_caller_is_looked_up_only_by_the_handlers_that_read_it_and_once() {
     assert_eq!((body.as_str(), LOOKUPS.with(|n| n.get())), ("ada", 1), "two readers, one lookup");
 }
 
+#[cfg(feature = "json")]
 #[derive(crate::ToJson)]
 struct ShapedError {
     r#type: &'static str,
     error: ShapedDetail,
 }
 
+#[cfg(feature = "json")]
 #[derive(crate::ToJson)]
 struct ShapedDetail {
     code: u16,
@@ -1207,6 +1209,7 @@ struct ShapedDetail {
 }
 
 /// `Api::errors` writes every failure Corten answers under the prefix in the API's own shape.
+#[cfg(feature = "json")]
 #[tokio::test]
 async fn an_api_writes_the_failures_corten_answers_in_its_own_shape() {
     let router = api_app(|api| {
