@@ -875,6 +875,11 @@ Corten is pre-1.0, so any minor version may change the API.
     own, so its extensions fit their first allocation: 207 fewer instructions for a page, 647 for
     a signed-in page and 849 for the error page (callgrind, release build, in-process `oneshot`,
     median of three).
+53. CI runs the browser smoke tests in Playwright's image for the `@playwright/test` version in
+    `package.json`, which has the three browsers and their system libraries. Installing them on
+    the runner (`npx playwright install --with-deps`) fetched about a hundred packages from the
+    Ubuntu mirror on every run, and stalled until it was cancelled when the mirror slowed to a few
+    KB/s (twice on 2026-10-27, 15 and 5 minutes).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
