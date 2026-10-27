@@ -1,0 +1,16 @@
+{
+ "fsw-laravel": {
+  "samples": 121,
+  "cpuAvgPct": 57.7,
+  "cpuMaxPct": 65.56,
+  "memAvgMiB": 104.8,
+  "memMaxMiB": 105.4
+ },
+ "item-api": {
+  "samples": 121,
+  "cpuAvgPct": 5.7,
+  "cpuMaxPct": 7.38,
+  "memAvgMiB": 138.4,
+  "memMaxMiB": 138.7
+ }
+}

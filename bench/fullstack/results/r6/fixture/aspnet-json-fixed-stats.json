@@ -1,0 +1,9 @@
+{
+ "fsw-aspnet": {
+  "samples": 123,
+  "cpuAvgPct": 10.6,
+  "cpuMaxPct": 58.66,
+  "memAvgMiB": 76.9,
+  "memMaxMiB": 77.3
+ }
+}
