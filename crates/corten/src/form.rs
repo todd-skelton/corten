@@ -112,7 +112,7 @@ use crate::view::{escape_into, quoted, AttrValue, Attrs, Id, Render};
 mod de;
 mod upload;
 pub use de::{from_bytes, FormError};
-pub use upload::{File, Files, Upload};
+pub use upload::{File, Files, Upload, UploadError};
 
 /// Implemented by `#[derive(Fields)]` for a form with [`Files`], whose fields nothing else reads.
 #[doc(hidden)]
