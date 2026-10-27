@@ -52,11 +52,13 @@ export function selected(out, label) {
   out.textContent = label({});
 }
 
-/** @import { NumberFormat, MoneyFormat, DateFormat } from "corten" */
+/** @import { NumberFormat, MoneyFormat, DateFormat, PercentFormat } from "corten" */
 
-/** @param {HTMLOutputElement} out @param {NumberFormat} count @param {MoneyFormat} price @param {DateFormat} when */
-export function formatted(out, count, price, when) {
-  out.textContent = `${count(1234)} ${count("21.5")} ${price(123450)} ${when(Date.now())} ${when(new Date())}`;
+/** @param {HTMLOutputElement} out @param {NumberFormat} count @param {MoneyFormat} price @param {DateFormat} when @param {PercentFormat} rate */
+export function formatted(out, count, price, when, rate) {
+  out.textContent = `${count(1234)} ${count("21.5")} ${price(123450)} ${when(Date.now())} ${when(new Date())} ${rate(0.029)} ${rate("0.029")}`;
+  // @ts-expect-error A ratio, not a date.
+  rate(new Date());
   // @ts-expect-error An amount is an integer of minor units, not its text.
   price("12.50");
   // @ts-expect-error A date's format takes a date, not an object.

@@ -7,10 +7,12 @@ your routes. Each default can be replaced in one line.
 
 | Concern | Default | Override |
 |---|---|---|
-| Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
+| Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment; `corten::serve_on(listeners, app)` for listeners of your own (HTTPS, a Unix socket) with the same shutdown ([below](#your-own-listeners)) |
+| Names it answers to | `localhost`, IP addresses; any other `Host` gets `421` ([below](#host-names)) | `HOSTS=shop.example,.shop.example` in the environment, or `Policy::host("shop.example")` |
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
 | What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
+| The client's address | the connection's peer; no `X-Forwarded-For` is read | a handler takes `ClientIp`; behind a proxy, `PROXIES=10.0.0.0/8` in the environment or `Policy::proxy("10.0.0.0/8")` ([below](#the-clients-address)) |
 | Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
 | A part of the app | none | `.area(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
 | Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(page, state)`: `async fn(Failure, Req, ..extractors) -> HtmlResult`, in the app's layout and for who is asking; `corten new` writes one that names each case |
@@ -20,7 +22,8 @@ your routes. Each default can be replaced in one line.
 | Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file, plus one per area that lists components and one per set of areas that list the same components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
 | Middleware of your own | none | `.middleware((RequestId, RateLimit))`: steps of the app's own, at one place in Corten's order ([below](#your-own-middleware)) |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
-| Shutdown | Ctrl-C and `SIGTERM` end live streams, then the server | |
+| Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)) |
+| Shutdown | Ctrl-C and `SIGTERM` tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`) | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
@@ -28,7 +31,8 @@ your routes. Each default can be replaced in one line.
 | Dev mode | when `CORTEN_DEV` is set (`corten dev` sets it): errors shown on the page, open pages reload after a rebuild | `.dev(bool)` |
 
 `App::deadline` (30 seconds unless set) bounds how long a handler may take to start its answer;
-see [Cancellation](cancellation.md).
+an area or an API with slower routes sets its own (`Area::deadline`, `Api::deadline`), so the
+rest keep the app's. See [Cancellation](cancellation.md).
 
 ```rust,ignore
 let app = App::new(url::router())
@@ -43,9 +47,170 @@ corten::serve(app).await
 
 The layout around `<main>` renders on full page loads only; a client navigation gets the
 `<title>`, the page's head tags and `<main>`'s children. Every page carries a key hashed from the
-caller its handler read (if any) and the deploy, and when a navigation or a form answer arrives with a different key
-(sign-in, sign-out, a new release), the runtime loads the whole document, so the layout is never
-stale.
+caller its handler read (if any), the deploy and the layout that rendered it (where its `html!`
+document is written), and when a navigation or a form answer arrives with a different key
+(sign-in, sign-out, a new release, a page in another layout), the runtime loads the whole
+document, so the layout is never stale.
+
+## Host names
+
+An app answers a request only when its `Host` is `localhost` (or a name under it, such as
+`app.localhost`), an IP address, missing (HTTP/1.0, a test's `oneshot`), or a name the app lists.
+Any other name gets `421 Misdirected Request` before routing: no handler, middleware, caller
+lookup or error page runs. Otherwise a page on a name someone else controls could point that
+name at this machine (DNS rebinding) and then use every route as its own origin, writes
+included, since the browser treats the rebound page as same-origin. On loopback, where only this
+machine can reach the app, that is the access model it would break, so the check is the default
+rather than a setting to remember.
+
+A deployed app lists the names it is served under, where the deploy sets `HOST` and `PORT`:
+
+```sh
+HOSTS=shop.example,.shop.example   # the domain, and (leading dot) every subdomain
+```
+
+or in code, `App::policy(Policy::new().host("shop.example"))`. Behind a proxy that rewrites
+`Host`, it is the name the proxy sends. A health check that calls the app by an IP address, or
+by `localhost`, is answered as before. The first refused name is logged, so a deploy that forgot
+its name says why it answers 421. An app served under names it cannot list in advance (each
+customer's own domain) says `Policy::any_host()` (`HOSTS=*`) and checks them itself. The check
+compares one header with a short list.
+
+## The client's address
+
+A handler that needs the visitor's IP address (to pass it to an API whose limits are per client,
+or to limit by it itself) takes `ClientIp`:
+
+```rust,ignore
+async fn sign_up(req: Req, ClientIp(ip): ClientIp, form: Form<SignUp>) -> HtmlResult {
+    accounts.create(&form, ip).await?; // the API counts each visitor on its own
+    req.redirect(&url::Welcome)
+}
+```
+
+Without a proxy it is the connection's peer. Behind one, every request comes from the proxy, which
+names the client in `X-Forwarded-For`; the app trusts that header only from the proxies it lists,
+where the deploy sets `HOST` and `PORT`:
+
+```sh
+PROXIES=10.0.0.0/8,fc00::/7   # an address, or a network, per proxy
+```
+
+or in code, `App::policy(Policy::new().proxy("10.0.0.0/8"))`. A request from a listed address is
+followed back through `X-Forwarded-For`, right to left, to the first address that is not a proxy;
+anything further left is whatever the client wrote, so it is never read. A request on a Unix socket
+counts as from a proxy when the app lists any. Only `X-Forwarded-For` is read, which every common
+proxy sets: a proxy sets one of it and `Forwarded`, and reading the other would take what a client
+wrote there. List only the addresses requests reach the app from through the proxy: a client that
+can reach the app directly from a listed address can name any address it likes.
+
+`ClientIp` tells who is asking, so a `Public` handler cannot take it, and an answer that read it is
+private like one that read a `Caller`. Where the address cannot be known (a Unix socket and no
+proxy, a listener of the app's own whose address is not a socket address, a test's `oneshot`),
+`ClientIp` is a 500 that says why and `Option<ClientIp>` is `None`. A test gives the request an
+address with axum's `MockConnectInfo` layer around `app.router()`. The peer is at hand while
+the request's own future runs, so a layer of the app's own that hands the request to another task
+(`tower`'s `Buffer`) leaves it unknown past that layer.
+
+Giving each request its connection's peer costs 44 instructions per request whether a handler
+reads it or not (callgrind, release build, keep-alive requests to `serve_on` over TCP, the
+difference between 1,200 and 200 requests over 1,000: 54,507 before, 54,551 after). It is not a
+request extension: one more of those cost 497.
+
+## Tasks
+
+Work that is not a request's (a refresh loop on a timer, a queue consumer, a supervised child
+process, a periodic flush) is a task of the app's, an async function of a `Signal`:
+
+```rust,ignore
+async fn refresh(quotas: Quotas, signal: Signal) {
+    let mut every = tokio::time::interval(Duration::from_secs(120));
+    loop {
+        tokio::select! {
+            _ = every.tick() => quotas.refresh().await, // finishes its journal write
+            _ = signal.aborted() => return,
+        }
+    }
+}
+
+let app = App::new(url::router(quotas.clone())).task("refresh", move |signal| refresh(quotas, signal));
+corten::serve(app).await
+```
+
+`serve` starts the tasks once it listens; `app.router()` starts none, so a test of the app does
+not run them. On Ctrl-C or `SIGTERM` the signal aborts with `Abort::Shutdown` first, then live
+streams end and the listeners close, and `serve` returns once requests in progress and the
+tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 seconds unless set).
+A task still running then is ended and logged by name, so a stuck one cannot hold the process,
+and so is one that panics; whether to restart it is the app's choice.
+
+`/health/ready` does not turn 503 during shutdown: the listeners close when it begins, so a load
+balancer's next check is refused, which it treats the same way. A platform that needs time to
+stop sending first waits before it sends `SIGTERM` (a Kubernetes `preStop` sleep).
+
+## Your own listeners
+
+`corten::serve(app)` is `corten::serve_on(corten::listeners(3000).await?, app)`: `listeners(3000)`
+binds `HOST`:`PORT` (both loopback addresses without `HOST`, port 3000 without `PORT`), and `serve_on` serves the app on anything
+that implements axum's `axum::serve::Listener`, with `serve`'s shutdown across all of them
+(tasks told, live streams ended, every listener closed and drained, tasks waited for). HTTPS, a
+Unix socket, or a socket a supervisor hands over is a listener of the app's own; TLS stays the
+app's choice of library. With `tokio-rustls`, around the same loopback pair:
+
+```rust,ignore
+use std::{net::SocketAddr, sync::Arc, time::Duration};
+use tokio::{net::{TcpListener, TcpStream}, sync::mpsc};
+use tokio_rustls::{server::TlsStream, TlsAcceptor};
+
+/// Connections whose handshake is done. Each handshake runs on its own, so a slow client cannot
+/// hold up the next connection (`accept` is called one connection at a time).
+struct Tls(mpsc::Receiver<(TlsStream<TcpStream>, SocketAddr)>, SocketAddr);
+
+impl corten::axum::serve::Listener for Tls {
+    type Io = TlsStream<TcpStream>;
+    type Addr = SocketAddr;
+    async fn accept(&mut self) -> (Self::Io, SocketAddr) {
+        match self.0.recv().await {
+            Some(accepted) => accepted,
+            None => std::future::pending().await,
+        }
+    }
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok(self.1)
+    }
+}
+
+fn tls(tcp: TcpListener, acceptor: TlsAcceptor) -> std::io::Result<Tls> {
+    let (addr, (tx, rx)) = (tcp.local_addr()?, mpsc::channel(64));
+    tokio::spawn(async move {
+        // Ends when the server drops its side at shutdown.
+        while !tx.is_closed() {
+            let Ok((socket, peer)) = tcp.accept().await else {
+                // Out of file descriptors, say: wait rather than spin.
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                continue;
+            };
+            let (acceptor, tx) = (acceptor.clone(), tx.clone());
+            tokio::spawn(async move {
+                let handshake = tokio::time::timeout(Duration::from_secs(10), acceptor.accept(socket));
+                if let Ok(Ok(stream)) = handshake.await {
+                    let _ = tx.send((stream, peer)).await;
+                }
+            });
+        }
+    });
+    Ok(Tls(rx, addr))
+}
+
+let acceptor = TlsAcceptor::from(Arc::new(server_config)); // the app's rustls ServerConfig
+let listeners = corten::listeners(3000).await?.into_iter().map(|l| tls(l, acceptor.clone())).collect::<Result<_, _>>()?;
+corten::serve_on(listeners, app).await
+```
+
+An app behind a proxy that ends TLS needs none of this: `serve` is plain HTTP for the proxy.
+An app whose own default port is not 3000 (another service has it on that machine) passes its
+port, and `PORT` still overrides it: `corten::serve_on(corten::listeners(8320).await?, app)`,
+rather than setting `PORT` from the program, which is `unsafe` once threads may be running.
 
 ## The request path
 
@@ -171,15 +336,16 @@ let app = App::new(Routes::new()).middleware((RequestId, RateLimit));
 ```
 
 Whatever a middleware answers (the 429 above) leaves through stages 7 and 8 like a handler's
-answer, so it gets the error page, the security headers and `Cache-Control`. A middleware can
+answer, so it gets the error page (with the headers it set, `Retry-After` included), the security
+headers and `Cache-Control`. A middleware can
 read a `Caller` the same way a handler does (`Caller::<Viewer>::from_request_parts`), and the
 handler then reuses that lookup. The tuple is resolved when the crate compiles, so nothing is
 boxed: a middleware that only passes the request on costs about 230 instructions (its `async fn`
 moves the request into its future), where axum's `from_fn` boxes the rest of the stack again
 for every request (about 700).
 
-A tower layer still goes around the whole app (`corten::serve(app.router().layer(l))`), outside
-every stage, for what must see the raw request first: a cap on body size, a limit per address.
+A tower layer still goes around the whole app (`.layer(l)`), outside every stage, for what must
+see the raw request first: a cap on body size, a limit per address.
 There is no layer for one route: what a route needs is in its handler's arguments (an
 extractor) and its return type.
 
@@ -308,7 +474,7 @@ Under the prefix:
    that needs to know who is calling takes a `Caller` ([below](#who-is-asking)); a refused one
    is a JSON 401 or 403.
 3. The deadline, the request signal, compression and the same-origin check on writes are the
-   same as for pages.
+   same as for pages; `Api::deadline` gives these routes a deadline of their own.
 4. `Api::allow_origin` lets one site's pages call these routes from the browser: Corten answers
    its CORS preflight, adds `Access-Control-Allow-Origin` and lets its writes through. The
    pages keep refusing that site's writes. The site authenticates with a token: a write from it
@@ -521,8 +687,14 @@ Every way a request can fail is a `Failure`, given to the app's error page for a
 | `Rejected { status, detail }` | the path, the query or the body did not parse | 400, 415, 422 |
 | `Failed { status, detail }` | the handler returned an `Error` | 500, or its status |
 | `Panicked { detail }` | the handler panicked | 500 |
-| `TimedOut` | the handler ran past `App::deadline` | 503 |
+| `TimedOut` | the handler ran past its deadline (`App::deadline`, or its area's or API's) | 503 |
 | `Offline` | the PWA's offline page | 200, so the worker keeps it |
+
+The error page keeps the headers the failed response had (a request id, `Retry-After`,
+`WWW-Authenticate`, `Server-Timing`, `Allow`), so what a handler or a middleware said about a
+failure still reaches the client. The ones that described the old body (`Content-*`, `ETag`,
+`Last-Modified`) and `Cache-Control` are the error page's own, and a header the error page sets
+wins.
 
 The error page is an async function of the `Failure` and then extractors, as a handler's
 arguments are, with the state they read given beside it (`()` for none). A layout that shows

@@ -74,6 +74,36 @@ fn control_flow_is_rust() {
     assert_eq!(view.to_html(), r#"<ul><li>a</li><li aria-current="true">b</li><li>c</li></ul><p>some</p><b>1</b>"#);
 }
 
+/// A pattern's braces are the pattern's, as in Rust: an `if let` up to its `=`, a `for` up to
+/// `in`. A range pattern's `..=` and a comparison's `==` are not the end of one.
+#[test]
+fn patterns_with_braces_are_patterns() {
+    enum Shape {
+        Circle { r: u32 },
+        Square { side: u32 },
+        Dot,
+    }
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+    let shapes = [Shape::Circle { r: 2 }, Shape::Square { side: 3 }, Shape::Dot];
+    let points = [Point { x: 1, y: 2 }];
+    let view = html! {
+        for shape in &shapes {
+            if let Shape::Circle { r } = shape {
+                <i>{r}</i>
+            } else if let Shape::Square { side: 1..=5 } = shape {
+                <b>"small"</b>
+            } else if points.len() == usize::from(matches!(shape, Shape::Dot)) {
+                <u>"dot"</u>
+            }
+        }
+        for Point { x, y } in &points { <p>{x}","{y}</p> }
+    };
+    assert_eq!(view.to_html(), "<i>2</i><b>small</b><u>dot</u><p>1,2</p>");
+}
+
 #[test]
 fn void_elements_doctype_fragments_and_raw_text() {
     let view = html! {

@@ -18,8 +18,9 @@
 One handler serves every mode, and `req.mode` says which. A route with no screen goes under
 [`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The layout around `<main>` renders on full
 loads only ([the document](views.md#the-document)); every page carries a key hashed from the
-caller its handler read (if any) and the deploy, and when a navigation answers with a different key (sign-in, a new
-release) the runtime loads the whole document instead, so the layout is never stale.
+caller its handler read (if any), the deploy and its layout, and when a navigation answers with a different key
+(sign-in, a new release, a page in another layout) the runtime loads the whole document instead, so the layout is
+never stale.
 
 ## Forms
 
@@ -167,7 +168,11 @@ no store); `corten_cluster::begin` takes it as its idempotency key. A field that
 
 A patch replaces markup but not the user's work: a field typed into after the form was sent (or,
 in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret
-stay on the matching element. What the user opened stays open: a `<dialog>` (modal again if it
+stay on the matching element. A file input keeps the files the user chose, which markup cannot
+give back, so a refusal can redraw the input with `aria-invalid` and its message and the files
+are still there to send again; only a successful answer to the form that sent them takes them
+(found by first file name, so files chosen again under the same name while it was on its way go
+too). What the user opened stays open: a `<dialog>` (modal again if it
 was modal), a `<details>` they unfolded and a shown popover, matched by id (a `<details>` also by
 its place). One the user left as the server sent it takes the new markup's state, so a dialog
 the server sent open and now sends closed closes. A dialog the server draws `open` is open but not
@@ -191,6 +196,62 @@ A component that says `-> impl Render` is not a patch, so one that is drawn by t
 by an action says `-> impl Patch`, as a layout says `-> impl Document`. A `corten::live`
 fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
 element).
+
+## Files
+
+A form with a file input posts `multipart/form-data` (`enctype="multipart/form-data"`), which
+`Form` does not read (it answers 415). The handler takes `Upload<T>` instead. The input is named
+by a `Files` field of the form struct, so the markup (`name={f.photos}`), the files and `Errors`
+all take the same `FieldName`:
+
+```rust,ignore
+#[derive(serde::Deserialize, Fields)]
+struct NewListing { title: String, price: u32, photos: Files }
+
+async fn create(req: Req, mut upload: Upload<NewListing>) -> HtmlResult {
+    let f = NewListing::FIELDS;
+    upload.limit(60 << 20); // the whole body; 2 MiB unless set
+    let (mut photos, mut errors) = (Vec::new(), Errors::new());
+    while let Some(mut file) = upload.next_file().await? {
+        if !file.is(f.photos) { continue }
+        if !matches!(file.content_type(), "image/jpeg" | "image/png" | "image/webp") {
+            errors.add(f.photos, "Photos can be JPEG, PNG or WebP.");
+        } else if photos.len() == 24 {
+            errors.add(f.photos, "A listing can have 24 photos.");
+        } else {
+            match file.bytes_up_to(10 << 20).await? {
+                Some(bytes) => photos.push((file.filename().to_string(), bytes)),
+                None => errors.add(f.photos, "Each photo can be up to 10 MB."),
+            }
+        }
+    }
+    let input = upload.fields().await?;
+    if !errors.is_empty() {
+        return req.invalid(&errors, ListingForm { input: &input, errors: &errors }, page).await;
+    }
+    ..
+}
+```
+
+The body is read as the handler asks for it. `next_file` reads the text fields before the next
+file and keeps them. `fields` reads the rest and reads the fields into `T` by `Form`'s rules (a
+422 when they do not fit). A file the handler does not read is skipped, not stored. A file input
+left empty sends no file.
+
+To hand a file on without holding it (to an object store or a storage API), read it piece by
+piece with `file.chunk()`. Each piece is passed on as it arrives, and the request keeps one piece
+at a time, not the file.
+
+`upload.limit(bytes)` bounds the whole body, files and fields together. Past it the request is a
+413. Set it before reading. The limit for one file, the types a field accepts and how many files
+it takes are the handler's rules, so it checks them and adds a message to `Errors`. The form
+is then drawn again with its other fields kept and the message next to the input.
+
+A browser cannot be given its files back by markup. A patch keeps the files chosen in the input
+it replaces until a successful answer, so the user can send them again. Without JavaScript the
+page asks for them again. A body that is not multipart is a 415, and one that breaks the format
+is a 400. A slow upload may need its area's own deadline (`Area::deadline`, see
+[Cancellation](cancellation.md)).
 
 ## Filters and lists that grow
 
@@ -240,7 +301,15 @@ spell it differently. `href={route.at(..)}` links to one the same way. The brows
 it after a full load and after the runtime's navigation alike; the runtime fetches the page
 again even when only the `#id` differs from the address, since the write may have changed it.
 A client navigation the server sends to a place gets `corten-location` instead of a 303,
-because `fetch` follows a redirect but drops its fragment.
+because `fetch` follows a redirect but drops its fragment. So does one sent to another site
+(an `axum::http::Uri` such as `https://pay.example/..`), which `fetch` may not read (the CSP's
+`connect-src`, else CORS): the browser goes there itself, in one request to the app. The same
+holds for `req.moved`.
+
+A place on a page outside the app (another site, another app of the same product) has an id
+that page's markup owns, so it is text: `Elsewhere::at(&uri, "fee-calculator")` is
+`https://example.com/compare?x=1#fee-calculator`, and `req.moved` and `req.redirect` take it.
+An `axum::http::Uri` alone cannot carry it: it drops a `#fragment` it parses.
 
 ```rust,ignore
 async fn report(req: Req, Path((slug, review)): Path<(String, String)>) -> HtmlResult {

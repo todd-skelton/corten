@@ -245,6 +245,13 @@ function closestRef(el, owner, name, event) {
  */
 
 /**
+ * The page's percentage format: `format(0.029)` is `2.9%` in en and `2,9 %` in fr, as the
+ * server's `t.percent` writes it, with the fraction digits the markup chose
+ * (`t.js().percent(2)`). It takes a ratio; a decimal may be passed as its text (`"0.029"`).
+ * @typedef {(ratio: number | string) => string} PercentFormat
+ */
+
+/**
  * A date's format: `format(at)` (a `Date`, milliseconds or ISO text) as the server's `t.date`,
  * `t.time` or `t.date_time` writes it, in the zone the markup chose (`t.js().date(DateStyle::Medium)`).
  * @typedef {(at: Date | number | string) => string} DateFormat
@@ -639,10 +646,10 @@ export function patch(html, signal) {
 
 /**
  * {@link patch}, for a form's response: `sent` holds the values the form sent, so a field counts
- * as edited only when it changed after the request left.
- * @param {string} html @param {AbortSignal | undefined} signal @param {Map<Element, string | undefined> | null} sent
+ * as edited only when it changed after the request left; `took`, that the answer accepted them.
+ * @param {string} html @param {AbortSignal | undefined} signal @param {Map<Element, string | undefined> | null} sent @param {boolean} [took]
  */
-async function apply(html, signal, sent) {
+async function apply(html, signal, sent, took) {
   const content = parse(html);
   await modulesOf(content);
   if (signal?.aborted) return;
@@ -660,7 +667,7 @@ async function apply(html, signal, sent) {
       serve(el.content);
       target.append(el.content);
     } else {
-      keep(target, el, sent);
+      keep(target, el, sent, took);
       put.push(el);
     }
   }
@@ -694,8 +701,8 @@ function readPatchAgain(tag, put) {
 }
 
 /**
- * A field's state as text: what the user has (or, with `initial`, what the markup set).
- * Buttons, hidden and file inputs are not fields here: undefined.
+ * A field's state as text: what the user has (or, with `initial`, what the markup set; a file
+ * input's is its first file's name). Buttons and hidden inputs are not fields here: undefined.
  * @param {Element} f @param {boolean} [initial] @returns {string | undefined}
  */
 function stateOf(f, initial) {
@@ -712,7 +719,7 @@ function stateOf(f, initial) {
     return marks.join("");
   }
   if (f instanceof HTMLTextAreaElement) return initial ? f.defaultValue : f.value;
-  if (!(f instanceof HTMLInputElement) || /^(hidden|file|submit|button|reset|image)$/.test(f.type)) return;
+  if (!(f instanceof HTMLInputElement) || /^(hidden|submit|button|reset|image)$/.test(f.type)) return;
   if (/^(checkbox|radio)$/.test(f.type)) return String(initial ? f.defaultChecked : f.checked);
   return initial ? f.defaultValue : f.value;
 }
@@ -865,22 +872,27 @@ function opened(root, fresh) {
 /**
  * Replaces `root` with `fresh`, carrying over the fields the user edited (since `sent`, for a
  * field the form sent; else since the markup set them), what the user opened, the focus and the
- * caret.
- * @param {Element} root @param {Element} fresh @param {Map<Element, string | undefined> | null} sent
+ * caret. Markup cannot give back a file input's files, so it keeps them unless the answer `took`
+ * the ones it sent.
+ * @param {Element} root @param {Element} fresh @param {Map<Element, string | undefined> | null} sent @param {boolean} [took]
  */
-function keep(root, fresh, sent) {
+function keep(root, fresh, sent, took) {
   serve(fresh);
   const reopen = opened(root, fresh);
   const focused = document.activeElement;
   const next = focused !== document.body && focused && root.contains(focused) ? counterpart(root, fresh, focused) : null;
+  /** File inputs of `fresh` and the files to give them once they are in the page. @type {[any, FileList | null][]} */
+  const files = [];
   for (const f of [root, ...Array.from(root.querySelectorAll("input, textarea, select"))]) {
     const now = stateOf(f);
     // Only a field found by id or name gets the user's text: by place, rows that moved could
     // put it into another row's field.
-    const to = now !== undefined && now !== (sent?.has(f) ? sent.get(f) : stateOf(f, true)) && counterpart(root, fresh, f, true);
-    if (!to || to.localName !== f.localName) continue;
     const field = /** @type {HTMLInputElement} */ (f);
-    if (f instanceof HTMLSelectElement) {
+    const file = field.type === "file";
+    const to = now !== undefined && (now !== (sent?.has(f) ? sent.get(f) : stateOf(f, true)) || (file && !took)) && counterpart(root, fresh, f, true);
+    if (!to || to.localName !== f.localName) continue;
+    if (file) files.push([to, field.files]);
+    else if (f instanceof HTMLSelectElement) {
       // Every chosen option, by value, so a multiple select keeps them all.
       const chosen = new Set(Array.from(f.selectedOptions, (o) => o.value));
       for (const o of Array.from(/** @type {HTMLSelectElement} */ (to).options)) o.selected = chosen.has(o.value);
@@ -888,6 +900,7 @@ function keep(root, fresh, sent) {
     else /** @type {HTMLInputElement} */ (to).value = field.value;
   }
   root.replaceWith(fresh);
+  for (const [to, chosen] of files) to.files = chosen;
   reopen();
   if (next instanceof HTMLElement) {
     next.focus({ preventScroll: true });
@@ -951,7 +964,9 @@ document.addEventListener("scroll", (event) => event.target instanceof Element &
  * `<details>` open on screen stays open, one they closed stays closed (the rest take the new
  * markup's state), and an element that scrolls on its own (a filter rail) keeps its scroll, so
  * the control focus returns to is open and in view. Each is matched as a patch matches it. Read
- * before `fresh` is inserted; the function it returns applies it after.
+ * before `fresh` is inserted; the function it returns applies it after. The scrolled elements are
+ * those a `scroll` event named and the ones around the focused control, since that event comes at
+ * the next frame and a swap can land first (a control focus scrolled into view, a slow machine).
  * @param {Element} root @param {DocumentFragment} fresh @returns {() => void}
  */
 function viewOf(root, fresh) {
@@ -965,14 +980,17 @@ function viewOf(root, fresh) {
   }
   /** @type {[Element, number, number][]} */
   const scrolled = [];
-  for (const el of scrolledIn) {
+  const around = new Set(scrolledIn);
+  for (let el = document.activeElement; el && el !== root; el = el.parentElement) around.add(el);
+  for (const el of around) {
     if (!root.contains(el) || !(el.scrollTop || el.scrollLeft)) continue;
     const there = counterpart(root, to, el);
     if (there?.localName === el.localName) scrolled.push([/** @type {Element} */ (there), el.scrollTop, el.scrollLeft]);
   }
   return () => {
     for (const [el, now] of open) el.open = now;
-    for (const [el, top, left] of scrolled) el.scrollTo(left, top);
+    // A restored scroll's event comes later too, and the next swap may come first.
+    for (const [el, top, left] of scrolled) el.scrollTo(left, top), scrolledIn.add(el);
   };
 }
 
@@ -1377,7 +1395,7 @@ document.addEventListener("submit", async (event) => {
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
       const body = await res.text();
       signal.throwIfAborted();
-      await (res.headers.has("corten-patch") ? apply(body, signal, sent) : swapPage(body, signal));
+      await (res.headers.has("corten-patch") ? apply(body, signal, sent, res.ok) : swapPage(body, signal));
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
     } else {

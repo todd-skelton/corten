@@ -233,3 +233,10 @@ fn the_new_app_template_is_formatted_at_the_default_width() {
     assert!(warnings.is_empty(), "{warnings:?}");
     assert!(out == source, "run corten fmt on a new app and copy its src/views.rs back:\n{out}");
 }
+
+#[test]
+fn a_pattern_with_braces_is_part_of_the_head() {
+    let input = "    html! {\n        if let Shape::Circle { r } = shape { <i>{r}</i> } else if let Shape::Square { side: 1..=5 } = shape { <b>\"small\"</b> } else if a == b { <u>\"dot\"</u> }\n        for Point { x, y } in &points { <p>{x}</p> }\n    }\n";
+    let expected = "    html! {\n        if let Shape::Circle { r } = shape {\n            <i>{r}</i>\n        } else if let Shape::Square { side: 1..=5 } = shape {\n            <b>\"small\"</b>\n        } else if a == b {\n            <u>\"dot\"</u>\n        }\n        for Point { x, y } in &points { <p>{x}</p> }\n    }\n";
+    assert_eq!(fmt(input, 60), expected);
+}

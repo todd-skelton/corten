@@ -57,12 +57,13 @@ function localeData(tag) {
 
   // Numbers and amounts of money: separators and grouping (a locale may write them differently:
   // fr-CH has 1 234,5 and 1'234.50 CHF, ml groups amounts by thousands only).
-  const separators = (f) => {
-    const np = f.formatToParts(-1234567.5);
-    const groups = f.formatToParts(1234567890).filter((p) => p.type === "integer").map((p) => p.value.length);
+  // `per` is what the format multiplies by (100 for a percentage).
+  const separators = (f, per = 1) => {
+    const np = f.formatToParts(-1234567.5 / per);
+    const groups = f.formatToParts(1234567890 / per).filter((p) => p.type === "integer").map((p) => p.value.length);
     const primary = groups[groups.length - 1];
     const secondary = groups.length > 2 ? groups[groups.length - 2] : primary;
-    const grouped = (v) => f.formatToParts(v).some((p) => p.type === "group");
+    const grouped = (v) => f.formatToParts(v / per).some((p) => p.type === "group");
     const min = grouped(1234) ? 1 : grouped(12345) ? 2 : 3;
     return { decimal: part(np, "decimal"), group: part(np, "group"), grouping: [primary, secondary, min] };
   };
@@ -83,6 +84,11 @@ function localeData(tag) {
     return out;
   };
   const number = [template(nf.formatToParts(5)), template(nf.formatToParts(-5))];
+  // A percentage, with the locale's sign in place (`5 %` in fr, `%5` in tr) and its own grouping
+  // (bn groups a number 12,34,567 and a percentage 1,234,567%).
+  const pf = new Intl.NumberFormat(tag, { style: "percent" });
+  const ofPercent = separators(new Intl.NumberFormat(tag, { style: "percent", maximumFractionDigits: 2 }), 100);
+  const percent = [template(pf.formatToParts(5)), template(pf.formatToParts(-5))];
 
   // Money: the form of a currency whose symbol is its code (`CHF 5.00`, and any code Intl does not
   // know), positive and negative, with the code at \u0002; and each currency written otherwise
@@ -191,6 +197,8 @@ function localeData(tag) {
     plain,
     ofMoney,
     number,
+    ofPercent,
+    percent,
     money,
     symbols,
     names,
@@ -256,6 +264,17 @@ function formatNumber(d, text) {
   return d.number[negative ? 1 : 0].replace("\u0001", body(d, d.plain, int, frac));
 }
 
+/** `text` (a ratio) as a percentage with at most `digits` fraction digits, without trailing zeros. */
+function formatPercent(d, text, digits) {
+  const negative = text.startsWith("-");
+  let [int, frac = ""] = text.replace(/^[-+]/, "").split(".");
+  frac = frac.padEnd(2, "0");
+  const shifted = `${negative ? "-" : ""}${int}${frac.slice(0, 2)}.${frac.slice(2)}`;
+  let [neg, i, f] = round(shifted.endsWith(".") ? shifted.slice(0, -1) : shifted, Math.min(digits, frac.length - 2));
+  f = f.replace(/0+$/, "");
+  return d.percent[neg ? 1 : 0].replace("\u0001", body(d, d.ofPercent, i, f));
+}
+
 function formatMoney(d, text, code) {
   const digits = displayDigits[code] ?? 2;
   const [negative, int, frac] = round(text, digits);
@@ -309,6 +328,9 @@ function formatDate(d, style, date, offset) {
 
 // ---- Cases: checked here, and written for the Rust test. ----
 
+// Ratios, each written with at most 0, 1, 2 and 4 fraction digits.
+const RATIOS = ["0.029", "-0.5", "1", "0", "12.345", "0.00125", "1234.5", "-0.00004", "0.0290", "0.995"];
+const RATIO_DIGITS = [0, 1, 2, 4];
 const NUMBERS = ["0", "7", "-7", "999", "1234", "12345", "123456", "1234567", "-1234567", "1234567890123", "1234.5", "-0.25", "1234567.891", "0.5"];
 const CURRENCIES = ["USD", "EUR", "JPY", "GBP", "CHF", "CAD", "INR", "KWD", "BRL", "CNY", "KRW", "MXN", "PLN", "SEK", "HUF", "COP"];
 const AMOUNTS = ["1234.5", "-5", "0", "21.505", "-0.004", "1234567.125", "0.995"];
@@ -340,6 +362,13 @@ for (const tag of [...LANGUAGES, ...REGIONS]) {
     const intl = new Intl.NumberFormat(tag, { maximumFractionDigits: 20 }).format(n);
     expect(tag, "number", n, formatNumber(d, n), intl);
     if (n.length !== 3 && n !== "7" && n !== "0") forCases.push(["number", n, intl]);
+  }
+  for (const r of RATIOS) {
+    for (const digits of RATIO_DIGITS) {
+      const intl = new Intl.NumberFormat(tag, { style: "percent", maximumFractionDigits: digits }).format(r);
+      expect(tag, `percent ${digits}`, r, formatPercent(d, r, digits), intl);
+      if (digits === 2 || r === "12.345") forCases.push([`percent ${digits}`, r, intl]);
+    }
   }
   for (const code of Intl.supportedValuesOf("currency")) {
     for (const amount of CURRENCIES.includes(code) ? AMOUNTS : ["1234.5", "-5"]) {
@@ -393,8 +422,8 @@ const field = ([kind, a, b]) =>
 const seps = (s) => `::corten::i18n::__private::Separators { decimal: ${rust(s.decimal)}, group: ${rust(s.group)}, grouping: [${s.grouping.join(", ")}] }`;
 const tokens = (d) =>
   [
-    `::corten::i18n::__private::LocaleData { tag: ${rust(d.tag)}, zero: '${d.zero}', plain: ${seps(d.plain)}, money_separators: ${seps(d.ofMoney)},`,
-    ` number: [${d.number.map(rust).join(", ")}], money: [${d.money.map(rust).join(", ")}],`,
+    `::corten::i18n::__private::LocaleData { tag: ${rust(d.tag)}, zero: '${d.zero}', plain: ${seps(d.plain)}, money_separators: ${seps(d.ofMoney)}, percent_separators: ${seps(d.ofPercent)},`,
+    ` number: [${d.number.map(rust).join(", ")}], percent: [${d.percent.map(rust).join(", ")}], money: [${d.money.map(rust).join(", ")}],`,
     ` currencies: &[${d.symbols.map(([c, p, n]) => `(${rust(c)}, ${rust(p)}, ${rust(n)})`).join(", ")}],`,
     ` names: &[${d.names.map(rust).join(", ")}],`,
     ` dates: { use ::corten::i18n::__private::Field as F; [${d.dates.map((fs) => `&[${fs.map(field).join(", ")}]`).join(", ")}] },`,

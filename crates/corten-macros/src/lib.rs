@@ -24,6 +24,7 @@ mod style;
 mod theme;
 mod to_json;
 mod tokens;
+mod url_value;
 
 use proc_macro::{Delimiter, Group, Spacing, TokenStream, TokenTree};
 
@@ -49,6 +50,13 @@ pub fn derive_route(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, item: TokenStream) -> TokenStream {
     routes::expand(args, item).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// An enum of unit variants written in URLs as the words serde reads. Documented at
+/// `corten::route::UrlValue`.
+#[proc_macro_derive(UrlValue, attributes(serde))]
+pub fn derive_url_value(input: TokenStream) -> TokenStream {
+    url_value::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// An element id as a type. Documented at `corten::view::Id`.
@@ -173,6 +181,8 @@ fn fields(input: TokenStream) -> Result<String, String> {
         None => Default::default(),
     };
     let mut names = Vec::new();
+    // The `Files` fields (file inputs): nothing reads them, so the code below does.
+    let mut files = Vec::new();
     for field in split_fields(body.stream()) {
         let mut rename = None;
         let mut skip = false;
@@ -213,6 +223,19 @@ fn fields(input: TokenStream) -> Result<String, String> {
                 TokenTree::Ident(id) => {
                     ident = Some(id.to_string());
                     // After the name and its `:`, the type.
+                    let ty = field.get(j + 2..).unwrap_or_default();
+                    if matches!(
+                        ty.iter()
+                            .rev()
+                            .find_map(|t| match t {
+                                TokenTree::Ident(id) => Some(id.to_string()),
+                                _ => None,
+                            })
+                            .as_deref(),
+                        Some("Files")
+                    ) {
+                        files.push(id.to_string());
+                    }
                     if !default {
                         if let Some(what) = left_out_when_empty(field.get(j + 2..).unwrap_or_default()) {
                             return Err(format!(
@@ -250,6 +273,13 @@ fn fields(input: TokenStream) -> Result<String, String> {
         out += &format!("        {ident}: ::corten::form::FieldName::__new({wire:?}),\n");
     }
     out += "    };\n}\n";
+    if !files.is_empty() {
+        let read: Vec<String> = files.iter().map(|f| format!("&self.{f}")).collect();
+        out += &format!(
+            "impl {impl_generics} ::corten::form::__FileInputs for {name} {type_generics} {where_clause} {{\n    fn __file_inputs(&self) -> usize {{\n        [{}].len()\n    }}\n}}\n",
+            read.join(", ")
+        );
+    }
     Ok(out)
 }
 

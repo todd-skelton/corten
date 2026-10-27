@@ -39,7 +39,8 @@ export const k6User = process.getuid ? ["--user", `${process.getuid()}:${process
 /** `docker run` arguments for one app. `source` is "api" or "fixture". */
 export function runArgs(name, app, source, fixturesDir) {
   const args = ["run", "-d", "--name", `fsw-${name}`, "--network", network, ...appCpus, "--memory", "1g", "-p", `${app.port}:8080`];
-  args.push("-e", `API_BASE=${apiBase}`, "-e", "PORT=8080");
+  // The load generator calls the app by its container name, which Corten answers only when listed.
+  args.push("-e", `API_BASE=${apiBase}`, "-e", "PORT=8080", "-e", `HOSTS=fsw-${name}`);
   if (source === "fixture") args.push("-v", `${fixturesDir}:/fixtures:ro`, "-e", "ITEM_SOURCE=fixture", "-e", "FIXTURE_PATH=/fixtures/items.json");
   args.push(app.image);
   return args;

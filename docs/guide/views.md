@@ -13,7 +13,7 @@ render of the same call site.
 | `href={url}`, `href={("/items/", &id)}` | an attribute; a tuple prints its parts without building a string |
 | `hidden={flag}`, `class={maybe}` | `bool` prints the bare name or nothing; `None` leaves the attribute out |
 | `<input {..e.aria(field)}>` | spreads `Attrs` |
-| `for`, `if`/`else`, `match`, `let` | as in Rust, with markup in the braces |
+| `for`, `if`/`else`, `match`, `let` | as in Rust, with markup in the braces; patterns too (`if let Shape::Circle { r } = shape`) |
 | `<Card title="x" compact>children</Card>` | a component: a struct with those fields (`compact` is `true`), children in `children` |
 | `<>...</>`, `<!DOCTYPE html>`, `<input>` | fragments, the doctype, void elements without a closing tag |
 
@@ -72,7 +72,11 @@ one `<main>`, not inside a `for`, `if` or `match`. Each part renders for the req
 So the layout costs a navigation nothing, and what the layout shows that a navigation cannot
 update (the signed-in user, from a `Caller` the handler took) is covered by the page key: when it
 changes, the runtime loads the next page in full. Keep a layout's props to what most pages set (the title,
-their head tags); a page that needs a different document uses another layout.
+their head tags); a page that needs a different document uses another layout. Each layout's
+`html!` document has a key of its own (from where it is written), so a link from a page in one
+layout to a page in another loads it in full, with no `data-reload`. A prop that changes the
+layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
+second layout.
 
 Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`
 (feature `json`) writes a `ToJson` value in `<script type="application/ld+json">` with `<` as
@@ -127,6 +131,7 @@ req.patch(html! { {Remove(OfferId(&sold.id))} })                             // 
 |---|---|
 | `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
 | `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument |
+| `#[derive(UrlValue)]` | the enum has a variant with fields, a variant serde does not read (`skip_deserializing`), or a serde attribute that changes its words in a way it does not follow |
 | `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol); the struct holds more than one key |
 
 An id is the type's name without `Id`, in kebab case (`OfferId` is `offer-`, then the key; a
@@ -136,7 +141,10 @@ symbol, so two copies of one library in a program (two versions) that both defin
 not link.
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
-parameters left out). Messages are split into text and arguments when the crate compiles: one
+parameters left out). A query field is anything `Display`; an enum in an address (a tab, a sort,
+what a redirect says happened) derives `UrlValue` beside `Deserialize`, which writes each
+variant as the word serde reads (`#[serde(rename_all = "kebab-case")]`: `AwaitingLabel` is
+`awaiting-label`), so the link and the handler cannot disagree. Messages are split into text and arguments when the crate compiles: one
 without arguments is a `&'static str`, one with arguments writes its pieces into the page,
 escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
 
@@ -156,12 +164,15 @@ html! {
     <td>{t.money(Minor(line.cents), USD)}</td>                           // $1,234.50, 1 234,50 $US
     <td>{t.money(Decimal::parse(&api.amount).unwrap_or_default(), USD)}</td> // "21.50" from an API
     <td>{t.number(listing.count)}</td>                                     // 1,234
+    <td>{t.percent(Decimal::new(fee_bps, 4), 2)}</td>                      // 2.9%, 2,9 %, %2,9
     <p>{t.item_pending(t.date_time(at, DateStyle::Medium, TimeStyle::Short))}</p> // Mar 22, 2026, 12:00 PM UTC
     <p>{t.account_member_since(t.date(joined, MonthStyle::Long))}</p>     // Member since March 2025
 }
 ```
 
-`t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
+`t.percent(ratio, digits)` takes the ratio (0.029 for 2.9%, so 290 basis points are
+`Decimal::new(290, 4)`) and writes at most `digits` fraction digits, rounded half away from zero
+and without trailing zeros, with the locale's sign where it puts it. `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
 a bare integer (it could be either, so it does not compile), with the digits the currency is
 shown with (0 for JPY, 3 for KWD). `MonthStyle` writes the month and year without the day, in
 the locale's order and words (`Mar 2026`, `MÃ¤rz 2026`); it has no time, so `t.date_time` does

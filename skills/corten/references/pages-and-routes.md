@@ -30,9 +30,10 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
 1. Every route is a struct in the `#[corten::routes]` module that names its handlers,
    `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile);
    `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
-   `#[corten::routes(state = Db)]` and `url::router(db)`. Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`).
+   `#[corten::routes(state = Db)]` and `url::router(db)`. Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`). An enum field (`pub tab: Option<Tab>`) derives `UrlValue` with `Deserialize`, never a hand-written `Display`: it writes the words serde reads.
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
-   answers `req.moved(&url::Item { id })`, a 301. An area's routes are a module of their own,
+   answers `req.moved(&url::Item { id })`, a 301. A place on another site's page is
+   `corten::Elsewhere::at(&uri, "id")`, never a `Location` header set by hand. An area's routes are a module of their own,
    `#[corten::routes(area = Admin, caller = Staff)] mod admin` whose routes name their handlers
    the same way, mounted with `.area(admin::area)`; an API's are a `#[corten::routes(api = ApiRoot)]`
    module, `.api(api::api)`.
@@ -101,7 +102,8 @@ When an API answers with a message key and its arguments, show it with
 `t.by_key(&row.title_key, &row.title_params)` (an `Option`: `None` for an unknown key or a missing
 argument; choose the fallback). Never write a `match` from key strings to methods.
 
-Numbers, money and dates come from `t` too, never `format!`: `t.number(n)`, `t.money(Minor(cents),
+Numbers, money and dates come from `t` too, never `format!` or a `"%"` of your own: `t.number(n)`,
+`t.percent(Decimal::new(bps, 4), 2)` (a ratio, at most 2 fraction digits), `t.money(Minor(cents),
 USD)` or `t.money(Decimal::parse(&api.amount)?, USD)` (`const USD: Currency = Currency::new("USD")`;
 never a float), `t.date(at, DateStyle::Medium)` (or `MonthStyle::Long` for `March 2026`), `t.time(at, TimeStyle::Short)` and
 `t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;

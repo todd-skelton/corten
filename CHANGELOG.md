@@ -513,7 +513,60 @@ Corten is pre-1.0, so any minor version may change the API.
     as a patch, which is applied whatever its status. `examples/hello`'s saved page has a form
     that does it. The runtime is 8,834 B gzipped
     ([#104 A data-patch answer cannot ask to be read again, so a write whose read is catching up has to navigate](https://github.com/todd-skelton/corten/issues/104)).
-76. `#[corten::routes(api = ApiRoot)]`: an API's routes in a module of their own, each naming its
+76. `App::task("refresh", |signal| async move { .. })`: work that lives as long as the app (a
+    refresh loop, a queue consumer, a supervised child), started by `corten::serve`. Its `Signal`
+    aborts with the new `Abort::Shutdown` when shutdown begins, and `serve` waits for it, up to
+    `App::shutdown_grace` (5 seconds unless set), before it returns; one still running then is
+    ended and logged by name, and so is one that panics. `App::router` starts none
+    ([#116 Work that lives as long as the app (a refresh loop, a supervised child) has no signal, so shutdown neither stops it nor waits for it](https://github.com/todd-skelton/corten/issues/116)).
+77. `#[derive(UrlValue)]` (in the prelude) on an enum of unit variants writes each variant as the
+    word serde reads for it (its `#[serde(rename_all)]` and `#[serde(rename)]`), so an enum in a
+    route's query or path needs no hand-written `Display` kept in step with serde. A variant with
+    fields, one serde does not read, or a serde attribute it does not follow is a compile error; a
+    test reads every word back through `Query`'s reader under each of serde's eight rules.
+    `#[serde(..)]` values passed in by a `macro_rules!` are read by `ToJson` and `FromJson` too
+    ([#129 A query value must be Display while it is read with serde, so an enum in an address spells its words twice](https://github.com/todd-skelton/corten/issues/129)).
+78. `Area::deadline(..)` and `Api::deadline(..)`: routes slower than pages (an upstream that
+    answers in minutes, a report, uploads) get a deadline of their own, or `None`, and every
+    other route keeps `App::deadline`. In nested areas the innermost that sets one decides. The
+    503 and `Abort::Deadline` are the same at every level
+    ([#114 App::deadline is one value for the whole app, so one slow route (an upstream call, an upload) lifts it for every page](https://github.com/todd-skelton/corten/issues/114)).
+79. `corten::serve_on(listeners, app)` serves an app on listeners of its own (anything that
+    implements `axum::serve::Listener`: HTTPS with the app's TLS library, a Unix socket, a socket
+    a supervisor hands over) with `serve`'s shutdown across all of them, and
+    `corten::listeners(3000)` binds the ones `serve` uses (`HOST`:`PORT`, the loopback pair without
+    `HOST`, the port given without `PORT`) for the app to wrap. `serve` is the two together, and
+    an app with another default port serves `listeners(8320)` without setting `PORT` itself. The app guide shows HTTPS on
+    loopback with `tokio-rustls`
+    ([#115 corten::serve takes no listener, so an app that needs TLS or its own socket loses the loopback pair, the stream drain and graceful shutdown](https://github.com/todd-skelton/corten/issues/115)).
+80. `corten::Elsewhere::at(&uri, "fee-calculator")`: a place on a page outside the app, which
+    `req.moved` and `req.redirect` take, so a redirect to another site keeps its `#fragment`
+    (an `axum::http::Uri` drops one it parses). The id is percent-encoded as the browser decodes
+    it; a path in place of a full URL is a debug-build panic, since a place on the app's own page
+    is `route.at(Id)`
+    ([#123 An address outside the app cannot carry a #fragment, so req.moved and req.redirect drop the anchor of an external URL](https://github.com/todd-skelton/corten/issues/123)).
+81. `t.percent(ratio, digits)` writes a ratio as a percentage in the locale (`2.9%`, `2,9 %`,
+    `%2,9`), with at most `digits` fraction digits, and `t.js().percent(digits)` gives a script
+    the same format (`@param {PercentFormat}`). The locale data carries each locale's percent
+    pattern and grouping from CLDR, checked against Intl's `style: "percent"` with
+    `maximumFractionDigits` on 40 values per locale (13 kept as the Rust and script tests' cases). The runtime grows by 99 bytes gzipped
+    ([#119 i18n writes no percentage, so a rate like 2.9% cannot be localized](https://github.com/todd-skelton/corten/issues/119)).
+82. `corten::ClientIp`: the visitor's IP address, for a handler that passes it to an API's
+    per-client limit or limits by it. It is the connection's peer, or behind proxies the app lists
+    (`Policy::proxy("10.0.0.0/8")`, `PROXIES`) the nearest `X-Forwarded-For` address that is not
+    one of them; nothing reads the header otherwise. A `Public` handler cannot take it, and an
+    answer that read it is private
+    ([#120 A handler cannot read the client's address, so an app that calls an API for a visitor cannot pass it on for rate limiting](https://github.com/todd-skelton/corten/issues/120)).
+83. `corten::form::Upload<T>` reads a form posted as `multipart/form-data`, which `Form` answers
+    with a 415. It gives the files one at a time as they arrive: `next_file()`, then
+    `chunk()` to pass a file on without holding it, or `bytes_up_to(max)` (`None` past `max`).
+    Then `fields()` reads the text fields into `T` by `Form`'s rules. A file input is a `Files`
+    field of the form struct, so markup, the files and `Errors` share its `FieldName`.
+    `upload.limit(bytes)` bounds the whole body (2 MiB unless set; 413 past it). Types, counts
+    and sizes per file are the handler's checks, reported as field errors. The parser is
+    Corten's own, with no new dependency
+    ([#140 A form cannot post a file: Form reads only URL-encoded bodies, so a multipart form is a 415 and nothing reads its files](https://github.com/todd-skelton/corten/issues/140)).
+84. `#[corten::routes(api = ApiRoot)]`: an API's routes in a module of their own, each naming its
     handler as a page route does; the module gives `api(routes)` (`api(routes, state)` with
     `state = ..`) for `.api(prices::api)`. Only the prefix's route names no handler; a route with
     none, a route outside the prefix, or `area` and `api` together do not compile.
@@ -521,9 +574,9 @@ Corten is pre-1.0, so any minor version may change the API.
     publish route. The same JSON route costs the same either way: 21,913 instructions per request
     added by hand, 21,836 from its module (callgrind, median of three; the app guide has the
     ranges).
-77. `Caller<T>` dereferences to `T`: `viewer.as_deref()` is the `Option<&Viewer>` a layout takes,
+85. `Caller<T>` dereferences to `T`: `viewer.as_deref()` is the `Option<&Viewer>` a layout takes,
     without `viewer.map(|Caller(v)| v)`.
-78. `.area(admin::area)` and `.api(api::api)` infer the prefix from the module's function; the
+86. `.area(admin::area)` and `.api(api::api)` infer the prefix from the module's function; the
     `::<Admin>` turbofish is needed only for routes added by hand.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -807,6 +860,21 @@ Corten is pre-1.0, so any minor version may change the API.
     `agent::Tools::route` returns `Methods`, for `Api::route`.
 49. Reading a `Caller` makes the answer private even when its `Cache-Control` was written by
     hand (by a middleware, or on an `HtmlResponse`), not only when it came from `Public`.
+50. **Breaking:** an app answers only requests whose `Host` is `localhost` (or a name under it),
+    an IP address, missing, or a name it lists: `Policy::host("shop.example")` (`.shop.example`
+    for its subdomains too) or `HOSTS=shop.example` where the deploy sets `HOST` and `PORT`. Any
+    other gets `421 Misdirected Request` before routing, with nothing of the app run, so a
+    DNS-rebound page cannot use an app on loopback (or a private network) as its own origin;
+    `Policy::any_host()` (`HOSTS=*`) answers every name. The first refused name is logged. A
+    deployed app behind a domain adds its names; the bench scripts pass their container names
+    ([#113 An app on loopback answers any Host, so a DNS-rebound page can read and write its routes](https://github.com/todd-skelton/corten/issues/113)).
+51. **Breaking:** `corten::serve` takes an `App`, not anything that becomes a router, so the
+    app's tasks cannot be left behind on the way. A tower layer around the whole app is
+    `App::layer(l)` instead of `corten::serve(app.router().layer(l))`.
+52. A request carries the app's shared state in its `Signal` rather than as an extension of its
+    own, so its extensions fit their first allocation: 207 fewer instructions for a page, 647 for
+    a signed-in page and 849 for the error page (callgrind, release build, in-process `oneshot`,
+    median of three).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -945,13 +1013,43 @@ Corten is pre-1.0, so any minor version may change the API.
     The runtime notes the elements that scroll as they do, so keeping a place reads only those (0.1 ms on a page of 4,770 elements in Chromium, against 15 ms reading every element's scroll; measured), and is 167 B larger gzipped (8,362 to 8,529 B, measured).
 27. A release build of `corten` compiles without a warning: the check that a patch has an id on
     each top-level element, which runs in debug builds only, is no longer compiled into release.
-28. A link to a new page goes to the top of it (or to its `#id`) in Chromium too. Chromium could leave
+28. The error page keeps the headers of the failure it replaces: a request id, `Retry-After`,
+    `WWW-Authenticate` and `Server-Timing` a handler or a middleware set were dropped (only
+    `Allow` was kept), on the sign-in redirect and the offline page too. The ones that described
+    the old body and `Cache-Control` are the error page's
+    ([#126 The error page drops the headers a middleware or handler set on the failed response (Retry-After, a request id, Server-Timing)](https://github.com/todd-skelton/corten/issues/126)).
+29. A client navigation to a page in another layout loads it in full: the shell key includes the
+    layout (a hash of where its `html!` document is written, a constant), so the first layout's
+    header and footer no longer stay around the next page's `<main>`, and links between layouts
+    need no `data-reload`. The default error document is a layout of its own too
+    ([#122 Client navigation between pages with different layouts keeps the first layout, because the shell key does not include the layout](https://github.com/todd-skelton/corten/issues/122)).
+30. A link to a route that redirects to another site (`req.redirect(&uri)` or `req.moved(&uri)`)
+    leaves the app in one request: a client navigation gets `corten-location` and the browser
+    goes there, where before the runtime's `fetch` followed the redirect, the CSP's `connect-src`
+    refused it with a console error (the hover's prefetch too), and the page reloaded to follow it
+    again
+    ([#131 A client navigation to a route that redirects to another origin is blocked by connect-src, then reloads](https://github.com/todd-skelton/corten/issues/131)).
+31. `html!` reads a pattern with braces as Rust does: `if let Shape::Circle { r } = shape { .. }`
+    and `for Point { x, y } in points { .. }` took the pattern's braces for the body and did not
+    compile. `corten fmt` reads them the same way
+    ([#142 html! if let cannot take a struct pattern: the pattern's braces are read as the body](https://github.com/todd-skelton/corten/issues/142)).
+32. A patch keeps the files chosen in a file input it replaces, as it keeps typed text, so a
+    refused upload redraws its input marked invalid with the files still chosen; a successful
+    answer to the form that sent them clears them. The runtime grows by 47 bytes gzipped
+    ([#143 A patch drops the files chosen in a file input it replaces, so a refused upload cannot mark its input invalid](https://github.com/todd-skelton/corten/issues/143)).
+33. A `data-keep-place` swap keeps the scroll of an element that scrolls on its own (a filter
+    rail) when the swap lands before that element's `scroll` event, which comes at the next
+    frame: a control focus scrolled into view, or a slow machine. It counts the focused control's
+    ancestors as scrolled, and an element whose scroll it restored. The runtime grows by 38 bytes
+    gzipped
+    ([#130 Firefox sometimes loses the filter rail's own scroll after a data-keep-place swap (smoke: 76 -> 0)](https://github.com/todd-skelton/corten/issues/130)).
+34. A link to a new page goes to the top of it (or to its `#id`) in Chromium too. Chromium could leave
     a page the runtime swapped in where the last one was scrolled (seen from About to Home, and on
     a link to the page already open), though Firefox and WebKit went to the top; the runtime now
     scrolls itself, as it already did for a page the server sent to an `#id`. Back and forward
     still return to where the user was. Found when `examples/watchlist`'s taller About page made
-    the smoke test's "a plain link still goes to the top" fail. The runtime is 8 B larger gzipped
-    (8,834 to 8,842 B, measured).
+    the smoke test's "a plain link still goes to the top" fail. The runtime is 6 B larger gzipped
+    (9,018 to 9,024 B, measured).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
