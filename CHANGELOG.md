@@ -539,6 +539,12 @@ Corten is pre-1.0, so any minor version may change the API.
     an app with another default port serves `listeners(8320)` without setting `PORT` itself. The app guide shows HTTPS on
     loopback with `tokio-rustls`
     ([#115 corten::serve takes no listener, so an app that needs TLS or its own socket loses the loopback pair, the stream drain and graceful shutdown](https://github.com/todd-skelton/corten/issues/115)).
+80. `corten::Elsewhere::at(&uri, "fee-calculator")`: a place on a page outside the app, which
+    `req.moved` and `req.redirect` take, so a redirect to another site keeps its `#fragment`
+    (an `axum::http::Uri` drops one it parses). The id is percent-encoded as the browser decodes
+    it; a path in place of a full URL is a debug-build panic, since a place on the app's own page
+    is `route.at(Id)`
+    ([#123 An address outside the app cannot carry a #fragment, so req.moved and req.redirect drop the anchor of an external URL](https://github.com/todd-skelton/corten/issues/123)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

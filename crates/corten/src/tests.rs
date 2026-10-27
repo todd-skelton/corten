@@ -946,6 +946,34 @@ async fn a_redirect_to_another_origin_is_named_to_a_client_navigation() {
     assert!(!headers.contains_key("corten-location"));
 }
 
+/// A place on a page outside the app keeps its `#fragment` through `moved` and `redirect`, which
+/// an `axum::http::Uri` alone drops.
+#[tokio::test]
+async fn a_redirect_to_a_place_elsewhere_keeps_its_fragment() {
+    use crate::route::Elsewhere;
+    use axum::http::Uri;
+    static COMPARE: std::sync::LazyLock<Uri> = std::sync::LazyLock::new(|| Uri::from_static("https://example.com/compare?x=1"));
+    let routes = Router::new()
+        .route("/old", get(|req: Req| async move { req.moved(&Elsewhere::at(&COMPARE, "fee-calculator")) }))
+        .route("/go", get(|req: Req| async move { req.redirect(&Elsewhere::at(&COMPARE, "fees & taxes")) }));
+    let place = "https://example.com/compare?x=1#fee-calculator";
+    let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/old", None, Some("text/html")).await;
+    assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &place.parse().unwrap()), "a full load");
+    let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/old", Some("nav"), None).await;
+    assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &place.parse().unwrap()), "a client navigation");
+    let (status, headers, _) = call_with(app(routes, None), "GET", "/go", None, Some("text/html")).await;
+    let to = "https://example.com/compare?x=1#fees%20&%20taxes";
+    assert_eq!((status, &headers["location"]), (StatusCode::SEE_OTHER, &to.parse().unwrap()));
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "Elsewhere::at takes a full URL outside the app")]
+fn a_place_elsewhere_on_a_path_panics_in_debug_builds() {
+    let path = axum::http::Uri::from_static("/items/pika");
+    let _ = crate::route::Elsewhere::at(&path, "place-7");
+}
+
 #[cfg(debug_assertions)]
 #[tokio::test]
 #[should_panic(expected = "top-level text \"saved\" outside an element")]
