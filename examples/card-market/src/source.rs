@@ -1,6 +1,7 @@
-//! Where items come from: the Rust item API (`API_BASE`), or a JSON fixture of API responses
-//! loaded into memory at startup (`ITEM_SOURCE=fixture`, `FIXTURE_PATH`), for benchmarks that
-//! measure the web server alone.
+//! Where items come from: the item API (`API_BASE`), a JSON fixture of API responses loaded
+//! into memory at startup (`ITEM_SOURCE=fixture`, `FIXTURE_PATH`), for benchmarks that measure
+//! the web server alone, or, with neither set, the demo catalog built into the app
+//! (`fixtures/demo.json`), so `corten dev` shows a store with no item API running.
 use std::{collections::HashMap, sync::Arc};
 
 use crate::model::{ApiItem, ItemView};
@@ -8,8 +9,25 @@ use crate::model::{ApiItem, ItemView};
 #[derive(Clone)]
 pub enum Source {
     Api { client: reqwest::Client, base: Arc<str> },
-    Fixture(Arc<HashMap<String, Arc<ItemView>>>),
+    Fixture(Arc<Catalog>),
 }
+
+/// Items held in memory: by id, and in id order (`item_2` before `item_10`) for the pages that
+/// list them.
+pub struct Catalog {
+    items: HashMap<String, Arc<ItemView>>,
+    order: Vec<Arc<ItemView>>,
+}
+
+/// What the home page lists: the items, when the source holds them, or else the first ids (the
+/// item API looks items up one at a time and has no list).
+pub enum Shelf<'a> {
+    Items(&'a [Arc<ItemView>]),
+    Ids(std::ops::RangeInclusive<u32>),
+}
+
+/// Items the home page lists at most.
+const SHELF: usize = 50;
 
 impl Source {
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
@@ -17,8 +35,10 @@ impl Source {
             let path = std::env::var("FIXTURE_PATH").unwrap_or_else(|_| "fixtures/items.json".into());
             return Self::fixture(&std::fs::read_to_string(path)?);
         }
-        let base = std::env::var("API_BASE").unwrap_or_else(|_| "http://localhost:8080".into());
-        Ok(Source::Api { client: reqwest::Client::new(), base: base.into() })
+        match std::env::var("API_BASE") {
+            Ok(base) => Ok(Source::Api { client: reqwest::Client::new(), base: base.into() }),
+            Err(_) => Self::fixture(include_str!("../fixtures/demo.json")),
+        }
     }
 
     /// `{"item_1": <API response>, ...}`, converted one item at a time so the parsed responses for
@@ -30,7 +50,27 @@ impl Source {
             let item: ApiItem = corten::json::from_str(value.get())?;
             items.insert(id, Arc::new(ItemView::from(item)));
         }
-        Ok(Source::Fixture(Arc::new(items)))
+        let mut order: Vec<_> = items.iter().collect();
+        order.sort_by(|(a, _), (b, _)| (a.len(), a).cmp(&(b.len(), b)));
+        let order = order.into_iter().map(|(_, item)| item.clone()).collect();
+        Ok(Source::Fixture(Arc::new(Catalog { items, order })))
+    }
+
+    /// The items the home page lists.
+    pub fn shelf(&self) -> Shelf<'_> {
+        match self {
+            Source::Fixture(catalog) => Shelf::Items(&catalog.order[..catalog.order.len().min(SHELF)]),
+            Source::Api { .. } => Shelf::Ids(1..=SHELF as u32),
+        }
+    }
+
+    /// The items in a category, in id order; none from the item API, which has no list.
+    pub fn in_category(&self, slug: &str) -> Vec<Arc<ItemView>> {
+        let order = match self {
+            Source::Fixture(catalog) => &catalog.order[..],
+            Source::Api { .. } => &[],
+        };
+        order.iter().filter(|item| item.categories.iter().any(|c| c.slug == slug)).cloned().collect()
     }
 
     /// Whether items can be read: the fixture always, the item API when it answers at all (any
@@ -46,7 +86,7 @@ impl Source {
     /// `None` when there is no such item. Shared, so a page borrows from it instead of copying.
     pub async fn item(&self, id: &str) -> Result<Option<Arc<ItemView>>, SourceError> {
         match self {
-            Source::Fixture(items) => Ok(items.get(id).cloned()),
+            Source::Fixture(catalog) => Ok(catalog.items.get(id).cloned()),
             Source::Api { client, base } => {
                 let res = client.get(format!("{base}/api/discovery/items/{id}")).send().await?;
                 if res.status() == reqwest::StatusCode::NOT_FOUND {

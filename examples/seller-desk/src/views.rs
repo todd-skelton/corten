@@ -70,7 +70,7 @@ pub fn StatusLine<'a>(text: &'a str) -> impl Patch {
     html! { <p id={DeskStatusId} role="status">{text}</p> }
 }
 
-/// `1234` as `$12.34`.
+/// `1234` as `12.34`, what a price input holds.
 pub fn money(cents: u32) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
 }
