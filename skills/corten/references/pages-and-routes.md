@@ -164,7 +164,9 @@ same `#[serde(...)]` attributes, and one it cannot write as serde does is a comp
 Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
 a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
 is no document; a handler that needs to know who calls takes a `Caller` (an API key's partner
-type), and a refusal is a JSON 401 or 403. Do not add an API route for a screen: a native client reads the page with
+type), and a refusal is a JSON 401 or 403. An API that must answer in another protocol's error
+shape sets `.errors(|status, message| MyError { .. })` (a `ToJson`) on it, so keep key checks in
+`Identify` rather than in handlers. Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
 
 A WebSocket is a route whose handler takes `corten::upgrade::Upgrade` and returns
