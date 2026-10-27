@@ -267,10 +267,6 @@ pub(crate) async fn sitemap() -> Public<seo::File> {
     seo::sitemap(urls.iter().map(|loc| SitemapUrl { loc, lastmod: None }))
 }
 
-fn not_found() -> Error {
-    Error::status(StatusCode::NOT_FOUND)
-}
-
 /// A page that is the same for every visitor: a CDN may serve it for a minute, and an older copy
 /// for ten more while it fetches a fresh one.
 fn shared(page: HtmlResult) -> Public<HtmlResult> {
@@ -332,13 +328,13 @@ pub(crate) async fn old_item(req: Req, Path(id): Path<String>) -> HtmlResult {
 }
 
 pub(crate) async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> HtmlResult {
-    let item = source.item(&id).await?.ok_or_else(not_found)?;
+    let item = source.item(&id).await?.ok_or_else(Error::not_found)?;
     req.page(ItemPage::new(req.t(), &item, String::new()).document(&req))
 }
 
 /// The cached item, serialized where it is.
 pub(crate) async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> JsonResult<Arc<ItemView>> {
-    Ok(Json(source.item(&id).await?.ok_or_else(not_found)?))
+    Ok(Json(source.item(&id).await?.ok_or_else(Error::not_found)?))
 }
 
 /// A partner's alert for one of its users: the form's rules, as JSON. A field the rules refuse
@@ -350,7 +346,7 @@ pub(crate) async fn alert_json(
 ) -> JsonResult<AlertSet> {
     let t = Msg::default();
     let price = check_alert(t, &input.email, &input.target_price)?;
-    let item = source.item(&input.id).await?.ok_or_else(not_found)?;
+    let item = source.item(&input.id).await?.ok_or_else(Error::not_found)?;
     let price = listed(t, &item, price)?;
     Ok(Json(AlertSet { message: alert_set(&item.title, &input.email, price), partner: Some(partner.name) }))
 }
@@ -363,7 +359,7 @@ pub(crate) async fn create_alert(
 ) -> HtmlResult {
     let t = req.t();
     // An alert on an item that does not exist is a 404, whatever its fields say.
-    let item = source.item(&id).await?.ok_or_else(not_found)?;
+    let item = source.item(&id).await?.ok_or_else(Error::not_found)?;
     let price = match check_alert(t, &form.email, &form.target_price).and_then(|price| listed(t, &item, price)) {
         Ok(price) => price,
         Err(errors) => {
