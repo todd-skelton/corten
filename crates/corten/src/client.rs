@@ -119,6 +119,89 @@ impl<S: Send + Sync> OptionalFromRequestParts<S> for ClientIp {
     }
 }
 
+/// The visitor's time zone, as the browser names it (IANA: `America/Chicago`), with
+/// [`App::client_zone`](crate::App::client_zone): `async fn schedule(zone: Option<ClientZone>, ..)`.
+/// A date the user picked (`<input type="date">`) becomes the instant it means where they are,
+/// and a page writes times in their zone, with a time zone library of the app's own (`jiff`,
+/// `chrono-tz`) that implements [`Zone`](crate::i18n::Zone):
+///
+/// ```ignore
+/// struct Here(jiff::tz::TimeZone);
+/// impl corten::i18n::Zone for Here { /* its offset at an instant */ }
+///
+/// let here = zone.and_then(|ClientZone(name)| jiff::tz::TimeZone::get(&name).ok()).map(Here);
+/// ```
+///
+/// It is `None` until the runtime has run once on a page of the app (the first page a browser
+/// loads, or a browser without JavaScript), so it is only taken as an `Option`: a bare
+/// `ClientZone` does not compile. The answer differs by zone, so a [`Public`](crate::Public)
+/// handler cannot take it either:
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, ClientZone};
+///
+/// async fn schedule(zone: ClientZone) -> &'static str {
+///     "scheduled"
+/// }
+/// # let _: Methods = get(schedule);
+/// ```
+///
+/// ```compile_fail,E0277
+/// use std::time::Duration;
+/// use corten::{prelude::*, ClientZone};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+///
+/// async fn home(zone: Option<ClientZone>) -> Public<String> {
+///     Public::new(Duration::from_secs(60), format!("{zone:?}"))
+/// }
+/// # fn main() { let _ = url::router(); }
+/// ```
+///
+/// Taking it in an app without `App::client_zone` is a 500 that names the setting in a debug
+/// build, and logged as an error and `None` in a release build.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ClientZone(pub String);
+
+/// The cookie the runtime keeps the browser's time zone in.
+pub(crate) const ZONE_COOKIE: &str = "corten-zone";
+
+/// An IANA zone name as a browser writes it: letters, digits and `/ _ + -`, at most 64 bytes.
+fn zone_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && !value.starts_with(['/', '-', '+'])
+        && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'_' | b'+' | b'-'))
+}
+
+impl<S: Send + Sync> OptionalFromRequestParts<S> for ClientZone {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Option<Self>, Response> {
+        let signal = parts.extensions.get::<Signal>();
+        if signal.and_then(Signal::shared).is_some_and(|shared| !shared.client_zone) {
+            let message = "corten::ClientZone: the app does not learn its visitors' time zones; add App::client_zone()";
+            if cfg!(debug_assertions) {
+                return Err(Error::new(message).with_status(StatusCode::INTERNAL_SERVER_ERROR).into_response());
+            }
+            tracing::error!("{message}");
+            return Ok(None);
+        }
+        let zone = crate::security::cookie::get(&parts.headers, ZONE_COOKIE).filter(|name| zone_name(name)).map(str::to_string);
+        // The answer is for this zone: private. Not part of the page's key, as a caller is: the
+        // layout does not change with it, and the cookie arrives after the first page, so keying
+        // by it would load the next page in full, and the error page after a handler read it.
+        if let Some(signal) = signal {
+            signal.mark_personal();
+        }
+        Ok(zone.map(ClientZone))
+    }
+}
+
 /// Where a connection came from, by its listener's address type.
 #[derive(Clone, Copy)]
 pub(crate) enum Peer {

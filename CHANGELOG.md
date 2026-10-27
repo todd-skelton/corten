@@ -608,6 +608,13 @@ Corten is pre-1.0, so any minor version may change the API.
     supervisor calls or a task. On Windows, `shutdown_signal` also ends on Ctrl-Break, the console
     closing and system shutdown, not only Ctrl-C
     ([#174 An app cannot begin its own graceful shutdown (a route, a task, a supervisor's request), and on Windows only Ctrl-C starts one](https://github.com/todd-skelton/corten/issues/174)).
+92. `App::client_zone()` and `Option<ClientZone>`: a handler knows the visitor's time zone (the
+    browser's IANA name, kept by the runtime in a `corten-zone` cookie from the first page it
+    loads), so a picked date becomes its instant where the user is with no script per form, and a
+    page writes times in their zone with the app's time zone library. `None` until the runtime has
+    run; a bare `ClientZone` and a `Public` handler taking it do not compile. That cookie alone does
+    not make a public page private. The runtime is 78 B larger (gzip)
+    ([#149 A handler cannot know the visitor's time zone, so a picked date needs a script to become an instant and every date is written in UTC](https://github.com/todd-skelton/corten/issues/149)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

@@ -1487,6 +1487,12 @@ if (devStart) {
   });
 }
 
+// App::client_zone: the browser's time zone, kept in a cookie for the server's ClientZone. Written
+// on each full load, so a visitor who travels is followed from their next page.
+if (document.querySelector('meta[name="corten-zone"]')) {
+  document.cookie = `corten-zone=${Intl.DateTimeFormat().resolvedOptions().timeZone};path=/;max-age=31536000;samesite=lax`;
+}
+
 const worker = document.querySelector('meta[name="corten-sw"]')?.getAttribute("content");
 if (worker && "serviceWorker" in navigator) {
   addEventListener("load", () => {

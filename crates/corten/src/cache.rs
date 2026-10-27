@@ -19,7 +19,8 @@
 //! `App` lets shared caches keep it only when nothing about the request could make it differ
 //! between users:
 //!
-//! - when the request carried credentials (`Cookie` or `Authorization`), or anything read a
+//! - when the request carried credentials (`Cookie`, other than the time zone of
+//!   [`crate::App::client_zone`], or `Authorization`), or anything read a
 //!   [`crate::Caller`] for it (an API key in a header of the app's own included), the response is
 //!   `private, no-cache`;
 //! - when it is not the full document (a client navigation, a form answer, a data client's JSON
@@ -155,9 +156,22 @@ pub(crate) struct Seen {
     pub dev: bool,
 }
 
-/// True when the request carries credentials.
+/// True when the request carries credentials: `Authorization`, or a cookie other than the time
+/// zone the runtime keeps for [`crate::App::client_zone`], which says nothing about who is asking.
 pub(crate) fn credentials(headers: &HeaderMap) -> bool {
-    headers.contains_key(header::COOKIE) || headers.contains_key(header::AUTHORIZATION)
+    // One lookup for a request with a session cookie, as `contains_key` was; `get_all` cost about
+    // 190 instructions more (callgrind).
+    match headers.get(header::COOKIE) {
+        None => headers.contains_key(header::AUTHORIZATION),
+        Some(cookie) if !zone_only(cookie) => true,
+        Some(_) => headers.get_all(header::COOKIE).iter().nth(1).is_some() || headers.contains_key(header::AUTHORIZATION),
+    }
+}
+
+/// A `Cookie` header with only [`crate::App::client_zone`]'s cookie in it.
+fn zone_only(cookie: &HeaderValue) -> bool {
+    let cookie = cookie.as_bytes();
+    cookie.starts_with(b"corten-zone=") && !cookie.contains(&b';')
 }
 
 /// Sets the response's `Cache-Control`: the default when it has none, and a private one instead
