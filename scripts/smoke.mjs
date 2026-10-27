@@ -650,12 +650,25 @@ async function run(browser) {
   // /account is guarded (Area::guard): signed out, a navigation there follows the redirect to the
   // watchlist, where the sign-in button is.
   await page.goto(`${base}/news`);
+  // The formatter is a module of its own: the news page's handlers take no format, so it is not loaded.
+  const formatLoaded = () => page.evaluate(() => performance.getEntriesByType("resource").some((e) => e.name.includes("/corten-format.js")));
+  check("a page whose handlers take no format does not load the format module", !(await formatLoaded()));
   await page.click('header a[href="/account"]');
   await page.waitForFunction(() => document.title === "Watchlist | Corten", null, { timeout: 5000 }).catch(() => {});
   check(
     "a guarded page sends someone signed out to sign in",
     (await page.title()) === "Watchlist | Corten" && new URL(page.url()).pathname === "/",
     page.url(),
+  );
+  // The watchlist's live prices take the money format: reached from the news page, it loads the
+  // module before its markup joins, and the script writes prices with it.
+  const firstPrices = await prices();
+  await page.waitForFunction((first) => JSON.stringify(Array.from(document.querySelectorAll('[data-ref="price"]'), (c) => c.textContent)) !== first, JSON.stringify(firstPrices), { timeout: 5000 }).catch(() => {});
+  const written = await prices();
+  check(
+    "a page reached from one without formats loads the module and its script writes with it",
+    (await formatLoaded()) && JSON.stringify(written) !== JSON.stringify(firstPrices) && written.every((p) => /^\$[\d,]+\.\d\d$/.test(p ?? "")),
+    `${firstPrices.join(", ")} -> ${written.join(", ")}`,
   );
 
   // Signing in changes the shell's context, so the redirect loads the whole document.

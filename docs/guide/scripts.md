@@ -316,6 +316,10 @@ rendered (`scripts/format.mjs` checks the two on every case), not what the brows
 writes, which differs by browser and version. A zone with daylight saving time has no fixed
 offset to send: write those dates on the server.
 
+The code that writes them is a module of its own (about 1 KB gzip), not part of the runtime: a
+page whose handlers take a format loads it as a module script next to theirs, and a page whose
+handlers take none does not download it.
+
 ## State
 
 A handler is a plain function shared by every instance, so state that outlives one event lives
