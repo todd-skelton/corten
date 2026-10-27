@@ -595,12 +595,13 @@ struct AlertInput {
     above: String,
 }
 
-/// The alert form's id: a submit the server refuses replaces it, with the messages.
+/// The alert form's id: a submit replaces it, with the messages of a refused one.
 #[derive(Id)]
 struct AlertFormId;
 
-/// The alert form: the stock, the price, and what became of the last alert saved. `input` and
-/// `errors` are a refused submit's, so the form comes back as the user left it.
+/// The alert form: the stock, the price, and what became of the last alert saved. After a refused
+/// submit `input` and `errors` are its, so the form comes back as the user left it; after a
+/// save they are empty, as the page shows them.
 #[component]
 fn AlertForm<'a>(input: &'a AlertInput, errors: &'a Errors, until: Option<u64>) -> impl Patch {
     let f = AlertInput::FIELDS;
@@ -673,13 +674,13 @@ async fn save_alert(req: Req, viewer: Option<Caller<Viewer>>, Form(input): Form<
     }
     let until = Some(now_millis() + 1500);
     if req.mode == Mode::Action {
-        // The whole form, so a field a refused submit marked is cleared; the reads that follow
-        // answer the status line alone.
+        // The whole form, empty as the page that a save without JavaScript goes to, so a field a
+        // refused submit marked is cleared; the reads that follow answer the status line alone.
         let from = url::Alerts { until };
         let again = ReadAgain { after: Duration::from_secs(1) }.from(&from);
         let none = Errors::new();
         return req.patch(html! {
-            <AlertForm input={&input} errors={&none} until={until} />
+            <AlertForm input={&AlertInput::default()} errors={&none} until={until} />
             {again}
         });
     }
@@ -896,6 +897,20 @@ mod tests {
         // Another browser, and a cookie the app did not write, see a list of their own.
         let other = text(call_on(&app, get_with("/", "list=nope")).await).await;
         assert_eq!(rows(&other), ["ACME", "GLBX", "INIT"]);
+    }
+
+    #[tokio::test]
+    async fn a_page_that_only_reads_the_list_makes_no_id() {
+        let res = call(get("/news?mine=on")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(res.headers().get("set-cookie").is_none(), "News reads the list and sets nothing");
+        // A first change without a cookie names its new list once, in the answer.
+        let app = router();
+        let res = call_on(&app, post("/watch", Some("action"), None, "id=SOLR")).await;
+        let cookies: Vec<_> = res.headers().get_all("set-cookie").iter().map(|c| c.to_str().unwrap().to_string()).collect();
+        assert!(cookies.len() == 1 && cookies[0].starts_with("list="), "{cookies:?}");
+        let list = cookies[0].split(';').next().unwrap().to_string();
+        assert_eq!(rows(&text(call_on(&app, get_with("/", &list)).await).await), ["ACME", "GLBX", "INIT", "SOLR"]);
     }
 
     #[tokio::test]

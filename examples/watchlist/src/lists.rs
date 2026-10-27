@@ -26,8 +26,8 @@ use crate::market::Market;
 const FIRST_WATCHED: [&str; 3] = ["ACME", "GLBX", "INIT"];
 
 /// Lists kept at most; past it the one used longest ago is forgotten, and its browser starts
-/// again from `FIRST_WATCHED`. Memory stays bounded however many clients post, and a list in
-/// use is not pushed out by ones made and never used again.
+/// again from `FIRST_WATCHED`. Memory stays bounded however many clients post; a list is kept
+/// unless this many others are used before it is used again.
 const KEPT: usize = 10_000;
 
 #[derive(Clone, Default)]
@@ -76,11 +76,13 @@ impl Lists {
                 kept.lists.remove(&stale);
             }
             let now = kept.clock;
-            kept.lists.insert(id.to_string(), (now, FIRST_WATCHED.to_vec()));
-            kept.used.insert(now, id.to_string());
             kept.clock += 1;
+            kept.used.insert(now, id.to_string());
+            let (_, list) = kept.lists.entry(id.to_string()).or_insert((now, FIRST_WATCHED.to_vec()));
+            change(list);
+            return list.clone();
         }
-        let list = kept.touch(id).expect("inserted above");
+        let list = kept.touch(id).expect("checked above");
         change(list);
         list.clone()
     }
