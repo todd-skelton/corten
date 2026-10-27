@@ -53,7 +53,7 @@ the 422 with `fields`, anything else is answered as any failure of a JSON route
 ```rust,ignore
 async fn alert_json(State(source): State<Source>, Json(input): Json<CreateAlert>) -> JsonResult<AlertSet> {
     let price = check(&input)?; // 422, {"error":{..,"fields":{"email":".."}}}
-    let item = source.item(&input.id).await?.ok_or_else(not_found)?; // 500 or 404
+    let item = source.item(&input.id).await?.ok_or_else(Error::not_found)?; // 500 or 404
     Ok(Json(AlertSet::new(&item, price)))
 }
 ```
