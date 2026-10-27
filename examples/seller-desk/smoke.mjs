@@ -133,25 +133,27 @@ try {
 
   // Text typed while the form is on its way is kept when the answer lands, with the focus and
   // caret; the server's markup (the error) still applies.
-  // Each price request is held until `release()`; `held` settles once one is held, so a release
-  // never comes before the request it is for.
-  let release = () => {};
-  let reached = () => {};
-  /** @type {Promise<void>} */
-  let held = new Promise((resolve) => (reached = resolve));
+  // Each price request is held until `release()`. `held()` waits until one is, so a release never
+  // comes before its request, and a release with any other number held fails the run.
+  /** @type {(() => void)[]} */
+  const pending = [];
+  /** @type {() => void} */
+  let arrived = () => {};
   await page.route("**/items/*/price", async (route) => {
     await new Promise((resolve) => {
-      release = () => {
-        held = new Promise((next) => (reached = next));
-        resolve(undefined);
-      };
-      reached();
+      pending.push(() => resolve(undefined));
+      arrived();
     });
     await route.continue();
   });
+  const held = () => (pending.length ? Promise.resolve() : new Promise((resolve) => (arrived = () => resolve(undefined))));
+  const release = () => {
+    if (pending.length !== 1) throw new Error(`expected one held price request, found ${pending.length}`);
+    pending.splice(0).forEach((go) => go());
+  };
   await page.fill(`${cell} input`, "x");
   await page.click(`${cell} button`);
-  await held;
+  await held();
   await page.focus(`${cell} input`);
   await page.keyboard.type("yz");
   await page.keyboard.press("ArrowLeft");
@@ -171,7 +173,7 @@ try {
   await page.click(`${cell} button`);
   const elsewhere = "tbody tr:nth-child(3) td:last-child input";
   await page.focus(elsewhere);
-  await held;
+  await held();
   const answered = page.waitForResponse("**/items/*/price");
   await page.evaluate((sel) => ((/** @type {any} */ (window)).__oldCell = document.querySelector(sel)), `${cell} input`);
   release();
@@ -181,6 +183,7 @@ try {
     "an invalid answer does not take the focus from a field the user moved to",
     await page.evaluate((sel) => document.activeElement === document.querySelector(sel), elsewhere),
   );
+  pending.splice(0).forEach((go) => go());
   await page.unroute("**/items/*/price");
   await page.fill(`${cell} input`, "7.50");
   await page.click(`${cell} button`);

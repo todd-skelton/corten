@@ -1130,7 +1130,6 @@ Corten is pre-1.0, so any minor version may change the API.
     and an element has one, so the second got the first's object. They are one object now, and
     `state`'s docs say an element has one state. The seller-desk smoke test, which caught it, now
     runs in CI, and waits for what it checks instead of fixed timers.
-
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
