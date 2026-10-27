@@ -1695,7 +1695,7 @@ async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
 
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let routes = Router::new().route("/", get(|| async { "hi" }));
-    let server = tokio::spawn(crate::app::serve_on(listeners, routes, async {
+    let server = tokio::spawn(crate::app::serve_router(listeners, routes, async {
         let _ = stopped.await;
     }));
     for addr in &addrs {

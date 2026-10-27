@@ -595,38 +595,71 @@ impl<M: Middleware> From<App<M>> for Router {
 /// live streams end, the listeners close, requests in progress finish, and `serve` returns once
 /// the tasks have too (or [`App::shutdown_grace`] has passed).
 ///
-/// A tower layer of the app's own goes around it with [`App::layer`].
+/// A tower layer of the app's own goes around it with [`App::layer`]. To serve it on listeners of
+/// the app's own (HTTPS, a Unix socket, a socket a supervisor hands over) with the same
+/// shutdown, see [`serve_on`].
 pub async fn serve<M: Middleware>(app: App<M>) -> std::io::Result<()> {
-    #[cfg(feature = "log")]
-    let _ = tracing_subscriber::fmt().with_target(false).try_init();
+    let listeners = listeners(3000).await?;
+    let shown = match std::env::var("HOST").ok().as_deref() {
+        None | Some("0.0.0.0" | "::") => "localhost".to_string(),
+        Some(host) => host.to_string(),
+    };
+    println!("corten: listening on http://{shown}:{}", listeners[0].local_addr()?.port());
+    serve_on(listeners, app).await
+}
+
+/// The listeners [`serve`] uses: `HOST`:`PORT`, or without `HOST` both loopback addresses
+/// (`127.0.0.1` and `[::1]`) on one port, so `localhost` answers at once however it resolves;
+/// `port` when `PORT` is not set (`serve` passes 3000). For an app that wraps them (in TLS), or
+/// whose own default port is not 3000 (`corten::serve_on(corten::listeners(8320).await?, app)`,
+/// with no `PORT` to set from the program), served with [`serve_on`].
+pub async fn listeners(port: u16) -> std::io::Result<Vec<tokio::net::TcpListener>> {
     let host = std::env::var("HOST").ok();
     let port: u16 = match std::env::var("PORT") {
         Ok(port) => port.parse().map_err(|_| std::io::Error::other(format!("PORT is not a port number: {port}")))?,
-        Err(_) => 3000,
+        Err(_) => port,
     };
-    let listeners = bind(host.as_deref(), port).await?;
-    let shown = match host.as_deref() {
-        None | Some("0.0.0.0" | "::") => "localhost",
-        Some(host) => host,
-    };
-    println!("corten: listening on http://{shown}:{}", listeners[0].local_addr()?.port());
+    bind(host.as_deref(), port).await
+}
+
+/// [`serve`] on listeners of the app's own: anything that implements axum's
+/// [`Listener`](axum::serve::Listener), such as a TLS acceptor around [`listeners`], a Unix
+/// socket, or a socket a supervisor hands over. Shutdown is `serve`'s, across all of them: on
+/// Ctrl-C or `SIGTERM` the app's tasks are told, live streams end, every listener closes and
+/// finishes its requests, and it returns once the tasks have finished too. TLS stays the app's
+/// choice of library; the guide (the app, Your own listeners) shows rustls.
+///
+/// A listener's `accept` is called in turn, one connection at a time, so a TLS handshake belongs
+/// after it (per connection), where a slow client cannot hold the next one up.
+pub async fn serve_on<L, M>(listeners: Vec<L>, app: App<M>) -> std::io::Result<()>
+where
+    L: axum::serve::Listener,
+    L::Addr: std::fmt::Debug,
+    M: Middleware,
+{
+    #[cfg(feature = "log")]
+    let _ = tracing_subscriber::fmt().with_target(false).try_init();
+    if listeners.is_empty() {
+        return Err(std::io::Error::other("corten::serve_on: no listeners to serve on"));
+    }
     run(listeners, app, crate::shutdown_signal()).await
 }
 
 /// Serves `app` on `listeners` with its tasks running until `stop` resolves; then tells the tasks
 /// to stop, lets each listener finish its requests and waits for the tasks, up to the app's
 /// grace from when `stop` resolved.
-pub(crate) async fn run<M: Middleware>(
-    listeners: Vec<tokio::net::TcpListener>,
-    mut app: App<M>,
-    stop: impl Future<Output = ()>,
-) -> std::io::Result<()> {
+pub(crate) async fn run<L, M>(listeners: Vec<L>, mut app: App<M>, stop: impl Future<Output = ()>) -> std::io::Result<()>
+where
+    L: axum::serve::Listener,
+    L::Addr: std::fmt::Debug,
+    M: Middleware,
+{
     let (tasks, grace) = (std::mem::take(&mut app.tasks), app.grace);
     // Built first: a startup panic (a misplaced area) starts no task.
     let router = app.router();
     let running = Running::start(tasks);
     let stopped = std::sync::OnceLock::new();
-    let served = serve_on(listeners, router, async {
+    let served = serve_router(listeners, router, async {
         stop.await;
         let _ = stopped.set(tokio::time::Instant::now());
         running.stop();
@@ -667,11 +700,11 @@ pub(crate) async fn bind(host: Option<&str>, port: u16) -> std::io::Result<Vec<t
 
 /// Serves `router` on every listener until `stop` resolves, then lets each finish its requests;
 /// a listener that fails ends it with the error.
-pub(crate) async fn serve_on(
-    listeners: Vec<tokio::net::TcpListener>,
-    router: Router,
-    stop: impl Future<Output = ()>,
-) -> std::io::Result<()> {
+pub(crate) async fn serve_router<L>(listeners: Vec<L>, router: Router, stop: impl Future<Output = ()>) -> std::io::Result<()>
+where
+    L: axum::serve::Listener,
+    L::Addr: std::fmt::Debug,
+{
     use futures_util::future::{select, try_join_all, Either};
     use std::future::IntoFuture;
     let (stopped, watch) = tokio::sync::watch::channel(false);
