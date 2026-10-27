@@ -422,12 +422,38 @@ where
 /// ```
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// Resolves when the process is asked to stop (Ctrl-C, or `SIGTERM` from a container runtime),
-/// after ending every open [`live`] stream and live feed stream (feature `feed`) so a graceful
-/// shutdown is not held open by them. [`serve`] uses it; an app that serves its router another way
-/// passes it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`, and then runs
-/// no [`App::task`].
+/// Whether the app has asked to stop ([`shutdown`]).
+static ASKED: LazyLock<tokio::sync::watch::Sender<bool>> = LazyLock::new(|| tokio::sync::watch::channel(false).0);
+
+/// Begins the graceful shutdown a signal begins ([`shutdown_signal`]): the app's
+/// [tasks](App::task) are told to stop, live streams end, the listeners close, requests in
+/// progress finish, and [`serve`] returns once the tasks have too (or [`App::shutdown_grace`] has
+/// passed). For a process with no signal to send it: a route a supervisor calls (whose answer is
+/// sent, as a request in progress, before its connection closes), a task that decides the app is
+/// done, or a service on Windows started without a console. A second call, or a signal after it,
+/// changes nothing.
+///
+/// ```
+/// use corten::{axum::http::StatusCode, prelude::*};
+///
+/// async fn stop(/* Caller<Supervisor> */) -> StatusCode {
+///     corten::shutdown();
+///     StatusCode::ACCEPTED
+/// }
+/// # let _: Methods = post(stop);
+/// ```
+pub fn shutdown() {
+    ASKED.send_replace(true);
+}
+
+/// Resolves when the process is asked to stop (Ctrl-C; `SIGTERM` from a container runtime on
+/// Unix; Ctrl-Break, closing the console or the system shutting down on Windows) or the app asks
+/// ([`shutdown`]), after ending every open [`live`] stream and live feed stream (feature `feed`)
+/// so a graceful shutdown is not held open by them. [`serve`] uses it; an app that serves its
+/// router another way passes it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`,
+/// and then runs no [`App::task`].
 pub async fn shutdown_signal() {
+    use futures_util::future::select;
     let interrupt = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -440,9 +466,38 @@ pub async fn shutdown_signal() {
             Err(_) => std::future::pending::<()>().await,
         }
     };
-    #[cfg(not(unix))]
+    // What Windows sends a console process: Ctrl-Break (how a supervisor stops a process group),
+    // the console closing, and the system shutting down. Windows ends the process a few seconds
+    // after the console closes, whatever is still running.
+    #[cfg(windows)]
+    let terminate = async {
+        use tokio::signal::windows;
+        let close = async {
+            match windows::ctrl_close() {
+                Ok(mut close) => close.recv().await,
+                Err(_) => std::future::pending().await,
+            }
+        };
+        let shutdown = async {
+            match windows::ctrl_shutdown() {
+                Ok(mut shutdown) => shutdown.recv().await,
+                Err(_) => std::future::pending().await,
+            }
+        };
+        let interrupt = async {
+            match windows::ctrl_break() {
+                Ok(mut interrupt) => interrupt.recv().await,
+                Err(_) => std::future::pending().await,
+            }
+        };
+        select(std::pin::pin!(close), select(std::pin::pin!(shutdown), std::pin::pin!(interrupt))).await;
+    };
+    #[cfg(not(any(unix, windows)))]
     let terminate = std::future::pending::<()>();
-    futures_util::future::select(std::pin::pin!(interrupt), std::pin::pin!(terminate)).await;
+    let asked = async {
+        let _ = ASKED.subscribe().wait_for(|asked| *asked).await;
+    };
+    select(std::pin::pin!(asked), select(std::pin::pin!(interrupt), std::pin::pin!(terminate))).await;
     tracing::info!("corten: shutting down");
     DRAINING.send_replace(true);
     #[cfg(feature = "feed")]

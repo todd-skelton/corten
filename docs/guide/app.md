@@ -25,7 +25,7 @@ your routes. Each default can be replaced in one line.
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)) |
 | Connections | a request's head (its line and headers) must arrive within 30 seconds of the connection opening or its last answer, or the connection is closed; no limit on how many are open | `.header_timeout(d)` (`None` behind a proxy that buffers heads), `.max_connections(n)`: past it, connections wait to be accepted |
-| Shutdown | Ctrl-C and `SIGTERM` tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
+| Shutdown | Ctrl-C and `SIGTERM` (on Windows Ctrl-C, Ctrl-Break, the console closing and system shutdown), or the app's `corten::shutdown()`, tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`) | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
@@ -150,6 +150,13 @@ streams end and the listeners close, and `serve` returns once requests in progre
 tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 seconds unless set).
 A task still running then is ended and logged by name, so a stuck one cannot hold the process,
 and so is one that panics; whether to restart it is the app's choice.
+
+The app begins the same shutdown itself with `corten::shutdown()`: from a route a supervisor
+calls (it answers, say, 202, and that answer is sent before its connection closes), or from a task
+that decides the app is done. It is the way to stop a process that has no signal to send it, such
+as a service on Windows started without a console, where ending the process skips every step
+above. A second call, or a signal after it, changes nothing. Guard such a route as any other write
+(`Caller<Supervisor>`).
 
 `/health/ready` does not turn 503 during shutdown: the listeners close when it begins, so a load
 balancer's next check is refused, which it treats the same way. A platform that needs time to
