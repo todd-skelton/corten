@@ -194,8 +194,23 @@ pub struct App<M = ()> {
     apis: Vec<(Mount, Router)>,
     tasks: Vec<Task>,
     grace: Duration,
+    connections: Connections,
     layers: Vec<Box<dyn FnOnce(Router) -> Router + Send>>,
     middleware: M,
+}
+
+/// How [`serve`] holds connections: how long a request's head may take, and how many may be
+/// open at once.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Connections {
+    pub header_timeout: Option<Duration>,
+    pub max: Option<usize>,
+}
+
+impl Default for Connections {
+    fn default() -> Self {
+        Connections { header_timeout: Some(Duration::from_secs(30)), max: None }
+    }
 }
 
 impl App {
@@ -216,6 +231,7 @@ impl App {
             apis: Vec::new(),
             tasks: Vec::new(),
             grace: Duration::from_secs(5),
+            connections: Connections::default(),
             layers: Vec::new(),
             middleware: (),
         }
@@ -245,6 +261,7 @@ impl App {
             apis: self.apis,
             tasks: self.tasks,
             grace: self.grace,
+            connections: self.connections,
             layers: self.layers,
             middleware,
         }
@@ -440,6 +457,27 @@ impl<M: Middleware> App<M> {
     /// the process (`docker stop`: 10 seconds; Kubernetes: 30).
     pub fn shutdown_grace(mut self, grace: Duration) -> Self {
         self.grace = grace;
+        self
+    }
+
+    /// How long a connection may take to send a request's head (the request line and headers)
+    /// before [`serve`] closes it: 30 seconds unless set, from when the connection opens or its
+    /// last answer was sent. A client that opens connections and never finishes a request
+    /// cannot hold them, and an idle keep-alive connection is closed after it too. A request
+    /// whose head has arrived is not bounded by it: a long upload, a live stream and a WebSocket
+    /// are the [deadline](App::deadline)'s and their own. `None` removes it, for a server that
+    /// only a proxy which buffers heads reaches.
+    pub fn header_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
+        self.connections.header_timeout = timeout.into();
+        self
+    }
+
+    /// The most connections [`serve`] holds open at once, across its listeners (no limit unless
+    /// set). At the limit it accepts no more until one closes; the operating system queues the
+    /// rest. Bounds what many idle or slow clients can hold of the process's sockets and memory.
+    pub fn max_connections(mut self, max: usize) -> Self {
+        assert!(max > 0, "corten: max_connections is at least 1");
+        self.connections.max = Some(max);
         self
     }
 
@@ -663,12 +701,12 @@ where
     L::Addr: std::fmt::Debug + 'static,
     M: Middleware,
 {
-    let (tasks, grace) = (std::mem::take(&mut app.tasks), app.grace);
+    let (tasks, grace, connections) = (std::mem::take(&mut app.tasks), app.grace, app.connections);
     // Built first: a startup panic (a misplaced area) starts no task.
     let router = app.router();
     let running = Running::start(tasks);
     let stopped = std::sync::OnceLock::new();
-    let served = serve_router(listeners, router, async {
+    let served = serve_router(listeners, router, connections, async {
         stop.await;
         let _ = stopped.set(tokio::time::Instant::now());
         running.stop();
@@ -709,20 +747,22 @@ pub(crate) async fn bind(host: Option<&str>, port: u16) -> std::io::Result<Vec<t
 
 /// Serves `router` on every listener until `stop` resolves, then lets each finish its requests;
 /// a listener that fails ends it with the error.
-pub(crate) async fn serve_router<L>(listeners: Vec<L>, router: Router, stop: impl Future<Output = ()>) -> std::io::Result<()>
+pub(crate) async fn serve_router<L>(
+    listeners: Vec<L>,
+    router: Router,
+    connections: Connections,
+    stop: impl Future<Output = ()>,
+) -> std::io::Result<()>
 where
     L: axum::serve::Listener,
     L::Addr: std::fmt::Debug + 'static,
 {
     use futures_util::future::{select, try_join_all, Either};
-    use std::future::IntoFuture;
     let (stopped, watch) = tokio::sync::watch::channel(false);
+    let open = connections.max.map(|max| Arc::new(tokio::sync::Semaphore::new(max)));
+    let clock = connections.header_timeout.map(crate::watch::Clock::start);
     let servers = listeners.into_iter().map(|listener| {
-        let mut watch = watch.clone();
-        let stop = async move {
-            let _ = watch.wait_for(|stopped| *stopped).await;
-        };
-        axum::serve(listener, Connect(router.clone())).with_graceful_shutdown(stop).into_future()
+        serve_listener(listener, router.clone(), clock.clone(), open.clone(), watch.clone())
     });
     let servers = std::pin::pin!(try_join_all(servers));
     match select(std::pin::pin!(stop), servers).await {
@@ -734,34 +774,61 @@ where
     }
 }
 
-/// Makes each connection's service: the router, with what the connection says about who is
-/// asking for [`ClientIp`](crate::ClientIp).
-#[derive(Clone)]
-struct Connect(Router);
-
-impl<L> tower_service::Service<axum::serve::IncomingStream<'_, L>> for Connect
+/// Accepts connections on `listener` and serves each until `stop` turns true; then stops
+/// accepting, lets each connection finish the request it is in (an idle one closes) and returns
+/// once all have closed. With `clock`, a connection waits for a request's head only as long as
+/// it allows, and with `open`, a connection is accepted only once one of its permits is free.
+async fn serve_listener<L>(
+    mut listener: L,
+    router: Router,
+    clock: Option<Arc<crate::watch::Clock>>,
+    open: Option<Arc<tokio::sync::Semaphore>>,
+    mut stop: tokio::sync::watch::Receiver<bool>,
+) -> std::io::Result<()>
 where
     L: axum::serve::Listener,
     L::Addr: 'static,
 {
-    type Response = Connection;
-    type Error = std::convert::Infallible;
-    type Future = std::future::Ready<Result<Connection, std::convert::Infallible>>;
-
-    fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
-        std::task::Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, stream: axum::serve::IncomingStream<'_, L>) -> Self::Future {
-        let addr: &dyn std::any::Any = stream.remote_addr();
+    // Each connection holds a sender; the listener is done when every one has dropped.
+    let (alive, mut closed) = tokio::sync::mpsc::channel::<std::convert::Infallible>(1);
+    loop {
+        let permit = match &open {
+            None => None,
+            Some(open) => tokio::select! {
+                permit = open.clone().acquire_owned() => Some(permit.expect("the semaphore is never closed")),
+                _ = stop.wait_for(|stopped| *stopped) => break,
+            },
+        };
+        let (io, addr) = tokio::select! {
+            accepted = listener.accept() => accepted,
+            _ = stop.wait_for(|stopped| *stopped) => break,
+        };
+        let addr: &dyn std::any::Any = &addr;
         let peer = match addr.downcast_ref::<std::net::SocketAddr>() {
             Some(addr) => Peer::Ip(addr.ip()),
             #[cfg(unix)]
             None if addr.is::<tokio::net::unix::SocketAddr>() => Peer::Local,
             None => Peer::Unknown,
         };
-        std::future::ready(Ok(Connection { router: self.0.clone(), peer }))
+        let watch = clock.as_ref().map(crate::watch::Clock::watch);
+        let service = hyper_util::service::TowerToHyperService::new(Connection { router: router.clone(), peer, watch: watch.clone() });
+        let io = hyper_util::rt::TokioIo::new(crate::watch::Watched { io, watch });
+        let (alive, mut stop) = (alive.clone(), stop.clone());
+        tokio::spawn(async move {
+            let (_permit, _alive) = (permit, alive);
+            let http = hyper::server::conn::http1::Builder::new();
+            let mut conn = std::pin::pin!(http.serve_connection(io, service).with_upgrades());
+            tokio::select! {
+                _ = conn.as_mut() => return,
+                _ = stop.wait_for(|stopped| *stopped) => conn.as_mut().graceful_shutdown(),
+            }
+            let _ = conn.await;
+        });
     }
+    drop(listener);
+    drop(alive);
+    let _ = closed.recv().await;
+    Ok(())
 }
 
 /// One connection's service: the router, each of whose requests runs with the connection's
@@ -772,19 +839,24 @@ where
 struct Connection {
     router: Router,
     peer: Peer,
+    /// For [`App::header_timeout`].
+    watch: Option<Arc<crate::watch::Watch>>,
 }
 
-impl tower_service::Service<Request> for Connection {
-    type Response = Response;
+impl tower_service::Service<hyper::Request<hyper::body::Incoming>> for Connection {
+    type Response = axum::http::Response<crate::watch::Answered>;
     type Error = std::convert::Infallible;
-    type Future = crate::client::WithPeer<<Router as tower_service::Service<Request>>::Future>;
+    type Future = crate::watch::Answer<crate::client::WithPeer<<Router as tower_service::Service<Request>>::Future>>;
 
     fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
         tower_service::Service::<Request>::poll_ready(&mut self.router, cx)
     }
 
-    fn call(&mut self, req: Request) -> Self::Future {
-        crate::client::WithPeer::new(self.peer, tower_service::Service::<Request>::call(&mut self.router, req))
+    fn call(&mut self, req: hyper::Request<hyper::body::Incoming>) -> Self::Future {
+        let req = req.map(axum::body::Body::new);
+        let watch = self.watch.as_ref().map(|watch| (watch.clone(), watch.busy()));
+        let inner = crate::client::WithPeer::new(self.peer, tower_service::Service::<Request>::call(&mut self.router, req));
+        crate::watch::Answer { inner, watch }
     }
 }
 

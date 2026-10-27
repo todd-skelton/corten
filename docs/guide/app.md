@@ -24,6 +24,7 @@ your routes. Each default can be replaced in one line.
 | Middleware of your own | none | `.middleware((RequestId, RateLimit))`: steps of the app's own, at one place in Corten's order ([below](#your-own-middleware)) |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)) |
+| Connections | a request's head (its line and headers) must arrive within 30 seconds of the connection opening or its last answer, or the connection is closed; no limit on how many are open | `.header_timeout(d)` (`None` behind a proxy that buffers heads), `.max_connections(n)`: past it, connections wait to be accepted |
 | Shutdown | Ctrl-C and `SIGTERM` tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`) | |
@@ -31,6 +32,11 @@ your routes. Each default can be replaced in one line.
 | Languages | none | `.messages::<Msg>()`: `req.t()` and `req.lang()` follow `Accept-Language` |
 | Dev mode | when `CORTEN_DEV` is set (`corten dev` sets it): errors shown on the page, open pages reload after a rebuild | `.dev(bool)` |
 
+`App::header_timeout` (30 seconds unless set) bounds what comes before a request: a client that
+opens connections and sends its head slowly, or never finishes it, cannot hold them (an idle
+keep-alive connection closes after it too). A clock of the server's own checks it a few times a
+second, so a connection closes within a tenth of the timeout of it (at most a second either way). It applies to `serve` and `serve_on` alike, on
+every listener. `App::max_connections(n)` caps how many are open across them.
 `App::deadline` (30 seconds unless set) bounds how long a handler may take to start its answer;
 an area or an API with slower routes sets its own (`Area::deadline`, `Api::deadline`), so the
 rest keep the app's. See [Cancellation](cancellation.md).
