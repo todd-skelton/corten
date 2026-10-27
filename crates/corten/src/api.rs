@@ -59,12 +59,20 @@ pub struct Api<P> {
     pub(crate) routes: Router,
     pub(crate) origins: Vec<String>,
     deadline: Option<Option<std::time::Duration>>,
+    errors: Option<ErrorShape>,
     types: PhantomData<fn() -> P>,
 }
 
+/// How an API writes the failures Corten answers for it ([`Api::errors`]): a status and a
+/// message to a JSON body.
+#[derive(Clone)]
+pub(crate) struct ErrorShape(std::sync::Arc<WriteError>);
+
+type WriteError = dyn Fn(StatusCode, &str) -> Vec<u8> + Send + Sync;
+
 impl<P: Prefix> Api<P> {
     pub(crate) fn new() -> Self {
-        Api { routes: Router::new(), origins: Vec::new(), deadline: None, types: PhantomData }
+        Api { routes: Router::new(), origins: Vec::new(), deadline: None, errors: None, types: PhantomData }
     }
 
     /// A route of the API added by hand, at `R::PATH`, for one a routes module cannot name: an
@@ -110,6 +118,50 @@ impl<P: Prefix> Api<P> {
         self
     }
 
+    /// The JSON every failure Corten answers under the prefix is written as, in place of
+    /// `{"error":{"status","message"}}`, for an API that speaks another protocol's error shape:
+    /// an unknown URL (404), a wrong method (405, with `Allow`), a cross-site write (403), the
+    /// deadline (503), a request an extractor rejects, a `Caller` that refuses (401 or 403, with
+    /// `WWW-Authenticate`) and a handler's `Error`. `message` is what the client may be told: a
+    /// 4xx's message, a 5xx's reason (and its message under `corten dev`). A failure with a JSON
+    /// body of the handler's own, and a [`crate::Relay`]'s, pass through as they are.
+    ///
+    /// ```
+    /// use corten::{axum::http::StatusCode, prelude::*};
+    ///
+    /// #[derive(ToJson)]
+    /// struct Failure { r#type: &'static str, error: Detail }
+    ///
+    /// #[derive(ToJson)]
+    /// struct Detail { r#type: &'static str, message: String }
+    ///
+    /// fn shape(status: StatusCode, message: &str) -> Failure {
+    ///     let kind = match status.as_u16() {
+    ///         401 => "authentication_error",
+    ///         403 => "permission_error",
+    ///         404 => "not_found_error",
+    ///         429 => "rate_limit_error",
+    ///         400..=499 => "invalid_request_error",
+    ///         _ => "api_error",
+    ///     };
+    ///     Failure { r#type: "error", error: Detail { r#type: kind, message: message.to_string() } }
+    /// }
+    ///
+    /// #[corten::routes(api = V1)]
+    /// mod v1 {
+    ///     #[route("/v1")]
+    ///     pub struct V1;
+    /// }
+    ///
+    /// let app = App::new(Routes::new()).api(|api| v1::api(api).errors(shape));
+    /// # let _ = app.router();
+    /// ```
+    #[cfg(feature = "json")]
+    pub fn errors<T: crate::ToJson>(mut self, write: impl Fn(StatusCode, &str) -> T + Send + Sync + 'static) -> Self {
+        self.errors = Some(ErrorShape(std::sync::Arc::new(move |status, message| crate::json::to_vec(&write(status, message)))));
+        self
+    }
+
     /// A site whose pages may call these routes from the browser (CORS), like
     /// `https://partner.example`. Corten answers its preflight requests, adds
     /// `Access-Control-Allow-Origin` to the responses, and lets its writes through the same-origin
@@ -134,11 +186,13 @@ pub(crate) struct Mount {
     origins: Vec<String>,
     /// The API's own deadline, when it set one ([`Api::deadline`]).
     pub deadline: Option<Option<std::time::Duration>>,
+    /// How its failures are written, when it says ([`Api::errors`]).
+    pub errors: Option<ErrorShape>,
 }
 
 impl Mount {
     pub fn new<P>(prefix: String, api: &Api<P>) -> Self {
-        Mount { prefix, origins: api.origins.clone(), deadline: api.deadline }
+        Mount { prefix, origins: api.origins.clone(), deadline: api.deadline, errors: api.errors.clone() }
     }
 
     pub fn contains(&self, path: &str) -> bool {
@@ -264,9 +318,9 @@ pub(crate) fn shown(status: StatusCode, detail: Option<&str>, dev: bool) -> &str
     }
 }
 
-/// `res` with its failure as the JSON error body; a success, or a failure with a body of the
-/// handler's own that is not plain text, is returned unchanged.
-pub(crate) async fn json_failure(res: Response, dev: bool) -> Response {
+/// `res` with its failure as the JSON error body (in `shape`, when the API gave one); a success,
+/// or a failure with a body of the handler's own that is not plain text, is returned unchanged.
+pub(crate) async fn json_failure(res: Response, dev: bool, shape: Option<&ErrorShape>) -> Response {
     let status = res.status();
     if !(status.is_client_error() || status.is_server_error()) || res.extensions().get::<crate::answer::Relayed>().is_some() {
         return res;
@@ -291,7 +345,11 @@ pub(crate) async fn json_failure(res: Response, dev: bool) -> Response {
         }
         None => None,
     };
-    let body = error_body(status, shown(status, detail.as_deref(), dev));
+    let shown = shown(status, detail.as_deref(), dev);
+    let body = match shape {
+        Some(ErrorShape(write)) => write(status, shown),
+        None => error_body(status, shown).into_bytes(),
+    };
     parts.headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(JSON));
     parts.headers.remove(header::CONTENT_LENGTH);
     parts.headers.remove(HeaderName::from_static("corten-page"));

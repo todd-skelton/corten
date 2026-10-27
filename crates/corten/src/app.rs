@@ -936,7 +936,7 @@ impl<M: Middleware> Layer<M> {
         let origins = mount.map_or(&[][..], |mount| mount.origins());
         if let Some(refused) = self.policy.refuse(req.method(), req.headers(), origins) {
             let mut refused = match mount {
-                Some(_) => crate::api::json_failure(refused, false).await,
+                Some(mount) => crate::api::json_failure(refused, false, mount.errors.as_ref()).await,
                 None => match self.cross_site(&req) {
                     Some(asked) => page::error_page(&self.shared, asked, Failure::CrossSite).await,
                     None => refused,
@@ -949,7 +949,7 @@ impl<M: Middleware> Layer<M> {
         let cors = mount.and_then(|mount| mount.allowed_origin(req.headers()));
         let credentials = cache::credentials(req.headers());
         let path = self.shared.dev.then(|| req.uri().path().to_string());
-        let (mut res, caller, mode) = self.run(req, route, mount.is_some(), deadline).await;
+        let (mut res, caller, mode) = self.run(req, route, mount, deadline).await;
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
         self.policy.headers(&mut res, nonce.as_ref());
         let seen = Seen {
@@ -980,7 +980,13 @@ impl<M: Middleware> Layer<M> {
     }
 
     /// The response, whether anything read who is asking, and the request's mode.
-    async fn run(&self, mut req: Request, route: Route, api: bool, deadline: Option<Duration>) -> (Response, bool, Mode) {
+    async fn run(
+        &self,
+        mut req: Request,
+        route: Route,
+        api: Option<&Mount>,
+        deadline: Option<Duration>,
+    ) -> (Response, bool, Mode) {
         // Dropped with this future if the client leaves first; then the response's.
         let watch = Watch(Signal::for_app(self.shared.clone()));
         req.extensions_mut().insert(watch.0.clone());

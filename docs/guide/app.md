@@ -476,12 +476,17 @@ Under the prefix:
    is a JSON 401 or 403.
 3. The deadline, the request signal, compression and the same-origin check on writes are the
    same as for pages; `Api::deadline` gives these routes a deadline of their own.
-4. `Api::allow_origin` lets one site's pages call these routes from the browser: Corten answers
+4. `Api::errors(|status, message| ..)` writes those failures in another shape, for an API that
+   speaks another protocol's errors (an Anthropic- or OpenAI-compatible gateway): it returns a
+   `ToJson` value, so a key check in `Identify` and the API's unknown URLs, wrong methods,
+   deadline and refusals all answer as its clients parse them. A `421` for a host the app does
+   not answer is not the API's (no route ran), and a URL outside the prefix is the pages' 404.
+5. `Api::allow_origin` lets one site's pages call these routes from the browser: Corten answers
    its CORS preflight, adds `Access-Control-Allow-Origin` and lets its writes through. The
    pages keep refusing that site's writes. The site authenticates with a token: a write from it
    that carries the user's cookies is refused, and no `Access-Control-Allow-Credentials` is sent.
-5. `Json` in the prelude is `corten::Json` (feature `json`). It reads a request body into a
-   `FromJson` (item 6) with the value and the rejections axum's `Json` gives: Corten's reader takes
+6. `Json` in the prelude is `corten::Json` (feature `json`). It reads a request body into a
+   `FromJson` (item 7) with the value and the rejections axum's `Json` gives: Corten's reader takes
    an `application/json` body, and axum (`serde_json`) any other JSON content type and any body
    the reader gives up on. What it writes is a `ToJson`: derive it
    (`#[derive(ToJson)]`, also in the prelude) on the response type, next to `Serialize` if other
@@ -493,7 +498,7 @@ Under the prefix:
    attribute it cannot follow (`flatten` of a map or an enum, `serialize_with`) does not compile. A field whose type has only `Serialize` (an id or a
    date from another crate) is written by `serde_json`. `serde_json::Value` is a `ToJson`, as above.
    axum's `Json` works too, and writes any `Serialize` through `serde_json` and a `BytesMut`.
-6. To read JSON another service answers, derive `FromJson` (in the prelude) next to `Deserialize`
+7. To read JSON another service answers, derive `FromJson` (in the prelude) next to `Deserialize`
    and read it with `corten::json::from_slice` or `from_str`. Corten's reader takes the fields the
    type declares and skips the rest; on anything it does not follow (an escaped key, a missing or
    duplicate field) `serde_json` reads the text instead, so the value and every error are
