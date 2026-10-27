@@ -81,6 +81,7 @@ pub mod security;
 pub mod seo;
 mod signal;
 pub mod style;
+mod task;
 #[cfg(feature = "types")]
 pub mod types;
 pub mod view;
@@ -411,7 +412,9 @@ pub type Result<T = Response, E = Error> = std::result::Result<T, E>;
 
 /// Resolves when the process is asked to stop (Ctrl-C, or `SIGTERM` from a container runtime),
 /// after ending every open [`live`] stream and live feed stream (feature `feed`) so a graceful
-/// shutdown is not held open by them. Pass it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`.
+/// shutdown is not held open by them. [`serve`] uses it; an app that serves its router another way
+/// passes it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`, and then runs
+/// no [`App::task`].
 pub async fn shutdown_signal() {
     let interrupt = async {
         let _ = tokio::signal::ctrl_c().await;

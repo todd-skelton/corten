@@ -48,8 +48,8 @@
 //! # let _ = app.router();
 //! ```
 //!
-//! A tower layer still goes around the whole app (`corten::serve(app.router().layer(..))`),
-//! outside every stage, for what must see the raw request first.
+//! A tower layer still goes around the whole app ([`crate::App::layer`]), outside every stage,
+//! for what must see the raw request first.
 
 use std::future::Future;
 

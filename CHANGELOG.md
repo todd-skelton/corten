@@ -513,6 +513,12 @@ Corten is pre-1.0, so any minor version may change the API.
     as a patch, which is applied whatever its status. `examples/hello`'s saved page has a form
     that does it. The runtime is 8,834 B gzipped
     ([#104 A data-patch answer cannot ask to be read again, so a write whose read is catching up has to navigate](https://github.com/todd-skelton/corten/issues/104)).
+76. `App::task("refresh", |signal| async move { .. })`: work that lives as long as the app (a
+    refresh loop, a queue consumer, a supervised child), started by `corten::serve`. Its `Signal`
+    aborts with the new `Abort::Shutdown` when shutdown begins, and `serve` waits for it, up to
+    `App::shutdown_grace` (5 seconds unless set), before it returns; one still running then is
+    ended and logged by name, and so is one that panics. `App::router` starts none
+    ([#116 Work that lives as long as the app (a refresh loop, a supervised child) has no signal, so shutdown neither stops it nor waits for it](https://github.com/todd-skelton/corten/issues/116)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -798,6 +804,9 @@ Corten is pre-1.0, so any minor version may change the API.
     `Policy::any_host()` (`HOSTS=*`) answers every name. The first refused name is logged. A
     deployed app behind a domain adds its names; the bench scripts pass their container names
     ([#113 An app on loopback answers any Host, so a DNS-rebound page can read and write its routes](https://github.com/todd-skelton/corten/issues/113)).
+51. **Breaking:** `corten::serve` takes an `App`, not anything that becomes a router, so the
+    app's tasks cannot be left behind on the way. A tower layer around the whole app is
+    `App::layer(l)` instead of `corten::serve(app.router().layer(l))`.
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

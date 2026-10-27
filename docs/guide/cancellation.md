@@ -11,6 +11,7 @@ that thing ends.
 | a `<form data-patch>` submit | the runtime's, per form | a newer submit of the same form, or a navigation, so a late reply never patches the wrong page |
 | a client navigation | the Navigation API's `event.signal` | another navigation starts |
 | a request on the server | `req.signal()`, or `signal: corten::Signal` as an extractor | the response was sent (`Abort::Responded`), the client left (`Disconnected`), or the deadline passed (`Deadline`) |
+| a task of the app's ([`App::task`](app.md#tasks)) | its argument | shutdown began (`Abort::Shutdown`); `serve` then waits for it up to `App::shutdown_grace` |
 
 On the server, work the handler awaits needs no signal: Rust drops the handler's future when the
 client leaves or the deadline passes. The signal is for what a drop cannot reach: spawned tasks,
