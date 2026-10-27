@@ -203,6 +203,8 @@ impl Identify<Db> for Staff {
             Ok(Some(staff)) => Ok(staff),
             Ok(None) => Err(Refused::forbidden()),
             Err(error) => Err(Refused::unavailable(error)),   // the store is down: a 503, not sign-in
+            // An API key: Err(Refused::unauthorized().message("Invalid API key")), and after too many
+            // failures (the app counts them) Err(Refused::too_many(wait)): a 429 with Retry-After.
         }
     }
 }
