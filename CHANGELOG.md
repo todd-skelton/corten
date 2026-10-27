@@ -1050,6 +1050,12 @@ Corten is pre-1.0, so any minor version may change the API.
     still return to where the user was. Found when `examples/watchlist`'s taller About page made
     the smoke test's "a plain link still goes to the top" fail. The runtime is 6 B larger gzipped
     (9,018 to 9,024 B, measured).
+35. A field with a hint of its own can point at the hint and at its error: `e.aria(field).hint(&HintId)`
+    writes one `aria-describedby` naming both. Before, the hint needed a second
+    `aria-describedby` on the tag, which the browser dropped, or the error's id written by hand.
+    A start tag that writes `aria-describedby` or `aria-invalid` beside `e.aria(..)` no longer
+    compiles, since the browser would keep only one of them
+    ([#147 A field with its own hint cannot also point at its error: Within::aria writes a second aria-describedby, which the browser drops](https://github.com/todd-skelton/corten/issues/147)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

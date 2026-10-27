@@ -1012,7 +1012,16 @@ fn field_names_follow_serde_and_reach_markup() {
     let e = errors.within(SignUpId);
     let html = html! { <input name={f.email} {..e.aria(f.email)}> }.to_html();
     assert_eq!(html, r#"<input name="email" aria-invalid="true" aria-describedby="sign-up-email-error">"#);
+    // A hint of its own: one aria-describedby naming the hint, then the error. The hint's id is a
+    // temporary, which lives as long as the spread renders.
+    let field = String::from("email");
+    let e = errors.within(SignUpId);
+    let html = html! { <input name={f.email} {..e.aria(f.email).hint(&FieldHintId(&field))}> }.to_html();
+    assert_eq!(html, r#"<input name="email" aria-invalid="true" aria-describedby="field-hint-email sign-up-email-error">"#);
 }
+
+#[derive(crate::view::Id)]
+struct FieldHintId<'a>(&'a str);
 
 #[tokio::test]
 async fn error_pages_render_in_the_shell() {

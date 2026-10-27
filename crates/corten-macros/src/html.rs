@@ -1386,7 +1386,35 @@ impl Gen {
                     &[expr.clone(), literal(&format!(" {attr}"))],
                 )),
                 Attr::Spread(expr) => {
-                    self.code(q("::corten::view::Attrs::render_attrs(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                    // What else the tag writes, which the spread must not write again.
+                    let written: Vec<String> = attrs
+                        .iter()
+                        .filter_map(|other| match other {
+                            Attr::Bare(name) | Attr::Static(name, _) | Attr::Expr(name, _) => {
+                                Some(format!("{:?}", name.to_ascii_lowercase()))
+                            }
+                            Attr::Ref(..) => Some("\"data-ref\"".into()),
+                            Attr::On(..) => Some("\"data-on\"".into()),
+                            Attr::Spread(_) => None,
+                        })
+                        .collect();
+                    if written.is_empty() {
+                        self.code(q("::corten::view::Attrs::render_attrs(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                    } else {
+                        // The check is a call that does nothing, or does not compile when the
+                        // spread's type declares (`Writes`) one of the names; one evaluation of
+                        // the expression serves the check and the render.
+                        let names: TokenStream = format!(
+                            "struct __CortenWritten; impl ::corten::view::__private::Written for __CortenWritten {{ const NAMES: &'static [&'static str] = &[{}]; }} #[allow(unused_imports)] use ::corten::view::__private::{{Declared as _, Undeclared as _}};",
+                            written.join(", ")
+                        )
+                        .parse()
+                        .expect("the names parse");
+                        self.code(q(
+                            "{ __A1 match &(__A0) { __spread => { (&::corten::view::__private::Spread(__spread)).check::<__CortenWritten>(); ::corten::view::Attrs::render_attrs(__spread, __OUT); } } }",
+                            &[expr.clone(), names],
+                        ))
+                    }
                 }
             }
         }

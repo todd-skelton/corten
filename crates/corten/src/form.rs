@@ -341,9 +341,11 @@ pub struct Within<'a, I> {
 
 impl<I: Id> Within<'_, I> {
     /// `aria-invalid="true" aria-describedby="{form}-{field}-error"` when `field` has an error,
-    /// else nothing: `<input name={f.email} {..e.aria(f.email)}>`.
+    /// else nothing: `<input name={f.email} {..e.aria(f.email)}>`. A field with a hint of its own
+    /// gives it here, `{..e.aria(f.email).hint(&EmailHintId)}`, and is described by the hint and
+    /// then the error; a tag that writes `aria-describedby` itself as well does not compile.
     pub fn aria(&self, field: FieldName) -> Aria<'_, I> {
-        Aria { form: &self.form, field, invalid: self.errors.has(field) }
+        Aria { form: &self.form, field, invalid: self.errors.has(field), hint: None }
     }
 
     /// `<p class="field-error" id="{form}-{field}-error">message</p>` when `field` has an error,
@@ -366,13 +368,48 @@ pub struct Aria<'a, I> {
     form: &'a I,
     field: FieldName,
     invalid: bool,
+    hint: Option<&'a dyn WriteId>,
+}
+
+impl<'a, I> Aria<'a, I> {
+    /// The field's hint, the element with the id `hint` (a `#[derive(Id)]`), which describes it
+    /// always, ahead of its error: `aria-describedby="{hint} {form}-{field}-error"`.
+    pub fn hint<H: Id>(self, hint: &'a H) -> Self {
+        Aria { hint: Some(hint), ..self }
+    }
+}
+
+/// [`Id`] without its `NAME`, so a hint of any `Id` type is held behind one pointer.
+trait WriteId {
+    fn write_id(&self, out: &mut String);
+}
+
+impl<T: Id + ?Sized> WriteId for T {
+    fn write_id(&self, out: &mut String) {
+        Id::write_id(self, out)
+    }
+}
+
+impl<I> crate::view::__private::Writes for Aria<'_, I> {
+    const WRITES: &'static [&'static str] = &["aria-invalid", "aria-describedby"];
 }
 
 impl<I: Id> Attrs for Aria<'_, I> {
     fn render_attrs(&self, out: &mut String) {
         if self.invalid {
-            out.push_str(r#" aria-invalid="true" aria-describedby=""#);
-            message_id(self.form, self.field, out);
+            out.push_str(r#" aria-invalid="true""#);
+        }
+        if self.invalid || self.hint.is_some() {
+            out.push_str(r#" aria-describedby=""#);
+            if let Some(hint) = self.hint {
+                hint.write_id(out);
+                if self.invalid {
+                    out.push(' ');
+                }
+            }
+            if self.invalid {
+                message_id(self.form, self.field, out);
+            }
             out.push('"');
         }
     }
@@ -632,6 +669,27 @@ mod tests {
         );
         assert!(e.clone().into_result(1).is_err());
         assert_eq!(Errors::new().into_result(1), Ok(1));
+    }
+
+    #[derive(crate::view::Id)]
+    struct HintId<'a>(&'a str);
+
+    #[test]
+    fn a_hint_describes_its_field_ahead_of_the_error() {
+        let mut e = Errors::new();
+        e.add(PRICE, "Enter a price.");
+        let row = e.within(RowId("s1"));
+        let attrs = |aria: Aria<'_, RowId<'_>>| {
+            let mut out = String::new();
+            aria.render_attrs(&mut out);
+            out
+        };
+        assert_eq!(
+            attrs(row.aria(PRICE).hint(&HintId("a<b"))),
+            r#" aria-invalid="true" aria-describedby="hint-a&lt;b row-s1-price-error""#
+        );
+        assert_eq!(attrs(row.aria(NAME).hint(&HintId("n"))), r#" aria-describedby="hint-n""#);
+        assert_eq!(attrs(row.aria(NAME)), "");
     }
 
     #[test]
