@@ -232,6 +232,18 @@ static site (a static site generator is simpler).
 9. **Verified, not assumed.** Every runtime behavior has a browser smoke test. Reliability work,
    like failover and lost-patch counts, is benchmarked rather than argued.
 
+When two values conflict, this order decides:
+
+1. Correctness and reliability.
+2. Performance at the user's end.
+3. Compile-time safety and one way to do things: a mistake the compiler can catch is a compile
+   error, not a startup panic or a per-request check ([design rules](docs/design.md#rules)).
+4. Developer convenience.
+
+So the deadline timer that cost 640 ns per request was reworked rather than kept for
+convenience, and a nicer API that slows every page loses. Every pull request is reviewed against
+these values, in this order, before it merges ([CONTRIBUTING.md](CONTRIBUTING.md#review)).
+
 ## Performance
 
 Measured on one DigitalOcean c-8 droplet (Xeon Platinum 8168) on 2026-10-25, one run (round r5,
@@ -377,8 +389,9 @@ Examples: [watchlist](examples/watchlist) (a stock watchlist with every piece, s
 
 ## Contributing
 
-Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the layout and the
-checks; report security issues as [SECURITY.md](SECURITY.md) describes.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the layout, the
+checks and how a change is reviewed; report security issues as [SECURITY.md](SECURITY.md)
+describes.
 
 ## License
 

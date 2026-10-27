@@ -6,16 +6,9 @@ reason that a smaller change cannot meet.
 
 ## Values
 
-Every change follows the values in `README.md` (Values). When they conflict, this order decides:
-
-1. Correctness and reliability.
-2. Performance at the user's end.
-3. Compile-time safety and one way to do things: a mistake the compiler can catch is a compile
-   error, not a startup panic or a per-request check (`docs/design.md`, Rules).
-4. Developer convenience.
-
-For example, the deadline timer that cost 640 ns per request was reworked, not accepted for
-convenience. And a nicer API that slows every page loses.
+Every change follows the values in `README.md` (Values), and when two conflict, the order given
+there decides; convenience never outranks correctness or the user's speed. A change is reviewed
+against them before it is done (below).
 
 ## Where things go
 
@@ -63,8 +56,16 @@ convenience. And a nicer API that slows every page loses.
    `examples/ui-gallery/smoke.mjs`.
 9. `bench/` is not part of the workspace. Its apps are built only by `bench/fullstack` scripts.
 
-## Checks (all must pass before you report done)
+## Before you report done
 
-Run every command in [CONTRIBUTING.md](CONTRIBUTING.md#checks), each separately, and remove the
-containers afterwards. Update the guide that describes a changed behavior, and add a line to
-`CHANGELOG.md` under Unreleased.
+1. Run every command in [CONTRIBUTING.md](CONTRIBUTING.md#checks), each separately, and remove
+   the containers afterwards. All must pass.
+2. Update the guide that describes a changed behavior, and add a line to `CHANGELOG.md` under
+   Unreleased.
+3. Have the change reviewed as [CONTRIBUTING.md](CONTRIBUTING.md#review) describes: start a new
+   agent that did not write it, and give it the diff, `README.md` (Values), `docs/design.md` and
+   CONTRIBUTING.md (Review), not your reasoning or summary. Fix each finding or say why it
+   stands, and review again after a fix that changes behavior.
+4. Report the checks, the measurements, and each finding with what you did about it, in the
+   pull request description and to whoever asked for the change. A pull request merges only
+   after its review.
