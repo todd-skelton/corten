@@ -21,7 +21,8 @@ your routes. Each default can be replaced in one line.
 | Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file, plus one per area that lists components and one per set of areas that list the same components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
 | Middleware of your own | none | `.middleware((RequestId, RateLimit))`: steps of the app's own, at one place in Corten's order ([below](#your-own-middleware)) |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
-| Shutdown | Ctrl-C and `SIGTERM` end live streams, then the server | |
+| Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)) |
+| Shutdown | Ctrl-C and `SIGTERM` tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
 | Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`) | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
@@ -71,6 +72,37 @@ by `localhost`, is answered as before. The first refused name is logged, so a de
 its name says why it answers 421. An app served under names it cannot list in advance (each
 customer's own domain) says `Policy::any_host()` (`HOSTS=*`) and checks them itself. The check
 compares one header with a short list.
+
+## Tasks
+
+Work that is not a request's (a refresh loop on a timer, a queue consumer, a supervised child
+process, a periodic flush) is a task of the app's, an async function of a `Signal`:
+
+```rust,ignore
+async fn refresh(quotas: Quotas, signal: Signal) {
+    let mut every = tokio::time::interval(Duration::from_secs(120));
+    loop {
+        tokio::select! {
+            _ = every.tick() => quotas.refresh().await, // finishes its journal write
+            _ = signal.aborted() => return,
+        }
+    }
+}
+
+let app = App::new(url::router(quotas.clone())).task("refresh", move |signal| refresh(quotas, signal));
+corten::serve(app).await
+```
+
+`serve` starts the tasks once it listens; `app.router()` starts none, so a test of the app does
+not run them. On Ctrl-C or `SIGTERM` the signal aborts with `Abort::Shutdown` first, then live
+streams end and the listeners close, and `serve` returns once requests in progress and the
+tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 seconds unless set).
+A task still running then is ended and logged by name, so a stuck one cannot hold the process,
+and so is one that panics; whether to restart it is the app's choice.
+
+`/health/ready` does not turn 503 during shutdown: the listeners close when it begins, so a load
+balancer's next check is refused, which it treats the same way. A platform that needs time to
+stop sending first waits before it sends `SIGTERM` (a Kubernetes `preStop` sleep).
 
 ## The request path
 
@@ -203,8 +235,8 @@ boxed: a middleware that only passes the request on costs about 230 instructions
 moves the request into its future), where axum's `from_fn` boxes the rest of the stack again
 for every request (about 700).
 
-A tower layer still goes around the whole app (`corten::serve(app.router().layer(l))`), outside
-every stage, for what must see the raw request first: a cap on body size, a limit per address.
+A tower layer still goes around the whole app (`.layer(l)`), outside every stage, for what must
+see the raw request first: a cap on body size, a limit per address.
 There is no layer for one route: what a route needs is in its handler's arguments (an
 extractor) and its return type.
 

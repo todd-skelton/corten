@@ -33,6 +33,7 @@ use crate::{
     route::{Methods, Route as TypedRoute, Routes},
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
+    task::{Running, Task},
     Mode, Signal,
 };
 
@@ -177,6 +178,9 @@ pub struct App<M = ()> {
     areas: Vec<Placed>,
     deadline: Option<Duration>,
     apis: Vec<(Mount, Router)>,
+    tasks: Vec<Task>,
+    grace: Duration,
+    layers: Vec<Box<dyn FnOnce(Router) -> Router + Send>>,
     middleware: M,
 }
 
@@ -196,6 +200,9 @@ impl App {
             areas: Vec::new(),
             deadline: Some(Duration::from_secs(30)),
             apis: Vec::new(),
+            tasks: Vec::new(),
+            grace: Duration::from_secs(5),
+            layers: Vec::new(),
             middleware: (),
         }
     }
@@ -222,6 +229,9 @@ impl App {
             areas: self.areas,
             deadline: self.deadline,
             apis: self.apis,
+            tasks: self.tasks,
+            grace: self.grace,
+            layers: self.layers,
             middleware,
         }
     }
@@ -373,6 +383,64 @@ impl<M: Middleware> App<M> {
         self
     }
 
+    /// Work that lives as long as the app (a refresh loop, a queue consumer, a supervised child
+    /// process), started by [`serve`] once it listens. Its [`Signal`] aborts with
+    /// [`crate::Abort::Shutdown`] when shutdown begins, and `serve` waits for it to return, up to
+    /// [`App::shutdown_grace`], before it returns itself, so a write in progress is finished
+    /// rather than cut off at exit. A task still running at the bound is ended and logged by
+    /// name, and so is one that panics; restarting a task is the app's choice. [`App::router`]
+    /// starts none, so a test of the app does not run them.
+    ///
+    /// ```no_run
+    /// use corten::{prelude::*, Signal};
+    /// use std::time::Duration;
+    ///
+    /// async fn refresh(signal: Signal) {
+    ///     let mut every = tokio::time::interval(Duration::from_secs(120));
+    ///     loop {
+    ///         tokio::select! {
+    ///             _ = every.tick() => { /* read, then write the journal */ }
+    ///             _ = signal.aborted() => return,
+    ///         }
+    ///     }
+    /// }
+    /// # async fn main_() -> std::io::Result<()> {
+    /// corten::serve(App::new(Routes::new()).task("refresh", refresh)).await
+    /// # }
+    /// ```
+    pub fn task<F, Fut>(mut self, name: &'static str, task: F) -> Self
+    where
+        F: FnOnce(Signal) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.tasks.push(Task { name, start: Box::new(move |signal| Box::pin(task(signal))) });
+        self
+    }
+
+    /// How long [`serve`] waits, once shutdown begins, for the app's [tasks](App::task) to
+    /// return (5 seconds unless set). Keep it under the time the platform waits before it kills
+    /// the process (`docker stop`: 10 seconds; Kubernetes: 30).
+    pub fn shutdown_grace(mut self, grace: Duration) -> Self {
+        self.grace = grace;
+        self
+    }
+
+    /// A tower layer around the whole app, outside every stage of [`crate::middleware`], for what
+    /// must see the raw request first: a cap on body size, a limit per address, a trace span.
+    /// Layers added later go outside earlier ones. A step inside Corten's order (after its
+    /// checks, with the error page around it) is a [`Middleware`] ([`App::middleware`]).
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: tower_layer::Layer<Route> + Clone + Send + Sync + 'static,
+        L::Service: tower_service::Service<Request> + Clone + Send + Sync + 'static,
+        <L::Service as tower_service::Service<Request>>::Response: axum::response::IntoResponse + 'static,
+        <L::Service as tower_service::Service<Request>>::Error: Into<Infallible> + 'static,
+        <L::Service as tower_service::Service<Request>>::Future: Send + 'static,
+    {
+        self.layers.push(Box::new(move |router: Router| router.layer(layer)));
+        self
+    }
+
     /// What `/health/ready` checks (default: always ready).
     pub fn ready<F, Fut>(mut self, ready: F) -> Self
     where
@@ -383,8 +451,9 @@ impl<M: Middleware> App<M> {
         self
     }
 
-    /// The finished router: the app's routes with everything around them. For tests
-    /// (`app.router().oneshot(request)`) and for serving it another way.
+    /// The finished router: the app's routes with everything around them, its
+    /// [layers](App::layer) included. For tests (`app.router().oneshot(request)`) and for serving
+    /// it another way; it starts none of the app's [tasks](App::task).
     pub fn router(self) -> Router {
         let dev = self.dev.unwrap_or_else(|| std::env::var_os("CORTEN_DEV").is_some());
         for area in &self.areas {
@@ -482,7 +551,11 @@ impl<M: Middleware> App<M> {
         for routes in owned {
             router = router.merge(routes);
         }
-        router.merge(routes).layer(Wrap(layer))
+        let mut router = router.merge(routes).layer(Wrap(layer));
+        for wrap in self.layers {
+            router = wrap(router);
+        }
+        router
     }
 }
 
@@ -498,11 +571,12 @@ impl<M: Middleware> From<App<M>> for Router {
 /// however the system resolves `localhost`; `PORT` defaults to 3000. With feature `log`, prints
 /// logs to stderr (`RUST_LOG` style filtering is the app's choice: set its own subscriber first).
 ///
-/// It takes anything that becomes a router, so tower layers of the app's own go around the whole
-/// app, outside Corten's (a request id, a trace span, a limit per address):
-/// `corten::serve(app.router().layer(layer)).await`. A step of the app's own inside Corten's
-/// order is a [`Middleware`] ([`App::middleware`]).
-pub async fn serve(app: impl Into<Router>) -> std::io::Result<()> {
+/// Shutdown, on the first Ctrl-C or `SIGTERM`: the app's [tasks](App::task) are told to stop,
+/// live streams end, the listeners close, requests in progress finish, and `serve` returns once
+/// the tasks have too (or [`App::shutdown_grace`] has passed).
+///
+/// A tower layer of the app's own goes around it with [`App::layer`].
+pub async fn serve<M: Middleware>(app: App<M>) -> std::io::Result<()> {
     #[cfg(feature = "log")]
     let _ = tracing_subscriber::fmt().with_target(false).try_init();
     let host = std::env::var("HOST").ok();
@@ -510,14 +584,38 @@ pub async fn serve(app: impl Into<Router>) -> std::io::Result<()> {
         Ok(port) => port.parse().map_err(|_| std::io::Error::other(format!("PORT is not a port number: {port}")))?,
         Err(_) => 3000,
     };
-    let router = app.into();
     let listeners = bind(host.as_deref(), port).await?;
     let shown = match host.as_deref() {
         None | Some("0.0.0.0" | "::") => "localhost",
         Some(host) => host,
     };
     println!("corten: listening on http://{shown}:{}", listeners[0].local_addr()?.port());
-    serve_on(listeners, router, crate::shutdown_signal()).await
+    run(listeners, app, crate::shutdown_signal()).await
+}
+
+/// Serves `app` on `listeners` with its tasks running until `stop` resolves; then tells the tasks
+/// to stop, lets each listener finish its requests and waits for the tasks, up to the app's
+/// grace from when `stop` resolved.
+pub(crate) async fn run<M: Middleware>(
+    listeners: Vec<tokio::net::TcpListener>,
+    mut app: App<M>,
+    stop: impl Future<Output = ()>,
+) -> std::io::Result<()> {
+    let (tasks, grace) = (std::mem::take(&mut app.tasks), app.grace);
+    // Built first: a startup panic (a misplaced area) starts no task.
+    let router = app.router();
+    let running = Running::start(tasks);
+    let stopped = std::sync::OnceLock::new();
+    let served = serve_on(listeners, router, async {
+        stop.await;
+        let _ = stopped.set(tokio::time::Instant::now());
+        running.stop();
+    })
+    .await;
+    // A listener that failed ends the tasks too, with the same grace.
+    let began = stopped.get().copied().unwrap_or_else(tokio::time::Instant::now);
+    running.finish(began + grace, grace).await;
+    served
 }
 
 /// The listeners for `host`:`port`; without a host, the IPv4 and IPv6 loopback addresses on one

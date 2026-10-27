@@ -47,13 +47,16 @@ use tokio::sync::Notify;
 pub enum Abort {
     /// The whole response was sent (for a stream, its last event). Work started for the request
     /// ends with it, so a spawned task cannot outlive the request by accident; work meant to
-    /// outlive it does not take the signal.
+    /// outlive it is a task of the app's ([`crate::App::task`]), which has a signal of its own.
     Responded,
     /// The client went away before the response was sent: it closed the connection, cancelled the
     /// fetch, or left a stream.
     Disconnected,
     /// The handler ran past the app's deadline ([`crate::App::deadline`]) and the client got 503.
     Deadline,
+    /// The app is shutting down: the reason a task's signal aborts ([`crate::App::task`]); a
+    /// request's never does.
+    Shutdown,
 }
 
 /// Aborts once, when the request's work should stop, and says why ([`Abort`]). Cloning is cheap
@@ -91,6 +94,7 @@ impl Signal {
             1 => Some(Abort::Responded),
             2 => Some(Abort::Disconnected),
             3 => Some(Abort::Deadline),
+            4 => Some(Abort::Shutdown),
             _ => None,
         }
     }

@@ -3,6 +3,7 @@ use crate::cache::Cache;
 use crate::view::{html, Render};
 use axum::{body::Body, extract::Path, http::Request, routing::get, Router};
 use http_body_util::BodyExt;
+use std::time::Duration;
 use tower::ServiceExt;
 
 fn demo(text: &str) -> impl Render + '_ {
@@ -1530,6 +1531,85 @@ async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
     }
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
+}
+
+/// A server for `app` on a free port of `127.0.0.1` until `stop` is sent.
+async fn served<M: crate::Middleware>(
+    app: App<M>,
+) -> (tokio::sync::oneshot::Sender<()>, tokio::task::JoinHandle<std::io::Result<()>>) {
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let server = tokio::spawn(crate::app::run(listeners, app, async {
+        let _ = stopped.await;
+    }));
+    (stop, server)
+}
+
+/// A task of the app's is told when shutdown begins, and `serve` waits for it to finish what it
+/// was writing before it returns.
+#[tokio::test]
+async fn shutdown_tells_the_tasks_and_waits_for_them() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    let written = Arc::new(AtomicBool::new(false));
+    let (reason_tx, reason) = tokio::sync::oneshot::channel();
+    let journal = written.clone();
+    let app = App::new(Routes::new()).task("journal", move |signal: Signal| async move {
+        let why = signal.aborted().await;
+        // The write in progress when the signal came.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        journal.store(true, Ordering::SeqCst);
+        let _ = reason_tx.send(why);
+    });
+    let (stop, server) = served(app).await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!server.is_finished() && !written.load(Ordering::SeqCst));
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+    assert!(written.load(Ordering::SeqCst), "serve returned before the task finished");
+    assert_eq!(reason.await.unwrap(), crate::Abort::Shutdown);
+}
+
+/// A task that ignores the signal is ended at the grace, so it cannot hold the process; one that
+/// panics ends alone, and the app keeps serving.
+#[tokio::test]
+async fn a_task_past_the_grace_is_ended_and_one_that_panics_ends_alone() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    struct Dropped(Arc<AtomicBool>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    let dropped = Arc::new(AtomicBool::new(false));
+    let guard = Dropped(dropped.clone());
+    let routes = Routes::from(Router::new().route("/", get(|| async { "hi" })));
+    let app = App::new(routes)
+        .shutdown_grace(Duration::from_millis(50))
+        .task("stuck", move |_signal: Signal| async move {
+            let _guard = guard;
+            std::future::pending::<()>().await
+        })
+        .task("broken", |_signal: Signal| async move { panic!("the task failed") });
+    let (stop, server) = served(app).await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!server.is_finished(), "a task that panicked took the server with it");
+    let started = std::time::Instant::now();
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), server).await.expect("a stuck task held serve").unwrap().unwrap();
+    assert!(started.elapsed() >= Duration::from_millis(50), "serve did not wait the grace");
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !dropped.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the stuck task was left running");
 }
 
 /// A `[::1]` port another process holds is an error, not a server only `127.0.0.1` reaches:
