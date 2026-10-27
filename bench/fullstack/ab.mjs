@@ -19,7 +19,7 @@ const rows = [];
 for (const round of [1, 2]) {
   for (const image of images) {
     docker("rm", "-f", "ab-app");
-    const run = docker("run", "-d", "--name", "ab-app", "--network", network, "--cpus", "1", "--memory", "1g", "-v", `${join(here, "fixtures")}:/fixtures:ro`, "-e", "ITEM_SOURCE=fixture", "-e", "FIXTURE_PATH=/fixtures/items.json", "-e", "PORT=8080", image);
+    const run = docker("run", "-d", "--name", "ab-app", "--network", network, "--cpus", "1", "--memory", "1g", "-v", `${join(here, "fixtures")}:/fixtures:ro`, "-e", "ITEM_SOURCE=fixture", "-e", "FIXTURE_PATH=/fixtures/items.json", "-e", "PORT=8080", "-e", "HOSTS=ab-app", image);
     if (run.status !== 0) throw new Error(run.stderr);
     await sleep(4000);
     for (const [encName, enc] of Object.entries(encodings)) {

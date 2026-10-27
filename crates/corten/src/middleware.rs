@@ -4,7 +4,9 @@
 //! The order is fixed, outside in, and each stage needs the one before it:
 //!
 //! 1. Compression is negotiated (`Accept-Encoding`); it is applied last.
-//! 2. A write another site sent is refused ([`crate::Failure::CrossSite`]).
+//! 2. A request for a host the app does not answer to gets `421` and nothing else
+//!    ([`crate::security::Policy::host`]); a write another site sent is refused
+//!    ([`crate::Failure::CrossSite`]).
 //! 3. The request gets its [`crate::Signal`], its nonce and the app.
 //! 4. The deadline and the panic catch start ([`crate::Failure::TimedOut`],
 //!    [`crate::Failure::Panicked`]).

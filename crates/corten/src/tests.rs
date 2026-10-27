@@ -192,6 +192,55 @@ fn app(routes: Router, viewer: Option<&'static str>) -> Router {
     App::new(Routes::from(routes)).error_page(test_error_page, ()).middleware(AsViewer(viewer)).router()
 }
 
+/// The status and body of `GET uri` with `Host: host` (none when empty), plus `extra` headers.
+async fn for_host(router: &Router, uri: &str, host: &str, extra: &[(&str, &str)]) -> (StatusCode, String) {
+    let mut req = Request::get(uri);
+    if !host.is_empty() {
+        req = req.header("host", host);
+    }
+    for (name, value) in extra {
+        req = req.header(*name, *value);
+    }
+    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    let status = res.status();
+    (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+}
+
+/// A DNS-rebound page names a host the app is not: every route, in every mode, answers 421 and
+/// runs nothing of the app's, not even its error page.
+#[tokio::test]
+async fn a_request_for_another_host_is_misdirected_in_every_mode() {
+    let routes = Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) }));
+    let router = App::new(Routes::from(routes))
+        .error_page(test_error_page, ())
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods(get(|| async { "rates" }))))
+        .router();
+    let rebound = "rebound.attacker.example:3917";
+    for (uri, extra) in [
+        ("/", &[][..]),
+        ("/", &[("corten", "nav")][..]),
+        ("/", &[("accept", "application/json")][..]),
+        ("/missing", &[("accept", "text/html")][..]),
+        ("/api/rates", &[][..]),
+        ("/health/live", &[][..]),
+    ] {
+        let (status, body) = for_host(&router, uri, rebound, extra).await;
+        assert_eq!((status, body.as_str()), (StatusCode::MISDIRECTED_REQUEST, "Misdirected request."), "{uri} {extra:?}");
+    }
+    for host in ["localhost:3917", "127.0.0.1:3917", "[::1]:3917", ""] {
+        assert_eq!(for_host(&router, "/", host, &[]).await.0, StatusCode::OK, "{host:?}");
+    }
+    let named = App::new(Routes::from(Router::new().route("/", get(|| async { "home" }))))
+        .policy(crate::security::Policy::new().host("shop.example"))
+        .router();
+    assert_eq!(for_host(&named, "/", "shop.example", &[]).await.0, StatusCode::OK);
+    assert_eq!(for_host(&named, "/", "www.shop.example", &[]).await.0, StatusCode::MISDIRECTED_REQUEST);
+    let any = App::new(Routes::from(Router::new().route("/", get(|| async { "home" }))))
+        .policy(crate::security::Policy::new().any_host())
+        .router();
+    assert_eq!(for_host(&any, "/", rebound, &[]).await.0, StatusCode::OK);
+}
+
 #[tokio::test]
 async fn a_live_stream_that_finishes_tells_the_element_to_stop() {
     let router = Router::new()

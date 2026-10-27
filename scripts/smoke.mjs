@@ -53,6 +53,25 @@ const liveEvent = (accept) =>
   check("a gzip-only client gets the stream as it is", plain.coding === undefined && plain.first.includes("event: patch"), String(plain.coding));
 }
 
+// A DNS-rebound page reaches the server under a name the app is not: 421, and nothing of the app.
+{
+  /** @param {string} host @returns {Promise<[number | undefined, string]>} */
+  const get = (host) =>
+    new Promise((resolve, reject) => {
+      const req = http.get(base, { headers: { host } }, (res) => {
+        let text = "";
+        res.on("data", (chunk) => (text += chunk));
+        res.on("end", () => resolve([res.statusCode, text]));
+      });
+      req.on("error", reject);
+    });
+  const port = new URL(base).port;
+  const [rebound, body] = await get(`rebound.attacker.example:${port}`);
+  check("a request for another host (DNS rebinding) is misdirected", rebound === 421 && !body.includes("<html"), `${rebound} ${body.slice(0, 40)}`);
+  const [local] = await get(`localhost:${port}`);
+  check("localhost is answered", local === 200, String(local));
+}
+
 for (engine of names) {
   const browser = await engines[engine].launch({ headless: true });
   try {

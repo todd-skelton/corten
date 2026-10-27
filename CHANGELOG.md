@@ -790,6 +790,14 @@ Corten is pre-1.0, so any minor version may change the API.
     `agent::Tools::route` returns `Methods`, for `Api::route`.
 49. Reading a `Caller` makes the answer private even when its `Cache-Control` was written by
     hand (by a middleware, or on an `HtmlResponse`), not only when it came from `Public`.
+50. **Breaking:** an app answers only requests whose `Host` is `localhost` (or a name under it),
+    an IP address, missing, or a name it lists: `Policy::host("shop.example")` (`.shop.example`
+    for its subdomains too) or `HOSTS=shop.example` where the deploy sets `HOST` and `PORT`. Any
+    other gets `421 Misdirected Request` before routing, with nothing of the app run, so a
+    DNS-rebound page cannot use an app on loopback (or a private network) as its own origin;
+    `Policy::any_host()` (`HOSTS=*`) answers every name. The first refused name is logged. A
+    deployed app behind a domain adds its names; the bench scripts pass their container names
+    ([#113 An app on loopback answers any Host, so a DNS-rebound page can read and write its routes](https://github.com/todd-skelton/corten/issues/113)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

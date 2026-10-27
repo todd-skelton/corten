@@ -458,7 +458,7 @@ impl<M: Middleware> App<M> {
                 shared.sections.push((section.prefixes.clone(), link));
             }
         }
-        let policy = Applied::new(self.policy, &shared.import_map);
+        let policy = Applied::new(hosts_from_env(self.policy), &shared.import_map);
 
         // The routes of the APIs and areas: each is under its prefix, which the compiler checked.
         let mut owned = Vec::with_capacity(self.apis.len() + self.areas.len());
@@ -684,8 +684,17 @@ impl<M: Middleware> Layer<M> {
         res
     }
 
-    /// The security policy around the request: the same-origin check first, the headers last.
+    /// The security policy around the request: the host and same-origin checks first, the
+    /// headers last.
     async fn secure(&self, mut req: Request, route: Route) -> Response {
+        // A request for another name (a DNS-rebound page) runs nothing of the app's: no error
+        // page, no caller lookup.
+        if !self.policy.answers(&req) {
+            let mut res = crate::security::misdirected();
+            self.policy.headers(&mut res, None);
+            res.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
+            return res;
+        }
         let path = req.uri().path();
         let own = self.own.contains(path);
         let mount = if own { None } else { self.mounts.iter().find(|mount| mount.contains(path)) };
@@ -759,6 +768,16 @@ impl<M: Middleware> Layer<M> {
         let personal = watch.0.is_personal();
         (signal::follow(res, watch), personal, mode)
     }
+}
+
+/// `policy` with the names in `HOSTS` (comma separated, as given to [`Policy::host`]; `*` for any
+/// host), which a deploy sets where it sets `HOST` and `PORT`.
+fn hosts_from_env(mut policy: Policy) -> Policy {
+    let Ok(hosts) = std::env::var("HOSTS") else { return policy };
+    for name in hosts.split(',').map(str::trim).filter(|name| !name.is_empty()) {
+        policy = if name == "*" { policy.any_host() } else { policy.host(name) };
+    }
+    policy
 }
 
 fn load_assets(

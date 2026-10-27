@@ -8,6 +8,7 @@ your routes. Each default can be replaced in one line.
 | Concern | Default | Override |
 |---|---|---|
 | Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment, or `app.router()` to serve it yourself |
+| Names it answers to | `localhost`, IP addresses; any other `Host` gets `421` ([below](#host-names)) | `HOSTS=shop.example,.shop.example` in the environment, or `Policy::host("shop.example")` |
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
 | What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
@@ -46,6 +47,30 @@ The layout around `<main>` renders on full page loads only; a client navigation 
 caller its handler read (if any) and the deploy, and when a navigation or a form answer arrives with a different key
 (sign-in, sign-out, a new release), the runtime loads the whole document, so the layout is never
 stale.
+
+## Host names
+
+An app answers a request only when its `Host` is `localhost` (or a name under it, such as
+`app.localhost`), an IP address, missing (HTTP/1.0, a test's `oneshot`), or a name the app lists.
+Any other name gets `421 Misdirected Request` before routing: no handler, middleware, caller
+lookup or error page runs. Otherwise a page on a name someone else controls could point that
+name at this machine (DNS rebinding) and then use every route as its own origin, writes
+included, since the browser treats the rebound page as same-origin. On loopback, where only this
+machine can reach the app, that is the access model it would break, so the check is the default
+rather than a setting to remember.
+
+A deployed app lists the names it is served under, where the deploy sets `HOST` and `PORT`:
+
+```sh
+HOSTS=shop.example,.shop.example   # the domain, and (leading dot) every subdomain
+```
+
+or in code, `App::policy(Policy::new().host("shop.example"))`. Behind a proxy that rewrites
+`Host`, it is the name the proxy sends. A health check that calls the app by an IP address, or
+by `localhost`, is answered as before. The first refused name is logged, so a deploy that forgot
+its name says why it answers 421. An app served under names it cannot list in advance (each
+customer's own domain) says `Policy::any_host()` (`HOSTS=*`) and checks them itself. The check
+compares one header with a short list.
 
 ## The request path
 
