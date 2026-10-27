@@ -949,6 +949,12 @@ Corten is pre-1.0, so any minor version may change the API.
     does not compile (a `compile_fail` doctest): a page's form answers with `req.invalid`.
     Migration: `return Err(Error::status(..))` in a `JsonResult` handler is `Err(Error::status(..))?`
     (or `.into()`); `?` is unchanged.
+57. The runtime no longer carries the code that writes numbers, money and dates for a script
+    (`t.js().money(USD)` and the rest): it is a module of its own, `corten-format`, served with the
+    app's scripts and loaded as a module script by the pages whose handlers take a format.
+    `corten.js` went from 24,514 to 22,834 B (9,102 to 8,380 B gzip, -722 B) on every page; a page
+    that takes a format loads the 2,074 B module (1,054 B gzip) with its handlers' modules
+    ([#159 The item page's JavaScript grew 32% between benchmark rounds r5 and r6 (7.3 to 9.6 KB gzip)](https://github.com/todd-skelton/corten/issues/159)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
