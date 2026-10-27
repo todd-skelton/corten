@@ -174,7 +174,8 @@ const states = new WeakMap();
 
 /**
  * The state a script keeps for `el` (usually a component's root: pass `scope`), made by `init`
- * the first time and kept while the element exists. Handlers are plain functions, so state that
+ * the first time and kept while the element exists. An element has one state: a later call
+ * gets that object whatever its `init`, so keep everything for `el` in one object. Handlers are plain functions, so state that
  * lasts between events lives here (or in the DOM) rather than in the module, which every
  * instance of the component shares.
  * @template T

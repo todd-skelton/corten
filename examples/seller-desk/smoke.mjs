@@ -133,13 +133,25 @@ try {
 
   // Text typed while the form is on its way is kept when the answer lands, with the focus and
   // caret; the server's markup (the error) still applies.
+  // Each price request is held until `release()`; `held` settles once one is held, so a release
+  // never comes before the request it is for.
   let release = () => {};
+  let reached = () => {};
+  /** @type {Promise<void>} */
+  let held = new Promise((resolve) => (reached = resolve));
   await page.route("**/items/*/price", async (route) => {
-    await new Promise((resolve) => (release = () => resolve(undefined)));
+    await new Promise((resolve) => {
+      release = () => {
+        held = new Promise((next) => (reached = next));
+        resolve(undefined);
+      };
+      reached();
+    });
     await route.continue();
   });
   await page.fill(`${cell} input`, "x");
   await page.click(`${cell} button`);
+  await held;
   await page.focus(`${cell} input`);
   await page.keyboard.type("yz");
   await page.keyboard.press("ArrowLeft");
@@ -159,7 +171,7 @@ try {
   await page.click(`${cell} button`);
   const elsewhere = "tbody tr:nth-child(3) td:last-child input";
   await page.focus(elsewhere);
-  await page.waitForTimeout(200);
+  await held;
   const answered = page.waitForResponse("**/items/*/price");
   await page.evaluate((sel) => ((/** @type {any} */ (window)).__oldCell = document.querySelector(sel)), `${cell} input`);
   release();
@@ -193,8 +205,10 @@ try {
   // Live levels: the feed changes some stock cells.
   const levels = () => page.$$eval("tbody tr > td:nth-child(5)", (cells) => cells.map((c) => c.textContent).join());
   const first = await levels();
-  await page.waitForTimeout(1200);
-  check("live levels update stock cells", (await levels()) !== first);
+  const changed = await page
+    .waitForFunction((was) => [...document.querySelectorAll("tbody tr > td:nth-child(5)")].map((c) => c.textContent).join() !== was, first, { timeout: 10_000 })
+    .then(() => true, () => false);
+  check("live levels update stock cells", changed);
 
   // Memory with the page settled.
   const heap = await page.evaluate(() => {

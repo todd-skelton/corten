@@ -20,11 +20,18 @@ import { InventoryRow, rows } from "corten/views";
  * @property {HTMLDivElement} bar
  */
 
-/** @param {HTMLElement} root */
-const last = (root) => state(root, () => ({ index: -1 }));
+/**
+ * What the grid keeps between events: the last clicked row, for shift-click ranges, and the rows
+ * whose price was typed and not saved. One object, since an element has one state.
+ * @param {HTMLElement} root
+ */
+const kept = (root) => state(root, () => ({ index: -1, unsent: /** @type {Set<HTMLTableRowElement>} */ (new Set()) }));
 
-/** The rows whose price was typed and not saved. @param {HTMLElement} root */
-const unsentRows = (root) => state(root, () => /** @type {Set<HTMLTableRowElement>} */ (new Set()));
+/** @param {HTMLElement} root */
+const last = (root) => kept(root);
+
+/** @param {HTMLElement} root */
+const unsentRows = (root) => kept(root).unsent;
 
 /**
  * Keeps the stock cells current from the levels feed until the grid leaves the page.
