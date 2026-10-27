@@ -79,17 +79,17 @@ pub fn card() -> impl ClassList {
 Unlike Tailwind's class strings, a utility the file lacks, a value outside its scale or a
 breakpoint it does not define does not compile, and there is no build step or content scan: the
 token file generates every class it allows, so the stylesheet holds them all whether a page uses
-them or not. Measured on the watchlist: its `components.css` (the tokens' utilities and its three
-component stylesheets) is 14,729 bytes, 1,823 brotli at level 11, against 1,063 brotli for the
+them or not. Measured on the watchlist: its `components.css` (the tokens' utilities and the price
+table's stylesheet) is 16,212 bytes, 2,037 brotli at level 11, against 1,063 brotli for the
 card market's tokens and five components; a scale of eight spaces in four breakpoints is 32 classes
 per utility, so a utility belongs in the file only when pages use it.
 
 Utilities also cost at render time, where a component's classes do not: `class={Card}` is
 static text written when the crate compiles, while `gap(Space::_3)` is a value written as the
 page renders. Measured with callgrind (release build, in-process `oneshot`, the difference between
-1,200 and 200 requests over 1,000, median of three runs), the watchlist's home page costs 51,201
-instructions a request against 45,952 for the plainer page it replaced; a profile puts 3,086 of
-the difference in writing its roughly 60 utility classes and the rest in the larger page. Use
+1,200 and 200 requests over 1,000, median of three runs), moving the watchlist's home page to
+utilities took it from 45,952 instructions a request to 51,201, with a larger page; a profile put
+3,086 of the difference in writing its roughly 60 utility classes. Use
 utilities for layout that varies from page to page, and a component's stylesheet for what repeats.
  States a utility cannot
 say (hover, focus, the current link) and element defaults stay in `static/style.css`, and a

@@ -1121,6 +1121,18 @@ Corten is pre-1.0, so any minor version may change the API.
     The watchlist is styled utility-first from its token file's utilities (`display`, `gap`,
     `p`, `bg`, `columns`, ...), with the repeated combinations named in `src/theme.rs`, and the
     styles guide compares that with Tailwind.
+16. `examples/watchlist` is a watchlist you use, not a tour of the framework. You watch and
+    unwatch stocks from a market of eight, kept in a cookie, and the list and the form are
+    patched in place. Each row shows today's change, from the server (`t.percent`) and from the
+    script (`t.js().percent(2)`). The market moves from a task of the app's
+    (`App::task`, which stops at shutdown) rather than `tokio::spawn`. The About page is now
+    News: a sector filter whose sectors are `#[derive(UrlValue)]` in the address, an "only
+    stocks I watch" filter, Load more, a briefing signup that sends the browser back to its form
+    (`route.at(Id)`), and stories that link to a place on the publisher's page
+    (`Elsewhere::at`). The saved page is now Alerts, a price alert answered while its read
+    catches up (`ReadAgain`), and the avatar upload has a form on the Account page, with sign
+    out. The smoke test follows the new pages and checks that a list a patch replaces subscribes
+    to its feed again and closes the old stream.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

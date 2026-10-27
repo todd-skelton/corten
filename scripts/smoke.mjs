@@ -150,17 +150,17 @@ async function run(browser) {
           return done();
         };
         (/** @type {any} */ (window)).__marker = 1;
-        /** @type {HTMLAnchorElement} */ (document.querySelector('header a[href="/about"]')).click();
-        const about = await until(() => document.title === "About | Corten");
-        const note = document.querySelector(".about-note__note");
+        /** @type {HTMLAnchorElement} */ (document.querySelector('header a[href="/news"]')).click();
+        const news = await until(() => document.title === "News | Corten");
+        const note = document.querySelector(".disclaimer__note");
         const border = note ? getComputedStyle(note).borderInlineStartWidth : "";
         history.back();
         const back = await until(() => document.title === "Watchlist | Corten");
-        return { about, border, back, kept: (/** @type {any} */ (window)).__marker === 1, path: location.pathname };
+        return { news, border, back, kept: (/** @type {any} */ (window)).__marker === 1, path: location.pathname };
       });
       check(
         "WebKit swaps a page in with its section stylesheet loaded, and back restores the last one",
-        seen.about && seen.border === "4px" && seen.back && seen.kept && seen.path === "/",
+        seen.news && seen.border === "4px" && seen.back && seen.kept && seen.path === "/",
         JSON.stringify(seen),
       );
     }
@@ -190,7 +190,7 @@ async function run(browser) {
   const counted = await page.textContent(`${live} [data-ref="updates"]`);
   check("a script fills in a message of the page's locale", /^Price updates: [1-9]\d*$/.test(counted ?? ""), String(counted));
 
-  // A handler with per-component state: on:click={js::pause(scope, target, price)}.
+  // A handler with per-component state: on:click={js::pause(scope, target, price, change)}.
   check("the script reveals its controls", await page.isVisible(`${live} button`));
   await page.click(`${live} button`);
   const paused = await prices();
@@ -203,9 +203,11 @@ async function run(browser) {
   // The page's prices by stock id, written by the script with the page's money format
   // (t.js().money(USD)), and the feed's, which the server wrote.
   const shown = () => page.$$eval('[data-ref="price"]', (cells) => JSON.stringify(cells.map((c) => [c.getAttribute("data-key"), c.textContent]).sort()));
+  // The feed has the whole market; the page, the stocks on the list.
   const latest = async () => {
+    const ids = await page.$$eval('[data-ref="price"]', (cells) => cells.map((c) => c.getAttribute("data-key")));
     const snap = await (await fetch(`${base}/feed/stocks`, { headers: { accept: "application/json" } })).json();
-    return JSON.stringify(snap.rows.map((/** @type {{ id: string, price: string }} */ r) => [r.id, r.price]).sort());
+    return JSON.stringify(snap.rows.filter((/** @type {{ id: string }} */ r) => ids.includes(r.id)).map((/** @type {{ id: string, price: string }} */ r) => [r.id, r.price]).sort());
   };
   let resumed = false;
   for (let i = 0; i < 20 && !resumed; i += 1) {
@@ -219,14 +221,14 @@ async function run(browser) {
   await page.click(`${live} button`);
   await page.evaluate((live) => {
     const body = /** @type {HTMLTableSectionElement} */ (document.querySelector(`${live} tbody`));
-    const old = /** @type {HTMLElement} */ (body.querySelector('[data-ref="price"][data-key="s1"]'));
+    const old = /** @type {HTMLElement} */ (body.querySelector('[data-ref="price"][data-key="ACME"]'));
     old.removeAttribute("data-ref");
     old.id = "old-s1";
     const rows = document.createDocumentFragment();
     for (let i = 0; i < 20; i += 1) {
       const tr = document.createElement("tr");
       tr.className = "wide";
-      tr.innerHTML = i < 19 ? '<td data-ref="note">n</td>' : '<td data-ref="price" data-key="s1" id="new-s1">-</td>';
+      tr.innerHTML = i < 19 ? '<td data-ref="note">n</td>' : '<td data-ref="price" data-key="ACME" id="new-s1">-</td>';
       rows.append(tr);
     }
     body.append(rows);
@@ -243,11 +245,22 @@ async function run(browser) {
 
   // A marker on window survives client navigations and patches, and disappears on a full load.
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
-  await page.selectOption("select[name=id]", "s2");
-  await page.click("main form[data-patch] button");
-  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Globex"));
+  await page.selectOption("select[name=id]", "HLTH");
+  await page.click("#watch-form button");
+  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Halcyon Health"));
   check("form patch replaces the message by id", true);
+  check("watching a stock adds its row, and the form no longer offers it", (await page.$('[data-ref="price"][data-key="HLTH"]')) !== null && (await page.$('select[name=id] option[value="HLTH"]')) === null);
+  await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
+  check("the list a patch put in subscribes again, and the one it replaced closes its stream", (await openFeeds()) === 1, String(await openFeeds()));
   check("form patch keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
+  // A row's own form takes the stock off the list.
+  await page.click('form[action="/unwatch"]:has(input[value="HLTH"]) button');
+  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent === "Stopped watching Halcyon Health.", null, { timeout: 4000 }).catch(() => {});
+  check(
+    "unwatching a stock takes its row away and offers it again",
+    (await page.$('[data-ref="price"][data-key="HLTH"]')) === null && (await page.$('select[name=id] option[value="HLTH"]')) !== null,
+    String(await page.textContent("#watch-message")),
+  );
 
   // <corten-live src>: the server streams fragments and the runtime swaps them in by id.
   const firstTrade = await page.textContent("#last-trade");
@@ -260,11 +273,11 @@ async function run(browser) {
   );
   failWatch = true;
   const messageBefore = await page.textContent("#watch-message");
-  await page.click("main form[data-patch] button");
+  await page.click("#watch-form button");
   check("a submit the network fails dispatches corten:error with status 0", (await failed) === 0);
   check(
     "a failed submit leaves the page and the form as they were",
-    (await page.textContent("#watch-message")) === messageBefore && (await page.getAttribute("main form[data-patch]", "aria-busy")) === null,
+    (await page.textContent("#watch-message")) === messageBefore && (await page.getAttribute("#watch-form", "aria-busy")) === null,
   );
 
   // A submit key (SubmitKey::field) is sent again until the submission has an answer, then renewed
@@ -273,7 +286,7 @@ async function run(browser) {
   await page.evaluate((zero) =>
     document.querySelector("main")?.insertAdjacentHTML(
       "beforeend",
-      `<form id="keyed" method="post" action="/watch" data-patch><input type="hidden" name="id" value="s1"><input type="hidden" name="submit" data-submit value="${zero}"><button>Watch</button></form>`,
+      `<form id="keyed" method="post" action="/watch" data-patch><input type="hidden" name="id" value="ACME"><input type="hidden" name="submit" data-submit value="${zero}"><button>Watch</button></form>`,
     ), zero);
   /** @type {(string | null)[]} */
   const keys = [];
@@ -300,7 +313,7 @@ async function run(browser) {
   await page.evaluate(() =>
     document.querySelector("main")?.insertAdjacentHTML(
       "beforeend",
-      '<form id="via-button" method="get" action="/nowhere" data-patch><input type="hidden" name="id" value="s1"><button formmethod="post" formaction="/watch">Watch</button></form>',
+      '<form id="via-button" method="get" action="/nowhere" data-patch><input type="hidden" name="id" value="ACME"><button formmethod="post" formaction="/watch">Watch</button></form>',
     ),
   );
   await page.click("#via-button button");
@@ -312,11 +325,13 @@ async function run(browser) {
   await page.evaluate(() =>
     document.querySelector("main")?.insertAdjacentHTML(
       "beforeend",
-      '<form id="shadowed" method="post" action="/watch" data-patch><input type="hidden" name="id" value="s2"><input type="hidden" name="method" value="x"><input type="hidden" name="enctype" value="x"><input type="hidden" name="elements" value="x"><input type="hidden" name="setAttribute" value="x"><button name="action" value="go">Watch</button></form>',
+      '<form id="shadowed" method="post" action="/watch" data-patch><input type="hidden" name="id" value="GLBX"><input type="hidden" name="method" value="x"><input type="hidden" name="enctype" value="x"><input type="hidden" name="elements" value="x"><input type="hidden" name="setAttribute" value="x"><button name="action" value="go">Watch</button></form>',
     ),
   );
   const shadowedPosts = /** @type {string[]} */ ([]);
-  const onShadowed = (/** @type {import("@playwright/test").Request} */ r) => r.resourceType() === "fetch" && shadowedPosts.push(`${r.method()} ${new URL(r.url()).pathname}`);
+  // The answer's list subscribes to its feed again (`GET /feed/stocks`), which is not the post.
+  const onShadowed = (/** @type {import("@playwright/test").Request} */ r) =>
+    r.resourceType() === "fetch" && !new URL(r.url()).pathname.startsWith("/feed/") && shadowedPosts.push(`${r.method()} ${new URL(r.url()).pathname}`);
   page.on("request", onShadowed);
   await page.click("#shadowed button");
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Globex"), null, { timeout: 4000 }).catch(() => {});
@@ -330,47 +345,47 @@ async function run(browser) {
 
   // The latest submit wins: a slow earlier reply never overwrites a later one.
   delayWatch = 1200;
-  await page.selectOption("select[name=id]", "s1");
-  await page.click("main form[data-patch] button");
-  await page.selectOption("select[name=id]", "s3");
-  await page.click("main form[data-patch] button");
-  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Initech"));
+  await page.selectOption("select[name=id]", "PNTR");
+  await page.click("#watch-form button");
+  await page.selectOption("select[name=id]", "VTGO");
+  await page.click("#watch-form button");
+  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Vertigo Robotics"));
   await page.waitForTimeout(1600);
   check(
     "a newer submit replaces a pending one",
-    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Initech") && abandoned.length === 1,
+    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Vertigo Robotics") && abandoned.length === 1,
     `${await page.textContent("#watch-message")}; abandoned: ${abandoned.join()}`,
   );
-  check("the form is not left busy", (await page.getAttribute("main form[data-patch]", "aria-busy")) === null);
+  check("the form is not left busy", (await page.getAttribute("#watch-form", "aria-busy")) === null);
 
   const current = () => page.$$eval("a[data-nav][aria-current=page]", (links) => links.map((l) => l.getAttribute("href")).join());
   check("the shell marks the current link", (await current()) === "/");
   check("one feed stream while the component is on the page", (await openFeeds()) === 1);
-  // The about page's note is in an area (Area::components): its stylesheet loads before the page is
+  // The news page's disclaimer is in an area (Area::components): its stylesheet loads before the page is
   // swapped in, so the note is styled the moment it joins the page.
   await page.evaluate(() => {
     new MutationObserver((_, observer) => {
-      const note = document.querySelector(".about-note__note");
+      const note = document.querySelector(".disclaimer__note");
       if (!note) return;
       (/** @type {any} */ (window)).__noteBorder = getComputedStyle(note).borderInlineStartWidth;
       observer.disconnect();
     }).observe(document.body, { childList: true, subtree: true });
   });
-  const noteBorder = () => page.$eval(".about-note__note", (note) => getComputedStyle(note).borderInlineStartWidth);
+  const noteBorder = () => page.$eval(".disclaimer__note", (note) => getComputedStyle(note).borderInlineStartWidth);
   const styleLinks = () => page.$$eval("link[data-corten-style]", (links) => links.length);
   check("a page outside the section does not link its stylesheet", (await styleLinks()) === 0);
   // A navigation abandons a pending submit, whose reply was for the page being left.
   delayWatch = 1200;
-  await page.click("main form[data-patch] button");
-  await page.click('header a[href="/about"]');
-  await page.waitForFunction(() => document.title === "About | Corten");
+  await page.click("#watch-form button");
+  await page.click('header a[href="/news"]');
+  await page.waitForFunction(() => document.title === "News | Corten");
   await page.waitForTimeout(1600);
   check("navigating away abandons a pending submit", abandoned.length === 2, abandoned.join());
   check("the feed stream closes when its component leaves the page (its signal aborts)", (await openFeeds()) === 0);
   check("the <corten-live> stream closes when it leaves the page", (await openStreams("/live/trades")) === 0);
-  check("client navigation moves aria-current in the shell", (await current()) === "/about");
+  check("client navigation moves aria-current in the shell", (await current()) === "/news");
   check("main is not left busy", (await page.getAttribute("main", "aria-busy")) === null);
-  check("client navigation swaps <main>", (await page.textContent("main h1")) === "About");
+  check("client navigation swaps <main>", (await page.textContent("main h1")) === "Market news");
   if (swaps) {
     const border = await page.evaluate(() => (/** @type {any} */ (window)).__noteBorder);
     check("a section's stylesheet loads before its page is swapped in", border === "4px", border);
@@ -379,7 +394,7 @@ async function run(browser) {
   }
   if (swaps) check("client navigation keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
   else check("without the Navigation API a link loads the whole page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
-  check("navigation updates the URL", new URL(page.url()).pathname === "/about");
+  check("navigation updates the URL", new URL(page.url()).pathname === "/news");
   // A filter applied on change (data-keep-place): the page changes under the user, who stays
   // where they were, on the box they checked.
   if (swaps) {
@@ -388,11 +403,11 @@ async function run(browser) {
     await page.setViewportSize({ width: 360, height: 160 });
     // The user opens both groups of the filter rail (which scrolls on its own), scrolls to the
     // box and checks it. The server draws a group open only when its box is checked.
-    const rail = ".about-filter__rail";
+    const rail = ".news-filter__rail";
     const groups = () => page.$$eval(`${rail} details`, (all) => all.map((d) => /** @type {HTMLDetailsElement} */ (d).open).join());
     await page.evaluate((rail) => {
       for (const group of Array.from(document.querySelectorAll(`${rail} details`))) /** @type {HTMLDetailsElement} */ (group).open = true;
-      const box = /** @type {HTMLInputElement} */ (document.querySelector("main input[name=history]"));
+      const box = /** @type {HTMLInputElement} */ (document.querySelector("main input[name=mine]"));
       box.scrollIntoView({ block: "end" });
       box.focus();
     }, rail);
@@ -400,7 +415,7 @@ async function run(browser) {
     const before = await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(scrollY)))));
     const railBefore = await page.$eval(rail, (r) => r.scrollTop);
     await page.keyboard.press("Space");
-    await page.waitForFunction(() => location.search === "?history=on" && document.querySelectorAll("#history li").length === 2);
+    await page.waitForFunction(() => location.search === "?mine=on" && document.getElementById("stories-title")?.textContent === "Stories about your stocks");
     const after = await page.evaluate(() => ({
       y: scrollY,
       focused: document.activeElement?.getAttribute("name"),
@@ -412,32 +427,37 @@ async function run(browser) {
     check("a group the user opened stays open though the server drew it closed", (await groups()) === "true,true", await groups());
     check("a data-keep-place form swaps the page in place", after.marker === 1, JSON.stringify(after));
     check("it keeps the scroll position", before > 0 && after.y === before, `${before} -> ${after.y}`);
-    check("focus stays on the control the user changed", after.focused === "history" && after.checked, JSON.stringify(after));
-    await page.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("main input[name=history]")).focus());
+    check("focus stays on the control the user changed", after.focused === "mine" && after.checked, JSON.stringify(after));
+    await page.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("main input[name=mine]")).focus());
     await page.keyboard.press("Space");
     await page.waitForFunction(() => location.search === "");
-    check("unchecking applies again, focus still on it", await page.evaluate(() => document.activeElement?.getAttribute("name") === "history" && scrollY > 0));
+    check("unchecking applies again, focus still on it", await page.evaluate(() => document.activeElement?.getAttribute("name") === "mine" && scrollY > 0));
     check("the group of the box unchecked stays open, so focus is not lost to the body", (await groups()) === "true,true", await groups());
     // Clicked from the page, so Playwright does not scroll to the link first.
-    await page.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`header a[href="/about"]`)).click());
-    await page.waitForFunction(() => location.search === "" && location.href.endsWith("/about") && scrollY === 0, null, { timeout: 5000 }).catch(() => {});
+    await page.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`header a[href="/news"]`)).click());
+    await page.waitForFunction(() => location.search === "" && location.href.endsWith("/news") && scrollY === 0, null, { timeout: 5000 }).catch(() => {});
     check("a plain link still goes to the top", await page.evaluate(() => scrollY === 0));
-    // A write that sends the browser back to a place on the page (`About.at(ThanksId)`, below the
-    // fold): the address keeps `#thanks`, the page is fetched again and the form is in view. A
-    // second time, when only the `#id` matches the address, the page is still fetched again.
+    // A write that sends the browser back to a place on the page (`News { .. }.at(BriefingId)`,
+    // below the fold): the address keeps `#briefing`, the page is fetched again and the form is in
+    // view. A second time, when only the `#id` matches the address, the page is still fetched again.
     {
       let loads = 0;
-      const onAbout = (/** @type {import("@playwright/test").Request} */ r) => r.method() === "GET" && new URL(r.url()).pathname === "/about" && loads++;
-      page.on("request", onAbout);
+      const onNews = (/** @type {import("@playwright/test").Request} */ r) => r.method() === "GET" && new URL(r.url()).pathname === "/news" && loads++;
+      page.on("request", onNews);
       const back = () =>
         page
           .waitForFunction(() => {
-            const form = document.getElementById("thanks");
+            const form = document.getElementById("briefing");
             const top = form?.getBoundingClientRect().top ?? -1;
-            return location.hash === "#thanks" && !document.querySelector("main[aria-busy]") && scrollY > 0 && top >= 0 && top < innerHeight;
+            // Layout in fractions of a pixel can leave the top a fraction above the scroll position.
+            return location.hash === "#briefing" && !document.querySelector("main[aria-busy]") && scrollY > 0 && top > -1 && top < innerHeight;
           }, null, { timeout: 5000 })
           .then(() => true, () => false);
-      const thank = () => page.evaluate(() => /** @type {HTMLButtonElement} */ (document.querySelector("#thanks button")).click());
+      const thank = () =>
+        page.evaluate(() => {
+          /** @type {HTMLInputElement} */ (document.querySelector("#briefing [name=email]")).value = "ada@example.com";
+          /** @type {HTMLButtonElement} */ (document.querySelector("#briefing button")).click();
+        });
       await thank();
       const first = await back();
       check("a redirect to a place keeps its #id and scrolls to it", first && loads === 1, `${await page.evaluate(() => [location.href, scrollY])} loads ${loads}`);
@@ -446,11 +466,11 @@ async function run(browser) {
       const second = await back();
       check("the same place again fetches the page again", second && loads === 2, `loads ${loads}`);
       check("both kept the document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
-      page.off("request", onAbout);
+      page.off("request", onNews);
     }
     if (size) await page.setViewportSize(size);
     // Back over the four entries this added (checked, unchecked, the link, the place) to the
-    // about page the watchlist led to.
+    // news page the watchlist led to.
     await page.evaluate(() => history.go(-4));
     await page.waitForFunction((key) => navigation.currentEntry.key === key && !document.querySelector("main[aria-busy]"), entry);
   } else {
@@ -468,18 +488,18 @@ async function run(browser) {
   // all the same. In a page of its own, so this page's history stays as it is.
   if (swaps) {
     const quick = await browser.newPage({ viewport: { width: 360, height: 160 } });
-    await quick.goto(`${base}/about`);
+    await quick.goto(`${base}/news`);
     const top = await quick.evaluate(() => {
-      const rail = /** @type {Element} */ (document.querySelector(".about-filter__rail"));
+      const rail = /** @type {Element} */ (document.querySelector(".news-filter__rail"));
       for (const group of Array.from(rail.querySelectorAll("details"))) /** @type {HTMLDetailsElement} */ (group).open = true;
-      const box = /** @type {HTMLInputElement} */ (document.querySelector("main input[name=history]"));
+      const box = /** @type {HTMLInputElement} */ (document.querySelector("main input[name=mine]"));
       box.scrollIntoView({ block: "end" });
       box.focus();
       box.click();
       return rail.scrollTop;
     });
-    await quick.waitForFunction(() => location.search === "?history=on" && document.querySelectorAll("#history li").length === 2);
-    const after = await quick.$eval(".about-filter__rail", (r) => r.scrollTop);
+    await quick.waitForFunction(() => location.search === "?mine=on" && document.getElementById("stories-title")?.textContent === "Stories about your stocks");
+    const after = await quick.$eval(".news-filter__rail", (r) => r.scrollTop);
     check("the rail keeps a scroll made in the same frame as the change", top > 0 && after === top, `${top} -> ${after}`);
     await quick.close();
   } else skip("the rail keeps a scroll made in the same frame as the change", noSwaps);
@@ -489,41 +509,48 @@ async function run(browser) {
     const more = await browser.newPage();
     const moreNavs = [];
     more.on("request", (request) => request.headers()["corten"] === "nav" && moreNavs.push(request.url()));
-    await more.goto(`${base}/about?history=on`);
-    await more.waitForFunction(() => document.querySelectorAll("#history li").length === 2);
-    await more.evaluate(() => ((/** @type {any} */ (document.querySelector("#history li"))).__kept = true));
+    await more.goto(`${base}/news`);
+    await more.waitForFunction(() => document.querySelectorAll("#stories > li").length === 3);
+    await more.evaluate(() => ((/** @type {any} */ (document.querySelector("#stories > li"))).__kept = true));
     await more.click("#load-more button");
-    await more.waitForFunction(() => document.querySelectorAll("#history li").length === 4);
+    await more.waitForFunction(() => document.querySelectorAll("#stories > li").length === 6);
     const grown = await more.evaluate(() => ({
-      rows: Array.from(document.querySelectorAll("#history li"), (li) => li.textContent).join("|"),
-      kept: (/** @type {any} */ (document.querySelector("#history li"))).__kept === true,
+      rows: Array.from(document.querySelectorAll("#stories h3"), (h) => h.textContent).join("|"),
+      kept: (/** @type {any} */ (document.querySelector("#stories > li"))).__kept === true,
       search: location.search,
     }));
-    check("Load more appends the next rows in order", grown.rows === "Corten began as a watchlist.|Then came forms.|Then live prices.|Then areas.", grown.rows);
+    check(
+      "Load more appends the next rows in order",
+      grown.rows ===
+        "Acme Corp raises its full-year outlook|Globex wins approval for its northern pipeline|Initech moves its reporting software to subscriptions|Halcyon Health's flu vaccine enters its final trial|Pantry & Co recalls one batch of cereal over a labeling error|Vertigo Robotics signs a warehouse automation deal",
+      grown.rows,
+    );
     check("the rows the page had are the same elements", grown.kept);
-    check("Load more is a patch, not a navigation", moreNavs.length === 0 && grown.search === "?history=on", `${moreNavs.length} nav(s), ${grown.search}`);
+    check("Load more is a patch, not a navigation", moreNavs.length === 0 && grown.search === "", `${moreNavs.length} nav(s), ${grown.search}`);
     await more.click("#load-more button");
-    await more.waitForFunction(() => document.querySelectorAll("#history li").length === 6);
+    await more.waitForFunction(() => document.querySelectorAll("#stories > li").length === 9);
     check("the last page hides the button", await more.locator("#load-more button").isHidden());
     await more.close();
   }
-  // A link to a route that redirects to another site (`/about/source`): the runtime's fetch cannot
-  // follow it (connect-src, CORS), so the server names the address and the browser goes there, in
-  // one request to the app and without a console error, the hover's prefetch included.
+  // A story's link, a route that redirects to a place on another site (`/news/{id}/read`,
+  // `Elsewhere::at`): the runtime's fetch cannot follow it (connect-src, CORS), so the server names
+  // the address and the browser goes there, in one request to the app and without a console error,
+  // the hover's prefetch included.
   {
     const away = await browser.newPage();
     const awayErrors = [];
     away.on("console", (m) => m.type() === "error" && awayErrors.push(m.text()));
-    await away.route("https://github.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Elsewhere</title>" }));
+    await away.route("https://news.example.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Elsewhere</title>" }));
     let asked = 0;
-    away.on("request", (r) => new URL(r.url()).pathname === "/about/source" && asked++);
-    await away.goto(`${base}/about`);
-    await away.hover(`main a[href="/about/source"]`);
+    away.on("request", (r) => new URL(r.url()).pathname === "/news/acme-outlook/read" && asked++);
+    await away.goto(`${base}/news`);
+    await away.hover(`main a[href="/news/acme-outlook/read"]`);
     await away.waitForTimeout(300);
     // The browser's request to the other site is what matters, not that site's load (WebKit does
     // not always hand a redirected navigation to the route above), so the click does not wait.
-    const left = away.waitForRequest((r) => r.url() === "https://github.com/todd-skelton/corten", { timeout: 5000 }).then(() => true, () => false);
-    await away.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`main a[href="/about/source"]`)).click());
+    // The request leaves out the place (`#guidance`), which only the browser's address keeps.
+    const left = away.waitForRequest((r) => r.url() === "https://news.example.com/markets/acme-outlook", { timeout: 5000 }).then(() => true, () => false);
+    await away.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`main a[href="/news/acme-outlook/read"]`)).click());
     const arrived = await left;
     check("a redirect to another site leaves the app in one request", arrived && asked === 1, `left ${arrived} requests ${asked}`);
     check("without a console error", awayErrors.length === 0, awayErrors.join(" | "));
@@ -537,7 +564,7 @@ async function run(browser) {
   if (swaps) {
     check("a section's stylesheet stays when the page leaves the section", (await styleLinks()) === 1);
     await page.goForward();
-    await page.waitForFunction(() => document.title === "About | Corten");
+    await page.waitForFunction(() => document.title === "News | Corten");
     check("coming back into the section does not link its stylesheet twice", (await styleLinks()) === 1 && (await noteBorder()) === "4px");
     await page.goBack();
     await page.waitForFunction(() => document.title === "Watchlist | Corten");
@@ -552,7 +579,7 @@ async function run(browser) {
 
   // /account is guarded (Area::guard): signed out, a navigation there follows the redirect to the
   // watchlist, where the sign-in button is.
-  await page.goto(`${base}/about`);
+  await page.goto(`${base}/news`);
   await page.click('header a[href="/account"]');
   await page.waitForFunction(() => document.title === "Watchlist | Corten", null, { timeout: 5000 }).catch(() => {});
   check(
@@ -576,8 +603,8 @@ async function run(browser) {
     skip("a guarded page opens for someone signed in", "the browser does not send Secure cookies over http");
   }
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 3));
-  await page.click('header a[href="/about"]');
-  await page.waitForFunction(() => document.title === "About | Corten");
+  await page.click('header a[href="/news"]');
+  await page.waitForFunction(() => document.title === "News | Corten");
   if (swaps) check("same context: navigation swaps again", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 3));
   else skip("same context: navigation swaps again", noSwaps);
 
@@ -823,8 +850,8 @@ async function run(browser) {
     await page.evaluate(() => document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>'));
     await page.click('header a[href="/"]:not(#section-link)');
     await page.waitForFunction(() => document.title === "Watchlist | Corten");
-    await page.click('header a[href="/about"]');
-    await page.waitForFunction(() => document.title === "About | Corten");
+    await page.click('header a[href="/news"]');
+    await page.waitForFunction(() => document.title === "News | Corten");
     check(
       'data-nav="section" marks the link on pages under it',
       (await page.getAttribute("#section-link", "aria-current")) === "page" && (await page.getAttribute('header a[href="/"]:not(#section-link)', "aria-current")) === null,
@@ -846,17 +873,17 @@ async function run(browser) {
     // reuses its prefetch and following the oldest fetches it again. The links sit in the shell,
     // which navigation keeps.
     await page.evaluate(() =>
-      document.querySelector("header nav")?.insertAdjacentHTML("beforeend", Array.from({ length: 9 }, (_, i) => `<a class="hovered" href="/about?p=${i}">${i}</a>`).join(" ")),
+      document.querySelector("header nav")?.insertAdjacentHTML("beforeend", Array.from({ length: 9 }, (_, i) => `<a class="hovered" href="/news?p=${i}">${i}</a>`).join(" ")),
     );
     for (let i = 0; i < 9; i += 1) {
-      await page.hover(`header a.hovered[href="/about?p=${i}"]`);
+      await page.hover(`header a.hovered[href="/news?p=${i}"]`);
       await page.waitForTimeout(150);
     }
     const hoveredCount = navRequests.length;
-    await page.click('header a.hovered[href="/about?p=8"]');
+    await page.click('header a.hovered[href="/news?p=8"]');
     await page.waitForFunction(() => location.search === "?p=8");
     const afterNewest = navRequests.length;
-    await page.click('header a.hovered[href="/about?p=0"]');
+    await page.click('header a.hovered[href="/news?p=0"]');
     await page.waitForFunction(() => location.search === "?p=0");
     // The address changes when the navigation starts, before the runtime sends its request.
     for (let waited = 0; navRequests.length < 11 && waited < 2000; waited += 50) await page.waitForTimeout(50);
@@ -878,8 +905,8 @@ async function run(browser) {
     });
     const logged = errors.length;
     await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 5));
-    await page.click('header a[href="/about"]');
-    await page.waitForFunction(() => document.title === "About | Corten" && document.readyState === "complete");
+    await page.click('header a[href="/news"]');
+    await page.waitForFunction(() => document.title === "News | Corten" && document.readyState === "complete");
     check(
       "a section stylesheet that fails to load makes the page load in full",
       !failStyle && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined)) && (await noteBorder()) === "4px",
@@ -904,7 +931,7 @@ async function run(browser) {
   /** @type {string[]} */
   const savingRequests = [];
   saving.on("request", (request) => request.headers()["corten"] === "nav" && savingRequests.push(request.url()));
-  await saving.goto(`${base}/about`);
+  await saving.goto(`${base}/news`);
   await saving.hover('header a[href="/"]');
   await saving.waitForTimeout(300);
   check("data saver: hovering a link fetches nothing", savingRequests.length === 0, savingRequests.join());
@@ -915,33 +942,33 @@ async function run(browser) {
   // form's corten-location, which navigates the same way). Each read is the same URL in place of
   // the history entry, and a navigation away stops it.
   {
-    const due = (/** @type {number} */ ms) => `${base}/saved?until=${Date.now() + ms}`;
+    const due = (/** @type {number} */ ms) => `${base}/alerts?until=${Date.now() + ms}`;
     /** Navigates the runtime's way, and waits until the page is there, still saving. @param {string} url */
     const go = async (url) => {
       await page.evaluate((url) => (/** @type {any} */ (window)).navigation.navigate(url), url);
-      await page.waitForFunction((url) => location.href === url && document.getElementById("saved")?.textContent === "Saving your change...", url);
+      await page.waitForFunction((url) => location.href === url && document.getElementById("alert-status")?.textContent === "Saving your alert...", url);
     };
-    const saved = () => page.textContent("#saved");
+    const saved = () => page.textContent("#alert-status");
     const savedSoon = () =>
-      page.waitForFunction(() => document.getElementById("saved")?.textContent === "Your change is saved.", null, { timeout: 6000 }).catch(() => {});
+      page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Your alert is saved.", null, { timeout: 6000 }).catch(() => {});
     /** @type {string[]} */
     const reads = [];
-    const onSaved = (/** @type {import("@playwright/test").Request} */ r) => r.url().includes("/saved") && reads.push(r.url());
+    const onSaved = (/** @type {import("@playwright/test").Request} */ r) => r.url().includes("/alerts") && reads.push(r.url());
     page.on("request", onSaved);
     await page.goto(due(1500));
     const waiting = await saved();
     await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 5));
     await savedSoon();
-    check("a page waiting for a write reads itself again after a full load", waiting === "Saving your change..." && (await saved()) === "Your change is saved.", `${waiting} -> ${await saved()}`);
+    check("a page waiting for a write reads itself again after a full load", waiting === "Saving your alert..." && (await saved()) === "Your alert is saved.", `${waiting} -> ${await saved()}`);
     if (swaps) check("reading again keeps the document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 5));
     else skip("reading again keeps the document", noSwaps);
     const settled = reads.length;
     await page.waitForTimeout(2200);
     check("it stops once the page no longer asks", reads.length === settled, `${reads.length - settled} more reads`);
     // At a place on the page (a write redirected to `route.at(..)`): read again all the same.
-    await page.goto(`${due(1500)}#saved`);
+    await page.goto(`${due(1500)}#alert-status`);
     await savedSoon();
-    check("a page at a place (#id) reads itself again too", (await saved()) === "Your change is saved." && new URL(page.url()).hash === "#saved", `${await saved()} ${page.url()}`);
+    check("a page at a place (#id) reads itself again too", (await saved()) === "Your alert is saved." && new URL(page.url()).hash === "#alert-status", `${await saved()} ${page.url()}`);
     if (swaps) {
       await page.evaluate(() => (/** @type {any} */ (window)).__marker = 6);
       const entries = await page.evaluate(() => history.length);
@@ -950,13 +977,13 @@ async function run(browser) {
       await savedSoon();
       check(
         "a page reached by the runtime's navigation reads itself again in place",
-        reached === "Saving your change..." && (await saved()) === "Your change is saved." && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 6)),
+        reached === "Saving your alert..." && (await saved()) === "Your alert is saved." && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 6)),
         `${reached} -> ${await saved()}`,
       );
       check("each read replaces the history entry", (await page.evaluate(() => history.length)) === entries + 1, `${entries} -> ${await page.evaluate(() => history.length)}`);
       await go(due(10_000));
-      await page.click('header a[href="/about"]');
-      await page.waitForFunction(() => document.title === "About | Corten");
+      await page.click('header a[href="/news"]');
+      await page.waitForFunction(() => document.title === "News | Corten");
       const left = reads.length;
       await page.waitForTimeout(2200);
       check("navigating away stops the reads", reads.length === left, `${reads.length - left} more reads`);
@@ -971,30 +998,31 @@ async function run(browser) {
     /** @type {string[]} */
     const again = [];
     const onAgain = (/** @type {import("@playwright/test").Request} */ r) =>
-      r.method() === "GET" && r.url().includes("/saved?until=") && r.headers()["corten"] === "action" && again.push(r.url());
+      r.method() === "GET" && r.url().includes("/alerts?until=") && r.headers()["corten"] === "action" && again.push(r.url());
     page.on("request", onAgain);
-    const save = 'form[action="/saved"] button';
+    const save = 'form[action="/alerts"] button';
     const submit = async () => {
+      await page.fill("input[name=above]", "150");
       await page.focus(save);
       await page.keyboard.press("Enter");
-      await page.waitForFunction(() => document.getElementById("saved")?.textContent === "Saving your change...");
+      await page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Saving your alert...");
     };
-    await page.goto(`${base}/saved`);
+    await page.goto(`${base}/alerts`);
     await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 7));
     await submit();
     await savedSoon();
     check(
       "a patch waiting for a write is read again from its route until the write is in",
-      (await saved()) === "Your change is saved." && again.length > 0 && page.url() === `${base}/saved` && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 7)),
+      (await saved()) === "Your alert is saved." && again.length > 0 && page.url() === `${base}/alerts` && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 7)),
       `${await saved()} after ${again.length} reads at ${page.url()}`,
     );
-    check("reading a patch again keeps focus", await page.evaluate(() => document.activeElement?.textContent === "Save again"));
+    check("reading a patch again keeps focus", await page.evaluate(() => document.activeElement?.textContent === "Save alert"));
     const done = again.length;
     await page.waitForTimeout(2200);
     check("it stops once the patch no longer asks", again.length === done, `${again.length - done} more reads`);
     await submit();
-    await page.click('header a[href="/about"]');
-    await page.waitForFunction(() => document.title === "About | Corten");
+    await page.click('header a[href="/news"]');
+    await page.waitForFunction(() => document.title === "News | Corten");
     const away = again.length;
     await page.waitForTimeout(2200);
     check("navigating away stops a patch's reads", again.length === away, `${again.length - away} more reads`);
@@ -1003,8 +1031,8 @@ async function run(browser) {
     const errorsBefore = errors.length;
     const failRead = (/** @type {import("@playwright/test").Route} */ route) =>
       route.request().headers()["corten"] === "action" ? route.fulfill({ status: 502, contentType: "text/html", body: "<p>Bad gateway</p>" }) : route.fallback();
-    await page.route("**/saved?until=*", failRead);
-    await page.goto(`${base}/saved`);
+    await page.route("**/alerts?until=*", failRead);
+    await page.goto(`${base}/alerts`);
     const readsBefore = again.length;
     await submit();
     for (let i = 0; i < 40 && again.length === readsBefore; i++) await page.waitForTimeout(100);
@@ -1014,11 +1042,11 @@ async function run(browser) {
     const logged = errors.slice(errorsBefore).filter((e) => !e.includes("502"));
     check(
       "a read the server fails stops the reads, without a console error",
-      failedAt === readsBefore + 1 && again.length === failedAt && (await saved()) === "Saving your change..." && logged.length === 0,
+      failedAt === readsBefore + 1 && again.length === failedAt && (await saved()) === "Saving your alert..." && logged.length === 0,
       `${failedAt - readsBefore} then ${again.length - failedAt} reads, ${logged.join(" | ")}`,
     );
     errors.splice(errorsBefore);
-    await page.unroute("**/saved?until=*", failRead);
+    await page.unroute("**/alerts?until=*", failRead);
     page.off("request", onAgain);
   }
 
@@ -1041,7 +1069,7 @@ async function run(browser) {
   await page.evaluate(() =>
     document.querySelector("main")?.insertAdjacentHTML(
       "beforeend",
-      '<form id="multipart" method="post" action="/watch" enctype="multipart/form-data" data-patch><input type="hidden" name="id" value="s1"><button>Watch</button></form>',
+      '<form id="multipart" method="post" action="/watch" enctype="multipart/form-data" data-patch><input type="hidden" name="id" value="ACME"><button>Watch</button></form>',
     ),
   );
   await page.click("#multipart button");
@@ -1077,17 +1105,18 @@ async function run(browser) {
   // The posts answered 415 and 413 on purpose; the browser logs those as failed resources.
   check("no console errors after the injected forms", errors.every((e) => e.includes("415") || e.includes("413")), errors.join(" | "));
 
-  const data = await page.request.get(base, { headers: { accept: "application/json" } });
-  const json = await data.json();
-  check("same URL as JSON for data clients", json.title === "Watchlist | Corten" && json.data.stocks.length === 3);
+  // Without the page's cookie: the three stocks a first visit watches.
+  const json = await (await fetch(base, { headers: { accept: "application/json" } })).json();
+  check("same URL as JSON for data clients", json.title === "Watchlist | Corten" && json.data.stocks.length === 3, JSON.stringify(json.data.stocks.map((/** @type {{ id: string }} */ s) => s.id)));
 
   const noJs = await browser.newContext({ javaScriptEnabled: false });
   const plain = await noJs.newPage();
   await plain.goto(base);
-  await plain.selectOption("select[name=id]", "s3");
-  await Promise.all([plain.waitForNavigation(), plain.click("main form button")]);
-  check("without JavaScript the form posts and renders the page", ((await plain.textContent("#watch-message")) ?? "").startsWith("Watching Initech"));
   check("without JavaScript prices are server-rendered", (await plain.$$('[data-ref="price"]')).length === 3);
+  await plain.selectOption("select[name=id]", "SOLR");
+  await Promise.all([plain.waitForNavigation(), plain.click("#watch-form button")]);
+  check("without JavaScript the form posts and renders the page", ((await plain.textContent("#watch-message")) ?? "").startsWith("Watching Sunreach Solar"));
+  check("the page it renders has the stock on the list", (await plain.$('[data-ref="price"][data-key="SOLR"]')) !== null);
   await noJs.close();
 
   // A navigation started before the first document has loaded is the browser's own: a script's
@@ -1109,14 +1138,14 @@ async function run(browser) {
       document.body.append(img);
       const form = document.createElement("form");
       form.method = "get";
-      form.action = "/about";
+      form.action = "/news";
       form.hidden = true;
       document.body.append(form);
       form.requestSubmit();
     });
   });
   await early.goto(base, { waitUntil: "commit" });
-  await early.waitForFunction(() => document.title === "About | Corten", null, { timeout: 5000 }).catch(() => {});
+  await early.waitForFunction(() => document.title === "News | Corten", null, { timeout: 5000 }).catch(() => {});
   release();
   await early.waitForFunction(() => /** @type {PerformanceNavigationTiming} */ (performance.getEntriesByType("navigation")[0])?.loadEventEnd > 0, null, { timeout: 5000 }).catch(() => {});
   const loaded = await early.evaluate(() => {
@@ -1125,7 +1154,7 @@ async function run(browser) {
   });
   check(
     "a form submitted before the first page loads navigates, and the page loads",
-    loaded.title === "About | Corten" && loaded.load,
+    loaded.title === "News | Corten" && loaded.load,
     JSON.stringify(loaded),
   );
   await early.close();

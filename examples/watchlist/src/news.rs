@@ -1,0 +1,402 @@
+//! Market news: stories from other publishers about the companies on the market, newest first,
+//! filtered by sector and by the stocks the reader watches, a page at a time.
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+    time::{Duration, UNIX_EPOCH},
+};
+
+use corten::{
+    axum::http::{StatusCode, Uri},
+    i18n::DateStyle,
+    prelude::*,
+    route::Elsewhere,
+    view::Append,
+};
+use serde::Deserialize;
+
+use crate::{
+    app::{Layout, Msg, Viewer, Watching},
+    theme::*,
+};
+
+/// The news pages: an area, so the stylesheets of the components only they show (`NewsFilter`,
+/// `Disclaimer`) load with them alone. They share the briefing's readers.
+#[corten::routes(area = News, state = Readers)]
+pub mod url {
+    /// The stories. A link names one sector (`?sector=energy`); the filter can ask for several.
+    #[route("/news", get = page)]
+    #[derive(Default)]
+    pub struct News {
+        pub sector: Option<super::Sector>,
+        pub subscribed: Option<bool>,
+    }
+
+    /// A story's link: the app sends the browser on to the publisher.
+    #[route("/news/{id}/read", get = read)]
+    pub struct Read<'a> {
+        pub id: &'a str,
+    }
+
+    #[route("/news/briefing", post = subscribe)]
+    pub struct Briefing;
+}
+
+/// A part of the market. In an address it is the word serde reads (`UrlValue`), so a link to a
+/// sector and the filter that reads it cannot disagree.
+#[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Sector {
+    Technology,
+    Energy,
+    Health,
+    Industrials,
+    Consumer,
+}
+
+impl Sector {
+    const ALL: [Sector; 5] = [Sector::Technology, Sector::Energy, Sector::Health, Sector::Industrials, Sector::Consumer];
+
+    fn label(self) -> &'static str {
+        match self {
+            Sector::Technology => "Technology",
+            Sector::Energy => "Energy",
+            Sector::Health => "Health",
+            Sector::Industrials => "Industrials",
+            Sector::Consumer => "Consumer",
+        }
+    }
+}
+
+/// A story another site published, as the app lists it.
+pub struct Story {
+    id: &'static str,
+    headline: &'static str,
+    summary: &'static str,
+    source: &'static str,
+    ticker: &'static str,
+    sector: Sector,
+    /// When it was published, in seconds since 1970.
+    published: u64,
+    /// The publisher's page, and the id of the part of it the story is about.
+    url: &'static str,
+    place: &'static str,
+}
+
+/// The stories, newest first. A real app reads them from its news provider.
+const STORIES: [Story; 9] = [
+    Story {
+        id: "acme-outlook",
+        headline: "Acme Corp raises its full-year outlook",
+        summary: "Orders for industrial anvils ran 12% ahead of plan in the third quarter.",
+        source: "Market Wire",
+        ticker: "ACME",
+        sector: Sector::Industrials,
+        published: 1_793_107_800,
+        url: "https://news.example.com/markets/acme-outlook",
+        place: "guidance",
+    },
+    Story {
+        id: "globex-pipeline",
+        headline: "Globex wins approval for its northern pipeline",
+        summary: "Construction starts in the spring; the company expects the first flows in 2028.",
+        source: "The Ledger",
+        ticker: "GLBX",
+        sector: Sector::Energy,
+        published: 1_793_100_600,
+        url: "https://ledger.example.com/energy/globex-pipeline",
+        place: "approval",
+    },
+    Story {
+        id: "initech-subscriptions",
+        headline: "Initech moves its reporting software to subscriptions",
+        summary: "Licenses sold before October stay valid until they expire.",
+        source: "Market Wire",
+        ticker: "INIT",
+        sector: Sector::Technology,
+        published: 1_793_048_700,
+        url: "https://news.example.com/tech/initech-subscriptions",
+        place: "pricing",
+    },
+    Story {
+        id: "halcyon-trial",
+        headline: "Halcyon Health's flu vaccine enters its final trial",
+        summary: "Twelve thousand volunteers in four countries; results are due next autumn.",
+        source: "Health Desk",
+        ticker: "HLTH",
+        sector: Sector::Health,
+        published: 1_793_025_600,
+        url: "https://health.example.com/trials/halcyon-flu",
+        place: "phase-3",
+    },
+    Story {
+        id: "pantry-recall",
+        headline: "Pantry & Co recalls one batch of cereal over a labeling error",
+        summary: "The boxes list the wrong allergens; no illnesses have been reported.",
+        source: "The Ledger",
+        ticker: "PNTR",
+        sector: Sector::Consumer,
+        published: 1_792_944_000,
+        url: "https://ledger.example.com/consumer/pantry-recall",
+        place: "batches",
+    },
+    Story {
+        id: "vertigo-warehouses",
+        headline: "Vertigo Robotics signs a warehouse automation deal",
+        summary: "Four hundred picking robots over three years, the company's largest order yet.",
+        source: "Market Wire",
+        ticker: "VTGO",
+        sector: Sector::Technology,
+        published: 1_792_844_100,
+        url: "https://news.example.com/tech/vertigo-warehouses",
+        place: "the-deal",
+    },
+    Story {
+        id: "northgate-buyback",
+        headline: "Northgate Rail announces a $2 billion buyback",
+        summary: "The board also raised the quarterly dividend by four cents a share.",
+        source: "The Ledger",
+        ticker: "NRTH",
+        sector: Sector::Industrials,
+        published: 1_792_788_300,
+        url: "https://ledger.example.com/markets/northgate-buyback",
+        place: "buyback",
+    },
+    Story {
+        id: "sunreach-prices",
+        headline: "Sunreach Solar cuts panel prices for the second time this year",
+        summary: "Cheaper silicon lets the company undercut imports by about 8%.",
+        source: "Energy Brief",
+        ticker: "SOLR",
+        sector: Sector::Energy,
+        published: 1_792_682_400,
+        url: "https://energy.example.com/solar/sunreach-prices",
+        place: "prices",
+    },
+    Story {
+        id: "globex-dividend",
+        headline: "Globex holds its dividend despite lower gas prices",
+        summary: "Cash from the refining unit covered the shortfall, the finance chief said.",
+        source: "Energy Brief",
+        ticker: "GLBX",
+        sector: Sector::Energy,
+        published: 1_792_580_400,
+        url: "https://energy.example.com/gas/globex-dividend",
+        place: "dividend",
+    },
+];
+
+/// The components only the news pages show, for the area.
+pub const COMPONENTS: &[corten::Component] = &[Disclaimer, NewsFilter];
+
+/// Stories a page shows at a time.
+const PAGE: usize = 3;
+
+/// The readers of the morning briefing, by email. A real app keeps them in its database.
+#[derive(Clone, Default)]
+pub struct Readers(Arc<Mutex<BTreeSet<String>>>);
+
+/// The news page's filter and how many stories the page has: a GET form, so both are in the
+/// address.
+#[derive(Deserialize, Fields)]
+struct NewsQuery {
+    #[serde(default)]
+    sector: Vec<Sector>,
+    #[serde(default)]
+    mine: bool,
+    shown: Option<usize>,
+    #[serde(default)]
+    subscribed: bool,
+}
+
+async fn page(req: Req, viewer: Option<Caller<Viewer>>, watching: Watching, Query(q): Query<NewsQuery>) -> HtmlResult {
+    let stories: Vec<&Story> = STORIES
+        .iter()
+        .filter(|s| (q.sector.is_empty() || q.sector.contains(&s.sector)) && (!q.mine || watching.has(s.ticker)))
+        .collect();
+    let (stories, total) = (&stories[..], stories.len());
+    let shown = q.shown.unwrap_or(0).min(total);
+    let next = (shown + PAGE).min(total);
+    let t = req.t();
+    // Load more with JavaScript: only the next stories, after the ones the page has, and the
+    // button for the ones after them.
+    if req.mode == Mode::Action {
+        return req.patch(html! {
+            {Append(StoriesId, html! { for story in &stories[shown..next] { <StoryItem story={story} t={t} /> } })}
+            <LoadMore sectors={&q.sector} mine={q.mine} shown={next} total={total} />
+        });
+    }
+    // The whole page, with every story shown so far: a first load, a filter, no JavaScript.
+    let title = if q.mine { "Stories about your stocks" } else { "Latest stories" };
+    req.page(html! {
+        <Layout req={&req} title="News" viewer={viewer.as_deref()} head="">
+            <div class={(stack(Space::_1), mb(Space::_5))}>
+                <h1>"Market news"</h1>
+                <p class={muted()}>"What the companies on the market are doing, newest first."</p>
+            </div>
+            <div
+                class={(display(Display::Grid), columns(Responsive::new(Columns::_1).md(Columns::Side)), gap(Space::_5), items(Items::Start))}
+            >
+                <aside class={card()}>
+                    <NewsFilter sectors={&q.sector} mine={q.mine} />
+                </aside>
+                <section class={stack(Space::_4)} aria-labelledby={StoriesTitleId}>
+                    <h2 id={StoriesTitleId}>{title}</h2>
+                    if stories.is_empty() {
+                        <p class={muted()}>"No stories match the filter."</p>
+                    }
+                    <ol id={StoriesId} class={stack(Space::_3)}>
+                        for story in &stories[..next] { <StoryItem story={story} t={t} /> }
+                    </ol>
+                    <LoadMore sectors={&q.sector} mine={q.mine} shown={next} total={total} />
+                    <Disclaimer />
+                    <Subscribe subscribed={q.subscribed} />
+                </section>
+            </div>
+        </Layout>
+    })
+}
+
+/// The list of stories: Load more adds to it.
+#[derive(Id)]
+struct StoriesId;
+
+/// The list's heading, which names it.
+#[derive(Id)]
+struct StoriesTitleId;
+
+#[derive(Id)]
+struct LoadMoreId;
+
+/// One story: its headline links through the app (`url::Read`), and its sector to the stories
+/// of that sector.
+#[component]
+fn StoryItem<'a>(story: &'a Story, t: Msg) -> impl Render {
+    let published = UNIX_EPOCH + Duration::from_secs(story.published);
+    html! {
+        <li class={(card(), stack(Space::_2))}>
+            <h3><a href={url::Read { id: story.id }}>{story.headline}</a></h3>
+            <p>{story.summary}</p>
+            <p class={(row(Space::_3), wrap(Wrap::Wrap), muted())}>
+                <span>{story.source}</span>
+                <span>{t.date(published, DateStyle::Medium)}</span>
+                <span class={weight(Weight::Semibold)}>{story.ticker}</span>
+                <a href={url::News { sector: Some(story.sector), subscribed: None }}>{story.sector.label()}</a>
+            </p>
+        </li>
+    }
+}
+
+/// Loads the next stories: a GET form, so without JavaScript it is the page with more stories,
+/// and with it (`data-patch`) the answer adds only the new ones (`view::Append`). It carries
+/// the filter, so the next stories are the filter's.
+#[component]
+fn LoadMore<'a>(sectors: &'a [Sector], mine: bool, shown: usize, total: usize) -> impl Patch {
+    let f = NewsQuery::FIELDS;
+    html! {
+        <form id={LoadMoreId} method="get" action={url::News::default()} data-patch>
+            for sector in sectors {
+                <input type="hidden" name={f.sector} value={sector}>
+            }
+            if mine {
+                <input type="hidden" name={f.mine} value="on">
+            }
+            <input type="hidden" name={f.shown} value={shown}>
+            <button class={(secondary(), w(W::Full))} hidden={shown >= total}>"Load more stories"</button>
+        </form>
+    }
+}
+
+/// The filter, applied as soon as it changes: its handler submits the form, and
+/// `data-keep-place` keeps the reader where they were while the page changes under them: the
+/// rail keeps its scroll, the groups they opened stay open (the server draws a group open only
+/// when one of its boxes is checked), and focus stays on the box they changed. Without
+/// JavaScript, Apply submits it.
+#[component(css, js)]
+fn NewsFilter<'a>(sectors: &'a [Sector], mine: bool) -> impl Render {
+    let f = NewsQuery::FIELDS;
+    html! {
+        <form method="get" action={url::News::default()} data-keep-place on:change={js::apply(target)} class={stack(Space::_3)}>
+            <h2>"Filter"</h2>
+            <div class={Rail}>
+                <details open={!sectors.is_empty()}>
+                    <summary>"Sectors"</summary>
+                    for sector in Sector::ALL {
+                        <label>
+                            <input type="checkbox" name={f.sector} value={sector} checked={sectors.contains(&sector)}>
+                            {sector.label()}
+                        </label>
+                    }
+                </details>
+                <details open={mine}>
+                    <summary>"Watchlist"</summary>
+                    <label><input type="checkbox" name={f.mine} checked={mine}>"Only stocks I watch"</label>
+                </details>
+            </div>
+            <button class={secondary()}>"Apply"</button>
+        </form>
+    }
+}
+
+/// A note only the news pages show. Its stylesheet, `disclaimer.css`, is in the `/news` area,
+/// so the watchlist never downloads it; a client navigation here loads it before the page is
+/// swapped in.
+#[component(css)]
+fn Disclaimer() -> impl Render {
+    html! {
+        <p class={Note}>
+            "Stories are short summaries of other publishers' reporting; follow a headline for the whole story. Nothing here is investment advice."
+        </p>
+    }
+}
+
+/// The briefing's form, at the end of a long page.
+#[derive(Id)]
+struct BriefingId;
+
+#[derive(Deserialize, Fields)]
+struct BriefingForm {
+    email: String,
+}
+
+#[component]
+fn Subscribe(subscribed: bool) -> impl Render {
+    let f = BriefingForm::FIELDS;
+    html! {
+        <form id={BriefingId} method="post" action={url::Briefing} data-patch class={(card(), stack(Space::_3))}>
+            <h2>"The morning briefing"</h2>
+            if subscribed {
+                <p role="status">"You're subscribed. The first briefing arrives tomorrow before the market opens."</p>
+            } else {
+                <p class={muted()}>"The day's top stories by email, before the market opens."</p>
+            }
+            <label class={stack(Space::_1)}>
+                <span class={muted()}>"Email"</span>
+                <input type="email" name={f.email} required autocomplete="email">
+            </label>
+            <button>"Subscribe"</button>
+        </form>
+    }
+}
+
+/// Signs a reader up, then sends the browser back to the form it came from, at the end of the
+/// page: `News { .. }.at(BriefingId)` is `/news?subscribed=true#briefing`, the id the form's
+/// markup prints, and the page says it worked. The form's `type="email"` stops a person
+/// before an address without an `@`; a client that skips it is refused.
+async fn subscribe(req: Req, State(readers): State<Readers>, Form(form): Form<BriefingForm>) -> HtmlResult {
+    let email = form.email.trim();
+    if !email.contains('@') {
+        return Err(corten::Error::status(StatusCode::UNPROCESSABLE_ENTITY));
+    }
+    readers.0.lock().unwrap_or_else(|e| e.into_inner()).insert(email.to_string());
+    req.redirect(&url::News { sector: None, subscribed: Some(true) }.at(BriefingId))
+}
+
+/// Where a story is: another site. A client navigation's `fetch` cannot follow a redirect there,
+/// so the runtime is told the address and the browser goes there itself, to the part of the
+/// page the story is about (`Elsewhere::at`: an id that page's markup owns). Linking through
+/// the app keeps a story's address in one place.
+async fn read(req: Req, Path(id): Path<String>) -> HtmlResult {
+    let story = STORIES.iter().find(|s| s.id == id).ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?;
+    req.redirect(&Elsewhere::at(&Uri::from_static(story.url), story.place))
+}

@@ -2,13 +2,20 @@
 // Types::sync rewrites this file when they change.
 
 /**
- * A feed row. `price` is the display text, for clients with no formatting of their own (a
- * native screen, an agent); the page's script writes `price_cents` with the page's format
- * (`t.js().money(USD)`), which writes what the server does.
+ * A feed row. `price` and `change` are the display text, for clients with no formatting of their
+ * own (a native screen, an agent); the page's script writes `price_cents` and `change_bp` with
+ * the page's formats (`t.js().money(USD)`, `t.js().percent(2)`), which write what the server
+ * does.
  */
 export interface Stock {
+  change: string;
+  /** The change since the open, in basis points (hundredths of a percent), rounded. */
+  change_bp: number;
+  /** The ticker. */
   id: string;
   name: string;
+  /** The price the day opened at. */
+  open_cents: number;
   price: string;
   price_cents: number;
 }
