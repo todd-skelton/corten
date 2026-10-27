@@ -472,7 +472,10 @@ impl Applied {
             Some(Some(nonce)) => HeaderValue::try_from(self.csp_parts.join(&*nonce.0)).ok(),
         };
         // A response that brings a policy of its own is a relayed page (or a bug): it keeps it.
-        let brought = csp.and_then(|csp| headers.insert(csp_header, csp));
+        if let Some(brought) = csp.and_then(|csp| headers.insert(csp_header, csp)) {
+            self.keep_relayed(res, brought);
+        }
+        let headers = res.headers_mut();
         headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
         headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("strict-origin-when-cross-origin"));
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
@@ -480,9 +483,6 @@ impl Applied {
         headers.insert(HeaderName::from_static("cross-origin-opener-policy"), HeaderValue::from_static(opener));
         if self.hsts {
             headers.insert(header::STRICT_TRANSPORT_SECURITY, HeaderValue::from_static("max-age=31536000; includeSubDomains"));
-        }
-        if let Some(brought) = brought {
-            self.keep_relayed(res, brought);
         }
     }
 
