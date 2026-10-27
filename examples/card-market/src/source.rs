@@ -50,9 +50,9 @@ impl Source {
             let item: ApiItem = corten::json::from_str(value.get())?;
             items.insert(id, Arc::new(ItemView::from(item)));
         }
-        let mut order: Vec<_> = items.iter().map(|(id, item)| (id.clone(), item.clone())).collect();
+        let mut order: Vec<_> = items.iter().collect();
         order.sort_by(|(a, _), (b, _)| (a.len(), a).cmp(&(b.len(), b)));
-        let order = order.into_iter().map(|(_, item)| item).collect();
+        let order = order.into_iter().map(|(_, item)| item.clone()).collect();
         Ok(Source::Fixture(Arc::new(Catalog { items, order })))
     }
 

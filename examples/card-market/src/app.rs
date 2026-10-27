@@ -133,9 +133,9 @@ impl Breadcrumbs {
 pub(crate) async fn category(req: Req, State(source): State<Source>, Path(slug): Path<String>) -> Public<HtmlResult> {
     let t: Msg = req.t();
     let items = source.in_category(&slug);
-    // The category's own name, when an item is in it.
-    let name = items.iter().flat_map(|item| &item.categories).find(|c| c.slug == slug).map_or(slug.as_str(), |c| &c.name);
-    let title = t.category_title(name).to_string();
+    // The category's own name, when an item is in it; else its slug, as "Category {slug}".
+    let name = items.iter().flat_map(|item| &item.categories).find(|c| c.slug == slug).map(|c| c.name.clone());
+    let title = name.unwrap_or_else(|| t.category_title(&slug).to_string());
     let here = routes::Category { slug: &slug }.to_string();
     let crumbs = Breadcrumbs::new([(t.home_title().to_string(), routes::Home.to_string()), (title.clone(), here)]);
     let head = JsonLd { value: &crumbs };
@@ -658,10 +658,25 @@ mod tests {
         assert!(home.contains("<strong>Ashen Drake</strong>") && home.contains("From $42.50"), "{home}");
         assert!(home.find(r#"href="/items/item_2""#).unwrap() < home.find(r#"href="/items/item_10""#).unwrap(), "in id order");
         let category = body(get("/categories/tidebreak").await.unwrap()).await;
-        assert!(category.contains("<h1>Category Tidebreak</h1>") && category.contains("Salt Oracle"), "{category}");
+        assert!(category.contains("<h1>Tidebreak</h1>") && category.contains("Salt Oracle"), "{category}");
         assert!(!category.contains("Ashen Drake"), "only the category's cards");
         let boxed = body(get("/items/item_12").await.unwrap()).await;
         assert!(boxed.contains("Lantern Warden"), "a sealed box lists what it contains: {boxed}");
+    }
+
+    /// The item API has no list: the home page links the first ids, in the visitor's language.
+    #[tokio::test]
+    async fn against_the_item_api_the_home_page_links_the_first_ids() {
+        let source = Source::Api { client: reqwest::Client::new(), base: "http://127.0.0.1:9".into() };
+        let app = super::app(source).router();
+        let req = Request::get("/").header("accept-language", "fr").body(Body::empty()).unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        let home = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(home.contains(r#"<a href="/items/item_5">Article 5</a>"#), "{home}");
+        assert_eq!(home.matches("<li>").count(), 50);
+        let res = app.oneshot(Request::get("/categories/x").body(Body::empty()).unwrap()).await.unwrap();
+        let category = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(category.contains("<h1>Category x</h1>") && !category.contains("<ul"), "{category}");
     }
 
     #[tokio::test]
