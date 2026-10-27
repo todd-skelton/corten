@@ -434,7 +434,9 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
      measured.
    - Item API: every request fetches the item (about 55 KB of JSON) over HTTP from
      `item-api/server.mjs`, which serves the fixture's responses the way the production API does
-     with a warm cache, and parses it.
+     with a warm cache, and parses it. From r7 it runs one Node process per core it has (two), so
+     it can serve about twice what r6's single process could; its CPU next to each item-API phase
+     (`apiCpuPct`) is a percentage of one core, up to 200.
    - JSON: `GET /api/items/{id}` answers the view model the page renders (about 9 KB), written by
      the framework's usual JSON path. Same lookup as the page; only the output differs.
 5. Instructions per request (`count.mjs`): `perf stat` counts the app container's user and
