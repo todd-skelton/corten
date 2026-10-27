@@ -28,7 +28,8 @@
     "below": "Alert me below",
     "submit": "Set alert",
     "invalid_email": "Enter a valid email address.",
-    "invalid_price": "Enter a target price above zero."
+    "invalid_price": "Enter a target price above zero.",
+    "no_listings": "This item has no listings yet, so there is no price to watch."
   },
   "category": {
     "title": "Category {name}",

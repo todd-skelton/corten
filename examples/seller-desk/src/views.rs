@@ -1,7 +1,7 @@
 //! The desk's views. Each component's script and stylesheet are next to it in `views/`.
 use corten::{Component, prelude::*};
 
-use crate::app::Item;
+use crate::app::{Item, url};
 
 mod bulk_bar;
 mod confirm_dialog;
@@ -13,10 +13,10 @@ pub use bulk_bar::BulkBar;
 pub use confirm_dialog::ConfirmDialog;
 pub use inventory_grid::{ArchiveFormId, InventoryGrid};
 pub use inventory_row::{InventoryRow, RowId};
-pub use price_cell::PriceCell;
+pub use price_cell::{PriceCell, PriceEdited};
 
 /// What the app lists in `App::components`: the scripts, the stylesheets and the row's view.
-pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell];
+pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell, PriceEdited];
 
 /// An item and its stock level, as a row shows them.
 pub struct Line<'a> {
@@ -39,6 +39,10 @@ pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
                 <Corten />
             </head>
             <body>
+                <nav>
+                    <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Inventory"</a>" "
+                    <a href={url::Statement} data-nav aria-current={req.current(&url::Statement)}>"Statement"</a>
+                </nav>
                 <main>{children}</main>
             </body>
         </html>

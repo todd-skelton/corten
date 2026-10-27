@@ -4,16 +4,23 @@
 //! |---|---|
 //! | `GET /` | the inventory grid: selection, shift-click ranges, select all, filter, sort, inline price edits, a confirm dialog, live stock levels |
 //! | `POST /items/{id}/price` | a price cell's form: the cell as a patch, or 422 with the error |
-//! | `POST /archive` | the selected rows, archived: a patch that removes their rows, and a status line |
+//! | `POST /archive` | the selected rows, archived once per submit key: a patch that removes their rows, and a status line |
+//! | `GET /statement` | what the stock is worth, by set: an answer nothing may keep (`NoStore`) |
 //! | `GET /feed/levels`, `/feed/levels/live` | stock levels, the feed the grid subscribes to |
+//!
+//! Every response says how long the server took (`Server-Timing`), from a middleware of the app's.
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use corten::{
-    axum::http::StatusCode,
+    axum::{
+        extract::Request,
+        http::{HeaderValue, StatusCode},
+        response::Response,
+    },
     feed::{Feed, FeedResponse, Row, Since},
     prelude::*,
     view::Remove,
@@ -51,6 +58,9 @@ impl Row for Level {
 pub struct Desk {
     pub items: Arc<Mutex<Vec<Item>>>,
     pub levels: Feed<Level>,
+    /// Each archive submit's key, with the ids it archived: a resend answers the same. A real
+    /// store keeps them next to the write, in its transaction, and drops them after a day.
+    pub archived: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
 const NAMES: [&str; 8] = ["Pikachu", "Charizard", "Mewtwo", "Gengar", "Eevee", "Snorlax", "Lucario", "Gardevoir"];
@@ -71,7 +81,7 @@ impl Desk {
             })
             .collect();
         let levels = Feed::new(items.iter().enumerate().map(|(i, it)| Level { id: it.id.clone(), qty: (i as u32 * 31) % 40 }));
-        Desk { items: Arc::new(Mutex::new(items)), levels }
+        Desk { items: Arc::new(Mutex::new(items)), levels, archived: Arc::default() }
     }
 
     fn quantities(&self) -> HashMap<String, u32> {
@@ -79,8 +89,24 @@ impl Desk {
     }
 }
 
-pub fn app(desk: Desk) -> App {
-    App::new(url::router(desk)).components(views::COMPONENTS)
+pub fn app(desk: Desk) -> App<ServerTiming> {
+    App::new(url::router(desk)).components(views::COMPONENTS).middleware(ServerTiming)
+}
+
+/// Tells the browser's developer tools how long the server took to answer (`Server-Timing`): the
+/// time to the response's headers, so a feed's stream counts until it starts.
+pub struct ServerTiming;
+
+impl Middleware for ServerTiming {
+    async fn call(&self, req: Request, next: impl Next) -> Response {
+        let start = Instant::now();
+        let mut res = next.run(req).await;
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        if let Ok(value) = HeaderValue::from_str(&format!("app;dur={ms:.1}")) {
+            res.headers_mut().insert("server-timing", value);
+        }
+        res
+    }
 }
 
 /// Every URL the app serves and links to, with the handlers that serve it, which share the desk.
@@ -96,6 +122,9 @@ pub mod url {
 
     #[route("/archive", post = archive)]
     pub struct Archive;
+
+    #[route("/statement", get = statement)]
+    pub struct Statement;
 
     #[route("/feed/levels", get = levels)]
     pub struct Levels;
@@ -161,16 +190,27 @@ pub struct ArchiveInput {
     /// The checked rows' ids, one `ids` per checkbox: each row's box belongs to the archive form.
     #[serde(default)]
     pub ids: Vec<String>,
+    /// This submit, so one sent again (its answer lost on the way) archives once.
+    pub submit: SubmitKey,
 }
 
 async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveInput>) -> HtmlResult {
-    let mut items = desk.items.lock().expect("items");
-    let mut done = Vec::new();
-    for item in items.iter_mut().filter(|i| input.ids.contains(&i.id) && !i.archived) {
-        item.archived = true;
-        done.push(item.id.clone());
-    }
-    drop(items);
+    // Checked and recorded under one lock, so two copies of a submit cannot both apply.
+    let mut archived = desk.archived.lock().expect("archived");
+    let done = match archived.get(input.submit.as_str()) {
+        Some(done) => done.clone(),
+        None => {
+            let mut items = desk.items.lock().expect("items");
+            let mut done = Vec::new();
+            for item in items.iter_mut().filter(|i| input.ids.contains(&i.id) && !i.archived) {
+                item.archived = true;
+                done.push(item.id.clone());
+            }
+            archived.insert(input.submit.as_str().to_string(), done.clone());
+            done
+        }
+    };
+    drop(archived);
     if req.mode != Mode::Action {
         return req.redirect(&url::Home);
     }
@@ -178,6 +218,41 @@ async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveIn
         for id in &done { {Remove(RowId(id))} }
         <StatusLine text={&format!("Archived {} item{}.", done.len(), if done.len() == 1 { "" } else { "s" })} />
     })
+}
+
+/// What the listed stock is worth, by set. Amounts a seller would not want left in a shared
+/// computer's cache or restored by its back button, so nothing may keep the page.
+async fn statement(req: Req, State(desk): State<Desk>) -> NoStore<HtmlResult> {
+    let mut sets: BTreeMap<String, (usize, u64)> = BTreeMap::new();
+    let qty = desk.quantities();
+    for item in desk.items.lock().expect("items").iter().filter(|i| !i.archived) {
+        let set = sets.entry(item.set.clone()).or_default();
+        set.0 += 1;
+        set.1 += u64::from(item.price_cents) * u64::from(qty[&item.id]);
+    }
+    NoStore(req.page(html! {
+        <views::Layout req={&req} title="Statement">
+            <h1>"Statement"</h1>
+            <table>
+                <thead>
+                    <tr>
+                        <th>"Set"</th>
+                        <th>"Items"</th>
+                        <th>"Stock value"</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    for (name, (items, cents)) in &sets {
+                        <tr>
+                            <td>{name}</td>
+                            <td>{items}</td>
+                            <td>"$"{cents / 100}"."{format!("{:02}", cents % 100)}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </views::Layout>
+    }))
 }
 
 /// Sells and restocks a few items every 250 ms, so the grid's live levels have something to show.
@@ -208,10 +283,19 @@ mod tests {
     use super::*;
 
     async fn send(desk: &Desk, req: Request<Body>) -> (StatusCode, String) {
-        let res = app(desk.clone()).router().oneshot(req).await.unwrap();
-        let status = res.status();
-        (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+        let (status, _, body) = send_full(desk, req).await;
+        (status, body)
     }
+
+    async fn send_full(desk: &Desk, req: Request<Body>) -> (StatusCode, corten::axum::http::HeaderMap, String) {
+        let res = app(desk.clone()).router().oneshot(req).await.unwrap();
+        let (parts, body) = res.into_parts();
+        (parts.status, parts.headers, String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap())
+    }
+
+    /// Two submit keys, as the page draws them.
+    const KEY: &str = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+    const OTHER: &str = "9b2c7f0e-1d2a-4c3b-8e4f-5a6b7c8d9e0f";
 
     fn post(uri: &str, body: &str) -> Request<Body> {
         Request::post(uri)
@@ -253,6 +337,10 @@ mod tests {
         );
         assert!(html.contains(r#"<tr data-key="i00003" id="row-i00003"><td><input data-ref="select""#), "{html}");
         assert!(html.contains(r#"data-on="connect:inventory_grid.live(@body,"#), "{html}");
+        assert!(
+            html.contains("inventory_grid.priceEdited($e,$c,@body,@unsent)"),
+            "a cell's typed event reaches the grid: {html}"
+        );
     }
 
     #[tokio::test]
@@ -270,7 +358,7 @@ mod tests {
     #[tokio::test]
     async fn archiving_hides_the_rows_and_says_how_many() {
         let desk = Desk::new(5);
-        let (_, html) = send(&desk, post("/archive", "ids=i00001&ids=i00003")).await;
+        let (_, html) = send(&desk, post("/archive", &format!("ids=i00001&ids=i00003&submit={KEY}"))).await;
         assert!(
             html.contains(
                 r#"<template id="row-i00001" data-remove></template><template id="row-i00003" data-remove></template>"#
@@ -280,6 +368,35 @@ mod tests {
         assert!(html.contains("Archived 2 items."), "{html}");
         let (_, page) = send(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
         assert_eq!(page.matches(r#"<tr data-key=""#).count(), 3);
+        assert!(page.contains(r#"<input type="hidden" name="submit" data-submit value=""#), "the form carries a key: {page}");
+    }
+
+    #[tokio::test]
+    async fn an_archive_sent_again_with_its_key_applies_once_and_answers_the_same() {
+        let desk = Desk::new(5);
+        let first = send(&desk, post("/archive", &format!("ids=i00001&submit={KEY}"))).await;
+        // The answer was lost; the runtime sends the same submit again, now with another row checked.
+        let again = send(&desk, post("/archive", &format!("ids=i00001&ids=i00002&submit={KEY}"))).await;
+        assert_eq!(first, again, "a resend is answered with what the first did");
+        assert!(again.1.contains("Archived 1 item."), "{}", again.1);
+        let (_, page) = send(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
+        assert_eq!(page.matches(r#"<tr data-key=""#).count(), 4, "i00002 is still listed");
+        let (_, next) = send(&desk, post("/archive", &format!("ids=i00002&submit={OTHER}"))).await;
+        assert!(next.contains("Archived 1 item."), "a new key is a new submit: {next}");
+        let (status, _) = send(&desk, post("/archive", "ids=i00003")).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "a submit without its key is refused");
+    }
+
+    #[tokio::test]
+    async fn the_statement_is_kept_nowhere_and_a_page_says_how_long_it_took() {
+        let desk = Desk::new(10);
+        let (status, headers, html) = send_full(&desk, Request::get("/statement").body(Body::empty()).unwrap()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(headers["cache-control"], "no-store");
+        assert!(html.contains("<td>Base Set</td><td>2</td>"), "{html}");
+        let (_, headers, _) = send_full(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
+        let timing = headers["server-timing"].to_str().unwrap();
+        assert!(timing.starts_with("app;dur="), "{timing}");
     }
 
     /// Server cost of the desk at a realistic size: `cargo test -p seller-desk --release -- --ignored --nocapture`.

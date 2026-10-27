@@ -566,6 +566,18 @@ Corten is pre-1.0, so any minor version may change the API.
     and sizes per file are the handler's checks, reported as field errors. The parser is
     Corten's own, with no new dependency
     ([#140 A form cannot post a file: Form reads only URL-encoded bodies, so a multipart form is a 415 and nothing reads its files](https://github.com/todd-skelton/corten/issues/140)).
+84. `#[corten::routes(api = ApiRoot)]`: an API's routes in a module of their own, each naming its
+    handler as a page route does; the module gives `api(routes)` (`api(routes, state)` with
+    `state = ..`) for `.api(prices::api)`. Only the prefix's route names no handler; a route with
+    none, a route outside the prefix, or `area` and `api` together do not compile.
+    `examples/item-page` serves its JSON and MCP endpoints from such modules and `bench/live` its
+    publish route. The same JSON route costs the same either way: 21,913 instructions per request
+    added by hand, 21,836 from its module (callgrind, median of three; the app guide has the
+    ranges).
+85. `Caller<T>` dereferences to `T`: `viewer.as_deref()` is the `Option<&Viewer>` a layout takes,
+    without `viewer.map(|Caller(v)| v)`.
+86. `.area(admin::area)` and `.api(api::api)` infer the prefix from the module's function; the
+    `::<Admin>` turbofish is needed only for routes added by hand.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -591,6 +603,11 @@ Corten is pre-1.0, so any minor version may change the API.
    page)`; build routes in a `#[corten::routes]` module instead of an axum `Router`. A layer on
    one route's method router has no replacement: a route's needs are its handler's extractors
    and answer, and the app's own steps are `Middleware`.
+7. `Result` from the prelude, and `corten::Result`'s default `Response`: a handler answers with
+   `HtmlResult`, `JsonResult<T>` or another answer, and `corten::Result<T>` (`Result<T,
+   corten::Error>`) is for helpers. A bare `corten::Result` names no answer and does not compile.
+8. The `link` keyword of `#[route]` in a routes module: a route an API serves goes in the API's
+   own `#[corten::routes(api = ..)]` module, with its handler.
 
 ### Changed
 
@@ -1072,6 +1089,13 @@ Corten is pre-1.0, so any minor version may change the API.
 13. The app guide says why a JSON 400 under `App::api` costs about 500 instructions more since
     every route goes through the checks (Added 65): the checked `get` marks a JSON route's
     failed response with an extension, profiled under callgrind in place of "most likely".
+14. The examples use the patterns they lacked. `examples/item-page`: a moved address (`req.moved`),
+    `Policy::new().hsts()` behind `HTTPS`, `.deadline`, `.ready` (the item API answers), a
+    category page shared longer by CDNs (`.shared(..)`) with its breadcrumbs as `JsonLd`, and an
+    alert on an item with no listings answered with a whole-form error (`Errors::add_form`).
+    `examples/seller-desk`: a `Middleware` (`Server-Timing`), an archive made idempotent by
+    `SubmitKey`, a `NoStore` statement page, a nav from `req.current`, and a typed event
+    (`#[event] PriceEdited`) a price cell sends the grid, which counts the prices not saved.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

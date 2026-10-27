@@ -191,8 +191,84 @@ pub use corten_macros::UrlValue;
 ///
 /// Handlers that share something (a database pool, a client) take it as `State`: the module
 /// names its type, `#[corten::routes(state = Db)]`, and `router` takes it,
-/// `App::new(url::router(db))`, so it cannot be forgotten. A route another router serves (an API
-/// route) is a link only and says so, `#[route("/api", link)]`: the API registers it.
+/// `App::new(url::router(db))`, so it cannot be forgotten. An area's routes and an API's go in a
+/// module of their own, `#[corten::routes(area = Admin)]` or `#[corten::routes(api = ApiRoot)]`,
+/// whose `area` or `api` function [`crate::App::area`] or [`crate::App::api`] takes; an API's
+/// prefix route is the one route that may name no handler:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[corten::routes(api = ApiRoot)]
+/// mod api {
+///     #[route("/api")]
+///     pub struct ApiRoot;
+///
+///     #[route("/api/items/{id}", get = item)]
+///     pub struct Item<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+///
+/// async fn item(Path(id): Path<String>) -> String {
+///     format!("item {id}")
+/// }
+///
+/// let app = App::new(Routes::new()).api(api::api);
+/// # let _ = app.router();
+/// ```
+///
+/// Any other route without a handler does not compile:
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[corten::routes(api = ApiRoot)]
+/// mod api {
+///     #[route("/api")]
+///     pub struct ApiRoot;
+///
+///     #[route("/api/items/{id}")]
+///     pub struct Item<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+/// ```
+///
+/// nor does a route outside the API's prefix:
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[corten::routes(api = ApiRoot)]
+/// mod api {
+///     #[route("/api")]
+///     pub struct ApiRoot;
+///
+///     #[route("/apis/items", get = items)]
+///     pub struct Items;
+/// }
+///
+/// async fn items() -> &'static str {
+///     "items"
+/// }
+/// ```
+///
+/// and a module's routes are in an area or an API, not both:
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[corten::routes(area = Admin, api = Admin)]
+/// mod admin {
+///     #[route("/admin", get = dashboard)]
+///     pub struct Admin;
+/// }
+///
+/// async fn dashboard() -> &'static str {
+///     "admin"
+/// }
+/// ```
 ///
 /// What each handler returns names what the route answers ([`crate::answer`]): `HtmlResult`,
 /// `JsonResult<T>`, text, or `Public<..>` of one; a `Response` or `impl IntoResponse`, which
@@ -308,7 +384,7 @@ pub use corten_macros::UrlValue;
 ///     id
 /// }
 ///
-/// let app = App::new(Routes::new()).area::<admin::Admin>(admin::area);
+/// let app = App::new(Routes::new()).area(admin::area);
 /// # let _ = app.router();
 /// ```
 ///
@@ -330,7 +406,7 @@ pub use corten_macros::UrlValue;
 /// async fn dashboard() -> &'static str {
 ///     "open to anyone"
 /// }
-/// # fn main() { let _ = corten::App::new(Routes::new()).area::<admin::Admin>(admin::area); }
+/// # fn main() { let _ = corten::App::new(Routes::new()).area(admin::area); }
 /// ```
 ///
 /// A route of the module outside the area's prefix does not compile:

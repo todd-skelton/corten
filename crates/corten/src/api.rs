@@ -18,14 +18,20 @@
 //!   check on writes work as they do for pages.
 //!
 //! ```ignore
+//! #[corten::routes(api = ApiRoot)]
+//! mod api {
+//!     #[route("/api")]
+//!     pub struct ApiRoot;
+//!
+//!     #[route("/api/items/{id}/price", get = price)]
+//!     pub struct ItemPrice<'a> { pub id: &'a str }
+//! }
+//!
 //! async fn price(Path(id): Path<String>) -> Json<serde_json::Value> {
 //!     Json(serde_json::json!({ "id": id, "lowest": "$0.50" }))
 //! }
 //!
-//! corten::serve(App::new(pages).api::<ApiRoot>(|api| {
-//!     api.route::<ItemPrice>(get(price)).allow_origin("https://partner.example")
-//! }))
-//! .await
+//! corten::serve(App::new(pages).api(|routes| api::api(routes).allow_origin("https://partner.example"))).await
 //! ```
 //!
 //! The same example compiles in `docs/guide/app.md` (JSON-only routes).
@@ -58,7 +64,10 @@ impl<P: TypedRoute> Api<P> {
         Api { routes: Router::new(), origins: Vec::new(), deadline: None, types: PhantomData }
     }
 
-    /// A route of the API, at `R::PATH`: `.route::<ItemJson>(get(item_json))`, with
+    /// A route of the API added by hand, at `R::PATH`, for one a routes module cannot name: an
+    /// endpoint built from a value, like the MCP endpoint, `.route::<Mcp>(tools.route())`. A
+    /// function goes in the API's `#[corten::routes(api = ..)]` module instead. Otherwise
+    /// `.route::<ItemJson>(get(item_json))`, with
     /// `.with_state(state)` on the [`crate::Methods`] when its handlers take `State`. `R`'s path is at
     /// or under the prefix, or the app does not build, so no route of the API is served outside
     /// it (and its settings).

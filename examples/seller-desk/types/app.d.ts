@@ -7,6 +7,15 @@ export interface Level {
   qty: number;
 }
 
+/** The app's typed events (#[event]), dispatched by scripts and listened for with on:Name. */
+declare module "corten/events" {
+  /** The `price-edited` event, from #[event] PriceEdited. */
+  export class PriceEdited extends Event {
+    constructor(init: { unsent: boolean });
+    readonly unsent: boolean;
+  }
+}
+
 /** The app's views (#[component(view)]): each one's holes, read from and written to the page. */
 declare module "corten/views" {
   /** What #[component(view)] generates for a component whose root has key={..}. */

@@ -59,15 +59,14 @@ impl Market {
 pub fn app(market: Market) -> App {
     App::new(url::router(market))
         .components(&[LivePrices])
-        .area::<about::About>(|area| about::area(area).components(&[AboutNote, AboutFilter]))
-        .area::<account::Account>(account::area)
+        .area(|area| about::area(area).components(&[AboutNote, AboutFilter]))
+        .area(account::area)
         .error_page(error_page, ())
 }
 
 /// The page for a failed request, in the layout, for who is asking: a signed-in user who mistypes
 /// a URL still sees themselves signed in. The viewer is looked up only for a failure.
 async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) -> HtmlResult {
-    let viewer = viewer.map(|Caller(v)| v);
     let (title, text) = match failure {
         Failure::NotFound => ("Not found", "There is nothing at this address."),
         Failure::Refused { .. } | Failure::CrossSite => ("Not allowed", "You do not have access to this page."),
@@ -77,7 +76,7 @@ async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) 
         }
     };
     req.page(html! {
-        <Layout req={&req} title={title} viewer={viewer.as_ref()} head="">
+        <Layout req={&req} title={title} viewer={viewer.as_deref()} head="">
             <h1>{title}</h1>
             <p>{text}</p>
             if let Some(detail) = failure.detail() {
@@ -381,8 +380,7 @@ fn LastTrade(text: &str) -> impl Render {
 async fn home(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>) -> HtmlResult {
     let home = Home::new(&market, String::new());
     let view = home_view(&home, req.t());
-    let viewer = viewer.map(|Caller(v)| v);
-    req.screen(&home, html! { <Layout req={&req} title="Watchlist" viewer={viewer.as_ref()} head="">{view}</Layout> })
+    req.screen(&home, html! { <Layout req={&req} title="Watchlist" viewer={viewer.as_deref()} head="">{view}</Layout> })
 }
 
 #[derive(Deserialize, Fields)]
@@ -406,8 +404,7 @@ async fn watch(
         _ => {
             let home = Home::new(&market, message);
             let view = home_view(&home, req.t());
-            let viewer = viewer.map(|Caller(v)| v);
-            req.screen(&home, html! { <Layout req={&req} title="Watchlist" viewer={viewer.as_ref()} head="">{view}</Layout> })
+            req.screen(&home, html! { <Layout req={&req} title="Watchlist" viewer={viewer.as_deref()} head="">{view}</Layout> })
         }
     }
 }
@@ -452,7 +449,6 @@ const HISTORY: [&str; 6] =
 const HISTORY_PAGE: usize = 2;
 
 async fn about(req: Req, viewer: Option<Caller<Viewer>>, Query(q): Query<AboutQuery>) -> HtmlResult {
-    let viewer = viewer.map(|Caller(v)| v);
     let shown = q.shown.unwrap_or(0).min(HISTORY.len());
     let next = (shown + HISTORY_PAGE).min(HISTORY.len());
     // Load more with JavaScript: only the next page of the history, after the rows the page has,
@@ -466,7 +462,7 @@ async fn about(req: Req, viewer: Option<Caller<Viewer>>, Query(q): Query<AboutQu
     // The whole page, with every row shown so far: a first load, a reload, no JavaScript.
     let shown = if q.history { next } else { 0 };
     req.page(html! {
-        <Layout req={&req} title="About" viewer={viewer.as_ref()} head="">
+        <Layout req={&req} title="About" viewer={viewer.as_deref()} head="">
             <h1>"About"</h1>
             <p>"Rendered on the server and swapped into the page by the runtime."</p>
             <p><a href={about::Source}>"The source"</a></p>
@@ -556,12 +552,11 @@ async fn saved(req: Req, viewer: Option<Caller<Viewer>>, Query(query): Query<Sav
     if req.mode == Mode::Action {
         return saved_status(&req, query.until);
     }
-    let viewer = viewer.map(|Caller(v)| v);
     let pending = landing(query.until);
     let again = pending.then_some(ReadAgain { after: Duration::from_secs(1) });
     let text = if pending { "Saving your change..." } else { "Your change is saved." };
     req.page(html! {
-        <Layout req={&req} title="Saved" viewer={viewer.as_ref()} head={again}>
+        <Layout req={&req} title="Saved" viewer={viewer.as_deref()} head={again}>
             <p id={SavedId} role="status">{text}</p>
             <form method="post" action={url::Saved { until: None }} data-patch>
                 <button>"Save again"</button>

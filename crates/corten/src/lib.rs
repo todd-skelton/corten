@@ -161,8 +161,8 @@ pub mod prelude {
         script::{el, refs, Handler, Ref},
         view::Id,
         Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Files, Form, HtmlResult, Identify, Methods,
-        Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Result, Route, Routes, SubmitKey,
-        Upload, UrlValue,
+        Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Route, Routes, SubmitKey, Upload,
+        UrlValue,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, JsonLd, JsonResult, ToJson};
@@ -394,24 +394,31 @@ where
     )
 }
 
-/// Handler result. Any `std::error::Error` converts with `?` and becomes a 500.
-///
-/// The error type defaults to [`Error`], so `Result` alone is a handler's answer and
-/// `Result<T, E>` is still the standard two-parameter result under `use corten::prelude::*`:
+/// A result whose error is Corten's [`Error`], for the code a handler calls: any
+/// `std::error::Error` converts with `?` and becomes a 500. A handler itself returns what it
+/// answers ([`HtmlResult`], [`JsonResult`]), which is this with the answer in it. It is not in
+/// the prelude, so `Result` in an app is the standard one:
 ///
 /// ```
 /// use corten::prelude::*;
 ///
-/// fn count(text: &str, field: FieldName, errors: &mut Errors) -> Result<u32, ()> {
-///     text.parse().map_err(|_| errors.add(field, "Enter a whole number."))
+/// fn count(text: &str) -> corten::Result<u32> {
+///     Ok(text.parse::<u32>()?)
 /// }
 ///
-/// async fn page() -> Result {
-///     Ok(().into_response())
+/// fn parse(text: &str, field: FieldName, errors: &mut Errors) -> Result<u32, ()> {
+///     text.parse().map_err(|_| errors.add(field, "Enter a whole number."))
 /// }
-/// # use corten::axum::response::IntoResponse;
 /// ```
-pub type Result<T = Response, E = Error> = std::result::Result<T, E>;
+///
+/// A bare `corten::Result` names no answer, so it is not a handler's type:
+///
+/// ```compile_fail
+/// async fn page() -> corten::Result {
+///     Ok(())
+/// }
+/// ```
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Resolves when the process is asked to stop (Ctrl-C, or `SIGTERM` from a container runtime),
 /// after ending every open [`live`] stream and live feed stream (feature `feed`) so a graceful

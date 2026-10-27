@@ -7,6 +7,13 @@ use crate::app::{PriceInput, url};
 #[derive(Id)]
 pub struct PriceId<'a>(pub &'a str);
 
+/// A price cell's word to the grid around it: whether a price typed in it is not saved yet. The
+/// grid counts them, so an edit is not lost unnoticed.
+#[corten::script::event]
+pub struct PriceEdited {
+    pub unsent: bool,
+}
+
 /// A price that edits in place: typing shows Save, Escape restores the saved price (the input's
 /// `value` attribute, its `defaultValue`), and the form posts to the item's price route, which
 /// answers with this cell (or the cell with its error).

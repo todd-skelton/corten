@@ -97,7 +97,42 @@ use crate::{route::Href, Error, Signal};
 
 /// Who is asking, as `T`, found by `T`'s [`Identify`] when the handler reads it. See
 /// [`crate::caller`].
+///
+/// It reads as the `T` it holds, so a handler that may have none passes it on with
+/// `viewer.as_deref()`:
+///
+/// ```
+/// use corten::{axum::http::request::Parts, prelude::*};
+///
+/// #[derive(Clone, Hash)]
+/// struct Viewer {
+///     name: String,
+/// }
+///
+/// impl<S: Sync> Identify<S> for Viewer {
+///     async fn identify(_parts: &Parts, _state: &S) -> Result<Self, Refused> {
+///         Err(Refused::unauthorized())
+///     }
+/// }
+///
+/// fn greeting(viewer: Option<&Viewer>) -> String {
+///     viewer.map_or("Hello".into(), |v| format!("Hello, {}", v.name))
+/// }
+///
+/// async fn home(viewer: Option<Caller<Viewer>>) -> String {
+///     greeting(viewer.as_deref())
+/// }
+/// ```
 pub struct Caller<T>(pub T);
+
+impl<T> std::ops::Deref for Caller<T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
 
 /// How a caller of this type is found: a session cookie, an API key, a token. `S` is the routes'
 /// state (a session store); implement it for every `S` when the lookup needs none.

@@ -219,6 +219,17 @@ try {
   const item = await cacheOf("/items/item_5");
   check("other pages are private by default", item === "private, no-cache", item);
 
+  // What a crawler and a load balancer see: an old address moved for good, a category's
+  // structured data and longer shared lifetime, and readiness once the item source answers.
+  const old = await fetch(`${base}/item/item_5`, { redirect: "manual" });
+  check("an old address is a permanent redirect", old.status === 301 && old.headers.get("location") === "/items/item_5", `${old.status} ${old.headers.get("location")}`);
+  const category = await fetch(`${base}/categories/promo`);
+  const categoryCache = category.headers.get("cache-control") ?? "";
+  check("a category page may be kept longer by shared caches", categoryCache.includes("s-maxage=3600"), categoryCache);
+  check("a category page carries its breadcrumbs as structured data", (await category.text()).includes('"@type":"BreadcrumbList"'));
+  const ready = await fetch(`${base}/health/ready`);
+  check("the app is ready once its item source answers", ready.status === 200, String(ready.status));
+
   // Back and forward restore a page from memory. Playwright turns the back/forward cache off, and
   // its default headless shell never restores a page; the full Chromium in headless mode does.
   const restoring = await chromium.launch({

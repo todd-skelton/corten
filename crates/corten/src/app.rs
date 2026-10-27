@@ -176,7 +176,7 @@ struct Placed {
 /// App::new(url::router())
 ///     .error_page(views::error_page, db.clone())     // failed requests, in the app's layout
 ///     .middleware((RequestId, RateLimit))            // the app's own steps, in this order
-///     .area::<admin::Admin>(|area| admin::area(area).components(&[SalesChart]))
+///     .area(|area| admin::area(area).components(&[SalesChart]))
 ///     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")))
 /// ```
 pub struct App<M = ()> {
@@ -253,8 +253,9 @@ impl App {
 
 impl<M: Middleware> App<M> {
     /// A part of the app under `P::PATH`, with its own routes and, if it needs them, its own
-    /// stylesheet, given by `build`: `.area::<admin::Admin>(|area| admin::area(area))` for a
-    /// routes module of the area's own, or `.area::<Admin>(|admin| admin.route::<AdminUser>(get(user)).components(&[..]))`.
+    /// stylesheet, given by `build`: `.area(admin::area)` for a `#[corten::routes(area = Admin)]`
+    /// module (`P` is inferred from it), with `.area(|area| admin::area(area).components(&[..]))`
+    /// for its stylesheet, or by hand, `.area::<Admin>(|admin| admin.route::<AdminUser>(get(user)))`.
     /// See [`Area`]. The routes keep their full paths (`/admin/users/{id}`), so a
     /// `#[derive(Route)]` struct names the same URL in the router and in links, and a route
     /// outside the prefix does not compile.
@@ -290,8 +291,9 @@ impl<M: Middleware> App<M> {
     }
 
     /// Routes that answer only JSON (a webhook, an OAuth callback, a public API), under `P::PATH`,
-    /// given by `build`: `.api::<ApiRoot>(|api| api.route::<ItemJson>(get(item_json)))`, with
-    /// [`Api`]'s settings (`.allow_origin(..)`) in the same chain. The
+    /// given by `build`: `.api(api::api)` for a `#[corten::routes(api = ApiRoot)]` module (`P` is
+    /// inferred from it), with [`Api`]'s settings in the same chain,
+    /// `.api(|routes| api::api(routes).allow_origin(..))`. The
     /// routes keep their full paths (`/api/items/{id}`), so a `#[derive(Route)]` struct names the
     /// same URL in the router and in links, and a route outside the prefix does not compile. A
     /// prefix is `"/"` or a path as [`App::area`] takes; API prefixes that overlap are a startup

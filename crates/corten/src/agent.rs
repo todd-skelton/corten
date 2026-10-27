@@ -16,7 +16,8 @@
 //!     .tool("inventory.adjust", "Change the quantity of an inventory item", |user: User, input: Adjust| async move {
 //!         Ok(Adjusted { quantity: inventory::adjust(&user, input).await? })
 //!     });
-//! let app = App::new(url::router()).api::<Mcp>(|mcp| mcp.route::<Mcp>(tools.route()));
+//! // #[corten::routes(api = Mcp)] mod mcp { #[route("/mcp")] pub struct Mcp; }
+//! let app = App::new(url::router()).api(|routes| mcp::api(routes).route::<mcp::Mcp>(tools.route()));
 //! ```
 //!
 //! A screen's data is already available to agents through [`crate::Req::screen`]; tools cover
@@ -190,7 +191,7 @@ impl<A: Send + 'static> Tools<A> {
     }
 
     /// The `POST` route for the endpoint, usually mounted at `/mcp` under [`crate::App::api`]:
-    /// `.api::<Mcp>(|mcp| mcp.route::<Mcp>(tools.route()))`.
+    /// `.api(|routes| mcp::api(routes).route::<mcp::Mcp>(tools.route()))`.
     pub fn route<S: Clone + Send + Sync + 'static>(self) -> crate::Methods<S>
     where
         A: 'static,

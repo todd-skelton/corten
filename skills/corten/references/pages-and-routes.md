@@ -35,14 +35,15 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    answers `req.moved(&url::Item { id })`, a 301. A place on another site's page is
    `corten::Elsewhere::at(&uri, "id")`, never a `Location` header set by hand. An area's routes are a module of their own,
    `#[corten::routes(area = Admin, caller = Staff)] mod admin` whose routes name their handlers
-   the same way, mounted with `.area::<admin::Admin>(admin::area)`.
+   the same way, mounted with `.area(admin::area)`; an API's are a `#[corten::routes(api = ApiRoot)]`
+   module, `.api(api::api)`.
    A handler's return type is what the route answers: `HtmlResult` (a page, a patch, a
    redirect; failures are the app's error page), `JsonResult<T>` (failures are JSON), or
    `Public<..>` of either for an answer a CDN may share (`NoStore<..>` for one nothing may keep).
    `Response` or `impl IntoResponse` there does not compile. `App::new` takes only a routes
    module's `router()` (`Routes`), and `Area::route`/`Api::route` only Corten's `get(h)`,
-   `post(h)`, ... (`Methods`), which check handlers the same way: never build an axum `Router`. A route an API
-   serves is a link only: `#[route("/api", link)]`.
+   `post(h)`, ... (`Methods`), which check handlers the same way: never build an axum `Router`. Every
+   route names its handler except an API's prefix route, which may name none.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
    social) are the layout's props. Never build a document outside a layout component. A page
@@ -129,17 +130,18 @@ async fn home(req: Req, State(m): State<Market>) -> HtmlResult {
 
 Webhooks, OAuth callbacks, calls from other services and public APIs answer only JSON: their
 handlers return `JsonResult<T>`, so every failure of the route is JSON wherever it is. Routes
-that share a prefix and its settings (a partner site's CORS) mount under it; their paths stay
-whole, so route structs still work:
+that share a prefix and its settings (a partner site's CORS) go in a module of their own; their
+paths stay whole, so route structs still work:
 
 ```rust
-#[derive(Route)]
-#[route("/api")]
-pub struct ApiRoot;
+#[corten::routes(api = ApiRoot, state = Db)]
+pub mod api {
+    #[route("/api")]                                  // the prefix: the one route without a handler
+    pub struct ApiRoot;
 
-#[derive(Route)]
-#[route("/api/items/{id}/price")]
-pub struct PriceApi<'a> { pub id: &'a str }
+    #[route("/api/items/{id}/price", get = price)]
+    pub struct PriceApi<'a> { pub id: &'a str }
+}
 
 async fn price(Path(id): Path<String>) -> JsonResult<Price> {
     let price = load(&id).await?.ok_or_else(|| Error::new(format!("no item {id}")).with_status(StatusCode::NOT_FOUND))?;
@@ -147,12 +149,11 @@ async fn price(Path(id): Path<String>) -> JsonResult<Price> {
 }
 
 App::new(pages)
-    .api::<ApiRoot>(|api| api.route::<PriceApi>(get(price)))   // .allow_origin(..) in the chain for a partner site
+    .api(|routes| api::api(routes, db))   // .allow_origin(..) in the chain for a partner site
 ```
 
-The prefix and every route are route types, so a route outside the prefix does not compile.
-A handler that takes `State` gets it on its `Methods`: `get(price).with_state(db)` (`get` is
-Corten's, from the prelude, and checks the handler as a routes module does).
+A route outside the prefix, or one without a handler, does not compile. An endpoint built from a
+value (the MCP endpoint) is added with `Api::route`: `mcp::api(routes).route::<mcp::Mcp>(tools.route())`.
 
 `Json` is the prelude's `corten::Json`: axum's extractor, and a response written in one buffer
 (faster than `axum::Json`; keep the prelude's unless a crate hands you axum's). The response type
@@ -205,7 +206,7 @@ async fn save_user(req: Req, Caller(staff): Caller<Staff>, Form(input): Form<Use
     ..
 }
 
-App::new(url::router(db.clone())).area::<admin::Admin>(|area| admin::area(area, db))
+App::new(url::router(db.clone())).area(|area| admin::area(area, db))
 ```
 
 `caller = Staff` holds every handler in the module to taking `Caller<Staff>`: one added later

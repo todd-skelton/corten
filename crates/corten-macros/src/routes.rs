@@ -1,8 +1,9 @@
 //! `#[corten::routes]` on a module of routes: each `#[route("/..", get = show)]` struct in it is a
 //! typed route (`#[derive(Route)]`) with the handlers that serve it, so a route with no handler
 //! does not compile; `router()` puts each handler at its route's path, or with
-//! `#[corten::routes(area = Admin)]`, `area(area)` does in that area. A route another router
-//! serves (an API) says so: `#[route("/api", link)]`.
+//! `#[corten::routes(area = Admin)]`, `area(area)` does in that area, and with
+//! `#[corten::routes(api = ApiRoot)]`, `api(api)` in that API. An API's own prefix route may have
+//! no handler: it is the prefix the API's routes are under.
 
 use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
 
@@ -24,21 +25,28 @@ struct Routed {
 #[derive(Default)]
 struct Serves {
     handlers: Vec<(Ident, TokenStream)>,
-    link: Option<Span>,
 }
 
 /// What `#[corten::routes(..)]` says: what the handlers share (`state = Db`), the area the
-/// routes are in (`area = Admin`, the route at its prefix), and the caller every handler takes
-/// (`caller = Viewer`, as `Caller<Viewer>`).
+/// routes are in (`area = Admin`, the route at its prefix) or the API (`api = ApiRoot`), and the
+/// caller every handler takes (`caller = Viewer`, as `Caller<Viewer>`).
 #[derive(Default)]
 struct Args {
     state: Option<TokenStream>,
     area: Option<TokenStream>,
+    api: Option<TokenStream>,
     caller: Option<TokenStream>,
 }
 
+/// Where a module's routes go: the app, an area or an API.
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    Area,
+    Api,
+}
+
 fn parse_args(args: TokenStream) -> Result<Args, Error> {
-    const USAGE: &str = "#[corten::routes] takes the state the handlers share, the area the routes are in and the caller every handler takes, if any: #[corten::routes(state = Db, area = Admin, caller = Staff)]";
+    const USAGE: &str = "#[corten::routes] takes the state the handlers share, the area or API the routes are in and the caller every handler takes, if any: #[corten::routes(state = Db, area = Admin, caller = Staff)] or #[corten::routes(api = ApiRoot)]";
     let tokens: Vec<TokenTree> = args.into_iter().collect();
     let mut out = Args::default();
     for part in tokens.split(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ',')) {
@@ -48,6 +56,7 @@ fn parse_args(args: TokenStream) -> Result<Args, Error> {
                 let slot = match key.to_string().as_str() {
                     "state" => &mut out.state,
                     "area" => &mut out.area,
+                    "api" => &mut out.api,
                     "caller" => &mut out.caller,
                     _ => return err(key.span(), USAGE),
                 };
@@ -59,11 +68,21 @@ fn parse_args(args: TokenStream) -> Result<Args, Error> {
             [first, ..] => return err(first.span(), USAGE),
         }
     }
+    if let (Some(_), Some(api)) = (&out.area, &out.api) {
+        let span = api.clone().into_iter().next().map_or(Span::call_site(), |t| t.span());
+        return err(
+            span,
+            "a module's routes are in an area or in an API, not both: an API's routes have no pages, so no stylesheet",
+        );
+    }
     Ok(out)
 }
 
 pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
-    let Args { state, area, caller } = parse_args(args)?;
+    let Args { state, area, api, caller } = parse_args(args)?;
+    // The routes' container: an area or an API, with the struct at its prefix.
+    let within = area.map(|a| (Kind::Area, a)).or_else(|| api.map(|a| (Kind::Api, a)));
+    let prefix_name = within.as_ref().map(|(_, p)| p.to_string().replace(' ', ""));
     let mut tokens: Vec<TokenTree> = item.into_iter().collect();
     let Some(TokenTree::Group(body)) = tokens.last().cloned().filter(|_| is_mod(&tokens)) else {
         let span = tokens.first().map_or(Span::call_site(), TokenTree::span);
@@ -73,7 +92,8 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         );
     };
     let TokenTree::Ident(module) = tokens[tokens.len() - 2].clone() else { unreachable!("is_mod checked") };
-    let (mut items, routed) = scan(body.stream())?;
+    let api_prefix = prefix_name.as_deref().filter(|_| matches!(within, Some((Kind::Api, _))));
+    let (mut items, routed) = scan(body.stream(), api_prefix)?;
     for (i, a) in routed.iter().enumerate() {
         if let Some(b) = routed[..i].iter().find(|b| same_pattern(&a.path, &b.path)) {
             return err(
@@ -82,16 +102,17 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             );
         }
     }
-    // The area's prefix, when its route is in the module: each route is checked against it here,
-    // where the error can point at the route (`Area::route` checks every route when it builds).
-    if let Some(area) = &area {
-        let name = area.to_string().replace(' ', "");
-        if let Some(prefix) = routed.iter().find(|r| r.name.to_string() == name) {
+    // The area's or API's prefix, when its route is in the module: each route is checked against
+    // it here, where the error can point at the route (`Area::route` and `Api::route` check every
+    // route when the app builds).
+    if let (Some((kind, _)), Some(name)) = (&within, &prefix_name) {
+        if let Some(prefix) = routed.iter().find(|r| &r.name.to_string() == name) {
             if let Some(outside) = routed.iter().find(|r| !under(&prefix.path, &r.path)) {
+                let what = if *kind == Kind::Area { "area" } else { "API" };
                 return err(
                     outside.span,
                     format!(
-                        "{} is in the area {} ({}), so its path is at or under {}: {}",
+                        "{} is in the {what} {} ({}), so its path is at or under {}: {}",
                         outside.name, prefix.name, prefix.path, prefix.path, outside.path
                     ),
                 );
@@ -111,7 +132,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         None => q("()", &[]),
     };
     let mut calls = TokenStream::new();
-    for route in &routed {
+    for route in routed.iter().filter(|r| !r.handlers.is_empty()) {
         let mut methods = TokenStream::new();
         for (i, (method, handler)) in route.handlers.iter().enumerate() {
             let at = handler.clone().into_iter().last().map_or(method.span(), |t| t.span());
@@ -134,7 +155,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
                 methods.extend(call);
             }
         }
-        let template = if area.is_some() {
+        let template = if within.is_some() {
             ".route::<__A0::__A1>(::corten::Methods::with_state(__A2, state.clone()))"
         } else {
             ".__route::<__A0::__A1>(::corten::Methods::with_state(__A2, state.clone()))"
@@ -144,8 +165,8 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             &[TokenTree::Ident(module.clone()).into(), TokenTree::Ident(route.name.clone()).into(), methods],
         ));
     }
-    if let Some(area) = area {
-        return Ok(expand_area(tokens, body, items, &module, calls, area, state));
+    if let Some((kind, prefix)) = within {
+        return Ok(expand_within(kind, tokens, body, items, &module, calls, prefix, state));
     }
     let router = match &state {
         None => q(
@@ -200,69 +221,75 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     Ok(out)
 }
 
-/// The module of an area's routes: `area(area)` (or `area(area, state)`) adds each route to the
-/// `Area` that `App::area` gives, where the area's stylesheet and settings apply to it.
-fn expand_area(
+/// The module of an area's or an API's routes: `area(area)` (or `area(area, state)`) adds each
+/// route to the `Area` that `App::area` gives, where the area's stylesheet and settings apply to
+/// it, and `api(api)` likewise to the `Api` that `App::api` gives, where every failure is JSON.
+#[allow(clippy::too_many_arguments)]
+fn expand_within(
+    kind: Kind,
     mut tokens: Vec<TokenTree>,
     body: Group,
     mut items: TokenStream,
     module: &Ident,
     calls: TokenStream,
-    area: TokenStream,
+    prefix: TokenStream,
     state: Option<TokenStream>,
 ) -> TokenStream {
-    let function = match &state {
+    let (container, function, doc) = match kind {
+        Kind::Area => ("Area", "area", "in their area, each at its path with its handlers: `.area(admin::area)`, `.area(|area| admin::area(area).components(&[..]))`. A route outside the area's prefix is a compile error."),
+        Kind::Api => ("Api", "api", "in their API, each at its path with its handlers, every failure answered as JSON: `.api(prices::api)`, `.api(|api| prices::api(api).allow_origin(..))`. A route outside the API's prefix is a compile error."),
+    };
+    let container = Ident::new(container, Span::call_site());
+    let function = Ident::new(function, Span::call_site());
+    let names = [TokenTree::Ident(container.clone()).into(), TokenTree::Ident(function.clone()).into(), prefix];
+    let doc = TokenTree::Literal(proc_macro::Literal::string(&format!("The routes of this module {doc}")));
+    let mut item = q("#[doc = __A0]", &[doc.into()]);
+    item.extend(match &state {
         None => q(
-            "/// The routes of this module in their area, each at its path with its handlers:
-            /// `.area::<Admin>(|area| admin::area(area))`. A route outside the area's prefix is a
-            /// compile error.
-            #[allow(dead_code)]
-            pub fn area(area: ::corten::Area<__A0>) -> ::corten::Area<__A0> {
-                <__CortenRoutes as __CortenArea<(), __A0>>::__area(area, ())
+            "#[allow(dead_code)]
+            pub fn __A1(routes: ::corten::__A0<__A2>) -> ::corten::__A0<__A2> {
+                <__CortenRoutes as __CortenWithin<(), __A2>>::__within(routes, ())
             }",
-            std::slice::from_ref(&area),
+            &names,
         ),
         Some(_) => q(
-            "/// The routes of this module in their area, each at its path with its handlers, which
-            /// share `state`: `.area::<Admin>(|area| admin::area(area, db))`. A route outside the
-            /// area's prefix is a compile error.
-            #[allow(dead_code)]
-            pub fn area<S>(area: ::corten::Area<__A0>, state: S) -> ::corten::Area<__A0>
+            "#[allow(dead_code)]
+            pub fn __A1<S>(routes: ::corten::__A0<__A2>, state: S) -> ::corten::__A0<__A2>
             where
-                __CortenRoutes: __CortenArea<S, __A0>,
+                __CortenRoutes: __CortenWithin<S, __A2>,
             {
-                <__CortenRoutes as __CortenArea<S, __A0>>::__area(area, state)
+                <__CortenRoutes as __CortenWithin<S, __A2>>::__within(routes, state)
             }",
-            std::slice::from_ref(&area),
+            &names,
         ),
-    };
-    items.extend(function);
+    });
+    items.extend(item);
     items.extend(q(
         "#[doc(hidden)]
         pub struct __CortenRoutes;
 
         #[doc(hidden)]
-        pub trait __CortenArea<S, P> {
-            fn __area(area: ::corten::Area<P>, state: S) -> ::corten::Area<P>;
+        pub trait __CortenWithin<S, P> {
+            fn __within(routes: ::corten::__A0<P>, state: S) -> ::corten::__A0<P>;
         }",
-        &[],
+        &[TokenTree::Ident(container.clone()).into()],
     ));
     let mut module_body = Group::new(Delimiter::Brace, items);
     module_body.set_span(body.span());
     *tokens.last_mut().expect("the module body") = TokenTree::Group(module_body);
     let mut out: TokenStream = tokens.into_iter().collect();
     let state = state.unwrap_or_else(|| q("()", &[]));
-    // The area is named where the module is declared too, so its type stays generic here; the
-    // area's own check (`Area::route`) holds each route under its prefix.
+    // The prefix is named where the module is declared too, so its type stays generic here; the
+    // container's own check (`Area::route`, `Api::route`) holds each route under its prefix.
     out.extend(q(
         "#[automatically_derived]
-        impl<P: ::corten::Route> __A0::__CortenArea<__A2, P> for __A0::__CortenRoutes {
+        impl<P: ::corten::Route> __A0::__CortenWithin<__A2, P> for __A0::__CortenRoutes {
             #[allow(unused_variables)]
-            fn __area(area: ::corten::Area<P>, state: __A2) -> ::corten::Area<P> {
-                area __A1
+            fn __within(routes: ::corten::__A3<P>, state: __A2) -> ::corten::__A3<P> {
+                routes __A1
             }
         }",
-        &[TokenTree::Ident(module.clone()).into(), calls, state],
+        &[TokenTree::Ident(module.clone()).into(), calls, state, TokenTree::Ident(container).into()],
     ));
     out
 }
@@ -299,8 +326,9 @@ fn is_mod(tokens: &[TokenTree]) -> bool {
 }
 
 /// The module's items with `#[derive(::corten::Route)]` on each routed struct and its
-/// `#[route(..)]` cut to the path, and those structs with their handlers.
-fn scan(body: TokenStream) -> Result<(TokenStream, Vec<Routed>), Error> {
+/// `#[route(..)]` cut to the path, and those structs with their handlers. `api_prefix` is the
+/// struct an API module is under, the one route that may name no handler.
+fn scan(body: TokenStream, api_prefix: Option<&str>) -> Result<(TokenStream, Vec<Routed>), Error> {
     let tokens: Vec<TokenTree> = body.into_iter().collect();
     let mut out: Vec<TokenTree> = Vec::new();
     let mut routed = Vec::new();
@@ -346,31 +374,23 @@ fn scan(body: TokenStream) -> Result<(TokenStream, Vec<Routed>), Error> {
                         return err(
                             derive,
                             format!(
-                                "in a #[corten::routes] module the module derives Route for {name}: remove #[derive(Route)] (a route another router serves is #[route(\"{path}\", link)])"
+                                "in a #[corten::routes] module the module derives Route for {name}: remove #[derive(Route)] (a route another module serves is declared in that module)"
                             ),
                         );
                     }
-                    match (serves.handlers.is_empty(), serves.link) {
-                        (true, None) => {
-                            return err(
-                                span,
-                                format!(
-                                    "{name} has no handler: name the one that serves it, #[route(\"{path}\", get = {})], or write #[route(\"{path}\", link)] if an area or API serves it",
-                                    crate::names::snake(&name.to_string())
-                                ),
-                            )
-                        }
-                        (false, Some(link)) => {
-                            return err(link, format!("{name} names a handler, so it is not only a link: remove link"))
-                        }
-                        _ => {}
+                    if serves.handlers.is_empty() && api_prefix != Some(name.to_string().as_str()) {
+                        return err(
+                            span,
+                            format!(
+                                "{name} has no handler: name the one that serves it, #[route(\"{path}\", get = {})]; a route an API serves goes in its #[corten::routes(api = ..)] module",
+                                crate::names::snake(&name.to_string())
+                            ),
+                        );
                     }
                     let at = start.unwrap_or(out.len());
                     let derive: Vec<TokenTree> = q("#[derive(::corten::Route)]", &[]).into_iter().collect();
                     out.splice(at..at, derive);
-                    if serves.link.is_none() {
-                        routed.push(Routed { name: name.clone(), path, span, handlers: serves.handlers });
-                    }
+                    routed.push(Routed { name: name.clone(), path, span, handlers: serves.handlers });
                 }
             }
             _ => {}
@@ -384,8 +404,7 @@ fn scan(body: TokenStream) -> Result<(TokenStream, Vec<Routed>), Error> {
     Ok((out.into_iter().collect(), routed))
 }
 
-/// `#[route("/..", get = show, post = save)]` or `#[route("/..", link)]`: the path, its span, what
-/// it serves, and the attribute cut to `#[route("/..")]` for `#[derive(Route)]`. `None` for
+/// `#[route("/..", get = show, post = save)]`: the path, its span, what it serves, and the attribute cut to `#[route("/..")]` for `#[derive(Route)]`. `None` for
 /// another attribute, and for `#[route(query)]`, which has no path.
 fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Error> {
     let inner: Vec<TokenTree> = attr.stream().into_iter().collect();
@@ -403,7 +422,7 @@ fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Err
     let mut rest = &args[1..];
     while let Some(first) = rest.first() {
         if !matches!(first, TokenTree::Punct(p) if p.as_char() == ',') {
-            return err(first.span(), "expected a comma, then a handler (get = show) or link");
+            return err(first.span(), "expected a comma, then a handler: get = show");
         }
         rest = &rest[1..];
         let end = rest.iter().position(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ',')).unwrap_or(rest.len());
@@ -411,7 +430,6 @@ fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Err
         rest = after;
         match part {
             [] => {}
-            [TokenTree::Ident(word)] if word.to_string() == "link" => serves.link = Some(word.span()),
             [TokenTree::Ident(method), TokenTree::Punct(eq), handler @ ..] if eq.as_char() == '=' => {
                 let key = method.to_string();
                 if !METHODS.contains(&key.as_str()) {
@@ -426,7 +444,7 @@ fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Err
                 }
                 serves.handlers.push((method.clone(), stream(handler.iter().cloned())));
             }
-            _ => return err(part[0].span(), "expected a handler (get = show) or link"),
+            _ => return err(part[0].span(), "expected a handler: get = show"),
         }
     }
     let mut cut_args = Group::new(Delimiter::Parenthesis, stream([TokenTree::Literal(lit.clone())]));
