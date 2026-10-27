@@ -671,8 +671,9 @@ async function apply(html, signal, sent) {
  * A patch's `ReadAgain` (`<template data-corten-read-again="2" data-from="/alerts?after=r7">`):
  * after that many seconds, once the tab is visible and no form's answer is on its way, fetches
  * `data-from` as a GET `data-patch` form would and applies the patch it answers, which may ask
- * again. It lasts while the page and the elements the patch put on it are there: a later patch
- * of them or a page swapped in stops it, and so does a read that fails.
+ * again, whatever its status (a handler that cannot read says so as a patch). It lasts while the
+ * page and the elements the patch put on it are there: a later patch of them or a page swapped in
+ * stops it, and so does a read that fails without a patch (the server logged it) or offline.
  * @param {Element} tag @param {Element[]} put
  */
 function readPatchAgain(tag, put) {
@@ -682,8 +683,11 @@ function readPatchAgain(tag, put) {
   readLater(Number(tag.getAttribute("data-corten-read-again")), here, async () => {
     // Offline or unreachable: the part stays as it is.
     const res = await fetch(from, { headers: { corten: "action" } }).catch(() => {});
-    if (!res) return;
-    if (!res.headers.has("corten-patch")) return console.error("corten: ReadAgain needs a patch from", from, res);
+    if (!res?.headers.has("corten-patch")) {
+      // A success that is not a patch is the app's mistake (the route answered its page).
+      if (res?.ok) console.error("corten: ReadAgain needs a patch from", from, res);
+      return;
+    }
     const html = await res.text();
     if (here()) await apply(html, undefined, null);
   });
