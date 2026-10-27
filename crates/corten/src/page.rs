@@ -615,11 +615,28 @@ impl Req {
                     view.render(out);
                 }
             });
+            #[cfg(debug_assertions)]
+            self.check_modules(&modules)?;
             return Ok(modules);
         }
         let (((), used), modules) = crate::script::collect(|| crate::style::collect(|| view.render(out)));
         self.check_rendered(&used)?;
+        #[cfg(debug_assertions)]
+        self.check_modules(&modules)?;
         Ok(modules)
+    }
+
+    /// In debug builds (a router test, `cargo run`): an error when the page's handlers call a
+    /// script module the app does not serve, which a browser would only find as a 404 and
+    /// handlers that do nothing. Release builds do not check a swap; a full page logs it.
+    #[cfg(debug_assertions)]
+    #[cold]
+    #[inline(never)]
+    fn check_modules(&self, modules: &[&'static str]) -> Result<()> {
+        match modules.iter().find(|name| !self.shared.assets.as_ref().is_some_and(|a| a.module_tag(name).is_some())) {
+            Some(name) => Err(Error::new(unserved_module(name))),
+            None => Ok(()),
+        }
     }
 
     /// Under `corten dev`: an error when the page rendered a component whose script or stylesheet
@@ -695,7 +712,11 @@ impl Req {
         // Each module's tag was made when the assets loaded.
         if let Some(assets) = &self.shared.assets {
             let mut preloaded = false;
-            for tag in modules.iter().filter_map(|name| assets.module_tag(name)) {
+            for name in modules {
+                let Some(tag) = assets.module_tag(name) else {
+                    tracing::error!("corten: {}", unserved_module(name));
+                    continue;
+                };
                 out.push_str(tag);
                 preloaded = true;
             }
@@ -852,6 +873,14 @@ fn has_fragment(to: &HeaderValue) -> bool {
 fn elsewhere(to: &HeaderValue) -> bool {
     let to = to.as_bytes();
     to.first() != Some(&b'/') || to.get(1) == Some(&b'/')
+}
+
+/// What a page whose handlers call an unserved script module is told.
+#[cold]
+fn unserved_module(name: &str) -> String {
+    format!(
+        "the page's handlers call the script module {name}.js, which the app does not serve, so they would do nothing: list the component it belongs to in App::components (for a script! module, its COMPONENT)"
+    )
 }
 
 /// Middleware the app installs: a failed request (an [`Error`] from a handler, or an empty error
