@@ -35,6 +35,10 @@ for (const [tag, kind, input, expected] of rows("cases.tsv")) {
     check(`${tag} number ${input}`, format(input), expected);
     // A number the script computed, when it is the same value.
     if (String(Number(input)) === input) check(`${tag} number ${input} (a number)`, format(Number(input)), expected);
+  } else if (what === "percent") {
+    const format = formatter(specs.get(`${tag} percent ${style}`));
+    check(`${tag} percent ${style} ${input}`, format(input), expected);
+    if (String(Number(input)) === input) check(`${tag} percent ${style} ${input} (a number)`, format(Number(input)), expected);
   } else if (what === "money") {
     const [amount, code] = input.split(" ");
     const spec = specs.get(`${tag} money ${code}`);

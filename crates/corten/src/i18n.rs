@@ -153,9 +153,9 @@
 //! A number, an amount or a date a script works out is written with the page's format, so it is
 //! what the server would have rendered: `t.js().number()`, `t.js().money(USD)` and
 //! `t.js().date(DateStyle::Short)` (or `.time(..)`, `.date_time(..)`, in UTC unless
-//! `.zone(Offset::hours(-5))`) are passed to a handler whose JSDoc takes a `NumberFormat`,
-//! `MoneyFormat` or `DateFormat` (from `"corten"`), and the script calls `price(123450)` (minor
-//! units) or `when(Date.now())`. The format is sent as the locale's separators, templates and
+//! `.zone(Offset::hours(-5))`) and `t.js().percent(2)` are passed to a handler whose JSDoc takes
+//! a `NumberFormat`, `MoneyFormat`, `DateFormat` or `PercentFormat` (from `"corten"`), and the
+//! script calls `price(123450)` (minor units), `when(Date.now())` or `rate(0.029)`. The format is sent as the locale's separators, templates and
 //! names (`%{..}`), and the runtime writes with the same algorithm (`scripts/format.mjs` checks
 //! it on every case the server is checked on), not the browser's `Intl`, whose data differs by
 //! browser and version. A zone with daylight saving time has no fixed offset to send: write
@@ -223,7 +223,7 @@ mod format;
 
 pub use format::{
     parse_timestamp, Amount, Currency, DateFormat, DateOnly, DateStyle, Decimal, Formatted, InvalidDecimal, Minor, MoneyFormat,
-    MonthStyle, Number, NumberFormat, Offset, TimeStyle, Utc, When, Zone,
+    MonthStyle, Number, NumberFormat, Offset, PercentFormat, TimeStyle, Utc, When, Zone,
 };
 
 /// Compiles catalogs into a messages type. See the [module docs](self).
@@ -555,6 +555,23 @@ mod tests {
         }
     }
 
+    /// `t.percent` takes a ratio, rounds to the digits asked for and drops trailing zeros; a
+    /// basis-point rate is `Decimal::new(bps, 4)`.
+    #[test]
+    fn a_ratio_is_written_as_the_locale_writes_a_percentage() {
+        let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+        let fee = Decimal::new(290, 4);
+        assert_eq!(en.percent(fee, 2).to_string(), "2.9%");
+        assert_eq!(fr.percent(fee, 2).to_string(), "2,9\u{a0}%");
+        assert_eq!(en.percent(Decimal::new(1, 3), 0).to_string(), "0%");
+        assert_eq!(en.percent(Decimal::new(-125, 5), 2).to_string(), "-0.13%", "half away from zero");
+        assert_eq!(en.percent(12, 2).to_string(), "1,200%", "an integer is a ratio too");
+        assert_eq!(
+            crate::html! { <td title={en.percent(fee, 1)}>{fr.percent(fee, 1)}</td> }.to_html(),
+            "<td title=\"2.9%\">2,9\u{a0}%</td>"
+        );
+    }
+
     /// Every case `scripts/locale-data.mjs` had Intl write, for every locale: numbers, money and
     /// dates in fixed zones.
     #[test]
@@ -568,6 +585,9 @@ mod tests {
             let data = locales.iter().find(|(t, _)| *t == tag).expect(tag).1;
             let ours = match kind.split(' ').collect::<Vec<_>>()[..] {
                 ["number"] => Formatted::number(data, Decimal::parse(input).unwrap()).to_string(),
+                ["percent", digits] => {
+                    Formatted::percent(data, Decimal::parse(input).unwrap(), digits.parse().unwrap()).to_string()
+                }
                 ["money"] => {
                     let (amount, code) = input.split_once(' ').unwrap();
                     Formatted::money(data, &Decimal::parse(amount).unwrap(), Currency::parse(code).unwrap()).to_string()
@@ -615,6 +635,10 @@ mod tests {
                 ["number"] => {
                     Arg::<ts::NumberFormat>::write_arg(&NumberFormat::new(data), &ctx, &mut out);
                     "number".to_string()
+                }
+                ["percent", digits] => {
+                    Arg::<ts::PercentFormat>::write_arg(&PercentFormat::new(data, digits.parse().unwrap()), &ctx, &mut out);
+                    format!("percent {digits}")
                 }
                 ["money"] => {
                     let code = input.split_once(' ').unwrap().1;

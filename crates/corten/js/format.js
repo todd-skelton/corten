@@ -8,11 +8,12 @@
 /**
  * A format as the server writes it. `z` is the locale's zero; `s` its decimal and group
  * separators and grouping (primary, secondary, fewest digits grouped); `t` templates, positive and
- * negative, with the digits at \u0001; `d` an amount's fraction digits; `f` a date's fields; `o`
+ * negative, with the digits at \u0001; `d` an amount's fraction digits; `p` a percentage's most
+ * fraction digits (it takes a ratio); `f` a date's fields; `o`
  * the zone's offset in seconds east, and for a pattern that shows the zone, `u` UTC's name and `g`
  * an offset's templates (hours at \u0001, minutes at \u0003: whole hours east, west, then with
  * minutes). A period (`P`) is runs of a name and the hour it ends before: ["P","AM",12,"PM",24].
- * @typedef {{ z: string, s?: [string, string, number, number, number], t?: [string, string], d?: number, f?: Field[], o?: number, u?: string, g?: string[] }} Spec
+ * @typedef {{ z: string, s?: [string, string, number, number, number], t?: [string, string], d?: number, p?: number, f?: Field[], o?: number, u?: string, g?: string[] }} Spec
  * @typedef {[string, ...(string | number)[]]} Field
  */
 
@@ -31,10 +32,21 @@ export function formatter(spec) {
       return number(spec, minor < 0 || Object.is(minor, -0), text.slice(0, text.length - d), text.slice(text.length - d));
     };
   }
+  const p = spec.p;
   return (n) => {
     const m = /^([-+]?)(\d*)(?:\.(\d+))?$/.exec(typeof n === "number" ? (Number.isInteger(n) ? n.toFixed(0) : String(n)) : n);
     if (!m || !(m[2] || m[3])) return String(n);
-    return number(spec, m[1] === "-", m[2].replace(/^0+(?=\d)/, "") || "0", m[3] ?? "");
+    if (p === undefined) return number(spec, m[1] === "-", m[2].replace(/^0+(?=\d)/, "") || "0", m[3] ?? "");
+    // A percentage: the ratio Ã— 100, moving the point in the text (0.029 * 100 is
+    // 2.9000000000000004), then at most `p` fraction digits, rounded half away from zero.
+    let f = (m[3] ?? "").padEnd(2, "0");
+    let i = m[2] + f.slice(0, 2);
+    f = f.slice(2);
+    if (f.length > p) {
+      const s = String(BigInt(i + f.slice(0, p)) + BigInt(f[p] > "4")).padStart(p + 1, "0");
+      [i, f] = [s.slice(0, s.length - p), s.slice(s.length - p)];
+    }
+    return number(spec, m[1] === "-", i.replace(/^0+(?=\d)/, ""), f.replace(/0+$/, ""));
   };
 }
 
