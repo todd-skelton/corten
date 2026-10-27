@@ -993,6 +993,10 @@ Corten is pre-1.0, so any minor version may change the API.
     refused it with a console error (the hover's prefetch too), and the page reloaded to follow it
     again
     ([#131 A client navigation to a route that redirects to another origin is blocked by connect-src, then reloads](https://github.com/todd-skelton/corten/issues/131)).
+31. `html!` reads a pattern with braces as Rust does: `if let Shape::Circle { r } = shape { .. }`
+    and `for Point { x, y } in points { .. }` took the pattern's braces for the body and did not
+    compile. `corten fmt` reads them the same way
+    ([#142 html! if let cannot take a struct pattern: the pattern's braces are read as the body](https://github.com/todd-skelton/corten/issues/142)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
