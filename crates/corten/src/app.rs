@@ -27,6 +27,7 @@ use crate::{
     api::{Api, Mount},
     assets::Assets,
     cache::{self, Seen},
+    client::Peer,
     middleware::Middleware,
     page::{self, default_error_page, error_page_fn, Asked, Credentials, ErrorPageFn, Failure, Shared},
     pwa::Pwa,
@@ -542,7 +543,9 @@ impl<M: Middleware> App<M> {
                 shared.sections.push((section.prefixes.clone(), link));
             }
         }
-        let policy = Applied::new(hosts_from_env(self.policy), &shared.import_map);
+        let policy = proxies_from_env(hosts_from_env(self.policy));
+        shared.proxies = policy.proxies().to_vec();
+        let policy = Applied::new(policy, &shared.import_map);
 
         // The routes of the APIs and areas: each is under its prefix, which the compiler checked.
         let mut owned = Vec::with_capacity(self.apis.len() + self.areas.len());
@@ -634,7 +637,7 @@ pub async fn listeners(port: u16) -> std::io::Result<Vec<tokio::net::TcpListener
 pub async fn serve_on<L, M>(listeners: Vec<L>, app: App<M>) -> std::io::Result<()>
 where
     L: axum::serve::Listener,
-    L::Addr: std::fmt::Debug,
+    L::Addr: std::fmt::Debug + 'static,
     M: Middleware,
 {
     #[cfg(feature = "log")]
@@ -651,7 +654,7 @@ where
 pub(crate) async fn run<L, M>(listeners: Vec<L>, mut app: App<M>, stop: impl Future<Output = ()>) -> std::io::Result<()>
 where
     L: axum::serve::Listener,
-    L::Addr: std::fmt::Debug,
+    L::Addr: std::fmt::Debug + 'static,
     M: Middleware,
 {
     let (tasks, grace) = (std::mem::take(&mut app.tasks), app.grace);
@@ -703,7 +706,7 @@ pub(crate) async fn bind(host: Option<&str>, port: u16) -> std::io::Result<Vec<t
 pub(crate) async fn serve_router<L>(listeners: Vec<L>, router: Router, stop: impl Future<Output = ()>) -> std::io::Result<()>
 where
     L: axum::serve::Listener,
-    L::Addr: std::fmt::Debug,
+    L::Addr: std::fmt::Debug + 'static,
 {
     use futures_util::future::{select, try_join_all, Either};
     use std::future::IntoFuture;
@@ -713,7 +716,7 @@ where
         let stop = async move {
             let _ = watch.wait_for(|stopped| *stopped).await;
         };
-        axum::serve(listener, router.clone()).with_graceful_shutdown(stop).into_future()
+        axum::serve(listener, Connect(router.clone())).with_graceful_shutdown(stop).into_future()
     });
     let servers = std::pin::pin!(try_join_all(servers));
     match select(std::pin::pin!(stop), servers).await {
@@ -722,6 +725,60 @@ where
             servers.await.map(drop)
         }
         Either::Right((served, _)) => served.map(drop),
+    }
+}
+
+/// Makes each connection's service: the router, with what the connection says about who is
+/// asking for [`ClientIp`](crate::ClientIp).
+#[derive(Clone)]
+struct Connect(Router);
+
+impl<L> tower_service::Service<axum::serve::IncomingStream<'_, L>> for Connect
+where
+    L: axum::serve::Listener,
+    L::Addr: 'static,
+{
+    type Response = Connection;
+    type Error = std::convert::Infallible;
+    type Future = std::future::Ready<Result<Connection, std::convert::Infallible>>;
+
+    fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, stream: axum::serve::IncomingStream<'_, L>) -> Self::Future {
+        let addr: &dyn std::any::Any = stream.remote_addr();
+        let peer = match addr.downcast_ref::<std::net::SocketAddr>() {
+            Some(addr) => Peer::Ip(addr.ip()),
+            #[cfg(unix)]
+            None if addr.is::<tokio::net::unix::SocketAddr>() => Peer::Local,
+            None => Peer::Unknown,
+        };
+        std::future::ready(Ok(Connection { router: self.0.clone(), peer }))
+    }
+}
+
+/// One connection's service: the router, each of whose requests runs with the connection's
+/// peer at hand for [`ClientIp`](crate::ClientIp). Not a request extension: `http`'s extensions
+/// box each value, and one more cost every request 497 instructions whether anything read it or
+/// not; this costs 44 (callgrind, keep-alive requests over TCP).
+#[derive(Clone)]
+struct Connection {
+    router: Router,
+    peer: Peer,
+}
+
+impl tower_service::Service<Request> for Connection {
+    type Response = Response;
+    type Error = std::convert::Infallible;
+    type Future = crate::client::WithPeer<<Router as tower_service::Service<Request>>::Future>;
+
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        tower_service::Service::<Request>::poll_ready(&mut self.router, cx)
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        crate::client::WithPeer::new(self.peer, tower_service::Service::<Request>::call(&mut self.router, req))
     }
 }
 
@@ -919,15 +976,23 @@ impl<M: Middleware> Layer<M> {
     /// The response, whether anything read who is asking, and the request's mode.
     async fn run(&self, mut req: Request, route: Route, api: bool, deadline: Option<Duration>) -> (Response, bool, Mode) {
         // Dropped with this future if the client leaves first; then the response's.
-        let watch = Watch(Signal::default());
+        let watch = Watch(Signal::for_app(self.shared.clone()));
         req.extensions_mut().insert(watch.0.clone());
-        req.extensions_mut().insert(self.shared.clone());
         let mode = page::mode_of(req.headers());
         let next = Next { middleware: &self.middleware, route };
         let res = page::render_errors(&self.shared, req, next, deadline, &watch.0, api, mode).await;
         let personal = watch.0.is_personal();
         (signal::follow(res, watch), personal, mode)
     }
+}
+
+/// `policy` with the proxies in `PROXIES` (comma separated, as given to [`Policy::proxy`]).
+fn proxies_from_env(mut policy: Policy) -> Policy {
+    let Ok(proxies) = std::env::var("PROXIES") else { return policy };
+    for network in proxies.split(',').map(str::trim).filter(|network| !network.is_empty()) {
+        policy = policy.proxy(network);
+    }
+    policy
 }
 
 /// `policy` with the names in `HOSTS` (comma separated, as given to [`Policy::host`]; `*` for any

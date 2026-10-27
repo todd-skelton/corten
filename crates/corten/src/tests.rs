@@ -1749,6 +1749,76 @@ async fn served<M: crate::Middleware>(
     (stop, server)
 }
 
+/// One request on a fresh connection to `addr`, with `headers` (lines ending in `\r\n`); the
+/// answer as text.
+async fn raw_get(addr: std::net::SocketAddr, path: &str, headers: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let request = format!("GET {path} HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n{headers}\r\n");
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).await.unwrap();
+    answer
+}
+
+/// `corten::serve` gives each request its connection's peer, which `ClientIp` reads. A proxy's `X-Forwarded-For` is followed only when the
+/// app trusts the peer, and the answer is private to the address.
+#[tokio::test]
+async fn the_client_ip_is_the_peer_or_what_a_trusted_proxy_forwards() {
+    let app = |policy: crate::security::Policy| {
+        let routes = Router::new().route("/ip", get(|crate::ClientIp(ip): crate::ClientIp| async move { ip.to_string() }));
+        App::new(Routes::from(routes)).policy(policy)
+    };
+    let body = |answer: &str| answer.rsplit("\r\n").next().unwrap().to_string();
+    let forwarded = "x-forwarded-for: 1.1.1.1, 198.51.100.7\r\n";
+
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(crate::app::run(listeners, app(crate::security::Policy::new()), async {
+        let _ = stopped.await;
+    }));
+    let answer = raw_get(addr, "/ip", forwarded).await;
+    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    assert_eq!(body(&answer), "127.0.0.1", "without a trusted proxy the header is anyone's");
+    assert!(answer.to_ascii_lowercase().contains("cache-control: private"), "{answer}");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let behind = app(crate::security::Policy::new().proxy("127.0.0.0/8"));
+    let server = tokio::spawn(crate::app::run(listeners, behind, async {
+        let _ = stopped.await;
+    }));
+    assert_eq!(body(&raw_get(addr, "/ip", forwarded).await), "198.51.100.7");
+    assert_eq!(body(&raw_get(addr, "/ip", "").await), "127.0.0.1");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+/// Without a connection (a test's `oneshot`), `ClientIp` is a 500 that says why and
+/// `Option<ClientIp>` is `None`; axum's `MockConnectInfo` gives it one.
+#[tokio::test]
+async fn without_a_connection_there_is_no_client_ip() {
+    use axum::extract::connect_info::MockConnectInfo;
+    let routes = || {
+        Router::new()
+            .route("/ip", get(|crate::ClientIp(ip): crate::ClientIp| async move { ip.to_string() }))
+            .route("/maybe", get(|ip: Option<crate::ClientIp>| async move { format!("{ip:?}") }))
+    };
+    let router = App::new(Routes::from(routes())).router();
+    let (status, _, _) = call_with(router.clone(), "GET", "/ip", None, None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let (status, _, body) = call_with(router, "GET", "/maybe", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "None"));
+    let mocked =
+        App::new(Routes::from(routes())).router().layer(MockConnectInfo(std::net::SocketAddr::from(([203, 0, 113, 9], 4711))));
+    let (status, _, body) = call_with(mocked, "GET", "/ip", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "203.0.113.9"));
+}
+
 /// A task of the app's is told when shutdown begins, and `serve` waits for it to finish what it
 /// was writing before it returns.
 #[tokio::test]

@@ -551,6 +551,12 @@ Corten is pre-1.0, so any minor version may change the API.
     pattern and grouping from CLDR, checked against Intl's `style: "percent"` with
     `maximumFractionDigits` on 40 values per locale (13 kept as the Rust and script tests' cases). The runtime grows by 99 bytes gzipped
     ([#119 i18n writes no percentage, so a rate like 2.9% cannot be localized](https://github.com/todd-skelton/corten/issues/119)).
+82. `corten::ClientIp`: the visitor's IP address, for a handler that passes it to an API's
+    per-client limit or limits by it. It is the connection's peer, or behind proxies the app lists
+    (`Policy::proxy("10.0.0.0/8")`, `PROXIES`) the nearest `X-Forwarded-For` address that is not
+    one of them; nothing reads the header otherwise. A `Public` handler cannot take it, and an
+    answer that read it is private
+    ([#120 A handler cannot read the client's address, so an app that calls an API for a visitor cannot pass it on for rate limiting](https://github.com/todd-skelton/corten/issues/120)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -839,6 +845,10 @@ Corten is pre-1.0, so any minor version may change the API.
 51. **Breaking:** `corten::serve` takes an `App`, not anything that becomes a router, so the
     app's tasks cannot be left behind on the way. A tower layer around the whole app is
     `App::layer(l)` instead of `corten::serve(app.router().layer(l))`.
+52. A request carries the app's shared state in its `Signal` rather than as an extension of its
+    own, so its extensions fit their first allocation: 207 fewer instructions for a page, 647 for
+    a signed-in page and 849 for the error page (callgrind, release build, in-process `oneshot`,
+    median of three).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

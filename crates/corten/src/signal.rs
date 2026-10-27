@@ -80,9 +80,22 @@ struct Inner {
     /// The first callers marked, so the error page, which looks them up again, does not mark one
     /// twice (the key mixes them by XOR, so a second mark would take it out).
     marked: [AtomicU64; 4],
+    /// The app's, for a request it serves: carried here rather than as a request extension of
+    /// its own, so the request's extensions stay within their first allocation.
+    shared: Option<Arc<crate::page::Shared>>,
 }
 
 impl Signal {
+    /// A request's signal in an app.
+    pub(crate) fn for_app(shared: Arc<crate::page::Shared>) -> Signal {
+        Signal(Arc::new(Inner { shared: Some(shared), ..Inner::default() }))
+    }
+
+    /// The app's shared state, for a request an app serves.
+    pub(crate) fn shared(&self) -> Option<&Arc<crate::page::Shared>> {
+        self.0.shared.as_ref()
+    }
+
     /// Whether the signal has aborted: a cheap check for a loop on a blocking thread.
     pub fn is_aborted(&self) -> bool {
         self.0.reason.load(Ordering::Acquire) != 0
