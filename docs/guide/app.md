@@ -228,7 +228,8 @@ let app = App::new(Routes::new()).middleware((RequestId, RateLimit));
 ```
 
 Whatever a middleware answers (the 429 above) leaves through stages 7 and 8 like a handler's
-answer, so it gets the error page, the security headers and `Cache-Control`. A middleware can
+answer, so it gets the error page (with the headers it set, `Retry-After` included), the security
+headers and `Cache-Control`. A middleware can
 read a `Caller` the same way a handler does (`Caller::<Viewer>::from_request_parts`), and the
 handler then reuses that lookup. The tuple is resolved when the crate compiles, so nothing is
 boxed: a middleware that only passes the request on costs about 230 instructions (its `async fn`
@@ -566,6 +567,12 @@ Every way a request can fail is a `Failure`, given to the app's error page for a
 | `Panicked { detail }` | the handler panicked | 500 |
 | `TimedOut` | the handler ran past `App::deadline` | 503 |
 | `Offline` | the PWA's offline page | 200, so the worker keeps it |
+
+The error page keeps the headers the failed response had (a request id, `Retry-After`,
+`WWW-Authenticate`, `Server-Timing`, `Allow`), so what a handler or a middleware said about a
+failure still reaches the client. The ones that described the old body (`Content-*`, `ETag`,
+`Last-Modified`) and `Cache-Control` are the error page's own, and a header the error page sets
+wins.
 
 The error page is an async function of the `Failure` and then extractors, as a handler's
 arguments are, with the state they read given beside it (`()` for none). A layout that shows
