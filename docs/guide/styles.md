@@ -60,6 +60,42 @@ Link it before `<Corten />` in the layout, which links the components' styleshee
 rules win ties. Inline `style=` stays blocked by the
 CSP; one-off values come from the token utilities instead.
 
+## Utility-first
+
+A page can be styled mostly in its markup, as Tailwind does, from the token file's utilities.
+`examples/watchlist` is: its `tokens.json` defines utilities for layout, spacing, color, borders
+and type, and `src/theme.rs` names the few combinations it repeats as functions:
+
+```rust,ignore
+pub fn card() -> impl ClassList {
+    (bg(Color::Surface), border(Border::Line), rounded(Radius::Lg), shadow(Shadow::Sm), p(Space::_5))
+}
+
+<div class={(display(Display::Grid), columns(Responsive::new(Columns::_1).md(Columns::Main)), gap(Space::_5))}>
+    <section class={card()}>..</section>
+</div>
+```
+
+Unlike Tailwind's class strings, a utility the file lacks, a value outside its scale or a
+breakpoint it does not define does not compile, and there is no build step or content scan: the
+token file generates every class it allows, so the stylesheet holds them all whether a page uses
+them or not. Measured on the watchlist: its `components.css` (the tokens' utilities and its three
+component stylesheets) is 14,729 bytes, 1,823 brotli at level 11, against 1,063 brotli for the
+card market's tokens and five components; a scale of eight spaces in four breakpoints is 32 classes
+per utility, so a utility belongs in the file only when pages use it.
+
+Utilities also cost at render time, where a component's classes do not: `class={Card}` is
+static text written when the crate compiles, while `gap(Space::_3)` is a value written as the
+page renders. Measured with callgrind (release build, in-process `oneshot`, the difference between
+1,200 and 200 requests over 1,000, median of three runs), the watchlist's home page costs 51,201
+instructions a request against 45,952 for the plainer page it replaced; a profile puts 3,086 of
+the difference in writing its roughly 60 utility classes and the rest in the larger page. Use
+utilities for layout that varies from page to page, and a component's stylesheet for what repeats.
+ States a utility cannot
+say (hover, focus, the current link) and element defaults stay in `static/style.css`, and a
+component with rules of its own (`LivePrices`) keeps its stylesheet. A utility's classes are
+static text chosen by a match, so writing them costs what writing a class does.
+
 ## Areas
 
 Every page links `components.css`, so a large part of the app that most visitors never open (an

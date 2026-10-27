@@ -1,10 +1,10 @@
 // Browser smoke test of `corten dev` live reload: an open page reloads when the server restarts.
-// Usage: node scripts/smoke-dev.mjs http://localhost:18483 corten-hello-dev
-// (the hello image, run with -e CORTEN_DEV=1 in a container of that name).
+// Usage: node scripts/smoke-dev.mjs http://localhost:18483 corten-watchlist-dev
+// (the watchlist image, run with -e CORTEN_DEV=1 in a container of that name).
 import { chromium } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 
-const [base = "http://localhost:18483", container = "corten-hello-dev"] = process.argv.slice(2);
+const [base = "http://localhost:18483", container = "corten-watchlist-dev"] = process.argv.slice(2);
 const failures = [];
 const check = (name, ok, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? ` (${detail})` : ""}`);

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build from the repository root: docker build -f examples/hello/Dockerfile -t corten-hello .
+# Build from the repository root: docker build -f examples/watchlist/Dockerfile -t corten-watchlist .
 FROM rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
@@ -9,13 +9,13 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target,sharing=locked \
     find . -name target -prune -o -type f -exec touch {} + \
-    && cargo test --release --workspace --all-features && cargo build --release -p hello \
-    && mkdir -p /out && cp target/release/hello /out/server
+    && cargo test --release --workspace --all-features && cargo build --release -p watchlist \
+    && mkdir -p /out && cp target/release/watchlist /out/server
 
 FROM debian:bookworm-slim
 WORKDIR /app
 COPY --from=build /out/server /app/server
-COPY examples/hello/static /app/static
+COPY examples/watchlist/static /app/static
 ENV STATIC_DIR=/app/static HOST=0.0.0.0 PORT=8080
 EXPOSE 8080
 CMD ["/app/server"]

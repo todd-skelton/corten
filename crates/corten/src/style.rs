@@ -117,7 +117,7 @@
 
 use std::cell::RefCell;
 
-/// A design-token file as CSS and Rust. See [the module](self) and `examples/item-page/tokens.json`.
+/// A design-token file as CSS and Rust. See [the module](self) and `examples/card-market/tokens.json`.
 ///
 /// `tokens!("tokens.json")` (the path from the crate's root) reads:
 ///

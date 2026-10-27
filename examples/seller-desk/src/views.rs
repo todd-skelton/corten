@@ -39,10 +39,13 @@ pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
                 <Corten />
             </head>
             <body>
-                <nav>
-                    <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Inventory"</a>" "
-                    <a href={url::Statement} data-nav aria-current={req.current(&url::Statement)}>"Statement"</a>
-                </nav>
+                <header>
+                    <strong>"Seller desk"</strong>
+                    <nav>
+                        <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Inventory"</a>
+                        <a href={url::Statement} data-nav aria-current={req.current(&url::Statement)}>"Statement"</a>
+                    </nav>
+                </header>
                 <main>{children}</main>
             </body>
         </html>

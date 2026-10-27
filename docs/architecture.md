@@ -28,15 +28,15 @@ backend.
    and agent processes. `corten-feed` uses the same `check_seq` and `apply_ops` rules, so the
    server follower and every client apply patches the same way.
 3. The example's `watch` handler serves a browser with and without JavaScript, and a data
-   client, from one function. `examples/hello/src/app.rs` tests all three.
+   client, from one function. `examples/watchlist/src/app.rs` tests all three.
 4. `corten::agent` (feature `agent`): actions as Model Context Protocol tools over HTTP POST.
-   `examples/item-page` exposes `items.get` (a read tool returning the screen JSON) and
+   `examples/card-market` exposes `items.get` (a read tool returning the screen JSON) and
    `alerts.create` (the same rule the form uses), behind bearer tokens.
 5. PWA: a manifest and a generated service worker (`corten::pwa`) make the web app installable
-   with an offline fallback page; the item-page smoke test checks both in Chromium.
+   with an offline fallback page; the card-market smoke test checks both in Chromium.
 6. JSON-only routes (`App::api`): endpoints with no screen (webhooks, OAuth callbacks, calls
    between services, public APIs, the MCP endpoint) under a prefix where every failure is JSON
-   and there is no document or nonce. `examples/item-page` mounts its MCP endpoint this
+   and there is no document or nonce. `examples/card-market` mounts its MCP endpoint this
    way, and lets agents' pages on `AGENT_ORIGINS` call it from the browser.
 
 ## Native apps (next, not built)

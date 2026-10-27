@@ -29,6 +29,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
+use crate::theme::*;
+
 corten::i18n::messages! {
     /// The app's text. One locale here; a real app lists each catalog.
     pub struct Msg { "en" => "locales/en.json" }
@@ -56,7 +58,7 @@ impl Market {
 /// Everything else is Corten's defaults.
 pub fn app(market: Market) -> App {
     App::new(url::router(market))
-        .components(&[LivePrices])
+        .components(&[TOKENS, LivePrices])
         .area(|area| about::area(area).components(&[AboutNote, AboutFilter]))
         .area(account::area)
         .error_page(error_page, ())
@@ -75,11 +77,14 @@ async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) 
     };
     req.page(html! {
         <Layout req={&req} title={title} viewer={viewer.as_deref()} head="">
-            <h1>{title}</h1>
-            <p>{text}</p>
-            if let Some(detail) = failure.detail() {
-                <pre>{detail}</pre>
-            }
+            <section class={(card(), stack(Space::_3), max_w(MaxW::Prose))}>
+                <h1>{title}</h1>
+                <p>{text}</p>
+                if let Some(detail) = failure.detail() {
+                    <pre>{detail}</pre>
+                }
+                <p><a href={url::Home}>"Back to the watchlist"</a></p>
+            </section>
         </Layout>
     })
 }
@@ -179,19 +184,24 @@ fn Layout<'a>(
                 {head}
                 <Corten />
             </head>
-            <body>
-                <header>
-                    <nav>
-                        <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Watchlist"</a>
-                        <a href={about::About} data-nav aria-current={req.current(&about::About)}>"About"</a>
-                        <a href={account::Account} data-nav aria-current={req.current(&account::Account)}>"Account"</a>
-                    </nav>
-                    match viewer {
-                        Some(viewer) => <span>"Signed in as "{&viewer.name}</span>,
-                        None => <form method="post" action={url::SignIn} data-patch><button>"Sign in as Ada"</button></form>,
-                    }
+            <body class={(bg(Color::Bg), fg(Color::Ink))}>
+                <header class={(bg(Color::Surface), border_b(BorderB::Line))}>
+                    <div
+                        class={(row(Space::_3), justify(Justify::Between), wrap(Wrap::Wrap), max_w(MaxW::Page), mx(Mx::Auto), px(Space::_5), py(Space::_3))}
+                    >
+                        <nav class={(row(Space::_1), wrap(Wrap::Wrap))}>
+                            <span class={(weight(Weight::Bold), tracking(Tracking::Tight), px(Space::_2))}>"Watchlist"</span>
+                            <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Prices"</a>
+                            <a href={about::About} data-nav aria-current={req.current(&about::About)}>"About"</a>
+                            <a href={account::Account} data-nav aria-current={req.current(&account::Account)}>"Account"</a>
+                        </nav>
+                        match viewer {
+                            Some(viewer) => <span class={muted()}>"Signed in as "{&viewer.name}</span>,
+                            None => <form method="post" action={url::SignIn} data-patch><button>"Sign in as Ada"</button></form>,
+                        }
+                    </div>
                 </header>
-                <main>{children}</main>
+                <main class={(max_w(MaxW::Page), mx(Mx::Auto), px(Space::_5), py(Space::_6))}>{children}</main>
             </body>
         </html>
     }
@@ -301,16 +311,32 @@ impl Home {
 fn home_view(home: &Home, t: Msg) -> impl Render {
     let f = WatchForm::FIELDS;
     html! {
-        <h1>"Watchlist"</h1>
-        <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} t={t} />
-        <corten-live src={url::Trades} since={home.trades_seen}><LastTrade text={&home.last_trade} /></corten-live>
-        <form method="post" action={url::Watch} data-patch>
-            <label>
-                "Stock "<select name={f.id}>for stock in &home.stocks { <option value={stock.id}>{stock.name}</option> }</select>
-            </label>
-            <button>"Watch"</button>
-        </form>
-        <WatchMessage message={&home.message} />
+        <div class={(stack(Space::_1), mb(Space::_5))}>
+            <h1>"Watchlist"</h1>
+            <p class={muted()}>"Prices stream from the server as they change. Without JavaScript the page still shows them."</p>
+        </div>
+        <div
+            class={(display(Display::Grid), columns(Responsive::new(Columns::_1).md(Columns::Main)), gap(Space::_5), items(Items::Start))}
+        >
+            <section class={card()}>
+                <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} t={t} />
+            </section>
+            <aside class={stack(Space::_5)}>
+                <section class={(card(), stack(Space::_2))}>
+                    <h2>"Market activity"</h2>
+                    <corten-live src={url::Trades} since={home.trades_seen}><LastTrade text={&home.last_trade} /></corten-live>
+                </section>
+                <form method="post" action={url::Watch} data-patch class={(card(), stack(Space::_3))}>
+                    <h2>"Watch a stock"</h2>
+                    <label class={stack(Space::_1)}>
+                        <span class={muted()}>"Stock"</span>
+                        <select name={f.id}>for stock in &home.stocks { <option value={stock.id}>{stock.name}</option> }</select>
+                    </label>
+                    <button class={w(W::Full)}>"Watch"</button>
+                    <WatchMessage message={&home.message} />
+                </form>
+            </aside>
+        </div>
     }
 }
 
@@ -324,10 +350,13 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Render {
     let (pause, price, updates) = refs();
     let (updated, money) = (t.js().prices_updates(), t.js().money(USD));
     html! {
-        <div on:connect={js::watch(scope, pause, price, money, feed, signal, updates, updated)}>
-            <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price, money)}>
-                "Pause updates"
-            </button>
+        <div class={stack(Space::_3)} on:connect={js::watch(scope, pause, price, money, feed, signal, updates, updated)}>
+            <div class={(row(Space::_3), justify(Justify::Between))}>
+                <h2>"Prices"</h2>
+                <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price, money)}>
+                    "Pause updates"
+                </button>
+            </div>
             <table class={Table}>
                 <thead>
                     <tr>
@@ -344,7 +373,7 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Render {
                     }
                 </tbody>
             </table>
-            <output ref={updates} aria-live="polite"></output>
+            <output ref={updates} class={muted()} aria-live="polite"></output>
         </div>
     }
 }
@@ -430,17 +459,21 @@ async fn about(req: Req, viewer: Option<Caller<Viewer>>, Query(q): Query<AboutQu
     let shown = if q.history { next } else { 0 };
     req.page(html! {
         <Layout req={&req} title="About" viewer={viewer.as_deref()} head="">
-            <h1>"About"</h1>
-            <p>"Rendered on the server and swapped into the page by the runtime."</p>
-            <AboutNote />
-            <AboutFilter history={q.history} />
-            if q.history {
-                <ol id={HistoryId}>for event in &HISTORY[..shown] { <li>{event}</li> }</ol>
-                <LoadMore shown={shown} />
-            }
-            <form id={ThanksId} method="post" action={about::Thank} data-patch>
-                <button>"Thank the authors"</button>
-            </form>
+            <div class={(stack(Space::_4), max_w(MaxW::Prose))}>
+                <h1>"About"</h1>
+                <p>"Rendered on the server and swapped into the page by the runtime."</p>
+                <AboutNote />
+                <section class={(card(), stack(Space::_3))}>
+                    <AboutFilter history={q.history} />
+                    if q.history {
+                        <ol id={HistoryId}>for event in &HISTORY[..shown] { <li>{event}</li> }</ol>
+                        <LoadMore shown={shown} />
+                    }
+                </section>
+                <form id={ThanksId} method="post" action={about::Thank} data-patch>
+                    <button>"Thank the authors"</button>
+                </form>
+            </div>
         </Layout>
     })
 }
@@ -470,7 +503,7 @@ fn LoadMore(shown: usize) -> impl Patch {
         <form id={LoadMoreId} method="get" action={about::About} data-patch>
             <input type="hidden" name={f.history} value="on">
             <input type="hidden" name={f.shown} value={shown}>
-            <button hidden={shown >= HISTORY.len()}>"Load more"</button>
+            <button class={secondary()} hidden={shown >= HISTORY.len()}>"Load more"</button>
         </form>
     }
 }
@@ -494,7 +527,7 @@ fn AboutFilter(history: bool) -> impl Render {
                     <label><input type="checkbox" name={f.history} checked={history}>" Show the history"</label>
                 </details>
             </div>
-            <button>"Apply"</button>
+            <button class={secondary()}>"Apply"</button>
         </form>
     }
 }
@@ -517,10 +550,13 @@ async fn saved(req: Req, viewer: Option<Caller<Viewer>>, Query(query): Query<Sav
     let text = if pending { "Saving your change..." } else { "Your change is saved." };
     req.page(html! {
         <Layout req={&req} title="Saved" viewer={viewer.as_deref()} head={again}>
-            <p id={SavedId} role="status">{text}</p>
-            <form method="post" action={url::Saved { until: None }} data-patch>
-                <button>"Save again"</button>
-            </form>
+            <section class={(card(), stack(Space::_3), max_w(MaxW::Prose))}>
+                <h1>"Saved"</h1>
+                <p id={SavedId} role="status">{text}</p>
+                <form method="post" action={url::Saved { until: None }} data-patch>
+                    <button>"Save again"</button>
+                </form>
+            </section>
         </Layout>
     })
 }
@@ -566,8 +602,10 @@ async fn account(req: Req, Caller(viewer): Caller<Viewer>) -> HtmlResult {
     let viewer = &viewer;
     req.page(html! {
         <Layout req={&req} title="Account" viewer={Some(viewer)} head="">
-            <h1>"Account"</h1>
-            <p>"Signed in as "{&viewer.name}"."</p>
+            <section class={(card(), stack(Space::_2), max_w(MaxW::Prose))}>
+                <h1>"Account"</h1>
+                <p>"Signed in as "{&viewer.name}"."</p>
+            </section>
         </Layout>
     })
 }
@@ -634,7 +672,7 @@ mod tests {
     async fn the_shell_marks_the_current_link_and_shows_the_viewer() {
         let (_, guest) = send(Request::get("/about").body(Body::empty()).unwrap()).await;
         assert!(guest.contains(r#"<a href="/about" data-nav aria-current="page">About</a>"#), "{guest}");
-        assert!(guest.contains(r#"<a href="/" data-nav>Watchlist</a>"#));
+        assert!(guest.contains(r#"<a href="/" data-nav>Prices</a>"#));
         assert!(guest.contains("Sign in as Ada"));
         let signed_in = Request::get("/").header("cookie", "viewer=Ada").body(Body::empty()).unwrap();
         let (_, ada) = send(signed_in).await;
@@ -664,7 +702,7 @@ mod tests {
             concat!(
                 r#"<template id="history" data-append><li>Then live prices.</li><li>Then areas.</li></template>"#,
                 r#"<form id="load-more" method="get" action="/about" data-patch><input type="hidden" name="history" value="on">"#,
-                r#"<input type="hidden" name="shown" value="4"><button>Load more</button></form>"#
+                r#"<input type="hidden" name="shown" value="4"><button class="bg-surface fg-accent">Load more</button></form>"#
             )
         );
         // Without JavaScript the same form loads the page with every row so far.

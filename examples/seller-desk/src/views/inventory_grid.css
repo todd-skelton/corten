@@ -1,10 +1,16 @@
-.grid { display: grid; gap: 8px; }
-.toolbar { display: flex; gap: 12px; align-items: center; min-height: 36px; }
-.toolbar input[type="search"] { font: inherit; padding: 6px 8px; width: 20rem; }
-.table { border-collapse: collapse; width: 100%; }
-.table th, .table td { border-bottom: 1px solid #e3e1ea; padding: 4px 8px; text-align: left; }
-.table th button { all: unset; cursor: pointer; font-weight: 600; }
+.grid { display: grid; gap: 12px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; min-height: 36px; }
+.toolbar input[type="search"] { width: 20rem; max-width: 100%; }
+.toolbar [role="group"] { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: 8px; background: var(--tint); }
+.toolbar > output { color: var(--danger); font-weight: 500; }
+.table { border: 1px solid var(--line); border-radius: 10px; border-collapse: separate; border-spacing: 0; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover { background: var(--bg); }
+.table th:first-child, .table td:first-child { width: 44px; }
+.table th:nth-child(5), .table td:nth-child(5), .table th:nth-child(6), .table td:nth-child(6) { text-align: end; font-variant-numeric: tabular-nums; }
+.table th button { padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.table th button:hover { color: var(--ink); }
 .table th[aria-sort="ascending"] button::after { content: " \2191"; }
 .table th[aria-sort="descending"] button::after { content: " \2193"; }
-.table tr[data-selected] { background: #efe9fb; }
-.empty { color: #6b6880; }
+.table tr[data-selected] { background: var(--tint); }
+.empty { color: var(--muted); text-align: center; padding: 24px; }

@@ -1,0 +1,23 @@
+/* The base layer: element defaults and states, which utility classes do not express (hover,
+   focus, the current link). Layout, spacing and color are utilities in the markup. */
+*, *::before, *::after { box-sizing: border-box; }
+:root { color-scheme: light dark; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; min-height: 100vh; }
+h1, h2, p, ol { margin: 0; }
+h1 { font-size: var(--font-size-2xl); line-height: 1.2; letter-spacing: -0.02em; }
+h2 { font-size: var(--font-size-lg); }
+ol { padding-inline-start: 1.25rem; display: grid; gap: var(--space-1); }
+a { color: var(--color-accent); }
+pre { margin: 0; padding: var(--space-3); overflow: auto; border-radius: var(--radius-sm); background: var(--color-bg); font-size: var(--font-size-sm); }
+header nav a { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); color: var(--color-muted); text-decoration: none; font-weight: 500; }
+header nav a:hover { color: var(--color-ink); background: var(--color-bg); }
+header nav a[aria-current="page"] { color: var(--color-accent); background: var(--color-tint); }
+button, select { font: inherit; border-radius: var(--radius-sm); }
+button { white-space: nowrap; padding: var(--space-2) var(--space-4); border: 1px solid var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; cursor: pointer; }
+button:hover { filter: brightness(1.08); }
+button[aria-pressed] { background: transparent; color: var(--color-accent); }
+button[aria-pressed="true"] { background: var(--color-tint); }
+select { padding: var(--space-2) var(--space-3); border: 1px solid var(--color-line); background: var(--color-surface); color: inherit; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+details summary { cursor: pointer; font-weight: 500; }
+form[aria-busy="true"] { opacity: .6; }

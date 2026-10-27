@@ -1,4 +1,4 @@
-// Browser smoke test of every runtime behavior, against the hello example, in Chromium, Firefox
+// Browser smoke test of every runtime behavior, against the watchlist example, in Chromium, Firefox
 // and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
 // Usage: node scripts/smoke.mjs [http://localhost:18480] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
@@ -377,7 +377,8 @@ async function run(browser) {
       box.scrollIntoView({ block: "end" });
       box.focus();
     }, rail);
-    const before = await page.evaluate(() => scrollY);
+    // Read once the scroll has settled: Firefox rounds a scroll to a fractional place a frame later.
+    const before = await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(scrollY)))));
     const railBefore = await page.$eval(rail, (r) => r.scrollTop);
     await page.keyboard.press("Space");
     await page.waitForFunction(() => location.search === "?history=on" && document.querySelectorAll("#history li").length === 2);

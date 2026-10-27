@@ -1,22 +1,37 @@
+/* The page: an introduction, then a card per component. */
+.intro { margin-block-end: 24px; }
+.intro p { margin: 4px 0 0; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 16px; align-items: start; }
+.card { display: grid; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
+.card h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.wide { grid-column: 1 / -1; }
+.order { display: flex; flex-wrap: wrap; align-items: end; gap: 0 20px; }
+.primary { margin-block: 12px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.buttons form { margin: 0; }
+
 /* The adornment sits between the price's decrease button and its input: the number field's
    root is display: contents (field.css), so its parts are the control's flex items. */
-.currency { order: 1; }
+.currency { order: 1; color: var(--muted); }
 .currency ~ * > input { order: 2; }
 .currency ~ * > button:last-child { order: 3; }
 
-.book [role="tablist"] { display: flex; gap: 4px; border-bottom: 1px solid GrayText; }
-.book [role="tab"] { padding: 6px 12px; border: 0; background: none; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
-.book [role="tab"][aria-selected="true"] { box-shadow: inset 0 -2px #6b3fd4; font-weight: 600; }
-.book [role="tabpanel"] { padding: 12px 0; }
+.book [role="tablist"] { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.book [role="tab"] { padding: 8px 12px; border: 0; border-radius: 0; background: none; color: var(--muted); font: inherit; font-weight: 500; text-decoration: none; cursor: pointer; }
+.book [role="tab"]:hover { color: var(--ink); }
+.book [role="tab"][aria-selected="true"] { box-shadow: inset 0 -2px var(--accent); color: var(--ink); }
+.book [role="tabpanel"] { padding: 8px 0 0; }
+.book [role="tabpanel"] p { margin: 0; }
 
 /* A popover's display applies only while it is open, or it would show closed. */
 .actions [role="menu"]:popover-open { display: grid; }
-.actions [role="menu"] { inset: auto; position-area: block-end span-inline-end; position-try-fallbacks: flip-block; min-width: anchor-size(width); margin: 4px 0; padding: 4px; border: 1px solid GrayText; border-radius: 6px; }
+.actions [role="menu"] { inset: auto; position-area: block-end span-inline-end; position-try-fallbacks: flip-block; min-width: anchor-size(width); margin: 4px 0; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
 .actions [role="menu"] form { margin: 0; }
 .actions [role="menuitem"] { display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: start; text-decoration: none; cursor: pointer; }
-.actions [role="menuitem"]:focus { outline: none; background: Highlight; color: HighlightText; }
+.actions [role="menuitem"]:focus { outline: none; background: var(--tint); color: var(--accent); }
+.actions > div { justify-self: start; }
 
 /* The toaster has no box; the message is the toast, fixed at the bottom while it shows. */
-.toasts > div { position: fixed; inset: auto 16px 16px auto; display: flex; align-items: center; gap: 8px; }
-.toasts #ui-toast { padding: 8px 12px; border-radius: 6px; background: CanvasText; color: Canvas; }
-.toasts button { font: inherit; }
+.toasts > div { position: fixed; inset: auto 16px 16px auto; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border-radius: 10px; background: var(--ink); color: var(--bg); box-shadow: 0 8px 24px rgb(0 0 0 / 0.2); }
+.toasts > div:has(#ui-toast[hidden]) { display: none; }
+.toasts button { font: inherit; background: none; color: inherit; border-color: rgb(255 255 255 / 0.3); }

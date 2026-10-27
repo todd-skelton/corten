@@ -56,7 +56,7 @@ A cursor the app no longer knows (too old, another deploy's) is the handler's to
 the part as it is now is always correct. A cursor with a line break or NUL would end its event,
 so `cursor` refuses it (a panic in debug builds; in release the fragment goes without it).
 
-[examples/hello](../../examples/hello) has this running.
+[examples/watchlist](../../examples/watchlist) has this running.
 
 ### Connection
 

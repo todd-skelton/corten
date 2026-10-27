@@ -1,4 +1,5 @@
 mod app;
+mod theme;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
