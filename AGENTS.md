@@ -48,9 +48,9 @@ convenience. And a nicer API that slows every page loses.
    when they are stale). The `data-on` format is written by `crates/corten/src/script.rs` and
    read by `crates/corten/js/on.js`; a change to it updates `crates/corten/src/script/wire.json`,
    which both sides are tested against (`cargo test` and `npm run check`).
-6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`
+6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/watchlist`
    (live reload under `corten dev` by `scripts/smoke-dev.mjs`), and production modules (security, assets, PWA, head tags, compression) by
-   `examples/item-page/smoke.mjs`. Add the check with the behavior.
+   `examples/card-market/smoke.mjs`. Add the check with the behavior.
 7. Types across seams: never hand-write a type the server already defines. Handler calls are
    checked against each handler's JSDoc when the crate compiles; feed rows and typed events
    (`#[event]`) against the declarations `corten::types` generates (`examples/*/types/app.d.ts`,

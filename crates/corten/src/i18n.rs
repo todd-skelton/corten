@@ -79,8 +79,8 @@
 //! Each renders escaped in `html!`, as text or an attribute value. The data (separators, currency
 //! symbols, date patterns, month names) is CLDR's, as Intl in Node writes it, checked against Intl
 //! for every locale (`scripts/locale-data.mjs`). `messages!` puts in the app only the locales it
-//! lists, and it is linked only when the app formats something (measured: `examples/hello`, `en`,
-//! grew 22.9 KB with the code; item-page, `en` and `fr`, not at all). A tag without data of its
+//! lists, and it is linked only when the app formats something (measured: `examples/watchlist`, `en`,
+//! grew 22.9 KB with the code; card-market, `en` and `fr`, not at all). A tag without data of its
 //! own has its language's (`fr-LU` is `fr`), and a language Corten has no data for is a build
 //! error. Numbers are written in the locale's digits (`fa` has `۱٬۲۳۴`), dates in the Gregorian
 //! calendar.

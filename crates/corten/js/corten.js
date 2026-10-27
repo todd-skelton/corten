@@ -1271,22 +1271,26 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   // they used. Kept across a redirect the server answers with.
   const place = again || event.sourceElement?.closest?.("[data-keep-place]") ? placeOf(document.activeElement) : event.info?.[KEEP_PLACE];
   if (place === undefined) {
-    // Sent to a place on a page: scrolled to here, since Firefox does not scroll to an `#id` the
-    // address already had.
-    if (event.info?.[LOAD] && url.hash) {
-      const handler = async () => {
-        await visit(url, event.signal, redirected);
-        if (event.signal.aborted) return;
-        let id = url.hash.slice(1);
-        try {
-          id = decodeURIComponent(id);
-        } catch {}
-        document.getElementById(id)?.scrollIntoView();
-      };
-      event.intercept({ handler, scroll: "manual" });
+    // Back and forward: the browser puts the user back where they were on that entry.
+    if (event.navigationType === "traverse") {
+      event.intercept({ handler: () => visit(url, event.signal, redirected) });
       return;
     }
-    event.intercept({ handler: () => visit(url, event.signal, redirected) });
+    // A new page starts at its `#id`, else at the top. Scrolled here, not left to the browser:
+    // Chromium leaves a swapped page where the last one was scrolled, and Firefox does not scroll
+    // to an `#id` the address already had.
+    const handler = async () => {
+      await visit(url, event.signal, redirected);
+      if (event.signal.aborted) return;
+      let id = url.hash.slice(1);
+      try {
+        id = decodeURIComponent(id);
+      } catch {}
+      const at = id ? document.getElementById(id) : null;
+      if (at) at.scrollIntoView();
+      else scrollTo(0, 0);
+    };
+    event.intercept({ handler, scroll: "manual" });
     return;
   }
   const handler = async () => {

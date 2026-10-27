@@ -5,7 +5,7 @@ price-alert form that posts and patches a message), and the same item as JSON, b
 
 | App | Stack | Directory |
 |---|---|---|
-| corten | Corten 0.1 (Rust, axum, `html!` views, handlers) | [examples/item-page](../../examples/item-page) |
+| corten | Corten 0.1 (Rust, axum, `html!` views, handlers) | [examples/card-market](../../examples/card-market) |
 | leptos | Leptos 0.8 (Rust, SSR plus WASM hydration, axum) | [apps/leptos](apps/leptos) |
 | nextjs | Next.js 16.4.2, App Router, React Server Components, server action | [apps/nextjs](apps/nextjs) |
 | tanstack-start | TanStack Start 1.169.3, React 19, server functions, Nitro | [apps/tanstack-start](apps/tanstack-start) |
@@ -325,7 +325,7 @@ Corten's item-API page fell from 1,290 a second in r2 to 1,175 in r3 as the unch
 was Corten's own cost. Every request parsed the 55 KB response into a `serde_json::Value` and
 then read the view from it, 3.47 million instructions an item in process (callgrind), against
 about 124,000 to render the page. ASP.NET Core deserializes into typed records and skips the
-members it does not use. `examples/item-page` now deserializes into `ApiItem`, structs of only
+members it does not use. `examples/card-market` now deserializes into `ApiItem`, structs of only
 the fields the page reads (1.08 million instructions an item), and the same views come out for
 all 508 fixture items. Leptos's app, as it is written, still parses into a `Value`.
 
@@ -441,7 +441,7 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
 # On a fresh droplet, created and destroyed for the run (needs doctl and an SSH key there):
 node bench/fullstack/droplet.mjs r6 --ssh-key <id> [--region sfo2]
 # Or by hand, from the repository root: the images, the fixture, then everything.
-docker build -f examples/item-page/Dockerfile -t cb-corten .
+docker build -f examples/card-market/Dockerfile -t cb-corten .
 for app in nextjs tanstack-start sveltekit react-router leptos django rails laravel aspnet spring phoenix astro nuxt; do
   docker build -t cb-$app bench/fullstack/apps/$app
 done

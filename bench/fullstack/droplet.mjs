@@ -102,7 +102,7 @@ try {
       : [
         "cd /bench && tar -xzf src.tgz && npm ci --silent && npx playwright install --with-deps chromium >/dev/null",
         ...(suite === "browser" ? ["(cd bench/browser && npm ci --silent)"] : []),
-        "docker build -q -f examples/item-page/Dockerfile -t cb-corten .",
+        "docker build -q -f examples/card-market/Dockerfile -t cb-corten .",
         ...fullstackImages(Object.keys(apps)),
         "docker network create rustbench >/dev/null 2>&1 || true",
         "docker rm -f item-api >/dev/null 2>&1 || true",

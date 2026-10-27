@@ -226,6 +226,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "card-market"
+version = "0.1.0"
+dependencies = [
+ "corten",
+ "http-body-util",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+]
+
+[[package]]
 name = "cc"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -789,19 +803,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
-name = "hello"
-version = "0.1.0"
-dependencies = [
- "corten",
- "futures-util",
- "http-body-util",
- "schemars",
- "serde",
- "tokio",
- "tower",
-]
-
-[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1042,20 +1043,6 @@ name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
-
-[[package]]
-name = "item-page"
-version = "0.1.0"
-dependencies = [
- "corten",
- "http-body-util",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tower",
-]
 
 [[package]]
 name = "itoa"
@@ -2682,6 +2669,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23f0c9c52aa7cd7d77769a4cfe2a9adb1b331f489a41d912ce14513d5ab995c6"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "watchlist"
+version = "0.1.0"
+dependencies = [
+ "corten",
+ "futures-util",
+ "http-body-util",
+ "schemars",
+ "serde",
+ "tokio",
+ "tower",
 ]
 
 [[package]]

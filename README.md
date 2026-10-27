@@ -370,9 +370,10 @@ API reference: `cargo doc --open -p corten`. Building an app with an AI agent? T
 | [`corten-cluster`](crates/corten-cluster) | one feed across instances: Postgres outbox, NATS JetStream |
 | [`corten-protocol`](crates/corten-protocol) | the feed wire format and a client replica, for native and agent clients |
 
-Examples: [hello](examples/hello) (every piece on one screen), [item-page](examples/item-page)
-(every production module), [ui-gallery](examples/ui-gallery) (`corten-ui` styled), and
-[cluster](examples/cluster) (failover across instances).
+Examples: [watchlist](examples/watchlist) (a stock watchlist with every piece, styled utility-first),
+[card-market](examples/card-market) (a card store with every production module),
+[seller-desk](examples/seller-desk) (a client-heavy inventory screen), [ui-gallery](examples/ui-gallery)
+(`corten-ui` styled by a small design system), and [cluster](examples/cluster) (failover across instances).
 
 ## Contributing
 

@@ -8,7 +8,7 @@ import { state, subscribe } from "corten";
 // @ts-expect-error The runtime takes a module's exports from the line Corten appends; it exports no hook for it.
 import { register } from "corten";
 
-/** @typedef {import("../examples/hello/types/app").Stock} Stock Generated from the Rust struct. */
+/** @typedef {import("../examples/watchlist/types/app").Stock} Stock Generated from the Rust struct. */
 
 /** @param {HTMLElement} root @param {AbortSignal} signal */
 export function connect(root, signal) {

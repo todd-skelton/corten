@@ -1,5 +1,5 @@
-// Browser smoke test of the production pieces, against the item-page example (API or fixture mode).
-// Usage: node examples/item-page/smoke.mjs [http://localhost:18410]
+// Browser smoke test of the production pieces, against the card-market example (API or fixture mode).
+// Usage: node examples/card-market/smoke.mjs [http://localhost:18410]
 import { chromium } from "@playwright/test";
 
 const base = process.argv[2] ?? "http://localhost:18410";

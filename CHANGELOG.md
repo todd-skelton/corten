@@ -1043,6 +1043,13 @@ Corten is pre-1.0, so any minor version may change the API.
     ancestors as scrolled, and an element whose scroll it restored. The runtime grows by 38 bytes
     gzipped
     ([#130 Firefox sometimes loses the filter rail's own scroll after a data-keep-place swap (smoke: 76 -> 0)](https://github.com/todd-skelton/corten/issues/130)).
+34. A link to a new page goes to the top of it (or to its `#id`) in Chromium too. Chromium could leave
+    a page the runtime swapped in where the last one was scrolled (seen from About to Home, and on
+    a link to the page already open), though Firefox and WebKit went to the top; the runtime now
+    scrolls itself, as it already did for a page the server sent to an `#id`. Back and forward
+    still return to where the user was. Found when `examples/watchlist`'s taller About page made
+    the smoke test's "a plain link still goes to the top" fail. The runtime is 6 B larger gzipped
+    (9,018 to 9,024 B, measured).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1096,6 +1103,12 @@ Corten is pre-1.0, so any minor version may change the API.
     `examples/seller-desk`: a `Middleware` (`Server-Timing`), an archive made idempotent by
     `SubmitKey`, a `NoStore` statement page, a nav from `req.current`, and a typed event
     (`#[event] PriceEdited`) a price cell sends the grid, which counts the prices not saved.
+15. The examples are named for what they are: `examples/hello` is `examples/watchlist` (a stock
+    watchlist) and `examples/item-page` is `examples/card-market` (a trading-card store), with
+    their packages, images and CI steps. Every example has a designed layout in light and dark.
+    The watchlist is styled utility-first from its token file's utilities (`display`, `gap`,
+    `p`, `bg`, `columns`, ...), with the repeated combinations named in `src/theme.rs`, and the
+    styles guide compares that with Tailwind.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

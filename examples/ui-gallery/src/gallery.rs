@@ -35,34 +35,51 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, rename: 
         MenuItem { label: &"Watch", link: &url::Watch, post: true },
     ];
     html! {
-        <h1>"corten-ui"</h1>
-        <form method="post" action={url::Order} data-patch>
-            <Field id="qty" label="Quantity"><NumberField field={&qty} /></Field>
-            <Field id="price" label="Price">
-                <span class={Currency}>"$"</span>
-                <NumberField field={&price} />
-            </Field>
-            <Field id="color" label="Color"><ComboBox field={&color} /></Field>
-            <button>"Order"</button>
-        </form>
-        <OrderResult text={result} />
-        // Built in the markup, so the panels' views live until the group has rendered them.
-        <div class={Book}>
-            <TabGroup
-                id="book"
-                label="Market"
-                selected={tab}
-                tabs={&[
-                    Tab { label: &"Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None }) },
-                    Tab { label: &"Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]) }) },
-                    Tab { label: &"Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]) }) },
-                ]}
-            />
+        <div class={Intro}>
+            <h1>"corten-ui"</h1>
+            <p>"Headless components that work as plain HTML first, styled here by a small design system."</p>
         </div>
-        <div class={Actions}><MenuButton id="actions" label={&"Actions"} items={&items} /></div>
-        <MenuResult text="" />
-        <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
-        <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
+        <div class={Grid}>
+            <section class={(Card, Wide)}>
+                <h2>"Number field and combobox"</h2>
+                <form class={Order} method="post" action={url::Order} data-patch>
+                    <Field id="qty" label="Quantity"><NumberField field={&qty} /></Field>
+                    <Field id="price" label="Price">
+                        <span class={Currency}>"$"</span>
+                        <NumberField field={&price} />
+                    </Field>
+                    <Field id="color" label="Color"><ComboBox field={&color} /></Field>
+                    <button class={Primary}>"Order"</button>
+                </form>
+                <OrderResult text={result} />
+            </section>
+            // Built in the markup, so the panels' views live until the group has rendered them.
+            <section class={(Card, Book)}>
+                <h2>"Tabs"</h2>
+                <TabGroup
+                    id="book"
+                    label="Market"
+                    selected={tab}
+                    tabs={&[
+                        Tab { label: &"Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None }) },
+                        Tab { label: &"Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]) }) },
+                        Tab { label: &"Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]) }) },
+                    ]}
+                />
+            </section>
+            <section class={(Card, Actions)}>
+                <h2>"Menu button"</h2>
+                <MenuButton id="actions" label={&"Actions"} items={&items} />
+                <MenuResult text="" />
+            </section>
+            <section class={Card}>
+                <h2>"Toast and dialog"</h2>
+                <div class={Buttons}>
+                    <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
+                    <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
+                </div>
+            </section>
+        </div>
         {rename}
         <div class={Toasts}>
             <Toaster close={&"Dismiss"} seconds={2} toast={Toast { message: toast.as_ref().map(|t| t as &dyn Render) }} />

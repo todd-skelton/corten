@@ -16,8 +16,9 @@ crates/
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
   corten-cluster/    One feed across instances: Postgres outbox, NATS JetStream relay
   corten-ui/         Optional headless components: number field, combobox, tabs, menu button
-examples/hello/      One screen that uses every piece; scripts/smoke.mjs tests it in a browser
-examples/item-page/  A marketplace item page with every production module on; smoke.mjs tests it
+examples/watchlist/  A stock watchlist that uses every piece; scripts/smoke.mjs tests it in a browser
+examples/card-market/ A trading-card store (home, categories, item pages) with every production module on; smoke.mjs tests it
+examples/seller-desk/ A seller's inventory desk: a client-heavy screen built with handlers
 examples/cluster/    A listings feed on corten-cluster, and the failover benchmark
 examples/ui-gallery/ corten-ui styled by a small design system; smoke.mjs tests it in a browser
 docs/              Guides (docs/guide), design decisions and limits, surfaces (architecture.md)
@@ -52,17 +53,17 @@ docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v co
 docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check && cd /src && cargo publish --workspace --dry-run --locked --allow-dirty"
 docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-msrv-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1.88-bookworm cargo check --locked --workspace --all-features --all-targets
 npm run check
-docker build -f examples/hello/Dockerfile -t corten-hello .
-docker run -d --name corten-hello -p 18480:8080 corten-hello
+docker build -f examples/watchlist/Dockerfile -t corten-watchlist .
+docker run -d --name corten-watchlist -p 18480:8080 corten-watchlist
 npm run smoke -- http://localhost:18480
-docker rm -f corten-hello
-docker run -d --name corten-hello-dev -p 18483:8080 -e CORTEN_DEV=1 corten-hello
-node scripts/smoke-dev.mjs http://localhost:18483 corten-hello-dev
-docker rm -f corten-hello-dev
-docker build -f examples/item-page/Dockerfile -t corten-item-page .
-docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -e AGENT_ORIGINS=http://127.0.0.1:18481 -v "${PWD}/examples/item-page/fixtures:/fixtures:ro" corten-item-page
-node examples/item-page/smoke.mjs http://localhost:18481
-docker rm -f corten-item-page
+docker rm -f corten-watchlist
+docker run -d --name corten-watchlist-dev -p 18483:8080 -e CORTEN_DEV=1 corten-watchlist
+node scripts/smoke-dev.mjs http://localhost:18483 corten-watchlist-dev
+docker rm -f corten-watchlist-dev
+docker build -f examples/card-market/Dockerfile -t corten-card-market .
+docker run -d --name corten-card-market -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -e AGENT_ORIGINS=http://127.0.0.1:18481 -v "${PWD}/examples/card-market/fixtures:/fixtures:ro" corten-card-market
+node examples/card-market/smoke.mjs http://localhost:18481
+docker rm -f corten-card-market
 docker build -f examples/ui-gallery/Dockerfile -t corten-ui-gallery .
 docker run -d --name corten-ui-gallery -p 18482:8080 corten-ui-gallery
 node examples/ui-gallery/smoke.mjs http://localhost:18482

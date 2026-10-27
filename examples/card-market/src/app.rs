@@ -432,7 +432,7 @@ mod tests {
     }
 
     /// Where the time for one item page goes. Release build, benchmark fixture:
-    /// `CORTEN_FIXTURE=/path/items.json cargo test --release -p item-page -- --ignored render_cost --nocapture`
+    /// `CORTEN_FIXTURE=/path/items.json cargo test --release -p card-market -- --ignored render_cost --nocapture`
     #[tokio::test]
     #[ignore]
     async fn render_cost() {
