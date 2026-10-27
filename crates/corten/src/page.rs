@@ -376,7 +376,6 @@ impl Asked {
         // out rather than not at all.
         req.signal.mark_error_page();
         parts.extensions.insert(req.signal);
-        parts.extensions.insert(req.shared);
         parts
     }
 }
@@ -406,6 +405,8 @@ pub(crate) struct Shared {
     pub sections: Vec<(Vec<String>, String)>,
     /// The section (an index in `sections`) whose stylesheet has a component's rules.
     pub section_of: std::collections::HashMap<&'static str, usize>,
+    /// The proxies whose `X-Forwarded-For` [`crate::ClientIp`] follows ([`crate::security::Policy::proxy`]).
+    pub proxies: Vec<crate::client::Network>,
 }
 
 impl Shared {
@@ -433,6 +434,7 @@ impl Shared {
             components: Default::default(),
             sections: Vec::new(),
             section_of: Default::default(),
+            proxies: Vec::new(),
         }
     }
 }
@@ -456,7 +458,7 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
     type Rejection = Infallible;
 
     async fn from_request_parts(parts: &mut Parts, _: &St) -> std::result::Result<Self, Self::Rejection> {
-        let shared = parts.extensions.get::<Arc<Shared>>().unwrap_or(&DEFAULT).clone();
+        let shared = parts.extensions.get::<crate::Signal>().and_then(crate::Signal::shared).unwrap_or(&DEFAULT).clone();
         Ok(Req::new(&parts.headers, &parts.extensions, &parts.uri, shared))
     }
 }
@@ -473,10 +475,11 @@ impl Req {
         }
     }
 
-    /// The key of the page around `<main>`: the app's versions and who it is for (the callers
-    /// the request read), read when the page renders, after the handler's extractors ran.
-    fn key(&self) -> u64 {
-        self.shared.key_base ^ self.signal.callers().rotate_left(1)
+    /// The key of the page around `<main>`: the app's versions, who it is for (the callers the
+    /// request read, read when the page renders, after the handler's extractors ran) and which
+    /// layout rendered it (`shell`, from the document's `html!`).
+    fn key(&self, shell: u64) -> u64 {
+        self.shared.key_base ^ self.signal.callers().rotate_left(1) ^ shell
     }
 
     /// When the work for this request should stop, and why: the server's `request.signal`. See
@@ -525,16 +528,18 @@ impl Req {
         let (part, size) = if swap { (Part::Swap, &SWAP) } else { (Part::Full, &FULL) };
         let mut out = String::with_capacity(size.load(Ordering::Relaxed));
         HEAD_AT.set(None);
+        crate::view::SHELL.set(0);
         let modules = self.render_into(Parted(doc, part), &mut out)?;
         let Some(at) = HEAD_AT.take() else {
             return Err(Error::new("corten: the document's <head> has no <Corten />"));
         };
+        let key = self.key(crate::view::SHELL.get());
         let mut tags = String::new();
         if swap {
             self.section_links(&mut tags);
         } else {
             tags.reserve(1024);
-            self.head_tags(&modules, &mut tags);
+            self.head_tags(&modules, key, &mut tags);
         }
         if !tags.is_empty() {
             out.insert_str(at, &tags);
@@ -542,7 +547,7 @@ impl Req {
         size.store(out.len() + out.len() / 8, Ordering::Relaxed);
         // Only a swap says it is one: a document a cache gave to a navigation fetch by mistake
         // makes the runtime load the URL in full.
-        Ok(HtmlResponse(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)))))
+        Ok(HtmlResponse(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)), key)))
     }
 
     /// The versioned URL of a static file: `req.asset("style.css")`. A missing file is a bug: it
@@ -654,8 +659,8 @@ impl Req {
     }
 
     /// Adds the shell key, which tells the runtime whether the page around `<main>` is still current.
-    fn finish(&self, mut res: Response) -> Response {
-        res.headers_mut().insert(SHELL_HEADER, key_header(self.key()));
+    fn finish(&self, mut res: Response, key: u64) -> Response {
+        res.headers_mut().insert(SHELL_HEADER, key_header(key));
         res.headers_mut().insert(header::VARY, self.vary());
         res
     }
@@ -666,14 +671,10 @@ impl Req {
 
     /// The tags Corten needs in `<head>` after the page's own: script settings, the shell key,
     /// the app's configured tags, section stylesheets, the import map, the runtime and modules.
-    fn head_tags(&self, modules: &[&'static str], out: &mut String) {
+    fn head_tags(&self, modules: &[&'static str], key: u64, out: &mut String) {
         use std::fmt::Write;
         let dir = &self.shared.scripts_dir;
-        let _ = write!(
-            out,
-            r#"<meta name="corten-scripts" content="{dir}"><meta name="corten-shell" content="{:016x}">"#,
-            self.key()
-        );
+        let _ = write!(out, r#"<meta name="corten-scripts" content="{dir}"><meta name="corten-shell" content="{key:016x}">"#);
         out.push_str(&self.shared.head_extra);
         self.section_links(out);
         out.push_str(r#"<script type="importmap">"#);
@@ -794,7 +795,7 @@ impl Req {
     /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
     pub fn moved(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
-        if self.mode == Mode::Action || (self.mode == Mode::Navigation && has_fragment(&value)) {
+        if self.mode == Mode::Action || (self.mode == Mode::Navigation && (has_fragment(&value) || elsewhere(&value))) {
             return Ok(HtmlResponse(redirect(self.mode, value)));
         }
         let headers = [(header::LOCATION, value), (header::CACHE_CONTROL, HeaderValue::from_static(MOVED_CACHE))];
@@ -819,18 +820,31 @@ fn refresh_header_is_an_error(res: Response) -> Response {
 const MOVED_CACHE: &str = "private, max-age=86400";
 
 /// A redirect in `mode`: `corten-location` for a form patch (the runtime navigates), a 303
-/// otherwise. A client navigation sent to a place on a page (`#id`) gets `corten-location` too:
-/// `fetch` follows a 303 but drops its fragment, so the runtime would not know where to scroll.
+/// otherwise. A client navigation sent to a place on a page (`#id`) or to another site gets
+/// `corten-location` too: `fetch` follows a 303 but drops its fragment, so the runtime would not
+/// know where to scroll, and may not read another origin's answer.
 pub(crate) fn redirect(mode: Mode, to: HeaderValue) -> Response {
     match mode {
         Mode::Action => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response(),
-        Mode::Navigation if has_fragment(&to) => (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response(),
+        // `fetch` follows a redirect but drops its `#id`, and one to another origin is refused
+        // (the CSP's `connect-src`, else CORS): the runtime navigates there itself.
+        Mode::Navigation if has_fragment(&to) || elsewhere(&to) => {
+            (StatusCode::NO_CONTENT, [(LOCATION_HEADER, to)]).into_response()
+        }
         _ => (StatusCode::SEE_OTHER, [(header::LOCATION, to)]).into_response(),
     }
 }
 
 fn has_fragment(to: &HeaderValue) -> bool {
     to.as_bytes().contains(&b'#')
+}
+
+/// An address outside the app: anything but a path on this origin (`https://..`, `//host/..`).
+/// A route's address always starts with one `/`, and an `axum::http::Uri` is a path or absolute
+/// (it cannot be relative).
+fn elsewhere(to: &HeaderValue) -> bool {
+    let to = to.as_bytes();
+    to.first() != Some(&b'/') || to.get(1) == Some(&b'/')
 }
 
 /// Middleware the app installs: a failed request (an [`Error`] from a handler, or an empty error
@@ -860,7 +874,9 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     let asked = Asked::new(&req, shared.clone(), Credentials::of(req.headers()));
     let res = run(req, next, deadline, signal).await;
     #[cfg(debug_assertions)]
-    let res = refresh_header_is_an_error(res);
+    let mut res = refresh_header_is_an_error(res);
+    #[cfg(not(debug_assertions))]
+    let mut res = res;
     let status = res.status();
     let error = status.is_client_error() || status.is_server_error();
     if !error {
@@ -873,13 +889,14 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
         return crate::api::json_failure(res, shared.dev).await;
     }
     if let Some(crate::caller::SignIn(to)) = res.extensions().get::<crate::caller::SignIn>().cloned() {
+        let kept = std::mem::take(res.headers_mut());
         let Some(message) = sign_in_loops(asked.path(), &to) else {
-            return redirect(mode, to);
+            return carried(kept, redirect(mode, to));
         };
         tracing::error!("corten: {message}");
         let failure = Failure::Failed { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Some(Arc::from(message)) };
         let failure = if shared.dev { failure } else { failure.without_detail() };
-        return error_page(shared, asked, failure).await;
+        return carried(kept, error_page(shared, asked, failure).await);
     }
     let mut failed = res.extensions().get::<crate::Failed>().cloned();
     let cause = res.extensions().get::<Cause>().copied();
@@ -891,7 +908,9 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     if failed.is_none() && cause.is_none() && !empty_error && !rejection {
         return res;
     }
-    let allow = res.headers().get(header::ALLOW).cloned();
+    // What the handler and the app's middleware said besides the body (a request id,
+    // `Retry-After`, `WWW-Authenticate`, `Allow`) goes out with the error page.
+    let kept = std::mem::take(res.headers_mut());
     if rejection {
         let text = axum::body::to_bytes(res.into_body(), 16 * 1024).await.unwrap_or_default();
         let text = String::from_utf8_lossy(&text);
@@ -900,7 +919,7 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     }
     if offline && status == StatusCode::NOT_FOUND {
         // The PWA's offline page, which the service worker keeps: a 200.
-        return error_page(shared, asked, Failure::Offline).await;
+        return carried(kept, error_page(shared, asked, Failure::Offline).await);
     }
     let detail = failed.map(|crate::Failed(message)| message);
     let failure = match cause {
@@ -918,9 +937,44 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
         },
     };
     let failure = if shared.dev { failure } else { failure.without_detail() };
-    let mut res = error_page(shared, asked, failure).await;
-    if let Some(allow) = allow {
-        res.headers_mut().insert(header::ALLOW, allow);
+    carried(kept, error_page(shared, asked, failure).await)
+}
+
+/// `res` with the headers of the failed response it replaces, `kept`, except the ones that
+/// described its body or that Corten sets for the answer it sends (`Cache-Control`, its own
+/// `corten-` headers); a header `res` has already wins.
+fn carried(kept: HeaderMap, mut res: Response) -> Response {
+    if kept.is_empty() {
+        return res;
+    }
+    use axum::http::header::Entry;
+    let headers = res.headers_mut();
+    let mut kept_name = None;
+    // A name comes with its first value only; the values after it have `None`.
+    for (key, value) in kept {
+        if let Some(key) = key {
+            kept_name = None;
+            let replaced = matches!(
+                key,
+                header::CONTENT_TYPE
+                    | header::CONTENT_LENGTH
+                    | header::CONTENT_ENCODING
+                    | header::CONTENT_LANGUAGE
+                    | header::CONTENT_DISPOSITION
+                    | header::CONTENT_RANGE
+                    | header::TRANSFER_ENCODING
+                    | header::ETAG
+                    | header::LAST_MODIFIED
+                    | header::CACHE_CONTROL
+            ) || key.as_str().starts_with("corten-");
+            if !replaced {
+                if let Entry::Vacant(entry) = headers.entry(key) {
+                    kept_name = Some(entry.insert_entry(value));
+                }
+            }
+        } else if let Some(entry) = &mut kept_name {
+            entry.append(value);
+        }
     }
     res
 }

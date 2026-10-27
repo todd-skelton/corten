@@ -298,6 +298,7 @@ impl<T> Anonymous for axum::extract::Path<T> {}
 impl<T> Anonymous for axum::extract::Query<T> {}
 impl<T> Anonymous for crate::Query<T> {}
 impl<T> Anonymous for crate::Form<T> {}
+impl<T> Anonymous for crate::form::Upload<T> {}
 impl<T> Anonymous for State<T> {}
 impl<T: Anonymous> Anonymous for Option<T> {}
 impl Anonymous for Req {}

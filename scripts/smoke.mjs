@@ -53,6 +53,25 @@ const liveEvent = (accept) =>
   check("a gzip-only client gets the stream as it is", plain.coding === undefined && plain.first.includes("event: patch"), String(plain.coding));
 }
 
+// A DNS-rebound page reaches the server under a name the app is not: 421, and nothing of the app.
+{
+  /** @param {string} host @returns {Promise<[number | undefined, string]>} */
+  const get = (host) =>
+    new Promise((resolve, reject) => {
+      const req = http.get(base, { headers: { host } }, (res) => {
+        let text = "";
+        res.on("data", (chunk) => (text += chunk));
+        res.on("end", () => resolve([res.statusCode, text]));
+      });
+      req.on("error", reject);
+    });
+  const port = new URL(base).port;
+  const [rebound, body] = await get(`rebound.attacker.example:${port}`);
+  check("a request for another host (DNS rebinding) is misdirected", rebound === 421 && !body.includes("<html"), `${rebound} ${body.slice(0, 40)}`);
+  const [local] = await get(`localhost:${port}`);
+  check("localhost is answered", local === 200, String(local));
+}
+
 for (engine of names) {
   const browser = await engines[engine].launch({ headless: true });
   try {
@@ -443,6 +462,26 @@ async function run(browser) {
     ])
       skip(name, noSwaps);
   }
+  // The rail scrolled in the same frame as the change, so the swap lands before the `scroll` event
+  // that would name it (a slow machine, or a control focus scrolled into view): it keeps its scroll
+  // all the same. In a page of its own, so this page's history stays as it is.
+  if (swaps) {
+    const quick = await browser.newPage({ viewport: { width: 360, height: 160 } });
+    await quick.goto(`${base}/about`);
+    const top = await quick.evaluate(() => {
+      const rail = /** @type {Element} */ (document.querySelector(".about-filter__rail"));
+      for (const group of Array.from(rail.querySelectorAll("details"))) /** @type {HTMLDetailsElement} */ (group).open = true;
+      const box = /** @type {HTMLInputElement} */ (document.querySelector("main input[name=history]"));
+      box.scrollIntoView({ block: "end" });
+      box.focus();
+      box.click();
+      return rail.scrollTop;
+    });
+    await quick.waitForFunction(() => location.search === "?history=on" && document.querySelectorAll("#history li").length === 2);
+    const after = await quick.$eval(".about-filter__rail", (r) => r.scrollTop);
+    check("the rail keeps a scroll made in the same frame as the change", top > 0 && after === top, `${top} -> ${after}`);
+    await quick.close();
+  } else skip("the rail keeps a scroll made in the same frame as the change", noSwaps);
   // Load more (view::Append): the answer adds only the new rows; the ones the page has stay. In a
   // page of its own, so it runs in every engine and leaves this page's history as it is.
   {
@@ -466,6 +505,28 @@ async function run(browser) {
     await more.waitForFunction(() => document.querySelectorAll("#history li").length === 6);
     check("the last page hides the button", await more.locator("#load-more button").isHidden());
     await more.close();
+  }
+  // A link to a route that redirects to another site (`/about/source`): the runtime's fetch cannot
+  // follow it (connect-src, CORS), so the server names the address and the browser goes there, in
+  // one request to the app and without a console error, the hover's prefetch included.
+  {
+    const away = await browser.newPage();
+    const awayErrors = [];
+    away.on("console", (m) => m.type() === "error" && awayErrors.push(m.text()));
+    await away.route("https://github.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Elsewhere</title>" }));
+    let asked = 0;
+    away.on("request", (r) => new URL(r.url()).pathname === "/about/source" && asked++);
+    await away.goto(`${base}/about`);
+    await away.hover(`main a[href="/about/source"]`);
+    await away.waitForTimeout(300);
+    // The browser's request to the other site is what matters, not that site's load (WebKit does
+    // not always hand a redirected navigation to the route above), so the click does not wait.
+    const left = away.waitForRequest((r) => r.url() === "https://github.com/todd-skelton/corten", { timeout: 5000 }).then(() => true, () => false);
+    await away.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`main a[href="/about/source"]`)).click());
+    const arrived = await left;
+    check("a redirect to another site leaves the app in one request", arrived && asked === 1, `left ${arrived} requests ${asked}`);
+    check("without a console error", awayErrors.length === 0, awayErrors.join(" | "));
+    await away.close();
   }
 
   await page.goBack();
@@ -717,6 +778,44 @@ async function run(browser) {
     document.querySelector("#holds-named")?.remove();
   });
 
+  // A file input keeps the files the user chose across a patch, which markup cannot give back: a
+  // refusal redraws it marked invalid with the file still chosen, a live patch keeps it, and only
+  // the answer that took those files clears them.
+  const part = (/** @type {string} */ extra) => `<div id="upload-part"${extra}><input type="file" name="photo"${extra.includes("refused") ? ' aria-invalid="true"' : ""}></div>`;
+  await page.evaluate(
+    (html) => document.querySelector("main")?.insertAdjacentHTML("beforeend", `<form id="upload" method="post" action="/upload-test" enctype="multipart/form-data" data-patch>${html}<button>Send</button></form>`),
+    part(""),
+  );
+  const errorsBeforeUpload = errors.length;
+  let uploadStatus = 422;
+  await page.route("**/upload-test", (route) =>
+    route.fulfill({ status: uploadStatus, headers: { "corten-patch": "1", "content-type": "text/html; charset=utf-8" }, body: part(uploadStatus === 422 ? ' class="refused"' : ' class="taken"') }),
+  );
+  await page.setInputFiles("#upload [name=photo]", { name: "card.png", mimeType: "image/png", buffer: Buffer.from("png") });
+  const chosenFiles = () => page.evaluate(() => Array.from(/** @type {HTMLInputElement} */ (document.querySelector("#upload [name=photo]")).files ?? [], (f) => f.name).join());
+  await page.click("#upload button");
+  await page.waitForSelector("#upload-part.refused", { timeout: 4000 }).catch(() => {});
+  const refusedFiles = await chosenFiles();
+  const markedInvalid = await page.getAttribute("#upload [name=photo]", "aria-invalid");
+  await page.evaluate(async (html) => {
+    const { patch } = await import("corten");
+    await patch(html);
+  }, part(' class="live"'));
+  const liveFiles = await chosenFiles();
+  uploadStatus = 200;
+  await page.click("#upload button");
+  await page.waitForSelector("#upload-part.taken", { timeout: 4000 }).catch(() => {});
+  const takenFiles = await chosenFiles();
+  await page.unroute("**/upload-test");
+  await page.evaluate(() => document.querySelector("#upload")?.remove());
+  // The refusal is a 422 on purpose; the browser logs that as a failed resource.
+  errors.splice(errorsBeforeUpload, Infinity, ...errors.slice(errorsBeforeUpload).filter((e) => !e.includes("422")));
+  check(
+    "a patch keeps a file input's chosen files until the answer that took them",
+    refusedFiles === "card.png" && markedInvalid === "true" && liveFiles === "card.png" && takenFiles === "",
+    JSON.stringify({ refusedFiles, markedInvalid, liveFiles, takenFiles }),
+  );
+
   // Swaps only: these links live in the shell, which a full page load replaces.
   if (swaps) {
     // data-nav="section": current on its page and every page under it.
@@ -949,6 +1048,23 @@ async function run(browser) {
   page.off("request", onRequest);
   check("a multipart form is posted as multipart/form-data", types.length === 1 && types[0].startsWith("multipart/form-data"), types.join());
   check("a request the server rejects shows the app's error page, in its layout", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong | Corten", await page.title());
+
+  // A form with a file is read as it arrives: each engine's multipart body, files and fields.
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      '<form id="avatar" method="post" action="/avatar" enctype="multipart/form-data" data-patch><input name="name" value="Mew &quot;1st&quot;"><input type="file" name="picture" multiple><p id="avatar-result"></p><button>Send</button></form>',
+    ),
+  );
+  await page.setInputFiles("#avatar [name=picture]", [
+    { name: "card.png", mimeType: "image/png", buffer: Buffer.from("\r\n--png\r\n") },
+    { name: "big.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(70 << 10, 7) },
+  ]);
+  await page.click("#avatar button");
+  await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent, null, { timeout: 4000 }).catch(() => {});
+  const uploaded = await page.textContent("#avatar-result");
+  await page.evaluate(() => document.querySelector("#avatar")?.remove());
+  check("a form with files is read as it arrives", uploaded === 'Mew "1st": card.png (image/png, 9 bytes), big.jpg (image/jpeg, too large)', uploaded ?? "");
 
   // The multipart post was answered 415 on purpose; the browser logs that as a failed resource.
   check("no console errors after the injected forms", errors.every((e) => e.includes("415")), errors.join(" | "));

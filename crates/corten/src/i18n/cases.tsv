@@ -10,6 +10,19 @@ af	number	1234567890123	1 234 567 890 123
 af	number	1234.5	1 234,5
 af	number	-0.25	-0,25
 af	number	1234567.891	1 234 567,891
+af	percent 2	0.029	2,9%
+af	percent 2	-0.5	-50%
+af	percent 2	1	100%
+af	percent 2	0	0%
+af	percent 0	12.345	1 235%
+af	percent 1	12.345	1 234,5%
+af	percent 2	12.345	1 234,5%
+af	percent 4	12.345	1 234,5%
+af	percent 2	0.00125	0,13%
+af	percent 2	1234.5	123 450%
+af	percent 2	-0.00004	-0%
+af	percent 2	0.0290	2,9%
+af	percent 2	0.995	99,5%
 af	money	1234.5 BRL	R$1 234,50
 af	money	-5 BRL	-R$5,00
 af	money	21.505 BRL	R$21,51
@@ -105,6 +118,19 @@ am	number	1234567890123	1,234,567,890,123
 am	number	1234.5	1,234.5
 am	number	-0.25	-0.25
 am	number	1234567.891	1,234,567.891
+am	percent 2	0.029	2.9%
+am	percent 2	-0.5	-50%
+am	percent 2	1	100%
+am	percent 2	0	0%
+am	percent 0	12.345	1,235%
+am	percent 1	12.345	1,234.5%
+am	percent 2	12.345	1,234.5%
+am	percent 4	12.345	1,234.5%
+am	percent 2	0.00125	0.13%
+am	percent 2	1234.5	123,450%
+am	percent 2	-0.00004	-0%
+am	percent 2	0.0290	2.9%
+am	percent 2	0.995	99.5%
 am	money	1234.5 BRL	R$1,234.50
 am	money	-5 BRL	-R$5.00
 am	money	21.505 BRL	R$21.51
@@ -200,6 +226,19 @@ ar	number	1234567890123	1,234,567,890,123
 ar	number	1234.5	1,234.5
 ar	number	-0.25	‎-0.25
 ar	number	1234567.891	1,234,567.891
+ar	percent 2	0.029	2.9‎%‎
+ar	percent 2	-0.5	‎-50‎%‎
+ar	percent 2	1	100‎%‎
+ar	percent 2	0	0‎%‎
+ar	percent 0	12.345	1,235‎%‎
+ar	percent 1	12.345	1,234.5‎%‎
+ar	percent 2	12.345	1,234.5‎%‎
+ar	percent 4	12.345	1,234.5‎%‎
+ar	percent 2	0.00125	0.13‎%‎
+ar	percent 2	1234.5	123,450‎%‎
+ar	percent 2	-0.00004	‎-0‎%‎
+ar	percent 2	0.0290	2.9‎%‎
+ar	percent 2	0.995	99.5‎%‎
 ar	money	1234.5 BRL	‏1,234.50 R$
 ar	money	-5 BRL	‏‎-5.00 R$
 ar	money	21.505 BRL	‏21.51 R$
@@ -295,6 +334,19 @@ as	number	1234567890123	১২,৩৪,৫৬,৭৮,৯০,১২৩
 as	number	1234.5	১,২৩৪.৫
 as	number	-0.25	-০.২৫
 as	number	1234567.891	১২,৩৪,৫৬৭.৮৯১
+as	percent 2	0.029	২.৯%
+as	percent 2	-0.5	-৫০%
+as	percent 2	1	১০০%
+as	percent 2	0	০%
+as	percent 0	12.345	১,২৩৫%
+as	percent 1	12.345	১,২৩৪.৫%
+as	percent 2	12.345	১,২৩৪.৫%
+as	percent 4	12.345	১,২৩৪.৫%
+as	percent 2	0.00125	০.১৩%
+as	percent 2	1234.5	১,২৩,৪৫০%
+as	percent 2	-0.00004	-০%
+as	percent 2	0.0290	২.৯%
+as	percent 2	0.995	৯৯.৫%
 as	money	1234.5 BRL	R$ ১,২৩৪.৫০
 as	money	-5 BRL	-R$ ৫.০০
 as	money	21.505 BRL	R$ ২১.৫১
@@ -390,6 +442,19 @@ az	number	1234567890123	1.234.567.890.123
 az	number	1234.5	1.234,5
 az	number	-0.25	-0,25
 az	number	1234567.891	1.234.567,891
+az	percent 2	0.029	2,9%
+az	percent 2	-0.5	-50%
+az	percent 2	1	100%
+az	percent 2	0	0%
+az	percent 0	12.345	1.235%
+az	percent 1	12.345	1.234,5%
+az	percent 2	12.345	1.234,5%
+az	percent 4	12.345	1.234,5%
+az	percent 2	0.00125	0,13%
+az	percent 2	1234.5	123.450%
+az	percent 2	-0.00004	-0%
+az	percent 2	0.0290	2,9%
+az	percent 2	0.995	99,5%
 az	money	1234.5 BRL	1.234,50 R$
 az	money	-5 BRL	-5,00 R$
 az	money	21.505 BRL	21,51 R$
@@ -485,6 +550,19 @@ be	number	1234567890123	1 234 567 890 123
 be	number	1234.5	1234,5
 be	number	-0.25	-0,25
 be	number	1234567.891	1 234 567,891
+be	percent 2	0.029	2,9 %
+be	percent 2	-0.5	-50 %
+be	percent 2	1	100 %
+be	percent 2	0	0 %
+be	percent 0	12.345	1235 %
+be	percent 1	12.345	1234,5 %
+be	percent 2	12.345	1234,5 %
+be	percent 4	12.345	1234,5 %
+be	percent 2	0.00125	0,13 %
+be	percent 2	1234.5	123 450 %
+be	percent 2	-0.00004	-0 %
+be	percent 2	0.0290	2,9 %
+be	percent 2	0.995	99,5 %
 be	money	1234.5 BRL	1234,50 BRL
 be	money	-5 BRL	-5,00 BRL
 be	money	21.505 BRL	21,51 BRL
@@ -580,6 +658,19 @@ bg	number	1234567890123	1 234 567 890 123
 bg	number	1234.5	1234,5
 bg	number	-0.25	-0,25
 bg	number	1234567.891	1 234 567,891
+bg	percent 2	0.029	2,9%
+bg	percent 2	-0.5	-50%
+bg	percent 2	1	100%
+bg	percent 2	0	0%
+bg	percent 0	12.345	1235%
+bg	percent 1	12.345	1234,5%
+bg	percent 2	12.345	1234,5%
+bg	percent 4	12.345	1234,5%
+bg	percent 2	0.00125	0,13%
+bg	percent 2	1234.5	123 450%
+bg	percent 2	-0.00004	-0%
+bg	percent 2	0.0290	2,9%
+bg	percent 2	0.995	99,5%
 bg	money	1234.5 BRL	1234,50 BRL
 bg	money	-5 BRL	-5,00 BRL
 bg	money	21.505 BRL	21,51 BRL
@@ -675,6 +766,19 @@ bn	number	1234567890123	১২,৩৪,৫৬,৭৮,৯০,১২৩
 bn	number	1234.5	১,২৩৪.৫
 bn	number	-0.25	-০.২৫
 bn	number	1234567.891	১২,৩৪,৫৬৭.৮৯১
+bn	percent 2	0.029	২.৯%
+bn	percent 2	-0.5	-৫০%
+bn	percent 2	1	১০০%
+bn	percent 2	0	০%
+bn	percent 0	12.345	১,২৩৫%
+bn	percent 1	12.345	১,২৩৪.৫%
+bn	percent 2	12.345	১,২৩৪.৫%
+bn	percent 4	12.345	১,২৩৪.৫%
+bn	percent 2	0.00125	০.১৩%
+bn	percent 2	1234.5	১২৩,৪৫০%
+bn	percent 2	-0.00004	-০%
+bn	percent 2	0.0290	২.৯%
+bn	percent 2	0.995	৯৯.৫%
 bn	money	1234.5 BRL	১,২৩৪.৫০ R$
 bn	money	-5 BRL	-৫.০০ R$
 bn	money	21.505 BRL	২১.৫১ R$
@@ -770,6 +874,19 @@ bs	number	1234567890123	1.234.567.890.123
 bs	number	1234.5	1.234,5
 bs	number	-0.25	-0,25
 bs	number	1234567.891	1.234.567,891
+bs	percent 2	0.029	2,9%
+bs	percent 2	-0.5	-50%
+bs	percent 2	1	100%
+bs	percent 2	0	0%
+bs	percent 0	12.345	1.235%
+bs	percent 1	12.345	1.234,5%
+bs	percent 2	12.345	1.234,5%
+bs	percent 4	12.345	1.234,5%
+bs	percent 2	0.00125	0,13%
+bs	percent 2	1234.5	123.450%
+bs	percent 2	-0.00004	-0%
+bs	percent 2	0.0290	2,9%
+bs	percent 2	0.995	99,5%
 bs	money	1234.5 BRL	1.234,50 BRL
 bs	money	-5 BRL	-5,00 BRL
 bs	money	21.505 BRL	21,51 BRL
@@ -865,6 +982,19 @@ ca	number	1234567890123	1.234.567.890.123
 ca	number	1234.5	1.234,5
 ca	number	-0.25	-0,25
 ca	number	1234567.891	1.234.567,891
+ca	percent 2	0.029	2,9 %
+ca	percent 2	-0.5	-50 %
+ca	percent 2	1	100 %
+ca	percent 2	0	0 %
+ca	percent 0	12.345	1.235 %
+ca	percent 1	12.345	1.234,5 %
+ca	percent 2	12.345	1.234,5 %
+ca	percent 4	12.345	1.234,5 %
+ca	percent 2	0.00125	0,13 %
+ca	percent 2	1234.5	123.450 %
+ca	percent 2	-0.00004	-0 %
+ca	percent 2	0.0290	2,9 %
+ca	percent 2	0.995	99,5 %
 ca	money	1234.5 BRL	1.234,50 BRL
 ca	money	-5 BRL	-5,00 BRL
 ca	money	21.505 BRL	21,51 BRL
@@ -960,6 +1090,19 @@ cs	number	1234567890123	1 234 567 890 123
 cs	number	1234.5	1 234,5
 cs	number	-0.25	-0,25
 cs	number	1234567.891	1 234 567,891
+cs	percent 2	0.029	2,9 %
+cs	percent 2	-0.5	-50 %
+cs	percent 2	1	100 %
+cs	percent 2	0	0 %
+cs	percent 0	12.345	1 235 %
+cs	percent 1	12.345	1 234,5 %
+cs	percent 2	12.345	1 234,5 %
+cs	percent 4	12.345	1 234,5 %
+cs	percent 2	0.00125	0,13 %
+cs	percent 2	1234.5	123 450 %
+cs	percent 2	-0.00004	-0 %
+cs	percent 2	0.0290	2,9 %
+cs	percent 2	0.995	99,5 %
 cs	money	1234.5 BRL	1 234,50 R$
 cs	money	-5 BRL	-5,00 R$
 cs	money	21.505 BRL	21,51 R$
@@ -1055,6 +1198,19 @@ cy	number	1234567890123	1,234,567,890,123
 cy	number	1234.5	1,234.5
 cy	number	-0.25	-0.25
 cy	number	1234567.891	1,234,567.891
+cy	percent 2	0.029	2.9%
+cy	percent 2	-0.5	-50%
+cy	percent 2	1	100%
+cy	percent 2	0	0%
+cy	percent 0	12.345	1,235%
+cy	percent 1	12.345	1,234.5%
+cy	percent 2	12.345	1,234.5%
+cy	percent 4	12.345	1,234.5%
+cy	percent 2	0.00125	0.13%
+cy	percent 2	1234.5	123,450%
+cy	percent 2	-0.00004	-0%
+cy	percent 2	0.0290	2.9%
+cy	percent 2	0.995	99.5%
 cy	money	1234.5 BRL	R$1,234.50
 cy	money	-5 BRL	-R$5.00
 cy	money	21.505 BRL	R$21.51
@@ -1150,6 +1306,19 @@ da	number	1234567890123	1.234.567.890.123
 da	number	1234.5	1.234,5
 da	number	-0.25	-0,25
 da	number	1234567.891	1.234.567,891
+da	percent 2	0.029	2,9 %
+da	percent 2	-0.5	-50 %
+da	percent 2	1	100 %
+da	percent 2	0	0 %
+da	percent 0	12.345	1.235 %
+da	percent 1	12.345	1.234,5 %
+da	percent 2	12.345	1.234,5 %
+da	percent 4	12.345	1.234,5 %
+da	percent 2	0.00125	0,13 %
+da	percent 2	1234.5	123.450 %
+da	percent 2	-0.00004	-0 %
+da	percent 2	0.0290	2,9 %
+da	percent 2	0.995	99,5 %
 da	money	1234.5 BRL	1.234,50 R$
 da	money	-5 BRL	-5,00 R$
 da	money	21.505 BRL	21,51 R$
@@ -1245,6 +1414,19 @@ de	number	1234567890123	1.234.567.890.123
 de	number	1234.5	1.234,5
 de	number	-0.25	-0,25
 de	number	1234567.891	1.234.567,891
+de	percent 2	0.029	2,9 %
+de	percent 2	-0.5	-50 %
+de	percent 2	1	100 %
+de	percent 2	0	0 %
+de	percent 0	12.345	1.235 %
+de	percent 1	12.345	1.234,5 %
+de	percent 2	12.345	1.234,5 %
+de	percent 4	12.345	1.234,5 %
+de	percent 2	0.00125	0,13 %
+de	percent 2	1234.5	123.450 %
+de	percent 2	-0.00004	-0 %
+de	percent 2	0.0290	2,9 %
+de	percent 2	0.995	99,5 %
 de	money	1234.5 BRL	1.234,50 R$
 de	money	-5 BRL	-5,00 R$
 de	money	21.505 BRL	21,51 R$
@@ -1340,6 +1522,19 @@ el	number	1234567890123	1.234.567.890.123
 el	number	1234.5	1.234,5
 el	number	-0.25	-0,25
 el	number	1234567.891	1.234.567,891
+el	percent 2	0.029	2,9%
+el	percent 2	-0.5	-50%
+el	percent 2	1	100%
+el	percent 2	0	0%
+el	percent 0	12.345	1.235%
+el	percent 1	12.345	1.234,5%
+el	percent 2	12.345	1.234,5%
+el	percent 4	12.345	1.234,5%
+el	percent 2	0.00125	0,13%
+el	percent 2	1234.5	123.450%
+el	percent 2	-0.00004	-0%
+el	percent 2	0.0290	2,9%
+el	percent 2	0.995	99,5%
 el	money	1234.5 BRL	1.234,50 R$
 el	money	-5 BRL	-5,00 R$
 el	money	21.505 BRL	21,51 R$
@@ -1435,6 +1630,19 @@ en	number	1234567890123	1,234,567,890,123
 en	number	1234.5	1,234.5
 en	number	-0.25	-0.25
 en	number	1234567.891	1,234,567.891
+en	percent 2	0.029	2.9%
+en	percent 2	-0.5	-50%
+en	percent 2	1	100%
+en	percent 2	0	0%
+en	percent 0	12.345	1,235%
+en	percent 1	12.345	1,234.5%
+en	percent 2	12.345	1,234.5%
+en	percent 4	12.345	1,234.5%
+en	percent 2	0.00125	0.13%
+en	percent 2	1234.5	123,450%
+en	percent 2	-0.00004	-0%
+en	percent 2	0.0290	2.9%
+en	percent 2	0.995	99.5%
 en	money	1234.5 BRL	R$1,234.50
 en	money	-5 BRL	-R$5.00
 en	money	21.505 BRL	R$21.51
@@ -1530,6 +1738,19 @@ es	number	1234567890123	1.234.567.890.123
 es	number	1234.5	1234,5
 es	number	-0.25	-0,25
 es	number	1234567.891	1.234.567,891
+es	percent 2	0.029	2,9 %
+es	percent 2	-0.5	-50 %
+es	percent 2	1	100 %
+es	percent 2	0	0 %
+es	percent 0	12.345	1235 %
+es	percent 1	12.345	1234,5 %
+es	percent 2	12.345	1234,5 %
+es	percent 4	12.345	1234,5 %
+es	percent 2	0.00125	0,13 %
+es	percent 2	1234.5	123.450 %
+es	percent 2	-0.00004	-0 %
+es	percent 2	0.0290	2,9 %
+es	percent 2	0.995	99,5 %
 es	money	1234.5 BRL	1234,50 BRL
 es	money	-5 BRL	-5,00 BRL
 es	money	21.505 BRL	21,51 BRL
@@ -1625,6 +1846,19 @@ et	number	1234567890123	1 234 567 890 123
 et	number	1234.5	1234,5
 et	number	-0.25	−0,25
 et	number	1234567.891	1 234 567,891
+et	percent 2	0.029	2,9%
+et	percent 2	-0.5	−50%
+et	percent 2	1	100%
+et	percent 2	0	0%
+et	percent 0	12.345	1235%
+et	percent 1	12.345	1234,5%
+et	percent 2	12.345	1234,5%
+et	percent 4	12.345	1234,5%
+et	percent 2	0.00125	0,13%
+et	percent 2	1234.5	123 450%
+et	percent 2	-0.00004	−0%
+et	percent 2	0.0290	2,9%
+et	percent 2	0.995	99,5%
 et	money	1234.5 BRL	1234,50 R$
 et	money	-5 BRL	−5,00 R$
 et	money	21.505 BRL	21,51 R$
@@ -1720,6 +1954,19 @@ eu	number	1234567890123	1.234.567.890.123
 eu	number	1234.5	1.234,5
 eu	number	-0.25	−0,25
 eu	number	1234567.891	1.234.567,891
+eu	percent 2	0.029	% 2,9
+eu	percent 2	-0.5	−% 50
+eu	percent 2	1	% 100
+eu	percent 2	0	% 0
+eu	percent 0	12.345	% 1.235
+eu	percent 1	12.345	% 1.234,5
+eu	percent 2	12.345	% 1.234,5
+eu	percent 4	12.345	% 1.234,5
+eu	percent 2	0.00125	% 0,13
+eu	percent 2	1234.5	% 123.450
+eu	percent 2	-0.00004	−% 0
+eu	percent 2	0.0290	% 2,9
+eu	percent 2	0.995	% 99,5
 eu	money	1234.5 BRL	1.234,50 R$
 eu	money	-5 BRL	−5,00 R$
 eu	money	21.505 BRL	21,51 R$
@@ -1815,6 +2062,19 @@ fa	number	1234567890123	۱٬۲۳۴٬۵۶۷٬۸۹۰٬۱۲۳
 fa	number	1234.5	۱٬۲۳۴٫۵
 fa	number	-0.25	‎−۰٫۲۵
 fa	number	1234567.891	۱٬۲۳۴٬۵۶۷٫۸۹۱
+fa	percent 2	0.029	۲٫۹٪
+fa	percent 2	-0.5	‎−۵۰٪
+fa	percent 2	1	۱۰۰٪
+fa	percent 2	0	۰٪
+fa	percent 0	12.345	۱٬۲۳۵٪
+fa	percent 1	12.345	۱٬۲۳۴٫۵٪
+fa	percent 2	12.345	۱٬۲۳۴٫۵٪
+fa	percent 4	12.345	۱٬۲۳۴٫۵٪
+fa	percent 2	0.00125	۰٫۱۳٪
+fa	percent 2	1234.5	۱۲۳٬۴۵۰٪
+fa	percent 2	-0.00004	‎−۰٪
+fa	percent 2	0.0290	۲٫۹٪
+fa	percent 2	0.995	۹۹٫۵٪
 fa	money	1234.5 BRL	‎R$۱٬۲۳۴٫۵۰
 fa	money	-5 BRL	‎−‎R$۵٫۰۰
 fa	money	21.505 BRL	‎R$۲۱٫۵۱
@@ -1910,6 +2170,19 @@ fi	number	1234567890123	1 234 567 890 123
 fi	number	1234.5	1 234,5
 fi	number	-0.25	−0,25
 fi	number	1234567.891	1 234 567,891
+fi	percent 2	0.029	2,9 %
+fi	percent 2	-0.5	−50 %
+fi	percent 2	1	100 %
+fi	percent 2	0	0 %
+fi	percent 0	12.345	1 235 %
+fi	percent 1	12.345	1 234,5 %
+fi	percent 2	12.345	1 234,5 %
+fi	percent 4	12.345	1 234,5 %
+fi	percent 2	0.00125	0,13 %
+fi	percent 2	1234.5	123 450 %
+fi	percent 2	-0.00004	−0 %
+fi	percent 2	0.0290	2,9 %
+fi	percent 2	0.995	99,5 %
 fi	money	1234.5 BRL	1 234,50 BRL
 fi	money	-5 BRL	−5,00 BRL
 fi	money	21.505 BRL	21,51 BRL
@@ -2005,6 +2278,19 @@ fil	number	1234567890123	1,234,567,890,123
 fil	number	1234.5	1,234.5
 fil	number	-0.25	-0.25
 fil	number	1234567.891	1,234,567.891
+fil	percent 2	0.029	2.9%
+fil	percent 2	-0.5	-50%
+fil	percent 2	1	100%
+fil	percent 2	0	0%
+fil	percent 0	12.345	1,235%
+fil	percent 1	12.345	1,234.5%
+fil	percent 2	12.345	1,234.5%
+fil	percent 4	12.345	1,234.5%
+fil	percent 2	0.00125	0.13%
+fil	percent 2	1234.5	123,450%
+fil	percent 2	-0.00004	-0%
+fil	percent 2	0.0290	2.9%
+fil	percent 2	0.995	99.5%
 fil	money	1234.5 BRL	R$1,234.50
 fil	money	-5 BRL	-R$5.00
 fil	money	21.505 BRL	R$21.51
@@ -2100,6 +2386,19 @@ fr	number	1234567890123	1 234 567 890 123
 fr	number	1234.5	1 234,5
 fr	number	-0.25	-0,25
 fr	number	1234567.891	1 234 567,891
+fr	percent 2	0.029	2,9 %
+fr	percent 2	-0.5	-50 %
+fr	percent 2	1	100 %
+fr	percent 2	0	0 %
+fr	percent 0	12.345	1 235 %
+fr	percent 1	12.345	1 234,5 %
+fr	percent 2	12.345	1 234,5 %
+fr	percent 4	12.345	1 234,5 %
+fr	percent 2	0.00125	0,13 %
+fr	percent 2	1234.5	123 450 %
+fr	percent 2	-0.00004	-0 %
+fr	percent 2	0.0290	2,9 %
+fr	percent 2	0.995	99,5 %
 fr	money	1234.5 BRL	1 234,50 R$
 fr	money	-5 BRL	-5,00 R$
 fr	money	21.505 BRL	21,51 R$
@@ -2195,6 +2494,19 @@ ga	number	1234567890123	1,234,567,890,123
 ga	number	1234.5	1,234.5
 ga	number	-0.25	-0.25
 ga	number	1234567.891	1,234,567.891
+ga	percent 2	0.029	2.9%
+ga	percent 2	-0.5	-50%
+ga	percent 2	1	100%
+ga	percent 2	0	0%
+ga	percent 0	12.345	1,235%
+ga	percent 1	12.345	1,234.5%
+ga	percent 2	12.345	1,234.5%
+ga	percent 4	12.345	1,234.5%
+ga	percent 2	0.00125	0.13%
+ga	percent 2	1234.5	123,450%
+ga	percent 2	-0.00004	-0%
+ga	percent 2	0.0290	2.9%
+ga	percent 2	0.995	99.5%
 ga	money	1234.5 BRL	R$1,234.50
 ga	money	-5 BRL	-R$5.00
 ga	money	21.505 BRL	R$21.51
@@ -2290,6 +2602,19 @@ gl	number	1234567890123	1.234.567.890.123
 gl	number	1234.5	1.234,5
 gl	number	-0.25	-0,25
 gl	number	1234567.891	1.234.567,891
+gl	percent 2	0.029	2,9 %
+gl	percent 2	-0.5	-50 %
+gl	percent 2	1	100 %
+gl	percent 2	0	0 %
+gl	percent 0	12.345	1.235 %
+gl	percent 1	12.345	1.234,5 %
+gl	percent 2	12.345	1.234,5 %
+gl	percent 4	12.345	1.234,5 %
+gl	percent 2	0.00125	0,13 %
+gl	percent 2	1234.5	123.450 %
+gl	percent 2	-0.00004	-0 %
+gl	percent 2	0.0290	2,9 %
+gl	percent 2	0.995	99,5 %
 gl	money	1234.5 BRL	1.234,50 R$
 gl	money	-5 BRL	-5,00 R$
 gl	money	21.505 BRL	21,51 R$
@@ -2385,6 +2710,19 @@ gu	number	1234567890123	12,34,56,78,90,123
 gu	number	1234.5	1,234.5
 gu	number	-0.25	-0.25
 gu	number	1234567.891	12,34,567.891
+gu	percent 2	0.029	2.9%
+gu	percent 2	-0.5	-50%
+gu	percent 2	1	100%
+gu	percent 2	0	0%
+gu	percent 0	12.345	1,235%
+gu	percent 1	12.345	1,234.5%
+gu	percent 2	12.345	1,234.5%
+gu	percent 4	12.345	1,234.5%
+gu	percent 2	0.00125	0.13%
+gu	percent 2	1234.5	1,23,450%
+gu	percent 2	-0.00004	-0%
+gu	percent 2	0.0290	2.9%
+gu	percent 2	0.995	99.5%
 gu	money	1234.5 BRL	R$1,234.50
 gu	money	-5 BRL	-R$5.00
 gu	money	21.505 BRL	R$21.51
@@ -2480,6 +2818,19 @@ he	number	1234567890123	1,234,567,890,123
 he	number	1234.5	1,234.5
 he	number	-0.25	‎-0.25
 he	number	1234567.891	1,234,567.891
+he	percent 2	0.029	2.9%
+he	percent 2	-0.5	‎-50%
+he	percent 2	1	100%
+he	percent 2	0	0%
+he	percent 0	12.345	1,235%
+he	percent 1	12.345	1,234.5%
+he	percent 2	12.345	1,234.5%
+he	percent 4	12.345	1,234.5%
+he	percent 2	0.00125	0.13%
+he	percent 2	1234.5	123,450%
+he	percent 2	-0.00004	‎-0%
+he	percent 2	0.0290	2.9%
+he	percent 2	0.995	99.5%
 he	money	1234.5 BRL	‏1,234.50 ‏R$
 he	money	-5 BRL	‏‎-5.00 ‏R$
 he	money	21.505 BRL	‏21.51 ‏R$
@@ -2575,6 +2926,19 @@ hi	number	1234567890123	12,34,56,78,90,123
 hi	number	1234.5	1,234.5
 hi	number	-0.25	-0.25
 hi	number	1234567.891	12,34,567.891
+hi	percent 2	0.029	2.9%
+hi	percent 2	-0.5	-50%
+hi	percent 2	1	100%
+hi	percent 2	0	0%
+hi	percent 0	12.345	1,235%
+hi	percent 1	12.345	1,234.5%
+hi	percent 2	12.345	1,234.5%
+hi	percent 4	12.345	1,234.5%
+hi	percent 2	0.00125	0.13%
+hi	percent 2	1234.5	1,23,450%
+hi	percent 2	-0.00004	-0%
+hi	percent 2	0.0290	2.9%
+hi	percent 2	0.995	99.5%
 hi	money	1234.5 BRL	R$1,234.50
 hi	money	-5 BRL	-R$5.00
 hi	money	21.505 BRL	R$21.51
@@ -2670,6 +3034,19 @@ hr	number	1234567890123	1.234.567.890.123
 hr	number	1234.5	1.234,5
 hr	number	-0.25	−0,25
 hr	number	1234567.891	1.234.567,891
+hr	percent 2	0.029	2,9 %
+hr	percent 2	-0.5	−50 %
+hr	percent 2	1	100 %
+hr	percent 2	0	0 %
+hr	percent 0	12.345	1.235 %
+hr	percent 1	12.345	1.234,5 %
+hr	percent 2	12.345	1.234,5 %
+hr	percent 4	12.345	1.234,5 %
+hr	percent 2	0.00125	0,13 %
+hr	percent 2	1234.5	123.450 %
+hr	percent 2	-0.00004	−0 %
+hr	percent 2	0.0290	2,9 %
+hr	percent 2	0.995	99,5 %
 hr	money	1234.5 BRL	1.234,50 BRL
 hr	money	-5 BRL	−5,00 BRL
 hr	money	21.505 BRL	21,51 BRL
@@ -2765,6 +3142,19 @@ hu	number	1234567890123	1 234 567 890 123
 hu	number	1234.5	1234,5
 hu	number	-0.25	-0,25
 hu	number	1234567.891	1 234 567,891
+hu	percent 2	0.029	2,9%
+hu	percent 2	-0.5	-50%
+hu	percent 2	1	100%
+hu	percent 2	0	0%
+hu	percent 0	12.345	1235%
+hu	percent 1	12.345	1234,5%
+hu	percent 2	12.345	1234,5%
+hu	percent 4	12.345	1234,5%
+hu	percent 2	0.00125	0,13%
+hu	percent 2	1234.5	123 450%
+hu	percent 2	-0.00004	-0%
+hu	percent 2	0.0290	2,9%
+hu	percent 2	0.995	99,5%
 hu	money	1234.5 BRL	1234,50 BRL
 hu	money	-5 BRL	-5,00 BRL
 hu	money	21.505 BRL	21,51 BRL
@@ -2860,6 +3250,19 @@ hy	number	1234567890123	1 234 567 890 123
 hy	number	1234.5	1234,5
 hy	number	-0.25	-0,25
 hy	number	1234567.891	1 234 567,891
+hy	percent 2	0.029	2,9%
+hy	percent 2	-0.5	-50%
+hy	percent 2	1	100%
+hy	percent 2	0	0%
+hy	percent 0	12.345	1235%
+hy	percent 1	12.345	1234,5%
+hy	percent 2	12.345	1234,5%
+hy	percent 4	12.345	1234,5%
+hy	percent 2	0.00125	0,13%
+hy	percent 2	1234.5	123 450%
+hy	percent 2	-0.00004	-0%
+hy	percent 2	0.0290	2,9%
+hy	percent 2	0.995	99,5%
 hy	money	1234.5 BRL	1234,50 R$
 hy	money	-5 BRL	-5,00 R$
 hy	money	21.505 BRL	21,51 R$
@@ -2955,6 +3358,19 @@ id	number	1234567890123	1.234.567.890.123
 id	number	1234.5	1.234,5
 id	number	-0.25	-0,25
 id	number	1234567.891	1.234.567,891
+id	percent 2	0.029	2,9%
+id	percent 2	-0.5	-50%
+id	percent 2	1	100%
+id	percent 2	0	0%
+id	percent 0	12.345	1.235%
+id	percent 1	12.345	1.234,5%
+id	percent 2	12.345	1.234,5%
+id	percent 4	12.345	1.234,5%
+id	percent 2	0.00125	0,13%
+id	percent 2	1234.5	123.450%
+id	percent 2	-0.00004	-0%
+id	percent 2	0.0290	2,9%
+id	percent 2	0.995	99,5%
 id	money	1234.5 BRL	R$1.234,50
 id	money	-5 BRL	-R$5,00
 id	money	21.505 BRL	R$21,51
@@ -3050,6 +3466,19 @@ is	number	1234567890123	1.234.567.890.123
 is	number	1234.5	1.234,5
 is	number	-0.25	-0,25
 is	number	1234567.891	1.234.567,891
+is	percent 2	0.029	2,9%
+is	percent 2	-0.5	-50%
+is	percent 2	1	100%
+is	percent 2	0	0%
+is	percent 0	12.345	1.235%
+is	percent 1	12.345	1.234,5%
+is	percent 2	12.345	1.234,5%
+is	percent 4	12.345	1.234,5%
+is	percent 2	0.00125	0,13%
+is	percent 2	1234.5	123.450%
+is	percent 2	-0.00004	-0%
+is	percent 2	0.0290	2,9%
+is	percent 2	0.995	99,5%
 is	money	1234.5 BRL	1.234,50 BRL
 is	money	-5 BRL	-5,00 BRL
 is	money	21.505 BRL	21,51 BRL
@@ -3145,6 +3574,19 @@ it	number	1234567890123	1.234.567.890.123
 it	number	1234.5	1234,5
 it	number	-0.25	-0,25
 it	number	1234567.891	1.234.567,891
+it	percent 2	0.029	2,9%
+it	percent 2	-0.5	-50%
+it	percent 2	1	100%
+it	percent 2	0	0%
+it	percent 0	12.345	1235%
+it	percent 1	12.345	1234,5%
+it	percent 2	12.345	1234,5%
+it	percent 4	12.345	1234,5%
+it	percent 2	0.00125	0,13%
+it	percent 2	1234.5	123.450%
+it	percent 2	-0.00004	-0%
+it	percent 2	0.0290	2,9%
+it	percent 2	0.995	99,5%
 it	money	1234.5 BRL	1234,50 BRL
 it	money	-5 BRL	-5,00 BRL
 it	money	21.505 BRL	21,51 BRL
@@ -3240,6 +3682,19 @@ ja	number	1234567890123	1,234,567,890,123
 ja	number	1234.5	1,234.5
 ja	number	-0.25	-0.25
 ja	number	1234567.891	1,234,567.891
+ja	percent 2	0.029	2.9%
+ja	percent 2	-0.5	-50%
+ja	percent 2	1	100%
+ja	percent 2	0	0%
+ja	percent 0	12.345	1,235%
+ja	percent 1	12.345	1,234.5%
+ja	percent 2	12.345	1,234.5%
+ja	percent 4	12.345	1,234.5%
+ja	percent 2	0.00125	0.13%
+ja	percent 2	1234.5	123,450%
+ja	percent 2	-0.00004	-0%
+ja	percent 2	0.0290	2.9%
+ja	percent 2	0.995	99.5%
 ja	money	1234.5 BRL	R$1,234.50
 ja	money	-5 BRL	-R$5.00
 ja	money	21.505 BRL	R$21.51
@@ -3335,6 +3790,19 @@ ka	number	1234567890123	1 234 567 890 123
 ka	number	1234.5	1234,5
 ka	number	-0.25	-0,25
 ka	number	1234567.891	1 234 567,891
+ka	percent 2	0.029	2,9%
+ka	percent 2	-0.5	-50%
+ka	percent 2	1	100%
+ka	percent 2	0	0%
+ka	percent 0	12.345	1235%
+ka	percent 1	12.345	1234,5%
+ka	percent 2	12.345	1234,5%
+ka	percent 4	12.345	1234,5%
+ka	percent 2	0.00125	0,13%
+ka	percent 2	1234.5	123 450%
+ka	percent 2	-0.00004	-0%
+ka	percent 2	0.0290	2,9%
+ka	percent 2	0.995	99,5%
 ka	money	1234.5 BRL	1234,50 R$
 ka	money	-5 BRL	-5,00 R$
 ka	money	21.505 BRL	21,51 R$
@@ -3430,6 +3898,19 @@ kk	number	1234567890123	1 234 567 890 123
 kk	number	1234.5	1 234,5
 kk	number	-0.25	-0,25
 kk	number	1234567.891	1 234 567,891
+kk	percent 2	0.029	2,9%
+kk	percent 2	-0.5	-50%
+kk	percent 2	1	100%
+kk	percent 2	0	0%
+kk	percent 0	12.345	1 235%
+kk	percent 1	12.345	1 234,5%
+kk	percent 2	12.345	1 234,5%
+kk	percent 4	12.345	1 234,5%
+kk	percent 2	0.00125	0,13%
+kk	percent 2	1234.5	123 450%
+kk	percent 2	-0.00004	-0%
+kk	percent 2	0.0290	2,9%
+kk	percent 2	0.995	99,5%
 kk	money	1234.5 BRL	1 234,50 R$
 kk	money	-5 BRL	-5,00 R$
 kk	money	21.505 BRL	21,51 R$
@@ -3525,6 +4006,19 @@ km	number	1234567890123	1,234,567,890,123
 km	number	1234.5	1,234.5
 km	number	-0.25	-0.25
 km	number	1234567.891	1,234,567.891
+km	percent 2	0.029	2.9%
+km	percent 2	-0.5	-50%
+km	percent 2	1	100%
+km	percent 2	0	0%
+km	percent 0	12.345	1,235%
+km	percent 1	12.345	1,234.5%
+km	percent 2	12.345	1,234.5%
+km	percent 4	12.345	1,234.5%
+km	percent 2	0.00125	0.13%
+km	percent 2	1234.5	123,450%
+km	percent 2	-0.00004	-0%
+km	percent 2	0.0290	2.9%
+km	percent 2	0.995	99.5%
 km	money	1234.5 BRL	1,234.50 R$
 km	money	-5 BRL	-5.00 R$
 km	money	21.505 BRL	21.51 R$
@@ -3620,6 +4114,19 @@ kn	number	1234567890123	1,234,567,890,123
 kn	number	1234.5	1,234.5
 kn	number	-0.25	-0.25
 kn	number	1234567.891	1,234,567.891
+kn	percent 2	0.029	2.9%
+kn	percent 2	-0.5	-50%
+kn	percent 2	1	100%
+kn	percent 2	0	0%
+kn	percent 0	12.345	1,235%
+kn	percent 1	12.345	1,234.5%
+kn	percent 2	12.345	1,234.5%
+kn	percent 4	12.345	1,234.5%
+kn	percent 2	0.00125	0.13%
+kn	percent 2	1234.5	123,450%
+kn	percent 2	-0.00004	-0%
+kn	percent 2	0.0290	2.9%
+kn	percent 2	0.995	99.5%
 kn	money	1234.5 BRL	R$1,234.50
 kn	money	-5 BRL	-R$5.00
 kn	money	21.505 BRL	R$21.51
@@ -3715,6 +4222,19 @@ ko	number	1234567890123	1,234,567,890,123
 ko	number	1234.5	1,234.5
 ko	number	-0.25	-0.25
 ko	number	1234567.891	1,234,567.891
+ko	percent 2	0.029	2.9%
+ko	percent 2	-0.5	-50%
+ko	percent 2	1	100%
+ko	percent 2	0	0%
+ko	percent 0	12.345	1,235%
+ko	percent 1	12.345	1,234.5%
+ko	percent 2	12.345	1,234.5%
+ko	percent 4	12.345	1,234.5%
+ko	percent 2	0.00125	0.13%
+ko	percent 2	1234.5	123,450%
+ko	percent 2	-0.00004	-0%
+ko	percent 2	0.0290	2.9%
+ko	percent 2	0.995	99.5%
 ko	money	1234.5 BRL	R$1,234.50
 ko	money	-5 BRL	-R$5.00
 ko	money	21.505 BRL	R$21.51
@@ -3810,6 +4330,19 @@ ky	number	1234567890123	1 234 567 890 123
 ky	number	1234.5	1 234,5
 ky	number	-0.25	-0,25
 ky	number	1234567.891	1 234 567,891
+ky	percent 2	0.029	2,9%
+ky	percent 2	-0.5	-50%
+ky	percent 2	1	100%
+ky	percent 2	0	0%
+ky	percent 0	12.345	1 235%
+ky	percent 1	12.345	1 234,5%
+ky	percent 2	12.345	1 234,5%
+ky	percent 4	12.345	1 234,5%
+ky	percent 2	0.00125	0,13%
+ky	percent 2	1234.5	123 450%
+ky	percent 2	-0.00004	-0%
+ky	percent 2	0.0290	2,9%
+ky	percent 2	0.995	99,5%
 ky	money	1234.5 BRL	1 234,50 BRL
 ky	money	-5 BRL	-5,00 BRL
 ky	money	21.505 BRL	21,51 BRL
@@ -3905,6 +4438,19 @@ lo	number	1234567890123	1.234.567.890.123
 lo	number	1234.5	1.234,5
 lo	number	-0.25	-0,25
 lo	number	1234567.891	1.234.567,891
+lo	percent 2	0.029	2,9%
+lo	percent 2	-0.5	-50%
+lo	percent 2	1	100%
+lo	percent 2	0	0%
+lo	percent 0	12.345	1.235%
+lo	percent 1	12.345	1.234,5%
+lo	percent 2	12.345	1.234,5%
+lo	percent 4	12.345	1.234,5%
+lo	percent 2	0.00125	0,13%
+lo	percent 2	1234.5	123.450%
+lo	percent 2	-0.00004	-0%
+lo	percent 2	0.0290	2,9%
+lo	percent 2	0.995	99,5%
 lo	money	1234.5 BRL	R$1.234,50
 lo	money	-5 BRL	R$-5,00
 lo	money	21.505 BRL	R$21,51
@@ -4000,6 +4546,19 @@ lt	number	1234567890123	1 234 567 890 123
 lt	number	1234.5	1 234,5
 lt	number	-0.25	−0,25
 lt	number	1234567.891	1 234 567,891
+lt	percent 2	0.029	2,9 %
+lt	percent 2	-0.5	−50 %
+lt	percent 2	1	100 %
+lt	percent 2	0	0 %
+lt	percent 0	12.345	1 235 %
+lt	percent 1	12.345	1 234,5 %
+lt	percent 2	12.345	1 234,5 %
+lt	percent 4	12.345	1 234,5 %
+lt	percent 2	0.00125	0,13 %
+lt	percent 2	1234.5	123 450 %
+lt	percent 2	-0.00004	−0 %
+lt	percent 2	0.0290	2,9 %
+lt	percent 2	0.995	99,5 %
 lt	money	1234.5 BRL	1 234,50 BRL
 lt	money	-5 BRL	−5,00 BRL
 lt	money	21.505 BRL	21,51 BRL
@@ -4095,6 +4654,19 @@ lv	number	1234567890123	1 234 567 890 123
 lv	number	1234.5	1234,5
 lv	number	-0.25	-0,25
 lv	number	1234567.891	1 234 567,891
+lv	percent 2	0.029	2,9%
+lv	percent 2	-0.5	-50%
+lv	percent 2	1	100%
+lv	percent 2	0	0%
+lv	percent 0	12.345	1235%
+lv	percent 1	12.345	1234,5%
+lv	percent 2	12.345	1234,5%
+lv	percent 4	12.345	1234,5%
+lv	percent 2	0.00125	0,13%
+lv	percent 2	1234.5	123 450%
+lv	percent 2	-0.00004	-0%
+lv	percent 2	0.0290	2,9%
+lv	percent 2	0.995	99,5%
 lv	money	1234.5 BRL	1234,50 R$
 lv	money	-5 BRL	-5,00 R$
 lv	money	21.505 BRL	21,51 R$
@@ -4190,6 +4762,19 @@ mk	number	1234567890123	1.234.567.890.123
 mk	number	1234.5	1.234,5
 mk	number	-0.25	-0,25
 mk	number	1234567.891	1.234.567,891
+mk	percent 2	0.029	2,9 %
+mk	percent 2	-0.5	-50 %
+mk	percent 2	1	100 %
+mk	percent 2	0	0 %
+mk	percent 0	12.345	1.235 %
+mk	percent 1	12.345	1.234,5 %
+mk	percent 2	12.345	1.234,5 %
+mk	percent 4	12.345	1.234,5 %
+mk	percent 2	0.00125	0,13 %
+mk	percent 2	1234.5	123.450 %
+mk	percent 2	-0.00004	-0 %
+mk	percent 2	0.0290	2,9 %
+mk	percent 2	0.995	99,5 %
 mk	money	1234.5 BRL	1.234,50 R$
 mk	money	-5 BRL	-5,00 R$
 mk	money	21.505 BRL	21,51 R$
@@ -4285,6 +4870,19 @@ ml	number	1234567890123	12,34,56,78,90,123
 ml	number	1234.5	1,234.5
 ml	number	-0.25	-0.25
 ml	number	1234567.891	12,34,567.891
+ml	percent 2	0.029	2.9%
+ml	percent 2	-0.5	-50%
+ml	percent 2	1	100%
+ml	percent 2	0	0%
+ml	percent 0	12.345	1,235%
+ml	percent 1	12.345	1,234.5%
+ml	percent 2	12.345	1,234.5%
+ml	percent 4	12.345	1,234.5%
+ml	percent 2	0.00125	0.13%
+ml	percent 2	1234.5	123,450%
+ml	percent 2	-0.00004	-0%
+ml	percent 2	0.0290	2.9%
+ml	percent 2	0.995	99.5%
 ml	money	1234.5 BRL	R$1,234.50
 ml	money	-5 BRL	-R$5.00
 ml	money	21.505 BRL	R$21.51
@@ -4380,6 +4978,19 @@ mn	number	1234567890123	1,234,567,890,123
 mn	number	1234.5	1,234.5
 mn	number	-0.25	-0.25
 mn	number	1234567.891	1,234,567.891
+mn	percent 2	0.029	2.9%
+mn	percent 2	-0.5	-50%
+mn	percent 2	1	100%
+mn	percent 2	0	0%
+mn	percent 0	12.345	1,235%
+mn	percent 1	12.345	1,234.5%
+mn	percent 2	12.345	1,234.5%
+mn	percent 4	12.345	1,234.5%
+mn	percent 2	0.00125	0.13%
+mn	percent 2	1234.5	123,450%
+mn	percent 2	-0.00004	-0%
+mn	percent 2	0.0290	2.9%
+mn	percent 2	0.995	99.5%
 mn	money	1234.5 BRL	R$ 1,234.50
 mn	money	-5 BRL	-R$ 5.00
 mn	money	21.505 BRL	R$ 21.51
@@ -4475,6 +5086,19 @@ mr	number	1234567890123	१२,३४,५६,७८,९०,१२३
 mr	number	1234.5	१,२३४.५
 mr	number	-0.25	-०.२५
 mr	number	1234567.891	१२,३४,५६७.८९१
+mr	percent 2	0.029	२.९%
+mr	percent 2	-0.5	-५०%
+mr	percent 2	1	१००%
+mr	percent 2	0	०%
+mr	percent 0	12.345	१,२३५%
+mr	percent 1	12.345	१,२३४.५%
+mr	percent 2	12.345	१,२३४.५%
+mr	percent 4	12.345	१,२३४.५%
+mr	percent 2	0.00125	०.१३%
+mr	percent 2	1234.5	१२३,४५०%
+mr	percent 2	-0.00004	-०%
+mr	percent 2	0.0290	२.९%
+mr	percent 2	0.995	९९.५%
 mr	money	1234.5 BRL	R$१,२३४.५०
 mr	money	-5 BRL	-R$५.००
 mr	money	21.505 BRL	R$२१.५१
@@ -4570,6 +5194,19 @@ ms	number	1234567890123	1,234,567,890,123
 ms	number	1234.5	1,234.5
 ms	number	-0.25	-0.25
 ms	number	1234567.891	1,234,567.891
+ms	percent 2	0.029	2.9%
+ms	percent 2	-0.5	-50%
+ms	percent 2	1	100%
+ms	percent 2	0	0%
+ms	percent 0	12.345	1,235%
+ms	percent 1	12.345	1,234.5%
+ms	percent 2	12.345	1,234.5%
+ms	percent 4	12.345	1,234.5%
+ms	percent 2	0.00125	0.13%
+ms	percent 2	1234.5	123,450%
+ms	percent 2	-0.00004	-0%
+ms	percent 2	0.0290	2.9%
+ms	percent 2	0.995	99.5%
 ms	money	1234.5 BRL	R$1,234.50
 ms	money	-5 BRL	-R$5.00
 ms	money	21.505 BRL	R$21.51
@@ -4665,6 +5302,19 @@ my	number	1234567890123	၁,၂၃၄,၅၆၇,၈၉၀,၁၂၃
 my	number	1234.5	၁,၂၃၄.၅
 my	number	-0.25	-၀.၂၅
 my	number	1234567.891	၁,၂၃၄,၅၆၇.၈၉၁
+my	percent 2	0.029	၂.၉%
+my	percent 2	-0.5	-၅၀%
+my	percent 2	1	၁၀၀%
+my	percent 2	0	၀%
+my	percent 0	12.345	၁,၂၃၅%
+my	percent 1	12.345	၁,၂၃၄.၅%
+my	percent 2	12.345	၁,၂၃၄.၅%
+my	percent 4	12.345	၁,၂၃၄.၅%
+my	percent 2	0.00125	၀.၁၃%
+my	percent 2	1234.5	၁၂၃,၄၅၀%
+my	percent 2	-0.00004	-၀%
+my	percent 2	0.0290	၂.၉%
+my	percent 2	0.995	၉၉.၅%
 my	money	1234.5 BRL	၁,၂၃၄.၅၀ R$
 my	money	-5 BRL	-၅.၀၀ R$
 my	money	21.505 BRL	၂၁.၅၁ R$
@@ -4760,6 +5410,19 @@ nb	number	1234567890123	1 234 567 890 123
 nb	number	1234.5	1 234,5
 nb	number	-0.25	−0,25
 nb	number	1234567.891	1 234 567,891
+nb	percent 2	0.029	2,9 %
+nb	percent 2	-0.5	−50 %
+nb	percent 2	1	100 %
+nb	percent 2	0	0 %
+nb	percent 0	12.345	1 235 %
+nb	percent 1	12.345	1 234,5 %
+nb	percent 2	12.345	1 234,5 %
+nb	percent 4	12.345	1 234,5 %
+nb	percent 2	0.00125	0,13 %
+nb	percent 2	1234.5	123 450 %
+nb	percent 2	-0.00004	−0 %
+nb	percent 2	0.0290	2,9 %
+nb	percent 2	0.995	99,5 %
 nb	money	1234.5 BRL	1 234,50 BRL
 nb	money	-5 BRL	−5,00 BRL
 nb	money	21.505 BRL	21,51 BRL
@@ -4855,6 +5518,19 @@ ne	number	1234567890123	१२,३४,५६,७८,९०,१२३
 ne	number	1234.5	१,२३४.५
 ne	number	-0.25	-०.२५
 ne	number	1234567.891	१२,३४,५६७.८९१
+ne	percent 2	0.029	२.९%
+ne	percent 2	-0.5	-५०%
+ne	percent 2	1	१००%
+ne	percent 2	0	०%
+ne	percent 0	12.345	१,२३५%
+ne	percent 1	12.345	१,२३४.५%
+ne	percent 2	12.345	१,२३४.५%
+ne	percent 4	12.345	१,२३४.५%
+ne	percent 2	0.00125	०.१३%
+ne	percent 2	1234.5	१,२३,४५०%
+ne	percent 2	-0.00004	-०%
+ne	percent 2	0.0290	२.९%
+ne	percent 2	0.995	९९.५%
 ne	money	1234.5 BRL	R$ १,२३४.५०
 ne	money	-5 BRL	-R$ ५.००
 ne	money	21.505 BRL	R$ २१.५१
@@ -4950,6 +5626,19 @@ nl	number	1234567890123	1.234.567.890.123
 nl	number	1234.5	1.234,5
 nl	number	-0.25	-0,25
 nl	number	1234567.891	1.234.567,891
+nl	percent 2	0.029	2,9%
+nl	percent 2	-0.5	-50%
+nl	percent 2	1	100%
+nl	percent 2	0	0%
+nl	percent 0	12.345	1.235%
+nl	percent 1	12.345	1.234,5%
+nl	percent 2	12.345	1.234,5%
+nl	percent 4	12.345	1.234,5%
+nl	percent 2	0.00125	0,13%
+nl	percent 2	1234.5	123.450%
+nl	percent 2	-0.00004	-0%
+nl	percent 2	0.0290	2,9%
+nl	percent 2	0.995	99,5%
 nl	money	1234.5 BRL	R$ 1.234,50
 nl	money	-5 BRL	R$ -5,00
 nl	money	21.505 BRL	R$ 21,51
@@ -5045,6 +5734,19 @@ or	number	1234567890123	12,34,56,78,90,123
 or	number	1234.5	1,234.5
 or	number	-0.25	-0.25
 or	number	1234567.891	12,34,567.891
+or	percent 2	0.029	2.9%
+or	percent 2	-0.5	-50%
+or	percent 2	1	100%
+or	percent 2	0	0%
+or	percent 0	12.345	1,235%
+or	percent 1	12.345	1,234.5%
+or	percent 2	12.345	1,234.5%
+or	percent 4	12.345	1,234.5%
+or	percent 2	0.00125	0.13%
+or	percent 2	1234.5	123,450%
+or	percent 2	-0.00004	-0%
+or	percent 2	0.0290	2.9%
+or	percent 2	0.995	99.5%
 or	money	1234.5 BRL	R$1,234.50
 or	money	-5 BRL	-R$5.00
 or	money	21.505 BRL	R$21.51
@@ -5140,6 +5842,19 @@ pa	number	1234567890123	12,34,56,78,90,123
 pa	number	1234.5	1,234.5
 pa	number	-0.25	-0.25
 pa	number	1234567.891	12,34,567.891
+pa	percent 2	0.029	2.9%
+pa	percent 2	-0.5	-50%
+pa	percent 2	1	100%
+pa	percent 2	0	0%
+pa	percent 0	12.345	1,235%
+pa	percent 1	12.345	1,234.5%
+pa	percent 2	12.345	1,234.5%
+pa	percent 4	12.345	1,234.5%
+pa	percent 2	0.00125	0.13%
+pa	percent 2	1234.5	1,23,450%
+pa	percent 2	-0.00004	-0%
+pa	percent 2	0.0290	2.9%
+pa	percent 2	0.995	99.5%
 pa	money	1234.5 BRL	R$1,234.50
 pa	money	-5 BRL	-R$5.00
 pa	money	21.505 BRL	R$21.51
@@ -5235,6 +5950,19 @@ pl	number	1234567890123	1 234 567 890 123
 pl	number	1234.5	1234,5
 pl	number	-0.25	-0,25
 pl	number	1234567.891	1 234 567,891
+pl	percent 2	0.029	2,9%
+pl	percent 2	-0.5	-50%
+pl	percent 2	1	100%
+pl	percent 2	0	0%
+pl	percent 0	12.345	1235%
+pl	percent 1	12.345	1234,5%
+pl	percent 2	12.345	1234,5%
+pl	percent 4	12.345	1234,5%
+pl	percent 2	0.00125	0,13%
+pl	percent 2	1234.5	123 450%
+pl	percent 2	-0.00004	-0%
+pl	percent 2	0.0290	2,9%
+pl	percent 2	0.995	99,5%
 pl	money	1234.5 BRL	1234,50 R$
 pl	money	-5 BRL	-5,00 R$
 pl	money	21.505 BRL	21,51 R$
@@ -5330,6 +6058,19 @@ ps	number	1234567890123	۱٬۲۳۴٬۵۶۷٬۸۹۰٬۱۲۳
 ps	number	1234.5	۱٬۲۳۴٫۵
 ps	number	-0.25	‎-‎۰٫۲۵
 ps	number	1234567.891	۱٬۲۳۴٬۵۶۷٫۸۹۱
+ps	percent 2	0.029	۲٫۹٪
+ps	percent 2	-0.5	‎-‎۵۰٪
+ps	percent 2	1	۱۰۰٪
+ps	percent 2	0	۰٪
+ps	percent 0	12.345	۱٬۲۳۵٪
+ps	percent 1	12.345	۱٬۲۳۴٫۵٪
+ps	percent 2	12.345	۱٬۲۳۴٫۵٪
+ps	percent 4	12.345	۱٬۲۳۴٫۵٪
+ps	percent 2	0.00125	۰٫۱۳٪
+ps	percent 2	1234.5	۱۲۳٬۴۵۰٪
+ps	percent 2	-0.00004	‎-‎۰٪
+ps	percent 2	0.0290	۲٫۹٪
+ps	percent 2	0.995	۹۹٫۵٪
 ps	money	1234.5 BRL	R$ ۱٬۲۳۴٫۵۰
 ps	money	-5 BRL	‎-‎R$ ۵٫۰۰
 ps	money	21.505 BRL	R$ ۲۱٫۵۱
@@ -5425,6 +6166,19 @@ pt	number	1234567890123	1.234.567.890.123
 pt	number	1234.5	1.234,5
 pt	number	-0.25	-0,25
 pt	number	1234567.891	1.234.567,891
+pt	percent 2	0.029	2,9%
+pt	percent 2	-0.5	-50%
+pt	percent 2	1	100%
+pt	percent 2	0	0%
+pt	percent 0	12.345	1.235%
+pt	percent 1	12.345	1.234,5%
+pt	percent 2	12.345	1.234,5%
+pt	percent 4	12.345	1.234,5%
+pt	percent 2	0.00125	0,13%
+pt	percent 2	1234.5	123.450%
+pt	percent 2	-0.00004	-0%
+pt	percent 2	0.0290	2,9%
+pt	percent 2	0.995	99,5%
 pt	money	1234.5 BRL	R$ 1.234,50
 pt	money	-5 BRL	-R$ 5,00
 pt	money	21.505 BRL	R$ 21,51
@@ -5520,6 +6274,19 @@ ro	number	1234567890123	1.234.567.890.123
 ro	number	1234.5	1.234,5
 ro	number	-0.25	-0,25
 ro	number	1234567.891	1.234.567,891
+ro	percent 2	0.029	2,9 %
+ro	percent 2	-0.5	-50 %
+ro	percent 2	1	100 %
+ro	percent 2	0	0 %
+ro	percent 0	12.345	1.235 %
+ro	percent 1	12.345	1.234,5 %
+ro	percent 2	12.345	1.234,5 %
+ro	percent 4	12.345	1.234,5 %
+ro	percent 2	0.00125	0,13 %
+ro	percent 2	1234.5	123.450 %
+ro	percent 2	-0.00004	-0 %
+ro	percent 2	0.0290	2,9 %
+ro	percent 2	0.995	99,5 %
 ro	money	1234.5 BRL	1.234,50 BRL
 ro	money	-5 BRL	-5,00 BRL
 ro	money	21.505 BRL	21,51 BRL
@@ -5615,6 +6382,19 @@ ru	number	1234567890123	1 234 567 890 123
 ru	number	1234.5	1 234,5
 ru	number	-0.25	-0,25
 ru	number	1234567.891	1 234 567,891
+ru	percent 2	0.029	2,9 %
+ru	percent 2	-0.5	-50 %
+ru	percent 2	1	100 %
+ru	percent 2	0	0 %
+ru	percent 0	12.345	1 235 %
+ru	percent 1	12.345	1 234,5 %
+ru	percent 2	12.345	1 234,5 %
+ru	percent 4	12.345	1 234,5 %
+ru	percent 2	0.00125	0,13 %
+ru	percent 2	1234.5	123 450 %
+ru	percent 2	-0.00004	-0 %
+ru	percent 2	0.0290	2,9 %
+ru	percent 2	0.995	99,5 %
 ru	money	1234.5 BRL	1 234,50 R$
 ru	money	-5 BRL	-5,00 R$
 ru	money	21.505 BRL	21,51 R$
@@ -5710,6 +6490,19 @@ si	number	1234567890123	1,234,567,890,123
 si	number	1234.5	1,234.5
 si	number	-0.25	-0.25
 si	number	1234567.891	1,234,567.891
+si	percent 2	0.029	2.9%
+si	percent 2	-0.5	-50%
+si	percent 2	1	100%
+si	percent 2	0	0%
+si	percent 0	12.345	1,235%
+si	percent 1	12.345	1,234.5%
+si	percent 2	12.345	1,234.5%
+si	percent 4	12.345	1,234.5%
+si	percent 2	0.00125	0.13%
+si	percent 2	1234.5	123,450%
+si	percent 2	-0.00004	-0%
+si	percent 2	0.0290	2.9%
+si	percent 2	0.995	99.5%
 si	money	1234.5 BRL	R$1,234.50
 si	money	-5 BRL	-R$5.00
 si	money	21.505 BRL	R$21.51
@@ -5805,6 +6598,19 @@ sk	number	1234567890123	1 234 567 890 123
 sk	number	1234.5	1 234,5
 sk	number	-0.25	-0,25
 sk	number	1234567.891	1 234 567,891
+sk	percent 2	0.029	2,9 %
+sk	percent 2	-0.5	-50 %
+sk	percent 2	1	100 %
+sk	percent 2	0	0 %
+sk	percent 0	12.345	1 235 %
+sk	percent 1	12.345	1 234,5 %
+sk	percent 2	12.345	1 234,5 %
+sk	percent 4	12.345	1 234,5 %
+sk	percent 2	0.00125	0,13 %
+sk	percent 2	1234.5	123 450 %
+sk	percent 2	-0.00004	-0 %
+sk	percent 2	0.0290	2,9 %
+sk	percent 2	0.995	99,5 %
 sk	money	1234.5 BRL	1 234,50 BRL
 sk	money	-5 BRL	-5,00 BRL
 sk	money	21.505 BRL	21,51 BRL
@@ -5900,6 +6706,19 @@ sl	number	1234567890123	1.234.567.890.123
 sl	number	1234.5	1234,5
 sl	number	-0.25	−0,25
 sl	number	1234567.891	1.234.567,891
+sl	percent 2	0.029	2,9 %
+sl	percent 2	-0.5	−50 %
+sl	percent 2	1	100 %
+sl	percent 2	0	0 %
+sl	percent 0	12.345	1235 %
+sl	percent 1	12.345	1234,5 %
+sl	percent 2	12.345	1234,5 %
+sl	percent 4	12.345	1234,5 %
+sl	percent 2	0.00125	0,13 %
+sl	percent 2	1234.5	123.450 %
+sl	percent 2	-0.00004	−0 %
+sl	percent 2	0.0290	2,9 %
+sl	percent 2	0.995	99,5 %
 sl	money	1234.5 BRL	1234,50 BRL
 sl	money	-5 BRL	−5,00 BRL
 sl	money	21.505 BRL	21,51 BRL
@@ -5995,6 +6814,19 @@ sq	number	1234567890123	1 234 567 890 123
 sq	number	1234.5	1234,5
 sq	number	-0.25	-0,25
 sq	number	1234567.891	1 234 567,891
+sq	percent 2	0.029	2,9%
+sq	percent 2	-0.5	-50%
+sq	percent 2	1	100%
+sq	percent 2	0	0%
+sq	percent 0	12.345	1235%
+sq	percent 1	12.345	1234,5%
+sq	percent 2	12.345	1234,5%
+sq	percent 4	12.345	1234,5%
+sq	percent 2	0.00125	0,13%
+sq	percent 2	1234.5	123 450%
+sq	percent 2	-0.00004	-0%
+sq	percent 2	0.0290	2,9%
+sq	percent 2	0.995	99,5%
 sq	money	1234.5 BRL	1234,50 BRL
 sq	money	-5 BRL	-5,00 BRL
 sq	money	21.505 BRL	21,51 BRL
@@ -6090,6 +6922,19 @@ sr	number	1234567890123	1.234.567.890.123
 sr	number	1234.5	1.234,5
 sr	number	-0.25	-0,25
 sr	number	1234567.891	1.234.567,891
+sr	percent 2	0.029	2,9%
+sr	percent 2	-0.5	-50%
+sr	percent 2	1	100%
+sr	percent 2	0	0%
+sr	percent 0	12.345	1.235%
+sr	percent 1	12.345	1.234,5%
+sr	percent 2	12.345	1.234,5%
+sr	percent 4	12.345	1.234,5%
+sr	percent 2	0.00125	0,13%
+sr	percent 2	1234.5	123.450%
+sr	percent 2	-0.00004	-0%
+sr	percent 2	0.0290	2,9%
+sr	percent 2	0.995	99,5%
 sr	money	1234.5 BRL	1.234,50 R$
 sr	money	-5 BRL	-5,00 R$
 sr	money	21.505 BRL	21,51 R$
@@ -6185,6 +7030,19 @@ sv	number	1234567890123	1 234 567 890 123
 sv	number	1234.5	1 234,5
 sv	number	-0.25	−0,25
 sv	number	1234567.891	1 234 567,891
+sv	percent 2	0.029	2,9 %
+sv	percent 2	-0.5	−50 %
+sv	percent 2	1	100 %
+sv	percent 2	0	0 %
+sv	percent 0	12.345	1 235 %
+sv	percent 1	12.345	1 234,5 %
+sv	percent 2	12.345	1 234,5 %
+sv	percent 4	12.345	1 234,5 %
+sv	percent 2	0.00125	0,13 %
+sv	percent 2	1234.5	123 450 %
+sv	percent 2	-0.00004	−0 %
+sv	percent 2	0.0290	2,9 %
+sv	percent 2	0.995	99,5 %
 sv	money	1234.5 BRL	1 234,50 BR$
 sv	money	-5 BRL	−5,00 BR$
 sv	money	21.505 BRL	21,51 BR$
@@ -6280,6 +7138,19 @@ sw	number	1234567890123	1,234,567,890,123
 sw	number	1234.5	1,234.5
 sw	number	-0.25	-0.25
 sw	number	1234567.891	1,234,567.891
+sw	percent 2	0.029	2.9%
+sw	percent 2	-0.5	-50%
+sw	percent 2	1	100%
+sw	percent 2	0	0%
+sw	percent 0	12.345	1,235%
+sw	percent 1	12.345	1,234.5%
+sw	percent 2	12.345	1,234.5%
+sw	percent 4	12.345	1,234.5%
+sw	percent 2	0.00125	0.13%
+sw	percent 2	1234.5	123,450%
+sw	percent 2	-0.00004	-0%
+sw	percent 2	0.0290	2.9%
+sw	percent 2	0.995	99.5%
 sw	money	1234.5 BRL	R$ 1,234.50
 sw	money	-5 BRL	-R$ 5.00
 sw	money	21.505 BRL	R$ 21.51
@@ -6375,6 +7246,19 @@ ta	number	1234567890123	12,34,56,78,90,123
 ta	number	1234.5	1,234.5
 ta	number	-0.25	-0.25
 ta	number	1234567.891	12,34,567.891
+ta	percent 2	0.029	2.9%
+ta	percent 2	-0.5	-50%
+ta	percent 2	1	100%
+ta	percent 2	0	0%
+ta	percent 0	12.345	1,235%
+ta	percent 1	12.345	1,234.5%
+ta	percent 2	12.345	1,234.5%
+ta	percent 4	12.345	1,234.5%
+ta	percent 2	0.00125	0.13%
+ta	percent 2	1234.5	1,23,450%
+ta	percent 2	-0.00004	-0%
+ta	percent 2	0.0290	2.9%
+ta	percent 2	0.995	99.5%
 ta	money	1234.5 BRL	R$1,234.50
 ta	money	-5 BRL	-R$5.00
 ta	money	21.505 BRL	R$21.51
@@ -6470,6 +7354,19 @@ te	number	1234567890123	12,34,56,78,90,123
 te	number	1234.5	1,234.5
 te	number	-0.25	-0.25
 te	number	1234567.891	12,34,567.891
+te	percent 2	0.029	2.9%
+te	percent 2	-0.5	-50%
+te	percent 2	1	100%
+te	percent 2	0	0%
+te	percent 0	12.345	1,235%
+te	percent 1	12.345	1,234.5%
+te	percent 2	12.345	1,234.5%
+te	percent 4	12.345	1,234.5%
+te	percent 2	0.00125	0.13%
+te	percent 2	1234.5	123,450%
+te	percent 2	-0.00004	-0%
+te	percent 2	0.0290	2.9%
+te	percent 2	0.995	99.5%
 te	money	1234.5 BRL	R$1,234.50
 te	money	-5 BRL	-R$5.00
 te	money	21.505 BRL	R$21.51
@@ -6565,6 +7462,19 @@ th	number	1234567890123	1,234,567,890,123
 th	number	1234.5	1,234.5
 th	number	-0.25	-0.25
 th	number	1234567.891	1,234,567.891
+th	percent 2	0.029	2.9%
+th	percent 2	-0.5	-50%
+th	percent 2	1	100%
+th	percent 2	0	0%
+th	percent 0	12.345	1,235%
+th	percent 1	12.345	1,234.5%
+th	percent 2	12.345	1,234.5%
+th	percent 4	12.345	1,234.5%
+th	percent 2	0.00125	0.13%
+th	percent 2	1234.5	123,450%
+th	percent 2	-0.00004	-0%
+th	percent 2	0.0290	2.9%
+th	percent 2	0.995	99.5%
 th	money	1234.5 BRL	R$1,234.50
 th	money	-5 BRL	-R$5.00
 th	money	21.505 BRL	R$21.51
@@ -6660,6 +7570,19 @@ tr	number	1234567890123	1.234.567.890.123
 tr	number	1234.5	1.234,5
 tr	number	-0.25	-0,25
 tr	number	1234567.891	1.234.567,891
+tr	percent 2	0.029	%2,9
+tr	percent 2	-0.5	-%50
+tr	percent 2	1	%100
+tr	percent 2	0	%0
+tr	percent 0	12.345	%1.235
+tr	percent 1	12.345	%1.234,5
+tr	percent 2	12.345	%1.234,5
+tr	percent 4	12.345	%1.234,5
+tr	percent 2	0.00125	%0,13
+tr	percent 2	1234.5	%123.450
+tr	percent 2	-0.00004	-%0
+tr	percent 2	0.0290	%2,9
+tr	percent 2	0.995	%99,5
 tr	money	1234.5 BRL	R$1.234,50
 tr	money	-5 BRL	-R$5,00
 tr	money	21.505 BRL	R$21,51
@@ -6755,6 +7678,19 @@ uk	number	1234567890123	1 234 567 890 123
 uk	number	1234.5	1 234,5
 uk	number	-0.25	-0,25
 uk	number	1234567.891	1 234 567,891
+uk	percent 2	0.029	2,9%
+uk	percent 2	-0.5	-50%
+uk	percent 2	1	100%
+uk	percent 2	0	0%
+uk	percent 0	12.345	1 235%
+uk	percent 1	12.345	1 234,5%
+uk	percent 2	12.345	1 234,5%
+uk	percent 4	12.345	1 234,5%
+uk	percent 2	0.00125	0,13%
+uk	percent 2	1234.5	123 450%
+uk	percent 2	-0.00004	-0%
+uk	percent 2	0.0290	2,9%
+uk	percent 2	0.995	99,5%
 uk	money	1234.5 BRL	1 234,50 BRL
 uk	money	-5 BRL	-5,00 BRL
 uk	money	21.505 BRL	21,51 BRL
@@ -6850,6 +7786,19 @@ ur	number	1234567890123	1,234,567,890,123
 ur	number	1234.5	1,234.5
 ur	number	-0.25	‎-0.25
 ur	number	1234567.891	1,234,567.891
+ur	percent 2	0.029	2.9%
+ur	percent 2	-0.5	‎-50%
+ur	percent 2	1	100%
+ur	percent 2	0	0%
+ur	percent 0	12.345	1,235%
+ur	percent 1	12.345	1,234.5%
+ur	percent 2	12.345	1,234.5%
+ur	percent 4	12.345	1,234.5%
+ur	percent 2	0.00125	0.13%
+ur	percent 2	1234.5	123,450%
+ur	percent 2	-0.00004	‎-0%
+ur	percent 2	0.0290	2.9%
+ur	percent 2	0.995	99.5%
 ur	money	1234.5 BRL	R$1,234.50
 ur	money	-5 BRL	‎-R$5.00
 ur	money	21.505 BRL	R$21.51
@@ -6945,6 +7894,19 @@ uz	number	1234567890123	1 234 567 890 123
 uz	number	1234.5	1 234,5
 uz	number	-0.25	-0,25
 uz	number	1234567.891	1 234 567,891
+uz	percent 2	0.029	2,9%
+uz	percent 2	-0.5	-50%
+uz	percent 2	1	100%
+uz	percent 2	0	0%
+uz	percent 0	12.345	1 235%
+uz	percent 1	12.345	1 234,5%
+uz	percent 2	12.345	1 234,5%
+uz	percent 4	12.345	1 234,5%
+uz	percent 2	0.00125	0,13%
+uz	percent 2	1234.5	123 450%
+uz	percent 2	-0.00004	-0%
+uz	percent 2	0.0290	2,9%
+uz	percent 2	0.995	99,5%
 uz	money	1234.5 BRL	1 234,50 R$
 uz	money	-5 BRL	-5,00 R$
 uz	money	21.505 BRL	21,51 R$
@@ -7040,6 +8002,19 @@ vi	number	1234567890123	1.234.567.890.123
 vi	number	1234.5	1.234,5
 vi	number	-0.25	-0,25
 vi	number	1234567.891	1.234.567,891
+vi	percent 2	0.029	2,9%
+vi	percent 2	-0.5	-50%
+vi	percent 2	1	100%
+vi	percent 2	0	0%
+vi	percent 0	12.345	1.235%
+vi	percent 1	12.345	1.234,5%
+vi	percent 2	12.345	1.234,5%
+vi	percent 4	12.345	1.234,5%
+vi	percent 2	0.00125	0,13%
+vi	percent 2	1234.5	123.450%
+vi	percent 2	-0.00004	-0%
+vi	percent 2	0.0290	2,9%
+vi	percent 2	0.995	99,5%
 vi	money	1234.5 BRL	1.234,50 R$
 vi	money	-5 BRL	-5,00 R$
 vi	money	21.505 BRL	21,51 R$
@@ -7135,6 +8110,19 @@ zh	number	1234567890123	1,234,567,890,123
 zh	number	1234.5	1,234.5
 zh	number	-0.25	-0.25
 zh	number	1234567.891	1,234,567.891
+zh	percent 2	0.029	2.9%
+zh	percent 2	-0.5	-50%
+zh	percent 2	1	100%
+zh	percent 2	0	0%
+zh	percent 0	12.345	1,235%
+zh	percent 1	12.345	1,234.5%
+zh	percent 2	12.345	1,234.5%
+zh	percent 4	12.345	1,234.5%
+zh	percent 2	0.00125	0.13%
+zh	percent 2	1234.5	123,450%
+zh	percent 2	-0.00004	-0%
+zh	percent 2	0.0290	2.9%
+zh	percent 2	0.995	99.5%
 zh	money	1234.5 BRL	R$1,234.50
 zh	money	-5 BRL	-R$5.00
 zh	money	21.505 BRL	R$21.51
@@ -7230,6 +8218,19 @@ zu	number	1234567890123	1,234,567,890,123
 zu	number	1234.5	1,234.5
 zu	number	-0.25	-0.25
 zu	number	1234567.891	1,234,567.891
+zu	percent 2	0.029	2.9%
+zu	percent 2	-0.5	-50%
+zu	percent 2	1	100%
+zu	percent 2	0	0%
+zu	percent 0	12.345	1,235%
+zu	percent 1	12.345	1,234.5%
+zu	percent 2	12.345	1,234.5%
+zu	percent 4	12.345	1,234.5%
+zu	percent 2	0.00125	0.13%
+zu	percent 2	1234.5	123,450%
+zu	percent 2	-0.00004	-0%
+zu	percent 2	0.0290	2.9%
+zu	percent 2	0.995	99.5%
 zu	money	1234.5 BRL	R$1,234.50
 zu	money	-5 BRL	-R$5.00
 zu	money	21.505 BRL	R$21.51
@@ -7325,6 +8326,19 @@ en-GB	number	1234567890123	1,234,567,890,123
 en-GB	number	1234.5	1,234.5
 en-GB	number	-0.25	-0.25
 en-GB	number	1234567.891	1,234,567.891
+en-GB	percent 2	0.029	2.9%
+en-GB	percent 2	-0.5	-50%
+en-GB	percent 2	1	100%
+en-GB	percent 2	0	0%
+en-GB	percent 0	12.345	1,235%
+en-GB	percent 1	12.345	1,234.5%
+en-GB	percent 2	12.345	1,234.5%
+en-GB	percent 4	12.345	1,234.5%
+en-GB	percent 2	0.00125	0.13%
+en-GB	percent 2	1234.5	123,450%
+en-GB	percent 2	-0.00004	-0%
+en-GB	percent 2	0.0290	2.9%
+en-GB	percent 2	0.995	99.5%
 en-GB	money	1234.5 BRL	R$1,234.50
 en-GB	money	-5 BRL	-R$5.00
 en-GB	money	21.505 BRL	R$21.51
@@ -7420,6 +8434,19 @@ en-AU	number	1234567890123	1,234,567,890,123
 en-AU	number	1234.5	1,234.5
 en-AU	number	-0.25	-0.25
 en-AU	number	1234567.891	1,234,567.891
+en-AU	percent 2	0.029	2.9%
+en-AU	percent 2	-0.5	-50%
+en-AU	percent 2	1	100%
+en-AU	percent 2	0	0%
+en-AU	percent 0	12.345	1,235%
+en-AU	percent 1	12.345	1,234.5%
+en-AU	percent 2	12.345	1,234.5%
+en-AU	percent 4	12.345	1,234.5%
+en-AU	percent 2	0.00125	0.13%
+en-AU	percent 2	1234.5	123,450%
+en-AU	percent 2	-0.00004	-0%
+en-AU	percent 2	0.0290	2.9%
+en-AU	percent 2	0.995	99.5%
 en-AU	money	1234.5 BRL	BRL 1,234.50
 en-AU	money	-5 BRL	-BRL 5.00
 en-AU	money	21.505 BRL	BRL 21.51
@@ -7515,6 +8542,19 @@ en-CA	number	1234567890123	1,234,567,890,123
 en-CA	number	1234.5	1,234.5
 en-CA	number	-0.25	-0.25
 en-CA	number	1234567.891	1,234,567.891
+en-CA	percent 2	0.029	2.9%
+en-CA	percent 2	-0.5	-50%
+en-CA	percent 2	1	100%
+en-CA	percent 2	0	0%
+en-CA	percent 0	12.345	1,235%
+en-CA	percent 1	12.345	1,234.5%
+en-CA	percent 2	12.345	1,234.5%
+en-CA	percent 4	12.345	1,234.5%
+en-CA	percent 2	0.00125	0.13%
+en-CA	percent 2	1234.5	123,450%
+en-CA	percent 2	-0.00004	-0%
+en-CA	percent 2	0.0290	2.9%
+en-CA	percent 2	0.995	99.5%
 en-CA	money	1234.5 BRL	R$1,234.50
 en-CA	money	-5 BRL	-R$5.00
 en-CA	money	21.505 BRL	R$21.51
@@ -7610,6 +8650,19 @@ en-IN	number	1234567890123	12,34,56,78,90,123
 en-IN	number	1234.5	1,234.5
 en-IN	number	-0.25	-0.25
 en-IN	number	1234567.891	12,34,567.891
+en-IN	percent 2	0.029	2.9%
+en-IN	percent 2	-0.5	-50%
+en-IN	percent 2	1	100%
+en-IN	percent 2	0	0%
+en-IN	percent 0	12.345	1,235%
+en-IN	percent 1	12.345	1,234.5%
+en-IN	percent 2	12.345	1,234.5%
+en-IN	percent 4	12.345	1,234.5%
+en-IN	percent 2	0.00125	0.13%
+en-IN	percent 2	1234.5	1,23,450%
+en-IN	percent 2	-0.00004	-0%
+en-IN	percent 2	0.0290	2.9%
+en-IN	percent 2	0.995	99.5%
 en-IN	money	1234.5 BRL	R$1,234.50
 en-IN	money	-5 BRL	-R$5.00
 en-IN	money	21.505 BRL	R$21.51
@@ -7705,6 +8758,19 @@ en-IE	number	1234567890123	1,234,567,890,123
 en-IE	number	1234.5	1,234.5
 en-IE	number	-0.25	-0.25
 en-IE	number	1234567.891	1,234,567.891
+en-IE	percent 2	0.029	2.9%
+en-IE	percent 2	-0.5	-50%
+en-IE	percent 2	1	100%
+en-IE	percent 2	0	0%
+en-IE	percent 0	12.345	1,235%
+en-IE	percent 1	12.345	1,234.5%
+en-IE	percent 2	12.345	1,234.5%
+en-IE	percent 4	12.345	1,234.5%
+en-IE	percent 2	0.00125	0.13%
+en-IE	percent 2	1234.5	123,450%
+en-IE	percent 2	-0.00004	-0%
+en-IE	percent 2	0.0290	2.9%
+en-IE	percent 2	0.995	99.5%
 en-IE	money	1234.5 BRL	R$1,234.50
 en-IE	money	-5 BRL	-R$5.00
 en-IE	money	21.505 BRL	R$21.51
@@ -7800,6 +8866,19 @@ en-NZ	number	1234567890123	1,234,567,890,123
 en-NZ	number	1234.5	1,234.5
 en-NZ	number	-0.25	-0.25
 en-NZ	number	1234567.891	1,234,567.891
+en-NZ	percent 2	0.029	2.9%
+en-NZ	percent 2	-0.5	-50%
+en-NZ	percent 2	1	100%
+en-NZ	percent 2	0	0%
+en-NZ	percent 0	12.345	1,235%
+en-NZ	percent 1	12.345	1,234.5%
+en-NZ	percent 2	12.345	1,234.5%
+en-NZ	percent 4	12.345	1,234.5%
+en-NZ	percent 2	0.00125	0.13%
+en-NZ	percent 2	1234.5	123,450%
+en-NZ	percent 2	-0.00004	-0%
+en-NZ	percent 2	0.0290	2.9%
+en-NZ	percent 2	0.995	99.5%
 en-NZ	money	1234.5 BRL	R$1,234.50
 en-NZ	money	-5 BRL	-R$5.00
 en-NZ	money	21.505 BRL	R$21.51
@@ -7895,6 +8974,19 @@ en-ZA	number	1234567890123	1 234 567 890 123
 en-ZA	number	1234.5	1 234,5
 en-ZA	number	-0.25	-0,25
 en-ZA	number	1234567.891	1 234 567,891
+en-ZA	percent 2	0.029	2,9%
+en-ZA	percent 2	-0.5	-50%
+en-ZA	percent 2	1	100%
+en-ZA	percent 2	0	0%
+en-ZA	percent 0	12.345	1 235%
+en-ZA	percent 1	12.345	1 234,5%
+en-ZA	percent 2	12.345	1 234,5%
+en-ZA	percent 4	12.345	1 234,5%
+en-ZA	percent 2	0.00125	0,13%
+en-ZA	percent 2	1234.5	123 450%
+en-ZA	percent 2	-0.00004	-0%
+en-ZA	percent 2	0.0290	2,9%
+en-ZA	percent 2	0.995	99,5%
 en-ZA	money	1234.5 BRL	R$1 234,50
 en-ZA	money	-5 BRL	-R$5,00
 en-ZA	money	21.505 BRL	R$21,51
@@ -7990,6 +9082,19 @@ en-SG	number	1234567890123	1,234,567,890,123
 en-SG	number	1234.5	1,234.5
 en-SG	number	-0.25	-0.25
 en-SG	number	1234567.891	1,234,567.891
+en-SG	percent 2	0.029	2.9%
+en-SG	percent 2	-0.5	-50%
+en-SG	percent 2	1	100%
+en-SG	percent 2	0	0%
+en-SG	percent 0	12.345	1,235%
+en-SG	percent 1	12.345	1,234.5%
+en-SG	percent 2	12.345	1,234.5%
+en-SG	percent 4	12.345	1,234.5%
+en-SG	percent 2	0.00125	0.13%
+en-SG	percent 2	1234.5	123,450%
+en-SG	percent 2	-0.00004	-0%
+en-SG	percent 2	0.0290	2.9%
+en-SG	percent 2	0.995	99.5%
 en-SG	money	1234.5 BRL	R$1,234.50
 en-SG	money	-5 BRL	-R$5.00
 en-SG	money	21.505 BRL	R$21.51
@@ -8085,6 +9190,19 @@ es-MX	number	1234567890123	1,234,567,890,123
 es-MX	number	1234.5	1,234.5
 es-MX	number	-0.25	-0.25
 es-MX	number	1234567.891	1,234,567.891
+es-MX	percent 2	0.029	2.9%
+es-MX	percent 2	-0.5	-50%
+es-MX	percent 2	1	100%
+es-MX	percent 2	0	0%
+es-MX	percent 0	12.345	1,235%
+es-MX	percent 1	12.345	1,234.5%
+es-MX	percent 2	12.345	1,234.5%
+es-MX	percent 4	12.345	1,234.5%
+es-MX	percent 2	0.00125	0.13%
+es-MX	percent 2	1234.5	123,450%
+es-MX	percent 2	-0.00004	-0%
+es-MX	percent 2	0.0290	2.9%
+es-MX	percent 2	0.995	99.5%
 es-MX	money	1234.5 BRL	BRL 1,234.50
 es-MX	money	-5 BRL	-BRL 5.00
 es-MX	money	21.505 BRL	BRL 21.51
@@ -8180,6 +9298,19 @@ es-419	number	1234567890123	1,234,567,890,123
 es-419	number	1234.5	1,234.5
 es-419	number	-0.25	-0.25
 es-419	number	1234567.891	1,234,567.891
+es-419	percent 2	0.029	2.9%
+es-419	percent 2	-0.5	-50%
+es-419	percent 2	1	100%
+es-419	percent 2	0	0%
+es-419	percent 0	12.345	1,235%
+es-419	percent 1	12.345	1,234.5%
+es-419	percent 2	12.345	1,234.5%
+es-419	percent 4	12.345	1,234.5%
+es-419	percent 2	0.00125	0.13%
+es-419	percent 2	1234.5	123,450%
+es-419	percent 2	-0.00004	-0%
+es-419	percent 2	0.0290	2.9%
+es-419	percent 2	0.995	99.5%
 es-419	money	1234.5 BRL	BRL 1,234.50
 es-419	money	-5 BRL	-BRL 5.00
 es-419	money	21.505 BRL	BRL 21.51
@@ -8275,6 +9406,19 @@ es-AR	number	1234567890123	1.234.567.890.123
 es-AR	number	1234.5	1.234,5
 es-AR	number	-0.25	-0,25
 es-AR	number	1234567.891	1.234.567,891
+es-AR	percent 2	0.029	2,9%
+es-AR	percent 2	-0.5	-50%
+es-AR	percent 2	1	100%
+es-AR	percent 2	0	0%
+es-AR	percent 0	12.345	1.235%
+es-AR	percent 1	12.345	1.234,5%
+es-AR	percent 2	12.345	1.234,5%
+es-AR	percent 4	12.345	1.234,5%
+es-AR	percent 2	0.00125	0,13%
+es-AR	percent 2	1234.5	123.450%
+es-AR	percent 2	-0.00004	-0%
+es-AR	percent 2	0.0290	2,9%
+es-AR	percent 2	0.995	99,5%
 es-AR	money	1234.5 BRL	BRL 1.234,50
 es-AR	money	-5 BRL	-BRL 5,00
 es-AR	money	21.505 BRL	BRL 21,51
@@ -8370,6 +9514,19 @@ es-CO	number	1234567890123	1.234.567.890.123
 es-CO	number	1234.5	1.234,5
 es-CO	number	-0.25	-0,25
 es-CO	number	1234567.891	1.234.567,891
+es-CO	percent 2	0.029	2,9%
+es-CO	percent 2	-0.5	-50%
+es-CO	percent 2	1	100%
+es-CO	percent 2	0	0%
+es-CO	percent 0	12.345	1.235%
+es-CO	percent 1	12.345	1.234,5%
+es-CO	percent 2	12.345	1.234,5%
+es-CO	percent 4	12.345	1.234,5%
+es-CO	percent 2	0.00125	0,13%
+es-CO	percent 2	1234.5	123.450%
+es-CO	percent 2	-0.00004	-0%
+es-CO	percent 2	0.0290	2,9%
+es-CO	percent 2	0.995	99,5%
 es-CO	money	1234.5 BRL	BRL 1.234,50
 es-CO	money	-5 BRL	-BRL 5,00
 es-CO	money	21.505 BRL	BRL 21,51
@@ -8465,6 +9622,19 @@ es-CL	number	1234567890123	1.234.567.890.123
 es-CL	number	1234.5	1.234,5
 es-CL	number	-0.25	-0,25
 es-CL	number	1234567.891	1.234.567,891
+es-CL	percent 2	0.029	2,9%
+es-CL	percent 2	-0.5	-50%
+es-CL	percent 2	1	100%
+es-CL	percent 2	0	0%
+es-CL	percent 0	12.345	1.235%
+es-CL	percent 1	12.345	1.234,5%
+es-CL	percent 2	12.345	1.234,5%
+es-CL	percent 4	12.345	1.234,5%
+es-CL	percent 2	0.00125	0,13%
+es-CL	percent 2	1234.5	123.450%
+es-CL	percent 2	-0.00004	-0%
+es-CL	percent 2	0.0290	2,9%
+es-CL	percent 2	0.995	99,5%
 es-CL	money	1234.5 BRL	BRL 1.234,50
 es-CL	money	-5 BRL	BRL-5,00
 es-CL	money	21.505 BRL	BRL 21,51
@@ -8560,6 +9730,19 @@ es-US	number	1234567890123	1,234,567,890,123
 es-US	number	1234.5	1,234.5
 es-US	number	-0.25	-0.25
 es-US	number	1234567.891	1,234,567.891
+es-US	percent 2	0.029	2.9%
+es-US	percent 2	-0.5	-50%
+es-US	percent 2	1	100%
+es-US	percent 2	0	0%
+es-US	percent 0	12.345	1,235%
+es-US	percent 1	12.345	1,234.5%
+es-US	percent 2	12.345	1,234.5%
+es-US	percent 4	12.345	1,234.5%
+es-US	percent 2	0.00125	0.13%
+es-US	percent 2	1234.5	123,450%
+es-US	percent 2	-0.00004	-0%
+es-US	percent 2	0.0290	2.9%
+es-US	percent 2	0.995	99.5%
 es-US	money	1234.5 BRL	BRL 1,234.50
 es-US	money	-5 BRL	-BRL 5.00
 es-US	money	21.505 BRL	BRL 21.51
@@ -8655,6 +9838,19 @@ fr-CA	number	1234567890123	1 234 567 890 123
 fr-CA	number	1234.5	1 234,5
 fr-CA	number	-0.25	-0,25
 fr-CA	number	1234567.891	1 234 567,891
+fr-CA	percent 2	0.029	2,9 %
+fr-CA	percent 2	-0.5	-50 %
+fr-CA	percent 2	1	100 %
+fr-CA	percent 2	0	0 %
+fr-CA	percent 0	12.345	1 235 %
+fr-CA	percent 1	12.345	1 234,5 %
+fr-CA	percent 2	12.345	1 234,5 %
+fr-CA	percent 4	12.345	1 234,5 %
+fr-CA	percent 2	0.00125	0,13 %
+fr-CA	percent 2	1234.5	123 450 %
+fr-CA	percent 2	-0.00004	-0 %
+fr-CA	percent 2	0.0290	2,9 %
+fr-CA	percent 2	0.995	99,5 %
 fr-CA	money	1234.5 BRL	1 234,50 R$
 fr-CA	money	-5 BRL	-5,00 R$
 fr-CA	money	21.505 BRL	21,51 R$
@@ -8750,6 +9946,19 @@ fr-CH	number	1234567890123	1'234'567'890'123
 fr-CH	number	1234.5	1'234,5
 fr-CH	number	-0.25	-0,25
 fr-CH	number	1234567.891	1'234'567,891
+fr-CH	percent 2	0.029	2,9%
+fr-CH	percent 2	-0.5	-50%
+fr-CH	percent 2	1	100%
+fr-CH	percent 2	0	0%
+fr-CH	percent 0	12.345	1'235%
+fr-CH	percent 1	12.345	1'234,5%
+fr-CH	percent 2	12.345	1'234,5%
+fr-CH	percent 4	12.345	1'234,5%
+fr-CH	percent 2	0.00125	0,13%
+fr-CH	percent 2	1234.5	123'450%
+fr-CH	percent 2	-0.00004	-0%
+fr-CH	percent 2	0.0290	2,9%
+fr-CH	percent 2	0.995	99,5%
 fr-CH	money	1234.5 BRL	1'234.50 R$
 fr-CH	money	-5 BRL	-5.00 R$
 fr-CH	money	21.505 BRL	21.51 R$
@@ -8845,6 +10054,19 @@ fr-BE	number	1234567890123	1 234 567 890 123
 fr-BE	number	1234.5	1 234,5
 fr-BE	number	-0.25	-0,25
 fr-BE	number	1234567.891	1 234 567,891
+fr-BE	percent 2	0.029	2,9 %
+fr-BE	percent 2	-0.5	-50 %
+fr-BE	percent 2	1	100 %
+fr-BE	percent 2	0	0 %
+fr-BE	percent 0	12.345	1 235 %
+fr-BE	percent 1	12.345	1 234,5 %
+fr-BE	percent 2	12.345	1 234,5 %
+fr-BE	percent 4	12.345	1 234,5 %
+fr-BE	percent 2	0.00125	0,13 %
+fr-BE	percent 2	1234.5	123 450 %
+fr-BE	percent 2	-0.00004	-0 %
+fr-BE	percent 2	0.0290	2,9 %
+fr-BE	percent 2	0.995	99,5 %
 fr-BE	money	1234.5 BRL	1 234,50 R$
 fr-BE	money	-5 BRL	-5,00 R$
 fr-BE	money	21.505 BRL	21,51 R$
@@ -8940,6 +10162,19 @@ de-AT	number	1234567890123	1 234 567 890 123
 de-AT	number	1234.5	1 234,5
 de-AT	number	-0.25	-0,25
 de-AT	number	1234567.891	1 234 567,891
+de-AT	percent 2	0.029	2,9 %
+de-AT	percent 2	-0.5	-50 %
+de-AT	percent 2	1	100 %
+de-AT	percent 2	0	0 %
+de-AT	percent 0	12.345	1 235 %
+de-AT	percent 1	12.345	1 234,5 %
+de-AT	percent 2	12.345	1 234,5 %
+de-AT	percent 4	12.345	1 234,5 %
+de-AT	percent 2	0.00125	0,13 %
+de-AT	percent 2	1234.5	123 450 %
+de-AT	percent 2	-0.00004	-0 %
+de-AT	percent 2	0.0290	2,9 %
+de-AT	percent 2	0.995	99,5 %
 de-AT	money	1234.5 BRL	R$ 1.234,50
 de-AT	money	-5 BRL	-R$ 5,00
 de-AT	money	21.505 BRL	R$ 21,51
@@ -9035,6 +10270,19 @@ de-CH	number	1234567890123	1'234'567'890'123
 de-CH	number	1234.5	1'234.5
 de-CH	number	-0.25	-0.25
 de-CH	number	1234567.891	1'234'567.891
+de-CH	percent 2	0.029	2.9%
+de-CH	percent 2	-0.5	-50%
+de-CH	percent 2	1	100%
+de-CH	percent 2	0	0%
+de-CH	percent 0	12.345	1'235%
+de-CH	percent 1	12.345	1'234.5%
+de-CH	percent 2	12.345	1'234.5%
+de-CH	percent 4	12.345	1'234.5%
+de-CH	percent 2	0.00125	0.13%
+de-CH	percent 2	1234.5	123'450%
+de-CH	percent 2	-0.00004	-0%
+de-CH	percent 2	0.0290	2.9%
+de-CH	percent 2	0.995	99.5%
 de-CH	money	1234.5 BRL	R$ 1'234.50
 de-CH	money	-5 BRL	R$-5.00
 de-CH	money	21.505 BRL	R$ 21.51
@@ -9130,6 +10378,19 @@ it-CH	number	1234567890123	1'234'567'890'123
 it-CH	number	1234.5	1234.5
 it-CH	number	-0.25	-0.25
 it-CH	number	1234567.891	1'234'567.891
+it-CH	percent 2	0.029	2.9%
+it-CH	percent 2	-0.5	-50%
+it-CH	percent 2	1	100%
+it-CH	percent 2	0	0%
+it-CH	percent 0	12.345	1235%
+it-CH	percent 1	12.345	1234.5%
+it-CH	percent 2	12.345	1234.5%
+it-CH	percent 4	12.345	1234.5%
+it-CH	percent 2	0.00125	0.13%
+it-CH	percent 2	1234.5	123'450%
+it-CH	percent 2	-0.00004	-0%
+it-CH	percent 2	0.0290	2.9%
+it-CH	percent 2	0.995	99.5%
 it-CH	money	1234.5 BRL	BRL 1234.50
 it-CH	money	-5 BRL	BRL-5.00
 it-CH	money	21.505 BRL	BRL 21.51
@@ -9225,6 +10486,19 @@ nl-BE	number	1234567890123	1.234.567.890.123
 nl-BE	number	1234.5	1.234,5
 nl-BE	number	-0.25	-0,25
 nl-BE	number	1234567.891	1.234.567,891
+nl-BE	percent 2	0.029	2,9%
+nl-BE	percent 2	-0.5	-50%
+nl-BE	percent 2	1	100%
+nl-BE	percent 2	0	0%
+nl-BE	percent 0	12.345	1.235%
+nl-BE	percent 1	12.345	1.234,5%
+nl-BE	percent 2	12.345	1.234,5%
+nl-BE	percent 4	12.345	1.234,5%
+nl-BE	percent 2	0.00125	0,13%
+nl-BE	percent 2	1234.5	123.450%
+nl-BE	percent 2	-0.00004	-0%
+nl-BE	percent 2	0.0290	2,9%
+nl-BE	percent 2	0.995	99,5%
 nl-BE	money	1234.5 BRL	R$ 1.234,50
 nl-BE	money	-5 BRL	R$ -5,00
 nl-BE	money	21.505 BRL	R$ 21,51
@@ -9320,6 +10594,19 @@ pt-PT	number	1234567890123	1 234 567 890 123
 pt-PT	number	1234.5	1234,5
 pt-PT	number	-0.25	-0,25
 pt-PT	number	1234567.891	1 234 567,891
+pt-PT	percent 2	0.029	2,9%
+pt-PT	percent 2	-0.5	-50%
+pt-PT	percent 2	1	100%
+pt-PT	percent 2	0	0%
+pt-PT	percent 0	12.345	1235%
+pt-PT	percent 1	12.345	1234,5%
+pt-PT	percent 2	12.345	1234,5%
+pt-PT	percent 4	12.345	1234,5%
+pt-PT	percent 2	0.00125	0,13%
+pt-PT	percent 2	1234.5	123 450%
+pt-PT	percent 2	-0.00004	-0%
+pt-PT	percent 2	0.0290	2,9%
+pt-PT	percent 2	0.995	99,5%
 pt-PT	money	1234.5 BRL	1234,50 R$
 pt-PT	money	-5 BRL	-5,00 R$
 pt-PT	money	21.505 BRL	21,51 R$
@@ -9415,6 +10702,19 @@ zh-Hant	number	1234567890123	1,234,567,890,123
 zh-Hant	number	1234.5	1,234.5
 zh-Hant	number	-0.25	-0.25
 zh-Hant	number	1234567.891	1,234,567.891
+zh-Hant	percent 2	0.029	2.9%
+zh-Hant	percent 2	-0.5	-50%
+zh-Hant	percent 2	1	100%
+zh-Hant	percent 2	0	0%
+zh-Hant	percent 0	12.345	1,235%
+zh-Hant	percent 1	12.345	1,234.5%
+zh-Hant	percent 2	12.345	1,234.5%
+zh-Hant	percent 4	12.345	1,234.5%
+zh-Hant	percent 2	0.00125	0.13%
+zh-Hant	percent 2	1234.5	123,450%
+zh-Hant	percent 2	-0.00004	-0%
+zh-Hant	percent 2	0.0290	2.9%
+zh-Hant	percent 2	0.995	99.5%
 zh-Hant	money	1234.5 BRL	R$1,234.50
 zh-Hant	money	-5 BRL	-R$5.00
 zh-Hant	money	21.505 BRL	R$21.51
@@ -9510,6 +10810,19 @@ zh-TW	number	1234567890123	1,234,567,890,123
 zh-TW	number	1234.5	1,234.5
 zh-TW	number	-0.25	-0.25
 zh-TW	number	1234567.891	1,234,567.891
+zh-TW	percent 2	0.029	2.9%
+zh-TW	percent 2	-0.5	-50%
+zh-TW	percent 2	1	100%
+zh-TW	percent 2	0	0%
+zh-TW	percent 0	12.345	1,235%
+zh-TW	percent 1	12.345	1,234.5%
+zh-TW	percent 2	12.345	1,234.5%
+zh-TW	percent 4	12.345	1,234.5%
+zh-TW	percent 2	0.00125	0.13%
+zh-TW	percent 2	1234.5	123,450%
+zh-TW	percent 2	-0.00004	-0%
+zh-TW	percent 2	0.0290	2.9%
+zh-TW	percent 2	0.995	99.5%
 zh-TW	money	1234.5 BRL	R$1,234.50
 zh-TW	money	-5 BRL	-R$5.00
 zh-TW	money	21.505 BRL	R$21.51
@@ -9605,6 +10918,19 @@ zh-HK	number	1234567890123	1,234,567,890,123
 zh-HK	number	1234.5	1,234.5
 zh-HK	number	-0.25	-0.25
 zh-HK	number	1234567.891	1,234,567.891
+zh-HK	percent 2	0.029	2.9%
+zh-HK	percent 2	-0.5	-50%
+zh-HK	percent 2	1	100%
+zh-HK	percent 2	0	0%
+zh-HK	percent 0	12.345	1,235%
+zh-HK	percent 1	12.345	1,234.5%
+zh-HK	percent 2	12.345	1,234.5%
+zh-HK	percent 4	12.345	1,234.5%
+zh-HK	percent 2	0.00125	0.13%
+zh-HK	percent 2	1234.5	123,450%
+zh-HK	percent 2	-0.00004	-0%
+zh-HK	percent 2	0.0290	2.9%
+zh-HK	percent 2	0.995	99.5%
 zh-HK	money	1234.5 BRL	R$1,234.50
 zh-HK	money	-5 BRL	-R$5.00
 zh-HK	money	21.505 BRL	R$21.51
@@ -9700,6 +11026,19 @@ sr-Latn	number	1234567890123	1.234.567.890.123
 sr-Latn	number	1234.5	1.234,5
 sr-Latn	number	-0.25	-0,25
 sr-Latn	number	1234567.891	1.234.567,891
+sr-Latn	percent 2	0.029	2,9%
+sr-Latn	percent 2	-0.5	-50%
+sr-Latn	percent 2	1	100%
+sr-Latn	percent 2	0	0%
+sr-Latn	percent 0	12.345	1.235%
+sr-Latn	percent 1	12.345	1.234,5%
+sr-Latn	percent 2	12.345	1.234,5%
+sr-Latn	percent 4	12.345	1.234,5%
+sr-Latn	percent 2	0.00125	0,13%
+sr-Latn	percent 2	1234.5	123.450%
+sr-Latn	percent 2	-0.00004	-0%
+sr-Latn	percent 2	0.0290	2,9%
+sr-Latn	percent 2	0.995	99,5%
 sr-Latn	money	1234.5 BRL	1.234,50 R$
 sr-Latn	money	-5 BRL	-5,00 R$
 sr-Latn	money	21.505 BRL	21,51 R$
@@ -9795,6 +11134,19 @@ ar-EG	number	1234567890123	١٬٢٣٤٬٥٦٧٬٨٩٠٬١٢٣
 ar-EG	number	1234.5	١٬٢٣٤٫٥
 ar-EG	number	-0.25	؜-٠٫٢٥
 ar-EG	number	1234567.891	١٬٢٣٤٬٥٦٧٫٨٩١
+ar-EG	percent 2	0.029	٢٫٩٪؜
+ar-EG	percent 2	-0.5	؜-٥٠٪؜
+ar-EG	percent 2	1	١٠٠٪؜
+ar-EG	percent 2	0	٠٪؜
+ar-EG	percent 0	12.345	١٬٢٣٥٪؜
+ar-EG	percent 1	12.345	١٬٢٣٤٫٥٪؜
+ar-EG	percent 2	12.345	١٬٢٣٤٫٥٪؜
+ar-EG	percent 4	12.345	١٬٢٣٤٫٥٪؜
+ar-EG	percent 2	0.00125	٠٫١٣٪؜
+ar-EG	percent 2	1234.5	١٢٣٬٤٥٠٪؜
+ar-EG	percent 2	-0.00004	؜-٠٪؜
+ar-EG	percent 2	0.0290	٢٫٩٪؜
+ar-EG	percent 2	0.995	٩٩٫٥٪؜
 ar-EG	money	1234.5 BRL	‏١٬٢٣٤٫٥٠ R$
 ar-EG	money	-5 BRL	؜-‏٥٫٠٠ R$
 ar-EG	money	21.505 BRL	‏٢١٫٥١ R$
@@ -9890,6 +11242,19 @@ ar-SA	number	1234567890123	١٬٢٣٤٬٥٦٧٬٨٩٠٬١٢٣
 ar-SA	number	1234.5	١٬٢٣٤٫٥
 ar-SA	number	-0.25	؜-٠٫٢٥
 ar-SA	number	1234567.891	١٬٢٣٤٬٥٦٧٫٨٩١
+ar-SA	percent 2	0.029	٢٫٩٪؜
+ar-SA	percent 2	-0.5	؜-٥٠٪؜
+ar-SA	percent 2	1	١٠٠٪؜
+ar-SA	percent 2	0	٠٪؜
+ar-SA	percent 0	12.345	١٬٢٣٥٪؜
+ar-SA	percent 1	12.345	١٬٢٣٤٫٥٪؜
+ar-SA	percent 2	12.345	١٬٢٣٤٫٥٪؜
+ar-SA	percent 4	12.345	١٬٢٣٤٫٥٪؜
+ar-SA	percent 2	0.00125	٠٫١٣٪؜
+ar-SA	percent 2	1234.5	١٢٣٬٤٥٠٪؜
+ar-SA	percent 2	-0.00004	؜-٠٪؜
+ar-SA	percent 2	0.0290	٢٫٩٪؜
+ar-SA	percent 2	0.995	٩٩٫٥٪؜
 ar-SA	money	1234.5 BRL	‏١٬٢٣٤٫٥٠ R$
 ar-SA	money	-5 BRL	؜-‏٥٫٠٠ R$
 ar-SA	money	21.505 BRL	‏٢١٫٥١ R$
@@ -9985,6 +11350,19 @@ ar-MA	number	1234567890123	1.234.567.890.123
 ar-MA	number	1234.5	1.234,5
 ar-MA	number	-0.25	‎-0,25
 ar-MA	number	1234567.891	1.234.567,891
+ar-MA	percent 2	0.029	2,9‎%‎
+ar-MA	percent 2	-0.5	‎-50‎%‎
+ar-MA	percent 2	1	100‎%‎
+ar-MA	percent 2	0	0‎%‎
+ar-MA	percent 0	12.345	1.235‎%‎
+ar-MA	percent 1	12.345	1.234,5‎%‎
+ar-MA	percent 2	12.345	1.234,5‎%‎
+ar-MA	percent 4	12.345	1.234,5‎%‎
+ar-MA	percent 2	0.00125	0,13‎%‎
+ar-MA	percent 2	1234.5	123.450‎%‎
+ar-MA	percent 2	-0.00004	‎-0‎%‎
+ar-MA	percent 2	0.0290	2,9‎%‎
+ar-MA	percent 2	0.995	99,5‎%‎
 ar-MA	money	1234.5 BRL	‏1.234,50 R$
 ar-MA	money	-5 BRL	‏‎-5,00 R$
 ar-MA	money	21.505 BRL	‏21,51 R$
@@ -10080,6 +11458,19 @@ ms-SG	number	1234567890123	1,234,567,890,123
 ms-SG	number	1234.5	1,234.5
 ms-SG	number	-0.25	-0.25
 ms-SG	number	1234567.891	1,234,567.891
+ms-SG	percent 2	0.029	2.9%
+ms-SG	percent 2	-0.5	-50%
+ms-SG	percent 2	1	100%
+ms-SG	percent 2	0	0%
+ms-SG	percent 0	12.345	1,235%
+ms-SG	percent 1	12.345	1,234.5%
+ms-SG	percent 2	12.345	1,234.5%
+ms-SG	percent 4	12.345	1,234.5%
+ms-SG	percent 2	0.00125	0.13%
+ms-SG	percent 2	1234.5	123,450%
+ms-SG	percent 2	-0.00004	-0%
+ms-SG	percent 2	0.0290	2.9%
+ms-SG	percent 2	0.995	99.5%
 ms-SG	money	1234.5 BRL	R$1,234.50
 ms-SG	money	-5 BRL	-R$5.00
 ms-SG	money	21.505 BRL	R$21.51
@@ -10175,6 +11566,19 @@ sv-FI	number	1234567890123	1 234 567 890 123
 sv-FI	number	1234.5	1 234,5
 sv-FI	number	-0.25	−0,25
 sv-FI	number	1234567.891	1 234 567,891
+sv-FI	percent 2	0.029	2,9 %
+sv-FI	percent 2	-0.5	−50 %
+sv-FI	percent 2	1	100 %
+sv-FI	percent 2	0	0 %
+sv-FI	percent 0	12.345	1 235 %
+sv-FI	percent 1	12.345	1 234,5 %
+sv-FI	percent 2	12.345	1 234,5 %
+sv-FI	percent 4	12.345	1 234,5 %
+sv-FI	percent 2	0.00125	0,13 %
+sv-FI	percent 2	1234.5	123 450 %
+sv-FI	percent 2	-0.00004	−0 %
+sv-FI	percent 2	0.0290	2,9 %
+sv-FI	percent 2	0.995	99,5 %
 sv-FI	money	1234.5 BRL	1 234,50 BR$
 sv-FI	money	-5 BRL	−5,00 BR$
 sv-FI	money	21.505 BRL	21,51 BR$

@@ -31,7 +31,7 @@ for (const name of appsArg.split(",")) {
     const container = `lv-${name}`;
     docker("rm", "-f", container);
     await sleep(2000);
-    const args = ["run", "-d", "--name", container, "--network", network, ...appCpus, "--memory", "1g", "--ulimit", "nofile=1048576:1048576", "-p", `${app.port}:8080`, "-e", "PORT=8080", "-e", "ITEM_SOURCE=none", "-e", "API_BASE=http://localhost:1"];
+    const args = ["run", "-d", "--name", container, "--network", network, ...appCpus, "--memory", "1g", "--ulimit", "nofile=1048576:1048576", "-p", `${app.port}:8080`, "-e", "PORT=8080", "-e", `HOSTS=${container}`, "-e", "ITEM_SOURCE=none", "-e", "API_BASE=http://localhost:1"];
     for (const [k, v] of Object.entries(app.env ?? {})) args.push("-e", `${k}=${v}`);
     if (app.cmd) args.push("--entrypoint", app.cmd[0], app.image, ...app.cmd.slice(1));
     else args.push(app.image);

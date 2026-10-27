@@ -7,9 +7,11 @@
 //! | `GET /feed/stocks`, `/feed/stocks/live` | the live feed `<live-prices>` subscribes to |
 //! | `GET /live/trades` | fragments streamed to `<corten-live>`: the last trade, no script of its own |
 //! | `GET /about?history=on` | a plain page, reached by client navigation, with a component in an area (`Area::components`): its stylesheet is linked from this page only; a filter applied on change keeps the user's place (`data-keep-place`), and Load more adds only the new rows (`view::Append`) |
+//! | `GET /about/source` | a redirect to another site, which a client navigation follows in one request |
 //! | `POST /sign-in` | sets a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
 //! | `GET /account` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
+//! | `POST /avatar` | a form with a file (`Upload`): the picture is read as it arrives, then the other fields |
 //! | `POST /saved` | a write answered in place while its read catches up: the status line, as a patch that is read again from `/saved?until=..` (`ReadAgain::from`) until the write is in |
 use std::{
     sync::Arc,
@@ -18,7 +20,7 @@ use std::{
 
 use corten::{
     Fragment, LiveResponse, LiveSince,
-    axum::http::{header, request::Parts},
+    axum::http::{Uri, header, request::Parts},
     feed::{Feed, FeedResponse, Row, Since},
     i18n::{Currency, Minor},
     prelude::*,
@@ -97,6 +99,9 @@ mod url {
     #[route("/sign-in", post = sign_in)]
     pub struct SignIn;
 
+    #[route("/avatar", post = avatar)]
+    pub struct Avatar;
+
     #[route("/feed/stocks", get = stocks)]
     pub struct Stocks;
 
@@ -120,6 +125,9 @@ mod about {
 
     #[route("/about/thanks", post = thank)]
     pub struct Thank;
+
+    #[route("/about/source", get = source)]
+    pub struct Source;
 }
 
 /// Someone's own pages: every route here, now and later, takes the viewer, so no one signed out
@@ -401,6 +409,31 @@ async fn watch(
     }
 }
 
+#[derive(Deserialize, Fields)]
+struct AvatarForm {
+    name: String,
+    picture: Files,
+}
+
+#[derive(Id)]
+struct AvatarResultId;
+
+/// A form with a file: what came, read as it arrives (a picture over 64 KB is refused, the form
+/// still read).
+async fn avatar(req: Req, mut upload: Upload<AvatarForm>) -> HtmlResult {
+    let f = AvatarForm::FIELDS;
+    let mut pictures = Vec::new();
+    while let Some(mut file) = upload.next_file().await? {
+        if file.is(f.picture) {
+            let size =
+                file.bytes_up_to(64 << 10).await?.map_or_else(|| "too large".to_string(), |b| format!("{} bytes", b.len()));
+            pictures.push(format!("{} ({}, {size})", file.filename(), file.content_type()));
+        }
+    }
+    let form = upload.fields().await?;
+    req.patch(html! { <p id={AvatarResultId}>{format!("{}: {}", form.name, pictures.join(", "))}</p> })
+}
+
 /// The about page's filter and how much of the history it shows: a GET form, so both are in
 /// the address.
 #[derive(Deserialize, Fields)]
@@ -432,6 +465,7 @@ async fn about(req: Req, viewer: Option<Caller<Viewer>>, Query(q): Query<AboutQu
         <Layout req={&req} title="About" viewer={viewer.as_deref()} head="">
             <h1>"About"</h1>
             <p>"Rendered on the server and swapped into the page by the runtime."</p>
+            <p><a href={about::Source}>"The source"</a></p>
             <AboutNote />
             <AboutFilter history={q.history} />
             if q.history {
@@ -453,6 +487,12 @@ struct ThanksId;
 /// `About.at(ThanksId)` is `/about#thanks`, the id the form's markup prints.
 async fn thank(req: Req) -> HtmlResult {
     req.redirect(&about::About.at(ThanksId))
+}
+
+/// Where the project's source lives: another site. A client navigation's `fetch` cannot follow a
+/// redirect there, so the runtime is told the address and the browser goes there itself.
+async fn source(req: Req) -> HtmlResult {
+    req.redirect(&Uri::from_static("https://github.com/todd-skelton/corten"))
 }
 
 #[derive(Id)]

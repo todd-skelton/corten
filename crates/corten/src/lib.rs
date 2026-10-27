@@ -65,6 +65,7 @@ mod ascii;
 pub mod assets;
 pub mod cache;
 pub mod caller;
+mod client;
 #[cfg(feature = "compress")]
 pub mod compress;
 pub mod form;
@@ -81,6 +82,7 @@ pub mod security;
 pub mod seo;
 mod signal;
 pub mod style;
+mod task;
 #[cfg(feature = "types")]
 pub mod types;
 pub mod view;
@@ -105,16 +107,17 @@ use futures_util::{Stream, StreamExt};
 pub use answer::JsonResult;
 pub use answer::{Answer, HtmlResponse, HtmlResult, LiveResponse, NoStore, Public};
 pub use api::Api;
-pub use app::{serve, App, Area};
+pub use app::{listeners, serve, serve_on, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 pub use caller::{Caller, Identify, Refused};
+pub use client::ClientIp;
 /// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
 /// gives `AlertInput::FIELDS.email`, the [`FieldName`] `"email"` (serde `rename` and `rename_all`
 /// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled
 /// field fails to compile instead of posting a field the handler never reads.
 pub use corten_macros::Fields;
-pub use form::{Errors, FieldName, Form, Query, SubmitKey};
+pub use form::{Errors, FieldName, Files, Form, Query, SubmitKey, Upload};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};
@@ -122,7 +125,7 @@ pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
 pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, ReadAgainFrom, Req, MODE_HEADER};
-pub use route::{routes, Href, Methods, Route, Routes};
+pub use route::{routes, Elsewhere, Href, Methods, Route, Routes, UrlValue};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
@@ -157,8 +160,9 @@ pub mod prelude {
         route::{delete, get, post, put},
         script::{el, refs, Handler, Ref},
         view::Id,
-        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Form, HtmlResult, Identify, Methods,
-        Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Route, Routes, SubmitKey,
+        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Files, Form, HtmlResult, Identify, Methods,
+        Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Route, Routes, SubmitKey, Upload,
+        UrlValue,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, JsonLd, JsonResult, ToJson};
@@ -418,7 +422,9 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Resolves when the process is asked to stop (Ctrl-C, or `SIGTERM` from a container runtime),
 /// after ending every open [`live`] stream and live feed stream (feature `feed`) so a graceful
-/// shutdown is not held open by them. Pass it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`.
+/// shutdown is not held open by them. [`serve`] uses it; an app that serves its router another way
+/// passes it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`, and then runs
+/// no [`App::task`].
 pub async fn shutdown_signal() {
     let interrupt = async {
         let _ = tokio::signal::ctrl_c().await;

@@ -3,6 +3,7 @@ use crate::cache::Cache;
 use crate::view::{html, Render};
 use axum::{body::Body, extract::Path, http::Request, routing::get, Router};
 use http_body_util::BodyExt;
+use std::time::Duration;
 use tower::ServiceExt;
 
 fn demo(text: &str) -> impl Render + '_ {
@@ -34,6 +35,11 @@ paths! {
     ApiItems = "/api/items",
     Items = "/items",
     Admin = "/admin",
+    AdminSlow = "/admin/slow",
+    AdminQuick = "/admin/quick",
+    AdminQuickSlow = "/admin/quick/slow",
+    AdminOther = "/admin/other",
+    AdminOtherSlow = "/admin/other/slow",
 }
 
 std::thread_local! {
@@ -68,6 +74,67 @@ impl crate::Middleware for AsViewer {
             req.headers_mut().insert("viewer", axum::http::HeaderValue::from_static(name));
         }
         next.run(req).await
+    }
+}
+
+/// Stamps every answer with a request id and two `Server-Timing` values, and answers 429 with
+/// `Retry-After` itself when asked to by `x-flood`.
+struct Stamp;
+
+impl crate::Middleware for Stamp {
+    async fn call(&self, req: axum::extract::Request, next: impl crate::Next) -> Response {
+        use axum::http::{header, HeaderValue};
+        let mut res = if req.headers().contains_key("x-flood") {
+            let mut res = crate::Error::status(StatusCode::TOO_MANY_REQUESTS).into_response();
+            res.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_static("7"));
+            res
+        } else {
+            next.run(req).await
+        };
+        let headers = res.headers_mut();
+        headers.insert("x-request-id", HeaderValue::from_static("r-1"));
+        headers.append("server-timing", HeaderValue::from_static("app;dur=1"));
+        headers.append("server-timing", HeaderValue::from_static("db;dur=2"));
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=600"));
+        res
+    }
+}
+
+/// A failure that becomes the error page keeps what the handler and the middleware said besides
+/// the body (a request id, `Retry-After`, every `Server-Timing` value), in every mode; the error
+/// page's own type and `Cache-Control` win.
+#[tokio::test]
+async fn the_error_page_keeps_the_headers_of_the_failure_it_replaces() {
+    use axum::http::header;
+    let routes = Router::new().route(
+        "/busy",
+        get(|| async { (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "30"), (header::CONTENT_TYPE, "text/x-old")]) }),
+    );
+    let router = App::new(Routes::from(routes)).error_page(test_error_page, ()).middleware(Stamp).router();
+    for mode in [None, Some("nav")] {
+        for (uri, flood, status, retry) in
+            [("/nope", false, 404, None), ("/busy", false, 429, Some("30")), ("/nope", true, 429, Some("7"))]
+        {
+            let mut req = Request::get(uri).header("accept", "text/html");
+            if let Some(mode) = mode {
+                req = req.header("corten", mode);
+            }
+            if flood {
+                req = req.header("x-flood", "1");
+            }
+            let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            let at = format!("{mode:?} {uri} flood={flood}");
+            assert_eq!(res.status().as_u16(), status, "{at}");
+            let headers = res.headers();
+            assert_eq!(headers["x-request-id"], "r-1", "{at}");
+            let timing: Vec<_> = headers.get_all("server-timing").iter().collect();
+            assert_eq!(timing, ["app;dur=1", "db;dur=2"], "{at}");
+            assert_eq!(headers.get(header::RETRY_AFTER).map(|v| v.to_str().unwrap()), retry, "{at}");
+            assert!(headers[header::CONTENT_TYPE].to_str().unwrap().starts_with("text/html"), "{at}: {headers:?}");
+            assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache", "{at}: an error page is never shared");
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            assert!(String::from_utf8_lossy(&body).contains("<h1>"), "{at}: the error page");
+        }
     }
 }
 
@@ -190,6 +257,55 @@ fn routes() -> Router {
 /// The app as `App` assembles it, with the tests' error page, every request sent as `viewer`.
 fn app(routes: Router, viewer: Option<&'static str>) -> Router {
     App::new(Routes::from(routes)).error_page(test_error_page, ()).middleware(AsViewer(viewer)).router()
+}
+
+/// The status and body of `GET uri` with `Host: host` (none when empty), plus `extra` headers.
+async fn for_host(router: &Router, uri: &str, host: &str, extra: &[(&str, &str)]) -> (StatusCode, String) {
+    let mut req = Request::get(uri);
+    if !host.is_empty() {
+        req = req.header("host", host);
+    }
+    for (name, value) in extra {
+        req = req.header(*name, *value);
+    }
+    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    let status = res.status();
+    (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+}
+
+/// A DNS-rebound page names a host the app is not: every route, in every mode, answers 421 and
+/// runs nothing of the app's, not even its error page.
+#[tokio::test]
+async fn a_request_for_another_host_is_misdirected_in_every_mode() {
+    let routes = Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) }));
+    let router = App::new(Routes::from(routes))
+        .error_page(test_error_page, ())
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods(get(|| async { "rates" }))))
+        .router();
+    let rebound = "rebound.attacker.example:3917";
+    for (uri, extra) in [
+        ("/", &[][..]),
+        ("/", &[("corten", "nav")][..]),
+        ("/", &[("accept", "application/json")][..]),
+        ("/missing", &[("accept", "text/html")][..]),
+        ("/api/rates", &[][..]),
+        ("/health/live", &[][..]),
+    ] {
+        let (status, body) = for_host(&router, uri, rebound, extra).await;
+        assert_eq!((status, body.as_str()), (StatusCode::MISDIRECTED_REQUEST, "Misdirected request."), "{uri} {extra:?}");
+    }
+    for host in ["localhost:3917", "127.0.0.1:3917", "[::1]:3917", ""] {
+        assert_eq!(for_host(&router, "/", host, &[]).await.0, StatusCode::OK, "{host:?}");
+    }
+    let named = App::new(Routes::from(Router::new().route("/", get(|| async { "home" }))))
+        .policy(crate::security::Policy::new().host("shop.example"))
+        .router();
+    assert_eq!(for_host(&named, "/", "shop.example", &[]).await.0, StatusCode::OK);
+    assert_eq!(for_host(&named, "/", "www.shop.example", &[]).await.0, StatusCode::MISDIRECTED_REQUEST);
+    let any = App::new(Routes::from(Router::new().route("/", get(|| async { "home" }))))
+        .policy(crate::security::Policy::new().any_host())
+        .router();
+    assert_eq!(for_host(&any, "/", rebound, &[]).await.0, StatusCode::OK);
 }
 
 #[tokio::test]
@@ -535,6 +651,58 @@ async fn a_handler_that_panics_gets_the_error_page_and_the_server_keeps_serving(
     assert!(body.contains("index out of bounds"), "under corten dev the page shows the panic: {body}");
 }
 
+/// A second layout, as a marketing page and an account page might have.
+#[crate::component]
+fn Plain(req: &Req, title: &str, children: impl Render) -> impl Document {
+    html! {
+        <html lang={req.lang()}>
+            <head>
+                <title>{title}</title>
+                <Corten />
+            </head>
+            <body>
+                <header>"Plain"</header>
+                <main>{children}</main>
+            </body>
+        </html>
+    }
+}
+
+/// The shell key names the layout that rendered the page: pages in one layout share it, so a
+/// navigation between them swaps `<main>`; a page in another layout (or the default error
+/// document) has another, so the runtime loads it in full rather than keep the first layout.
+#[tokio::test]
+async fn a_page_in_another_layout_has_another_shell_key() {
+    let routes = Router::new()
+        .route("/", get(|req: Req| async move { req.page(Shell { req: &req, title: "A", head: "", children: "a" }) }))
+        .route("/b", get(|req: Req| async move { req.page(Shell { req: &req, title: "B", head: "", children: "b" }) }))
+        .route("/plain", get(|req: Req| async move { req.page(Plain { req: &req, title: "P", children: "p" }) }));
+    let router = app(routes.clone(), None);
+    let key = |uri: &'static str, mode: Option<&'static str>| {
+        let router = router.clone();
+        async move {
+            let (status, headers, body) = call_with(router, "GET", uri, mode, None).await;
+            assert_eq!(status, StatusCode::OK, "{uri}");
+            let key = headers["corten-shell"].to_str().unwrap().to_string();
+            if mode.is_none() {
+                assert_eq!(meta_content(&body, "corten-shell"), key, "{uri}: the document and its header agree");
+            }
+            key
+        }
+    };
+    let home = key("/", None).await;
+    assert_eq!(key("/b", Some("nav")).await, home, "the same layout swaps in");
+    let plain = key("/plain", Some("nav")).await;
+    assert_ne!(plain, home, "another layout loads in full");
+    assert_eq!(key("/plain", None).await, plain, "a layout's key is the same in every mode");
+
+    // An app without an error page: an unknown URL is Corten's plain document, not the layout.
+    let bare = App::new(Routes::from(routes)).router();
+    let (_, nope, _) = call_with(bare.clone(), "GET", "/nope", Some("nav"), None).await;
+    let (_, page, _) = call_with(bare, "GET", "/", Some("nav"), None).await;
+    assert_ne!(nope["corten-shell"], page["corten-shell"], "the default error document is another layout");
+}
+
 #[tokio::test]
 async fn health_reports_liveness_and_readiness() {
     let router = App::new(Routes::new()).ready(|| async { false }).router();
@@ -750,6 +918,62 @@ async fn a_redirect_to_a_place_keeps_its_fragment_in_every_mode() {
     assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &"/items/pika#place-7".parse().unwrap()));
 }
 
+/// A client navigation's `fetch` cannot follow a redirect to another origin (the CSP's
+/// `connect-src`, else CORS), so it is told where to go and the browser goes there itself; a full
+/// load still gets the 303 or 301.
+#[tokio::test]
+async fn a_redirect_to_another_origin_is_named_to_a_client_navigation() {
+    use axum::http::Uri;
+    let routes = Router::new()
+        .route("/away", get(|req: Req| async move { req.redirect(&"https://shop.example/sales?x=1".parse::<Uri>().unwrap()) }))
+        .route("/moved", get(|req: Req| async move { req.moved(&"//shop.example/sales".parse::<Uri>().unwrap()) }))
+        .route("/here", get(|req: Req| async move { req.redirect(&Done) }));
+    for (uri, to, full) in [
+        ("/away", "https://shop.example/sales?x=1", StatusCode::SEE_OTHER),
+        ("/moved", "//shop.example/sales", StatusCode::MOVED_PERMANENTLY),
+    ] {
+        for mode in ["nav", "action"] {
+            let (status, headers, _) = call_with(app(routes.clone(), None), "GET", uri, Some(mode), None).await;
+            assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &to.parse().unwrap()), "{uri} {mode}");
+            assert!(!headers.contains_key("location"), "{uri} {mode}: nothing for fetch to follow");
+        }
+        let (status, headers, _) = call_with(app(routes.clone(), None), "GET", uri, None, Some("text/html")).await;
+        assert_eq!((status, &headers["location"]), (full, &to.parse().unwrap()), "{uri}: a full load follows it");
+    }
+    // A path on this origin is still a redirect fetch follows, in one round trip.
+    let (status, headers, _) = call_with(app(routes, None), "GET", "/here", Some("nav"), None).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(!headers.contains_key("corten-location"));
+}
+
+/// A place on a page outside the app keeps its `#fragment` through `moved` and `redirect`, which
+/// an `axum::http::Uri` alone drops.
+#[tokio::test]
+async fn a_redirect_to_a_place_elsewhere_keeps_its_fragment() {
+    use crate::route::Elsewhere;
+    use axum::http::Uri;
+    static COMPARE: std::sync::LazyLock<Uri> = std::sync::LazyLock::new(|| Uri::from_static("https://example.com/compare?x=1"));
+    let routes = Router::new()
+        .route("/old", get(|req: Req| async move { req.moved(&Elsewhere::at(&COMPARE, "fee-calculator")) }))
+        .route("/go", get(|req: Req| async move { req.redirect(&Elsewhere::at(&COMPARE, "fees & taxes")) }));
+    let place = "https://example.com/compare?x=1#fee-calculator";
+    let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/old", None, Some("text/html")).await;
+    assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &place.parse().unwrap()), "a full load");
+    let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/old", Some("nav"), None).await;
+    assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &place.parse().unwrap()), "a client navigation");
+    let (status, headers, _) = call_with(app(routes, None), "GET", "/go", None, Some("text/html")).await;
+    let to = "https://example.com/compare?x=1#fees%20&%20taxes";
+    assert_eq!((status, &headers["location"]), (StatusCode::SEE_OTHER, &to.parse().unwrap()));
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "Elsewhere::at takes a full URL outside the app")]
+fn a_place_elsewhere_on_a_path_panics_in_debug_builds() {
+    let path = axum::http::Uri::from_static("/items/pika");
+    let _ = crate::route::Elsewhere::at(&path, "place-7");
+}
+
 #[cfg(debug_assertions)]
 #[tokio::test]
 #[should_panic(expected = "top-level text \"saved\" outside an element")]
@@ -843,6 +1067,36 @@ fn api_app(settings: impl FnOnce(crate::Api<ApiRoot>) -> crate::Api<ApiRoot>) ->
         settings(api)
     })
     .router()
+}
+
+/// An area or an API with a deadline of its own: its routes get it, and every other page keeps
+/// the app's. In nested areas the innermost that sets one decides; one that sets none takes its
+/// parent's.
+#[tokio::test]
+async fn an_area_or_an_api_sets_its_own_deadline() {
+    let slow = || {
+        crate::Methods(get(|| async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            "done"
+        }))
+    };
+    let router = App::new(Routes::from(Router::new().route("/slow", slow().0)))
+        .error_page(test_error_page, ())
+        .deadline(Duration::from_millis(50))
+        .area::<Admin>(|admin| admin.route::<AdminSlow>(slow()).deadline(Duration::from_secs(10)))
+        .area::<AdminQuick>(|quick| quick.route::<AdminQuickSlow>(slow()).deadline(Duration::from_millis(20)))
+        .area::<AdminOther>(|other| other.route::<AdminOtherSlow>(slow()))
+        .api::<ApiRoot>(|api| api.route::<ApiSlow>(slow()).deadline(None))
+        .router();
+    let status = |uri| {
+        let router = router.clone();
+        async move { call_with(router, "GET", uri, None, Some("text/html")).await.0 }
+    };
+    assert_eq!(status("/slow").await, StatusCode::SERVICE_UNAVAILABLE, "a page keeps the app's deadline");
+    assert_eq!(status("/admin/slow").await, StatusCode::OK, "the area's own");
+    assert_eq!(status("/admin/other/slow").await, StatusCode::OK, "a nested area without one takes its parent's");
+    assert_eq!(status("/admin/quick/slow").await, StatusCode::SERVICE_UNAVAILABLE, "the innermost decides");
+    assert_eq!(status("/api/slow").await, StatusCode::OK, "None removes it for the API");
 }
 
 /// What most HTTP clients send: `*/*`, or no `Accept` at all, or a browser's own.
@@ -1501,7 +1755,7 @@ async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
 
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let routes = Router::new().route("/", get(|| async { "hi" }));
-    let server = tokio::spawn(crate::app::serve_on(listeners, routes, async {
+    let server = tokio::spawn(crate::app::serve_router(listeners, routes, async {
         let _ = stopped.await;
     }));
     for addr in &addrs {
@@ -1513,6 +1767,155 @@ async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
     }
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
+}
+
+/// A server for `app` on a free port of `127.0.0.1` until `stop` is sent.
+async fn served<M: crate::Middleware>(
+    app: App<M>,
+) -> (tokio::sync::oneshot::Sender<()>, tokio::task::JoinHandle<std::io::Result<()>>) {
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let server = tokio::spawn(crate::app::run(listeners, app, async {
+        let _ = stopped.await;
+    }));
+    (stop, server)
+}
+
+/// One request on a fresh connection to `addr`, with `headers` (lines ending in `\r\n`); the
+/// answer as text.
+async fn raw_get(addr: std::net::SocketAddr, path: &str, headers: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let request = format!("GET {path} HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n{headers}\r\n");
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).await.unwrap();
+    answer
+}
+
+/// `corten::serve` gives each request its connection's peer, which `ClientIp` reads. A proxy's `X-Forwarded-For` is followed only when the
+/// app trusts the peer, and the answer is private to the address.
+#[tokio::test]
+async fn the_client_ip_is_the_peer_or_what_a_trusted_proxy_forwards() {
+    let app = |policy: crate::security::Policy| {
+        let routes = Router::new().route("/ip", get(|crate::ClientIp(ip): crate::ClientIp| async move { ip.to_string() }));
+        App::new(Routes::from(routes)).policy(policy)
+    };
+    let body = |answer: &str| answer.rsplit("\r\n").next().unwrap().to_string();
+    let forwarded = "x-forwarded-for: 1.1.1.1, 198.51.100.7\r\n";
+
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(crate::app::run(listeners, app(crate::security::Policy::new()), async {
+        let _ = stopped.await;
+    }));
+    let answer = raw_get(addr, "/ip", forwarded).await;
+    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    assert_eq!(body(&answer), "127.0.0.1", "without a trusted proxy the header is anyone's");
+    assert!(answer.to_ascii_lowercase().contains("cache-control: private"), "{answer}");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let behind = app(crate::security::Policy::new().proxy("127.0.0.0/8"));
+    let server = tokio::spawn(crate::app::run(listeners, behind, async {
+        let _ = stopped.await;
+    }));
+    assert_eq!(body(&raw_get(addr, "/ip", forwarded).await), "198.51.100.7");
+    assert_eq!(body(&raw_get(addr, "/ip", "").await), "127.0.0.1");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+/// Without a connection (a test's `oneshot`), `ClientIp` is a 500 that says why and
+/// `Option<ClientIp>` is `None`; axum's `MockConnectInfo` gives it one.
+#[tokio::test]
+async fn without_a_connection_there_is_no_client_ip() {
+    use axum::extract::connect_info::MockConnectInfo;
+    let routes = || {
+        Router::new()
+            .route("/ip", get(|crate::ClientIp(ip): crate::ClientIp| async move { ip.to_string() }))
+            .route("/maybe", get(|ip: Option<crate::ClientIp>| async move { format!("{ip:?}") }))
+    };
+    let router = App::new(Routes::from(routes())).router();
+    let (status, _, _) = call_with(router.clone(), "GET", "/ip", None, None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let (status, _, body) = call_with(router, "GET", "/maybe", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "None"));
+    let mocked =
+        App::new(Routes::from(routes())).router().layer(MockConnectInfo(std::net::SocketAddr::from(([203, 0, 113, 9], 4711))));
+    let (status, _, body) = call_with(mocked, "GET", "/ip", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "203.0.113.9"));
+}
+
+/// A task of the app's is told when shutdown begins, and `serve` waits for it to finish what it
+/// was writing before it returns.
+#[tokio::test]
+async fn shutdown_tells_the_tasks_and_waits_for_them() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    let written = Arc::new(AtomicBool::new(false));
+    let (reason_tx, reason) = tokio::sync::oneshot::channel();
+    let journal = written.clone();
+    let app = App::new(Routes::new()).task("journal", move |signal: Signal| async move {
+        let why = signal.aborted().await;
+        // The write in progress when the signal came.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        journal.store(true, Ordering::SeqCst);
+        let _ = reason_tx.send(why);
+    });
+    let (stop, server) = served(app).await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!server.is_finished() && !written.load(Ordering::SeqCst));
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+    assert!(written.load(Ordering::SeqCst), "serve returned before the task finished");
+    assert_eq!(reason.await.unwrap(), crate::Abort::Shutdown);
+}
+
+/// A task that ignores the signal is ended at the grace, so it cannot hold the process; one that
+/// panics ends alone, and the app keeps serving.
+#[tokio::test]
+async fn a_task_past_the_grace_is_ended_and_one_that_panics_ends_alone() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    struct Dropped(Arc<AtomicBool>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    let dropped = Arc::new(AtomicBool::new(false));
+    let guard = Dropped(dropped.clone());
+    let routes = Routes::from(Router::new().route("/", get(|| async { "hi" })));
+    let app = App::new(routes)
+        .shutdown_grace(Duration::from_millis(50))
+        .task("stuck", move |_signal: Signal| async move {
+            let _guard = guard;
+            std::future::pending::<()>().await
+        })
+        .task("broken", |_signal: Signal| async move { panic!("the task failed") });
+    let (stop, server) = served(app).await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!server.is_finished(), "a task that panicked took the server with it");
+    let started = std::time::Instant::now();
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), server).await.expect("a stuck task held serve").unwrap().unwrap();
+    assert!(started.elapsed() >= Duration::from_millis(50), "serve did not wait the grace");
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !dropped.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the stuck task was left running");
 }
 
 /// A `[::1]` port another process holds is an error, not a server only `127.0.0.1` reaches:

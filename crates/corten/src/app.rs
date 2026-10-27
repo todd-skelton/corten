@@ -27,12 +27,14 @@ use crate::{
     api::{Api, Mount},
     assets::Assets,
     cache::{self, Seen},
+    client::Peer,
     middleware::Middleware,
     page::{self, default_error_page, error_page_fn, Asked, Credentials, ErrorPageFn, Failure, Shared},
     pwa::Pwa,
     route::{Methods, Route as TypedRoute, Routes},
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
+    task::{Running, Task},
     Mode, Signal,
 };
 
@@ -73,6 +75,7 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 pub struct Area<P> {
     routes: Router,
     components: Vec<crate::Component>,
+    deadline: Option<Option<Duration>>,
     types: PhantomData<fn() -> P>,
 }
 
@@ -127,6 +130,17 @@ impl<P: TypedRoute> Area<P> {
         self.components.extend_from_slice(components);
         self
     }
+
+    /// How long a request at the prefix or under it may take to start its answer, in place of
+    /// [`App::deadline`]: `.deadline(Duration::from_secs(120))` for reports that take a while, so
+    /// every other page keeps the app's. Past it the answer is the 503 error page and the
+    /// request's [`crate::Signal`] aborts with [`crate::Abort::Deadline`], as at the app's. In
+    /// nested areas the innermost that sets one decides. `None` removes it, for routes that bound
+    /// themselves.
+    pub fn deadline(mut self, deadline: impl Into<Option<Duration>>) -> Self {
+        self.deadline = Some(deadline.into());
+        self
+    }
 }
 
 /// An [`Area`] given to [`App::area`], without its type.
@@ -134,6 +148,7 @@ struct Placed {
     prefix: &'static str,
     routes: Router,
     components: Vec<crate::Component>,
+    deadline: Option<Option<Duration>>,
 }
 
 /// An app: its routes, plus everything around them that every production app needs, on by
@@ -177,6 +192,9 @@ pub struct App<M = ()> {
     areas: Vec<Placed>,
     deadline: Option<Duration>,
     apis: Vec<(Mount, Router)>,
+    tasks: Vec<Task>,
+    grace: Duration,
+    layers: Vec<Box<dyn FnOnce(Router) -> Router + Send>>,
     middleware: M,
 }
 
@@ -196,6 +214,9 @@ impl App {
             areas: Vec::new(),
             deadline: Some(Duration::from_secs(30)),
             apis: Vec::new(),
+            tasks: Vec::new(),
+            grace: Duration::from_secs(5),
+            layers: Vec::new(),
             middleware: (),
         }
     }
@@ -222,6 +243,9 @@ impl App {
             areas: self.areas,
             deadline: self.deadline,
             apis: self.apis,
+            tasks: self.tasks,
+            grace: self.grace,
+            layers: self.layers,
             middleware,
         }
     }
@@ -261,8 +285,8 @@ impl<M: Middleware> App<M> {
         };
         let prefix = P::PATH;
         assert!(!self.areas.iter().any(|placed| placed.prefix == prefix), "corten: the area {prefix:?} is given twice");
-        let area = build(Area { routes: Router::new(), components: Vec::new(), types: PhantomData });
-        self.areas.push(Placed { prefix, routes: area.routes, components: area.components });
+        let area = build(Area { routes: Router::new(), components: Vec::new(), deadline: None, types: PhantomData });
+        self.areas.push(Placed { prefix, routes: area.routes, components: area.components, deadline: area.deadline });
         self
     }
 
@@ -315,7 +339,9 @@ impl<M: Middleware> App<M> {
     /// aborts with [`crate::Abort::Deadline`] for work the handler spawned. It bounds the time to
     /// the response's start, so a stream (a feed, server-sent events) runs as long as it needs;
     /// reading the request body counts, so an app that takes large uploads raises it. `None`
-    /// removes it, for an app whose handlers bound themselves.
+    /// removes it, for an app whose handlers bound themselves. An area or an API whose routes
+    /// need another sets its own ([`Area::deadline`], [`Api::deadline`]), so one slow route does
+    /// not lift it for every page.
     pub fn deadline(mut self, deadline: impl Into<Option<Duration>>) -> Self {
         self.deadline = deadline.into();
         self
@@ -375,6 +401,64 @@ impl<M: Middleware> App<M> {
         self
     }
 
+    /// Work that lives as long as the app (a refresh loop, a queue consumer, a supervised child
+    /// process), started by [`serve`] once it listens. Its [`Signal`] aborts with
+    /// [`crate::Abort::Shutdown`] when shutdown begins, and `serve` waits for it to return, up to
+    /// [`App::shutdown_grace`], before it returns itself, so a write in progress is finished
+    /// rather than cut off at exit. A task still running at the bound is ended and logged by
+    /// name, and so is one that panics; restarting a task is the app's choice. [`App::router`]
+    /// starts none, so a test of the app does not run them.
+    ///
+    /// ```no_run
+    /// use corten::{prelude::*, Signal};
+    /// use std::time::Duration;
+    ///
+    /// async fn refresh(signal: Signal) {
+    ///     let mut every = tokio::time::interval(Duration::from_secs(120));
+    ///     loop {
+    ///         tokio::select! {
+    ///             _ = every.tick() => { /* read, then write the journal */ }
+    ///             _ = signal.aborted() => return,
+    ///         }
+    ///     }
+    /// }
+    /// # async fn main_() -> std::io::Result<()> {
+    /// corten::serve(App::new(Routes::new()).task("refresh", refresh)).await
+    /// # }
+    /// ```
+    pub fn task<F, Fut>(mut self, name: &'static str, task: F) -> Self
+    where
+        F: FnOnce(Signal) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.tasks.push(Task { name, start: Box::new(move |signal| Box::pin(task(signal))) });
+        self
+    }
+
+    /// How long [`serve`] waits, once shutdown begins, for the app's [tasks](App::task) to
+    /// return (5 seconds unless set). Keep it under the time the platform waits before it kills
+    /// the process (`docker stop`: 10 seconds; Kubernetes: 30).
+    pub fn shutdown_grace(mut self, grace: Duration) -> Self {
+        self.grace = grace;
+        self
+    }
+
+    /// A tower layer around the whole app, outside every stage of [`crate::middleware`], for what
+    /// must see the raw request first: a cap on body size, a limit per address, a trace span.
+    /// Layers added later go outside earlier ones. A step inside Corten's order (after its
+    /// checks, with the error page around it) is a [`Middleware`] ([`App::middleware`]).
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: tower_layer::Layer<Route> + Clone + Send + Sync + 'static,
+        L::Service: tower_service::Service<Request> + Clone + Send + Sync + 'static,
+        <L::Service as tower_service::Service<Request>>::Response: axum::response::IntoResponse + 'static,
+        <L::Service as tower_service::Service<Request>>::Error: Into<Infallible> + 'static,
+        <L::Service as tower_service::Service<Request>>::Future: Send + 'static,
+    {
+        self.layers.push(Box::new(move |router: Router| router.layer(layer)));
+        self
+    }
+
     /// What `/health/ready` checks (default: always ready).
     pub fn ready<F, Fut>(mut self, ready: F) -> Self
     where
@@ -385,8 +469,9 @@ impl<M: Middleware> App<M> {
         self
     }
 
-    /// The finished router: the app's routes with everything around them. For tests
-    /// (`app.router().oneshot(request)`) and for serving it another way.
+    /// The finished router: the app's routes with everything around them, its
+    /// [layers](App::layer) included. For tests (`app.router().oneshot(request)`) and for serving
+    /// it another way; it starts none of the app's [tasks](App::task).
     pub fn router(self) -> Router {
         let dev = self.dev.unwrap_or_else(|| std::env::var_os("CORTEN_DEV").is_some());
         for area in &self.areas {
@@ -460,7 +545,9 @@ impl<M: Middleware> App<M> {
                 shared.sections.push((section.prefixes.clone(), link));
             }
         }
-        let policy = Applied::new(self.policy, &shared.import_map);
+        let policy = proxies_from_env(hosts_from_env(self.policy));
+        shared.proxies = policy.proxies().to_vec();
+        let policy = Applied::new(policy, &shared.import_map);
 
         // The routes of the APIs and areas: each is under its prefix, which the compiler checked.
         let mut owned = Vec::with_capacity(self.apis.len() + self.areas.len());
@@ -469,10 +556,15 @@ impl<M: Middleware> App<M> {
             owned.push(api);
             mounts.push(mount);
         }
+        // The areas that set their own deadline, innermost first, so the first under a path decides.
+        let mut area_deadlines: Vec<(&'static str, Option<Duration>)> =
+            self.areas.iter().filter_map(|area| Some((area.prefix, area.deadline?))).collect();
+        area_deadlines.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
         owned.extend(self.areas.into_iter().map(|area| area.routes));
         let layer = Arc::new(Layer {
             shared: Arc::new(shared),
             deadline: self.deadline,
+            area_deadlines,
             policy,
             mounts,
             own,
@@ -484,7 +576,11 @@ impl<M: Middleware> App<M> {
         for routes in owned {
             router = router.merge(routes);
         }
-        router.merge(routes).layer(Wrap(layer))
+        let mut router = router.merge(routes).layer(Wrap(layer));
+        for wrap in self.layers {
+            router = wrap(router);
+        }
+        router
     }
 }
 
@@ -500,26 +596,84 @@ impl<M: Middleware> From<App<M>> for Router {
 /// however the system resolves `localhost`; `PORT` defaults to 3000. With feature `log`, prints
 /// logs to stderr (`RUST_LOG` style filtering is the app's choice: set its own subscriber first).
 ///
-/// It takes anything that becomes a router, so tower layers of the app's own go around the whole
-/// app, outside Corten's (a request id, a trace span, a limit per address):
-/// `corten::serve(app.router().layer(layer)).await`. A step of the app's own inside Corten's
-/// order is a [`Middleware`] ([`App::middleware`]).
-pub async fn serve(app: impl Into<Router>) -> std::io::Result<()> {
-    #[cfg(feature = "log")]
-    let _ = tracing_subscriber::fmt().with_target(false).try_init();
+/// Shutdown, on the first Ctrl-C or `SIGTERM`: the app's [tasks](App::task) are told to stop,
+/// live streams end, the listeners close, requests in progress finish, and `serve` returns once
+/// the tasks have too (or [`App::shutdown_grace`] has passed).
+///
+/// A tower layer of the app's own goes around it with [`App::layer`]. To serve it on listeners of
+/// the app's own (HTTPS, a Unix socket, a socket a supervisor hands over) with the same
+/// shutdown, see [`serve_on`].
+pub async fn serve<M: Middleware>(app: App<M>) -> std::io::Result<()> {
+    let listeners = listeners(3000).await?;
+    let shown = match std::env::var("HOST").ok().as_deref() {
+        None | Some("0.0.0.0" | "::") => "localhost".to_string(),
+        Some(host) => host.to_string(),
+    };
+    println!("corten: listening on http://{shown}:{}", listeners[0].local_addr()?.port());
+    serve_on(listeners, app).await
+}
+
+/// The listeners [`serve`] uses: `HOST`:`PORT`, or without `HOST` both loopback addresses
+/// (`127.0.0.1` and `[::1]`) on one port, so `localhost` answers at once however it resolves;
+/// `port` when `PORT` is not set (`serve` passes 3000). For an app that wraps them (in TLS), or
+/// whose own default port is not 3000 (`corten::serve_on(corten::listeners(8320).await?, app)`,
+/// with no `PORT` to set from the program), served with [`serve_on`].
+pub async fn listeners(port: u16) -> std::io::Result<Vec<tokio::net::TcpListener>> {
     let host = std::env::var("HOST").ok();
     let port: u16 = match std::env::var("PORT") {
         Ok(port) => port.parse().map_err(|_| std::io::Error::other(format!("PORT is not a port number: {port}")))?,
-        Err(_) => 3000,
+        Err(_) => port,
     };
-    let router = app.into();
-    let listeners = bind(host.as_deref(), port).await?;
-    let shown = match host.as_deref() {
-        None | Some("0.0.0.0" | "::") => "localhost",
-        Some(host) => host,
-    };
-    println!("corten: listening on http://{shown}:{}", listeners[0].local_addr()?.port());
-    serve_on(listeners, router, crate::shutdown_signal()).await
+    bind(host.as_deref(), port).await
+}
+
+/// [`serve`] on listeners of the app's own: anything that implements axum's
+/// [`Listener`](axum::serve::Listener), such as a TLS acceptor around [`listeners`], a Unix
+/// socket, or a socket a supervisor hands over. Shutdown is `serve`'s, across all of them: on
+/// Ctrl-C or `SIGTERM` the app's tasks are told, live streams end, every listener closes and
+/// finishes its requests, and it returns once the tasks have finished too. TLS stays the app's
+/// choice of library; the guide (the app, Your own listeners) shows rustls.
+///
+/// A listener's `accept` is called in turn, one connection at a time, so a TLS handshake belongs
+/// after it (per connection), where a slow client cannot hold the next one up.
+pub async fn serve_on<L, M>(listeners: Vec<L>, app: App<M>) -> std::io::Result<()>
+where
+    L: axum::serve::Listener,
+    L::Addr: std::fmt::Debug + 'static,
+    M: Middleware,
+{
+    #[cfg(feature = "log")]
+    let _ = tracing_subscriber::fmt().with_target(false).try_init();
+    if listeners.is_empty() {
+        return Err(std::io::Error::other("corten::serve_on: no listeners to serve on"));
+    }
+    run(listeners, app, crate::shutdown_signal()).await
+}
+
+/// Serves `app` on `listeners` with its tasks running until `stop` resolves; then tells the tasks
+/// to stop, lets each listener finish its requests and waits for the tasks, up to the app's
+/// grace from when `stop` resolved.
+pub(crate) async fn run<L, M>(listeners: Vec<L>, mut app: App<M>, stop: impl Future<Output = ()>) -> std::io::Result<()>
+where
+    L: axum::serve::Listener,
+    L::Addr: std::fmt::Debug + 'static,
+    M: Middleware,
+{
+    let (tasks, grace) = (std::mem::take(&mut app.tasks), app.grace);
+    // Built first: a startup panic (a misplaced area) starts no task.
+    let router = app.router();
+    let running = Running::start(tasks);
+    let stopped = std::sync::OnceLock::new();
+    let served = serve_router(listeners, router, async {
+        stop.await;
+        let _ = stopped.set(tokio::time::Instant::now());
+        running.stop();
+    })
+    .await;
+    // A listener that failed ends the tasks too, with the same grace.
+    let began = stopped.get().copied().unwrap_or_else(tokio::time::Instant::now);
+    running.finish(began + grace, grace).await;
+    served
 }
 
 /// The listeners for `host`:`port`; without a host, the IPv4 and IPv6 loopback addresses on one
@@ -551,11 +705,11 @@ pub(crate) async fn bind(host: Option<&str>, port: u16) -> std::io::Result<Vec<t
 
 /// Serves `router` on every listener until `stop` resolves, then lets each finish its requests;
 /// a listener that fails ends it with the error.
-pub(crate) async fn serve_on(
-    listeners: Vec<tokio::net::TcpListener>,
-    router: Router,
-    stop: impl Future<Output = ()>,
-) -> std::io::Result<()> {
+pub(crate) async fn serve_router<L>(listeners: Vec<L>, router: Router, stop: impl Future<Output = ()>) -> std::io::Result<()>
+where
+    L: axum::serve::Listener,
+    L::Addr: std::fmt::Debug + 'static,
+{
     use futures_util::future::{select, try_join_all, Either};
     use std::future::IntoFuture;
     let (stopped, watch) = tokio::sync::watch::channel(false);
@@ -564,7 +718,7 @@ pub(crate) async fn serve_on(
         let stop = async move {
             let _ = watch.wait_for(|stopped| *stopped).await;
         };
-        axum::serve(listener, router.clone()).with_graceful_shutdown(stop).into_future()
+        axum::serve(listener, Connect(router.clone())).with_graceful_shutdown(stop).into_future()
     });
     let servers = std::pin::pin!(try_join_all(servers));
     match select(std::pin::pin!(stop), servers).await {
@@ -573,6 +727,60 @@ pub(crate) async fn serve_on(
             servers.await.map(drop)
         }
         Either::Right((served, _)) => served.map(drop),
+    }
+}
+
+/// Makes each connection's service: the router, with what the connection says about who is
+/// asking for [`ClientIp`](crate::ClientIp).
+#[derive(Clone)]
+struct Connect(Router);
+
+impl<L> tower_service::Service<axum::serve::IncomingStream<'_, L>> for Connect
+where
+    L: axum::serve::Listener,
+    L::Addr: 'static,
+{
+    type Response = Connection;
+    type Error = std::convert::Infallible;
+    type Future = std::future::Ready<Result<Connection, std::convert::Infallible>>;
+
+    fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, stream: axum::serve::IncomingStream<'_, L>) -> Self::Future {
+        let addr: &dyn std::any::Any = stream.remote_addr();
+        let peer = match addr.downcast_ref::<std::net::SocketAddr>() {
+            Some(addr) => Peer::Ip(addr.ip()),
+            #[cfg(unix)]
+            None if addr.is::<tokio::net::unix::SocketAddr>() => Peer::Local,
+            None => Peer::Unknown,
+        };
+        std::future::ready(Ok(Connection { router: self.0.clone(), peer }))
+    }
+}
+
+/// One connection's service: the router, each of whose requests runs with the connection's
+/// peer at hand for [`ClientIp`](crate::ClientIp). Not a request extension: `http`'s extensions
+/// box each value, and one more cost every request 497 instructions whether anything read it or
+/// not; this costs 44 (callgrind, keep-alive requests over TCP).
+#[derive(Clone)]
+struct Connection {
+    router: Router,
+    peer: Peer,
+}
+
+impl tower_service::Service<Request> for Connection {
+    type Response = Response;
+    type Error = std::convert::Infallible;
+    type Future = crate::client::WithPeer<<Router as tower_service::Service<Request>>::Future>;
+
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        tower_service::Service::<Request>::poll_ready(&mut self.router, cx)
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        crate::client::WithPeer::new(self.peer, tower_service::Service::<Request>::call(&mut self.router, req))
     }
 }
 
@@ -670,6 +878,8 @@ impl crate::middleware::Next for Handle {
 struct Layer<M> {
     shared: Arc<Shared>,
     deadline: Option<Duration>,
+    /// [`Area::deadline`]s, innermost prefix first; empty unless an area set one.
+    area_deadlines: Vec<(&'static str, Option<Duration>)>,
     policy: Applied,
     mounts: Vec<Mount>,
     own: Own,
@@ -686,11 +896,27 @@ impl<M: Middleware> Layer<M> {
         res
     }
 
-    /// The security policy around the request: the same-origin check first, the headers last.
+    /// The security policy around the request: the host and same-origin checks first, the
+    /// headers last.
     async fn secure(&self, mut req: Request, route: Route) -> Response {
+        // A request for another name (a DNS-rebound page) runs nothing of the app's: no error
+        // page, no caller lookup.
+        if !self.policy.answers(&req) {
+            let mut res = crate::security::misdirected();
+            self.policy.headers(&mut res, None);
+            res.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
+            return res;
+        }
         let path = req.uri().path();
         let own = self.own.contains(path);
         let mount = if own { None } else { self.mounts.iter().find(|mount| mount.contains(path)) };
+        let deadline = match mount {
+            Some(mount) => mount.deadline.unwrap_or(self.deadline),
+            None if own || self.area_deadlines.is_empty() => self.deadline,
+            None => {
+                self.area_deadlines.iter().find(|(prefix, _)| crate::api::under(prefix, path)).map_or(self.deadline, |(_, d)| *d)
+            }
+        };
         if let Some(mount) = mount {
             if let Some(mut res) = mount.preflight(req.method(), req.headers()) {
                 self.policy.headers(&mut res, None);
@@ -719,7 +945,7 @@ impl<M: Middleware> Layer<M> {
         let cors = mount.and_then(|mount| mount.allowed_origin(req.headers()));
         let credentials = cache::credentials(req.headers());
         let path = self.shared.dev.then(|| req.uri().path().to_string());
-        let (mut res, caller, mode) = self.run(req, route, mount.is_some()).await;
+        let (mut res, caller, mode) = self.run(req, route, mount.is_some(), deadline).await;
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
         self.policy.headers(&mut res, nonce.as_ref());
         let seen = Seen {
@@ -750,17 +976,35 @@ impl<M: Middleware> Layer<M> {
     }
 
     /// The response, whether anything read who is asking, and the request's mode.
-    async fn run(&self, mut req: Request, route: Route, api: bool) -> (Response, bool, Mode) {
+    async fn run(&self, mut req: Request, route: Route, api: bool, deadline: Option<Duration>) -> (Response, bool, Mode) {
         // Dropped with this future if the client leaves first; then the response's.
-        let watch = Watch(Signal::default());
+        let watch = Watch(Signal::for_app(self.shared.clone()));
         req.extensions_mut().insert(watch.0.clone());
-        req.extensions_mut().insert(self.shared.clone());
         let mode = page::mode_of(req.headers());
         let next = Next { middleware: &self.middleware, route };
-        let res = page::render_errors(&self.shared, req, next, self.deadline, &watch.0, api, mode).await;
+        let res = page::render_errors(&self.shared, req, next, deadline, &watch.0, api, mode).await;
         let personal = watch.0.is_personal();
         (signal::follow(res, watch), personal, mode)
     }
+}
+
+/// `policy` with the proxies in `PROXIES` (comma separated, as given to [`Policy::proxy`]).
+fn proxies_from_env(mut policy: Policy) -> Policy {
+    let Ok(proxies) = std::env::var("PROXIES") else { return policy };
+    for network in proxies.split(',').map(str::trim).filter(|network| !network.is_empty()) {
+        policy = policy.proxy(network);
+    }
+    policy
+}
+
+/// `policy` with the names in `HOSTS` (comma separated, as given to [`Policy::host`]; `*` for any
+/// host), which a deploy sets where it sets `HOST` and `PORT`.
+fn hosts_from_env(mut policy: Policy) -> Policy {
+    let Ok(hosts) = std::env::var("HOSTS") else { return policy };
+    for name in hosts.split(',').map(str::trim).filter(|name| !name.is_empty()) {
+        policy = if name == "*" { policy.any_host() } else { policy.host(name) };
+    }
+    policy
 }
 
 fn load_assets(

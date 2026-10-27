@@ -4,7 +4,9 @@
 //! The order is fixed, outside in, and each stage needs the one before it:
 //!
 //! 1. Compression is negotiated (`Accept-Encoding`); it is applied last.
-//! 2. A write another site sent is refused ([`crate::Failure::CrossSite`]).
+//! 2. A request for a host the app does not answer to gets `421` and nothing else
+//!    ([`crate::security::Policy::host`]); a write another site sent is refused
+//!    ([`crate::Failure::CrossSite`]).
 //! 3. The request gets its [`crate::Signal`], its nonce and the app.
 //! 4. The deadline and the panic catch start ([`crate::Failure::TimedOut`],
 //!    [`crate::Failure::Panicked`]).
@@ -16,7 +18,8 @@
 //!    error page for a browser ([`crate::App::error_page`]).
 //! 8. Security headers, `Cache-Control` (private when anything read a caller), compression.
 //!
-//! Whatever a middleware answers (a 429) leaves through 7 and 8 like a handler's answer.
+//! Whatever a middleware answers (a 429) leaves through 7 and 8 like a handler's answer. A header
+//! it sets on a failure (a request id, `Retry-After`) stays on the error page.
 //!
 //! ```
 //! use corten::{axum::{extract::Request, http::{HeaderValue, StatusCode}, response::{IntoResponse, Response}}, prelude::*};
@@ -46,8 +49,8 @@
 //! # let _ = app.router();
 //! ```
 //!
-//! A tower layer still goes around the whole app (`corten::serve(app.router().layer(..))`),
-//! outside every stage, for what must see the raw request first.
+//! A tower layer still goes around the whole app ([`crate::App::layer`]), outside every stage,
+//! for what must see the raw request first.
 
 use std::future::Future;
 

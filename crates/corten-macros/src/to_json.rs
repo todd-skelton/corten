@@ -177,9 +177,21 @@ pub(crate) fn serde_args_for(attrs: &[Group], derive: &str) -> Result<Vec<Arg>, 
             let Some(TokenTree::Ident(key)) = arg.first() else {
                 return err(args.span(), format!("{derive}: expected #[serde(key)] or #[serde(key = \"value\")]"));
             };
-            let value = match (arg.get(1), arg.get(2)) {
+            // A value a `macro_rules!` passed in (`rename_all = $rule`) comes in an invisible group.
+            let literal = match arg.get(2) {
+                Some(TokenTree::Group(g)) if g.delimiter() == proc_macro::Delimiter::None => {
+                    let mut inner = g.stream().into_iter();
+                    match (inner.next(), inner.next()) {
+                        (Some(TokenTree::Literal(l)), None) => Some(l),
+                        _ => None,
+                    }
+                }
+                Some(TokenTree::Literal(l)) => Some(l.clone()),
+                _ => None,
+            };
+            let value = match (arg.get(1), literal) {
                 (None, _) => Value::Bare,
-                (Some(TokenTree::Punct(p)), Some(TokenTree::Literal(l))) if p.as_char() == '=' => match string_value(l) {
+                (Some(TokenTree::Punct(p)), Some(l)) if p.as_char() == '=' => match string_value(&l) {
                     Some(s) => Value::Str(s),
                     None => return err(l.span(), format!("{derive}: expected a string")),
                 },

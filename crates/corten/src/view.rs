@@ -218,13 +218,22 @@ impl<T: Document + ?Sized> Document for &T {
 pub struct DocHtml<F> {
     render: Cell<Option<F>>,
     size: &'static AtomicUsize,
+    shell: u64,
 }
 
 impl<F: FnOnce(&mut String, Part)> DocHtml<F> {
-    /// Used by `html!`, which gives every call site its own `size`.
-    pub fn new(size: &'static AtomicUsize, render: F) -> Self {
-        DocHtml { render: Cell::new(Some(render)), size }
+    /// Used by `html!`, which gives every call site its own `size`, and `shell`, a hash of where
+    /// the call site is: which layout rendered the page.
+    pub fn new(size: &'static AtomicUsize, shell: u64, render: F) -> Self {
+        DocHtml { render: Cell::new(Some(render)), size, shell }
     }
+}
+
+thread_local! {
+    /// The `shell` of the last [`DocHtml`] rendered on this thread: the layout of the page being
+    /// rendered, part of its shell key, so a client navigation to a page in another layout loads
+    /// it in full.
+    pub(crate) static SHELL: Cell<u64> = const { Cell::new(0) };
 }
 
 impl<F: FnOnce(&mut String, Part)> Render for DocHtml<F> {
@@ -244,6 +253,7 @@ impl<F: FnOnce(&mut String, Part)> Render for DocHtml<F> {
 impl<F: FnOnce(&mut String, Part)> Document for DocHtml<F> {
     #[inline]
     fn render_part(&self, out: &mut String, part: Part) {
+        SHELL.set(self.shell);
         match self.render.take() {
             Some(render) => render(out, part),
             None => panic!("a view from html! renders once; call the function that builds it again"),
@@ -993,6 +1003,21 @@ impl<N: AsRef<str>, V: AttrValue> Attrs for Vec<(N, V)> {
 #[doc(hidden)]
 pub mod __private {
     use std::fmt::Display;
+
+    /// Which `html!` document this is, from where it is written (FNV-1a): the same in every build
+    /// of the same source, so every instance of a deploy gives a layout the same key.
+    pub const fn shell_id(file: &str, line: u32, column: u32) -> u64 {
+        const PRIME: u64 = 0x0000_0100_0000_01b3;
+        let bytes = file.as_bytes();
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut i = 0;
+        while i < bytes.len() {
+            hash = (hash ^ bytes[i] as u64).wrapping_mul(PRIME);
+            i += 1;
+        }
+        hash = (hash ^ line as u64).wrapping_mul(PRIME);
+        (hash ^ column as u64).wrapping_mul(PRIME)
+    }
 
     use super::{escape_display, AttrValue, Render};
 
