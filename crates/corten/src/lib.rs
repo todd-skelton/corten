@@ -87,6 +87,7 @@ mod task;
 pub mod types;
 pub mod upgrade;
 pub mod view;
+mod watch;
 
 use std::{
     convert::Infallible,
