@@ -1140,6 +1140,12 @@ Corten is pre-1.0, so any minor version may change the API.
     accepts connections itself instead of through `axum::serve`; the check costs a keep-alive
     request about 300 instructions, which the accept loop saves, so a request costs what it did
     ([#170 A client that never finishes its request head holds a connection open forever](https://github.com/todd-skelton/corten/issues/170)).
+40. The watchlist smoke's check that controls named `action` or `method` do not change a post
+    failed in Firefox about one run in three: it saw the post the check before it sent (whose
+    message it already matched), which Firefox reported late, not a second post. That check now
+    waits for its own answer, and the next one names each post's stock. The runtime never sent
+    a post twice: the route the smoke intercepts saw one per submit
+    ([#161 Firefox smoke: the shadowed-controls form is seen posting twice now and then](https://github.com/todd-skelton/corten/issues/161)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
