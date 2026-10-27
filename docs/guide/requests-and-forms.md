@@ -312,7 +312,7 @@ if req.mode == Mode::Action {
 
 The address does not change with an appended page, so a reload shows the first page again;
 a list whose length must survive a reload puts it in the address with a link instead.
-`examples/watchlist`'s about page has both.
+`examples/watchlist`'s news page has both.
 
 ## Redirects
 
@@ -408,7 +408,7 @@ part as it was; any answer that is a patch is applied whatever its status, so a 
 read failed after the write can say so in place (`req.patch_with_status(StatusCode::BAD_GATEWAY,
 ..)` in `Mode::Action`: "Saved; reload to see it"). Only a success that is not a patch is logged
 in the console: the route answered its page, not the part. `examples/watchlist`'s
-saved page has both.
+alerts page has both.
 
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
 the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a

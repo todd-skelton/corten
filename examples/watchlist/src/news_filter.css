@@ -1,0 +1,10 @@
+/* The filter's groups, in a rail that scrolls on its own once they are open. */
+.rail {
+  max-height: 12rem;
+  overflow-y: auto;
+  display: grid;
+  gap: var(--space-3);
+  padding-inline-end: var(--space-2);
+}
+.rail details { display: grid; gap: var(--space-2); }
+.rail label { display: flex; align-items: center; gap: var(--space-2); padding-block: 2px; }

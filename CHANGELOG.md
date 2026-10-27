@@ -1183,6 +1183,23 @@ Corten is pre-1.0, so any minor version may change the API.
     order that decides between conflicting values now sits with the values in the README
     rather than in AGENTS.md, which has an agent start a new agent for the review, and a pull
     request template asks for the checks, the measurements and the findings.
+17. `examples/watchlist` is a stock watchlist whose pages each do a job a user has. You watch
+    and remove stocks from a market of eight; each browser's list is kept on the server under a
+    random id in a `list` cookie (the 10,000 used most recently) and changed under a lock, so two
+    removals sent at once both land. Each row's Remove button submits the watch form (`formaction`), and the list and the
+    form are patched in place. Each row shows today's change, from the server (`t.percent`) and
+    from the script (`t.js().percent(2)`). The market moves from a task of the app's
+    (`App::task`, which stops at shutdown) rather than `tokio::spawn`. The About page is now
+    News: one query struct (`#[route(query)] filter: NewsQuery`) for the sector filter, whose
+    sectors are `#[derive(UrlValue)]`, the "only stocks I watch" filter and Load more; a briefing
+    signup checked on the server (field errors, `req.invalid`) that sends the browser back to its
+    form (`route.at(Id)`); and stories that link to a place on the publisher's page
+    (`Elsewhere::at`). The saved page is now Alerts, a price alert checked on the server and
+    answered while its read catches up (`ReadAgain`), and the avatar upload has a form on the
+    Account page, with sign out. The smoke test follows the new pages: a list a patch replaces
+    opens one new stream and closes the old one, the list survives a reload, the change cells
+    follow the feed, a sector's box lists its stories, a refused price comes back marked with
+    focus on it, and a story's place stays in the address.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

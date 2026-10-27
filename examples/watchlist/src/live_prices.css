@@ -1,8 +1,17 @@
-/* The price table: rows divided by a line, numbers that line up as they change. */
+/* The watched stocks: rows divided by a line, numbers that line up as they change. */
 .table { border-collapse: collapse; width: 100%; }
-.table th { text-align: start; font-size: var(--font-size-sm); font-weight: 500; color: var(--color-muted); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-line); }
-.table td { padding: var(--space-3); border-bottom: 1px solid var(--color-line); }
+.table th { text-align: start; font-size: var(--font-size-sm); font-weight: 500; color: var(--color-muted); padding: var(--space-2); border-bottom: 1px solid var(--color-line); }
+.table td { padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--color-line); vertical-align: middle; }
 .table tr:last-child td { border-bottom: 0; }
-.table th:last-child,
-.table td:last-child { text-align: end; }
-.amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+.table th:nth-child(2), .table th:nth-child(3), .table td:nth-child(2), .table td:nth-child(3) { text-align: end; }
+.table th:last-child, .table td:last-child:not(.empty) { text-align: end; width: 1%; }
+.name { display: block; font-weight: 600; }
+.ticker { display: block; font-size: var(--font-size-sm); color: var(--color-muted); letter-spacing: 0.04em; }
+.amount { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.change { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--color-muted); }
+.change[data-trend="up"] { color: var(--color-up); }
+.change[data-trend="down"] { color: var(--color-down); }
+.remove { padding: var(--space-1) var(--space-2); font-size: var(--font-size-sm); font-weight: 500; background: transparent; color: var(--color-muted); border-color: var(--color-line); }
+.remove:hover { color: var(--color-ink); }
+.empty { color: var(--color-muted); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

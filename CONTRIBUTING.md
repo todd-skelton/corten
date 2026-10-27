@@ -17,7 +17,7 @@ crates/
   corten-protocol/   Wire types and Replica (the client side), no web or async dependencies
   corten-cluster/    One feed across instances: Postgres outbox, NATS JetStream relay
   corten-ui/         Optional headless components: number field, combobox, tabs, menu button
-examples/watchlist/  A stock watchlist that uses every piece; scripts/smoke.mjs tests it in a browser
+examples/watchlist/  A stock watchlist: live prices, news, alerts; scripts/smoke.mjs tests the runtime against it
 examples/card-market/ A trading-card store (home, categories, item pages) with every production module on; smoke.mjs tests it
 examples/seller-desk/ A seller's inventory desk: a client-heavy screen built with handlers
 examples/cluster/    A listings feed on corten-cluster, and the failover benchmark
