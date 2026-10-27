@@ -555,7 +555,10 @@ async fn echo(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Switch
    `Identify` (a request with `Origin` or `Sec-Fetch-Site`).
 2. A request that does not ask to switch gets a 426, and a route that does not take `Upgrade`
    never switches: only an `Upgrade` makes the 101, so a socket opens only where a route
-   declared one.
+   declared one. A URL that is a socket and also something else (a page, or a gateway's relayed
+   answer) takes `Option<Upgrade>`, `None` when the request does not ask, and returns
+   `SwitchOr<A>`: `upgrade.websocket(run)?.into()` or `SwitchOr::Answer(page)`. Its failures
+   are answered as `A`'s are, and a switch it asks for is checked as above.
 3. The request's own `Signal` ends with the 101, so the work gets its own, which aborts with
    `Abort::Shutdown` when the app begins to shut down; the work is not waited for.
 4. Message size, compression, what may wait to be sent and per-message checks are the

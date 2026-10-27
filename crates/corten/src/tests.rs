@@ -1936,10 +1936,11 @@ async fn a_connection_is_held_only_as_long_and_as_many_as_the_app_allows() {
 
 /// A route that takes `Upgrade` switches the connection: a WebSocket handshake from the page's own
 /// origin or from a client that is not a browser gets its 101 and then the bytes, one from another
-/// site is refused as a cross-site write is, and a request that does not ask to switch is a 426.
+/// site is refused as a cross-site write is, and a request that does not ask to switch is a 426,
+/// or, where the route takes `Option<Upgrade>`, its other answer.
 #[tokio::test]
 async fn an_upgrade_route_switches_for_its_own_origin_and_refuses_other_sites() {
-    use crate::upgrade::{Switch, Upgrade};
+    use crate::upgrade::{Switch, SwitchOr, Upgrade};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     async fn echo(mut stream: crate::upgrade::Stream, _: crate::Signal) {
         let mut buf = [0u8; 64];
@@ -1949,14 +1950,25 @@ async fn an_upgrade_route_switches_for_its_own_origin_and_refuses_other_sites() 
             }
         }
     }
-    let routes = Router::new().route("/ws", get(|upgrade: Upgrade| async move { upgrade.websocket(echo) })).route(
-        "/tunnel",
-        get(|upgrade: Upgrade| async move {
-            let mut headers = axum::http::HeaderMap::new();
-            headers.insert("x-upstream", "yes".parse().unwrap());
-            Ok::<Switch, crate::Error>(upgrade.switch(headers, echo))
-        }),
-    );
+    let routes = Router::new()
+        .route("/ws", get(|upgrade: Upgrade| async move { upgrade.websocket(echo) }))
+        .route(
+            "/tunnel",
+            get(|upgrade: Upgrade| async move {
+                let mut headers = axum::http::HeaderMap::new();
+                headers.insert("x-upstream", "yes".parse().unwrap());
+                Ok::<Switch, crate::Error>(upgrade.switch(headers, echo))
+            }),
+        )
+        .route(
+            "/either",
+            get(|upgrade: Option<Upgrade>| async move {
+                match upgrade {
+                    Some(upgrade) => Ok::<_, crate::Error>(upgrade.websocket(echo)?.into()),
+                    None => Ok(SwitchOr::Answer("not a socket")),
+                }
+            }),
+        );
     let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
     let addr = listeners[0].local_addr().unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
@@ -2010,6 +2022,14 @@ async fn an_upgrade_route_switches_for_its_own_origin_and_refuses_other_sites() 
 
     let plain = raw_get(addr, "/ws", "").await;
     assert!(plain.starts_with("HTTP/1.1 426"), "{plain}");
+
+    let (head, stream) = handshake("/either", "websocket", "").await;
+    assert!(head.starts_with("http/1.1 101"), "{head}");
+    assert!(echoes(stream).await);
+    let plain = raw_get(addr, "/either", "").await;
+    assert!(plain.starts_with("HTTP/1.1 200") && plain.ends_with("not a socket"), "{plain}");
+    let (head, _) = handshake("/either", "websocket", "origin: https://evil.example\r\nsec-fetch-site: cross-site\r\n").await;
+    assert!(head.starts_with("http/1.1 403"), "a switch it asks for is held to what Upgrade is: {head}");
 
     // An API's allowed site may open its sockets, as it may write to it, but not with cookies.
     let partner = "origin: https://partner.example\r\nsec-fetch-site: cross-site\r\n";
