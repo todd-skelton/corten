@@ -603,6 +603,11 @@ Corten is pre-1.0, so any minor version may change the API.
     WebSocket and a page (or a gateway's relayed answer); the handler returns `SwitchOr<A>`,
     whose failures are answered as `A`'s are. A request that asks is checked as `Upgrade`
     checks it. Routes that do not take it run no new code.
+91. `corten::shutdown()`: the app begins the graceful shutdown a signal begins (tasks told, live
+    streams ended, listeners closed, requests in progress finished, the grace), from a route a
+    supervisor calls or a task. On Windows, `shutdown_signal` also ends on Ctrl-Break, the console
+    closing and system shutdown, not only Ctrl-C
+    ([#174 An app cannot begin its own graceful shutdown (a route, a task, a supervisor's request), and on Windows only Ctrl-C starts one](https://github.com/todd-skelton/corten/issues/174)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
