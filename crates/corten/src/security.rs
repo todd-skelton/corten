@@ -106,6 +106,8 @@ pub struct Policy {
     allowed_origins: Vec<String>,
     report_only: bool,
     popups: bool,
+    /// The names the app answers to besides `localhost` and IP addresses; `None`: any.
+    hosts: Option<Vec<String>>,
 }
 
 impl Default for Policy {
@@ -130,6 +132,7 @@ impl Policy {
             allowed_origins: Vec::new(),
             report_only: false,
             popups: false,
+            hosts: Some(Vec::new()),
         }
     }
 
@@ -205,6 +208,58 @@ impl Policy {
         self
     }
 
+    /// A name the app answers to (`shop.example`; `.shop.example` for it and every subdomain).
+    /// By default a request is answered only when its `Host` is `localhost` (or a name under
+    /// it), an IP address or missing; any other gets `421 Misdirected Request` before routing.
+    /// Otherwise a page on a name someone else controls could point that name at this machine
+    /// (DNS rebinding) and use every route as if it were the app's own origin, the same-origin
+    /// check included, which matters most for an app on loopback, where "only this machine can
+    /// reach it" is the whole access model. A deployed app lists the names it is served under
+    /// (behind a proxy that rewrites `Host`, the name the proxy sends). A name with a port, a
+    /// scheme or a path is a startup panic:
+    ///
+    /// ```should_panic
+    /// corten::security::Policy::new().host("https://shop.example");
+    /// ```
+    pub fn host(mut self, name: &str) -> Self {
+        let name = name.trim_end_matches('.').to_ascii_lowercase();
+        let bare = name.strip_prefix('.').unwrap_or(&name);
+        assert!(
+            !bare.is_empty() && bare.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.'),
+            "corten: Policy::host takes a name (shop.example, or .shop.example for its subdomains too), not {name:?}"
+        );
+        if let Some(hosts) = &mut self.hosts {
+            hosts.push(name);
+        }
+        self
+    }
+
+    /// Answers whatever `Host` a request names, for an app whose names are not known in advance
+    /// (one served under each customer's own domain) and that checks them itself. See
+    /// [`Policy::host`] for what this gives up.
+    pub fn any_host(mut self) -> Self {
+        self.hosts = None;
+        self
+    }
+
+    /// True when the app answers to the request's host: `localhost` or a name under it, an IP
+    /// address, a name given to [`Policy::host`], or no host at all (HTTP/1.0; a test's request).
+    pub(crate) fn answers(&self, req: &Request) -> bool {
+        let Some(hosts) = &self.hosts else { return true };
+        let host = match req.uri().host() {
+            Some(host) => host.as_bytes(),
+            None => match req.headers().get(header::HOST) {
+                Some(host) => host.as_bytes(),
+                None => return true,
+            },
+        };
+        let named = answers(host, hosts);
+        if !named {
+            refused_host(host);
+        }
+        named
+    }
+
     /// Sends the CSP as `Content-Security-Policy-Report-Only`, to try a policy on a live site.
     pub fn report_only(mut self) -> Self {
         self.report_only = true;
@@ -248,6 +303,9 @@ impl Policy {
         router.layer(middleware::from_fn(move |mut req: Request, next: Next| {
             let policy = policy.clone();
             async move {
+                if !policy.answers(&req) {
+                    return misdirected();
+                }
                 if let Some(refused) = policy.refuse(req.method(), req.headers(), &[]) {
                     return refused;
                 }
@@ -445,6 +503,54 @@ impl Policy {
     }
 }
 
+/// True when `host` (a `Host` header: a name or an address, and maybe a port) is `localhost` or a
+/// name under it, an IP address, or one of `names` (`.name`: it and its subdomains).
+fn answers(host: &[u8], names: &[String]) -> bool {
+    // `[::1]:3000`: an IPv6 address is always in brackets.
+    if host.first() == Some(&b'[') {
+        return true;
+    }
+    let name = match host.iter().rposition(|&b| b == b':') {
+        Some(colon) if host[colon + 1..].iter().all(u8::is_ascii_digit) => &host[..colon],
+        Some(_) => return false,
+        None => host,
+    };
+    let name = name.strip_suffix(b".").unwrap_or(name);
+    if name.eq_ignore_ascii_case(b"localhost") || ends_with(name, b".localhost") {
+        return true;
+    }
+    // An IPv4 address: digits and dots, which no DNS name a browser resolves is.
+    if !name.is_empty() && name.iter().all(|&b| b.is_ascii_digit() || b == b'.') {
+        return std::str::from_utf8(name).is_ok_and(|n| n.parse::<std::net::Ipv4Addr>().is_ok());
+    }
+    names.iter().any(|allowed| match allowed.strip_prefix('.') {
+        Some(domain) => name.eq_ignore_ascii_case(domain.as_bytes()) || ends_with(name, allowed.as_bytes()),
+        None => name.eq_ignore_ascii_case(allowed.as_bytes()),
+    })
+}
+
+fn ends_with(name: &[u8], suffix: &[u8]) -> bool {
+    name.len() > suffix.len() && name[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+}
+
+/// Logs the first refused host of the process: a deployed app that has not listed its name
+/// answers 421 to everyone, and this says why.
+#[cold]
+fn refused_host(host: &[u8]) {
+    static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        let host = String::from_utf8_lossy(host);
+        tracing::warn!(
+            "corten: refused a request for host {host:?} (421): if the app is served under that name, list it with Policy::host"
+        );
+    }
+}
+
+/// The answer to a request for a host the app does not answer to.
+pub(crate) fn misdirected() -> Response {
+    (StatusCode::MISDIRECTED_REQUEST, "Misdirected request.").into_response()
+}
+
 /// Rejects a source that would break out of its directive.
 fn checked(source: &str) -> String {
     assert!(
@@ -558,6 +664,49 @@ mod tests {
             map.insert(*k, HeaderValue::from_static(v));
         }
         map
+    }
+
+    #[test]
+    fn the_app_answers_to_localhost_ip_addresses_and_its_own_names() {
+        let names = ["shop.example".to_string(), ".corp.example".to_string()];
+        for host in [
+            "localhost",
+            "localhost:3000",
+            "LocalHost.",
+            "app.localhost:8080",
+            "127.0.0.1",
+            "127.0.0.1:3917",
+            "10.0.0.7:8080",
+            "[::1]:3000",
+            "[::1]",
+            "shop.example",
+            "Shop.Example:443",
+            "corp.example",
+            "admin.corp.example",
+        ] {
+            assert!(answers(host.as_bytes(), &names), "{host}");
+        }
+        for host in [
+            "rebound.attacker.example:3917",
+            "localhost.attacker.example",
+            "evil-localhost",
+            "1.2.3.4.attacker.example",
+            "999.1.1.1",
+            "www.shop.example",
+            "shop.example.attacker.example",
+            "xcorp.example",
+            "localhost:3000:1",
+            "localhost:abc",
+            "",
+        ] {
+            assert!(!answers(host.as_bytes(), &names), "{host}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Policy::host takes a name")]
+    fn a_host_with_a_port_is_a_startup_panic() {
+        let _ = Policy::new().host("shop.example:443");
     }
 
     #[test]
