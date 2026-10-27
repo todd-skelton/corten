@@ -32,7 +32,8 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
    `#[corten::routes(state = Db)]` and `url::router(db)`. Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`). An enum field (`pub tab: Option<Tab>`) derives `UrlValue` with `Deserialize`, never a hand-written `Display`: it writes the words serde reads.
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
-   answers `req.moved(&url::Item { id })`, a 301. An area's routes are a module of their own,
+   answers `req.moved(&url::Item { id })`, a 301. A place on another site's page is
+   `corten::Elsewhere::at(&uri, "id")`, never a `Location` header set by hand. An area's routes are a module of their own,
    `#[corten::routes(area = Admin, caller = Staff)] mod admin` whose routes name their handlers
    the same way, mounted with `.area::<admin::Admin>(admin::area)`.
    A handler's return type is what the route answers: `HtmlResult` (a page, a patch, a

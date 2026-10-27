@@ -641,6 +641,54 @@ impl Href for axum::http::Uri {
     }
 }
 
+/// A place on a page outside the app: an address the app does not route (another site, another
+/// app of the same product) and the id of an element there, which that page's markup owns. An
+/// `axum::http::Uri` cannot hold a `#fragment` (it drops one it parses), so this is what a
+/// redirect to such a place takes:
+///
+/// ```
+/// use corten::{axum::http::Uri, prelude::*, route::Elsewhere};
+///
+/// let compare = Uri::from_static("https://example.com/compare?x=1");
+/// let to = Elsewhere::at(&compare, "fee-calculator");
+/// // In a handler: req.moved(&to), req.redirect(&to).
+/// assert_eq!(to.href(), "https://example.com/compare?x=1#fee-calculator");
+/// // The id as the element has it, percent-encoded as the browser decodes it.
+/// assert_eq!(Elsewhere::at(&compare, "fees & taxes").href(), "https://example.com/compare?x=1#fees%20&%20taxes");
+/// ```
+///
+/// A place on one of the app's own pages is [`Route::at`], whose id the markup and the URL share,
+/// so the address is a full URL (a scheme and a host); a path is a mistake a debug build reports.
+pub struct Elsewhere<'a> {
+    uri: &'a axum::http::Uri,
+    id: &'a str,
+}
+
+impl<'a> Elsewhere<'a> {
+    /// The element with `id` on the page at `uri`.
+    pub fn at(uri: &'a axum::http::Uri, id: &'a str) -> Self {
+        debug_assert!(
+            uri.scheme().is_some() && uri.authority().is_some(),
+            "corten: Elsewhere::at takes a full URL outside the app ({uri}); a place on the app's own page is route.at(Id)"
+        );
+        Elsewhere { uri, id }
+    }
+
+    /// The URL as a string: the address, `#`, and the id.
+    pub fn href(&self) -> String {
+        let mut out = self.uri.to_string();
+        out.push('#');
+        Encode { out: &mut out, keep: FRAGMENT }.push(self.id);
+        out
+    }
+}
+
+impl Href for Elsewhere<'_> {
+    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
+        f(&self.href())
+    }
+}
+
 impl<R: Route> Href for R {
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
         f(&self.href())
@@ -648,25 +696,30 @@ impl<R: Route> Href for R {
 }
 
 /// For each byte, `SEGMENT` when it is written as it is in a path segment or query value
-/// (unreserved: letters, digits, `-._~`) and `REST` when it is in a `{*rest}` value (those and
-/// `/`); everything else is %XX.
+/// (unreserved: letters, digits, `-._~`), `REST` when it is in a `{*rest}` value (those and
+/// `/`), and `FRAGMENT` when it is in another site's `#fragment` (those, `/`, `?`, `:`, `@` and
+/// the sub-delimiters `!$&'()*+,;=`); everything else is %XX.
 static KEEP: [u8; 256] = {
     let mut table = [0u8; 256];
     let mut b = 0;
     while b < 256 {
         let c = b as u8;
         if c.is_ascii_alphanumeric() || matches!(c, b'-' | b'.' | b'_' | b'~') {
-            table[b] = SEGMENT | REST;
+            table[b] = SEGMENT | REST | FRAGMENT;
+        }
+        if matches!(c, b'/' | b'?' | b':' | b'@' | b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'=') {
+            table[b] = FRAGMENT;
         }
         b += 1;
     }
-    table[b'/' as usize] = REST;
+    table[b'/' as usize] = REST | FRAGMENT;
     table
 };
 const SEGMENT: u8 = 1;
 const REST: u8 = 2;
+const FRAGMENT: u8 = 4;
 
-/// Percent-encodes what is written to it into `out`. `keep` is `SEGMENT` or `REST`.
+/// Percent-encodes what is written to it into `out`. `keep` is `SEGMENT`, `REST` or `FRAGMENT`.
 struct Encode<'a> {
     out: &'a mut String,
     keep: u8,

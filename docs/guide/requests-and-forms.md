@@ -246,6 +246,11 @@ because `fetch` follows a redirect but drops its fragment. So does one sent to a
 `connect-src`, else CORS): the browser goes there itself, in one request to the app. The same
 holds for `req.moved`.
 
+A place on a page outside the app (another site, another app of the same product) has an id
+that page's markup owns, so it is text: `Elsewhere::at(&uri, "fee-calculator")` is
+`https://example.com/compare?x=1#fee-calculator`, and `req.moved` and `req.redirect` take it.
+An `axum::http::Uri` alone cannot carry it: it drops a `#fragment` it parses.
+
 ```rust,ignore
 async fn report(req: Req, Path((slug, review)): Path<(String, String)>) -> HtmlResult {
     // ... record the report ...
