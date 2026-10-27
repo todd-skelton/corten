@@ -1241,6 +1241,57 @@ async fn an_api_writes_the_failures_corten_answers_in_its_own_shape() {
     assert_eq!(body, r#"{"mine":1}"#, "a handler's own JSON failure passes through");
 }
 
+/// A key check that says why it refused, and locks out a client with too many failed attempts.
+#[derive(Clone, Hash, Debug)]
+struct Keyed;
+
+impl<S: Sync> crate::Identify<S> for Keyed {
+    async fn identify(parts: &axum::http::request::Parts, _: &S) -> std::result::Result<Self, crate::Refused> {
+        match parts.headers.get("x-api-key").map(|v| v.as_bytes()) {
+            Some(b"k1") => Ok(Keyed),
+            Some(b"locked") => Err(crate::Refused::too_many(std::time::Duration::from_millis(1500))
+                .message("Too many failed attempts; try again later")),
+            _ => Err(crate::Refused::unauthorized().message("Invalid API key")),
+        }
+    }
+}
+
+#[derive(crate::Route)]
+#[route("/api/keyed")]
+struct ApiKeyed;
+
+/// A refusal says why, in the API's own shape, and a lockout is a 429 that says when to try again.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_refusal_tells_the_client_why_and_when_to_try_again() {
+    let router = api_app(|api| {
+        api.route::<ApiKeyed>(crate::Methods(get(|_: Caller<Keyed>| async { "ok" }))).errors(|status, message| ShapedError {
+            r#type: "error",
+            error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+        })
+    });
+    let keyed = |key: Option<&'static str>| {
+        let mut req = Request::get("/api/keyed");
+        if let Some(key) = key {
+            req = req.header("x-api-key", key);
+        }
+        let router = router.clone();
+        async move {
+            let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            let (status, retry) = (res.status().as_u16(), res.headers().get("retry-after").cloned());
+            (status, retry, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+        }
+    };
+    assert_eq!(keyed(Some("k1")).await, (200, None, "ok".to_string()));
+    assert_eq!(
+        keyed(None).await,
+        (401, None, r#"{"type":"error","error":{"code":401,"message":"Invalid API key"}}"#.to_string())
+    );
+    let (status, retry, body) = keyed(Some("locked")).await;
+    assert_eq!((status, retry.as_ref().map(|v| v.to_str().unwrap())), (429, Some("2")), "whole seconds, rounded up");
+    assert_eq!(body, r#"{"type":"error","error":{"code":429,"message":"Too many failed attempts; try again later"}}"#);
+}
+
 #[tokio::test]
 async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pages() {
     let router = api_app(|api| api.allow_origin("https://partner.example/"));
