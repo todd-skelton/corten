@@ -14,7 +14,7 @@
 //! The relay publishes outbox rows in order and marks them published only after JetStream
 //! acknowledged them; a relay that dies in between republishes, and JetStream drops the copy.
 //! A gap or a consumer restart reloads the feed from Postgres. Measured with two instances, kills
-//! on a schedule and 200 clients: see `examples/cluster`.
+//! on a schedule and 200 clients: see `examples/listings-feed`.
 //!
 //! The app provides its rows through [`Source`] and writes through [`begin`] / [`Write::commit`],
 //! with an optional idempotency key so a retried request commits once.

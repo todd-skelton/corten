@@ -420,7 +420,7 @@ API reference: `cargo doc --open -p corten`. Building an app with an AI agent? T
 Examples: [watchlist](examples/watchlist) (a stock watchlist with live prices, market news and price alerts, styled utility-first),
 [card-market](examples/card-market) (a card store with every production module),
 [seller-desk](examples/seller-desk) (a client-heavy inventory screen), [ui-gallery](examples/ui-gallery)
-(`corten-ui` styled by a small design system), and [cluster](examples/cluster) (failover across instances).
+(`corten-ui` styled by a small design system), and [listings-feed](examples/listings-feed) (a seller's listings feed served by several instances, with failover).
 
 ## Contributing
 

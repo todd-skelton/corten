@@ -101,7 +101,7 @@ async fn main() -> Result<(), Error> {
 /// Creates the listings table and, once per database, seller `key` with `rows` sample listings.
 async fn seed(pool: &PgPool, key: &str, rows: usize) -> Result<(), Error> {
     let mut tx = pool.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('cluster-example-seed'))").execute(&mut *tx).await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('listings-feed-seed'))").execute(&mut *tx).await?;
     sqlx::query("CREATE TABLE IF NOT EXISTS listings (seller text NOT NULL, id text NOT NULL, data jsonb NOT NULL, PRIMARY KEY (seller, id))")
         .execute(&mut *tx)
         .await?;
