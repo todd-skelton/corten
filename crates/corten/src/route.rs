@@ -479,6 +479,51 @@ pub trait Route {
     }
 }
 
+/// The path an area or an API is under (`#[corten::routes(area = Docs)]`'s `Docs`): every
+/// [`Route`], for an area with a page at its prefix, and the prefix route of an area's module
+/// that names no handler, which is a prefix and nothing more. Nothing is served at such a prefix,
+/// so it is not a link:
+///
+/// ```compile_fail,E0599
+/// use corten::prelude::*;
+///
+/// #[corten::routes(area = Docs)]
+/// mod docs {
+///     #[route("/docs")]
+///     pub struct Docs;
+///
+///     #[route("/docs/{page}", get = doc)]
+///     pub struct DocPage<'a> { pub page: &'a str }
+/// }
+///
+/// async fn doc(req: Req) -> HtmlResult {
+///     req.page(html! { <main>"A page"</main> })
+/// }
+///
+/// fn main() {
+///     let _ = docs::Docs.href(); // no page is at /docs
+/// }
+/// ```
+///
+/// Such a prefix has no fields, since no URL is built from it:
+///
+/// ```compile_fail
+/// #[corten::routes(area = Docs)]
+/// mod docs {
+///     #[route("/docs")]
+///     pub struct Docs { pub section: u32 }
+/// }
+/// # fn main() {}
+/// ```
+pub trait Prefix {
+    /// The path, plain (no `{param}`): `"/docs"`.
+    const PREFIX: &'static str;
+}
+
+impl<R: Route + ?Sized> Prefix for R {
+    const PREFIX: &'static str = R::PATH;
+}
+
 /// A route and a place on its page, made by [`Route::at`]: what a redirect, `Req::moved`, a
 /// current-page check and `href={..}` take, written `/path?query#id`.
 pub struct At<'a, R: ?Sized, I> {

@@ -588,6 +588,11 @@ Corten is pre-1.0, so any minor version may change the API.
     its status, its headers less the hop-by-hop ones and its body as it arrives, never replaced by
     the error page or the JSON error
     ([#117 A route cannot be a WebSocket or pass an upstream response through](https://github.com/todd-skelton/corten/issues/117)).
+88. An area with no page at its prefix: its module's prefix route names no handler
+    (`#[route("/docs")] pub struct Docs;`) and is then only a `corten::Prefix`, with no `href`,
+    so no link to the unserved URL compiles. `Area` and `Api` take any `Prefix`, which every
+    `Route` is
+    ([#152 An area with no page at its prefix (/items, /sets) must declare the prefix as a link-only route outside its routes module](https://github.com/todd-skelton/corten/issues/152)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

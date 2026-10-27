@@ -1459,6 +1459,33 @@ mod admin_url {
     }
 }
 
+/// An area with no page at its prefix: `Docs` is only the prefix, with no `href`.
+#[crate::routes(area = Docs)]
+mod docs_url {
+    #[route("/docs")]
+    pub struct Docs;
+
+    #[route("/docs/{page}", get = doc_page)]
+    pub struct DocPage<'a> {
+        pub page: &'a str,
+    }
+}
+
+async fn doc_page(Path(page): Path<String>) -> String {
+    format!("doc {page}")
+}
+
+#[tokio::test]
+async fn an_area_may_have_no_page_at_its_prefix() {
+    use crate::Prefix;
+    assert_eq!(docs_url::Docs::PREFIX, "/docs");
+    let router = App::new(Routes::new()).area(docs_url::area).router();
+    let (status, _, body) = call_with(router.clone(), "GET", &docs_url::DocPage { page: "intro" }.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "doc intro"));
+    let (status, _, _) = call_with(router, "GET", "/docs", None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "nothing is served at the prefix, and the app's 404 answers it");
+}
+
 async fn caller_home(req: Req) -> HtmlResult {
     req.test_page("Home", html! { <p>"home"</p> })
 }
