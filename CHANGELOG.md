@@ -519,6 +519,13 @@ Corten is pre-1.0, so any minor version may change the API.
     `App::shutdown_grace` (5 seconds unless set), before it returns; one still running then is
     ended and logged by name, and so is one that panics. `App::router` starts none
     ([#116 Work that lives as long as the app (a refresh loop, a supervised child) has no signal, so shutdown neither stops it nor waits for it](https://github.com/todd-skelton/corten/issues/116)).
+77. `#[derive(UrlValue)]` (in the prelude) on an enum of unit variants writes each variant as the
+    word serde reads for it (its `#[serde(rename_all)]` and `#[serde(rename)]`), so an enum in a
+    route's query or path needs no hand-written `Display` kept in step with serde. A variant with
+    fields, one serde does not read, or a serde attribute it does not follow is a compile error; a
+    test reads every word back through `Query`'s reader under each of serde's eight rules.
+    `#[serde(..)]` values passed in by a `macro_rules!` are read by `ToJson` and `FromJson` too
+    ([#129 A query value must be Display while it is read with serde, so an enum in an address spells its words twice](https://github.com/todd-skelton/corten/issues/129)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

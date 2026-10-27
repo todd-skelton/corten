@@ -123,7 +123,7 @@ pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
 pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, ReadAgainFrom, Req, MODE_HEADER};
-pub use route::{routes, Href, Methods, Route, Routes};
+pub use route::{routes, Href, Methods, Route, Routes, UrlValue};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
@@ -160,6 +160,7 @@ pub mod prelude {
         view::Id,
         Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Form, HtmlResult, Identify, Methods,
         Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Result, Route, Routes, SubmitKey,
+        UrlValue,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, JsonLd, JsonResult, ToJson};
