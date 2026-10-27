@@ -11,6 +11,7 @@
 //! | `POST /sign-in` | sets a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
 //! | `GET /account` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
+//! | `POST /avatar` | a form with a file (`Upload`): the picture is read as it arrives, then the other fields |
 //! | `POST /saved` | a write answered in place while its read catches up: the status line, as a patch that is read again from `/saved?until=..` (`ReadAgain::from`) until the write is in |
 use std::{
     sync::Arc,
@@ -98,6 +99,9 @@ mod url {
 
     #[route("/sign-in", post = sign_in)]
     pub struct SignIn;
+
+    #[route("/avatar", post = avatar)]
+    pub struct Avatar;
 
     #[route("/feed/stocks", get = stocks)]
     pub struct Stocks;
@@ -406,6 +410,31 @@ async fn watch(
             req.screen(&home, html! { <Layout req={&req} title="Watchlist" viewer={viewer.as_ref()} head="">{view}</Layout> })
         }
     }
+}
+
+#[derive(Deserialize, Fields)]
+struct AvatarForm {
+    name: String,
+    picture: Files,
+}
+
+#[derive(Id)]
+struct AvatarResultId;
+
+/// A form with a file: what came, read as it arrives (a picture over 64 KB is refused, the form
+/// still read).
+async fn avatar(req: Req, mut upload: Upload<AvatarForm>) -> HtmlResult {
+    let f = AvatarForm::FIELDS;
+    let mut pictures = Vec::new();
+    while let Some(mut file) = upload.next_file().await? {
+        if file.is(f.picture) {
+            let size =
+                file.bytes_up_to(64 << 10).await?.map_or_else(|| "too large".to_string(), |b| format!("{} bytes", b.len()));
+            pictures.push(format!("{} ({}, {size})", file.filename(), file.content_type()));
+        }
+    }
+    let form = upload.fields().await?;
+    req.patch(html! { <p id={AvatarResultId}>{format!("{}: {}", form.name, pictures.join(", "))}</p> })
 }
 
 /// The about page's filter and how much of the history it shows: a GET form, so both are in

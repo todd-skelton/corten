@@ -39,7 +39,11 @@ impl de::Error for FormError {
 
 /// Reads `bytes` (a body or a query string, without the `?`) into `T`.
 pub fn from_bytes<T: de::DeserializeOwned>(bytes: &[u8]) -> Result<T, FormError> {
-    let mut pairs: Vec<Pair<'_>> = form_urlencoded::parse(bytes).collect();
+    from_pairs(form_urlencoded::parse(bytes).collect())
+}
+
+/// Reads the fields a form sent, in the order it sent them, into `T`.
+pub(crate) fn from_pairs<T: de::DeserializeOwned>(mut pairs: Vec<Pair<'_>>) -> Result<T, FormError> {
     // Stable: the values of one key stay in the order they were sent.
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
     T::deserialize(Form(&pairs))
