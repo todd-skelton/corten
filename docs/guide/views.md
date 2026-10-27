@@ -13,7 +13,7 @@ render of the same call site.
 | `href={url}`, `href={("/items/", &id)}` | an attribute; a tuple prints its parts without building a string |
 | `hidden={flag}`, `class={maybe}` | `bool` prints the bare name or nothing; `None` leaves the attribute out |
 | `<input {..e.aria(field)}>` | spreads `Attrs` |
-| `for`, `if`/`else`, `match`, `let` | as in Rust, with markup in the braces |
+| `for`, `if`/`else`, `match`, `let` | as in Rust, with markup in the braces; patterns too (`if let Shape::Circle { r } = shape`) |
 | `<Card title="x" compact>children</Card>` | a component: a struct with those fields (`compact` is `true`), children in `children` |
 | `<>...</>`, `<!DOCTYPE html>`, `<input>` | fragments, the doctype, void elements without a closing tag |
 
