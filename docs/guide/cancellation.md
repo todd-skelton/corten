@@ -21,3 +21,23 @@ long as they need. It includes reading the request body, so an app that takes la
 raises it. A client closing an HTTP/1.1 connection mid-request is seen at once (an
 integration test closes the socket and waits for `Disconnected`). The deadline's timer starts
 only when a handler waits, so a page rendered from memory registers none.
+
+Routes that start their answer later than pages should (an upstream that answers in minutes, a
+report, large uploads) get a deadline of their own where they are mounted, so the rest of the
+app keeps its short one:
+
+| Requests to | Deadline |
+|---|---|
+| an API's routes | `Api::deadline` if it set one, else `App::deadline` |
+| an area's routes | the innermost area that set `Area::deadline`, else `App::deadline` |
+| everything else | `App::deadline` |
+
+```rust,ignore
+App::new(url::router())
+    .area::<Reports>(|reports| reports::area(reports).deadline(Duration::from_secs(120)))
+    .api::<Proxy>(|proxy| proxy.route::<Compact>(post(compact)).deadline(Duration::from_secs(600)))
+```
+
+Each answers the same way past it: the 503 (the error page, or JSON under an API) and
+`Abort::Deadline`. `None` removes it for those routes only. A single slow route goes in an area
+or an API of its own.

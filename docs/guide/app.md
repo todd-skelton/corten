@@ -30,7 +30,8 @@ your routes. Each default can be replaced in one line.
 | Dev mode | when `CORTEN_DEV` is set (`corten dev` sets it): errors shown on the page, open pages reload after a rebuild | `.dev(bool)` |
 
 `App::deadline` (30 seconds unless set) bounds how long a handler may take to start its answer;
-see [Cancellation](cancellation.md).
+an area or an API with slower routes sets its own (`Area::deadline`, `Api::deadline`), so the
+rest keep the app's. See [Cancellation](cancellation.md).
 
 ```rust,ignore
 let app = App::new(url::router())
@@ -353,7 +354,7 @@ Under the prefix:
    that needs to know who is calling takes a `Caller` ([below](#who-is-asking)); a refused one
    is a JSON 401 or 403.
 3. The deadline, the request signal, compression and the same-origin check on writes are the
-   same as for pages.
+   same as for pages; `Api::deadline` gives these routes a deadline of their own.
 4. `Api::allow_origin` lets one site's pages call these routes from the browser: Corten answers
    its CORS preflight, adds `Access-Control-Allow-Origin` and lets its writes through. The
    pages keep refusing that site's writes. The site authenticates with a token: a write from it
@@ -566,7 +567,7 @@ Every way a request can fail is a `Failure`, given to the app's error page for a
 | `Rejected { status, detail }` | the path, the query or the body did not parse | 400, 415, 422 |
 | `Failed { status, detail }` | the handler returned an `Error` | 500, or its status |
 | `Panicked { detail }` | the handler panicked | 500 |
-| `TimedOut` | the handler ran past `App::deadline` | 503 |
+| `TimedOut` | the handler ran past its deadline (`App::deadline`, or its area's or API's) | 503 |
 | `Offline` | the PWA's offline page | 200, so the worker keeps it |
 
 The error page keeps the headers the failed response had (a request id, `Retry-After`,
