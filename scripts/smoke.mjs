@@ -357,9 +357,21 @@ async function run(browser) {
       '<form id="via-button" method="get" action="/nowhere" data-patch><input type="hidden" name="id" value="ACME"><button formmethod="post" formaction="/watch">Watch</button></form>',
     ),
   );
+  // The message already says Acme from the keyed form, so the check waits for this post's own
+  // answer: otherwise a slow post (Firefox) is still going out during the next check, which
+  // counts the posts it sees (#161).
+  const viaButton = page
+    .waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/watch", { timeout: 4000 })
+    .then(async (r) => (await r.finished(), r.status()))
+    .catch(() => 0);
   await page.click("#via-button button");
+  const viaButtonStatus = await viaButton;
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Acme Corp"), null, { timeout: 4000 }).catch(() => {});
-  check("a submit button's formaction and formmethod are used", ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Acme Corp"));
+  check(
+    "a submit button's formaction and formmethod are used",
+    viaButtonStatus === 200 && ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Acme Corp"),
+    String(viaButtonStatus),
+  );
 
   // Controls named like the form's properties (`<button name="action">` makes `form.action` that
   // button) do not change where or how the runtime posts it.
@@ -371,15 +383,18 @@ async function run(browser) {
   );
   const shadowedPosts = /** @type {string[]} */ ([]);
   // The answer's list subscribes to its feed again (`GET /feed/stocks`), which is not the post.
+  // Each entry names the form's `id` field, so a late event from an earlier check shows as one.
   const onShadowed = (/** @type {import("@playwright/test").Request} */ r) =>
-    r.resourceType() === "fetch" && !new URL(r.url()).pathname.startsWith("/feed/") && shadowedPosts.push(`${r.method()} ${new URL(r.url()).pathname}`);
+    r.resourceType() === "fetch" &&
+    !new URL(r.url()).pathname.startsWith("/feed/") &&
+    shadowedPosts.push(`${r.method()} ${new URL(r.url()).pathname} ${new URLSearchParams(r.postData() ?? "").get("id")}`);
   page.on("request", onShadowed);
   await page.click("#shadowed button");
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Globex"), null, { timeout: 4000 }).catch(() => {});
   page.off("request", onShadowed);
   check(
     "controls named action, method, id and the like do not change the post",
-    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Globex") && shadowedPosts.join() === "POST /watch",
+    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Globex") && shadowedPosts.join() === "POST /watch GLBX",
     `${shadowedPosts.join()}; ${await page.textContent("#watch-message")}`,
   );
   await page.evaluate(() => document.getElementById("shadowed")?.remove());
