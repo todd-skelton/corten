@@ -113,7 +113,7 @@ pub use app::{listeners, serve, serve_on, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 pub use caller::{Caller, Identify, Refused};
-pub use client::ClientIp;
+pub use client::{ClientIp, ClientZone};
 /// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
 /// gives `AlertInput::FIELDS.email`, the [`FieldName`] `"email"` (serde `rename` and `rename_all`
 /// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled

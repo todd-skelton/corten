@@ -187,6 +187,7 @@ pub struct App<M = ()> {
     pwa: Option<Pwa>,
     ready: Option<ReadyFn>,
     locales: Option<&'static [&'static str]>,
+    client_zone: bool,
     dev: Option<bool>,
     components: Vec<crate::Component>,
     areas: Vec<Placed>,
@@ -224,6 +225,7 @@ impl App {
             pwa: None,
             ready: None,
             locales: None,
+            client_zone: false,
             dev: None,
             components: Vec::new(),
             areas: Vec::new(),
@@ -254,6 +256,7 @@ impl App {
             pwa: self.pwa,
             ready: self.ready,
             locales: self.locales,
+            client_zone: self.client_zone,
             dev: self.dev,
             components: self.components,
             areas: self.areas,
@@ -368,6 +371,15 @@ impl<M: Middleware> App<M> {
     /// `<html lang>`, is the locale negotiated from `Accept-Language`, as `req.t()` picks it.
     pub fn messages<T: crate::i18n::Messages>(mut self) -> Self {
         self.locales = Some(T::LOCALES);
+        self
+    }
+
+    /// Learn each visitor's time zone, for [`ClientZone`](crate::ClientZone): the runtime keeps
+    /// the browser's (`America/Chicago`) in a cookie, `corten-zone`, set on the first page that
+    /// loads it, so the requests after that (a form's post, the next page) carry it. Off unless
+    /// set: an app that writes every date in UTC or one zone of its own sets no cookie.
+    pub fn client_zone(mut self) -> Self {
+        self.client_zone = true;
         self
     }
 
@@ -547,6 +559,9 @@ impl<M: Middleware> App<M> {
             own.exact.extend([crate::pwa::MANIFEST_PATH, crate::pwa::WORKER_PATH]);
             routes = routes.merge(pwa.routes());
         }
+        if self.client_zone {
+            head.push_str(r#"<meta name="corten-zone">"#);
+        }
         if dev {
             let boot = format!(
                 "{:x}",
@@ -573,6 +588,7 @@ impl<M: Middleware> App<M> {
         let mut shared = Shared::new(error_page, assets, head);
         shared.offline = offline;
         shared.locales = self.locales;
+        shared.client_zone = self.client_zone;
         shared.dev = dev;
         shared.components = self.components.iter().chain(sections.iter().flat_map(|(_, c)| c.iter())).map(|c| c.name).collect();
         if let Some(assets) = &shared.assets {

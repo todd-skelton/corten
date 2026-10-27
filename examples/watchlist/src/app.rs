@@ -18,7 +18,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use corten::{
-    Fragment, LiveResponse, LiveSince,
+    ClientZone, Fragment, LiveResponse, LiveSince,
     axum::{
         extract::FromRef,
         http::{StatusCode, header, request::Parts},
@@ -81,6 +81,7 @@ pub fn app(market: Market) -> App {
         // Started by `serve` once it listens, stopped at shutdown; a test's `app.router()` starts
         // none, so its prices stay put.
         .task("market", move |signal| market::simulate(trading, signal))
+        .client_zone()
 }
 
 /// The page for a failed request, in the layout, for who is asking: a signed-in user who mistypes
@@ -498,15 +499,21 @@ async fn watch(
     State(market): State<Market>,
     State(lists): State<Lists>,
     mut watching: Watching,
+    zone: Option<ClientZone>,
     Form(form): Form<StockForm>,
 ) -> HtmlResult {
-    let message = match market.stocks.read(|rows| rows.get(&form.id).map(|s| format!("Watching {} at {}.", s.name, s.price))) {
+    let mut message = match market.stocks.read(|rows| rows.get(&form.id).map(|s| format!("Watching {} at {}.", s.name, s.price)))
+    {
         Some(message) => {
             watching.add(&lists, &form.id);
             message
         }
         None => "That stock is not on the market.".into(),
     };
+    // The browser's zone, which the runtime keeps once a page has loaded: no script of the app's.
+    if let Some(ClientZone(zone)) = zone {
+        message.push_str(&format!(" Alerts follow {zone} time."));
+    }
     changed(&req, viewer.as_deref(), &market, &mut watching, message)
 }
 

@@ -138,6 +138,12 @@ impl Signal {
         self.0.callers.fetch_xor(hash, Ordering::Relaxed);
     }
 
+    /// Marks the answer as differing by something of the visitor's that does not change the page
+    /// around `<main>` (their time zone): private, but not part of the page's key.
+    pub(crate) fn mark_personal(&self) {
+        self.0.personal.store(true, Ordering::Relaxed);
+    }
+
     /// The app's error page is answering the request.
     pub(crate) fn mark_error_page(&self) {
         self.0.error_page.store(true, Ordering::Relaxed);
