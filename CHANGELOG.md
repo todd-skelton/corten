@@ -900,6 +900,13 @@ Corten is pre-1.0, so any minor version may change the API.
     CPU-second, requests a second per MiB and the item API's CPU to `summary.json`. With items in
     memory the load generator also gets the item API's idle cores: in r6 four could not keep
     Corten's core busy (93% for the page, 88% for the JSON).
+55. `bench/fullstack/item-api/server.mjs` runs a server process per core it may use (two on a
+    bench droplet), each listening with `SO_REUSEPORT`. In r6 its one process used 39-40% of a core
+    for Corten's item-API runs and would have capped an app about 2.6x faster
+    ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+    On Docker Desktop (shared with other work, so rough), pinned to two cores, it served
+    4,400-6,600 items a second to 64 users in three runs against 3,600-4,000 in two with one
+    process, using about 1.9 cores. Responses are byte for byte the same.
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
