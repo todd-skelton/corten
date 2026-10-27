@@ -88,7 +88,7 @@ impl<S: Send + Sync> FromRequestParts<S> for Upgrade {
                 .with_status(StatusCode::UPGRADE_REQUIRED)
                 .into_response());
         }
-        Upgrade::take(parts)
+        Upgrade::take(parts).map_err(IntoResponse::into_response)
     }
 }
 
@@ -101,13 +101,13 @@ impl<S: Send + Sync> OptionalFromRequestParts<S> for Upgrade {
         if !asks(&parts.method, &parts.headers) {
             return Ok(None);
         }
-        Upgrade::take(parts).map(Some)
+        Upgrade::take(parts).map(Some).map_err(IntoResponse::into_response)
     }
 }
 
 impl Upgrade {
     /// The switch a request asks for, once it is allowed.
-    fn take(parts: &mut Parts) -> Result<Upgrade, Response> {
+    fn take(parts: &mut Parts) -> Result<Upgrade, Error> {
         // A WebSocket's handshake is a GET that carries the user's cookies with no CORS check, so
         // it is held to what a write is: the app's own pages, an origin the policy allows, or a
         // client that is not a browser. Checked here, where it costs other requests nothing:
@@ -120,15 +120,13 @@ impl Upgrade {
             && !api.is_some_and(|(_, origins)| crate::security::allowed(&parts.headers, origins))
         {
             return Err(Error::new("a switch from another site's page is refused, as a cross-site write is")
-                .with_status(StatusCode::FORBIDDEN)
-                .into_response());
+                .with_status(StatusCode::FORBIDDEN));
         }
         let Some(on) = parts.extensions.remove::<OnUpgrade>() else {
             return Err(Error::new(
                 "this connection cannot switch protocols: an HTTP/1.1 connection served by corten::serve can (not HTTP/2, not a test's oneshot)",
             )
-            .with_status(StatusCode::UPGRADE_REQUIRED)
-            .into_response());
+            .with_status(StatusCode::UPGRADE_REQUIRED));
         };
         let protocol = parts.headers.get(header::UPGRADE).cloned().unwrap_or_else(|| HeaderValue::from_static(""));
         let key = parts.headers.get(header::SEC_WEBSOCKET_KEY).cloned();
