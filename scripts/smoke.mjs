@@ -499,9 +499,12 @@ async function run(browser) {
     await away.goto(`${base}/about`);
     await away.hover(`main a[href="/about/source"]`);
     await away.waitForTimeout(300);
-    await away.click(`main a[href="/about/source"]`);
-    const arrived = await away.waitForURL("https://github.com/todd-skelton/corten", { timeout: 5000 }).then(() => true, () => false);
-    check("a redirect to another site leaves the app in one request", arrived && asked === 1, `${away.url()} requests ${asked}`);
+    // The browser's request to the other site is what matters, not that site's load (WebKit does
+    // not always hand a redirected navigation to the route above), so the click does not wait.
+    const left = away.waitForRequest((r) => r.url() === "https://github.com/todd-skelton/corten", { timeout: 5000 }).then(() => true, () => false);
+    await away.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`main a[href="/about/source"]`)).click());
+    const arrived = await left;
+    check("a redirect to another site leaves the app in one request", arrived && asked === 1, `left ${arrived} requests ${asked}`);
     check("without a console error", awayErrors.length === 0, awayErrors.join(" | "));
     await away.close();
   }
