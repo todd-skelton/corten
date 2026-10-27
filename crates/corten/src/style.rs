@@ -298,6 +298,104 @@ pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, Vec<&'static crate::
 }
 
 /// Used by the code `html!` and `#[component]` generate. Not a public API.
+/// The custom properties `css` declares (`--gap: 4px` in a block, `@property --gap`) and those
+/// it reads with `var(--gap)` and no fallback, comments and strings skipped. A `var()` with a
+/// fallback is skipped whole: the fallback is what it is for.
+pub(crate) fn custom_properties(css: &str) -> (Vec<&str>, Vec<&str>) {
+    let b = css.as_bytes();
+    let (mut declared, mut needed) = (Vec::new(), Vec::new());
+    let ident = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_') || c >= 0x80;
+    let name_end = |mut i: usize| {
+        while i < b.len() && (ident(b[i]) || b[i] == b'\\') {
+            i += if b[i] == b'\\' { 2 } else { 1 };
+        }
+        i.min(b.len())
+    };
+    let space = |mut i: usize| {
+        while b.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        i
+    };
+    let string_end = |mut i: usize, quote: u8| {
+        i += 1;
+        while i < b.len() && b[i] != quote {
+            i += if b[i] == b'\\' { 2 } else { 1 };
+        }
+        (i + 1).min(b.len())
+    };
+    let mut i = 0;
+    // The last byte that is not whitespace or in a comment: a declaration follows `{` or `;`.
+    let mut last = b'{';
+    while i < b.len() {
+        let c = b[i];
+        if c == b'/' && b.get(i + 1) == Some(&b'*') {
+            i = css[i + 2..].find("*/").map_or(b.len(), |end| i + 2 + end + 2);
+            continue;
+        }
+        if c.is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        if c == b'"' || c == b'\'' {
+            i = string_end(i, c);
+            last = c;
+            continue;
+        }
+        if c == b'-' && b.get(i + 1) == Some(&b'-') && matches!(last, b'{' | b';') {
+            let end = name_end(i + 2);
+            if end > i + 2 && b.get(space(end)) == Some(&b':') {
+                declared.push(&css[i..end]);
+            }
+            (i, last) = (end, b'-');
+            continue;
+        }
+        if c == b'@' && css[i..].starts_with("@property") {
+            let start = space(i + "@property".len());
+            if css[start..].starts_with("--") {
+                let end = name_end(start + 2);
+                declared.push(&css[start..end]);
+                (i, last) = (end, b'-');
+                continue;
+            }
+        }
+        if (c | 0x20) == b'v' && css.get(i..i + 4).is_some_and(|s| s.eq_ignore_ascii_case("var(")) && (i == 0 || !ident(b[i - 1]))
+        {
+            let start = space(i + 4);
+            if css[start..].starts_with("--") {
+                let end = name_end(start + 2);
+                match b.get(space(end)) {
+                    Some(b')') => needed.push(&css[start..end]),
+                    Some(b',') => {
+                        // To the `)` that closes this `var(`.
+                        let (mut j, mut depth) = (space(end) + 1, 1);
+                        while j < b.len() && depth > 0 {
+                            match b[j] {
+                                b'(' => depth += 1,
+                                b')' => depth -= 1,
+                                q @ (b'"' | b'\'') => {
+                                    j = string_end(j, q);
+                                    continue;
+                                }
+                                _ => {}
+                            }
+                            j += 1;
+                        }
+                        (i, last) = (j, b')');
+                        continue;
+                    }
+                    _ => {}
+                }
+                (i, last) = (end, b'-');
+                continue;
+            }
+        }
+        last = c;
+        i += 1;
+    }
+    (declared, needed)
+}
+
 #[doc(hidden)]
 pub mod __private {
     use super::{ClassList, RENDERED};
@@ -338,6 +436,17 @@ mod tests {
         crate::style::tokens!("src/style/tokens.json");
     }
     use theme::{direction, gap, Direction, Responsive, Space};
+
+    #[test]
+    fn a_stylesheet_names_the_custom_properties_it_declares_and_reads() {
+        let css = "/* var(--commented) */ :root{--ink:#111;--space-1 : 4px}.a--b:hover{color:var(--ink)}
+.x { padding: var( --space-1 ); margin: var(--gap, var(--nope)); content: \"var(--quoted)\"; background: VAR(--bg) }
+@property --angle { syntax: '<angle>'; inherits: false; initial-value: 0deg }
+@supports (--x: 1) { .y { width: calc(var(--w) * 2); --é-ä: 1 } }";
+        let (declared, needed) = custom_properties(css);
+        assert_eq!(declared, ["--ink", "--space-1", "--angle", "--é-ä"]);
+        assert_eq!(needed, ["--ink", "--space-1", "--bg", "--w"]);
+    }
 
     #[test]
     fn tokens_are_typed_scales_and_utilities_are_classes_per_breakpoint() {

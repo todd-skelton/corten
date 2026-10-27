@@ -30,6 +30,8 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 4. A helper in the same module that shares the file: `#[component(css = OfferList)]`.
 5. Design tokens: `corten::style::tokens!("tokens.json")` gives custom properties, themes
    (`[data-theme="dark"]`) and typed scales. Put `TOKENS` first in `App::components`.
+   A `var(--x)` without a fallback that no stylesheet on the same pages declares fails at
+   startup, naming the file; a property a script sets takes a fallback, `var(--x, 0)`.
 6. `static/style.css` holds only element defaults, fonts and the layout. It is linked
    before `<Corten />` in the layout.
 7. Inline `style=` is blocked by the CSP. Use a class or a token utility instead.
