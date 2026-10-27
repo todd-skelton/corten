@@ -158,6 +158,11 @@ as a service on Windows started without a console, where ending the process skip
 above. A second call, or a signal after it, changes nothing. Guard such a route as any other write
 (`Caller<Supervisor>`).
 
+It is process-wide and stays set: every `serve` in the process stops, one started after the call
+included, as a signal would stop them. In a test binary that means a route calling it stops the
+other tests' servers too, so test such a route with the call behind something the test replaces
+(a function in the app's state, say).
+
 `/health/ready` does not turn 503 during shutdown: the listeners close when it begins, so a load
 balancer's next check is refused, which it treats the same way. A platform that needs time to
 stop sending first waits before it sends `SIGTERM` (a Kubernetes `preStop` sleep).

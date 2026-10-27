@@ -433,6 +433,10 @@ static ASKED: LazyLock<tokio::sync::watch::Sender<bool>> = LazyLock::new(|| toki
 /// done, or a service on Windows started without a console. A second call, or a signal after it,
 /// changes nothing.
 ///
+/// It is process-wide and cannot be undone: it stops every [`serve`] in the process, including
+/// one started after the call. A test binary that runs a route calling it stops every other test's
+/// server too, so such a route is tested with the call behind something the test replaces.
+///
 /// ```
 /// use corten::{axum::http::StatusCode, prelude::*};
 ///
