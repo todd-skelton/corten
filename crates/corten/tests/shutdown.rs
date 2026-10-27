@@ -74,7 +74,10 @@ async fn the_app_begins_the_shutdown_a_signal_would() {
     let told = tokio::time::timeout(Duration::from_secs(5), heard.recv()).await.expect("the task was not told");
     assert_eq!(told, Some(Abort::Shutdown));
     let mut rest = Vec::new();
-    tokio::time::timeout(Duration::from_secs(5), live.read_to_end(&mut rest)).await.expect("the live stream did not end").unwrap();
+    tokio::time::timeout(Duration::from_secs(5), live.read_to_end(&mut rest))
+        .await
+        .expect("the live stream did not end")
+        .unwrap();
     let mut answer = String::new();
     tokio::time::timeout(Duration::from_secs(5), slow.read_to_string(&mut answer)).await.expect("the slow request").unwrap();
     assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("done"), "a request in progress finishes: {answer}");
