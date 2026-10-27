@@ -40,7 +40,10 @@ use crate::{
 
 /// The app, assembled: routes plus the error page, catalogs and PWA settings. Corten adds the rest.
 pub fn app(source: Source) -> App<WriteLimit> {
-    let writes = std::env::var("WRITES_PER_MINUTE").ok().and_then(|n| n.parse().ok()).unwrap_or(WRITES_PER_MINUTE);
+    let writes = match std::env::var("WRITES_PER_MINUTE") {
+        Ok(n) => n.trim().parse().ok().filter(|&n| n > 0).expect("WRITES_PER_MINUTE is a whole number above zero"),
+        Err(_) => WRITES_PER_MINUTE,
+    };
     let keys = |name: &str| std::env::var(name).unwrap_or_default();
     app_with(source, Keys { partners: Partners::parse(&keys("API_KEYS")), agents: &keys("AGENT_TOKENS") }, writes)
 }
@@ -217,7 +220,8 @@ impl WriteLimit {
                 *writes += 1;
                 None
             }
-            None if full => Some(wait),
+            // Partners are the few `API_KEYS` names, so they need no room kept.
+            None if full && !matches!(client, Client::Partner(_)) => Some(wait),
             None => {
                 minute.writes.insert(client, 1);
                 None
@@ -1001,7 +1005,11 @@ mod tests {
             (StatusCode::OK, &"public, max-age=60, stale-while-revalidate=600".parse().unwrap())
         );
         let preflight = Request::options("/api/alerts").body(Body::empty()).unwrap();
-        assert_ne!(one.clone().oneshot(preflight).await.unwrap().status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            one.clone().oneshot(preflight).await.unwrap().status(),
+            StatusCode::METHOD_NOT_ALLOWED,
+            "no site may call it from a browser"
+        );
         let ping = Request::post("/mcp")
             .header("content-type", "application/json")
             .header("authorization", "Bearer dev-token")
@@ -1059,6 +1067,7 @@ mod tests {
         assert_eq!((limit.count(ip(1), start), limit.count(ip(2), start)), (None, None));
         assert_eq!(limit.count(ip(3), start + Duration::from_secs(20)), Some(40), "a third client waits");
         assert_eq!(limit.count(ip(1), start), None, "a counted client goes on");
+        assert_eq!(limit.count(Client::Partner("dev".into()), start), None, "a partner is not a stranger");
         assert_eq!(limit.count(ip(3), start + Duration::from_secs(60)), None, "and the new minute has room");
     }
 
