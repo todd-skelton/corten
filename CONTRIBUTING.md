@@ -111,29 +111,28 @@ The failover benchmark is `node examples/cluster/bench/run.mjs`; see its header.
 ## Review
 
 Every pull request is reviewed against the [values](README.md#values) before it merges, by
-someone who did not write it: another person, or for a change an agent wrote, a new agent that
-starts from the diff and these documents rather than from the author's reasoning. The reviewer
-reads the change as an adversary and looks for the way it breaks a value, in the order that
-decides between them:
+someone who did not write it: another person, or, when an agent wrote the change, a new agent
+that starts from the diff and these documents rather than from the author's reasoning. The
+reviewer reads the change as an adversary and looks for the way it breaks a value; where values
+conflict, the order in the README decides. What to look for:
 
-1. Correctness and reliability: an input, failure, cancellation, retry or concurrent request it
+- Correctness and reliability: an input, failure, cancellation, retry or concurrent request it
    gets wrong; a behavior with no test, or a test that would still pass if the behavior broke.
-2. Performance at the user's end: a cost added to every request, render or page (instructions,
+- Performance at the user's end: a cost added to every request, render or page (instructions,
    allocation, bytes shipped, a round trip) with no before-and-after number, or a number taken
    with a measurement that cannot see the change.
-3. Compile-time safety and one way to do things: a mistake left to startup or to a request that
+- Compile-time safety and one way to do things: a mistake left to startup or to a request that
    the compiler could catch, a guarantee with no `compile_fail` doctest or `@ts-expect-error`
    line, a string at a seam (a URL, a ref, a class, a message key), or a second way to do
    something that already has one ([design rules](docs/design.md#rules)).
-4. The rest of the values: a dependency or concept a smaller change would avoid, something the
+- The other values: a dependency or concept a smaller change would avoid, something the
    browser or HTTP already provides, a page that stops working without JavaScript, a default
    that is not production-ready, a guide or changelog that no longer matches.
-5. Developer convenience bought with any of the above.
 
 Findings come first, the most severe first, each with its file and line and the value it
-breaks. The author fixes each one or answers on the pull request why it stands; a higher value
-is never traded for a lower one. The pull request merges when every finding is resolved and the
-checks pass. A review that finds nothing says so, and names what it could not check.
+breaks. The author fixes each one or answers on the pull request why it stands. The pull
+request merges when every finding is resolved and the checks pass. A review that finds nothing
+says so, and names what it could not check.
 
 ## Releasing
 

@@ -1115,8 +1115,8 @@ Corten is pre-1.0, so any minor version may change the API.
     `p`, `bg`, `columns`, ...), with the repeated combinations named in `src/theme.rs`, and the
     styles guide compares that with Tailwind.
 16. Every pull request is reviewed against the values before it merges, by someone who did not
-    write it, who looks for the way the change breaks each value in the order that decides
-    between them (CONTRIBUTING.md, Review). The order now sits with the values in the README
+    write it, who looks for the way the change breaks a value (CONTRIBUTING.md, Review). The
+    order that decides between conflicting values now sits with the values in the README
     rather than in AGENTS.md, which has an agent start a new agent for the review, and a pull
     request template asks for the checks, the measurements and the findings.
 

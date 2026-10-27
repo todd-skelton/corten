@@ -7,8 +7,7 @@ reason that a smaller change cannot meet.
 ## Values
 
 Every change follows the values in `README.md` (Values), and when two conflict, the order given
-there decides; convenience never outranks correctness or the user's speed. A change is reviewed
-against them before it is done (below).
+there decides. A change is reviewed against them before it is done (below).
 
 ## Where things go
 
