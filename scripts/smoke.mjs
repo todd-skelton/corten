@@ -1064,11 +1064,18 @@ async function run(browser) {
   await page.click("#avatar button");
   await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent, null, { timeout: 4000 }).catch(() => {});
   const uploaded = await page.textContent("#avatar-result");
-  await page.evaluate(() => document.querySelector("#avatar")?.remove());
   check("a form with files is read as it arrives", uploaded === 'Mew "1st": card.png (image/png, 9 bytes), big.jpg (image/jpeg, too large)', uploaded ?? "");
+  // A body over the handler's limit (1 MiB): the handler answers with the form's message, and the
+  // browser, still sending when the answer comes, shows it instead of a network error.
+  await page.setInputFiles("#avatar [name=picture]", [{ name: "huge.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(3 << 20, 7) }]);
+  await page.click("#avatar button");
+  await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent?.startsWith("The pictures"), null, { timeout: 8000 }).catch(() => {});
+  const over = await page.textContent("#avatar-result");
+  await page.evaluate(() => document.querySelector("#avatar")?.remove());
+  check("a body over its limit is answered in the form", over === "The pictures are over 1 MB together.", over ?? "");
 
-  // The multipart post was answered 415 on purpose; the browser logs that as a failed resource.
-  check("no console errors after the injected forms", errors.every((e) => e.includes("415")), errors.join(" | "));
+  // The posts answered 415 and 413 on purpose; the browser logs those as failed resources.
+  check("no console errors after the injected forms", errors.every((e) => e.includes("415") || e.includes("413")), errors.join(" | "));
 
   const data = await page.request.get(base, { headers: { accept: "application/json" } });
   const json = await data.json();

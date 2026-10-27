@@ -1,0 +1,16 @@
+{
+ "fsw-spring": {
+  "samples": 123,
+  "cpuAvgPct": 100.6,
+  "cpuMaxPct": 101.12,
+  "memAvgMiB": 425.3,
+  "memMaxMiB": 429
+ },
+ "item-api": {
+  "samples": 123,
+  "cpuAvgPct": 6.3,
+  "cpuMaxPct": 9.74,
+  "memAvgMiB": 138.4,
+  "memMaxMiB": 138.7
+ }
+}
