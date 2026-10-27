@@ -598,8 +598,8 @@ impl serde::Serialize for Errors {
 /// `{"error":{"status":422,"message":"email: Enter an email address.","fields":{"email":"Enter an email address."}}}`.
 /// A message about the whole form comes first in `message` and is `form` too:
 /// `{"error":{"status":422,"message":"Sold out.","form":"Sold out.","fields":{}}}`.
-/// An [`crate::App::api`] handler returns it as its error, `Result<Json<T>, Errors>`; pages use
-/// [`crate::Req::invalid`], which answers this way to data clients.
+/// A JSON handler `?`s it (`check(&input)?` in a `JsonResult<T>` handler, whose error is a
+/// [`crate::JsonError`]); pages use [`crate::Req::invalid`], which answers this way to data clients.
 #[cfg(feature = "json")]
 impl axum::response::IntoResponse for Errors {
     fn into_response(self) -> axum::response::Response {

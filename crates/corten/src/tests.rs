@@ -1348,6 +1348,65 @@ async fn validation_errors_are_the_json_error_with_fields() {
     );
 }
 
+/// A JSON route that checks its input and loads a record, each with `?`.
+#[cfg(feature = "json")]
+#[crate::routes(api = CheckedRoot)]
+mod checked_api {
+    #[route("/checked")]
+    pub struct CheckedRoot;
+
+    #[route("/checked/{n}", post = checked)]
+    pub struct Checked {
+        pub n: u32,
+    }
+}
+
+#[cfg(feature = "json")]
+async fn checked(Path(n): Path<u32>) -> crate::JsonResult<u32> {
+    let mut errors = Errors::new();
+    if n == 0 {
+        errors.add(SignUp::FIELDS.email, "Enter a number above zero.");
+    }
+    let n = errors.into_result(n)?;
+    // A load that fails, next to the check.
+    let n = n.checked_mul(1000).ok_or_else(|| Error::new("too large to load"))?;
+    Ok(crate::Json(n))
+}
+
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_json_handler_question_marks_field_errors_into_a_422_with_the_fields() {
+    let router = App::new(Routes::new()).api(checked_api::api).router();
+    let (status, _, body) = call_with(router.clone(), "POST", "/checked/2", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "2000"));
+    let (status, headers, body) = call_with(router.clone(), "POST", "/checked/0", None, Some("text/html")).await;
+    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::UNPROCESSABLE_ENTITY, "application/json"));
+    assert_eq!(
+        body,
+        r#"{"error":{"status":422,"message":"email: Enter a number above zero.","fields":{"email":"Enter a number above zero."}}}"#
+    );
+    // Any other error is still a 500, whose message a client does not see.
+    let (status, _, body) = call_with(router, "POST", "/checked/4294968", None, None).await;
+    assert_eq!(
+        (status, &body[..]),
+        (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":{"status":500,"message":"Internal Server Error"}}"#)
+    );
+    // An API with its own error shape writes the 500 in it; the fields keep Corten's shape.
+    let shaped = App::new(Routes::new())
+        .api(|api| {
+            checked_api::api(api).errors(|status, message| ShapedError {
+                r#type: "error",
+                error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+            })
+        })
+        .router();
+    let (_, _, body) = call_with(shaped.clone(), "POST", "/checked/4294968", None, None).await;
+    assert_eq!(body, r#"{"type":"error","error":{"code":500,"message":"Internal Server Error"}}"#);
+    let (status, _, body) = call_with(shaped, "POST", "/checked/0", None, None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body.ends_with(r#""fields":{"email":"Enter a number above zero."}}}"#), "{body}");
+}
+
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn a_json_body_that_does_not_parse_is_a_json_400() {

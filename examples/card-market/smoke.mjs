@@ -230,6 +230,35 @@ try {
   const ready = await fetch(`${base}/health/ready`);
   check("the app is ready once its item source answers", ready.status === 200, String(ready.status));
 
+  // A partner's service sets alerts with its API key (`X-Api-Key`, `API_KEYS`); without one it
+  // is a JSON 401, and the form's rules answer with the fields.
+  const alertFrom = (/** @type {Record<string, string>} */ headers, body = { id: "item_5", email: "ada@example.com", target_price: "1.00" }) =>
+    fetch(`${base}/api/alerts`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+  const anonymous = await alertFrom({});
+  check("a partner write without an API key is a JSON 401", anonymous.status === 401 && (await anonymous.json())?.error?.status === 401, String(anonymous.status));
+  const keyed = await alertFrom({ "x-api-key": "dev-key" });
+  const keyedBody = await keyed.json().catch(() => null);
+  check("with its key the partner's alert is set", keyed.status === 200 && keyedBody?.partner === "dev" && /^Alert set: /.test(keyedBody?.message ?? ""), JSON.stringify(keyedBody));
+  const refused = await alertFrom({ "x-api-key": "dev-key" }, { id: "item_5", email: "ada", target_price: "1.00" });
+  const refusedBody = await refused.json().catch(() => null);
+  check("a field the rules refuse is a 422 with the field", refused.status === 422 && typeof refusedBody?.error?.fields?.email === "string", JSON.stringify(refusedBody));
+
+  // Writes are limited per client address (20 a minute). The container trusts Docker's networks
+  // as its proxies (`PROXIES`), so each address below is the client its proxy forwarded.
+  const writeAs = (/** @type {string} */ address) => alertFrom({ "x-api-key": "dev-key", "x-forwarded-for": address });
+  // Addresses of this run's own, so a second run against the same container starts at zero.
+  const octet = () => 1 + Math.floor(Math.random() * 254);
+  const limited = `198.51.${octet()}.${octet()}`;
+  const statuses = [];
+  for (let i = 0; i < 20; i++) statuses.push((await writeAs(limited)).status);
+  const over = await writeAs(limited);
+  const wait = Number(over.headers.get("retry-after"));
+  check("an address past its writes a minute is a 429 with Retry-After", statuses.every((s) => s === 200) && over.status === 429 && wait >= 1 && wait <= 60, `${statuses.join()} then ${over.status} after ${wait}s`);
+  const elsewhere = await writeAs(`203.0.${octet()}.${octet()}`);
+  check("another forwarded address has its own count", elsewhere.status === 200, String(elsewhere.status));
+  const stillReads = await fetch(`${base}/items/item_5`, { headers: { "x-forwarded-for": limited } });
+  check("reads from a limited address still pass", stillReads.status === 200, String(stillReads.status));
+
   // Back and forward restore a page from memory. Playwright turns the back/forward cache off, and
   // its default headless shell never restores a page; the full Chromium in headless mode does.
   const restoring = await chromium.launch({

@@ -124,7 +124,10 @@ impl<P: Prefix> Api<P> {
     /// deadline (503), a request an extractor rejects, a `Caller` that refuses (401 or 403, with
     /// `WWW-Authenticate`) and a handler's `Error`. `message` is what the client may be told: a
     /// 4xx's message, a 5xx's reason (and its message under `corten dev`). A failure with a JSON
-    /// body of the handler's own, and a [`crate::Relay`]'s, pass through as they are.
+    /// body of the handler's own, and a [`crate::Relay`]'s, pass through as they are, and so
+    /// does the 422 of the input's field errors (`?` on `Errors` in a `JsonResult` handler,
+    /// `req.invalid`), which keeps Corten's shape: a status and a message have no place for its
+    /// `fields`.
     ///
     /// ```
     /// use corten::{axum::http::StatusCode, prelude::*};

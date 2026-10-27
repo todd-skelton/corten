@@ -603,6 +603,12 @@ Corten is pre-1.0, so any minor version may change the API.
     WebSocket and a page (or a gateway's relayed answer); the handler returns `SwitchOr<A>`,
     whose failures are answered as `A`'s are. A request that asks is checked as `Upgrade`
     checks it. Routes that do not take it run no new code.
+91. `JsonResult<T>`'s error is `JsonError`: `check(&input)?` answers 422 with the fields
+    (`{"error":{..,"fields":{..}}}`), and `?` on any other error is answered as before. Before,
+    a JSON handler that checked its input and loaded a record could not `?` both, and the
+    `Result<Json<T>, Errors>` the docs named did not compile. On a page `?` on `Errors` still
+    does not compile (a `compile_fail` doctest): a page's form answers with `req.invalid`.
+
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1204,6 +1210,15 @@ Corten is pre-1.0, so any minor version may change the API.
     opens one new stream and closes the old one, the list survives a reload, the change cells
     follow the feed, a sector's box lists its stories, a refused price comes back marked with
     focus on it, and a story's place stays in the address.
+18. `examples/card-market` shows a partner API and a write limit. `POST /api/alerts` sets an
+    alert for a partner's user: the handler takes `Caller<Partner>`, found by the `X-Api-Key`
+    header (`API_KEYS`, no partner without it), so a request without a known key is a JSON 401,
+    and the form's rules answer with the fields. A middleware of the app's (`WriteLimit`)
+    allows about 20 writes a minute from one client (`ClientIp`, an IPv6 address by its /64)
+    and answers the next with a 429 and `Retry-After`; reads pass straight through, so pages a
+    CDN keeps stay public, and agents answer to their token. The smoke test runs the container
+    with Docker's networks as its proxies (`PROXIES`), so each forwarded address has its own
+    count.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
