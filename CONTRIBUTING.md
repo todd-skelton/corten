@@ -69,6 +69,10 @@ docker build -f examples/ui-gallery/Dockerfile -t corten-ui-gallery .
 docker run -d --name corten-ui-gallery -p 18482:8080 corten-ui-gallery
 node examples/ui-gallery/smoke.mjs http://localhost:18482
 docker rm -f corten-ui-gallery
+docker build -f examples/seller-desk/Dockerfile -t corten-seller-desk .
+docker run -d --name corten-seller-desk -p 18484:8080 corten-seller-desk
+node examples/seller-desk/smoke.mjs http://localhost:18484
+docker rm -f corten-seller-desk
 ```
 
 The first command also compiles every `rust` code block in `README.md` and `docs/guide/` as a

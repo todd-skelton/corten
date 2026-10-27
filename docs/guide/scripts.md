@@ -320,7 +320,11 @@ offset to send: write those dates on the server.
 
 A handler is a plain function shared by every instance, so state that outlives one event lives
 in the DOM (an attribute, an `<output>`'s value) or with an element: `state(scope, () => init)`
-from `corten` gives the same object for the same element until it is gone.
+from `corten` gives the same object for the same element until it is gone. An element has one
+state, made by the first call's `init`: keep everything a script needs for it in one object
+(`state(scope, () => ({ index: -1, unsent: new Set() }))`), since a second `state(scope, ..)`
+with another `init` gets the first object. That holds across scripts too, so key state on an
+element of the component's own, not on one a `corten-ui` widget renders.
 
 ## Rules
 

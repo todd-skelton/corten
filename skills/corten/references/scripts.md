@@ -57,7 +57,8 @@ export function showAll(rows, rest, button) {
    inside it and outside nested components. Any element can be the root, a `<tr>` included.
 6. A ref on several kinds of element: `ref={tab as HTMLElement}`.
 7. State that outlives one event lives in the DOM or in `state(scope, () => init)` from
-   `corten`. Handlers are shared by every instance, so never keep state in module variables.
+   `corten`, one object per element (a second call with another `init` gets the first one).
+   Handlers are shared by every instance, so never keep state in module variables.
 8. A control that does nothing without the script renders `hidden`; an `on:connect` handler
    shows it.
 9. List the component in `App::components`.
