@@ -1479,8 +1479,12 @@ async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
     let without = App::new(routes()).router();
     let (_, page) = get_with(without.clone(), "/", None).await;
     assert!(!page.contains("corten-zone"), "no cookie unless the app asks");
-    let (status, _) = get_with(without, "/zone", Some("corten-zone=America/Chicago")).await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "a debug build names the missing App::client_zone()");
+    let (status, body) = get_with(without, "/zone", Some("corten-zone=America/Chicago")).await;
+    if cfg!(debug_assertions) {
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "a debug build names the missing App::client_zone()");
+    } else {
+        assert_eq!((status, body.as_str()), (StatusCode::OK, "none"), "a release build logs it and reads none");
+    }
 }
 
 #[tokio::test]
