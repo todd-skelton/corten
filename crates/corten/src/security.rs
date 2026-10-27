@@ -471,8 +471,8 @@ impl Applied {
             Some(None) => Some(self.without_nonce.clone()),
             Some(Some(nonce)) => HeaderValue::try_from(self.csp_parts.join(&*nonce.0)).ok(),
         };
-        // A response that brought its own policy is rare: only a relayed page keeps it (below).
-        let brought = csp.and_then(|csp| headers.insert(csp_header.clone(), csp));
+        // A response that brings a policy of its own is a relayed page (or a bug): it keeps it.
+        let brought = csp.and_then(|csp| headers.insert(csp_header, csp));
         headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
         headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("strict-origin-when-cross-origin"));
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
@@ -481,12 +481,20 @@ impl Applied {
         if self.hsts {
             headers.insert(header::STRICT_TRANSPORT_SECURITY, HeaderValue::from_static("max-age=31536000; includeSubDomains"));
         }
-        // A relayed page keeps the policy its own HTML was written for (its scripts' nonces and
-        // hosts); the app's would block them.
         if let Some(brought) = brought {
-            if res.extensions().get::<crate::answer::Relayed>().is_some() {
-                res.headers_mut().insert(csp_header, brought);
-            }
+            self.keep_relayed(res, brought);
+        }
+    }
+
+    /// A relayed page keeps the policy its own HTML was written for (its scripts' nonces and
+    /// hosts), which the app's would block. Out of [`Applied::headers`], which every response runs.
+    #[cold]
+    #[inline(never)]
+    fn keep_relayed(&self, res: &mut Response, brought: HeaderValue) {
+        if res.extensions().get::<crate::answer::Relayed>().is_some() {
+            let name =
+                if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
+            res.headers_mut().insert(name, brought);
         }
     }
 }
