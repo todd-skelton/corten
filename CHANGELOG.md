@@ -599,6 +599,10 @@ Corten is pre-1.0, so any minor version may change the API.
     the deadline, extractor rejections, `Caller` refusals and handlers' errors, keeping their
     headers; a handler's own JSON failure and a `Relay` pass through
     ([#163 An API cannot shape the failures Corten answers itself (404, 405, cross-site 403, Caller 401), so a gateway that must answer in Anthropic's error shape checks keys outside Caller](https://github.com/todd-skelton/corten/issues/163)).
+90. `Option<Upgrade>`: `None` for a request that does not ask to switch, so one URL can be a
+    WebSocket and a page (or a gateway's relayed answer); the handler returns `SwitchOr<A>`,
+    whose failures are answered as `A`'s are. A request that asks is checked as `Upgrade`
+    checks it. Routes that do not take it run no new code.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
