@@ -12,6 +12,7 @@ your routes. Each default can be replaced in one line.
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
 | What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
+| The client's address | the connection's peer; no `X-Forwarded-For` is read | a handler takes `ClientIp`; behind a proxy, `PROXIES=10.0.0.0/8` in the environment or `Policy::proxy("10.0.0.0/8")` ([below](#the-clients-address)) |
 | Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
 | A part of the app | none | `.area::<admin::Admin>(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
 | Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(page, state)`: `async fn(Failure, Req, ..extractors) -> HtmlResult`, in the app's layout and for who is asking; `corten new` writes one that names each case |
@@ -74,6 +75,47 @@ by `localhost`, is answered as before. The first refused name is logged, so a de
 its name says why it answers 421. An app served under names it cannot list in advance (each
 customer's own domain) says `Policy::any_host()` (`HOSTS=*`) and checks them itself. The check
 compares one header with a short list.
+
+## The client's address
+
+A handler that needs the visitor's IP address (to pass it to an API whose limits are per client,
+or to limit by it itself) takes `ClientIp`:
+
+```rust,ignore
+async fn sign_up(req: Req, ClientIp(ip): ClientIp, form: Form<SignUp>) -> HtmlResult {
+    accounts.create(&form, ip).await?; // the API counts each visitor on its own
+    req.redirect(&url::Welcome)
+}
+```
+
+Without a proxy it is the connection's peer. Behind one, every request comes from the proxy, which
+names the client in `X-Forwarded-For`; the app trusts that header only from the proxies it lists,
+where the deploy sets `HOST` and `PORT`:
+
+```sh
+PROXIES=10.0.0.0/8,fc00::/7   # an address, or a network, per proxy
+```
+
+or in code, `App::policy(Policy::new().proxy("10.0.0.0/8"))`. A request from a listed address is
+followed back through `X-Forwarded-For`, right to left, to the first address that is not a proxy;
+anything further left is whatever the client wrote, so it is never read. A request on a Unix socket
+counts as from a proxy when the app lists any. Only `X-Forwarded-For` is read, which every common
+proxy sets: a proxy sets one of it and `Forwarded`, and reading the other would take what a client
+wrote there. List only the addresses requests reach the app from through the proxy: a client that
+can reach the app directly from a listed address can name any address it likes.
+
+`ClientIp` tells who is asking, so a `Public` handler cannot take it, and an answer that read it is
+private like one that read a `Caller`. Where the address cannot be known (a Unix socket and no
+proxy, a listener of the app's own whose address is not a socket address, a test's `oneshot`),
+`ClientIp` is a 500 that says why and `Option<ClientIp>` is `None`. A test gives the request an
+address with axum's `MockConnectInfo` layer around `app.router()`. The peer is at hand while
+the request's own future runs, so a layer of the app's own that hands the request to another task
+(`tower`'s `Buffer`) leaves it unknown past that layer.
+
+Giving each request its connection's peer costs 44 instructions per request whether a handler
+reads it or not (callgrind, release build, keep-alive requests to `serve_on` over TCP, the
+difference between 1,200 and 200 requests over 1,000: 54,507 before, 54,551 after). It is not a
+request extension: one more of those cost 497.
 
 ## Tasks
 

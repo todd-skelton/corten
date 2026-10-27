@@ -108,6 +108,8 @@ pub struct Policy {
     popups: bool,
     /// The names the app answers to besides `localhost` and IP addresses; `None`: any.
     hosts: Option<Vec<String>>,
+    /// The proxies whose `X-Forwarded-For` [`crate::ClientIp`] follows.
+    proxies: Vec<crate::client::Network>,
 }
 
 impl Default for Policy {
@@ -133,6 +135,7 @@ impl Policy {
             report_only: false,
             popups: false,
             hosts: Some(Vec::new()),
+            proxies: Vec::new(),
         }
     }
 
@@ -258,6 +261,31 @@ impl Policy {
             refused_host(host);
         }
         named
+    }
+
+    /// A proxy in front of the app (`10.0.0.5`), or a network of them (`10.0.0.0/8`, `fc00::/7`),
+    /// whose `X-Forwarded-For` [`ClientIp`](crate::ClientIp) follows back to the client. Without
+    /// one the client is the connection's peer, and the header is not read: anyone can write it.
+    /// List only the addresses requests come from when they come through the proxy: a client
+    /// that can reach the app from a listed address can name any address it likes. A deploy sets
+    /// `PROXIES` (comma separated) where it sets `HOST` and `PORT`. Anything but an address or a
+    /// network, or a network with host bits set, is a startup panic:
+    ///
+    /// ```should_panic
+    /// corten::security::Policy::new().proxy("10.0.0.1/8");
+    /// ```
+    pub fn proxy(mut self, network: &str) -> Self {
+        let parsed = crate::client::Network::parse(network.trim());
+        let Some(parsed) = parsed else {
+            panic!("corten: Policy::proxy takes an address (10.0.0.5) or a network (10.0.0.0/8) with no host bits set, not {network:?}")
+        };
+        self.proxies.push(parsed);
+        self
+    }
+
+    /// The proxies [`Policy::proxy`] trusts.
+    pub(crate) fn proxies(&self) -> &[crate::client::Network] {
+        &self.proxies
     }
 
     /// Sends the CSP as `Content-Security-Policy-Report-Only`, to try a policy on a live site.

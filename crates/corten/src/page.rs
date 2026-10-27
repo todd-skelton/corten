@@ -376,7 +376,6 @@ impl Asked {
         // out rather than not at all.
         req.signal.mark_error_page();
         parts.extensions.insert(req.signal);
-        parts.extensions.insert(req.shared);
         parts
     }
 }
@@ -406,6 +405,8 @@ pub(crate) struct Shared {
     pub sections: Vec<(Vec<String>, String)>,
     /// The section (an index in `sections`) whose stylesheet has a component's rules.
     pub section_of: std::collections::HashMap<&'static str, usize>,
+    /// The proxies whose `X-Forwarded-For` [`crate::ClientIp`] follows ([`crate::security::Policy::proxy`]).
+    pub proxies: Vec<crate::client::Network>,
 }
 
 impl Shared {
@@ -433,6 +434,7 @@ impl Shared {
             components: Default::default(),
             sections: Vec::new(),
             section_of: Default::default(),
+            proxies: Vec::new(),
         }
     }
 }
@@ -456,7 +458,7 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
     type Rejection = Infallible;
 
     async fn from_request_parts(parts: &mut Parts, _: &St) -> std::result::Result<Self, Self::Rejection> {
-        let shared = parts.extensions.get::<Arc<Shared>>().unwrap_or(&DEFAULT).clone();
+        let shared = parts.extensions.get::<crate::Signal>().and_then(crate::Signal::shared).unwrap_or(&DEFAULT).clone();
         Ok(Req::new(&parts.headers, &parts.extensions, &parts.uri, shared))
     }
 }

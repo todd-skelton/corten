@@ -61,6 +61,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | a page or JSON a CDN may share | return `Public<HtmlResult>` (`Public::new(max_age, page)`); its handler cannot take a `Caller` | [pages-and-routes.md](references/pages-and-routes.md) |
 | a test | `app().router().oneshot(..)` with the `corten` mode header | [testing.md](references/testing.md) |
 | deploying behind a domain | set `HOSTS=shop.example` (any other `Host` but `localhost` and IP addresses gets 421; never `HOSTS=*` to silence it) | the app guide, Host names |
+| the visitor's IP address (an API's per-client limit, a rate limit) | the handler takes `ClientIp`; behind a proxy set `PROXIES` to the proxy's addresses (never read `X-Forwarded-For` yourself) | the app guide, The client's address |
 | routes slower than pages (a slow upstream, a report, uploads) | `.deadline(Duration)` on their `Area` or `Api` (`None` for none), never raising `App::deadline` for every page | the cancellation guide |
 | HTTPS on the app itself, a Unix socket, a socket handed over | `corten::serve_on(listeners, app)` (a listener of the app's own around `corten::listeners(3000)`; `listeners(port)` alone for another default port), never `axum::serve`, which loses the shutdown | the app guide, Your own listeners |
 | work on a timer or a child process, outside requests | `App::task("name", \|signal\| ..)`: return when `signal.aborted()` resolves (shutdown), within `App::shutdown_grace` | the app guide, Tasks |
