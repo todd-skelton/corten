@@ -2,9 +2,9 @@
 // (1 CPU / 512 MiB each, fixed IPs) and an nginx load balancer on the feedbench network; then runs
 // failover.mjs in a node container (it kills and restarts instances on schedule) while a real
 // browser follows the same feed with corten.js through the load balancer.
-// Usage (from the repository root): node examples/cluster/bench/run.mjs [out=failover-r1.json]
+// Usage (from the repository root): node examples/listings-feed/bench/run.mjs [out=failover-r1.json]
 //   [clients=200] [wps=50] [n=5] [seconds=80] [keep=1]
-// Needs the image: docker build -f examples/cluster/Dockerfile -t corten-cluster .
+// Needs the image: docker build -f examples/listings-feed/Dockerfile -t corten-listings-feed .
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -42,7 +42,7 @@ async function until(what, test, ms = 60_000) {
 
 function instance(name, ip, letter) {
   docker("run", "-d", "--name", name, ...net, "--ip", ip, "--cpus", "1", "--memory", "512m",
-    "-e", `INSTANCE=${letter}`, "-e", `DATABASE_URL=${db}`, "-e", "NATS_URL=nats://10.77.77.11:4222", "corten-cluster");
+    "-e", `INSTANCE=${letter}`, "-e", `DATABASE_URL=${db}`, "-e", "NATS_URL=nats://10.77.77.11:4222", "corten-listings-feed");
 }
 
 for (const c of containers) docker("rm", "-f", c);

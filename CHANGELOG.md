@@ -1255,6 +1255,9 @@ Corten is pre-1.0, so any minor version may change the API.
     straight through, so pages a CDN keeps stay public, and agents answer to their token, which
     no longer defaults to `dev-token` (`AGENT_TOKENS`). The smoke test runs the container with
     Docker's networks as its proxies (`PROXIES`), so each forwarded address has its own count.
+19. `examples/cluster` is `examples/listings-feed`, named for what it is (a seller's listings
+    feed served by several instances), like the other examples; the crate it shows is still
+    `corten-cluster`. Its package and image are `listings-feed` and `corten-listings-feed`.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

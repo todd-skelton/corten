@@ -129,7 +129,7 @@ subscriber gets the snapshot and then each later patch exactly once, in order; r
 from `Last-Event-ID`, and an unknown cursor or a gap ends in a fresh snapshot. `corten-cluster`
 runs one feed across instances (Postgres outbox, a leased relay to NATS JetStream): in the
 failover benchmark, 777,600 of 777,600 patches arrived with both instances killed and restarted
-under load (measured, one run, `examples/cluster/results/`).
+under load (measured, one run, `examples/listings-feed/results/`).
 
 Native apps and agents follow the same feed with `corten-protocol`'s `Replica`; see
 [Surfaces](../architecture.md).
