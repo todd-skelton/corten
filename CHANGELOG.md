@@ -1148,6 +1148,11 @@ Corten is pre-1.0, so any minor version may change the API.
     waits for its own answer, and the next one names each post's stock. The runtime never sent
     a post twice: the route the smoke intercepts saw one per submit
     ([#161 Firefox smoke: the shadowed-controls form is seen posting twice now and then](https://github.com/todd-skelton/corten/issues/161)).
+41. `examples/seller-desk`: typing a price threw `unsent.add is not a function` and the
+    "prices not saved" note never showed. The grid kept two `state(scope, ..)`s for one element,
+    and an element has one, so the second got the first's object. They are one object now, and
+    `state`'s docs say an element has one state. The seller-desk smoke test, which caught it, now
+    runs in CI, and waits for what it checks instead of fixed timers.
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
