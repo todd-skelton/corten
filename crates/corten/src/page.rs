@@ -860,7 +860,9 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     let asked = Asked::new(&req, shared.clone(), Credentials::of(req.headers()));
     let res = run(req, next, deadline, signal).await;
     #[cfg(debug_assertions)]
-    let res = refresh_header_is_an_error(res);
+    let mut res = refresh_header_is_an_error(res);
+    #[cfg(not(debug_assertions))]
+    let mut res = res;
     let status = res.status();
     let error = status.is_client_error() || status.is_server_error();
     if !error {
@@ -873,13 +875,14 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
         return crate::api::json_failure(res, shared.dev).await;
     }
     if let Some(crate::caller::SignIn(to)) = res.extensions().get::<crate::caller::SignIn>().cloned() {
+        let kept = std::mem::take(res.headers_mut());
         let Some(message) = sign_in_loops(asked.path(), &to) else {
-            return redirect(mode, to);
+            return carried(kept, redirect(mode, to));
         };
         tracing::error!("corten: {message}");
         let failure = Failure::Failed { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Some(Arc::from(message)) };
         let failure = if shared.dev { failure } else { failure.without_detail() };
-        return error_page(shared, asked, failure).await;
+        return carried(kept, error_page(shared, asked, failure).await);
     }
     let mut failed = res.extensions().get::<crate::Failed>().cloned();
     let cause = res.extensions().get::<Cause>().copied();
@@ -891,7 +894,9 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     if failed.is_none() && cause.is_none() && !empty_error && !rejection {
         return res;
     }
-    let allow = res.headers().get(header::ALLOW).cloned();
+    // What the handler and the app's middleware said besides the body (a request id,
+    // `Retry-After`, `WWW-Authenticate`, `Allow`) goes out with the error page.
+    let kept = std::mem::take(res.headers_mut());
     if rejection {
         let text = axum::body::to_bytes(res.into_body(), 16 * 1024).await.unwrap_or_default();
         let text = String::from_utf8_lossy(&text);
@@ -900,7 +905,7 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     }
     if offline && status == StatusCode::NOT_FOUND {
         // The PWA's offline page, which the service worker keeps: a 200.
-        return error_page(shared, asked, Failure::Offline).await;
+        return carried(kept, error_page(shared, asked, Failure::Offline).await);
     }
     let detail = failed.map(|crate::Failed(message)| message);
     let failure = match cause {
@@ -918,9 +923,44 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
         },
     };
     let failure = if shared.dev { failure } else { failure.without_detail() };
-    let mut res = error_page(shared, asked, failure).await;
-    if let Some(allow) = allow {
-        res.headers_mut().insert(header::ALLOW, allow);
+    carried(kept, error_page(shared, asked, failure).await)
+}
+
+/// `res` with the headers of the failed response it replaces, `kept`, except the ones that
+/// described its body or that Corten sets for the answer it sends (`Cache-Control`, its own
+/// `corten-` headers); a header `res` has already wins.
+fn carried(kept: HeaderMap, mut res: Response) -> Response {
+    if kept.is_empty() {
+        return res;
+    }
+    use axum::http::header::Entry;
+    let headers = res.headers_mut();
+    let mut kept_name = None;
+    // A name comes with its first value only; the values after it have `None`.
+    for (key, value) in kept {
+        if let Some(key) = key {
+            kept_name = None;
+            let replaced = matches!(
+                key,
+                header::CONTENT_TYPE
+                    | header::CONTENT_LENGTH
+                    | header::CONTENT_ENCODING
+                    | header::CONTENT_LANGUAGE
+                    | header::CONTENT_DISPOSITION
+                    | header::CONTENT_RANGE
+                    | header::TRANSFER_ENCODING
+                    | header::ETAG
+                    | header::LAST_MODIFIED
+                    | header::CACHE_CONTROL
+            ) || key.as_str().starts_with("corten-");
+            if !replaced {
+                if let Entry::Vacant(entry) = headers.entry(key) {
+                    kept_name = Some(entry.insert_entry(value));
+                }
+            }
+        } else if let Some(entry) = &mut kept_name {
+            entry.append(value);
+        }
     }
     res
 }

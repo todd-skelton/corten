@@ -18,7 +18,8 @@
 //!    error page for a browser ([`crate::App::error_page`]).
 //! 8. Security headers, `Cache-Control` (private when anything read a caller), compression.
 //!
-//! Whatever a middleware answers (a 429) leaves through 7 and 8 like a handler's answer.
+//! Whatever a middleware answers (a 429) leaves through 7 and 8 like a handler's answer. A header
+//! it sets on a failure (a request id, `Retry-After`) stays on the error page.
 //!
 //! ```
 //! use corten::{axum::{extract::Request, http::{HeaderValue, StatusCode}, response::{IntoResponse, Response}}, prelude::*};

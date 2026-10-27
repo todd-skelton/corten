@@ -945,6 +945,11 @@ Corten is pre-1.0, so any minor version may change the API.
     The runtime notes the elements that scroll as they do, so keeping a place reads only those (0.1 ms on a page of 4,770 elements in Chromium, against 15 ms reading every element's scroll; measured), and is 167 B larger gzipped (8,362 to 8,529 B, measured).
 27. A release build of `corten` compiles without a warning: the check that a patch has an id on
     each top-level element, which runs in debug builds only, is no longer compiled into release.
+28. The error page keeps the headers of the failure it replaces: a request id, `Retry-After`,
+    `WWW-Authenticate` and `Server-Timing` a handler or a middleware set were dropped (only
+    `Allow` was kept), on the sign-in redirect and the offline page too. The ones that described
+    the old body and `Cache-Control` are the error page's
+    ([#126 The error page drops the headers a middleware or handler set on the failed response (Retry-After, a request id, Server-Timing)](https://github.com/todd-skelton/corten/issues/126)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

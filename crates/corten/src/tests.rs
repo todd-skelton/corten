@@ -72,6 +72,67 @@ impl crate::Middleware for AsViewer {
     }
 }
 
+/// Stamps every answer with a request id and two `Server-Timing` values, and answers 429 with
+/// `Retry-After` itself when asked to by `x-flood`.
+struct Stamp;
+
+impl crate::Middleware for Stamp {
+    async fn call(&self, req: axum::extract::Request, next: impl crate::Next) -> Response {
+        use axum::http::{header, HeaderValue};
+        let mut res = if req.headers().contains_key("x-flood") {
+            let mut res = crate::Error::status(StatusCode::TOO_MANY_REQUESTS).into_response();
+            res.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_static("7"));
+            res
+        } else {
+            next.run(req).await
+        };
+        let headers = res.headers_mut();
+        headers.insert("x-request-id", HeaderValue::from_static("r-1"));
+        headers.append("server-timing", HeaderValue::from_static("app;dur=1"));
+        headers.append("server-timing", HeaderValue::from_static("db;dur=2"));
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=600"));
+        res
+    }
+}
+
+/// A failure that becomes the error page keeps what the handler and the middleware said besides
+/// the body (a request id, `Retry-After`, every `Server-Timing` value), in every mode; the error
+/// page's own type and `Cache-Control` win.
+#[tokio::test]
+async fn the_error_page_keeps_the_headers_of_the_failure_it_replaces() {
+    use axum::http::header;
+    let routes = Router::new().route(
+        "/busy",
+        get(|| async { (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "30"), (header::CONTENT_TYPE, "text/x-old")]) }),
+    );
+    let router = App::new(Routes::from(routes)).error_page(test_error_page, ()).middleware(Stamp).router();
+    for mode in [None, Some("nav")] {
+        for (uri, flood, status, retry) in
+            [("/nope", false, 404, None), ("/busy", false, 429, Some("30")), ("/nope", true, 429, Some("7"))]
+        {
+            let mut req = Request::get(uri).header("accept", "text/html");
+            if let Some(mode) = mode {
+                req = req.header("corten", mode);
+            }
+            if flood {
+                req = req.header("x-flood", "1");
+            }
+            let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            let at = format!("{mode:?} {uri} flood={flood}");
+            assert_eq!(res.status().as_u16(), status, "{at}");
+            let headers = res.headers();
+            assert_eq!(headers["x-request-id"], "r-1", "{at}");
+            let timing: Vec<_> = headers.get_all("server-timing").iter().collect();
+            assert_eq!(timing, ["app;dur=1", "db;dur=2"], "{at}");
+            assert_eq!(headers.get(header::RETRY_AFTER).map(|v| v.to_str().unwrap()), retry, "{at}");
+            assert!(headers[header::CONTENT_TYPE].to_str().unwrap().starts_with("text/html"), "{at}: {headers:?}");
+            assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache", "{at}: an error page is never shared");
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            assert!(String::from_utf8_lossy(&body).contains("<h1>"), "{at}: the error page");
+        }
+    }
+}
+
 /// The tests' layout: the page's title and head tags, and a header that marks the current page.
 #[crate::component]
 pub(crate) fn Shell(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
