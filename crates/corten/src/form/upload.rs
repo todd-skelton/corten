@@ -19,6 +19,75 @@ use crate::Error;
 /// for a body.
 const DEFAULT_LIMIT: usize = 2 * 1024 * 1024;
 
+/// How much of a body past its limit is read past (not kept) before the answer, so the browser,
+/// still sending, reads the answer instead of a broken connection. Past this the connection is
+/// closed.
+const READ_PAST: usize = 64 * 1024 * 1024;
+
+type Result<T, E = UploadError> = std::result::Result<T, E>;
+
+/// Why an [`Upload`] could not be read. `?` turns it into an [`Error`] with its status (the
+/// error page). Any read can find the body over its limit, so a handler that answers that with
+/// the form reads in one block and matches [`UploadError::TooLarge`] once:
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct NewListing {
+///     title: String,
+///     photos: Files,
+/// }
+///
+/// async fn create(mut upload: Upload<NewListing>) -> corten::Result<String> {
+///     upload.limit(60 << 20);
+///     let read = async {
+///         let mut photos = Vec::new();
+///         while let Some(mut file) = upload.next_file().await? {
+///             photos.push(file.bytes_up_to(10 << 20).await?);
+///         }
+///         Ok::<_, UploadError>((upload.fields().await?, photos))
+///     };
+///     match read.await {
+///         Ok((listing, photos)) => Ok(format!("{}: {} photos", listing.title, photos.len())),
+///         Err(UploadError::TooLarge { .. }) => Ok("The photos are over 60 MB together.".into()),
+///         Err(other) => Err(other.into()),
+///     }
+/// }
+/// # let _: Methods = post(create);
+/// ```
+#[derive(Debug)]
+pub enum UploadError {
+    /// The body is larger than [`Upload::limit`] (413). What the form sent is not read; the
+    /// rest of the body is read past, up to 64 MiB, so the browser receives the answer.
+    TooLarge { limit: usize },
+    /// The body breaks the multipart format, or could not be read to its end (400).
+    Malformed(String),
+    /// The text fields do not fit the form struct (422).
+    Fields(String),
+}
+
+impl std::fmt::Display for UploadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UploadError::TooLarge { limit } => write!(f, "the upload is larger than its limit of {limit} bytes"),
+            UploadError::Malformed(what) => write!(f, "the multipart body is malformed: {what}"),
+            UploadError::Fields(what) => write!(f, "Failed to deserialize form body: {what}"),
+        }
+    }
+}
+
+impl From<UploadError> for Error {
+    fn from(error: UploadError) -> Self {
+        let status = match error {
+            UploadError::TooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
+            UploadError::Malformed(_) => StatusCode::BAD_REQUEST,
+            UploadError::Fields(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        Error::new(error.to_string()).with_status(status)
+    }
+}
+
 /// The most a part's headers may take.
 const HEAD_LIMIT: usize = 8 * 1024;
 
@@ -103,7 +172,7 @@ impl<T> Upload<T> {
 
     /// The next file, reading the text fields before it (kept for [`Upload::fields`]); `None`
     /// once the body has no more. What is left of the file before is read past.
-    pub async fn next_file(&mut self) -> crate::Result<Option<File<'_>>> {
+    pub async fn next_file(&mut self) -> Result<Option<File<'_>>> {
         loop {
             let Some(head) = self.parts.head().await? else { return Ok(None) };
             match head.filename {
@@ -123,15 +192,13 @@ impl<T> Upload<T> {
 
     /// The text fields read into `T` as [`Form`](super::Form) reads them, after reading the rest
     /// of the body (files it reaches are read past).
-    pub async fn fields(mut self) -> crate::Result<T>
+    pub async fn fields(mut self) -> Result<T>
     where
         T: DeserializeOwned,
     {
         while self.next_file().await?.is_some() {}
         let pairs = self.fields.iter().map(|(k, v)| (Cow::Borrowed(k.as_str()), Cow::Borrowed(v.as_str()))).collect();
-        super::de::from_pairs(pairs).map_err(|error| {
-            Error::new(format!("Failed to deserialize form body: {error}")).with_status(StatusCode::UNPROCESSABLE_ENTITY)
-        })
+        super::de::from_pairs(pairs).map_err(|error| UploadError::Fields(error.to_string()))
     }
 }
 
@@ -209,13 +276,13 @@ impl File<'_> {
     }
 
     /// The file's next piece as it arrives, `None` at its end.
-    pub async fn chunk(&mut self) -> crate::Result<Option<Bytes>> {
+    pub async fn chunk(&mut self) -> Result<Option<Bytes>> {
         self.parts.data().await
     }
 
     /// The whole file, or `None` when it is larger than `max` bytes (the rest is read past, so
     /// the form's other fields can still be read and the field marked).
-    pub async fn bytes_up_to(&mut self, max: usize) -> crate::Result<Option<Bytes>> {
+    pub async fn bytes_up_to(&mut self, max: usize) -> Result<Option<Bytes>> {
         let mut pieces: Vec<Bytes> = Vec::new();
         let mut len = 0;
         while let Some(piece) = self.chunk().await? {
@@ -264,13 +331,16 @@ struct Head {
     content_type: Option<String>,
 }
 
-fn malformed(what: &str) -> Error {
-    Error::new(format!("the multipart body is malformed: {what}")).with_status(StatusCode::BAD_REQUEST)
+fn malformed(what: &str) -> UploadError {
+    UploadError::Malformed(what.into())
 }
 
 impl Parts {
     /// Reads one more piece of the body onto `buf`; false at its end.
-    async fn more(&mut self) -> crate::Result<bool> {
+    async fn more(&mut self) -> Result<bool> {
+        if self.read > self.limit {
+            return Err(UploadError::TooLarge { limit: self.limit });
+        }
         if self.ended {
             return Ok(false);
         }
@@ -279,14 +349,22 @@ impl Parts {
                 self.ended = true;
                 Ok(false)
             }
-            Some(Err(error)) => {
-                Err(Error::new(format!("the upload could not be read: {error}")).with_status(StatusCode::BAD_REQUEST))
-            }
+            Some(Err(error)) => Err(UploadError::Malformed(format!("it could not be read: {error}"))),
             Some(Ok(piece)) => {
                 self.read += piece.len();
                 if self.read > self.limit {
-                    return Err(Error::new(format!("the upload is larger than its limit of {} bytes", self.limit))
-                        .with_status(StatusCode::PAYLOAD_TOO_LARGE));
+                    // A browser still sending when the answer comes takes the closed connection
+                    // for a network error and never shows the answer: read past the rest first.
+                    let mut past = self.read - self.limit;
+                    while past <= READ_PAST {
+                        match self.body.next().await {
+                            Some(Ok(piece)) => past += piece.len(),
+                            _ => break,
+                        }
+                    }
+                    self.ended = true;
+                    self.buf = Bytes::new();
+                    return Err(UploadError::TooLarge { limit: self.limit });
                 }
                 // Usually nothing is left over (see `data`), so the piece is used as it came.
                 self.buf = if self.buf.is_empty() { piece } else { Bytes::from([&self.buf[..], &piece[..]].concat()) };
@@ -296,7 +374,7 @@ impl Parts {
     }
 
     /// The current part's next piece, `None` at its end (or when not in a part).
-    async fn data(&mut self) -> crate::Result<Option<Bytes>> {
+    async fn data(&mut self) -> Result<Option<Bytes>> {
         loop {
             if self.state != State::Body {
                 return Ok(None);
@@ -321,7 +399,7 @@ impl Parts {
     }
 
     /// The current part's content as text.
-    async fn text(&mut self) -> crate::Result<String> {
+    async fn text(&mut self) -> Result<String> {
         let mut bytes = Vec::new();
         while let Some(piece) = self.data().await? {
             bytes.extend_from_slice(&piece);
@@ -330,7 +408,7 @@ impl Parts {
     }
 
     /// The next part's headers, reading past the rest of the current part; `None` at the end.
-    async fn head(&mut self) -> crate::Result<Option<Head>> {
+    async fn head(&mut self) -> Result<Option<Head>> {
         while self.data().await?.is_some() {}
         if self.state == State::Done {
             return Ok(None);
@@ -365,7 +443,7 @@ impl Parts {
 
 /// A part's `Content-Disposition: form-data; name=".."` (with `filename=".."` for a file) and
 /// `Content-Type`.
-fn parse_head(bytes: &[u8]) -> crate::Result<Head> {
+fn parse_head(bytes: &[u8]) -> Result<Head> {
     let text = std::str::from_utf8(bytes).map_err(|_| malformed("a part's headers are not UTF-8"))?;
     let (mut disposition, mut content_type) = (None, None);
     for line in text.split("\r\n") {
@@ -409,7 +487,7 @@ impl<'a> Params<'a> {
     /// The next `key=value` or `key="value"`. A quoted value is read as browsers write it (a
     /// quote, CR and LF as `%22`, `%0D`, `%0A`, a backslash as itself, so an old browser's
     /// `C:\path\name` stays a path) and as other clients write a quote (`\"`).
-    fn next_param(&mut self) -> crate::Result<Option<(&'a str, String)>> {
+    fn next_param(&mut self) -> Result<Option<(&'a str, String)>> {
         let rest = self.0.trim_start_matches([' ', '\t', ';']);
         if rest.is_empty() {
             return Ok(None);

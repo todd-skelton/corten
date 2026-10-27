@@ -72,6 +72,11 @@ async fn create(req: Req, mut upload: Upload<NewListing>) -> HtmlResult {
 }
 ```
 
+A body over `upload.limit` makes every read return `UploadError::TooLarge` (`?`: a 413 and the
+error page). To answer it in the form, put the reads in one `async` block returning
+`Result<_, UploadError>` and match `Err(UploadError::TooLarge { .. })` once; never compare
+statuses or check `Content-Length` by hand.
+
 Types, counts and per-file sizes are the handler's checks, reported with `errors.add(f.photos, ..)`
 so the form is drawn again with the message beside the input.
 
@@ -124,6 +129,10 @@ let e = form.errors.within(AlertFormId);
 <input type="email" name={f.email} value={form.email} required {..e.aria(f.email)}>
 {e.message(f.email)}
 ```
+
+A field with a hint of its own gives the hint's id to the spread,
+`{..e.aria(f.email).hint(&EmailHintId)}`, never a second `aria-describedby` on the tag (the
+browser keeps only the first, and `html!` refuses it).
 
 A refusal that belongs to no field (a cross-field rule, or the backend saying no) is
 `errors.add_form(text)`, shown once at the top of the form with `{form.errors.form_message()}`.

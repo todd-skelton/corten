@@ -885,6 +885,11 @@ Corten is pre-1.0, so any minor version may change the API.
     own, so its extensions fit their first allocation: 207 fewer instructions for a page, 647 for
     a signed-in page and 849 for the error page (callgrind, release build, in-process `oneshot`,
     median of three).
+53. CI runs the browser smoke tests in Playwright's image for the `@playwright/test` version in
+    `package.json`, which has the three browsers and their system libraries. Installing them on
+    the runner (`npx playwright install --with-deps`) fetched about a hundred packages from the
+    Ubuntu mirror on every run, and stalled until it was cancelled when the mirror slowed to a few
+    KB/s (twice on 2026-10-27, 15 and 5 minutes).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -1060,6 +1065,19 @@ Corten is pre-1.0, so any minor version may change the API.
     still return to where the user was. Found when `examples/watchlist`'s taller About page made
     the smoke test's "a plain link still goes to the top" fail. The runtime is 6 B larger gzipped
     (9,018 to 9,024 B, measured).
+35. A field with a hint of its own can point at the hint and at its error: `e.aria(field).hint(&HintId)`
+    writes one `aria-describedby` naming both. Before, the hint needed a second
+    `aria-describedby` on the tag, which the browser dropped, or the error's id written by hand.
+    A start tag that writes `aria-describedby` or `aria-invalid` beside `e.aria(..)` no longer
+    compiles, since the browser would keep only one of them
+    ([#147 A field with its own hint cannot also point at its error: Within::aria writes a second aria-describedby, which the browser drops](https://github.com/todd-skelton/corten/issues/147)).
+36. A body over `Upload::limit` can be answered with the form and a message. `Upload`'s reads
+    return `UploadError` (`TooLarge`, `Malformed`, `Fields`), which `?` still turns into a 413,
+    400 or 422; a handler matches `UploadError::TooLarge` instead of comparing statuses or reading
+    `Content-Length`. The rest of an over-limit body is now read past (up to 64 MiB) before the
+    answer: before, Chromium (and Firefox, for a 20 MB body) took the closed connection for a
+    network error and showed nothing, not even the error page
+    ([#150 A handler cannot read an Error's status, so an upload over Upload::limit (413) cannot draw the form again with a message](https://github.com/todd-skelton/corten/issues/150)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1072,14 +1090,14 @@ Corten is pre-1.0, so any minor version may change the API.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
 6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
-   from round r5 (2026-10-25, one c-8 droplet, Xeon Platinum 8168 as in r4, the tree at
-   `f80d4a1`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 21,735 item pages
-   and 25,200 JSON responses a second from memory at 64 users (r4: 18,043 and 18,934), and 3,240
-   item-API pages against ASP.NET Core's 998 (r4: 2,142 and 915). A page costs 103,877 user
-   instructions and the JSON 69,291 (r4: 123,693 and 133,308). The unchanged apps moved by up to
-   17% between the two droplets. Django passed the in-memory page test it failed in r4; Nuxt,
-   Next.js and Laravel failed as before. The item page loads 7.3 KB of JavaScript (gzip; r4
-   6.2 KB).
+   from round r6 (2026-10-27, one c-8 droplet, Xeon Platinum 8280, faster than r5's 8168, the tree
+   at `cf8ac0f`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 23,416 item pages
+   and 27,625 JSON responses a second from memory at 64 users (r5: 21,735 and 25,200), and 3,615
+   item-API pages against ASP.NET Core's 1,171 (r5: 3,240 and 998). A page costs 95,038 user
+   instructions and the JSON 69,444 (r5: 103,877 and 69,291). The unchanged apps rose by a median
+   of 14-27% on the faster CPU, more than Corten's 8-12%, and Corten's item-API JSON held (3,753;
+   r5 3,787). Nuxt and Django passed the in-memory page test; Next.js and Laravel failed as
+   before. The item page loads 9.6 KB of JavaScript (gzip; r5 7.3 KB).
 7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a

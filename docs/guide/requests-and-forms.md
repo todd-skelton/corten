@@ -127,6 +127,10 @@ refusal replaces: `let e = errors.within(PriceId(id));`. Then `<input name={f.pr
 {..e.aria(f.price)}>` sets `aria-invalid` and `aria-describedby`, `{e.message(f.price)}` prints
 the message it points at, with the id `{form id}-{field}-error` (`price-s1-price-error`), so two
 refused forms with a field of the same name (a price in every row) never share a message id.
+A field with a hint of its own (a format, a size limit) names it to the spread,
+`{..e.aria(f.price).hint(&PriceHintId(id))}`, which writes one `aria-describedby` naming the hint
+and then the message. A browser keeps only an attribute's first value, so a start tag that writes
+`aria-describedby` or `aria-invalid` beside `e.aria(..)` does not compile.
 The runtime focuses the first invalid field (unless the user has moved on to another part of the
 page while waiting).
 
@@ -242,8 +246,30 @@ To hand a file on without holding it (to an object store or a storage API), read
 piece with `file.chunk()`. Each piece is passed on as it arrives, and the request keeps one piece
 at a time, not the file.
 
-`upload.limit(bytes)` bounds the whole body, files and fields together. Past it the request is a
-413. Set it before reading. The limit for one file, the types a field accepts and how many files
+`upload.limit(bytes)` bounds the whole body, files and fields together. Set it before reading.
+Past it every read returns `UploadError::TooLarge`, which `?` makes a 413 and the error page.
+To draw the form again with a message instead, read in one block and match its outcome once,
+since any read can find the body over the limit:
+
+```rust,ignore
+let read = async {
+    let mut photos = Vec::new();
+    while let Some(mut file) = upload.next_file().await? {
+        photos.push(file.bytes_up_to(10 << 20).await?);
+    }
+    Ok::<_, UploadError>((upload.fields().await?, photos))
+};
+match read.await {
+    Ok((input, photos)) => { .. }
+    Err(UploadError::TooLarge { .. }) => { /* the form, "The photos are over 60 MB together." */ }
+    Err(other) => Err(other.into()),
+}
+```
+
+The fields are not read then (they may come after the files), so the form is drawn from what
+the page had. The rest of the body is read past, up to 64 MiB, and not kept: a browser that is
+still sending when the answer comes reports a network error and never shows the answer. Past
+that the connection is closed. The limit for one file, the types a field accepts and how many files
 it takes are the handler's rules, so it checks them and adds a message to `Errors`. The form
 is then drawn again with its other fields kept and the message next to the input.
 
