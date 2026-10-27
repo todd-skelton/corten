@@ -2,8 +2,9 @@
 //! typed route (`#[derive(Route)]`) with the handlers that serve it, so a route with no handler
 //! does not compile; `router()` puts each handler at its route's path, or with
 //! `#[corten::routes(area = Admin)]`, `area(area)` does in that area, and with
-//! `#[corten::routes(api = ApiRoot)]`, `api(api)` in that API. An API's own prefix route may have
-//! no handler: it is the prefix the API's routes are under.
+//! `#[corten::routes(api = ApiRoot)]`, `api(api)` in that API. An area's or API's own prefix
+//! route may have no handler. An area's is then only the prefix its routes are under, with no
+//! `href`; an API's stays a route, for an endpoint added at it by hand (`Api::route`).
 
 use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
 
@@ -92,8 +93,8 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         );
     };
     let TokenTree::Ident(module) = tokens[tokens.len() - 2].clone() else { unreachable!("is_mod checked") };
-    let api_prefix = prefix_name.as_deref().filter(|_| matches!(within, Some((Kind::Api, _))));
-    let (mut items, routed) = scan(body.stream(), api_prefix)?;
+    let area = matches!(within, Some((Kind::Area, _)));
+    let (mut items, routed) = scan(body.stream(), prefix_name.as_deref(), area)?;
     for (i, a) in routed.iter().enumerate() {
         if let Some(b) = routed[..i].iter().find(|b| same_pattern(&a.path, &b.path)) {
             return err(
@@ -283,7 +284,7 @@ fn expand_within(
     // container's own check (`Area::route`, `Api::route`) holds each route under its prefix.
     out.extend(q(
         "#[automatically_derived]
-        impl<P: ::corten::Route> __A0::__CortenWithin<__A2, P> for __A0::__CortenRoutes {
+        impl<P: ::corten::Prefix> __A0::__CortenWithin<__A2, P> for __A0::__CortenRoutes {
             #[allow(unused_variables)]
             fn __within(routes: ::corten::__A3<P>, state: __A2) -> ::corten::__A3<P> {
                 routes __A1
@@ -326,9 +327,12 @@ fn is_mod(tokens: &[TokenTree]) -> bool {
 }
 
 /// The module's items with `#[derive(::corten::Route)]` on each routed struct and its
-/// `#[route(..)]` cut to the path, and those structs with their handlers. `api_prefix` is the
-/// struct an API module is under, the one route that may name no handler.
-fn scan(body: TokenStream, api_prefix: Option<&str>) -> Result<(TokenStream, Vec<Routed>), Error> {
+/// `#[route(..)]` cut to the path, and those structs with their handlers. `prefix` is the
+/// struct an area or API module is under, the one route that may name no handler. An area's
+/// (`area`) is then a prefix and nothing more (`::corten::Prefix`, no `href`), since no page is
+/// at its URL; an API's stays a route, which an endpoint built from a value (the MCP endpoint) is
+/// added at by hand.
+fn scan(body: TokenStream, prefix: Option<&str>, area: bool) -> Result<(TokenStream, Vec<Routed>), Error> {
     let tokens: Vec<TokenTree> = body.into_iter().collect();
     let mut out: Vec<TokenTree> = Vec::new();
     let mut routed = Vec::new();
@@ -337,6 +341,9 @@ fn scan(body: TokenStream, api_prefix: Option<&str>) -> Result<(TokenStream, Vec
     let mut start = None;
     let mut derives = None;
     let mut route: Option<(String, Span, Serves)> = None;
+    // Where the current item's `#[route(..)]` is in `out`, and the prefix's impl, if any.
+    let mut route_at = None;
+    let mut prefix_impl = TokenStream::new();
     let mut i = 0;
     while i < tokens.len() {
         match (&tokens[i], tokens.get(i + 1)) {
@@ -348,6 +355,7 @@ fn scan(body: TokenStream, api_prefix: Option<&str>) -> Result<(TokenStream, Vec
                 let attr = match route_attr(g)? {
                     Some((path, span, serves, cut)) => {
                         route = Some((path, span, serves));
+                        route_at = Some(out.len());
                         cut
                     }
                     None => g.clone(),
@@ -378,7 +386,7 @@ fn scan(body: TokenStream, api_prefix: Option<&str>) -> Result<(TokenStream, Vec
                             ),
                         );
                     }
-                    if serves.handlers.is_empty() && api_prefix != Some(name.to_string().as_str()) {
+                    if serves.handlers.is_empty() && prefix != Some(name.to_string().as_str()) {
                         return err(
                             span,
                             format!(
@@ -386,6 +394,34 @@ fn scan(body: TokenStream, api_prefix: Option<&str>) -> Result<(TokenStream, Vec
                                 crate::names::snake(&name.to_string())
                             ),
                         );
+                    }
+                    if serves.handlers.is_empty() && area {
+                        // The area's prefix with no page at its URL: no link to it can compile.
+                        if !matches!(tokens.get(i + 2), Some(TokenTree::Punct(p)) if p.as_char() == ';') {
+                            return err(
+                                name.span(),
+                                format!("{name} is the prefix, with no page at {path}, so it has no fields: pub struct {name};"),
+                            );
+                        }
+                        let at = route_at.expect("the route attribute was read");
+                        out.drain(at..at + 2);
+                        prefix_impl.extend(q(
+                            "#[automatically_derived]
+                            impl ::corten::Prefix for __A0 {
+                                const PREFIX: &'static str = __A1;
+                            }",
+                            &[
+                                TokenTree::Ident(name.clone()).into(),
+                                TokenTree::Literal(proc_macro::Literal::string(&path)).into(),
+                            ],
+                        ));
+                        routed.push(Routed { name: name.clone(), path, span, handlers: Vec::new() });
+                        start = None;
+                        derives = None;
+                        route_at = None;
+                        out.push(tokens[i].clone());
+                        i += 1;
+                        continue;
                     }
                     let at = start.unwrap_or(out.len());
                     let derive: Vec<TokenTree> = q("#[derive(::corten::Route)]", &[]).into_iter().collect();
@@ -398,9 +434,11 @@ fn scan(body: TokenStream, api_prefix: Option<&str>) -> Result<(TokenStream, Vec
         start = None;
         derives = None;
         route = None;
+        route_at = None;
         out.push(tokens[i].clone());
         i += 1;
     }
+    out.extend(prefix_impl);
     Ok((out.into_iter().collect(), routed))
 }
 

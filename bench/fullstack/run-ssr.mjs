@@ -8,7 +8,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { apiContainer, apps as catalog, k6Net, k6User, loadCpus, network, runArgs } from "./apps.mjs";
+import { apiContainer, apps as catalog, k6Net, k6User, loadCpusFor, network, runArgs } from "./apps.mjs";
+import { cpuUsec } from "./cpu-time.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const [round = "r1", source = "api", fixedRate = "150", appsArg = Object.keys(catalog).join(","), target = "page"] = process.argv.slice(2);
@@ -19,7 +20,7 @@ const docker = (...args) => spawnSync("docker", args, { encoding: "utf8" });
 const log = (msg) => console.log(new Date().toISOString(), msg);
 
 function k6(name, base, envs) {
-  const args = ["run", "--rm", "--network", network, ...k6Net, ...loadCpus, ...k6User, "-v", `${here}:/bench`, "-e", `BASE=${base}`, "-e", `TARGET=${target}`];
+  const args = ["run", "--rm", "--network", network, ...k6Net, ...loadCpusFor(source), ...k6User, "-v", `${here}:/bench`, "-e", `BASE=${base}`, "-e", `TARGET=${target}`];
   for (const [k, v] of Object.entries(envs)) args.push("-e", `${k}=${v}`);
   args.push("grafana/k6:latest", "run", "--quiet", "--summary-export", `/bench/results/${round}/${source}/${name}.json`, "/bench/ssr-load.js");
   const r = docker(...args);
@@ -69,8 +70,14 @@ for (const name of appsArg.split(",")) {
   ]) {
     log(`${file} ${source} ${phase}`);
     const sampled = [`fsw-${name}`, ...(source === "api" ? [apiContainer] : [])];
+    // CPU time each container used during the phase, from its cgroup's counter: what requests per
+    // CPU-second divides by. Null where the counter could not be read. Read before the sampler
+    // starts, since under Docker Desktop a read takes a few seconds.
+    const before = sampled.map(cpuUsec);
     const s = spawn("node", [join(here, "sample-stats.mjs"), join(results, `${file}-${phase}-stats.json`), "62", ...sampled], { stdio: "ignore", windowsHide: true });
     k6(`${file}-${phase}`, base, envs);
+    const after = sampled.map(cpuUsec);
+    writeFileSync(join(results, `${file}-${phase}-cpu.json`), JSON.stringify(Object.fromEntries(sampled.map((c, i) => [c, before[i] !== null && after[i] !== null ? { usec: after[i] - before[i] } : null])), null, 1));
     await new Promise((r) => (s.exitCode !== null ? r() : s.on("exit", r)));
   }
   docker("rm", "-f", `fsw-${name}`);

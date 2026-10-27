@@ -85,6 +85,7 @@ pub mod style;
 mod task;
 #[cfg(feature = "types")]
 pub mod types;
+pub mod upgrade;
 pub mod view;
 
 use std::{
@@ -105,7 +106,7 @@ use futures_util::{Stream, StreamExt};
 
 #[cfg(feature = "json")]
 pub use answer::JsonResult;
-pub use answer::{Answer, HtmlResponse, HtmlResult, LiveResponse, NoStore, Public};
+pub use answer::{Answer, HtmlResponse, HtmlResult, LiveResponse, NoStore, Public, Relay};
 pub use api::Api;
 pub use app::{listeners, serve, serve_on, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
@@ -125,7 +126,7 @@ pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
 pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, ReadAgainFrom, Req, MODE_HEADER};
-pub use route::{routes, Elsewhere, Href, Methods, Route, Routes, UrlValue};
+pub use route::{routes, Elsewhere, Href, Methods, Prefix, Route, Routes, UrlValue};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;

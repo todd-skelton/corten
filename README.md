@@ -20,6 +20,9 @@ over server-sent events. One request handler serves the browser, native apps and
 - **Fast on the server.** 23,416 rendered pages a second on one CPU, 5.4x ASP.NET Core, the
   fastest of thirteen other frameworks, and 1.1 MiB of memory after the first request
   (measured, [below](#performance)).
+- **Light on the machine.** A page costs 40 µs of CPU, 5.9x less than ASP.NET Core's; 300 pages a
+  second take 4% of one core (ASP.NET Core 17%, Leptos 23%), and each MiB of memory serves 1,110
+  pages a second, 12x Leptos (measured, [below](#cpu-and-memory-per-request)).
 - **Fast in the browser.** A 5.3 KB (brotli) runtime; the benchmark item page loads 9.6 KB of
   JavaScript (gzip, measured). No WASM, no virtual DOM, no hydration: a script takes over 1,000
   server-rendered rows in 6.0 ms, against 20-84 ms for Solid, Svelte, Vue, React and Remix
@@ -232,6 +235,18 @@ static site (a static site generator is simpler).
 9. **Verified, not assumed.** Every runtime behavior has a browser smoke test. Reliability work,
    like failover and lost-patch counts, is benchmarked rather than argued.
 
+When two values conflict, this order decides:
+
+1. Correctness and reliability.
+2. Performance at the user's end.
+3. Compile-time safety and one way to do things: a mistake the compiler can catch is a compile
+   error, not a startup panic or a per-request check ([design rules](docs/design.md#rules)).
+4. Developer convenience.
+
+So the deadline timer that cost 640 ns per request was reworked rather than kept for
+convenience, and a nicer API that slows every page loses. Every pull request is reviewed against
+these values, in this order, before it merges ([CONTRIBUTING.md](CONTRIBUTING.md#review)).
+
 ## Performance
 
 Measured on one DigitalOcean c-8 droplet (Xeon Platinum 8280) on 2026-10-27, one run (round r6,
@@ -272,6 +287,38 @@ Requests a second compare only within a round, since droplets of one size differ
 counts compare across rounds. Pushing live updates
 is measured in [bench/live](bench/live/README.md): at 10,000 open connections on one core, only
 Corten and Leptos delivered all 100,000 messages a second.
+
+### CPU and memory per request
+
+Serving more is half of it; the other half is what each request costs. From the same r6 runs,
+items in memory: pages per CPU-second are requests a second at 64 users over the share of its
+core each app used, CPU for 300 pages a second is the fixed-rate phase, and pages a second per MiB
+divide the 64-user rate by the app's peak memory under that load.
+
+| | Pages per CPU-second | CPU for 300 pages a second | Pages a second per MiB | Peak memory, 64 users |
+|---|---|---|---|---|
+| **Corten** | **25,124** | **4.1%** | **1,110** | **21.1 MiB** |
+| ASP.NET Core 10 | 4,285 | 17% | 50 | 86.2 MiB |
+| Phoenix 1.8 | 1,608 | 33% | 5.7 | 280.9 MiB |
+| Leptos 0.8 | 1,478 | 23% | 91 | 16.4 MiB |
+| Astro 7 | 1,253 | 31% | 9.4 | 134.1 MiB |
+| Spring Boot 4.1 | 1,109 | 40% | 3.1 | 356.3 MiB |
+| SvelteKit 3 | 979 | 36% | 6.7 | 148 MiB |
+| TanStack Start | 701 | 49% | 4.2 | 168.1 MiB |
+| React Router 7 | 548 | 60% | 3.8 | 143.6 MiB |
+| Rails 8.1 | 531 | 65% | 3.8 | 142 MiB |
+| Django 6.1 | 344 | 85% | 1.0 | 344.3 MiB |
+| Nuxt 4 | 324 | 100%, 291/s served | 2.5 | 131.8 MiB |
+| Next.js 16 | failed (185) | failed (100%, 151/s served) | failed (0.9) | 214.3 MiB |
+| Laravel 13 | failed | failed | failed | failed |
+
+Corten renders a page with 40 µs of CPU, ASP.NET Core with 233 µs and Leptos with 677 µs. Leptos
+peaks at less memory than Corten (16.4 MiB against 21.1) and serves a sixteenth of the pages.
+From the item API, fetching and parsing the 55 KB item costs Corten about 240 µs a page, six times
+the page itself; that is the next thing to make cheaper
+([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+CPU was sampled once a second in r6, coarse at Corten's 4%; from r7 it is counted
+([method](bench/fullstack/README.md#efficiency)).
 
 ### In the browser
 
@@ -377,8 +424,9 @@ Examples: [watchlist](examples/watchlist) (a stock watchlist with live prices, m
 
 ## Contributing
 
-Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the layout and the
-checks; report security issues as [SECURITY.md](SECURITY.md) describes.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the layout, the
+checks and how a change is reviewed; report security issues as [SECURITY.md](SECURITY.md)
+describes.
 
 ## License
 

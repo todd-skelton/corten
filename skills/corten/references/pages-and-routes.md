@@ -43,7 +43,9 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    `Response` or `impl IntoResponse` there does not compile. `App::new` takes only a routes
    module's `router()` (`Routes`), and `Area::route`/`Api::route` only Corten's `get(h)`,
    `post(h)`, ... (`Methods`), which check handlers the same way: never build an axum `Router`. Every
-   route names its handler except an API's prefix route, which may name none.
+   route names its handler except an area's or API's prefix route, which may name none; an
+   area's prefix with no handler is not a link (no `href`), so never declare a link-only struct
+   outside the module for it.
 2. `req.page` takes the whole document: the app's `Layout` (in `src/views.rs`, the app's code)
    with the page as its children. The title and the page's head tags (description, canonical,
    social) are the layout's props. Never build a document outside a layout component. A page
@@ -164,6 +166,14 @@ a 4xx message is sent, so write it for the client. Validation is `Errors` as the
 is no document; a handler that needs to know who calls takes a `Caller` (an API key's partner
 type), and a refusal is a JSON 401 or 403. Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
+
+A WebSocket is a route whose handler takes `corten::upgrade::Upgrade` and returns
+`upgrade.websocket(|stream, signal| async move { .. })`; read the frames with a library
+(`tokio_tungstenite::WebSocketStream::from_raw_socket(stream, Role::Server, config)`) and end on
+`signal.aborted()`. Its handshake is checked as a write (another site's page gets a 403), so do
+not add an `Origin` check of your own. A route that passes another server's answer on returns
+`corten::Relay::new(status, headers, body)`, never a `Response`; never merge a router after
+`app.router()` for either.
 
 ## Routes only some callers may use
 

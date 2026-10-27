@@ -578,6 +578,21 @@ Corten is pre-1.0, so any minor version may change the API.
     without `viewer.map(|Caller(v)| v)`.
 86. `.area(admin::area)` and `.api(api::api)` infer the prefix from the module's function; the
     `::<Admin>` turbofish is needed only for routes added by hand.
+87. `corten::upgrade::Upgrade`: a route that switches its connection, as a WebSocket
+    (`upgrade.websocket(run)`, the frames read by a library such as tokio-tungstenite) or a tunnel
+    relaying an upstream's 101 (`upgrade.switch(headers, run)`). It is checked like any route
+    (`Caller<T>`, the host check, the app's middleware), and its handshake as a write: another
+    site's page gets a 403. The work runs on its own `Signal`, aborted at shutdown. Requests that
+    do not switch run no new code (callgrind: 26,025,236 instructions for 1,200 requests in
+    process, against about 26,030,000 on main). `corten::Relay` passes another server's answer on:
+    its status, its headers less the hop-by-hop ones and its body as it arrives, never replaced by
+    the error page or the JSON error
+    ([#117 A route cannot be a WebSocket or pass an upstream response through](https://github.com/todd-skelton/corten/issues/117)).
+88. An area with no page at its prefix: its module's prefix route names no handler
+    (`#[route("/docs")] pub struct Docs;`) and is then only a `corten::Prefix`, with no `href`,
+    so no link to the unserved URL compiles. `Area` and `Api` take any `Prefix`, which every
+    `Route` is
+    ([#152 An area with no page at its prefix (/items, /sets) must declare the prefix as a link-only route outside its routes module](https://github.com/todd-skelton/corten/issues/152)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -880,6 +895,18 @@ Corten is pre-1.0, so any minor version may change the API.
     the runner (`npx playwright install --with-deps`) fetched about a hundred packages from the
     Ubuntu mirror on every run, and stalled until it was cancelled when the mirror slowed to a few
     KB/s (twice on 2026-10-27, 15 and 5 minutes).
+54. `bench/fullstack` measures what a request costs: `run-ssr.mjs` reads each phase's CPU time from
+    the container's cgroup counter (`cpu-time.mjs`), and `summarize.mjs` adds requests per
+    CPU-second, requests a second per MiB and the item API's CPU to `summary.json`. With items in
+    memory the load generator also gets the item API's idle cores: in r6 four could not keep
+    Corten's core busy (93% for the page, 88% for the JSON).
+55. `bench/fullstack/item-api/server.mjs` runs a server process per core it may use (two on a
+    bench droplet), each listening with `SO_REUSEPORT`. In r6 its one process used 39-40% of a core
+    for Corten's item-API runs and would have capped an app about 2.6x faster
+    ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+    On Docker Desktop (shared with other work, so rough), pinned to two cores, it served
+    4,400-6,600 items a second to 64 users in three runs against 3,600-4,000 in two with one
+    process, using about 1.9 cores. Responses are byte for byte the same.
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -1055,6 +1082,12 @@ Corten is pre-1.0, so any minor version may change the API.
     still return to where the user was. Found when `examples/watchlist`'s taller About page made
     the smoke test's "a plain link still goes to the top" fail. The runtime is 6 B larger gzipped
     (9,018 to 9,024 B, measured).
+35. A field with a hint of its own can point at the hint and at its error: `e.aria(field).hint(&HintId)`
+    writes one `aria-describedby` naming both. Before, the hint needed a second
+    `aria-describedby` on the tag, which the browser dropped, or the error's id written by hand.
+    A start tag that writes `aria-describedby` or `aria-invalid` beside `e.aria(..)` no longer
+    compiles, since the browser would keep only one of them
+    ([#147 A field with its own hint cannot also point at its error: Within::aria writes a second aria-describedby, which the browser drops](https://github.com/todd-skelton/corten/issues/147)).
 36. A body over `Upload::limit` can be answered with the form and a message. `Upload`'s reads
     return `UploadError` (`TooLarge`, `Malformed`, `Fields`), which `?` still turns into a 413,
     400 or 422; a handler matches `UploadError::TooLarge` instead of comparing statuses or reading
@@ -1062,6 +1095,11 @@ Corten is pre-1.0, so any minor version may change the API.
     answer: before, Chromium (and Firefox, for a 20 MB body) took the closed connection for a
     network error and showed nothing, not even the error page
     ([#150 A handler cannot read an Error's status, so an upload over Upload::limit (413) cannot draw the form again with a message](https://github.com/todd-skelton/corten/issues/150)).
+37. A page whose handlers call a script module the app does not serve is an error in debug builds
+    (a router test, `cargo run`), naming the module to list; a release build logs it. Before, it
+    rendered with a 200 and only the browser found the 404, after which the module's handlers did
+    nothing
+    ([#157 A page that names a script! module the app does not serve renders fine; only the browser finds the 404, and its handlers silently do nothing](https://github.com/todd-skelton/corten/issues/157)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1082,6 +1120,9 @@ Corten is pre-1.0, so any minor version may change the API.
    of 14-27% on the faster CPU, more than Corten's 8-12%, and Corten's item-API JSON held (3,753;
    r5 3,787). Nuxt and Django passed the in-memory page test; Next.js and Laravel failed as
    before. The item page loads 9.6 KB of JavaScript (gzip; r5 7.3 KB).
+   A new table gives what a request costs: pages per CPU-second (Corten 25,124, ASP.NET Core
+   4,285), CPU for 300 pages a second (4.1% against 17%) and pages a second per MiB (1,110 against
+   50).
 7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
@@ -1121,18 +1162,28 @@ Corten is pre-1.0, so any minor version may change the API.
     The watchlist is styled utility-first from its token file's utilities (`display`, `gap`,
     `p`, `bg`, `columns`, ...), with the repeated combinations named in `src/theme.rs`, and the
     styles guide compares that with Tailwind.
-16. `examples/watchlist` is a watchlist you use, not a tour of the framework. You watch and
-    unwatch stocks from a market of eight, kept in a cookie, and the list and the form are
-    patched in place. Each row shows today's change, from the server (`t.percent`) and from the
-    script (`t.js().percent(2)`). The market moves from a task of the app's
+16. Every pull request is reviewed against the values before it merges, by someone who did not
+    write it, who looks for the way the change breaks a value (CONTRIBUTING.md, Review). The
+    order that decides between conflicting values now sits with the values in the README
+    rather than in AGENTS.md, which has an agent start a new agent for the review, and a pull
+    request template asks for the checks, the measurements and the findings.
+17. `examples/watchlist` is a stock watchlist whose pages each do a job a user has. You watch
+    and remove stocks from a market of eight; each browser's list is kept on the server under a
+    random id in a `list` cookie and changed under a lock, so two removals sent at once both
+    land. Each row's Remove button submits the watch form (`formaction`), and the list and the
+    form are patched in place. Each row shows today's change, from the server (`t.percent`) and
+    from the script (`t.js().percent(2)`). The market moves from a task of the app's
     (`App::task`, which stops at shutdown) rather than `tokio::spawn`. The About page is now
-    News: a sector filter whose sectors are `#[derive(UrlValue)]` in the address, an "only
-    stocks I watch" filter, Load more, a briefing signup that sends the browser back to its form
-    (`route.at(Id)`), and stories that link to a place on the publisher's page
-    (`Elsewhere::at`). The saved page is now Alerts, a price alert answered while its read
-    catches up (`ReadAgain`), and the avatar upload has a form on the Account page, with sign
-    out. The smoke test follows the new pages and checks that a list a patch replaces subscribes
-    to its feed again and closes the old stream.
+    News: one query struct (`#[route(query)] filter: NewsQuery`) for the sector filter, whose
+    sectors are `#[derive(UrlValue)]`, the "only stocks I watch" filter and Load more; a briefing
+    signup checked on the server (field errors, `req.invalid`) that sends the browser back to its
+    form (`route.at(Id)`); and stories that link to a place on the publisher's page
+    (`Elsewhere::at`). The saved page is now Alerts, a price alert checked on the server and
+    answered while its read catches up (`ReadAgain`), and the avatar upload has a form on the
+    Account page, with sign out. The smoke test follows the new pages: a list a patch replaces
+    opens one new stream and closes the old one, the list survives a reload, the change cells
+    follow the feed, a sector's box lists its stories, a refused price comes back marked with
+    focus on it, and a story's place stays in the address.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

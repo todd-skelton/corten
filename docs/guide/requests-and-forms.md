@@ -127,6 +127,10 @@ refusal replaces: `let e = errors.within(PriceId(id));`. Then `<input name={f.pr
 {..e.aria(f.price)}>` sets `aria-invalid` and `aria-describedby`, `{e.message(f.price)}` prints
 the message it points at, with the id `{form id}-{field}-error` (`price-s1-price-error`), so two
 refused forms with a field of the same name (a price in every row) never share a message id.
+A field with a hint of its own (a format, a size limit) names it to the spread,
+`{..e.aria(f.price).hint(&PriceHintId(id))}`, which writes one `aria-describedby` naming the hint
+and then the message. A browser keeps only an attribute's first value, so a start tag that writes
+`aria-describedby` or `aria-invalid` beside `e.aria(..)` does not compile.
 The runtime focuses the first invalid field (unless the user has moved on to another part of the
 page while waiting).
 

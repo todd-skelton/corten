@@ -285,6 +285,33 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
     assert!(!body.contains("modulepreload") && !body.contains(r#"src="/assets/"#), "{body}");
 }
 
+/// A page whose handlers call a module the app does not serve fails in a debug build (a router
+/// test finds it), instead of rendering a page whose handlers would do nothing.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_page_whose_handlers_call_an_unserved_module_fails_in_debug_builds() {
+    use axum::{body::Body, http::Request, routing::get, Router};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let page = || {
+        Router::new().route(
+            "/",
+            get(|req: crate::Req| async move {
+                crate::tests::TestPage::test_page(&req, "Cart", LineItem { name: "Lamp", quantity: 2 })
+            }),
+        )
+    };
+    let res = crate::App::new(Routes::from(page())).components(&[Badge]).router();
+    let res = res.oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    let res = crate::App::new(Routes::from(page())).components(&[LineItem, Badge]).router();
+    let res = res.oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), axum::http::StatusCode::OK, "listed, it is served");
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert!(String::from_utf8_lossy(&body).contains("line_item.js"));
+}
+
 #[test]
 fn view_ids_are_fnv1a_as_the_macros_compute_them() {
     assert_eq!((script::view_id(""), script::view_id("a")), (0xcbf2_9ce4_8422_2325, 0xaf63_dc4c_8601_ec8c));

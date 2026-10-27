@@ -48,10 +48,10 @@ const destroy = () => {
 process.on("SIGINT", () => { destroy(); process.exit(130); });
 
 // Cores: 0 the system and Docker, 1 the app under test, 2-3 the item API (fullstack only), the
-// rest the load.
+// rest the load; with items in memory the item API is idle, so the load also gets 2-3.
 const env = suite === "live"
   ? "BENCH_APP_CPUS=1 BENCH_LOAD_CPUS=2-$(($(nproc)-1)) BENCH_LIVE_WORKERS=$(($(nproc)-2))"
-  : "BENCH_APP_CPUS=1 BENCH_API_CONTAINER=item-api BENCH_LOAD_CPUS=4-$(($(nproc)-1))";
+  : "BENCH_APP_CPUS=1 BENCH_API_CONTAINER=item-api BENCH_LOAD_CPUS=4-$(($(nproc)-1)) BENCH_FIXTURE_LOAD_CPUS=2-$(($(nproc)-1))";
 const ssh = (script, options) => run("ssh", ["-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30", `root@${host}`, script], options);
 
 try {

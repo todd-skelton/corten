@@ -48,7 +48,10 @@ use axum::{
     Router,
 };
 
-use crate::{html::json_string, route::Route as TypedRoute};
+use crate::{
+    html::json_string,
+    route::{Prefix, Route as TypedRoute},
+};
 
 /// Routes that answer only JSON, with their settings, under the prefix `P`: what
 /// [`crate::App::api`] gives its function to fill in.
@@ -59,7 +62,7 @@ pub struct Api<P> {
     types: PhantomData<fn() -> P>,
 }
 
-impl<P: TypedRoute> Api<P> {
+impl<P: Prefix> Api<P> {
     pub(crate) fn new() -> Self {
         Api { routes: Router::new(), origins: Vec::new(), deadline: None, types: PhantomData }
     }
@@ -88,7 +91,7 @@ impl<P: TypedRoute> Api<P> {
     pub fn route<R: TypedRoute>(mut self, methods: crate::Methods) -> Self {
         const {
             assert!(
-                under_const(P::PATH, R::PATH),
+                under_const(P::PREFIX, R::PATH),
                 "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
             )
         };
@@ -265,7 +268,7 @@ pub(crate) fn shown(status: StatusCode, detail: Option<&str>, dev: bool) -> &str
 /// handler's own that is not plain text, is returned unchanged.
 pub(crate) async fn json_failure(res: Response, dev: bool) -> Response {
     let status = res.status();
-    if !(status.is_client_error() || status.is_server_error()) {
+    if !(status.is_client_error() || status.is_server_error()) || res.extensions().get::<crate::answer::Relayed>().is_some() {
         return res;
     }
     let failed = res.extensions().get::<crate::Failed>().map(|f| f.0.clone());

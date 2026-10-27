@@ -31,7 +31,7 @@ use crate::{
     middleware::Middleware,
     page::{self, default_error_page, error_page_fn, Asked, Credentials, ErrorPageFn, Failure, Shared},
     pwa::Pwa,
-    route::{Methods, Route as TypedRoute, Routes},
+    route::{Methods, Prefix, Route as TypedRoute, Routes},
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
     task::{Running, Task},
@@ -40,7 +40,7 @@ use crate::{
 
 type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
 
-/// A part of an app under the prefix `P` (a route's path, like `Admin::PATH`), filled in by the
+/// A part of an app under the prefix `P` (a [`Prefix`]: a route's path, or a prefix with no page), filled in by the
 /// function given to [`App::area`]: its routes and the components only its pages render. Who may
 /// use its routes is in their handlers' types: a routes module with `caller = Staff` holds every
 /// handler in it to taking `Caller<Staff>` ([`crate::routes`]).
@@ -79,7 +79,7 @@ pub struct Area<P> {
     types: PhantomData<fn() -> P>,
 }
 
-impl<P: TypedRoute> Area<P> {
+impl<P: Prefix> Area<P> {
     /// A route of the area, at `R::PATH`: `.route::<AdminUser>(get(user).post(save))`, with
     /// `.with_state(state)` on the [`Methods`] when its handlers take `State`. `R`'s path is at
     /// or under the area's prefix, or the app does not build, so no route of the area is served
@@ -101,7 +101,7 @@ impl<P: TypedRoute> Area<P> {
     pub fn route<R: TypedRoute>(mut self, methods: Methods) -> Self {
         const {
             assert!(
-                crate::api::under_const(P::PATH, R::PATH),
+                crate::api::under_const(P::PREFIX, R::PATH),
                 "corten: a route of an area is at or under its prefix (the note below names the area's prefix and the route)"
             )
         };
@@ -252,7 +252,7 @@ impl App {
 }
 
 impl<M: Middleware> App<M> {
-    /// A part of the app under `P::PATH`, with its own routes and, if it needs them, its own
+    /// A part of the app under `P::PREFIX`, with its own routes and, if it needs them, its own
     /// stylesheet, given by `build`: `.area(admin::area)` for a `#[corten::routes(area = Admin)]`
     /// module (`P` is inferred from it), with `.area(|area| admin::area(area).components(&[..]))`
     /// for its stylesheet, or by hand, `.area::<Admin>(|admin| admin.route::<AdminUser>(get(user)))`.
@@ -276,21 +276,21 @@ impl<M: Middleware> App<M> {
     /// let app = App::new(Routes::new()).area::<Item>(|items| items);
     /// # let _ = app.router();
     /// ```
-    pub fn area<P: TypedRoute>(mut self, build: impl FnOnce(Area<P>) -> Area<P>) -> Self {
+    pub fn area<P: Prefix>(mut self, build: impl FnOnce(Area<P>) -> Area<P>) -> Self {
         const {
             assert!(
-                crate::api::plain_prefix(P::PATH, false),
+                crate::api::plain_prefix(P::PREFIX, false),
                 "corten: an area's prefix is a path like \"/admin\": letters, digits, -, _, . and ~ between slashes, without a trailing slash or parameters (the note below names the prefix's route)"
             )
         };
-        let prefix = P::PATH;
+        let prefix = P::PREFIX;
         assert!(!self.areas.iter().any(|placed| placed.prefix == prefix), "corten: the area {prefix:?} is given twice");
         let area = build(Area { routes: Router::new(), components: Vec::new(), deadline: None, types: PhantomData });
         self.areas.push(Placed { prefix, routes: area.routes, components: area.components, deadline: area.deadline });
         self
     }
 
-    /// Routes that answer only JSON (a webhook, an OAuth callback, a public API), under `P::PATH`,
+    /// Routes that answer only JSON (a webhook, an OAuth callback, a public API), under `P::PREFIX`,
     /// given by `build`: `.api(api::api)` for a `#[corten::routes(api = ApiRoot)]` module (`P` is
     /// inferred from it), with [`Api`]'s settings in the same chain,
     /// `.api(|routes| api::api(routes).allow_origin(..))`. The
@@ -304,14 +304,14 @@ impl<M: Middleware> App<M> {
     /// shell and no nonce; the deadline, the request signal,
     /// compression and the same-origin check on writes stay. See [`crate::api`]. `"/"` makes the
     /// whole app an API (Corten's own routes, like the health checks, keep their behavior).
-    pub fn api<P: TypedRoute>(mut self, build: impl FnOnce(Api<P>) -> Api<P>) -> Self {
+    pub fn api<P: Prefix>(mut self, build: impl FnOnce(Api<P>) -> Api<P>) -> Self {
         const {
             assert!(
-                crate::api::plain_prefix(P::PATH, true),
+                crate::api::plain_prefix(P::PREFIX, true),
                 "corten: an API's prefix is \"/\" or a path like \"/api\": letters, digits, -, _, . and ~ between slashes, without a trailing slash or parameters (the note below names the prefix's route)"
             )
         };
-        let prefix = P::PATH;
+        let prefix = P::PREFIX;
         let under = crate::api::under;
         if let Some((other, ..)) = self.apis.iter().find(|(m, ..)| under(&m.prefix, prefix) || under(prefix, &m.prefix)) {
             panic!("corten: the API prefixes {:?} and {prefix:?} overlap", other.prefix);
@@ -547,12 +547,16 @@ impl<M: Middleware> App<M> {
         }
         let policy = proxies_from_env(hosts_from_env(self.policy));
         shared.proxies = policy.proxies().to_vec();
+        shared.allowed_origins = policy.allowed_origins().to_vec();
         let policy = Applied::new(policy, &shared.import_map);
 
         // The routes of the APIs and areas: each is under its prefix, which the compiler checked.
         let mut owned = Vec::with_capacity(self.apis.len() + self.areas.len());
         let mut mounts = Vec::with_capacity(self.apis.len());
         for (mount, api) in self.apis {
+            if !mount.origins().is_empty() {
+                shared.api_origins.push((mount.prefix.clone(), mount.origins().to_vec()));
+            }
             owned.push(api);
             mounts.push(mount);
         }

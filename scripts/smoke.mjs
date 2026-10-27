@@ -109,6 +109,9 @@ async function run(browser) {
   const openStreams = (part) =>
     page.evaluate((p) => (/** @type {any} */ (window)).__sources.filter((/** @type {EventSource} */ s) => s.url.includes(p) && s.readyState !== EventSource.CLOSED).length, part);
   const openFeeds = () => openStreams("/feed/");
+  /** Every feed source the page has opened, oldest first: true while open. */
+  const feedSources = () =>
+    page.evaluate(() => (/** @type {any} */ (window)).__sources.filter((/** @type {EventSource} */ s) => s.url.includes("/feed/")).map((/** @type {EventSource} */ s) => s.readyState !== EventSource.CLOSED));
   // The next /watch post waits this long before reaching the server, or fails as if offline.
   let delayWatch = 0;
   let failWatch = false;
@@ -202,19 +205,46 @@ async function run(browser) {
   await page.click(`${live} button`);
   // The page's prices by stock id, written by the script with the page's money format
   // (t.js().money(USD)), and the feed's, which the server wrote.
-  const shown = () => page.$$eval('[data-ref="price"]', (cells) => JSON.stringify(cells.map((c) => [c.getAttribute("data-key"), c.textContent]).sort()));
+  // Today's change too: its trend, and the sign of its text.
+  const shown = () =>
+    page.$$eval('[data-ref="price"]', (cells) =>
+      JSON.stringify(
+        cells
+          .map((c) => {
+            const id = c.getAttribute("data-key");
+            const change = document.querySelector(`[data-ref="change"][data-key="${id}"]`);
+            return [id, c.textContent, change?.getAttribute("data-trend")];
+          })
+          .sort(),
+      ),
+    );
   // The feed has the whole market; the page, the stocks on the list.
   const latest = async () => {
     const ids = await page.$$eval('[data-ref="price"]', (cells) => cells.map((c) => c.getAttribute("data-key")));
     const snap = await (await fetch(`${base}/feed/stocks`, { headers: { accept: "application/json" } })).json();
-    return JSON.stringify(snap.rows.filter((/** @type {{ id: string }} */ r) => ids.includes(r.id)).map((/** @type {{ id: string, price: string }} */ r) => [r.id, r.price]).sort());
+    /** @param {number} bp */
+    const trend = (bp) => (bp > 0 ? "up" : bp < 0 ? "down" : "flat");
+    return JSON.stringify(
+      snap.rows
+        .filter((/** @type {{ id: string }} */ r) => ids.includes(r.id))
+        .map((/** @type {{ id: string, price: string, change_bp: number }} */ r) => [r.id, r.price, trend(r.change_bp)])
+        .sort(),
+    );
   };
   let resumed = false;
   for (let i = 0; i < 20 && !resumed; i += 1) {
     resumed = (await shown()) === (await latest());
     if (!resumed) await page.waitForTimeout(150);
   }
-  check("resuming shows the latest prices", resumed && (await page.getAttribute(`${live} button`, "aria-pressed")) === "false");
+  check("resuming shows the latest prices and changes", resumed && (await page.getAttribute(`${live} button`, "aria-pressed")) === "false", `${await shown()} vs ${await latest()}`);
+  // A change's text is a percent whose sign is its trend's.
+  const changes = await page.$$eval('[data-ref="change"]', (cells) => cells.map((c) => [c.textContent ?? "", c.getAttribute("data-trend")]));
+  check(
+    "today's change is a percent with its trend",
+    changes.length > 0 &&
+      changes.every(([text, trend]) => /%$/.test(text) && (trend === "down") === /^[-\u2212]/.test(text) && (trend === "flat") === !/[1-9]/.test(text)),
+    JSON.stringify(changes),
+  );
 
   // Many rows joining at once are scanned for ref names one query per name: a name that only the
   // last of them has still refreshes the refs the component has cached (pause just resolved them).
@@ -245,16 +275,27 @@ async function run(browser) {
 
   // A marker on window survives client navigations and patches, and disappears on a full load.
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
+  const sourcesBefore = await feedSources();
   await page.selectOption("select[name=id]", "HLTH");
   await page.click("#watch-form button");
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Halcyon Health"));
   check("form patch replaces the message by id", true);
   check("watching a stock adds its row, and the form no longer offers it", (await page.$('[data-ref="price"][data-key="HLTH"]')) !== null && (await page.$('select[name=id] option[value="HLTH"]')) === null);
   await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
-  check("the list a patch put in subscribes again, and the one it replaced closes its stream", (await openFeeds()) === 1, String(await openFeeds()));
+  const sources = await feedSources();
+  check(
+    "the list a patch put in subscribes again, and the one it replaced closes its stream",
+    sources.length === sourcesBefore.length + 1 && sources.at(-1) === true && sources.slice(0, -1).every((open) => !open),
+    `${JSON.stringify(sourcesBefore)} -> ${JSON.stringify(sources)}`,
+  );
+  // The list is kept on the server, under the browser's cookie: the page read again shows it.
+  if (signsIn) {
+    const kept = await page.evaluate(async () => (await (await fetch("/")).text()).includes('data-ref="price" class="live-prices__amount" data-key="HLTH"'));
+    check("the list is the same after a reload", kept);
+  } else skip("the list is the same after a reload", "Playwright's WebKit never sends a Secure cookie back over http");
   check("form patch keeps the page", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
-  // A row's own form takes the stock off the list.
-  await page.click('form[action="/unwatch"]:has(input[value="HLTH"]) button');
+  // A row's Remove button submits the watch form to /unwatch.
+  await page.click('button[formaction="/unwatch"][value="HLTH"]');
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent === "Stopped watching Halcyon Health.", null, { timeout: 4000 }).catch(() => {});
   check(
     "unwatching a stock takes its row away and offers it again",
@@ -530,6 +571,15 @@ async function run(browser) {
     await more.click("#load-more button");
     await more.waitForFunction(() => document.querySelectorAll("#stories > li").length === 9);
     check("the last page hides the button", await more.locator("#load-more button").isHidden());
+    // A sector's box: the stories of that sector alone, three of the nine. (A navigation the
+    // runtime intercepts stalls Playwright's WebKit, above.)
+    if (swaps) {
+      // The box is in a closed group of the rail; clicked from the page.
+      await more.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("main input[name=sector][value=energy]")).click());
+      await more.waitForFunction(() => location.search === "?sector=energy" && !document.querySelector("main[aria-busy]"));
+      const energy = await more.$$eval("#stories > li", (items) => items.map((li) => li.querySelector("p:last-child a")?.textContent));
+      check("a sector's box lists only its stories", energy.join() === "Energy,Energy,Energy" && (await more.locator("#load-more button").isHidden()), energy.join());
+    } else skip("a sector's box lists only its stories", noSwaps);
     await more.close();
   }
   // A story's link, a route that redirects to a place on another site (`/news/{id}/read`,
@@ -553,6 +603,11 @@ async function run(browser) {
     await away.evaluate(() => /** @type {HTMLAnchorElement} */ (document.querySelector(`main a[href="/news/acme-outlook/read"]`)).click());
     const arrived = await left;
     check("a redirect to another site leaves the app in one request", arrived && asked === 1, `left ${arrived} requests ${asked}`);
+    // The browser's address keeps the place.
+    if (engine !== "webkit") {
+      const placed = await away.waitForURL("https://news.example.com/markets/acme-outlook#guidance", { timeout: 5000 }).then(() => true, () => false);
+      check("the address keeps the place on the other site", placed, away.url());
+    } else skip("the address keeps the place on the other site", "WebKit does not always hand a redirected navigation to the route");
     check("without a console error", awayErrors.length === 0, awayErrors.join(" | "));
     await away.close();
   }
@@ -1008,6 +1063,26 @@ async function run(browser) {
       await page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Saving your alert...");
     };
     await page.goto(`${base}/alerts`);
+    // A price the server refuses: the form comes back with the field marked and its message,
+    // and focus on it.
+    const errorsAtRefusal = errors.length;
+    await page.fill("input[name=above]", "1.234");
+    await page.click(save);
+    await page.waitForSelector('input[name=above][aria-invalid="true"]', { timeout: 5000 }).catch(() => {});
+    const refused = await page.evaluate(() => ({
+      message: document.getElementById("alert-form-above-error")?.textContent,
+      focused: document.activeElement?.getAttribute("name"),
+      value: /** @type {HTMLInputElement | null} */ (document.querySelector("input[name=above]"))?.value,
+    }));
+    check(
+      "a refused field comes back marked, with its message and focus",
+      refused.message === "Enter a price in dollars and cents, such as 129.99." && refused.focused === "above" && refused.value === "1.234",
+      JSON.stringify(refused),
+    );
+    // The browser logs the 422 as a failed resource; Corten adds nothing.
+    const refusedLogs = errors.slice(errorsAtRefusal);
+    check("a refused field logs no console error of Corten's", refusedLogs.every((e) => e.includes("422")), refusedLogs.join(" | "));
+    errors.splice(errorsAtRefusal);
     await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 7));
     await submit();
     await savedSoon();
@@ -1108,6 +1183,29 @@ async function run(browser) {
   // Without the page's cookie: the three stocks a first visit watches.
   const json = await (await fetch(base, { headers: { accept: "application/json" } })).json();
   check("same URL as JSON for data clients", json.title === "Watchlist | Corten" && json.data.stocks.length === 3, JSON.stringify(json.data.stocks.map((/** @type {{ id: string }} */ s) => s.id)));
+
+  // A WebSocket (GET /echo): the page's own origin opens it and is answered. Another site's page
+  // cannot, though the browser would send the user's cookies with its handshake.
+  const talk = (/** @type {string} */ url) =>
+    new Promise((resolve) => {
+      const socket = new WebSocket(url);
+      socket.onopen = () => socket.send("hi");
+      socket.onmessage = (e) => {
+        resolve(e.data);
+        socket.close();
+      };
+      socket.onerror = () => resolve("refused");
+      setTimeout(() => resolve("no answer"), 4000);
+    });
+  const echoUrl = `${base.replace(/^http/, "ws")}/echo`;
+  const echoed = await page.evaluate(talk, echoUrl);
+  check("a WebSocket from the page's own origin is answered", echoed === "HI", String(echoed));
+  const elsewhere = await browser.newPage();
+  await elsewhere.route("http://other.test/", (route) => route.fulfill({ contentType: "text/html", body: "<title>Other</title>" }));
+  await elsewhere.goto("http://other.test/");
+  const crossed = await elsewhere.evaluate(talk, echoUrl);
+  check("another site's page cannot open it", crossed === "refused", String(crossed));
+  await elsewhere.close();
 
   const noJs = await browser.newContext({ javaScriptEnabled: false });
   const plain = await noJs.newPage();

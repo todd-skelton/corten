@@ -46,9 +46,9 @@ impl Market {
         }
     }
 
-    /// True when the market lists `id`.
-    pub fn lists(id: &str) -> bool {
-        LISTED.iter().any(|(listed, ..)| *listed == id)
+    /// The market's ticker `id`, when the market lists it.
+    pub fn ticker(id: &str) -> Option<&'static str> {
+        LISTED.iter().find(|(listed, ..)| *listed == id).map(|(ticker, ..)| *ticker)
     }
 
     /// Every stock on the market by name, as `(ticker, name)`: a form's choices, with no row

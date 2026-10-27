@@ -3,14 +3,18 @@ name = "watchlist"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Every Corten piece on one screen: page, form patch, live prices from a handler, navigation, and the same screen as JSON."
+description = "A stock watchlist on Corten: live prices, market news, price alerts and an account. The browser smoke tests run against it."
 
 [dependencies]
 corten = { path = "../../crates/corten", features = ["feed", "types", "compress"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
-futures-util = { version = "0.3", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 serde = { version = "1", features = ["derive"] }
 schemars = "1.2"
+# The random id of each browser's watchlist.
+getrandom = "0.3"
+# The frames of the WebSocket at /echo; Corten hands over the connection.
+tokio-tungstenite = { version = "0.30", default-features = false }
 
 [dev-dependencies]
 http-body-util = "0.1"

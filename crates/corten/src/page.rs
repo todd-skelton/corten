@@ -407,6 +407,11 @@ pub(crate) struct Shared {
     pub section_of: std::collections::HashMap<&'static str, usize>,
     /// The proxies whose `X-Forwarded-For` [`crate::ClientIp`] follows ([`crate::security::Policy::proxy`]).
     pub proxies: Vec<crate::client::Network>,
+    /// The other sites [`crate::security::Policy::allow_origin`] lets write, for a switch to a
+    /// WebSocket, which [`crate::upgrade::Upgrade`] checks as a write.
+    pub allowed_origins: Vec<String>,
+    /// Each `Api::allow_origin` mount's prefix and origins, which may also switch under it.
+    pub api_origins: Vec<(String, Vec<String>)>,
 }
 
 impl Shared {
@@ -435,6 +440,8 @@ impl Shared {
             sections: Vec::new(),
             section_of: Default::default(),
             proxies: Vec::new(),
+            allowed_origins: Vec::new(),
+            api_origins: Vec::new(),
         }
     }
 }
@@ -608,11 +615,28 @@ impl Req {
                     view.render(out);
                 }
             });
+            #[cfg(debug_assertions)]
+            self.check_modules(&modules)?;
             return Ok(modules);
         }
         let (((), used), modules) = crate::script::collect(|| crate::style::collect(|| view.render(out)));
         self.check_rendered(&used)?;
+        #[cfg(debug_assertions)]
+        self.check_modules(&modules)?;
         Ok(modules)
+    }
+
+    /// In debug builds (a router test, `cargo run`): an error when the page's handlers call a
+    /// script module the app does not serve, which a browser would only find as a 404 and
+    /// handlers that do nothing. Release builds do not check a swap; a full page logs it.
+    #[cfg(debug_assertions)]
+    #[cold]
+    #[inline(never)]
+    fn check_modules(&self, modules: &[&'static str]) -> Result<()> {
+        match modules.iter().find(|name| !self.shared.assets.as_ref().is_some_and(|a| a.module_tag(name).is_some())) {
+            Some(name) => Err(Error::new(unserved_module(name))),
+            None => Ok(()),
+        }
     }
 
     /// Under `corten dev`: an error when the page rendered a component whose script or stylesheet
@@ -688,7 +712,11 @@ impl Req {
         // Each module's tag was made when the assets loaded.
         if let Some(assets) = &self.shared.assets {
             let mut preloaded = false;
-            for tag in modules.iter().filter_map(|name| assets.module_tag(name)) {
+            for name in modules {
+                let Some(tag) = assets.module_tag(name) else {
+                    tracing::error!("corten: {}", unserved_module(name));
+                    continue;
+                };
                 out.push_str(tag);
                 preloaded = true;
             }
@@ -847,6 +875,14 @@ fn elsewhere(to: &HeaderValue) -> bool {
     to.first() != Some(&b'/') || to.get(1) == Some(&b'/')
 }
 
+/// What a page whose handlers call an unserved script module is told.
+#[cold]
+fn unserved_module(name: &str) -> String {
+    format!(
+        "the page's handlers call the script module {name}.js, which the app does not serve, so they would do nothing: list the component it belongs to in App::components (for a script! module, its COMPONENT)"
+    )
+}
+
 /// Middleware the app installs: a failed request (an [`Error`] from a handler, or an empty error
 /// response such as axum's 404 for an unknown URL or 405 for a wrong method) renders the error
 /// page in the request's mode, and the PWA's offline path gets Corten's offline page when the app
@@ -879,7 +915,7 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     let mut res = res;
     let status = res.status();
     let error = status.is_client_error() || status.is_server_error();
-    if !error {
+    if !error || res.extensions().get::<crate::answer::Relayed>().is_some() {
         return res;
     }
     // A JSON route answers every failure as JSON, a path that did not parse included.

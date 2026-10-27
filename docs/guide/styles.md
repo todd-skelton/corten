@@ -80,7 +80,7 @@ Unlike Tailwind's class strings, a utility the file lacks, a value outside its s
 breakpoint it does not define does not compile, and there is no build step or content scan: the
 token file generates every class it allows, so the stylesheet holds them all whether a page uses
 them or not. Measured on the watchlist: its `components.css` (the tokens' utilities and the price
-table's stylesheet) is 16,212 bytes, 2,037 brotli at level 11, against 1,063 brotli for the
+table's stylesheet) is 16,282 bytes, 2,042 brotli at level 11, against 1,063 brotli for the
 card market's tokens and five components; a scale of eight spaces in four breakpoints is 32 classes
 per utility, so a utility belongs in the file only when pages use it.
 

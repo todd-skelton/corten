@@ -403,7 +403,7 @@ fn sha256(data: &[u8]) -> [u8; 32] {
 }
 
 /// Standard base64 with padding.
-fn base64(bytes: &[u8]) -> String {
+pub(crate) fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
@@ -488,7 +488,7 @@ impl Applied {
 /// True when the request's `Origin` is one of `origins` and it carries no cookies: a site allowed
 /// for an API authenticates with a token, so a write it sends with the user's cookies (a
 /// `SameSite=None` session and `credentials: "include"`) is refused like any cross-site write.
-fn allowed(headers: &HeaderMap, origins: &[String]) -> bool {
+pub(crate) fn allowed(headers: &HeaderMap, origins: &[String]) -> bool {
     !origins.is_empty()
         && !headers.contains_key(header::COOKIE)
         && headers
@@ -507,26 +507,37 @@ impl Policy {
         if matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
             return true;
         }
-        let origin =
-            headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(|o| o.trim_end_matches('/').to_ascii_lowercase());
-        if let Some(origin) = &origin {
-            if self.allowed_origins.iter().any(|allowed| allowed == origin) {
-                return true;
-            }
+        write_allowed(&self.allowed_origins, headers)
+    }
+
+    /// The other origins [`Policy::allow_origin`] lets write.
+    pub(crate) fn allowed_origins(&self) -> &[String] {
+        &self.allowed_origins
+    }
+}
+
+/// Whether a write with `headers` comes from the app's own pages, one of `allowed` (lowercase
+/// origins), or a client that is not a browser: [`Policy::same_origin`] past its methods, and
+/// what a switch to a WebSocket is held to ([`crate::upgrade::Upgrade`]).
+pub(crate) fn write_allowed(allowed: &[String], headers: &HeaderMap) -> bool {
+    let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(|o| o.trim_end_matches('/').to_ascii_lowercase());
+    if let Some(origin) = &origin {
+        if allowed.iter().any(|allowed| allowed == origin) {
+            return true;
         }
-        match headers.get("sec-fetch-site").map(HeaderValue::as_bytes) {
-            // `none`: the user started it (typed URL, bookmark); no other site can cause it.
-            Some(b"same-origin" | b"none") => return true,
-            Some(_) => return false,
-            None => {}
-        }
-        match origin {
-            None => true,
-            Some(origin) if origin == "null" => false,
-            Some(origin) => {
-                let host = headers.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
-                origin.split_once("://").is_some_and(|(_, rest)| rest == host)
-            }
+    }
+    match headers.get("sec-fetch-site").map(HeaderValue::as_bytes) {
+        // `none`: the user started it (typed URL, bookmark); no other site can cause it.
+        Some(b"same-origin" | b"none") => return true,
+        Some(_) => return false,
+        None => {}
+    }
+    match origin {
+        None => true,
+        Some(origin) if origin == "null" => false,
+        Some(origin) => {
+            let host = headers.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
+            origin.split_once("://").is_some_and(|(_, rest)| rest == host)
         }
     }
 }

@@ -158,7 +158,13 @@ framework's shape, and what it does not do yet.
     route reaches the app through these checks: `App::new` takes the `Routes` a
     `#[corten::routes]` module makes, and `Area::route` and `Api::route` take `Methods`, made
     by Corten's `get`, `post` and the others, which check the same things. A plain axum
-    `Router` or method router does not fit any of them, so there is no unchecked way in.
+    `Router` or method router does not fit any of them, so there is no unchecked way in. A
+    WebSocket (`Upgrade`) and another server's answer passed on (`Relay`) are such routes too.
 12. A request goes through fixed stages in one order (`corten::middleware`); the app's own
     steps are a `Middleware` tuple at one place in it, resolved at compile time, not hooks at
     several.
+13. A connection switches protocols (a WebSocket, a relayed tunnel) only over HTTP/1.1 served by
+    `corten::serve`; HTTP/2's extended `CONNECT` is not supported. Corten reads the handshake
+    and hands over the bytes: frames, message limits, buffering and per-message checks are the
+    WebSocket library's and the route's. The work on a switched connection is told when shutdown
+    begins and is not waited for.

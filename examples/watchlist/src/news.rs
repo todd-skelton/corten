@@ -16,20 +16,22 @@ use corten::{
 use serde::Deserialize;
 
 use crate::{
-    app::{Layout, Msg, Viewer, Watching},
+    app::{Layout, Msg, Shared, Viewer},
+    lists::Watching,
     theme::*,
 };
 
 /// The news pages: an area, so the stylesheets of the components only they show (`NewsFilter`,
-/// `Disclaimer`) load with them alone. They share the briefing's readers.
-#[corten::routes(area = News, state = Readers)]
+/// `Disclaimer`) load with them alone.
+#[corten::routes(area = News, state = Shared)]
 pub mod url {
-    /// The stories. A link names one sector (`?sector=energy`); the filter can ask for several.
+    /// The stories, filtered: a link writes the filter's parameters, which the page reads back
+    /// with the same struct (`NewsQuery`).
     #[route("/news", get = page)]
     #[derive(Default)]
     pub struct News {
-        pub sector: Option<super::Sector>,
-        pub subscribed: Option<bool>,
+        #[route(query)]
+        pub filter: super::NewsQuery,
     }
 
     /// A story's link: the app sends the browser on to the publisher.
@@ -42,8 +44,7 @@ pub mod url {
     pub struct Briefing;
 }
 
-/// A part of the market. In an address it is the word serde reads (`UrlValue`), so a link to a
-/// sector and the filter that reads it cannot disagree.
+/// A part of the market. In an address it is the word serde reads (`UrlValue`).
 #[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Sector {
@@ -192,27 +193,51 @@ pub const COMPONENTS: &[corten::Component] = &[Disclaimer, NewsFilter];
 /// Stories a page shows at a time.
 const PAGE: usize = 3;
 
-/// The readers of the morning briefing, by email. A real app keeps them in its database.
+/// The readers of the morning briefing, by email. A real app keeps them in its database and
+/// sends the briefing from a task; this one keeps at most `READERS` in memory and sends nothing.
 #[derive(Clone, Default)]
 pub struct Readers(Arc<Mutex<BTreeSet<String>>>);
 
-/// The news page's filter and how many stories the page has: a GET form, so both are in the
-/// address.
-#[derive(Deserialize, Fields)]
-struct NewsQuery {
+/// Readers kept at most, so posts from anyone cannot grow the set without bound.
+const READERS: usize = 10_000;
+
+/// The news page's parameters, one struct for the links that write them and the page that reads
+/// them: the sectors, the watchlist filter, how many stories the page has (Load more), and
+/// whether a signup sent the reader back. A field renamed here is renamed in every link.
+#[derive(Clone, Default, Deserialize, Route, Fields)]
+#[route(query)]
+pub struct NewsQuery {
     #[serde(default)]
-    sector: Vec<Sector>,
-    #[serde(default)]
-    mine: bool,
-    shown: Option<usize>,
-    #[serde(default)]
-    subscribed: bool,
+    pub sector: Vec<Sector>,
+    pub mine: Option<bool>,
+    pub shown: Option<usize>,
+    pub subscribed: Option<bool>,
+}
+
+impl NewsQuery {
+    /// The stories of one sector.
+    fn sector(sector: Sector) -> Self {
+        NewsQuery { sector: vec![sector], ..NewsQuery::default() }
+    }
 }
 
 async fn page(req: Req, viewer: Option<Caller<Viewer>>, watching: Watching, Query(q): Query<NewsQuery>) -> HtmlResult {
+    news_page(&req, viewer.as_deref(), &watching, &q, &BriefingForm::default(), &Errors::new())
+}
+
+/// The news page, or Load more's next stories as a patch.
+fn news_page(
+    req: &Req,
+    viewer: Option<&Viewer>,
+    watching: &Watching,
+    q: &NewsQuery,
+    briefing: &BriefingForm,
+    errors: &Errors,
+) -> HtmlResult {
+    let mine = q.mine.unwrap_or(false);
     let stories: Vec<&Story> = STORIES
         .iter()
-        .filter(|s| (q.sector.is_empty() || q.sector.contains(&s.sector)) && (!q.mine || watching.has(s.ticker)))
+        .filter(|s| (q.sector.is_empty() || q.sector.contains(&s.sector)) && (!mine || watching.has(s.ticker)))
         .collect();
     let (stories, total) = (&stories[..], stories.len());
     let shown = q.shown.unwrap_or(0).min(total);
@@ -223,13 +248,13 @@ async fn page(req: Req, viewer: Option<Caller<Viewer>>, watching: Watching, Quer
     if req.mode == Mode::Action {
         return req.patch(html! {
             {Append(StoriesId, html! { for story in &stories[shown..next] { <StoryItem story={story} t={t} /> } })}
-            <LoadMore sectors={&q.sector} mine={q.mine} shown={next} total={total} />
+            <LoadMore sectors={&q.sector} mine={mine} shown={next} total={total} />
         });
     }
     // The whole page, with every story shown so far: a first load, a filter, no JavaScript.
-    let title = if q.mine { "Stories about your stocks" } else { "Latest stories" };
+    let title = if mine { "Stories about your stocks" } else { "Latest stories" };
     req.page(html! {
-        <Layout req={&req} title="News" viewer={viewer.as_deref()} head="">
+        <Layout req={req} title="News" viewer={viewer} head="">
             <div class={(stack(Space::_1), mb(Space::_5))}>
                 <h1>"Market news"</h1>
                 <p class={muted()}>"What the companies on the market are doing, newest first."</p>
@@ -238,7 +263,7 @@ async fn page(req: Req, viewer: Option<Caller<Viewer>>, watching: Watching, Quer
                 class={(display(Display::Grid), columns(Responsive::new(Columns::_1).md(Columns::Side)), gap(Space::_5), items(Items::Start))}
             >
                 <aside class={card()}>
-                    <NewsFilter sectors={&q.sector} mine={q.mine} />
+                    <NewsFilter sectors={&q.sector} mine={mine} />
                 </aside>
                 <section class={stack(Space::_4)} aria-labelledby={StoriesTitleId}>
                     <h2 id={StoriesTitleId}>{title}</h2>
@@ -248,9 +273,9 @@ async fn page(req: Req, viewer: Option<Caller<Viewer>>, watching: Watching, Quer
                     <ol id={StoriesId} class={stack(Space::_3)}>
                         for story in &stories[..next] { <StoryItem story={story} t={t} /> }
                     </ol>
-                    <LoadMore sectors={&q.sector} mine={q.mine} shown={next} total={total} />
+                    <LoadMore sectors={&q.sector} mine={mine} shown={next} total={total} />
                     <Disclaimer />
-                    <Subscribe subscribed={q.subscribed} />
+                    <Subscribe form={briefing} errors={errors} subscribed={q.subscribed.unwrap_or(false)} />
                 </section>
             </div>
         </Layout>
@@ -281,7 +306,7 @@ fn StoryItem<'a>(story: &'a Story, t: Msg) -> impl Render {
                 <span>{story.source}</span>
                 <span>{t.date(published, DateStyle::Medium)}</span>
                 <span class={weight(Weight::Semibold)}>{story.ticker}</span>
-                <a href={url::News { sector: Some(story.sector), subscribed: None }}>{story.sector.label()}</a>
+                <a href={url::News { filter: NewsQuery::sector(story.sector) }}>{story.sector.label()}</a>
             </p>
         </li>
     }
@@ -354,26 +379,31 @@ fn Disclaimer() -> impl Render {
 #[derive(Id)]
 struct BriefingId;
 
-#[derive(Deserialize, Fields)]
+#[derive(Deserialize, Fields, Default)]
 struct BriefingForm {
     email: String,
 }
 
+/// The signup: what the reader typed and the server's messages after a refused submit, and a
+/// note once they are on the list.
 #[component]
-fn Subscribe(subscribed: bool) -> impl Render {
+fn Subscribe<'a>(form: &'a BriefingForm, errors: &'a Errors, subscribed: bool) -> impl Patch {
     let f = BriefingForm::FIELDS;
+    let e = errors.within(BriefingId);
     html! {
         <form id={BriefingId} method="post" action={url::Briefing} data-patch class={(card(), stack(Space::_3))}>
             <h2>"The morning briefing"</h2>
+            {errors.form_message()}
             if subscribed {
-                <p role="status">"You're subscribed. The first briefing arrives tomorrow before the market opens."</p>
+                <p role="status">"You're on the list for the morning briefing."</p>
             } else {
                 <p class={muted()}>"The day's top stories by email, before the market opens."</p>
             }
             <label class={stack(Space::_1)}>
                 <span class={muted()}>"Email"</span>
-                <input type="email" name={f.email} required autocomplete="email">
+                <input type="email" name={f.email} value={&form.email} required autocomplete="email" {..e.aria(f.email)}>
             </label>
+            {e.message(f.email)}
             <button>"Subscribe"</button>
         </form>
     }
@@ -381,15 +411,36 @@ fn Subscribe(subscribed: bool) -> impl Render {
 
 /// Signs a reader up, then sends the browser back to the form it came from, at the end of the
 /// page: `News { .. }.at(BriefingId)` is `/news?subscribed=true#briefing`, the id the form's
-/// markup prints, and the page says it worked. The form's `type="email"` stops a person
-/// before an address without an `@`; a client that skips it is refused.
-async fn subscribe(req: Req, State(readers): State<Readers>, Form(form): Form<BriefingForm>) -> HtmlResult {
+/// markup prints, and the page says it worked. An address the server refuses comes back with
+/// the message next to the field: the form, as a patch, or the page without JavaScript.
+async fn subscribe(
+    req: Req,
+    viewer: Option<Caller<Viewer>>,
+    watching: Watching,
+    State(readers): State<Readers>,
+    Form(form): Form<BriefingForm>,
+) -> HtmlResult {
+    let f = BriefingForm::FIELDS;
+    let mut errors = Errors::new();
     let email = form.email.trim();
-    if !email.contains('@') {
-        return Err(corten::Error::status(StatusCode::UNPROCESSABLE_ENTITY));
+    let (name, domain) = email.split_once('@').unwrap_or_default();
+    if name.is_empty() || !domain.contains('.') || email.len() > 254 || email.contains(char::is_whitespace) {
+        errors.add(f.email, "Enter an email address, such as ada@example.com.");
+    } else {
+        let mut readers = readers.0.lock().unwrap_or_else(|e| e.into_inner());
+        if readers.len() >= READERS && !readers.contains(email) {
+            errors.add_form("The briefing is full for now. Please try again tomorrow.");
+        } else {
+            readers.insert(email.to_string());
+        }
     }
-    readers.0.lock().unwrap_or_else(|e| e.into_inner()).insert(email.to_string());
-    req.redirect(&url::News { sector: None, subscribed: Some(true) }.at(BriefingId))
+    if !errors.is_empty() {
+        let patch = Subscribe { form: &form, errors: &errors, subscribed: false };
+        let q = NewsQuery::default();
+        return req.invalid(&errors, patch, || async { news_page(&req, viewer.as_deref(), &watching, &q, &form, &errors) }).await;
+    }
+    let back = url::News { filter: NewsQuery { subscribed: Some(true), ..NewsQuery::default() } };
+    req.redirect(&back.at(BriefingId))
 }
 
 /// Where a story is: another site. A client navigation's `fetch` cannot follow a redirect there,

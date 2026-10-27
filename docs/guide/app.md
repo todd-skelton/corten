@@ -17,6 +17,7 @@ your routes. Each default can be replaced in one line.
 | A part of the app | none | `.area(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
 | Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(page, state)`: `async fn(Failure, Req, ..extractors) -> HtmlResult`, in the app's layout and for who is asking; `corten new` writes one that names each case |
 | JSON-only routes | none | `.api(api::api)` for a `#[corten::routes(api = ApiRoot)]` module: every failure under the prefix is JSON, unknown URLs included, with no document ([below](#json-only-routes)) |
+| WebSockets and relays | none | a handler takes `Upgrade` and returns its `websocket(..)` or `switch(..)`; `Relay` passes another server's answer on as it came ([below](#websockets-and-relays)) |
 | Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the layout or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods; forms go to this origin only | `.policy(Policy::new()...)`: another origin for scripts, styles, images, `fetch`, frames, fonts, or `.form_action("https://pay.example")` for a form (or a form's redirect) that hands the user to another site |
 | Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Public<HtmlResult>` (or `Public<JsonResult<T>>`) for an answer that is the same for everyone |
 | Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file, plus one per area that lists components and one per set of areas that list the same components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
@@ -510,6 +511,59 @@ behavior).
 A screen that a native app or an agent reads is not an API route: it stays a page that answers
 with `req.screen`, so every surface shares one handler (see [Surfaces](../architecture.md)).
 
+## WebSockets and relays
+
+A route can switch its connection to another protocol, or pass on another server's answer, and
+stay a route like any other: it is in a routes module, an area or an API, takes `Caller<T>`, and
+goes through the host check and the app's middleware.
+
+A WebSocket's handler takes `corten::upgrade::Upgrade` and returns what `upgrade.websocket(run)`
+gives: the 101 with its `Sec-WebSocket-Accept`, and `run(stream, signal)` on the connection once
+it has switched. Corten reads the handshake and hands over the bytes; the frames are a WebSocket
+library's (`examples/watchlist`'s `/echo` uses tokio-tungstenite):
+
+```rust,ignore
+async fn echo(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Switch> {
+    upgrade.websocket(move |stream, signal| async move {
+        let mut socket = WebSocketStream::from_raw_socket(stream, Role::Server, Some(config)).await;
+        loop {
+            let message = tokio::select! {
+                message = socket.next() => message,
+                _ = signal.aborted() => break, // shutting down
+            };
+            // .. answer it; check the viewer again here if a revoked key must end the socket
+        }
+    })
+}
+```
+
+1. The handshake is a `GET` that carries the user's cookies with no CORS check, so it is held to
+   what a write is: the app's own pages, a site `Policy::allow_origin` names (under an API, its
+   `Api::allow_origin` sites too, without cookies), or a client that is not a browser. Another
+   site's page gets a 403. A route whose callers must not be browsers at all refuses them in its
+   `Identify` (a request with `Origin` or `Sec-Fetch-Site`).
+2. A request that does not ask to switch gets a 426, and a route that does not take `Upgrade`
+   never switches: only an `Upgrade` makes the 101, so a socket opens only where a route
+   declared one.
+3. The request's own `Signal` ends with the 101, so the work gets its own, which aborts with
+   `Abort::Shutdown` when the app begins to shut down; the work is not waited for.
+4. Message size, compression, what may wait to be sent and per-message checks are the
+   WebSocket library's settings and the route's code: Corten does not read frames.
+5. `upgrade.switch(headers, run)` answers with an upstream's 101 and its headers instead, for a
+   tunnel that relays another server's switch and then passes bytes both ways
+   (`tokio::io::copy_bidirectional`).
+6. Only HTTP/1.1 connections served by `corten::serve` switch; an HTTP/2 request (no extended
+   `CONNECT`) and a test's `oneshot` get a 426.
+
+`corten::Relay::new(status, headers, body)` is another server's answer passed on as it came,
+for a gateway or a backend for a frontend: its status, its headers less the hop-by-hop ones, and
+its body as it arrives (`Body::from_stream(res.bytes_stream())` from reqwest). A failure status
+keeps the upstream's body, never the error page or the JSON error. The app's security and cache
+rules still apply. A streamed body is passed on as each piece arrives: it is not compressed,
+except an event stream, compressed piece by piece; a body the upstream compressed is passed on
+as it is. When the client leaves, the body is dropped, and
+the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
+
 ## Who is asking
 
 A handler that needs to know who is asking takes a `Caller<T>`, where `T` says how one is
@@ -653,6 +707,10 @@ fn app(pages: Routes) -> App {
 2. A route without a handler, two routes with one path, and a route outside the prefix
    (`/admn/users` in the `/admin` area) do not compile, so a link from an area's page cannot
    reach a route nobody serves. Neither does a prefix that is not a plain path (`/admin/{id}`).
+   An area with no page at its prefix (`/docs/{page}` and nothing at `/docs`) gives the prefix
+   route no handler, `#[route("/docs")] pub struct Docs;`: it is then only the prefix (a
+   `corten::Prefix`), not a link, so `Docs.href()` does not compile and the app's 404 answers
+   `/docs`.
 3. Who passes is the app's model: `Staff::identify` reads the session and refuses with
    `Refused::sign_in` (no one signed in) or `Refused::forbidden` (not staff). Stricter parts
    are stricter types: `caller = Billing` on a `/admin/billing` area of its own.
