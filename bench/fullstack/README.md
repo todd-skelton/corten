@@ -157,6 +157,50 @@ islands and before `corten::Json`) and r1 (`results/r1/`, six frameworks, a Plat
 | nextjs | 17,295,179 / 134,154 | 1,710,624 / 58,309 |
 | laravel | **failed**: did not start | **failed**: did not start |
 
+### Efficiency
+
+What each request costs the machine, from the same runs as the tables above. Pages per
+CPU-second is requests a second at 64 users over the share of its one core the app used: work per
+request, which does not depend on whether the load kept the core busy. CPU for 300 pages/s is the
+fixed-rate phase, what a steady modest load costs. Pages/s per MiB is the 64-user rate over the
+app's peak memory in that phase. Instruction counts (above) are the steadiest form of the same
+cost; these also include allocation, waiting and the kernel.
+
+| App | Pages per CPU-second: memory / item API | JSON per CPU-second: memory / item API | CPU for 300 pages/s from memory | Pages/s per MiB, from memory | Peak memory, 64 users |
+|---|---|---|---|---|---|
+| **corten** | 25,124 / 3,544 | 31,572 / 3,676 | 4.1% | 1,110 | 21.1 MiB |
+| aspnet | 4,285 / 1,162 | 14,512 / 1,680 | 17% | 50 | 86.2 MiB |
+| phoenix | 1,608 / 404 | 2,480 / 452 | 33% | 5.7 | 280.9 MiB |
+| leptos | 1,478 / 783 | 22,044 / 1,181 | 23% | 91 | 16.4 MiB |
+| astro | 1,253 / 449 | 1,941 / 552 | 31% | 9.4 | 134.1 MiB |
+| spring | 1,109 / 481 | 7,907 / 839 | 40% | 3.1 | 356.3 MiB |
+| sveltekit | 979 / 390 | 3,371 / 691 | 36% | 6.7 | 148 MiB |
+| tanstack-start | 701 / 323 | 3,636 / 687 | 49% | 4.2 | 168.1 MiB |
+| react-router | 548 / 282 | 2,504 / 568 | 60% | 3.8 | 143.6 MiB |
+| rails | 531 / 383 | 1,045 / 466 | 65% | 3.8 | 142 MiB |
+| django | 344 / 182 | 1,342 / 336 | 85% | 1.0 | 344.3 MiB |
+| nuxt | 324 / 202 | 7,256 / 796 | 100%, 291/s served | 2.5 | 131.8 MiB |
+| nextjs | failed (185) / failed (111) | 1,129 / 354 | failed (100%, 151/s served) | failed (0.9) | 214.3 MiB |
+| laravel | **failed** / failed (102) | **failed** / 263 | **failed** | **failed** | **failed** |
+
+Corten renders a page from memory with 40 µs of CPU (25,124 per CPU-second), 5.9x ASP.NET Core
+(233 µs) and 17x Leptos, and its JSON with 32 µs, against Leptos's 45 and ASP.NET Core's 69. At
+300 pages a second it used 4.1% of its core, ASP.NET Core 17% and Leptos 23%; that is 7,317 pages
+per CPU-second, under a third of its rate at 64 users, since at a low rate each request also pays
+for waking the server, and a once-a-second sample is coarse at 4%. It serves 1,110 pages a second
+per MiB: 12x Leptos (91), which peaks lower (16.4 MiB against 21.1) but serves a sixteenth of
+the pages, and 22x ASP.NET Core (50). From the item API, fetching and parsing the 55 KB item
+costs Corten about 240 µs a page, six times the page itself
+([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+
+In r6 Corten's core was 93% busy at 64 users for the page from memory and 88% for the JSON, the
+only app below 97% (Leptos's JSON was at 96.9%): four load-generator cores could not keep it
+busy, so its requests a second from memory are below what it can serve, while its requests per
+CPU-second are not affected. From r7 the load generator also gets the item API's two cores, which
+are idle with items in memory, and each phase's CPU time is read from the container's cgroup
+counter rather than from once-a-second samples (`cpu-time.mjs`; `cpuCounted` in
+`summary.json`).
+
 ### Bytes the item page loads (raw / gzip, KB)
 
 | App | HTML | JavaScript (files) | WASM | CSS |
@@ -376,13 +420,16 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    round, never across rounds.
 2. Cores: the app under test pinned to core 1 with 1 GiB of memory, the item API to cores 2-3,
    the load generator (k6) to cores 4-7, the system and Docker on core 0. One app runs at a time.
+   From r7, with items in memory, k6 also gets cores 2-3, which the item API does not use then.
 3. Cold start (`cold-start.mjs`): the container runs a shell that writes the time and execs the
    server; a probe in the same network namespace polls for the first 200 of an item page (items
    from the item API). Docker's own container setup is not in the number. 10 runs each.
 4. Server rendering (`run-ssr.mjs`): a 30 s warmup with 32 users (long enough for the JVM's and
    .NET's JITs), then 60 s at a fixed rate (300/s from memory, 150/s from the API), 60 s with 64
    closed-loop users, and 60 s with 256. Items 1 to 500, skewed toward low ids. Responses
-   uncompressed. CPU and memory are sampled from `docker stats` each second.
+   uncompressed. CPU and memory are sampled from `docker stats` each second; from r7 each
+   phase's CPU time is also read from the container's cgroup counter before and after it
+   (`cpu-time.mjs`, `<app>-<phase>-cpu.json`).
    - Items in memory: a 27.7 MB fixture of 508 items loaded at start, so only the framework is
      measured.
    - Item API: every request fetches the item (about 55 KB of JSON) over HTTP from
@@ -405,7 +452,11 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    confirmation. Navigation is home page to item page.
 7. Bytes (`bytes.mjs`): every script, WASM and stylesheet the item page loads, fetched raw and
    gzipped here at level 6, so server compression settings do not change the comparison.
-8. k6 runs with every local port and reuses ports in TIME_WAIT: gunicorn's sync workers close
+8. Efficiency (`summarize.mjs`): requests per CPU-second are a phase's requests over the app's
+   CPU time in it (the cgroup counter; before r7, the 64-user rate over the sampled average),
+   requests a second per MiB are the 64-user rate over the phase's peak memory, and the item API's
+   sampled CPU is kept next to each item-API phase (`apiCpuPct`).
+9. k6 runs with every local port and reuses ports in TIME_WAIT: gunicorn's sync workers close
    each connection, and at a few thousand requests a second k6 otherwise ran out of ports
    (r2's first attempt stopped there).
 
@@ -434,6 +485,9 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    it again (4.1% never sent) and Nuxt did not; in r6, on a Platinum 8280, both passed.
 9. r6 measured the tree at `cf8ac0f` (`results/r6/commit.txt`). Changes merged to `main` after
    that are not in these numbers.
+10. r6's efficiency numbers divide by CPU sampled once a second, which is coarse for an app using
+    a few percent of its core (Corten's 4.1% at the fixed rate); from r7 they divide by the
+    counted CPU time. Requests per CPU-second, like requests a second, compare only within a round.
 
 ## Running it
 

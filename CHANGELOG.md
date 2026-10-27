@@ -880,6 +880,11 @@ Corten is pre-1.0, so any minor version may change the API.
     the runner (`npx playwright install --with-deps`) fetched about a hundred packages from the
     Ubuntu mirror on every run, and stalled until it was cancelled when the mirror slowed to a few
     KB/s (twice on 2026-10-27, 15 and 5 minutes).
+54. `bench/fullstack` measures what a request costs: `run-ssr.mjs` reads each phase's CPU time from
+    the container's cgroup counter (`cpu-time.mjs`), and `summarize.mjs` adds requests per
+    CPU-second, requests a second per MiB and the item API's CPU to `summary.json`. With items in
+    memory the load generator also gets the item API's idle cores: in r6 four could not keep
+    Corten's core busy (93% for the page, 88% for the JSON).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -1088,6 +1093,9 @@ Corten is pre-1.0, so any minor version may change the API.
    of 14-27% on the faster CPU, more than Corten's 8-12%, and Corten's item-API JSON held (3,753;
    r5 3,787). Nuxt and Django passed the in-memory page test; Next.js and Laravel failed as
    before. The item page loads 9.6 KB of JavaScript (gzip; r5 7.3 KB).
+   A new table gives what a request costs: pages per CPU-second (Corten 25,124, ASP.NET Core
+   4,285), CPU for 300 pages a second (4.1% against 17%) and pages a second per MiB (1,110 against
+   50).
 7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
