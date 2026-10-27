@@ -243,19 +243,24 @@ try {
   const refusedBody = await refused.json().catch(() => null);
   check("a field the rules refuse is a 422 with the field", refused.status === 422 && typeof refusedBody?.error?.fields?.email === "string", JSON.stringify(refusedBody));
 
-  // Writes are limited per client address (20 a minute). The container trusts Docker's networks
-  // as its proxies (`PROXIES`), so each address below is the client its proxy forwarded.
-  const writeAs = (/** @type {string} */ address) => alertFrom({ "x-api-key": "dev-key", "x-forwarded-for": address });
+  // Writes are limited per client address (20 a minute), a key no partner has included, so
+  // guessing keys is limited too. The container trusts Docker's networks as its proxies
+  // (`PROXIES`), so each address below is the client its proxy forwarded.
+  const writeAs = (/** @type {string} */ address, key = "guess") => alertFrom({ "x-api-key": key, "x-forwarded-for": address });
   // Addresses of this run's own, so a second run against the same container starts at zero.
   const octet = () => 1 + Math.floor(Math.random() * 254);
   const limited = `198.51.${octet()}.${octet()}`;
+  // Until the first 429: if the minute turns during the loop, the count starts again, so up to
+  // twice the limit may pass first.
   const statuses = [];
-  for (let i = 0; i < 20; i++) statuses.push((await writeAs(limited)).status);
-  const over = await writeAs(limited);
+  let over = await writeAs(limited);
+  for (; over.status !== 429 && statuses.length < 41; over = await writeAs(limited)) statuses.push(over.status);
   const wait = Number(over.headers.get("retry-after"));
-  check("an address past its writes a minute is a 429 with Retry-After", statuses.every((s) => s === 200) && over.status === 429 && wait >= 1 && wait <= 60, `${statuses.join()} then ${over.status} after ${wait}s`);
+  check("an address past its writes a minute is a 429 with Retry-After", statuses.length >= 20 && statuses.every((s) => s === 401) && over.status === 429 && wait >= 1 && wait <= 60, `${statuses.length} x ${statuses[0]} then ${over.status} after ${wait}s`);
   const elsewhere = await writeAs(`203.0.${octet()}.${octet()}`);
-  check("another forwarded address has its own count", elsewhere.status === 200, String(elsewhere.status));
+  check("another forwarded address has its own count", elsewhere.status === 401, String(elsewhere.status));
+  const asPartner = await writeAs(limited, "dev-key");
+  check("a partner's alert from a limited address is counted as the partner's", asPartner.status === 200, String(asPartner.status));
   const stillReads = await fetch(`${base}/items/item_5`, { headers: { "x-forwarded-for": limited } });
   check("reads from a limited address still pass", stillReads.status === 200, String(stillReads.status));
 

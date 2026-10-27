@@ -398,7 +398,8 @@ where
 
 /// A result whose error is Corten's [`Error`], for the code a handler calls: any
 /// `std::error::Error` converts with `?` and becomes a 500. A handler itself returns what it
-/// answers ([`HtmlResult`], [`JsonResult`]), which is this with the answer in it. It is not in
+/// answers: [`HtmlResult`] is this with the answer in it, and [`JsonResult`]'s error, a
+/// [`JsonError`], takes this one with `?` (and the input's field errors too). It is not in
 /// the prelude, so `Result` in an app is the standard one:
 ///
 /// ```
@@ -523,7 +524,8 @@ impl Error {
     }
 
     /// An error with a specific status, for example 404 for a missing record or 403 for a
-    /// permission check: `return Err(Error::status(StatusCode::NOT_FOUND))`.
+    /// permission check: `return Err(Error::status(StatusCode::NOT_FOUND))` (in a JSON handler,
+    /// `Err(Error::status(..))?` or `.into()`, since its error is a [`JsonError`]).
     pub fn status(status: StatusCode) -> Self {
         Error { status, source: status.canonical_reason().unwrap_or("error").into() }
     }

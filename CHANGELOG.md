@@ -608,12 +608,6 @@ Corten is pre-1.0, so any minor version may change the API.
     supervisor calls or a task. On Windows, `shutdown_signal` also ends on Ctrl-Break, the console
     closing and system shutdown, not only Ctrl-C
     ([#174 An app cannot begin its own graceful shutdown (a route, a task, a supervisor's request), and on Windows only Ctrl-C starts one](https://github.com/todd-skelton/corten/issues/174)).
-92. `JsonResult<T>`'s error is `JsonError`: `check(&input)?` answers 422 with the fields
-    (`{"error":{..,"fields":{..}}}`), and `?` on any other error is answered as before. Before,
-    a JSON handler that checked its input and loaded a record could not `?` both, and the
-    `Result<Json<T>, Errors>` the docs named did not compile. On a page `?` on `Errors` still
-    does not compile (a `compile_fail` doctest): a page's form answers with `req.invalid`.
-
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -928,6 +922,14 @@ Corten is pre-1.0, so any minor version may change the API.
     On Docker Desktop (shared with other work, so rough), pinned to two cores, it served
     4,400-6,600 items a second to 64 users in three runs against 3,600-4,000 in two with one
     process, using about 1.9 cores. Responses are byte for byte the same.
+56. `JsonResult<T>`'s error is `JsonError`: `check(&input)?` answers 422 with the fields
+    (`{"error":{..,"fields":{..}}}`), and `?` on any other error is answered as before. Before,
+    a JSON handler that checked its input and loaded a record could not `?` both, and the
+    `Result<Json<T>, Errors>` the docs named did not compile. On a page `?` on `Errors` still
+    does not compile (a `compile_fail` doctest): a page's form answers with `req.invalid`.
+    Migration: `return Err(Error::status(..))` in a `JsonResult` handler is `Err(Error::status(..))?`
+    (or `.into()`); `?` is unchanged.
+
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -1219,11 +1221,12 @@ Corten is pre-1.0, so any minor version may change the API.
     alert for a partner's user: the handler takes `Caller<Partner>`, found by the `X-Api-Key`
     header (`API_KEYS`, no partner without it), so a request without a known key is a JSON 401,
     and the form's rules answer with the fields. A middleware of the app's (`WriteLimit`)
-    allows about 20 writes a minute from one client (`ClientIp`, an IPv6 address by its /64)
-    and answers the next with a 429 and `Retry-After`; reads pass straight through, so pages a
-    CDN keeps stay public, and agents answer to their token. The smoke test runs the container
-    with Docker's networks as its proxies (`PROXIES`), so each forwarded address has its own
-    count.
+    allows about 20 writes a minute from one client (`ClientIp`, an IPv6 address by its /64;
+    `WRITES_PER_MINUTE` to change it) and answers the next with a 429 and `Retry-After`; a
+    partner's alerts are counted by the partner, whatever address it sends from; reads pass
+    straight through, so pages a CDN keeps stay public, and agents answer to their token, which
+    no longer defaults to `dev-token` (`AGENT_TOKENS`). The smoke test runs the container with
+    Docker's networks as its proxies (`PROXIES`), so each forwarded address has its own count.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
