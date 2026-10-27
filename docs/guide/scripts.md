@@ -229,7 +229,11 @@ the two cannot drift.
 
 Handlers several components use live in a module of their own:
 `script!(pub mod validity = "validity.js");` declares `validity::check(..)` and the constant
-`validity::COMPONENT` to list.
+`validity::COMPONENT` to list. A page whose handlers call a module the app does not list (a
+component's or a `script!` module's) is an error in a debug build, so a router test or
+`cargo run` finds it before a browser does; a release build logs it each time such a page
+renders and leaves the page's other modules working. Which handlers a page calls depends on what it renders, so this
+is checked when it renders, not when the crate compiles.
 
 ## Libraries
 

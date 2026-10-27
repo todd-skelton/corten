@@ -1088,6 +1088,11 @@ Corten is pre-1.0, so any minor version may change the API.
     answer: before, Chromium (and Firefox, for a 20 MB body) took the closed connection for a
     network error and showed nothing, not even the error page
     ([#150 A handler cannot read an Error's status, so an upload over Upload::limit (413) cannot draw the form again with a message](https://github.com/todd-skelton/corten/issues/150)).
+37. A page whose handlers call a script module the app does not serve is an error in debug builds
+    (a router test, `cargo run`), naming the module to list; a release build logs it. Before, it
+    rendered with a 200 and only the browser found the 404, after which the module's handlers did
+    nothing
+    ([#157 A page that names a script! module the app does not serve renders fine; only the browser finds the 404, and its handlers silently do nothing](https://github.com/todd-skelton/corten/issues/157)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
