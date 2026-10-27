@@ -74,6 +74,7 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 pub struct Area<P> {
     routes: Router,
     components: Vec<crate::Component>,
+    deadline: Option<Option<Duration>>,
     types: PhantomData<fn() -> P>,
 }
 
@@ -128,6 +129,17 @@ impl<P: TypedRoute> Area<P> {
         self.components.extend_from_slice(components);
         self
     }
+
+    /// How long a request at the prefix or under it may take to start its answer, in place of
+    /// [`App::deadline`]: `.deadline(Duration::from_secs(120))` for reports that take a while, so
+    /// every other page keeps the app's. Past it the answer is the 503 error page and the
+    /// request's [`crate::Signal`] aborts with [`crate::Abort::Deadline`], as at the app's. In
+    /// nested areas the innermost that sets one decides. `None` removes it, for routes that bound
+    /// themselves.
+    pub fn deadline(mut self, deadline: impl Into<Option<Duration>>) -> Self {
+        self.deadline = Some(deadline.into());
+        self
+    }
 }
 
 /// An [`Area`] given to [`App::area`], without its type.
@@ -135,6 +147,7 @@ struct Placed {
     prefix: &'static str,
     routes: Router,
     components: Vec<crate::Component>,
+    deadline: Option<Option<Duration>>,
 }
 
 /// An app: its routes, plus everything around them that every production app needs, on by
@@ -270,8 +283,8 @@ impl<M: Middleware> App<M> {
         };
         let prefix = P::PATH;
         assert!(!self.areas.iter().any(|placed| placed.prefix == prefix), "corten: the area {prefix:?} is given twice");
-        let area = build(Area { routes: Router::new(), components: Vec::new(), types: PhantomData });
-        self.areas.push(Placed { prefix, routes: area.routes, components: area.components });
+        let area = build(Area { routes: Router::new(), components: Vec::new(), deadline: None, types: PhantomData });
+        self.areas.push(Placed { prefix, routes: area.routes, components: area.components, deadline: area.deadline });
         self
     }
 
@@ -323,7 +336,9 @@ impl<M: Middleware> App<M> {
     /// aborts with [`crate::Abort::Deadline`] for work the handler spawned. It bounds the time to
     /// the response's start, so a stream (a feed, server-sent events) runs as long as it needs;
     /// reading the request body counts, so an app that takes large uploads raises it. `None`
-    /// removes it, for an app whose handlers bound themselves.
+    /// removes it, for an app whose handlers bound themselves. An area or an API whose routes
+    /// need another sets its own ([`Area::deadline`], [`Api::deadline`]), so one slow route does
+    /// not lift it for every page.
     pub fn deadline(mut self, deadline: impl Into<Option<Duration>>) -> Self {
         self.deadline = deadline.into();
         self
@@ -536,10 +551,15 @@ impl<M: Middleware> App<M> {
             owned.push(api);
             mounts.push(mount);
         }
+        // The areas that set their own deadline, innermost first, so the first under a path decides.
+        let mut area_deadlines: Vec<(&'static str, Option<Duration>)> =
+            self.areas.iter().filter_map(|area| Some((area.prefix, area.deadline?))).collect();
+        area_deadlines.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
         owned.extend(self.areas.into_iter().map(|area| area.routes));
         let layer = Arc::new(Layer {
             shared: Arc::new(shared),
             deadline: self.deadline,
+            area_deadlines,
             policy,
             mounts,
             own,
@@ -766,6 +786,8 @@ impl crate::middleware::Next for Handle {
 struct Layer<M> {
     shared: Arc<Shared>,
     deadline: Option<Duration>,
+    /// [`Area::deadline`]s, innermost prefix first; empty unless an area set one.
+    area_deadlines: Vec<(&'static str, Option<Duration>)>,
     policy: Applied,
     mounts: Vec<Mount>,
     own: Own,
@@ -796,6 +818,13 @@ impl<M: Middleware> Layer<M> {
         let path = req.uri().path();
         let own = self.own.contains(path);
         let mount = if own { None } else { self.mounts.iter().find(|mount| mount.contains(path)) };
+        let deadline = match mount {
+            Some(mount) => mount.deadline.unwrap_or(self.deadline),
+            None if own || self.area_deadlines.is_empty() => self.deadline,
+            None => {
+                self.area_deadlines.iter().find(|(prefix, _)| crate::api::under(prefix, path)).map_or(self.deadline, |(_, d)| *d)
+            }
+        };
         if let Some(mount) = mount {
             if let Some(mut res) = mount.preflight(req.method(), req.headers()) {
                 self.policy.headers(&mut res, None);
@@ -824,7 +853,7 @@ impl<M: Middleware> Layer<M> {
         let cors = mount.and_then(|mount| mount.allowed_origin(req.headers()));
         let credentials = cache::credentials(req.headers());
         let path = self.shared.dev.then(|| req.uri().path().to_string());
-        let (mut res, caller, mode) = self.run(req, route, mount.is_some()).await;
+        let (mut res, caller, mode) = self.run(req, route, mount.is_some(), deadline).await;
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
         self.policy.headers(&mut res, nonce.as_ref());
         let seen = Seen {
@@ -855,14 +884,14 @@ impl<M: Middleware> Layer<M> {
     }
 
     /// The response, whether anything read who is asking, and the request's mode.
-    async fn run(&self, mut req: Request, route: Route, api: bool) -> (Response, bool, Mode) {
+    async fn run(&self, mut req: Request, route: Route, api: bool, deadline: Option<Duration>) -> (Response, bool, Mode) {
         // Dropped with this future if the client leaves first; then the response's.
         let watch = Watch(Signal::default());
         req.extensions_mut().insert(watch.0.clone());
         req.extensions_mut().insert(self.shared.clone());
         let mode = page::mode_of(req.headers());
         let next = Next { middleware: &self.middleware, route };
-        let res = page::render_errors(&self.shared, req, next, self.deadline, &watch.0, api, mode).await;
+        let res = page::render_errors(&self.shared, req, next, deadline, &watch.0, api, mode).await;
         let personal = watch.0.is_personal();
         (signal::follow(res, watch), personal, mode)
     }

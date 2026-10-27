@@ -49,12 +49,13 @@ use crate::{html::json_string, route::Route as TypedRoute};
 pub struct Api<P> {
     pub(crate) routes: Router,
     pub(crate) origins: Vec<String>,
+    deadline: Option<Option<std::time::Duration>>,
     types: PhantomData<fn() -> P>,
 }
 
 impl<P: TypedRoute> Api<P> {
     pub(crate) fn new() -> Self {
-        Api { routes: Router::new(), origins: Vec::new(), types: PhantomData }
+        Api { routes: Router::new(), origins: Vec::new(), deadline: None, types: PhantomData }
     }
 
     /// A route of the API, at `R::PATH`: `.route::<ItemJson>(get(item_json))`, with
@@ -86,6 +87,17 @@ impl<P: TypedRoute> Api<P> {
         self
     }
 
+    /// How long these routes may take to start their answer, in place of [`crate::App::deadline`]
+    /// for every request under the prefix: `.deadline(Duration::from_secs(300))` for an API that
+    /// waits on a slow upstream (a model, a report), so the rest of the app keeps its shorter one.
+    /// Past it the answer is the JSON 503 and the request's [`crate::Signal`] aborts with
+    /// [`crate::Abort::Deadline`], as at the app's. `None` removes it, for routes that bound
+    /// themselves.
+    pub fn deadline(mut self, deadline: impl Into<Option<std::time::Duration>>) -> Self {
+        self.deadline = Some(deadline.into());
+        self
+    }
+
     /// A site whose pages may call these routes from the browser (CORS), like
     /// `https://partner.example`. Corten answers its preflight requests, adds
     /// `Access-Control-Allow-Origin` to the responses, and lets its writes through the same-origin
@@ -108,11 +120,13 @@ impl<P: TypedRoute> Api<P> {
 pub(crate) struct Mount {
     pub prefix: String,
     origins: Vec<String>,
+    /// The API's own deadline, when it set one ([`Api::deadline`]).
+    pub deadline: Option<Option<std::time::Duration>>,
 }
 
 impl Mount {
     pub fn new<P>(prefix: String, api: &Api<P>) -> Self {
-        Mount { prefix, origins: api.origins.clone() }
+        Mount { prefix, origins: api.origins.clone(), deadline: api.deadline }
     }
 
     pub fn contains(&self, path: &str) -> bool {

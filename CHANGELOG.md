@@ -526,6 +526,11 @@ Corten is pre-1.0, so any minor version may change the API.
     test reads every word back through `Query`'s reader under each of serde's eight rules.
     `#[serde(..)]` values passed in by a `macro_rules!` are read by `ToJson` and `FromJson` too
     ([#129 A query value must be Display while it is read with serde, so an enum in an address spells its words twice](https://github.com/todd-skelton/corten/issues/129)).
+78. `Area::deadline(..)` and `Api::deadline(..)`: routes slower than pages (an upstream that
+    answers in minutes, a report, uploads) get a deadline of their own, or `None`, and every
+    other route keeps `App::deadline`. In nested areas the innermost that sets one decides. The
+    503 and `Abort::Deadline` are the same at every level
+    ([#114 App::deadline is one value for the whole app, so one slow route (an upstream call, an upload) lifts it for every page](https://github.com/todd-skelton/corten/issues/114)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

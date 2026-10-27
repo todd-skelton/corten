@@ -35,6 +35,11 @@ paths! {
     ApiItems = "/api/items",
     Items = "/items",
     Admin = "/admin",
+    AdminSlow = "/admin/slow",
+    AdminQuick = "/admin/quick",
+    AdminQuickSlow = "/admin/quick/slow",
+    AdminOther = "/admin/other",
+    AdminOtherSlow = "/admin/other/slow",
 }
 
 std::thread_local! {
@@ -1006,6 +1011,36 @@ fn api_app(settings: impl FnOnce(crate::Api<ApiRoot>) -> crate::Api<ApiRoot>) ->
         settings(api)
     })
     .router()
+}
+
+/// An area or an API with a deadline of its own: its routes get it, and every other page keeps
+/// the app's. In nested areas the innermost that sets one decides; one that sets none takes its
+/// parent's.
+#[tokio::test]
+async fn an_area_or_an_api_sets_its_own_deadline() {
+    let slow = || {
+        crate::Methods(get(|| async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            "done"
+        }))
+    };
+    let router = App::new(Routes::from(Router::new().route("/slow", slow().0)))
+        .error_page(test_error_page, ())
+        .deadline(Duration::from_millis(50))
+        .area::<Admin>(|admin| admin.route::<AdminSlow>(slow()).deadline(Duration::from_secs(10)))
+        .area::<AdminQuick>(|quick| quick.route::<AdminQuickSlow>(slow()).deadline(Duration::from_millis(20)))
+        .area::<AdminOther>(|other| other.route::<AdminOtherSlow>(slow()))
+        .api::<ApiRoot>(|api| api.route::<ApiSlow>(slow()).deadline(None))
+        .router();
+    let status = |uri| {
+        let router = router.clone();
+        async move { call_with(router, "GET", uri, None, Some("text/html")).await.0 }
+    };
+    assert_eq!(status("/slow").await, StatusCode::SERVICE_UNAVAILABLE, "a page keeps the app's deadline");
+    assert_eq!(status("/admin/slow").await, StatusCode::OK, "the area's own");
+    assert_eq!(status("/admin/other/slow").await, StatusCode::OK, "a nested area without one takes its parent's");
+    assert_eq!(status("/admin/quick/slow").await, StatusCode::SERVICE_UNAVAILABLE, "the innermost decides");
+    assert_eq!(status("/api/slow").await, StatusCode::OK, "None removes it for the API");
 }
 
 /// What most HTTP clients send: `*/*`, or no `Accept` at all, or a browser's own.
