@@ -1,25 +1,29 @@
 //! The app's views. Each component's stylesheet and script are next to it in `views/`.
 use corten::{Component, prelude::*};
 
-use crate::{routes, text::Msg, theme};
+use std::sync::Arc;
+
+use crate::{model::ItemView, routes, source::Shelf, text::Msg, theme};
 
 mod alert;
-mod home;
+mod item_card;
 mod item_detail;
+mod item_list;
 mod listing_sort;
 mod offer_list;
 mod price;
 
 pub use alert::{AlertForm, AlertFormView, AlertMessage};
-pub use home::Home;
+pub use item_card::ItemCard;
 pub use item_detail::{ItemDetail, ItemPage};
+pub use item_list::ItemList;
 pub use listing_sort::ListingSort;
 pub use offer_list::OfferList;
 pub use price::Price;
 
 /// Every component with a script or a stylesheet, tokens first: for `App::components` and the
 /// generated types.
-pub const COMPONENTS: &[Component] = &[theme::TOKENS, ItemDetail, AlertForm, Price, Home, ListingSort, OfferList];
+pub const COMPONENTS: &[Component] = &[theme::TOKENS, ItemDetail, AlertForm, Price, ItemList, ItemCard, ListingSort, OfferList];
 
 /// The page for a failed request (`App::error_page`), in the layout; under `corten dev` it shows
 /// the error. The PWA's offline page is `Failure::Offline`.
@@ -48,9 +52,10 @@ pub async fn error_page(failure: Failure, req: Req) -> HtmlResult {
     })
 }
 
-pub fn category(t: Msg, slug: &str) -> impl Render + '_ {
+pub fn category<'a>(t: Msg, title: &'a str, items: &'a [Arc<ItemView>]) -> impl Render + 'a {
     html! {
-        <h1>{t.category_title(slug)}</h1>
+        <h1>{title}</h1>
+        if !items.is_empty() { <ItemList t={t} shelf={Shelf::Items(items)} /> }
         <p><a href={routes::Home}>{t.category_back()}</a></p>
     }
 }

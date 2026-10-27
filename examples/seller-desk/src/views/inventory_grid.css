@@ -3,6 +3,9 @@
 .toolbar input[type="search"] { width: 20rem; max-width: 100%; }
 .toolbar [role="group"] { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: 8px; background: var(--tint); }
 .toolbar > output { color: var(--danger); font-weight: 500; }
+/* On a phone the table scrolls sideways in its box; the toolbar wraps above it. */
+.scroll { overflow-x: auto; border-radius: 10px; }
+.scroll .table { min-width: 40rem; }
 .table { border: 1px solid var(--line); border-radius: 10px; border-collapse: separate; border-spacing: 0; }
 .table tbody tr:last-child td { border-bottom: 0; }
 .table tbody tr:hover { background: var(--bg); }

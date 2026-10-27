@@ -36,7 +36,11 @@
     "back": "Back to popular items"
   },
   "home": {
-    "title": "Popular items"
+    "title": "Popular items",
+    "item": "Item {n}"
+  },
+  "card": {
+    "from": "From {price}"
   },
   "error": {
     "not_found": "Not found",

@@ -1,4 +1,5 @@
 mod app;
+mod text;
 mod views;
 
 #[tokio::main]
