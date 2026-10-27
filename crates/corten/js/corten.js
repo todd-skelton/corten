@@ -245,6 +245,13 @@ function closestRef(el, owner, name, event) {
  */
 
 /**
+ * The page's percentage format: `format(0.029)` is `2.9%` in en and `2,9 %` in fr, as the
+ * server's `t.percent` writes it, with the fraction digits the markup chose
+ * (`t.js().percent(2)`). It takes a ratio; a decimal may be passed as its text (`"0.029"`).
+ * @typedef {(ratio: number | string) => string} PercentFormat
+ */
+
+/**
  * A date's format: `format(at)` (a `Date`, milliseconds or ISO text) as the server's `t.date`,
  * `t.time` or `t.date_time` writes it, in the zone the markup chose (`t.js().date(DateStyle::Medium)`).
  * @typedef {(at: Date | number | string) => string} DateFormat

@@ -44,6 +44,22 @@ impl Decimal {
         Some(Decimal { negative, mantissa, scale: frac.len() as u8 })
     }
 
+    /// This ratio as a percentage, the value Ã— 100, with at most `digits` fraction digits:
+    /// rounded half away from zero, without trailing zeros (0.0290 is 2.9), as Intl's
+    /// `maximumFractionDigits` writes it.
+    fn percent(self, digits: u8) -> Self {
+        let shifted = match self.scale.checked_sub(2) {
+            Some(scale) => Decimal { scale, ..self },
+            None => Decimal { mantissa: self.mantissa.saturating_mul(10u128.pow(u32::from(2 - self.scale))), scale: 0, ..self },
+        };
+        let mut d = if shifted.scale > digits { shifted.rescale(digits) } else { shifted };
+        while d.scale > 0 && d.mantissa % 10 == 0 {
+            d.mantissa /= 10;
+            d.scale -= 1;
+        }
+        d
+    }
+
     /// The same value with `digits` fraction digits: padded with zeros, or rounded half away from
     /// zero (21.505 is 21.51), as Intl rounds an amount.
     fn rescale(self, digits: u8) -> Self {
@@ -459,31 +475,47 @@ fn unix_seconds(at: SystemTime) -> i64 {
     }
 }
 
-/// A number or an amount of money in a locale: what `t.number` and `t.money` return. It renders
-/// in `html!` as text or an attribute value, and is a message argument like any `Display` value.
+/// A number, an amount of money or a percentage in a locale: what `t.number`, `t.money` and
+/// `t.percent` return. It renders in `html!` as text or an attribute value, and is a message
+/// argument like any `Display` value.
 #[derive(Clone, Copy)]
 pub struct Formatted {
     data: &'static __private::LocaleData,
     value: Decimal,
-    currency: Option<Currency>,
+    kind: Kind,
+}
+
+#[derive(Clone, Copy)]
+enum Kind {
+    Number,
+    Money(Currency),
+    /// `value` is already Ã— 100 and rounded.
+    Percent,
 }
 
 impl Formatted {
     #[doc(hidden)]
     pub fn number(data: &'static __private::LocaleData, value: Decimal) -> Self {
-        Formatted { data, value, currency: None }
+        Formatted { data, value, kind: Kind::Number }
     }
 
     #[doc(hidden)]
     pub fn money(data: &'static __private::LocaleData, amount: &impl Amount, currency: Currency) -> Self {
-        Formatted { data, value: amount.in_digits(currency.digits()), currency: Some(currency) }
+        Formatted { data, value: amount.in_digits(currency.digits()), kind: Kind::Money(currency) }
+    }
+
+    #[doc(hidden)]
+    pub fn percent(data: &'static __private::LocaleData, ratio: Decimal, digits: u8) -> Self {
+        Formatted { data, value: ratio.percent(digits), kind: Kind::Percent }
     }
 
     fn write(&self, out: &mut dyn Write) -> fmt::Result {
         let data = self.data;
         let negative = usize::from(self.value.negative);
-        let Some(currency) = self.currency else {
-            return self.write_in(data.number[negative], &data.plain, "", out);
+        let currency = match self.kind {
+            Kind::Number => return self.write_in(data.number[negative], &data.plain, "", out),
+            Kind::Percent => return self.write_in(data.percent[negative], &data.percent_separators, "", out),
+            Kind::Money(currency) => currency,
         };
         let code = currency.code();
         let template = match data.currencies.binary_search_by(|(c, ..)| (*c).cmp(code)) {
@@ -721,6 +753,15 @@ pub struct NumberFormat {
     data: &'static __private::LocaleData,
 }
 
+/// `t.js().percent(digits)`: the locale's percentage format, for a handler whose JSDoc takes a
+/// `PercentFormat` (from `corten`), which writes `format(ratio)` as `t.percent(ratio, digits)`
+/// does.
+#[derive(Clone, Copy)]
+pub struct PercentFormat {
+    data: &'static __private::LocaleData,
+    digits: u8,
+}
+
 /// `t.js().money(currency)`: an amount's format, for a handler whose JSDoc takes a `MoneyFormat`
 /// (from `corten`), which writes `format(minor)` as `t.money(Minor(minor), currency)` does.
 #[derive(Clone, Copy)]
@@ -744,6 +785,13 @@ impl NumberFormat {
     #[doc(hidden)]
     pub fn new(data: &'static __private::LocaleData) -> Self {
         NumberFormat { data }
+    }
+}
+
+impl PercentFormat {
+    #[doc(hidden)]
+    pub fn new(data: &'static __private::LocaleData, digits: u8) -> Self {
+        PercentFormat { data, digits }
     }
 }
 
@@ -869,6 +917,14 @@ impl crate::script::Arg<crate::script::ts::NumberFormat> for NumberFormat {
     }
 }
 
+impl crate::script::Arg<crate::script::ts::PercentFormat> for PercentFormat {
+    fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
+        wire::open(self.data, out);
+        wire::separators(&self.data.percent_separators, self.data.percent, out);
+        let _ = write!(out, ",&quot;p&quot;:{}}}", self.digits);
+    }
+}
+
 impl crate::script::Arg<crate::script::ts::MoneyFormat> for MoneyFormat {
     fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
         let data = self.data;
@@ -951,6 +1007,10 @@ pub mod __private {
         pub money_separators: Separators,
         /// A number, positive and negative.
         pub number: [&'static str; 2],
+        /// A percentage's separators (bn groups a number 12,34,567 and a percentage 1,234,567%).
+        pub percent_separators: Separators,
+        /// A percentage, positive and negative, with the locale's sign in place.
+        pub percent: [&'static str; 2],
         /// An amount in a currency written by its code (`CHF 5.00`), positive and negative.
         pub money: [&'static str; 2],
         /// Each currency written otherwise, by code: positive and negative, the symbol in place.

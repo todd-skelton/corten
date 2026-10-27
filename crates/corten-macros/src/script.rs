@@ -567,8 +567,9 @@ fn param_type(ty: &str) -> Param {
     }
     match ty {
         "AbortSignal" => Param::Checked("ts::AbortSignal".into()),
-        // From `corten`: the page's formats, `t.js().number()`, `.money(USD)`, `.date(..)`.
-        "NumberFormat" | "MoneyFormat" | "DateFormat" => Param::Checked(format!("ts::{ty}")),
+        // From `corten`: the page's formats, `t.js().number()`, `.money(USD)`, `.date(..)`,
+        // `.percent(2)`.
+        "NumberFormat" | "MoneyFormat" | "DateFormat" | "PercentFormat" => Param::Checked(format!("ts::{ty}")),
         "string" => Param::Checked("ts::String".into()),
         "number" => Param::Checked("ts::Number".into()),
         "boolean" => Param::Checked("ts::Boolean".into()),

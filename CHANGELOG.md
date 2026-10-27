@@ -545,6 +545,12 @@ Corten is pre-1.0, so any minor version may change the API.
     it; a path in place of a full URL is a debug-build panic, since a place on the app's own page
     is `route.at(Id)`
     ([#123 An address outside the app cannot carry a #fragment, so req.moved and req.redirect drop the anchor of an external URL](https://github.com/todd-skelton/corten/issues/123)).
+81. `t.percent(ratio, digits)` writes a ratio as a percentage in the locale (`2.9%`, `2,9 %`,
+    `%2,9`), with at most `digits` fraction digits, and `t.js().percent(digits)` gives a script
+    the same format (`@param {PercentFormat}`). The locale data carries each locale's percent
+    pattern and grouping from CLDR, checked against Intl's `style: "percent"` with
+    `maximumFractionDigits` on 40 values per locale (13 kept as the Rust and script tests' cases). The runtime grows by 99 bytes gzipped
+    ([#119 i18n writes no percentage, so a rate like 2.9% cannot be localized](https://github.com/todd-skelton/corten/issues/119)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

@@ -164,12 +164,15 @@ html! {
     <td>{t.money(Minor(line.cents), USD)}</td>                           // $1,234.50, 1 234,50 $US
     <td>{t.money(Decimal::parse(&api.amount).unwrap_or_default(), USD)}</td> // "21.50" from an API
     <td>{t.number(listing.count)}</td>                                     // 1,234
+    <td>{t.percent(Decimal::new(fee_bps, 4), 2)}</td>                      // 2.9%, 2,9 %, %2,9
     <p>{t.item_pending(t.date_time(at, DateStyle::Medium, TimeStyle::Short))}</p> // Mar 22, 2026, 12:00 PM UTC
     <p>{t.account_member_since(t.date(joined, MonthStyle::Long))}</p>     // Member since March 2025
 }
 ```
 
-`t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
+`t.percent(ratio, digits)` takes the ratio (0.029 for 2.9%, so 290 basis points are
+`Decimal::new(290, 4)`) and writes at most `digits` fraction digits, rounded half away from zero
+and without trailing zeros, with the locale's sign where it puts it. `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
 a bare integer (it could be either, so it does not compile), with the digits the currency is
 shown with (0 for JPY, 3 for KWD). `MonthStyle` writes the month and year without the day, in
 the locale's order and words (`Mar 2026`, `MÃ¤rz 2026`); it has no time, so `t.date_time` does
