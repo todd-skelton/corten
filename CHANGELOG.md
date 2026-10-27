@@ -603,7 +603,12 @@ Corten is pre-1.0, so any minor version may change the API.
     WebSocket and a page (or a gateway's relayed answer); the handler returns `SwitchOr<A>`,
     whose failures are answered as `A`'s are. A request that asks is checked as `Upgrade`
     checks it. Routes that do not take it run no new code.
-91. `JsonResult<T>`'s error is `JsonError`: `check(&input)?` answers 422 with the fields
+91. `corten::shutdown()`: the app begins the graceful shutdown a signal begins (tasks told, live
+    streams ended, listeners closed, requests in progress finished, the grace), from a route a
+    supervisor calls or a task. On Windows, `shutdown_signal` also ends on Ctrl-Break, the console
+    closing and system shutdown, not only Ctrl-C
+    ([#174 An app cannot begin its own graceful shutdown (a route, a task, a supervisor's request), and on Windows only Ctrl-C starts one](https://github.com/todd-skelton/corten/issues/174)).
+92. `JsonResult<T>`'s error is `JsonError`: `check(&input)?` answers 422 with the fields
     (`{"error":{..,"fields":{..}}}`), and `?` on any other error is answered as before. Before,
     a JSON handler that checked its input and loaded a record could not `?` both, and the
     `Result<Json<T>, Errors>` the docs named did not compile. On a page `?` on `Errors` still
