@@ -18,6 +18,9 @@ futures-util = { version = "0.3", default-features = false }
 getrandom = "0.3"
 # Already in axum's tree: the response body type, for the request signal.
 http-body = "1"
+# Already in axum's tree (axum::serve): a connection that switches protocols (corten::upgrade).
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 # Already in axum's tree: the traits App's middleware implements.
 tower-layer = "0.3"
 tower-service = "0.3"

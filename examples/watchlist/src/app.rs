@@ -13,6 +13,7 @@
 //! | `GET /saved?until=..` | a read catching up with a write: until then the page asks to be read again (`ReadAgain` in its head tags), however it was reached |
 //! | `POST /avatar` | a form with a file (`Upload`): the picture is read as it arrives, then the other fields; a body over its limit is answered with a message in the form (`UploadError::TooLarge`) |
 //! | `POST /saved` | a write answered in place while its read catches up: the status line, as a patch that is read again from `/saved?until=..` (`ReadAgain::from`) until the write is in |
+//! | `GET /echo` | a WebSocket (`Upgrade`): the handshake is checked as a write is, the frames are tokio-tungstenite's |
 use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -120,6 +121,36 @@ mod url {
     pub struct Saved {
         pub until: Option<u64>,
     }
+
+    #[route("/echo", get = echo)]
+    pub struct Echo;
+}
+
+/// A WebSocket that answers each text message in capitals. The handshake is Corten's, checked
+/// as a write is (another site's page cannot open it); the frames are tokio-tungstenite's.
+async fn echo(upgrade: corten::upgrade::Upgrade) -> corten::Result<corten::upgrade::Switch> {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::{
+        WebSocketStream,
+        tungstenite::{Message, protocol::Role},
+    };
+    upgrade.websocket(|stream, signal| async move {
+        let mut socket = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
+        loop {
+            let message = tokio::select! {
+                message = socket.next() => message,
+                // The app is shutting down: say goodbye rather than drop the connection.
+                _ = signal.aborted() => {
+                    let _ = socket.close(None).await;
+                    break;
+                }
+            };
+            let Some(Ok(Message::Text(text))) = message else { break };
+            if socket.send(Message::text(text.as_str().to_uppercase())).await.is_err() {
+                break;
+            }
+        }
+    })
 }
 
 /// A page with a stylesheet of its own: an area, so other pages do not download it.

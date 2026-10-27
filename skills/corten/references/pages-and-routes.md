@@ -165,6 +165,14 @@ is no document; a handler that needs to know who calls takes a `Caller` (an API 
 type), and a refusal is a JSON 401 or 403. Do not add an API route for a screen: a native client reads the page with
 `req.screen`.
 
+A WebSocket is a route whose handler takes `corten::upgrade::Upgrade` and returns
+`upgrade.websocket(|stream, signal| async move { .. })`; read the frames with a library
+(`tokio_tungstenite::WebSocketStream::from_raw_socket(stream, Role::Server, config)`) and end on
+`signal.aborted()`. Its handshake is checked as a write (another site's page gets a 403), so do
+not add an `Origin` check of your own. A route that passes another server's answer on returns
+`corten::Relay::new(status, headers, body)`, never a `Response`; never merge a router after
+`app.router()` for either.
+
 ## Routes only some callers may use
 
 A handler that needs to know who is asking takes `Caller<T>`; `T`'s `Identify` finds the caller

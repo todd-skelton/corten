@@ -1802,6 +1802,171 @@ async fn raw_get(addr: std::net::SocketAddr, path: &str, headers: &str) -> Strin
     answer
 }
 
+/// A route that takes `Upgrade` switches the connection: a WebSocket handshake from the page's own
+/// origin or from a client that is not a browser gets its 101 and then the bytes, one from another
+/// site is refused as a cross-site write is, and a request that does not ask to switch is a 426.
+#[tokio::test]
+async fn an_upgrade_route_switches_for_its_own_origin_and_refuses_other_sites() {
+    use crate::upgrade::{Switch, Upgrade};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    async fn echo(mut stream: crate::upgrade::Stream, _: crate::Signal) {
+        let mut buf = [0u8; 64];
+        while let Ok(n @ 1..) = stream.read(&mut buf).await {
+            if stream.write_all(&buf[..n]).await.is_err() {
+                break;
+            }
+        }
+    }
+    let routes = Router::new().route("/ws", get(|upgrade: Upgrade| async move { upgrade.websocket(echo) })).route(
+        "/tunnel",
+        get(|upgrade: Upgrade| async move {
+            let mut headers = axum::http::HeaderMap::new();
+            headers.insert("x-upstream", "yes".parse().unwrap());
+            Ok::<Switch, crate::Error>(upgrade.switch(headers, echo))
+        }),
+    );
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let app = App::new(Routes::from(routes)).api::<ApiRoot>(|api| {
+        api.route::<ApiWs>(crate::Methods(get(|upgrade: Upgrade| async move { upgrade.websocket(echo) })))
+            .allow_origin("https://partner.example")
+    });
+    let server = tokio::spawn(crate::app::run(listeners, app, async {
+        let _ = stopped.await;
+    }));
+    // The answer's head, and the connection for what follows it.
+    let handshake = |path: &'static str, protocol: &'static str, extra: &'static str| async move {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let request = format!(
+            "GET {path} HTTP/1.1\r\nhost: localhost\r\nconnection: keep-alive, Upgrade\r\nupgrade: {protocol}\r\nsec-websocket-version: 13\r\nsec-websocket-key: dGhlIHNhbXBsZSBub25jZQ==\r\n{extra}\r\n"
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut head = Vec::new();
+        while !head.ends_with(b"\r\n\r\n") {
+            let mut byte = [0u8; 1];
+            if stream.read(&mut byte).await.unwrap() == 0 {
+                break;
+            }
+            head.push(byte[0]);
+        }
+        (String::from_utf8(head).unwrap().to_ascii_lowercase(), stream)
+    };
+    let echoes = |mut stream: tokio::net::TcpStream| async move {
+        stream.write_all(b"ping").await.unwrap();
+        let mut back = [0u8; 4];
+        stream.read_exact(&mut back).await.unwrap();
+        &back == b"ping"
+    };
+
+    let (head, stream) = handshake("/ws", "websocket", "origin: http://localhost\r\nsec-fetch-site: same-origin\r\n").await;
+    assert!(head.starts_with("http/1.1 101"), "{head}");
+    assert!(head.contains("sec-websocket-accept: s3pplmbitxaq9kygzzhzrbk+xoo="), "{head}");
+    assert!(echoes(stream).await, "the switched connection carries bytes both ways");
+
+    let (head, stream) = handshake("/ws", "websocket", "").await;
+    assert!(head.starts_with("http/1.1 101"), "a client that is not a browser switches: {head}");
+    assert!(echoes(stream).await);
+
+    let (head, _) = handshake("/ws", "websocket", "origin: https://evil.example\r\nsec-fetch-site: cross-site\r\n").await;
+    assert!(head.starts_with("http/1.1 403"), "another site's page cannot open it with the user's cookies: {head}");
+    let (head, _) = handshake("/ws", "websocket", "origin: https://evil.example\r\n").await;
+    assert!(head.starts_with("http/1.1 403"), "nor an older browser's, by its Origin alone: {head}");
+
+    let (head, _) = handshake("/ws", "chat", "").await;
+    assert!(head.starts_with("http/1.1 400"), "only a WebSocket handshake is accepted as one: {head}");
+
+    let plain = raw_get(addr, "/ws", "").await;
+    assert!(plain.starts_with("HTTP/1.1 426"), "{plain}");
+
+    // An API's allowed site may open its sockets, as it may write to it, but not with cookies.
+    let partner = "origin: https://partner.example\r\nsec-fetch-site: cross-site\r\n";
+    let (head, stream) = handshake("/api/ws", "websocket", partner).await;
+    assert!(head.starts_with("http/1.1 101"), "{head}");
+    assert!(echoes(stream).await);
+    let (head, _) = handshake(
+        "/api/ws",
+        "websocket",
+        "origin: https://partner.example\r\nsec-fetch-site: cross-site\r\ncookie: session=abc\r\n",
+    )
+    .await;
+    assert!(head.starts_with("http/1.1 403"), "{head}");
+    let (head, _) = handshake("/ws", "websocket", partner).await;
+    assert!(head.starts_with("http/1.1 403"), "the pages' sockets still refuse the partner: {head}");
+
+    let (head, stream) = handshake("/tunnel", "remote", "").await;
+    assert!(head.starts_with("http/1.1 101") && head.contains("x-upstream: yes") && head.contains("upgrade: remote"), "{head}");
+    assert!(echoes(stream).await);
+
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+#[derive(crate::Route)]
+#[route("/api/ws")]
+struct ApiWs;
+
+/// A relayed answer is passed on as the upstream gave it: its failure status and body, never the
+/// error page or the JSON error, without the hop-by-hop headers.
+#[tokio::test]
+async fn a_relay_passes_the_upstreams_answer_on() {
+    fn upstream(status: StatusCode) -> crate::Relay {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("content-type", "text/plain".parse().unwrap());
+        headers.insert("connection", "keep-alive, x-hop".parse().unwrap());
+        headers.insert("x-hop", "1".parse().unwrap());
+        headers.insert("keep-alive", "timeout=5".parse().unwrap());
+        headers.insert("transfer-encoding", "chunked".parse().unwrap());
+        headers.insert("x-upstream", "kept".parse().unwrap());
+        crate::Relay::new(status, headers, Body::from("upstream says no"))
+    }
+    let router = App::new(Routes::from(Router::new().route("/relay", get(|| async { upstream(StatusCode::BAD_REQUEST) }))))
+        .error_page(test_error_page, ())
+        .api::<ApiRoot>(|api| api.route::<ApiItem>(crate::Methods(get(|| async { upstream(StatusCode::BAD_GATEWAY) }))))
+        .router();
+    for (path, status, accept) in [
+        ("/relay", StatusCode::BAD_REQUEST, Some("text/html")),
+        ("/relay", StatusCode::BAD_REQUEST, Some("application/json")),
+        ("/api/items/7", StatusCode::BAD_GATEWAY, None),
+    ] {
+        let (got, headers, body) = call_with(router.clone(), "GET", path, None, accept).await;
+        assert_eq!((got, &body[..]), (status, "upstream says no"), "{path} {accept:?}");
+        assert_eq!(headers["x-upstream"], "kept");
+        for hop in ["connection", "x-hop", "keep-alive", "transfer-encoding"] {
+            assert!(!headers.contains_key(hop), "{path}: {hop} is the upstream connection's, not ours");
+        }
+        assert!(headers.contains_key("x-content-type-options"), "the app's security headers still apply");
+    }
+
+    // An upstream's event stream reaches the client a piece at a time, not when it ends.
+    let (send, receive) = tokio::sync::mpsc::channel::<Result<&'static str, std::io::Error>>(1);
+    let stream = std::sync::Arc::new(std::sync::Mutex::new(Some(tokio_stream_of(receive))));
+    let router = App::new(Routes::from(Router::new().route(
+        "/events",
+        get(move || {
+            let body = Body::from_stream(stream.lock().unwrap().take().unwrap());
+            async move {
+                let mut headers = axum::http::HeaderMap::new();
+                headers.insert("content-type", "text/event-stream".parse().unwrap());
+                crate::Relay::new(StatusCode::OK, headers, body)
+            }
+        }),
+    )))
+    .router();
+    let res = router.oneshot(Request::get("/events").body(Body::empty()).unwrap()).await.unwrap();
+    let mut body = res.into_body();
+    send.send(Ok("data: one\n\n")).await.unwrap();
+    let first = tokio::time::timeout(std::time::Duration::from_secs(2), body.frame()).await;
+    let first = first.expect("the first event arrives while the stream is open").unwrap().unwrap();
+    assert_eq!(first.into_data().unwrap(), "data: one\n\n");
+    drop(send);
+}
+
+/// A stream of the pieces `receive` gets, until its sender is dropped.
+fn tokio_stream_of<T>(receive: tokio::sync::mpsc::Receiver<T>) -> impl futures_util::Stream<Item = T> {
+    futures_util::stream::unfold(receive, |mut receive| async move { receive.recv().await.map(|item| (item, receive)) })
+}
+
 /// `corten::serve` gives each request its connection's peer, which `ClientIp` reads. A proxy's `X-Forwarded-For` is followed only when the
 /// app trusts the peer, and the answer is private to the address.
 #[tokio::test]
