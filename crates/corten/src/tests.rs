@@ -646,6 +646,58 @@ async fn a_handler_that_panics_gets_the_error_page_and_the_server_keeps_serving(
     assert!(body.contains("index out of bounds"), "under corten dev the page shows the panic: {body}");
 }
 
+/// A second layout, as a marketing page and an account page might have.
+#[crate::component]
+fn Plain(req: &Req, title: &str, children: impl Render) -> impl Document {
+    html! {
+        <html lang={req.lang()}>
+            <head>
+                <title>{title}</title>
+                <Corten />
+            </head>
+            <body>
+                <header>"Plain"</header>
+                <main>{children}</main>
+            </body>
+        </html>
+    }
+}
+
+/// The shell key names the layout that rendered the page: pages in one layout share it, so a
+/// navigation between them swaps `<main>`; a page in another layout (or the default error
+/// document) has another, so the runtime loads it in full rather than keep the first layout.
+#[tokio::test]
+async fn a_page_in_another_layout_has_another_shell_key() {
+    let routes = Router::new()
+        .route("/", get(|req: Req| async move { req.page(Shell { req: &req, title: "A", head: "", children: "a" }) }))
+        .route("/b", get(|req: Req| async move { req.page(Shell { req: &req, title: "B", head: "", children: "b" }) }))
+        .route("/plain", get(|req: Req| async move { req.page(Plain { req: &req, title: "P", children: "p" }) }));
+    let router = app(routes.clone(), None);
+    let key = |uri: &'static str, mode: Option<&'static str>| {
+        let router = router.clone();
+        async move {
+            let (status, headers, body) = call_with(router, "GET", uri, mode, None).await;
+            assert_eq!(status, StatusCode::OK, "{uri}");
+            let key = headers["corten-shell"].to_str().unwrap().to_string();
+            if mode.is_none() {
+                assert_eq!(meta_content(&body, "corten-shell"), key, "{uri}: the document and its header agree");
+            }
+            key
+        }
+    };
+    let home = key("/", None).await;
+    assert_eq!(key("/b", Some("nav")).await, home, "the same layout swaps in");
+    let plain = key("/plain", Some("nav")).await;
+    assert_ne!(plain, home, "another layout loads in full");
+    assert_eq!(key("/plain", None).await, plain, "a layout's key is the same in every mode");
+
+    // An app without an error page: an unknown URL is Corten's plain document, not the layout.
+    let bare = App::new(Routes::from(routes)).router();
+    let (_, nope, _) = call_with(bare.clone(), "GET", "/nope", Some("nav"), None).await;
+    let (_, page, _) = call_with(bare, "GET", "/", Some("nav"), None).await;
+    assert_ne!(nope["corten-shell"], page["corten-shell"], "the default error document is another layout");
+}
+
 #[tokio::test]
 async fn health_reports_liveness_and_readiness() {
     let router = App::new(Routes::new()).ready(|| async { false }).router();

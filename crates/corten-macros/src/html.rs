@@ -40,6 +40,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 "::corten::view::DocHtml::new({
                     static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
                     &SIZE
+                }, {
+                    const SHELL: u64 = ::corten::view::__private::shell_id(file!(), line!(), column!());
+                    SHELL
                 }, move |__OUT: &mut ::std::string::String, __PART: ::corten::view::Part| {
                     #[allow(unused_imports)]
                     use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _};

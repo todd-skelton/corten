@@ -45,9 +45,10 @@ corten::serve(app).await
 
 The layout around `<main>` renders on full page loads only; a client navigation gets the
 `<title>`, the page's head tags and `<main>`'s children. Every page carries a key hashed from the
-caller its handler read (if any) and the deploy, and when a navigation or a form answer arrives with a different key
-(sign-in, sign-out, a new release), the runtime loads the whole document, so the layout is never
-stale.
+caller its handler read (if any), the deploy and the layout that rendered it (where its `html!`
+document is written), and when a navigation or a form answer arrives with a different key
+(sign-in, sign-out, a new release, a page in another layout), the runtime loads the whole
+document, so the layout is never stale.
 
 ## Host names
 

@@ -72,7 +72,11 @@ one `<main>`, not inside a `for`, `if` or `match`. Each part renders for the req
 So the layout costs a navigation nothing, and what the layout shows that a navigation cannot
 update (the signed-in user, from a `Caller` the handler took) is covered by the page key: when it
 changes, the runtime loads the next page in full. Keep a layout's props to what most pages set (the title,
-their head tags); a page that needs a different document uses another layout.
+their head tags); a page that needs a different document uses another layout. Each layout's
+`html!` document has a key of its own (from where it is written), so a link from a page in one
+layout to a page in another loads it in full, with no `data-reload`. A prop that changes the
+layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
+second layout.
 
 Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`
 (feature `json`) writes a `ToJson` value in `<script type="application/ld+json">` with `<` as

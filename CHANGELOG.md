@@ -957,6 +957,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `Allow` was kept), on the sign-in redirect and the offline page too. The ones that described
     the old body and `Cache-Control` are the error page's
     ([#126 The error page drops the headers a middleware or handler set on the failed response (Retry-After, a request id, Server-Timing)](https://github.com/todd-skelton/corten/issues/126)).
+29. A client navigation to a page in another layout loads it in full: the shell key includes the
+    layout (a hash of where its `html!` document is written, a constant), so the first layout's
+    header and footer no longer stay around the next page's `<main>`, and links between layouts
+    need no `data-reload`. The default error document is a layout of its own too
+    ([#122 Client navigation between pages with different layouts keeps the first layout, because the shell key does not include the layout](https://github.com/todd-skelton/corten/issues/122)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
