@@ -8,9 +8,11 @@ description = "Every Corten piece on one screen: page, form patch, live prices f
 [dependencies]
 corten = { path = "../../crates/corten", features = ["feed", "types", "compress"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
-futures-util = { version = "0.3", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 serde = { version = "1", features = ["derive"] }
 schemars = "1.2"
+# The frames of the WebSocket at /echo; Corten hands over the connection.
+tokio-tungstenite = { version = "0.30", default-features = false }
 
 [dev-dependencies]
 http-body-util = "0.1"

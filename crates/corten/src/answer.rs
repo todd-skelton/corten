@@ -163,6 +163,78 @@ impl Answer for StatusCode {
     type Inputs = AnyInputs;
 }
 
+/// Another server's answer, passed on as it came, for a route that relays an upstream (a gateway,
+/// a backend for a frontend): its status, its headers less the hop-by-hop ones (`Connection` and
+/// the headers it names, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`,
+/// `Trailer`, `Transfer-Encoding`, `Upgrade`), and its body as it arrives. A failure status is
+/// passed on with the upstream's body, never replaced by the error page or the JSON error, and
+/// the app's security and cache rules still apply to it. When the client leaves, the body is
+/// dropped, and with it the upstream request. What else to drop (`Set-Cookie`, say) is the
+/// route's to decide before it builds the answer.
+///
+/// ```
+/// use corten::{axum::{body::Body, http::{HeaderMap, StatusCode}}, prelude::*, Relay};
+///
+/// async fn models() -> corten::Result<Relay> {
+///     // The upstream's answer, from the app's HTTP client: for reqwest,
+///     // `Relay::new(res.status(), res.headers().clone(), Body::from_stream(res.bytes_stream()))`.
+///     let (status, headers, body) = (StatusCode::BAD_GATEWAY, HeaderMap::new(), Body::from("upstream down"));
+///     Ok(Relay::new(status, headers, body))
+/// }
+/// # let _: Methods = get(models);
+/// ```
+pub struct Relay(Response);
+
+impl Relay {
+    /// The answer with `status`, `headers` (hop-by-hop ones removed) and `body`.
+    pub fn new(status: StatusCode, mut headers: axum::http::HeaderMap, body: axum::body::Body) -> Self {
+        use axum::http::header;
+        let named: Vec<String> = headers
+            .get_all(header::CONNECTION)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(','))
+            .map(|name| name.trim().to_ascii_lowercase())
+            .filter(|name| !name.is_empty())
+            .collect();
+        for name in &named {
+            headers.remove(name.as_str());
+        }
+        for name in [
+            header::CONNECTION,
+            header::PROXY_AUTHENTICATE,
+            header::PROXY_AUTHORIZATION,
+            header::TE,
+            header::TRAILER,
+            header::TRANSFER_ENCODING,
+            header::UPGRADE,
+        ] {
+            headers.remove(name);
+        }
+        headers.remove("keep-alive");
+        let mut res = Response::new(body);
+        *res.status_mut() = status;
+        *res.headers_mut() = headers;
+        res.extensions_mut().insert(Relayed);
+        Relay(res)
+    }
+}
+
+impl IntoResponse for Relay {
+    fn into_response(self) -> Response {
+        self.0
+    }
+}
+
+impl Answer for Relay {
+    const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+}
+
+/// On a [`Relay`]'s response: its failure status is the upstream's, passed on as it is.
+#[derive(Clone, Copy)]
+pub(crate) struct Relayed;
+
 /// Fragments streamed to `<corten-live>`: what [`crate::live`] gives.
 pub struct LiveResponse(pub(crate) Response);
 

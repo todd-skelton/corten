@@ -1074,6 +1074,29 @@ async function run(browser) {
   const json = await data.json();
   check("same URL as JSON for data clients", json.title === "Watchlist | Corten" && json.data.stocks.length === 3);
 
+  // A WebSocket (GET /echo): the page's own origin opens it and is answered. Another site's page
+  // cannot, though the browser would send the user's cookies with its handshake.
+  const talk = (/** @type {string} */ url) =>
+    new Promise((resolve) => {
+      const socket = new WebSocket(url);
+      socket.onopen = () => socket.send("hi");
+      socket.onmessage = (e) => {
+        resolve(e.data);
+        socket.close();
+      };
+      socket.onerror = () => resolve("refused");
+      setTimeout(() => resolve("no answer"), 4000);
+    });
+  const echoUrl = `${base.replace(/^http/, "ws")}/echo`;
+  const echoed = await page.evaluate(talk, echoUrl);
+  check("a WebSocket from the page's own origin is answered", echoed === "HI", String(echoed));
+  const elsewhere = await browser.newPage();
+  await elsewhere.route("http://other.test/", (route) => route.fulfill({ contentType: "text/html", body: "<title>Other</title>" }));
+  await elsewhere.goto("http://other.test/");
+  const crossed = await elsewhere.evaluate(talk, echoUrl);
+  check("another site's page cannot open it", crossed === "refused", String(crossed));
+  await elsewhere.close();
+
   const noJs = await browser.newContext({ javaScriptEnabled: false });
   const plain = await noJs.newPage();
   await plain.goto(base);

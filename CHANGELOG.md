@@ -578,6 +578,16 @@ Corten is pre-1.0, so any minor version may change the API.
     without `viewer.map(|Caller(v)| v)`.
 86. `.area(admin::area)` and `.api(api::api)` infer the prefix from the module's function; the
     `::<Admin>` turbofish is needed only for routes added by hand.
+87. `corten::upgrade::Upgrade`: a route that switches its connection, as a WebSocket
+    (`upgrade.websocket(run)`, the frames read by a library such as tokio-tungstenite) or a tunnel
+    relaying an upstream's 101 (`upgrade.switch(headers, run)`). It is checked like any route
+    (`Caller<T>`, the host check, the app's middleware), and its handshake as a write: another
+    site's page gets a 403. The work runs on its own `Signal`, aborted at shutdown. Requests that
+    do not switch run no new code (callgrind: 26,025,236 instructions for 1,200 requests in
+    process, against about 26,030,000 on main). `corten::Relay` passes another server's answer on:
+    its status, its headers less the hop-by-hop ones and its body as it arrives, never replaced by
+    the error page or the JSON error
+    ([#117 A route cannot be a WebSocket or pass an upstream response through](https://github.com/todd-skelton/corten/issues/117)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

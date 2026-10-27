@@ -547,12 +547,16 @@ impl<M: Middleware> App<M> {
         }
         let policy = proxies_from_env(hosts_from_env(self.policy));
         shared.proxies = policy.proxies().to_vec();
+        shared.allowed_origins = policy.allowed_origins().to_vec();
         let policy = Applied::new(policy, &shared.import_map);
 
         // The routes of the APIs and areas: each is under its prefix, which the compiler checked.
         let mut owned = Vec::with_capacity(self.apis.len() + self.areas.len());
         let mut mounts = Vec::with_capacity(self.apis.len());
         for (mount, api) in self.apis {
+            if !mount.origins().is_empty() {
+                shared.api_origins.push((mount.prefix.clone(), mount.origins().to_vec()));
+            }
             owned.push(api);
             mounts.push(mount);
         }

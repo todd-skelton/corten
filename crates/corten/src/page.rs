@@ -407,6 +407,11 @@ pub(crate) struct Shared {
     pub section_of: std::collections::HashMap<&'static str, usize>,
     /// The proxies whose `X-Forwarded-For` [`crate::ClientIp`] follows ([`crate::security::Policy::proxy`]).
     pub proxies: Vec<crate::client::Network>,
+    /// The other sites [`crate::security::Policy::allow_origin`] lets write, for a switch to a
+    /// WebSocket, which [`crate::upgrade::Upgrade`] checks as a write.
+    pub allowed_origins: Vec<String>,
+    /// Each `Api::allow_origin` mount's prefix and origins, which may also switch under it.
+    pub api_origins: Vec<(String, Vec<String>)>,
 }
 
 impl Shared {
@@ -435,6 +440,8 @@ impl Shared {
             sections: Vec::new(),
             section_of: Default::default(),
             proxies: Vec::new(),
+            allowed_origins: Vec::new(),
+            api_origins: Vec::new(),
         }
     }
 }
@@ -879,7 +886,7 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     let mut res = res;
     let status = res.status();
     let error = status.is_client_error() || status.is_server_error();
-    if !error {
+    if !error || res.extensions().get::<crate::answer::Relayed>().is_some() {
         return res;
     }
     // A JSON route answers every failure as JSON, a path that did not parse included.
