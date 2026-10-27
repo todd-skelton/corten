@@ -104,7 +104,8 @@ pub enum Failure {
     /// A write another site sent (403), refused before anything else ran.
     CrossSite,
     /// The handler needs a [`crate::Caller`] the request does not have, or one who may not do
-    /// this, and there is nowhere to sign in: 401 or 403 ([`crate::Refused`]).
+    /// this, and there is nowhere to sign in: 401 or 403, or 429 for a client with too many failed
+    /// attempts ([`crate::Refused`]).
     Refused { status: StatusCode },
     /// Who is asking could not be found out now ([`crate::Refused::unavailable`]: the session
     /// store is down), so the request was neither let through nor sent to sign in (503). Not a

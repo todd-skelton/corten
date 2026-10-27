@@ -615,6 +615,10 @@ Corten is pre-1.0, so any minor version may change the API.
     run; a bare `ClientZone` and a `Public` handler taking it do not compile. That cookie alone does
     not make a public page private. The runtime is 78 B larger (gzip)
     ([#149 A handler cannot know the visitor's time zone, so a picked date needs a script to become an instant and every date is written in UTC](https://github.com/todd-skelton/corten/issues/149)).
+93. `Refused::message` and `Refused::too_many`: a `Caller` refusal tells a client that reads the
+    failure why ("Invalid API key", in the API's error shape) and can be a 429 with `Retry-After`
+    for too many failed attempts, so an API key check stays in `Identify`
+    ([#177 A Caller refusal cannot say why (Invalid API key) or be a 429 for too many failed attempts, so an API key check stays outside Caller](https://github.com/todd-skelton/corten/issues/177)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

@@ -654,6 +654,7 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 | `Ok(caller)` | the handler runs | the handler runs | the handler runs |
 | `Refused::sign_in(&route)` | 303 to the route | `corten-location`, and the runtime goes there | JSON 401 |
 | `Refused::unauthorized()`, `Refused::forbidden()` | the error page, `Failure::Refused` (401, 403) | the error page, swapped in | JSON 401, 403 |
+| `Refused::too_many(wait)` | the error page, `Failure::Refused` (429), with `Retry-After` | the error page, swapped in | JSON 429, with `Retry-After` |
 | `Refused::unavailable(error)` | the error page, `Failure::Unidentified` (503) | the error page, swapped in | JSON 503 |
 
 1. Only a handler that takes a `Caller` pays for the lookup: a public landing page, static
@@ -670,7 +671,13 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    `JsonResult` route, where a missing key is a JSON 401.
 5. A sign-in page whose handler needs a caller would send the browser round in a loop; Corten
    answers it with a 500 instead, and under `corten dev` the page says why.
-6. A check that depends on the record (only the author may edit a draft) stays in the handler,
+6. `.message("Invalid API key")` on a refusal is what a client that reads the failure is told:
+   the JSON error's message (in the API's own shape, `Api::errors`). The error page a browser
+   gets does not show it, and a 503 from `Refused::unavailable` never sends its error. Counting
+   failed attempts is the app's (by address or account, in its own store); `Refused::too_many`
+   is how the lookup says the count is reached, checked before the credentials so a locked-out
+   client learns nothing about them.
+7. A check that depends on the record (only the author may edit a draft) stays in the handler,
    which loads the record; `Error::status(StatusCode::FORBIDDEN)` gives the same answers there.
 7. Test it the way a user meets it: a router test that sends each route signed out and signed
    in without the permission.
@@ -769,7 +776,7 @@ Every way a request can fail is a `Failure`, given to the app's error page for a
 | `NotFound` | no route has the URL, or the handler returned a 404 | 404 |
 | `WrongMethod` | the route has the URL but not the method (`Allow` is kept) | 405 |
 | `CrossSite` | a write another site sent, refused before anything else ran | 403 |
-| `Refused { status }` | a `Caller` refused, with nowhere to sign in | 401, 403 |
+| `Refused { status }` | a `Caller` refused, with nowhere to sign in | 401, 403, 429 |
 | `Unidentified { detail }` | who is asking could not be looked up (`Refused::unavailable`), unlike a handler's own 503 | 503 |
 | `Rejected { status, detail }` | the path, the query or the body did not parse | 400, 415, 422 |
 | `Failed { status, detail }` | the handler returned an `Error` | 500, or its status |
