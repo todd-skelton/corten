@@ -117,7 +117,7 @@ pub use client::ClientIp;
 /// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled
 /// field fails to compile instead of posting a field the handler never reads.
 pub use corten_macros::Fields;
-pub use form::{Errors, FieldName, Form, Query, SubmitKey};
+pub use form::{Errors, FieldName, Files, Form, Query, SubmitKey, Upload};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};
@@ -160,9 +160,9 @@ pub mod prelude {
         route::{delete, get, post, put},
         script::{el, refs, Handler, Ref},
         view::Id,
-        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Form, HtmlResult, Identify, Methods,
+        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Files, Form, HtmlResult, Identify, Methods,
         Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Result, Route, Routes, SubmitKey,
-        UrlValue,
+        Upload, UrlValue,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, JsonLd, JsonResult, ToJson};

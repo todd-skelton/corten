@@ -46,6 +46,35 @@ After a write that should change the URL, use `req.redirect(&Route)` instead. To
 the element the user acted on, redirect to `route.at(RowId(&id))` (the route with `#row-7`,
 from the element's `#[derive(Id)]`); never format a `#fragment` by hand.
 
+## Files
+
+A form with `<input type="file">` posts `multipart/form-data` (`enctype="multipart/form-data"`).
+Name the input with a `Files` field of the form struct and take `Upload<T>`, never `Form` (it
+answers 415) or a raw body with a parser of your own:
+
+```rust
+#[derive(serde::Deserialize, Fields)]
+struct NewListing { title: String, photos: Files }   // <input type="file" name={f.photos} multiple>
+
+async fn create(req: Req, mut upload: Upload<NewListing>) -> HtmlResult {
+    let f = NewListing::FIELDS;
+    upload.limit(60 << 20);                     // the whole body (2 MiB unless set), before reading
+    let mut errors = Errors::new();
+    while let Some(mut file) = upload.next_file().await? {
+        if !file.is(f.photos) { continue }      // skipped, not stored
+        match file.bytes_up_to(10 << 20).await? {   // or file.chunk() to stream it on
+            Some(bytes) => { /* keep it */ }
+            None => errors.add(f.photos, "Each photo can be up to 10 MB."),
+        }
+    }
+    let input = upload.fields().await?;         // the text fields, by Form's rules
+    ..
+}
+```
+
+Types, counts and per-file sizes are the handler's checks, reported with `errors.add(f.photos, ..)`
+so the form is drawn again with the message beside the input.
+
 ## Checkboxes and lists
 
 `Form` and `Query` read a key sent several times into a `Vec`. A `bool` or `Vec` field needs

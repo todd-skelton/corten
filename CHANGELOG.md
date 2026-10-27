@@ -557,6 +557,15 @@ Corten is pre-1.0, so any minor version may change the API.
     one of them; nothing reads the header otherwise. A `Public` handler cannot take it, and an
     answer that read it is private
     ([#120 A handler cannot read the client's address, so an app that calls an API for a visitor cannot pass it on for rate limiting](https://github.com/todd-skelton/corten/issues/120)).
+83. `corten::form::Upload<T>` reads a form posted as `multipart/form-data`, which `Form` answers
+    with a 415. It gives the files one at a time as they arrive: `next_file()`, then
+    `chunk()` to pass a file on without holding it, or `bytes_up_to(max)` (`None` past `max`).
+    Then `fields()` reads the text fields into `T` by `Form`'s rules. A file input is a `Files`
+    field of the form struct, so markup, the files and `Errors` share its `FieldName`.
+    `upload.limit(bytes)` bounds the whole body (2 MiB unless set; 413 past it). Types, counts
+    and sizes per file are the handler's checks, reported as field errors. The parser is
+    Corten's own, with no new dependency
+    ([#140 A form cannot post a file: Form reads only URL-encoded bodies, so a multipart form is a 415 and nothing reads its files](https://github.com/todd-skelton/corten/issues/140)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

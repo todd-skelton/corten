@@ -110,7 +110,15 @@ use serde::de::DeserializeOwned;
 use crate::view::{escape_into, quoted, AttrValue, Attrs, Id, Render};
 
 mod de;
+mod upload;
 pub use de::{from_bytes, FormError};
+pub use upload::{File, Files, Upload};
+
+/// Implemented by `#[derive(Fields)]` for a form with [`Files`], whose fields nothing else reads.
+#[doc(hidden)]
+pub trait __FileInputs {
+    fn __file_inputs(&self) -> usize;
+}
 
 /// A form's fields: the body of a `POST` (`application/x-www-form-urlencoded`), or the query
 /// string of a `GET`, read into `T` the way a browser sends them (see the [module](self)).

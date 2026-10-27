@@ -1029,6 +1029,23 @@ async function run(browser) {
   check("a multipart form is posted as multipart/form-data", types.length === 1 && types[0].startsWith("multipart/form-data"), types.join());
   check("a request the server rejects shows the app's error page, in its layout", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong | Corten", await page.title());
 
+  // A form with a file is read as it arrives: each engine's multipart body, files and fields.
+  await page.evaluate(() =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      '<form id="avatar" method="post" action="/avatar" enctype="multipart/form-data" data-patch><input name="name" value="Mew &quot;1st&quot;"><input type="file" name="picture" multiple><p id="avatar-result"></p><button>Send</button></form>',
+    ),
+  );
+  await page.setInputFiles("#avatar [name=picture]", [
+    { name: "card.png", mimeType: "image/png", buffer: Buffer.from("\r\n--png\r\n") },
+    { name: "big.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(70 << 10, 7) },
+  ]);
+  await page.click("#avatar button");
+  await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent, null, { timeout: 4000 }).catch(() => {});
+  const uploaded = await page.textContent("#avatar-result");
+  await page.evaluate(() => document.querySelector("#avatar")?.remove());
+  check("a form with files is read as it arrives", uploaded === 'Mew "1st": card.png (image/png, 9 bytes), big.jpg (image/jpeg, too large)', uploaded ?? "");
+
   // The multipart post was answered 415 on purpose; the browser logs that as a failed resource.
   check("no console errors after the injected forms", errors.every((e) => e.includes("415")), errors.join(" | "));
 

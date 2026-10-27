@@ -197,6 +197,62 @@ by an action says `-> impl Patch`, as a layout says `-> impl Document`. A `corte
 fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
 element).
 
+## Files
+
+A form with a file input posts `multipart/form-data` (`enctype="multipart/form-data"`), which
+`Form` does not read (it answers 415). The handler takes `Upload<T>` instead. The input is named
+by a `Files` field of the form struct, so the markup (`name={f.photos}`), the files and `Errors`
+all take the same `FieldName`:
+
+```rust,ignore
+#[derive(serde::Deserialize, Fields)]
+struct NewListing { title: String, price: u32, photos: Files }
+
+async fn create(req: Req, mut upload: Upload<NewListing>) -> HtmlResult {
+    let f = NewListing::FIELDS;
+    upload.limit(60 << 20); // the whole body; 2 MiB unless set
+    let (mut photos, mut errors) = (Vec::new(), Errors::new());
+    while let Some(mut file) = upload.next_file().await? {
+        if !file.is(f.photos) { continue }
+        if !matches!(file.content_type(), "image/jpeg" | "image/png" | "image/webp") {
+            errors.add(f.photos, "Photos can be JPEG, PNG or WebP.");
+        } else if photos.len() == 24 {
+            errors.add(f.photos, "A listing can have 24 photos.");
+        } else {
+            match file.bytes_up_to(10 << 20).await? {
+                Some(bytes) => photos.push((file.filename().to_string(), bytes)),
+                None => errors.add(f.photos, "Each photo can be up to 10 MB."),
+            }
+        }
+    }
+    let input = upload.fields().await?;
+    if !errors.is_empty() {
+        return req.invalid(&errors, ListingForm { input: &input, errors: &errors }, page).await;
+    }
+    ..
+}
+```
+
+The body is read as the handler asks for it. `next_file` reads the text fields before the next
+file and keeps them. `fields` reads the rest and reads the fields into `T` by `Form`'s rules (a
+422 when they do not fit). A file the handler does not read is skipped, not stored. A file input
+left empty sends no file.
+
+To hand a file on without holding it (to an object store or a storage API), read it piece by
+piece with `file.chunk()`. Each piece is passed on as it arrives, and the request keeps one piece
+at a time, not the file.
+
+`upload.limit(bytes)` bounds the whole body, files and fields together. Past it the request is a
+413. Set it before reading. The limit for one file, the types a field accepts and how many files
+it takes are the handler's rules, so it checks them and adds a message to `Errors`. The form
+is then drawn again with its other fields kept and the message next to the input.
+
+A browser cannot be given its files back by markup. A patch keeps the files chosen in the input
+it replaces until a successful answer, so the user can send them again. Without JavaScript the
+page asks for them again. A body that is not multipart is a 415, and one that breaks the format
+is a 400. A slow upload may need its area's own deadline (`Area::deadline`, see
+[Cancellation](cancellation.md)).
+
 ## Filters and lists that grow
 
 A list's filters are a GET form: every choice is in the address, so the results can be shared,
