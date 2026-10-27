@@ -39,7 +39,7 @@ mod routes {
 
 /// The JSON routes, for other services: every failure under `/api` is JSON, whatever the client
 /// accepts. `ApiRoot` is the prefix, so it needs no handler of its own.
-#[corten::routes(api = ApiRoot, state = source::Source)]
+#[corten::routes(api = ApiRoot, state = app::ApiState)]
 mod api {
     #[route("/api")]
     pub struct ApiRoot;
@@ -49,6 +49,11 @@ mod api {
     pub struct ItemJson<'a> {
         pub id: &'a str,
     }
+
+    /// A price alert a partner's service sets for one of its users. The handler takes
+    /// `Caller<Partner>`: a request without a known API key is a JSON 401.
+    #[route("/api/alerts", post = app::alert_json)]
+    pub struct AlertsJson;
 }
 
 /// The MCP endpoint for agents: an API of one route, which `app::tools` serves.

@@ -45,6 +45,24 @@ if let Err(errors) = check(&input) {
 }
 ```
 
+A JSON handler has no form to show again: it `?`s the same check, next to the `?` of a load
+that failed. `JsonResult<T>`'s error is a `JsonError`, which takes either: field errors are
+the 422 with `fields`, anything else is answered as any failure of a JSON route
+(`examples/card-market`'s `POST /api/alerts`):
+
+```rust,ignore
+async fn alert_json(State(source): State<Source>, Json(input): Json<CreateAlert>) -> JsonResult<AlertSet> {
+    let price = check(&input)?; // 422, {"error":{..,"fields":{"email":".."}}}
+    let item = source.item(&input.id).await?.ok_or_else(not_found)?; // 500 or 404
+    Ok(Json(AlertSet::new(&item, price)))
+}
+```
+
+On a page, `?` on `Errors` does not compile: `HtmlResult`'s error is an `Error`, and a
+page's form answers with `req.invalid`, which shows the form again. Under an API with its own
+error shape (`Api::errors`), the 422 keeps Corten's shape, since a status and a message have
+no place for the fields; every other failure is written in the API's.
+
 `Form` and `Query` in the prelude are Corten's: they read a body or a query string the way a
 browser sends it, a key once per value.
 

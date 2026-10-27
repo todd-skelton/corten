@@ -128,9 +128,70 @@ impl Answer for HtmlResponse {
 pub type HtmlResult = crate::Result<HtmlResponse>;
 
 /// What a JSON handler returns: `async fn price(..) -> JsonResult<Quote>`. Every failure of the
-/// route, a path or body that does not parse included, is JSON.
+/// route, a path or body that does not parse included, is JSON. Its error is a [`JsonError`], so
+/// the handler `?`s its input's field errors (a 422 with the fields) next to any other error.
 #[cfg(feature = "json")]
-pub type JsonResult<T> = crate::Result<crate::Json<T>>;
+pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
+
+/// A JSON handler's error: an [`Error`] (`?` on any error, as in a page handler) or the
+/// input's field errors, `?` on [`crate::Errors`], answered as the 422 with `fields`. Only a
+/// JSON handler takes field errors this way: a page shows its form again with
+/// [`crate::Req::invalid`], so `?` on `Errors` there does not compile:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// fn check(email: &str) -> Result<(), Errors> {
+///     let mut errors = Errors::new();
+///     if !email.contains('@') {
+///         errors.add_form("Enter an email address.");
+///     }
+///     errors.into_result(())
+/// }
+///
+/// async fn sign_up(req: Req) -> HtmlResult {
+///     check("ada")?;
+///     req.page(html! { <html><head><title>"Hi"</title><Corten /></head><body><main>"Hi"</main></body></html> })
+/// }
+/// ```
+#[cfg(feature = "json")]
+#[derive(Debug)]
+pub enum JsonError {
+    /// Any failure, answered as every failure of a JSON route is.
+    Error(Error),
+    /// The input's field errors: 422, `{"error":{..,"fields":{..}}}`.
+    Fields(crate::Errors),
+}
+
+#[cfg(feature = "json")]
+impl<E: Into<Error>> From<E> for JsonError {
+    fn from(error: E) -> Self {
+        JsonError::Error(error.into())
+    }
+}
+
+#[cfg(feature = "json")]
+impl From<crate::Errors> for JsonError {
+    fn from(errors: crate::Errors) -> Self {
+        JsonError::Fields(errors)
+    }
+}
+
+#[cfg(feature = "json")]
+impl IntoResponse for JsonError {
+    fn into_response(self) -> Response {
+        match self {
+            JsonError::Error(error) => error.into_response(),
+            JsonError::Fields(errors) => errors.into_response(),
+        }
+    }
+}
+
+#[cfg(feature = "json")]
+impl<A: Answer> Answer for std::result::Result<A, JsonError> {
+    const FORMAT: Format = A::FORMAT;
+    type Inputs = A::Inputs;
+}
 
 #[cfg(feature = "json")]
 impl<T> Answer for crate::Json<T>
