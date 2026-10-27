@@ -833,6 +833,8 @@ mod wire {
     use std::fmt::Write;
 
     pub(super) fn open(data: &LocaleData, out: &mut String) {
+        // The runtime's formatter is a module of its own, which this page now loads.
+        crate::script::uses(crate::script::FORMAT_MODULE);
         out.push_str("%{&quot;z&quot;:");
         let mut zero = [0u8; 4];
         json_str(data.zero.encode_utf8(&mut zero), out);

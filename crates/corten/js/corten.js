@@ -26,13 +26,17 @@
 //    again from its route and applied.
 // Without JavaScript, links and forms still work as plain HTML.
 
-import { formatter } from "./format.js";
 import { parseOn } from "./on.js";
 
 const scriptsDir = document.querySelector('meta[name="corten-scripts"]')?.getAttribute("content") ?? "/assets/scripts/";
 
 /** @typedef {import("./on.js").Binding} Binding */
 /** @typedef {import("./on.js").Arg} Arg */
+
+// Numbers, money and dates for a script (format.js) are a module of their own, served with the
+// app's scripts: only a page whose handlers take a format (`t.js().money(USD)`) loads it, as it
+// loads the handlers' own modules.
+const FORMAT = "corten-format";
 
 /** Script modules by name, once imported. @type {Map<string, Record<string, unknown>>} */
 const modules = new Map();
@@ -100,9 +104,24 @@ function bindings(el) {
   let entry = parsed.get(el);
   if (!entry || entry.source !== source) {
     entry = { source, list: parseOn(source) };
+    for (const b of entry.list) if (b.args.some(formatted)) formats.add(b);
     parsed.set(el, entry);
   }
   return entry.list;
+}
+
+/** The bindings with a format argument, which need the format module too. @type {WeakSet<Binding>} */
+const formats = new WeakSet();
+
+/** @param {Arg} arg @returns {boolean} */
+const formatted = (arg) => arg.kind === "f" || (arg.kind === "{" && arg.fields.some(([, field]) => formatted(field)));
+
+/**
+ * Imports what binding `b` needs: its module, and the format module when it takes a format.
+ * @param {Binding} b
+ */
+function loadFor(b) {
+  return formats.has(b) ? Promise.all([load(b.module), load(FORMAT)]) : load(b.module);
 }
 
 /**
@@ -284,7 +303,7 @@ function resolve(arg, el, event, binding) {
     case "%":
       return message(arg.parts);
     case "f":
-      return formatter(arg.spec);
+      return /** @type {{ formatter: (spec: import("./format.js").Spec) => unknown }} */ (modules.get(FORMAT)).formatter(arg.spec);
     case "$e":
       return event;
     case "$t":
@@ -327,8 +346,9 @@ function resolve(arg, el, event, binding) {
  */
 function run(el, binding, event) {
   const module = modules.get(binding.module);
-  if (!module) {
-    if (event.type === "connect") load(binding.module).then(() => modules.has(binding.module) && el.isConnected && run(el, binding, event));
+  if (!module || (formats.has(binding) && !modules.has(FORMAT))) {
+    const ready = () => modules.has(binding.module) && (!formats.has(binding) || modules.has(FORMAT));
+    if (event.type === "connect") loadFor(binding).then(() => ready() && el.isConnected && run(el, binding, event));
     return;
   }
   const handler = module[binding.name];
@@ -411,7 +431,7 @@ function scan(root, names, inside = false) {
   for (const el of marked) {
     let connects = false;
     for (const b of bindings(el)) {
-      load(b.module);
+      loadFor(b);
       if (b.type === "connect") connects = true;
       else listen(b.type);
     }
@@ -624,8 +644,8 @@ function parse(html) {
 function modulesOf(node) {
   /** @type {Promise<unknown>[]} */
   const pending = [];
-  if (node instanceof Element && node.hasAttribute("data-on")) for (const b of bindings(node)) pending.push(load(b.module));
-  for (const el of Array.from(node.querySelectorAll("[data-on]"))) for (const b of bindings(el)) pending.push(load(b.module));
+  if (node instanceof Element && node.hasAttribute("data-on")) for (const b of bindings(node)) pending.push(loadFor(b));
+  for (const el of Array.from(node.querySelectorAll("[data-on]"))) for (const b of bindings(el)) pending.push(loadFor(b));
   for (const template of Array.from(node.querySelectorAll("template"))) pending.push(modulesOf(template.content));
   return Promise.all(pending);
 }

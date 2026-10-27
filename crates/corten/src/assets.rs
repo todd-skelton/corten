@@ -228,6 +228,16 @@ impl Assets {
             }
             seen.push((component, at));
         }
+        // The formatter a handler's format argument needs, for the pages whose handlers take one.
+        if !registered.is_empty() {
+            let name = crate::script::FORMAT_MODULE;
+            let url = format!("scripts/{name}.js");
+            if sources.iter().any(|(u, _)| *u == url) {
+                return Err(clash(format!("the static directory has a {url}, the name of Corten's script formats")));
+            }
+            sources.push((url, crate::script::served(name, crate::script::FORMAT_JS).into_bytes()));
+            registered.insert(name.to_string());
+        }
         if !events.is_empty() {
             if sources.iter().any(|(u, _)| u == EVENTS) {
                 return Err(clash(format!("the static directory has an {EVENTS}, the name of the typed events' module")));

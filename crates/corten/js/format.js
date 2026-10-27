@@ -3,7 +3,8 @@
 // `data-on` becomes (`t.js().money(USD)` in the markup). The server writes the locale's pattern
 // with the argument, so the browser writes exactly what the server does (the same algorithm as
 // crates/corten/src/i18n/format.rs; scripts/format.mjs checks the two against each other). No DOM
-// here. Bundled into dist/corten.js.
+// here. Built into dist/format.js, a module of its own that Corten serves with the app's scripts
+// (`corten-format`), so only a page whose handlers take a format loads it.
 
 /**
  * A format as the server writes it. `z` is the locale's zero; `s` its decimal and group
