@@ -111,7 +111,7 @@ const texts = new WeakMap();
 
 /**
  * The price a row shows, in cents, or Infinity when it is not a number (a refused edit), so it
- * sorts last. The price is its own component, PriceCell, which the server patches, so it is read
+ * sorts after every price (before them, descending). The price is its own component, PriceCell, which the server patches, so it is read
  * from the cell's input: the grid sorts what the seller sees.
  * @param {InventoryRow} row
  */
