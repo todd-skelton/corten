@@ -144,7 +144,7 @@ impl Module {
             fns.extend(q(
                 "#[doc = __A0] #[allow(non_snake_case, clippy::too_many_arguments)] #[must_use]
                 pub fn __A1<__A2>(__A3) -> ::corten::script::__private::Call<(__A4)> {
-                    ::corten::script::__private::Call::new(__A5, __A6, __A9, __A7, (__A8))
+                    ::corten::script::__private::Call::new(__A5, __A6, __A9, __A10, __A7, (__A8))
                 }",
                 &[
                     literal(&doc),
@@ -157,6 +157,7 @@ impl Module {
                     owner.clone(),
                     args,
                     home.clone(),
+                    q(if self.keeps { "true" } else { "false" }, &[]),
                 ],
             ));
         }
@@ -264,29 +265,56 @@ fn rust_ident(name: &str, i: usize) -> Ident {
 }
 
 /// True when the script imports `keep` from `corten` (`import { keep, subscribe } from "corten";`).
-/// A namespace import of `corten` is an error, since it would hide that.
+/// Any other import of `corten` in code (a namespace or an `import("corten")`) is an error, since it
+/// would hide that.
 pub fn keeps(source: &str) -> Result<bool, (usize, String)> {
+    let by_name = "import corten's functions by name: import { keep } from \"corten\";";
     let lines: Vec<&str> = source.lines().collect();
+    // Code without its line comment (`//` outside a string is enough for an import line).
+    let code = |line: &str| -> String {
+        let mut quote = None;
+        let mut prev = ' ';
+        for (i, c) in line.char_indices() {
+            match quote {
+                Some(q) if c == q => quote = None,
+                Some(_) => {}
+                None if c == '"' || c == '\'' || c == '`' => quote = Some(c),
+                None if c == '/' && prev == '/' => return line[..i - 1].trim().to_string(),
+                None => {}
+            }
+            prev = c;
+        }
+        line.trim().to_string()
+    };
     let mut keeps = false;
     let mut i = 0;
     while i < lines.len() {
         let trimmed = lines[i].trim();
-        if trimmed.starts_with("import ") || trimmed.starts_with("import{") {
+        if trimmed.starts_with("/*") || trimmed.starts_with('*') {
+            i += 1;
+            continue;
+        }
+        let line = code(trimmed);
+        let named = |text: &str| text.contains("\"corten\"") || text.contains("'corten'");
+        if line.starts_with("import ") || line.starts_with("import{") {
             let start = i;
-            let mut statement = trimmed.to_string();
-            while !statement.contains(" from ") && !statement.ends_with(';') && i + 1 < lines.len() {
+            let mut statement = line;
+            // Until it ends with its module's name: `import {` and a name a line run on.
+            while !statement.ends_with([';', '"', '\'']) && i + 1 < lines.len() {
                 i += 1;
                 statement.push(' ');
-                statement.push_str(lines[i].trim());
+                statement.push_str(&code(lines[i]));
             }
-            let from = statement.rsplit_once(" from ").map(|(_, from)| from.trim().trim_end_matches(';').trim());
+            let from = statement.rsplit_once("from").map(|(_, from)| from.trim().trim_end_matches(';').trim());
             if matches!(from, Some("\"corten\"" | "'corten'")) {
                 let Some((_, rest)) = statement.split_once('{') else {
-                    return Err((start + 1, "import corten's functions by name: import { keep } from \"corten\";".into()));
+                    return Err((start + 1, by_name.into()));
                 };
                 let names = rest.split_once('}').map_or(rest, |(names, _)| names);
                 keeps |= names.split(',').any(|name| name.split(" as ").next().is_some_and(|n| n.trim() == "keep"));
             }
+        } else if line.contains("import(") && named(&line) {
+            return Err((i + 1, by_name.into()));
         }
         i += 1;
     }
@@ -724,7 +752,12 @@ mod tests {
         assert_eq!(keeps("import { subscribe } from \"corten\";\n/** @import { Message } from \"corten\" */"), Ok(false));
         assert_eq!(keeps("import { keep } from \"./keep.js\";"), Ok(false));
         assert_eq!(keeps("import { Row } from \"corten/views\";"), Ok(false));
+        assert_eq!(keeps("import { keep } from \"corten\"; // state per instance"), Ok(true));
+        assert_eq!(keeps("import {keep} from\"corten\""), Ok(true));
+        assert_eq!(keeps("import {\n  fromCents,\n  keep\n} from \"corten\";"), Ok(true));
+        assert_eq!(keeps("/** @typedef {import(\"corten\").Message} M */\n// import(\"corten\")"), Ok(false));
         assert!(keeps("import * as corten from \"corten\";").unwrap_err().1.contains("by name"));
+        assert!(keeps("const { keep } = await import(\"corten\");").unwrap_err().1.contains("by name"));
     }
 
     #[test]

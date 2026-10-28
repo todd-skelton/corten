@@ -93,8 +93,8 @@
       ]
     },
     {
-      "name": "two handlers, a parent's ref, scope and state",
-      "attr": "input:field.trim($t) change:form.enable(@form/save,$c/form)/form",
+      "name": "two handlers, a parent's ref and scope",
+      "attr": "input:field.trim($t) change:form.enable(@form/save,$c/form)",
       "parsed": [
         {
           "type": "input",
@@ -123,7 +123,43 @@
               "owner": "form"
             }
           ],
-          "home": "form"
+          "home": null
+        }
+      ]
+    },
+    {
+      "name": "a parent's handler that keeps state, on a child's element",
+      "attr": "change:tallies.bump($t)/tallies",
+      "parsed": [
+        {
+          "type": "change",
+          "module": "tallies",
+          "name": "bump",
+          "args": [
+            {
+              "kind": "$t",
+              "owner": null
+            }
+          ],
+          "home": "tallies"
+        }
+      ]
+    },
+    {
+      "name": "the same, in markup the parent gave the child",
+      "attr": "click:tallies.bump($t)/tallies",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "tallies",
+          "name": "bump",
+          "args": [
+            {
+              "kind": "$t",
+              "owner": null
+            }
+          ],
+          "home": "tallies"
         }
       ]
     },

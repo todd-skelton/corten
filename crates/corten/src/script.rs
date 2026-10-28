@@ -1171,6 +1171,8 @@ pub mod __private {
         module: &'static str,
         name: &'static str,
         home: Option<&'static str>,
+        /// Its script imports `keep`, so the runtime needs its home.
+        keeps: bool,
         /// A shared module's own component, marked rendered for the dev check (debug builds).
         #[cfg_attr(not(debug_assertions), allow(dead_code))]
         owner: Option<&'static Component>,
@@ -1183,10 +1185,11 @@ pub mod __private {
             module: &'static str,
             name: &'static str,
             home: Option<&'static str>,
+            keeps: bool,
             owner: Option<&'static Component>,
             args: A,
         ) -> Self {
-            Call { module, name, home, owner, args }
+            Call { module, name, home, keeps, owner, args }
         }
     }
 
@@ -1212,8 +1215,9 @@ pub mod __private {
             self.args.write_args(&Ctx { current, home: self.home }, out);
             out.push(')');
             // A parent's handler on a child's element: `/form` names the component it belongs to,
-            // whose state `keep` gives it (the element's nearest root is the child's).
-            if let Some(home) = self.home {
+            // whose state `keep` gives it (the element's nearest root is the child's). Only a
+            // script that keeps state needs it.
+            if let (true, Some(home)) = (self.keeps, self.home) {
                 if current != Some(home) {
                     out.push('/');
                     out.push_str(home);

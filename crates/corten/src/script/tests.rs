@@ -170,7 +170,7 @@ fn a_handler_made_by_a_parent_keeps_the_parents_scope_inside_a_child() {
         html,
         concat!(
             r#"<div data-scope="form"><label data-scope="field"><input data-ref="input" "#,
-            r#"data-on="input:field.trim($t) change:form.enable(@form/save,$c/form)/form"></label>"#,
+            r#"data-on="input:field.trim($t) change:form.enable(@form/save,$c/form)"></label>"#,
             r#"<button data-ref="save">Save</button></div>"#,
         )
     );
@@ -420,6 +420,7 @@ fn handlers_write_the_shared_wire_vectors() {
         LineItem { name: "a\"b", quantity: 2 }.to_html(),
         RowList { rows: &["x"] }.to_html(),
         Form {}.to_html(),
+        Tallies {}.to_html(),
         StockGrid { rows: &[("a", 1)] }.to_html(),
         scoped("x", || {
             html! {

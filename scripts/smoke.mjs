@@ -258,6 +258,22 @@ async function run(browser) {
     }
   });
   check("keep() outside a handler throws", outside.includes("keep() outside a handler"), outside);
+  // keep() is each instance's, and a parent's handler on a child's element (written
+  // `/live-prices`, as the server writes it) keeps its own component's: two copies of the
+  // component's markup, pressed in turn. One state for all would give true,false,true; a handler
+  // keyed on the child's root, true,true,true.
+  const states = await page.evaluate(() => {
+    const host = document.createElement("div");
+    host.hidden = true;
+    const on = "click:live_prices.pause($t,#price,#change)";
+    host.innerHTML = `<div data-scope="live-prices"><button data-on="${on}"></button></div><div data-scope="live-prices"><div data-scope="child"><button data-on="${on}/live-prices"></button></div><button data-on="${on}"></button></div>`;
+    document.body.append(host);
+    const buttons = Array.from(host.querySelectorAll("button"));
+    for (const button of buttons) button.click();
+    host.remove();
+    return buttons.map((b) => b.getAttribute("aria-pressed")).join(",");
+  });
+  check("keep() is each instance's, and a parent's handler in a child keeps the parent's", states === "true,true,false", states);
   // The page's prices by stock id, written by the script with the page's money format
   // (t.js().money(USD)), and the feed's, which the server wrote.
   // Today's change too: its trend, and the sign of its text.
