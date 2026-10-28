@@ -1272,7 +1272,7 @@ if (!loaded) addEventListener("load", () => (loaded = true), { once: true });
  * How, where and in what encoding `form` goes when `submitter` sends it, read as the browser
  * reads them: the button's `formmethod`, `formaction` and `formenctype` when it has them (an
  * invalid method is "get", an empty action the document's address), else the form's. Lowercase
- * method, absolute action.
+ * method, absolute action. `target` is not read: a `data-patch` answer patches this page.
  * @param {HTMLFormElement} form
  * @param {Element | null | undefined} submitter
  */

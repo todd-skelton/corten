@@ -316,8 +316,9 @@ the new page, as a link should. A link can carry the mark too. A submit button's
 decides how the form goes, as without the runtime: a POST button in a GET form (Save next to
 Apply) is the browser's own post, and a GET button in a POST form is swapped in like any GET.
 A `data-patch` form reads its button the same way: an unknown `formmethod` (`put`) is a GET, an
-empty `formaction` is the page's own address, `formenctype` picks the body's encoding, and a
-`dialog` method closes its dialog without sending anything.
+empty `formaction` is the page's own address, a `formenctype` of `multipart/form-data` sends
+multipart, and a `dialog` method closes its dialog without sending anything. Its answer always
+patches the page it was sent from: a `target` or `formtarget` on it is not followed.
 
 ```rust,ignore
 <form method="get" action={url::Search} data-keep-place on:change={js::apply(target)}>

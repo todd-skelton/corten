@@ -1200,8 +1200,8 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#190 In Chromium, a POST submit button in a GET form is sent as a GET with no fields: the runtime reads the method from NavigateEvent.formData](https://github.com/todd-skelton/corten/issues/190)).
 43. A `data-patch` form reads its submit button as the browser does: `formmethod="put"` (or any
     method the browser does not know) is a GET, an empty `formmethod` is a GET, an empty
-    `formaction` is the page's own address (after `<base href>`, as the browser resolves it), and
-    `formenctype` picks the body's encoding. It read the raw method and action attributes and only
+    `formaction` is the page's own address, a relative one resolves against `<base href>`, and a
+    `formenctype` of `multipart/form-data` sends multipart. It read the raw method and action attributes and only
     the form's `enctype`, so it sent a PUT where the browser sends a GET, used the form's method
     and action for the empty ones, and sent a `formenctype="multipart/form-data"` button's file
     as text. A form whose method is `dialog` now closes its dialog and sends nothing; before, it
