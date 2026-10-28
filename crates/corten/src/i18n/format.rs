@@ -590,7 +590,8 @@ fn write_grouped(data: &__private::LocaleData, s: &__private::Separators, int: &
 }
 impl Render for Formatted {
     fn render(&self, out: &mut String) {
-        // The locale data has no character HTML would read (the generator checks).
+        // The locale data has none of `<>&"` (the generator checks); a group separator `'`
+        // (de-CH) is safe in text and in the double-quoted attributes `html!` writes.
         let _ = self.write(out);
     }
 }

@@ -1016,15 +1016,16 @@ Corten is pre-1.0, so any minor version may change the API.
     every one with serde_json's
     ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
 61. A message's arguments are `corten::i18n::Arg`, not any `Display`: text, an integer, or a value
-    `t` formats (`t.number`, `t.money`, `t.date`, another message). An integer is written
-    from its digits with no `core::fmt` and no escaping, so card-market's item-API home page (50
+    `t` formats (`t.number`, `t.money`, `t.date`, another message). An integer is written from
+    its digits with no `core::fmt` and no escaping, so card-market's item-API home page (50
     `t.home_item(n)` links) went from 64,425 to 58,505 instructions a request (callgrind,
-    release, three runs each; the bytes are the same), winning back most of what message
-    arguments cost there. A float no longer compiles as an argument: its text was the same in
-    every locale (`0.9` on a French page); `t.number(decimal)` writes `0,9`. A type of the
-    app's own implements `Arg` with one method (`sink.str(..)`). Migration: pass a float
-    through `t.number`, and a `Display` type of the app's own as its text or through an `Arg`
-    impl ([#237 The item API's home page got 10% slower in the believable-data change; an integer fast path for message arguments may win it back](https://github.com/todd-skelton/corten/issues/237)).
+    release, three runs each), winning back most of what message arguments cost there; the en
+    and fr home pages and a category page are the same bytes. A float no longer compiles as an
+    argument: its text was the same in every locale (`0.9` on a French page), where
+    `t.number(decimal)` writes `0,9`. A type of the app's own implements `Arg` with one method
+    (`sink.str(..)`). Migration: pass a float through `t.number`, and a `Display` type of the
+    app's own as its text or through an `Arg` impl
+    ([#237 The item API's home page got 10% slower in the believable-data change; an integer fast path for message arguments may win it back](https://github.com/todd-skelton/corten/issues/237)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

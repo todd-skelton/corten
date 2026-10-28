@@ -290,7 +290,9 @@ pub struct Sink<'a> {
 }
 
 impl Sink<'_> {
-    /// A run of the message's own text, given plain and already escaped.
+    /// A run of the message's own text, given plain and already escaped: for `messages!` alone,
+    /// since it writes `html` as it is. An [`Arg`] writes with [`Sink::str`] or [`Sink::display`].
+    #[doc(hidden)]
     #[inline]
     pub fn text(&mut self, plain: &str, html: &str) {
         self.out.push_str(if self.html { html } else { plain });
@@ -363,7 +365,7 @@ impl Sink<'_> {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be a message argument",
     label = "not text, an integer or a value `t` formats",
-    note = "pass text, an integer, or a value the locale formats (t.number(..), t.money(..), t.date(..)); a type of the app's own implements corten::i18n::Arg"
+    note = "pass text, an integer, or a value the locale formats (t.number(..), t.money(..), t.date(..)); a float goes through t.number(Decimal); a type of the app's own implements corten::i18n::Arg"
 )]
 pub trait Arg {
     /// Writes the value into the message.
@@ -406,14 +408,37 @@ impl<T: Arg + ?Sized> Arg for &T {
 
 impl Arg for Formatted {
     fn write_arg(&self, sink: &mut Sink<'_>) {
-        // The locale data has no character HTML would read (the generator checks).
+        // The locale data has none of `<>&"` (the generator checks); a group separator `'`
+        // (de-CH) is safe in text and in the double-quoted attributes `html!` writes.
         self.render(sink.out)
     }
 }
 
 impl Arg for When {
     fn write_arg(&self, sink: &mut Sink<'_>) {
-        sink.display(self)
+        // Locale data and digits, as for `Formatted`.
+        self.render(sink.out)
+    }
+}
+
+impl Arg for std::sync::Arc<str> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for std::rc::Rc<str> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for Box<str> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
     }
 }
 
@@ -494,7 +519,8 @@ impl<const ARGS: u64> Template<ARGS> {
 
 /// The arguments of a message found by its key (`by_key`, from [`messages!`]), by name: pairs
 /// (`[("count", 3)]`), a map, or a JSON object (feature `json`; a string is written without its
-/// quotes, any other value as its JSON).
+/// quotes, any other value as its JSON). Each is written as given, by its `Display`, since it is
+/// data the app got at run time: a number in it is not in the reader's form.
 pub trait Args {
     /// Calls `write` with the argument `name` and returns true, or returns false when there is none.
     fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool;
@@ -661,6 +687,29 @@ impl<F: Fn(&mut Sink<'_>)> Display for Text<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An integer argument writes what its `Display` writes, in a page and as text.
+    #[test]
+    fn integer_arguments_write_their_digits() {
+        fn both<T: Arg + Display>(n: T) {
+            let mut out = String::new();
+            n.write_arg(&mut Sink { out: &mut out, html: true });
+            assert_eq!(out, n.to_string());
+            out.clear();
+            n.write_arg(&mut Sink { out: &mut out, html: false });
+            assert_eq!(out, n.to_string());
+        }
+        macro_rules! each {
+            ($($t:ty),*) => {$(
+                for n in [<$t>::MIN, <$t>::MAX, 0, 1, 9, 10, 99, 100] { both(n); }
+                both(<$t>::MAX / 3);
+            )*};
+        }
+        each!(u8, u16, u32, u64, usize, u128, i8, i16, i32, i64, isize, i128);
+        for n in [-1_i64, -9, -10, -1234567] {
+            both(n);
+        }
+    }
 
     /// The month styles, by their index in the cases after the other 14.
     const MONTHS: [MonthStyle; 2] = [MonthStyle::Short, MonthStyle::Long];
