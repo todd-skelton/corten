@@ -22,7 +22,14 @@ pub const COLORS: [Choice; 4] = [
 pub const TABS: [&str; 3] = ["listings", "offers", "sales"];
 
 #[component(css)]
-pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, times: Times, rename: RenameDialog<'a>) -> impl Render {
+pub fn Gallery<'a>(
+    tab: usize,
+    result: &'a str,
+    toast: Option<&'a str>,
+    sale: bool,
+    times: Times,
+    rename: RenameDialog<'a>,
+) -> impl Render {
     let Times { t, now } = times;
     let f = OrderForm::FIELDS;
     let qty = Number {
@@ -66,9 +73,9 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, times: T
                     label="Market"
                     selected={tab}
                     tabs={&[
-                        Tab { label: "Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None }) },
-                        Tab { label: "Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]) }) },
-                        Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]) }) },
+                        Tab { label: "Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None, sale: None }) },
+                        Tab { label: "Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]), sale: None }) },
+                        Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]), sale: None }) },
                     ]}
                 />
             </section>
@@ -93,10 +100,14 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, times: T
                 <div class={Buttons}>
                     <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
                     <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
+                    <a href={url::Home { tab: None, sale: Some(LAST_SALE) }}>"Last sale"</a>
                 </div>
             </section>
         </div>
         {rename}
+        if sale {
+            <SaleSheet />
+        }
         <div class={Toasts}>
             <Toaster close="Dismiss" seconds={2} toast={Toast { message: toast }} />
         </div>
@@ -127,6 +138,24 @@ pub fn MenuResult<'a>(text: &'a str) -> impl Patch {
 
 #[derive(Id)]
 struct MenuResultId;
+
+/// The `sale` query value that opens the last sale's sheet.
+pub const LAST_SALE: &str = "last";
+
+/// The last sale, beside the gallery: the address opens it (`/?sale=last`), and the link back to
+/// the gallery closes it, clicked or by Escape (`dialog::modalClosedBy`), so a reload shows what
+/// the user last saw.
+#[component]
+pub fn SaleSheet() -> impl Render {
+    let close = refs();
+    html! {
+        <dialog open aria-label="Last sale" on:connect={dialog::modalClosedBy(target, close, signal)}>
+            <h2>"Last sale"</h2>
+            <p>"Sold for $12.00 on May 3."</p>
+            <a ref={close} href={url::Home { tab: None, sale: None }}>"Close"</a>
+        </dialog>
+    }
+}
 
 /// The rename dialog's id: the refused form's patch replaces the dialog by it.
 #[derive(Id)]

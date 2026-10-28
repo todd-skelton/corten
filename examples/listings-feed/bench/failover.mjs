@@ -13,6 +13,8 @@ import http from "node:http";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 
+// BASE is an address (an IP, or localhost): the app answers only the host names it is given, and
+// any other gets 421.
 const base = process.env.BASE ?? "http://10.77.77.30:8080";
 const feed = process.env.FEED ?? "s1";
 const clients = Number(process.env.CLIENTS ?? 200);
@@ -262,7 +264,7 @@ async function writer(t0, state) {
   const interval = 1000 / wps;
   let next = Date.now();
   const attempt = async (key) => {
-    const res = await fetch(`${base}/feeds/${feed}/market?n=${perWrite}`, {
+    const res = await fetch(`${base}/api/feeds/${feed}/market?n=${perWrite}`, {
       method: "POST",
       headers: { "idempotency-key": key },
       signal: AbortSignal.timeout(10_000),
@@ -323,7 +325,7 @@ async function main() {
     pool.push(box);
   }
   while (pool.some((b) => !b.ready)) await sleep(50);
-  const first = await (await fetch(`${base}/feeds/${feed}/seq`)).json();
+  const first = await (await fetch(`${base}/api/feeds/${feed}/seq`)).json();
   await sleep(2000);
   const state = { stopping: false };
   const writing = writer(t0, state);
@@ -342,7 +344,7 @@ async function main() {
   const writes = await writing;
   // Every write has returned, so the committed sequence is final. Clients read until they reach
   // it; after 20 s the rest count as lost.
-  const committed = await (await fetch(`${base}/feeds/${feed}/seq`)).json();
+  const committed = await (await fetch(`${base}/api/feeds/${feed}/seq`)).json();
   for (const b of pool) {
     b.behind = Infinity;
     b.worker.postMessage({ type: "target", target: committed });
