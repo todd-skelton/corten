@@ -734,6 +734,22 @@ function readPatchAgain(tag, put) {
   });
 }
 
+/** A page's request to read one of its parts again (`ReadAgain::from` in the page). */
+const PART_AGAIN = "template[data-corten-read-again][data-from]";
+
+/**
+ * The parts a page asks to have read again (`ReadAgain::from` in the page, as in a patch): each
+ * such tag in `<main>` starts the same read a patch's does once the page is on the screen, and the
+ * patch it answers may ask again. It lasts while the page, the tag and the elements with an id
+ * beside it are there: a patch of one of them (a form's answer, which brings its own read) stops it.
+ * @param {Element} main
+ */
+function readPartsAgain(main) {
+  for (const tag of Array.from(main.querySelectorAll(PART_AGAIN))) {
+    readPatchAgain(tag, [tag, ...Array.from(/** @type {Element} */ (tag.parentElement).children).filter((el) => el.id)]);
+  }
+}
+
 /**
  * A field's state as text: what the user has (or, with `initial`, what the markup set; a file
  * input's is its first file's name). Buttons and hidden inputs are not fields here: undefined.
@@ -983,6 +999,7 @@ async function swapPage(html, signal, stay) {
   swapped = html;
   markCurrent();
   readAgainLater();
+  readPartsAgain(main);
 }
 
 /**
@@ -1229,13 +1246,14 @@ const READ_AGAIN = Symbol("corten.readAgain");
  * When this page's head asks for it (`<noscript data-corten-read-again="2">`, written by
  * `ReadAgain`), reads the page again after that many seconds, once the tab is visible:
  * the same URL, in place of this history entry, keeping scroll and focus. A navigation away (or
- * a page that no longer asks) stops it.
+ * a page that no longer asks) stops it. A page that also asks for parts of it to be read again
+ * ({@link readPartsAgain}) is not read whole: its head's tag is for a browser without JavaScript.
  */
 function readAgainLater() {
   const page = ++readAgainPage;
   const tag = document.head.querySelector("noscript[data-corten-read-again]");
   const seconds = Number(tag?.getAttribute("data-corten-read-again"));
-  if (!(seconds > 0)) return;
+  if (!(seconds > 0) || document.querySelector(`main ${PART_AGAIN}`)) return;
   const url = location.href;
   readLater(
     seconds,
@@ -1542,6 +1560,10 @@ markCurrent();
 scan(document.documentElement, new Set());
 serve(document);
 readAgainLater();
+{
+  const main = document.querySelector("main");
+  if (main) readPartsAgain(main);
+}
 
 /** Resolves once the script modules the first page's handlers use are imported. */
 export const ready = Promise.all(loading.values()).then(() => undefined);

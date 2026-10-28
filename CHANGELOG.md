@@ -1403,6 +1403,15 @@ Corten is pre-1.0, so any minor version may change the API.
     refuses and the two are different work; the empty item's load, sort and client navigation are
     measured as before. Medians of the action now come from eight of ten runs per profile
     ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
+48. `ReadAgain::from(&route)` in a page's markup starts its read, as in a patch, on a full load
+    and after a navigation: only those parts are read again, and what is beside them (a form the
+    user is filling in, a payment provider's frame) stays. Before, the runtime acted on it only in
+    a patch, so a page had to start the first read with a script of its own. It stops when the
+    page is left or an element with an id beside the tag is replaced; with JavaScript a page that
+    reads parts again is not read whole, so its head's `ReadAgain` is for a browser without it.
+    The watchlist's alerts page reads its status line and list so. The runtime grows by 273 B
+    (72 B brotli)
+    ([#276 A page cannot ask for one of its parts to be read again, so a page holding a third-party frame needs a script to start the read](https://github.com/todd-skelton/corten/issues/276)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
