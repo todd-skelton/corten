@@ -324,6 +324,83 @@ async function run(browser) {
   }));
   await page.keyboard.press("Escape");
   check("Escape closes the page's dialog", !(await isModal()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
+
+  // dialog::modalClosedBy: a sheet the address opens, which a close request leaves for its
+  // link's address.
+  await page.goto(`${base}/`);
+  /**
+   * This entry's place in the history, where the browser has the Navigation API (a browser
+   * without it loads whole pages, and the link's address replaces the sheet's).
+   */
+  const at = () => page.evaluate(() => /** @type {any} */ (window).navigation?.currentEntry?.index ?? -1);
+  /**
+   * The page's own address. Not `page.url()` or `waitForURL`: Playwright's WebKit does not
+   * report the runtime's navigation from `/` to `/?sale=last` (a push that changes only the
+   * query), so its URL stays at `/` while `location` and the history have moved on, and a click
+   * that waits for that navigation never returns (`noWaitAfter` on the link's clicks).
+   */
+  const href = () => page.evaluate(() => location.href);
+  /** @param {boolean} open whether the address names the sale */
+  const saleInAddress = (open) =>
+    page.waitForFunction((open) => new URL(location.href).searchParams.has("sale") === open, open, { timeout: 5000 }).catch(() => {});
+  const listEntry = await at();
+  await page.getByRole("link", { name: "Last sale" }).click({ noWaitAfter: true });
+  await saleInAddress(true);
+  const sheet = page.locator('dialog[aria-label="Last sale"]');
+  const sheetModal = () => page.evaluate(() => !!document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"));
+  await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  check("the address opens the sheet as a modal", await sheetModal());
+  /** Escape on the sheet, then the page without it: the address drops `sale` and the sheet goes. */
+  const escape = async (/** @type {string} */ how) => {
+    await page.keyboard.press("Escape");
+    await saleInAddress(false);
+    await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    check(`${how}: Escape goes to the close link's address, which does not name the sale`, !new URL(await href()).searchParams.has("sale"), await href());
+    check(`${how}: the page without it replaces the sheet`, (await sheet.count()) === 0);
+  };
+  const openSheet = async () => {
+    await page.getByRole("link", { name: "Last sale" }).click({ noWaitAfter: true });
+    await saleInAddress(true);
+    await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  };
+  // Opened from the list, closing goes back to the list's entry: no entry is added, so Back
+  // after it leaves the list, and Android's Back on the open sheet cannot loop through it.
+  await escape("opened by a click");
+  check("opened by a click: closing goes back to the list's entry", (await at()) === listEntry, `${listEntry} -> ${await at()}`);
+  if (listEntry < 0) {
+    // Without the Navigation API the list's address replaced the sheet's: Back shows the list
+    // once more, not the sheet.
+    await page.goBack();
+    await page.waitForLoadState();
+    check("no Navigation API: Back shows the list, not the sheet", new URL(page.url()).pathname === "/" && !new URL(page.url()).search && (await sheet.count()) === 0, page.url());
+    await page.goForward();
+    await page.waitForLoadState();
+  }
+  await page.reload();
+  check("a reload does not open it again", (await sheet.count()) === 0);
+  // A close request other than Escape (Android's Back, closedby="any") is the same `cancel`.
+  if (await page.evaluate(() => "requestClose" in HTMLDialogElement.prototype)) {
+    await openSheet();
+    // Not the locator's evaluate: the close replaces the sheet as it runs, and a locator then
+    // waits for it to come back.
+    await page.evaluate(() => /** @type {any} */ (document.querySelector('dialog[aria-label="Last sale"]'))?.requestClose());
+    await saleInAddress(false);
+    await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    check("requestClose() leaves the sheet's address too", !new URL(await href()).searchParams.has("sale") && (await sheet.count()) === 0, await href());
+  }
+  // Loaded at its address (a shared link), with no click since: Chromium does not let the page
+  // keep it open on Escape, and the address is still left, in place of the sheet's entry (the
+  // entry before is another page, so there is no going back to the list).
+  await page.goto(`${base}/?tab=offers`);
+  await page.goto(`${base}/?sale=last`);
+  await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  check("loaded at its address, the sheet is modal", await sheetModal());
+  const shared = await at();
+  await escape("loaded at its address");
+  check("loaded at its address: the list replaces the sheet's entry", (await at()) === shared, `${shared} -> ${await at()}`);
+  await page.goBack();
+  await page.waitForLoadState();
+  check("Back from there goes to the page before the shared link", new URL(await href()).searchParams.get("tab") === "offers", await href());
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
@@ -348,4 +425,9 @@ async function run(browser) {
   check("no script: the button opens the dialog", await plain.locator("#rename").isVisible());
   await Promise.all([plain.waitForURL("**/rename"), plain.getByRole("button", { name: "Rename", exact: true }).click()]);
   check("no script: refused, the dialog is open with the error", (await plain.locator("#rename").isVisible()) && ((await plain.locator("#rename").textContent()) ?? "").includes("Give the draft a name."));
+  await plain.goto(`${base}/?sale=last`);
+  const plainSheet = plain.locator('dialog[aria-label="Last sale"]');
+  check("no script: the address opens the sheet", await plainSheet.isVisible());
+  await Promise.all([plain.waitForURL((url) => !url.searchParams.has("sale")), plain.getByRole("link", { name: "Close" }).click()]);
+  check("no script: its link closes it", (await plainSheet.count()) === 0);
 }

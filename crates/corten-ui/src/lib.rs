@@ -10,6 +10,7 @@
 //! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
 //! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
+//! | [`dialog::modalClosedBy`] | the same for a dialog the address opens (`?selected=it_1`), and a close request (Escape) goes to its close link's address | the dialog is open, and the link closes it |
 //!
 //! Each is tested in Chromium, Firefox and WebKit (`examples/ui-gallery/smoke.mjs`).
 //!
@@ -85,6 +86,58 @@
 //! use corten_ui::dialog;
 //!
 //! let html = html! { <div open on:connect={dialog::modal(target)}></div> };
+//! ```
+//!
+//! **Dialogs the address opens.** A record shown beside its list (`/items?selected=it_1`) is a
+//! dialog the server draws `open` when the address names one, closed by a link to the address
+//! without it. Escape on a modal dialog closes it where the address cannot see, so a reload or a
+//! redraw would open it again. [`dialog::modalClosedBy`] makes it modal as [`dialog::modal`]
+//! does, and a close request (Escape, Android's Back, a click outside a `closedby="any"` dialog)
+//! goes to its close link's address without a new history entry (it does not click the link):
+//! back, when the entry before is that address, else in place of the dialog's entry (always so in
+//! a browser without the Navigation API, where Back after a dialog opened from the list shows the
+//! list once more). Attributes on the link (`data-reload`, `data-keep-place`, an `on:click`) do
+//! not apply. Android's Back on an open dialog cannot loop between the two:
+//!
+//! ```
+//! use corten::prelude::*;
+//! use corten_ui::dialog;
+//!
+//! #[derive(Route)]
+//! #[route("/items")]
+//! struct Items<'a> { selected: Option<&'a str> }
+//!
+//! #[component]
+//! fn ItemSheet<'a>(name: &'a str) -> impl Render {
+//!     let close = refs();
+//!     html! {
+//!         <dialog open aria-label={name} on:connect={dialog::modalClosedBy(target, close, signal)}>
+//!             <h2>{name}</h2>
+//!             <a ref={close} href={Items { selected: None }}>"Close"</a>
+//!         </dialog>
+//!     }
+//! }
+//!
+//! let html = ItemSheet { name: "Lamp" }.to_html();
+//! assert!(html.contains(r#"data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)""#), "{html}");
+//! ```
+//!
+//! The close is a link, put there by a ref, so a button (which changes no address) does not
+//! compile:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//! use corten_ui::dialog;
+//!
+//! #[component]
+//! fn ItemSheet() -> impl Render {
+//!     let close = refs();
+//!     html! {
+//!         <dialog open on:connect={dialog::modalClosedBy(target, close, signal)}>
+//!             <button ref={close} type="button">"Close"</button>
+//!         </dialog>
+//!     }
+//! }
 //! ```
 
 use corten::{script::script, view::AttrValue, Component, Route};
