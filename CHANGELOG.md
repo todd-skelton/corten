@@ -718,7 +718,7 @@ Corten is pre-1.0, so any minor version may change the API.
     connection's own task, counts against `App::max_connections` from before the TCP accept, and
     is closed at `App::header_timeout` when the client stalls before or after it; shutdown ends
     the steps in progress. Before, an app serving HTTPS ran the handshake in a listener of its own
-    (the guide's 60 lines), outside both limits, so clients that never sent a ClientHello held
+    (the guide's 45 lines), outside both limits, so clients that never sent a ClientHello held
     sockets and tasks with no cap. The library and its configuration (ALPN `http/1.1`) stay the
     app's; the guide's example is four lines. Checked with rustls: HTTPS answers, ALPN is
     `http/1.1`, and a client that sends nothing is closed at the header timeout. A plain

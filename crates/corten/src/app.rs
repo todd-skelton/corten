@@ -712,8 +712,8 @@ impl<M: Middleware> From<App<M>> for Router {
 /// the tasks have too (or [`App::shutdown_grace`] has passed).
 ///
 /// A tower layer of the app's own goes around it with [`App::layer`]. To serve it on listeners of
-/// the app's own (HTTPS, a Unix socket, a socket a supervisor hands over) with the same
-/// shutdown, see [`serve_on`].
+/// the app's own (a Unix socket, a socket a supervisor hands over) with the same shutdown, see
+/// [`serve_on`]; for HTTPS, [`serve_wrapped`].
 pub async fn serve<M: Middleware>(app: App<M>) -> std::io::Result<()> {
     let listeners = listeners(3000).await?;
     let shown = match std::env::var("HOST").ok().as_deref() {
@@ -726,9 +726,10 @@ pub async fn serve<M: Middleware>(app: App<M>) -> std::io::Result<()> {
 
 /// The listeners [`serve`] uses: `HOST`:`PORT`, or without `HOST` both loopback addresses
 /// (`127.0.0.1` and `[::1]`) on one port, so `localhost` answers at once however it resolves;
-/// `port` when `PORT` is not set (`serve` passes 3000). For an app that wraps them (in TLS), or
-/// whose own default port is not 3000 (`corten::serve_on(corten::listeners(8320).await?, app)`,
-/// with no `PORT` to set from the program), served with [`serve_on`].
+/// `port` when `PORT` is not set (`serve` passes 3000). For an app that serves HTTPS on them
+/// ([`serve_wrapped`]), or whose own default port is not 3000
+/// (`corten::serve_on(corten::listeners(8320).await?, app)`, with no `PORT` to set from the
+/// program).
 pub async fn listeners(port: u16) -> std::io::Result<Vec<tokio::net::TcpListener>> {
     let host = std::env::var("HOST").ok();
     let port: u16 = match std::env::var("PORT") {
@@ -739,14 +740,12 @@ pub async fn listeners(port: u16) -> std::io::Result<Vec<tokio::net::TcpListener
 }
 
 /// [`serve`] on listeners of the app's own: anything that implements axum's
-/// [`Listener`](axum::serve::Listener), such as a TLS acceptor around [`listeners`], a Unix
-/// socket, or a socket a supervisor hands over. Shutdown is `serve`'s, across all of them: on
-/// Ctrl-C or `SIGTERM` the app's tasks are told, live streams end, every listener closes and
-/// finishes its requests, and it returns once the tasks have finished too. TLS stays the app's
-/// choice of library; the guide (the app, Your own listeners) shows rustls.
-///
-/// A listener's `accept` is called in turn, one connection at a time, so a TLS handshake belongs
-/// after it (per connection), where a slow client cannot hold the next one up.
+/// [`Listener`](axum::serve::Listener), such as a Unix socket or a socket a supervisor hands
+/// over. Shutdown is `serve`'s, across all of them: on Ctrl-C or `SIGTERM` the app's tasks are
+/// told, live streams end, every listener closes and finishes its requests, and it returns once
+/// the tasks have finished too. HTTPS is [`serve_wrapped`], which runs the handshake on each
+/// connection under the app's connection limits; a listener that ran it before handing the
+/// connection over would have it outside them.
 pub async fn serve_on<L, M>(listeners: Vec<L>, app: App<M>) -> std::io::Result<()>
 where
     L: axum::serve::Listener,
@@ -771,12 +770,13 @@ where
 /// (rustls, native-tls) stays the app's, and so does its configuration: ALPN offers `http/1.1`,
 /// what Corten speaks. A step whose future borrows from what it captures clones it first:
 /// `move |tcp| { let acceptor = acceptor.clone(); async move { acceptor.accept(tcp).await } }`.
-pub async fn serve_wrapped<L, W, F, Io, M>(listeners: Vec<L>, wrap: W, app: App<M>) -> std::io::Result<()>
+/// The step's error is not read: the connection closes.
+pub async fn serve_wrapped<L, W, F, Io, E, M>(listeners: Vec<L>, wrap: W, app: App<M>) -> std::io::Result<()>
 where
     L: axum::serve::Listener,
     L::Addr: std::fmt::Debug + 'static,
     W: Fn(L::Io) -> F + Send + Sync + 'static,
-    F: Future<Output = std::io::Result<Io>> + Send + 'static,
+    F: Future<Output = Result<Io, E>> + Send + 'static,
     Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     M: Middleware,
 {
@@ -789,7 +789,7 @@ where
 }
 
 /// The step on a connection that has none: the listener's IO itself.
-pub(crate) fn plain<I>(io: I) -> std::future::Ready<std::io::Result<I>> {
+pub(crate) fn plain<I>(io: I) -> std::future::Ready<Result<I, std::convert::Infallible>> {
     std::future::ready(Ok(io))
 }
 
@@ -797,7 +797,7 @@ pub(crate) fn plain<I>(io: I) -> std::future::Ready<std::io::Result<I>> {
 /// to stop, lets each listener finish its requests and waits for the tasks, up to the app's
 /// grace from when `stop` resolved. `wrap` is each connection's step before HTTP
 /// ([`serve_wrapped`]), [`plain`] for none.
-pub(crate) async fn run<L, W, F, Io, M>(
+pub(crate) async fn run<L, W, F, Io, E, M>(
     listeners: Vec<L>,
     wrap: W,
     mut app: App<M>,
@@ -807,7 +807,7 @@ where
     L: axum::serve::Listener,
     L::Addr: std::fmt::Debug + 'static,
     W: Fn(L::Io) -> F + Send + Sync + 'static,
-    F: Future<Output = std::io::Result<Io>> + Send + 'static,
+    F: Future<Output = Result<Io, E>> + Send + 'static,
     Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     M: Middleware,
 {
@@ -857,7 +857,7 @@ pub(crate) async fn bind(host: Option<&str>, port: u16) -> std::io::Result<Vec<t
 
 /// Serves `router` on every listener, each connection after its step `wrap`, until `stop`
 /// resolves, then lets each finish its requests; a listener that fails ends it with the error.
-pub(crate) async fn serve_router<L, W, F, Io>(
+pub(crate) async fn serve_router<L, W, F, Io, E>(
     listeners: Vec<L>,
     wrap: W,
     router: Router,
@@ -868,7 +868,7 @@ where
     L: axum::serve::Listener,
     L::Addr: std::fmt::Debug + 'static,
     W: Fn(L::Io) -> F + Send + Sync + 'static,
-    F: Future<Output = std::io::Result<Io>> + Send + 'static,
+    F: Future<Output = Result<Io, E>> + Send + 'static,
     Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     use futures_util::future::{select, try_join_all, Either};
@@ -894,7 +894,7 @@ where
 /// once all have closed. Each connection's step `wrap` runs in its own task before HTTP. With
 /// `clock`, a connection waits for a request's head (the step included) only as long as it
 /// allows, and with `open`, a connection is accepted only once one of its permits is free.
-async fn serve_listener<L, W, F, Io>(
+async fn serve_listener<L, W, F, Io, E>(
     mut listener: L,
     wrap: Arc<W>,
     router: Router,
@@ -906,7 +906,7 @@ where
     L: axum::serve::Listener,
     L::Addr: 'static,
     W: Fn(L::Io) -> F + Send + Sync + 'static,
-    F: Future<Output = std::io::Result<Io>> + Send + 'static,
+    F: Future<Output = Result<Io, E>> + Send + 'static,
     Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     // Each connection holds a sender; the listener is done when every one has dropped.

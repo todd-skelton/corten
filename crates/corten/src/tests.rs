@@ -2460,6 +2460,17 @@ async fn a_step_before_http_is_counted_and_timed_as_the_connection() {
     let answer = tokio::time::timeout(Duration::from_secs(3), next).await.expect("answered once it closes").unwrap();
     assert!(answer.ends_with("hi"), "{answer}");
 
+    // One clock from the accept to the head: a step that takes most of the timeout leaves the
+    // rest for the head, not the whole timeout again.
+    let started = Instant::now();
+    let mut slow = tokio::net::TcpStream::connect(addr).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    slow.write_all(b"hello\n").await.unwrap();
+    let mut rest = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut rest)).await;
+    assert!(closed.is_ok(), "a connection with no head after its step is closed");
+    assert!(started.elapsed() < Duration::from_millis(480), "at the header timeout from the accept: {:?}", started.elapsed());
+
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
 
