@@ -239,7 +239,9 @@ not build. A page that shows something either way (a layout's "Sign in") takes
 `Option<Caller<Viewer>>`. Reads and writes at one URL are separate handlers (`get = show,
 post = save`), so each takes what it needs. A private app puts `caller = Staff` on its routes
 module and the sign-in route in a module without it. A check that needs the record (only its
-author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
+author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`. Signing in
+sets the session cookie on the answer, `Ok(req.redirect(&next)?.with_cookie(SetCookie::new("session",
+&token)))` (`SetCookie::remove("session")` signs out); never append a `Set-Cookie` header by hand.
 
 ## Data from another service
 

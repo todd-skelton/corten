@@ -671,15 +671,20 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    `JsonResult` route, where a missing key is a JSON 401.
 5. A sign-in page whose handler needs a caller would send the browser round in a loop; Corten
    answers it with a 500 instead, and under `corten dev` the page says why.
-6. `.message("Invalid API key")` on a refusal is what a client that reads the failure is told:
+6. Signing in and out set the cookie on the answer:
+   `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, and
+   `SetCookie::remove("session")` to sign out. `SetCookie` (`corten::security::cookie`) makes
+   `HttpOnly; Secure; SameSite=Lax; Path=/` the default, and an answer that sets a cookie is never
+   stored by a shared cache. Never append a `Set-Cookie` header by hand.
+7. `.message("Invalid API key")` on a refusal is what a client that reads the failure is told:
    the JSON error's message (in the API's own shape, `Api::errors`). The error page a browser
    gets does not show it, and a 503 from `Refused::unavailable` never sends its error. Counting
    failed attempts is the app's (by address or account, in its own store); `Refused::too_many`
    is how the lookup says the count is reached, checked before the credentials so a locked-out
    client learns nothing about them.
-7. A check that depends on the record (only the author may edit a draft) stays in the handler,
+8. A check that depends on the record (only the author may edit a draft) stays in the handler,
    which loads the record; `Error::status(StatusCode::FORBIDDEN)` gives the same answers there.
-7. Test it the way a user meets it: a router test that sends each route signed out and signed
+9. Test it the way a user meets it: a router test that sends each route signed out and signed
    in without the permission.
 
 A page and the form that posts back to it share one URL (`get = show, post = save`), and each

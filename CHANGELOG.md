@@ -628,6 +628,10 @@ Corten is pre-1.0, so any minor version may change the API.
 95. `Error::not_found()`: the 404 a handler answers for a record that is not there,
     `load(id).await?.ok_or_else(Error::not_found)?`, in place of
     `.ok_or_else(|| Error::status(StatusCode::NOT_FOUND))?` (or an app's own `fn not_found`).
+96. `HtmlResponse::with_cookie(SetCookie)`: an answer that sets a cookie,
+    `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, in place of
+    `res.headers_mut().append(header::SET_COOKIE, cookie.header())`. The cookie is built by
+    `SetCookie`, so its safe flags are the default.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

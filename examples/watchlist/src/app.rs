@@ -21,7 +21,7 @@ use corten::{
     ClientZone, Fragment, LiveResponse, LiveSince,
     axum::{
         extract::FromRef,
-        http::{StatusCode, header, request::Parts},
+        http::{StatusCode, request::Parts},
     },
     feed::{FeedResponse, Since},
     prelude::*,
@@ -269,15 +269,11 @@ pub fn Layout<'a>(
 }
 
 async fn sign_in(req: Req) -> HtmlResult {
-    let mut res = req.redirect(&url::Home)?;
-    res.headers_mut().append(header::SET_COOKIE, SetCookie::new("viewer", "Ada").header());
-    Ok(res)
+    Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("viewer", "Ada")))
 }
 
 async fn sign_out(req: Req) -> HtmlResult {
-    let mut res = req.redirect(&url::Home)?;
-    res.headers_mut().append(header::SET_COOKIE, SetCookie::remove("viewer").header());
-    Ok(res)
+    Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::remove("viewer")))
 }
 
 /// The last trade as each one happens, for `<corten-live src>`: every item is a fragment the
@@ -468,11 +464,8 @@ fn LastTrade(text: &str) -> impl Render {
 /// browser that had none.
 fn home_screen(req: &Req, viewer: Option<&Viewer>, watching: &mut Watching, home: &Home) -> HtmlResult {
     let view = home_view(home, req.t());
-    let mut res = req.screen(home, html! { <Layout req={req} title="Watchlist" viewer={viewer} head="">{view}</Layout> })?;
-    if let Some(cookie) = watching.cookie() {
-        res.headers_mut().append(header::SET_COOKIE, cookie);
-    }
-    Ok(res)
+    let res = req.screen(home, html! { <Layout req={req} title="Watchlist" viewer={viewer} head="">{view}</Layout> })?;
+    Ok(watching.with_cookie(res))
 }
 
 async fn home(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>, mut watching: Watching) -> HtmlResult {
@@ -540,14 +533,11 @@ fn changed(req: &Req, viewer: Option<&Viewer>, market: &Market, watching: &mut W
     if req.mode != Mode::Action {
         return home_screen(req, viewer, watching, &home);
     }
-    let mut res = req.patch(html! {
+    let res = req.patch(html! {
         <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} t={req.t()} />
         <WatchForm others={&home.others} message={&home.message} />
     })?;
-    if let Some(cookie) = watching.cookie() {
-        res.headers_mut().append(header::SET_COOKIE, cookie);
-    }
-    Ok(res)
+    Ok(watching.with_cookie(res))
 }
 
 #[derive(Deserialize, Fields)]
