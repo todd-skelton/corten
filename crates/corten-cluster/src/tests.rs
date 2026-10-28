@@ -208,3 +208,20 @@ async fn an_unused_feed_is_unloaded_and_loads_again_with_its_replay_log() {
     let text = String::from_utf8(first.to_vec()).unwrap();
     assert!(text.contains(&format!("id: {generation}-2\n")) && !text.contains("event: sync"), "{text}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_feed_route_answers_a_snapshot_and_a_404_for_a_feed_that_does_not_exist() {
+    let Some((db, nats)) = urls() else { return eprintln!("skipped: set CORTEN_TEST_DATABASE_URL and CORTEN_TEST_NATS_URL") };
+    let pool = pool(&db).await;
+    let feed = key("route");
+    new_feed(&pool, &feed).await;
+    let options = Options { instance: "route".into(), ..Options::default() };
+    let cluster = Cluster::start(pool, async_nats::connect(&nats).await.unwrap(), Items, options).await.unwrap();
+    let snapshot = cluster.snapshot(&feed).await.unwrap().into_body();
+    let bytes = corten::axum::body::to_bytes(snapshot, usize::MAX).await.unwrap();
+    let text = String::from_utf8(bytes.to_vec()).unwrap();
+    assert!(text.contains(r#""id":"a""#), "{text}");
+    let missing = cluster.snapshot(&key("missing")).await.err().expect("no such feed");
+    assert_eq!(corten::axum::response::IntoResponse::into_response(missing).status(), StatusCode::NOT_FOUND);
+    assert!(cluster.live(&key("missing"), Since(None)).await.is_err(), "nor a stream of one");
+}

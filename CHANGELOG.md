@@ -1111,6 +1111,15 @@ Corten is pre-1.0, so any minor version may change the API.
     Migration: `state(scope, () => init)` is `keep(() => init)`, and a `scope` argument used only
     for it is dropped from the handler and its markup
     ([#238 Runtime state is keyed by an element the handler has to pass: state(root, init)](https://github.com/todd-skelton/corten/issues/238)).
+65. `corten-cluster`'s `Cluster::snapshot`, `live` and `live_with` return
+    `corten::Result<FeedResponse>`, an answer a Corten route names, instead of an axum
+    `Response`: an unknown feed is a 404 and Postgres out of reach a 503, both answered as JSON as
+    any failure of a feed's route is. The crate depends on `corten` (feature `feed`) instead of
+    axum. `examples/listings-feed` is an `App`: the feed in a routes module, the benchmark's
+    writes and reads under `App::api` (`/api/feeds/{seller}/market`, `/seq`, `/api/stats`),
+    the instance's name from a middleware (`X-Instance`), Corten's health checks (`/health/ready`
+    checks Postgres), and the browser probe a page whose `#[component(js)]` follows the feed
+    (`/sellers/{seller}`), where an inline script would be refused by the CSP.
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

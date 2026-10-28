@@ -32,10 +32,7 @@ use std::{
     time::Duration,
 };
 
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
+use corten::{axum::http::StatusCode, feed::FeedResponse};
 use corten_feed::{Feed, Row, Since};
 use serde::de::DeserializeOwned;
 use sqlx::{PgConnection, PgPool};
@@ -125,24 +122,29 @@ impl<S: Source> Cluster<S> {
         self.hub.feed(key).await
     }
 
-    /// `GET {url}`: [`Feed::snapshot`], 404 for an unknown feed, 503 when Postgres is unreachable.
-    pub async fn snapshot(&self, key: &str) -> Response {
-        match self.feed(key).await {
-            Ok(Some(feed)) => feed.snapshot().into_response(),
-            other => unavailable(key, other.err()),
-        }
+    /// `GET {url}`: [`Feed::snapshot`], an answer a Corten route names
+    /// (`async fn listings(..) -> corten::Result<FeedResponse>`). An unknown feed is a 404, and
+    /// Postgres out of reach a 503, answered as JSON as any failure of a feed's route is.
+    pub async fn snapshot(&self, key: &str) -> corten::Result<FeedResponse> {
+        Ok(self.loaded(key).await?.snapshot())
     }
 
     /// `GET {url}/live`: [`Feed::live`], with the same errors as [`Cluster::snapshot`].
-    pub async fn live(&self, key: &str, since: Since) -> Response {
+    pub async fn live(&self, key: &str, since: Since) -> corten::Result<FeedResponse> {
         self.live_with(key, since, ()).await
     }
 
     /// [`Cluster::live`] holding `guard` (a `corten_feed::Permit`) until the stream ends.
-    pub async fn live_with(&self, key: &str, since: Since, guard: impl Send + 'static) -> Response {
+    pub async fn live_with(&self, key: &str, since: Since, guard: impl Send + 'static) -> corten::Result<FeedResponse> {
+        Ok(self.loaded(key).await?.live_with(since, guard))
+    }
+
+    /// The feed for `key`, or the error its route answers: 404 for none, 503 when it cannot load.
+    async fn loaded(&self, key: &str) -> corten::Result<Feed<S::Row>> {
         match self.feed(key).await {
-            Ok(Some(feed)) => feed.live_with(since, guard).into_response(),
-            other => unavailable(key, other.err()),
+            Ok(Some(feed)) => Ok(feed),
+            Ok(None) => Err(corten::Error::new(format!("no feed {key}")).with_status(StatusCode::NOT_FOUND)),
+            Err(e) => Err(corten::Error::new(format!("feed {key}: {e}")).with_status(StatusCode::SERVICE_UNAVAILABLE)),
         }
     }
 
@@ -154,16 +156,6 @@ impl<S: Source> Cluster<S> {
     /// Loaded feeds: key, sequence, live subscribers.
     pub fn stats(&self) -> Vec<(String, u64, usize)> {
         self.hub.stats()
-    }
-}
-
-fn unavailable(key: &str, error: Option<Error>) -> Response {
-    match error {
-        None => (StatusCode::NOT_FOUND, "No such feed.").into_response(),
-        Some(e) => {
-            eprintln!("corten-cluster: feed {key}: {e}");
-            (StatusCode::SERVICE_UNAVAILABLE, "Feed unavailable.").into_response()
-        }
     }
 }
 

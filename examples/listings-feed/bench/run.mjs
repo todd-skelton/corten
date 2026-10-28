@@ -57,15 +57,21 @@ await until("a", () => /relay a: active/.test(logs("fb-a")));
 instance("fb-b", "10.77.77.22", "b");
 await until("b", () => /listening/.test(logs("fb-b")));
 docker("run", "-d", "--name", "fb-lb", ...net, "--ip", "10.77.77.30", "-p", "18420:8080", "-v", `${join(here, "nginx.conf")}:/etc/nginx/nginx.conf:ro`, "nginx:1.27-alpine");
-await until("load balancer", async () => (await fetch("http://localhost:18420/health").catch(() => null))?.ok);
+await until("load balancer", async () => (await fetch("http://localhost:18420/health/ready").catch(() => null))?.ok);
 
-// A real browser on corten.js subscribe(), through the load balancer, for the whole run.
+// A real browser on the seller's page (FeedMonitor, corten.js subscribe()), through the load
+// balancer, for the whole run.
 const browser = await chromium.launch();
 const page = await browser.newPage();
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
-await page.goto("http://localhost:18420/probe");
-await page.waitForFunction(() => window.__probe?.status === "live");
+await page.goto("http://localhost:18420/sellers/s1");
+/** The monitor's outputs by their label: Status, Listings, Through, Changes, Snapshots, Missed. */
+const shown = () =>
+  page.evaluate(() =>
+    Object.fromEntries([...document.querySelectorAll("dt")].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent ?? ""])),
+  );
+await until("the page's feed", async () => (await shown()).Status === "live");
 
 const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
 const client = spawn("docker", ["run", "--rm", ...net, "--ulimit", "nofile=65536:65536", "-v", "/var/run/docker.sock:/var/run/docker.sock",
@@ -76,10 +82,11 @@ const code = await new Promise((r) => client.on("exit", r));
 if (code !== 0) throw new Error(`failover.mjs exited ${code}`);
 const result = JSON.parse(stdout.trim().split("\n").at(-1));
 
-const probe = await page.evaluate(() => window.__probe);
+const seen = await shown();
+const probe = { status: seen.Status, patches: Number(seen.Changes), snapshots: Number(seen.Snapshots), missed: Number(seen.Missed), last: Number(seen.Through) };
 await browser.close();
 const committed = result.committed;
-result.browser = { ...probe, committed, lost: probe.gaps + Math.max(0, committed - probe.last), pageErrors };
+result.browser = { ...probe, committed, lost: probe.missed + Math.max(0, committed - probe.last), pageErrors };
 result.instanceLogs = Object.fromEntries(
   ["fb-a", "fb-b"].map((c) => {
     const r = spawnSync("docker", ["logs", "-t", c], { encoding: "utf8" });
@@ -114,7 +121,7 @@ console.log(`write -> client, steady: ${line(l.writeToClient.steady)}`);
 console.log(`write -> client, within 5 s of a kill: ${line(l.writeToClient.within5sOfKill)}`);
 console.log(`outages: ${result.outages.n} (${result.outages.resynced} resynced); reconnect ${line(result.outages.reconnectMs)}; silent ${line(result.outages.silentMs)}`);
 console.log(`relay takeover: ${result.relayTakeoverMs.map((r) => `${r.killed} ${r.wasLeader ? `${r.takeoverMs} ms` : "(not the relay)"}`).join(", ")}`);
-console.log(`browser: ${probe.patches} patches, ${probe.snapshots} snapshot(s), gaps ${probe.gaps}, last ${probe.last}/${committed}, status ${probe.status}, errors ${pageErrors.length}`);
+console.log(`browser: ${probe.patches} patches, ${probe.snapshots} snapshot(s), missed ${probe.missed}, last ${probe.last}/${committed}, status ${probe.status}, errors ${pageErrors.length}`);
 console.log(`wrote ${out}`);
 if (!args.keep) for (const c of containers) docker("rm", "-f", c);
 if (!args.keep) docker("network", "rm", "feedbench");

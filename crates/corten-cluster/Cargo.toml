@@ -11,8 +11,8 @@ keywords = ["corten", "nats", "postgres", "outbox", "feed"]
 categories = ["web-programming::http-server", "database"]
 
 [dependencies]
+corten = { workspace = true, features = ["feed"] }
 corten-feed.workspace = true
-axum = "0.8"
 async-nats = "0.50"
 futures-util = { version = "0.3", default-features = false }
 serde = { version = "1", features = ["derive"] }
