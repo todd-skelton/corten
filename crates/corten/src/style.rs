@@ -465,7 +465,10 @@ mod tests {
         assert!(css.contains(".md\\:direction-row{flex-direction:row}"), "{css}");
         assert!(html! { <p class={gap(Responsive::default())}></p> }.to_html() == "<p></p>", "no value, no attribute");
         // A value at every width is its own function: the class as static text.
-        assert_eq!(html! { <p class={(gap_2(), direction_column())}></p> }.to_html(), r#"<p class="gap-2 direction-column"></p>"#);
+        assert_eq!(
+            html! { <p class={(gap_2(), direction_column())}></p> }.to_html(),
+            r#"<p class="gap-2 direction-column"></p>"#
+        );
         assert_eq!(gap_2().name(), gap(Space::_2).names().next().unwrap());
     }
 
