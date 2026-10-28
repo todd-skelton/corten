@@ -135,12 +135,12 @@ fn cards() -> Vec<(String, &'static str, u32)> {
             continue;
         }
         let k = cards.len() as u32;
-        let draw = k.wrapping_mul(2_654_435_761) % 1000;
-        let cents = match draw {
-            0..20 => 2000 + draw * 7919 % 13000,
-            20..100 => 200 + draw * 7919 % 3800,
-            100..300 => 25 + draw * 104_729 % 275,
-            _ => 10 + draw * 7919 % 40,
+        let rarity = k.wrapping_mul(2_654_435_761) % 1000;
+        let cents = match rarity {
+            0..20 => 2000 + rarity * 7919 % 13000,
+            20..100 => 200 + rarity * 7919 % 3800,
+            100..300 => 25 + rarity * 104_729 % 275,
+            _ => 10 + rarity * 7919 % 40,
         };
         cards.push((name, SETS[cards.len() % SETS.len()], cents));
     }
@@ -173,8 +173,8 @@ impl Desk {
             .map(|i| {
                 let card = i % cards.len();
                 let (name, set, cents) = &cards[card];
-                // Seven in ten cards start in Near Mint.
-                let first = [0, 0, 0, 0, 0, 0, 0, 1, 2, 3][draw(card) as usize % 10];
+                // card-market's singles start in Near Mint, at its price; seven in ten others do.
+                let first = if card < LISTED.len() { 0 } else { [0, 0, 0, 0, 0, 0, 0, 1, 2, 3][draw(card) as usize % 10] };
                 let (condition, share) = CONDITIONS[(first + i / cards.len()) % CONDITIONS.len()];
                 Item {
                     id: format!("i{i:05}"),
@@ -188,7 +188,7 @@ impl Desk {
             .collect();
         let levels = Feed::new(items.iter().enumerate().map(|(i, it)| {
             let range = stock(it.price_cents);
-            Level { id: it.id.clone(), qty: range.start() + draw(i + 7) % (range.end() - range.start() + 1) }
+            Level { id: it.id.clone(), qty: range.start() + draw(i + 3) % (range.end() - range.start() + 1) }
         }));
         Desk { items: Arc::new(Mutex::new(items)), levels, archived: Arc::default() }
     }
@@ -346,15 +346,18 @@ async fn statement(req: Req, State(desk): State<Desk>) -> NoStore<HtmlResult> {
 /// Sells and restocks a few items every 250 ms, so the grid's live levels have something to show.
 pub async fn simulate_sales(desk: Desk) {
     let mut tick = tokio::time::interval(Duration::from_millis(250));
-    let count = desk.items.lock().expect("items").len().max(1);
+    // What each row is restocked to when it sells out: the most a seller keeps at its price.
+    let restock: Vec<u32> =
+        desk.items.lock().expect("items").iter().map(|item| (*stock(item.price_cents).end()).max(1)).collect();
+    let count = restock.len().max(1);
     let mut n = 0usize;
     loop {
         tick.tick().await;
         desk.levels.write(|tx| {
             for k in 0..4 {
-                let id = format!("i{:05}", (n * 7 + k * 131) % count);
-                if let Some(level) = tx.get_mut(&id) {
-                    level.qty = if level.qty == 0 { 12 } else { level.qty - 1 };
+                let row = (n * 7 + k * 131) % count;
+                if let Some(level) = tx.get_mut(&format!("i{row:05}")) {
+                    level.qty = if level.qty == 0 { restock[row] } else { level.qty - 1 };
                 }
             }
         });
@@ -444,6 +447,14 @@ mod tests {
             (items[CARDS].name.as_str(), items[CARDS].condition, items[CARDS].price_cents),
             ("Ashen Drake", "Lightly Played", 3612)
         );
+        for (item, (name, _, cents)) in items.iter().zip(LISTED) {
+            assert_eq!(
+                (item.name.as_str(), item.condition, item.price_cents),
+                (name, "Near Mint", cents),
+                "card-market's singles come first"
+            );
+        }
+        assert!(desk.quantities()["i00000"] > 0, "the first row has a copy to show");
         let played = items[..CARDS].iter().filter(|item| item.condition != "Near Mint").count();
         assert!((100..250).contains(&played), "some cards start played: {played}");
         let qty = desk.quantities();
