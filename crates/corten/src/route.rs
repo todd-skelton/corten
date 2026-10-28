@@ -820,22 +820,84 @@ impl Href for Local {
     }
 }
 
-/// Whether each `{..}` in `path` is a whole segment (`/items/{id}`, not `/item_{id}`), checked when
-/// the app compiles: `#[derive(Route)]` only writes such paths, and [`chosen`] matches no other
-/// shape, so a `Route` written by hand is held to it too.
-pub(crate) const fn whole_segments(path: &str) -> bool {
-    let bytes = path.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'{' && (i == 0 || bytes[i - 1] != b'/') {
-            return false;
+/// Whether `path` is one `#[derive(Route)]` would write, checked when the app compiles so a
+/// `Route` written by hand is held to it too: each segment is `{name}` (lowercase letters, digits
+/// and `_`), `{*name}` as the last, or text a browser sends as it is (letters, digits and
+/// `-._~!$*+,;=:@`). [`chosen`] matches only this shape, as the router does.
+pub(crate) const fn route_shaped(path: &str) -> bool {
+    const fn plain(c: u8) -> bool {
+        c.is_ascii_alphanumeric()
+            || matches!(c, b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'*' | b'+' | b',' | b';' | b'=' | b':' | b'@')
+    }
+    const fn name(c: u8, first: bool) -> bool {
+        c.is_ascii_lowercase() || c == b'_' || (!first && c.is_ascii_digit())
+    }
+    let b = path.as_bytes();
+    if b.is_empty() || b[0] != b'/' {
+        return false;
+    }
+    let mut start = 1;
+    while start <= b.len() {
+        let mut end = start;
+        while end < b.len() && b[end] != b'/' {
+            end += 1;
         }
-        if bytes[i] == b'}' && i + 1 < bytes.len() && bytes[i + 1] != b'/' {
-            return false;
+        if end > start && b[start] == b'{' {
+            let mut j = start + 1;
+            if j < end && b[j] == b'*' {
+                if end != b.len() {
+                    return false;
+                }
+                j += 1;
+            }
+            if b[end - 1] != b'}' || j >= end - 1 || !name(b[j], true) {
+                return false;
+            }
+            while j < end - 1 {
+                if !name(b[j], false) {
+                    return false;
+                }
+                j += 1;
+            }
+        } else {
+            let mut j = start;
+            while j < end {
+                if !plain(b[j]) {
+                    return false;
+                }
+                j += 1;
+            }
         }
-        i += 1;
+        start = end + 1;
     }
     true
+}
+
+#[cfg(test)]
+#[test]
+fn a_route_path_has_the_shape_the_derive_writes() {
+    for ok in ["/", "/items", "/items/{id}", "/items/{id}/edit", "/files/{*rest}", "/a//b", "/a.b~c", "/{a_1}"] {
+        assert!(route_shaped(ok), "{ok}");
+    }
+    for bad in [
+        "",
+        "items",
+        "/item_{id}",
+        "/{id}x",
+        "/a}",
+        "/{}",
+        "/{*}",
+        "/{a/b}",
+        "/{*x}/y",
+        "/{Id}",
+        "/{1a}",
+        "/a|b",
+        "/a%20b",
+        "/caf\u{e9}",
+        "/{{x}}",
+    ] {
+        assert!(!route_shaped(bad), "{bad}");
+    }
 }
 
 /// Of `routes` (each pattern, and whether it has a `GET` handler), the one the router picks for
@@ -950,6 +1012,7 @@ mod local_tests {
             "/a?x=/../",
             "/a?q=%61",
             "/a%20b",
+            "/a%2fb",
             "/50%",
             "/a%2",
         ] {
@@ -977,6 +1040,8 @@ mod local_tests {
             "/cart/%61dd",
             "/%7Euser",
             "/a%2Db",
+            "/a%5Fb",
+            "/%31",
         ] {
             assert!(Local::parse(bad).is_none(), "{bad:?}");
         }
@@ -1256,7 +1321,6 @@ impl Routes {
     /// Used by `#[corten::routes]`: `R`'s handlers at its path. Not a public API.
     #[doc(hidden)]
     pub fn __route<R: Route>(self, methods: Methods) -> Self {
-        const { assert!(whole_segments(R::PATH), "corten: a route's parameters are whole segments, like /items/{{id}}") };
         let mut paths = self.1;
         paths.push((R::PATH, methods.1));
         Routes(self.0.route(R::PATH, methods.0), paths)
