@@ -152,11 +152,12 @@ framework's shape, and what it does not do yet.
     The lookup runs only when a handler or middleware reads it, once per request, and reading
     it makes the answer private. A route's answer type says how it fails (`HtmlResult`: the
     error page; `JsonResult<T>`: JSON) and whether a shared cache may keep it (`Public<..>`,
-    whose handler may only take `Anonymous` inputs). A check that depends on the record (the
-    author, the organization) stays in its handler. That an area's or an API's routes are
-    under its prefix is a `const` assertion, which the compiler evaluates when it builds the
-    app (`cargo build`, `cargo test`, `corten check`), not under `cargo check` alone. Every
-    route reaches the app through these checks: `App::new` takes the `Routes` a
+    whose handler may only take `Anonymous` inputs and whose page cannot set a cookie). A check
+    that depends on the record (the author, the organization) stays in its handler. That an
+    area's or an API's routes are under its prefix is a `const` assertion, which the compiler
+    evaluates when it builds the app (`cargo build`, `cargo test`, `corten check`), not under
+    `cargo check` alone. Every route reaches the app through these checks: `App::new` takes the
+    `Routes` a
     `#[corten::routes]` module makes, and `Area::route` and `Api::route` take `Methods`, made
     by Corten's `get`, `post` and the others, which check the same things. A plain axum
     `Router` or method router does not fit any of them, so there is no unchecked way in. A

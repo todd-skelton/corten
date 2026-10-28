@@ -1054,6 +1054,24 @@ Corten is pre-1.0, so any minor version may change the API.
     (`sink.str(..)`). Migration: pass a float through `t.number`, and a `Display` type of the
     app's own as its text or through an `Arg` impl
     ([#237 The item API's home page got 10% slower in the believable-data change; an integer fast path for message arguments may win it back](https://github.com/todd-skelton/corten/issues/237)).
+62. A `Public` answer that sets a cookie does not compile: `HtmlResponse<For>` says who an answer
+    is for, `ForOne` (the default, what `HtmlResult` holds) or `ForAll` (inside `Public`), and
+    `with_cookie` is only on `ForOne`. The `Req` methods that make a page, a patch or a redirect
+    take `For` from where the answer goes (the handler's return type, Corten's `get`, or
+    `Public::new`, which finds the `Public`'s type from its answer), so handlers and closures are
+    written as before. Before, the cookie compiled and the page was sent `private, no-cache`,
+    which a CDN never keeps, with a warning only under `corten dev`; a `Set-Cookie` written by
+    hand is still caught that way. No code runs differently (`For` is a type alone; card-market's
+    public home page: 33,741 to 33,881 instructions a request, callgrind medians of three, where
+    main's own runs spread from 33,701 to 33,933).
+    Migration: a helper that makes a page for a `Public` handler returns
+    `corten::Result<HtmlResponse<For>>` for any `For` instead of `HtmlResult` (`Public::new`
+    says the page "is not an answer made for everyone"); one that wraps a page in `Public` takes
+    `corten::Result<HtmlResponse<ForAll>>`, as card-market's `shared` does; a closure given to
+    axum's own `get` (tests only: an app cannot mount one) names it, `req.page::<ForOne>(..)`;
+    `Public<A>` needs `A: Shareable`, which every answer that can be public implements, and an
+    answer type of the app's own implements only when it sets no cookie
+    ([#235 A Public answer that sets a cookie compiles, and is only made private when it is sent](https://github.com/todd-skelton/corten/issues/235)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
