@@ -328,6 +328,15 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         #[inline] __A2 fn money(self, amount: impl ::corten::i18n::Amount, currency: ::corten::i18n::Currency) -> ::corten::i18n::Formatted {
             ::corten::i18n::Formatted::money(self.__corten_locale(), &amount, currency)
         }
+        /// Money as a person types it in this locale, in the currency's minor units: what
+        /// `money` writes, read back: `$1,299.50` is `Some(Minor(129950))` in USD in en, and `12,50`
+        /// is `Some(Minor(1250))` in fr. With or without
+        /// the symbol or code and the group separators; a sign, a group of the wrong size, another
+        /// locale's decimal separator, more fraction digits than the currency shows, or an amount
+        /// over `u64` is `None`.
+        #[inline] __A2 fn parse_money(self, text: &str, currency: ::corten::i18n::Currency) -> ::core::option::Option<::corten::i18n::Minor<u64>> {
+            ::corten::i18n::__private::parse_money(self.__corten_locale(), text, currency)
+        }
         /// A date in this locale, in UTC unless `.zone(..)` says otherwise: `Mar 22, 2026` (en, `Medium`).
         #[inline] __A2 fn date(self, at: impl ::core::convert::Into<::std::time::SystemTime>, style: impl ::corten::i18n::DateOnly) -> ::corten::i18n::When {
             ::corten::i18n::When::date(self.__corten_locale(), at.into(), style)

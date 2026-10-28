@@ -29,7 +29,8 @@
     "submit": "Créer l'alerte",
     "invalid_email": "Saisissez une adresse e-mail valide.",
     "invalid_price": "Saisissez un prix cible supérieur à zéro.",
-    "no_listings": "Cet article n'a pas encore d'annonce : il n'y a aucun prix à surveiller."
+    "no_listings": "Cet article n'a pas encore d'annonce : il n'y a aucun prix à surveiller.",
+    "set": "Alerte créée : nous écrirons à {email} quand {title} passera sous {price}."
   },
   "category": {
     "title": "Catégorie {name}",

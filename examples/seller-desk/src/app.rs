@@ -25,7 +25,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    text::Msg,
+    text::{Msg, USD},
     views::{self, Line, PriceCell, RowId, StatementTable, StatusLine},
 };
 
@@ -164,21 +164,15 @@ pub struct PriceInput {
     pub price: String,
 }
 
-/// Cents from "12.50" or "$12.50", above zero.
-fn parse_price(text: &str) -> Option<u32> {
-    let text = text.trim().trim_start_matches('$');
-    let (whole, cents) = text.split_once('.').unwrap_or((text, "0"));
-    if whole.is_empty() || cents.len() > 2 || !whole.bytes().chain(cents.bytes()).all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    let cents: u32 = format!("{cents:0<2}").parse().ok()?;
-    let value = whole.parse::<u32>().ok()?.checked_mul(100)?.checked_add(cents)?;
-    (value > 0).then_some(value)
+/// Cents from a price as the reader's locale writes money ("12.50", "$1,299.50"), above zero.
+fn parse_price(t: Msg, text: &str) -> Option<u32> {
+    let cents = u32::try_from(t.parse_money(text, USD)?.0).ok()?;
+    (cents > 0).then_some(cents)
 }
 
 async fn set_price(req: Req, State(desk): State<Desk>, Path(id): Path<String>, Form(input): Form<PriceInput>) -> HtmlResult {
     let f = PriceInput::FIELDS;
-    let Some(cents) = parse_price(&input.price) else {
+    let Some(cents) = parse_price(req.t(), &input.price) else {
         let mut errors = Errors::new();
         errors.add(f.price, "Enter a price above zero, like 12.50.");
         let cell = PriceCell { id: &id, cents: None, typed: &input.price, errors: &errors };
@@ -304,11 +298,14 @@ mod tests {
 
     #[test]
     fn prices_parse_like_people_type_them() {
-        assert_eq!(parse_price("12.5"), Some(1250));
-        assert_eq!(parse_price("$3"), Some(300));
-        assert_eq!(parse_price("0"), None);
-        assert_eq!(parse_price("1.234"), None);
-        assert_eq!(parse_price("abc"), None);
+        let t = Msg::default();
+        assert_eq!(parse_price(t, "12.5"), Some(1250));
+        assert_eq!(parse_price(t, "$3"), Some(300));
+        assert_eq!(parse_price(t, "$1,299.50"), Some(129950));
+        assert_eq!(parse_price(t, "0"), None);
+        assert_eq!(parse_price(t, "1.234"), None);
+        assert_eq!(parse_price(t, "abc"), None);
+        assert_eq!(parse_price(t, "50000000"), None, "over a u32 of cents");
     }
 
     /// The scripts' data is checked against these declarations by `npm run check`.
