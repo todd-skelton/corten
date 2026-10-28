@@ -400,11 +400,11 @@ else, and a handler that gets the list's parent (and the `<template>`, to make n
 | `replace(items)` | shows exactly `items`: rows with a key it had keep their element and are filled again |
 
 One parent has one list, whichever handler asks, and it notices rows changed without it (a
-server patch, a sort) the next time it is used. A sort or a filter reads the rows' properties
-(`Array.from(list).sort((a, b) => a.label.localeCompare(b.label, document.documentElement.lang))`,
-then `body.append(...sorted.map((row) => row.el))`), not cells by index, so a column moved in the
-markup cannot sort by the wrong one and `tsc` checks the field's name and type;
-`examples/seller-desk` sorts and filters its grid this way.
+server patch, a sort) the next time it is used. A sort or a filter reads the rows' properties,
+not cells by index, so a column moved in the markup cannot sort by the wrong one and `tsc` checks
+the field's name and type: read each row's key once (`list.map((row) => ({ el: row.el, key:
+row.label }))`), sort those (text with an `Intl.Collator` for the page's `lang`), then
+`body.append(...)` the elements. `examples/seller-desk` sorts and filters its grid this way.
 
 The parameter's type says whose rows it holds: `Holds<Row, HTMLTableSectionElement>` (or
 `Holds<Row, HTMLTemplateElement>` for the template). `tsc` then rejects `rows(body, Card)` and

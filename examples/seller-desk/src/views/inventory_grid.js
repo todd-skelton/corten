@@ -145,14 +145,20 @@ export function sort(button, body, by) {
   const descending = th.getAttribute("aria-sort") === "ascending";
   for (const other of Array.from(th.parentElement?.children ?? [])) other.removeAttribute("aria-sort");
   th.setAttribute("aria-sort", descending ? "descending" : "ascending");
+  // Each row's key is read once, not at every comparison.
   const list = Array.from(rows(body, InventoryRow));
-  /** @type {(a: InventoryRow, b: InventoryRow) => number} */
-  const order =
-    by === "qty" ? (a, b) => a.qty - b.qty
-    : by === "price" ? (a, b) => savedCents(a) - savedCents(b)
-    : (a, b) => a[by].localeCompare(b[by], document.documentElement.lang);
-  list.sort(descending ? (a, b) => order(b, a) : order);
-  body.append(...list.map((row) => row.el));
+  /** @type {HTMLTableRowElement[]} */
+  let sorted;
+  if (by === "name" || by === "set") {
+    const text = new Intl.Collator(document.documentElement.lang || undefined);
+    const keyed = list.map((row) => ({ el: row.el, key: row[by] }));
+    sorted = keyed.sort((a, b) => text.compare(a.key, b.key)).map((r) => r.el);
+  } else {
+    const keyed = list.map((row) => ({ el: row.el, key: by === "qty" ? row.qty : savedCents(row) }));
+    sorted = keyed.sort((a, b) => a.key - b.key).map((r) => r.el);
+  }
+  if (descending) sorted.reverse();
+  body.append(...sorted);
 }
 
 /**
