@@ -1324,7 +1324,11 @@ async function run(browser) {
       );
     });
     await forms.click("#post-form button");
-    await forms.waitForFunction(() => location.search === "?mine=on", null, { timeout: 5000 }).catch(() => {});
+    // The address changes as the navigation is taken over, before the page is fetched: wait for
+    // the new page itself.
+    await forms
+      .waitForFunction(() => document.getElementById("stories-title")?.textContent === "Stories about your stocks", null, { timeout: 5000 })
+      .catch(() => {});
     const swapped = await forms.evaluate(() => (/** @type {any} */ (window)).__forms === 1);
     check("a GET button in a POST form is a GET, swapped in place", sent.join() === "GET /news?mine=on" && swapped, `${sent.join()} kept=${swapped}`);
     sent.length = 0;
@@ -1338,6 +1342,49 @@ async function run(browser) {
     await forms.click("#get-form button");
     const post = await posted;
     check("a POST button in a GET form posts its fields", post?.postData() === "id=ACME", sent.join() || "nothing sent");
+  }
+
+  /**
+   * On a fresh /news page with `html` in its main: the first request `act` sends to /watch or
+   * /news, as "METHOD path?query body".
+   * @param {string} html
+   * @param {() => Promise<unknown>} act
+   */
+  const firstSent = async (html, act) => {
+    await forms.goto(`${base}/news`);
+    await forms.evaluate((html) => document.querySelector("main")?.insertAdjacentHTML("beforeend", html), html);
+    const request = forms
+      .waitForRequest((r) => ["document", "fetch"].includes(r.resourceType()) && ["/watch", "/news"].includes(new URL(r.url()).pathname), { timeout: 5000 })
+      .catch(() => null);
+    await act().catch(() => {});
+    const r = await request;
+    if (!r) return "nothing sent";
+    const url = new URL(r.url());
+    return `${r.method()} ${url.pathname}${url.search} ${r.postData() ?? ""}`.trim();
+  };
+  // A data-patch form reads its button as the browser does (#196): an invalid formmethod is a GET,
+  // and an empty formaction is the page's own address.
+  const invalid = await firstSent(
+    '<form id="patch-put" method="post" action="/watch" data-patch><input type="hidden" name="mine" value="on"><button formmethod="put" formaction="/news">Go</button></form>',
+    () => forms.click("#patch-put button"),
+  );
+  check("a data-patch form's invalid formmethod is a GET", invalid === "GET /news?mine=on", invalid);
+  const empty = await firstSent(
+    '<form id="patch-empty" method="post" action="/watch" data-patch><input type="hidden" name="mine" value="on"><button formmethod="" formaction="">Go</button></form>',
+    () => forms.click("#patch-empty button"),
+  );
+  check("a data-patch form's empty formmethod and formaction are a GET of the page", empty === "GET /news?mine=on", empty);
+  if (engine !== "webkit" && (await forms.evaluate(() => "navigation" in window))) {
+    // A submit input outside its form (form=), and a form sent with no button.
+    const outside = await firstSent(
+      '<form id="outside" method="get" action="/news"><input type="hidden" name="id" value="ACME"></form><input id="outside-submit" type="submit" form="outside" formmethod="post" formaction="/watch">',
+      () => forms.click("#outside-submit"),
+    );
+    check("a POST submit input outside its GET form posts the form's fields", outside === "POST /watch id=ACME", outside);
+    const unsent = await firstSent('<form id="no-button" method="post" action="/watch"><input type="hidden" name="id" value="ACME"></form>', () =>
+      forms.evaluate(() => /** @type {HTMLFormElement} */ (document.getElementById("no-button")).requestSubmit()),
+    );
+    check("a POST form sent without a button posts its fields", unsent === "POST /watch id=ACME", unsent);
   }
   await forms.close();
 }
