@@ -1,6 +1,6 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
 //! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(ToJson)]` and `#[derive(FromJson)]` (see `corten::json`), `#[derive(Route)]` (see
-//! `corten::route`), `#[derive(Id)]` (see `corten::view::Id`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
+//! `corten::route`), `#[derive(Id)]` (see `corten::view::Id`), `#[derive(FromRef)]` (see `corten::FromRef`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
 //! `tokens!` and component stylesheets (see `corten::style`).
 //!
 //! Written against `proc_macro` alone (no `syn` or `quote`), so the crate has no dependencies
@@ -11,6 +11,7 @@ mod derive;
 mod dom;
 mod event;
 mod from_json;
+mod from_ref;
 mod html;
 mod id;
 mod json;
@@ -57,6 +58,12 @@ pub fn routes(args: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(UrlValue, attributes(serde))]
 pub fn derive_url_value(input: TokenStream) -> TokenStream {
     url_value::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// One `FromRef` impl per field of the app's state. Documented at `corten::FromRef`.
+#[proc_macro_derive(FromRef, attributes(from_ref))]
+pub fn derive_from_ref(input: TokenStream) -> TokenStream {
+    from_ref::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// An element id as a type. Documented at `corten::view::Id`.

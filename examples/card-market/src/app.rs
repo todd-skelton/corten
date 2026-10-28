@@ -17,7 +17,7 @@ use corten::{
     ClientIp, Error,
     agent::{ToolError, Tools},
     axum::{
-        extract::{FromRef, FromRequestParts, Request},
+        extract::{FromRequestParts, Request},
         http::{HeaderMap, HeaderValue, Method, StatusCode, header, request::Parts},
         response::{IntoResponse, Response},
     },
@@ -95,16 +95,11 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
 }
 
 /// What the JSON routes share: the items, and the partners that may set alerts.
-#[derive(Clone)]
+#[derive(Clone, FromRef)]
 pub struct ApiState {
     source: Source,
+    #[from_ref(skip)]
     partners: Partners,
-}
-
-impl FromRef<ApiState> for Source {
-    fn from_ref(state: &ApiState) -> Source {
-        state.source.clone()
-    }
 }
 
 /// The services that may set alerts for their users, by API key: `API_KEYS` is

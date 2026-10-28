@@ -668,7 +668,11 @@ Corten is pre-1.0, so any minor version may change the API.
      written by hand and given to `Area::route` must have a path of the shape `#[derive(Route)]`
      writes (whole-segment parameters, plain text), or the app does not compile
      ([#203 An app cannot ask whether it routes a path, so a sign-in's return address is checked against a hand-kept list of prefixes](https://github.com/todd-skelton/corten/issues/203)).
-103. `req.nav(&route)` and `req.nav_section(&route)`: a nav link from one mention of its route,
+103. `#[derive(FromRef)]`, in the prelude: each field of the app's shared state gets axum's
+    `FromRef`, so a handler takes `State<Market>` without a hand-written impl per part. Built on
+    `proc_macro` alone (axum's derive needs its `macros` feature); two fields of one type are a
+    compile error until one is `#[from_ref(skip)]`. The watchlist and card-market use it.
+104. `req.nav(&route)` and `req.nav_section(&route)`: a nav link from one mention of its route,
     `<a {..req.nav(&url::News)}>"News"</a>`, writing `href`, `data-nav` and
     `aria-current="page"` on its own page. The route's URL is made once, written and compared,
     where `href={..}` and `aria-current={req.current(&..)}` made it twice; a tag that also writes
