@@ -758,16 +758,57 @@ where
     if listeners.is_empty() {
         return Err(std::io::Error::other("corten::serve_on: no listeners to serve on"));
     }
-    run(listeners, app, crate::shutdown_signal()).await
+    run(listeners, plain, app, crate::shutdown_signal()).await
+}
+
+/// [`serve_on`] with a step of the app's own on each connection before HTTP, such as a TLS
+/// handshake: `corten::serve_wrapped(corten::listeners(443).await?, move |tcp| acceptor.accept(tcp), app)`.
+/// The step is held to what a connection is: it runs in the connection's own task, so a slow
+/// client holds up no other; it counts against [`App::max_connections`] from before the
+/// listener's accept; and [`App::header_timeout`] runs from the accept, so a client that stalls
+/// before the step is done or after it, before its request head, is closed at the same time. A
+/// step that fails closes the connection, and shutdown ends the steps in progress. The library
+/// (rustls, native-tls) stays the app's, and so does its configuration: ALPN offers `http/1.1`,
+/// what Corten speaks. A step whose future borrows from what it captures clones it first:
+/// `move |tcp| { let acceptor = acceptor.clone(); async move { acceptor.accept(tcp).await } }`.
+pub async fn serve_wrapped<L, W, F, Io, M>(listeners: Vec<L>, wrap: W, app: App<M>) -> std::io::Result<()>
+where
+    L: axum::serve::Listener,
+    L::Addr: std::fmt::Debug + 'static,
+    W: Fn(L::Io) -> F + Send + Sync + 'static,
+    F: Future<Output = std::io::Result<Io>> + Send + 'static,
+    Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    M: Middleware,
+{
+    #[cfg(feature = "log")]
+    let _ = tracing_subscriber::fmt().with_target(false).try_init();
+    if listeners.is_empty() {
+        return Err(std::io::Error::other("corten::serve_wrapped: no listeners to serve on"));
+    }
+    run(listeners, wrap, app, crate::shutdown_signal()).await
+}
+
+/// The step on a connection that has none: the listener's IO itself.
+pub(crate) fn plain<I>(io: I) -> std::future::Ready<std::io::Result<I>> {
+    std::future::ready(Ok(io))
 }
 
 /// Serves `app` on `listeners` with its tasks running until `stop` resolves; then tells the tasks
 /// to stop, lets each listener finish its requests and waits for the tasks, up to the app's
-/// grace from when `stop` resolved.
-pub(crate) async fn run<L, M>(listeners: Vec<L>, mut app: App<M>, stop: impl Future<Output = ()>) -> std::io::Result<()>
+/// grace from when `stop` resolved. `wrap` is each connection's step before HTTP
+/// ([`serve_wrapped`]), [`plain`] for none.
+pub(crate) async fn run<L, W, F, Io, M>(
+    listeners: Vec<L>,
+    wrap: W,
+    mut app: App<M>,
+    stop: impl Future<Output = ()>,
+) -> std::io::Result<()>
 where
     L: axum::serve::Listener,
     L::Addr: std::fmt::Debug + 'static,
+    W: Fn(L::Io) -> F + Send + Sync + 'static,
+    F: Future<Output = std::io::Result<Io>> + Send + 'static,
+    Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     M: Middleware,
 {
     let (tasks, grace, connections) = (std::mem::take(&mut app.tasks), app.grace, app.connections);
@@ -775,7 +816,7 @@ where
     let router = app.router();
     let running = Running::start(tasks);
     let stopped = std::sync::OnceLock::new();
-    let served = serve_router(listeners, router, connections, async {
+    let served = serve_router(listeners, wrap, router, connections, async {
         stop.await;
         let _ = stopped.set(tokio::time::Instant::now());
         running.stop();
@@ -814,10 +855,11 @@ pub(crate) async fn bind(host: Option<&str>, port: u16) -> std::io::Result<Vec<t
     }
 }
 
-/// Serves `router` on every listener until `stop` resolves, then lets each finish its requests;
-/// a listener that fails ends it with the error.
-pub(crate) async fn serve_router<L>(
+/// Serves `router` on every listener, each connection after its step `wrap`, until `stop`
+/// resolves, then lets each finish its requests; a listener that fails ends it with the error.
+pub(crate) async fn serve_router<L, W, F, Io>(
     listeners: Vec<L>,
+    wrap: W,
     router: Router,
     connections: Connections,
     stop: impl Future<Output = ()>,
@@ -825,14 +867,18 @@ pub(crate) async fn serve_router<L>(
 where
     L: axum::serve::Listener,
     L::Addr: std::fmt::Debug + 'static,
+    W: Fn(L::Io) -> F + Send + Sync + 'static,
+    F: Future<Output = std::io::Result<Io>> + Send + 'static,
+    Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     use futures_util::future::{select, try_join_all, Either};
     let (stopped, watch) = tokio::sync::watch::channel(false);
     let open = connections.max.map(|max| Arc::new(tokio::sync::Semaphore::new(max)));
     let clock = connections.header_timeout.map(crate::watch::Clock::start);
+    let wrap = Arc::new(wrap);
     let servers = listeners
         .into_iter()
-        .map(|listener| serve_listener(listener, router.clone(), clock.clone(), open.clone(), watch.clone()));
+        .map(|listener| serve_listener(listener, wrap.clone(), router.clone(), clock.clone(), open.clone(), watch.clone()));
     let servers = std::pin::pin!(try_join_all(servers));
     match select(std::pin::pin!(stop), servers).await {
         Either::Left(((), servers)) => {
@@ -845,10 +891,12 @@ where
 
 /// Accepts connections on `listener` and serves each until `stop` turns true; then stops
 /// accepting, lets each connection finish the request it is in (an idle one closes) and returns
-/// once all have closed. With `clock`, a connection waits for a request's head only as long as
-/// it allows, and with `open`, a connection is accepted only once one of its permits is free.
-async fn serve_listener<L>(
+/// once all have closed. Each connection's step `wrap` runs in its own task before HTTP. With
+/// `clock`, a connection waits for a request's head (the step included) only as long as it
+/// allows, and with `open`, a connection is accepted only once one of its permits is free.
+async fn serve_listener<L, W, F, Io>(
     mut listener: L,
+    wrap: Arc<W>,
     router: Router,
     clock: Option<Arc<crate::watch::Clock>>,
     open: Option<Arc<tokio::sync::Semaphore>>,
@@ -857,6 +905,9 @@ async fn serve_listener<L>(
 where
     L: axum::serve::Listener,
     L::Addr: 'static,
+    W: Fn(L::Io) -> F + Send + Sync + 'static,
+    F: Future<Output = std::io::Result<Io>> + Send + 'static,
+    Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     // Each connection holds a sender; the listener is done when every one has dropped.
     let (alive, mut closed) = tokio::sync::mpsc::channel::<std::convert::Infallible>(1);
@@ -882,10 +933,25 @@ where
         let watch = clock.as_ref().map(crate::watch::Clock::watch);
         let service =
             hyper_util::service::TowerToHyperService::new(Connection { router: router.clone(), peer, watch: watch.clone() });
-        let io = hyper_util::rt::TokioIo::new(crate::watch::Watched { io, watch });
-        let (alive, mut stop) = (alive.clone(), stop.clone());
+        let (alive, mut stop, wrap) = (alive.clone(), stop.clone(), wrap.clone());
         tokio::spawn(async move {
             let (_permit, _alive) = (permit, alive);
+            // The step, until it is done, the clock expires the connection or shutdown begins.
+            let io = {
+                let mut step = std::pin::pin!(wrap(io));
+                let mut stopping = std::pin::pin!(stop.wait_for(|stopped| *stopped));
+                let stepped = std::future::poll_fn(|cx| {
+                    if let std::task::Poll::Ready(done) = crate::watch::bounded(watch.as_deref(), step.as_mut(), cx) {
+                        return std::task::Poll::Ready(done);
+                    }
+                    stopping.as_mut().poll(cx).map(|_| None)
+                });
+                match stepped.await {
+                    Some(Ok(io)) => io,
+                    _ => return,
+                }
+            };
+            let io = hyper_util::rt::TokioIo::new(crate::watch::Watched { io, watch });
             let http = hyper::server::conn::http1::Builder::new();
             let mut conn = std::pin::pin!(http.serve_connection(io, service).with_upgrades());
             tokio::select! {

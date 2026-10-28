@@ -2311,7 +2311,7 @@ async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
 
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let routes = Router::new().route("/", get(|| async { "hi" }));
-    let server = tokio::spawn(crate::app::serve_router(listeners, routes, Default::default(), async {
+    let server = tokio::spawn(crate::app::serve_router(listeners, crate::app::plain, routes, Default::default(), async {
         let _ = stopped.await;
     }));
     for addr in &addrs {
@@ -2331,7 +2331,7 @@ async fn served<M: crate::Middleware>(
 ) -> (tokio::sync::oneshot::Sender<()>, tokio::task::JoinHandle<std::io::Result<()>>) {
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
-    let server = tokio::spawn(crate::app::run(listeners, app, async {
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app, async {
         let _ = stopped.await;
     }));
     (stop, server)
@@ -2359,7 +2359,7 @@ async fn a_connection_is_held_only_as_long_and_as_many_as_the_app_allows() {
         let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
         let addr = listeners[0].local_addr().unwrap();
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
-        let server = tokio::spawn(crate::app::run(listeners, app, async {
+        let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app, async {
             let _ = stopped.await;
         }));
         (addr, stop, server)
@@ -2407,6 +2407,79 @@ async fn a_connection_is_held_only_as_long_and_as_many_as_the_app_allows() {
     server.await.unwrap().unwrap();
 }
 
+/// `corten::serve_wrapped`: the app's step on each connection before HTTP (a TLS handshake) runs
+/// in the connection's own task, counts against `App::max_connections` and is closed at
+/// `App::header_timeout` when it stalls; a step that fails closes the connection.
+#[tokio::test]
+async fn a_step_before_http_is_counted_and_timed_as_the_connection() {
+    use std::time::{Duration, Instant};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    // A stand-in for a handshake: the client sends "hello\n" first, anything else fails it.
+    async fn hello(mut tcp: tokio::net::TcpStream) -> std::io::Result<tokio::net::TcpStream> {
+        let mut greeting = [0u8; 6];
+        tcp.read_exact(&mut greeting).await?;
+        match &greeting {
+            b"hello\n" => Ok(tcp),
+            _ => Err(std::io::Error::other("not a greeting")),
+        }
+    }
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let routes = Routes::from(Router::new().route("/", get(|| async { "hi" })));
+    let app = App::new(routes).header_timeout(Duration::from_millis(300)).max_connections(1);
+    let server = tokio::spawn(crate::app::run(listeners, hello, app, async {
+        let _ = stopped.await;
+    }));
+    let request = |greeting: &'static [u8]| async move {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut sent = greeting.to_vec();
+        sent.extend_from_slice(b"GET / HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n");
+        // A failed step may close the connection before all of it is read.
+        let _ = stream.write_all(&sent).await;
+        let mut answer = String::new();
+        let _ = stream.read_to_string(&mut answer).await;
+        answer
+    };
+    assert!(request(b"hello\n").await.ends_with("hi"), "after its step, the connection is HTTP");
+    assert_eq!(request(b"howdy\n").await, "", "a step that fails closes the connection");
+
+    // A client that opens a connection and never finishes its step holds the only slot, until
+    // the header timeout closes it.
+    let started = Instant::now();
+    let mut stalled = tokio::net::TcpStream::connect(addr).await.unwrap();
+    stalled.write_all(b"hel").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let next = tokio::spawn(request(b"hello\n"));
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert!(!next.is_finished(), "a connection in its step counts against max_connections");
+    let mut rest = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), stalled.read_to_end(&mut rest)).await;
+    assert!(closed.is_ok(), "a stalled step is not held past the header timeout");
+    assert!(started.elapsed() >= Duration::from_millis(250), "{:?}", started.elapsed());
+    let answer = tokio::time::timeout(Duration::from_secs(3), next).await.expect("answered once it closes").unwrap();
+    assert!(answer.ends_with("hi"), "{answer}");
+
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    // Shutdown ends a step in progress, with no header timeout to end it otherwise.
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let routes = Routes::from(Router::new().route("/", get(|| async { "hi" })));
+    let server = tokio::spawn(crate::app::run(listeners, hello, App::new(routes).header_timeout(None), async {
+        let _ = stopped.await;
+    }));
+    let mut stalled = tokio::net::TcpStream::connect(addr).await.unwrap();
+    stalled.write_all(b"hel").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server).await.expect("shutdown does not wait for a step").unwrap().unwrap();
+    let mut rest = Vec::new();
+    assert_eq!(stalled.read_to_end(&mut rest).await.map(|_| rest.len()).unwrap_or(0), 0, "and closes it");
+}
+
 /// A route that takes `Upgrade` switches the connection: a WebSocket handshake from the page's own
 /// origin or from a client that is not a browser gets its 101 and then the bytes, one from another
 /// site is refused as a cross-site write is, and a request that does not ask to switch is a 426,
@@ -2449,7 +2522,7 @@ async fn an_upgrade_route_switches_for_its_own_origin_and_refuses_other_sites() 
         api.route::<ApiWs>(crate::Methods::reads(get(|upgrade: Upgrade| async move { upgrade.websocket(echo) })))
             .allow_origin("https://partner.example")
     });
-    let server = tokio::spawn(crate::app::run(listeners, app, async {
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app, async {
         let _ = stopped.await;
     }));
     // The answer's head, and the connection for what follows it.
@@ -2672,7 +2745,7 @@ async fn the_client_ip_is_the_peer_or_what_a_trusted_proxy_forwards() {
     let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
     let addr = listeners[0].local_addr().unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
-    let server = tokio::spawn(crate::app::run(listeners, app(crate::security::Policy::new()), async {
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app(crate::security::Policy::new()), async {
         let _ = stopped.await;
     }));
     let answer = raw_get(addr, "/ip", forwarded).await;
@@ -2686,7 +2759,7 @@ async fn the_client_ip_is_the_peer_or_what_a_trusted_proxy_forwards() {
     let addr = listeners[0].local_addr().unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let behind = app(crate::security::Policy::new().proxy("127.0.0.0/8"));
-    let server = tokio::spawn(crate::app::run(listeners, behind, async {
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, behind, async {
         let _ = stopped.await;
     }));
     assert_eq!(body(&raw_get(addr, "/ip", forwarded).await), "198.51.100.7");

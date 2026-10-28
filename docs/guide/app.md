@@ -174,59 +174,27 @@ stop sending first waits before it sends `SIGTERM` (a Kubernetes `preStop` sleep
 `corten::serve(app)` is `corten::serve_on(corten::listeners(3000).await?, app)`: `listeners(3000)`
 binds `HOST`:`PORT` (both loopback addresses without `HOST`, port 3000 without `PORT`), and `serve_on` serves the app on anything
 that implements axum's `axum::serve::Listener`, with `serve`'s shutdown across all of them
-(tasks told, live streams ended, every listener closed and drained, tasks waited for). HTTPS, a
-Unix socket, or a socket a supervisor hands over is a listener of the app's own; TLS stays the
-app's choice of library. With `tokio-rustls`, around the same loopback pair:
+(tasks told, live streams ended, every listener closed and drained, tasks waited for). A Unix
+socket, or a socket a supervisor hands over, is a listener of the app's own.
+
+HTTPS is a step on each connection before HTTP, which `corten::serve_wrapped` takes: the TLS
+handshake. TLS stays the app's choice of library, and so does its configuration. With
+`tokio-rustls`, around the same loopback pair:
 
 ```rust,ignore
-use std::{net::SocketAddr, sync::Arc, time::Duration};
-use tokio::{net::{TcpListener, TcpStream}, sync::mpsc};
-use tokio_rustls::{server::TlsStream, TlsAcceptor};
-
-/// Connections whose handshake is done. Each handshake runs on its own, so a slow client cannot
-/// hold up the next connection (`accept` is called one connection at a time).
-struct Tls(mpsc::Receiver<(TlsStream<TcpStream>, SocketAddr)>, SocketAddr);
-
-impl corten::axum::serve::Listener for Tls {
-    type Io = TlsStream<TcpStream>;
-    type Addr = SocketAddr;
-    async fn accept(&mut self) -> (Self::Io, SocketAddr) {
-        match self.0.recv().await {
-            Some(accepted) => accepted,
-            None => std::future::pending().await,
-        }
-    }
-    fn local_addr(&self) -> std::io::Result<SocketAddr> {
-        Ok(self.1)
-    }
-}
-
-fn tls(tcp: TcpListener, acceptor: TlsAcceptor) -> std::io::Result<Tls> {
-    let (addr, (tx, rx)) = (tcp.local_addr()?, mpsc::channel(64));
-    tokio::spawn(async move {
-        // Ends when the server drops its side at shutdown.
-        while !tx.is_closed() {
-            let Ok((socket, peer)) = tcp.accept().await else {
-                // Out of file descriptors, say: wait rather than spin.
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                continue;
-            };
-            let (acceptor, tx) = (acceptor.clone(), tx.clone());
-            tokio::spawn(async move {
-                let handshake = tokio::time::timeout(Duration::from_secs(10), acceptor.accept(socket));
-                if let Ok(Ok(stream)) = handshake.await {
-                    let _ = tx.send((stream, peer)).await;
-                }
-            });
-        }
-    });
-    Ok(Tls(rx, addr))
-}
-
-let acceptor = TlsAcceptor::from(Arc::new(server_config)); // the app's rustls ServerConfig
-let listeners = corten::listeners(3000).await?.into_iter().map(|l| tls(l, acceptor.clone())).collect::<Result<_, _>>()?;
-corten::serve_on(listeners, app).await
+let mut config = server_config; // the app's rustls ServerConfig, from its certificate and key
+config.alpn_protocols = vec![b"http/1.1".to_vec()]; // what Corten speaks
+let acceptor = tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(config));
+corten::serve_wrapped(corten::listeners(3000).await?, move |tcp| acceptor.accept(tcp), app).await
 ```
+
+The step is held to what a connection is. It runs in the connection's own task, so a client
+that stalls in its handshake holds up no other; it counts against `App::max_connections` from
+before the TCP accept; and `App::header_timeout` runs from the accept, so a client that never
+sends its ClientHello, or never sends a request after the handshake, is closed at the same time.
+A step that fails closes the connection, and shutdown ends the steps in progress. A listener of
+the app's own that ran the handshake before `serve_on` saw the connection would have it outside
+both limits.
 
 An app behind a proxy that ends TLS needs none of this: `serve` is plain HTTP for the proxy.
 An app whose own default port is not 3000 (another service has it on that machine) passes its
