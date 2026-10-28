@@ -552,6 +552,116 @@ impl Formatted {
     }
 }
 
+/// Money as a person types it in `data`'s locale, read back into the currency's minor units:
+/// what `t.parse_money(text, currency)` returns. The locale's own form is read (`$1,299.50` in en,
+/// `1 299,50 $US` in fr), with or without the symbol or code, the group separators or the
+/// fraction: digits in groups the locale's size when grouped, its decimal separator, at most the
+/// currency's fraction digits. Any space stands for a group separator that is a space. A sign, a
+/// group of the wrong size, another locale's decimal separator, too many fraction digits or an
+/// amount over `u64` is `None`.
+#[doc(hidden)]
+pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency) -> Option<Minor<u64>> {
+    let code = currency.code();
+    let template = match data.currencies.binary_search_by(|(c, ..)| (*c).cmp(code)) {
+        Ok(i) => data.currencies[i].1,
+        Err(_) => data.money[0],
+    };
+    let (prefix, suffix) = template.split_once('\u{1}')?;
+    let text = text.trim();
+    // The symbol where the locale writes it, or the code on either side.
+    let text = strip_affix(text, prefix.trim(), code, true)
+        .map(str::trim_start)
+        .or_else(|| strip_affix(text, suffix.trim(), code, false).map(str::trim_end))
+        .or_else(|| text.strip_prefix(code).or_else(|| text.strip_suffix(code)).map(str::trim))
+        .unwrap_or(text);
+    let separators = &data.money_separators;
+    let spaced = separators.group.chars().all(char::is_whitespace);
+    let (whole, fraction) = match text.split_once(separators.decimal) {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (text, None),
+    };
+    let mut minor: u64 = 0;
+    let mut push = |d: u32| -> Option<()> {
+        minor = minor.checked_mul(10)?.checked_add(u64::from(d))?;
+        Some(())
+    };
+    // The integer digits, with the size of each group as typed: the first, the last (`group`) and
+    // whether every one between is the secondary size.
+    let [primary, secondary, _] = separators.grouping.map(usize::from);
+    let (mut groups, mut first, mut group, mut middle, mut any) = (1_usize, 0, 0, true, false);
+    let mut rest = whole;
+    while let Some(c) = rest.chars().next() {
+        if let Some(d) = digit(data, c) {
+            push(d)?;
+            (group, any) = (group + 1, true);
+            rest = &rest[c.len_utf8()..];
+            continue;
+        }
+        rest = match rest.strip_prefix(separators.group) {
+            Some(after) => after,
+            None if spaced && c.is_whitespace() => &rest[c.len_utf8()..],
+            None => return None,
+        };
+        if groups == 1 {
+            first = group;
+        } else {
+            middle &= group == secondary;
+        }
+        (groups, group) = (groups + 1, 0);
+    }
+    if groups > 1 && (first == 0 || first > secondary || group != primary || !middle) {
+        return None;
+    }
+    let shown = usize::from(currency.digits());
+    let mut written = 0;
+    if let Some(fraction) = fraction {
+        for c in fraction.chars() {
+            push(digit(data, c)?)?;
+            written += 1;
+        }
+        if written == 0 || written > shown {
+            return None;
+        }
+    }
+    if !any && written == 0 {
+        return None;
+    }
+    for _ in written..shown {
+        push(0)?;
+    }
+    Some(Minor(minor))
+}
+
+/// `text` without the locale's symbol or code (`affix`, where `\u{2}` stands for the code) at
+/// its start (`front`) or end; `None` when it is not there or the locale writes nothing there.
+fn strip_affix<'a>(text: &'a str, affix: &str, code: &str, front: bool) -> Option<&'a str> {
+    if affix.is_empty() {
+        return None;
+    }
+    let (before, after) = affix.split_once('\u{2}').map_or((affix, None), |(b, a)| (b, Some(a)));
+    if front {
+        let rest = text.strip_prefix(before)?;
+        match after {
+            Some(after) => rest.strip_prefix(code)?.strip_prefix(after),
+            None => Some(rest),
+        }
+    } else {
+        let rest = match after {
+            Some(after) => text.strip_suffix(after)?.strip_suffix(code)?,
+            None => text,
+        };
+        rest.strip_suffix(before)
+    }
+}
+
+/// The value of one of the locale's digits or an ASCII one.
+fn digit(data: &__private::LocaleData, c: char) -> Option<u32> {
+    if c.is_ascii_digit() {
+        return Some(c as u32 - '0' as u32);
+    }
+    (c as u32).checked_sub(data.zero as u32).filter(|n| *n < 10)
+}
+
 /// ASCII digits in the locale's digits.
 fn write_digits(data: &__private::LocaleData, digits: &[u8], out: &mut dyn Write) -> fmt::Result {
     if data.zero == '0' {

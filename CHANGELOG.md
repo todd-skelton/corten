@@ -678,6 +678,16 @@ Corten is pre-1.0, so any minor version may change the API.
     where `href={..}` and `aria-current={req.current(&..)}` made it twice; a tag that also writes
     one of those attributes, or `data-nav` by hand, does not compile. The watchlist and
     seller-desk use it.
+105. `t.parse_money(text, currency)`: money as a person types it in the reader's locale, read
+    back into `Minor` units, what `t.money` writes: `$1,299.50` is `Some(Minor(129950))` in
+    en and `1 299,50 $US` or `12,50` in fr, with or without the symbol, the code, the group
+    separators or the fraction. A sign, a group of the wrong size, another locale's decimal
+    separator, more fraction digits than the currency shows (`1.234` dollars, `1.5` yen) or an
+    amount over `u64` is `None`. The watchlist's and seller-desk's hand-written cent readers are
+    gone, and card-market's price alert no longer reads a float: `12,50` on the French page was
+    refused and `1e3` was a thousand dollars, and its confirmation is in the reader's locale
+    (`alert.set`)
+    ([#208 Money typed into a form is parsed by each app, three different ways, and card-market reads it as f64](https://github.com/todd-skelton/corten/issues/208)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

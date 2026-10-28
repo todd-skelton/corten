@@ -181,8 +181,13 @@ html! {
 `Decimal::new(290, 4)`) and writes at most `digits` fraction digits, rounded half away from zero
 and without trailing zeros, with the locale's sign where it puts it. `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
 a bare integer (it could be either, so it does not compile), with the digits the currency is
-shown with (0 for JPY, 3 for KWD). `MonthStyle` writes the month and year without the day, in
-the locale's order and words (`Mar 2026`, `MÃ¤rz 2026`); it has no time, so `t.date_time` does
+shown with (0 for JPY, 3 for KWD). A price a person types into a form is read back the same way:
+`t.parse_money(&input.price, USD)` is `Some(Minor(129950))` for `$1,299.50` in en and for
+`1 299,50 $US` or `1299,5` in fr (with or without the symbol, the code, the groups or the
+fraction), and `None` for a sign, a group of the wrong size, another locale's decimal separator,
+more fraction digits than the currency has or an amount over `u64`, so a form never reads money
+as a float or with a parser of its own. `MonthStyle` writes the month and year without the day, in
+the locale's order and words (`Mar 2026`, `März 2026`); it has no time, so `t.date_time` does
 not take one. A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
