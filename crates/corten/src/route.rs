@@ -549,7 +549,7 @@ impl<R: Route + ?Sized, I: crate::view::Id> At<'_, R, I> {
 /// Writes `id` as a fragment: the id as the element's markup has it, percent-encoded, which the
 /// browser decodes to find the element. `write_id` escapes for an attribute (`&amp;`), so an id
 /// with a character the URL must encode is unescaped first; most ids (`review-7`) need neither.
-fn write_fragment(id: &(impl crate::view::Id + ?Sized), out: &mut String) {
+pub(crate) fn write_fragment(id: &(impl crate::view::Id + ?Sized), out: &mut String) {
     let start = out.len();
     id.write_id(out);
     if out.as_bytes()[start..].iter().all(|&b| KEEP[b as usize] & SEGMENT != 0) {
