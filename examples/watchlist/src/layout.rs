@@ -46,7 +46,7 @@ pub fn Layout<'a>(
                             <a {..req.nav(&account::url::Account)}>"Account"</a>
                         </nav>
                         match viewer {
-                            Some(viewer) => <span class={muted()}>"Signed in as "{&viewer.name}</span>,
+                            Some(viewer) => <ViewerBadge viewer={viewer} />,
                             None => <form method="post" action={url::SignIn} data-patch><button>"Sign in as Ada"</button></form>,
                         }
                     </div>
@@ -54,6 +54,23 @@ pub fn Layout<'a>(
                 <main class={(max_w_page(), mx_auto(), px(gutter), py_6())}>{children}</main>
             </body>
         </html>
+    }
+}
+
+/// The header's badge: who is signed in, with their picture once they upload one. The upload's
+/// answer replaces it by its id.
+#[derive(Id)]
+pub struct ViewerBadgeId;
+
+#[component]
+pub fn ViewerBadge<'a>(viewer: &'a Viewer) -> impl Patch {
+    html! {
+        <span id={ViewerBadgeId} class={(row(Space::_2), muted())}>
+            if let Some(id) = &viewer.picture {
+                <img src={url::Picture { id }} alt="" width="28" height="28" class={rounded_pill()}>
+            }
+            "Signed in as "{&viewer.name}
+        </span>
     }
 }
 

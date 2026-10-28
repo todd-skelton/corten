@@ -1116,6 +1116,77 @@ async function run(browser) {
     /** @type {string[]} */
     const reads = [];
     const onSaved = (/** @type {import("@playwright/test").Request} */ r) => r.url().includes("/alerts") && reads.push(r.url());
+
+    // The alerts page asks for its status line and list to be read again (ReadAgain::from in the
+    // page): with JavaScript only they are read, from their route as a patch, however the page was
+    // reached, and the form beside them stays as the user has it. Its head's ReadAgain is for a
+    // browser without JavaScript.
+    {
+      /** @type {string[]} */
+      const parts = [];
+      /** @type {string[]} */
+      const whole = [];
+      const onPart = (/** @type {import("@playwright/test").Request} */ r) => {
+        if (r.method() !== "GET" || !r.url().includes("/alerts?saved=")) return;
+        (r.headers()["corten"] === "action" ? parts : whole).push(r.url());
+      };
+      const url = await pending();
+      await page.goto(url);
+      page.on("request", onPart);
+      const waiting = await saved();
+      await page.fill("input[name=above]", "123.45");
+      await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 8));
+      const entries = await page.evaluate(() => history.length);
+      await savedSoon();
+      check(
+        "a page's part waiting for a write is read again after a full load, not the page",
+        waiting === "Saving..." && (await saved()) === "Saved." && parts.length > 0 && whole.length === 0 && page.url() === url,
+        `${waiting} -> ${await saved()} after ${parts.length} part and ${whole.length} page reads`,
+      );
+      const kept = await page.evaluate(() => ({
+        marker: (/** @type {any} */ (window)).__marker,
+        entries: history.length,
+        above: /** @type {HTMLInputElement | null} */ (document.querySelector("input[name=above]"))?.value,
+      }));
+      check("reading a page's part keeps the document, its history entry and the form", kept.marker === 8 && kept.entries === entries && kept.above === "123.45", JSON.stringify(kept));
+      const settled = parts.length;
+      await page.waitForTimeout(2200);
+      check("a page's part stops once its patch no longer asks", parts.length === settled, `${parts.length - settled} more reads`);
+      if (swaps) {
+        const from = parts.length;
+        await go(await pending());
+        await savedSoon();
+        check(
+          "a page's part reached by the runtime's navigation is read again, not the page",
+          (await saved()) === "Saved." && parts.length > from && whole.length === 1,
+          `${await saved()} after ${parts.length - from} part reads, ${whole.length} page loads (the navigation's)`,
+        );
+        // Away before the read: the runtime's navigation leaves the page, and its part is not read.
+        await go(await pending());
+        const left = parts.length;
+        await page.click('header a[href="/news"]');
+        await page.waitForFunction(() => document.title === "News | Watchlist");
+        await page.waitForTimeout(2200);
+        check("navigating away stops a page's part reads", parts.length === left, `${parts.length - left} more reads`);
+      } else {
+        for (const name of ["a page's part reached by the runtime's navigation is read again, not the page", "navigating away stops a page's part reads"]) skip(name, noSwaps);
+      }
+      page.off("request", onPart);
+    }
+
+    // The rest reads the page whole: the page as one that asks only that (its head's ReadAgain,
+    // without the part's tag). Fetched uncompressed: Playwright does not decode zstd, which
+    // Firefox asks for.
+    const wholeOnly = async (/** @type {import("@playwright/test").Route} */ route) => {
+      if (route.request().headers()["corten"] === "action") return route.fallback();
+      const res = await route.fetch({ headers: { ...route.request().headers(), "accept-encoding": "identity" } });
+      const headers = res.headers();
+      delete headers["content-encoding"];
+      delete headers["content-length"];
+      const body = (await res.text()).replace(/<template data-corten-read-again[^>]*><\/template>/g, "");
+      await route.fulfill({ status: res.status(), headers, body });
+    };
+    await page.route("**/alerts?saved=*", wholeOnly);
     page.on("request", onSaved);
     await page.goto(await pending());
     const waiting = await saved();
@@ -1164,6 +1235,7 @@ async function run(browser) {
       for (const name of ["a page reached by the runtime's navigation reads itself again in place", "each read replaces the history entry", "navigating away stops the reads"]) skip(name, noSwaps);
     }
     page.off("request", onSaved);
+    await page.unroute("**/alerts?saved=*", wholeOnly);
 
     // A data-patch write answered in place while its read catches up (ReadAgain::from): the
     // status line is patched, then read again from its route (`corten: action`) until the write
@@ -1290,43 +1362,75 @@ async function run(browser) {
   check("a multipart form is posted as multipart/form-data", types.length === 1 && types[0].startsWith("multipart/form-data"), types.join());
   check("a request the server rejects shows the app's error page, in its layout", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong | Watchlist", await page.title());
 
-  // A form with a file is read as it arrives: each engine's multipart body, files and fields.
-  await page.evaluate(() =>
-    document.querySelector("main")?.insertAdjacentHTML(
-      "beforeend",
-      '<form id="avatar" method="post" action="/avatar" enctype="multipart/form-data" data-patch><input name="name" value="Mew &quot;1st&quot;"><input type="file" name="picture" multiple><p id="avatar-result"></p><button>Send</button></form>',
-    ),
-  );
-  await page.setInputFiles("#avatar [name=picture]", [
-    { name: "card.png", mimeType: "image/png", buffer: Buffer.from("\r\n--png\r\n") },
-    { name: "big.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(70 << 10, 7) },
+  // A form with a file, read as it arrives in each engine's multipart body: the account page's
+  // picture. Its type is read from its bytes, and the answer shows it in the header and on the
+  // page, from a URL every cache keeps. WebKit gets a cookie it sends back over http, as its
+  // sign-in's Secure one is not.
+  const errorsBefore = errors.length;
+  if (!signsIn) await page.context().addCookies([{ name: "viewer", value: "Ada", url: base }]);
+  await page.goto(`${base}/account`);
+  /** Uploads one file with the account page's form and gives the status line's text. @param {{ name: string, mimeType: string, buffer: Buffer }} file */
+  const upload = async (file) => {
+    await page.evaluate(() => {
+      const result = document.querySelector("#avatar-result");
+      if (result) result.textContent = "";
+    });
+    await page.setInputFiles("main input[type=file]", [file]);
+    await page.click("main form[enctype] button");
+    await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent, null, { timeout: 8000 }).catch(() => {});
+    return (await page.textContent("#avatar-result")) ?? "";
+  };
+  // A 1x1 PNG, then a line that looks like a multipart boundary, which a picture may hold.
+  const png = Buffer.concat([
+    Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"),
+    Buffer.from("\r\n--png\r\n"),
   ]);
-  await page.click("#avatar button");
-  await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent, null, { timeout: 4000 }).catch(() => {});
-  const uploaded = await page.textContent("#avatar-result");
-  check("a form with files is read as it arrives", uploaded === 'Mew "1st": card.png (image/png, 9 bytes), big.jpg (image/jpeg, too large)', uploaded ?? "");
+  const uploaded = await upload({ name: "card.png", mimeType: "image/png", buffer: png });
+  const pictureUrl = await page
+    .waitForFunction(
+      () => {
+        const img = document.querySelector("#viewer-badge img");
+        const big = document.querySelector("#account-picture img");
+        return img instanceof HTMLImageElement && img.complete && img.naturalWidth === 1 && big?.getAttribute("src") === img.getAttribute("src") ? img.getAttribute("src") : null;
+      },
+      null,
+      { timeout: 5000 },
+    )
+    .then((handle) => handle.jsonValue())
+    .catch(() => null);
+  check("an uploaded picture is read as it arrives and shown in the header and on the page", uploaded === "Saved card.png as your picture." && /^\/pictures\/[0-9a-f]{32}$/.test(pictureUrl ?? ""), `${uploaded}, ${pictureUrl}`);
+  const served = await fetch(new URL(pictureUrl ?? "/pictures/none", base));
+  check(
+    "a picture is served as its type, at a URL every cache keeps",
+    served.headers.get("content-type") === "image/png" && served.headers.get("cache-control") === "public, max-age=31536000, immutable",
+    `${served.status} ${served.headers.get("content-type")} ${served.headers.get("cache-control")}`,
+  );
+  const page_ = await upload({ name: "page.png", mimeType: "image/png", buffer: Buffer.from("<script>alert(1)</script>") });
+  check("a file that is not a picture is refused, whatever type it says", page_.startsWith("That file is not a picture"), page_);
+  const big = await upload({ name: "big.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(70 << 10, 0xff) });
+  check("a picture over its limit is refused", big === "The picture is over 64 KB. Choose a smaller one.", big);
   // A body over the handler's limit (1 MiB): the handler answers with the form's message, and the
   // browser, still sending when the answer comes, shows it instead of a network error.
-  await page.setInputFiles("#avatar [name=picture]", [{ name: "huge.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(3 << 20, 7) }]);
-  await page.click("#avatar button");
-  await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent?.startsWith("The pictures"), null, { timeout: 8000 }).catch(() => {});
-  const over = await page.textContent("#avatar-result");
-  await page.evaluate(() => document.querySelector("#avatar")?.remove());
-  check("a body over its limit is answered in the form", over === "The pictures are over 1 MB together.", over ?? "");
+  const over = await upload({ name: "huge.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(3 << 20, 7) });
+  check("a body over its limit is answered in the form", over === "The form is over 1 MB.", over);
+  await page.context().clearCookies({ name: "picture" });
+  if (!signsIn) await page.context().clearCookies({ name: "viewer" });
 
-  // The posts answered 415 and 413 on purpose; the browser logs those as failed resources.
-  check("no console errors after the injected forms", errors.every((e) => e.includes("415") || e.includes("413")), errors.join(" | "));
+  // The posts answered 415, and the uploads 422 and 413, on purpose; the browser logs those as
+  // failed resources.
+  const unplanned = errors.filter((e, i) => !(e.includes("415") || (i >= errorsBefore && (e.includes("422") || e.includes("413")))));
+  check("no console errors after the injected forms", unplanned.length === 0, unplanned.join(" | "));
 
   // Without the page's cookie: the three stocks a first visit watches.
   const json = await (await fetch(base, { headers: { accept: "application/json" } })).json();
   check("same URL as JSON for data clients", json.title === "Stocks | Watchlist" && json.data.stocks.length === 3, JSON.stringify(json.data.stocks.map((/** @type {{ id: string }} */ s) => s.id)));
 
-  // A WebSocket (GET /echo): the page's own origin opens it and is answered. Another site's page
-  // cannot, though the browser would send the user's cookies with its handshake.
+  // A WebSocket (GET /quotes): the page's own origin opens it, names a stock and is sent its row.
+  // Another site's page cannot, though the browser would send the user's cookies with its handshake.
   const talk = (/** @type {string} */ url) =>
     new Promise((resolve) => {
       const socket = new WebSocket(url);
-      socket.onopen = () => socket.send("hi");
+      socket.onopen = () => socket.send("ACME");
       socket.onmessage = (e) => {
         resolve(e.data);
         socket.close();
@@ -1334,13 +1438,13 @@ async function run(browser) {
       socket.onerror = () => resolve("refused");
       setTimeout(() => resolve("no answer"), 4000);
     });
-  const echoUrl = `${base.replace(/^http/, "ws")}/echo`;
-  const echoed = await page.evaluate(talk, echoUrl);
-  check("a WebSocket from the page's own origin is answered", echoed === "HI", String(echoed));
+  const quotesUrl = `${base.replace(/^http/, "ws")}/quotes`;
+  const quoted = String(await page.evaluate(talk, quotesUrl));
+  check("a WebSocket from the page's own origin is sent the stock it names", quoted.startsWith("{") && JSON.parse(quoted).id === "ACME", quoted);
   const elsewhere = await browser.newPage();
   await elsewhere.route("http://other.test/", (route) => route.fulfill({ contentType: "text/html", body: "<title>Other</title>" }));
   await elsewhere.goto("http://other.test/");
-  const crossed = await elsewhere.evaluate(talk, echoUrl);
+  const crossed = await elsewhere.evaluate(talk, quotesUrl);
   check("another site's page cannot open it", crossed === "refused", String(crossed));
   await elsewhere.close();
 
