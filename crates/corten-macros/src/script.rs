@@ -270,27 +270,47 @@ fn rust_ident(name: &str, i: usize) -> Ident {
 pub fn keeps(source: &str) -> Result<bool, (usize, String)> {
     let by_name = "import corten's functions by name: import { keep } from \"corten\";";
     let lines: Vec<&str> = source.lines().collect();
-    // Code without its line comment (`//` outside a string is enough for an import line).
+    // Code without its comments: `//` to the end of the line and `/* .. */` (to the end of the line
+    // when it closes on a later one), outside strings.
     let code = |line: &str| -> String {
+        let mut out = String::new();
         let mut quote = None;
-        let mut prev = ' ';
-        for (i, c) in line.char_indices() {
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
             match quote {
                 Some(q) if c == q => quote = None,
                 Some(_) => {}
                 None if c == '"' || c == '\'' || c == '`' => quote = Some(c),
-                None if c == '/' && prev == '/' => return line[..i - 1].trim().to_string(),
+                None if c == '/' && chars.peek() == Some(&'/') => break,
+                None if c == '/' && chars.peek() == Some(&'*') => {
+                    chars.next();
+                    let mut prev = ' ';
+                    let mut closed = false;
+                    for c in chars.by_ref() {
+                        if prev == '*' && c == '/' {
+                            closed = true;
+                            break;
+                        }
+                        prev = c;
+                    }
+                    if !closed {
+                        break;
+                    }
+                    out.push(' ');
+                    continue;
+                }
                 None => {}
             }
-            prev = c;
+            out.push(c);
         }
-        line.trim().to_string()
+        out.trim().to_string()
     };
     let mut keeps = false;
     let mut i = 0;
     while i < lines.len() {
         let trimmed = lines[i].trim();
-        if trimmed.starts_with("/*") || trimmed.starts_with('*') {
+        // A line inside a block comment (`* @param ..`).
+        if trimmed.starts_with('*') {
             i += 1;
             continue;
         }
@@ -756,6 +776,9 @@ mod tests {
         assert_eq!(keeps("import {keep} from\"corten\""), Ok(true));
         assert_eq!(keeps("import {\n  fromCents,\n  keep\n} from \"corten\";"), Ok(true));
         assert_eq!(keeps("/** @typedef {import(\"corten\").Message} M */\n// import(\"corten\")"), Ok(false));
+        assert_eq!(keeps("const m = /** @type {import(\"corten\").Message<\"count\">} */ (x);"), Ok(false));
+        assert_eq!(keeps("/* eslint-disable */ import { keep } from \"corten\";"), Ok(true));
+        assert_eq!(keeps("/**\n * @param {import(\"corten\").Message} m\n */"), Ok(false));
         assert!(keeps("import * as corten from \"corten\";").unwrap_err().1.contains("by name"));
         assert!(keeps("const { keep } = await import(\"corten\");").unwrap_err().1.contains("by name"));
     }

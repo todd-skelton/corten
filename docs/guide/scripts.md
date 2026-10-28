@@ -92,11 +92,12 @@ user types sit in a `GET` form that filters them on the server without JavaScrip
 
 ## Components and their roots
 
-A component with refs, or whose handlers take `scope`, has one root element. The root is
-where its refs end: `data-scope="offer-list"` marks it, and a ref resolves to the elements with
-that name inside the root and outside any nested component's root. Two `OfferList`s on one
-page never see each other's rows. The root can be any element, so a component can be a `<tr>`
-or an `<li>`.
+A component with refs, whose handlers take `scope`, or whose script imports `keep` has one root
+element. The root is where its refs and state end: `data-scope="offer-list"` marks it, and a ref
+resolves to the elements with that name inside the root and outside any nested component's root.
+Two `OfferList`s on one page never see each other's rows (a handler a component passes to a
+nested copy of itself resolves to the nearest copy). The root can be any element, so a component
+can be a `<tr>` or an `<li>`.
 
 ## Handlers as props
 

@@ -1072,17 +1072,19 @@ Corten is pre-1.0, so any minor version may change the API.
     `Public<A>` needs `A: Shareable`, which every answer that can be public implements, and an
     answer type of the app's own implements only when it sets no cookie
     ([#235 A Public answer that sets a cookie compiles, and is only made private when it is sent](https://github.com/todd-skelton/corten/issues/235)).
-63. A script keeps state with `keep(() => init)` (from `corten`), which replaces
-    `state(el, init)`: the object of the component whose script the running handler is in, one
-    per instance, so a handler no longer takes the component's root just to find its state. A
+63. A script keeps state with `keep(() => init)` (from `corten`), which replaces `state(el,
+    init)`: the object of the component whose script the running handler is in, one per
+    instance, so a handler no longer takes the component's root just to find its state. A
     component whose script imports `keep` is always scoped (`data-scope` on its root, with or
     without refs), and such a component's handler on a child's element names its component
     (`data-on="change:form.save($t)/form"`), so it keeps the parent's state wherever the child
-    renders it; markup a parent gives a child keeps the parent's handlers' `scope` too. A `script!` module, which components share, cannot import `keep` (a compile
-    error). seller-desk's grid handlers lose their `scope` argument (six of them), watchlist's
-    `pause` too, and corten-ui's menu button and number field keep theirs per component. Take
-    the object first, before an `await` or anything that dispatches an event; outside a handler
-    it throws. The runtime is 90 bytes larger gzipped (8,503 to 8,593; brotli 7,663 to 7,742).
+    renders it; markup a parent gives a child keeps the parent's handlers' `scope` too. A
+    `script!` module, which components share, cannot import `keep` (a compile error).
+    seller-desk's grid handlers lose their `scope` argument (six of them), watchlist's `pause`
+    too, and corten-ui's menu button and number field keep theirs per component. Take the object
+    first, before an `await` or anything that dispatches an event; outside a handler it throws.
+    The runtime is 90 bytes larger gzipped (8,503 to 8,593; brotli 7,663 to 7,742);
+    card-market's item page renders as before (58,644 to 58,654 instructions, callgrind).
     Migration: `state(scope, () => init)` is `keep(() => init)`, and a `scope` argument used only
     for it is dropped from the handler and its markup
     ([#238 Runtime state is keyed by an element the handler has to pass: state(root, init)](https://github.com/todd-skelton/corten/issues/238)).
