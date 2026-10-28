@@ -72,11 +72,46 @@ const liveEvent = (accept) =>
   check("localhost is answered", local === 200, String(local));
 }
 
+/**
+ * Requests a context has sent and not finished, with when each was sent: printed when a run
+ * throws (a page that never fires `load`), so the report says which one hangs (#232, #252).
+ * @type {Map<import("@playwright/test").Request, number>}
+ */
+const inflight = new Map();
+/** @param {import("@playwright/test").Browser} browser */
+function track(browser) {
+  /** @param {import("@playwright/test").BrowserContext} context */
+  const watch = (context) => {
+    context.on("request", (r) => inflight.set(r, Date.now()));
+    context.on("requestfinished", (r) => inflight.delete(r));
+    context.on("requestfailed", (r) => inflight.delete(r));
+    return context;
+  };
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (...args) => watch(await newContext(...args));
+  const newPage = browser.newPage.bind(browser);
+  browser.newPage = async (...args) => {
+    const page = await newPage(...args);
+    watch(page.context());
+    return page;
+  };
+}
+/** What is still loading, oldest first. */
+function pending() {
+  const now = Date.now();
+  return [...inflight].sort((a, b) => a[1] - b[1]).map(([r, at]) => `  ${now - at}ms ${r.method()} ${r.url()} (${r.resourceType()})`);
+}
+
 for (engine of names) {
   const browser = await engines[engine].launch({ headless: true });
+  track(browser);
   try {
     await run(browser);
+  } catch (error) {
+    console.log(`[${engine}] still loading when it failed:\n${pending().join("\n") || "  nothing"}`);
+    throw error;
   } finally {
+    inflight.clear();
     await browser.close();
   }
 }
