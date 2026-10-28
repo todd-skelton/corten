@@ -523,11 +523,30 @@ impl Error {
         Error { status: StatusCode::INTERNAL_SERVER_ERROR, source: error.into() }
     }
 
-    /// An error with a specific status, for example 404 for a missing record or 403 for a
-    /// permission check: `return Err(Error::status(StatusCode::NOT_FOUND))` (in a JSON handler,
+    /// An error with a specific status, for example 403 for a permission check (404 is
+    /// [`Error::not_found`]): `return Err(Error::status(StatusCode::FORBIDDEN))` (in a JSON handler,
     /// `Err(Error::status(..))?` or `.into()`, since its error is a [`JsonError`]).
     pub fn status(status: StatusCode) -> Self {
         Error { status, source: status.canonical_reason().unwrap_or("error").into() }
+    }
+
+    /// 404, for a record that is not there: `load(id).await?.ok_or_else(Error::not_found)?`. The
+    /// most common status a handler sets, so it has a name; others are [`Error::status`]. Its
+    /// message is `Not Found`; for a JSON client that should read a specific one,
+    /// `Error::new("no item 7").with_status(StatusCode::NOT_FOUND)`.
+    ///
+    /// ```
+    /// use corten::{axum::http::StatusCode, Error};
+    ///
+    /// fn find(id: u32) -> corten::Result<&'static str> {
+    ///     let name = [(7, "Ada")].into_iter().find(|(n, _)| *n == id).map(|(_, name)| name);
+    ///     name.ok_or_else(Error::not_found)
+    /// }
+    /// # use corten::axum::response::IntoResponse;
+    /// assert_eq!(find(8).unwrap_err().into_response().status(), StatusCode::NOT_FOUND);
+    /// ```
+    pub fn not_found() -> Self {
+        Error::status(StatusCode::NOT_FOUND)
     }
 
     /// The same error with another status: `Error::new("no item 7").with_status(StatusCode::NOT_FOUND)`.

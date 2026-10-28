@@ -625,7 +625,10 @@ Corten is pre-1.0, so any minor version may change the API.
     token is not a wrong color found in a browser. Checked at startup, about 0.25 ms for 21 KB of
     CSS, since a component's stylesheet compiles without the theme
     ([#179 A stylesheet can use a token the theme does not define (var(--color-primary-contrast)), and nothing reports it until a browser draws the wrong color](https://github.com/todd-skelton/corten/issues/179)).
-95. `HtmlResponse::with_cookie(SetCookie)`: an answer that sets a cookie,
+95. `Error::not_found()`: the 404 a handler answers for a record that is not there,
+    `load(id).await?.ok_or_else(Error::not_found)?`, in place of
+    `.ok_or_else(|| Error::status(StatusCode::NOT_FOUND))?` (or an app's own `fn not_found`).
+96. `HtmlResponse::with_cookie(SetCookie)`: an answer that sets a cookie,
     `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, in place of
     `res.headers_mut().append(header::SET_COOKIE, cookie.header())`. The cookie is built by
     `SetCookie`, so its safe flags are the default.

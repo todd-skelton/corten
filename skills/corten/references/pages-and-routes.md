@@ -15,7 +15,7 @@ pub mod url {
 
 async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
     // Any std::error::Error converts with `?` (a 500 and the error page). For a 404:
-    // .ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?
+    // .ok_or_else(corten::Error::not_found)?
     let item = load(&id).await?;
     let head = html! { <meta name="description" content={&item.summary}> };
     req.page(html! {
