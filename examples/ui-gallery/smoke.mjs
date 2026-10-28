@@ -333,8 +333,19 @@ async function run(browser) {
    * without it loads whole pages, and the link's address replaces the sheet's).
    */
   const at = () => page.evaluate(() => /** @type {any} */ (window).navigation?.currentEntry?.index ?? -1);
+  /**
+   * The page's own address. Not `page.url()` or `waitForURL`: Playwright's WebKit does not
+   * report the runtime's navigation from `/` to `/?sale=last` (a push that changes only the
+   * query), so its URL stays at `/` while `location` and the history have moved on, and a click
+   * that waits for that navigation never returns (`noWaitAfter` on the link's clicks).
+   */
+  const href = () => page.evaluate(() => location.href);
+  /** @param {boolean} open whether the address names the sale */
+  const saleInAddress = (open) =>
+    page.waitForFunction((open) => new URL(location.href).searchParams.has("sale") === open, open, { timeout: 5000 }).catch(() => {});
   const listEntry = await at();
-  await Promise.all([page.waitForURL("**/?sale=last"), page.getByRole("link", { name: "Last sale" }).click()]);
+  await page.getByRole("link", { name: "Last sale" }).click({ noWaitAfter: true });
+  await saleInAddress(true);
   const sheet = page.locator('dialog[aria-label="Last sale"]');
   const sheetModal = () => page.evaluate(() => !!document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"));
   await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
@@ -342,13 +353,14 @@ async function run(browser) {
   /** Escape on the sheet, then the page without it: the address drops `sale` and the sheet goes. */
   const escape = async (/** @type {string} */ how) => {
     await page.keyboard.press("Escape");
-    await page.waitForURL((url) => !url.searchParams.has("sale"), { timeout: 5000 }).catch(() => {});
+    await saleInAddress(false);
     await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
-    check(`${how}: Escape goes to the close link's address, which does not name the sale`, !new URL(page.url()).searchParams.has("sale"), page.url());
+    check(`${how}: Escape goes to the close link's address, which does not name the sale`, !new URL(await href()).searchParams.has("sale"), await href());
     check(`${how}: the page without it replaces the sheet`, (await sheet.count()) === 0);
   };
   const openSheet = async () => {
-    await Promise.all([page.waitForURL("**/?sale=last"), page.getByRole("link", { name: "Last sale" }).click()]);
+    await page.getByRole("link", { name: "Last sale" }).click({ noWaitAfter: true });
+    await saleInAddress(true);
     await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
   };
   // Opened from the list, closing goes back to the list's entry: no entry is added, so Back
@@ -369,10 +381,12 @@ async function run(browser) {
   // A close request other than Escape (Android's Back, closedby="any") is the same `cancel`.
   if (await page.evaluate(() => "requestClose" in HTMLDialogElement.prototype)) {
     await openSheet();
-    await sheet.evaluate((d) => /** @type {any} */ (d).requestClose());
-    await page.waitForURL((url) => !url.searchParams.has("sale"), { timeout: 5000 }).catch(() => {});
+    // Not the locator's evaluate: the close replaces the sheet as it runs, and a locator then
+    // waits for it to come back.
+    await page.evaluate(() => /** @type {any} */ (document.querySelector('dialog[aria-label="Last sale"]'))?.requestClose());
+    await saleInAddress(false);
     await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
-    check("requestClose() leaves the sheet's address too", !new URL(page.url()).searchParams.has("sale") && (await sheet.count()) === 0, page.url());
+    check("requestClose() leaves the sheet's address too", !new URL(await href()).searchParams.has("sale") && (await sheet.count()) === 0, await href());
   }
   // Loaded at its address (a shared link), with no click since: Chromium does not let the page
   // keep it open on Escape, and the address is still left, in place of the sheet's entry (the
@@ -386,7 +400,7 @@ async function run(browser) {
   check("loaded at its address: the list replaces the sheet's entry", (await at()) === shared, `${shared} -> ${await at()}`);
   await page.goBack();
   await page.waitForLoadState();
-  check("Back from there goes to the page before the shared link", new URL(page.url()).searchParams.get("tab") === "offers", page.url());
+  check("Back from there goes to the page before the shared link", new URL(await href()).searchParams.get("tab") === "offers", await href());
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
