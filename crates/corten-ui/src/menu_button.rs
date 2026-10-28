@@ -3,8 +3,11 @@ use corten::prelude::*;
 use crate::{Link, Url};
 
 /// One item of a [`MenuButton`]'s menu.
-pub struct MenuItem<'a, L> {
-    /// What the item shows: text, or any view (every item's the same type).
+pub struct MenuItem<'a, L: Render> {
+    /// What the item shows: text, or a view with text in it (an icon beside visually hidden text),
+    /// since typing a letter in the menu moves to the item whose text starts with it. Every item of
+    /// a menu has one label type; labels of different types (a message with arguments beside one
+    /// without) are each a reference, `MenuItem::<&dyn Render> { label: &t.archive(n), .. }`.
     pub label: L,
     /// Where it goes, or with `post`, where it posts.
     pub link: &'a dyn Link,

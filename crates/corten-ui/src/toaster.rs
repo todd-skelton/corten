@@ -6,7 +6,9 @@ pub struct ToastId;
 
 /// What an action says when it is done ("Saved.", "3 items archived."), inside a [`Toaster`].
 /// An action answers with it as a patch, `req.patch(Toast { message: Some(text) })`, which
-/// replaces the toaster's message; `None` renders it `hidden` and empty.
+/// replaces the toaster's message; no message, `Toast { message: None::<&str> }`, renders it
+/// `hidden` and empty. A message is text, or a view with text in it: the toaster shows its close
+/// button while the message has text.
 #[component]
 pub fn Toast<M: Render>(message: Option<M>) -> impl Patch {
     html! {

@@ -3,8 +3,23 @@ use corten::prelude::*;
 use crate::{state, Link, Url};
 
 /// One tab of a [`TabGroup`].
-pub struct Tab<'a, L> {
-    /// What the tab shows: text, or any view (every tab's the same type).
+pub struct Tab<'a, L: Render> {
+    /// What the tab shows: text, or a view with text in it. Every tab of a group has one label
+    /// type; labels of different types (a message with arguments beside one without) are each a
+    /// reference:
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    /// use corten_ui::{Tab, TabGroup};
+    ///
+    /// let offers = format!("Offers ({})", 2);
+    /// let tabs: [Tab<&dyn Render>; 2] = [
+    ///     Tab { label: &"Listings", panel: &"3 listings", link: None },
+    ///     Tab { label: &offers, panel: &"2 offers", link: None },
+    /// ];
+    /// let html = TabGroup { id: "book", label: "Market", tabs: &tabs, selected: 0 }.to_html();
+    /// assert!(html.contains(">Offers (2)</button>"), "{html}");
+    /// ```
     pub label: L,
     /// The panel's content. Each panel is a view of its own type, so it is a reference to one.
     pub panel: &'a dyn Render,
