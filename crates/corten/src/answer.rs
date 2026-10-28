@@ -227,25 +227,41 @@ pub trait Shareable {
 /// `Public::new(age, answer)` find its type from `answer` where no return type says it (a
 /// closure).
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is made for one visitor, so it cannot be `Public`",
-    note = "make the page inside the handler that returns `Public<HtmlResult>` (`req.page` takes who it is for from there), or have a helper return `corten::Result<HtmlResponse<For>>` for any `For` rather than `HtmlResult`"
+    message = "`{Self}` is not an answer made for everyone, so it cannot be `Public`",
+    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, a live stream or a feed"
 )]
 pub trait ForEveryone: IntoResponse {
     /// The answer type a handler names: `Public<Self::Named>`.
-    type Named;
+    type Named: Shareable;
+
+    /// Itself, as the type `Public<Self::Named>` holds (the same type, named another way).
+    #[doc(hidden)]
+    fn for_all(self) -> <Self::Named as Shareable>::ForAll;
 }
 
 impl ForEveryone for HtmlResponse<ForAll> {
     type Named = HtmlResponse;
+
+    fn for_all(self) -> Self {
+        self
+    }
 }
 
 impl<A: ForEveryone> ForEveryone for Result<A, Error> {
     type Named = Result<A::Named, Error>;
+
+    fn for_all(self) -> Result<<A::Named as Shareable>::ForAll, Error> {
+        self.map(A::for_all)
+    }
 }
 
 #[cfg(feature = "json")]
 impl<A: ForEveryone> ForEveryone for std::result::Result<A, JsonError> {
     type Named = std::result::Result<A::Named, JsonError>;
+
+    fn for_all(self) -> std::result::Result<<A::Named as Shareable>::ForAll, JsonError> {
+        self.map(A::for_all)
+    }
 }
 
 /// An answer that is itself everywhere: it sets no cookie.
@@ -253,6 +269,10 @@ macro_rules! for_everyone {
     ($($ty:ty),* $(,)?) => {$(
         impl ForEveryone for $ty {
             type Named = Self;
+
+            fn for_all(self) -> Self {
+                self
+            }
         }
         impl Shareable for $ty {
             type ForAll = Self;
@@ -292,6 +312,10 @@ where
     crate::Json<T>: IntoResponse,
 {
     type Named = Self;
+
+    fn for_all(self) -> Self {
+        self
+    }
 }
 
 /// What a page handler returns: `async fn item(req: Req) -> HtmlResult`. A failure is the app's
@@ -546,12 +570,8 @@ impl<A: Shareable> Public<A> {
     /// }
     /// # let _: Methods = get(home);
     /// ```
-    pub fn new<T>(max_age: Duration, answer: T) -> Self
-    where
-        T: ForEveryone<Named = A>,
-        A: Shareable<ForAll = T>,
-    {
-        Public { cache: Cache::public(max_age), answer }
+    pub fn new<T: ForEveryone<Named = A>>(max_age: Duration, answer: T) -> Self {
+        Public { cache: Cache::public(max_age), answer: answer.for_all() }
     }
 
     /// After `max_age`, a cache may still serve it for up to `stale` while it fetches a fresh one.

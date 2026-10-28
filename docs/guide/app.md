@@ -423,7 +423,7 @@ where it goes, the handler's return type or `Public::new`, so a handler, a closu
 Corten's `get` or `post`, and `Public::new(age, req.page(..))` are written as before. A helper is
 where it shows: one that makes a page for a `Public` handler returns
 `corten::Result<HtmlResponse<For>>` for any `For` (not `HtmlResult`, a page for one visitor,
-which `Public::new` refuses: "is made for one visitor, so it cannot be `Public`"), and one that
+which `Public::new` refuses: "is not an answer made for everyone, so it cannot be `Public`"), and one that
 wraps a page in `Public` takes `corten::Result<HtmlResponse<ForAll>>`. A `Set-Cookie` header
 written by hand is still caught when the answer is sent (the row above).
 

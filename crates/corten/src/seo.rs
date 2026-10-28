@@ -61,6 +61,10 @@ impl crate::answer::Shareable for File {
 
 impl crate::answer::ForEveryone for File {
     type Named = Self;
+
+    fn for_all(self) -> Self {
+        self
+    }
 }
 
 /// Most URLs one sitemap file may list. Split larger sets with [`sitemap_index`].

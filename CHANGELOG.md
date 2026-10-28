@@ -1054,7 +1054,7 @@ Corten is pre-1.0, so any minor version may change the API.
     main's own runs spread from 33,701 to 33,933).
     Migration: a helper that makes a page for a `Public` handler returns
     `corten::Result<HtmlResponse<For>>` for any `For` instead of `HtmlResult` (`Public::new`
-    says an `HtmlResult` "is made for one visitor"); one that wraps a page in `Public` takes
+    says the page "is not an answer made for everyone"); one that wraps a page in `Public` takes
     `corten::Result<HtmlResponse<ForAll>>`, as card-market's `shared` does; a closure given to
     axum's own `get` (tests only: an app cannot mount one) names it, `req.page::<ForOne>(..)`;
     `Public<A>` needs `A: Shareable`, which every answer that can be public implements, and an

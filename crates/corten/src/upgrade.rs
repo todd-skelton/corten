@@ -306,15 +306,6 @@ impl<A: crate::Answer> crate::Answer for SwitchOr<A> {
     type Inputs = A::Inputs;
 }
 
-/// A switch or an answer for everyone: the handshake sets no cookie.
-impl<A: crate::answer::Shareable> crate::answer::Shareable for SwitchOr<A> {
-    type ForAll = SwitchOr<A::ForAll>;
-}
-
-impl<A: crate::answer::ForEveryone> crate::answer::ForEveryone for SwitchOr<A> {
-    type Named = SwitchOr<A::Named>;
-}
-
 /// The connection once switched: bytes both ways (`tokio::io::AsyncRead` and `AsyncWrite`).
 /// The work on it ends when the client closes it (a read gives 0) or the work returns, and its
 /// [`Signal`] aborts with [`Abort::Shutdown`] when the app begins to shut down; the work is
