@@ -328,13 +328,13 @@ name = "corten-cluster"
 version = "0.1.0"
 dependencies = [
  "async-nats",
- "axum",
- "corten-feed",
+ "corten",
  "futures-util",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "tower",
 ]
 
 [[package]]
@@ -1106,14 +1106,12 @@ name = "listings-feed"
 version = "0.1.0"
 dependencies = [
  "async-nats",
- "axum",
  "corten",
  "corten-cluster",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
- "tower-http",
 ]
 
 [[package]]

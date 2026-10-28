@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use corten_feed::{Change, Row};
+use corten::feed::{Change, Row};
 use serde::Serialize;
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 
@@ -195,7 +195,7 @@ impl Write {
 }
 
 /// Takes the feed's next sequence number and stores the patch in the outbox. The body is
-/// `corten_feed::patch_json`'s exact shape with the sequence filled in by Postgres.
+/// `corten::feed::patch_json`'s exact shape with the sequence filled in by Postgres.
 async fn append<T: Row>(conn: &mut PgConnection, feed: &str, changes: &[Change<'_, T>]) -> Result<u64, Error> {
     let changes = serde_json::to_string(changes)?;
     let seq: Option<i64> = sqlx::query_scalar(

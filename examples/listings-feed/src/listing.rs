@@ -58,6 +58,11 @@ impl Rng {
     }
 }
 
+/// Milliseconds since the Unix epoch.
+pub fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
 pub fn id(n: usize) -> String {
     format!("lst_{n:06}")
 }

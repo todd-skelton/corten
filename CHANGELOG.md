@@ -713,6 +713,15 @@ Corten is pre-1.0, so any minor version may change the API.
     (`view::InPage`), not an address: `req.redirect` to it does not compile, and neither does
     text in place of the id. Nothing `html!` writes changed
     ([#254 A link to an element on the same page cannot take an Id, so each app writes its #fragment by hand](https://github.com/todd-skelton/corten/issues/254)).
+108. `corten_ui::dialog::modalClosedBy(target, close, signal)`: a dialog the address opens
+    (`?selected=it_1`) is made modal as `dialog::modal` makes one, and a close request on it
+    (Escape, Android's Back) goes to its close link's address (a ref; a button there does not
+    compile) without a new history entry, back when the entry before is the list, so a reload or
+    a redraw no longer opens what the user closed and Back cannot loop through it. A
+    `cancel` from inside it (a file input's picker) is left alone, and without a script nothing
+    changes. ui-gallery's last-sale sheet is tested in Chromium, Firefox and WebKit. Apps' own
+    `cancel` scripts can go
+    ([#257 corten-ui's dialog::modal closes a dialog the address opened without following its close link, so Escape leaves ?selected= behind](https://github.com/todd-skelton/corten/issues/257)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1119,6 +1128,20 @@ Corten is pre-1.0, so any minor version may change the API.
     are kept under one id, now in the `visitor` cookie (`visitor.rs`), which was `list`, and both
     forget the browser used longest ago past 10,000 (`recent.rs`)
     ([#220 watchlist's alerts page never shows the alerts you saved](https://github.com/todd-skelton/corten/issues/220)).
+65. `corten-cluster`'s `Cluster::snapshot`, `live` and `live_with` return
+    `corten::Result<FeedResponse>`, an answer a Corten route names, instead of an axum
+    `Response`: an unknown feed is a 404 and Postgres out of reach a 503, both answered as JSON as
+    any failure of a feed's route is. The crate depends on `corten` (feature `feed`) instead of
+    axum and `corten-feed`. Migration: a handler that returned the `Response` names
+    `corten::Result<FeedResponse>`; outside a Corten app, call `.into_response()` on it.
+    `examples/listings-feed` is an `App`: the feed in a routes module, the benchmark's
+    writes and reads under `App::api` (`/api/feeds/{seller}/market`, `/seq`, `/api/stats`),
+    the instance's name from a middleware (`X-Instance`), Corten's health checks (`/health/ready`
+    checks Postgres), and the browser probe a page whose `#[component(js)]` follows the feed
+    (`/sellers/{seller}`, a 404 for a seller with no feed), where an inline script would be
+    refused by the CSP. The failover benchmark ran again on it (`results/failover-r2.json`)
+    ([#217 examples/listings-feed does not use App, so its routes skip Corten's compile-time checks](https://github.com/todd-skelton/corten/issues/217),
+    [#233 listings-feed's failover benchmark has not been run since the example was renamed](https://github.com/todd-skelton/corten/issues/233)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
