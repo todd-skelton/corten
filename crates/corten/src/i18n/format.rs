@@ -568,8 +568,10 @@ pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency)
         Err(_) => data.money[0],
     };
     let (prefix, suffix) = template.split_once('\u{1}')?;
-    let input: String = text.chars().filter(|c| !is_mark(*c)).collect();
-    let mut text = input.trim();
+    // Direction marks are dropped; most input has none, and is read where it lies.
+    let unmarked: std::borrow::Cow<'_, str> =
+        if text.chars().any(is_mark) { text.chars().filter(|c| !is_mark(*c)).collect::<String>().into() } else { text.into() };
+    let mut text = unmarked.trim();
     // The symbol before the amount and after it, each where the locale writes one, else the code
     // on either side.
     let mut stripped = false;
@@ -674,45 +676,49 @@ fn fold(c: char) -> char {
 }
 
 /// `text` without the locale's prefix (`front`) or suffix, a template part where `\u{2}` stands
-/// for the code: its direction marks are skipped and any space in it matches any run of spaces,
+/// for the code: its direction marks are skipped and a space in it matches any run of spaces,
 /// none included. `None` when it is not there or the locale writes nothing there.
 fn strip_affix<'a>(text: &'a str, affix: &str, code: &str, front: bool) -> Option<&'a str> {
-    let mut want: Vec<char> = Vec::new();
-    for part in affix.split('\u{2}').enumerate().flat_map(|(i, part)| [(i > 0).then_some(code), Some(part)]).flatten() {
-        want.extend(part.chars().filter(|c| !is_mark(*c)));
+    let mut want: [char; 24] = ['\0'; 24];
+    let mut len = 0;
+    for c in affix.chars() {
+        let mut put = |c: char| -> Option<()> {
+            *want.get_mut(len)? = c;
+            len += 1;
+            Some(())
+        };
+        if c == '\u{2}' {
+            for c in code.chars() {
+                put(c)?;
+            }
+        } else if !is_mark(c) {
+            put(c)?;
+        }
     }
-    // The spaces between the symbol and the amount are the caller's to trim.
-    let trimmed: Vec<char> = {
-        let s: String = want.iter().collect();
-        let s = if front { s.trim_end().trim_start() } else { s.trim_start().trim_end() };
-        s.chars().collect()
-    };
-    if trimmed.is_empty() {
+    let want = &want[..len];
+    if want.iter().all(|c| is_space(*c)) {
         return None;
     }
-    let chars: Vec<(usize, char)> = text.char_indices().collect();
-    let order = |i: usize, n: usize| if front { i } else { n - 1 - i };
-    let (mut at, mut w) = (0, 0);
-    let (n, m) = (chars.len(), trimmed.len());
-    while w < m {
-        let want = trimmed[order(w, m)];
-        if is_space(want) {
-            while at < n && is_space(chars[order(at, n)].1) {
-                at += 1;
+    let mut chars = text.char_indices();
+    let mut next = || if front { chars.next() } else { chars.next_back() };
+    let mut pending = next();
+    let wanted: &mut dyn Iterator<Item = &char> = if front { &mut want.iter() } else { &mut want.iter().rev() };
+    for want in wanted {
+        if is_space(*want) {
+            while pending.is_some_and(|(_, c)| is_space(c)) {
+                pending = next();
             }
-            w += 1;
-            continue;
-        }
-        if at < n && fold(chars[order(at, n)].1) == fold(want) {
-            (at, w) = (at + 1, w + 1);
+        } else if pending.is_some_and(|(_, c)| fold(c) == fold(*want)) {
+            pending = next();
         } else {
             return None;
         }
     }
-    Some(if front {
-        chars.get(at).map_or("", |(i, _)| &text[*i..])
-    } else {
-        &text[..chars.get(n - at).map_or(text.len(), |(i, _)| *i)]
+    // `pending` is the first character left on the amount's side, or none.
+    Some(match (pending, front) {
+        (Some((i, _)), true) => &text[i..],
+        (Some((i, c)), false) => &text[..i + c.len_utf8()],
+        (None, _) => "",
     })
 }
 
