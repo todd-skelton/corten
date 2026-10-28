@@ -346,8 +346,35 @@ async function run(browser) {
   check("the one behind kept its hour", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
   await timed.clock.runFor(55 * 60_000);
   check("an hour on, the one behind moves", (await listed.textContent()) === "4 hr. ago" && (await expires.textContent()) === "55 minutes ago", `${await listed.textContent()}, ${await expires.textContent()}`);
+  // Back from sleep: the clock moved two hours and no timer ran; the page coming back redraws.
+  await timed.clock.setSystemTime((await timed.evaluate(() => Date.now())) + 2 * 3600_000);
+  await timed.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  check("the page coming back redraws as of its clock", (await listed.textContent()) === "6 hr. ago" && (await expires.textContent()) === "2 hours ago", `${await listed.textContent()}, ${await expires.textContent()}`);
+  // A time put in place of another, as a patch does: the new one is kept current, the old one let go.
+  await timed.evaluate(() => {
+    const old = /** @type {HTMLTimeElement} */ (document.querySelectorAll("time")[1]);
+    const time = /** @type {HTMLTimeElement} */ (old.cloneNode(false));
+    time.dateTime = new Date(Date.now() + 90_000).toISOString();
+    time.textContent = "in 1 minute";
+    old.replaceWith(time);
+  });
+  await timed.clock.runFor(31_000);
+  check("a time that replaces another is kept current", /^in 5\d seconds$/.test((await expires.textContent()) ?? ""), await expires.textContent());
   check("no console errors with relative times", timedErrors.length === 0, timedErrors.join(" | "));
   await timed.context().close();
+  // A browser without the page's locale falls back to another language: the server's text stays.
+  const lacking = await (await browser.newContext()).newPage();
+  await lacking.addInitScript(() => {
+    const options = Intl.RelativeTimeFormat.prototype.resolvedOptions;
+    Intl.RelativeTimeFormat.prototype.resolvedOptions = function () {
+      return { ...options.call(this), locale: "fr" };
+    };
+  });
+  await lacking.clock.install();
+  await lacking.goto(`${base}/`);
+  await lacking.clock.runFor(31_000);
+  check("a locale the browser lacks keeps the server's text", (await lacking.locator("time").nth(1).textContent()) === "in 1 minute", await lacking.locator("time").nth(1).textContent());
+  await lacking.context().close();
 
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));

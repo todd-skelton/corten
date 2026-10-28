@@ -14,7 +14,7 @@ const UNITS = /** @type {const} */ ([
 
 /** The relative times on the page: the instant each counts to, and its format. @type {Map<HTMLTimeElement, { at: number, format: Intl.RelativeTimeFormat }>} */
 const live = new Map();
-/** One format per locale and style. @type {Map<string, Intl.RelativeTimeFormat>} */
+/** One format per locale and style; `null` for a locale the browser does not have. @type {Map<string, Intl.RelativeTimeFormat | null>} */
 const formats = new Map();
 let timer = 0;
 /** When the timer fires (`Date.now()` time), or Infinity. */
@@ -32,12 +32,13 @@ export function connect(time, locale, style, signal) {
   if (Number.isNaN(at) || signal.aborted) return;
   const key = `${locale} ${style}`;
   let format = formats.get(key);
-  if (!format) {
-    if (!Intl.RelativeTimeFormat.supportedLocalesOf([locale]).length) return;
+  if (format === undefined) {
     const options = { style: /** @type {Intl.RelativeTimeFormatStyle} */ (style), numeric: /** @type {const} */ ("always") };
     format = new Intl.RelativeTimeFormat(locale, options);
+    if (!speaks(format, locale)) format = null;
     formats.set(key, format);
   }
+  if (!format) return;
   live.set(time, { at, format });
   // Gone: left out of the next tick. A wake for it alone finds nothing to change.
   signal.addEventListener("abort", () => live.delete(time), { once: true });
@@ -45,7 +46,22 @@ export function connect(time, locale, style, signal) {
   draw(time, now);
   watch();
   const next = now + untilChange(at, now);
-  if (next < due) setTimer(next, now);
+  // A timer whose time has passed has not run yet (the page slept, the clock was set forward):
+  // it may be a day away by the timer's own clock, so this time sets its own.
+  if (next < due || due <= now) setTimer(next, now);
+}
+
+/**
+ * Whether `format` writes `locale`'s language in its script. A browser without the locale falls
+ * back to a parent (`sr-Latn` to `sr`, in Cyrillic) or to its own language, and the server's
+ * text is then the right one to keep. A region the browser lacks (`de-AT` as `de`) is the same
+ * words.
+ * @param {Intl.RelativeTimeFormat} format @param {string} locale
+ */
+function speaks(format, locale) {
+  const want = new Intl.Locale(locale).maximize();
+  const got = new Intl.Locale(format.resolvedOptions().locale).maximize();
+  return want.language === got.language && want.script === got.script;
 }
 
 /** The unit `ms` (from now; negative: before) is written in, and its size in milliseconds. @param {number} ms */
