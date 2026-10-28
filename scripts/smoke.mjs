@@ -1310,9 +1310,9 @@ async function run(browser) {
     /** @type {string[]} */
     const sent = [];
     forms.on("request", (r) => {
-      const path = new URL(r.url()).pathname;
-      if (r.resourceType() === "document" || r.resourceType() === "fetch") {
-        if (path === "/watch" || path === "/news") sent.push(`${r.method()} ${new URL(r.url()).pathname}${new URL(r.url()).search} ${r.postData() ?? ""}`.trim());
+      const url = new URL(r.url());
+      if (["document", "fetch"].includes(r.resourceType()) && ["/watch", "/news"].includes(url.pathname)) {
+        sent.push(`${r.method()} ${url.pathname}${url.search} ${r.postData() ?? ""}`.trim());
       }
     });
     await forms.evaluate(() => {
