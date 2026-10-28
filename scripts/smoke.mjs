@@ -1143,16 +1143,23 @@ async function run(browser) {
         `${reached} -> ${await saved()}`,
       );
       check("each read replaces the history entry", (await page.evaluate(() => history.length)) === entries + 1, `${entries} -> ${await page.evaluate(() => history.length)}`);
-      // Away while a write lands: the page is reached and left at once, so the check does not
-      // need to see it saving first.
-      const leaving = await pending();
-      await page.evaluate((url) => (/** @type {any} */ (window)).navigation.navigate(url), leaving);
-      await page.waitForFunction((url) => location.href === url, leaving);
+      // Away while a write lands: once the page is in and has armed its read again (the head's
+      // read-again tag), it is left at once, with no wait for its text. A write that landed before
+      // the page came in arms nothing, so another is tried.
+      let armed = false;
+      for (let tries = 0; tries < 3 && !armed; tries++) {
+        const leaving = await pending();
+        await page.evaluate(() => document.getElementById("alert-status")?.setAttribute("data-old", ""));
+        await page.evaluate((url) => (/** @type {any} */ (window)).navigation.navigate(url), leaving);
+        await page.waitForFunction((url) => location.href === url && !document.querySelector("#alert-status[data-old]"), leaving);
+        armed = await page.evaluate(() => !!document.head.querySelector("noscript[data-corten-read-again]"));
+      }
       await page.click('header a[href="/news"]');
       await page.waitForFunction(() => document.title === "News | Watchlist");
       const left = reads.length;
       await page.waitForTimeout(2200);
-      check("navigating away stops the reads", reads.length === left, `${reads.length - left} more reads`);
+      if (armed) check("navigating away stops the reads", reads.length === left, `${reads.length - left} more reads`);
+      else skip("navigating away stops the reads", "each write landed before its page came in");
     } else {
       for (const name of ["a page reached by the runtime's navigation reads itself again in place", "each read replaces the history entry", "navigating away stops the reads"]) skip(name, noSwaps);
     }

@@ -210,7 +210,8 @@ fn AlertForm<'a>(input: &'a AlertInput, errors: &'a Errors, status: Status) -> i
     }
 }
 
-/// The list of alerts: a remove answers the status line, and the list is read again with it.
+/// The list of alerts: read again with the status line while a write lands, and the answer to a
+/// remove that writes nothing.
 #[derive(Id)]
 struct AlertListId;
 
@@ -350,7 +351,6 @@ pub(crate) async fn save(
 /// first lands), writes nothing: the answer is the list as reads see it.
 pub(crate) async fn remove(
     req: Req,
-    viewer: Option<Caller<Viewer>>,
     State(store): State<AlertStore>,
     visitor: Visitor,
     Form(input): Form<RemoveInput>,
@@ -359,9 +359,7 @@ pub(crate) async fn remove(
     let Some(receipt) = visitor.known().and_then(|id| store.remove(now, id, input.alert)) else {
         let read = store.read(now, visitor.known(), None);
         let list = AlertList { t: req.t(), alerts: &read.alerts };
-        return req
-            .patch_or(list, || async { alerts_page(&req, viewer.as_deref(), &read, &AlertInput::default(), &Errors::new()) })
-            .await;
+        return req.patch_or(list, || async { req.redirect(&url::Alerts { saved: None }) }).await;
     };
     let from = url::Alerts { saved: Some(receipt) };
     let again = ReadAgain { after: Duration::from_secs(1) }.from(&from);
@@ -506,6 +504,11 @@ mod tests {
         assert!(!list.contains("data-corten-read-again"), "nothing to wait for: {list}");
         let page = text(call_on(&app, get_with("/alerts", VISITOR)).await).await;
         assert!(page.contains("ACME above $150.00"), "the owner's alert stays");
+        // From a browser with no id: nothing written and no id made; without JavaScript, the page.
+        let res = call_on(&app, post("/alerts/remove", None, None, "alert=1")).await;
+        assert!(res.headers().get("set-cookie").is_none());
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res.headers()["location"], "/alerts");
     }
 
     #[tokio::test]
