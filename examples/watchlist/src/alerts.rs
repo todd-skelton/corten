@@ -348,7 +348,8 @@ pub(crate) async fn save(
 
 /// Removes an alert: the status line says it is saving, and the list is read again until the
 /// write is in. One the browser does not have, or is already removing (a second click while the
-/// first lands), writes nothing: the answer is the list as reads see it.
+/// first lands), writes nothing: the answer is the list as reads see it, or without JavaScript
+/// the alerts page.
 pub(crate) async fn remove(
     req: Req,
     State(store): State<AlertStore>,
