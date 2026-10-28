@@ -540,7 +540,8 @@ Under the prefix:
 3. The deadline, the request signal, compression and the same-origin check on writes are the
    same as for pages; `Api::deadline` gives these routes a deadline of their own.
 4. `Api::errors(|status, message| ..)` writes those failures in another shape, for an API that
-   speaks another protocol's errors (an Anthropic- or OpenAI-compatible gateway): it returns a
+   speaks another protocol's errors (an Anthropic- or OpenAI-compatible gateway, or an MCP
+   endpoint's JSON-RPC errors, as `examples/card-market`'s `/mcp` answers them): it returns a
    `ToJson` value, so a key check in `Identify` and the API's unknown URLs, wrong methods,
    deadline and refusals all answer as its clients parse them. A `421` for a host the app does
    not answer is not the API's (no route ran), and a URL outside the prefix is the pages' 404.

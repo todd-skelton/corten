@@ -1157,6 +1157,11 @@ Corten is pre-1.0, so any minor version may change the API.
     JPEG, GIF or WebP), refuses anything else, keeps at most 256 pictures in memory, and needs
     someone signed in. The file input is styled like the page's buttons
     ([#221 watchlist's profile picture upload never shows the picture](https://github.com/todd-skelton/corten/issues/221)).
+67. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+    method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
+    tools' own errors have, and a partner's write without a known key is told to send a valid
+    one in `X-Api-Key` (`Refused::message`)
+    ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
