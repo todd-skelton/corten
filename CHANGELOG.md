@@ -1204,7 +1204,11 @@ Corten is pre-1.0, so any minor version may change the API.
     plus its 377-byte picture (brotli); the home page is 1,356 bytes larger (105 with brotli) plus
     the pictures that load.
     ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
-70. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+70. examples/ui-gallery is one screen: a seller's draft listing for a card, with its quantity,
+    price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
+    dialog, the last sale, and its SKU with a copy button
+    ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
+71. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
     method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
     tools' own errors have, and a partner's write without a known key is told to send a valid
     one in `X-Api-Key` (`Refused::message`)
@@ -1479,6 +1483,10 @@ Corten is pre-1.0, so any minor version may change the API.
     The watchlist's alerts page reads its status line and list so. The runtime grows by 273 B
     (72 B brotli)
     ([#276 A page cannot ask for one of its parts to be read again, so a page holding a third-party frame needs a script to start the read](https://github.com/todd-skelton/corten/issues/276)).
+49. examples/ui-gallery's live regions stay in the page while they are empty: the toaster's root,
+    the form's result and the menu's result were `display: none` until a message came, so the
+    message was often not announced. The toast's box is drawn only while there is a message, and
+    its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

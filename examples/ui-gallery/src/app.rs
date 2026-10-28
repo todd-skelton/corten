@@ -1,20 +1,20 @@
-//! corten-ui's components on one page, with the form they belong to.
+//! corten-ui's components on one page: a seller's draft listing for one card.
 //!
 //! | Route | |
 //! |---|---|
 //! | `GET /?tab=offers` | the gallery, with that tab selected |
 //! | `GET /?sale=last` | the gallery with the last sale's sheet open beside it |
-//! | `POST /order` | the form: a patch with JavaScript, the page without |
-//! | `POST /archive`, `POST /watch` | the menu's form actions |
-//! | `POST /save` | a form that answers with a toast |
-//! | `POST /rename` | the dialog's form: refused, the dialog drawn open; else back to the gallery |
+//! | `POST /sell` | the listing form: a patch with JavaScript, the page without |
+//! | `POST /archive`, `POST /watch` | the menu's form actions: archive the draft, watch the card |
+//! | `POST /save` | saving the draft, answered with a toast |
+//! | `POST /rename` | the rename dialog's form: refused, the dialog drawn open; else back to the draft |
 //! | `GET /help` | the menu's link |
 use corten::{Component, prelude::*};
 use serde::Deserialize;
 
 use corten_ui::Toast;
 
-use crate::gallery::{COLORS, Gallery, LAST_SALE, MenuResult, OrderResult, RenameDialog, TABS};
+use crate::gallery::{CARD, CONDITIONS, Gallery, LAST_SALE, MenuResult, OrderResult, RenameDialog, TABS};
 
 /// Every URL the gallery serves and links to, with the handlers that serve it.
 #[corten::routes]
@@ -25,8 +25,8 @@ pub mod url {
         pub sale: Option<&'a str>,
     }
 
-    #[route("/order", post = order)]
-    pub struct Order;
+    #[route("/sell", post = sell)]
+    pub struct Sell;
 
     #[route("/help", get = help)]
     pub struct Help;
@@ -83,7 +83,7 @@ struct HomeQuery {
     sale: Option<String>,
 }
 
-const TITLE: &str = "corten-ui";
+const TITLE: &str = "Sell Ashen Drake | corten-ui";
 
 async fn home(req: Req, Query(q): Query<HomeQuery>) -> HtmlResult {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
@@ -92,15 +92,15 @@ async fn home(req: Req, Query(q): Query<HomeQuery>) -> HtmlResult {
 }
 
 #[derive(Deserialize, Fields)]
-pub struct OrderForm {
+pub struct SellForm {
     pub qty: f64,
     pub price: f64,
-    pub color: String,
+    pub condition: String,
 }
 
-async fn order(req: Req, Form(form): Form<OrderForm>) -> HtmlResult {
-    let color = COLORS.iter().find(|c| c.value == form.color).map_or("no color", |c| c.label);
-    let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
+async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
+    let condition = CONDITIONS.iter().find(|c| c.value == form.condition).map_or("ungraded", |c| c.label);
+    let text = format!("Listed {} {condition} {CARD} at ${:.2} each.", form.qty, form.price);
     let page = || async {
         gallery(
             &req,
@@ -211,11 +211,11 @@ mod tests {
 
     #[tokio::test]
     async fn the_form_answers_with_a_patch_or_the_page() {
-        let form = || Request::post("/order").header("content-type", "application/x-www-form-urlencoded");
-        let patch = send(form().header("corten", "action").body(Body::from("qty=2&price=12.50&color=sand")).unwrap()).await;
-        assert_eq!(patch, r#"<p id="result" role="status">Ordered 2 in Desert Sand at $12.50.</p>"#);
-        let page = send(form().body(Body::from("qty=2&price=12.50&color=sand")).unwrap()).await;
-        assert!(page.contains("<html") && page.contains("Ordered 2 in Desert Sand"));
+        let form = || Request::post("/sell").header("content-type", "application/x-www-form-urlencoded");
+        let patch = send(form().header("corten", "action").body(Body::from("qty=2&price=12.50&condition=lp")).unwrap()).await;
+        assert_eq!(patch, r#"<p id="result" role="status">Listed 2 Lightly Played Ashen Drake at $12.50 each.</p>"#);
+        let page = send(form().body(Body::from("qty=2&price=12.50&condition=lp")).unwrap()).await;
+        assert!(page.contains("<html") && page.contains("Listed 2 Lightly Played Ashen Drake"));
     }
 
     #[tokio::test]
