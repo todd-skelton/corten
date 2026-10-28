@@ -6,13 +6,7 @@ use std::{
     time::{Duration, UNIX_EPOCH},
 };
 
-use corten::{
-    axum::http::{StatusCode, Uri},
-    i18n::DateStyle,
-    prelude::*,
-    route::Elsewhere,
-    view::Append,
-};
+use corten::{axum::http::Uri, i18n::DateStyle, prelude::*, route::Elsewhere, view::Append};
 use serde::Deserialize;
 
 use crate::{
@@ -460,6 +454,6 @@ async fn subscribe(
 /// page the story is about (`Elsewhere::at`: an id that page's markup owns). Linking through
 /// the app keeps a story's address in one place.
 async fn read(req: Req, Path(id): Path<String>) -> HtmlResult {
-    let story = STORIES.iter().find(|s| s.id == id).ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?;
+    let story = STORIES.iter().find(|s| s.id == id).ok_or_else(corten::Error::not_found)?;
     req.redirect(&Elsewhere::at(&Uri::from_static(story.url), story.place))
 }

@@ -16,11 +16,7 @@ use std::{
 };
 
 use corten::{
-    axum::{
-        extract::Request,
-        http::{HeaderValue, StatusCode},
-        response::Response,
-    },
+    axum::{extract::Request, http::HeaderValue, response::Response},
     feed::{Feed, FeedResponse, Row, Since},
     i18n::Minor,
     prelude::*,
@@ -191,7 +187,7 @@ async fn set_price(req: Req, State(desk): State<Desk>, Path(id): Path<String>, F
     };
     {
         let mut items = desk.items.lock().expect("items");
-        let item = items.iter_mut().find(|i| i.id == id).ok_or_else(|| corten::Error::status(StatusCode::NOT_FOUND))?;
+        let item = items.iter_mut().find(|i| i.id == id).ok_or_else(corten::Error::not_found)?;
         item.price_cents = cents;
     }
     let none = Errors::new();
@@ -291,7 +287,10 @@ pub async fn simulate_sales(desk: Desk) {
 
 #[cfg(test)]
 mod tests {
-    use corten::axum::{body::Body, http::Request};
+    use corten::axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 

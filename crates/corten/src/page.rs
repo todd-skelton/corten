@@ -97,7 +97,7 @@ fn key_header(key: u64) -> HeaderValue {
 #[derive(Clone, Debug)]
 pub enum Failure {
     /// Nothing is at this URL (404): no route has it, or its handler returned
-    /// `Error::status(StatusCode::NOT_FOUND)` (the error is logged).
+    /// `Error::not_found()` (the error is logged).
     NotFound,
     /// A route has this URL but not this method (405; the `Allow` header is kept).
     WrongMethod,

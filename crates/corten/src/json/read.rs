@@ -62,8 +62,93 @@ const HIGH: u64 = ONES << 7;
 /// exact.
 #[inline(always)]
 fn stops(x: u64) -> u64 {
-    let below = |x: u64, n: u8| x.wrapping_sub(ONES * n as u64) & !x & HIGH;
-    below(x, 0x20) | below(x ^ (ONES * b'"' as u64), 1) | below(x ^ (ONES * b'\\' as u64), 1)
+    let below = |x: u64, n: u8| x.wrapping_sub(ONES * n as u64) & !x;
+    (below(x, 0x20) | below(x ^ (ONES * b'"' as u64), 1) | below(x ^ (ONES * b'\\' as u64), 1)) & HIGH
+}
+
+/// Past the whitespace at `i`. JSON written by a program mostly has none, so the first test
+/// is the one that ends the loop.
+#[inline(always)]
+fn ws(b: &[u8], mut i: usize) -> usize {
+    while let Some(&c) = b.get(i) {
+        if c > b' ' || !matches!(c, b' ' | b'\n' | b'\r' | b'\t') {
+            break;
+        }
+        i += 1;
+    }
+    i
+}
+
+/// Past the string whose opening quote is before `i`, validated as serde_json validates a
+/// string it ignores: it checks an escape's form (and a `\u`'s hex digits), not what it means.
+#[inline(always)]
+fn string_end(b: &[u8], mut i: usize) -> R<usize> {
+    loop {
+        while let Some(chunk) = b.get(i..i + 8) {
+            let hit = stops(u64::from_le_bytes(chunk.try_into().expect("eight bytes")));
+            if hit != 0 {
+                i += (hit.trailing_zeros() / 8) as usize;
+                break;
+            }
+            i += 8;
+        }
+        match b.get(i) {
+            Some(b'"') => return Ok(i + 1),
+            Some(b'\\') => match b.get(i + 1) {
+                Some(b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't') => i += 2,
+                Some(b'u') if b.get(i + 2..i + 6).is_some_and(|h| h.iter().all(u8::is_ascii_hexdigit)) => i += 6,
+                _ => return Err(Fallback),
+            },
+            Some(0..0x20) | None => return Err(Fallback),
+            Some(_) => i += 1,
+        }
+    }
+}
+
+/// The end of the number at `i`, its grammar checked.
+#[inline(always)]
+fn number_end(b: &[u8], mut i: usize) -> R<usize> {
+    let digit = |i: usize| b.get(i).is_some_and(u8::is_ascii_digit);
+    if b.get(i) == Some(&b'-') {
+        i += 1;
+    }
+    match b.get(i) {
+        Some(b'0') => {
+            i += 1;
+            if digit(i) {
+                return Err(Fallback);
+            }
+        }
+        Some(b'1'..=b'9') => {
+            i += 1;
+            while digit(i) {
+                i += 1;
+            }
+        }
+        _ => return Err(Fallback),
+    }
+    if b.get(i) == Some(&b'.') {
+        i += 1;
+        if !digit(i) {
+            return Err(Fallback);
+        }
+        while digit(i) {
+            i += 1;
+        }
+    }
+    if matches!(b.get(i), Some(b'e' | b'E')) {
+        i += 1;
+        if matches!(b.get(i), Some(b'+' | b'-')) {
+            i += 1;
+        }
+        if !digit(i) {
+            return Err(Fallback);
+        }
+        while digit(i) {
+            i += 1;
+        }
+    }
+    Ok(i)
 }
 
 /// Nesting the reader follows before it gives up (serde_json's limit is 128).
@@ -90,9 +175,7 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     fn ws(&mut self) {
-        while matches!(self.peek(), b' ' | b'\n' | b'\r' | b'\t') {
-            self.i += 1;
-        }
+        self.i = ws(self.b, self.i);
     }
 
     #[inline(always)]
@@ -173,7 +256,7 @@ impl<'a> Reader<'a> {
     }
 
     /// A key and its colon, as written. An escaped key gives up (serde_json decodes it first).
-    #[inline]
+    #[inline(always)]
     pub fn key(&mut self) -> R<&'a [u8]> {
         self.eat(b'"')?;
         let start = self.i;
@@ -300,49 +383,12 @@ impl<'a> Reader<'a> {
 
     /// A number at the position (whitespace already skipped), its grammar checked; returns its
     /// text.
+    #[inline]
     fn number(&mut self) -> R<&'a str> {
-        let b = self.b;
         let start = self.i;
-        let mut i = start;
-        let digits = |i: &mut usize| {
-            let from = *i;
-            while b.get(*i).is_some_and(u8::is_ascii_digit) {
-                *i += 1;
-            }
-            *i > from
-        };
-        if b.get(i) == Some(&b'-') {
-            i += 1;
-        }
-        match b.get(i) {
-            Some(b'0') => {
-                i += 1;
-                if b.get(i).is_some_and(u8::is_ascii_digit) {
-                    return Err(Fallback);
-                }
-            }
-            Some(b'1'..=b'9') => {
-                digits(&mut i);
-            }
-            _ => return Err(Fallback),
-        }
-        if b.get(i) == Some(&b'.') {
-            i += 1;
-            if !digits(&mut i) {
-                return Err(Fallback);
-            }
-        }
-        if matches!(b.get(i), Some(b'e' | b'E')) {
-            i += 1;
-            if matches!(b.get(i), Some(b'+' | b'-')) {
-                i += 1;
-            }
-            if !digits(&mut i) {
-                return Err(Fallback);
-            }
-        }
-        self.i = i;
-        Ok(&self.s[start..i])
+        let end = number_end(self.b, start)?;
+        self.i = end;
+        Ok(&self.s[start..end])
     }
 
     /// An integer literal, the way serde_json reads one into an integer type: `-0` is a float to
@@ -373,9 +419,30 @@ impl<'a> Reader<'a> {
         self.word(b"null").is_ok()
     }
 
-    /// Skips any value, validating it as serde_json does when it ignores one: one loop over the
-    /// text with the open containers as bits (1 = object), no recursion and nothing decoded.
+    /// Skips any value, validating it as serde_json does when it ignores one. Most skipped values
+    /// are scalars, read here; an array or an object goes to [`Reader::skip_nested`].
+    #[inline(always)]
     pub fn skip(&mut self) -> R<()> {
+        let b = self.b;
+        let i = ws(b, self.i);
+        self.i = match b.get(i) {
+            Some(b'"') => string_end(b, i + 1)?,
+            Some(b'{' | b'[') => {
+                self.i = i;
+                return self.skip_nested();
+            }
+            Some(b't') if b.get(i..i + 4) == Some(b"true") => i + 4,
+            Some(b'f') if b.get(i..i + 5) == Some(b"false") => i + 5,
+            Some(b'n') if b.get(i..i + 4) == Some(b"null") => i + 4,
+            _ => number_end(b, i)?,
+        };
+        Ok(())
+    }
+
+    /// Skips an array or an object: one loop over the text with the open containers as bits
+    /// (1 = object), no recursion and nothing decoded.
+    #[inline(never)]
+    fn skip_nested(&mut self) -> R<()> {
         let b = self.b;
         let mut i = self.i;
         let mut stack: u128 = 0;
@@ -383,41 +450,13 @@ impl<'a> Reader<'a> {
         let mut depth = start_depth;
         macro_rules! ws {
             () => {
-                while let Some(&c) = b.get(i) {
-                    if c > b' ' || !matches!(c, b' ' | b'\n' | b'\r' | b'\t') {
-                        break;
-                    }
-                    i += 1;
-                }
+                i = ws(b, i);
             };
         }
         // After a string's opening quote.
         macro_rules! string {
             () => {
-                loop {
-                    while let Some(chunk) = b.get(i..i + 8) {
-                        let hit = stops(u64::from_le_bytes(chunk.try_into().expect("eight bytes")));
-                        if hit != 0 {
-                            i += (hit.trailing_zeros() / 8) as usize;
-                            break;
-                        }
-                        i += 8;
-                    }
-                    match b.get(i) {
-                        Some(b'"') => {
-                            i += 1;
-                            break;
-                        }
-                        // serde_json checks only an ignored escape's hex digits, not what they mean.
-                        Some(b'\\') => match b.get(i + 1) {
-                            Some(b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't') => i += 2,
-                            Some(b'u') if b.get(i + 2..i + 6).is_some_and(|h| h.iter().all(u8::is_ascii_hexdigit)) => i += 6,
-                            _ => return Err(Fallback),
-                        },
-                        Some(0..0x20) | None => return Err(Fallback),
-                        Some(_) => i += 1,
-                    }
-                }
+                i = string_end(b, i)?;
             };
         }
         macro_rules! key {
@@ -465,11 +504,7 @@ impl<'a> Reader<'a> {
                 Some(b't') if b.get(i..i + 4) == Some(b"true") => i += 4,
                 Some(b'f') if b.get(i..i + 5) == Some(b"false") => i += 5,
                 Some(b'n') if b.get(i..i + 4) == Some(b"null") => i += 4,
-                _ => {
-                    self.i = i;
-                    self.number()?;
-                    i = self.i;
-                }
+                _ => i = number_end(b, i)?,
             }
             // After a value: close containers, or go on to the next member or item.
             loop {
@@ -970,7 +1005,9 @@ mod tests {
     /// the same error as serde_json, and the reader never takes text serde_json rejects.
     #[test]
     fn broken_text_gets_serde_json_s_answer() {
-        let text = LINE.replace("\"unknown\"", "\"tags\":[\"t\"],\"unknown\"");
+        // Undeclared scalars too: they are skipped on their own path, not the nested one.
+        let text =
+            LINE.replace("\"unknown\"", "\"tags\":[\"t\"],\"s\":\"a\\\"b\",\"n\":-1.5e3,\"t\":true,\"z\":null,\"unknown\"");
         let bytes = text.as_bytes();
         let (mut taken, mut cases) = (0, 0);
         for at in 0..bytes.len() {
