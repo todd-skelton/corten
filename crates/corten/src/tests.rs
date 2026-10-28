@@ -2469,7 +2469,7 @@ async fn a_step_before_http_is_counted_and_timed_as_the_connection() {
     let mut rest = Vec::new();
     let closed = tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut rest)).await;
     assert!(closed.is_ok(), "a connection with no head after its step is closed");
-    assert!(started.elapsed() < Duration::from_millis(480), "at the header timeout from the accept: {:?}", started.elapsed());
+    assert!(started.elapsed() < Duration::from_millis(420), "at the header timeout from the accept: {:?}", started.elapsed());
 
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
