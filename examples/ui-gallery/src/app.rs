@@ -112,7 +112,7 @@ async fn save(req: Req) -> HtmlResult {
             Gallery { tab: 0, result: "", toast: Some(SAVED), rename: RenameDialog { name: "", errors: &Errors::new() } },
         )
     };
-    req.patch_or(Toast { message: Some(&SAVED) }, page).await
+    req.patch_or(Toast { message: Some(SAVED) }, page).await
 }
 
 #[derive(Deserialize, Fields)]

@@ -53,7 +53,7 @@
 //! use corten::prelude::*;
 //! use corten_ui::MenuItem;
 //!
-//! let item = MenuItem { label: &"Orders", link: &"/orders", post: false };
+//! let item = MenuItem { label: "Orders", link: &"/orders", post: false };
 //! ```
 //!
 //! **Dialogs the server draws open.** A form in a `<dialog>` that the server refuses comes back
