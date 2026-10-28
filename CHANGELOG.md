@@ -1164,6 +1164,15 @@ Corten is pre-1.0, so any minor version may change the API.
     A seller keeps a few copies of a dear card and many of a common, and restocks to that.
     Names are cards' names (no `#1`, `#2`), and the sets are card-market's three
     ([#224 seller-desk and card-market give the same card different prices](https://github.com/todd-skelton/corten/issues/224)).
+69. card-market shows card art: a generated SVG for each card of its demo catalog in
+    `static/cards/`, served at a versioned URL every cache keeps (and the PWA's worker with
+    them). The home and category grids show it sized (`width`, `height`) and loaded near the
+    screen (`loading="lazy"`, `alt=""` since the link names the card); the item page shows it
+    first, not deferred, with its text. It stands in only where the item API sends no pictures,
+    so the benchmark's item page and the item JSON are unchanged. Measured with the demo
+    catalog: Ashen Drake's page is 125 bytes larger (43 with brotli) plus its 377-byte picture
+    (brotli); the home page is 1,431 bytes larger (99 with brotli) plus the pictures that load.
+    ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

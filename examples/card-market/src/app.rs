@@ -271,11 +271,11 @@ fn shared(page: corten::Result<HtmlResponse<ForAll>>) -> Public<HtmlResult> {
 }
 
 pub(crate) async fn home(req: Req, State(source): State<Source>) -> Public<HtmlResult> {
-    let t: Msg = req.t();
+    let (t, req): (Msg, &Req) = (req.t(), &req);
     shared(req.page(html! {
-        <Layout req={&req} title={t.home_title()} head="">
+        <Layout req={req} title={t.home_title()} head="">
             <h1>{t.home_title()}</h1>
-            <ItemList t={t} shelf={source.shelf()} />
+            <ItemList req={req} t={t} shelf={source.shelf()} />
         </Layout>
     }))
 }
@@ -324,7 +324,8 @@ pub(crate) async fn category(req: Req, State(source): State<Source>, Path(slug):
     let crumbs = Breadcrumbs::new([(t.home_title().to_string(), routes::Home.to_string()), (title.clone(), here)]);
     let head = JsonLd { value: &crumbs };
     let (title, items) = (title.as_str(), items.as_slice());
-    let page = req.page(html! { <Layout req={&req} title={title} head={head}>{views::category(t, title, items)}</Layout> });
+    let req = &req;
+    let page = req.page(html! { <Layout req={req} title={title} head={head}>{views::category(req, t, title, items)}</Layout> });
     shared(page).shared(Duration::from_secs(3600))
 }
 
@@ -877,6 +878,14 @@ mod tests {
         let home = body(get("/").await.unwrap()).await;
         assert!(home.contains("<strong>Ashen Drake</strong>") && home.contains("From $42.50"), "{home}");
         assert!(home.find(r#"href="/items/item_2""#).unwrap() < home.find(r#"href="/items/item_10""#).unwrap(), "in id order");
+        assert!(
+            home.contains(r#"/cards/item_1.svg" width="250" height="350" alt="" loading="lazy">"#),
+            "each card shows its art, sized and loaded near the screen: {home}"
+        );
+        let item = body(get("/items/item_1").await.unwrap()).await;
+        assert!(item.contains(r#"/cards/item_1.svg" width="220" height="308" alt="Ashen Drake image 1">"#), "{item}");
+        let json = body(get("/api/items/item_1").await.unwrap()).await;
+        assert!(!json.contains(r#""art""#) && !json.contains("cards/"), "the JSON is the API's, without the store's art: {json}");
         let category = body(get("/categories/tidebreak").await.unwrap()).await;
         assert!(category.contains("<h1>Tidebreak</h1>") && category.contains("Salt Oracle"), "{category}");
         assert!(!category.contains("Ashen Drake"), "only the category's cards");
