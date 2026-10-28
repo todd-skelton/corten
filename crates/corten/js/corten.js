@@ -1269,18 +1269,34 @@ let loaded = document.readyState === "complete";
 if (!loaded) addEventListener("load", () => (loaded = true), { once: true });
 
 /**
- * Whether a navigation is a form sent by POST, which the browser sends itself. The submit
- * button's `formmethod` decides, else its form's `method`, as without this runtime. Chromium
- * names the button as the source but sets `formData` from the form's own method, so a POST
- * button in a GET form has none (#190); Firefox names the form, and its `formData` follows the
- * button.
+ * How, where and in what encoding `form` goes when `submitter` sends it, read as the browser
+ * reads them: the button's `formmethod`, `formaction` and `formenctype` when it has them (an
+ * invalid method is "get", an empty action the document's address), else the form's. Lowercase
+ * method, absolute action. `target` is not read: a `data-patch` answer patches this page.
+ * @param {HTMLFormElement} form
+ * @param {Element | null | undefined} submitter
+ */
+function sendsAs(form, submitter) {
+  const button = submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement ? submitter : null;
+  return {
+    method: button?.hasAttribute("formmethod") ? button.formMethod : formProperty(form, "method"),
+    action: button?.hasAttribute("formaction") ? button.formAction : formProperty(form, "action"),
+    enctype: button?.hasAttribute("formenctype") ? button.formEnctype : formProperty(form, "enctype"),
+  };
+}
+
+/**
+ * Whether a navigation is a form sent by POST, which the browser sends itself. Chromium names
+ * the submit button as the source but sets `formData` from the form's own method, so a POST
+ * button in a GET form has none (#190); Firefox names the form there, and its `formData`
+ * follows the button.
  * @param {any} event
  */
 function posts(event) {
   const button = event.sourceElement;
   const form = button?.form;
   if (!(form instanceof HTMLFormElement) || !(button instanceof HTMLButtonElement || button instanceof HTMLInputElement)) return !!event.formData;
-  return (button.formMethod || formProperty(form, "method")) === "post";
+  return sendsAs(form, button).method === "post";
 }
 
 navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
@@ -1387,11 +1403,14 @@ const submits = new Map();
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement) || !formCall(form, "hasAttribute", "data-patch")) return;
-  event.preventDefault();
   const submitter = /** @type {SubmitEvent} */ (event).submitter;
+  const sends = sendsAs(form, submitter);
+  // A dialog's form closes the dialog and sends nothing: the browser's to do.
+  if (sends.method === "dialog") return;
+  event.preventDefault();
   const data = new FormData(form, submitter);
-  const method = (submitter?.getAttribute("formmethod") || formProperty(form, "method")).toUpperCase();
-  const url = new URL(submitter?.getAttribute("formaction") || formProperty(form, "action"), location.href);
+  const method = sends.method.toUpperCase();
+  const url = new URL(sends.action);
   const fields = new URLSearchParams(/** @type {any} */ (data));
   const sent = sentState(form);
   const key = `${method} ${url.href} ${fields}`;
@@ -1404,7 +1423,7 @@ document.addEventListener("submit", async (event) => {
   /** @type {RequestInit} */
   const init = { method, headers: { corten: "action" }, signal };
   if (method === "GET") url.search = fields.toString();
-  else init.body = formProperty(form, "enctype") === "multipart/form-data" ? data : fields;
+  else init.body = sends.enctype === "multipart/form-data" ? data : fields;
   formCall(form, "setAttribute", "aria-busy", "true");
   // A write can change any page, so nothing fetched before it is reused.
   if (method !== "GET") {
