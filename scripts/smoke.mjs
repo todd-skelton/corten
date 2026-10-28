@@ -1116,6 +1116,77 @@ async function run(browser) {
     /** @type {string[]} */
     const reads = [];
     const onSaved = (/** @type {import("@playwright/test").Request} */ r) => r.url().includes("/alerts") && reads.push(r.url());
+
+    // The alerts page asks for its status line and list to be read again (ReadAgain::from in the
+    // page): with JavaScript only they are read, from their route as a patch, however the page was
+    // reached, and the form beside them stays as the user has it. Its head's ReadAgain is for a
+    // browser without JavaScript.
+    {
+      /** @type {string[]} */
+      const parts = [];
+      /** @type {string[]} */
+      const whole = [];
+      const onPart = (/** @type {import("@playwright/test").Request} */ r) => {
+        if (r.method() !== "GET" || !r.url().includes("/alerts?saved=")) return;
+        (r.headers()["corten"] === "action" ? parts : whole).push(r.url());
+      };
+      const url = await pending();
+      await page.goto(url);
+      page.on("request", onPart);
+      const waiting = await saved();
+      await page.fill("input[name=above]", "123.45");
+      await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 8));
+      const entries = await page.evaluate(() => history.length);
+      await savedSoon();
+      check(
+        "a page's part waiting for a write is read again after a full load, not the page",
+        waiting === "Saving..." && (await saved()) === "Saved." && parts.length > 0 && whole.length === 0 && page.url() === url,
+        `${waiting} -> ${await saved()} after ${parts.length} part and ${whole.length} page reads`,
+      );
+      const kept = await page.evaluate(() => ({
+        marker: (/** @type {any} */ (window)).__marker,
+        entries: history.length,
+        above: /** @type {HTMLInputElement | null} */ (document.querySelector("input[name=above]"))?.value,
+      }));
+      check("reading a page's part keeps the document, its history entry and the form", kept.marker === 8 && kept.entries === entries && kept.above === "123.45", JSON.stringify(kept));
+      const settled = parts.length;
+      await page.waitForTimeout(2200);
+      check("a page's part stops once its patch no longer asks", parts.length === settled, `${parts.length - settled} more reads`);
+      if (swaps) {
+        const from = parts.length;
+        await go(await pending());
+        await savedSoon();
+        check(
+          "a page's part reached by the runtime's navigation is read again, not the page",
+          (await saved()) === "Saved." && parts.length > from && whole.length === 1,
+          `${await saved()} after ${parts.length - from} part reads, ${whole.length} page loads (the navigation's)`,
+        );
+        // Away before the read: the runtime's navigation leaves the page, and its part is not read.
+        await go(await pending());
+        const left = parts.length;
+        await page.click('header a[href="/news"]');
+        await page.waitForFunction(() => document.title === "News | Watchlist");
+        await page.waitForTimeout(2200);
+        check("navigating away stops a page's part reads", parts.length === left, `${parts.length - left} more reads`);
+      } else {
+        for (const name of ["a page's part reached by the runtime's navigation is read again, not the page", "navigating away stops a page's part reads"]) skip(name, noSwaps);
+      }
+      page.off("request", onPart);
+    }
+
+    // The rest reads the page whole: the page as one that asks only that (its head's ReadAgain,
+    // without the part's tag). Fetched uncompressed: Playwright does not decode zstd, which
+    // Firefox asks for.
+    const wholeOnly = async (/** @type {import("@playwright/test").Route} */ route) => {
+      if (route.request().headers()["corten"] === "action") return route.fallback();
+      const res = await route.fetch({ headers: { ...route.request().headers(), "accept-encoding": "identity" } });
+      const headers = res.headers();
+      delete headers["content-encoding"];
+      delete headers["content-length"];
+      const body = (await res.text()).replace(/<template data-corten-read-again[^>]*><\/template>/g, "");
+      await route.fulfill({ status: res.status(), headers, body });
+    };
+    await page.route("**/alerts?saved=*", wholeOnly);
     page.on("request", onSaved);
     await page.goto(await pending());
     const waiting = await saved();
@@ -1164,6 +1235,7 @@ async function run(browser) {
       for (const name of ["a page reached by the runtime's navigation reads itself again in place", "each read replaces the history entry", "navigating away stops the reads"]) skip(name, noSwaps);
     }
     page.off("request", onSaved);
+    await page.unroute("**/alerts?saved=*", wholeOnly);
 
     // A data-patch write answered in place while its read catches up (ReadAgain::from): the
     // status line is patched, then read again from its route (`corten: action`) until the write
@@ -1353,12 +1425,12 @@ async function run(browser) {
   const json = await (await fetch(base, { headers: { accept: "application/json" } })).json();
   check("same URL as JSON for data clients", json.title === "Stocks | Watchlist" && json.data.stocks.length === 3, JSON.stringify(json.data.stocks.map((/** @type {{ id: string }} */ s) => s.id)));
 
-  // A WebSocket (GET /echo): the page's own origin opens it and is answered. Another site's page
-  // cannot, though the browser would send the user's cookies with its handshake.
+  // A WebSocket (GET /quotes): the page's own origin opens it, names a stock and is sent its row.
+  // Another site's page cannot, though the browser would send the user's cookies with its handshake.
   const talk = (/** @type {string} */ url) =>
     new Promise((resolve) => {
       const socket = new WebSocket(url);
-      socket.onopen = () => socket.send("hi");
+      socket.onopen = () => socket.send("ACME");
       socket.onmessage = (e) => {
         resolve(e.data);
         socket.close();
@@ -1366,13 +1438,13 @@ async function run(browser) {
       socket.onerror = () => resolve("refused");
       setTimeout(() => resolve("no answer"), 4000);
     });
-  const echoUrl = `${base.replace(/^http/, "ws")}/echo`;
-  const echoed = await page.evaluate(talk, echoUrl);
-  check("a WebSocket from the page's own origin is answered", echoed === "HI", String(echoed));
+  const quotesUrl = `${base.replace(/^http/, "ws")}/quotes`;
+  const quoted = String(await page.evaluate(talk, quotesUrl));
+  check("a WebSocket from the page's own origin is sent the stock it names", quoted.startsWith("{") && JSON.parse(quoted).id === "ACME", quoted);
   const elsewhere = await browser.newPage();
   await elsewhere.route("http://other.test/", (route) => route.fulfill({ contentType: "text/html", body: "<title>Other</title>" }));
   await elsewhere.goto("http://other.test/");
-  const crossed = await elsewhere.evaluate(talk, echoUrl);
+  const crossed = await elsewhere.evaluate(talk, quotesUrl);
   check("another site's page cannot open it", crossed === "refused", String(crossed));
   await elsewhere.close();
 

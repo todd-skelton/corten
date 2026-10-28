@@ -7,7 +7,7 @@ your routes. Each default can be replaced in one line.
 
 | Concern | Default | Override |
 |---|---|---|
-| Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment; `corten::serve_on(listeners, app)` for listeners of your own (HTTPS, a Unix socket) with the same shutdown ([below](#your-own-listeners)) |
+| Address | `HOST` (both loopback addresses, `127.0.0.1` and `[::1]`, so `localhost` answers at once however it resolves), `PORT` (`3000`) | environment; `corten::serve_on(listeners, app)` for listeners of your own (a Unix socket) with the same shutdown, `corten::serve_wrapped(listeners, move \|tcp\| acceptor.accept(tcp), app)` for HTTPS ([below](#your-own-listeners)) |
 | Names it answers to | `localhost`, IP addresses; any other `Host` gets `421` ([below](#host-names)) | `HOSTS=shop.example,.shop.example` in the environment, or `Policy::host("shop.example")` |
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
@@ -37,7 +37,7 @@ your routes. Each default can be replaced in one line.
 `App::header_timeout` (30 seconds unless set) bounds what comes before a request: a client that
 opens connections and sends its head slowly, or never finishes it, cannot hold them (an idle
 keep-alive connection closes after it too). A clock of the server's own checks it a few times a
-second, so a connection closes within a tenth of the timeout of it (at most a second either way). It applies to `serve` and `serve_on` alike, on
+second, so a connection closes within a tenth of the timeout of it (at most a second either way). It applies to `serve`, `serve_on` and `serve_wrapped` alike (where a TLS handshake's time counts toward it), on
 every listener. `App::max_connections(n)` caps how many are open across them.
 `App::deadline` (30 seconds unless set) bounds how long a handler may take to start its answer;
 an area or an API with slower routes sets its own (`Area::deadline`, `Api::deadline`), so the
@@ -174,59 +174,27 @@ stop sending first waits before it sends `SIGTERM` (a Kubernetes `preStop` sleep
 `corten::serve(app)` is `corten::serve_on(corten::listeners(3000).await?, app)`: `listeners(3000)`
 binds `HOST`:`PORT` (both loopback addresses without `HOST`, port 3000 without `PORT`), and `serve_on` serves the app on anything
 that implements axum's `axum::serve::Listener`, with `serve`'s shutdown across all of them
-(tasks told, live streams ended, every listener closed and drained, tasks waited for). HTTPS, a
-Unix socket, or a socket a supervisor hands over is a listener of the app's own; TLS stays the
-app's choice of library. With `tokio-rustls`, around the same loopback pair:
+(tasks told, live streams ended, every listener closed and drained, tasks waited for). A Unix
+socket, or a socket a supervisor hands over, is a listener of the app's own.
+
+HTTPS is a step on each connection before HTTP, which `corten::serve_wrapped` takes: the TLS
+handshake. TLS stays the app's choice of library, and so does its configuration. With
+`tokio-rustls`, around the same loopback pair:
 
 ```rust,ignore
-use std::{net::SocketAddr, sync::Arc, time::Duration};
-use tokio::{net::{TcpListener, TcpStream}, sync::mpsc};
-use tokio_rustls::{server::TlsStream, TlsAcceptor};
-
-/// Connections whose handshake is done. Each handshake runs on its own, so a slow client cannot
-/// hold up the next connection (`accept` is called one connection at a time).
-struct Tls(mpsc::Receiver<(TlsStream<TcpStream>, SocketAddr)>, SocketAddr);
-
-impl corten::axum::serve::Listener for Tls {
-    type Io = TlsStream<TcpStream>;
-    type Addr = SocketAddr;
-    async fn accept(&mut self) -> (Self::Io, SocketAddr) {
-        match self.0.recv().await {
-            Some(accepted) => accepted,
-            None => std::future::pending().await,
-        }
-    }
-    fn local_addr(&self) -> std::io::Result<SocketAddr> {
-        Ok(self.1)
-    }
-}
-
-fn tls(tcp: TcpListener, acceptor: TlsAcceptor) -> std::io::Result<Tls> {
-    let (addr, (tx, rx)) = (tcp.local_addr()?, mpsc::channel(64));
-    tokio::spawn(async move {
-        // Ends when the server drops its side at shutdown.
-        while !tx.is_closed() {
-            let Ok((socket, peer)) = tcp.accept().await else {
-                // Out of file descriptors, say: wait rather than spin.
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                continue;
-            };
-            let (acceptor, tx) = (acceptor.clone(), tx.clone());
-            tokio::spawn(async move {
-                let handshake = tokio::time::timeout(Duration::from_secs(10), acceptor.accept(socket));
-                if let Ok(Ok(stream)) = handshake.await {
-                    let _ = tx.send((stream, peer)).await;
-                }
-            });
-        }
-    });
-    Ok(Tls(rx, addr))
-}
-
-let acceptor = TlsAcceptor::from(Arc::new(server_config)); // the app's rustls ServerConfig
-let listeners = corten::listeners(3000).await?.into_iter().map(|l| tls(l, acceptor.clone())).collect::<Result<_, _>>()?;
-corten::serve_on(listeners, app).await
+let mut config = server_config; // the app's rustls ServerConfig, from its certificate and key
+config.alpn_protocols = vec![b"http/1.1".to_vec()]; // what Corten speaks
+let acceptor = tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(config));
+corten::serve_wrapped(corten::listeners(3000).await?, move |tcp| acceptor.accept(tcp), app).await
 ```
+
+The step is held to what a connection is. It runs in the connection's own task, so a client
+that stalls in its handshake holds up no other; it counts against `App::max_connections` from
+before the TCP accept; and `App::header_timeout` runs from the accept, so a client that never
+sends its ClientHello, or never sends a request after the handshake, is closed at the same time.
+A step that fails closes the connection, and shutdown ends the steps in progress. A listener of
+the app's own that ran the handshake before `serve_on` saw the connection would have it outside
+both limits.
 
 An app behind a proxy that ends TLS needs none of this: `serve` is plain HTTP for the proxy.
 An app whose own default port is not 3000 (another service has it on that machine) passes its
@@ -588,18 +556,27 @@ goes through the host check and the app's middleware.
 A WebSocket's handler takes `corten::upgrade::Upgrade` and returns what `upgrade.websocket(run)`
 gives: the 101 with its `Sec-WebSocket-Accept`, and `run(stream, signal)` on the connection once
 it has switched. Corten reads the handshake and hands over the bytes; the frames are a WebSocket
-library's (`examples/watchlist`'s `/echo` uses tokio-tungstenite):
+library's (`examples/watchlist`'s `/quotes` uses tokio-tungstenite):
 
 ```rust,ignore
-async fn echo(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Switch> {
+async fn quotes(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Switch> {
     upgrade.websocket(move |stream, signal| async move {
         let mut socket = WebSocketStream::from_raw_socket(stream, Role::Server, Some(config)).await;
         loop {
             let message = tokio::select! {
                 message = socket.next() => message,
-                _ = signal.aborted() => break, // shutting down
+                _ = signal.aborted() => {
+                    let _ = socket.close(None).await; // shutting down: say goodbye
+                    break;
+                }
             };
-            // .. answer it; check the viewer again here if a revoked key must end the socket
+            match message {
+                // The library queued the answer to a client's close; a flush sends it.
+                Some(Ok(Message::Close(_))) => { let _ = socket.flush().await; break; }
+                Some(Err(_)) | None => break,
+                // .. answer it; check the viewer again here if a revoked key must end the socket
+                Some(Ok(_message)) => {}
+            }
         }
     })
 }

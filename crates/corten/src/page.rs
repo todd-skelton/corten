@@ -1335,7 +1335,9 @@ impl Render for Corten {
 /// Not the `Refresh` header: browsers keep a full load's header after the runtime has navigated
 /// away, and then load that first URL again. Debug builds answer 500 to a page that sends one.
 ///
-/// A `data-patch` form's answer asks the same with [`ReadAgain::from`].
+/// A `data-patch` form's answer asks the same with [`ReadAgain::from`], and so does a page that
+/// should have only some of its parts read again; with JavaScript, a page that does is not read
+/// whole, so its head's `ReadAgain` is then for a browser without it.
 #[derive(Clone, Copy, Debug)]
 pub struct ReadAgain {
     /// How long until the page is read again.
@@ -1359,6 +1361,11 @@ impl ReadAgain {
     /// user typed, opened and focused as any patch does, and stops once an element the patch put
     /// on the page is replaced (a later patch, a navigation away) or the read fails. Without
     /// JavaScript a form gets a page, never a patch, so the page's own [`ReadAgain`] applies.
+    ///
+    /// In a page's markup (the first load or a navigation) it starts the same read once the page
+    /// is on the screen, beside the parts it reads: it stops when the page is left or an element
+    /// with an id beside it is replaced. With JavaScript, the page's own [`ReadAgain`] then does
+    /// not read the page whole; it stays for a browser without JavaScript.
     ///
     /// ```
     /// use std::time::Duration;
@@ -1411,7 +1418,7 @@ impl Render for ReadAgain {
     }
 }
 
-/// A patch's request to be read again from a route, made by [`ReadAgain::from`]:
+/// A patch's or a page's request to be read again from a route, made by [`ReadAgain::from`]:
 /// `<template data-corten-read-again="2" data-from="/alerts?after=r7">`.
 pub struct ReadAgainFrom<'a, R: ?Sized> {
     again: ReadAgain,

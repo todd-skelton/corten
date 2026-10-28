@@ -450,8 +450,30 @@ patch (the error page: the server has logged it) or offline stops them quietly a
 part as it was; any answer that is a patch is applied whatever its status, so a handler whose
 read failed after the write can say so in place (`req.patch_with_status(StatusCode::BAD_GATEWAY,
 ..)` in `Mode::Action`: "Saved; reload to see it"). Only a success that is not a patch is logged
-in the console: the route answered its page, not the part. `examples/watchlist`'s
-alerts page has both.
+in the console: the route answered its page, not the part.
+
+A page can ask the same of its parts, with the same `ReadAgain::from` among its markup: when the
+whole page would be the wrong thing to read again (a form the user is filling in, a payment
+provider's frame that would lose what was typed), only the parts are. However the page was
+reached, the runtime starts the read once the page is on the screen, as for a patch; it stops
+when the page is left, or an element with an id beside the tag is replaced (a form's answer,
+which brings its own read). Without JavaScript the tag does nothing, so a page that should
+still update then puts `ReadAgain` in its head as well: with JavaScript a page that reads parts
+again is not read whole.
+
+```rust,ignore
+let again = alerts.behind.then_some(ReadAgain { after: Duration::from_secs(2) });
+let parts = again.map(|again| again.from(&from)); // the route answers the list as a patch
+req.page(html! {
+    <Layout req={&req} title="Alerts" head={again}>
+        <AlertForm />
+        <AlertList alerts={&alerts} />
+        {parts}
+    </Layout>
+})
+```
+
+`examples/watchlist`'s alerts page has all three.
 
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
 the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
