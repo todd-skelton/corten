@@ -628,7 +628,15 @@ Corten is pre-1.0, so any minor version may change the API.
 95. `Error::not_found()`: the 404 a handler answers for a record that is not there,
     `load(id).await?.ok_or_else(Error::not_found)?`, in place of
     `.ok_or_else(|| Error::status(StatusCode::NOT_FOUND))?` (or an app's own `fn not_found`).
-96. `tokens!` gives each utility value a function named after its class: `mx_auto()` is `mx-auto`
+96. `HtmlResponse::with_cookie(SetCookie)`: an answer that sets a cookie,
+    `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, in place of
+    `res.headers_mut().append(header::SET_COOKIE, cookie.header())`. The cookie is built by
+    `SetCookie`, so its safe flags are the default.
+97. `Req::patch_or(view, page)`: a `data-patch` form's answer both ways, the patch with JavaScript
+    and `page()` (the page or a redirect) otherwise, in place of
+    `if req.mode == Mode::Action { return req.patch(view); }`. Like `Req::invalid`, the page's
+    closure runs only without JavaScript, so a patch never loads what only the page shows.
+98. `tokens!` gives each utility value a function named after its class: `mx_auto()` is `mx-auto`
     and `gap_3()` is `gap-3`, in place of `mx(Mx::Auto)` and `gap(Space::_3)`. The utility's
     function stays for a value chosen as the page renders and for one per breakpoint. Two that
     would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that

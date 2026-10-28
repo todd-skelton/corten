@@ -779,6 +779,52 @@ impl Req {
         Ok(HtmlResponse(html_response(status, body, Some(PATCH_HEADER))))
     }
 
+    /// Answers a `data-patch` form (a write, Load more) both ways: with JavaScript
+    /// ([`Mode::Action`]) `view` as a patch; otherwise `page()`, the whole page or a redirect, so
+    /// the form works without JavaScript too. `page` only runs then, so an action never loads
+    /// data for a page it does not send. A data client ([`Mode::Data`]) gets `page()` as well. A
+    /// submit refused for its input is [`Req::invalid`]; a patch that needs data, a status or
+    /// headers of its own checks `req.mode == Mode::Action` itself.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home, post = greet)]
+    ///     pub struct Home;
+    /// }
+    ///
+    /// #[derive(Id)]
+    /// struct GreetingId;
+    ///
+    /// #[component]
+    /// fn Greeting<'a>(name: &'a str) -> impl Patch {
+    ///     html! { <p id={GreetingId}>"Hello, "{name}</p> }
+    /// }
+    ///
+    /// # async fn home(req: Req) -> HtmlResult { req.redirect(&url::Home) }
+    /// async fn greet(req: Req) -> HtmlResult {
+    ///     req.patch_or(Greeting { name: "Ada" }, || async { req.redirect(&url::Home) }).await
+    /// }
+    /// # let _ = App::new(url::router()).router();
+    /// ```
+    pub fn patch_or<F, Fut>(&self, view: impl crate::view::Patch, page: F) -> impl Future<Output = HtmlResult>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = HtmlResult>,
+    {
+        // The patch is rendered before the future is made, so the future holds the answer and not
+        // `view`: a view of non-`Send` references would make the handler's future not `Send`.
+        let patch = (self.mode == Mode::Action).then(|| self.patch(view));
+        async move {
+            match patch {
+                Some(patch) => patch,
+                None => page().await,
+            }
+        }
+    }
+
     /// Answers a submit whose input failed validation, with 422 Unprocessable Content:
     ///
     /// - [`Mode::Action`]: `form`, the form re-rendered with the errors, as a patch. The runtime
@@ -1162,8 +1208,8 @@ impl ReadAgain {
     /// In a patch (a `data-patch` form's answer, [`Req::patch`]) whose part shows a read still
     /// catching up with the write: after `after`, the runtime fetches `route` as a GET
     /// `data-patch` form would (`corten: action`) and applies the patch it answers, which asks
-    /// again while it is behind. The route's handler answers [`Req::patch`] in [`Mode::Action`]
-    /// (the page otherwise), and its URL carries what the read waits for (the write's receipt),
+    /// again while it is behind. The route's handler answers with [`Req::patch_or`] (the part,
+    /// or the page without JavaScript), and its URL carries what the read waits for (the write's receipt),
     /// since the page's own address does not.
     ///
     /// The read waits while the tab is hidden or a form's answer is on its way, keeps what the

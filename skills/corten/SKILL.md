@@ -47,7 +47,7 @@ These are what the framework is built around. Code that breaks them fights the f
 | text in more than one language | `messages!` and `req.t()` | [pages-and-routes.md](references/pages-and-routes.md) |
 | to sort, filter, select or total what the page already shows | a handler, with `#[component(view)]` rows when there are many; no request | [scripts.md](references/scripts.md) |
 | a form with a file input | `Upload<T>` with a `Files` field (`next_file`, `bytes_up_to` or `chunk`, then `fields`), `upload.limit(..)` for the body; never `Form` or a raw body | [forms.md](references/forms.md) |
-| a write that updates part of the page | `data-patch` plus `req.patch`, `req.invalid` for errors | [forms.md](references/forms.md) |
+| a write that updates part of the page | `data-patch` plus `req.patch_or(view, page)`, `req.invalid` for errors | [forms.md](references/forms.md) |
 | behavior in the browser | `#[component(js)]`, exported functions in a script next to it | [scripts.md](references/scripts.md) |
 | a child that reports to its parent | a `Handler` prop, or an `#[event]` | [scripts.md](references/scripts.md) |
 | a fragment the server keeps current | `<corten-live src={Route}>` plus `corten::live` | [scripts.md](references/scripts.md) |

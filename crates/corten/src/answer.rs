@@ -94,9 +94,43 @@ pub trait Answer: IntoResponse {
 }
 
 /// A page, a patch or a redirect, as a whole response (status and headers too): what
-/// [`Req::page`], [`Req::patch`] and [`Req::redirect`] give. It derefs to the response, for a
-/// header of the handler's own (`res.headers_mut().append(SET_COOKIE, ..)`).
+/// [`Req::page`], [`Req::patch`] and [`Req::redirect`] give. A cookie is
+/// [`HtmlResponse::with_cookie`]; it derefs to the response for any other header of the
+/// handler's own (`res.headers_mut().insert(..)`).
 pub struct HtmlResponse(pub(crate) Response);
+
+impl HtmlResponse {
+    /// The answer with a `Set-Cookie` header, built by [`SetCookie`](crate::security::cookie::SetCookie)
+    /// so its safe flags are the default: `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`.
+    /// Each call adds one; an answer that sets a cookie is never stored by a shared cache. This is
+    /// the way to set one: never append a `Set-Cookie` header by hand.
+    ///
+    /// ```
+    /// use corten::{prelude::*, security::cookie::SetCookie};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    ///
+    ///     #[route("/sign-out", post = sign_out)]
+    ///     pub struct SignOut;
+    /// }
+    ///
+    /// # async fn home(req: Req) -> HtmlResult {
+    /// #     req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> })
+    /// # }
+    /// async fn sign_out(req: Req) -> HtmlResult {
+    ///     Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::remove("session")))
+    /// }
+    /// # let _ = App::new(url::router()).router();
+    /// ```
+    #[must_use]
+    pub fn with_cookie(mut self, cookie: crate::security::cookie::SetCookie) -> Self {
+        self.0.headers_mut().append(axum::http::header::SET_COOKIE, cookie.header());
+        self
+    }
+}
 
 impl IntoResponse for HtmlResponse {
     fn into_response(self) -> Response {
