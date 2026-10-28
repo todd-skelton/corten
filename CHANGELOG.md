@@ -1292,8 +1292,8 @@ Corten is pre-1.0, so any minor version may change the API.
     submit (`scripts/smoke.mjs`) reports the navigation requests, responses, commits, failed loads
     and errors with their times, and ui-gallery's first page names the engine, the scripts that
     loaded and the failed requests instead of throwing a bare timeout. When either smoke throws
-    (a page whose `load` never comes, as WebKit's first `goto` once did), it lists the requests
-    still loading, oldest first. None of these reproduced locally, so none is fixed yet
+    (a page whose `load` never comes, as WebKit's first `goto` in `scripts/smoke.mjs` once did),
+    it lists the requests its open pages are still loading, oldest first. None of these reproduced locally, so none is fixed yet
     ([#232 WebKit smoke: "a form submitted before the first page loads navigates" fails now and then](https://github.com/todd-skelton/corten/issues/232),
     [#252 ui-gallery smoke: the first page's combo box did not connect within 30 s in Firefox (CI, once)](https://github.com/todd-skelton/corten/issues/252)).
 ### Documentation

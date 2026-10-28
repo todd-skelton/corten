@@ -73,33 +73,42 @@ const liveEvent = (accept) =>
 }
 
 /**
- * Requests a context has sent and not finished, with when each was sent: printed when a run
- * throws (a page that never fires `load`), so the report says which one hangs (#232, #252).
- * @type {Map<import("@playwright/test").Request, number>}
+ * Requests the browser's pages have sent and not finished, with when each was sent: printed when
+ * a run throws (a page that never fires `load`), so the report says which one hangs (#232, #252).
+ * A request leaves when it finishes or fails, or when its page or context closes.
+ * @type {Map<import("@playwright/test").Request, { at: number, context: import("@playwright/test").BrowserContext }>}
  */
 const inflight = new Map();
 /** @param {import("@playwright/test").Browser} browser */
 function track(browser) {
-  /** @param {import("@playwright/test").BrowserContext} context */
-  const watch = (context) => {
-    context.on("request", (r) => inflight.set(r, Date.now()));
+  /** @param {(r: import("@playwright/test").Request, at: { context: import("@playwright/test").BrowserContext }) => boolean} gone */
+  const drop = (gone) => {
+    for (const [r, at] of inflight) if (gone(r, at)) inflight.delete(r);
+  };
+  /** @param {import("@playwright/test").Request} r */
+  const pageOf = (r) => {
+    try {
+      return r.frame().page();
+    } catch {
+      return null; // a service worker's request has no frame
+    }
+  };
+  // `newPage` makes its context through `newContext`, so every context is watched here.
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (...args) => {
+    const context = await newContext(...args);
+    context.on("request", (r) => inflight.set(r, { at: Date.now(), context }));
     context.on("requestfinished", (r) => inflight.delete(r));
     context.on("requestfailed", (r) => inflight.delete(r));
+    context.on("page", (page) => page.on("close", () => drop((r) => pageOf(r) === page)));
+    context.on("close", () => drop((_, at) => at.context === context));
     return context;
-  };
-  const newContext = browser.newContext.bind(browser);
-  browser.newContext = async (...args) => watch(await newContext(...args));
-  const newPage = browser.newPage.bind(browser);
-  browser.newPage = async (...args) => {
-    const page = await newPage(...args);
-    watch(page.context());
-    return page;
   };
 }
 /** What is still loading, oldest first. */
 function pending() {
   const now = Date.now();
-  return [...inflight].sort((a, b) => a[1] - b[1]).map(([r, at]) => `  ${now - at}ms ${r.method()} ${r.url()} (${r.resourceType()})`);
+  return [...inflight].sort((a, b) => a[1].at - b[1].at).map(([r, { at }]) => `  ${now - at}ms ${r.method()} ${r.url()} (${r.resourceType()})`);
 }
 
 for (engine of names) {
