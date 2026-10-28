@@ -10,7 +10,9 @@ use corten::{axum::http::Uri, i18n::DateStyle, prelude::*, route::Elsewhere, vie
 use serde::Deserialize;
 
 use crate::{
-    app::{Layout, Msg, Shared, Viewer},
+    account::Viewer,
+    app::{Msg, Shared},
+    layout::Layout,
     lists::Watching,
     theme::*,
 };
@@ -456,4 +458,128 @@ async fn subscribe(
 async fn read(req: Req, Path(id): Path<String>) -> HtmlResult {
     let story = STORIES.iter().find(|s| s.id == id).ok_or_else(corten::Error::not_found)?;
     req.redirect(&Elsewhere::at(&Uri::from_static(story.url), story.place))
+}
+
+#[cfg(test)]
+mod tests {
+    use corten::axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+
+    use super::*;
+    use crate::testing::{LIST, call, call_on, get, get_with, post, post_with, router, send, text};
+
+    #[tokio::test]
+    async fn only_the_news_pages_link_their_area_stylesheet() {
+        let links = |body: &str| body.matches("data-corten-style").count();
+        let (_, home) = send(get("/")).await;
+        assert_eq!(links(&home), 0, "{home}");
+        let (_, news) = send(get("/news")).await;
+        assert!(news.contains(r#"/sections/news.css" data-corten-style>"#), "{news}");
+        assert!(news.contains(r#"<p class="disclaimer__note">"#), "{news}");
+    }
+
+    /// The headlines of the stories a page or patch shows, in order.
+    fn headlines(body: &str) -> Vec<&str> {
+        body.split(r#"/read">"#).skip(1).map(|s| &s[..s.find('<').unwrap()]).collect()
+    }
+
+    #[tokio::test]
+    async fn load_more_sends_only_the_next_stories() {
+        let more =
+            Request::get("/news?sector=energy&sector=technology&shown=3").header("corten", "action").body(Body::empty()).unwrap();
+        let (_, patch) = send(more).await;
+        assert!(patch.starts_with(r#"<template id="stories" data-append><li class="#), "{patch}");
+        // Five stories are about energy or technology: the page had three, these are the last two.
+        assert_eq!(
+            headlines(&patch),
+            [
+                "Sunreach Solar cuts panel prices for the second time this year",
+                "Globex holds its dividend despite lower gas prices"
+            ]
+        );
+        assert!(
+            patch.ends_with(concat!(
+                r#"<form id="load-more" method="get" action="/news" data-patch><input type="hidden" name="sector" value="energy">"#,
+                r#"<input type="hidden" name="sector" value="technology"><input type="hidden" name="shown" value="5">"#,
+                r#"<button class="bg-surface fg-accent w-full" hidden>Load more stories</button></form>"#
+            )),
+            "the button for what is left, with the filter: {patch}"
+        );
+        // Without JavaScript the same form loads the page with every story so far.
+        let (_, page) = send(get("/news?shown=3")).await;
+        assert_eq!(headlines(&page).len(), 6, "{page}");
+    }
+
+    #[tokio::test]
+    async fn a_sector_link_writes_the_parameters_the_page_reads() {
+        let link = url::News { filter: NewsQuery { sector: vec![Sector::Energy, Sector::Health], ..NewsQuery::default() } };
+        assert_eq!(link.href(), "/news?sector=energy&sector=health");
+        let (_, page) = send(get(&link.href())).await;
+        assert_eq!(headlines(&page).len(), 3, "the first page of the four energy and health stories: {page}");
+        assert!(page.contains(r#"<input type="checkbox" name="sector" value="energy" checked>"#), "{page}");
+        assert!(page.contains(r#"<details open><summary>Sectors</summary>"#), "a group with a box checked is drawn open: {page}");
+        assert!(page.contains(r#"<a href="/news?sector=energy">Energy</a>"#), "a story's sector links to its stories: {page}");
+        let mine = url::News { filter: NewsQuery { mine: Some(true), shown: Some(3), ..NewsQuery::default() } };
+        assert_eq!(mine.href(), "/news?mine=true&shown=3");
+        assert_eq!(url::News::default().href(), "/news");
+    }
+
+    #[tokio::test]
+    async fn the_watchlist_filter_shows_stories_about_the_stocks_watched() {
+        let app = router();
+        call_on(&app, post_with("/unwatch", Some("action"), None, Some(LIST), "remove=ACME")).await;
+        // The checkbox sends `on`; a link writes `true`.
+        for uri in ["/news?mine=on", "/news?mine=true"] {
+            let page = text(call_on(&app, get_with(uri, LIST)).await).await;
+            assert!(page.contains(r#"<h2 id="stories-title">Stories about your stocks</h2>"#), "{page}");
+            assert_eq!(
+                headlines(&page),
+                [
+                    "Globex wins approval for its northern pipeline",
+                    "Initech moves its reporting software to subscriptions",
+                    "Globex holds its dividend despite lower gas prices"
+                ],
+                "{uri}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_story_link_goes_to_its_place_on_the_publishers_page() {
+        let res = call(get("/news/acme-outlook/read")).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res.headers()["location"], "https://news.example.com/markets/acme-outlook#guidance");
+        assert_eq!(call(get("/news/nope/read")).await.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn subscribing_goes_back_to_the_form_which_says_so() {
+        let res = call(post("/news/briefing", None, None, "email=ada%40example.com")).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res.headers()["location"], "/news?subscribed=true#briefing");
+        let (_, page) = send(get("/news?subscribed=true")).await;
+        assert!(page.contains("You&#39;re on the list for the morning briefing."), "{page}");
+    }
+
+    #[tokio::test]
+    async fn an_address_the_server_refuses_is_answered_next_to_the_field() {
+        let res = call(post("/news/briefing", Some("action"), None, "email=nobody")).await;
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let patch = text(res).await;
+        assert!(patch.starts_with(r#"<form id="briefing""#), "{patch}");
+        assert!(
+            patch.contains(
+                r#"value="nobody" required autocomplete="email" aria-invalid="true" aria-describedby="briefing-email-error">"#
+            ),
+            "{patch}"
+        );
+        assert!(patch.contains("Enter an email address, such as ada@example.com."), "{patch}");
+        // Without JavaScript, the page with the form as the reader left it.
+        let res = call(post("/news/briefing", None, None, "email=a%40b")).await;
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let page = text(res).await;
+        assert!(page.contains("<h1>Market news</h1>") && page.contains(r#"value="a@b""#), "{page}");
+    }
 }
