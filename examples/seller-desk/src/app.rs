@@ -18,7 +18,6 @@ use std::{
 use corten::{
     axum::{extract::Request, http::HeaderValue, response::Response},
     feed::{Feed, FeedResponse, Row, Since},
-    i18n::Minor,
     prelude::*,
     view::Remove,
 };
@@ -26,8 +25,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    text::{Msg, USD},
-    views::{self, Line, PriceCell, RowId, StatusLine},
+    text::Msg,
+    views::{self, Line, PriceCell, RowId, StatementTable, StatusLine},
 };
 
 /// An item a seller lists.
@@ -156,7 +155,7 @@ async fn home(req: Req, State(desk): State<Desk>) -> HtmlResult {
     let qty = desk.quantities();
     let items = desk.items.lock().expect("items").clone();
     let lines: Vec<Line> = items.iter().filter(|i| !i.archived).map(|item| Line { item, qty: qty[&item.id] }).collect();
-    let view = views::desk(&lines);
+    let view = views::desk(&lines, req.t());
     req.page(html! { <views::Layout req={&req} title="Inventory">{view}</views::Layout> })
 }
 
@@ -241,27 +240,11 @@ async fn statement(req: Req, State(desk): State<Desk>) -> NoStore<HtmlResult> {
         set.1 += u64::from(item.price_cents) * u64::from(qty[&item.id]);
     }
     let t: Msg = req.t();
+    let sets: Vec<(&str, usize, u64)> = sets.iter().map(|(name, (items, cents))| (name.as_str(), *items, *cents)).collect();
     NoStore(req.page(html! {
         <views::Layout req={&req} title={t.statement_title()}>
             <h1>{t.statement_title()}</h1>
-            <table>
-                <thead>
-                    <tr>
-                        <th>{t.statement_set()}</th>
-                        <th>{t.statement_items()}</th>
-                        <th>{t.statement_value()}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    for (name, (items, cents)) in &sets {
-                        <tr>
-                            <td>{name}</td>
-                            <td>{t.number(*items)}</td>
-                            <td>{t.money(Minor(*cents), USD)}</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <StatementTable t={t} sets={&sets} />
         </views::Layout>
     }))
 }
@@ -351,9 +334,14 @@ mod tests {
         );
         assert!(html.contains(r#"<tr data-key="i00003" id="row-i00003"><td><input data-ref="select""#), "{html}");
         assert!(html.contains(r#"data-on="connect:inventory_grid.live(@body,"#), "{html}");
+        let unsent = r#"{note:@note,one:%[&quot;&quot;,&quot;count&quot;,&quot; price not saved&quot;],other:%[&quot;&quot;,&quot;count&quot;,&quot; prices not saved&quot;]}"#;
         assert!(
-            html.contains("inventory_grid.priceEdited($e,$c,@body,@unsent)"),
-            "a cell's typed event reaches the grid: {html}"
+            html.contains(&format!("inventory_grid.priceEdited($e,$c,@body,{unsent})")),
+            "a cell's typed event reaches the grid, with the catalog's words for the note: {html}"
+        );
+        assert!(
+            html.contains(r#"commandfor="archive-dialog">Archive</button>"#) && html.contains(r#"<dialog id="archive-dialog">"#),
+            "the bulk bar's button opens the dialog without a script: {html}"
         );
     }
 
@@ -422,11 +410,11 @@ mod tests {
             let qty = desk.quantities();
             let items = desk.items.lock().unwrap().clone();
             let lines: Vec<Line> = items.iter().map(|item| Line { item, qty: qty[&item.id] }).collect();
-            let html = views::desk(&lines).to_html();
+            let html = views::desk(&lines, Msg::default()).to_html();
             let rounds = 200;
             let start = std::time::Instant::now();
             for _ in 0..rounds {
-                std::hint::black_box(views::desk(std::hint::black_box(&lines)).to_html());
+                std::hint::black_box(views::desk(std::hint::black_box(&lines), Msg::default()).to_html());
             }
             let us = start.elapsed().as_secs_f64() * 1e6 / rounds as f64;
             let handlers: usize = html.matches(" data-on=\"").count();
