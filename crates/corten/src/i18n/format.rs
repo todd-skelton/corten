@@ -477,7 +477,7 @@ fn unix_seconds(at: SystemTime) -> i64 {
 
 /// A number, an amount of money or a percentage in a locale: what `t.number`, `t.money` and
 /// `t.percent` return. It renders in `html!` as text or an attribute value, and is a message
-/// argument like any `Display` value.
+/// argument ([`super::Arg`]).
 #[derive(Clone, Copy)]
 pub struct Formatted {
     data: &'static __private::LocaleData,
@@ -612,7 +612,7 @@ impl Display for Formatted {
 
 /// A date, a time or both in a locale: what `t.date`, `t.time` and `t.date_time` return. In UTC
 /// unless [`When::zone`] says otherwise. It renders in `html!` as text or an attribute value, and
-/// is a message argument like any `Display` value.
+/// is a message argument ([`super::Arg`]).
 #[derive(Clone, Copy)]
 pub struct When {
     data: &'static __private::LocaleData,

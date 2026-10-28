@@ -276,7 +276,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         } else {
             let mut params = TokenStream::new();
             for arg in &args {
-                params.extend(q("__A0: impl ::std::fmt::Display,", &[arg_ident(arg).into()]));
+                params.extend(q("__A0: impl ::corten::i18n::Arg,", &[arg_ident(arg).into()]));
             }
             by_locale = q(
                 "::corten::i18n::Text::new(move |__corten_sink: &mut ::corten::i18n::Sink<'_>| __A0)",

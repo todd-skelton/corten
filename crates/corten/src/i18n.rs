@@ -14,7 +14,8 @@
 //!
 //! Catalogs are JSON objects of strings; nested objects make dotted keys, and each key is a method
 //! (`item.listing_count` is `item_listing_count`). `{name}` in a message is an argument, so
-//! `"{count} listings"` takes one parameter, `count`, of any `Display` type; `{{` is a brace. An
+//! `"{count} listings"` takes one parameter, `count`, an [`Arg`]: text, an integer, or a value `t`
+//! formats (`t.number(..)`, `t.money(..)`, `t.date(..)`); `{{` is a brace. An
 //! argument may be named like a Rust keyword (`{type}` is the parameter `r#type`) or in camel
 //! case (`{updatedAt}` is the parameter `updated_at`), so a catalog shared with other apps
 //! compiles as it is; `by_key` and `Message<"updatedAt">` use the catalog's names.
@@ -216,7 +217,7 @@
 
 use std::fmt::{self, Display};
 
-use crate::view::{escape_display, AttrValue, Render};
+use crate::view::{escape_display, escape_into, AttrValue, Render};
 
 mod display_digits;
 mod format;
@@ -295,14 +296,180 @@ impl Sink<'_> {
         self.out.push_str(if self.html { html } else { plain });
     }
 
-    /// An argument: escaped in a page, as is in plain text.
+    /// An argument, which writes itself ([`Arg`]).
     #[inline]
-    pub fn arg<T: Display + ?Sized>(&mut self, value: &T) {
+    pub fn arg<T: Arg + ?Sized>(&mut self, value: &T) {
+        value.write_arg(self)
+    }
+
+    /// Text: escaped in a page, as is in plain text.
+    #[inline]
+    pub fn str(&mut self, text: &str) {
+        if self.html {
+            escape_into(text, self.out);
+        } else {
+            self.out.push_str(text);
+        }
+    }
+
+    /// A `Display` value's text: escaped in a page, as is in plain text.
+    pub fn display(&mut self, value: &(impl Display + ?Sized)) {
         if self.html {
             escape_display(value, self.out);
         } else {
             let _ = fmt::Write::write_fmt(self.out, format_args!("{value}"));
         }
+    }
+
+    /// Text that needs no escaping (digits, the locale's own formats).
+    #[inline]
+    fn plain(&mut self, text: &str) {
+        self.out.push_str(text);
+    }
+}
+
+/// A value a message puts in its text: text (`&str`, `String`), an integer, or what `t` formats
+/// in the locale (`t.number(..)`, `t.money(..)`, `t.date(..)`) or another message. An integer
+/// is written as its digits, as a script's message writes it (`String(n)`), with no
+/// `core::fmt` on the way; a number a reader reads as an amount goes through `t.number`. A
+/// float is none of these: `t.number(Decimal::..)` writes it in the reader's form. A type of the
+/// app's own implements it with the `Sink` it gets:
+///
+/// ```
+/// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+/// use corten::i18n::{Arg, Messages as _, Sink};
+///
+/// enum Grade { Mint, Played }
+/// impl Arg for Grade {
+///     fn write_arg(&self, sink: &mut Sink<'_>) {
+///         sink.str(match self { Grade::Mint => "<Mint>", Grade::Played => "Played" })
+///     }
+/// }
+///
+/// let en = Msg::for_locale("en");
+/// assert_eq!(en.item_image(Grade::Mint, 12).to_html(), "&lt;Mint&gt; image 12");
+/// assert_eq!(en.item_image(&Grade::Played, -3_i64).to_string(), "Played image -3");
+/// ```
+///
+/// A float is not one, since its text would be the same in every locale:
+///
+/// ```compile_fail,E0277
+/// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+/// use corten::i18n::Messages as _;
+///
+/// let _ = Msg::for_locale("fr").item_listing_count(2.5).to_string();
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be a message argument",
+    label = "not text, an integer or a value `t` formats",
+    note = "pass text, an integer, or a value the locale formats (t.number(..), t.money(..), t.date(..)); a type of the app's own implements corten::i18n::Arg"
+)]
+pub trait Arg {
+    /// Writes the value into the message.
+    fn write_arg(&self, sink: &mut Sink<'_>);
+}
+
+impl Arg for str {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for String {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for std::borrow::Cow<'_, str> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for char {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self.encode_utf8(&mut [0; 4]))
+    }
+}
+
+impl<T: Arg + ?Sized> Arg for &T {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        (**self).write_arg(sink)
+    }
+}
+
+impl Arg for Formatted {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        // The locale data has no character HTML would read (the generator checks).
+        self.render(sink.out)
+    }
+}
+
+impl Arg for When {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.display(self)
+    }
+}
+
+impl<F: Fn(&mut Sink<'_>)> Arg for Text<F> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        (self.0)(sink)
+    }
+}
+
+impl<A: Args + ?Sized> Arg for Found<'_, A> {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        self.write(sink)
+    }
+}
+
+macro_rules! unsigned_arg {
+    ($($t:ty),*) => {$(
+        impl Arg for $t {
+            #[inline]
+            fn write_arg(&self, sink: &mut Sink<'_>) {
+                let mut buf = [0; 20];
+                let digits = crate::ascii::digits(*self as u64, &mut buf);
+                // Digits are ASCII.
+                sink.plain(std::str::from_utf8(digits).unwrap_or_default())
+            }
+        }
+    )*};
+}
+unsigned_arg!(u8, u16, u32, u64, usize);
+
+macro_rules! signed_arg {
+    ($($t:ty),*) => {$(
+        impl Arg for $t {
+            #[inline]
+            fn write_arg(&self, sink: &mut Sink<'_>) {
+                if *self < 0 {
+                    sink.plain("-");
+                }
+                let mut buf = [0; 20];
+                let digits = crate::ascii::digits(self.unsigned_abs() as u64, &mut buf);
+                sink.plain(std::str::from_utf8(digits).unwrap_or_default())
+            }
+        }
+    )*};
+}
+signed_arg!(i8, i16, i32, i64, isize);
+
+impl Arg for u128 {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.display(self)
+    }
+}
+
+impl Arg for i128 {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.display(self)
     }
 }
 
@@ -413,7 +580,7 @@ impl<'a, A: Args + ?Sized> Found<'a, A> {
             match piece {
                 __private::Piece::Text(plain, html) => sink.text(plain, html),
                 __private::Piece::Arg(name) => {
-                    self.args.arg(name, &mut |value| sink.arg(value));
+                    self.args.arg(name, &mut |value| sink.display(value));
                 }
             }
         }
@@ -524,7 +691,9 @@ mod tests {
         assert_eq!(Msg::for_locale("FR"), fr);
         assert_eq!(Msg::default().locale(), "en");
         // Arguments named like Rust keywords are raw parameters; the catalog keeps its names.
-        assert_eq!(en.attention_detail("TCGplayer", "alias", 0.9).to_string(), "TCGplayer · alias · confidence 0.9");
+        let confidence: Decimal = "0.9".parse().unwrap();
+        assert_eq!(en.attention_detail("TCGplayer", "alias", en.number(confidence)).to_string(), "TCGplayer · alias · confidence 0.9");
+        assert_eq!(fr.attention_detail("P", "alias", fr.number(confidence)).to_string(), "P · alias · confiance 0,9");
         let by_key = fr.by_key("attention.detail", &[("provider", "P"), ("type", "alias"), ("match", "1")]);
         assert_eq!(by_key.unwrap().to_string(), "P · alias · confiance 1");
         // camelCase arguments: snake case parameters, the catalog's names by key.
