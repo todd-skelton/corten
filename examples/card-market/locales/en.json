@@ -48,6 +48,7 @@
     "unavailable": "Not available",
     "unavailable_text": "Check your connection and try again.",
     "failed": "Something went wrong",
-    "failed_text": "Please try again."
+    "failed_text": "Please try again.",
+    "home": "Go to popular items"
   }
 }

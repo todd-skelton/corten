@@ -1318,6 +1318,13 @@ Corten is pre-1.0, so any minor version may change the API.
 20. `examples/cluster` is `examples/listings-feed`, named for what it is (a seller's listings
     feed served by several instances), like the other examples; the crate it shows is still
     `corten-cluster`. Its package and image are `listings-feed` and `corten-listings-feed`.
+21. The examples write no seam as text: card-market's header is a component with scoped
+    classes (`SiteHeader`, lined up with the page below it) instead of `class="site"`, and the
+    watchlist's `LivePrices` passes its feed's route to the script (`url::Stocks`) instead of
+    taking `url::Stocks::PATH` as a `&str`. The watchlist's titles end in "| Watchlist" (its home
+    is "Stocks") and its header fits a phone on two lines; card-market's error page links home,
+    its item page's tables and price summary fit a phone, and its alert form keeps less room
+    under it.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
