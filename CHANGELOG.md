@@ -1186,7 +1186,25 @@ Corten is pre-1.0, so any minor version may change the API.
     ticker closes the socket as too big (1009), a client's close is answered, a send the client
     does not take within 10 seconds ends the socket, and shutdown still closes it with a goodbye
     ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
-68. examples/ui-gallery is one screen: a seller's draft listing for a card, with its quantity,
+68. seller-desk sells card-market's cards: its rows are the three sets' 540 cards, card-market's
+    eleven singles first at the cheapest Near Mint price card-market lists them for (a test
+    reads its fixture), the rest priced by rarity. Most start in Near Mint and some played; past
+    540 rows each card comes again in its next condition at that condition's share of the price.
+    A seller keeps a few copies of a dear card and many of a common, and restocks to that.
+    Names are cards' names (no `#1`, `#2`), and the sets are card-market's three
+    ([#224 seller-desk and card-market give the same card different prices](https://github.com/todd-skelton/corten/issues/224)).
+69. card-market shows card art: a generated SVG for each card of its demo catalog in
+    `static/cards/`, served at a versioned URL every cache keeps (and the PWA's worker with
+    them, cached the first time each loads). The home and category grids show it sized (`width`,
+    `height`), past the first row loaded near the screen (`loading="lazy"`), with `alt=""` since
+    the link names the card; the item page shows it first, not deferred, with its text. Only the
+    built-in demo catalog has art (another source's `item_3` is another card), so the
+    benchmark's item page and the item JSON are unchanged. Measured with the demo
+    catalog (release build, over HTTP): Ashen Drake's page is 126 bytes larger (42 with brotli)
+    plus its 377-byte picture (brotli); the home page is 1,356 bytes larger (105 with brotli) plus
+    the pictures that load.
+    ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
+70. examples/ui-gallery is one screen: a seller's draft listing for a card, with its quantity,
     price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
     dialog, the last sale, and its SKU with a copy button
     ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
