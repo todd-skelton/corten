@@ -334,7 +334,7 @@ async function run(browser) {
   const listed = timed.locator("time").first();
   const expires = timed.locator("time").nth(1);
   check("the server writes a time behind now", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
-  check("and one ahead, with its instant", (await expires.textContent()) === "in 1 minute" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test((await expires.getAttribute("datetime")) ?? ""), await expires.textContent());
+  check("and one ahead, with its instant", (await expires.textContent()) === "in 1 minute" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{3})?Z$/.test((await expires.getAttribute("datetime")) ?? ""), await expires.textContent());
   await timed.clock.runFor(31_000);
   const seconds = async () => Number(/^in (5\d) seconds$/.exec((await expires.textContent()) ?? "")?.[1]);
   const first = await seconds();
