@@ -730,6 +730,29 @@ Corten is pre-1.0, so any minor version may change the API.
     compile), and its handler is held to `Public`'s rule, so one that could tell who is asking
     does not compile. Before it, a route could serve bytes it held only as an axum `Response`,
     which a route cannot name.
+110. `corten_ui::CopyButton`: a button that copies an element's text (an order number, an API
+    key's one-time secret; a read-only field's value). The element is named by its
+    `#[derive(Id)]` id (`<code id={SecretId}>`, `<CopyButton text={SecretId} label={..}
+    copied={..} />`), so the text is on the page once and a button in a list copies its own row's;
+    text in its place does not compile. The button is drawn `hidden` and shown where the browser
+    has the Clipboard API (a secure origin); after a write it reads the app's `copied` for two
+    seconds in a polite live region, and nothing to copy or a failed write changes nothing. Tested
+    in ui-gallery in Chromium, Firefox and WebKit: a copy (the clipboard's contents in Chromium,
+    which lets a test read it), a denied write, no Clipboard API, and no script. Apps' own copy scripts can go
+    ([#244 corten-ui has no copy-to-clipboard control, so each app ships its own script for Copy](https://github.com/todd-skelton/corten/issues/244)).
+111. `corten::serve_wrapped(listeners, move |tcp| acceptor.accept(tcp), app)`: `serve_on` with a
+    step of the app's own on each connection before HTTP, a TLS handshake. The step runs in the
+    connection's own task, counts against `App::max_connections` from before the TCP accept, and
+    is closed at `App::header_timeout` when the client stalls before or after it; shutdown ends
+    the steps in progress. Before, an app serving HTTPS ran the handshake in a listener of its own
+    (the guide's 45 lines), outside both limits, so clients that never sent a ClientHello held
+    sockets and tasks with no cap. The library and its configuration (ALPN `http/1.1`) stay the
+    app's; the guide's example is four lines. Checked with rustls: HTTPS answers, ALPN is
+    `http/1.1`, and a client that sends nothing is closed at the header timeout. A plain
+    connection costs about 340 instructions more to open: 27,528-27,543 to 27,841-27,910 for a
+    connection with one request, client included (callgrind, in process, three runs each).
+    Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
+    ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
 112. A time relative to now: `t.relative(at, now, RelativeStyle)` writes "in 10 hours" or "3 hr.
     ago" in the request's locale (each locale's plural forms and words from CLDR, checked against
     Intl), and `corten_ui::RelativeTime` keeps it current in the browser on one timer for the
@@ -1432,6 +1455,15 @@ Corten is pre-1.0, so any minor version may change the API.
     refuses and the two are different work; the empty item's load, sort and client navigation are
     measured as before. Medians of the action now come from eight of ten runs per profile
     ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
+48. `ReadAgain::from(&route)` in a page's markup starts its read, as in a patch, on a full load
+    and after a navigation: only those parts are read again, and what is beside them (a form the
+    user is filling in, a payment provider's frame) stays. Before, the runtime acted on it only in
+    a patch, so a page had to start the first read with a script of its own. It stops when the
+    page is left or an element with an id beside the tag is replaced; with JavaScript a page that
+    reads parts again is not read whole, so its head's `ReadAgain` is for a browser without it.
+    The watchlist's alerts page reads its status line and list so. The runtime grows by 273 B
+    (72 B brotli)
+    ([#276 A page cannot ask for one of its parts to be read again, so a page holding a third-party frame needs a script to start the read](https://github.com/todd-skelton/corten/issues/276)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

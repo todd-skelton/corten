@@ -75,9 +75,11 @@ framework's shape, and what it does not do yet.
    the browser.
 3. A handler reaches the page only through its arguments: refs, `event`, `target`, `signal`,
    `scope` and values. State that outlives an event is the DOM itself or `keep(init)`, the
-   running handler's component's own. (One exception: `RelativeTime` keeps the page's relative
-   times in its module, so one timer serves them all, with a `visibilitychange` and a
-   `pageshow` listener for the life of the page that read the clock again when it comes back.)
+   running handler's component's own. (Two exceptions: `CopyButton` copies an element outside
+   its component, which it is given as a typed `Id` value and finds by that id, since refs do
+   not reach outside a component; and `RelativeTime` keeps the page's relative times in its
+   module, so one timer serves them all, with a `visibilitychange` and a `pageshow` listener for
+   the life of the page that read the clock again when it comes back.)
 4. User-facing text lives in views, the view model or the catalog, never in scripts. Text that
    depends on what a script computed ("3 selected") is a catalog message the markup passes
    unfilled (`t.js().rows_selected()`) and the script fills in (`label({ count })`): the
