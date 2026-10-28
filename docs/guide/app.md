@@ -588,10 +588,12 @@ its body as it arrives (`Body::from_stream(res.bytes_stream())` from reqwest). A
 keeps the upstream's body, never the error page or the JSON error. The app's security and cache
 rules still apply, except that a `Content-Security-Policy` the upstream sent replaces the app's:
 a relayed page's scripts were written for its own policy (their nonces and hosts), which the app's
-would block. Without one, the app's applies. A streamed body is passed on as each piece arrives,
-and Corten does not compress any of it, an event stream included, so a long relayed stream holds
-no compression context: the encoding is the upstream's. A relay that should be compressed
-forwards the client's `Accept-Encoding`, and the upstream's encoded body goes on as it is. When the client leaves, the body is dropped, and
+would block. Without one, the app's applies. A streamed body is passed on as each piece arrives.
+Corten compresses no relayed body, buffered or streamed, an event stream included, so a long
+relayed stream holds no compression context: the encoding is the upstream's. A relay that should
+be compressed forwards the client's `Accept-Encoding`, and the upstream's encoded body goes on as
+it is, as long as the HTTP client does not decode it (for reqwest, leave its `gzip`, `brotli` and
+`zstd` features off). When the client leaves, the body is dropped, and
 the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
 
 ## Who is asking

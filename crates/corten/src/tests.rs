@@ -2355,15 +2355,18 @@ async fn a_relay_is_not_compressed_by_the_app() {
     }
     let page = "<p>relayed</p>".repeat(300);
     let events = "event: delta\ndata: {\"text\":\"hello\"}\n\n".repeat(100);
-    let (p, e) = (page.clone(), events.clone());
+    let (p, e, own) = (page.clone(), events.clone(), page.clone());
     let router = App::new(Routes::from(
-        Router::new().route("/page", get(move || async move { upstream("text/html; charset=utf-8", Body::from(p)) })).route(
-            "/stream",
-            get(move || async move {
-                let chunk = Ok::<_, std::convert::Infallible>(axum::body::Bytes::from(e));
-                upstream("text/event-stream", Body::from_stream(futures_util::stream::iter([chunk])))
-            }),
-        ),
+        Router::new()
+            .route("/own", get(move || async move { axum::response::Html(own) }))
+            .route("/page", get(move || async move { upstream("text/html; charset=utf-8", Body::from(p)) }))
+            .route(
+                "/stream",
+                get(move || async move {
+                    let chunk = Ok::<_, std::convert::Infallible>(axum::body::Bytes::from(e));
+                    upstream("text/event-stream", Body::from_stream(futures_util::stream::iter([chunk])))
+                }),
+            ),
     ))
     .router();
     for (path, sent) in [("/page", &page), ("/stream", &events)] {
@@ -2378,6 +2381,10 @@ async fn a_relay_is_not_compressed_by_the_app() {
         let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
         assert_eq!(&body[..], sent.as_bytes(), "{path}");
     }
+    // The same body as the app's own answer is compressed, so the app does compress.
+    let req = Request::get("/own").header("accept-encoding", "zstd, br, gzip").body(Body::empty()).unwrap();
+    let res = router.oneshot(req).await.unwrap();
+    assert_eq!(res.headers()["content-encoding"], "zstd");
 }
 
 /// A relayed answer is passed on as the upstream gave it: its failure status and body, never the
