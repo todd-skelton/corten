@@ -1,0 +1,375 @@
+{
+ "clients": 200,
+ "workers": 4,
+ "wps": 50,
+ "perWrite": 5,
+ "seconds": 80,
+ "t0": 1793208530479,
+ "events": [
+  {
+   "at": 24449,
+   "action": "kill",
+   "name": "fb-a"
+  },
+  {
+   "at": 39452,
+   "action": "start",
+   "name": "fb-a"
+  },
+  {
+   "at": 54450,
+   "action": "kill",
+   "name": "fb-b"
+  },
+  {
+   "at": 69452,
+   "action": "start",
+   "name": "fb-b"
+  }
+ ],
+ "committed": 4000,
+ "drainMs": 100,
+ "loadGenerator": {
+  "loopDelayP99Ms": 24.084479,
+  "loopDelayMaxMs": 112.132095
+ },
+ "writes": {
+  "sent": 4000,
+  "ok": 4000,
+  "failed": 0,
+  "retries": 0,
+  "replayed": 0,
+  "skipped": 0,
+  "extraCommits": 0,
+  "failedAt": [],
+  "commitMs": {
+   "n": 4000,
+   "p50": 15,
+   "p95": 414,
+   "p99": 1058,
+   "max": 2722
+  },
+  "aroundEvents": [
+   {
+    "at": 24449,
+    "action": "kill",
+    "name": "fb-a",
+    "perSecond": [
+     [
+      23,
+      {
+       "n": 50,
+       "maxMs": 65
+      }
+     ],
+     [
+      24,
+      {
+       "n": 50,
+       "maxMs": 142
+      }
+     ],
+     [
+      25,
+      {
+       "n": 50,
+       "maxMs": 32
+      }
+     ],
+     [
+      26,
+      {
+       "n": 50,
+       "maxMs": 28
+      }
+     ],
+     [
+      27,
+      {
+       "n": 50,
+       "maxMs": 1019
+      }
+     ],
+     [
+      28,
+      {
+       "n": 50,
+       "maxMs": 25
+      }
+     ]
+    ]
+   },
+   {
+    "at": 39452,
+    "action": "start",
+    "name": "fb-a",
+    "perSecond": [
+     [
+      38,
+      {
+       "n": 50,
+       "maxMs": 1024
+      }
+     ],
+     [
+      39,
+      {
+       "n": 50,
+       "maxMs": 1013
+      }
+     ],
+     [
+      40,
+      {
+       "n": 50,
+       "maxMs": 26
+      }
+     ],
+     [
+      41,
+      {
+       "n": 50,
+       "maxMs": 22
+      }
+     ],
+     [
+      42,
+      {
+       "n": 50,
+       "maxMs": 11
+      }
+     ],
+     [
+      43,
+      {
+       "n": 50,
+       "maxMs": 30
+      }
+     ]
+    ]
+   },
+   {
+    "at": 54450,
+    "action": "kill",
+    "name": "fb-b",
+    "perSecond": [
+     [
+      53,
+      {
+       "n": 50,
+       "maxMs": 28
+      }
+     ],
+     [
+      54,
+      {
+       "n": 50,
+       "maxMs": 38
+      }
+     ],
+     [
+      55,
+      {
+       "n": 50,
+       "maxMs": 1130
+      }
+     ],
+     [
+      56,
+      {
+       "n": 50,
+       "maxMs": 1206
+      }
+     ],
+     [
+      57,
+      {
+       "n": 50,
+       "maxMs": 640
+      }
+     ],
+     [
+      58,
+      {
+       "n": 50,
+       "maxMs": 118
+      }
+     ]
+    ]
+   },
+   {
+    "at": 69452,
+    "action": "start",
+    "name": "fb-b",
+    "perSecond": [
+     [
+      68,
+      {
+       "n": 50,
+       "maxMs": 1175
+      }
+     ],
+     [
+      69,
+      {
+       "n": 50,
+       "maxMs": 1022
+      }
+     ],
+     [
+      70,
+      {
+       "n": 50,
+       "maxMs": 263
+      }
+     ],
+     [
+      71,
+      {
+       "n": 50,
+       "maxMs": 19
+      }
+     ],
+     [
+      72,
+      {
+       "n": 50,
+       "maxMs": 101
+      }
+     ],
+     [
+      73,
+      {
+       "n": 50,
+       "maxMs": 35
+      }
+     ]
+    ]
+   }
+  ]
+ },
+ "delivery": {
+  "patchesExpected": 800000,
+  "patchesReceived": 800000,
+  "coveredBySnapshot": 0,
+  "redelivered": 0,
+  "lost": 0,
+  "clientsWithLoss": 0,
+  "outOfOrder": 0,
+  "duplicatesDropped": 0,
+  "extraSnapshots": 0,
+  "syncs": {
+   "n": 0,
+   "byInstanceAndReason": {},
+   "bySecond": {}
+  },
+  "reconnects": 294,
+  "httpErrors": 0,
+  "networkErrors": 0,
+  "clientsEndingOn": {
+   "a": 200
+  },
+  "lossDetail": []
+ },
+ "latencyMs": {
+  "writeToClient": {
+   "steady": {
+    "n": 698400,
+    "p50": 16,
+    "p95": 395,
+    "p99": 943,
+    "max": 2221
+   },
+   "within5sOfKill": {
+    "n": 101600,
+    "p50": 48,
+    "p95": 1008,
+    "p99": 1776,
+    "max": 2246
+   }
+  },
+  "commitToClient": {
+   "steady": {
+    "n": 698400,
+    "p50": 8,
+    "p95": 54,
+    "p99": 98,
+    "max": 218
+   },
+   "within5sOfKill": {
+    "n": 101600,
+    "p50": 14,
+    "p95": 986,
+    "p99": 1771,
+    "max": 2241
+   }
+  }
+ },
+ "outages": {
+  "n": 294,
+  "resynced": 0,
+  "reconnectMs": {
+   "n": 294,
+   "p50": 1102,
+   "p95": 2134,
+   "p99": 2176,
+   "max": 2183
+  },
+  "resumeMs": {
+   "n": 294,
+   "p50": 1102,
+   "p95": 2134,
+   "p99": 2176,
+   "max": 2183
+  },
+  "silentMs": {
+   "n": 294,
+   "p50": 1169,
+   "p95": 2204,
+   "p99": 2246,
+   "max": 2257
+  }
+ },
+ "browser": {
+  "status": "live",
+  "patches": 4000,
+  "snapshots": 1,
+  "last": 4000,
+  "committed": 4000,
+  "resyncs": 0,
+  "lost": 0,
+  "pageErrors": []
+ },
+ "instanceLogs": {
+  "fb-a": [
+   "2026-10-28T17:28:33.267504443Z corten: listening on http://localhost:8080",
+   "2026-10-28T17:29:30.285581978Z corten: listening on http://localhost:8080",
+   "2026-10-28T17:28:33.299729114Z relay a: active",
+   "2026-10-28T17:29:45.364360977Z relay a: active"
+  ],
+  "fb-b": [
+   "2026-10-28T17:28:36.981762662Z corten: listening on http://localhost:8080",
+   "2026-10-28T17:30:00.917199959Z corten: listening on http://localhost:8080",
+   "2026-10-28T17:29:15.207031233Z relay b: active"
+  ]
+ },
+ "relayTakeoverMs": [
+  {
+   "killed": "fb-a",
+   "wasLeader": true,
+   "takeoverMs": 279
+  },
+  {
+   "killed": "fb-b",
+   "wasLeader": true,
+   "takeoverMs": 435
+  }
+ ],
+ "stats": {
+  "fb-a": "0.18% 10.64MiB / 512MiB",
+  "fb-b": "0.06% 1.641MiB / 512MiB",
+  "fb-pg": "0.42% 103.9MiB / 11.68GiB",
+  "fb-nats": "0.31% 21.25MiB / 11.68GiB",
+  "fb-lb": "0.00% 9.238MiB / 11.68GiB"
+ }
+}

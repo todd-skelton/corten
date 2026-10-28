@@ -1126,6 +1126,20 @@ Corten is pre-1.0, so any minor version may change the API.
     are kept under one id, now in the `visitor` cookie (`visitor.rs`), which was `list`, and both
     forget the browser used longest ago past 10,000 (`recent.rs`)
     ([#220 watchlist's alerts page never shows the alerts you saved](https://github.com/todd-skelton/corten/issues/220)).
+65. `corten-cluster`'s `Cluster::snapshot`, `live` and `live_with` return
+    `corten::Result<FeedResponse>`, an answer a Corten route names, instead of an axum
+    `Response`: an unknown feed is a 404 and Postgres out of reach a 503, both answered as JSON as
+    any failure of a feed's route is. The crate depends on `corten` (feature `feed`) instead of
+    axum and `corten-feed`. Migration: a handler that returned the `Response` names
+    `corten::Result<FeedResponse>`; outside a Corten app, call `.into_response()` on it.
+    `examples/listings-feed` is an `App`: the feed in a routes module, the benchmark's
+    writes and reads under `App::api` (`/api/feeds/{seller}/market`, `/seq`, `/api/stats`),
+    the instance's name from a middleware (`X-Instance`), Corten's health checks (`/health/ready`
+    checks Postgres), and the browser probe a page whose `#[component(js)]` follows the feed
+    (`/sellers/{seller}`, a 404 for a seller with no feed), where an inline script would be
+    refused by the CSP. The failover benchmark ran again on it (`results/failover-r2.json`)
+    ([#217 examples/listings-feed does not use App, so its routes skip Corten's compile-time checks](https://github.com/todd-skelton/corten/issues/217),
+    [#233 listings-feed's failover benchmark has not been run since the example was renamed](https://github.com/todd-skelton/corten/issues/233)).
 66. examples/watchlist keeps the profile picture Ada uploads and shows it on the account page and
     in the header, from `/pictures/{id}`: an id that is a keyed hash of the bytes, served as a
     `Media` every cache keeps. The upload reads the picture's type from its first bytes (PNG,
