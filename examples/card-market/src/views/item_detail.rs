@@ -64,7 +64,7 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
                 }
                 // The page's main picture: sized, and not deferred.
                 if let Some(src) = &page.art {
-                    <img class={Art} src={src} width="220" height="308" alt={t.item_image(&item.title, 1)}>
+                    <img class={Art} src={src} width="220" height="308" alt={t.item_art(&item.title)}>
                 }
             </div>
             <section class={summary}>

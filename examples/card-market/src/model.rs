@@ -67,7 +67,8 @@ pub struct ItemView {
     pub categories: Vec<Category>,
     pub fields: Vec<Field>,
     pub images: Vec<String>,
-    /// The store's own picture of the card (`static/cards/`), when the API sends none.
+    /// The store's own picture of the card (`static/cards/`): the demo catalog's, for a card the
+    /// responses give no pictures of (`Source::demo`).
     #[serde(skip)]
     pub art: Option<&'static str>,
     pub summary: Option<Summary>,
@@ -280,7 +281,7 @@ mod api {
 
     impl From<ApiItem> for ItemView {
         fn from(a: ApiItem) -> Self {
-            let mut view = ItemView {
+            ItemView {
                 id: text(a.catalog_item_id),
                 title: text(a.title),
                 subtitle: opt_text(a.subtitle),
@@ -322,12 +323,7 @@ mod api {
                 }),
                 contents: each(a.contents, |c| line(c.line_id, c.contained_catalog_item_id, c.contained_item, c.quantity)),
                 included_in: each(a.included_in, |c| line(c.line_id, c.container_catalog_item_id, c.container_item, c.quantity)),
-            };
-            // The API's pictures come first; the store's art stands in only where it sends none.
-            if view.images.is_empty() {
-                view.art = super::art(&view.id);
             }
-            view
         }
     }
 }
@@ -347,6 +343,8 @@ mod tests {
             let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(art);
             let svg = std::fs::read_to_string(&file).unwrap_or_else(|_| panic!("{} is missing", file.display()));
             assert!(svg.starts_with("<svg") && svg.contains(r#"viewBox="0 0 250 350""#), "{art}: a card, 5 by 7");
+            let title = demo[id]["title"].as_str().unwrap();
+            assert!(title.split(' ').all(|word| svg.contains(word)), "{art} names {title}");
         }
     }
 

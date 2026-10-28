@@ -271,7 +271,8 @@ fn shared(page: corten::Result<HtmlResponse<ForAll>>) -> Public<HtmlResult> {
 }
 
 pub(crate) async fn home(req: Req, State(source): State<Source>) -> Public<HtmlResult> {
-    let (t, req): (Msg, &Req) = (req.t(), &req);
+    let t: Msg = req.t();
+    let req = &req;
     shared(req.page(html! {
         <Layout req={req} title={t.home_title()} head="">
             <h1>{t.home_title()}</h1>
@@ -869,8 +870,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_demo_catalog_lists_its_cards_on_the_home_and_category_pages() {
-        let source = Source::fixture(include_str!("../fixtures/demo.json")).unwrap();
-        let app = super::app(source).router();
+        let app = super::app(Source::demo()).router();
         let get = |uri: &'static str| app.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap());
         let body = |res: corten::axum::response::Response| async move {
             String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
@@ -879,13 +879,18 @@ mod tests {
         assert!(home.contains("<strong>Ashen Drake</strong>") && home.contains("From $42.50"), "{home}");
         assert!(home.find(r#"href="/items/item_2""#).unwrap() < home.find(r#"href="/items/item_10""#).unwrap(), "in id order");
         assert!(
-            home.contains(r#"/cards/item_1.svg" width="250" height="350" alt="" loading="lazy">"#),
-            "each card shows its art, sized and loaded near the screen: {home}"
+            home.contains(r#"/cards/item_1.svg" width="250" height="350" alt="">"#)
+                && home.contains(r#"/cards/item_5.svg" width="250" height="350" alt="" loading="lazy">"#),
+            "each card shows its art, sized, and past the first row loaded near the screen: {home}"
         );
         let item = body(get("/items/item_1").await.unwrap()).await;
-        assert!(item.contains(r#"/cards/item_1.svg" width="220" height="308" alt="Ashen Drake image 1">"#), "{item}");
+        assert!(item.contains(r#"/cards/item_1.svg" width="220" height="308" alt="Ashen Drake card art">"#), "{item}");
         let json = body(get("/api/items/item_1").await.unwrap()).await;
         assert!(!json.contains(r#""art""#) && !json.contains("cards/"), "the JSON is the API's, without the store's art: {json}");
+        // The same responses from another source are another store's cards: no art.
+        let other = super::app(Source::fixture(include_str!("../fixtures/demo.json")).unwrap()).router();
+        let res = other.oneshot(Request::get("/items/item_1").body(Body::empty()).unwrap()).await.unwrap();
+        assert!(!body(res).await.contains("cards/"), "art is the demo catalog's alone");
         let category = body(get("/categories/tidebreak").await.unwrap()).await;
         assert!(category.contains("<h1>Tidebreak</h1>") && category.contains("Salt Oracle"), "{category}");
         assert!(!category.contains("Ashen Drake"), "only the category's cards");

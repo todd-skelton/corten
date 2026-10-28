@@ -12,7 +12,8 @@
     "details": "Détails",
     "contents": "Contenu",
     "included_in": "Inclus dans",
-    "image": "Image {n} de {title}"
+    "image": "Image {n} de {title}",
+    "art": "Illustration de {title}"
   },
   "table": {
     "seller": "Vendeur",

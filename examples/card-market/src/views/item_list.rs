@@ -10,7 +10,12 @@ pub fn ItemList<'a>(req: &'a Req, t: Msg, shelf: Shelf<'a>) -> impl Render {
     html! {
         match shelf {
             Shelf::Items(items) => {
-                <ul class={List}>for item in items.iter() { <li><ItemCard req={req} t={t} item={item} /></li> }</ul>
+                <ul class={List}>
+                    for (i, item) in items.iter().enumerate() {
+                        // The first row is on screen at once; the rest wait until they are near.
+                        <li><ItemCard req={req} t={t} item={item} eager={i < 4} /></li>
+                    }
+                </ul>
             }
             Shelf::Ids(ids) => {
                 <ul class={(List, Ids)}>
