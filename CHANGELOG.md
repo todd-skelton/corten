@@ -645,6 +645,14 @@ Corten is pre-1.0, so any minor version may change the API.
     function stays for a value chosen as the page renders and for one per breakpoint. Two that
     would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that
     names both. The watchlist's home page renders in 1.1% fewer instructions (62,827 to 62,162).
+100. A component can take an element id as a prop of any id type (`fn ConfirmDialog<I: Id>(id: I)`)
+    and print it with `id={id}` or `commandfor={id}`: `Id` now requires `AttrValue` and `Render`,
+    which every `#[derive(Id)]` type has. seller-desk opens its archive dialog with
+    `command="show-modal"` and no script, sorts and filters its rows by the row view's fields
+    (one handler per column) instead of cell positions, writes its unsaved-prices note from the
+    catalog, names the prices' currency in their column, and right-aligns the statement's numbers.
+    A row is 7 bytes smaller (603 to 596 at 2,000 rows) and about 30 instructions dearer to render
+    (its name is now also a whole attribute value, the hole the sort reads).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1213,6 +1221,15 @@ Corten is pre-1.0, so any minor version may change the API.
     sent a `DIALOG` request. One function, `sendsAs`, reads the button for both the patch and the
     navigation path. `corten.js`: 23,032 to 23,264 B (8,442 to 8,503 B gzip)
     ([#196 A data-patch form reads its submit button's raw formmethod and formaction, so formmethod=put sends a PUT where the browser sends a GET](https://github.com/todd-skelton/corten/issues/196)).
+44. A `Relay`'s answer is passed on as it came with feature `compress` on too, as its rustdoc said
+    (the guide said a relayed event stream was compressed; it now says none is): a buffered relayed body was compressed for a client that accepted zstd, brotli or gzip, and a
+    relayed event stream (a model's streamed answer through a gateway) for one that accepted zstd
+    or brotli, holding a compression context (480 KiB reserved for zstd, about 1 MB for brotli)
+    from the budget the app's own live streams share, for as long as it ran, and every compressible
+    relay got `Vary: accept-encoding`. A relay that should be compressed forwards the client's
+    `Accept-Encoding` to its upstream, with a client that does not decode the body. Every other answer pays
+    one look at its extensions: 11 instructions when it has none, 32 when it has one (callgrind)
+    ([#205 With compress on, a Relay's answer is re-encoded per connection, so a gateway holds a 480 KiB coder for every relayed model stream and cannot opt out](https://github.com/todd-skelton/corten/issues/205)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

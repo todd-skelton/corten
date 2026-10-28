@@ -8,7 +8,8 @@ use crate::app::ArchiveInput;
 pub struct RowId<'a>(pub &'a str);
 
 /// One item. `view` makes `InventoryRow` in `corten/views`, whose holes the grid's script writes
-/// by name: `selected` (the checkbox and the row's mark), `set` and `qty` (the live levels).
+/// by name: `selected` (the checkbox and the row's mark), `name` and `set` (the filter and the
+/// sort), `qty` (the live levels).
 /// Its key, the item's id, is also the price cell's and the row id the archive patch removes, so
 /// the server makes the rows and scripts find them by key (`rows(body, InventoryRow).get(id)`).
 /// `select` is the grid's ref: its one click handler on the table body gets the checkbox.
@@ -33,7 +34,7 @@ pub fn InventoryRow<'a>(
                     value={id}
                     form={ArchiveFormId}
                     checked={selected}
-                    aria-label={("Select ", name)}
+                    aria-label={name}
                 >
             </td>
             <td>{name}</td>

@@ -16,7 +16,8 @@ pub struct PriceEdited {
 
 /// A price that edits in place: typing shows Save, Escape restores the saved price (the input's
 /// `value` attribute, its `defaultValue`), and the form posts to the item's price route, which
-/// answers with this cell (or the cell with its error).
+/// answers with this cell (or the cell with its error). The input is a plain number; the grid's
+/// column header names its currency once.
 #[component(css, js)]
 pub fn PriceCell<'a>(id: &'a str, cents: Option<u32>, typed: &'a str, errors: &'a Errors) -> impl Patch {
     let save = refs();
