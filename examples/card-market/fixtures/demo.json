@@ -2,7 +2,7 @@
  "item_1": {
   "catalog_item_id": "item_1",
   "title": "Ashen Drake",
-  "subtitle": "Ember Reach · Rare",
+  "subtitle": "Ember Reach · No. 001/180",
   "description": "A dragon that nests in cooling lava fields. Its wings scatter cinders over every lane it flies.",
   "display_badges": [
    {
@@ -12,10 +12,7 @@
     "label": "Holo"
    }
   ],
-  "tags": [
-   "Ember Reach",
-   "rare"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Ember Reach",
@@ -88,17 +85,14 @@
  "item_2": {
   "catalog_item_id": "item_2",
   "title": "Lantern Warden",
-  "subtitle": "Hollow Crown · Uncommon",
+  "subtitle": "Hollow Crown · No. 002/180",
   "description": "Keeps a single flame alight through the long night of the Hollow Court.",
   "display_badges": [
    {
     "label": "Uncommon"
    }
   ],
-  "tags": [
-   "Hollow Crown",
-   "uncommon"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Hollow Crown",
@@ -188,7 +182,7 @@
  "item_3": {
   "catalog_item_id": "item_3",
   "title": "Salt Oracle",
-  "subtitle": "Tidebreak · Mythic",
+  "subtitle": "Tidebreak · No. 003/180",
   "description": "Reads the future in the crystals the tide leaves behind.",
   "display_badges": [
    {
@@ -198,10 +192,7 @@
     "label": "Foil"
    }
   ],
-  "tags": [
-   "Tidebreak",
-   "mythic"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Tidebreak",
@@ -304,17 +295,14 @@
  "item_4": {
   "catalog_item_id": "item_4",
   "title": "Gravel Sprite",
-  "subtitle": "Ember Reach · Common",
+  "subtitle": "Ember Reach · No. 004/180",
   "description": "Small, loud and always underfoot.",
   "display_badges": [
    {
     "label": "Common"
    }
   ],
-  "tags": [
-   "Ember Reach",
-   "common"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Ember Reach",
@@ -442,7 +430,7 @@
  "item_5": {
   "catalog_item_id": "item_5",
   "title": "Crown of Thorns and Glass",
-  "subtitle": "Hollow Crown · Rare",
+  "subtitle": "Hollow Crown · No. 005/180",
   "description": "The last relic of a queen who ruled from a shattered throne.",
   "display_badges": [
    {
@@ -452,10 +440,7 @@
     "label": "Showcase"
    }
   ],
-  "tags": [
-   "Hollow Crown",
-   "rare"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Hollow Crown",
@@ -552,17 +537,14 @@
  "item_6": {
   "catalog_item_id": "item_6",
   "title": "Undertow Serpent",
-  "subtitle": "Tidebreak · Uncommon",
+  "subtitle": "Tidebreak · No. 006/180",
   "description": "Pulls ships down without ever breaking the surface.",
   "display_badges": [
    {
     "label": "Uncommon"
    }
   ],
-  "tags": [
-   "Tidebreak",
-   "uncommon"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Tidebreak",
@@ -673,17 +655,14 @@
  "item_7": {
   "catalog_item_id": "item_7",
   "title": "Cinder Cartographer",
-  "subtitle": "Ember Reach · Rare",
+  "subtitle": "Ember Reach · No. 007/180",
   "description": "Maps the volcano's moods so the caravans know when to run.",
   "display_badges": [
    {
     "label": "Rare"
    }
   ],
-  "tags": [
-   "Ember Reach",
-   "rare"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Ember Reach",
@@ -813,17 +792,14 @@
  "item_8": {
   "catalog_item_id": "item_8",
   "title": "Moth Court Herald",
-  "subtitle": "Hollow Crown · Common",
+  "subtitle": "Hollow Crown · No. 008/180",
   "description": "Announces every guest, invited or not.",
   "display_badges": [
    {
     "label": "Common"
    }
   ],
-  "tags": [
-   "Hollow Crown",
-   "common"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Hollow Crown",
@@ -935,7 +911,7 @@
  "item_9": {
   "catalog_item_id": "item_9",
   "title": "Pearl Diver",
-  "subtitle": "Tidebreak · Common",
+  "subtitle": "Tidebreak · No. 009/180",
   "description": "Holds her breath for a full verse of the sea-song.",
   "display_badges": [
    {
@@ -945,10 +921,7 @@
     "label": "Foil"
    }
   ],
-  "tags": [
-   "Tidebreak",
-   "common"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Tidebreak",
@@ -1021,7 +994,7 @@
  "item_10": {
   "catalog_item_id": "item_10",
   "title": "Kiln Colossus",
-  "subtitle": "Ember Reach · Mythic",
+  "subtitle": "Ember Reach · No. 010/180",
   "description": "Built to fire bricks for a city; now it fires the city.",
   "display_badges": [
    {
@@ -1031,10 +1004,7 @@
     "label": "Holo"
    }
   ],
-  "tags": [
-   "Ember Reach",
-   "mythic"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Ember Reach",
@@ -1126,17 +1096,14 @@
  "item_11": {
   "catalog_item_id": "item_11",
   "title": "Regent of Ash",
-  "subtitle": "Hollow Crown · Mythic",
+  "subtitle": "Hollow Crown · No. 011/180",
   "description": "Rules what is left.",
   "display_badges": [
    {
     "label": "Mythic"
    }
   ],
-  "tags": [
-   "Hollow Crown",
-   "mythic"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Hollow Crown",
@@ -1260,10 +1227,7 @@
     "label": "Sealed"
    }
   ],
-  "tags": [
-   "Hollow Crown",
-   "sealed"
-  ],
+  "tags": [],
   "categories": [
    {
     "name": "Sealed product",

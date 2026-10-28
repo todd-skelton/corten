@@ -1323,8 +1323,9 @@ Corten is pre-1.0, so any minor version may change the API.
     watchlist's `LivePrices` passes its feed's route to the script (`url::Stocks`) instead of
     taking `url::Stocks::PATH` as a `&str`. The watchlist's titles end in "| Watchlist" (its home
     is "Stocks") and its header fits a phone on two lines; card-market's error page links home,
-    its item page's tables and price summary fit a phone, and its alert form keeps less room
-    under it.
+    its item page's tables and price summary fit a phone, its alert form keeps less room under
+    it, and its demo cards name their rarity twice (the chips and the details) instead of four
+    times: the subtitle is the set and number, and no tag repeats a field or a chip.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

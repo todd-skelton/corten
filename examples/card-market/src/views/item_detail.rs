@@ -86,7 +86,7 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
                         <dd>{f.value}</dd>
                     }
                 </dl>
-                <ul class={Chips}>for tag in &item.tags { <li>{tag}</li> }</ul>
+                if !item.tags.is_empty() { <ul class={Chips}>for tag in &item.tags { <li>{tag}</li> }</ul> }
             </section>
             if !item.contents.is_empty() {
                 <section class={Panel}>
