@@ -908,7 +908,11 @@ mod tests {
         }
         let ok = SetCookie::try_new("session", "c2Vz-c2lv_bg==").unwrap();
         assert_eq!(ok.header(), "session=c2Vz-c2lv_bg==; Path=/; SameSite=Lax; HttpOnly; Secure");
-        assert_eq!(SetCookie::try_new("s", "").unwrap().header(), "s=; Path=/; SameSite=Lax; HttpOnly; Secure", "an empty value is a cookie");
+        assert_eq!(
+            SetCookie::try_new("s", "").unwrap().header(),
+            "s=; Path=/; SameSite=Lax; HttpOnly; Secure",
+            "an empty value is a cookie"
+        );
     }
 
     #[test]
