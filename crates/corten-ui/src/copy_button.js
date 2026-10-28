@@ -12,14 +12,18 @@ const SAID = 2000;
 const shown = () => keep(() => ({ label: /** @type {Node[] | null} */ (null), timer: 0 }));
 
 /**
- * Shown where the browser has the Clipboard API (a secure origin); the timer ends with the
- * button.
- * @param {HTMLButtonElement} button @param {AbortSignal} signal
+ * Shown where the browser has the Clipboard API (a secure origin). When the button leaves the
+ * page, its timer ends and its label is put back, so one that comes back does not say it copied.
+ * @param {HTMLButtonElement} button @param {HTMLSpanElement} said @param {AbortSignal} signal
  */
-export function connect(button, signal) {
+export function connect(button, said, signal) {
   if (typeof navigator.clipboard?.writeText === "function") button.hidden = false;
   const s = shown();
-  signal.addEventListener("abort", () => clearTimeout(s.timer));
+  signal.addEventListener("abort", () => {
+    clearTimeout(s.timer);
+    if (s.label) said.replaceChildren(...s.label);
+    s.label = null;
+  });
 }
 
 /**

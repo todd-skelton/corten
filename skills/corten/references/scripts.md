@@ -211,8 +211,8 @@ export function select(link, body) {
 ## Widgets
 
 Use `corten-ui` (number field, combobox, tabs, menu button, toaster, copy button) before writing
-one. For anything else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS anchor positioning. A
-`<dialog>` the server can draw `open` (a form it refuses) gets
+one. For anything else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS
+anchor positioning. A `<dialog>` the server can draw `open` (a form it refuses) gets
 `on:connect={corten_ui::dialog::modal(target)}`, so it is modal, not just open; one the address
 opens and a link closes (`?selected=..`) gets `dialog::modalClosedBy(target, close, signal)` with
 the link as the `close` ref, so a close request (Escape) goes to its address. Do not write these

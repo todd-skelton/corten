@@ -726,11 +726,11 @@ Corten is pre-1.0, so any minor version may change the API.
     key's one-time secret; a read-only field's value). The element is named by its
     `#[derive(Id)]` id (`<code id={SecretId}>`, `<CopyButton text={SecretId} label={..}
     copied={..} />`), so the text is on the page once and a button in a list copies its own row's;
-    text in its place does not compile. The button is drawn `hidden` and shown only where the
-    clipboard can be written; after a write it reads the app's `copied` for two seconds in a
-    polite live region, and nothing to copy or a failed write changes nothing. Tested in
-    ui-gallery in Chromium, Firefox and WebKit (the clipboard's contents in Chromium, which lets a
-    test read it). Apps' own copy scripts can go
+    text in its place does not compile. The button is drawn `hidden` and shown where the browser
+    has the Clipboard API (a secure origin); after a write it reads the app's `copied` for two
+    seconds in a polite live region, and nothing to copy or a failed write changes nothing. Tested
+    in ui-gallery in Chromium, Firefox and WebKit: a copy (the clipboard's contents in Chromium,
+    which lets a test read it), a denied write, no Clipboard API, and no script. Apps' own copy scripts can go
     ([#244 corten-ui has no copy-to-clipboard control, so each app ships its own script for Copy](https://github.com/todd-skelton/corten/issues/244)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
