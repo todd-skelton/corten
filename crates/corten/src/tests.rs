@@ -1670,10 +1670,13 @@ fn a_held_document_is_written_as_it_is_inside_another_value() {
 #[test]
 fn a_held_document_that_is_not_one_json_value_is_an_error() {
     use crate::json::Raw;
-    for text in ["{\"rows\": [1,", "", "{} {}", "nul"] {
+    for text in ["{\"rows\": [1,", "", "{} {}", "nul", "\u{feff}{}"] {
         let error = Raw::new(text).unwrap_err();
         assert!(error.to_string().starts_with("not one JSON value: "), "{text:?}: {error}");
     }
+    // A string in another encoding (Windows-1252's é) is not JSON, though the parser skips it.
+    let error = Raw::new(&b"{\"name\":\"caf\xE9\"}"[..]).unwrap_err();
+    assert!(error.to_string().starts_with("not one JSON value: not UTF-8"), "{error}");
     assert_eq!(Raw::new(" [1] ").unwrap().as_bytes(), b" [1] ");
 }
 

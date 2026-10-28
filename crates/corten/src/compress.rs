@@ -8,7 +8,8 @@
 //! they are compressed once, at brotli 11 and gzip 9, the first time a client asks for them (in
 //! a background thread, so startup is not delayed; until then they go out as dynamic responses).
 //! JSON the app holds as bytes and sends again ([`crate::json::Raw`]) is compressed once too, the
-//! second time it is sent, at brotli 9 and gzip 9: on an 80 KB document that takes 15 ms once,
+//! second time it is sent, at brotli 9 and gzip 9, by one background thread that takes them in
+//! turn from a bounded queue: on an 80 KB document that takes 15 ms once,
 //! where compressing every read costs 220 µs (zstd 1) to 2.1 ms (brotli 2), and gives 5,000 bytes
 //! against 6,992 with zstd 1. brotli 11 would take 356 ms, too long for a value that changes while
 //! the app runs.
@@ -283,7 +284,7 @@ pub(crate) async fn finish(res: Response, accepts: Accepts) -> Response {
     let stored = parts.extensions.get::<Stored>().and_then(|Stored(held)| {
         let identity = held.identity();
         let same = identity.as_ptr() == bytes.as_ptr() && identity.len() == bytes.len();
-        held.stored(accepts.stored().filter(|_| same)?)
+        Precompressed::stored_held(held, accepts.stored().filter(|_| same)?)
     });
     let (encoded, coding) = match stored {
         Some(made) => made,
@@ -489,36 +490,49 @@ impl Precompressed {
     }
 
     /// The form made for `coding` (brotli, or gzip for anything else), or `None` until it is
-    /// made; asking starts making them (a held value's second time).
+    /// made; asking starts making them (a file's first time).
     pub fn stored(&self, coding: Coding) -> Option<(Bytes, Coding)> {
-        match self.encoded.get() {
-            Some([br, gzip]) => Some(match coding {
+        self.stored_or_start(coding, || {
+            let (identity, slot, level) = (self.identity.clone(), self.encoded.clone(), self.level);
+            Box::new(move || make(&identity, &slot, level))
+        })
+    }
+
+    /// [`Precompressed::stored`] for a held value (a second read starts making them). The job
+    /// waiting its turn holds the value weakly: one the app has replaced and dropped by then is
+    /// skipped, and its bytes are freed when the app drops it, not when its turn comes.
+    pub fn stored_held(this: &Arc<Self>, coding: Coding) -> Option<(Bytes, Coding)> {
+        this.stored_or_start(coding, || {
+            let held = Arc::downgrade(this);
+            Box::new(move || {
+                if let Some(held) = held.upgrade() {
+                    make(&held.identity, &held.encoded, held.level)
+                }
+            })
+        })
+    }
+
+    fn stored_or_start(&self, coding: Coding, job: impl FnOnce() -> Job) -> Option<(Bytes, Coding)> {
+        if let Some([br, gzip]) = self.encoded.get() {
+            return Some(match coding {
                 Coding::Brotli => (br.clone(), coding),
                 _ => (gzip.clone(), Coding::Gzip),
-            }),
-            None => {
-                let wait = if self.level == Level::Held { 1 } else { 0 };
-                if self.reads.fetch_add(1, Ordering::Relaxed) >= wait && !self.started.swap(true, Ordering::AcqRel) {
-                    let (identity, slot, level) = (self.identity.clone(), self.encoded.clone(), self.level);
-                    let job: Job = Box::new(move || {
-                        let br = Bytes::from(encode(Coding::Brotli, &identity, level));
-                        let gzip = Bytes::from(encode(Coding::Gzip, &identity, level));
-                        let _ = slot.set([br, gzip]);
-                    });
-                    let queued = match self.level {
-                        // Files: as many as the app has, each once.
-                        Level::Best => std::thread::Builder::new().spawn(job).is_ok(),
-                        // Held values: as many as the app's data, so one worker, a bounded queue.
-                        _ => held_worker().is_some_and(|tx| tx.try_send(job).is_ok()),
-                    };
-                    if !queued {
-                        // Full, or no thread to be had: a later read asks again.
-                        self.started.store(false, Ordering::Release);
-                    }
-                }
-                None
+            });
+        }
+        let wait = if self.level == Level::Held { 1 } else { 0 };
+        if self.reads.fetch_add(1, Ordering::Relaxed) >= wait && !self.started.swap(true, Ordering::AcqRel) {
+            let queued = match self.level {
+                // Files: as many as the app has, each once.
+                Level::Best => std::thread::Builder::new().spawn(job()).is_ok(),
+                // Held values: as many as the app's data, so one worker, a bounded queue.
+                _ => held_worker().is_some_and(|tx| tx.try_send(job()).is_ok()),
+            };
+            if !queued {
+                // Full, or no thread to be had: a later read asks again.
+                self.started.store(false, Ordering::Release);
             }
         }
+        None
     }
 
     /// Whether making the stored forms has started (tests).
@@ -538,6 +552,13 @@ impl Precompressed {
 
 type Job = Box<dyn FnOnce() + Send>;
 
+/// Makes the stored forms of `identity` at `level` into `slot`.
+fn make(identity: &Bytes, slot: &OnceLock<[Bytes; 2]>, level: Level) {
+    let br = Bytes::from(encode(Coding::Brotli, identity, level));
+    let gzip = Bytes::from(encode(Coding::Gzip, identity, level));
+    let _ = slot.set([br, gzip]);
+}
+
 /// Held values waiting to be compressed; past this, a read leaves its value to a later one.
 const HELD_QUEUE: usize = 64;
 
@@ -551,7 +572,9 @@ fn held_worker() -> Option<&'static std::sync::mpsc::SyncSender<Job>> {
             let (tx, rx) = std::sync::mpsc::sync_channel::<Job>(HELD_QUEUE);
             let worker = std::thread::Builder::new().name("corten-compress".into()).spawn(move || {
                 for job in rx {
-                    job();
+                    // A job that panics loses its own forms (that value is compressed per
+                    // request), not the worker every later value needs.
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
                 }
             });
             worker.ok().map(|_| tx)

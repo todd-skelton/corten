@@ -700,11 +700,11 @@ Corten is pre-1.0, so any minor version may change the API.
     compressed once (brotli 9 and gzip 9, on one background thread) and later reads
     send those forms: on an 80 KB document, 15 ms once instead of 220 µs (zstd 1) to 2.1 ms
     (brotli 2) on every read, and 5,000 bytes instead of 6,992. Apps no longer write their own
-    `Answer` for these. A held 80 KB document sent in its stored form costs about 23,400
+    `Answer` for these. A held 80 KB document sent in its stored form costs about 24,100
     instructions a request (callgrind), where one compressed on each read costs 1.41 million.
     Every other answer reads `Accept-Encoding` once for both codings, as bytes, and costs what it
-    did: 22,357 to 22,272 instructions for a small JSON answer, 99,935 to 99,985 for an 80-row
-    one, 22,708 to 22,624 for text (two runs each against main).
+    did: 22,357 to 22,252 instructions for a small JSON answer, 99,935 to 99,940 for an 80-row
+    one, 22,708 to 22,602 for text (two runs each against main).
     ([#201 A JSON route cannot answer with a status other than 200 or send JSON it already holds as bytes, so each app writes its own Answer](https://github.com/todd-skelton/corten/issues/201),
     [#234 A JSON answer cannot set a cookie the way an HTML answer can](https://github.com/todd-skelton/corten/issues/234)).
 ### Removed

@@ -237,23 +237,36 @@ pub trait ToJson {
 #[derive(Clone)]
 pub struct Raw(#[cfg(feature = "compress")] Arc<crate::compress::Precompressed>, #[cfg(not(feature = "compress"))] Bytes);
 
-/// Bytes [`Raw::new`] was given that are not one JSON value, and where they stop being one.
+/// Bytes [`Raw::new`] was given that are not one JSON value in UTF-8, and where they stop being
+/// one.
 #[derive(Debug)]
-pub struct InvalidJson(serde_json::Error);
+pub struct InvalidJson(InvalidJsonKind);
+
+#[derive(Debug)]
+enum InvalidJsonKind {
+    Utf8(std::str::Utf8Error),
+    Json(serde_json::Error),
+}
 
 impl std::fmt::Display for InvalidJson {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "not one JSON value: {}", self.0)
+        match &self.0 {
+            InvalidJsonKind::Utf8(error) => write!(f, "not one JSON value: not UTF-8, {error}"),
+            InvalidJsonKind::Json(error) => write!(f, "not one JSON value: {error}"),
+        }
     }
 }
 
 impl std::error::Error for InvalidJson {}
 
 impl Raw {
-    /// The JSON in `bytes`, or an error when they are not one JSON value.
+    /// The JSON in `bytes`, or an error when they are not one JSON value in UTF-8 (a byte order
+    /// mark included: JSON sent over a network has none).
     pub fn new(bytes: impl Into<Bytes>) -> Result<Raw, InvalidJson> {
         let bytes = bytes.into();
-        serde_json::from_slice::<serde::de::IgnoredAny>(&bytes).map_err(InvalidJson)?;
+        // UTF-8 first: the parser skips a string it ignores without checking its bytes.
+        let text = std::str::from_utf8(&bytes).map_err(|e| InvalidJson(InvalidJsonKind::Utf8(e)))?;
+        serde_json::from_str::<serde::de::IgnoredAny>(text).map_err(|e| InvalidJson(InvalidJsonKind::Json(e)))?;
         #[cfg(feature = "compress")]
         return Ok(Raw(Arc::new(crate::compress::Precompressed::held(bytes))));
         #[cfg(not(feature = "compress"))]
