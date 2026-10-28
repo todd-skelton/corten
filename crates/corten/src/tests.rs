@@ -3020,3 +3020,91 @@ async fn an_app_says_whether_it_serves_a_return_address() {
         assert_eq!((status, headers["location"].to_str().unwrap()), (StatusCode::SEE_OTHER, location), "{p:?}");
     }
 }
+
+#[crate::routes]
+mod policy_url {
+    #[route("/", get = policy_page)]
+    pub struct Home;
+}
+
+#[crate::routes(area = Pay)]
+mod pay_url {
+    #[route("/pay")]
+    pub struct Pay;
+
+    #[route("/pay/card", get = policy_page)]
+    pub struct Card;
+}
+
+/// An area inside `/pay` that adds to it.
+#[crate::routes(area = Charts)]
+mod charts_url {
+    #[route("/pay/charts")]
+    pub struct Charts;
+
+    #[route("/pay/charts/week", get = policy_page)]
+    pub struct Week;
+}
+
+async fn policy_page(req: Req) -> HtmlResult {
+    req.test_page("Page", html! { <p>"page"</p> })
+}
+
+fn policy_app() -> Router {
+    App::new(policy_url::router())
+        .policy(crate::security::Policy::new().img_src("https://img.example"))
+        .area(|area| pay_url::area(area).policy(|p| p.script_src("https://js.stripe.com").frame_src("https://js.stripe.com")))
+        .area(|area| charts_url::area(area).policy(|p| p.allow_style_attributes().script_src("https://js.stripe.com")))
+        .router()
+}
+
+/// What a page answers: its CSP and its shell key.
+async fn csp_and_shell(router: &Router, path: &str) -> (StatusCode, String, String) {
+    let res = router.clone().oneshot(Request::get(path).body(Body::empty()).unwrap()).await.unwrap();
+    let status = res.status();
+    let csp = res.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap().to_string();
+    let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    let shell = body.split(r#"name="corten-shell" content=""#).nth(1).map_or("", |rest| &rest[..16]).to_string();
+    (status, csp, shell)
+}
+
+/// An area's policy adds to the app's on its pages only, nested areas add up, and a page whose
+/// policy differs has another shell key, so a client navigation to it loads the document in full.
+#[tokio::test]
+async fn an_area_adds_to_the_policy_of_its_pages_only() {
+    let router = policy_app();
+    let (status, home, home_shell) = csp_and_shell(&router, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(home.contains("img-src 'self' data: https: https://img.example;") && home.contains("frame-src 'none';"), "{home}");
+    assert!(!home.contains("stripe") && !home.contains("style-src-attr"), "{home}");
+    let (_, card, card_shell) = csp_and_shell(&router, "/pay/card").await;
+    assert!(card.contains(" https://js.stripe.com; style-src") && card.contains("frame-src https://js.stripe.com;"), "{card}");
+    assert!(card.contains("https://img.example") && !card.contains("style-src-attr"), "the app's sources stay: {card}");
+    let (_, week, week_shell) = csp_and_shell(&router, "/pay/charts/week").await;
+    assert!(week.contains("frame-src https://js.stripe.com;") && week.ends_with("; style-src-attr 'unsafe-inline'"), "{week}");
+    assert_eq!(week.matches("https://js.stripe.com").count(), 2, "a source both areas add is listed once: {week}");
+    assert!(
+        home_shell != card_shell && card_shell != week_shell && home_shell != week_shell,
+        "{home_shell} {card_shell} {week_shell}"
+    );
+    // An unknown URL in the area is answered under its policy, as its pages are.
+    let res = router.clone().oneshot(Request::get("/pay/nothing").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_eq!(res.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap(), card);
+    // A write another site sent to the area is refused under the area's policy too.
+    let cross = Request::post("/pay/card").header("sec-fetch-site", "cross-site").body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(cross).await.unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(res.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap(), card);
+    // A page outside every area that adds keeps the shell key it had without any.
+    let img = || crate::security::Policy::new().img_src("https://img.example");
+    let plain = App::new(policy_url::router()).policy(img()).router();
+    assert_eq!(csp_and_shell(&plain, "/").await, (StatusCode::OK, home.clone(), home_shell.clone()));
+    // An area that adds only what the app has keeps the app's policy and shell key: a navigation
+    // into it is not a full load.
+    let same = App::new(policy_url::router())
+        .policy(img())
+        .area(|area| pay_url::area(area).policy(|p| p.img_src("https://img.example")))
+        .router();
+    assert_eq!(csp_and_shell(&same, "/pay/card").await, (StatusCode::OK, home, home_shell));
+}

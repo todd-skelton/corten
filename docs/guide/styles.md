@@ -68,7 +68,10 @@ which may be another crate's. A property a script sets (`el.style.setProperty`) 
 `static/style.css` holds what belongs to no component: element defaults, fonts and the layout.
 Link it before `<Corten />` in the layout, which links the components' stylesheet, so component
 rules win ties. Inline `style=` stays blocked by the
-CSP; one-off values come from the token utilities instead.
+CSP; one-off values come from the token utilities instead. Pages that must draw a size from data
+(a meter's fill, marks on a timeline) are an area that allows style attributes,
+`.policy(|p| p.allow_style_attributes())` ([app guide](app.md#a-policy-for-part-of-the-app)), so
+the rest of the app keeps the protection.
 
 ## Utility-first
 

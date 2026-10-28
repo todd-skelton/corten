@@ -531,7 +531,10 @@ impl Req {
     /// request read, read when the page renders, after the handler's extractors ran) and which
     /// layout rendered it (`shell`, from the document's `html!`).
     fn key(&self, shell: u64) -> u64 {
-        self.shared.key_base ^ self.signal.callers().rotate_left(1) ^ shell
+        // What the page's area policy adds (`Area::policy`): a document keeps the CSP it loaded
+        // with, so a navigation to a page with another loads it in full.
+        let area = self.nonce.as_ref().map_or(0, |slot| slot.1);
+        self.shared.key_base ^ self.signal.callers().rotate_left(1) ^ shell ^ area
     }
 
     /// When the work for this request should stop, and why: the server's `request.signal`. See
