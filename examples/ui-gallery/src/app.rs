@@ -3,6 +3,7 @@
 //! | Route | |
 //! |---|---|
 //! | `GET /?tab=offers` | the gallery, with that tab selected |
+//! | `GET /?sale=last` | the gallery with the last sale's sheet open beside it |
 //! | `POST /order` | the form: a patch with JavaScript, the page without |
 //! | `POST /archive`, `POST /watch` | the menu's form actions |
 //! | `POST /save` | a form that answers with a toast |
@@ -13,7 +14,7 @@ use serde::Deserialize;
 
 use corten_ui::Toast;
 
-use crate::gallery::{COLORS, Gallery, MenuResult, OrderResult, RenameDialog, TABS};
+use crate::gallery::{COLORS, Gallery, LAST_SALE, MenuResult, OrderResult, RenameDialog, TABS};
 
 /// Every URL the gallery serves and links to, with the handlers that serve it.
 #[corten::routes]
@@ -21,6 +22,7 @@ pub mod url {
     #[route("/", get = home)]
     pub struct Home<'a> {
         pub tab: Option<&'a str>,
+        pub sale: Option<&'a str>,
     }
 
     #[route("/order", post = order)]
@@ -78,13 +80,15 @@ fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
 #[derive(Deserialize)]
 struct HomeQuery {
     tab: Option<String>,
+    sale: Option<String>,
 }
 
 const TITLE: &str = "corten-ui";
 
 async fn home(req: Req, Query(q): Query<HomeQuery>) -> HtmlResult {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
-    gallery(&req, Gallery { tab, result: "", toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } })
+    let sale = q.sale.as_deref() == Some(LAST_SALE);
+    gallery(&req, Gallery { tab, result: "", toast: None, sale, rename: RenameDialog { name: "", errors: &Errors::new() } })
 }
 
 #[derive(Deserialize, Fields)]
@@ -98,7 +102,16 @@ async fn order(req: Req, Form(form): Form<OrderForm>) -> HtmlResult {
     let color = COLORS.iter().find(|c| c.value == form.color).map_or("no color", |c| c.label);
     let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
     let page = || async {
-        gallery(&req, Gallery { tab: 0, result: &text, toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } })
+        gallery(
+            &req,
+            Gallery {
+                tab: 0,
+                result: &text,
+                toast: None,
+                sale: false,
+                rename: RenameDialog { name: "", errors: &Errors::new() },
+            },
+        )
     };
     req.patch_or(OrderResult { text: &text }, page).await
 }
@@ -109,7 +122,13 @@ async fn save(req: Req) -> HtmlResult {
     let page = || async {
         gallery(
             &req,
-            Gallery { tab: 0, result: "", toast: Some(SAVED), rename: RenameDialog { name: "", errors: &Errors::new() } },
+            Gallery {
+                tab: 0,
+                result: "",
+                toast: Some(SAVED),
+                sale: false,
+                rename: RenameDialog { name: "", errors: &Errors::new() },
+            },
         )
     };
     req.patch_or(Toast { message: Some(SAVED) }, page).await
@@ -125,12 +144,13 @@ pub struct RenameForm {
 async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
     let name = form.name.trim();
     if !name.is_empty() {
-        return req.redirect(&url::Home { tab: None });
+        return req.redirect(&url::Home { tab: None, sale: None });
     }
     let mut errors = Errors::new();
     errors.add(RenameForm::FIELDS.name, "Give the draft a name.");
-    let page =
-        || async { gallery(&req, Gallery { tab: 0, result: "", toast: None, rename: RenameDialog { name, errors: &errors } }) };
+    let page = || async {
+        gallery(&req, Gallery { tab: 0, result: "", toast: None, sale: false, rename: RenameDialog { name, errors: &errors } })
+    };
     req.invalid(&errors, RenameDialog { name, errors: &errors }, page).await
 }
 
@@ -143,14 +163,14 @@ async fn watch(req: Req) -> HtmlResult {
 }
 
 async fn menu_action(req: Req, text: &'static str) -> HtmlResult {
-    req.patch_or(MenuResult { text }, || async { req.redirect(&url::Home { tab: None }) }).await
+    req.patch_or(MenuResult { text }, || async { req.redirect(&url::Home { tab: None, sale: None }) }).await
 }
 
 async fn help(req: Req) -> HtmlResult {
     req.page(html! {
         <Layout req={&req} title="Help | corten-ui">
             <h1>"Help"</h1>
-            <p><a href={url::Home { tab: None }}>"Back"</a></p>
+            <p><a href={url::Home { tab: None, sale: None }}>"Back"</a></p>
         </Layout>
     })
 }
@@ -196,6 +216,19 @@ mod tests {
         assert_eq!(patch, r#"<p id="result" role="status">Ordered 2 in Desert Sand at $12.50.</p>"#);
         let page = send(form().body(Body::from("qty=2&price=12.50&color=sand")).unwrap()).await;
         assert!(page.contains("<html") && page.contains("Ordered 2 in Desert Sand"));
+    }
+
+    #[tokio::test]
+    async fn the_address_opens_the_sale_sheet_and_its_link_closes_it() {
+        let open = send(Request::get("/?sale=last").body(Body::empty()).unwrap()).await;
+        assert!(
+            open.contains(r#"<dialog data-scope="sale-sheet" open aria-label="Last sale" data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)">"#),
+            "{open}"
+        );
+        assert!(open.contains(r#"<a data-ref="close" href="/">Close</a>"#), "{open}");
+        let home = send(Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(!home.contains("Last sale\""), "drawn only when the address names it: {home}");
+        assert!(home.contains(r#"<a href="/?sale=last">Last sale</a>"#), "{home}");
     }
 
     #[tokio::test]

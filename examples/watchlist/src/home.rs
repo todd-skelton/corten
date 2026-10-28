@@ -293,7 +293,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::testing::{LIST, call, call_on, get, get_with, post, post_with, router, send, text};
+    use crate::testing::{VISITOR, call, call_on, get, get_with, post, post_with, router, send, text};
 
     /// The tickers of the rows a page or patch shows, in order.
     fn rows(body: &str) -> Vec<&str> {
@@ -336,18 +336,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_browser_gets_a_list_id_once_and_keeps_its_list_on_the_server() {
+    async fn a_browser_gets_a_visitor_id_once_and_keeps_its_list_on_the_server() {
         let first = call(get("/")).await;
         let cookie = first.headers()["set-cookie"].to_str().unwrap();
-        assert!(cookie.starts_with("list=") && cookie[5..].find(';') == Some(32), "{cookie}");
+        assert!(cookie.starts_with("visitor=") && cookie[8..].find(';') == Some(32), "{cookie}");
         assert!(cookie.ends_with("; Path=/; SameSite=Lax; Max-Age=31536000; HttpOnly; Secure"), "{cookie}");
         let app = router();
-        let res = call_on(&app, post_with("/watch", Some("action"), None, Some(LIST), "id=SOLR")).await;
+        let res = call_on(&app, post_with("/watch", Some("action"), None, Some(VISITOR), "id=SOLR")).await;
         assert!(res.headers().get("set-cookie").is_none(), "a browser with a list keeps its id");
-        let page = text(call_on(&app, get_with("/", LIST)).await).await;
+        let page = text(call_on(&app, get_with("/", VISITOR)).await).await;
         assert_eq!(rows(&page), ["ACME", "GLBX", "INIT", "SOLR"]);
         // Another browser, and a cookie the app did not write, see a list of their own.
-        let other = text(call_on(&app, get_with("/", "list=nope")).await).await;
+        let other = text(call_on(&app, get_with("/", "visitor=nope")).await).await;
         assert_eq!(rows(&other), ["ACME", "GLBX", "INIT"]);
     }
 
@@ -360,7 +360,7 @@ mod tests {
         let app = router();
         let res = call_on(&app, post("/watch", Some("action"), None, "id=SOLR")).await;
         let cookies: Vec<_> = res.headers().get_all("set-cookie").iter().map(|c| c.to_str().unwrap().to_string()).collect();
-        assert!(cookies.len() == 1 && cookies[0].starts_with("list="), "{cookies:?}");
+        assert!(cookies.len() == 1 && cookies[0].starts_with("visitor="), "{cookies:?}");
         let list = cookies[0].split(';').next().unwrap().to_string();
         assert_eq!(rows(&text(call_on(&app, get_with("/", &list)).await).await), ["ACME", "GLBX", "INIT", "SOLR"]);
     }
@@ -369,11 +369,11 @@ mod tests {
     async fn two_removals_sent_at_once_both_land() {
         let app = router();
         let (a, b) = tokio::join!(
-            call_on(&app, post_with("/unwatch", Some("action"), None, Some(LIST), "id=HLTH&remove=ACME")),
-            call_on(&app, post_with("/unwatch", Some("action"), None, Some(LIST), "id=HLTH&remove=GLBX")),
+            call_on(&app, post_with("/unwatch", Some("action"), None, Some(VISITOR), "id=HLTH&remove=ACME")),
+            call_on(&app, post_with("/unwatch", Some("action"), None, Some(VISITOR), "id=HLTH&remove=GLBX")),
         );
         assert_eq!((a.status(), b.status()), (StatusCode::OK, StatusCode::OK));
-        let page = text(call_on(&app, get_with("/", LIST)).await).await;
+        let page = text(call_on(&app, get_with("/", VISITOR)).await).await;
         assert_eq!(rows(&page), ["INIT"]);
     }
 
@@ -381,9 +381,9 @@ mod tests {
     async fn an_empty_list_keeps_its_table_for_the_next_watch() {
         let app = router();
         for body in ["remove=ACME", "remove=GLBX", "remove=INIT"] {
-            call_on(&app, post_with("/unwatch", Some("action"), None, Some(LIST), body)).await;
+            call_on(&app, post_with("/unwatch", Some("action"), None, Some(VISITOR), body)).await;
         }
-        let page = text(call_on(&app, get_with("/", LIST)).await).await;
+        let page = text(call_on(&app, get_with("/", VISITOR)).await).await;
         assert!(page.contains("<tbody><tr><td colspan=\"4\"") && page.contains("You are not watching any stocks."), "{page}");
     }
 
@@ -403,7 +403,7 @@ mod tests {
 
     #[tokio::test]
     async fn one_watch_handler_serves_every_surface() {
-        let res = call(post_with("/watch", Some("action"), None, Some(LIST), "id=HLTH")).await;
+        let res = call(post_with("/watch", Some("action"), None, Some(VISITOR), "id=HLTH")).await;
         let patch = text(res).await;
         assert!(patch.starts_with(r#"<div data-scope="live-prices" id="prices" "#), "the prices first: {patch}");
         assert_eq!(rows(&patch), ["ACME", "GLBX", "INIT", "HLTH"]);
@@ -423,7 +423,7 @@ mod tests {
 
     #[tokio::test]
     async fn removing_takes_the_stock_off_the_list_and_offers_it_again() {
-        let patch = text(call(post_with("/unwatch", Some("action"), None, Some(LIST), "id=HLTH&remove=GLBX")).await).await;
+        let patch = text(call(post_with("/unwatch", Some("action"), None, Some(VISITOR), "id=HLTH&remove=GLBX")).await).await;
         assert_eq!(rows(&patch), ["ACME", "INIT"]);
         assert!(patch.contains(r#"<option value="GLBX">Globex (GLBX)</option>"#), "{patch}");
         assert!(patch.contains("Stopped watching Globex."), "{patch}");
