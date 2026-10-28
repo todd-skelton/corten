@@ -21,7 +21,7 @@ use corten::{
     ClientZone, LiveResponse, LiveSince,
     axum::{
         extract::FromRef,
-        http::{StatusCode, header, request::Parts},
+        http::{StatusCode, request::Parts},
     },
     feed::{FeedResponse, Since},
     prelude::*,
@@ -269,15 +269,11 @@ pub fn Layout<'a>(
 }
 
 async fn sign_in(req: Req) -> HtmlResult {
-    let mut res = req.redirect(&url::Home)?;
-    res.headers_mut().append(header::SET_COOKIE, SetCookie::new("viewer", "Ada").header());
-    Ok(res)
+    Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("viewer", "Ada")))
 }
 
 async fn sign_out(req: Req) -> HtmlResult {
-    let mut res = req.redirect(&url::Home)?;
-    res.headers_mut().append(header::SET_COOKIE, SetCookie::remove("viewer").header());
-    Ok(res)
+    Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::remove("viewer")))
 }
 
 /// The last trade as each one happens, for `<corten-live src>`: every item is a fragment the
@@ -459,11 +455,8 @@ fn LastTrade(text: &str) -> impl Render {
 /// browser that had none.
 fn home_screen(req: &Req, viewer: Option<&Viewer>, watching: &mut Watching, home: &Home) -> HtmlResult {
     let view = home_view(home, req.t());
-    let mut res = req.screen(home, html! { <Layout req={req} title="Watchlist" viewer={viewer} head="">{view}</Layout> })?;
-    if let Some(cookie) = watching.cookie() {
-        res.headers_mut().append(header::SET_COOKIE, cookie);
-    }
-    Ok(res)
+    let res = req.screen(home, html! { <Layout req={req} title="Watchlist" viewer={viewer} head="">{view}</Layout> })?;
+    Ok(watching.with_cookie(res))
 }
 
 async fn home(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>, mut watching: Watching) -> HtmlResult {
@@ -531,14 +524,11 @@ fn changed(req: &Req, viewer: Option<&Viewer>, market: &Market, watching: &mut W
     if req.mode != Mode::Action {
         return home_screen(req, viewer, watching, &home);
     }
-    let mut res = req.patch(html! {
+    let res = req.patch(html! {
         <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} t={req.t()} />
         <WatchForm others={&home.others} message={&home.message} />
     })?;
-    if let Some(cookie) = watching.cookie() {
-        res.headers_mut().append(header::SET_COOKIE, cookie);
-    }
-    Ok(res)
+    Ok(watching.with_cookie(res))
 }
 
 #[derive(Deserialize, Fields)]
@@ -630,10 +620,16 @@ fn AlertForm<'a>(input: &'a AlertInput, errors: &'a Errors, until: Option<u64>) 
 /// page was reached; once the alert is in, the page stops asking. Alerts are not kept or sent:
 /// a real app stores them and tells the user from a task of its own.
 async fn alerts(req: Req, viewer: Option<Caller<Viewer>>, Query(at): Query<url::Alerts>) -> HtmlResult {
-    if req.mode == Mode::Action {
-        return alert_status(&req, at.until);
-    }
-    alerts_page(&req, viewer.as_deref(), &AlertInput::default(), &Errors::new(), at.until)
+    // A read again from the form's patch: the status line alone, which asks again from this
+    // route while the alert is landing.
+    // A view renders only when it is sent, so a page load does not build the read-again.
+    let from = url::Alerts { until: at.until };
+    let status = html! {
+        <AlertStatus until={at.until} />
+        {asks_again(at.until).then(|| ReadAgain { after: Duration::from_secs(1) }.from(&from))}
+    };
+    let page = || async { alerts_page(&req, viewer.as_deref(), &AlertInput::default(), &Errors::new(), at.until) };
+    req.patch_or(status, page).await
 }
 
 fn alerts_page(req: &Req, viewer: Option<&Viewer>, input: &AlertInput, errors: &Errors, until: Option<u64>) -> HtmlResult {
@@ -670,19 +666,17 @@ async fn save_alert(req: Req, viewer: Option<Caller<Viewer>>, Form(input): Form<
         let form = AlertForm { input: &input, errors: &errors, until: None };
         return req.invalid(&errors, form, || async { alerts_page(&req, viewer.as_deref(), &input, &errors, None) }).await;
     }
-    let until = Some(now_millis() + 1500);
-    if req.mode == Mode::Action {
-        // The whole form, empty as the page that a save without JavaScript goes to, so a field a
-        // refused submit marked is cleared; the reads that follow answer the status line alone.
-        let from = url::Alerts { until };
-        let again = ReadAgain { after: Duration::from_secs(1) }.from(&from);
-        let none = Errors::new();
-        return req.patch(html! {
-            <AlertForm input={&AlertInput::default()} errors={&none} until={until} />
-            {again}
-        });
-    }
-    req.redirect(&url::Alerts { until })
+    // With JavaScript, the whole form, empty as the page that a save without JavaScript goes to,
+    // so a field a refused submit marked is cleared; the reads that follow answer the status line
+    // alone.
+    let from = url::Alerts { until: Some(now_millis() + 1500) };
+    let again = ReadAgain { after: Duration::from_secs(1) }.from(&from);
+    let (empty, none) = (AlertInput::default(), Errors::new());
+    let form = html! {
+        <AlertForm input={&empty} errors={&none} until={from.until} />
+        {again}
+    };
+    req.patch_or(form, || async { req.redirect(&from) }).await
 }
 
 /// A price as a person types it (`130`, `129.9`, `129.99`, `.5`, `$1,299.00`), in cents: digits
@@ -699,17 +693,6 @@ fn cents(price: &str) -> Option<u64> {
     }
     let whole = if whole.is_empty() { 0 } else { whole.parse::<u64>().ok()? };
     Some(whole * 100 + format!("{fraction:0<2}").parse::<u64>().ok()?)
-}
-
-/// The status line alone, as a patch: while the alert is landing it asks to be read again from
-/// the alerts route with the write's time in it, which answers this again.
-fn alert_status(req: &Req, until: Option<u64>) -> HtmlResult {
-    let from = url::Alerts { until };
-    let again = asks_again(until).then(|| ReadAgain { after: Duration::from_secs(1) }.from(&from));
-    req.patch(html! {
-        <AlertStatus until={until} />
-        {again}
-    })
 }
 
 /// The alerts page's status line.

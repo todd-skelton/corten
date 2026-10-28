@@ -42,10 +42,8 @@ struct GreetForm {
 /// page comes back. One handler serves both.
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     let name = form.name.trim();
-    match req.mode {
-        Mode::Action => req.patch(views::Greeting { name }),
-        _ => req.page(views::home(&req, name)),
-    }
+    let page = || async { req.page(views::home(&req, name)) };
+    req.patch_or(views::Greeting { name }, page).await
 }
 
 #[cfg(test)]

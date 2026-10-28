@@ -628,7 +628,15 @@ Corten is pre-1.0, so any minor version may change the API.
 95. `Error::not_found()`: the 404 a handler answers for a record that is not there,
     `load(id).await?.ok_or_else(Error::not_found)?`, in place of
     `.ok_or_else(|| Error::status(StatusCode::NOT_FOUND))?` (or an app's own `fn not_found`).
-96. `corten::live_watch(values, since, cursor, view)`: a live stream of one value in a
+96. `HtmlResponse::with_cookie(SetCookie)`: an answer that sets a cookie,
+    `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, in place of
+    `res.headers_mut().append(header::SET_COOKIE, cookie.header())`. The cookie is built by
+    `SetCookie`, so its safe flags are the default.
+97. `Req::patch_or(view, page)`: a `data-patch` form's answer both ways, the patch with JavaScript
+    and `page()` (the page or a redirect) otherwise, in place of
+    `if req.mode == Mode::Action { return req.patch(view); }`. Like `Req::invalid`, the page's
+    closure runs only without JavaScript, so a patch never loads what only the page shows.
+98. `corten::live_watch(values, since, cursor, view)`: a live stream of one value in a
     `tokio::sync::watch` channel, from where the page is: nothing until the next change when it
     shows the current version, the current value first when it is behind, then the latest after
     each change. It replaces about ten lines of `mark_changed`, `unfold` and `Fragment`.

@@ -97,25 +97,22 @@ pub struct OrderForm {
 async fn order(req: Req, Form(form): Form<OrderForm>) -> HtmlResult {
     let color = COLORS.iter().find(|c| c.value == form.color).map_or("no color", |c| c.label);
     let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
-    match req.mode {
-        Mode::Action => req.patch(OrderResult { text: &text }),
-        _ => gallery(
-            &req,
-            Gallery { tab: 0, result: &text, toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } },
-        ),
-    }
+    let page = || async {
+        gallery(&req, Gallery { tab: 0, result: &text, toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } })
+    };
+    req.patch_or(OrderResult { text: &text }, page).await
 }
 
 /// Answers with a toast: the message as a patch, or in the page without JavaScript.
 async fn save(req: Req) -> HtmlResult {
     const SAVED: &str = "Draft saved.";
-    match req.mode {
-        Mode::Action => req.patch(Toast { message: Some(&SAVED) }),
-        _ => gallery(
+    let page = || async {
+        gallery(
             &req,
             Gallery { tab: 0, result: "", toast: Some(SAVED), rename: RenameDialog { name: "", errors: &Errors::new() } },
-        ),
-    }
+        )
+    };
+    req.patch_or(Toast { message: Some(&SAVED) }, page).await
 }
 
 #[derive(Deserialize, Fields)]
@@ -138,18 +135,15 @@ async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
 }
 
 async fn archive(req: Req) -> HtmlResult {
-    menu_action(req, "Archived.")
+    menu_action(req, "Archived.").await
 }
 
 async fn watch(req: Req) -> HtmlResult {
-    menu_action(req, "Watching.")
+    menu_action(req, "Watching.").await
 }
 
-fn menu_action(req: Req, text: &'static str) -> HtmlResult {
-    match req.mode {
-        Mode::Action => req.patch(MenuResult { text }),
-        _ => req.redirect(&url::Home { tab: None }),
-    }
+async fn menu_action(req: Req, text: &'static str) -> HtmlResult {
+    req.patch_or(MenuResult { text }, || async { req.redirect(&url::Home { tab: None }) }).await
 }
 
 async fn help(req: Req) -> HtmlResult {

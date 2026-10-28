@@ -87,12 +87,8 @@ async fn home(req: Req) -> HtmlResult {
 }
 
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
-    match req.mode {
-        // With JavaScript: send only the greeting, swapped in by its id.
-        Mode::Action => req.patch(Greeting { name: &form.name }),
-        // Without: the whole page.
-        _ => req.page(home_page(&req, &form.name)),
-    }
+    // With JavaScript, only the greeting, swapped in by its id; without, the whole page.
+    req.patch_or(Greeting { name: &form.name }, || async { req.page(home_page(&req, &form.name)) }).await
 }
 
 #[derive(serde::Deserialize, Fields)]
