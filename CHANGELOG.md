@@ -1522,10 +1522,14 @@ Corten is pre-1.0, so any minor version may change the API.
     times: the subtitle is the set and number, and no tag repeats a field or a chip.
 24. Work on a schedule is a task with tokio's intervals: `App::task`'s documentation and the
     guide (app.md, "On a schedule") show a job hourly at :15 and one every five minutes in one
-    loop, so they never overlap, run on a paused tokio clock in a doctest. The guide's task example
-    and the watchlist's market task now skip missed ticks (`MissedTickBehavior::Skip`; tokio's
+    loop, so they never overlap, keeping each job's last run for a status page, run on a paused
+    tokio clock in a doctest; the guide says what is left to the app (the monotonic clock's jumps,
+    the next run's time, local wall times). The guide's task example and the watchlist's market
+    task now use `MissedTickBehavior::Skip` (an overrun is followed by one late run; tokio's
     default, `Burst`, runs once for each missed mark, back to back) and poll the signal first
-    (`biased`), so no run starts once shutdown has begun. Corten adds no scheduler
+    (`biased`), so no run starts once shutdown has begun. Corten adds no scheduler. Corten's own
+    tests build tokio with `test-util` for the paused clock: each tokio clock read in them checks
+    one flag more; apps are not affected
     ([#278 An app cannot run a job on a schedule (hourly at :15, every 5 minutes, daily at 03:30), so each writes the clock, the missed-mark skip and the no-overlap rule itself](https://github.com/todd-skelton/corten/issues/278)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
