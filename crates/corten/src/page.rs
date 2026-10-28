@@ -76,6 +76,40 @@ fn is_current(path: &str, href: &str, section: bool) -> bool {
     path == href || (section && path.strip_prefix(href.trim_end_matches('/')).is_some_and(|rest| rest.starts_with('/')))
 }
 
+/// A nav link's attributes, from [`Req::nav`] or [`Req::nav_section`]: `href`, `data-nav` and,
+/// on its own page, `aria-current="page"`. The route's URL is made once, written and compared.
+pub struct Nav<'a, R> {
+    pub(crate) path: &'a str,
+    pub(crate) to: &'a R,
+    pub(crate) section: bool,
+}
+
+impl<R> crate::view::__private::Writes for Nav<'_, R> {
+    const WRITES: &'static [&'static str] = &["href", "data-nav", "aria-current"];
+}
+
+impl<R: crate::Route> crate::view::Attrs for Nav<'_, R> {
+    fn render_attrs(&self, out: &mut String) {
+        let start = out.len() + r#" href=""#.len();
+        out.push_str(r#" href=""#);
+        crate::Route::write_href(self.to, out, true);
+        // A derived route's path holds no character escaping changes, and the comparison stops
+        // before the query, so the written text is compared. A hand-written route whose path was
+        // escaped is compared as its unescaped URL.
+        let written = &out[start..];
+        let current = if written.split(['?', '#']).next().unwrap_or(written).contains('&') {
+            crate::route::Href::with_href(self.to, |href| is_current(self.path, href, self.section))
+        } else {
+            is_current(self.path, written, self.section)
+        };
+        out.push('"');
+        out.push_str(if self.section { r#" data-nav="section""# } else { " data-nav" });
+        if current {
+            out.push_str(r#" aria-current="page""#);
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn is_current_for_tests(path: &str, href: &str, section: bool) -> bool {
     is_current(path, href, section)
@@ -597,10 +631,61 @@ impl Req {
         href.with_href(|href| is_current(self.uri.path(), href, section))
     }
 
-    /// `aria-current="page"` for a nav link when [`Req::is_current`]:
-    /// `<a href={About} data-nav aria-current={req.current(&About)}>`.
-    pub fn current(&self, href: &(impl crate::route::Href + ?Sized)) -> Option<&'static str> {
-        self.is_current(href, false).then_some("page")
+    /// A nav link to `to`, from one mention of the route: `<a {..req.nav(&url::About)}>"About"</a>`
+    /// writes `href`, `data-nav` (so the runtime keeps `aria-current` right after a client
+    /// navigation) and `aria-current="page"` when `to` is this page.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/news")]
+    /// struct News;
+    /// #[derive(Route)]
+    /// #[route("/about")]
+    /// struct About;
+    ///
+    /// // On /news: <a href="/news" data-nav aria-current="page">News</a><a href="/about" data-nav>About</a>
+    /// fn nav(req: &Req) -> String {
+    ///     html! { <nav><a {..req.nav(&News)}>"News"</a><a {..req.nav(&About)}>"About"</a></nav> }.to_html()
+    /// }
+    /// let _: fn(&Req) -> String = nav;
+    /// ```
+    ///
+    /// The tag cannot also write one of those attributes, which the browser would ignore:
+    ///
+    /// ```compile_fail,E0080
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/news")]
+    /// struct News;
+    ///
+    /// fn nav(req: &Req) -> String {
+    ///     html! { <a href={News} {..req.nav(&News)}>"News"</a> }.to_html()
+    /// }
+    /// let _: fn(&Req) -> String = nav;
+    /// ```
+    ///
+    /// Nor can a link be marked by hand, which would name its route twice:
+    ///
+    /// ```compile_fail
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/news")]
+    /// struct News;
+    ///
+    /// let link = html! { <a href={News} data-nav>"News"</a> };
+    /// ```
+    pub fn nav<'a, R: crate::Route>(&'a self, to: &'a R) -> Nav<'a, R> {
+        Nav { path: self.uri.path(), to, section: false }
+    }
+
+    /// [`Req::nav`] for a link to a section: current on any page under `to` too
+    /// (`data-nav="section"`), as a nav's "News" stays current on a story's page.
+    pub fn nav_section<'a, R: crate::Route>(&'a self, to: &'a R) -> Nav<'a, R> {
+        Nav { path: self.uri.path(), to, section: true }
     }
 
     /// This request's CSP nonce, for the layout's own inline scripts. Empty without a policy.

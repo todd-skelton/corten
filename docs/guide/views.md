@@ -78,6 +78,13 @@ layout to a page in another loads it in full, with no `data-reload`. A prop that
 layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
 second layout.
 
+A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
+`href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
+that stays current on the pages under it). The full load renders `aria-current`, and the runtime
+moves it after each client navigation, so the header is right without rendering again. A tag
+that writes `href`, `data-nav` or `aria-current` itself beside the spread does not compile, nor
+does `data-nav` written by hand.
+
 Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`
 (feature `json`) writes a `ToJson` value in `<script type="application/ld+json">` with `<` as
 `\u003c`, so a description that says `</script>` cannot end it. An expression written inside

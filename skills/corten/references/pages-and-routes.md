@@ -57,8 +57,9 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    or the page without JavaScript); never redirect only to show "saving". Never a `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
    `raw` or an expression inside `<script>` (that does not compile).
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
-   the layout renders on full loads. Mark the current link with
-   `aria-current={req.current(&url::Item { id })}` in the layout.
+   the layout renders on full loads. Write each nav link from one mention of its route,
+   `<a {..req.nav(&url::Item { id })}>` (`href`, `data-nav` and `aria-current` on its own page;
+   `req.nav_section(..)` for a section), never `href` and `aria-current` separately.
 4. Read everything from `req` before building the view: `html!` views render once and own what
    they capture (`let t = req.t();` first, then `<Layout req={&req} ..>`).
 

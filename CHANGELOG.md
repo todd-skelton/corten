@@ -360,7 +360,7 @@ Corten is pre-1.0, so any minor version may change the API.
     parts a request needs: the title for a data client; the title, the page's head tags (expressions
     and components in `<head>`, marked `data-corten-head`) and `<main>`'s children for a client
     navigation. `<Corten />` is where Corten adds the runtime and the page's scripts and stylesheets.
-    `req.asset`, `req.has_asset`, `req.current`, `req.is_current`, `req.nonce` and `req.lang` are what
+    `req.asset`, `req.has_asset`, `req.nav`, `req.is_current`, `req.nonce` and `req.lang` are what
     a layout reads. On the item page (release, `render_cost`, eight alternating runs against the
     commit before, Windows) a full document is about 7% faster (median 57.5 to 53.8 us) and a
     navigation within noise (47.0 to 47.8 us; another eight runs gave 48.4 to 48.3), with the same
@@ -472,7 +472,7 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#98 #[derive(Fields)] refuses a struct with a lifetime, so a borrowed query struct cannot name its form's controls](https://github.com/todd-skelton/corten/issues/98),
     [#99 #[derive(Route)] reads #[serde(rename_all)] but does not declare it, so a link-only struct must derive a serde trait](https://github.com/todd-skelton/corten/issues/99)).
 68. `Route::at(id)`: a route with a place on its page, `/accounts/ada#review-7`, from the
-    element's `#[derive(Id)]` type, for `req.redirect`, `req.moved`, `req.current` and
+    element's `#[derive(Id)]` type, for `req.redirect`, `req.moved`, `req.is_current` and
     `href={..}`, so a redirect after a write brings the browser back to what the user acted on.
     Text does not compile. A client navigation sent to a place gets `corten-location` (`fetch`
     drops a redirect's fragment), and the runtime fetches the page again when the server sends it
@@ -672,6 +672,12 @@ Corten is pre-1.0, so any minor version may change the API.
     `FromRef`, so a handler takes `State<Market>` without a hand-written impl per part. Built on
     `proc_macro` alone (axum's derive needs its `macros` feature); two fields of one type are a
     compile error until one is `#[from_ref(skip)]`. The watchlist and card-market use it.
+104. `req.nav(&route)` and `req.nav_section(&route)`: a nav link from one mention of its route,
+    `<a {..req.nav(&url::News)}>"News"</a>`, writing `href`, `data-nav` and
+    `aria-current="page"` on its own page. The route's URL is made once, written and compared,
+    where `href={..}` and `aria-current={req.current(&..)}` made it twice; a tag that also writes
+    one of those attributes, or `data-nav` by hand, does not compile. The watchlist and
+    seller-desk use it.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -702,6 +708,8 @@ Corten is pre-1.0, so any minor version may change the API.
    corten::Error>`) is for helpers. A bare `corten::Result` names no answer and does not compile.
 8. The `link` keyword of `#[route]` in a routes module: a route an API serves goes in the API's
    own `#[corten::routes(api = ..)]` module, with its handler.
+9. `Req::current`: `req.nav(&route)` writes the whole nav link, and `req.is_current` answers
+   the question elsewhere.
 
 ### Changed
 
@@ -1318,7 +1326,7 @@ Corten is pre-1.0, so any minor version may change the API.
     category page shared longer by CDNs (`.shared(..)`) with its breadcrumbs as `JsonLd`, and an
     alert on an item with no listings answered with a whole-form error (`Errors::add_form`).
     `examples/seller-desk`: a `Middleware` (`Server-Timing`), an archive made idempotent by
-    `SubmitKey`, a `NoStore` statement page, a nav from `req.current`, and a typed event
+    `SubmitKey`, a `NoStore` statement page, a nav from `req.nav`, and a typed event
     (`#[event] PriceEdited`) a price cell sends the grid, which counts the prices not saved.
 15. The examples are named for what they are: `examples/hello` is `examples/watchlist` (a stock
     watchlist) and `examples/item-page` is `examples/card-market` (a trading-card store), with
