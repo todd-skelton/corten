@@ -1314,7 +1314,7 @@ async function run(browser) {
     Buffer.from("\r\n--png\r\n"),
   ]);
   const uploaded = await upload({ name: "card.png", mimeType: "image/png", buffer: png });
-  const shown = await page
+  const pictureUrl = await page
     .waitForFunction(
       () => {
         const img = document.querySelector("#viewer-badge img");
@@ -1326,8 +1326,8 @@ async function run(browser) {
     )
     .then((handle) => handle.jsonValue())
     .catch(() => null);
-  check("an uploaded picture is read as it arrives and shown in the header and on the page", uploaded === "Saved card.png as your picture." && /^\/pictures\/[0-9a-f]{32}$/.test(shown ?? ""), `${uploaded}, ${shown}`);
-  const served = await fetch(new URL(shown ?? "/pictures/none", base));
+  check("an uploaded picture is read as it arrives and shown in the header and on the page", uploaded === "Saved card.png as your picture." && /^\/pictures\/[0-9a-f]{32}$/.test(pictureUrl ?? ""), `${uploaded}, ${pictureUrl}`);
+  const served = await fetch(new URL(pictureUrl ?? "/pictures/none", base));
   check(
     "a picture is served as its type, at a URL every cache keeps",
     served.headers.get("content-type") === "image/png" && served.headers.get("cache-control") === "public, max-age=31536000, immutable",
