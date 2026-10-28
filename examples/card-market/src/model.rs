@@ -1,7 +1,9 @@
-//! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts.
-use corten::{Errors, Fields, FromJson, ToJson};
+//! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts,
+//! except the alert's price, read as the reader's locale writes money (`t.parse_money`) where
+//! the bench apps read a float.
+use corten::{Errors, Fields, FromJson, ToJson, i18n::Minor};
 
-use crate::text::Msg;
+use crate::text::{Msg, USD};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -92,21 +94,22 @@ pub struct AlertInput {
 
 /// The price-alert rules, shared by the form and the agent tool. Messages come from the catalog;
 /// field names come from the form, and the agent tool's input uses the same names.
-pub fn check_alert(t: Msg, email: &str, target: &str) -> Result<f64, Errors> {
+pub fn check_alert(t: Msg, email: &str, target: &str) -> Result<Minor<u64>, Errors> {
     let mut errors = Errors::new();
     if !email.contains('@') {
         errors.add(AlertInput::FIELDS.email, t.alert_invalid_email());
     }
-    let price: f64 = target.trim().parse().unwrap_or(f64::NAN);
-    // NaN (unparseable input) and infinity are not prices.
-    if !price.is_finite() || price <= 0.0 {
+    // The target as the reader's locale writes money (`12.50` in en, `12,50` in fr), in cents.
+    let price = t.parse_money(target, USD).filter(|cents| cents.0 > 0);
+    if price.is_none() {
         errors.add(AlertInput::FIELDS.target_price, t.alert_invalid_price());
     }
-    errors.into_result(price)
+    errors.into_result(price.unwrap_or(Minor(0)))
 }
 
-pub fn alert_set(title: &str, email: &str, price: f64) -> String {
-    format!("Alert set: we will email {email} when {title} drops below ${price:.2}.")
+/// What an alert set says, in the reader's locale, with the price as it writes money.
+pub fn alert_set(t: Msg, title: &str, email: &str, price: Minor<u64>) -> String {
+    t.alert_set(email, title, t.money(price, USD)).to_string()
 }
 
 /// The parts of the item API's response the page reads, read straight from the body by
