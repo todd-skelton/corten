@@ -468,7 +468,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::testing::{LIST, call, call_on, get, get_with, post, post_with, router, send, text};
+    use crate::testing::{VISITOR, call, call_on, get, get_with, post, post_with, router, send, text};
 
     #[tokio::test]
     async fn only_the_news_pages_link_their_area_stylesheet() {
@@ -529,10 +529,10 @@ mod tests {
     #[tokio::test]
     async fn the_watchlist_filter_shows_stories_about_the_stocks_watched() {
         let app = router();
-        call_on(&app, post_with("/unwatch", Some("action"), None, Some(LIST), "remove=ACME")).await;
+        call_on(&app, post_with("/unwatch", Some("action"), None, Some(VISITOR), "remove=ACME")).await;
         // The checkbox sends `on`; a link writes `true`.
         for uri in ["/news?mine=on", "/news?mine=true"] {
-            let page = text(call_on(&app, get_with(uri, LIST)).await).await;
+            let page = text(call_on(&app, get_with(uri, VISITOR)).await).await;
             assert!(page.contains(r#"<h2 id="stories-title">Stories about your stocks</h2>"#), "{page}");
             assert_eq!(
                 headlines(&page),

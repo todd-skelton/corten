@@ -74,7 +74,8 @@ framework's shape, and what it does not do yet.
    a `#[derive(Id)]` id, which the compiler checks (`view::Patch`), so no patch loses an element in
    the browser.
 3. A handler reaches the page only through its arguments: refs, `event`, `target`, `signal`,
-   `scope` and values. State that outlives an event is the DOM itself or `state(el, init)`.
+   `scope` and values. State that outlives an event is the DOM itself or `keep(init)`, the
+   running handler's component's own.
 4. User-facing text lives in views, the view model or the catalog, never in scripts. Text that
    depends on what a script computed ("3 selected") is a catalog message the markup passes
    unfilled (`t.js().rows_selected()`) and the script fills in (`label({ count })`): the

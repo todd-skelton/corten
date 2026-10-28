@@ -11,7 +11,7 @@
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
 //! | [`CopyButton`] | copies an element's text to the clipboard and says so, politely | no button; the text is on the page to select |
 //! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
-//! | [`dialog::modalClosedBy`] | the same for a dialog the address opens (`?selected=it_1`), and Escape follows its close link | the dialog is open, and the link closes it |
+//! | [`dialog::modalClosedBy`] | the same for a dialog the address opens (`?selected=it_1`), and a close request (Escape) goes to its close link's address | the dialog is open, and the link closes it |
 //!
 //! Each is tested in Chromium, Firefox and WebKit (`examples/ui-gallery/smoke.mjs`).
 //!
@@ -93,8 +93,12 @@
 //! dialog the server draws `open` when the address names one, closed by a link to the address
 //! without it. Escape on a modal dialog closes it where the address cannot see, so a reload or a
 //! redraw would open it again. [`dialog::modalClosedBy`] makes it modal as [`dialog::modal`]
-//! does and turns Escape into a click on its close link, so the client navigation, the address
-//! and the history (Back returns to the dialog, as after the click) go as for a click:
+//! does, and a close request (Escape, Android's Back, a click outside a `closedby="any"` dialog)
+//! goes to its close link's address without a new history entry (it does not click the link):
+//! back, when the entry before is that address, else in place of the dialog's entry (always so in
+//! a browser without the Navigation API, where Back after a dialog opened from the list shows the
+//! list once more). Attributes on the link (`data-reload`, `data-keep-place`, an `on:click`) do
+//! not apply. Android's Back on an open dialog cannot loop between the two:
 //!
 //! ```
 //! use corten::prelude::*;

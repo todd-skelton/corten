@@ -142,6 +142,19 @@ async function run(browser) {
   check("the button kept focus where it was", await page.evaluate(() => document.activeElement?.id === "qty"));
   await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).click();
   check("a step keeps the step's decimals", (await page.locator("#price").inputValue()) === "12.51", await page.locator("#price").inputValue());
+  // Each field keeps its own state (keep()): while the quantity's button is held, the price's
+  // button still steps from the keyboard. Sharing one, the held pointer would make it skip.
+  await qty.focus();
+  await page.keyboard.press("Home");
+  const before = Number(await qty.inputValue());
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  const holding = Number(await qty.inputValue());
+  await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
+  const own = await page.locator("#price").inputValue();
+  await page.mouse.up();
+  // The quantity stepped on the press, so its pointer was held while the price stepped.
+  check("each field keeps its own state", holding > before && own === "12.52", `quantity ${before} -> ${holding}, price ${own}`);
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
     const field = /** @type {Element} */ (document.querySelector("#price")?.closest("[data-scope=ui-number-field]")?.parentElement);
@@ -200,7 +213,7 @@ async function run(browser) {
   await qty.fill("3");
   await page.getByRole("button", { name: "Order" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Ordered"));
-  check("the form sends the components' values", (await page.textContent("#result")) === "Ordered 3 in Forest Green at $12.51.", await page.textContent("#result"));
+  check("the form sends the components' values", (await page.textContent("#result")) === "Ordered 3 in Forest Green at $12.52.", await page.textContent("#result"));
 
   // TabGroup
   const tab = (name) => page.getByRole("tab", { name });
@@ -312,9 +325,27 @@ async function run(browser) {
   await page.keyboard.press("Escape");
   check("Escape closes the page's dialog", !(await isModal()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
 
-  // dialog::modalClosedBy: a sheet the address opens, which Escape closes by following its link.
+  // dialog::modalClosedBy: a sheet the address opens, which a close request leaves for its
+  // link's address.
   await page.goto(`${base}/`);
-  await Promise.all([page.waitForURL("**/?sale=last"), page.getByRole("link", { name: "Last sale" }).click()]);
+  /**
+   * This entry's place in the history, where the browser has the Navigation API (a browser
+   * without it loads whole pages, and the link's address replaces the sheet's).
+   */
+  const at = () => page.evaluate(() => /** @type {any} */ (window).navigation?.currentEntry?.index ?? -1);
+  /**
+   * The page's own address. Not `page.url()` or `waitForURL`: Playwright's WebKit does not
+   * report the runtime's navigation from `/` to `/?sale=last` (a push that changes only the
+   * query), so its URL stays at `/` while `location` and the history have moved on, and a click
+   * that waits for that navigation never returns (`noWaitAfter` on the link's clicks).
+   */
+  const href = () => page.evaluate(() => location.href);
+  /** @param {boolean} open whether the address names the sale */
+  const saleInAddress = (open) =>
+    page.waitForFunction((open) => new URL(location.href).searchParams.has("sale") === open, open, { timeout: 5000 }).catch(() => {});
+  const listEntry = await at();
+  await page.getByRole("link", { name: "Last sale" }).click({ noWaitAfter: true });
+  await saleInAddress(true);
   const sheet = page.locator('dialog[aria-label="Last sale"]');
   const sheetModal = () => page.evaluate(() => !!document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"));
   await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
@@ -322,25 +353,54 @@ async function run(browser) {
   /** Escape on the sheet, then the page without it: the address drops `sale` and the sheet goes. */
   const escape = async (/** @type {string} */ how) => {
     await page.keyboard.press("Escape");
-    await page.waitForURL((url) => !url.searchParams.has("sale"), { timeout: 5000 }).catch(() => {});
+    await saleInAddress(false);
     await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
-    check(`${how}: Escape follows the close link, the address no longer names the sale`, !new URL(page.url()).searchParams.has("sale"), page.url());
+    check(`${how}: Escape goes to the close link's address, which does not name the sale`, !new URL(await href()).searchParams.has("sale"), await href());
     check(`${how}: the page without it replaces the sheet`, (await sheet.count()) === 0);
   };
+  const openSheet = async () => {
+    await page.getByRole("link", { name: "Last sale" }).click({ noWaitAfter: true });
+    await saleInAddress(true);
+    await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  };
+  // Opened from the list, closing goes back to the list's entry: no entry is added, so Back
+  // after it leaves the list, and Android's Back on the open sheet cannot loop through it.
   await escape("opened by a click");
-  // Back is what the click made: the address that names the sale, the sheet open again.
-  await page.goBack();
-  await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
-  check("Back goes to the address that names it, and the sheet is open again", new URL(page.url()).searchParams.get("sale") === "last" && (await sheetModal()), page.url());
-  await escape("after Back");
+  check("opened by a click: closing goes back to the list's entry", (await at()) === listEntry, `${listEntry} -> ${await at()}`);
+  if (listEntry < 0) {
+    // Without the Navigation API the list's address replaced the sheet's: Back shows the list
+    // once more, not the sheet.
+    await page.goBack();
+    await page.waitForLoadState();
+    check("no Navigation API: Back shows the list, not the sheet", new URL(page.url()).pathname === "/" && !new URL(page.url()).search && (await sheet.count()) === 0, page.url());
+    await page.goForward();
+    await page.waitForLoadState();
+  }
   await page.reload();
   check("a reload does not open it again", (await sheet.count()) === 0);
+  // A close request other than Escape (Android's Back, closedby="any") is the same `cancel`.
+  if (await page.evaluate(() => "requestClose" in HTMLDialogElement.prototype)) {
+    await openSheet();
+    // Not the locator's evaluate: the close replaces the sheet as it runs, and a locator then
+    // waits for it to come back.
+    await page.evaluate(() => /** @type {any} */ (document.querySelector('dialog[aria-label="Last sale"]'))?.requestClose());
+    await saleInAddress(false);
+    await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    check("requestClose() leaves the sheet's address too", !new URL(await href()).searchParams.has("sale") && (await sheet.count()) === 0, await href());
+  }
   // Loaded at its address (a shared link), with no click since: Chromium does not let the page
-  // keep it open on Escape, and the link is still followed.
+  // keep it open on Escape, and the address is still left, in place of the sheet's entry (the
+  // entry before is another page, so there is no going back to the list).
+  await page.goto(`${base}/?tab=offers`);
   await page.goto(`${base}/?sale=last`);
   await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
   check("loaded at its address, the sheet is modal", await sheetModal());
+  const shared = await at();
   await escape("loaded at its address");
+  check("loaded at its address: the list replaces the sheet's entry", (await at()) === shared, `${shared} -> ${await at()}`);
+  await page.goBack();
+  await page.waitForLoadState();
+  check("Back from there goes to the page before the shared link", new URL(await href()).searchParams.get("tab") === "offers", await href());
   // CopyButton: shown where the clipboard can be written; a click copies the number's text.
   const clip = await (await browser.newContext(engine === "chromium" ? { permissions: ["clipboard-read", "clipboard-write"] } : {})).newPage();
   clip.on("console", (m) => m.type() === "error" && errors.push(m.text()));

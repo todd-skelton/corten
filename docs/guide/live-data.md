@@ -129,8 +129,10 @@ once per change too: its body is kept (in memory, the size of the JSON) until th
 subscriber gets the snapshot and then each later patch exactly once, in order; reconnects resume
 from `Last-Event-ID`, and an unknown cursor or a gap ends in a fresh snapshot. `corten-cluster`
 runs one feed across instances (Postgres outbox, a leased relay to NATS JetStream): in the
-failover benchmark, 777,600 of 777,600 patches arrived with both instances killed and restarted
-under load (measured, one run, `examples/listings-feed/results/`).
+failover benchmark (200 clients, 50 writes a second, each instance killed and restarted under
+load), every patch arrived in both committed runs: 777,600 of 777,600, and 800,000 of 800,000
+with clients back on the other instance after 1.1 s at the median (measured,
+`examples/listings-feed/results/failover-r1.json` and `failover-r2.json`).
 
 Native apps and agents follow the same feed with `corten-protocol`'s `Replica`; see
 [Surfaces](../architecture.md).

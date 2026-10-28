@@ -15,6 +15,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM debian:bookworm-slim
 WORKDIR /app
 COPY --from=build /out/server /app/server
-ENV PORT=8080
+ENV HOST=0.0.0.0 PORT=8080
 EXPOSE 8080
 CMD ["/app/server"]

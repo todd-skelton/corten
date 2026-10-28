@@ -42,7 +42,7 @@ pub fn Layout<'a>(
                             <span class={(weight_bold(), tracking_tight())}>"Watchlist"</span>
                             <a {..req.nav(&url::Home)}>"Stocks"</a>
                             <a {..req.nav(&news::url::News::default())}>"News"</a>
-                            <a {..req.nav(&url::Alerts { until: None })}>"Alerts"</a>
+                            <a {..req.nav(&url::Alerts { saved: None })}>"Alerts"</a>
                             <a {..req.nav(&account::url::Account)}>"Account"</a>
                         </nav>
                         match viewer {

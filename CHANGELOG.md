@@ -690,12 +690,37 @@ Corten is pre-1.0, so any minor version may change the API.
     refused and `1e3` was a thousand dollars, and its confirmation is in the reader's locale
     (`alert.set`)
     ([#208 Money typed into a form is parsed by each app, three different ways, and card-market reads it as f64](https://github.com/todd-skelton/corten/issues/208)).
+106. A JSON answer with a status or a cookie of its own, and JSON the app already holds:
+    `Json(value).with_status(StatusCode::ACCEPTED)` and `.with_cookie(SetCookie)` make a
+    `JsonResponse` (the handler returns `Result<JsonResponse, JsonError>`), whose status and body
+    reach the client as written, a `503 {"error":..}` of the app's own included; and
+    `corten::json::Raw::new(bytes)` is JSON held as bytes (checked once to be one JSON value, an
+    `InvalidJson` error otherwise), which `Json(raw)` sends with no serialization or copy and
+    which a value `Json` writes copies in as it is. With `compress`, a `Raw` sent again is
+    compressed once (brotli 9 and gzip 9, on one background thread) and later reads
+    send those forms: on an 80 KB document, 15 ms once instead of 220 µs (zstd 1) to 2.1 ms
+    (brotli 2) on every read, and 5,000 bytes instead of 6,992. Apps no longer write their own
+    `Answer` for these. A held 80 KB document sent in its stored form costs about 24,100
+    instructions a request (callgrind), where one compressed on each read costs 1.41 million.
+    Every other answer reads `Accept-Encoding` once for both codings, as bytes, and costs what it
+    did: 22,357 to 22,252 instructions for a small JSON answer, 99,935 to 99,940 for an 80-row
+    one, 22,708 to 22,602 for text (two runs each against main)
+    ([#201 A JSON route cannot answer with a status other than 200 or send JSON it already holds as bytes, so each app writes its own Answer](https://github.com/todd-skelton/corten/issues/201),
+    [#234 A JSON answer cannot set a cookie the way an HTML answer can](https://github.com/todd-skelton/corten/issues/234)).
+107. A link to an element on the same page takes its `Id`: `href={FeedbackId.fragment()}` writes
+    `#feedback`, encoded as `route.at(..)` encodes another page's place, so a validation
+    summary's link and the field it names cannot drift apart. It is an attribute value
+    (`view::InPage`), not an address: `req.redirect` to it does not compile, and neither does
+    text in place of the id. Nothing `html!` writes changed
+    ([#254 A link to an element on the same page cannot take an Id, so each app writes its #fragment by hand](https://github.com/todd-skelton/corten/issues/254)).
 108. `corten_ui::dialog::modalClosedBy(target, close, signal)`: a dialog the address opens
-    (`?selected=it_1`) is made modal as `dialog::modal` makes one, and Escape on it clicks its close
-    link (a ref; a button there does not compile), so a reload or a redraw no longer opens what
-    the user closed, and the history is what the click makes. A `cancel` from inside it (a file
-    input's picker) is left alone, and without a script nothing changes. ui-gallery's last-sale
-    sheet is tested in Chromium, Firefox and WebKit. Apps' own `cancel`-to-click scripts can go
+    (`?selected=it_1`) is made modal as `dialog::modal` makes one, and a close request on it
+    (Escape, Android's Back) goes to its close link's address (a ref; a button there does not
+    compile) without a new history entry, back when the entry before is the list, so a reload or
+    a redraw no longer opens what the user closed and Back cannot loop through it. A
+    `cancel` from inside it (a file input's picker) is left alone, and without a script nothing
+    changes. ui-gallery's last-sale sheet is tested in Chromium, Firefox and WebKit. Apps' own
+    `cancel` scripts can go
     ([#257 corten-ui's dialog::modal closes a dialog the address opened without following its close link, so Escape leaves ?selected= behind](https://github.com/todd-skelton/corten/issues/257)).
 109. `corten_ui::CopyButton`: a button that copies an element's text (an order number, an API
     key's one-time secret; a read-only field's value). The element is named by its
@@ -1089,6 +1114,44 @@ Corten is pre-1.0, so any minor version may change the API.
     `Public<A>` needs `A: Shareable`, which every answer that can be public implements, and an
     answer type of the app's own implements only when it sets no cookie
     ([#235 A Public answer that sets a cookie compiles, and is only made private when it is sent](https://github.com/todd-skelton/corten/issues/235)).
+63. A script keeps state with `keep(() => init)` (from `corten`), which replaces `state(el,
+    init)`: the object of the component whose script the running handler is in, one per
+    instance, so a handler no longer takes the component's root just to find its state. A
+    component whose script imports `keep` is always scoped (`data-scope` on its root, with or
+    without refs), and such a component's handler on a child's element names its component
+    (`data-on="change:form.save($t)/form"`), so it keeps the parent's state wherever the child
+    renders it; markup a parent gives a child keeps the parent's handlers' `scope` too. A
+    `script!` module, which components share, cannot import `keep` (a compile error).
+    seller-desk's grid handlers lose their `scope` argument (six of them), watchlist's `pause`
+    too, and corten-ui's menu button and number field keep theirs per component. Take the object
+    first, before an `await` or anything that dispatches an event; outside a handler it throws.
+    The runtime is 90 bytes larger gzipped (8,503 to 8,593; brotli 7,663 to 7,742);
+    card-market's item page renders as before (58,644 to 58,654 instructions, callgrind).
+    Migration: `state(scope, () => init)` is `keep(() => init)`, and a `scope` argument used only
+    for it is dropped from the handler and its markup
+    ([#238 Runtime state is keyed by an element the handler has to pass: state(root, init)](https://github.com/todd-skelton/corten/issues/238)).
+64. examples/watchlist keeps the alerts a browser saves and lists them, each with a Remove
+    button. They live in a store whose reads catch up with its writes 1.5 s later, as a replica
+    would: a write answers with its receipt (`/alerts?saved=7`), and the page or the patched
+    status line and list are read again (`ReadAgain`) until reads have it. Before, the address
+    carried the time the alert would land and nothing was kept. A browser's watchlist and alerts
+    are kept under one id, now in the `visitor` cookie (`visitor.rs`), which was `list`, and both
+    forget the browser used longest ago past 10,000 (`recent.rs`)
+    ([#220 watchlist's alerts page never shows the alerts you saved](https://github.com/todd-skelton/corten/issues/220)).
+65. `corten-cluster`'s `Cluster::snapshot`, `live` and `live_with` return
+    `corten::Result<FeedResponse>`, an answer a Corten route names, instead of an axum
+    `Response`: an unknown feed is a 404 and Postgres out of reach a 503, both answered as JSON as
+    any failure of a feed's route is. The crate depends on `corten` (feature `feed`) instead of
+    axum and `corten-feed`. Migration: a handler that returned the `Response` names
+    `corten::Result<FeedResponse>`; outside a Corten app, call `.into_response()` on it.
+    `examples/listings-feed` is an `App`: the feed in a routes module, the benchmark's
+    writes and reads under `App::api` (`/api/feeds/{seller}/market`, `/seq`, `/api/stats`),
+    the instance's name from a middleware (`X-Instance`), Corten's health checks (`/health/ready`
+    checks Postgres), and the browser probe a page whose `#[component(js)]` follows the feed
+    (`/sellers/{seller}`, a 404 for a seller with no feed), where an inline script would be
+    refused by the CSP. The failover benchmark ran again on it (`results/failover-r2.json`)
+    ([#217 examples/listings-feed does not use App, so its routes skip Corten's compile-time checks](https://github.com/todd-skelton/corten/issues/217),
+    [#233 listings-feed's failover benchmark has not been run since the example was renamed](https://github.com/todd-skelton/corten/issues/233)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1344,6 +1407,12 @@ Corten is pre-1.0, so any minor version may change the API.
     locally, so none is fixed yet
     ([#232 WebKit smoke: "a form submitted before the first page loads navigates" fails now and then](https://github.com/todd-skelton/corten/issues/232),
     [#252 ui-gallery smoke: the first page's combo box did not connect within 30 s in Firefox (CI, once)](https://github.com/todd-skelton/corten/issues/252)).
+47. `bench/fullstack`'s browser pass stopped in round r7: card-market refuses a price alert on an
+    item with no listings (`item_12345`), and the pass waited 30 s for "Alert set". The form
+    action is no longer timed on that item, for any app, since the others set an alert Corten
+    refuses and the two are different work; the empty item's load, sort and client navigation are
+    measured as before. Medians of the action now come from eight of ten runs per profile
+    ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
