@@ -112,7 +112,8 @@ never a float), `t.date(at, DateStyle::Medium)` (or `MonthStyle::Long` for `Marc
 `t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;
 `corten::i18n::parse_timestamp` reads an API's RFC 3339 text). Each is a message argument too
 (`corten::i18n::Arg`: text, an integer, or these; a float does not compile, so it goes through
-`t.number`). A
+`t.number`). Money a form posts is read with `t.parse_money(&input.price, USD)`
+(`Option<Minor<u64>>`, in the reader's locale), never `parse::<f64>()` or a parser of your own. A
 script gets the same formats from `t.js()` (`references/scripts.md`).
 
 ## A data screen

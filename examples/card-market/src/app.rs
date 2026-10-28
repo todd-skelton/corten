@@ -21,6 +21,7 @@ use corten::{
         http::{HeaderMap, HeaderValue, Method, StatusCode, header, request::Parts},
         response::{IntoResponse, Response},
     },
+    i18n::Minor,
     prelude::*,
     pwa::{Manifest, Pwa},
     security::Policy,
@@ -353,7 +354,7 @@ pub(crate) async fn alert_json(
     let price = check_alert(t, &input.email, &input.target_price)?;
     let item = source.item(&input.id).await?.ok_or_else(Error::not_found)?;
     let price = listed(t, &item, price)?;
-    Ok(Json(AlertSet { message: alert_set(&item.title, &input.email, price), partner: Some(partner.name) }))
+    Ok(Json(AlertSet { message: alert_set(t, &item.title, &input.email, price), partner: Some(partner.name) }))
 }
 
 pub(crate) async fn create_alert(
@@ -378,7 +379,7 @@ pub(crate) async fn create_alert(
             return req.invalid(&view.errors, AlertForm { t, form: view.clone() }, page).await;
         }
     };
-    let message = alert_set(&form.title, &form.email, price);
+    let message = alert_set(t, &form.title, &form.email, price);
     // Without JavaScript the browser posted a plain form: answer with the whole page.
     let page = || async { req.page(ItemPage::new(t, &item, message.clone()).document(&req)) };
     req.patch_or(AlertMessage { message: &message }, page).await
@@ -386,7 +387,7 @@ pub(crate) async fn create_alert(
 
 /// An alert watches the item's lowest price, so an item with no listings has none to watch. No
 /// one field is wrong, so the message is the whole form's, at its top.
-fn listed(t: Msg, item: &ItemView, price: f64) -> Result<f64, Errors> {
+fn listed(t: Msg, item: &ItemView, price: Minor<u64>) -> Result<Minor<u64>, Errors> {
     if !item.listings.is_empty() {
         return Ok(price);
     }
@@ -457,7 +458,7 @@ fn tools(source: Source, tokens: Arc<[String]>) -> Tools {
                     let price = check_alert(Msg::default(), &input.email, &input.target_price)?;
                     let item = source.item(&input.id).await.map_err(ToolError::internal)?;
                     let item = item.ok_or_else(|| ToolError::Invalid(format!("no item {}", input.id)))?;
-                    Ok(AlertSet { message: alert_set(&item.title, &input.email, price), partner: None })
+                    Ok(AlertSet { message: alert_set(Msg::default(), &item.title, &input.email, price), partner: None })
                 }
             },
         )
@@ -600,6 +601,27 @@ mod tests {
             .body(Body::from(form))
             .unwrap();
         assert_eq!(send(cross).await.0, StatusCode::FORBIDDEN);
+    }
+
+    /// A French reader types the price as French writes money, and is answered in French.
+    #[tokio::test]
+    async fn an_alert_reads_the_price_in_the_readers_locale() {
+        let post = |price: &str| {
+            Request::post("/items/item_9")
+                .header("corten", "action")
+                .header("accept-language", "fr")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("sec-fetch-site", "same-origin")
+                .body(Body::from(format!("title=Pika&email=a%40b.c&target_price={price}")))
+                .unwrap()
+        };
+        let (status, _, body) = send(post("2%2C50")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Alerte créée : nous écrirons à a@b.c quand Pika passera sous 2,50\u{a0}$US."), "{body}");
+        // En's decimal point is not a French price: refused, not read as 250 dollars.
+        let (status, _, body) = send(post("2.50")).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(body.contains("Saisissez un prix cible supérieur à zéro."), "{body}");
     }
 
     #[tokio::test]

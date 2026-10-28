@@ -5,7 +5,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use corten::prelude::*;
 use serde::Deserialize;
 
-use crate::{account::Viewer, app::url, layout::Layout, market::Market, theme::*};
+use crate::{
+    account::Viewer,
+    app::{Msg, url},
+    layout::Layout,
+    market::{Market, USD},
+    theme::*,
+};
 
 /// A new price alert, as the form sends it.
 #[derive(Deserialize, Fields, Default)]
@@ -88,7 +94,9 @@ pub(crate) async fn save(req: Req, viewer: Option<Caller<Viewer>>, Form(input): 
     if Market::ticker(&input.id).is_none() {
         errors.add_form("Pick a stock on the market.");
     }
-    match cents(&input.above) {
+    // The price as the reader's locale writes money (`t.parse_money`), in cents.
+    let t: Msg = req.t();
+    match t.parse_money(&input.above, USD).map(|cents| cents.0) {
         None => errors.add(f.above, "Enter a price in dollars and cents, such as 129.99."),
         Some(0) => errors.add(f.above, "Enter a price above zero."),
         Some(_) => {}
@@ -108,22 +116,6 @@ pub(crate) async fn save(req: Req, viewer: Option<Caller<Viewer>>, Form(input): 
         {again}
     };
     req.patch_or(form, || async { req.redirect(&from) }).await
-}
-
-/// A price as a person types it (`130`, `129.9`, `129.99`, `.5`, `$1,299.00`), in cents: digits
-/// with commas between them, at most two after the point.
-fn cents(price: &str) -> Option<u64> {
-    let price = price.trim();
-    let price = price.strip_prefix('$').unwrap_or(price);
-    let (whole, fraction) = price.split_once('.').unwrap_or((price, ""));
-    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
-    let grouped = whole.is_empty() || whole.split(',').all(|group| !group.is_empty() && digits(group));
-    let whole: String = whole.chars().filter(|c| *c != ',').collect();
-    if !grouped || (whole.is_empty() && fraction.is_empty()) || whole.len() > 12 || fraction.len() > 2 || !digits(fraction) {
-        return None;
-    }
-    let whole = if whole.is_empty() { 0 } else { whole.parse::<u64>().ok()? };
-    Some(whole * 100 + format!("{fraction:0<2}").parse::<u64>().ok()?)
 }
 
 /// The alerts page's status line.
@@ -223,12 +215,5 @@ mod tests {
         let edited = now_millis() + 3_600_000;
         let page = text(call(get(&format!("/alerts?until={edited}"))).await).await;
         assert!(!page.contains("data-corten-read-again") && page.contains("Saving your alert..."), "{page}");
-    }
-
-    #[test]
-    fn a_price_is_read_in_cents() {
-        let read = ["130", "129.9", "129.99", "0.5", ".5", " $1,299.00 ", "1,000,000"].map(cents);
-        assert_eq!(read, [Some(13_000), Some(12_990), Some(12_999), Some(50), Some(50), Some(129_900), Some(100_000_000)]);
-        assert_eq!(["", ".", "1.234", "1e3", "-1", "1,,0", ",100", "12a"].map(cents), [None; 8]);
     }
 }

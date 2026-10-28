@@ -7,3 +7,6 @@ corten::i18n::messages! {
         "fr" => "locales/fr.json",
     }
 }
+
+/// The market's prices are in US dollars.
+pub const USD: corten::i18n::Currency = corten::i18n::Currency::new("USD");
