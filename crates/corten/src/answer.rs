@@ -97,9 +97,41 @@ pub trait Answer: IntoResponse {
 /// [`Req::page`], [`Req::patch`] and [`Req::redirect`] give. A cookie is
 /// [`HtmlResponse::with_cookie`]; it derefs to the response for any other header of the
 /// handler's own (`res.headers_mut().insert(..)`).
-pub struct HtmlResponse(pub(crate) Response);
+///
+/// `For` is who the answer is for, read from where it goes: [`ForOne`], the visitor who asked
+/// (an [`HtmlResult`]), or [`ForAll`], inside a [`Public`]. The `Req` methods that make one
+/// take it from there, so a handler never names it.
+pub struct HtmlResponse<For = ForOne>(pub(crate) Response, PhantomData<For>);
 
-impl HtmlResponse {
+/// An answer for the visitor who asked: it may set a cookie. What [`HtmlResult`] holds.
+pub struct ForOne;
+
+/// An answer for everyone, inside a [`Public`]: a cache gives it to anyone, so it sets no
+/// cookie, and [`HtmlResponse::with_cookie`] there does not compile.
+pub struct ForAll;
+
+/// Who an answer that sets a cookie can be for: [`ForOne`] alone.
+#[diagnostic::on_unimplemented(
+    message = "a `Public` answer is the same for everyone, so it cannot set a cookie",
+    label = "this answer is `Public`",
+    note = "return a private answer (`HtmlResult`) to set a cookie; a cache would give the cookie to everyone"
+)]
+pub trait SetsCookies: sealed::Sealed {}
+
+impl SetsCookies for ForOne {}
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::ForOne {}
+}
+
+impl<For> HtmlResponse<For> {
+    pub(crate) fn new(res: Response) -> Self {
+        HtmlResponse(res, PhantomData)
+    }
+}
+
+impl<For: SetsCookies> HtmlResponse<For> {
     /// The answer with a `Set-Cookie` header, built by [`SetCookie`](crate::security::cookie::SetCookie)
     /// so its safe flags are the default: `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`.
     /// Each call adds one; an answer that sets a cookie is never stored by a shared cache. This is
@@ -125,6 +157,25 @@ impl HtmlResponse {
     /// }
     /// # let _ = App::new(url::router()).router();
     /// ```
+    ///
+    /// A [`Public`] answer is the same for everyone, so setting a cookie on one does not compile:
+    ///
+    /// ```compile_fail,E0277
+    /// use std::time::Duration;
+    /// use corten::{prelude::*, security::cookie::SetCookie};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     let page = req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> });
+    ///     Public::new(Duration::from_secs(60), page.map(|page| page.with_cookie(SetCookie::new("seen", "1"))))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
     #[must_use]
     pub fn with_cookie(mut self, cookie: crate::security::cookie::SetCookie) -> Self {
         self.0.headers_mut().append(axum::http::header::SET_COOKIE, cookie.header());
@@ -132,13 +183,13 @@ impl HtmlResponse {
     }
 }
 
-impl IntoResponse for HtmlResponse {
+impl<For> IntoResponse for HtmlResponse<For> {
     fn into_response(self) -> Response {
         self.0
     }
 }
 
-impl Deref for HtmlResponse {
+impl<For> Deref for HtmlResponse<For> {
     type Target = Response;
 
     fn deref(&self) -> &Response {
@@ -146,7 +197,7 @@ impl Deref for HtmlResponse {
     }
 }
 
-impl DerefMut for HtmlResponse {
+impl<For> DerefMut for HtmlResponse<For> {
     fn deref_mut(&mut self) -> &mut Response {
         &mut self.0
     }
@@ -155,6 +206,116 @@ impl DerefMut for HtmlResponse {
 impl Answer for HtmlResponse {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+}
+
+/// An answer that can be [`Public`], and what it is there: the same answer, made for everyone.
+/// An [`HtmlResult`] becomes a `Result<HtmlResponse<ForAll>>`, so the `Req` methods that make
+/// it make it for everyone and it cannot set a cookie; an answer that cannot set one (text, JSON,
+/// a [`Relay`]) stays itself. An answer type of the app's own implements it (with
+/// [`ForEveryone`] for `ForAll`) only when it sets no cookie.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be `Public`",
+    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, a live stream or a feed"
+)]
+pub trait Shareable {
+    /// The answer as [`Public::new`] takes it.
+    type ForAll: ForEveryone<Named = Self>;
+}
+
+/// An answer made for everyone, as [`Public::new`] takes it, and the answer type a handler
+/// names for it (`Named`): `Result<HtmlResponse<ForAll>>` is named `HtmlResult`. Lets
+/// `Public::new(age, answer)` find its type from `answer` where no return type says it (a
+/// closure).
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not an answer made for everyone, so it cannot be `Public`",
+    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, a live stream or a feed"
+)]
+pub trait ForEveryone: IntoResponse {
+    /// The answer type a handler names: `Public<Self::Named>`.
+    type Named: Shareable;
+
+    /// Itself, as the type `Public<Self::Named>` holds (the same type, named another way).
+    #[doc(hidden)]
+    fn for_all(self) -> <Self::Named as Shareable>::ForAll;
+}
+
+impl ForEveryone for HtmlResponse<ForAll> {
+    type Named = HtmlResponse;
+
+    fn for_all(self) -> Self {
+        self
+    }
+}
+
+impl<A: ForEveryone> ForEveryone for Result<A, Error> {
+    type Named = Result<A::Named, Error>;
+
+    fn for_all(self) -> Result<<A::Named as Shareable>::ForAll, Error> {
+        self.map(A::for_all)
+    }
+}
+
+#[cfg(feature = "json")]
+impl<A: ForEveryone> ForEveryone for std::result::Result<A, JsonError> {
+    type Named = std::result::Result<A::Named, JsonError>;
+
+    fn for_all(self) -> std::result::Result<<A::Named as Shareable>::ForAll, JsonError> {
+        self.map(A::for_all)
+    }
+}
+
+/// An answer that is itself everywhere: it sets no cookie.
+macro_rules! for_everyone {
+    ($($ty:ty),* $(,)?) => {$(
+        impl ForEveryone for $ty {
+            type Named = Self;
+
+            fn for_all(self) -> Self {
+                self
+            }
+        }
+        impl Shareable for $ty {
+            type ForAll = Self;
+        }
+    )*};
+}
+
+for_everyone!(&'static str, String, StatusCode, Relay, LiveResponse);
+
+#[cfg(feature = "feed")]
+for_everyone!(corten_feed::FeedResponse);
+
+impl Shareable for HtmlResponse {
+    type ForAll = HtmlResponse<ForAll>;
+}
+
+impl<A: Shareable> Shareable for Result<A, Error> {
+    type ForAll = Result<A::ForAll, Error>;
+}
+
+#[cfg(feature = "json")]
+impl<A: Shareable> Shareable for std::result::Result<A, JsonError> {
+    type ForAll = std::result::Result<A::ForAll, JsonError>;
+}
+
+#[cfg(feature = "json")]
+impl<T> Shareable for crate::Json<T>
+where
+    crate::Json<T>: IntoResponse,
+{
+    type ForAll = Self;
+}
+
+#[cfg(feature = "json")]
+impl<T> ForEveryone for crate::Json<T>
+where
+    crate::Json<T>: IntoResponse,
+{
+    type Named = Self;
+
+    fn for_all(self) -> Self {
+        self
+    }
 }
 
 /// What a page handler returns: `async fn item(req: Req) -> HtmlResult`. A failure is the app's
@@ -505,15 +666,35 @@ impl Answer for corten_feed::FeedResponse {
 /// Only a successful answer is shared; a failure keeps the default, `private, no-cache`. The rules
 /// of [`crate::cache`] still apply when it is sent: a request with a cookie, or a page with the
 /// request's nonce, is answered privately.
-pub struct Public<A> {
+pub struct Public<A: Shareable> {
     cache: Cache,
-    answer: A,
+    answer: A::ForAll,
 }
 
-impl<A> Public<A> {
-    /// `answer`, which any cache may keep for `max_age` (whole seconds).
-    pub fn new(max_age: Duration, answer: A) -> Self {
-        Public { cache: Cache::public(max_age), answer }
+impl<A: Shareable> Public<A> {
+    /// `answer`, which any cache may keep for `max_age` (whole seconds). Its type says the
+    /// `Public`'s, so a closure needs no annotation: `Public::new(age, "home")` is a
+    /// `Public<&str>`, and `Public::new(age, req.page(..))` a `Public<HtmlResult>` whose page is
+    /// made for everyone.
+    ///
+    /// A page made for one visitor does not fit, so a helper that makes a page for a `Public`
+    /// handler returns `corten::Result<HtmlResponse<For>>` for any `For`, not `HtmlResult`:
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use corten::{prelude::*, HtmlResponse};
+    ///
+    /// fn home_page<For>(req: &Req) -> corten::Result<HtmlResponse<For>> {
+    ///     req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> })
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     Public::new(Duration::from_secs(60), home_page(&req))
+    /// }
+    /// # let _: Methods = get(home);
+    /// ```
+    pub fn new<T: ForEveryone<Named = A>>(max_age: Duration, answer: T) -> Self {
+        Public { cache: Cache::public(max_age), answer: answer.for_all() }
     }
 
     /// After `max_age`, a cache may still serve it for up to `stale` while it fetches a fresh one.
@@ -534,7 +715,7 @@ impl<A> Public<A> {
     }
 }
 
-impl<A: IntoResponse> IntoResponse for Public<A> {
+impl<A: Shareable> IntoResponse for Public<A> {
     fn into_response(self) -> Response {
         let mut res = self.answer.into_response();
         if res.status().is_success() || res.status().is_redirection() {
@@ -544,7 +725,7 @@ impl<A: IntoResponse> IntoResponse for Public<A> {
     }
 }
 
-impl<A: Answer> Answer for Public<A> {
+impl<A: Answer + Shareable> Answer for Public<A> {
     const FORMAT: Format = A::FORMAT;
     type Inputs = AnonymousInputs;
 }

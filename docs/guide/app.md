@@ -416,6 +416,17 @@ below) drops `s-maxage` with `public`.
 | a client navigation, a form answer or a data client's JSON from a page route | `private`, same lifetime: only the document is shared |
 | a response that sets a cookie, or HTML with the request's nonce | `private, no-cache`, logged under `corten dev` |
 
+A `Public` answer cannot set a cookie the way a private one does: the page inside
+`Public<HtmlResult>` is made for everyone (`HtmlResponse<ForAll>`), and `with_cookie` on it does
+not compile. `req.page`, `req.redirect` and the other `Req` methods take who the page is for from
+where it goes, the handler's return type or `Public::new`, so a handler, a closure given to
+Corten's `get` or `post`, and `Public::new(age, req.page(..))` are written as before. A helper is
+where it shows: one that makes a page for a `Public` handler returns
+`corten::Result<HtmlResponse<For>>` for any `For` (not `HtmlResult`, a page for one visitor,
+which `Public::new` refuses: "is not an answer made for everyone, so it cannot be `Public`"), and one that
+wraps a page in `Public` takes `corten::Result<HtmlResponse<ForAll>>`. A `Set-Cookie` header
+written by hand is still caught when the answer is sent (the row above).
+
 A `Cache-Control` written by hand (by a middleware, or on an `HtmlResponse`) is kept as written,
 except that the last row applies to it, and a caller read makes it private. An extractor of the app's own is not `Anonymous` until the app says
 so, so a public answer cannot read a credential through one by accident. An `App::api` route has one form only, so its public responses
