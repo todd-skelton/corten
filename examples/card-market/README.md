@@ -26,14 +26,14 @@ docker run --rm -p 3000:8080 -e API_KEYS=dev=dev-key -e AGENT_TOKENS=dev-token c
 | Variable | What it does | Without it |
 |---|---|---|
 | `API_BASE` | the item API the pages read | the demo catalog built in (`fixtures/demo.json`) |
-| `ITEM_SOURCE=fixture`, `FIXTURE_PATH` | items from a JSON file of API responses, loaded at startup (benchmarks): mount one, such as `fixtures/smoke.json` (`-v "$PWD/examples/card-market/fixtures:/fixtures:ro" -e FIXTURE_PATH=/fixtures/smoke.json`) | `fixtures/items.json`, which the benchmark's `fetch.mjs` writes |
+| `ITEM_SOURCE=fixture`, `FIXTURE_PATH` | items from a JSON file of API responses, loaded at startup (benchmarks): mount one, such as `fixtures/smoke.json` (`-e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -v "$PWD/examples/card-market/fixtures:/fixtures:ro"`) | `fixtures/items.json` in the working directory |
 | `API_KEYS` | partners that may set alerts through `/api/alerts`, sending the key in `X-Api-Key`: `name=key,name=key` | no partner may |
 | `AGENT_TOKENS` | tokens for the MCP endpoint `/mcp`, sent as `Authorization: Bearer <token>`, comma separated | no agent may |
 | `AGENT_ORIGINS` | origins whose pages may call `/mcp` from the browser (CORS), comma separated | none |
 | `WRITES_PER_MINUTE` | writes one client address may make a minute | 20 |
 | `PROXIES` | the load balancers whose `X-Forwarded-For` is trusted: addresses or CIDRs, comma separated | the connection's address |
 | `HTTPS` | present (any value) when served over HTTPS: browsers are told to keep using it (HSTS) | not sent |
-| `HOSTS` | the host names the app answers; a request for any other gets a 421 | `localhost` |
+| `HOSTS` | the host names the app answers, comma separated (`*` for any); a request for any other gets a 421 | `localhost` and names under it, IP addresses, and requests with no `Host` |
 | `HOST`, `PORT` | the address it listens on | both loopback addresses, port 3000 (the image sets `0.0.0.0:8080`) |
 
 ## Where things are
