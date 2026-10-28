@@ -338,6 +338,7 @@ impl Sink<'_> {
 /// ```
 /// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
 /// use corten::i18n::{Arg, Messages as _, Sink};
+/// use corten::prelude::*;
 ///
 /// enum Grade { Mint, Played }
 /// impl Arg for Grade {
@@ -692,7 +693,10 @@ mod tests {
         assert_eq!(Msg::default().locale(), "en");
         // Arguments named like Rust keywords are raw parameters; the catalog keeps its names.
         let confidence: Decimal = "0.9".parse().unwrap();
-        assert_eq!(en.attention_detail("TCGplayer", "alias", en.number(confidence)).to_string(), "TCGplayer · alias · confidence 0.9");
+        assert_eq!(
+            en.attention_detail("TCGplayer", "alias", en.number(confidence)).to_string(),
+            "TCGplayer · alias · confidence 0.9"
+        );
         assert_eq!(fr.attention_detail("P", "alias", fr.number(confidence)).to_string(), "P · alias · confiance 0,9");
         let by_key = fr.by_key("attention.detail", &[("provider", "P"), ("type", "alias"), ("match", "1")]);
         assert_eq!(by_key.unwrap().to_string(), "P · alias · confiance 1");
