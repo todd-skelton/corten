@@ -772,7 +772,8 @@ fn app(pages: Routes) -> App {
    are stricter types: `caller = Billing` on a `/admin/billing` area of its own.
 4. An area a library ships is a function the app passes on,
    `.area(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route by hand; Corten's `get`
-   checks the handler as a routes module does.
+   checks the handler as a routes module does, and `R`'s path must have the shape
+   `#[derive(Route)]` writes (whole-segment parameters, plain text), or the app does not compile.
 5. Areas nest (`/admin` and `/admin/billing`, each with its own routes and stylesheet).
 
 How the common cases look:

@@ -820,10 +820,11 @@ impl Href for Local {
     }
 }
 
-/// Whether `path` is one `#[derive(Route)]` would write, checked when the app compiles so a
+/// Whether `path` has the shape `#[derive(Route)]` writes, checked when the app compiles so a
 /// `Route` written by hand is held to it too: each segment is `{name}` (lowercase letters, digits
 /// and `_`), `{*name}` as the last, or text a browser sends as it is (letters, digits and
-/// `-._~!$*+,;=:@`). [`chosen`] matches only this shape, as the router does.
+/// `-._~!$*+,;=:@`). [`chosen`] matches only this shape, as the router does. (The derive also
+/// refuses a name used twice; that changes no route's match, so it is not checked here.)
 pub(crate) const fn route_shaped(path: &str) -> bool {
     const fn plain(c: u8) -> bool {
         c.is_ascii_alphanumeric()
@@ -895,6 +896,10 @@ fn a_route_path_has_the_shape_the_derive_writes() {
         "/a%20b",
         "/caf\u{e9}",
         "/{{x}}",
+        "/{",
+        "/{*",
+        "/{a",
+        "/{*x}/",
     ] {
         assert!(!route_shaped(bad), "{bad}");
     }

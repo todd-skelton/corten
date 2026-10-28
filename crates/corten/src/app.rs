@@ -100,9 +100,9 @@ impl<P: Prefix> Area<P> {
     /// # let _ = app.router();
     /// ```
     ///
-    /// A `Route` written by hand has a path `#[derive(Route)]` would write (each parameter a whole
-    /// segment, the text characters a browser sends as they are), so [`crate::Req::serves`] knows
-    /// which route the router picks:
+    /// A `Route` written by hand has a path of the shape `#[derive(Route)]` writes (each parameter
+    /// a whole segment, the text characters a browser sends as they are, here not `|`), so
+    /// [`crate::Req::serves`] knows which route the router picks:
     ///
     /// ```compile_fail,E0080
     /// # use corten::prelude::*;
@@ -112,9 +112,9 @@ impl<P: Prefix> Area<P> {
     ///
     /// struct Item;
     /// impl corten::Route for Item {
-    ///     const PATH: &'static str = "/admin/item_{id}";
+    ///     const PATH: &'static str = "/admin/a|b";
     ///     fn write_href(&self, out: &mut String, _: bool) {
-    ///         out.push_str("/admin/item_1");
+    ///         out.push_str("/admin/a|b");
     ///     }
     /// }
     ///
@@ -129,7 +129,7 @@ impl<P: Prefix> Area<P> {
             );
             assert!(
                 crate::route::route_shaped(R::PATH),
-                "corten: a route's path is one #[derive(Route)] would write: whole-segment parameters like /items/{{id}} and plain text (the note below names the route)"
+                "corten: a route's path has the shape #[derive(Route)] writes: whole-segment parameters like /items/{{id}} and plain text (the note below names the route)"
             );
         };
         self.routes = self.routes.route(R::PATH, methods.0);
