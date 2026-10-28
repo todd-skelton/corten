@@ -645,7 +645,15 @@ Corten is pre-1.0, so any minor version may change the API.
     function stays for a value chosen as the page renders and for one per breakpoint. Two that
     would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that
     names both. The watchlist's home page renders in 1.1% fewer instructions (62,827 to 62,162).
-100. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this
+100. A component can take an element id as a prop of any id type (`fn ConfirmDialog<I: Id>(id: I)`)
+    and print it with `id={id}` or `commandfor={id}`: `Id` now requires `AttrValue` and `Render`,
+    which every `#[derive(Id)]` type has. seller-desk opens its archive dialog with
+    `command="show-modal"` and no script, sorts and filters its rows by the row view's fields
+    (one handler per column) instead of cell positions, writes its unsaved-prices note from the
+    catalog, names the prices' currency in their column, and right-aligns the statement's numbers.
+    A row is 7 bytes smaller (603 to 596 at 2,000 rows) and about 30 instructions dearer to render
+    (its name is now also a whole attribute value, the hole the sort reads).
+101. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this
      site only (one leading `/`, not `//` or `/\`, printable ASCII without `\`, so a control
      character a browser drops cannot make it another host, and no `.` or `..` segment), and
      `req.redirect(&local)` takes it. `req.serves(&local)` says whether the route the router picks
