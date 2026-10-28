@@ -691,10 +691,12 @@ Corten is pre-1.0, so any minor version may change the API.
     (`alert.set`)
     ([#208 Money typed into a form is parsed by each app, three different ways, and card-market reads it as f64](https://github.com/todd-skelton/corten/issues/208)).
 108. `corten_ui::dialog::modalClosedBy(target, close, signal)`: a dialog the address opens
-    (`?selected=it_1`) is made modal as `dialog::modal` makes one, and Escape on it clicks its close
-    link (a ref; a button there does not compile), so a reload or a redraw no longer opens what
-    the user closed, and the history is what the click makes. A `cancel` from inside it (a file
-    input's picker) is left alone, and without a script nothing changes. ui-gallery's last-sale
+    (`?selected=it_1`) is made modal as `dialog::modal` makes one, and a close request on it
+    (Escape, Android's Back) goes to its close link's address (a ref; a button there does not
+    compile) without a new history entry, back to the list when the user came from it, so a
+    reload or a redraw no longer opens what the user closed and Back cannot loop through it. A
+    `cancel` from inside it (a file input's picker) is left alone, and without a script nothing
+    changes. ui-gallery's last-sale
     sheet is tested in Chromium, Firefox and WebKit. Apps' own `cancel`-to-click scripts can go
     ([#257 corten-ui's dialog::modal closes a dialog the address opened without following its close link, so Escape leaves ?selected= behind](https://github.com/todd-skelton/corten/issues/257)).
 ### Removed

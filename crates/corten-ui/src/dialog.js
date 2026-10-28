@@ -19,10 +19,14 @@ export function modal(dialog) {
 }
 
 /**
- * `modal`, for a dialog the address opens (`?selected=it_1`) and a link closes: Escape is a click
- * on `close`, so the address, a reload and a redraw agree with what the user closed, and the
- * history is what clicking the link makes. Only a `cancel` of this dialog: a file input's picker
- * dismissed inside it fires one too, which bubbles.
+ * `modal`, for a dialog the address opens (`?selected=it_1`) and a link closes: a close request
+ * (Escape, Android's Back, a click outside a `closedby="any"` dialog, `requestClose()`) leaves
+ * for the close link's address without adding to the history, so the address, a reload and a
+ * redraw agree with what the user closed and Back cannot loop through it. Where the entry before
+ * is that address (the user came from the list), it goes back to it; otherwise the link's
+ * address replaces the dialog's. Only a `cancel` of this dialog: a file input's picker
+ * dismissed inside it fires one too, which bubbles. A dialog drawn closed and opened later gets
+ * the same.
  * @param {HTMLDialogElement} dialog
  * @param {HTMLAnchorElement} close
  * @param {AbortSignal} signal
@@ -34,16 +38,28 @@ export function modalClosedBy(dialog, close, signal) {
     "cancel",
     (event) => {
       if (event.target !== dialog) return;
-      // Followed once; a second Escape before the page arrives (a slow or failed navigation)
-      // closes the dialog as Escape does.
+      // Followed once; a second close request before the page arrives (a slow or failed
+      // navigation) closes the dialog as it would.
       if (followed) return;
       followed = true;
       // Open until the page without it replaces it, where the browser allows: Chromium does not
       // let a page keep a dialog open on Escape without a click since the last time (or since
-      // the page loaded). The link is followed either way.
+      // the page loaded). The address changes either way.
       event.preventDefault();
-      close.click();
+      leave(close.href);
     },
     { signal },
   );
+  // A browser that loads whole pages keeps this one as it was left in its back/forward cache;
+  // restored there, closing it leaves again.
+  addEventListener("pageshow", (event) => event.persisted && (followed = false), { signal });
+}
+
+/** To `href` without a new history entry: back, when the entry before is `href`, else in place of this one. @param {string} href */
+function leave(href) {
+  const navigation = /** @type {any} */ (window).navigation;
+  if (!navigation) return location.replace(href);
+  const at = navigation.currentEntry?.index ?? -1;
+  if (at > 0 && navigation.entries()[at - 1]?.url === href) navigation.back();
+  else navigation.navigate(href, { history: "replace" });
 }
