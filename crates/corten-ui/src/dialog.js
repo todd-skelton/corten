@@ -17,3 +17,27 @@ export function modal(dialog) {
   const invalid = dialog.querySelector('[aria-invalid="true"]');
   if (invalid instanceof HTMLElement) invalid.focus();
 }
+
+/**
+ * `modal`, for a dialog the address opens (`?selected=it_1`) and a link closes: Escape follows
+ * `close`, as a click on it would, so the address, Back and a redraw agree with what the user
+ * closed. Only Escape on this dialog: a dialog inside it closes as its own.
+ * @param {HTMLDialogElement} dialog
+ * @param {HTMLAnchorElement} close
+ * @param {AbortSignal} signal
+ */
+export function modalClosedBy(dialog, close, signal) {
+  modal(dialog);
+  dialog.addEventListener(
+    "cancel",
+    (event) => {
+      if (event.target !== dialog) return;
+      // Open until the page without it replaces it. A browser may not let a page keep a dialog
+      // open on Escape (Chrome refuses a second time without a click between); the link is
+      // followed either way.
+      event.preventDefault();
+      close.click();
+    },
+    { signal },
+  );
+}

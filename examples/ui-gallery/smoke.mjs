@@ -311,6 +311,23 @@ async function run(browser) {
   }));
   await page.keyboard.press("Escape");
   check("Escape closes the page's dialog", !(await isModal()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
+
+  // dialog::modalClosedBy: a sheet the address opens, which Escape closes by following its link.
+  await page.goto(`${base}/`);
+  await Promise.all([page.waitForURL("**/?sale=last"), page.getByRole("link", { name: "Last sale" }).click()]);
+  const sheet = page.locator('dialog[aria-label="Last sale"]');
+  const sheetModal = () => page.evaluate(() => !!document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"));
+  await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  check("the address opens the sheet as a modal", await sheetModal());
+  await page.keyboard.press("Escape");
+  await page.waitForURL((url) => !url.searchParams.has("sale"), { timeout: 5000 }).catch(() => {});
+  check("Escape follows the close link: the address no longer names the sale", !new URL(page.url()).searchParams.has("sale"), page.url());
+  check("and the page without it replaces the sheet", (await sheet.count()) === 0);
+  await page.reload();
+  check("a reload does not open it again", (await sheet.count()) === 0);
+  await page.goBack();
+  await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  check("Back goes to the address that names it, and the sheet is open again", new URL(page.url()).searchParams.get("sale") === "last" && (await sheetModal()), page.url());
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
@@ -335,4 +352,9 @@ async function run(browser) {
   check("no script: the button opens the dialog", await plain.locator("#rename").isVisible());
   await Promise.all([plain.waitForURL("**/rename"), plain.getByRole("button", { name: "Rename", exact: true }).click()]);
   check("no script: refused, the dialog is open with the error", (await plain.locator("#rename").isVisible()) && ((await plain.locator("#rename").textContent()) ?? "").includes("Give the draft a name."));
+  await plain.goto(`${base}/?sale=last`);
+  const plainSheet = plain.locator('dialog[aria-label="Last sale"]');
+  check("no script: the address opens the sheet", await plainSheet.isVisible());
+  await Promise.all([plain.waitForURL((url) => !url.searchParams.has("sale")), plain.getByRole("link", { name: "Close" }).click()]);
+  check("no script: its link closes it", (await plainSheet.count()) === 0);
 }

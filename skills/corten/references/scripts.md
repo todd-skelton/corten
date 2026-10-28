@@ -210,5 +210,6 @@ export function select(link, body) {
 Use `corten-ui` (number field, combobox, tabs, menu button, toaster) before writing one. For anything
 else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS anchor positioning. A
 `<dialog>` the server can draw `open` (a form it refuses) gets
-`on:connect={corten_ui::dialog::modal(target)}`, so it is modal, not just open; do not write that
-handler in the app.
+`on:connect={corten_ui::dialog::modal(target)}`, so it is modal, not just open; one the address
+opens and a link closes (`?selected=..`) gets `dialog::modalClosedBy(target, close, signal)` with
+the link as the `close` ref, so Escape follows it. Do not write these handlers in the app.

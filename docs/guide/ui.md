@@ -30,7 +30,7 @@ Everything else Base UI-style libraries provide is already the platform's: `<dia
 `command="show-modal"` for dialogs and alert dialogs, `popover` for popovers and tooltips,
 `<details name>` for accordions, toggletips as a `popover` opened by `popovertarget`, `<select>` (with `appearance: base-select` where supported),
 checkboxes, radios and `<input type="range">`. [examples/ui-gallery](../../examples/ui-gallery) shows
-all five styled by a small design system, and a dialog the server refuses a form in, with a browser test that runs in Chromium, Firefox and
+all five styled by a small design system, a dialog the server refuses a form in and one the address opens, with a browser test that runs in Chromium, Firefox and
 WebKit. A tooltip shown on hover or focus is `interestfor` with `popover="hint"` once every
 browser has them (Safari has neither in October 2026); the crate does not add one meanwhile. The
 toaster is not in the top layer, so an open modal `<dialog>` covers it: a form in a dialog answers
@@ -54,6 +54,24 @@ List `corten_ui::COMPONENTS` and it is served.
 <dialog id={RenameId} open={!errors.is_empty()} on:connect={dialog::modal(target)}>
     <form method="post" action={url::Rename} data-patch>..</form>
 </dialog>
+```
+
+A dialog the address opens (a record beside its list, `/items?selected=it_1`, closed by a link to
+`/items`) is drawn `open` the same way, but Escape on a modal dialog closes it where the address
+cannot see: a reload, Back or a redraw would open it again. `dialog::modalClosedBy` makes it
+modal and turns Escape on it (not on a dialog inside it) into a click on its close link, a ref,
+so Corten's navigation and the history go as for a click and the address names what is shown.
+The close is a link: a button there does not compile. Without a script, the dialog is open and
+the link closes it.
+
+```rust,ignore
+let close = refs();
+html! {
+    <dialog open aria-label={item.name} on:connect={dialog::modalClosedBy(target, close, signal)}>
+        ..
+        <a ref={close} href={url::Items { selected: None }}>"Close"</a>
+    </dialog>
+}
 ```
 
 The design system places popups with CSS anchor positioning (the script makes the control that
