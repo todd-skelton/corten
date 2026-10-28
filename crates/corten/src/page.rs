@@ -415,6 +415,8 @@ pub(crate) struct Shared {
     pub allowed_origins: Vec<String>,
     /// Each `Api::allow_origin` mount's prefix and origins, which may also switch under it.
     pub api_origins: Vec<(String, Vec<String>)>,
+    /// The paths of the app's pages, its own routes' and its areas' ([`Req::serves`]).
+    pub pages: Box<[&'static str]>,
 }
 
 impl Shared {
@@ -446,6 +448,7 @@ impl Shared {
             proxies: Vec::new(),
             allowed_origins: Vec::new(),
             api_origins: Vec::new(),
+            pages: Box::default(),
         }
     }
 }
@@ -862,6 +865,43 @@ impl Req {
     pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         Ok(HtmlResponse(redirect(self.mode, value)))
+    }
+
+    /// Whether one of the app's pages is at `to`'s path: a route given to [`crate::App::new`] or
+    /// to an area, matched as the router matches it. A return address the app does not serve
+    /// (a page of another app of the product, or none) goes elsewhere; one it serves is
+    /// `req.redirect(&to)`. An API route or a static file is not a page, so it is not served
+    /// here. The app answers a request to the matched path, which can still be a 404 for a
+    /// record that is not there.
+    ///
+    /// ```
+    /// use corten::{prelude::*, route::Local};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    ///
+    ///     #[route("/sign-in", post = sign_in)]
+    ///     pub struct SignIn;
+    /// }
+    ///
+    /// # async fn home(req: Req) -> HtmlResult { req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> }) }
+    /// #[derive(serde::Deserialize)]
+    /// struct Credentials { next: Option<String> }
+    ///
+    /// async fn sign_in(req: Req, Form(form): Form<Credentials>) -> HtmlResult {
+    ///     // .. start the session ..
+    ///     match form.next.as_deref().and_then(Local::parse) {
+    ///         Some(next) if req.serves(&next) => req.redirect(&next),
+    ///         _ => req.redirect(&url::Home),
+    ///     }
+    /// }
+    /// # let _ = App::new(url::router()).router();
+    /// ```
+    pub fn serves(&self, to: &crate::route::Local) -> bool {
+        let path = to.path();
+        self.shared.pages.iter().any(|pattern| crate::route::routes_path(pattern, path))
     }
 
     /// The page is at `to` for good (an item asked for by its id or an old slug, a renamed

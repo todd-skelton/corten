@@ -748,12 +748,125 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 }
 
 /// Where a redirect or a current-page check points: a typed route, a place on its page
-/// ([`Route::at`]), or an `axum::http::Uri` for a URL the app does not route (a payment page, a
-/// sign-in provider). Text is none of them, so a path typed as a string does not compile. Used by
+/// ([`Route::at`]), a return address checked to be on this site ([`Local`]), or an
+/// `axum::http::Uri` for a URL the app does not route (a payment page, a sign-in provider). Text is none of them, so a path typed as a string does not compile. Used by
 /// [`crate::Req::redirect`] and [`crate::Req::current`].
 pub trait Href {
     /// Calls `f` with the URL.
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T;
+}
+
+/// A path on this site taken from outside the code, a return address above all
+/// (`/sign-in?next=/account/cart`): what [`Local::parse`] accepts can only lead to this site, so
+/// `req.redirect(&next)` cannot send the user elsewhere (an open redirect). Whether the app has a
+/// page there is [`crate::Req::serves`].
+///
+/// ```
+/// use corten::route::Local;
+///
+/// assert_eq!(Local::parse("/account/cart?step=2#pay").unwrap().path(), "/account/cart");
+/// // Each of these leads a browser to another site, or is not a path: none is a Local.
+/// for other in ["//evil.example", "/\\evil.example", "/\t/evil.example", "https://evil.example", "account", ""] {
+///     assert!(Local::parse(other).is_none(), "{other:?}");
+/// }
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Local(String);
+
+impl Local {
+    /// `text` when it is a path on this site: it starts with one `/`, not `//` or `/\` (which a
+    /// browser reads as another host), and is printable ASCII without `\`, so no control
+    /// character or space a browser drops can turn it into one. Anything else, a full URL
+    /// included, is `None`: send the user to the fallback.
+    pub fn parse(text: &str) -> Option<Local> {
+        let bytes = text.as_bytes();
+        let path = bytes.first() == Some(&b'/') && !matches!(bytes.get(1), Some(b'/' | b'\\'));
+        (path && bytes.iter().all(|&b| b.is_ascii_graphic() && b != b'\\')).then(|| Local(text.to_string()))
+    }
+
+    /// The path, without the query or fragment: what the app's routes are matched against.
+    pub fn path(&self) -> &str {
+        self.0.split(['?', '#']).next().unwrap_or("")
+    }
+
+    /// The whole address, query and fragment included.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Local {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Href for Local {
+    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
+        f(&self.0)
+    }
+}
+
+/// Whether `path` is one `pattern` routes, as axum matches it: `{name}` is one segment that is
+/// not empty, `{*rest}` the rest of the path (not empty), and the rest is compared as it is
+/// written, so `/items/` is not `/items`.
+pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
+    let (mut pattern, mut path) = (pattern.split('/'), path.split('/'));
+    loop {
+        match (pattern.next(), path.next()) {
+            (None, None) => return true,
+            (Some(want), Some(got)) if want.starts_with("{*") => {
+                return !got.is_empty() || path.next().is_some();
+            }
+            (Some(want), Some(got)) if want.starts_with('{') => {
+                if got.is_empty() {
+                    return false;
+                }
+            }
+            (Some(want), Some(got)) if want == got => {}
+            _ => return false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod local_tests {
+    use super::{routes_path, Local};
+
+    #[test]
+    fn a_path_matches_a_pattern_as_axum_matches_it() {
+        for (pattern, path, want) in [
+            ("/", "/", true),
+            ("/", "/a", false),
+            ("/items", "/items", true),
+            ("/items", "/items/", false),
+            ("/items/{id}", "/items/7", true),
+            ("/items/{id}", "/items/", false),
+            ("/items/{id}", "/items/7/edit", false),
+            ("/items/{id}/edit", "/items/7/edit", true),
+            ("/files/{*rest}", "/files/a/b", true),
+            ("/files/{*rest}", "/files/a/", true),
+            ("/files/{*rest}", "/files/", false),
+            ("/files/{*rest}", "/files", false),
+            ("/a/{x}/{y}", "/a/1/2", true),
+        ] {
+            assert_eq!(routes_path(pattern, path), want, "{pattern} {path}");
+        }
+    }
+
+    #[test]
+    fn only_a_path_on_this_site_is_local() {
+        for ok in ["/", "/a", "/a?b=c&d=%2F%2F", "/a#x", "/%2F%2Fevil.example", "/a//b", "/a/./b"] {
+            assert_eq!(Local::parse(ok).map(|l| l.to_string()).as_deref(), Some(ok), "{ok:?}");
+        }
+        for bad in
+            ["", "a", "//evil", "/\\evil", "/a\\b", "/\t/evil", "/\n/evil", "/a b", "/caf\u{e9}", "/\x7f", "http://evil", " /a"]
+        {
+            assert!(Local::parse(bad).is_none(), "{bad:?}");
+        }
+        assert_eq!(Local::parse("/a/b?c#d").unwrap().path(), "/a/b");
+        assert_eq!(Local::parse("/a#d?x").unwrap().path(), "/a");
+    }
 }
 
 impl Href for axum::http::Uri {
@@ -1001,7 +1114,7 @@ methods!(get, post, put, delete, patch, head, options, trace);
 /// let app = App::new(corten::axum::Router::new().route("/", corten::axum::routing::get(home)));
 /// ```
 #[derive(Default)]
-pub struct Routes(pub(crate) axum::Router);
+pub struct Routes(pub(crate) axum::Router, pub(crate) Vec<&'static str>);
 
 impl Routes {
     /// No routes.
@@ -1012,7 +1125,9 @@ impl Routes {
     /// Used by `#[corten::routes]`: `R`'s handlers at its path. Not a public API.
     #[doc(hidden)]
     pub fn __route<R: Route>(self, methods: Methods) -> Self {
-        Routes(self.0.route(R::PATH, methods.0))
+        let mut paths = self.1;
+        paths.push(R::PATH);
+        Routes(self.0.route(R::PATH, methods.0), paths)
     }
 }
 
@@ -1020,7 +1135,7 @@ impl Routes {
 #[cfg(test)]
 impl From<axum::Router> for Routes {
     fn from(router: axum::Router) -> Self {
-        Routes(router)
+        Routes(router, Vec::new())
     }
 }
 

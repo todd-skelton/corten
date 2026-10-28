@@ -2564,3 +2564,66 @@ async fn a_taken_ipv6_loopback_port_is_an_error() {
     assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
     assert_eq!(crate::app::bind(Some("127.0.0.1"), port).await.unwrap().len(), 1, "HOST names one address");
 }
+
+#[crate::routes]
+mod serves_url {
+    #[route("/check", get = serves_check)]
+    pub struct Check;
+
+    #[route("/items/{id}", get = serves_check)]
+    pub struct Item {
+        pub id: u32,
+    }
+
+    #[route("/files/{*rest}", get = serves_check)]
+    pub struct Files {
+        pub rest: String,
+    }
+}
+
+/// Whether the app serves the path in `?p=`: "local served", "local elsewhere" or "not local".
+async fn serves_check(req: Req, uri: axum::http::Uri) -> String {
+    let p = form_urlencoded::parse(uri.query().unwrap_or("").as_bytes()).find(|(k, _)| k == "p").map(|(_, v)| v.into_owned());
+    match p.as_deref().and_then(crate::route::Local::parse) {
+        Some(local) if req.serves(&local) => "local served".into(),
+        Some(_) => "local elsewhere".into(),
+        None => "not local".into(),
+    }
+}
+
+/// A return address the app serves is one of its pages, its areas' included; an API route, a
+/// static file or Corten's own routes are not; and nothing that leads off the site is a `Local`.
+#[tokio::test]
+async fn an_app_says_whether_it_serves_a_return_address() {
+    let router = App::new(serves_url::router())
+        .area::<admin_url::Admin>(admin_url::area)
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods(get(|| async { "rates" }))))
+        .router();
+    for (p, want) in [
+        ("/check", "local served"),
+        ("/check?x=1#top", "local served"),
+        ("/items/7", "local served"),
+        ("/items/anything", "local served"),
+        ("/files/a/b/c.txt", "local served"),
+        ("/admin", "local served"),
+        ("/admin/users/3", "local served"),
+        ("/items", "local elsewhere"),
+        ("/items/", "local elsewhere"),
+        ("/items/7/edit", "local elsewhere"),
+        ("/files/", "local elsewhere"),
+        ("/check/", "local elsewhere"),
+        ("/api/rates", "local elsewhere"),
+        ("/health/live", "local elsewhere"),
+        ("/admin/users", "local elsewhere"),
+        ("/market/cart", "local elsewhere"),
+        ("//evil.example/check", "not local"),
+        ("/\\evil.example", "not local"),
+        ("/\t/evil.example", "not local"),
+        ("https://evil.example/check", "not local"),
+        ("check", "not local"),
+    ] {
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (status, _, body) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((status, body.as_str()), (StatusCode::OK, want), "{p:?}");
+    }
+}

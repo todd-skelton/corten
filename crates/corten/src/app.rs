@@ -74,6 +74,7 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 /// that the app passes to [`App::area`].
 pub struct Area<P> {
     routes: Router,
+    pages: Vec<&'static str>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
     types: PhantomData<fn() -> P>,
@@ -106,6 +107,7 @@ impl<P: Prefix> Area<P> {
             )
         };
         self.routes = self.routes.route(R::PATH, methods.0);
+        self.pages.push(R::PATH);
         self
     }
 
@@ -147,6 +149,7 @@ impl<P: Prefix> Area<P> {
 struct Placed {
     prefix: &'static str,
     routes: Router,
+    pages: Vec<&'static str>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
 }
@@ -181,6 +184,8 @@ struct Placed {
 /// ```
 pub struct App<M = ()> {
     routes: Router,
+    /// The paths of the app's pages ([`crate::Req::serves`]), the areas' added in `router`.
+    pages: Vec<&'static str>,
     error_page: Option<Box<page::ErrorPage>>,
     policy: Policy,
     static_dir: Option<PathBuf>,
@@ -219,6 +224,7 @@ impl App {
     pub fn new(routes: Routes) -> Self {
         App {
             routes: routes.0,
+            pages: routes.1,
             error_page: None,
             policy: Policy::new(),
             static_dir: None,
@@ -250,6 +256,7 @@ impl App {
     pub fn middleware<M: Middleware>(self, middleware: M) -> App<M> {
         App {
             routes: self.routes,
+            pages: self.pages,
             error_page: self.error_page,
             policy: self.policy,
             static_dir: self.static_dir,
@@ -305,8 +312,15 @@ impl<M: Middleware> App<M> {
         };
         let prefix = P::PREFIX;
         assert!(!self.areas.iter().any(|placed| placed.prefix == prefix), "corten: the area {prefix:?} is given twice");
-        let area = build(Area { routes: Router::new(), components: Vec::new(), deadline: None, types: PhantomData });
-        self.areas.push(Placed { prefix, routes: area.routes, components: area.components, deadline: area.deadline });
+        let area =
+            build(Area { routes: Router::new(), pages: Vec::new(), components: Vec::new(), deadline: None, types: PhantomData });
+        self.areas.push(Placed {
+            prefix,
+            routes: area.routes,
+            pages: area.pages,
+            components: area.components,
+            deadline: area.deadline,
+        });
         self
     }
 
@@ -590,6 +604,7 @@ impl<M: Middleware> App<M> {
         shared.locales = self.locales;
         shared.client_zone = self.client_zone;
         shared.dev = dev;
+        shared.pages = self.pages.iter().chain(self.areas.iter().flat_map(|area| &area.pages)).copied().collect();
         shared.components = self.components.iter().chain(sections.iter().flat_map(|(_, c)| c.iter())).map(|c| c.name).collect();
         if let Some(assets) = &shared.assets {
             for section in assets.section_stylesheets() {
