@@ -1572,6 +1572,114 @@ async fn checked(Path(n): Path<u32>) -> crate::JsonResult<u32> {
     Ok(crate::Json(n))
 }
 
+/// JSON answers with a status or a cookie of their own, in a routes module and under an API.
+#[cfg(feature = "json")]
+#[crate::routes]
+mod own_json_url {
+    #[route("/started", post = own_started)]
+    pub struct Started;
+
+    #[route("/forecast", get = own_forecast)]
+    pub struct Forecast;
+
+    #[route("/session", post = own_session)]
+    pub struct Session;
+
+    #[route("/held", get = own_held)]
+    pub struct Held;
+}
+
+#[cfg(feature = "json")]
+#[crate::routes(api = OwnApiRoot)]
+mod own_json_api {
+    #[route("/v1")]
+    pub struct OwnApiRoot;
+
+    #[route("/v1/forecast", get = own_forecast)]
+    pub struct ApiForecast;
+}
+
+#[cfg(feature = "json")]
+#[derive(serde::Serialize, crate::ToJson)]
+struct OwnStarted {
+    ok: bool,
+}
+
+#[cfg(feature = "json")]
+async fn own_started() -> Result<crate::JsonResponse, JsonError> {
+    Ok(crate::Json(OwnStarted { ok: true }).with_status(StatusCode::ACCEPTED))
+}
+
+#[cfg(feature = "json")]
+async fn own_forecast() -> Result<crate::JsonResponse, JsonError> {
+    let problem = crate::json::Raw::new(r#"{"error":"No capacity forecast yet"}"#)?;
+    Ok(crate::Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE))
+}
+
+#[cfg(feature = "json")]
+async fn own_session() -> Result<crate::JsonResponse, JsonError> {
+    let token = SetCookie::try_new("session", "abc")?;
+    Ok(crate::Json(OwnStarted { ok: true }).with_cookie(token).with_cookie(SetCookie::remove("old")))
+}
+
+#[cfg(feature = "json")]
+async fn own_held() -> crate::JsonResult<crate::json::Raw> {
+    Ok(crate::Json(crate::json::Raw::new(r#"{"rows":[1,2]}"#)?))
+}
+
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_json_answer_has_a_status_and_cookies_of_its_own() {
+    let router = App::new(own_json_url::router()).api(own_json_api::api).router();
+    let (status, headers, body) = call_with(router.clone(), "POST", "/started", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::ACCEPTED, r#"{"ok":true}"#));
+    assert_eq!(headers["content-type"], "application/json");
+    // The app's own 503 reaches the client as written, in a routes module and under an API.
+    for uri in ["/forecast", "/v1/forecast"] {
+        let (status, headers, body) = call_with(router.clone(), "GET", uri, None, Some("text/html")).await;
+        assert_eq!((status, &body[..]), (StatusCode::SERVICE_UNAVAILABLE, r#"{"error":"No capacity forecast yet"}"#), "{uri}");
+        assert_eq!(headers["content-type"], "application/json");
+    }
+    let (status, headers, body) = call_with(router.clone(), "POST", "/session", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, r#"{"ok":true}"#));
+    let cookies: Vec<_> = headers.get_all("set-cookie").iter().map(|v| v.to_str().unwrap()).collect();
+    assert_eq!(
+        cookies,
+        ["session=abc; Path=/; SameSite=Lax; HttpOnly; Secure", "old=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]
+    );
+    assert!(headers["cache-control"].to_str().unwrap().contains("private"));
+    let (status, _, body) = call_with(router, "GET", "/held", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, r#"{"rows":[1,2]}"#));
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_held_document_is_written_as_it_is_inside_another_value() {
+    use crate::json::ToJson;
+    #[derive(crate::ToJson)]
+    struct Page {
+        id: u32,
+        rows: crate::json::Raw,
+    }
+    let doc = crate::json::Raw::new(r#"{"rows":[1,2]}"#).unwrap();
+    assert_eq!(vec![doc.clone(), doc.clone()].to_json(), r#"[{"rows":[1,2]},{"rows":[1,2]}]"#);
+    assert_eq!(Page { id: 7, rows: doc }.to_json(), r#"{"id":7,"rows":{"rows":[1,2]}}"#);
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_held_document_that_is_not_one_json_value_is_an_error() {
+    use crate::json::Raw;
+    for text in ["{\"rows\": [1,", "", "{} {}", "nul", "\u{feff}{}"] {
+        let error = Raw::new(text).unwrap_err();
+        assert!(error.to_string().starts_with("not one JSON value: "), "{text:?}: {error}");
+    }
+    // A string in another encoding (Windows-1252's é) is not JSON, though the parser skips it.
+    let error = Raw::new(&b"{\"name\":\"caf\xE9\"}"[..]).unwrap_err();
+    assert!(error.to_string().starts_with("not one JSON value: not UTF-8"), "{error}");
+    assert_eq!(Raw::new(" [1] ").unwrap().as_bytes(), b" [1] ");
+}
+
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn a_json_handler_question_marks_field_errors_into_a_422_with_the_fields() {

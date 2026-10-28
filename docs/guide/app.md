@@ -12,7 +12,7 @@ your routes. Each default can be replaced in one line.
 | The document | none: each page brings its own, the app's layout component with the page in it (`req.page(html! { <Layout ..>..</Layout> })`); `corten new` writes the layout | the layout is the app's code ([views](views.md#the-document)) |
 | Routes | a `#[corten::routes]` module: each route names its handlers, and `router()` is what `App::new` takes; every handler is checked when the crate compiles, there and in `Area::route` and `Api::route` (Corten's `get`, `post`, ...), so no route reaches the app unchecked | |
 | What handlers share | nothing | `#[corten::routes(state = Shared)]` and `router(shared)`; `#[derive(Clone, FromRef)]` on `Shared` lets a handler take one part, `State<Market>` (each field's type once; `#[from_ref(skip)]` leaves a field out) |
-| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
+| What a route answers | its handler's return type: `HtmlResult` (a page, a patch, a redirect; failures are the error page) or `JsonResult<T>` (failures are JSON too; `Result<JsonResponse, JsonError>` for a status or cookie of the handler's own) | `Public<..>` around either for an answer that is the same for everyone, `NoStore<..>` for one nothing may keep ([below](#caching)) |
 | The client's address | the connection's peer; no `X-Forwarded-For` is read | a handler takes `ClientIp`; behind a proxy, `PROXIES=10.0.0.0/8` in the environment or `Policy::proxy("10.0.0.0/8")` ([below](#the-clients-address)) |
 | Who is asking | nothing: no lookup runs | a handler takes `Caller<Viewer>` (`Viewer: Identify`), looked up only then, once per request ([below](#who-is-asking)) |
 | A part of the app | none | `.area(admin::area)` for a `#[corten::routes(area = Admin)]` module: its routes under the prefix (a route outside it does not compile), with `.components(&[..])` for a stylesheet only its pages load and `caller = Staff` for who may use it ([below](#areas)) |
@@ -28,7 +28,7 @@ your routes. Each default can be replaced in one line.
 | Connections | a request's head (its line and headers) must arrive within 30 seconds of the connection opening or its last answer, or the connection is closed; no limit on how many are open | `.header_timeout(d)` (`None` behind a proxy that buffers heads), `.max_connections(n)`: past it, connections wait to be accepted |
 | Shutdown | Ctrl-C and `SIGTERM` (on Windows Ctrl-C, Ctrl-Break, the console closing and system shutdown), or the app's `corten::shutdown()`, tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
-| Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`); a `Relay`'s answer goes on as the upstream sent it | |
+| Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, JSON held as bytes (`json::Raw`) once when it is sent again, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`); a `Relay`'s answer goes on as the upstream sent it | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
 | Languages | none | `.messages::<Msg>()`: `req.t()` and `req.lang()` follow `Accept-Language` |
 | Visitors' time zones | not known: dates are UTC unless a zone is given | `.client_zone()`: the runtime keeps the browser's zone in a `corten-zone` cookie, read by `Option<ClientZone>` ([Views](views.md)) |
@@ -481,6 +481,29 @@ fn app(pages: Routes) -> App {
 # let _ = app(Routes::new()).router();
 ```
 
+A JSON answer is `200` with the value's JSON. One with a status or a cookie of its own is a
+`JsonResponse`, made from the value, and its handler returns `Result<JsonResponse, JsonError>`:
+`Json(started).with_status(StatusCode::ACCEPTED)` for a job begun,
+`Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE)` for a document that does not exist
+yet, `Json(session).with_cookie(SetCookie::try_new("session", &token)?)` for a sign-in (never a
+`Set-Cookie` header by hand). That status and body are the app's own answer and reach the client
+as written; a failure (`Err`) is still answered in Corten's shape (or the API's own,
+`Api::errors`). A `JsonResponse` is for the client who asked, so `Public` of one does not
+compile; a public JSON answer is a `JsonResult<T>`.
+
+JSON the app already holds as bytes (a document built once when its data changes, a file sent as
+it was written) is a `corten::json::Raw`: `Json(raw.clone())` sends the bytes as they are, with
+no serialization and no copy. `Raw::new` reads them through once and returns an `InvalidJson`
+error when they are not one JSON value in UTF-8 (a file saved in another encoding, or with a byte
+order mark, included), so a corrupt file is an error the app handles, not a broken answer. Keep
+the `Raw` and clone it for each request: with feature `compress`, one sent again is compressed
+once, at brotli 9 and gzip 9, on one background thread that takes them in turn, and later reads
+get those forms instead of compressing it per request (a client that ranks zstd higher still
+gets zstd). Measured on an 80 KB document (release build): compressing it on every read costs
+220 µs with zstd 1 and 2.1 ms with brotli 2; compressing it once costs 15 ms, and each read then
+sends 5,000 bytes for brotli against 6,992 for zstd 1. A `Raw` made for one request is
+compressed as any answer is.
+
 An endpoint built from a value rather than a function, the MCP endpoint (`agent::Tools`), is
 added to its API with `Api::route`: `.api(|routes| mcp::api(routes).route::<mcp::Mcp>(tools.route()))`.
 Corten's `get` and the others check its handlers as a routes module does.
@@ -693,7 +716,8 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    `SetCookie::try_new` returns an `InvalidCookie` the handler maps to its own answer (a 502,
    say; `?` alone is a 500). `SetCookie` (`corten::security::cookie`) makes
    `HttpOnly; Secure; SameSite=Lax; Path=/` the default, and an answer that sets a cookie is never
-   stored by a shared cache. Never append a `Set-Cookie` header by hand.
+   stored by a shared cache. A JSON sign-in sets it the same way, `Json(session).with_cookie(..)`.
+   Never append a `Set-Cookie` header by hand.
    A return address the sign-in page was given (`?next=/account/cart`) is text from outside:
    `corten::Local::parse(&next)` keeps it only when it is a path on this site (not `//host`,
    `/\host`, a `..` segment or a full URL, so the redirect cannot lead elsewhere; nor a
