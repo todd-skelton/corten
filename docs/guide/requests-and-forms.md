@@ -345,8 +345,9 @@ a list whose length must survive a reload puts it in the address with a link ins
 ## Redirects
 
 After a successful write, `req.redirect(&route)` sends the browser on (post/redirect/get), with
-and without JavaScript. It takes a typed route, or an `axum::http::Uri` for a URL outside the
-app; a path written as text does not compile.
+and without JavaScript. It takes a typed route, a return address from outside the code that
+`corten::Local::parse` checked is on this site (see the app guide's sign-in item), or an
+`axum::http::Uri` for a URL outside the app; a path written as text does not compile.
 
 To bring the browser back to what the user acted on (a review on page 2 of a long list, a row
 after an edit), redirect to a place on the page: `route.at(ReviewId(&id))` is the route with

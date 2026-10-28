@@ -158,8 +158,8 @@ enum Why {
 }
 
 impl Refused {
-    /// No one is signed in, or their session ended: a browser is sent to `to` (a typed route, or
-    /// an `axum::http::Uri` on another site), the way [`crate::Req::redirect`] sends it. A data
+    /// No one is signed in, or their session ended: a browser is sent to `to` (a typed route, a
+    /// [`crate::Local`] return address, or an `axum::http::Uri` on another site), the way [`crate::Req::redirect`] sends it. A data
     /// client and a JSON route get a 401.
     pub fn sign_in(to: &(impl Href + ?Sized)) -> Self {
         match to.with_href(|href| HeaderValue::try_from(href)) {

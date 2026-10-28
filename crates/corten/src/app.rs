@@ -74,6 +74,7 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 /// that the app passes to [`App::area`].
 pub struct Area<P> {
     routes: Router,
+    pages: Vec<(&'static str, bool)>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
     types: PhantomData<fn() -> P>,
@@ -98,14 +99,41 @@ impl<P: Prefix> Area<P> {
     /// let app = App::new(Routes::new()).area::<Admin>(|admin| admin.route::<Users>(get(|| async { "users" })));
     /// # let _ = app.router();
     /// ```
+    ///
+    /// A `Route` written by hand has a path of the shape `#[derive(Route)]` writes (each parameter
+    /// a whole segment, the text characters a browser sends as they are, here not `|`), so
+    /// [`crate::Req::serves`] knows which route the router picks:
+    ///
+    /// ```compile_fail,E0080
+    /// # use corten::prelude::*;
+    /// #[derive(Route)]
+    /// #[route("/admin")]
+    /// struct Admin;
+    ///
+    /// struct Item;
+    /// impl corten::Route for Item {
+    ///     const PATH: &'static str = "/admin/a|b";
+    ///     fn write_href(&self, out: &mut String, _: bool) {
+    ///         out.push_str("/admin/a|b");
+    ///     }
+    /// }
+    ///
+    /// let app = App::new(Routes::new()).area::<Admin>(|admin| admin.route::<Item>(get(|| async { "item" })));
+    /// # let _ = app.router();
+    /// ```
     pub fn route<R: TypedRoute>(mut self, methods: Methods) -> Self {
         const {
             assert!(
                 crate::api::under_const(P::PREFIX, R::PATH),
                 "corten: a route of an area is at or under its prefix (the note below names the area's prefix and the route)"
-            )
+            );
+            assert!(
+                crate::route::route_shaped(R::PATH),
+                "corten: a route's path has the shape #[derive(Route)] writes: whole-segment parameters like /items/{{id}} and plain text (the note below names the route)"
+            );
         };
         self.routes = self.routes.route(R::PATH, methods.0);
+        self.pages.push((R::PATH, methods.1));
         self
     }
 
@@ -147,6 +175,7 @@ impl<P: Prefix> Area<P> {
 struct Placed {
     prefix: &'static str,
     routes: Router,
+    pages: Vec<(&'static str, bool)>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
 }
@@ -181,6 +210,9 @@ struct Placed {
 /// ```
 pub struct App<M = ()> {
     routes: Router,
+    /// The app's route patterns and whether each has a `GET` handler ([`crate::Req::serves`]);
+    /// the areas' are added in `router`.
+    pages: Vec<(&'static str, bool)>,
     error_page: Option<Box<page::ErrorPage>>,
     policy: Policy,
     static_dir: Option<PathBuf>,
@@ -219,6 +251,7 @@ impl App {
     pub fn new(routes: Routes) -> Self {
         App {
             routes: routes.0,
+            pages: routes.1,
             error_page: None,
             policy: Policy::new(),
             static_dir: None,
@@ -250,6 +283,7 @@ impl App {
     pub fn middleware<M: Middleware>(self, middleware: M) -> App<M> {
         App {
             routes: self.routes,
+            pages: self.pages,
             error_page: self.error_page,
             policy: self.policy,
             static_dir: self.static_dir,
@@ -305,8 +339,15 @@ impl<M: Middleware> App<M> {
         };
         let prefix = P::PREFIX;
         assert!(!self.areas.iter().any(|placed| placed.prefix == prefix), "corten: the area {prefix:?} is given twice");
-        let area = build(Area { routes: Router::new(), components: Vec::new(), deadline: None, types: PhantomData });
-        self.areas.push(Placed { prefix, routes: area.routes, components: area.components, deadline: area.deadline });
+        let area =
+            build(Area { routes: Router::new(), pages: Vec::new(), components: Vec::new(), deadline: None, types: PhantomData });
+        self.areas.push(Placed {
+            prefix,
+            routes: area.routes,
+            pages: area.pages,
+            components: area.components,
+            deadline: area.deadline,
+        });
         self
     }
 
@@ -590,6 +631,18 @@ impl<M: Middleware> App<M> {
         shared.locales = self.locales;
         shared.client_zone = self.client_zone;
         shared.dev = dev;
+        // The same path routed in two places (the app's routes and an area's) is one route to axum,
+        // with the methods of both.
+        let mut pages: Vec<(&'static str, bool)> = Vec::new();
+        for &(pattern, get) in self.pages.iter().chain(self.areas.iter().flat_map(|area| &area.pages)) {
+            match pages.iter_mut().find(|(p, _)| *p == pattern) {
+                Some((_, has)) => *has |= get,
+                None => pages.push((pattern, get)),
+            }
+        }
+        shared.pages = pages.into();
+        // What is not a page however the app's routes match it: Corten's own paths and the APIs.
+        shared.not_pages = NotPages { own: own.clone(), apis: self.apis.iter().map(|(mount, _)| mount.prefix.clone()).collect() };
         shared.components = self.components.iter().chain(sections.iter().flat_map(|(_, c)| c.iter())).map(|c| c.name).collect();
         if let Some(assets) = &shared.assets {
             for section in assets.section_stylesheets() {
@@ -878,7 +931,8 @@ impl tower_service::Service<hyper::Request<hyper::body::Incoming>> for Connectio
 }
 
 /// The paths of Corten's own routes.
-struct Own {
+#[derive(Clone, Default)]
+pub(crate) struct Own {
     exact: Vec<&'static str>,
     prefixes: Vec<String>,
 }
@@ -886,6 +940,19 @@ struct Own {
 impl Own {
     fn contains(&self, path: &str) -> bool {
         self.exact.contains(&path) || self.prefixes.iter().any(|prefix| path.starts_with(prefix.as_str()))
+    }
+}
+
+/// Paths no page is at, however the app's routes match them: Corten's own and the APIs'.
+#[derive(Default)]
+pub(crate) struct NotPages {
+    own: Own,
+    apis: Vec<String>,
+}
+
+impl NotPages {
+    pub(crate) fn contains(&self, path: &str) -> bool {
+        self.own.contains(path) || self.apis.iter().any(|prefix| crate::api::under(prefix, path))
     }
 }
 

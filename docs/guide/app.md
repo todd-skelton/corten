@@ -682,6 +682,15 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    say; `?` alone is a 500). `SetCookie` (`corten::security::cookie`) makes
    `HttpOnly; Secure; SameSite=Lax; Path=/` the default, and an answer that sets a cookie is never
    stored by a shared cache. Never append a `Set-Cookie` header by hand.
+   A return address the sign-in page was given (`?next=/account/cart`) is text from outside:
+   `corten::Local::parse(&next)` keeps it only when it is a path on this site (not `//host`,
+   `/\host`, a `..` segment or a full URL, so the redirect cannot lead elsewhere; nor a
+   percent-escaped letter, digit or `-._~`, which a browser may ask for as another path), and
+   `req.serves(&local)` says whether the route the router picks for its path (the app's own or
+   an area's, not an API's) has a `GET` handler. Send the user to it with `req.redirect(&local)`.
+   A path another app of the product serves is that app's address with the path after it
+   (`Uri::try_from(format!("https://shop.example{local}"))`), and anything else goes to a page of
+   the app's own.
 7. `.message("Invalid API key")` on a refusal is what a client that reads the failure is told:
    the JSON error's message (in the API's own shape, `Api::errors`). The error page a browser
    gets does not show it, and a 503 from `Refused::unavailable` never sends its error. Counting
@@ -763,7 +772,8 @@ fn app(pages: Routes) -> App {
    are stricter types: `caller = Billing` on a `/admin/billing` area of its own.
 4. An area a library ships is a function the app passes on,
    `.area(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route by hand; Corten's `get`
-   checks the handler as a routes module does.
+   checks the handler as a routes module does, and `R`'s path must have the shape
+   `#[derive(Route)]` writes (whole-segment parameters, plain text), or the app does not compile.
 5. Areas nest (`/admin` and `/admin/billing`, each with its own routes and stylesheet).
 
 How the common cases look:

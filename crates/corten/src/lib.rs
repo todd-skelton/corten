@@ -127,7 +127,7 @@ pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
 pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, ReadAgainFrom, Req, MODE_HEADER};
-pub use route::{routes, Elsewhere, Href, Methods, Prefix, Route, Routes, UrlValue};
+pub use route::{routes, Elsewhere, Href, Local, Methods, Prefix, Route, Routes, UrlValue};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
