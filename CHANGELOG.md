@@ -1143,10 +1143,11 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#217 examples/listings-feed does not use App, so its routes skip Corten's compile-time checks](https://github.com/todd-skelton/corten/issues/217),
     [#233 listings-feed's failover benchmark has not been run since the example was renamed](https://github.com/todd-skelton/corten/issues/233)).
 68. seller-desk sells card-market's cards: its rows are the three sets' 540 cards, card-market's
-    eleven singles first at the lowest price card-market lists them for (a test reads its
-    fixture), the rest priced by rarity, then each card again in the next condition at that
-    condition's share of the price. Names are cards' names (no `#1`, `#2`), and the sets are
-    card-market's three
+    eleven singles first at the cheapest Near Mint price card-market lists them for (a test
+    reads its fixture), the rest priced by rarity. Most start in Near Mint and some played; past
+    540 rows each card comes again in its next condition at that condition's share of the price.
+    A seller keeps a few copies of a dear card and many of a common, and restocks to that.
+    Names are cards' names (no `#1`, `#2`), and the sets are card-market's three
     ([#224 seller-desk and card-market give the same card different prices](https://github.com/todd-skelton/corten/issues/224)).
 
 ### Fixed

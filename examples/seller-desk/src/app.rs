@@ -67,47 +67,26 @@ const SETS: [&str; 3] = ["Ember Reach", "Hollow Crown", "Tidebreak"];
 const CARDS: usize = 180 * SETS.len();
 
 /// The singles card-market's store lists (`fixtures/demo.json`), with the set and the lowest
-/// price there, so the same card costs the same in both apps (a test reads the fixture).
+/// Near Mint price there, so the same card costs the same in both apps (a test reads the fixture).
 const LISTED: [(&str, &str, u32); 11] = [
     ("Ashen Drake", "Ember Reach", 4250),
-    ("Lantern Warden", "Hollow Crown", 325),
+    ("Lantern Warden", "Hollow Crown", 348),
     ("Salt Oracle", "Tidebreak", 11800),
-    ("Gravel Sprite", "Ember Reach", 35),
+    ("Gravel Sprite", "Ember Reach", 37),
     ("Crown of Thorns and Glass", "Hollow Crown", 2780),
     ("Undertow Serpent", "Tidebreak", 210),
-    ("Cinder Cartographer", "Ember Reach", 960),
+    ("Cinder Cartographer", "Ember Reach", 1027),
     ("Moth Court Herald", "Hollow Crown", 50),
-    ("Pearl Diver", "Tidebreak", 140),
+    ("Pearl Diver", "Tidebreak", 150),
     ("Kiln Colossus", "Ember Reach", 8600),
     ("Regent of Ash", "Hollow Crown", 6475),
 ];
 
-/// The rest of the sets' names: a place and a creature, each pair once.
+/// The rest of the sets' names: a word and a figure, each pair once. No word is a set's, so a
+/// filter for a set finds that set's cards.
 const PLACES: [&str; 24] = [
-    "Ashen",
-    "Lantern",
-    "Salt",
-    "Gravel",
-    "Undertow",
-    "Cinder",
-    "Pearl",
-    "Kiln",
-    "Ember",
-    "Tide",
-    "Hollow",
-    "Iron",
-    "Glass",
-    "Thorn",
-    "Silt",
-    "Brine",
-    "Ivory",
-    "Copper",
-    "Lichen",
-    "Storm",
-    "Dusk",
-    "Marsh",
-    "Quarry",
-    "Ember-Eyed",
+    "Ashen", "Lantern", "Salt", "Gravel", "Undertow", "Cinder", "Pearl", "Kiln", "Fallow", "Rime", "Sable", "Iron", "Glass",
+    "Thorn", "Silt", "Brine", "Ivory", "Copper", "Lichen", "Storm", "Dusk", "Marsh", "Quarry", "Gilded",
 ];
 const BEINGS: [&str; 24] = [
     "Drake",
@@ -168,16 +147,35 @@ fn cards() -> Vec<(String, &'static str, u32)> {
     cards
 }
 
+/// A number that looks random but is the same every run, from `n`.
+fn draw(n: usize) -> u32 {
+    (n as u32).wrapping_mul(2_654_435_761) >> 16
+}
+
+/// How many copies a seller keeps of a card at `cents`: a few of the dear ones, many commons.
+/// The most is what a sold-out card is restocked to.
+fn stock(cents: u32) -> std::ops::RangeInclusive<u32> {
+    match cents {
+        2000.. => 0..=3,
+        200.. => 1..=8,
+        25.. => 4..=20,
+        _ => 8..=40,
+    }
+}
+
 impl Desk {
-    /// `rows` items, the same every time: each card in the sets in Near Mint, then each again in
-    /// the next condition, at that condition's share of the price. Past every card in every
-    /// condition (2160 rows, more than any page shows) the rows start over.
+    /// `rows` items, the same every time: each card in the sets once, most in Near Mint and some
+    /// played, then each again in its next condition, at that condition's share of the price.
+    /// Past every card in every condition (2160 rows, more than any page shows) the rows start over.
     pub fn new(rows: usize) -> Self {
         let cards = cards();
         let items: Vec<Item> = (0..rows)
             .map(|i| {
-                let (name, set, cents) = &cards[i % cards.len()];
-                let (condition, share) = CONDITIONS[i / cards.len() % CONDITIONS.len()];
+                let card = i % cards.len();
+                let (name, set, cents) = &cards[card];
+                // Seven in ten cards start in Near Mint.
+                let first = [0, 0, 0, 0, 0, 0, 0, 1, 2, 3][draw(card) as usize % 10];
+                let (condition, share) = CONDITIONS[(first + i / cards.len()) % CONDITIONS.len()];
                 Item {
                     id: format!("i{i:05}"),
                     name: name.clone(),
@@ -188,7 +186,10 @@ impl Desk {
                 }
             })
             .collect();
-        let levels = Feed::new(items.iter().enumerate().map(|(i, it)| Level { id: it.id.clone(), qty: (i as u32 * 31) % 40 }));
+        let levels = Feed::new(items.iter().enumerate().map(|(i, it)| {
+            let range = stock(it.price_cents);
+            Level { id: it.id.clone(), qty: range.start() + draw(i + 7) % (range.end() - range.start() + 1) }
+        }));
         Desk { items: Arc::new(Mutex::new(items)), levels, archived: Arc::default() }
     }
 
@@ -395,26 +396,36 @@ mod tests {
             .unwrap()
     }
 
-    /// The cards card-market lists cost the same here, in the same set; every name is a card's,
-    /// once per condition.
+    /// The cards card-market lists cost the same here, in the same set, as its cheapest Near Mint
+    /// copy; every name is a card's, and each set has its 180.
     #[test]
     fn the_desk_sells_card_markets_cards_at_its_prices() {
-        let fixture = include_str!("../../card-market/fixtures/demo.json");
-        let field = |item: &str, key: &str| -> String {
-            let start = item.find(&format!("\"{key}\": \"")).unwrap_or_else(|| panic!("{key}")) + key.len() + 5;
-            item[start..].split('"').next().unwrap().to_string()
-        };
+        #[derive(serde::Deserialize)]
+        struct Listing {
+            product_summary: String,
+            price_amount: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct Product {
+            title: String,
+            subtitle: String,
+            market_listings: Vec<Listing>,
+        }
+        let fixture: HashMap<String, Product> =
+            serde_json::from_str(include_str!("../../card-market/fixtures/demo.json")).expect("card-market's fixture");
         let mut checked = 0;
-        for item in fixture.split("\"catalog_item_id\"").skip(1) {
-            let (title, subtitle) = (field(item, "title"), field(item, "subtitle"));
-            if subtitle.ends_with("Sealed") {
-                continue;
-            }
-            let lowest = field(item, "lowest_price_amount").replace('.', "");
+        for product in fixture.values().filter(|p| !p.subtitle.ends_with("Sealed")) {
+            let title = &product.title;
             let (_, set, cents) =
-                LISTED.iter().find(|(name, ..)| *name == title).unwrap_or_else(|| panic!("{title} is not on the desk"));
-            assert!(subtitle.starts_with(set), "{title}: {subtitle}");
-            assert_eq!(cents.to_string(), lowest.trim_start_matches('0'), "{title}");
+                LISTED.iter().find(|(name, ..)| name == title).unwrap_or_else(|| panic!("{title} is not on the desk"));
+            assert!(product.subtitle.starts_with(set), "{title}: {}", product.subtitle);
+            let near_mint = product
+                .market_listings
+                .iter()
+                .filter(|l| l.product_summary == "Near Mint")
+                .map(|l| l.price_amount.replace('.', "").parse::<u32>().unwrap())
+                .min();
+            assert_eq!(near_mint, Some(*cents), "{title}");
             checked += 1;
         }
         assert_eq!(checked, LISTED.len(), "every listed single is in the fixture");
@@ -423,7 +434,9 @@ mod tests {
         assert_eq!(cards.len(), CARDS);
         let names: std::collections::HashSet<_> = cards.iter().map(|(name, ..)| name.as_str()).collect();
         assert_eq!(names.len(), CARDS, "no name twice");
-        assert!(names.iter().all(|name| !name.contains('#')), "names are cards' names");
+        for set in SETS {
+            assert_eq!(cards.iter().filter(|(_, s, _)| *s == set).count(), 180, "{set}");
+        }
         let desk = Desk::new(CARDS + 1);
         let items = desk.items.lock().unwrap();
         assert_eq!((items[0].name.as_str(), items[0].condition, items[0].price_cents), ("Ashen Drake", "Near Mint", 4250));
@@ -431,6 +444,11 @@ mod tests {
             (items[CARDS].name.as_str(), items[CARDS].condition, items[CARDS].price_cents),
             ("Ashen Drake", "Lightly Played", 3612)
         );
+        let played = items[..CARDS].iter().filter(|item| item.condition != "Near Mint").count();
+        assert!((100..250).contains(&played), "some cards start played: {played}");
+        let qty = desk.quantities();
+        let dear: Vec<_> = items.iter().filter(|item| item.price_cents >= 2000).collect();
+        assert!(!dear.is_empty() && dear.iter().all(|item| qty[&item.id] <= 3), "a few copies of a dear card");
     }
 
     #[test]
