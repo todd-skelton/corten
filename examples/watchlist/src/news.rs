@@ -222,11 +222,11 @@ impl NewsQuery {
 }
 
 async fn page(req: Req, viewer: Option<Caller<Viewer>>, watching: Watching, Query(q): Query<NewsQuery>) -> HtmlResult {
-    news_page(&req, viewer.as_deref(), &watching, &q, &BriefingForm::default(), &Errors::new())
+    news_page(&req, viewer.as_deref(), &watching, &q, &BriefingForm::default(), &Errors::new()).await
 }
 
 /// The news page, or Load more's next stories as a patch.
-fn news_page(
+async fn news_page(
     req: &Req,
     viewer: Option<&Viewer>,
     watching: &Watching,
@@ -245,13 +245,24 @@ fn news_page(
     let t = req.t();
     // Load more with JavaScript: only the next stories, after the ones the page has, and the
     // button for the ones after them.
-    if req.mode == Mode::Action {
-        return req.patch(html! {
-            {Append(StoriesId, html! { for story in &stories[shown..next] { <StoryItem story={story} t={t} /> } })}
-            <LoadMore sectors={&q.sector} mine={mine} shown={next} total={total} />
-        });
-    }
-    // The whole page, with every story shown so far: a first load, a filter, no JavaScript.
+    let more = html! {
+        {Append(StoriesId, html! { for story in &stories[shown..next] { <StoryItem story={story} t={t} /> } })}
+        <LoadMore sectors={&q.sector} mine={mine} shown={next} total={total} />
+    };
+    req.patch_or(more, || async { whole_page(req, viewer, q, briefing, errors, stories, next) }).await
+}
+
+/// The whole news page, with every story shown so far: a first load, a filter, no JavaScript.
+fn whole_page(
+    req: &Req,
+    viewer: Option<&Viewer>,
+    q: &NewsQuery,
+    briefing: &BriefingForm,
+    errors: &Errors,
+    stories: &[&Story],
+    next: usize,
+) -> HtmlResult {
+    let (mine, total, t) = (q.mine.unwrap_or(false), stories.len(), req.t());
     let title = if mine { "Stories about your stocks" } else { "Latest stories" };
     req.page(html! {
         <Layout req={req} title="News" viewer={viewer} head="">
@@ -437,7 +448,8 @@ async fn subscribe(
     if !errors.is_empty() {
         let patch = Subscribe { form: &form, errors: &errors, subscribed: false };
         let q = NewsQuery::default();
-        return req.invalid(&errors, patch, || async { news_page(&req, viewer.as_deref(), &watching, &q, &form, &errors) }).await;
+        let page = || async { news_page(&req, viewer.as_deref(), &watching, &q, &form, &errors).await };
+        return req.invalid(&errors, patch, page).await;
     }
     let back = url::News { filter: NewsQuery { subscribed: Some(true), ..NewsQuery::default() } };
     req.redirect(&back.at(BriefingId))

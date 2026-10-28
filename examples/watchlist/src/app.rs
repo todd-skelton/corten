@@ -639,10 +639,16 @@ fn AlertForm<'a>(input: &'a AlertInput, errors: &'a Errors, until: Option<u64>) 
 /// page was reached; once the alert is in, the page stops asking. Alerts are not kept or sent:
 /// a real app stores them and tells the user from a task of its own.
 async fn alerts(req: Req, viewer: Option<Caller<Viewer>>, Query(at): Query<url::Alerts>) -> HtmlResult {
-    if req.mode == Mode::Action {
-        return alert_status(&req, at.until);
-    }
-    alerts_page(&req, viewer.as_deref(), &AlertInput::default(), &Errors::new(), at.until)
+    // A read again from the form's patch: the status line alone, which asks again from this
+    // route while the alert is landing.
+    let from = url::Alerts { until: at.until };
+    let again = asks_again(at.until).then(|| ReadAgain { after: Duration::from_secs(1) }.from(&from));
+    let status = html! {
+        <AlertStatus until={at.until} />
+        {again}
+    };
+    let page = || async { alerts_page(&req, viewer.as_deref(), &AlertInput::default(), &Errors::new(), at.until) };
+    req.patch_or(status, page).await
 }
 
 fn alerts_page(req: &Req, viewer: Option<&Viewer>, input: &AlertInput, errors: &Errors, until: Option<u64>) -> HtmlResult {
@@ -679,19 +685,17 @@ async fn save_alert(req: Req, viewer: Option<Caller<Viewer>>, Form(input): Form<
         let form = AlertForm { input: &input, errors: &errors, until: None };
         return req.invalid(&errors, form, || async { alerts_page(&req, viewer.as_deref(), &input, &errors, None) }).await;
     }
-    let until = Some(now_millis() + 1500);
-    if req.mode == Mode::Action {
-        // The whole form, empty as the page that a save without JavaScript goes to, so a field a
-        // refused submit marked is cleared; the reads that follow answer the status line alone.
-        let from = url::Alerts { until };
-        let again = ReadAgain { after: Duration::from_secs(1) }.from(&from);
-        let none = Errors::new();
-        return req.patch(html! {
-            <AlertForm input={&AlertInput::default()} errors={&none} until={until} />
-            {again}
-        });
-    }
-    req.redirect(&url::Alerts { until })
+    // With JavaScript, the whole form, empty as the page that a save without JavaScript goes to,
+    // so a field a refused submit marked is cleared; the reads that follow answer the status line
+    // alone.
+    let from = url::Alerts { until: Some(now_millis() + 1500) };
+    let again = ReadAgain { after: Duration::from_secs(1) }.from(&from);
+    let (empty, none) = (AlertInput::default(), Errors::new());
+    let form = html! {
+        <AlertForm input={&empty} errors={&none} until={from.until} />
+        {again}
+    };
+    req.patch_or(form, || async { req.redirect(&from) }).await
 }
 
 /// A price as a person types it (`130`, `129.9`, `129.99`, `.5`, `$1,299.00`), in cents: digits
@@ -708,17 +712,6 @@ fn cents(price: &str) -> Option<u64> {
     }
     let whole = if whole.is_empty() { 0 } else { whole.parse::<u64>().ok()? };
     Some(whole * 100 + format!("{fraction:0<2}").parse::<u64>().ok()?)
-}
-
-/// The status line alone, as a patch: while the alert is landing it asks to be read again from
-/// the alerts route with the write's time in it, which answers this again.
-fn alert_status(req: &Req, until: Option<u64>) -> HtmlResult {
-    let from = url::Alerts { until };
-    let again = asks_again(until).then(|| ReadAgain { after: Duration::from_secs(1) }.from(&from));
-    req.patch(html! {
-        <AlertStatus until={until} />
-        {again}
-    })
 }
 
 /// The alerts page's status line.

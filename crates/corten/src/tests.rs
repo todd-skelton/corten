@@ -245,11 +245,7 @@ fn routes() -> Router {
             req.page(Shell { req: &req, title: "A & B", head, children: demo("<script>") })
         })
         .post(|req: Req| async move {
-            if req.mode == Mode::Action {
-                req.patch(html! { <p id={MsgId}>"saved"</p> })
-            } else {
-                req.redirect(&Done)
-            }
+            req.patch_or(html! { <p id={MsgId}>"saved"</p> }, || async { req.redirect(&Done) }).await
         }),
     )
 }
@@ -391,6 +387,30 @@ async fn action_returns_patch_and_plain_post_redirects() {
     let (status, headers, _) = call(app(routes(), None), "POST", None).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     assert_eq!(headers["location"], "/done");
+}
+
+/// `patch_or`'s page is built only for a submit without JavaScript, so a patch never loads what
+/// only the page shows.
+#[tokio::test]
+async fn patch_or_builds_the_page_only_without_javascript() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static PAGES: AtomicUsize = AtomicUsize::new(0);
+    let routes = || {
+        Router::new().route(
+            "/",
+            axum::routing::post(|req: Req| async move {
+                let page = || async {
+                    PAGES.fetch_add(1, Ordering::Relaxed);
+                    req.redirect(&Done)
+                };
+                req.patch_or(html! { <p id={MsgId}>"saved"</p> }, page).await
+            }),
+        )
+    };
+    let (_, headers, _) = call(app(routes(), None), "POST", Some("action")).await;
+    assert_eq!((headers["corten-patch"].to_str().unwrap(), PAGES.load(Ordering::Relaxed)), ("1", 0));
+    let (status, _, _) = call(app(routes(), None), "POST", None).await;
+    assert_eq!((status, PAGES.load(Ordering::Relaxed)), (StatusCode::SEE_OTHER, 1));
 }
 
 #[cfg(feature = "json")]

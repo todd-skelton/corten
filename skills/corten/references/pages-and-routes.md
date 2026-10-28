@@ -53,8 +53,8 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    `ReadAgain { after: Duration::from_secs(2) }` to its head tags while it is behind (and stops
    after a time limit); the runtime reads it again in place however it was reached. A
    `data-patch` answer in the same state puts `{ReadAgain { after }.from(&route)}` in the patch,
-   where `route` carries the write's receipt and its handler answers `req.patch(..)` in
-   `Mode::Action`; never redirect only to show "saving". Never a `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
+   where `route` carries the write's receipt and its handler answers `req.patch_or(..)` (the part,
+   or the page without JavaScript); never redirect only to show "saving". Never a `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
    `raw` or an expression inside `<script>` (that does not compile).
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
    the layout renders on full loads. Mark the current link with

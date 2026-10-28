@@ -15,7 +15,11 @@
 | SSE | `<corten-live src>` | `corten::live(stream_of_views)` | applies each like a patch |
 | `GET {feed}`, `{feed}/live` | a handler's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |
 
-One handler serves every mode, and `req.mode` says which. A route with no screen goes under
+One handler serves every mode, and `req.mode` says which. A `data-patch` form's handler answers
+both of its rows with `req.patch_or(view, || async { req.page(..) }).await`: the patch with
+JavaScript, and otherwise the page (or a redirect), whose closure runs only then, so the patch
+never loads what only the page shows. A patch that needs data of its own, which the page does not,
+checks `req.mode != Mode::Action` first. A route with no screen goes under
 [`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The layout around `<main>` renders on full
 loads only ([the document](views.md#the-document)); every page carries a key hashed from the
 caller its handler read (if any), the deploy and its layout, and when a navigation answers with a different key
@@ -320,12 +324,12 @@ the new page, as a link should. A link can carry the mark too.
 A list that grows (Load more, the next page of results) answers with only the new rows:
 `view::Append(ResultsId, rows)` adds them at the end of the element with that id, and the rows
 the page has stay as they are. Load more is a GET form with `data-patch`, so without JavaScript
-it loads the page with one page more, and the handler tells the two apart by `req.mode`:
+it loads the page with one page more. `req.patch_or` answers both: the patch with JavaScript, and
+the page otherwise (its closure runs only then):
 
 ```rust,ignore
-if req.mode == Mode::Action {
-    return req.patch(html! { {Append(ResultsId, html! { for r in &page { <Result r={r} /> } })} <LoadMore next={next} /> });
-}
+let more = html! { {Append(ResultsId, html! { for r in &page { <Result r={r} /> } })} <LoadMore next={next} /> };
+req.patch_or(more, || async { req.page(results_page(&req, &q, next)) }).await
 ```
 
 The address does not change with an appended page, so a reload shows the first page again;
@@ -398,15 +402,15 @@ to show "saving", the patch says where to read it again: `ReadAgain { after }.fr
 patch instruction like `Remove` and `Append`. After the delay the runtime fetches the route as a
 GET `data-patch` form would (`corten: action`) and applies the patch it answers, which asks again
 while it is still behind. The route's URL carries what the read waits for (the write's receipt),
-since the page's address does not; its handler answers the part with `req.patch` in
-`Mode::Action`, and the page otherwise, so the same URL works without JavaScript too:
+since the page's address does not; its handler answers the part with `req.patch_or`, and so the
+page without JavaScript, at the same URL:
 
 ```rust,ignore
 async fn pause(req: Req, Path(id): Path<String>) -> HtmlResult {
     let receipt = alerts::pause(&id).await?;
     let from = url::Alerts { after: Some(&receipt) };
     if req.mode != Mode::Action {
-        return req.redirect(&from);
+        return req.redirect(&from); // without JavaScript, nothing to read here: the page reads it
     }
     let alerts = alerts::read(&receipt).await?;
     let again = alerts.behind.then(|| ReadAgain { after: Duration::from_secs(2) }.from(&from));
@@ -414,7 +418,7 @@ async fn pause(req: Req, Path(id): Path<String>) -> HtmlResult {
 }
 
 async fn alerts(req: Req, Query(q): Query<AlertsQuery>) -> HtmlResult {
-    // Mode::Action: the list (with `ReadAgain::from` while behind); otherwise the page.
+    // req.patch_or(the list, with `ReadAgain::from` while behind, || async { the page }).await
 }
 ```
 

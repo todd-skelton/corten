@@ -82,10 +82,9 @@ struct GreetForm { name: String }
 /// With JavaScript the runtime swaps in the patch; without it the form posts and the whole page
 /// comes back. One handler serves both.
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
-    match req.mode {
-        Mode::Action => req.patch(Greeting { name: &form.name }),
-        _ => req.page(html! { <Layout req={&req} title="Home"><Greeting name={&form.name} /></Layout> }),
-    }
+    let name = &form.name;
+    let page = || async { req.page(html! { <Layout req={&req} title="Home"><Greeting name={name} /></Layout> }) };
+    req.patch_or(Greeting { name }, page).await
 }
 
 #[derive(Id)]
