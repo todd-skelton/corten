@@ -45,7 +45,8 @@ impl<V> Recent<V> {
     }
 
     #[cfg(test)]
-    pub fn len(&self) -> (usize, usize) {
+    /// How many values and uses it holds, which are always the same.
+    pub fn sizes(&self) -> (usize, usize) {
         (self.values.len(), self.used.len())
     }
 }
@@ -65,6 +66,6 @@ mod tests {
         kept.entry("d", || 0);
         assert!(kept.get_mut("b").is_none());
         assert!(kept.get_mut("a").is_some() && kept.get_mut("c").is_some() && kept.get_mut("d").is_some());
-        assert_eq!(kept.len(), (3, 3));
+        assert_eq!(kept.sizes(), (3, 3));
     }
 }

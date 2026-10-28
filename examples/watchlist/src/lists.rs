@@ -130,6 +130,6 @@ mod tests {
         lists.change("new", |ids| ids.clear());
         assert_eq!(lists.get("1"), FIRST_WATCHED, "the stalest starts again");
         assert!(lists.get("0").is_empty() && lists.get("new").is_empty());
-        assert_eq!(lists.lock().len(), (KEPT, KEPT));
+        assert_eq!(lists.lock().sizes(), (KEPT, KEPT));
     }
 }

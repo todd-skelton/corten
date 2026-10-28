@@ -440,7 +440,7 @@ mod tests {
         }
         store.read(now, None, None);
         let mut book = store.lock();
-        assert_eq!(book.alerts.len(), (KEPT, KEPT));
+        assert_eq!(book.alerts.sizes(), (KEPT, KEPT));
         assert!(book.alerts.get_mut("a").is_none(), "the browser used longest ago is forgotten");
     }
 
