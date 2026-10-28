@@ -607,7 +607,7 @@ async fn quotes(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Swit
                 Some(Ok(Message::Close(_))) => { let _ = socket.flush().await; break; }
                 Some(Err(_)) | None => break,
                 // .. answer it; check the viewer again here if a revoked key must end the socket
-                Some(Ok(message)) => {}
+                Some(Ok(_message)) => {}
             }
         }
     })

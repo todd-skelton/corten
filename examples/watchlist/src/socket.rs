@@ -22,7 +22,7 @@ use crate::market::{Market, Stock};
 /// big) rather than being read into memory.
 const LONGEST: usize = 64;
 
-/// How long a client may take to read what it is sent; a client that stops reading is let go
+/// How long a send may wait for the client to take it; one that waits longer ends the socket
 /// rather than hold its task until the app stops.
 const SLOW: Duration = Duration::from_secs(10);
 
