@@ -493,10 +493,12 @@ compile; a public JSON answer is a `JsonResult<T>`.
 
 JSON the app already holds as bytes (a document built once when its data changes, a file sent as
 it was written) is a `corten::json::Raw`: `Json(raw.clone())` sends the bytes as they are, with
-no parse, no serialization and no copy (`Raw::new` checks they are one JSON value in a debug
-build). Keep the `Raw` and clone it for each request: with feature `compress`, one sent again is
-compressed once, at brotli 9 and gzip 9, and later reads get those forms instead of compressing
-it per request. Measured on an 80 KB document (release build): compressing it on every read costs
+no serialization and no copy. `Raw::new` reads them through once and returns an `InvalidJson`
+error when they are not one JSON value, so a corrupt file is an error the app handles, not a
+broken answer. Keep the `Raw` and clone it for each request: with feature `compress`, one sent
+again is compressed once, at brotli 9 and gzip 9, on one background thread that takes them in
+turn, and later reads get those forms instead of compressing it per request (a client that ranks
+zstd higher still gets zstd). Measured on an 80 KB document (release build): compressing it on every read costs
 220 µs with zstd 1 and 2.1 ms with brotli 2; compressing it once costs 15 ms, and each read then
 sends 5,000 bytes for brotli against 6,992 for zstd 1. A `Raw` made for one request is
 compressed as any answer is.

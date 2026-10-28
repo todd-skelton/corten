@@ -694,9 +694,10 @@ Corten is pre-1.0, so any minor version may change the API.
     `Json(value).with_status(StatusCode::ACCEPTED)` and `.with_cookie(SetCookie)` make a
     `JsonResponse` (the handler returns `Result<JsonResponse, JsonError>`), whose status and body
     reach the client as written, a `503 {"error":..}` of the app's own included; and
-    `corten::json::Raw::new(bytes)` is JSON held as bytes, which `Json(raw)` sends with no parse,
-    serialization or copy and which a value `Json` writes holds as it is. With `compress`, a
-    `Raw` sent again is compressed once (brotli 9 and gzip 9, off the request) and later reads
+    `corten::json::Raw::new(bytes)` is JSON held as bytes (checked once to be one JSON value, an
+    `InvalidJson` error otherwise), which `Json(raw)` sends with no serialization or copy and
+    which a value `Json` writes copies in as it is. With `compress`, a `Raw` sent again is
+    compressed once (brotli 9 and gzip 9, on one background thread) and later reads
     send those forms: on an 80 KB document, 15 ms once instead of 220 µs (zstd 1) to 2.1 ms
     (brotli 2) on every read, and 5,000 bytes instead of 6,992. Apps no longer write their own
     `Answer` for these. A held 80 KB document sent in its stored form costs about 23,400

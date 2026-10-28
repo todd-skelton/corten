@@ -344,6 +344,9 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// #[derive(serde::Serialize, ToJson)]
 /// struct Started { ok: bool }
 ///
+/// #[derive(serde::Serialize, ToJson)]
+/// struct Problem { error: &'static str }
+///
 /// async fn refresh() -> Result<JsonResponse, JsonError> {
 ///     Ok(Json(Started { ok: true }).with_status(StatusCode::ACCEPTED))
 /// }
@@ -351,7 +354,7 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// async fn capacity(State(forecast): State<Option<Raw>>) -> Result<JsonResponse, JsonError> {
 ///     Ok(match forecast {
 ///         Some(doc) => Json(doc).into(),
-///         None => Json(Raw::new(r#"{"error":"No capacity forecast yet"}"#)).with_status(StatusCode::SERVICE_UNAVAILABLE),
+///         None => Json(Problem { error: "No capacity forecast yet" }).with_status(StatusCode::SERVICE_UNAVAILABLE),
 ///     })
 /// }
 ///

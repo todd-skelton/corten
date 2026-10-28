@@ -204,8 +204,9 @@ pub trait ToJson {
 /// JSON the app already holds as bytes: a document built once when its data changes and read by
 /// many requests, or a file sent as it was written. `Json(raw.clone())` sends the bytes as they
 /// are (a clone shares them), with no parse and no copy; as a field of a value `Json` writes, they
-/// go in as they are too. Built from text that is not one JSON value, it panics in a debug build;
-/// a release build sends it as given.
+/// are copied in as they are. `Raw::new` reads the bytes through once to check they are one JSON
+/// value (a corrupt file is an error, not a broken answer), so make one per document, not per
+/// request; and clone it, not an `Arc<Raw>`, which `Json` writes as any value.
 ///
 /// With feature `compress`, a `Raw` sent a second time is compressed once with brotli and gzip
 /// (levels for a value that changes while the app runs, made off the request), and later reads
@@ -225,26 +226,38 @@ pub trait ToJson {
 ///     Public::new(Duration::from_secs(60), answer)
 /// }
 ///
-/// let doc = Ladders(Raw::new(r#"{"ladders":[]}"#));
+/// # fn main() -> Result<(), corten::json::InvalidJson> {
+/// let doc = Ladders(Raw::new(r#"{"ladders":[]}"#)?);
 /// assert_eq!(doc.0.as_bytes(), br#"{"ladders":[]}"#);
+/// assert!(Raw::new(r#"{"ladders":["#).is_err());
 /// # let _ = ladders;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone)]
 pub struct Raw(#[cfg(feature = "compress")] Arc<crate::compress::Precompressed>, #[cfg(not(feature = "compress"))] Bytes);
 
+/// Bytes [`Raw::new`] was given that are not one JSON value, and where they stop being one.
+#[derive(Debug)]
+pub struct InvalidJson(serde_json::Error);
+
+impl std::fmt::Display for InvalidJson {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "not one JSON value: {}", self.0)
+    }
+}
+
+impl std::error::Error for InvalidJson {}
+
 impl Raw {
-    /// The JSON in `bytes`, which must be one JSON value (checked in a debug build).
-    #[track_caller]
-    pub fn new(bytes: impl Into<Bytes>) -> Raw {
+    /// The JSON in `bytes`, or an error when they are not one JSON value.
+    pub fn new(bytes: impl Into<Bytes>) -> Result<Raw, InvalidJson> {
         let bytes = bytes.into();
-        #[cfg(debug_assertions)]
-        if let Err(error) = serde_json::from_slice::<serde::de::IgnoredAny>(&bytes) {
-            panic!("corten: Raw::new takes one JSON value: {error}");
-        }
+        serde_json::from_slice::<serde::de::IgnoredAny>(&bytes).map_err(InvalidJson)?;
         #[cfg(feature = "compress")]
-        return Raw(Arc::new(crate::compress::Precompressed::held(bytes)));
+        return Ok(Raw(Arc::new(crate::compress::Precompressed::held(bytes))));
         #[cfg(not(feature = "compress"))]
-        Raw(bytes)
+        Ok(Raw(bytes))
     }
 
     /// The JSON as it is held.
@@ -273,7 +286,10 @@ impl Raw {
 
 impl std::fmt::Debug for Raw {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Raw").field(&String::from_utf8_lossy(self.as_bytes())).finish()
+        // The length and the start: a document can be large.
+        let bytes = self.as_bytes();
+        let start = String::from_utf8_lossy(&bytes[..bytes.len().min(64)]);
+        f.debug_struct("Raw").field("len", &bytes.len()).field("start", &start).finish()
     }
 }
 

@@ -1612,7 +1612,8 @@ async fn own_started() -> Result<crate::JsonResponse, JsonError> {
 
 #[cfg(feature = "json")]
 async fn own_forecast() -> Result<crate::JsonResponse, JsonError> {
-    Ok(crate::Json(crate::json::Raw::new(r#"{"error":"No capacity forecast yet"}"#)).with_status(StatusCode::SERVICE_UNAVAILABLE))
+    let problem = crate::json::Raw::new(r#"{"error":"No capacity forecast yet"}"#)?;
+    Ok(crate::Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE))
 }
 
 #[cfg(feature = "json")]
@@ -1623,7 +1624,7 @@ async fn own_session() -> Result<crate::JsonResponse, JsonError> {
 
 #[cfg(feature = "json")]
 async fn own_held() -> crate::JsonResult<crate::json::Raw> {
-    Ok(crate::Json(crate::json::Raw::new(r#"{"rows":[1,2]}"#)))
+    Ok(crate::Json(crate::json::Raw::new(r#"{"rows":[1,2]}"#)?))
 }
 
 #[cfg(feature = "json")]
@@ -1660,16 +1661,20 @@ fn a_held_document_is_written_as_it_is_inside_another_value() {
         id: u32,
         rows: crate::json::Raw,
     }
-    let doc = crate::json::Raw::new(r#"{"rows":[1,2]}"#);
+    let doc = crate::json::Raw::new(r#"{"rows":[1,2]}"#).unwrap();
     assert_eq!(vec![doc.clone(), doc.clone()].to_json(), r#"[{"rows":[1,2]},{"rows":[1,2]}]"#);
     assert_eq!(Page { id: 7, rows: doc }.to_json(), r#"{"id":7,"rows":{"rows":[1,2]}}"#);
 }
 
-#[cfg(all(feature = "json", debug_assertions))]
+#[cfg(feature = "json")]
 #[test]
-#[should_panic(expected = "Raw::new takes one JSON value")]
-fn a_held_document_that_is_not_json_panics_in_a_debug_build() {
-    let _ = crate::json::Raw::new("{\"rows\": [1,");
+fn a_held_document_that_is_not_one_json_value_is_an_error() {
+    use crate::json::Raw;
+    for text in ["{\"rows\": [1,", "", "{} {}", "nul"] {
+        let error = Raw::new(text).unwrap_err();
+        assert!(error.to_string().starts_with("not one JSON value: "), "{text:?}: {error}");
+    }
+    assert_eq!(Raw::new(" [1] ").unwrap().as_bytes(), b" [1] ");
 }
 
 #[cfg(feature = "json")]

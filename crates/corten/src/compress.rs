@@ -216,9 +216,11 @@ impl Accepts {
         self.best(&[Coding::Zstd, Coding::Brotli, Coding::Gzip])
     }
 
-    /// The coding for a body compressed before ([`Precompressed`]: brotli or gzip).
+    /// The coding for a body compressed before ([`Precompressed`]: brotli or gzip), when the
+    /// client ranks it as high as any it accepts: one that prefers zstd gets zstd made now.
     fn stored(self) -> Option<Coding> {
-        self.best(&[Coding::Brotli, Coding::Gzip])
+        let top = self.0.iter().copied().max().unwrap_or(0);
+        self.best(&[Coding::Brotli, Coding::Gzip]).filter(|c| self.0[*c as usize] == top)
     }
 
     fn best(self, offered: &[Coding]) -> Option<Coding> {
@@ -271,17 +273,21 @@ pub(crate) async fn finish(res: Response, accepts: Accepts) -> Response {
     let Some(coding) = coding.filter(|_| size.is_some_and(|n| n >= MIN_SIZE)) else {
         return Response::from_parts(parts, body);
     };
-    // Looked up only for a body worth compressing, so a small answer pays nothing for it.
-    let stored = parts.extensions.get::<Stored>().and_then(|Stored(held)| held.stored(accepts.stored()?));
+    // Exact size: a buffered page or JSON body, never a stream, so collecting it does not wait
+    // (one held `Bytes` comes back as it is, with no copy).
+    let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
+        return Response::from_parts(parts, Body::empty());
+    };
+    // A held value's stored form, only while the body is still its bytes: a handler or a
+    // middleware that replaced the body keeps the extension, not the bytes it stood for.
+    let stored = parts.extensions.get::<Stored>().and_then(|Stored(held)| {
+        let identity = held.identity();
+        let same = identity.as_ptr() == bytes.as_ptr() && identity.len() == bytes.len();
+        held.stored(accepts.stored().filter(|_| same)?)
+    });
     let (encoded, coding) = match stored {
         Some(made) => made,
-        None => {
-            // Exact size: a buffered page or JSON body, never a stream, so collecting it does not wait.
-            let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
-                return Response::from_parts(parts, Body::empty());
-            };
-            (Bytes::from(encode(coding, &bytes, Level::Fast)), coding)
-        }
+        None => (Bytes::from(encode(coding, &bytes, Level::Fast)), coding),
     };
     parts.headers.insert(header::CONTENT_ENCODING, coding.header());
     parts.headers.remove(header::CONTENT_LENGTH);
@@ -451,6 +457,7 @@ impl Precompressed {
     }
 
     /// JSON the app holds and sends again.
+    #[cfg(feature = "json")]
     pub fn held(identity: Bytes) -> Self {
         Self::at(identity, crate::api::JSON, Level::Held)
     }
@@ -493,11 +500,21 @@ impl Precompressed {
                 let wait = if self.level == Level::Held { 1 } else { 0 };
                 if self.reads.fetch_add(1, Ordering::Relaxed) >= wait && !self.started.swap(true, Ordering::AcqRel) {
                     let (identity, slot, level) = (self.identity.clone(), self.encoded.clone(), self.level);
-                    std::thread::spawn(move || {
+                    let job: Job = Box::new(move || {
                         let br = Bytes::from(encode(Coding::Brotli, &identity, level));
                         let gzip = Bytes::from(encode(Coding::Gzip, &identity, level));
                         let _ = slot.set([br, gzip]);
                     });
+                    let queued = match self.level {
+                        // Files: as many as the app has, each once.
+                        Level::Best => std::thread::Builder::new().spawn(job).is_ok(),
+                        // Held values: as many as the app's data, so one worker, a bounded queue.
+                        _ => held_worker().is_some_and(|tx| tx.try_send(job).is_ok()),
+                    };
+                    if !queued {
+                        // Full, or no thread to be had: a later read asks again.
+                        self.started.store(false, Ordering::Release);
+                    }
                 }
                 None
             }
@@ -517,6 +534,29 @@ impl Precompressed {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
+}
+
+type Job = Box<dyn FnOnce() + Send>;
+
+/// Held values waiting to be compressed; past this, a read leaves its value to a later one.
+const HELD_QUEUE: usize = 64;
+
+/// The one thread that compresses held values ([`Level::Held`]), in the order they were asked
+/// for: a burst of documents read twice at once is compressed one at a time, not on a thread
+/// each. `None` when the thread could not be started.
+fn held_worker() -> Option<&'static std::sync::mpsc::SyncSender<Job>> {
+    static WORKER: OnceLock<Option<std::sync::mpsc::SyncSender<Job>>> = OnceLock::new();
+    WORKER
+        .get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::sync_channel::<Job>(HELD_QUEUE);
+            let worker = std::thread::Builder::new().name("corten-compress".into()).spawn(move || {
+                for job in rx {
+                    job();
+                }
+            });
+            worker.ok().map(|_| tx)
+        })
+        .as_ref()
 }
 
 /// Sets the headers for a body [`Precompressed::pick`] chose.
@@ -582,7 +622,7 @@ mod tests {
     async fn a_held_document_is_compressed_once_and_sent_as_made() {
         let text: String =
             format!("[{}]", (0..300).map(|i| format!(r#"{{"id":{i},"name":"row {i}"}}"#)).collect::<Vec<_>>().join(","));
-        let raw = crate::json::Raw::new(text.clone());
+        let raw = crate::json::Raw::new(text.clone()).unwrap();
         let held = raw.clone();
         let app = apply(Router::new().route("/doc", get(move || std::future::ready(crate::Json(held.clone())))));
         let read = |encoding: &'static str| {
@@ -606,9 +646,10 @@ mod tests {
         let (headers, body) = read(chrome).await;
         assert_eq!(headers[header::CONTENT_ENCODING], "br");
         assert_eq!(headers[header::VARY], "accept-encoding");
-        assert!(
-            !headers.contains_key(header::CONTENT_LENGTH) || headers[header::CONTENT_LENGTH] == body.len().to_string().as_str()
-        );
+        // The identity length is gone; a length the stack sets is the stored form's.
+        if let Some(length) = headers.get(header::CONTENT_LENGTH) {
+            assert_eq!(length.to_str().unwrap(), body.len().to_string());
+        }
         let mut decoder = brotli::DecompressorWriter::new(Vec::new(), 4096);
         decoder.write_all(&body).unwrap();
         assert_eq!(decoder.into_inner().unwrap(), text.as_bytes());
@@ -623,6 +664,49 @@ mod tests {
         let (headers, body) = read("identity").await;
         assert!(!headers.contains_key(header::CONTENT_ENCODING));
         assert_eq!(body, text.as_bytes());
+        // A client that ranks zstd above the stored codings gets zstd, made now.
+        let (headers, _) = read("zstd, gzip;q=0.1").await;
+        assert_eq!(headers[header::CONTENT_ENCODING], "zstd");
+        assert_eq!(read("zstd;q=0.5, br;q=0.5").await.0[header::CONTENT_ENCODING], "br");
+    }
+
+    /// A handler or a middleware that replaces a held value's body keeps the extension, not the
+    /// bytes: what goes out is the new body, compressed now, never the stored form of the old one.
+    #[cfg(feature = "json")]
+    #[tokio::test]
+    async fn a_replaced_body_is_never_sent_as_the_stored_form_of_the_one_it_replaced() {
+        let row = |i: usize| format!(r#"{{"id":{i},"name":"row {i}"}}"#);
+        let held = format!("[{}]", (0..300).map(row).collect::<Vec<_>>().join(","));
+        let other = format!("[{}]", (300..600).map(row).collect::<Vec<_>>().join(","));
+        let raw = crate::json::Raw::new(held).unwrap();
+        let (doc, replaced, replacement) = (raw.clone(), raw.clone(), other.clone());
+        let app = apply(Router::new().route("/doc", get(move || std::future::ready(crate::Json(doc.clone())))).route(
+            "/replaced",
+            get(move || {
+                let mut res = crate::JsonResponse::from(crate::Json(replaced.clone()));
+                *res.body_mut() = Body::from(replacement.clone());
+                std::future::ready(res)
+            }),
+        ));
+        let read = |uri: &'static str| {
+            let app = app.clone();
+            async move {
+                let req = Request::get(uri).header("accept-encoding", "br").body(Body::empty()).unwrap();
+                let (parts, body) = app.oneshot(req).await.unwrap().into_parts();
+                (parts.headers, body.collect().await.unwrap().to_bytes().to_vec())
+            }
+        };
+        // The held value's stored forms exist...
+        read("/doc").await;
+        read("/doc").await;
+        raw.wait_stored();
+        assert_eq!(read("/doc").await.0[header::CONTENT_ENCODING], "br");
+        // ...and a response that carries it with another body sends that body.
+        let (headers, body) = read("/replaced").await;
+        assert_eq!(headers[header::CONTENT_ENCODING], "br");
+        let mut decoder = brotli::DecompressorWriter::new(Vec::new(), 4096);
+        decoder.write_all(&body).unwrap();
+        assert_eq!(decoder.into_inner().unwrap(), other.as_bytes());
     }
 
     #[test]
