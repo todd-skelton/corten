@@ -414,6 +414,26 @@ something read still does. Its handler is held to the same rule as any `Public` 
 `Public::immutable(req.page(..))` does not compile. A URL that does not name its content
 (`/me/picture`) takes `Public::new` with a lifetime.
 
+A header of the app's goes on a public answer with `Public::header`, named by a type: a file
+that must stay out of search (`llms.txt`, a manifest), a download's file name.
+
+```rust,ignore
+use corten::answer::XRobotsTag;
+
+async fn manifest() -> Public<Media> {
+    let noindex = HeaderValue::from_static("noindex, nofollow");
+    Public::new(Duration::from_secs(3600), Media::new("application/json", MANIFEST)).header::<XRobotsTag>(noindex)
+}
+```
+
+The answer is compressed and shared as it would be without the header, which a `Relay` (another
+server's answer, sent as it came) is not. Corten names `XRobotsTag`, `Link`,
+`ContentDisposition` and `ContentLanguage`; an app names another with `impl
+corten::answer::Header for ContentLocation { const NAME: &'static str = "content-location"; }`.
+Which names a public answer may set is checked when the app compiles: `set-cookie` (the answer
+would be one visitor's) and the headers Corten sets itself (`cache-control`, `vary`,
+`content-encoding`, `content-length`, the security headers, `corten-*`) do not compile.
+
 A full document never carries `corten-page`, so if a cache hands one to a client navigation by
 mistake, the runtime loads the URL as a whole page instead of swapping it in.
 
