@@ -47,7 +47,7 @@ docker run --rm -p 3000:8080 -e API_KEYS=dev=dev-key -e AGENT_TOKENS=dev-token c
 | Views, each with its stylesheet and script beside it | [`src/views/`](src/views) |
 | Text in English and French | [`locales/`](locales), [`src/text.rs`](src/text.rs) |
 | Design tokens | [`tokens.json`](tokens.json), [`src/theme.rs`](src/theme.rs) |
-| The stylesheet, icons, the push handler | [`static/`](static) |
+| The stylesheet, the demo cards' art, icons, the push handler | [`static/`](static) |
 
 The browser test of the production pieces: [`smoke.mjs`](smoke.mjs). The item page is the one
 the [full-stack benchmark](../../bench/fullstack) measures.
