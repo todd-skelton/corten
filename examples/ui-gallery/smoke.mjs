@@ -36,8 +36,12 @@ async function run(browser) {
   page.on("pageerror", (e) => errors.push(e.message));
   /** @type {string[]} */
   const failed = [];
-  page.on("requestfailed", (r) => failed.push(`${new URL(r.url()).pathname} ${r.failure()?.errorText}`));
-  page.on("response", (r) => r.status() >= 400 && failed.push(`${new URL(r.url()).pathname} ${r.status()}`));
+  /** @param {import("@playwright/test").Request} r */
+  const lost = (r) => failed.push(`${new URL(r.url()).pathname} ${r.failure()?.errorText}`);
+  /** @param {import("@playwright/test").Response} r */
+  const refused = (r) => r.status() >= 400 && failed.push(`${new URL(r.url()).pathname} ${r.status()}`);
+  page.on("requestfailed", lost);
+  page.on("response", refused);
   await page.goto(`${base}/`);
   // The combo box's input shows once its script connects (#252): on a timeout, say what had
   // loaded and what failed rather than throwing without the engine.
@@ -46,13 +50,19 @@ async function run(browser) {
     .then(() => true)
     .catch(() => false);
   if (!connected) {
-    const state = await page.evaluate(() => ({
-      readyState: document.readyState,
-      scripts: performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/") || n.includes("corten")).map((n) => new URL(n).pathname),
-    }));
+    // The page may have crashed or gone: say so rather than lose the rest of the report.
+    const state = await page
+      .evaluate(() => ({
+        readyState: document.readyState,
+        scripts: performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/") || n.includes("corten")).map((n) => new URL(n).pathname),
+      }))
+      .catch((e) => ({ readyState: `unavailable: ${e instanceof Error ? e.message : e}`, scripts: [] }));
     check("the first page's combo box connects", false, JSON.stringify({ ...state, failed, errors }));
     return;
   }
+  // Only the first load's: the gallery's refused forms answer 422 later, as they should.
+  page.off("requestfailed", lost);
+  page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
   check("the six scripts load and connect", loaded === 6, `${loaded} script(s)`);
 
