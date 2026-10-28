@@ -53,12 +53,15 @@ export function showAll(rows, rest, button) {
 3. A wrong ref type, wrong event type, wrong value type or a handler the script does not export
    is a compile error at the call. `tsc --checkJs` checks the function bodies.
 4. `on:connect={..}` runs when the element joins the page: first load, navigation, a patch.
-5. A component with refs, or whose handlers take `scope`, has one root element; refs resolve
-   inside it and outside nested components. Any element can be the root, a `<tr>` included.
+5. A component with refs, whose handlers take `scope`, or whose script imports `keep`, has one
+   root element; refs resolve inside it and outside nested components. Any element can be the root, a `<tr>` included.
 6. A ref on several kinds of element: `ref={tab as HTMLElement}`.
-7. State that outlives one event lives in the DOM or in `state(scope, () => init)` from
-   `corten`, one object per element (a second call with another `init` gets the first one).
-   Handlers are shared by every instance, so never keep state in module variables.
+7. State that outlives one event lives in the DOM or in `keep(() => init)` from `corten`: the
+   running handler's component's object, one per instance (a second call with another `init`
+   gets the first one), with no element passed, so a handler takes no `scope` just for its state.
+   Take it first, before any `await`. Only a component's own script imports it, not a `script!`
+   module. Handlers are shared by every instance, so never keep state in
+   module variables.
 8. A control that does nothing without the script renders `hidden`; an `on:connect` handler
    shows it.
 9. List the component in `App::components`.

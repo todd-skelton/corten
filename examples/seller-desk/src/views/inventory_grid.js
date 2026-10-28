@@ -4,7 +4,7 @@
 // stock levels. The rows are InventoryRow views: a handler reads and writes a row's holes by name
 // (`row.selected = true`, `row.qty = 3`, `row.name`), and the page holds the selection. The
 // grid keeps only the last clicked row, for shift-click ranges.
-import { state, subscribe } from "corten";
+import { keep, subscribe } from "corten";
 import { InventoryRow, rows } from "corten/views";
 /** @import { Message } from "corten" */
 /** @import { Holds } from "corten/views" */
@@ -33,13 +33,9 @@ import { InventoryRow, rows } from "corten/views";
 
 /**
  * What the grid keeps between events: the last clicked row, for shift-click ranges, and the rows
- * whose price was typed and not saved. One object, since an element has one state.
- * @param {HTMLElement} root
+ * whose price was typed and not saved. One object, since a component has one state.
  */
-const kept = (root) => state(root, () => ({ index: -1, unsent: /** @type {Set<HTMLTableRowElement>} */ (new Set()) }));
-
-/** @param {HTMLElement} root */
-const unsentRows = (root) => kept(root).unsent;
+const kept = () => keep(() => ({ index: -1, unsent: /** @type {Set<HTMLTableRowElement>} */ (new Set()) }));
 
 /**
  * Keeps the stock cells current from the levels feed until the grid leaves the page.
@@ -68,14 +64,14 @@ export function live(body, feed, signal) {
 /**
  * A click on a row's checkbox (the one handler on the table body; it runs only for clicks on a
  * checkbox). With shift, every visible row between it and the last one follows.
- * @param {MouseEvent} event @param {HTMLInputElement} box @param {HTMLElement} root @param {Selection} sel
+ * @param {MouseEvent} event @param {HTMLInputElement} box @param {Selection} sel
  */
-export function toggle(event, box, root, sel) {
+export function toggle(event, box, sel) {
   const list = rows(sel.body, InventoryRow);
   const row = list.of(box);
   if (!row) return;
   const at = list.indexOf(row);
-  const s = kept(root);
+  const s = kept();
   if (event.shiftKey && s.index >= 0) {
     const [from, to] = at < s.index ? [at, s.index] : [s.index, at];
     for (let i = from; i <= to; i += 1) {
@@ -91,18 +87,18 @@ export function toggle(event, box, root, sel) {
 
 /**
  * Selects (or clears) every visible row.
- * @param {HTMLElement} root @param {Selection} sel
+ * @param {Selection} sel
  */
-export function selectAll(root, sel) {
+export function selectAll(sel) {
   for (const row of rows(sel.body, InventoryRow)) if (!row.el.hidden) row.selected = sel.all.checked;
-  kept(root).index = -1;
+  kept().index = -1;
   tally(sel);
 }
 
-/** @param {HTMLElement} root @param {Selection} sel */
-export function clear(root, sel) {
+/** @param {Selection} sel */
+export function clear(sel) {
   for (const row of rows(sel.body, InventoryRow)) row.selected = false;
-  kept(root).index = -1;
+  kept().index = -1;
   tally(sel);
 }
 
@@ -188,22 +184,22 @@ function sort(button, body, by) {
 /**
  * Posts the checked rows (their boxes belong to the form); the server answers by removing their
  * rows and with a status line. The form's data is read as it submits, so clearing after is safe.
- * @param {HTMLElement} root @param {HTMLFormElement} form @param {Selection} sel
+ * @param {HTMLFormElement} form @param {Selection} sel
  */
-export function archive(root, form, sel) {
+export function archive(form, sel) {
   form.requestSubmit();
-  clear(root, sel);
+  clear(sel);
 }
 
 /**
  * A price cell says whether its price is not saved yet (it bubbles up from the cell's input).
- * @param {PriceEdited} event @param {HTMLElement} root
+ * @param {PriceEdited} event
  * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {Unsent} note
  */
-export function priceEdited(event, root, body, note) {
+export function priceEdited(event, body, note) {
   const row = rows(body, InventoryRow).of(event.target);
   if (!row) return;
-  const unsent = unsentRows(root);
+  const unsent = kept().unsent;
   if (event.unsent) unsent.add(row.el);
   else unsent.delete(row.el);
   showUnsent(unsent, note);
@@ -212,13 +208,13 @@ export function priceEdited(event, root, body, note) {
 /**
  * A form in the grid was sent: when it is a row's price, the price is on its way. The server
  * answers with the cell, or the cell with its error.
- * @param {SubmitEvent} event @param {HTMLElement} root
+ * @param {SubmitEvent} event
  * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {Unsent} note
  */
-export function priceSent(event, root, body, note) {
+export function priceSent(event, body, note) {
   const row = rows(body, InventoryRow).of(event.target);
   if (!row) return;
-  const unsent = unsentRows(root);
+  const unsent = kept().unsent;
   unsent.delete(row.el);
   showUnsent(unsent, note);
 }

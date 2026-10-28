@@ -410,6 +410,71 @@ pub trait Id: AttrValue + Render {
     const NAME: &'static str;
     /// Writes the id (escaped for an attribute).
     fn write_id(&self, out: &mut String);
+
+    /// A link to this element on the same page, `#id`: a validation summary's link to the field
+    /// it names, a skip link. The id is written as [`Route::at`](crate::route::Route::at) writes
+    /// another page's place, so the link and the element cannot differ.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Id)]
+    /// struct FeedbackId;
+    ///
+    /// #[derive(Id)]
+    /// struct RowId<'a>(&'a str);
+    ///
+    /// let form = html! {
+    ///     <a href={FeedbackId.fragment()}>"Your response"</a>
+    ///     <textarea id={FeedbackId} name="feedback"></textarea>
+    /// };
+    /// assert_eq!(form.to_html(), r##"<a href="#feedback">Your response</a><textarea id="feedback" name="feedback"></textarea>"##);
+    /// // Percent-encoded where the id needs it, as the browser reads a fragment.
+    /// let row = RowId("7 & 8");
+    /// assert_eq!(html! { <a href={row.fragment()}>"Row"</a> }.to_html(), r##"<a href="#row-7%20%26%208">Row</a>"##);
+    /// ```
+    ///
+    /// It takes the id's type, so text does not compile:
+    ///
+    /// ```compile_fail,E0599
+    /// use corten::prelude::*;
+    ///
+    /// let _ = html! { <a href={"feedback".fragment()}>"Your response"</a> };
+    /// ```
+    ///
+    /// A place on the current page is not an address, so the server does not redirect to one:
+    /// a redirect takes [`Route::at`](crate::route::Route::at).
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Id)]
+    /// struct FeedbackId;
+    ///
+    /// async fn reply(req: Req) -> HtmlResult {
+    ///     req.redirect(&FeedbackId.fragment())
+    /// }
+    /// ```
+    fn fragment(&self) -> InPage<'_, Self> {
+        InPage(self)
+    }
+}
+
+/// A link to an element on the same page, `#id`, made by [`Id::fragment`]: an attribute value
+/// (`href={FeedbackId.fragment()}`), not an address.
+pub struct InPage<'a, I: ?Sized>(&'a I);
+
+impl<I: Id + ?Sized> Render for InPage<'_, I> {
+    fn render(&self, out: &mut String) {
+        out.push('#');
+        crate::route::write_fragment(self.0, out);
+    }
+}
+
+impl<I: Id + ?Sized> AttrValue for InPage<'_, I> {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        quoted(name, self, out)
+    }
 }
 
 pub use corten_macros::Id;
