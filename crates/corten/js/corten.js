@@ -1268,6 +1268,21 @@ const LOAD = Symbol("corten.load");
 let loaded = document.readyState === "complete";
 if (!loaded) addEventListener("load", () => (loaded = true), { once: true });
 
+/**
+ * Whether a navigation is a form sent by POST, which the browser sends itself. The submit
+ * button's `formmethod` decides, else its form's `method`, as without this runtime. Chromium
+ * names the button as the source but sets `formData` from the form's own method, so a POST
+ * button in a GET form has none (#190); Firefox names the form, and its `formData` follows the
+ * button.
+ * @param {any} event
+ */
+function posts(event) {
+  const button = event.sourceElement;
+  const form = button?.form;
+  if (!(form instanceof HTMLFormElement) || !(button instanceof HTMLButtonElement || button instanceof HTMLInputElement)) return !!event.formData;
+  return (button.formMethod || formProperty(form, "method")) === "post";
+}
+
 navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
   // A script's history.pushState or replaceState (a tab that puts itself in the address) is the
   // page's own: nothing to fetch. Back and forward between pages this runtime swapped are
@@ -1279,7 +1294,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
     // the `#id` differs from the address, or nothing does.
     (!event.info?.[LOAD] && !event.info?.[READ_AGAIN] && (event.hashChange || (event.destination.sameDocument && event.navigationType !== "traverse"))) ||
     event.downloadRequest !== null ||
-    event.formData ||
+    posts(event) ||
     event.navigationType === "reload" ||
     event.sourceElement?.closest?.("[data-reload]");
   if (skip) return;
