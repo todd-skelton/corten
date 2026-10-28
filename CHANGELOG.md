@@ -1318,6 +1318,10 @@ Corten is pre-1.0, so any minor version may change the API.
 20. `examples/cluster` is `examples/listings-feed`, named for what it is (a seller's listings
     feed served by several instances), like the other examples; the crate it shows is still
     `corten-cluster`. Its package and image are `listings-feed` and `corten-listings-feed`.
+21. The styles guide says where a page whose path is the prefix of other areas (`/account` above
+    `/account/cart`) puts its CSS: in `App::components`, as the home page does, with the pilot's
+    measurement
+    ([#239 A page whose path is the prefix of other areas (/account above /account/cart) cannot have a stylesheet only it links](https://github.com/todd-skelton/corten/issues/239)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

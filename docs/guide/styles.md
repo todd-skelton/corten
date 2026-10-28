@@ -153,6 +153,14 @@ request. Measured on the item page (release build, brotli at its file level): on
 saves 454 bytes and an item page downloads 94 more, in two requests. Leave everything in
 `App::components` until an area's share is large enough to measure on the pages outside it.
 
+The same holds for one page: the home page, or a page whose path is the prefix of other areas
+(`/account` above `/account/cart`). An area at its path would link its stylesheet from every page
+under it too, so its components go in `App::components`. Measured in the Chase Sets pilot
+(release build, brotli): the account page's 3,737 bytes of CSS add 373 bytes to `components.css`,
+downloaded once and then cached, where an `/account` area's file would be 837 bytes and one more
+render-blocking request on every account screen. A page whose own CSS is tens of KB compressed
+would change the numbers; that case gets its own measurement.
+
 Without areas a request costs what it did before (callgrind, the item page in process: the
 same instruction counts within run-to-run noise). Writing an area's links costs about 120
 instructions a page; the item page's navigation as a whole measured 88,341-88,589 instructions
