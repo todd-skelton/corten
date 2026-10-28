@@ -3,13 +3,22 @@ use corten::axum::{Router, body::Body, http::Request, response::Response};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use crate::{app::app, market::Market};
+use crate::{
+    alerts::AlertStore,
+    app::{app, app_with},
+    market::Market,
+};
 
-/// A list id, as the app writes one.
-pub(crate) const LIST: &str = "list=0123456789abcdef0123456789abcdef";
+/// A visitor id, as the app writes one.
+pub(crate) const VISITOR: &str = "visitor=0123456789abcdef0123456789abcdef";
 
 pub(crate) fn router() -> Router {
     app(Market::new()).router()
+}
+
+/// The router with an alert store whose writes land at once, for a test that reads one back.
+pub(crate) fn router_landing_at_once() -> Router {
+    app_with(Market::new(), AlertStore::new(std::time::Duration::ZERO)).router()
 }
 
 pub(crate) async fn call_on(router: &Router, req: Request<Body>) -> Response {

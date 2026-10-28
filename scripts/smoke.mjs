@@ -1069,46 +1069,54 @@ async function run(browser) {
   // form's corten-location, which navigates the same way). Each read is the same URL in place of
   // the history entry, and a navigation away stops it.
   {
-    const due = (/** @type {number} */ ms) => `${base}/alerts?until=${Date.now() + ms}`;
+    // A write that has not landed: an alert saved as the form saves one, whose answer names the
+    // page that waits for it (`/alerts?saved=..`); the store's reads see it 1.5 s later.
+    const pending = async () => {
+      const from = await page.evaluate(async () => {
+        const res = await fetch("/alerts", { method: "POST", headers: { corten: "action", "content-type": "application/x-www-form-urlencoded" }, body: "id=ACME&above=150" });
+        return /data-from="([^"]+)"/.exec(await res.text())?.[1];
+      });
+      return `${base}${from}`;
+    };
     /** Navigates the runtime's way, and waits until the page is there, still saving. @param {string} url */
     const go = async (url) => {
       await page.evaluate((url) => (/** @type {any} */ (window)).navigation.navigate(url), url);
-      await page.waitForFunction((url) => location.href === url && document.getElementById("alert-status")?.textContent === "Saving your alert...", url);
+      await page.waitForFunction((url) => location.href === url && document.getElementById("alert-status")?.textContent === "Saving...", url);
     };
     const saved = () => page.textContent("#alert-status");
     const savedSoon = () =>
-      page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Your alert is saved.", null, { timeout: 6000 }).catch(() => {});
+      page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Saved.", null, { timeout: 6000 }).catch(() => {});
     /** @type {string[]} */
     const reads = [];
     const onSaved = (/** @type {import("@playwright/test").Request} */ r) => r.url().includes("/alerts") && reads.push(r.url());
     page.on("request", onSaved);
-    await page.goto(due(1500));
+    await page.goto(await pending());
     const waiting = await saved();
     await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 5));
     await savedSoon();
-    check("a page waiting for a write reads itself again after a full load", waiting === "Saving your alert..." && (await saved()) === "Your alert is saved.", `${waiting} -> ${await saved()}`);
+    check("a page waiting for a write reads itself again after a full load", waiting === "Saving..." && (await saved()) === "Saved.", `${waiting} -> ${await saved()}`);
     if (swaps) check("reading again keeps the document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 5));
     else skip("reading again keeps the document", noSwaps);
     const settled = reads.length;
     await page.waitForTimeout(2200);
     check("it stops once the page no longer asks", reads.length === settled, `${reads.length - settled} more reads`);
     // At a place on the page (a write redirected to `route.at(..)`): read again all the same.
-    await page.goto(`${due(1500)}#alert-status`);
+    await page.goto(`${await pending()}#alert-status`);
     await savedSoon();
-    check("a page at a place (#id) reads itself again too", (await saved()) === "Your alert is saved." && new URL(page.url()).hash === "#alert-status", `${await saved()} ${page.url()}`);
+    check("a page at a place (#id) reads itself again too", (await saved()) === "Saved." && new URL(page.url()).hash === "#alert-status", `${await saved()} ${page.url()}`);
     if (swaps) {
       await page.evaluate(() => (/** @type {any} */ (window)).__marker = 6);
       const entries = await page.evaluate(() => history.length);
-      await go(due(1500));
+      await go(await pending());
       const reached = await saved();
       await savedSoon();
       check(
         "a page reached by the runtime's navigation reads itself again in place",
-        reached === "Saving your alert..." && (await saved()) === "Your alert is saved." && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 6)),
+        reached === "Saving..." && (await saved()) === "Saved." && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 6)),
         `${reached} -> ${await saved()}`,
       );
       check("each read replaces the history entry", (await page.evaluate(() => history.length)) === entries + 1, `${entries} -> ${await page.evaluate(() => history.length)}`);
-      await go(due(10_000));
+      await go(await pending());
       await page.click('header a[href="/news"]');
       await page.waitForFunction(() => document.title === "News | Watchlist");
       const left = reads.length;
@@ -1125,14 +1133,14 @@ async function run(browser) {
     /** @type {string[]} */
     const again = [];
     const onAgain = (/** @type {import("@playwright/test").Request} */ r) =>
-      r.method() === "GET" && r.url().includes("/alerts?until=") && r.headers()["corten"] === "action" && again.push(r.url());
+      r.method() === "GET" && r.url().includes("/alerts?saved=") && r.headers()["corten"] === "action" && again.push(r.url());
     page.on("request", onAgain);
     const save = 'form[action="/alerts"] button';
     const submit = async () => {
       await page.fill("input[name=above]", "150");
       await page.focus(save);
       await page.keyboard.press("Enter");
-      await page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Saving your alert...");
+      await page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Saving...");
     };
     await page.goto(`${base}/alerts`);
     // A price the server refuses: the form comes back with the field marked and its message,
@@ -1160,10 +1168,25 @@ async function run(browser) {
     await savedSoon();
     check(
       "a patch waiting for a write is read again from its route until the write is in",
-      (await saved()) === "Your alert is saved." && again.length > 0 && page.url() === `${base}/alerts` && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 7)),
+      (await saved()) === "Saved." && again.length > 0 && page.url() === `${base}/alerts` && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === 7)),
       `${await saved()} after ${again.length} reads at ${page.url()}`,
     );
     check("reading a patch again keeps focus", await page.evaluate(() => document.activeElement?.textContent === "Save alert"));
+    // The list read again with the status line shows the alert once it is in; a remove is a write
+    // of its own, read again until the list no longer has it. The list is the browser's, kept under
+    // its visitor cookie, which this browser does not send over http.
+    const listed = () => page.$$eval("#alert-list li span", (spans) => spans.map((s) => s.textContent));
+    if (signsIn) {
+      const shown = await listed();
+      check("a saved alert is listed once it lands", shown.includes("ACME above $150.00"), shown.join(", "));
+      await page.click("#alert-list li:last-child button");
+      await page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Saving...", null, { timeout: 5000 }).catch(() => {});
+      await savedSoon();
+      const left = await listed();
+      check("a removed alert leaves the list once the removal lands", left.length === shown.length - 1 && (await saved()) === "Saved.", `${shown.length} -> ${left.length}`);
+    } else {
+      for (const name of ["a saved alert is listed once it lands", "a removed alert leaves the list once the removal lands"]) skip(name, "the browser does not send Secure cookies over http");
+    }
     // The save after the refusal above answered the whole form, so the field is no longer marked.
     const cleared = await page.evaluate(() => !document.querySelector("#alert-form [aria-invalid]") && !document.getElementById("alert-form-above-error"));
     check("a save after a refusal clears the field's error", cleared);
@@ -1181,7 +1204,7 @@ async function run(browser) {
     const errorsBefore = errors.length;
     const failRead = (/** @type {import("@playwright/test").Route} */ route) =>
       route.request().headers()["corten"] === "action" ? route.fulfill({ status: 502, contentType: "text/html", body: "<p>Bad gateway</p>" }) : route.fallback();
-    await page.route("**/alerts?until=*", failRead);
+    await page.route("**/alerts?saved=*", failRead);
     await page.goto(`${base}/alerts`);
     const readsBefore = again.length;
     await submit();
@@ -1192,11 +1215,11 @@ async function run(browser) {
     const logged = errors.slice(errorsBefore).filter((e) => !e.includes("502"));
     check(
       "a read the server fails stops the reads, without a console error",
-      failedAt === readsBefore + 1 && again.length === failedAt && (await saved()) === "Saving your alert..." && logged.length === 0,
+      failedAt === readsBefore + 1 && again.length === failedAt && (await saved()) === "Saving..." && logged.length === 0,
       `${failedAt - readsBefore} then ${again.length - failedAt} reads, ${logged.join(" | ")}`,
     );
     errors.splice(errorsBefore);
-    await page.unroute("**/alerts?until=*", failRead);
+    await page.unroute("**/alerts?saved=*", failRead);
     page.off("request", onAgain);
   }
 

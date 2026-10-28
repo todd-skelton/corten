@@ -10,6 +10,7 @@ mod socket;
 #[cfg(test)]
 mod testing;
 mod theme;
+mod visitor;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
