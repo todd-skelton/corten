@@ -1151,7 +1151,8 @@ Corten is pre-1.0, so any minor version may change the API.
 67. watchlist's WebSocket is `/quotes`, which a ticker outside the browser opens to follow
     stocks: it sends a ticker and is sent the stock's feed row, then again each time it trades.
     It replaces `/echo`, which answered in capitals and which nothing used. A message longer than a
-    ticker closes the socket, and shutdown still closes it with a goodbye
+    ticker closes the socket as too big (1009), a client's close is answered, a client that stops
+    reading is let go after 10 seconds, and shutdown still closes it with a goodbye
     ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
 
 ### Fixed
