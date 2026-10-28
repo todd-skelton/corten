@@ -339,7 +339,7 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// `{"error":{"status","message"}}`.
 ///
 /// ```
-/// use corten::{axum::http::StatusCode, json::Raw, prelude::*, security::cookie::SetCookie, JsonResponse};
+/// use corten::{axum::http::StatusCode, json::Raw, prelude::*, security::cookie::SetCookie, JsonError, JsonResponse};
 ///
 /// #[derive(serde::Serialize, ToJson)]
 /// struct Started { ok: bool }
@@ -369,6 +369,20 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// use corten::prelude::*;
 ///
 /// let _ = Json(1).with_cookie("session=abc");
+/// ```
+///
+/// It answers the visitor who asked, so it is never [`Public`]: a cache would give its cookie to
+/// everyone. A public JSON answer is a [`JsonResult<T>`], held bytes included
+/// (`Public<JsonResult<Raw>>`).
+///
+/// ```compile_fail,E0277
+/// use std::time::Duration;
+/// use corten::{prelude::*, JsonError, JsonResponse};
+///
+/// async fn rates() -> Public<Result<JsonResponse, JsonError>> {
+///     let answer: Result<JsonResponse, JsonError> = Ok(Json(1).into());
+///     Public::new(Duration::from_secs(60), answer)
+/// }
 /// ```
 #[cfg(feature = "json")]
 pub struct JsonResponse(Response);

@@ -214,13 +214,15 @@ pub trait ToJson {
 /// answer.
 ///
 /// ```
+/// use std::time::Duration;
 /// use corten::{json::Raw, prelude::*};
 ///
 /// #[derive(Clone)]
 /// struct Ladders(Raw);
 ///
-/// async fn ladders(State(Ladders(doc)): State<Ladders>) -> JsonResult<Raw> {
-///     Ok(Json(doc))
+/// async fn ladders(State(Ladders(doc)): State<Ladders>) -> Public<JsonResult<Raw>> {
+///     let answer: JsonResult<Raw> = Ok(Json(doc));
+///     Public::new(Duration::from_secs(60), answer)
 /// }
 ///
 /// let doc = Ladders(Raw::new(r#"{"ladders":[]}"#));

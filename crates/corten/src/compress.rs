@@ -99,32 +99,39 @@ pub(crate) fn accepted(headers: &HeaderMap, offered: &[Coding]) -> Option<Coding
 }
 
 /// Calls `f` with each coding `Accept-Encoding` allows and its q-value (in thousandths).
+/// Read as bytes, and a q-value parsed only where an item has one: every request reads this header.
 fn each_accepted(headers: &HeaderMap, mut f: impl FnMut(u16, Coding)) {
     for value in headers.get_all(header::ACCEPT_ENCODING) {
-        let Ok(value) = value.to_str() else { continue };
-        for item in value.split(',') {
-            let mut parts = item.split(';');
-            let name = parts.next().unwrap_or("").trim();
-            let q = parts
-                .filter_map(|p| p.trim().strip_prefix("q=").or_else(|| p.trim().strip_prefix("Q=")))
-                .find_map(|q| q.trim().parse::<f32>().ok())
-                .map_or(1000, |q| (q.clamp(0.0, 1.0) * 1000.0) as u16);
-            if q == 0 {
-                continue;
-            }
-            let is = |coding: &str| name.eq_ignore_ascii_case(coding);
-            let coding = if is("zstd") {
+        for item in value.as_bytes().split(|&b| b == b',') {
+            let (name, params) = match item.iter().position(|&b| b == b';') {
+                Some(at) => (&item[..at], Some(&item[at + 1..])),
+                None => (item, None),
+            };
+            let is = |coding: &[u8]| name.trim_ascii().eq_ignore_ascii_case(coding);
+            let coding = if is(b"zstd") {
                 Coding::Zstd
-            } else if is("br") {
+            } else if is(b"br") {
                 Coding::Brotli
-            } else if is("gzip") || is("x-gzip") {
+            } else if is(b"gzip") || is(b"x-gzip") {
                 Coding::Gzip
             } else {
                 continue;
             };
-            f(q, coding);
+            let q = params.map_or(1000, quality);
+            if q > 0 {
+                f(q, coding);
+            }
         }
     }
+}
+
+/// The q-value among an item's parameters (`q=0.5`), in thousandths; 1000 when it has none.
+fn quality(params: &[u8]) -> u16 {
+    params
+        .split(|&b| b == b';')
+        .filter_map(|p| p.trim_ascii().strip_prefix(b"q=").or_else(|| p.trim_ascii().strip_prefix(b"Q=")))
+        .find_map(|q| std::str::from_utf8(q.trim_ascii()).ok()?.parse::<f32>().ok())
+        .map_or(1000, |q| (q.clamp(0.0, 1.0) * 1000.0) as u16)
 }
 
 fn compressible(content_type: &str) -> bool {
@@ -265,7 +272,7 @@ pub(crate) async fn finish(res: Response, accepts: Accepts) -> Response {
         return Response::from_parts(parts, body);
     };
     // Looked up only for a body worth compressing, so a small answer pays nothing for it.
-    let stored = parts.extensions.get::<Stored>().zip(accepts.stored()).and_then(|(Stored(held), want)| held.stored(want));
+    let stored = parts.extensions.get::<Stored>().and_then(|Stored(held)| held.stored(accepts.stored()?));
     let (encoded, coding) = match stored {
         Some(made) => made,
         None => {
@@ -629,6 +636,9 @@ mod tests {
         assert_eq!(at("zstd, gzip"), (Some(Coding::Zstd), Some(Coding::Gzip)));
         assert_eq!(at("br;q=0.5, gzip"), (Some(Coding::Gzip), Some(Coding::Gzip)));
         assert_eq!(at("identity"), (None, None));
+        assert_eq!(at("br;q=0, gzip;level=1;q=0.9 , zstd ; q=0.1"), (Some(Coding::Gzip), Some(Coding::Gzip)));
+        assert_eq!(at("ZSTD;Q=0.2, Br;q=0.2"), (Some(Coding::Zstd), Some(Coding::Brotli)));
+        assert_eq!(at("x-gzip;q=bad, br;q=0"), (Some(Coding::Gzip), Some(Coding::Gzip)));
         assert_eq!(negotiate(&HeaderMap::new()), Accepts::default());
     }
 

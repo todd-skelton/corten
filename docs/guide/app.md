@@ -488,7 +488,8 @@ A JSON answer is `200` with the value's JSON. One with a status or a cookie of i
 yet, `Json(session).with_cookie(SetCookie::try_new("session", &token)?)` for a sign-in (never a
 `Set-Cookie` header by hand). That status and body are the app's own answer and reach the client
 as written; a failure (`Err`) is still answered in Corten's shape (or the API's own,
-`Api::errors`).
+`Api::errors`). A `JsonResponse` is for the client who asked, so `Public` of one does not
+compile; a public JSON answer is a `JsonResult<T>`.
 
 JSON the app already holds as bytes (a document built once when its data changes, a file sent as
 it was written) is a `corten::json::Raw`: `Json(raw.clone())` sends the bytes as they are, with
