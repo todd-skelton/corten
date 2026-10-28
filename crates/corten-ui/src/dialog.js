@@ -25,9 +25,9 @@ export function modal(dialog) {
  * address, a reload and a redraw agree with what the user closed and Back cannot loop through it.
  * Where the entry before is that address, it goes back to it; otherwise, and in a browser without
  * the Navigation API, the link's address replaces the dialog's. It is a script's navigation, so
- * attributes on the link (`data-reload`, `data-keep-place`, an `on:click`) do not apply. Only a `cancel` of this dialog: a file input's picker
- * dismissed inside it fires one too, which bubbles. A dialog drawn closed and opened later gets
- * the same.
+ * attributes on the link (`data-reload`, `data-keep-place`, an `on:click`) do not apply. Only
+ * a `cancel` of this dialog: a file input's picker dismissed inside it fires one too, which
+ * bubbles. A dialog drawn closed and opened later gets the same.
  * @param {HTMLDialogElement} dialog
  * @param {HTMLAnchorElement} close
  * @param {AbortSignal} signal

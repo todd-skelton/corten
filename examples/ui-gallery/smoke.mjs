@@ -325,9 +325,13 @@ async function run(browser) {
   await page.keyboard.press("Escape");
   check("Escape closes the page's dialog", !(await isModal()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
 
-  // dialog::modalClosedBy: a sheet the address opens, which a close request leaves for its link's address.
+  // dialog::modalClosedBy: a sheet the address opens, which a close request leaves for its
+  // link's address.
   await page.goto(`${base}/`);
-  /** This entry's place in the history, where the browser has the Navigation API (a browser without it loads whole pages, and the link's address replaces the sheet's). */
+  /**
+   * This entry's place in the history, where the browser has the Navigation API (a browser
+   * without it loads whole pages, and the link's address replaces the sheet's).
+   */
   const at = () => page.evaluate(() => /** @type {any} */ (window).navigation?.currentEntry?.index ?? -1);
   const listEntry = await at();
   await Promise.all([page.waitForURL("**/?sale=last"), page.getByRole("link", { name: "Last sale" }).click()]);
