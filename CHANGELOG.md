@@ -1111,6 +1111,14 @@ Corten is pre-1.0, so any minor version may change the API.
     Migration: `state(scope, () => init)` is `keep(() => init)`, and a `scope` argument used only
     for it is dropped from the handler and its markup
     ([#238 Runtime state is keyed by an element the handler has to pass: state(root, init)](https://github.com/todd-skelton/corten/issues/238)).
+64. examples/watchlist keeps the alerts a browser saves and lists them, each with a Remove
+    button. They live in a store whose reads catch up with its writes 1.5 s later, as a replica
+    would: a write answers with its receipt (`/alerts?saved=7`), and the page or the patched
+    status line and list are read again (`ReadAgain`) until reads have it. Before, the address
+    carried the time the alert would land and nothing was kept. A browser's watchlist and alerts
+    are kept under one id, now in the `visitor` cookie (`visitor.rs`), which was `list`, and both
+    forget the browser used longest ago past 10,000 (`recent.rs`)
+    ([#220 watchlist's alerts page never shows the alerts you saved](https://github.com/todd-skelton/corten/issues/220)).
 65. `corten-cluster`'s `Cluster::snapshot`, `live` and `live_with` return
     `corten::Result<FeedResponse>`, an answer a Corten route names, instead of an axum
     `Response`: an unknown feed is a 404 and Postgres out of reach a 503, both answered as JSON as
