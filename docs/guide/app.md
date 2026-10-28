@@ -806,11 +806,18 @@ fn app(pages: Routes) -> App {
 3. Who passes is the app's model: `Staff::identify` reads the session and refuses with
    `Refused::sign_in` (no one signed in) or `Refused::forbidden` (not staff). Stricter parts
    are stricter types: `caller = Billing` on a `/admin/billing` area of its own.
-4. An area a library ships is a function the app passes on,
+4. A route in an area that another caller may use (an order's review form under
+   `/account/purchases`, which needs another permission than the orders do) is in a module of
+   its own in the same area, with that caller: `#[corten::routes(area = super::orders::Purchases,
+   caller = Reviewer)]`. The app passes both modules to one area,
+   `.area(|area| reviews::area(orders::area(area)))`, and each module's handlers are held to its
+   caller. The area's stylesheet, deadline and prefix check apply to both. A module may hold a
+   single route.
+5. An area a library ships is a function the app passes on,
    `.area(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route by hand; Corten's `get`
    checks the handler as a routes module does, and `R`'s path must have the shape
    `#[derive(Route)]` writes (whole-segment parameters, plain text), or the app does not compile.
-5. Areas nest (`/admin` and `/admin/billing`, each with its own routes and stylesheet).
+6. Areas nest (`/admin` and `/admin/billing`, each with its own routes and stylesheet).
 
 How the common cases look:
 
@@ -818,6 +825,7 @@ How the common cases look:
 |---|---|
 | A signed-in area (account, dashboard) | `#[corten::routes(area = Account, caller = Viewer)]`, whose `identify` sends anyone else to sign in |
 | A role's area, stricter inside | an area with `caller = Staff` and one on `/admin/billing` with `caller = Billing` |
+| A page in an area that another permission opens (`/account/purchases/{id}/review`) | a second module in the area with its own caller, `.area(\|area\| reviews::area(orders::area(area)))` |
 | Anyone reads, signed-in users write (reviews, a price alert posted back to its page) | the `get` handler takes `Option<Caller<Viewer>>`, the `post` handler `Caller<Viewer>` |
 | Private everywhere (an internal tool) | `caller = Staff` on the app's routes module, and the sign-in route (and any webhook) in a module without it |
 | An API only some callers may use | handlers that take `Caller<Partner>` and return `JsonResult<T>` |

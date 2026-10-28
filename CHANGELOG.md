@@ -1497,6 +1497,12 @@ Corten is pre-1.0, so any minor version may change the API.
     its item page's tables and price summary fit a phone, its alert form keeps less room under
     it, and its demo cards name their rarity twice (the chips and the details) instead of four
     times: the subtitle is the set and number, and no tag repeats a field or a chip.
+23. The app guide (Areas) and the skill say how a page in an area that another permission opens
+    (an order's review form under `/account/purchases`) is declared: a second routes module in the
+    same area with its own `caller`, passed in one call,
+    `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
+    permission from the path. A test holds two modules' callers apart in one area
+    ([#273](https://github.com/todd-skelton/corten/issues/273)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
