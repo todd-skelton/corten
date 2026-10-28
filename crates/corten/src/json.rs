@@ -257,7 +257,14 @@ impl std::fmt::Display for InvalidJson {
     }
 }
 
-impl std::error::Error for InvalidJson {}
+impl std::error::Error for InvalidJson {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.0 {
+            InvalidJsonKind::Utf8(error) => Some(error),
+            InvalidJsonKind::Json(error) => Some(error),
+        }
+    }
+}
 
 impl Raw {
     /// The JSON in `bytes`, or an error when they are not one JSON value in UTF-8 (a byte order

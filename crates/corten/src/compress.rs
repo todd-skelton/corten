@@ -9,10 +9,9 @@
 //! a background thread, so startup is not delayed; until then they go out as dynamic responses).
 //! JSON the app holds as bytes and sends again ([`crate::json::Raw`]) is compressed once too, the
 //! second time it is sent, at brotli 9 and gzip 9, by one background thread that takes them in
-//! turn from a bounded queue: on an 80 KB document that takes 15 ms once,
-//! where compressing every read costs 220 µs (zstd 1) to 2.1 ms (brotli 2), and gives 5,000 bytes
-//! against 6,992 with zstd 1. brotli 11 would take 356 ms, too long for a value that changes while
-//! the app runs.
+//! turn from a bounded queue: on an 80 KB document that takes 15 ms once, where compressing every
+//! read costs 220 µs (zstd 1) to 2.1 ms (brotli 2), and gives 5,000 bytes against 6,992 with
+//! zstd 1. brotli 11 would take 356 ms, too long for a value that changes while the app runs.
 //!
 //! Event streams ([`crate::live`], feeds) are compressed as one stream per connection, flushed
 //! after every event so it arrives at once, with the context kept between events: a redraw that
@@ -691,6 +690,22 @@ mod tests {
         let (headers, _) = read("zstd, gzip;q=0.1").await;
         assert_eq!(headers[header::CONTENT_ENCODING], "zstd");
         assert_eq!(read("zstd;q=0.5, br;q=0.5").await.0[header::CONTENT_ENCODING], "br");
+    }
+
+    /// A job that panics costs its own value's forms, not the worker: the next held value read
+    /// twice is still compressed.
+    #[cfg(feature = "json")]
+    #[test]
+    fn a_job_that_panics_leaves_the_worker_for_the_next() {
+        held_worker().unwrap().send(Box::new(|| panic!("corten test: a compression job that fails"))).unwrap();
+        let held = Arc::new(Precompressed::held(Bytes::from(format!("[{}]", "1,".repeat(2000) + "1"))));
+        assert!(Precompressed::stored_held(&held, Coding::Brotli).is_none());
+        assert!(Precompressed::stored_held(&held, Coding::Brotli).is_none());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while Precompressed::stored_held(&held, Coding::Gzip).is_none() {
+            assert!(std::time::Instant::now() < deadline, "the worker did not compress the value after a job panicked");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
 
     /// A handler or a middleware that replaces a held value's body keeps the extension, not the
