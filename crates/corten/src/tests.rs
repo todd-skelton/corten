@@ -1,5 +1,6 @@
 use super::*;
 use crate::cache::Cache;
+use crate::security::cookie::SetCookie;
 use crate::view::{html, Render};
 use axum::{body::Body, extract::Path, http::Request, routing::get, Router};
 use http_body_util::BodyExt;
@@ -1495,6 +1496,13 @@ fn cached_routes() -> Router {
             }),
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
+        .route(
+            "/cookies",
+            get(move |req: Req| async move {
+                let page = req.test_page("Home", home()).map(|page| page.with_cookie(SetCookie::new("a", "1")));
+                Public::new(minute, page.map(|page| page.with_cookie(SetCookie::remove("b"))))
+            }),
+        )
         .route("/plain", get(|req: Req| async move { req.test_page("Plain", html! { <p>"plain"</p> }) }))
 }
 
@@ -1505,6 +1513,23 @@ async fn cache_control(router: &Router, uri: &str, extra: &[(&'static str, &'sta
     }
     let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
     res.headers()[header::CACHE_CONTROL].to_str().unwrap().to_string()
+}
+
+/// Each `with_cookie` adds one `Set-Cookie`, in order, with the safe flags.
+#[tokio::test]
+async fn with_cookie_sets_each_cookie_in_order() {
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            Ok::<_, Error>(req.redirect(&Done)?.with_cookie(SetCookie::new("a", "1")).with_cookie(SetCookie::remove("b")))
+        }),
+    );
+    let res = app(routes, None).oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    let cookies: Vec<_> = res.headers().get_all(header::SET_COOKIE).iter().map(|c| c.to_str().unwrap()).collect();
+    assert_eq!(
+        cookies,
+        ["a=1; Path=/; SameSite=Lax; HttpOnly; Secure", "b=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]
+    );
 }
 
 #[tokio::test]
@@ -1531,6 +1556,7 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
         assert_eq!(cache_control(&router, "/", &[partial]).await, "private, max-age=60", "only the document: {partial:?}");
     }
     assert_eq!(cache_control(&router, "/cookie", &[]).await, "private, no-cache", "it sets a cookie");
+    assert_eq!(cache_control(&router, "/cookies", &[]).await, "private, no-cache", "it sets cookies");
     assert_eq!(cache_control(&router, "/catalog", &[]).await, "public, max-age=60, s-maxage=86400");
     assert_eq!(cache_control(&router, "/catalog", &[("corten", "nav")]).await, "private, max-age=60", "the browser's lifetime");
     assert_eq!(cache_control(&router, "/catalog", &[("cookie", "session=abc")]).await, "private, no-cache");
