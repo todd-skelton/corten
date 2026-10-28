@@ -676,7 +676,10 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    answers it with a 500 instead, and under `corten dev` the page says why.
 6. Signing in and out set the cookie on the answer:
    `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, and
-   `SetCookie::remove("session")` to sign out. `SetCookie` (`corten::security::cookie`) makes
+   `SetCookie::remove("session")` to sign out. `new` panics on a value a cookie cannot carry,
+   which suits a token the app made; for one from elsewhere (another service's session token),
+   `SetCookie::try_new` returns an `InvalidCookie` the handler maps to its own answer (a 502,
+   say; `?` alone is a 500). `SetCookie` (`corten::security::cookie`) makes
    `HttpOnly; Secure; SameSite=Lax; Path=/` the default, and an answer that sets a cookie is never
    stored by a shared cache. Never append a `Set-Cookie` header by hand.
 7. `.message("Invalid API key")` on a refusal is what a client that reads the failure is told:

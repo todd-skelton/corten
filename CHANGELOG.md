@@ -653,6 +653,11 @@ Corten is pre-1.0, so any minor version may change the API.
     catalog, names the prices' currency in their column, and right-aligns the statement's numbers.
     A row is 7 bytes smaller (603 to 596 at 2,000 rows) and about 30 instructions dearer to render
     (its name is now also a whole attribute value, the hole the sort reads).
+101. `SetCookie::try_new(name, value)` returns `Err(InvalidCookie::Name | Value)` for a character a
+    cookie cannot carry, where `new` panics: a token another service answered with no longer turns
+    a sign-in into a 500 the app did not choose. `new` keeps its panic for values the app makes
+    and calls the same rule
+    ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1230,6 +1235,10 @@ Corten is pre-1.0, so any minor version may change the API.
     `Accept-Encoding` to its upstream, with a client that does not decode the body. Every other answer pays
     one look at its extensions: 11 instructions when it has none, 32 when it has one (callgrind)
     ([#205 With compress on, a Relay's answer is re-encoded per connection, so a gateway holds a 480 KiB coder for every relayed model stream and cannot opt out](https://github.com/todd-skelton/corten/issues/205)).
+45. `SetCookie::path` refuses a control character (a tab or line break) where it is set, and
+    `SetCookie::new`, `path` and `remove` name the caller's line when they panic. Before, such a
+    path passed `path` and panicked when the answer was sent
+    ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
