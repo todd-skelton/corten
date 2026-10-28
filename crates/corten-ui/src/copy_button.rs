@@ -6,8 +6,9 @@ use corten::{prelude::*, view::Id};
 /// once and each button copies its own row's. A form field (a read-only input with an invite link)
 /// is copied by its value.
 ///
-/// The button is drawn `hidden` and its script (`copy_button.js`) shows it where the browser can
-/// write the clipboard (a secure origin); without one the text stays on the page to select. A
+/// The button is drawn `hidden` and its script (`copy_button.js`) shows it where the browser has
+/// the Clipboard API (a secure origin); without it the text stays on the page to select. A frame
+/// the clipboard is not allowed in still shows it, and a click there changes nothing. A
 /// click writes the element's text; once the browser has written it, the button's text reads
 /// `copied` for two seconds, in a polite live region so it is announced, then `label` again (an
 /// icon with it included). Nothing to copy, or a failed write (no permission), changes nothing, so
@@ -40,7 +41,7 @@ use corten::{prelude::*, view::Id};
 ///
 /// The element is named by its id type, so text in its place does not compile:
 ///
-/// ```compile_fail
+/// ```compile_fail,E0277
 /// use corten::prelude::*;
 /// use corten_ui::CopyButton;
 ///
@@ -51,7 +52,7 @@ pub fn CopyButton<'a, I: Id, L: Render>(text: I, label: L, copied: &'a str) -> i
     let said = refs();
     let id = plain_id(&text);
     html! {
-        <button type="button" hidden on:connect={js::connect(target)} on:click={js::copy(id.as_str(), said, copied)}>
+        <button type="button" hidden on:connect={js::connect(target, signal)} on:click={js::copy(id.as_str(), said, copied)}>
             <span ref={said} aria-live="polite">{label}</span>
         </button>
     }

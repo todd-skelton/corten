@@ -13,7 +13,7 @@ no CSS.
 | `TabGroup` | tabs that are typed links to the page with that tab selected | roving focus, arrow keys, switching in place with the address following |
 | `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, `aria-expanded`, the button as the menu's CSS anchor |
 | `Toaster` | the message is part of the page the post answers with | a live region an action's patch fills (`req.patch_or(Toast { message: Some(text) }, page)`), hidden after `seconds` but kept while the pointer or focus is on it or the page is hidden, and a close button |
-| `CopyButton` | no button: the text (an order number, an API secret) is on the page to select | a button, where the clipboard can be written, that copies the text (or a field's value) of the element its `#[derive(Id)]` id names (`<code id={SecretId}>`, `<CopyButton text={SecretId} label={..} copied={..} />`), so the text is on the page once, and says it copied in a polite live region; nothing to copy or a failed write changes nothing |
+| `CopyButton` | no button: the text (an order number, an API secret) is on the page to select | a button, where the browser has the Clipboard API (a secure origin), that copies the text (or a field's value) of the element its `#[derive(Id)]` id names (`<code id={SecretId}>`, `<CopyButton text={SecretId} label={..} copied={..} />`), so the text is on the page once, and says it copied in a polite live region; nothing to copy or a failed write changes nothing |
 
 ```rust,ignore
 let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };

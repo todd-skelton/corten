@@ -3,15 +3,23 @@
 // the text stays on the page to select. This shows it where the browser can write the clipboard,
 // copies the named element's text on a click, and says so for a moment.
 
+import { keep } from "corten";
+
 /** How long the button says it copied, in milliseconds. */
 const SAID = 2000;
 
-/** The label to put back, and the timer that will. @type {WeakMap<HTMLSpanElement, { label: Node[], timer: number }>} */
-const shown = new WeakMap();
+/** The button's label to put back once it has said it copied, and the timer that will. */
+const shown = () => keep(() => ({ label: /** @type {Node[] | null} */ (null), timer: 0 }));
 
-/** Shown only where the clipboard can be written (a secure origin). @param {HTMLButtonElement} button */
-export function connect(button) {
-  if (navigator.clipboard?.writeText) button.hidden = false;
+/**
+ * Shown where the browser has the Clipboard API (a secure origin); the timer ends with the
+ * button.
+ * @param {HTMLButtonElement} button @param {AbortSignal} signal
+ */
+export function connect(button, signal) {
+  if (typeof navigator.clipboard?.writeText === "function") button.hidden = false;
+  const s = shown();
+  signal.addEventListener("abort", () => clearTimeout(s.timer));
 }
 
 /**
@@ -22,6 +30,8 @@ export function connect(button) {
  * @param {string} id @param {HTMLSpanElement} said @param {string} copied
  */
 export async function copy(id, said, copied) {
+  // Taken before the write: keep() reads the running handler, which an await leaves.
+  const s = shown();
   const from = document.getElementById(id);
   const text = from instanceof HTMLInputElement || from instanceof HTMLTextAreaElement ? from.value : (from?.textContent ?? "");
   if (!text) return;
@@ -30,13 +40,11 @@ export async function copy(id, said, copied) {
   } catch {
     return;
   }
-  const was = shown.get(said);
-  clearTimeout(was?.timer);
-  const label = was?.label ?? [...said.childNodes];
+  clearTimeout(s.timer);
+  const label = (s.label ??= [...said.childNodes]);
   said.textContent = copied;
-  const timer = setTimeout(() => {
+  s.timer = setTimeout(() => {
     said.replaceChildren(...label);
-    shown.delete(said);
+    s.label = null;
   }, SAID);
-  shown.set(said, { label, timer });
 }

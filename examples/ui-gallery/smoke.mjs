@@ -108,7 +108,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the six scripts load and connect", loaded === 6, `${loaded} script(s)`);
+  check("the seven scripts load and connect", loaded === 7, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -401,7 +401,7 @@ async function run(browser) {
   await page.goBack();
   await page.waitForLoadState();
   check("Back from there goes to the page before the shared link", new URL(await href()).searchParams.get("tab") === "offers", await href());
-  // CopyButton: shown where the clipboard can be written; a click copies the number's text.
+  // CopyButton: shown where the browser has the Clipboard API; a click copies the number's text.
   const clip = await (await browser.newContext(engine === "chromium" ? { permissions: ["clipboard-read", "clipboard-write"] } : {})).newPage();
   clip.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   clip.on("pageerror", (e) => errors.push(e.message));
@@ -419,6 +419,26 @@ async function run(browser) {
   await clip.waitForFunction(() => document.querySelector('[data-scope=ui-copy-button] [aria-live]')?.textContent === "Copy", null, { timeout: 5000 }).catch(() => {});
   check("then its label again", (await said.textContent()) === "Copy", await said.textContent());
   await clip.context().close();
+  // A write the browser refuses changes nothing: the button never says it copied.
+  const denied = await (await browser.newContext()).newPage();
+  denied.on("pageerror", (e) => errors.push(e.message));
+  await denied.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new DOMException("denied", "NotAllowedError")) } });
+  });
+  await denied.goto(`${base}/`);
+  const deniedButton = denied.getByRole("button", { name: "Copy", exact: true });
+  await deniedButton.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  await deniedButton.click();
+  await denied.waitForTimeout(300);
+  check("a denied write leaves the label as it was", (await denied.locator('[data-scope=ui-copy-button] [aria-live]').textContent()) === "Copy");
+  await denied.context().close();
+  // Without the Clipboard API (an insecure origin) the button stays hidden.
+  const insecure = await (await browser.newContext()).newPage();
+  await insecure.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: undefined }));
+  await insecure.goto(`${base}/`);
+  await insecure.waitForFunction(() => document.querySelector("[data-scope=ui-combo-box] input")?.checkVisibility(), null, { timeout: 5000 }).catch(() => {});
+  check("without the Clipboard API the button stays hidden", await insecure.locator("[data-scope=ui-copy-button]").isHidden());
+  await insecure.context().close();
 
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
