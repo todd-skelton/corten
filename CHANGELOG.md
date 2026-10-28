@@ -716,10 +716,11 @@ Corten is pre-1.0, so any minor version may change the API.
 108. `corten::Media`: bytes the app holds, sent as a media type the app names
     (`Media::new("image/png", bytes)`; the type is one the app names, read from the bytes, and
     is never the one a client sent with an upload). `Public::immutable(media)` is for a URL that
-    names its content (bytes only; a page or JSON changes with the deploy, so it does not compile): every cache keeps it for a year, cookies or not, as Corten's versioned files
-    are, and its handler is held to `Public`'s rule, so one that could tell who is asking does not
-    compile. Before it, a route could serve bytes it held only as an axum `Response`, which a route
-    cannot name.
+    names its content: every cache keeps it for a year, cookies or not, as Corten's versioned
+    files are. It takes bytes only (a page or JSON changes with the deploy, so it does not
+    compile), and its handler is held to `Public`'s rule, so one that could tell who is asking
+    does not compile. Before it, a route could serve bytes it held only as an axum `Response`,
+    which a route cannot name.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
