@@ -318,6 +318,36 @@ async fn a_live_stream_that_finishes_tells_the_element_to_stop() {
     assert_eq!(body, "event: patch\ndata: <p id=\"late\">Ready</p>\n\nevent: end\ndata: end\n\n");
 }
 
+/// `live_watch` sends the current value only to a page that is behind, then each change, and
+/// ends when the value's sender goes.
+#[tokio::test]
+async fn a_live_watch_sends_the_latest_value_from_where_the_page_is() {
+    use crate::LiveSince;
+    let (tx, rx) = tokio::sync::watch::channel(7u64);
+    let stream = |since: Option<&str>| {
+        let since = LiveSince(since.map(str::to_string));
+        crate::live_watch(rx.clone(), since, |n| n.to_string(), |n| format!(r#"<p id="n">{n}</p>"#))
+    };
+    let (behind, current) = (stream(Some("6")), stream(Some("7")));
+    let first = stream(None);
+    tx.send_replace(8);
+    tx.send_replace(9); // the browser only needs the latest: 8 is skipped
+    drop(tx);
+    let body = |res: LiveResponse| async move {
+        String::from_utf8(res.into_response().into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+    };
+    let nine = "event: patch\nid: 9\ndata: <p id=\"n\">9</p>\n\nevent: end\ndata: end\n\n";
+    assert_eq!(body(current).await, nine, "a page showing 7 gets the next change");
+    assert_eq!(body(behind).await, nine, "a page behind gets the latest");
+    assert_eq!(body(first).await, nine);
+    let (tx, rx) = tokio::sync::watch::channel(7u64);
+    let behind = crate::live_watch(rx, LiveSince(Some("6".into())), |n| n.to_string(), |n| format!(r#"<p id="n">{n}</p>"#));
+    let read = tokio::spawn(body(behind));
+    tokio::task::yield_now().await;
+    drop(tx);
+    assert_eq!(read.await.unwrap(), "event: patch\nid: 7\ndata: <p id=\"n\">7</p>\n\nevent: end\ndata: end\n\n", "the current one first");
+}
+
 #[tokio::test]
 async fn a_live_fragment_carries_its_cursor_and_a_reconnect_reads_it_back() {
     use crate::{Fragment, LiveSince};

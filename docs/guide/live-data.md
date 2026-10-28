@@ -52,6 +52,17 @@ async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> Li
 }
 ```
 
+One value that changes, kept in a `tokio::sync::watch` channel, is that handler in one call:
+`corten::live_watch(values, since, cursor, view)` sends the current value only to a page that is
+behind, then the latest after each change (a browser needs no value it missed in between), and
+ends when the channel's sender is dropped:
+
+```rust,ignore
+async fn trades(State(market): State<Market>, since: LiveSince) -> LiveResponse {
+    corten::live_watch(market.trades.subscribe(), since, |(n, _)| n.to_string(), |(_, text)| LastTrade { text }.to_html())
+}
+```
+
 A cursor the app no longer knows (too old, another deploy's) is the handler's to handle; drawing
 the part as it is now is always correct. A cursor with a line break or NUL would end its event,
 so `cursor` refuses it (a panic in debug builds; in release the fragment goes without it).

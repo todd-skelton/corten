@@ -145,7 +145,10 @@ async fn trades(State(m): State<Market>) -> impl IntoResponse {
 When the data has a version, resume instead of redrawing: `Fragment::new(html).cursor(v)` for
 each item, `<corten-live src={Trades} since={v}>` in the page, and a `LiveSince(since)`
 argument that says where the browser is (the page's `since`, or `Last-Event-ID` after a
-reconnect). Send nothing until the next change when it is current. See the live-data guide.
+reconnect). Send nothing until the next change when it is current. One value in a tokio watch
+channel is all of that in one call:
+`corten::live_watch(m.trades.subscribe(), since, |(n, _)| n.to_string(), |(_, text)| LastTrade { text }.to_html())`.
+See the live-data guide.
 
 The element shows its connection as `status` (`connecting`, `live`, `reconnecting`, `closed`,
 `ended`) and `stale-since` (when a live stream dropped): style a stale part with

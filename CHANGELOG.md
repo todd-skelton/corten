@@ -628,6 +628,10 @@ Corten is pre-1.0, so any minor version may change the API.
 95. `Error::not_found()`: the 404 a handler answers for a record that is not there,
     `load(id).await?.ok_or_else(Error::not_found)?`, in place of
     `.ok_or_else(|| Error::status(StatusCode::NOT_FOUND))?` (or an app's own `fn not_found`).
+96. `corten::live_watch(values, since, cursor, view)`: a live stream of one value in a
+    `tokio::sync::watch` channel, from where the page is: nothing until the next change when it
+    shows the current version, the current value first when it is behind, then the latest after
+    each change. It replaces about ten lines of `mark_changed`, `unfold` and `Fragment`.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

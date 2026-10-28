@@ -252,6 +252,50 @@ where
     )
 }
 
+/// A [`live`] stream of one value that changes (the last trade, a count, a status), kept in a
+/// `tokio::sync::watch` channel: `view` renders it and `cursor` names the version it is, so a
+/// page already showing the current one (`since`, [`LiveSince`]) gets nothing until the next
+/// change, and one that is behind gets the current value first. Values the browser missed in
+/// between are skipped: it only ever needs the latest. The stream ends when the channel's sender
+/// is dropped.
+///
+/// ```
+/// use corten::{prelude::*, LiveResponse, LiveSince};
+/// use tokio::sync::watch;
+///
+/// #[derive(Id)]
+/// struct LastTradeId;
+///
+/// #[component]
+/// fn LastTrade(text: &str) -> impl Patch {
+///     html! { <p id={LastTradeId}>{text}</p> }
+/// }
+///
+/// // The trade count and the last trade's text.
+/// async fn trades(State(trades): State<watch::Receiver<(u64, String)>>, since: LiveSince) -> LiveResponse {
+///     corten::live_watch(trades, since, |(n, _)| n.to_string(), |(_, text)| LastTrade { text }.to_html())
+/// }
+/// ```
+pub fn live_watch<T, C, V>(mut values: tokio::sync::watch::Receiver<T>, since: LiveSince, cursor: C, view: V) -> LiveResponse
+where
+    T: Send + Sync + 'static,
+    C: Fn(&T) -> String + Send + 'static,
+    V: Fn(&T) -> String + Send + 'static,
+{
+    let current = cursor(&values.borrow());
+    if since.0.as_deref() != Some(current.as_str()) {
+        values.mark_changed();
+    }
+    live(futures_util::stream::unfold((values, cursor, view), |(mut values, cursor, view)| async move {
+        values.changed().await.ok()?;
+        let fragment = {
+            let value = values.borrow_and_update();
+            Fragment::new(view(&value)).cursor(cursor(&value))
+        };
+        Some((fragment, (values, cursor, view)))
+    }))
+}
+
 /// One item of a [`live`] stream: rendered HTML, and the app's cursor after it.
 ///
 /// The cursor is the point in the app's own data this fragment brings the page to (a version,
