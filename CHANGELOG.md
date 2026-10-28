@@ -1520,6 +1520,13 @@ Corten is pre-1.0, so any minor version may change the API.
     its item page's tables and price summary fit a phone, its alert form keeps less room under
     it, and its demo cards name their rarity twice (the chips and the details) instead of four
     times: the subtitle is the set and number, and no tag repeats a field or a chip.
+24. Work on a schedule is a task with tokio's intervals: `App::task`'s documentation and the
+    guide (app.md, "On a schedule") show a job hourly at :15 and one every five minutes in one
+    loop, so they never overlap, run on a paused tokio clock in a doctest. The guide's task example
+    and the watchlist's market task now skip missed ticks (`MissedTickBehavior::Skip`; tokio's
+    default, `Burst`, runs once for each missed mark, back to back) and poll the signal first
+    (`biased`), so no run starts once shutdown has begun. Corten adds no scheduler
+    ([#278 An app cannot run a job on a schedule (hourly at :15, every 5 minutes, daily at 03:30), so each writes the clock, the missed-mark skip and the no-overlap rule itself](https://github.com/todd-skelton/corten/issues/278)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

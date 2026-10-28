@@ -89,10 +89,12 @@ impl Market {
 /// trades, never in the middle of one.
 pub async fn simulate(market: Market, signal: Signal) {
     let mut tick = tokio::time::interval(Duration::from_secs(1));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     for n in 0.. {
         tokio::select! {
-            _ = tick.tick() => market.trade(n),
+            biased;
             _ = signal.aborted() => return,
+            _ = tick.tick() => market.trade(n),
         }
     }
 }
