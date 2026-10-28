@@ -69,12 +69,6 @@ one `<main>`, not inside a `for`, `if` or `match`. Each part renders for the req
 | `<main>`'s children: the page | yes | yes | no |
 | everything else: the header, the footer, the layout's own tags | yes | no: the runtime keeps what the page has | no |
 
-A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
-`href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
-that stays current on the pages under it). The full load renders `aria-current`, and the runtime
-moves it after each client navigation, so the header is right without rendering again. A tag
-that writes `href` or `aria-current` itself beside the spread does not compile.
-
 So the layout costs a navigation nothing, and what the layout shows that a navigation cannot
 update (the signed-in user, from a `Caller` the handler took) is covered by the page key: when it
 changes, the runtime loads the next page in full. Keep a layout's props to what most pages set (the title,
@@ -83,6 +77,13 @@ their head tags); a page that needs a different document uses another layout. Ea
 layout to a page in another loads it in full, with no `data-reload`. A prop that changes the
 layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
 second layout.
+
+A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
+`href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
+that stays current on the pages under it). The full load renders `aria-current`, and the runtime
+moves it after each client navigation, so the header is right without rendering again. A tag
+that writes `href`, `data-nav` or `aria-current` itself beside the spread does not compile, nor
+does `data-nav` written by hand.
 
 Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`
 (feature `json`) writes a `ToJson` value in `<script type="application/ld+json">` with `<` as

@@ -750,7 +750,7 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 /// Where a redirect or a current-page check points: a typed route, a place on its page
 /// ([`Route::at`]), a return address checked to be on this site ([`Local`]), or an
 /// `axum::http::Uri` for a URL the app does not route (a payment page, a sign-in provider). Text is none of them, so a path typed as a string does not compile. Used by
-/// [`crate::Req::redirect`] and [`crate::Req::current`].
+/// [`crate::Req::redirect`] and [`crate::Req::is_current`].
 pub trait Href {
     /// Calls `f` with the URL.
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T;

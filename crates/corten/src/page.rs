@@ -646,9 +646,10 @@ impl Req {
     /// struct About;
     ///
     /// // On /news: <a href="/news" data-nav aria-current="page">News</a><a href="/about" data-nav>About</a>
-    /// fn nav(req: &Req) -> impl Render + '_ {
-    ///     html! { <nav><a {..req.nav(&News)}>"News"</a><a {..req.nav(&About)}>"About"</a></nav> }
+    /// fn nav(req: &Req) -> String {
+    ///     html! { <nav><a {..req.nav(&News)}>"News"</a><a {..req.nav(&About)}>"About"</a></nav> }.to_html()
     /// }
+    /// let _: fn(&Req) -> String = nav;
     /// ```
     ///
     /// The tag cannot also write one of those attributes, which the browser would ignore:
@@ -664,6 +665,18 @@ impl Req {
     ///     html! { <a href={News} {..req.nav(&News)}>"News"</a> }.to_html()
     /// }
     /// let _: fn(&Req) -> String = nav;
+    /// ```
+    ///
+    /// Nor can a link be marked by hand, which would name its route twice:
+    ///
+    /// ```compile_fail
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/news")]
+    /// struct News;
+    ///
+    /// let link = html! { <a href={News} data-nav>"News"</a> };
     /// ```
     pub fn nav<'a, R: crate::Route>(&'a self, to: &'a R) -> Nav<'a, R> {
         Nav { path: self.uri.path(), to, section: false }

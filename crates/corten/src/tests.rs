@@ -850,6 +850,20 @@ fn a_nav_link_writes_its_route_once_and_says_when_it_is_the_page() {
         attrs(Nav { path: "/sell/listings", to: &Sell, section: true }),
         r#" href="/sell" data-nav="section" aria-current="page""#
     );
+    // A sibling that starts with the same text is not under the section.
+    assert_eq!(attrs(Nav { path: "/seller", to: &Sell, section: true }), r#" href="/sell" data-nav="section""#);
+    // A section written with a trailing slash holds the pages under it, and itself.
+    #[derive(crate::Route)]
+    #[route("/shop/")]
+    struct Shop;
+    assert_eq!(
+        attrs(Nav { path: "/shop/boots", to: &Shop, section: true }),
+        r#" href="/shop/" data-nav="section" aria-current="page""#
+    );
+    assert_eq!(
+        attrs(Nav { path: "/shop/", to: &Shop, section: true }),
+        r#" href="/shop/" data-nav="section" aria-current="page""#
+    );
     // The path is percent-encoded, and the query is left out of the comparison.
     let item = Item { id: "a b", tab: Some("x&y") };
     assert_eq!(
