@@ -74,7 +74,7 @@ type ReadyFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send
 /// that the app passes to [`App::area`].
 pub struct Area<P> {
     routes: Router,
-    pages: Vec<&'static str>,
+    pages: Vec<(&'static str, bool)>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
     types: PhantomData<fn() -> P>,
@@ -107,9 +107,7 @@ impl<P: Prefix> Area<P> {
             )
         };
         self.routes = self.routes.route(R::PATH, methods.0);
-        if methods.1 {
-            self.pages.push(R::PATH);
-        }
+        self.pages.push((R::PATH, methods.1));
         self
     }
 
@@ -151,7 +149,7 @@ impl<P: Prefix> Area<P> {
 struct Placed {
     prefix: &'static str,
     routes: Router,
-    pages: Vec<&'static str>,
+    pages: Vec<(&'static str, bool)>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
 }
@@ -186,8 +184,9 @@ struct Placed {
 /// ```
 pub struct App<M = ()> {
     routes: Router,
-    /// The paths of the app's pages ([`crate::Req::serves`]), the areas' added in `router`.
-    pages: Vec<&'static str>,
+    /// The app's route patterns and whether each has a `GET` handler ([`crate::Req::serves`]);
+    /// the areas' are added in `router`.
+    pages: Vec<(&'static str, bool)>,
     error_page: Option<Box<page::ErrorPage>>,
     policy: Policy,
     static_dir: Option<PathBuf>,
@@ -607,6 +606,9 @@ impl<M: Middleware> App<M> {
         shared.client_zone = self.client_zone;
         shared.dev = dev;
         shared.pages = self.pages.iter().chain(self.areas.iter().flat_map(|area| &area.pages)).copied().collect();
+        // What is not a page however the app's routes match it: Corten's own paths and the APIs.
+        shared.not_pages =
+            (own.exact.clone(), own.prefixes.clone(), self.apis.iter().map(|(mount, _)| mount.prefix.clone()).collect());
         shared.components = self.components.iter().chain(sections.iter().flat_map(|(_, c)| c.iter())).map(|c| c.name).collect();
         if let Some(assets) = &shared.assets {
             for section in assets.section_stylesheets() {

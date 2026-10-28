@@ -415,8 +415,11 @@ pub(crate) struct Shared {
     pub allowed_origins: Vec<String>,
     /// Each `Api::allow_origin` mount's prefix and origins, which may also switch under it.
     pub api_origins: Vec<(String, Vec<String>)>,
-    /// The paths of the app's pages, its own routes' and its areas' ([`Req::serves`]).
-    pub pages: Box<[&'static str]>,
+    /// The app's route patterns, its own and its areas', each with whether it has a `GET`
+    /// handler ([`Req::serves`]).
+    pub pages: Box<[(&'static str, bool)]>,
+    /// Paths no page is at: Corten's own (exact, and prefixes) and the APIs' prefixes.
+    pub not_pages: (Vec<&'static str>, Vec<String>, Vec<String>),
 }
 
 impl Shared {
@@ -449,6 +452,7 @@ impl Shared {
             allowed_origins: Vec::new(),
             api_origins: Vec::new(),
             pages: Box::default(),
+            not_pages: Default::default(),
         }
     }
 }
@@ -868,16 +872,16 @@ impl Req {
         Ok(HtmlResponse(redirect(self.mode, value)))
     }
 
-    /// Whether the app has a route a redirect to `to` can land on: one given to
-    /// [`crate::App::new`] or to an area with a `GET` handler, its path matched as the router
-    /// matches it. A return address the app does not serve (a page of another app of the
-    /// product, or none) goes elsewhere; one it serves is `req.redirect(&to)`. A route that only
-    /// takes writes, an API route and a static file are not served here. Which route answers is
-    /// the path's: a `GET` route that answers JSON counts too, and a record that is not there is
-    /// still a 404.
+    /// Whether a redirect to `to` lands on a route of the app's: the route given to
+    /// [`crate::App::new`] or to an area that the router picks for its path (the most specific,
+    /// as axum picks it) has a `GET` handler. A return address the app does not serve (a page of
+    /// another app of the product, or none) goes elsewhere; one it serves is `req.redirect(&to)`.
+    /// A route that only takes writes, a path under an API and Corten's own paths are not served.
+    /// It does not look at who is asking: a page an area's caller check refuses still counts, and
+    /// a record that is not there is still a 404.
     ///
     /// ```
-    /// use corten::{prelude::*, route::Local};
+    /// use corten::{prelude::*, Local};
     ///
     /// #[corten::routes]
     /// mod url {
@@ -901,9 +905,16 @@ impl Req {
     /// }
     /// # let _ = App::new(url::router()).router();
     /// ```
-    pub fn serves(&self, to: &crate::route::Local) -> bool {
+    pub fn serves(&self, to: &crate::Local) -> bool {
         let path = to.path();
-        self.shared.pages.iter().any(|pattern| crate::route::routes_path(pattern, path))
+        let (exact, prefixes, apis) = &self.shared.not_pages;
+        if exact.contains(&path)
+            || prefixes.iter().any(|p| path.starts_with(p.as_str()))
+            || apis.iter().any(|p| crate::api::under(p, path))
+        {
+            return false;
+        }
+        crate::route::chosen(&self.shared.pages, path).is_some_and(|(_, get)| get)
     }
 
     /// The page is at `to` for good (an item asked for by its id or an old slug, a renamed

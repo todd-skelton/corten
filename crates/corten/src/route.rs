@@ -763,7 +763,7 @@ pub trait Href {
 /// address, query and fragment included.
 ///
 /// ```
-/// use corten::route::Local;
+/// use corten::Local;
 ///
 /// assert_eq!(Local::parse("/account/cart?step=2#pay").unwrap().path(), "/account/cart");
 /// // Each of these leads a browser to another site, or is not a path: none is a Local.
@@ -811,6 +811,27 @@ impl Href for Local {
     }
 }
 
+/// Of `routes` (each pattern, and whether it has a `GET` handler), the one the router picks for
+/// `path`: of those that match, the one whose segments are most specific from the left, text
+/// before `{name}` before `{*rest}`, as matchit tries them.
+pub(crate) fn chosen(routes: &[(&'static str, bool)], path: &str) -> Option<(&'static str, bool)> {
+    let preference = |pattern: &str| -> Vec<u8> {
+        pattern
+            .split('/')
+            .map(|s| {
+                if s.starts_with("{*") {
+                    0
+                } else if s.starts_with('{') {
+                    1
+                } else {
+                    2
+                }
+            })
+            .collect()
+    };
+    routes.iter().copied().filter(|(pattern, _)| routes_path(pattern, path)).max_by_key(|(pattern, _)| preference(pattern))
+}
+
 /// Whether `path` is one `pattern` routes, as axum matches it: `{name}` is one segment that is
 /// not empty, `{*rest}` the rest of the path (not empty), and the rest is compared as it is
 /// written, so `/items/` is not `/items`.
@@ -835,7 +856,7 @@ pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
 
 #[cfg(test)]
 mod local_tests {
-    use super::{routes_path, Local};
+    use super::{chosen, routes_path, Local};
 
     #[test]
     fn a_path_matches_a_pattern_as_axum_matches_it() {
@@ -859,6 +880,27 @@ mod local_tests {
             ("/check", "/%63heck", false),
         ] {
             assert_eq!(routes_path(pattern, path), want, "{pattern} {path}");
+        }
+    }
+
+    #[test]
+    fn the_route_the_router_picks_decides() {
+        let routes = [
+            ("/cart/{id}", true),
+            ("/cart/add", false),
+            ("/{*page}", true),
+            ("/items/{id}", true),
+            ("/items/{id}/{*rest}", false),
+        ];
+        for (path, want) in [
+            ("/cart/7", Some(("/cart/{id}", true))),
+            ("/cart/add", Some(("/cart/add", false))),
+            ("/about/team", Some(("/{*page}", true))),
+            ("/items/7", Some(("/items/{id}", true))),
+            ("/items/7/x", Some(("/items/{id}/{*rest}", false))),
+            ("/", None),
+        ] {
+            assert_eq!(chosen(&routes, path), want, "{path}");
         }
     }
 
@@ -1084,7 +1126,7 @@ impl<S: Clone + Send + Sync + 'static> Methods<S> {
     }
 
     /// Handlers built here by hand, among them one for `GET`.
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     pub(crate) fn reads(router: axum::routing::MethodRouter<S>) -> Self {
         Methods(router, true)
     }
@@ -1154,7 +1196,7 @@ methods!(get, post, put, delete, patch, head, options, trace);
 /// let app = App::new(corten::axum::Router::new().route("/", corten::axum::routing::get(home)));
 /// ```
 #[derive(Default)]
-pub struct Routes(pub(crate) axum::Router, pub(crate) Vec<&'static str>);
+pub struct Routes(pub(crate) axum::Router, pub(crate) Vec<(&'static str, bool)>);
 
 impl Routes {
     /// No routes.
@@ -1166,9 +1208,7 @@ impl Routes {
     #[doc(hidden)]
     pub fn __route<R: Route>(self, methods: Methods) -> Self {
         let mut paths = self.1;
-        if methods.1 {
-            paths.push(R::PATH);
-        }
+        paths.push((R::PATH, methods.1));
         Routes(self.0.route(R::PATH, methods.0), paths)
     }
 }

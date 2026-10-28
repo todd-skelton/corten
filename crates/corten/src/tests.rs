@@ -2584,8 +2584,44 @@ mod serves_url {
     #[route("/cart/add", post = serves_check)]
     pub struct AddToCart;
 
+    #[route("/cart/{id}", get = serves_check)]
+    pub struct CartLine {
+        pub id: u32,
+    }
+
+    #[route("/both", post = serves_check, get = serves_check)]
+    pub struct Both;
+
     #[route("/go", get = serves_go)]
     pub struct Go;
+}
+
+/// Every GET is a page here, but an API, Corten's own paths and its health checks are not.
+#[crate::routes]
+mod serves_catch_url {
+    #[route("/{*page}", get = serves_check)]
+    pub struct Page {
+        pub page: String,
+    }
+}
+
+#[tokio::test]
+async fn a_catch_all_page_does_not_serve_an_api_or_cortens_own_paths() {
+    let router = App::new(serves_catch_url::router())
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods::reads(get(|| async { "rates" }))))
+        .router();
+    for (p, want) in [
+        ("/about/team", "local served"),
+        ("/api/rates", "local elsewhere"),
+        ("/api", "local elsewhere"),
+        ("/health/live", "local elsewhere"),
+        ("/corten/anything", "local elsewhere"),
+        ("/apis", "local served"),
+    ] {
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (status, _, body) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((status, body.as_str()), (StatusCode::OK, want), "{p:?}");
+    }
 }
 
 /// A redirect to the return address in `?p=`, or to `/check` when it is not on this site.
@@ -2633,6 +2669,8 @@ async fn an_app_says_whether_it_serves_a_return_address() {
         ("/admin/users", "local elsewhere"),
         ("/market/cart", "local elsewhere"),
         ("/cart/add", "local elsewhere"),
+        ("/cart/7", "local served"),
+        ("/both", "local served"),
         ("/items/..", "not local"),
         ("/check/../admin", "not local"),
         ("//evil.example/check", "not local"),

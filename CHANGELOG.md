@@ -645,14 +645,13 @@ Corten is pre-1.0, so any minor version may change the API.
     function stays for a value chosen as the page renders and for one per breakpoint. Two that
     would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that
     names both. The watchlist's home page renders in 1.1% fewer instructions (62,827 to 62,162).
-100. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this site
-    only (one leading `/`, not `//` or `/\`, printable ASCII without `\`, so a control character a
-    browser drops cannot make it another host, and no `.` or `..` segment), and
-    `req.redirect(&local)` takes it. `req.serves(&local)` says whether the app has a route with a
-    `GET` handler there (its own routes' and its areas', not an API's), matched as the router
-    matches it, so a sign-in no longer checks a
-    return address against a list of prefixes kept by hand
-    ([#203 An app cannot ask whether it routes a path, so a sign-in's return address is checked against a hand-kept list of prefixes](https://github.com/todd-skelton/corten/issues/203)).
+100. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this
+     site only (one leading `/`, not `//` or `/\`, printable ASCII without `\`, so a control
+     character a browser drops cannot make it another host, and no `.` or `..` segment), and
+     `req.redirect(&local)` takes it. `req.serves(&local)` says whether the route the router picks
+     for its path (the app's own or an area's, not an API's or Corten's) has a `GET` handler, so a
+     sign-in no longer checks a return address against a list of prefixes kept by hand
+     ([#203 An app cannot ask whether it routes a path, so a sign-in's return address is checked against a hand-kept list of prefixes](https://github.com/todd-skelton/corten/issues/203)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
