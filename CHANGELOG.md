@@ -1573,7 +1573,7 @@ Corten is pre-1.0, so any minor version may change the API.
     its item page's tables and price summary fit a phone, its alert form keeps less room under
     it, and its demo cards name their rarity twice (the chips and the details) instead of four
     times: the subtitle is the set and number, and no tag repeats a field or a chip.
-24. Work on a schedule is a task with tokio's intervals: `App::task`'s documentation and the
+23. Work on a schedule is a task with tokio's intervals: `App::task`'s documentation and the
     guide (app.md, "On a schedule") show a job hourly at :15 and one every five minutes in one
     loop, so they never overlap, keeping each job's last run for a status page, run on a paused
     tokio clock in a doctest; the guide says what is left to the app (the monotonic clock's jumps,
