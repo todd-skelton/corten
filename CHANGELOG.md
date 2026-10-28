@@ -1343,6 +1343,12 @@ Corten is pre-1.0, so any minor version may change the API.
     locally, so none is fixed yet
     ([#232 WebKit smoke: "a form submitted before the first page loads navigates" fails now and then](https://github.com/todd-skelton/corten/issues/232),
     [#252 ui-gallery smoke: the first page's combo box did not connect within 30 s in Firefox (CI, once)](https://github.com/todd-skelton/corten/issues/252)).
+47. `bench/fullstack`'s browser pass stopped in round r7: card-market refuses a price alert on an
+    item with no listings (`item_12345`), and the pass waited 30 s for "Alert set". The form
+    action is no longer timed on that item, for any app, since the others set an alert Corten
+    refuses and the two are different work; the empty item's load, sort and client navigation are
+    measured as before. Medians of the action now come from eight of ten runs per profile
+    ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
