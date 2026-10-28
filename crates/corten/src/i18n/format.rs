@@ -660,7 +660,7 @@ fn is_mark(c: char) -> bool {
 }
 
 /// A space a person types or a locale writes between groups or around a symbol: a tab or a line
-/// break is not one.
+/// break is not one there (at either end of the text, any whitespace is trimmed).
 fn is_space(c: char) -> bool {
     matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}')
 }

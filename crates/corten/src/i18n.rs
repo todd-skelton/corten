@@ -876,10 +876,9 @@ mod tests {
         );
     }
 
-    /// Every case `scripts/locale-data.mjs` had Intl write, for every locale: numbers, money and
-    /// dates in fixed zones.
-    /// Every amount every locale writes (Intl's, in cases.tsv) reads back, and what people type
-    /// for it without the marks Intl adds: a symbol's direction marks, its no-break spaces.
+    /// Every amount every locale writes (Intl's, in cases.tsv, and ours in every currency its data
+    /// has) reads back, and what people type for it without the marks Intl adds: a symbol's
+    /// direction marks, its no-break spaces.
     #[test]
     fn every_locale_reads_back_the_money_it_writes() {
         let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
@@ -907,6 +906,17 @@ mod tests {
             checked += 1;
         }
         assert!(checked > 1000, "{checked}");
+        // Every currency a locale has a symbol for, not only the ones in cases.tsv: a longer symbol
+        // in a later CLDR still reads.
+        for (tag, data) in locales {
+            for (code, ..) in data.currencies {
+                let currency = Currency::parse(code).unwrap();
+                for minor in [0_u64, 7, 1234, 123_456_789] {
+                    let text = Formatted::money(data, &Minor(minor), currency).to_string();
+                    assert_eq!(format::parse_money(data, &text, currency), Some(Minor(minor)), "{tag} {code} {text:?}");
+                }
+            }
+        }
         let read =
             |tag: &str, text: &str, code: &str| format::parse_money(data(tag), text, Currency::parse(code).unwrap()).map(|m| m.0);
         // Typed as people type them: no marks, ASCII or the locale's digits, either case.
@@ -924,6 +934,8 @@ mod tests {
         }
     }
 
+    /// Every case `scripts/locale-data.mjs` had Intl write, for every locale: numbers, money and
+    /// dates in fixed zones.
     #[test]
     fn every_locale_writes_numbers_money_and_dates_as_intl_does() {
         let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
