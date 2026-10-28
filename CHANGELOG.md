@@ -1560,6 +1560,10 @@ Corten is pre-1.0, so any minor version may change the API.
     its item page's tables and price summary fit a phone, its alert form keeps less room under
     it, and its demo cards name their rarity twice (the chips and the details) instead of four
     times: the subtitle is the set and number, and no tag repeats a field or a chip.
+23. Each example has a README: what the app is, how to run it (`corten dev` and Docker) with
+    the environment it reads, and which file holds each piece. The main README lists the examples
+    in the order to read them, watchlist first
+    ([#230 No example has a README that says how to run it and where each feature is](https://github.com/todd-skelton/corten/issues/230)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
