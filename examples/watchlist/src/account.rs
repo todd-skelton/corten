@@ -6,7 +6,7 @@ use corten::{
 };
 use serde::Deserialize;
 
-use crate::{app::url as app_url, layout::Layout, theme::*};
+use crate::{app, layout::Layout, theme::*};
 
 /// Someone's own pages: every route here, now and later, takes the viewer, so no one signed out
 /// reaches one (they are sent to the watchlist, where the sign-in button is).
@@ -28,17 +28,17 @@ impl<S: Sync> Identify<S> for Viewer {
     async fn identify(parts: &Parts, _: &S) -> Result<Self, Refused> {
         match cookie::get(&parts.headers, "viewer").filter(|name| !name.is_empty()) {
             Some(name) => Ok(Viewer { name: name.into() }),
-            None => Err(Refused::sign_in(&app_url::Home)),
+            None => Err(Refused::sign_in(&app::url::Home)),
         }
     }
 }
 
-pub async fn sign_in(req: Req) -> HtmlResult {
-    Ok(req.redirect(&app_url::Home)?.with_cookie(SetCookie::new("viewer", "Ada")))
+pub(crate) async fn sign_in(req: Req) -> HtmlResult {
+    Ok(req.redirect(&app::url::Home)?.with_cookie(SetCookie::new("viewer", "Ada")))
 }
 
-pub async fn sign_out(req: Req) -> HtmlResult {
-    Ok(req.redirect(&app_url::Home)?.with_cookie(SetCookie::remove("viewer")))
+pub(crate) async fn sign_out(req: Req) -> HtmlResult {
+    Ok(req.redirect(&app::url::Home)?.with_cookie(SetCookie::remove("viewer")))
 }
 
 #[derive(Deserialize, Fields)]
@@ -61,7 +61,7 @@ fn AvatarResult(text: &str) -> impl Patch {
 
 /// A form with a file: what came, read as it arrives (a picture over 64 KB is refused, the form
 /// still read). A body over 1 MiB is answered with the form's message, not the error page.
-pub async fn avatar(req: Req, mut upload: Upload<AvatarForm>) -> HtmlResult {
+pub(crate) async fn avatar(req: Req, mut upload: Upload<AvatarForm>) -> HtmlResult {
     let f = AvatarForm::FIELDS;
     upload.limit(1 << 20);
     // Every read can find the body over its limit, so they are one block and its outcome is
@@ -96,14 +96,14 @@ async fn page(req: Req, Caller(viewer): Caller<Viewer>) -> HtmlResult {
                 <h1>"Account"</h1>
                 <section class={(card(), row(Space::_3), justify_between(), flex_wrap())}>
                     <p>"Signed in as "{&viewer.name}"."</p>
-                    <form method="post" action={app_url::SignOut} data-patch>
+                    <form method="post" action={app::url::SignOut} data-patch>
                         <button class={secondary()}>"Sign out"</button>
                     </form>
                 </section>
                 <form
                     id={AvatarFormId}
                     method="post"
-                    action={app_url::Avatar}
+                    action={app::url::Avatar}
                     enctype="multipart/form-data"
                     data-patch
                     class={(card(), stack(Space::_3))}

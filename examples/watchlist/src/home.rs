@@ -17,11 +17,11 @@ use crate::{
 };
 
 /// The stocks feed: a snapshot, then live changes from a cursor.
-pub async fn stocks(State(market): State<Market>) -> FeedResponse {
+pub(crate) async fn stocks(State(market): State<Market>) -> FeedResponse {
     market.stocks.snapshot()
 }
 
-pub async fn stocks_live(State(market): State<Market>, since: Since) -> FeedResponse {
+pub(crate) async fn stocks_live(State(market): State<Market>, since: Since) -> FeedResponse {
     market.stocks.live(since)
 }
 
@@ -29,13 +29,13 @@ pub async fn stocks_live(State(market): State<Market>, since: Since) -> FeedResp
 /// runtime swaps in by `id`, like a form's patch, with the trade count as its cursor. The page
 /// says which trade it shows (`since`), and a reconnect which one it last got, so the first
 /// fragment is only sent when the browser is behind; otherwise the stream waits for the next.
-pub async fn trades(State(market): State<Market>, since: LiveSince) -> LiveResponse {
+pub(crate) async fn trades(State(market): State<Market>, since: LiveSince) -> LiveResponse {
     corten::live_watch(market.trades.subscribe(), since, |(n, _)| *n, |(_, text)| LastTrade { text }.to_html())
 }
 
 /// The watchlist screen's data: what the view shows, and what a data client gets.
 #[derive(ToJson)]
-pub struct Home {
+struct Home {
     /// The stocks watched, in the order they were added.
     stocks: Vec<Stock>,
     last_trade: String,
@@ -94,7 +94,7 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 /// The cells print the text the market wrote when the price moved (`Stock::price`,
 /// `Stock::change`), in the app's one locale. Styled by `live_prices.css`.
 #[component(css, js)]
-pub fn LivePrices<'a>(stocks: &'a [Stock], t: Msg) -> impl Patch {
+pub(crate) fn LivePrices<'a>(stocks: &'a [Stock], t: Msg) -> impl Patch {
     let (pause, price, change, updates) = refs();
     let (updated, money, percent) = (t.js().prices_updates(), t.js().money(USD), t.js().percent(2));
     let f = UnwatchForm::FIELDS;
@@ -208,7 +208,7 @@ fn home_screen(req: &Req, viewer: Option<&Viewer>, watching: &mut Watching, home
     Ok(watching.with_cookie(res))
 }
 
-pub async fn page(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>, mut watching: Watching) -> HtmlResult {
+pub(crate) async fn page(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>, mut watching: Watching) -> HtmlResult {
     let home = Home::new(&market, &watching, String::new());
     home_screen(&req, viewer.as_deref(), &mut watching, &home)
 }
@@ -226,7 +226,7 @@ pub(crate) struct UnwatchForm {
     remove: String,
 }
 
-pub async fn watch(
+pub(crate) async fn watch(
     req: Req,
     viewer: Option<Caller<Viewer>>,
     State(market): State<Market>,
@@ -250,7 +250,7 @@ pub async fn watch(
     changed(&req, viewer.as_deref(), &market, &mut watching, message)
 }
 
-pub async fn unwatch(
+pub(crate) async fn unwatch(
     req: Req,
     viewer: Option<Caller<Viewer>>,
     State(market): State<Market>,

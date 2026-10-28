@@ -116,7 +116,7 @@ pub mod url {
     #[route("/live/trades", get = home::trades)]
     pub struct Trades;
 
-    /// The alerts page; `until` is the time a saved alert lands (see `alerts`). The handler
+    /// The alerts page; `until` is the time a saved alert lands (see `alerts::page`). The handler
     /// reads it back with this struct.
     #[route("/alerts", get = alerts::page, post = alerts::save)]
     #[derive(serde::Deserialize)]

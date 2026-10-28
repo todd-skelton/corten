@@ -50,7 +50,7 @@ fn AlertForm<'a>(input: &'a AlertInput, errors: &'a Errors, until: Option<u64>) 
 /// then the page says so and asks to be read again, which the runtime does in place however the
 /// page was reached; once the alert is in, the page stops asking. Alerts are not kept or sent:
 /// a real app stores them and tells the user from a task of its own.
-pub async fn page(req: Req, viewer: Option<Caller<Viewer>>, Query(at): Query<url::Alerts>) -> HtmlResult {
+pub(crate) async fn page(req: Req, viewer: Option<Caller<Viewer>>, Query(at): Query<url::Alerts>) -> HtmlResult {
     // A read again from the form's patch: the status line alone, which asks again from this
     // route while the alert is landing.
     // A view renders only when it is sent, so a page load does not build the read-again.
@@ -82,7 +82,7 @@ fn alerts_page(req: &Req, viewer: Option<&Viewer>, input: &AlertInput, errors: &
 /// with any field a refused submit marked cleared, and its status line is then read again
 /// until the alert is in; without, the alerts page, which reads itself again.
 /// The server checks the price and says what is wrong next to the field.
-pub async fn save(req: Req, viewer: Option<Caller<Viewer>>, Form(input): Form<AlertInput>) -> HtmlResult {
+pub(crate) async fn save(req: Req, viewer: Option<Caller<Viewer>>, Form(input): Form<AlertInput>) -> HtmlResult {
     let f = AlertInput::FIELDS;
     let mut errors = Errors::new();
     if Market::ticker(&input.id).is_none() {

@@ -1,7 +1,7 @@
-//! The WebSocket.
+//! The `/echo` WebSocket, an `Upgrade` example.
 /// A WebSocket that answers each text message in capitals. The handshake is Corten's, checked
 /// as a write is (another site's page cannot open it); the frames are tokio-tungstenite's.
-pub async fn echo(upgrade: corten::upgrade::Upgrade) -> corten::Result<corten::upgrade::Switch> {
+pub(crate) async fn echo(upgrade: corten::upgrade::Upgrade) -> corten::Result<corten::upgrade::Switch> {
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::{
         WebSocketStream,

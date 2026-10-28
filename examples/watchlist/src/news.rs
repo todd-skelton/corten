@@ -468,10 +468,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        news,
-        testing::{LIST, call, call_on, get, get_with, post, post_with, router, send, text},
-    };
+    use crate::testing::{LIST, call, call_on, get, get_with, post, post_with, router, send, text};
 
     #[tokio::test]
     async fn only_the_news_pages_link_their_area_stylesheet() {
@@ -517,16 +514,16 @@ mod tests {
 
     #[tokio::test]
     async fn a_sector_link_writes_the_parameters_the_page_reads() {
-        let link = news::url::News { filter: NewsQuery { sector: vec![Sector::Energy, Sector::Health], ..NewsQuery::default() } };
+        let link = url::News { filter: NewsQuery { sector: vec![Sector::Energy, Sector::Health], ..NewsQuery::default() } };
         assert_eq!(link.href(), "/news?sector=energy&sector=health");
         let (_, page) = send(get(&link.href())).await;
         assert_eq!(headlines(&page).len(), 3, "the first page of the four energy and health stories: {page}");
         assert!(page.contains(r#"<input type="checkbox" name="sector" value="energy" checked>"#), "{page}");
         assert!(page.contains(r#"<details open><summary>Sectors</summary>"#), "a group with a box checked is drawn open: {page}");
         assert!(page.contains(r#"<a href="/news?sector=energy">Energy</a>"#), "a story's sector links to its stories: {page}");
-        let mine = news::url::News { filter: NewsQuery { mine: Some(true), shown: Some(3), ..NewsQuery::default() } };
+        let mine = url::News { filter: NewsQuery { mine: Some(true), shown: Some(3), ..NewsQuery::default() } };
         assert_eq!(mine.href(), "/news?mine=true&shown=3");
-        assert_eq!(news::url::News::default().href(), "/news");
+        assert_eq!(url::News::default().href(), "/news");
     }
 
     #[tokio::test]
