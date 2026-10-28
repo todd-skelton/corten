@@ -62,31 +62,130 @@ pub struct Desk {
     pub archived: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
-/// Cards of an invented game, the one card-market sells.
-const NAMES: [&str; 8] = [
-    "Ashen Drake",
-    "Lantern Warden",
-    "Salt Oracle",
-    "Gravel Sprite",
-    "Undertow Serpent",
-    "Cinder Cartographer",
-    "Moth Court Herald",
-    "Pearl Diver",
+/// The game card-market sells: its three sets of 180 cards.
+const SETS: [&str; 3] = ["Ember Reach", "Hollow Crown", "Tidebreak"];
+const CARDS: usize = 180 * SETS.len();
+
+/// The singles card-market's store lists (`fixtures/demo.json`), with the set and the lowest
+/// price there, so the same card costs the same in both apps (a test reads the fixture).
+const LISTED: [(&str, &str, u32); 11] = [
+    ("Ashen Drake", "Ember Reach", 4250),
+    ("Lantern Warden", "Hollow Crown", 325),
+    ("Salt Oracle", "Tidebreak", 11800),
+    ("Gravel Sprite", "Ember Reach", 35),
+    ("Crown of Thorns and Glass", "Hollow Crown", 2780),
+    ("Undertow Serpent", "Tidebreak", 210),
+    ("Cinder Cartographer", "Ember Reach", 960),
+    ("Moth Court Herald", "Hollow Crown", 50),
+    ("Pearl Diver", "Tidebreak", 140),
+    ("Kiln Colossus", "Ember Reach", 8600),
+    ("Regent of Ash", "Hollow Crown", 6475),
 ];
-const SETS: [&str; 5] = ["Hollow Crown", "Tidebreak", "Ember Reach", "Saltglass Coast", "Ironwood Vale"];
-const CONDITIONS: [&str; 4] = ["Near Mint", "Lightly Played", "Moderately Played", "Damaged"];
+
+/// The rest of the sets' names: a place and a creature, each pair once.
+const PLACES: [&str; 24] = [
+    "Ashen",
+    "Lantern",
+    "Salt",
+    "Gravel",
+    "Undertow",
+    "Cinder",
+    "Pearl",
+    "Kiln",
+    "Ember",
+    "Tide",
+    "Hollow",
+    "Iron",
+    "Glass",
+    "Thorn",
+    "Silt",
+    "Brine",
+    "Ivory",
+    "Copper",
+    "Lichen",
+    "Storm",
+    "Dusk",
+    "Marsh",
+    "Quarry",
+    "Ember-Eyed",
+];
+const BEINGS: [&str; 24] = [
+    "Drake",
+    "Warden",
+    "Oracle",
+    "Sprite",
+    "Serpent",
+    "Cartographer",
+    "Diver",
+    "Colossus",
+    "Smith",
+    "Hound",
+    "Witch",
+    "Pilgrim",
+    "Sentinel",
+    "Weaver",
+    "Tyrant",
+    "Scholar",
+    "Courier",
+    "Gardener",
+    "Hermit",
+    "Duelist",
+    "Shepherd",
+    "Archivist",
+    "Lancer",
+    "Mystic",
+];
+
+/// A copy's condition, and the share of a Near Mint copy's price it sells for.
+const CONDITIONS: [(&str, u32); 4] = [("Near Mint", 100), ("Lightly Played", 85), ("Moderately Played", 65), ("Damaged", 40)];
+
+/// Every card in the sets, as `(name, set, Near Mint price in cents)`: card-market's singles first,
+/// then the rest, priced by a rarity each card draws once (most are commons).
+fn cards() -> Vec<(String, &'static str, u32)> {
+    let mut cards: Vec<_> = LISTED.iter().map(|&(name, set, cents)| (name.to_string(), set, cents)).collect();
+    // Each place meets each being once, in an order that does not run through one place.
+    let pairs = (0..PLACES.len() * BEINGS.len()).map(|k| {
+        let (place, round) = (k % PLACES.len(), k / PLACES.len());
+        format!("{} {}", PLACES[place], BEINGS[(place + round) % BEINGS.len()])
+    });
+    for name in pairs {
+        if cards.len() == CARDS {
+            break;
+        }
+        if cards.iter().any(|(listed, ..)| *listed == name) {
+            continue;
+        }
+        let k = cards.len() as u32;
+        let draw = k.wrapping_mul(2_654_435_761) % 1000;
+        let cents = match draw {
+            0..20 => 2000 + draw * 7919 % 13000,
+            20..100 => 200 + draw * 7919 % 3800,
+            100..300 => 25 + draw * 104_729 % 275,
+            _ => 10 + draw * 7919 % 40,
+        };
+        cards.push((name, SETS[cards.len() % SETS.len()], cents));
+    }
+    cards
+}
 
 impl Desk {
-    /// `rows` items, the same every time.
+    /// `rows` items, the same every time: each card in the sets in Near Mint, then each again in
+    /// the next condition, at that condition's share of the price. Past every card in every
+    /// condition (2160 rows, more than any page shows) the rows start over.
     pub fn new(rows: usize) -> Self {
+        let cards = cards();
         let items: Vec<Item> = (0..rows)
-            .map(|i| Item {
-                id: format!("i{i:05}"),
-                name: format!("{} #{}", NAMES[i % NAMES.len()], i / NAMES.len() + 1),
-                set: SETS[i % SETS.len()].into(),
-                condition: CONDITIONS[i % CONDITIONS.len()],
-                price_cents: 99 + (i as u32 * 7919) % 50_000,
-                archived: false,
+            .map(|i| {
+                let (name, set, cents) = &cards[i % cards.len()];
+                let (condition, share) = CONDITIONS[i / cards.len() % CONDITIONS.len()];
+                Item {
+                    id: format!("i{i:05}"),
+                    name: name.clone(),
+                    set: (*set).into(),
+                    condition,
+                    price_cents: (cents * share / 100).max(1),
+                    archived: false,
+                }
             })
             .collect();
         let levels = Feed::new(items.iter().enumerate().map(|(i, it)| Level { id: it.id.clone(), qty: (i as u32 * 31) % 40 }));
@@ -296,6 +395,44 @@ mod tests {
             .unwrap()
     }
 
+    /// The cards card-market lists cost the same here, in the same set; every name is a card's,
+    /// once per condition.
+    #[test]
+    fn the_desk_sells_card_markets_cards_at_its_prices() {
+        let fixture = include_str!("../../card-market/fixtures/demo.json");
+        let field = |item: &str, key: &str| -> String {
+            let start = item.find(&format!("\"{key}\": \"")).unwrap_or_else(|| panic!("{key}")) + key.len() + 5;
+            item[start..].split('"').next().unwrap().to_string()
+        };
+        let mut checked = 0;
+        for item in fixture.split("\"catalog_item_id\"").skip(1) {
+            let (title, subtitle) = (field(item, "title"), field(item, "subtitle"));
+            if subtitle.ends_with("Sealed") {
+                continue;
+            }
+            let lowest = field(item, "lowest_price_amount").replace('.', "");
+            let (_, set, cents) =
+                LISTED.iter().find(|(name, ..)| *name == title).unwrap_or_else(|| panic!("{title} is not on the desk"));
+            assert!(subtitle.starts_with(set), "{title}: {subtitle}");
+            assert_eq!(cents.to_string(), lowest.trim_start_matches('0'), "{title}");
+            checked += 1;
+        }
+        assert_eq!(checked, LISTED.len(), "every listed single is in the fixture");
+
+        let cards = cards();
+        assert_eq!(cards.len(), CARDS);
+        let names: std::collections::HashSet<_> = cards.iter().map(|(name, ..)| name.as_str()).collect();
+        assert_eq!(names.len(), CARDS, "no name twice");
+        assert!(names.iter().all(|name| !name.contains('#')), "names are cards' names");
+        let desk = Desk::new(CARDS + 1);
+        let items = desk.items.lock().unwrap();
+        assert_eq!((items[0].name.as_str(), items[0].condition, items[0].price_cents), ("Ashen Drake", "Near Mint", 4250));
+        assert_eq!(
+            (items[CARDS].name.as_str(), items[CARDS].condition, items[CARDS].price_cents),
+            ("Ashen Drake", "Lightly Played", 3612)
+        );
+    }
+
     #[test]
     fn prices_parse_like_people_type_them() {
         let t = Msg::default();
@@ -392,7 +529,7 @@ mod tests {
         let (status, headers, html) = send_full(&desk, Request::get("/statement").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(headers["cache-control"], "no-store");
-        assert!(html.contains("<td>Hollow Crown</td><td>2</td><td>$"), "the stock value in the locale's money format: {html}");
+        assert!(html.contains("<td>Hollow Crown</td><td>3</td><td>$"), "the stock value in the locale's money format: {html}");
         let (_, headers, _) = send_full(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
         let timing = headers["server-timing"].to_str().unwrap();
         assert!(timing.starts_with("app;dur="), "{timing}");
