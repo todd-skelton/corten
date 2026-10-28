@@ -174,6 +174,10 @@ pub(crate) fn negotiate(headers: &HeaderMap) -> Option<Coding> {
 
 /// `res` compressed with `coding` when it is worth it.
 pub(crate) async fn finish(res: Response, coding: Option<Coding>) -> Response {
+    // Another server's answer goes on as it came unless its route asked (#205).
+    if res.extensions().get::<crate::answer::Relayed>().is_some_and(|r| !r.compress) {
+        return res;
+    }
     let headers = res.headers();
     let content_type = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
     let event_stream = content_type.split(';').next().unwrap_or("").trim() == "text/event-stream";
@@ -436,8 +440,33 @@ mod tests {
             Router::new()
                 .route("/page", get(move || async move { axum::response::Html(page) }))
                 .route("/small", get(|| async { axum::response::Html("<p>small</p>") }))
-                .route("/png", get(|| async { ([(header::CONTENT_TYPE, "image/png")], vec![0u8; 4096]) })),
+                .route("/png", get(|| async { ([(header::CONTENT_TYPE, "image/png")], vec![0u8; 4096]) }))
+                .route("/relay", get(|| async { relayed("text/html; charset=utf-8", Body::from("<p>corten</p>".repeat(200))) }))
+                .route(
+                    "/relay-live",
+                    get(|| async {
+                        let events = futures_util::stream::iter(
+                            [redraw(1), redraw(2)].map(|e| Ok::<_, std::convert::Infallible>(Bytes::from(e))),
+                        );
+                        relayed("text/event-stream", Body::from_stream(events))
+                    }),
+                )
+                .route(
+                    "/relay-compressed",
+                    get(|| async {
+                        let mut headers = HeaderMap::new();
+                        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+                        let relay = crate::Relay::new(StatusCode::OK, headers, Body::from("<p>corten</p>".repeat(200)));
+                        axum::response::IntoResponse::into_response(relay.compressed())
+                    }),
+                ),
         )
+    }
+
+    fn relayed(content_type: &'static str, body: Body) -> Response {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+        axum::response::IntoResponse::into_response(crate::Relay::new(StatusCode::OK, headers, body))
     }
 
     async fn get_with(uri: &str, encoding: &str) -> (HeaderMap, Vec<u8>) {
@@ -477,6 +506,21 @@ mod tests {
         let (headers, body) = get_with("/png", "zstd").await;
         assert!(!headers.contains_key("content-encoding") && !headers.contains_key("vary"));
         assert_eq!(body.len(), 4096);
+    }
+
+    #[tokio::test]
+    async fn a_relayed_answer_goes_on_as_it_came() {
+        let (headers, body) = get_with("/relay", "gzip, br, zstd").await;
+        assert!(!headers.contains_key("content-encoding") && !headers.contains_key("vary"), "{headers:?}");
+        assert_eq!(body, "<p>corten</p>".repeat(200).into_bytes());
+        // An event stream is not encoded either, so it holds no coder from the stream budget.
+        let (headers, body) = get_with("/relay-live", "zstd").await;
+        assert!(!headers.contains_key("content-encoding") && !headers.contains_key("vary"), "{headers:?}");
+        assert_eq!(body, [redraw(1), redraw(2)].concat().into_bytes());
+        // Unless its route asks.
+        let (headers, body) = get_with("/relay-compressed", "zstd").await;
+        assert_eq!(headers["content-encoding"], "zstd");
+        assert_eq!(zstd::bulk::decompress(&body, 1 << 20).unwrap(), "<p>corten</p>".repeat(200).into_bytes());
     }
 
     /// A row list redrawn: the same markup with one price changed.

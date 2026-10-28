@@ -588,9 +588,12 @@ its body as it arrives (`Body::from_stream(res.bytes_stream())` from reqwest). A
 keeps the upstream's body, never the error page or the JSON error. The app's security and cache
 rules still apply, except that a `Content-Security-Policy` the upstream sent replaces the app's:
 a relayed page's scripts were written for its own policy (their nonces and hosts), which the app's
-would block. Without one, the app's applies. A streamed body is passed on as each piece arrives: it is not compressed,
-except an event stream, compressed piece by piece; a body the upstream compressed is passed on
-as it is. When the client leaves, the body is dropped, and
+would block. Without one, the app's applies. A streamed body is passed on as each piece arrives,
+and Corten does not compress any of it: the encoding is the upstream's, so a relay that should be
+compressed forwards the client's `Accept-Encoding` and the upstream's encoded body goes on as it
+is. A gateway whose remote clients would gain from compression its upstream does not do asks for
+it with `.compressed()`: the body is then compressed as a page is, and an event stream event by
+event, holding a compression context (about 0.5 to 1 MB) for as long as it is open. When the client leaves, the body is dropped, and
 the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
 
 ## Who is asking

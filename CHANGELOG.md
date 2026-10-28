@@ -1213,6 +1213,13 @@ Corten is pre-1.0, so any minor version may change the API.
     sent a `DIALOG` request. One function, `sendsAs`, reads the button for both the patch and the
     navigation path. `corten.js`: 23,032 to 23,264 B (8,442 to 8,503 B gzip)
     ([#196 A data-patch form reads its submit button's raw formmethod and formaction, so formmethod=put sends a PUT where the browser sends a GET](https://github.com/todd-skelton/corten/issues/196)).
+44. A `Relay`'s answer is passed on as it came with feature `compress` on too, as its docs said: it
+    was compressed for any client that accepted zstd, brotli or gzip, and a relayed event stream
+    (a model's streamed answer through a gateway) held a compression context (480 KiB for zstd,
+    about 1 MB for brotli) from the budget the app's own live streams share, for as long as it ran.
+    A gateway whose remote clients gain from compression asks for it with `Relay::compressed()`.
+    Every other answer pays one check of its extensions (1.7 to 3.0 ns, measured)
+    ([#205 With compress on, a Relay's answer is re-encoded per connection, so a gateway holds a 480 KiB coder for every relayed model stream and cannot opt out](https://github.com/todd-skelton/corten/issues/205)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
