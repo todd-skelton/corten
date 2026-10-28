@@ -636,7 +636,11 @@ Corten is pre-1.0, so any minor version may change the API.
     and `page()` (the page or a redirect) otherwise, in place of
     `if req.mode == Mode::Action { return req.patch(view); }`. Like `Req::invalid`, the page's
     closure runs only without JavaScript, so a patch never loads what only the page shows.
-98. `tokens!` gives each utility value a function named after its class: `mx_auto()` is `mx-auto`
+98. `corten::live_watch(values, since, cursor, view)`: a live stream of one value in a
+    `tokio::sync::watch` channel, from where the page is: nothing until the next change when it
+    shows the current version, the current value first when it is behind, then the latest after
+    each change. It replaces about ten lines of `mark_changed`, `unfold` and `Fragment`.
+99. `tokens!` gives each utility value a function named after its class: `mx_auto()` is `mx-auto`
     and `gap_3()` is `gap-3`, in place of `mx(Mx::Auto)` and `gap(Space::_3)`. The utility's
     function stays for a value chosen as the page renders and for one per breakpoint. Two that
     would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that

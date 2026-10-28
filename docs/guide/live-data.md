@@ -14,19 +14,19 @@ stays as it is instead of reconnecting, so a stream of one fragment is a slow pa
 when it is ready. A server shutting down ends its streams first, and those browsers reconnect.
 
 ```rust,ignore
-// the route: each item replaces the element with the same id
-async fn trades(State(market): State<Market>) -> LiveResponse {
-    let next = market.trades.subscribe();
-    corten::live(futures_util::stream::unfold(next, |mut next| async move {
-        next.changed().await.ok()?;
-        let html = LastTrade { text: &next.borrow_and_update() }.to_html();
-        Some((html, next))
+// the route: one fragment, when the slow read is done; it replaces the element with its id
+async fn picks(State(shop): State<Shop>) -> LiveResponse {
+    corten::live(futures_util::stream::once(async move {
+        let picks = shop.picks_for_you().await;
+        Picks { picks: &picks }.to_html()
     }))
 }
 
-// the page: rendered first by the server, then kept current
-html! { <corten-live src={url::Trades}><LastTrade text={&last_trade} /></corten-live> }
+// the page: drawn without them, then completed
+html! { <corten-live src={url::Picks}><p id={PicksId}>"Finding picks for you..."</p></corten-live> }
 ```
+
+A value that keeps changing is the next section's `corten::live_watch`.
 
 ### Resuming
 
@@ -36,21 +36,22 @@ sequence number, a realtime stream's position; Corten only carries it), and the 
 it was rendered at, `<corten-live src={..} since={seq}>`. The handler's `LiveSince` is that
 cursor on the first connection, and on a reconnect the last fragment's (the browser sends it
 back as `Last-Event-ID`); `None` when there is neither. Send what changed after it, or nothing
-until the next change when it is current:
+until the next change when it is current.
+
+One value that changes, kept in a `tokio::sync::watch` channel (the last trade and the trade
+count), is `corten::live_watch(values, since, cursor, view)`: it sends the current value only to a
+page that is behind, then the latest after each change (a browser needs no value it missed in
+between), and ends when the channel's sender is dropped:
 
 ```rust,ignore
-async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> LiveResponse {
-    let mut next = market.trades.subscribe();
-    if since.as_deref() != Some(next.borrow().0.to_string().as_str()) {
-        next.mark_changed(); // the browser is behind: send the current trade first
-    }
-    corten::live(futures_util::stream::unfold(next, |mut next| async move {
-        next.changed().await.ok()?;
-        let (n, text) = next.borrow_and_update().clone();
-        Some((Fragment::new(LastTrade { text: &text }.to_html()).cursor(n.to_string()), next))
-    }))
+async fn trades(State(market): State<Market>, since: LiveSince) -> LiveResponse {
+    corten::live_watch(market.trades.subscribe(), since, |(n, _)| *n, |(_, text)| LastTrade { text }.to_html())
 }
 ```
+
+Another source (a database's change stream, a queue) does the same with `corten::live`: compare
+`since` with the version the part is at, send the current part first only when they differ, and
+give each fragment its version with `Fragment::cursor`.
 
 A cursor the app no longer knows (too old, another deploy's) is the handler's to handle; drawing
 the part as it is now is always correct. A cursor with a line break or NUL would end its event,

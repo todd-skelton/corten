@@ -18,7 +18,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use corten::{
-    ClientZone, Fragment, LiveResponse, LiveSince,
+    ClientZone, LiveResponse, LiveSince,
     axum::{
         extract::FromRef,
         http::{StatusCode, request::Parts},
@@ -280,17 +280,8 @@ async fn sign_out(req: Req) -> HtmlResult {
 /// runtime swaps in by `id`, like a form's patch, with the trade count as its cursor. The page
 /// says which trade it shows (`since`), and a reconnect which one it last got, so the first
 /// fragment is only sent when the browser is behind; otherwise the stream waits for the next.
-async fn trades(State(market): State<Market>, LiveSince(since): LiveSince) -> LiveResponse {
-    let mut next = market.trades.subscribe();
-    let current = next.borrow().0.to_string();
-    if since.as_deref() != Some(current.as_str()) {
-        next.mark_changed();
-    }
-    corten::live(futures_util::stream::unfold(next, |mut next| async move {
-        next.changed().await.ok()?;
-        let (n, text) = next.borrow_and_update().clone();
-        Some((Fragment::new(LastTrade { text: &text }.to_html()).cursor(n.to_string()), next))
-    }))
+async fn trades(State(market): State<Market>, since: LiveSince) -> LiveResponse {
+    corten::live_watch(market.trades.subscribe(), since, |(n, _)| *n, |(_, text)| LastTrade { text }.to_html())
 }
 
 /// The watchlist screen's data: what the view shows, and what a data client gets.
