@@ -992,6 +992,20 @@ mod tests {
         assert!(checked > 9000, "{checked}");
     }
 
+    /// `<time datetime>`: to the millisecond where there is one, rounded down before 1970 too.
+    #[test]
+    fn a_relative_time_says_its_instant_to_the_millisecond() {
+        use std::time::{Duration, UNIX_EPOCH};
+        let data = corten_macros::__all_locales!().iter().find(|(t, _)| *t == "en").unwrap().1;
+        let now = UNIX_EPOCH + Duration::from_secs(1_774_191_845);
+        let at = |t| Relative::new(data, t, now, RelativeStyle::Narrow).datetime().to_string();
+        assert_eq!(at(now), "2026-03-22T15:04:05Z");
+        assert_eq!(at(now + Duration::from_millis(250)), "2026-03-22T15:04:05.250Z");
+        assert_eq!(at(UNIX_EPOCH - Duration::from_micros(1)), "1969-12-31T23:59:59.999Z");
+        assert_eq!(Relative::new(data, now, now, RelativeStyle::Long).to_string(), "0 seconds ago");
+        assert_eq!(Relative::new(data, now + Duration::from_secs(38_100), now, RelativeStyle::Narrow).to_string(), "in 10h");
+    }
+
     /// The format each case's page would send a script (`t.js().number()`, `.money(..)`,
     /// `.date(..)`), by locale: `scripts/format.mjs` runs `crates/corten/js/format.js` with them
     /// on the same cases, so the browser writes what the server does. Rewritten here when the

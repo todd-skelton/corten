@@ -215,9 +215,12 @@ not redraw every open page on a clock:
 html! { <p>"Resets "<RelativeTime when={t.relative(window.resets_at, now, RelativeStyle::Long)} /></p> }
 ```
 
-The browser counts from its own clock and writes with its own `Intl.RelativeTimeFormat`, so a
-browser whose CLDR is older than the server's may word a unit slightly differently once it takes
-over.
+Days are the largest unit ("in 45 days"); a time further off reads better as `t.date`. The
+browser counts from its own clock and writes with its own `Intl.RelativeTimeFormat`, so a browser
+whose CLDR is older than the server's may word a unit slightly differently once it takes over, and
+one without the locale keeps the server's text. Without JavaScript, or from a cache, the text is
+as old as the page.
+
 Each listed locale's separators, currency symbols and date patterns are CLDR's, checked against
 Intl, and only the locales `messages!` lists are in the app. A script that writes a number, an
 amount or a date takes the page's format (`t.js().money(USD)`) and writes the same text

@@ -462,9 +462,21 @@ for (const tag of [...LANGUAGES, ...REGIONS]) {
       expect(tag, `relative ${s}`, String(seconds), formatRelative(d, s, seconds), intl);
       if (RELATIVE_CASES.indexOf(seconds) % 3 === 0 || s === 0) forCases.push([`relative ${s}`, String(seconds), intl]);
     }
-    // Whole numbers from 1 to 300 000, and multiples of a million, in one unit.
+    // Whole numbers from 1 to 300 000, and multiples of a million, in days; to 300 in each of
+    // the smaller units, which have their own words.
     for (const n of [...Array.from({ length: 3000 }, (_, i) => i + 1), ...Array.from({ length: 300 }, (_, i) => 3000 + i * 997), 1e6, 2e6, 1e6 + 1, 1e7, 21e6]) {
       expect(tag, `relative ${s} days`, String(n), formatRelative(d, s, n * 86400), f.format(n, "day"));
+    }
+    for (let n = 1; n <= 300; n++) {
+      for (const [u, unit] of RELATIVE_UNITS.slice(0, 3).entries()) {
+        for (const sign of [-1, 1]) {
+          // Below the next unit's size it is written in this one (seconds to 59, and so on); past
+          // it, the template is the same one the cases reach, so it is checked directly.
+          const template = d.relative[s][u][sign > 0 ? 1 : 0][plural(d, n)];
+          const ours = template.replace("\u0001", body(d, d.plain, String(n), ""));
+          expect(tag, `relative ${s} ${unit}s`, String(sign * n), ours, f.format(sign * n, unit));
+        }
+      }
     }
   });
   // A region with its language's data is an alias.

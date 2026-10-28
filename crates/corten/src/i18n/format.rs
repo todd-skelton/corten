@@ -956,7 +956,8 @@ impl Relative {
         self.data.tag
     }
 
-    /// The instant as `<time datetime>` takes it: `2026-03-22T15:04:05Z`, in UTC, to the second.
+    /// The instant as `<time datetime>` takes it: `2026-03-22T15:04:05Z` (`..05.250Z` with
+    /// milliseconds), in UTC.
     pub fn datetime(&self) -> Datetime {
         Datetime(self.at)
     }
@@ -1006,16 +1007,29 @@ impl Display for Relative {
     }
 }
 
-/// An instant as `<time datetime>` takes it: [`Relative::datetime`].
+/// An instant as `<time datetime>` takes it, to the millisecond where it has one:
+/// [`Relative::datetime`].
 #[derive(Clone, Copy, Debug)]
 pub struct Datetime(SystemTime);
 
 impl Display for Datetime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let seconds = unix_seconds(self.0);
+        // Milliseconds since the epoch, rounded down (before it too).
+        let millis = match self.0.duration_since(UNIX_EPOCH) {
+            Ok(after) => after.as_millis() as i128,
+            Err(before) => {
+                let d = before.duration();
+                -(d.as_millis() as i128) - i128::from(!d.subsec_nanos().is_multiple_of(1_000_000))
+            }
+        };
+        let seconds = millis.div_euclid(1000) as i64;
         let (year, month, day) = civil_from_days(seconds.div_euclid(86_400));
         let s = seconds.rem_euclid(86_400);
-        write!(f, "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", s / 3600, s / 60 % 60, s % 60)
+        write!(f, "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)?;
+        match millis.rem_euclid(1000) {
+            0 => f.write_str("Z"),
+            ms => write!(f, ".{ms:03}Z"),
+        }
     }
 }
 
