@@ -777,20 +777,29 @@ pub struct Local(String);
 impl Local {
     /// `text` when it is a path on this site: it starts with one `/`, not `//` or `/\` (which a
     /// browser reads as another host), and is printable ASCII without `\`, so no control
-    /// character or space a browser drops can turn it into one. A `.` or `..` segment (`%2e`
-    /// too) is refused as well: the browser resolves it away before it asks, so the path it asks
-    /// for is not the one [`crate::Req::serves`] would check. Anything else, a full URL included,
-    /// is `None`: send the user to the fallback.
+    /// character or space a browser drops can turn it into one. Two more are refused because the
+    /// browser would ask for another path than the one [`crate::Req::serves`] checks: a `.` or
+    /// `..` segment, which it resolves away, and in the path a percent-escaped letter, digit or
+    /// `-._~` (`%61`, `%2e`), which Chromium sends as the plain character. Anything else, a full
+    /// URL included, is `None`: send the user to the fallback.
     pub fn parse(text: &str) -> Option<Local> {
         let bytes = text.as_bytes();
         let path = bytes.first() == Some(&b'/') && !matches!(bytes.get(1), Some(b'/' | b'\\'));
         let printable = bytes.iter().all(|&b| b.is_ascii_graphic() && b != b'\\');
-        let dot = |segment: &str| {
-            let segment = segment.to_ascii_lowercase().replace("%2e", ".");
-            segment == "." || segment == ".."
+        let route = text.split(['?', '#']).next().unwrap_or("");
+        let dots = route.split('/').any(|segment| segment == "." || segment == "..");
+        let unreserved = |pair: &[u8]| {
+            let hex = |b: u8| (b as char).to_digit(16);
+            match (hex(pair[0]), hex(pair[1])) {
+                (Some(high), Some(low)) => {
+                    let b = (high * 16 + low) as u8;
+                    b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~')
+                }
+                _ => false,
+            }
         };
-        let dots = text.split(['?', '#']).next().unwrap_or("").split('/').any(dot);
-        (path && printable && !dots).then(|| Local(text.to_string()))
+        let escaped = route.as_bytes().split(|&b| b == b'%').skip(1).any(|after| after.len() >= 2 && unreserved(&after[..2]));
+        (path && printable && !dots && !escaped).then(|| Local(text.to_string()))
     }
 
     /// The path, without the query or fragment: what the app's routes are matched against.
@@ -809,6 +818,24 @@ impl Href for Local {
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
         f(&self.0)
     }
+}
+
+/// Whether each `{..}` in `path` is a whole segment (`/items/{id}`, not `/item_{id}`), checked when
+/// the app compiles: `#[derive(Route)]` only writes such paths, and [`chosen`] matches no other
+/// shape, so a `Route` written by hand is held to it too.
+pub(crate) const fn whole_segments(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'{' && (i == 0 || bytes[i - 1] != b'/') {
+            return false;
+        }
+        if bytes[i] == b'}' && i + 1 < bytes.len() && bytes[i + 1] != b'/' {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }
 
 /// Of `routes` (each pattern, and whether it has a `GET` handler), the one the router picks for
@@ -911,7 +938,21 @@ mod local_tests {
 
     #[test]
     fn only_a_path_on_this_site_is_local() {
-        for ok in ["/", "/a", "/a?b=c&d=%2F%2F", "/a#x", "/%2F%2Fevil.example", "/a//b", "/a/.b", "/a/b..", "/a?x=/../"] {
+        for ok in [
+            "/",
+            "/a",
+            "/a?b=c&d=%2F%2F",
+            "/a#x",
+            "/%2F%2Fevil.example",
+            "/a//b",
+            "/a/.b",
+            "/a/b..",
+            "/a?x=/../",
+            "/a?q=%61",
+            "/a%20b",
+            "/50%",
+            "/a%2",
+        ] {
             assert_eq!(Local::parse(ok).map(|l| l.to_string()).as_deref(), Some(ok), "{ok:?}");
         }
         for bad in [
@@ -933,6 +974,9 @@ mod local_tests {
             "/a/%2e%2E/b",
             "/a/.%2E",
             "/items/..",
+            "/cart/%61dd",
+            "/%7Euser",
+            "/a%2Db",
         ] {
             assert!(Local::parse(bad).is_none(), "{bad:?}");
         }
@@ -1212,6 +1256,7 @@ impl Routes {
     /// Used by `#[corten::routes]`: `R`'s handlers at its path. Not a public API.
     #[doc(hidden)]
     pub fn __route<R: Route>(self, methods: Methods) -> Self {
+        const { assert!(whole_segments(R::PATH), "corten: a route's parameters are whole segments, like /items/{{id}}") };
         let mut paths = self.1;
         paths.push((R::PATH, methods.1));
         Routes(self.0.route(R::PATH, methods.0), paths)

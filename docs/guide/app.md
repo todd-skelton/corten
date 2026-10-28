@@ -679,8 +679,8 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    A return address the sign-in page was given (`?next=/account/cart`) is text from outside:
    `corten::Local::parse(&next)` keeps it only when it is a path on this site (not `//host`,
    `/\host`, a `..` segment or a full URL, so the redirect cannot lead elsewhere), and
-   `req.serves(&local)` says whether the app has a `GET` route there, its areas' included (not
-   an API's). Send the user to it with `req.redirect(&local)`. A path another app of the product
+   `req.serves(&local)` says whether the route the router picks for its path (the app's own or
+   an area's, not an API's) has a `GET` handler. Send the user to it with `req.redirect(&local)`. A path another app of the product
    serves is that app's address with the path after it
    (`Uri::try_from(format!("https://shop.example{local}"))`), and anything else goes to a page of
    the app's own.

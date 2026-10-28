@@ -2663,6 +2663,10 @@ mod serves_shop_url {
     pub struct Cart;
 }
 
+#[derive(crate::Route)]
+#[route("/shop/list")]
+struct ShopList;
+
 async fn serves_page() -> &'static str {
     "page"
 }
@@ -2670,7 +2674,9 @@ async fn serves_page() -> &'static str {
 /// `req.serves` says a path is served exactly when a GET to it reaches a page.
 #[tokio::test]
 async fn serves_agrees_with_the_router() {
-    let router = App::new(serves_router_url::router()).area(serves_shop_url::area).router();
+    let router = App::new(serves_router_url::router())
+        .area(|shop| serves_shop_url::area(shop).route::<ShopList>(crate::route::post(serves_page).get(serves_page)))
+        .router();
     for (p, want) in [
         ("/items/7/edit", true),
         ("/items//edit", true),
@@ -2679,6 +2685,7 @@ async fn serves_agrees_with_the_router() {
         ("/x//y", false),
         ("/x/1/z", true),
         ("/shop/cart", true),
+        ("/shop/list", true),
         ("/about", true),
         ("/health/live", false),
     ] {
@@ -2736,6 +2743,7 @@ async fn an_app_says_whether_it_serves_a_return_address() {
         ("/market/cart", "local elsewhere"),
         ("/cart/add", "local elsewhere"),
         ("/cart/7", "local served"),
+        ("/cart/%61dd", "not local"),
         ("/both", "local served"),
         ("/items/..", "not local"),
         ("/check/../admin", "not local"),

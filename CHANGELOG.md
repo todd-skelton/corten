@@ -655,7 +655,8 @@ Corten is pre-1.0, so any minor version may change the API.
     (its name is now also a whole attribute value, the hole the sort reads).
 101. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this
      site only (one leading `/`, not `//` or `/\`, printable ASCII without `\`, so a control
-     character a browser drops cannot make it another host, and no `.` or `..` segment), and
+     character a browser drops cannot make it another host, no `.` or `..` segment, and no
+     percent-escaped letter, digit or `-._~` in the path, which Chromium would send unescaped), and
      `req.redirect(&local)` takes it. `req.serves(&local)` says whether the route the router picks
      for its path (the app's own or an area's, not an API's or Corten's) has a `GET` handler, so a
      sign-in no longer checks a return address against a list of prefixes kept by hand

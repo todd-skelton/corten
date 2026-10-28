@@ -99,12 +99,34 @@ impl<P: Prefix> Area<P> {
     /// let app = App::new(Routes::new()).area::<Admin>(|admin| admin.route::<Users>(get(|| async { "users" })));
     /// # let _ = app.router();
     /// ```
+    ///
+    /// A parameter is a whole segment, as `#[derive(Route)]` writes it, in a `Route` written by
+    /// hand too, so [`crate::Req::serves`] knows which route the router picks:
+    ///
+    /// ```compile_fail,E0080
+    /// # use corten::prelude::*;
+    /// #[derive(Route)]
+    /// #[route("/admin")]
+    /// struct Admin;
+    ///
+    /// struct Item;
+    /// impl corten::Route for Item {
+    ///     const PATH: &'static str = "/admin/item_{id}";
+    ///     fn write_href(&self, out: &mut String, _: bool) {
+    ///         out.push_str("/admin/item_1");
+    ///     }
+    /// }
+    ///
+    /// let app = App::new(Routes::new()).area::<Admin>(|admin| admin.route::<Item>(get(|| async { "item" })));
+    /// # let _ = app.router();
+    /// ```
     pub fn route<R: TypedRoute>(mut self, methods: Methods) -> Self {
         const {
             assert!(
                 crate::api::under_const(P::PREFIX, R::PATH),
                 "corten: a route of an area is at or under its prefix (the note below names the area's prefix and the route)"
-            )
+            );
+            assert!(crate::route::whole_segments(R::PATH), "corten: a route's parameters are whole segments, like /items/{{id}}");
         };
         self.routes = self.routes.route(R::PATH, methods.0);
         self.pages.push((R::PATH, methods.1));
