@@ -325,7 +325,7 @@ async function run(browser) {
   await page.keyboard.press("Escape");
   check("Escape closes the page's dialog", !(await isModal()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
 
-  // dialog::modalClosedBy: a sheet the address opens, which Escape closes by following its link.
+  // dialog::modalClosedBy: a sheet the address opens, which a close request leaves for its link's address.
   await page.goto(`${base}/`);
   /** This entry's place in the history, where the browser has the Navigation API (a browser without it loads whole pages, and the link's address replaces the sheet's). */
   const at = () => page.evaluate(() => /** @type {any} */ (window).navigation?.currentEntry?.index ?? -1);
@@ -340,7 +340,7 @@ async function run(browser) {
     await page.keyboard.press("Escape");
     await page.waitForURL((url) => !url.searchParams.has("sale"), { timeout: 5000 }).catch(() => {});
     await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
-    check(`${how}: Escape follows the close link, the address no longer names the sale`, !new URL(page.url()).searchParams.has("sale"), page.url());
+    check(`${how}: Escape goes to the close link's address, which does not name the sale`, !new URL(page.url()).searchParams.has("sale"), page.url());
     check(`${how}: the page without it replaces the sheet`, (await sheet.count()) === 0);
   };
   const openSheet = async () => {

@@ -61,9 +61,10 @@ A dialog the address opens (a record beside its list, `/items?selected=it_1`, cl
 `/items`) is drawn `open` the same way, but Escape on a modal dialog closes it where the address
 cannot see: a reload or a redraw would open it again. `dialog::modalClosedBy` makes it modal, and
 a close request on it (Escape, Android's Back, a click outside a `closedby="any"` dialog) goes to
-its close link's address, a ref, without a new history entry: back to the list when the user came
-from it, else in place of the dialog's entry. Back after it leaves the list, and Android's Back on
-the open dialog cannot loop between the two. A `cancel` from inside it, such as a file input's
+its close link's address, a ref, without a new history entry and without clicking the link: back,
+when the entry before is that address, else in place of the dialog's entry (always so in a browser
+without the Navigation API, where Back then shows the list once more). Android's Back on the open
+dialog cannot loop between the two. A `cancel` from inside it, such as a file input's
 dismissed picker, is left alone. The close is a link: a button there does not
 compile. Without a script, the dialog is open and the link closes it.
 

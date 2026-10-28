@@ -699,8 +699,8 @@ Corten is pre-1.0, so any minor version may change the API.
 108. `corten_ui::dialog::modalClosedBy(target, close, signal)`: a dialog the address opens
     (`?selected=it_1`) is made modal as `dialog::modal` makes one, and a close request on it
     (Escape, Android's Back) goes to its close link's address (a ref; a button there does not
-    compile) without a new history entry, back to the list when the user came from it, so a
-    reload or a redraw no longer opens what the user closed and Back cannot loop through it. A
+    compile) without a new history entry, back when the entry before is the list, so a reload or
+    a redraw no longer opens what the user closed and Back cannot loop through it. A
     `cancel` from inside it (a file input's picker) is left alone, and without a script nothing
     changes. ui-gallery's last-sale sheet is tested in Chromium, Firefox and WebKit. Apps' own
     `cancel` scripts can go
