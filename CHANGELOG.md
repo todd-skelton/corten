@@ -698,12 +698,14 @@ Corten is pre-1.0, so any minor version may change the API.
     sheet is tested in Chromium, Firefox and WebKit. Apps' own `cancel`-to-click scripts can go
     ([#257 corten-ui's dialog::modal closes a dialog the address opened without following its close link, so Escape leaves ?selected= behind](https://github.com/todd-skelton/corten/issues/257)).
 109. `corten_ui::CopyButton`: a button that copies an element's text (an order number, an API
-    key's one-time secret). The text is a ref to the page's own element
-    (`<code ref={secret}>`, `<CopyButton text={secret} label={..} copied={..} />`), so it is on the
-    page once; text in its place does not compile. The button is drawn `hidden` and shown only
-    where the clipboard can be written; after a write it reads the app's `copied` for two seconds
-    in a polite live region, and a failed write changes nothing. Tested in ui-gallery in
-    Chromium, Firefox and WebKit. Apps' own copy scripts can go
+    key's one-time secret; a read-only field's value). The element is named by its
+    `#[derive(Id)]` id (`<code id={SecretId}>`, `<CopyButton text={SecretId} label={..}
+    copied={..} />`), so the text is on the page once and a button in a list copies its own row's;
+    text in its place does not compile. The button is drawn `hidden` and shown only where the
+    clipboard can be written; after a write it reads the app's `copied` for two seconds in a
+    polite live region, and nothing to copy or a failed write changes nothing. Tested in
+    ui-gallery in Chromium, Firefox and WebKit (the clipboard's contents in Chromium, which lets a
+    test read it). Apps' own copy scripts can go
     ([#244 corten-ui has no copy-to-clipboard control, so each app ships its own script for Copy](https://github.com/todd-skelton/corten/issues/244)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

@@ -343,9 +343,10 @@ async function run(browser) {
   await escape("loaded at its address");
   // CopyButton: shown where the clipboard can be written; a click copies the number's text.
   const clip = await (await browser.newContext(engine === "chromium" ? { permissions: ["clipboard-read", "clipboard-write"] } : {})).newPage();
+  clip.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   clip.on("pageerror", (e) => errors.push(e.message));
   await clip.goto(`${base}/`);
-  const copyButton = clip.getByRole("button", { name: "Copy" });
+  const copyButton = clip.getByRole("button", { name: "Copy", exact: true });
   await copyButton.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
   check("the copy button shows once its script connects", await copyButton.isVisible());
   await copyButton.click();

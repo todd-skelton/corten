@@ -115,17 +115,20 @@ pub fn MenuResult<'a>(text: &'a str) -> impl Patch {
 #[derive(Id)]
 struct MenuResultId;
 
+/// The order number's element, which its copy button names.
+#[derive(Id)]
+struct OrderNumberId;
+
 /// An order number with a button that copies it: the number is on the page once, and the button
 /// shows only where the script can write the clipboard.
 #[component]
 fn OrderNumber<'a>(number: &'a str) -> impl Render {
-    let text = refs();
     html! {
         <p>
             "Order "
-            <code ref={text}>{number}</code>
+            <code id={OrderNumberId}>{number}</code>
             " "
-            <CopyButton text={text} label="Copy" copied="Copied" />
+            <CopyButton text={OrderNumberId} label="Copy" copied="Copied" />
         </p>
     }
 }
