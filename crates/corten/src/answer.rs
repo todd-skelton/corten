@@ -267,7 +267,7 @@ impl Answer for StatusCode {
 /// the upstream sent is kept in place of the app's: a relayed page needs the policy its own HTML
 /// was written for (its scripts' nonces and hosts). Without one, the app's applies. Corten does
 /// not compress it: its encoding is the upstream's (forward the client's `Accept-Encoding` to
-/// have the upstream compress), unless the route asks with [`Relay::compressed`]. When the client
+/// have the upstream compress). When the client
 /// leaves, the body is dropped, and with it the upstream request. What else to drop
 /// (`Set-Cookie`, say) is the route's to decide before it builds the answer.
 ///
@@ -314,17 +314,8 @@ impl Relay {
         let mut res = Response::new(body);
         *res.status_mut() = status;
         *res.headers_mut() = headers;
-        res.extensions_mut().insert(Relayed { compress: false });
+        res.extensions_mut().insert(Relayed);
         Relay(res)
-    }
-
-    /// The answer compressed for the client as a page is (feature `compress`): an event stream
-    /// event by event, holding a compression context for as long as it is open. For a gateway
-    /// whose clients are remote and whose upstream sends it uncompressed; a body the upstream
-    /// encoded is still passed on as it is.
-    pub fn compressed(mut self) -> Self {
-        self.0.extensions_mut().insert(Relayed { compress: true });
-        self
     }
 }
 
@@ -339,12 +330,10 @@ impl Answer for Relay {
     type Inputs = AnyInputs;
 }
 
-/// On a [`Relay`]'s response: its failure status is the upstream's, passed on as it is, and its
-/// body is compressed only when the route asked ([`Relay::compressed`]).
+/// On a [`Relay`]'s response: its failure status and its encoding are the upstream's, passed on
+/// as they are.
 #[derive(Clone, Copy)]
-pub(crate) struct Relayed {
-    pub(crate) compress: bool,
-}
+pub(crate) struct Relayed;
 
 /// Fragments streamed to `<corten-live>`: what [`crate::live`] gives.
 pub struct LiveResponse(pub(crate) Response);

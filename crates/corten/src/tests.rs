@@ -2343,6 +2343,43 @@ async fn an_upgrade_route_switches_for_its_own_origin_and_refuses_other_sites() 
 #[route("/api/ws")]
 struct ApiWs;
 
+/// A relayed answer goes through the whole app uncompressed, a page-sized body and an event stream
+/// alike, so a long model stream holds no compression context (#205).
+#[cfg(feature = "compress")]
+#[tokio::test]
+async fn a_relay_is_not_compressed_by_the_app() {
+    fn upstream(content_type: &'static str, body: Body) -> crate::Relay {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("content-type", content_type.parse().unwrap());
+        crate::Relay::new(StatusCode::OK, headers, body)
+    }
+    let page = "<p>relayed</p>".repeat(300);
+    let events = "event: delta\ndata: {\"text\":\"hello\"}\n\n".repeat(100);
+    let (p, e) = (page.clone(), events.clone());
+    let router = App::new(Routes::from(
+        Router::new().route("/page", get(move || async move { upstream("text/html; charset=utf-8", Body::from(p)) })).route(
+            "/stream",
+            get(move || async move {
+                let chunk = Ok::<_, std::convert::Infallible>(axum::body::Bytes::from(e));
+                upstream("text/event-stream", Body::from_stream(futures_util::stream::iter([chunk])))
+            }),
+        ),
+    ))
+    .router();
+    for (path, sent) in [("/page", &page), ("/stream", &events)] {
+        let req = Request::get(path).header("accept-encoding", "zstd, br, gzip").body(Body::empty()).unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{path}");
+        assert!(
+            !res.headers().contains_key("content-encoding") && !res.headers().contains_key("vary"),
+            "{path}: {:?}",
+            res.headers()
+        );
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&body[..], sent.as_bytes(), "{path}");
+    }
+}
+
 /// A relayed answer is passed on as the upstream gave it: its failure status and body, never the
 /// error page or the JSON error, without the hop-by-hop headers.
 #[tokio::test]

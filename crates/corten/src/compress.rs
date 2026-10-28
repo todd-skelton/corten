@@ -16,8 +16,9 @@
 //! it a new stream goes out uncompressed. An event repeats cheaply when the one before it is within the
 //! window, so events up to about 64 KB.
 //!
-//! `corten::compress::apply(router)` wraps the whole app. Images, fonts, bodies under 1 KiB and
-//! responses that are already encoded or marked `no-transform` pass through.
+//! `corten::compress::apply(router)` wraps the whole app. Images, fonts, bodies under 1 KiB,
+//! another server's answer ([`crate::Relay`]) and responses that are already encoded or marked
+//! `no-transform` pass through.
 
 use std::{
     cell::RefCell,
@@ -174,8 +175,8 @@ pub(crate) fn negotiate(headers: &HeaderMap) -> Option<Coding> {
 
 /// `res` compressed with `coding` when it is worth it.
 pub(crate) async fn finish(res: Response, coding: Option<Coding>) -> Response {
-    // Another server's answer goes on as it came unless its route asked (#205).
-    if res.extensions().get::<crate::answer::Relayed>().is_some_and(|r| !r.compress) {
+    // Another server's answer goes on as it came: its encoding is the upstream's (#205).
+    if res.extensions().get::<crate::answer::Relayed>().is_some() {
         return res;
     }
     let headers = res.headers();
@@ -450,15 +451,6 @@ mod tests {
                         );
                         relayed("text/event-stream", Body::from_stream(events))
                     }),
-                )
-                .route(
-                    "/relay-compressed",
-                    get(|| async {
-                        let mut headers = HeaderMap::new();
-                        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
-                        let relay = crate::Relay::new(StatusCode::OK, headers, Body::from("<p>corten</p>".repeat(200)));
-                        axum::response::IntoResponse::into_response(relay.compressed())
-                    }),
                 ),
         )
     }
@@ -517,10 +509,6 @@ mod tests {
         let (headers, body) = get_with("/relay-live", "zstd").await;
         assert!(!headers.contains_key("content-encoding") && !headers.contains_key("vary"), "{headers:?}");
         assert_eq!(body, [redraw(1), redraw(2)].concat().into_bytes());
-        // Unless its route asks.
-        let (headers, body) = get_with("/relay-compressed", "zstd").await;
-        assert_eq!(headers["content-encoding"], "zstd");
-        assert_eq!(zstd::bulk::decompress(&body, 1 << 20).unwrap(), "<p>corten</p>".repeat(200).into_bytes());
     }
 
     /// A row list redrawn: the same markup with one price changed.
