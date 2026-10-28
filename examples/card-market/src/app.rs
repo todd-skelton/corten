@@ -602,6 +602,27 @@ mod tests {
         assert_eq!(send(cross).await.0, StatusCode::FORBIDDEN);
     }
 
+    /// A French reader types the price as French writes money, and is answered in French.
+    #[tokio::test]
+    async fn an_alert_reads_the_price_in_the_readers_locale() {
+        let post = |price: &str| {
+            Request::post("/items/item_9")
+                .header("corten", "action")
+                .header("accept-language", "fr")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("sec-fetch-site", "same-origin")
+                .body(Body::from(format!("title=Pika&email=a%40b.c&target_price={price}")))
+                .unwrap()
+        };
+        let (status, _, body) = send(post("2%2C50")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Alerte créée : nous écrirons à a@b.c quand Pika passera sous 2,50\u{a0}$US."), "{body}");
+        // En's decimal point is not a French price: refused, not read as 250 dollars.
+        let (status, _, body) = send(post("2.50")).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(body.contains("Saisissez un prix cible supérieur à zéro."), "{body}");
+    }
+
     #[tokio::test]
     async fn an_invalid_alert_is_422_with_field_errors_on_every_surface() {
         let post = |mode: Option<&str>, accept: Option<&str>| {
