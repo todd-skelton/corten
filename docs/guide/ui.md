@@ -12,7 +12,7 @@ no CSS.
 | `ComboBox` | a native `<select>`, which keeps the value | a text input that filters a listbox (ARIA 1.2 combobox), validation reported on the input |
 | `TabGroup` | tabs that are typed links to the page with that tab selected | roving focus, arrow keys, switching in place with the address following |
 | `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, `aria-expanded`, the button as the menu's CSS anchor |
-| `Toaster` | the message is part of the page the post answers with | a live region an action's patch fills (`req.patch_or(Toast { message: Some(&text) }, page)`), hidden after `seconds` but kept while the pointer or focus is on it or the page is hidden, and a close button |
+| `Toaster` | the message is part of the page the post answers with | a live region an action's patch fills (`req.patch_or(Toast { message: Some(text) }, page)`), hidden after `seconds` but kept while the pointer or focus is on it or the page is hidden, and a close button |
 
 ```rust,ignore
 let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };

@@ -30,9 +30,9 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, rename: 
     let price = Number { value: Some(12.5), min: Some(0.0), step: 0.01, ..Number::new("price", f.price, "Lower", "Higher") };
     let color = Picker { required: true, ..Picker::new("color", f.color, "Choose a color", "No matching color", &COLORS) };
     let items = [
-        MenuItem { label: &"Help", link: &url::Help, post: false },
-        MenuItem { label: &"Archive", link: &url::Archive, post: true },
-        MenuItem { label: &"Watch", link: &url::Watch, post: true },
+        MenuItem { label: "Help", link: &url::Help, post: false },
+        MenuItem { label: "Archive", link: &url::Archive, post: true },
+        MenuItem { label: "Watch", link: &url::Watch, post: true },
     ];
     html! {
         <div class={Intro}>
@@ -61,15 +61,15 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, rename: 
                     label="Market"
                     selected={tab}
                     tabs={&[
-                        Tab { label: &"Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None }) },
-                        Tab { label: &"Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]) }) },
-                        Tab { label: &"Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]) }) },
+                        Tab { label: "Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None }) },
+                        Tab { label: "Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]) }) },
+                        Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]) }) },
                     ]}
                 />
             </section>
             <section class={(Card, Actions)}>
                 <h2>"Menu button"</h2>
-                <MenuButton id="actions" label={&"Actions"} items={&items} />
+                <MenuButton id="actions" label="Actions" items={&items} />
                 <MenuResult text="" />
             </section>
             <section class={Card}>
@@ -82,7 +82,7 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, rename: 
         </div>
         {rename}
         <div class={Toasts}>
-            <Toaster close={&"Dismiss"} seconds={2} toast={Toast { message: toast.as_ref().map(|t| t as &dyn Render) }} />
+            <Toaster close="Dismiss" seconds={2} toast={Toast { message: toast }} />
         </div>
     }
 }
