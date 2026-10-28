@@ -588,18 +588,27 @@ goes through the host check and the app's middleware.
 A WebSocket's handler takes `corten::upgrade::Upgrade` and returns what `upgrade.websocket(run)`
 gives: the 101 with its `Sec-WebSocket-Accept`, and `run(stream, signal)` on the connection once
 it has switched. Corten reads the handshake and hands over the bytes; the frames are a WebSocket
-library's (`examples/watchlist`'s `/echo` uses tokio-tungstenite):
+library's (`examples/watchlist`'s `/quotes` uses tokio-tungstenite):
 
 ```rust,ignore
-async fn echo(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Switch> {
+async fn quotes(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Switch> {
     upgrade.websocket(move |stream, signal| async move {
         let mut socket = WebSocketStream::from_raw_socket(stream, Role::Server, Some(config)).await;
         loop {
             let message = tokio::select! {
                 message = socket.next() => message,
-                _ = signal.aborted() => break, // shutting down
+                _ = signal.aborted() => {
+                    let _ = socket.close(None).await; // shutting down: say goodbye
+                    break;
+                }
             };
-            // .. answer it; check the viewer again here if a revoked key must end the socket
+            match message {
+                // The library queued the answer to a client's close; a flush sends it.
+                Some(Ok(Message::Close(_))) => { let _ = socket.flush().await; break; }
+                Some(Err(_)) | None => break,
+                // .. answer it; check the viewer again here if a revoked key must end the socket
+                Some(Ok(_message)) => {}
+            }
         }
     })
 }

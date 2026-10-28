@@ -1157,6 +1157,12 @@ Corten is pre-1.0, so any minor version may change the API.
     JPEG, GIF or WebP), refuses anything else, keeps at most 256 pictures in memory, and needs
     someone signed in. The file input is styled like the page's buttons
     ([#221 watchlist's profile picture upload never shows the picture](https://github.com/todd-skelton/corten/issues/221)).
+67. watchlist's WebSocket is `/quotes`, which a ticker outside the browser opens to follow
+    stocks: it sends a ticker and is sent the stock's feed row, then again each time it trades.
+    It replaces `/echo`, which answered in capitals and which nothing used. A message longer than a
+    ticker closes the socket as too big (1009), a client's close is answered, a send the client
+    does not take within 10 seconds ends the socket, and shutdown still closes it with a goodbye
+    ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
