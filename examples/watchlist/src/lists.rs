@@ -10,9 +10,10 @@ use std::{
 };
 
 use corten::{
+    HtmlResponse,
     axum::{
         extract::{FromRef, FromRequestParts},
-        http::{HeaderValue, request::Parts},
+        http::request::Parts,
     },
     security::{
         Nonce,
@@ -128,12 +129,20 @@ impl Watching {
         self.ids = lists.change(self.id(), |ids| ids.retain(|watched| *watched != id));
     }
 
-    /// The cookie that names the list, for an answer to a browser that had none: the watchlist
-    /// sets it before the first change, so two first changes sent at once go to one list.
-    pub fn cookie(&mut self) -> Option<HeaderValue> {
+    /// `res` with the cookie that names the list, for an answer to a browser that had none: the
+    /// watchlist sets it before the first change, so two first changes sent at once go to one list.
+    pub fn with_cookie(&mut self, res: HtmlResponse) -> HtmlResponse {
+        match self.new_cookie() {
+            Some(cookie) => res.with_cookie(cookie),
+            None => res,
+        }
+    }
+
+    /// The cookie, when this browser's list is new.
+    fn new_cookie(&mut self) -> Option<SetCookie> {
         self.id();
         let id = self.id.as_deref().filter(|_| self.new)?;
-        Some(SetCookie::new("list", id).max_age(365 * 24 * 60 * 60).header())
+        Some(SetCookie::new("list", id).max_age(365 * 24 * 60 * 60))
     }
 }
 
@@ -188,11 +197,11 @@ mod tests {
     fn a_browser_without_a_list_gets_an_id_only_when_asked() {
         let mut reader = Watching { id: None, new: false, ids: FIRST_WATCHED.to_vec() };
         assert!(reader.has("ACME") && reader.id.is_none());
-        let cookie = reader.cookie().expect("a new id is set");
+        let cookie = reader.new_cookie().expect("a new id is set").header();
         let id = reader.id.clone().unwrap();
         assert!(id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()), "{id}");
         assert!(cookie.to_str().unwrap().starts_with(&format!("list={id};")));
         let mut known = Watching { id: Some(id), new: false, ids: vec![] };
-        assert!(known.cookie().is_none(), "a browser with a list keeps its id");
+        assert!(known.new_cookie().is_none(), "a browser with a list keeps its id");
     }
 }

@@ -53,8 +53,8 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
    `ReadAgain { after: Duration::from_secs(2) }` to its head tags while it is behind (and stops
    after a time limit); the runtime reads it again in place however it was reached. A
    `data-patch` answer in the same state puts `{ReadAgain { after }.from(&route)}` in the patch,
-   where `route` carries the write's receipt and its handler answers `req.patch(..)` in
-   `Mode::Action`; never redirect only to show "saving". Never a `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
+   where `route` carries the write's receipt and its handler answers `req.patch_or(..)` (the part,
+   or the page without JavaScript); never redirect only to show "saving". Never a `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
    `raw` or an expression inside `<script>` (that does not compile).
 3. A client navigation gets only the `<title>`, the head tags and `<main>`'s children; the rest of
    the layout renders on full loads. Mark the current link with
@@ -239,7 +239,9 @@ not build. A page that shows something either way (a layout's "Sign in") takes
 `Option<Caller<Viewer>>`. Reads and writes at one URL are separate handlers (`get = show,
 post = save`), so each takes what it needs. A private app puts `caller = Staff` on its routes
 module and the sign-in route in a module without it. A check that needs the record (only its
-author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`.
+author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`. Signing in
+sets the session cookie on the answer, `Ok(req.redirect(&next)?.with_cookie(SetCookie::new("session",
+&token)))` (`SetCookie::remove("session")` signs out); never append a `Set-Cookie` header by hand.
 
 ## Data from another service
 

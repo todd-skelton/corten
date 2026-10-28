@@ -1,5 +1,6 @@
 use super::*;
 use crate::cache::Cache;
+use crate::security::cookie::SetCookie;
 use crate::view::{html, Render};
 use axum::{body::Body, extract::Path, http::Request, routing::get, Router};
 use http_body_util::BodyExt;
@@ -245,11 +246,7 @@ fn routes() -> Router {
             req.page(Shell { req: &req, title: "A & B", head, children: demo("<script>") })
         })
         .post(|req: Req| async move {
-            if req.mode == Mode::Action {
-                req.patch(html! { <p id={MsgId}>"saved"</p> })
-            } else {
-                req.redirect(&Done)
-            }
+            req.patch_or(html! { <p id={MsgId}>"saved"</p> }, || async { req.redirect(&Done) }).await
         }),
     )
 }
@@ -316,6 +313,48 @@ async fn a_live_stream_that_finishes_tells_the_element_to_stop() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers["content-type"], "text/event-stream");
     assert_eq!(body, "event: patch\ndata: <p id=\"late\">Ready</p>\n\nevent: end\ndata: end\n\n");
+}
+
+/// `live_watch` sends the current value only to a page that is behind, then each change, and
+/// ends when the value's sender goes.
+#[tokio::test]
+async fn a_live_watch_sends_the_latest_value_from_where_the_page_is() {
+    use crate::LiveSince;
+    let (tx, rx) = tokio::sync::watch::channel(7u64);
+    let stream = |since: Option<&str>| {
+        let since = LiveSince(since.map(str::to_string));
+        crate::live_watch(rx.clone(), since, |n| n.to_string(), |n| format!(r#"<p id="n">{n}</p>"#))
+    };
+    let (behind, current) = (stream(Some("6")), stream(Some("7")));
+    let first = stream(None);
+    tx.send_replace(8);
+    tx.send_replace(9); // the browser only needs the latest: 8 is skipped
+    drop(tx);
+    let body = |res: LiveResponse| async move {
+        String::from_utf8(res.into_response().into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+    };
+    let nine = "event: patch\nid: 9\ndata: <p id=\"n\">9</p>\n\nevent: end\ndata: end\n\n";
+    assert_eq!(body(current).await, nine, "a page showing 7 gets the next change");
+    assert_eq!(body(behind).await, nine, "a page behind gets the latest");
+    assert_eq!(body(first).await, nine);
+    let (tx, rx) = tokio::sync::watch::channel(7u64);
+    let behind = crate::live_watch(rx, LiveSince(Some("6".into())), |n| n.to_string(), |n| format!(r#"<p id="n">{n}</p>"#));
+    let read = tokio::spawn(body(behind));
+    tokio::task::yield_now().await;
+    drop(tx);
+    assert_eq!(
+        read.await.unwrap(),
+        "event: patch\nid: 7\ndata: <p id=\"n\">7</p>\n\nevent: end\ndata: end\n\n",
+        "the current one first"
+    );
+
+    // A receiver kept in the app's state never reads, so a clone of it has not seen 8: a page
+    // showing 8 still gets nothing until the next change.
+    let (tx, kept) = tokio::sync::watch::channel(7u64);
+    tx.send_replace(8);
+    let current = crate::live_watch(kept.clone(), LiveSince(Some("8".into())), |n| *n, |n| format!(r#"<p id="n">{n}</p>"#));
+    drop(tx);
+    assert_eq!(body(current).await, "event: end\ndata: end\n\n", "nothing to send");
 }
 
 #[tokio::test]
@@ -391,6 +430,49 @@ async fn action_returns_patch_and_plain_post_redirects() {
     let (status, headers, _) = call(app(routes(), None), "POST", None).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     assert_eq!(headers["location"], "/done");
+}
+
+/// `patch_or`'s page is built only for a submit without JavaScript, so a patch never loads what
+/// only the page shows.
+#[tokio::test]
+async fn patch_or_builds_the_page_only_without_javascript() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static PAGES: AtomicUsize = AtomicUsize::new(0);
+    let routes = || {
+        Router::new().route(
+            "/",
+            axum::routing::post(|req: Req| async move {
+                let page = || async {
+                    PAGES.fetch_add(1, Ordering::Relaxed);
+                    req.redirect(&Done)
+                };
+                req.patch_or(html! { <p id={MsgId}>"saved"</p> }, page).await
+            }),
+        )
+    };
+    let (_, headers, _) = call(app(routes(), None), "POST", Some("action")).await;
+    assert_eq!((headers["corten-patch"].to_str().unwrap(), PAGES.load(Ordering::Relaxed)), ("1", 0));
+    let (status, _, _) = call(app(routes(), None), "POST", None).await;
+    assert_eq!((status, PAGES.load(Ordering::Relaxed)), (StatusCode::SEE_OTHER, 1));
+    // A data client gets the page's answer too, not a JSON error as from `invalid`.
+    let (status, _, _) = call_with(app(routes(), None), "POST", "/", None, Some("application/json")).await;
+    assert_eq!((status, PAGES.load(Ordering::Relaxed)), (StatusCode::SEE_OTHER, 2));
+}
+
+/// A view of references that are not `Sync` (`&Cell`) keeps the handler's future `Send`: the
+/// patch is rendered before `patch_or`'s future holds anything.
+#[tokio::test]
+async fn patch_or_keeps_a_handler_send_with_a_view_of_cells() {
+    let routes = Router::new().route(
+        "/",
+        axum::routing::post(|req: Req| async move {
+            let count = std::cell::Cell::new(1);
+            let count = &count;
+            req.patch_or(html! { <p id={MsgId}>{count.get()}</p> }, || async { req.redirect(&Done) }).await
+        }),
+    );
+    let (_, _, body) = call(app(routes, None), "POST", Some("action")).await;
+    assert_eq!(body, r#"<p id="msg">1</p>"#);
 }
 
 #[cfg(feature = "json")]
@@ -1495,6 +1577,13 @@ fn cached_routes() -> Router {
             }),
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
+        .route(
+            "/cookies",
+            get(move |req: Req| async move {
+                let page = req.test_page("Home", home()).map(|page| page.with_cookie(SetCookie::new("a", "1")));
+                Public::new(minute, page.map(|page| page.with_cookie(SetCookie::remove("b"))))
+            }),
+        )
         .route("/plain", get(|req: Req| async move { req.test_page("Plain", html! { <p>"plain"</p> }) }))
 }
 
@@ -1505,6 +1594,20 @@ async fn cache_control(router: &Router, uri: &str, extra: &[(&'static str, &'sta
     }
     let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
     res.headers()[header::CACHE_CONTROL].to_str().unwrap().to_string()
+}
+
+/// Each `with_cookie` adds one `Set-Cookie`, in order, with the safe flags.
+#[tokio::test]
+async fn with_cookie_sets_each_cookie_in_order() {
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            Ok::<_, Error>(req.redirect(&Done)?.with_cookie(SetCookie::new("a", "1")).with_cookie(SetCookie::remove("b")))
+        }),
+    );
+    let res = app(routes, None).oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    let cookies: Vec<_> = res.headers().get_all(header::SET_COOKIE).iter().map(|c| c.to_str().unwrap()).collect();
+    assert_eq!(cookies, ["a=1; Path=/; SameSite=Lax; HttpOnly; Secure", "b=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]);
 }
 
 #[tokio::test]
@@ -1531,6 +1634,7 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
         assert_eq!(cache_control(&router, "/", &[partial]).await, "private, max-age=60", "only the document: {partial:?}");
     }
     assert_eq!(cache_control(&router, "/cookie", &[]).await, "private, no-cache", "it sets a cookie");
+    assert_eq!(cache_control(&router, "/cookies", &[]).await, "private, no-cache", "it sets cookies");
     assert_eq!(cache_control(&router, "/catalog", &[]).await, "public, max-age=60, s-maxage=86400");
     assert_eq!(cache_control(&router, "/catalog", &[("corten", "nav")]).await, "private, max-age=60", "the browser's lifetime");
     assert_eq!(cache_control(&router, "/catalog", &[("cookie", "session=abc")]).await, "private, no-cache");

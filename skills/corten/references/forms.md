@@ -28,10 +28,9 @@ fn Greeting(name: &str) -> impl Patch {
 }
 
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
-    match req.mode {
-        Mode::Action => req.patch(Greeting { name: &form.name }),  // the runtime swaps #greeting
-        _ => req.page(home_page(&req, &form.name)),                 // no JavaScript: the whole page
-    }
+    // With JavaScript the runtime swaps #greeting; without, the whole page. The page closure
+    // runs only then, so a patch never loads the page's data.
+    req.patch_or(Greeting { name: &form.name }, || async { req.page(home_page(&req, &form.name)) }).await
 }
 ```
 
