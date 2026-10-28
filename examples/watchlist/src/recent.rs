@@ -44,6 +44,11 @@ impl<V> Recent<V> {
         self.get_mut(id).expect("made above")
     }
 
+    /// `id`'s value, not marked used.
+    pub fn peek(&self, id: &str) -> Option<&V> {
+        self.values.get(id).map(|(_, value)| value)
+    }
+
     #[cfg(test)]
     /// How many values and uses it holds, which are always the same.
     pub fn sizes(&self) -> (usize, usize) {
