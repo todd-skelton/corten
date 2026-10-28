@@ -2607,8 +2607,10 @@ mod serves_catch_url {
 
 #[tokio::test]
 async fn a_catch_all_page_does_not_serve_an_api_or_cortens_own_paths() {
+    let pwa = crate::pwa::Pwa::new(crate::pwa::Manifest::new("A", "A"));
     let router = App::new(serves_catch_url::router())
         .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods::reads(get(|| async { "rates" }))))
+        .pwa(pwa)
         .router();
     for (p, want) in [
         ("/about/team", "local served"),
@@ -2616,11 +2618,75 @@ async fn a_catch_all_page_does_not_serve_an_api_or_cortens_own_paths() {
         ("/api", "local elsewhere"),
         ("/health/live", "local elsewhere"),
         ("/corten/anything", "local elsewhere"),
+        ("/manifest.webmanifest", "local elsewhere"),
+        ("/service-worker.js", "local elsewhere"),
         ("/apis", "local served"),
     ] {
         let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
         let (status, _, body) = call_with(router.clone(), "GET", &uri, None, None).await;
         assert_eq!((status, body.as_str()), (StatusCode::OK, want), "{p:?}");
+    }
+}
+
+/// Paths where matching by hand is easy to get wrong: an empty segment, a POST-only route the
+/// router picks over a catch-all page, and a path routed by both the app and an area.
+#[crate::routes]
+mod serves_router_url {
+    #[route("/check", get = serves_check)]
+    pub struct Check;
+
+    #[route("/items/{id}/edit", get = serves_page)]
+    pub struct Edit {
+        pub id: String,
+    }
+
+    #[route("/x/{a}/y", post = serves_page)]
+    pub struct Write {
+        pub a: String,
+    }
+
+    #[route("/shop/cart", get = serves_page)]
+    pub struct CartPage;
+
+    #[route("/{*page}", get = serves_page)]
+    pub struct Page {
+        pub page: String,
+    }
+}
+
+#[crate::routes(area = Shop)]
+mod serves_shop_url {
+    #[route("/shop")]
+    pub struct Shop;
+
+    #[route("/shop/cart", post = serves_page)]
+    pub struct Cart;
+}
+
+async fn serves_page() -> &'static str {
+    "page"
+}
+
+/// `req.serves` says a path is served exactly when a GET to it reaches a page.
+#[tokio::test]
+async fn serves_agrees_with_the_router() {
+    let router = App::new(serves_router_url::router()).area(serves_shop_url::area).router();
+    for (p, want) in [
+        ("/items/7/edit", true),
+        ("/items//edit", true),
+        ("/items/7/", true),
+        ("/x/1/y", false),
+        ("/x//y", false),
+        ("/x/1/z", true),
+        ("/shop/cart", true),
+        ("/about", true),
+        ("/health/live", false),
+    ] {
+        let (status, _, body) = call_with(router.clone(), "GET", p, None, None).await;
+        let routed = status == StatusCode::OK && body == "page";
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (_, _, says) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((routed, says == "local served"), (want, want), "{p:?}: {status} {body:?}, serves says {says:?}");
     }
 }
 

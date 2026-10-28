@@ -605,10 +605,18 @@ impl<M: Middleware> App<M> {
         shared.locales = self.locales;
         shared.client_zone = self.client_zone;
         shared.dev = dev;
-        shared.pages = self.pages.iter().chain(self.areas.iter().flat_map(|area| &area.pages)).copied().collect();
+        // The same path routed in two places (the app's routes and an area's) is one route to axum,
+        // with the methods of both.
+        let mut pages: Vec<(&'static str, bool)> = Vec::new();
+        for &(pattern, get) in self.pages.iter().chain(self.areas.iter().flat_map(|area| &area.pages)) {
+            match pages.iter_mut().find(|(p, _)| *p == pattern) {
+                Some((_, has)) => *has |= get,
+                None => pages.push((pattern, get)),
+            }
+        }
+        shared.pages = pages.into();
         // What is not a page however the app's routes match it: Corten's own paths and the APIs.
-        shared.not_pages =
-            (own.exact.clone(), own.prefixes.clone(), self.apis.iter().map(|(mount, _)| mount.prefix.clone()).collect());
+        shared.not_pages = NotPages { own: own.clone(), apis: self.apis.iter().map(|(mount, _)| mount.prefix.clone()).collect() };
         shared.components = self.components.iter().chain(sections.iter().flat_map(|(_, c)| c.iter())).map(|c| c.name).collect();
         if let Some(assets) = &shared.assets {
             for section in assets.section_stylesheets() {
@@ -897,7 +905,8 @@ impl tower_service::Service<hyper::Request<hyper::body::Incoming>> for Connectio
 }
 
 /// The paths of Corten's own routes.
-struct Own {
+#[derive(Clone, Default)]
+pub(crate) struct Own {
     exact: Vec<&'static str>,
     prefixes: Vec<String>,
 }
@@ -905,6 +914,19 @@ struct Own {
 impl Own {
     fn contains(&self, path: &str) -> bool {
         self.exact.contains(&path) || self.prefixes.iter().any(|prefix| path.starts_with(prefix.as_str()))
+    }
+}
+
+/// Paths no page is at, however the app's routes match them: Corten's own and the APIs'.
+#[derive(Default)]
+pub(crate) struct NotPages {
+    own: Own,
+    apis: Vec<String>,
+}
+
+impl NotPages {
+    pub(crate) fn contains(&self, path: &str) -> bool {
+        self.own.contains(path) || self.apis.iter().any(|prefix| crate::api::under(prefix, path))
     }
 }
 

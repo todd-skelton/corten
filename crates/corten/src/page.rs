@@ -418,8 +418,8 @@ pub(crate) struct Shared {
     /// The app's route patterns, its own and its areas', each with whether it has a `GET`
     /// handler ([`Req::serves`]).
     pub pages: Box<[(&'static str, bool)]>,
-    /// Paths no page is at: Corten's own (exact, and prefixes) and the APIs' prefixes.
-    pub not_pages: (Vec<&'static str>, Vec<String>, Vec<String>),
+    /// Paths no page is at: Corten's own and the APIs'.
+    pub not_pages: crate::app::NotPages,
 }
 
 impl Shared {
@@ -907,14 +907,7 @@ impl Req {
     /// ```
     pub fn serves(&self, to: &crate::Local) -> bool {
         let path = to.path();
-        let (exact, prefixes, apis) = &self.shared.not_pages;
-        if exact.contains(&path)
-            || prefixes.iter().any(|p| path.starts_with(p.as_str()))
-            || apis.iter().any(|p| crate::api::under(p, path))
-        {
-            return false;
-        }
-        crate::route::chosen(&self.shared.pages, path).is_some_and(|(_, get)| get)
+        !self.shared.not_pages.contains(path) && crate::route::chosen(&self.shared.pages, path).is_some_and(|(_, get)| get)
     }
 
     /// The page is at `to` for good (an item asked for by its id or an old slug, a renamed

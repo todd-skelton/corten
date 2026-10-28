@@ -832,9 +832,11 @@ pub(crate) fn chosen(routes: &[(&'static str, bool)], path: &str) -> Option<(&'s
     routes.iter().copied().filter(|(pattern, _)| routes_path(pattern, path)).max_by_key(|(pattern, _)| preference(pattern))
 }
 
-/// Whether `path` is one `pattern` routes, as axum matches it: `{name}` is one segment that is
-/// not empty, `{*rest}` the rest of the path (not empty), and the rest is compared as it is
-/// written, so `/items/` is not `/items`.
+/// Whether `path` is one `pattern` routes, as axum (matchit) matches it: `{name}` is one segment,
+/// which may be empty when another follows (`/items//edit` is `/items/{id}/edit`) but not when it
+/// is the last; `{*rest}` is the rest of the path (not empty); and the text is compared as it is
+/// written, so `/items/` is not `/items`. A route macro only takes a parameter as a whole
+/// segment, so these are all the shapes a pattern has.
 pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
     let (mut pattern, mut path) = (pattern.split('/'), path.split('/'));
     loop {
@@ -844,7 +846,7 @@ pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
                 return !got.is_empty() || path.next().is_some();
             }
             (Some(want), Some(got)) if want.starts_with('{') => {
-                if got.is_empty() {
+                if got.is_empty() && pattern.clone().next().is_none() {
                     return false;
                 }
             }
@@ -867,6 +869,9 @@ mod local_tests {
             ("/items", "/items/", false),
             ("/items/{id}", "/items/7", true),
             ("/items/{id}", "/items/", false),
+            ("/items/{id}/edit", "/items//edit", true),
+            ("/a/{x}/{y}", "/a//", false),
+            ("/a/{x}/{y}", "/a//2", true),
             ("/items/{id}", "/items/7/edit", false),
             ("/items/{id}/edit", "/items/7/edit", true),
             ("/files/{*rest}", "/files/a/b", true),
