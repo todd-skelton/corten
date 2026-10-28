@@ -208,7 +208,12 @@ fn home_screen(req: &Req, viewer: Option<&Viewer>, watching: &mut Watching, home
     Ok(watching.with_cookie(res))
 }
 
-pub(crate) async fn page(req: Req, viewer: Option<Caller<Viewer>>, State(market): State<Market>, mut watching: Watching) -> HtmlResult {
+pub(crate) async fn page(
+    req: Req,
+    viewer: Option<Caller<Viewer>>,
+    State(market): State<Market>,
+    mut watching: Watching,
+) -> HtmlResult {
     let home = Home::new(&market, &watching, String::new());
     home_screen(&req, viewer.as_deref(), &mut watching, &home)
 }
