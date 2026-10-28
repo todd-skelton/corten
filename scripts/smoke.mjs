@@ -1304,9 +1304,10 @@ async function run(browser) {
 
   // A navigating form goes the way its submit button says, as without the runtime (#190):
   // Chromium's NavigateEvent.formData follows the form's own method, not the button's.
+  // Not in WebKit with the Navigation API: Playwright loses its page there (see the probe above).
   const forms = await browser.newPage();
   await forms.goto(`${base}/news`);
-  if (await forms.evaluate(() => "navigation" in window)) {
+  if (engine !== "webkit" && (await forms.evaluate(() => "navigation" in window))) {
     /** @type {string[]} */
     const sent = [];
     forms.on("request", (r) => {
