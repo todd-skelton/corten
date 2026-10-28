@@ -11,7 +11,6 @@ import { subscribe } from "corten";
  * @property {HTMLOutputElement} through
  * @property {HTMLOutputElement} changes
  * @property {HTMLOutputElement} snapshots
- * @property {HTMLOutputElement} missed
  */
 
 /** @param {HTMLOutputElement} output @param {number} by */
@@ -33,8 +32,6 @@ export function follow(shown, feed, signal) {
         add(shown.snapshots, 1);
       },
       patch(_changes, seq) {
-        const last = Number(shown.through.value);
-        if (seq > last + 1) add(shown.missed, seq - last - 1);
         shown.through.value = String(seq);
         add(shown.changes, 1);
       },

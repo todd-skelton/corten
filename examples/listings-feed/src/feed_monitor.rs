@@ -29,26 +29,26 @@ pub fn page(seller: &str) -> impl Document + '_ {
 }
 
 /// The feed's state as the page sees it: its connection, the listings in the last snapshot, the
-/// sequence it has reached, and how many changes and snapshots arrived. A change that skips a
-/// sequence counts as missed. The outputs hold the counts, so the script keeps no state.
+/// sequence it has reached, and how many changes and snapshots arrived. `subscribe` loads a new
+/// snapshot for a gap, so more than one snapshot means the page caught up that way. The outputs
+/// hold the counts, so the script keeps no state; each is named for what reads the page (the
+/// failover benchmark).
 #[component(js)]
 pub fn FeedMonitor<'a>(seller: &'a str) -> impl Render {
-    let (status, listings, through, changes, snapshots, missed) = refs();
-    let shown = js::Shown { status, listings, through, changes, snapshots, missed };
+    let (status, listings, through, changes, snapshots) = refs();
+    let shown = js::Shown { status, listings, through, changes, snapshots };
     html! {
         <dl on:connect={js::follow(shown, url::Listings { seller }, signal)}>
             <dt>"Status"</dt>
-            <dd><output ref={status}>"connecting"</output></dd>
+            <dd><output name="status" ref={status}>"syncing"</output></dd>
             <dt>"Listings"</dt>
-            <dd><output ref={listings}>"0"</output></dd>
+            <dd><output name="listings" ref={listings}>"0"</output></dd>
             <dt>"Through"</dt>
-            <dd><output ref={through}>"0"</output></dd>
+            <dd><output name="through" ref={through}>"0"</output></dd>
             <dt>"Changes"</dt>
-            <dd><output ref={changes}>"0"</output></dd>
+            <dd><output name="changes" ref={changes}>"0"</output></dd>
             <dt>"Snapshots"</dt>
-            <dd><output ref={snapshots}>"0"</output></dd>
-            <dt>"Missed"</dt>
-            <dd><output ref={missed}>"0"</output></dd>
+            <dd><output name="snapshots" ref={snapshots}>"0"</output></dd>
         </dl>
     }
 }

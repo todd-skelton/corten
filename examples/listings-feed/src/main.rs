@@ -14,6 +14,7 @@ use std::{
     time::Duration,
 };
 
+use corten::axum::http::HeaderValue;
 use corten_cluster::{Cluster, Error, Options};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
@@ -26,6 +27,7 @@ fn env(name: &str, default: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let instance = env("INSTANCE", "a");
+    let header = HeaderValue::from_str(&instance)?;
     let db = env("DATABASE_URL", "postgres://postgres:postgres@localhost/feeds");
     let nats_url = env("NATS_URL", "nats://localhost:4222");
     let seller = env("SELLER", "s1");
@@ -40,7 +42,7 @@ async fn main() -> Result<(), Error> {
     let cluster = Cluster::start(pool.clone(), nats, Listings, options).await?;
 
     let market = Market { rows, writes: Arc::new(AtomicU64::new(1)) };
-    corten::serve(app::app(Shared { cluster, pool, instance: Instance(instance.into()), market })).await?;
+    corten::serve(app::app(Shared { cluster, pool, instance: Instance { name: instance.into(), header }, market })).await?;
     Ok(())
 }
 

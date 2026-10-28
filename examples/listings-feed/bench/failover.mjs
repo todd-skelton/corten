@@ -13,6 +13,8 @@ import http from "node:http";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 
+// BASE is an address (an IP, or localhost): the app answers only the host names it is given, and
+// any other gets 421.
 const base = process.env.BASE ?? "http://10.77.77.30:8080";
 const feed = process.env.FEED ?? "s1";
 const clients = Number(process.env.CLIENTS ?? 200);

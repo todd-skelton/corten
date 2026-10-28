@@ -329,12 +329,12 @@ version = "0.1.0"
 dependencies = [
  "async-nats",
  "corten",
- "corten-feed",
  "futures-util",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "tower",
 ]
 
 [[package]]

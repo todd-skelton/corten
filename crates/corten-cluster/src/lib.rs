@@ -1,4 +1,4 @@
-//! One [`corten_feed::Feed`] served by every instance of an app.
+//! One [`corten::feed::Feed`] served by every instance of an app.
 //!
 //! ```text
 //! write ──► Postgres: app rows + corten_feeds.seq + corten_outbox row, one transaction
@@ -14,7 +14,7 @@
 //! The relay publishes outbox rows in order and marks them published only after JetStream
 //! acknowledged them; a relay that dies in between republishes, and JetStream drops the copy.
 //! A gap or a consumer restart reloads the feed from Postgres. Measured with two instances, kills
-//! on a schedule and 200 clients: see `examples/listings-feed`.
+//! on a schedule and 200 clients: see `examples/listings-feed` and its `results/`.
 //!
 //! The app provides its rows through [`Source`] and writes through [`begin`] / [`Write::commit`],
 //! with an optional idempotency key so a retried request commits once.
@@ -32,8 +32,10 @@ use std::{
     time::Duration,
 };
 
-use corten::{axum::http::StatusCode, feed::FeedResponse};
-use corten_feed::{Feed, Row, Since};
+use corten::{
+    axum::http::StatusCode,
+    feed::{Feed, FeedResponse, Row, Since},
+};
 use serde::de::DeserializeOwned;
 use sqlx::{PgConnection, PgPool};
 
@@ -124,7 +126,8 @@ impl<S: Source> Cluster<S> {
 
     /// `GET {url}`: [`Feed::snapshot`], an answer a Corten route names
     /// (`async fn listings(..) -> corten::Result<FeedResponse>`). An unknown feed is a 404, and
-    /// Postgres out of reach a 503, answered as JSON as any failure of a feed's route is.
+    /// Postgres out of reach a 503, answered as JSON as any failure of a feed's route is. An app
+    /// that answers those its own way calls [`Cluster::feed`] and the feed's `snapshot` instead.
     pub async fn snapshot(&self, key: &str) -> corten::Result<FeedResponse> {
         Ok(self.loaded(key).await?.snapshot())
     }
@@ -134,7 +137,7 @@ impl<S: Source> Cluster<S> {
         self.live_with(key, since, ()).await
     }
 
-    /// [`Cluster::live`] holding `guard` (a `corten_feed::Permit`) until the stream ends.
+    /// [`Cluster::live`] holding `guard` (a `corten::feed::Permit`) until the stream ends.
     pub async fn live_with(&self, key: &str, since: Since, guard: impl Send + 'static) -> corten::Result<FeedResponse> {
         Ok(self.loaded(key).await?.live_with(since, guard))
     }
@@ -144,7 +147,9 @@ impl<S: Source> Cluster<S> {
         match self.feed(key).await {
             Ok(Some(feed)) => Ok(feed),
             Ok(None) => Err(corten::Error::new(format!("no feed {key}")).with_status(StatusCode::NOT_FOUND)),
-            Err(e) => Err(corten::Error::new(format!("feed {key}: {e}")).with_status(StatusCode::SERVICE_UNAVAILABLE)),
+            Err(source) => {
+                Err(corten::Error::new(Unavailable { key: key.into(), source }).with_status(StatusCode::SERVICE_UNAVAILABLE))
+            }
         }
     }
 
@@ -156,6 +161,25 @@ impl<S: Source> Cluster<S> {
     /// Loaded feeds: key, sequence, live subscribers.
     pub fn stats(&self) -> Vec<(String, u64, usize)> {
         self.hub.stats()
+    }
+}
+
+/// A feed that could not load: its key, and the cause as its source.
+#[derive(Debug)]
+struct Unavailable {
+    key: String,
+    source: Error,
+}
+
+impl std::fmt::Display for Unavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "corten-cluster: feed {}: {}", self.key, self.source)
+    }
+}
+
+impl std::error::Error for Unavailable {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.source)
     }
 }
 

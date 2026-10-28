@@ -3,27 +3,28 @@
 //!
 //! | Route | Piece |
 //! |---|---|
-//! | `GET /sellers/{seller}` | a page whose script follows the seller's feed (`subscribe`) and shows what arrived: kill the instance it streams from and it resumes on the other with no change missed |
+//! | `GET /sellers/{seller}` | a page whose script follows the seller's feed (`subscribe`) and shows what arrived: kill the instance it streams from and it resumes on the other with no change missed; an unknown seller is the 404 page |
 //! | `GET /feeds/{seller}`, `/feeds/{seller}/live` | the seller's listings as a feed (`corten-cluster`): any instance answers, and a client resumes on any of them with the same cursor |
 //! | `POST /api/feeds/{seller}/market` | a write committed with an outbox row in one transaction, at most once per `Idempotency-Key` |
 //! | `GET /api/feeds/{seller}/seq` | the sequence Postgres committed, what every client must reach |
 //! | `GET /api/stats` | this instance: the feeds it holds, their subscribers, whether it runs the relay |
 //!
-//! Every response names the instance that answered (`X-Instance`, a middleware of the app's), and
-//! `/health/ready` is false while Postgres is out of reach.
+//! A route's response names the instance that answered (`X-Instance`, a middleware of the app's),
+//! and `/health/ready` is false while Postgres is out of reach or slow to answer.
 use std::{
     collections::BTreeMap,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 use corten::{
     Error,
     axum::{
         extract::Request,
-        http::{HeaderMap, HeaderValue, StatusCode},
+        http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
         response::Response,
     },
     feed::{Change, FeedResponse, Since},
@@ -60,9 +61,12 @@ pub struct Shared {
     pub market: Market,
 }
 
-/// This instance's name (`INSTANCE`).
+/// This instance's name (`INSTANCE`), and the same as a header value.
 #[derive(Clone)]
-pub struct Instance(pub Arc<str>);
+pub struct Instance {
+    pub name: Arc<str>,
+    pub header: HeaderValue,
+}
 
 /// The benchmark's writer: how many listings the seller has, and a count that varies each write.
 #[derive(Clone)]
@@ -72,15 +76,19 @@ pub struct Market {
 }
 
 pub fn app(shared: Shared) -> App<InstanceHeader> {
-    let header = InstanceHeader(HeaderValue::from_str(&shared.instance.0).expect("INSTANCE is a header value"));
+    let header = InstanceHeader(shared.instance.header.clone());
     let pool = shared.pool.clone();
     App::new(url::router(shared.clone()))
         .api(|routes| api::api(routes, shared))
         .components(&[FeedMonitor])
-        // A load balancer sends no traffic to an instance that cannot reach Postgres.
+        // Not ready while Postgres is out of reach, or busy past a second: a load balancer that
+        // checks it sends this instance no traffic until then.
         .ready(move || {
             let pool = pool.clone();
-            async move { sqlx::query("SELECT 1").execute(&pool).await.is_ok() }
+            async move {
+                let ping = sqlx::query("SELECT 1").execute(&pool);
+                matches!(tokio::time::timeout(Duration::from_secs(1), ping).await, Ok(Ok(_)))
+            }
         })
         .middleware(header)
 }
@@ -128,15 +136,20 @@ pub mod api {
 /// Names the instance that answered (`X-Instance`), so a client can tell where its stream landed.
 pub struct InstanceHeader(HeaderValue);
 
+const X_INSTANCE: HeaderName = HeaderName::from_static("x-instance");
+
 impl Middleware for InstanceHeader {
     async fn call(&self, req: Request, next: impl Next) -> Response {
         let mut res = next.run(req).await;
-        res.headers_mut().insert("x-instance", self.0.clone());
+        res.headers_mut().insert(X_INSTANCE, self.0.clone());
         res
     }
 }
 
-async fn page(req: Req, Path(seller): Path<String>) -> HtmlResult {
+/// The seller's page. A seller with no feed is the 404 page, rather than a page whose script asks
+/// for a feed that is not there; Postgres out of reach is the 503 page.
+async fn page(req: Req, State(cluster): State<Cluster<Listings>>, Path(seller): Path<String>) -> HtmlResult {
+    cluster.feed(&seller).await.map_err(unavailable)?.ok_or_else(Error::not_found)?;
     req.page(feed_monitor::page(&seller))
 }
 
@@ -245,12 +258,9 @@ struct FeedStats {
     subscribers: usize,
 }
 
-async fn stats(
-    State(cluster): State<Cluster<Listings>>,
-    State(Instance(instance)): State<Instance>,
-) -> JsonResult<InstanceStats> {
+async fn stats(State(cluster): State<Cluster<Listings>>, State(instance): State<Instance>) -> JsonResult<InstanceStats> {
     let feeds = cluster.stats().into_iter().map(|(key, seq, subscribers)| (key, FeedStats { seq, subscribers })).collect();
-    Ok(Json(InstanceStats { instance, relay_active: cluster.relay_active(), feeds }))
+    Ok(Json(InstanceStats { instance: instance.name, relay_active: cluster.relay_active(), feeds }))
 }
 
 /// A database or JetStream failure: a 503, its cause in the log.

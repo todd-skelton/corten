@@ -2,7 +2,7 @@
 // (1 CPU / 512 MiB each, fixed IPs) and an nginx load balancer on the feedbench network; then runs
 // failover.mjs in a node container (it kills and restarts instances on schedule) while a real
 // browser follows the same feed with corten.js through the load balancer.
-// Usage (from the repository root): node examples/listings-feed/bench/run.mjs [out=failover-r1.json]
+// Usage (from the repository root): node examples/listings-feed/bench/run.mjs [out=failover-<date>.json]
 //   [clients=200] [wps=50] [n=5] [seconds=80] [keep=1]
 // Needs the image: docker build -f examples/listings-feed/Dockerfile -t corten-listings-feed .
 import { spawn, spawnSync } from "node:child_process";
@@ -13,7 +13,7 @@ import { chromium } from "@playwright/test";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.split("=")));
-const out = join(here, "..", "results", args.out ?? "failover-r1.json");
+const out = join(here, "..", "results", args.out ?? `failover-${new Date().toISOString().slice(0, 10)}.json`);
 const env = { CLIENTS: args.clients ?? "200", WPS: args.wps ?? "50", N: args.n ?? "5", SECONDS: args.seconds ?? "80", WORKERS: args.workers ?? "4" };
 if (args.schedule) env.SCHEDULE = args.schedule;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -66,12 +66,10 @@ const page = await browser.newPage();
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 await page.goto("http://localhost:18420/sellers/s1");
-/** The monitor's outputs by their label: Status, Listings, Through, Changes, Snapshots, Missed. */
+/** The monitor's outputs by name: status, listings, through, changes, snapshots. */
 const shown = () =>
-  page.evaluate(() =>
-    Object.fromEntries([...document.querySelectorAll("dt")].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent ?? ""])),
-  );
-await until("the page's feed", async () => (await shown()).Status === "live");
+  page.evaluate(() => Object.fromEntries([...document.querySelectorAll("output[name]")].map((o) => [o.getAttribute("name"), o.textContent ?? ""])));
+await until("the page's feed", async () => (await shown()).status === "live");
 
 const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
 const client = spawn("docker", ["run", "--rm", ...net, "--ulimit", "nofile=65536:65536", "-v", "/var/run/docker.sock:/var/run/docker.sock",
@@ -82,11 +80,14 @@ const code = await new Promise((r) => client.on("exit", r));
 if (code !== 0) throw new Error(`failover.mjs exited ${code}`);
 const result = JSON.parse(stdout.trim().split("\n").at(-1));
 
-const seen = await shown();
-const probe = { status: seen.Status, patches: Number(seen.Changes), snapshots: Number(seen.Snapshots), missed: Number(seen.Missed), last: Number(seen.Through) };
-await browser.close();
+// subscribe() never skips a sequence: a gap loads a new snapshot. So the page has lost nothing once
+// it reaches the committed sequence, and each snapshot after the first is a resync.
 const committed = result.committed;
-result.browser = { ...probe, committed, lost: probe.missed + Math.max(0, committed - probe.last), pageErrors };
+await until("the page to reach the committed sequence", async () => Number((await shown()).through) >= committed, 20_000).catch(() => {});
+const seen = await shown();
+const probe = { status: seen.status, patches: Number(seen.changes), snapshots: Number(seen.snapshots), last: Number(seen.through) };
+await browser.close();
+result.browser = { ...probe, committed, resyncs: Math.max(0, probe.snapshots - 1), lost: Math.max(0, committed - probe.last), pageErrors };
 result.instanceLogs = Object.fromEntries(
   ["fb-a", "fb-b"].map((c) => {
     const r = spawnSync("docker", ["logs", "-t", c], { encoding: "utf8" });
@@ -121,7 +122,7 @@ console.log(`write -> client, steady: ${line(l.writeToClient.steady)}`);
 console.log(`write -> client, within 5 s of a kill: ${line(l.writeToClient.within5sOfKill)}`);
 console.log(`outages: ${result.outages.n} (${result.outages.resynced} resynced); reconnect ${line(result.outages.reconnectMs)}; silent ${line(result.outages.silentMs)}`);
 console.log(`relay takeover: ${result.relayTakeoverMs.map((r) => `${r.killed} ${r.wasLeader ? `${r.takeoverMs} ms` : "(not the relay)"}`).join(", ")}`);
-console.log(`browser: ${probe.patches} patches, ${probe.snapshots} snapshot(s), missed ${probe.missed}, last ${probe.last}/${committed}, status ${probe.status}, errors ${pageErrors.length}`);
+console.log(`browser: ${probe.patches} patches, ${probe.snapshots} snapshot(s) (${result.browser.resyncs} resyncs), last ${probe.last}/${committed}, lost ${result.browser.lost}, status ${probe.status}, errors ${pageErrors.length}`);
 console.log(`wrote ${out}`);
 if (!args.keep) for (const c of containers) docker("rm", "-f", c);
 if (!args.keep) docker("network", "rm", "feedbench");
