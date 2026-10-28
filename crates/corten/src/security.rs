@@ -637,17 +637,61 @@ pub mod cookie {
         path: String,
     }
 
+    /// What [`SetCookie::try_new`] refused: a name or value with a character a cookie cannot carry
+    /// (a space, `;`, `,`, `"`, `\`, a control or a non-ASCII byte; `=` too in a name, and an empty
+    /// name).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum InvalidCookie {
+        Name,
+        Value,
+    }
+
+    impl std::fmt::Display for InvalidCookie {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(match self {
+                InvalidCookie::Name => "a cookie name with a character a cookie cannot carry",
+                InvalidCookie::Value => "a cookie value with a character a cookie cannot carry",
+            })
+        }
+    }
+
+    impl std::error::Error for InvalidCookie {}
+
     impl SetCookie {
         /// Panics if the name or value contains characters a cookie cannot carry; a session token
-        /// should be URL-safe base64 or hex.
+        /// should be URL-safe base64 or hex. For a value from elsewhere (a token another service
+        /// answered with, text a user typed), [`SetCookie::try_new`] lets the handler answer.
         pub fn new(name: &str, value: &str) -> Self {
-            let token = |s: &str| s.bytes().all(|b| b.is_ascii_graphic() && !matches!(b, b';' | b',' | b'"' | b'\\' | b'='));
-            assert!(!name.is_empty() && token(name), "invalid cookie name {name:?}");
-            assert!(
-                value.bytes().all(|b| b.is_ascii_graphic() && !matches!(b, b';' | b',' | b'"' | b'\\')),
-                "invalid cookie value"
-            );
-            SetCookie {
+            match Self::try_new(name, value) {
+                Ok(cookie) => cookie,
+                Err(InvalidCookie::Name) => panic!("invalid cookie name {name:?}"),
+                Err(InvalidCookie::Value) => panic!("invalid cookie value"),
+            }
+        }
+
+        /// The cookie, or which part it cannot carry. `?` on it in a handler is a 500; to answer
+        /// otherwise, map it:
+        ///
+        /// ```
+        /// use corten::{axum::http::StatusCode, security::cookie::SetCookie, Error};
+        ///
+        /// fn session(token: &str) -> Result<SetCookie, Error> {
+        ///     SetCookie::try_new("session", token)
+        ///         .map_err(|e| Error::new(e).with_status(StatusCode::BAD_GATEWAY))
+        /// }
+        /// # use corten::axum::response::IntoResponse;
+        /// assert!(session("c2Vzc2lvbg").is_ok());
+        /// assert_eq!(session("a; b").unwrap_err().into_response().status(), StatusCode::BAD_GATEWAY);
+        /// ```
+        pub fn try_new(name: &str, value: &str) -> Result<Self, InvalidCookie> {
+            let octet = |b: u8| b.is_ascii_graphic() && !matches!(b, b';' | b',' | b'"' | b'\\');
+            if name.is_empty() || !name.bytes().all(|b| octet(b) && b != b'=') {
+                return Err(InvalidCookie::Name);
+            }
+            if !value.bytes().all(octet) {
+                return Err(InvalidCookie::Value);
+            }
+            Ok(SetCookie {
                 name: name.into(),
                 value: value.into(),
                 max_age: None,
@@ -655,7 +699,7 @@ pub mod cookie {
                 secure: true,
                 same_site: "Lax",
                 path: "/".into(),
-            }
+            })
         }
 
         /// Expires the cookie in the browser (sign-out).
@@ -851,5 +895,25 @@ mod tests {
         let h = headers(&[("cookie", "a=1; __Host-session=abc123; b=2")]);
         assert_eq!(cookie::get(&h, "__Host-session"), Some("abc123"));
         assert_eq!(cookie::get(&h, "c"), None);
+    }
+
+    #[test]
+    fn a_value_a_cookie_cannot_carry_is_an_error_to_answer() {
+        use cookie::{InvalidCookie, SetCookie};
+        for value in ["Ada; Lovelace", "a b", "a,b", "\"q\"", "back\\slash", "caf\u{e9}", "tab\t", "nl\n"] {
+            assert_eq!(SetCookie::try_new("viewer", value).unwrap_err(), InvalidCookie::Value, "{value:?}");
+        }
+        for name in ["", "a=b", "a b", "a;b"] {
+            assert_eq!(SetCookie::try_new(name, "v").unwrap_err(), InvalidCookie::Name, "{name:?}");
+        }
+        let ok = SetCookie::try_new("session", "c2Vz-c2lv_bg==").unwrap();
+        assert_eq!(ok.header(), "session=c2Vz-c2lv_bg==; Path=/; SameSite=Lax; HttpOnly; Secure");
+        assert_eq!(SetCookie::try_new("s", "").unwrap().header(), "s=; Path=/; SameSite=Lax; HttpOnly; Secure", "an empty value is a cookie");
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid cookie value")]
+    fn new_still_panics_on_a_literal_it_cannot_carry() {
+        let _ = cookie::SetCookie::new("viewer", "Ada; Lovelace");
     }
 }

@@ -645,6 +645,11 @@ Corten is pre-1.0, so any minor version may change the API.
     function stays for a value chosen as the page renders and for one per breakpoint. Two that
     would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that
     names both. The watchlist's home page renders in 1.1% fewer instructions (62,827 to 62,162).
+100. `SetCookie::try_new(name, value)` returns `Err(InvalidCookie::Name | Value)` for a character a
+    cookie cannot carry, where `new` panics: a token another service answered with no longer turns
+    a sign-in into a 500 the app did not choose. `new` keeps its panic for values the app makes
+    and calls the same rule
+    ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
