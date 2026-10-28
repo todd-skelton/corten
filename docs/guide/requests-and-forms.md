@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `GET`, no `corten` header | first load, reload, no JavaScript | `req.page(doc)`: the app's layout with the page in it | renders HTML |
 | `GET` with `corten: nav` | runtime, same-origin link or back/forward | the same call: `<title>`, head tags and the page only | swaps `<main>` |
-| `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch(view)` | replaces each element by `id`; `view::Remove(id)` removes one, `view::Append(id, rows)` adds rows at its end (ids are `#[derive(Id)]` types) |
+| `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch_or(view, page)`, or `req.patch(view)` | replaces each element by `id`; `view::Remove(id)` removes one, `view::Append(id, rows)` adds rows at its end (ids are `#[derive(Id)]` types) |
 | `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(&route)` | renders the page |
 | any, `Accept: application/json` | native screen, agent, test | `req.screen(&data, doc)` (`data` a `ToJson`): `{"title", "data"}`, the title from the document's `<title>` | renders natively, or reasons over it |
 | any, under an `App::api` prefix | a webhook, a service, a partner's site | JSON (`corten::Json`), errors as `{"error": ...}` | reads the JSON |
@@ -19,7 +19,7 @@ One handler serves every mode, and `req.mode` says which. A `data-patch` form's 
 both of its rows with `req.patch_or(view, || async { req.page(..) }).await`: the patch with
 JavaScript, and otherwise the page (or a redirect), whose closure runs only then, so the patch
 never loads what only the page shows. A patch that needs data of its own, which the page does not,
-checks `req.mode != Mode::Action` first. A route with no screen goes under
+or a status or headers of its own, checks `req.mode == Mode::Action` itself. A route with no screen goes under
 [`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The layout around `<main>` renders on full
 loads only ([the document](views.md#the-document)); every page carries a key hashed from the
 caller its handler read (if any), the deploy and its layout, and when a navigation answers with a different key
@@ -418,7 +418,7 @@ async fn pause(req: Req, Path(id): Path<String>) -> HtmlResult {
 }
 
 async fn alerts(req: Req, Query(q): Query<AlertsQuery>) -> HtmlResult {
-    // req.patch_or(the list, with `ReadAgain::from` while behind, || async { the page }).await
+    // With patch_or: the list, with `ReadAgain::from` while behind, as the patch; the page otherwise.
 }
 ```
 

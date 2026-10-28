@@ -641,11 +641,11 @@ fn AlertForm<'a>(input: &'a AlertInput, errors: &'a Errors, until: Option<u64>) 
 async fn alerts(req: Req, viewer: Option<Caller<Viewer>>, Query(at): Query<url::Alerts>) -> HtmlResult {
     // A read again from the form's patch: the status line alone, which asks again from this
     // route while the alert is landing.
+    // A view renders only when it is sent, so a page load does not build the read-again.
     let from = url::Alerts { until: at.until };
-    let again = asks_again(at.until).then(|| ReadAgain { after: Duration::from_secs(1) }.from(&from));
     let status = html! {
         <AlertStatus until={at.until} />
-        {again}
+        {asks_again(at.until).then(|| ReadAgain { after: Duration::from_secs(1) }.from(&from))}
     };
     let page = || async { alerts_page(&req, viewer.as_deref(), &AlertInput::default(), &Errors::new(), at.until) };
     req.patch_or(status, page).await

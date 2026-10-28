@@ -411,6 +411,25 @@ async fn patch_or_builds_the_page_only_without_javascript() {
     assert_eq!((headers["corten-patch"].to_str().unwrap(), PAGES.load(Ordering::Relaxed)), ("1", 0));
     let (status, _, _) = call(app(routes(), None), "POST", None).await;
     assert_eq!((status, PAGES.load(Ordering::Relaxed)), (StatusCode::SEE_OTHER, 1));
+    // A data client gets the page's answer too, not a JSON error as from `invalid`.
+    let (status, _, _) = call_with(app(routes(), None), "POST", "/", None, Some("application/json")).await;
+    assert_eq!((status, PAGES.load(Ordering::Relaxed)), (StatusCode::SEE_OTHER, 2));
+}
+
+/// A view of references that are not `Sync` (`&Cell`) keeps the handler's future `Send`: the
+/// patch is rendered before `patch_or`'s future holds anything.
+#[tokio::test]
+async fn patch_or_keeps_a_handler_send_with_a_view_of_cells() {
+    let routes = Router::new().route(
+        "/",
+        axum::routing::post(|req: Req| async move {
+            let count = std::cell::Cell::new(1);
+            let count = &count;
+            req.patch_or(html! { <p id={MsgId}>{count.get()}</p> }, || async { req.redirect(&Done) }).await
+        }),
+    );
+    let (_, _, body) = call(app(routes, None), "POST", Some("action")).await;
+    assert_eq!(body, r#"<p id="msg">1</p>"#);
 }
 
 #[cfg(feature = "json")]

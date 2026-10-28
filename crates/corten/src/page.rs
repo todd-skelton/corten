@@ -782,7 +782,9 @@ impl Req {
     /// Answers a `data-patch` form (a write, Load more) both ways: with JavaScript
     /// ([`Mode::Action`]) `view` as a patch; otherwise `page()`, the whole page or a redirect, so
     /// the form works without JavaScript too. `page` only runs then, so an action never loads
-    /// data for a page it does not send. A submit refused for its input is [`Req::invalid`].
+    /// data for a page it does not send. A data client ([`Mode::Data`]) gets `page()` as well. A
+    /// submit refused for its input is [`Req::invalid`]; a patch that needs data, a status or
+    /// headers of its own checks `req.mode == Mode::Action` itself.
     ///
     /// ```
     /// use corten::prelude::*;
@@ -1206,8 +1208,8 @@ impl ReadAgain {
     /// In a patch (a `data-patch` form's answer, [`Req::patch`]) whose part shows a read still
     /// catching up with the write: after `after`, the runtime fetches `route` as a GET
     /// `data-patch` form would (`corten: action`) and applies the patch it answers, which asks
-    /// again while it is behind. The route's handler answers [`Req::patch`] in [`Mode::Action`]
-    /// (the page otherwise), and its URL carries what the read waits for (the write's receipt),
+    /// again while it is behind. The route's handler answers with [`Req::patch_or`] (the part,
+    /// or the page without JavaScript), and its URL carries what the read waits for (the write's receipt),
     /// since the page's own address does not.
     ///
     /// The read waits while the tab is hidden or a form's answer is on its way, keeps what the
