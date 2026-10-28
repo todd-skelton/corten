@@ -704,9 +704,15 @@ Corten is pre-1.0, so any minor version may change the API.
     instructions a request (callgrind), where one compressed on each read costs 1.41 million.
     Every other answer reads `Accept-Encoding` once for both codings, as bytes, and costs what it
     did: 22,357 to 22,252 instructions for a small JSON answer, 99,935 to 99,940 for an 80-row
-    one, 22,708 to 22,602 for text (two runs each against main).
+    one, 22,708 to 22,602 for text (two runs each against main)
     ([#201 A JSON route cannot answer with a status other than 200 or send JSON it already holds as bytes, so each app writes its own Answer](https://github.com/todd-skelton/corten/issues/201),
     [#234 A JSON answer cannot set a cookie the way an HTML answer can](https://github.com/todd-skelton/corten/issues/234)).
+107. A link to an element on the same page takes its `Id`: `href={FeedbackId.fragment()}` writes
+    `#feedback`, encoded as `route.at(..)` encodes another page's place, so a validation
+    summary's link and the field it names cannot drift apart. It is an attribute value
+    (`view::InPage`), not an address: `req.redirect` to it does not compile, and neither does
+    text in place of the id. Nothing `html!` writes changed
+    ([#254 A link to an element on the same page cannot take an Id, so each app writes its #fragment by hand](https://github.com/todd-skelton/corten/issues/254)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

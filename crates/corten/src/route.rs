@@ -444,7 +444,8 @@ pub trait Route {
     /// one its markup prints (`<li id={ReviewId(&review.id)}>`). A redirect after a write
     /// (`req.redirect(&account.at(ReviewId(&id)))`) or a link brings the browser back to it.
     /// The markup and the URL cannot spell the id differently, and the browser scrolls to it on
-    /// a full load and after a client navigation alike.
+    /// a full load and after a client navigation alike. A link to a place on the page it is in is
+    /// [`Id::fragment`](crate::view::Id::fragment).
     ///
     /// ```
     /// use corten::prelude::*;
@@ -549,7 +550,7 @@ impl<R: Route + ?Sized, I: crate::view::Id> At<'_, R, I> {
 /// Writes `id` as a fragment: the id as the element's markup has it, percent-encoded, which the
 /// browser decodes to find the element. `write_id` escapes for an attribute (`&amp;`), so an id
 /// with a character the URL must encode is unescaped first; most ids (`review-7`) need neither.
-fn write_fragment(id: &(impl crate::view::Id + ?Sized), out: &mut String) {
+pub(crate) fn write_fragment(id: &(impl crate::view::Id + ?Sized), out: &mut String) {
     let start = out.len();
     id.write_id(out);
     if out.as_bytes()[start..].iter().all(|&b| KEEP[b as usize] & SEGMENT != 0) {

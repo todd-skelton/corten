@@ -43,7 +43,8 @@ answer to the form that sent them) and the focus carry over to the new markup, s
 include the form the user is typing in, and a refusal can mark a file input invalid.
 After a write that should change the URL, use `req.redirect(&Route)` instead. To come back to
 the element the user acted on, redirect to `route.at(RowId(&id))` (the route with `#row-7`,
-from the element's `#[derive(Id)]`); never format a `#fragment` by hand.
+from the element's `#[derive(Id)]`); a link within the page, such as an error summary's link to
+its field, is `href={FieldId.fragment()}`. Never format a `#fragment` by hand.
 
 ## Files
 
