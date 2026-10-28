@@ -645,6 +645,12 @@ Corten is pre-1.0, so any minor version may change the API.
     function stays for a value chosen as the page renders and for one per breakpoint. Two that
     would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that
     names both. The watchlist's home page renders in 1.1% fewer instructions (62,827 to 62,162).
+100. A component can take an element id as a prop of any id type (`fn ConfirmDialog<I: Id>(id: I)`)
+    and print it with `id={id}` or `commandfor={id}`: `Id` now requires `AttrValue` and `Render`,
+    which every `#[derive(Id)]` type has. seller-desk opens its archive dialog with
+    `command="show-modal"` and no script, sorts and filters its rows by the row view's fields
+    instead of cell positions, writes its unsaved-prices note from the catalog, shows each price's
+    currency, and right-aligns the statement's numbers.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

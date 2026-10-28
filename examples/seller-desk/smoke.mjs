@@ -92,6 +92,9 @@ try {
   const prices = await page.$$eval("tbody tr", (rows) => rows.slice(0, 5).map((r) => Number(/** @type {HTMLInputElement} */ (r.cells[5].querySelector("input")).value)));
   check("sort orders rows by price", prices.every((p, i) => i === 0 || prices[i - 1] <= p), prices.join(" "));
   await time("sort again (descending)", () => /** @type {HTMLButtonElement} */ (document.querySelectorAll("thead button")[3]).click());
+  await page.click("thead button >> nth=0");
+  const names = await page.$$eval("tbody tr", (rows) => rows.slice(0, 30).map((r) => r.cells[1].textContent ?? ""));
+  check("sort orders rows by name, read from the row's field", names.every((n, i) => i === 0 || names[i - 1].localeCompare(n, "en") <= 0), names.slice(0, 5).join(", "));
   await page.click("tbody tr:first-child input[type=checkbox]");
   check("handlers still run on rows after they moved", (await count()) === "1");
   await page.click("[role=group] button:nth-of-type(2)");
@@ -102,6 +105,7 @@ try {
   const before = await page.inputValue(`${cell} input`);
   await page.fill(`${cell} input`, "abc");
   check("typing a price shows Save", await page.isVisible(`${cell} button`));
+  check("the grid counts the unsaved price in the catalog's words", (await page.textContent("[role=group] + output")) === "1 price not saved", await page.textContent("[role=group] + output"));
   await page.press(`${cell} input`, "Escape");
   check("Escape puts the saved price back", (await page.inputValue(`${cell} input`)) === before && !(await page.isVisible(`${cell} button`)));
   await page.fill(`${cell} input`, "abc");
@@ -189,7 +193,7 @@ try {
   await page.click(`${cell} button`);
   await page.waitForFunction((sel) => document.querySelector(sel)?.getAttribute("aria-invalid") === null, `${cell} input`, { timeout: 5000 }).catch(() => {});
 
-  // Archive two rows through the confirm dialog (a child given the grid's dialog ref and handler).
+  // Archive two rows through the confirm dialog, which the bulk bar's button opens with commandfor.
   const ids = await page.$$eval("tbody tr", (rows) => rows.slice(0, 2).map((r) => r.id));
   await page.click("tbody tr:nth-child(1) input[type=checkbox]");
   await page.click("tbody tr:nth-child(2) input[type=checkbox]");

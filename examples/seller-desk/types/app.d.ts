@@ -70,12 +70,13 @@ declare module "corten/views" {
   export class InventoryRow {
     constructor(el: Element);
     readonly el: HTMLTableRowElement;
+    name: string;
     set: string;
     condition: string;
     qty: number;
     selected: boolean;
     /** Writes every hole of `el` (a InventoryRow's root) from `data`. */
-    static fill(el: Element, data: { set: string; condition: string; qty: number; selected: boolean }): void;
+    static fill(el: Element, data: { name: string; set: string; condition: string; qty: number; selected: boolean }): void;
     /** The key of a InventoryRow's root (its key={id}). */
     static key(el: Element): string;
   }

@@ -359,11 +359,35 @@ fn mark_head_tags(html: &str, out: &mut String) {
 /// #[derive(corten::view::Id)]
 /// struct CellId<'a> { row: &'a str, column: u8 }
 /// ```
+///
+/// A component that renders an element for its parent takes the id as a prop of any id type,
+/// so the parent names it once and points a button at it (`commandfor`, `for`):
+///
+/// ```
+/// use corten::{prelude::*, view::Id};
+///
+/// #[component]
+/// fn Confirm<I: Id>(id: I, title: &'static str) -> impl Render {
+///     html! { <dialog id={id}><h2>{title}</h2></dialog> }
+/// }
+///
+/// #[derive(Id)]
+/// struct ArchiveDialogId;
+///
+/// let page = html! {
+///     <button type="button" command="show-modal" commandfor={ArchiveDialogId}>"Archive"</button>
+///     <Confirm id={ArchiveDialogId} title="Archive?" />
+/// };
+/// assert_eq!(
+///     page.to_html(),
+///     r#"<button type="button" command="show-modal" commandfor="archive-dialog">Archive</button><dialog id="archive-dialog"><h2>Archive?</h2></dialog>"#
+/// );
+/// ```
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an element id",
     label = "an element id is a `#[derive(Id)]` type, like `RowId(&item.id)`"
 )]
-pub trait Id {
+pub trait Id: AttrValue + Render {
     /// The id without its key: `"row"`.
     const NAME: &'static str;
     /// Writes the id (escaped for an attribute).
