@@ -3128,7 +3128,14 @@ async fn a_public_answer_takes_a_header_and_is_still_compressed() {
                 "/gone",
                 get(|| async {
                     Public::new(Duration::from_secs(60), crate::Result::<String>::Err(crate::Error::not_found()))
-                        .header::<XRobotsTag>(HeaderValue::from_static("noindex"))
+                        .header::<Link>(HeaderValue::from_static("</gone>; rel=\"gone\""))
+                }),
+            )
+            .route(
+                "/old",
+                get(|req: Req| async move {
+                    Public::new(Duration::from_secs(60), req.moved(&serves_url::Check))
+                        .header::<Link>(HeaderValue::from_static("</check>; rel=\"canonical\""))
                 }),
             ),
     ))
@@ -3141,7 +3148,12 @@ async fn a_public_answer_takes_a_header_and_is_still_compressed() {
     assert_eq!(headers.get_all("link").iter().count(), 2, "{headers:?}");
     assert_eq!(headers["content-encoding"], "zstd", "{headers:?}");
     assert_eq!(headers["cache-control"], "public, max-age=60", "{headers:?}");
-    let res = router.oneshot(Request::get("/gone").body(Body::empty()).unwrap()).await.unwrap();
+    // An error is the error page, without the answer's headers.
+    let res = router.clone().oneshot(Request::get("/gone").body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
-    assert!(res.headers().get("x-robots-tag").is_none_or(|v| v == "noindex"), "the error page's own, if any");
+    assert!(res.headers().get("link").is_none(), "{:?}", res.headers());
+    // A redirect keeps them.
+    let res = router.oneshot(Request::get("/old").body(Body::empty()).unwrap()).await.unwrap();
+    assert!(res.status().is_redirection(), "{}", res.status());
+    assert_eq!(res.headers()["link"], "</check>; rel=\"canonical\"");
 }

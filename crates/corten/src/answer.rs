@@ -855,10 +855,12 @@ impl<A: Shareable> Public<A> {
     /// # let _: Methods = get(llms);
     /// ```
     ///
-    /// The name is checked when the app compiles. A header that would make the answer one
-    /// visitor's (`set-cookie`), or that Corten sets itself (`cache-control`, `vary`, the
-    /// encoding and length, the security headers, `corten-*`), does not compile, and neither does
-    /// a name that is not a lowercase header name:
+    /// The name is checked when the app builds (`cargo build`, `cargo test`; `cargo check` does
+    /// not evaluate it). A header that would make the answer one visitor's (`set-cookie`), one
+    /// Corten sets itself (`cache-control` and a CDN's `*-cache-control`, `vary`, the encoding
+    /// and length, the security headers, CORS, `corten-*`), one the answer has (`content-type`,
+    /// `location`) or one of the connection's does not compile, and neither does a name that is
+    /// not a lowercase header name:
     ///
     /// ```compile_fail,E0080
     /// use std::time::Duration;
@@ -878,7 +880,7 @@ impl<A: Shareable> Public<A> {
         let name = const {
             assert!(
                 shared_header(H::NAME),
-                "corten: a Public answer cannot set this header: it would make the answer one visitor's, or Corten sets it (the note below names the header)"
+                "corten: a Public answer cannot set this header: it would make the answer one visitor's, or Corten or the answer sets it (the type named in `header::<..>` below)"
             );
             axum::http::HeaderName::from_static(H::NAME)
         };
@@ -927,14 +929,27 @@ headers! {
     ContentLanguage = "content-language";
 }
 
-/// The headers a [`Public`] answer may not set: one that would make it one visitor's, and those
-/// Corten sets itself (caching, compression, security). Names under `corten-` are Corten's too.
-const NOT_SHARED: [&str; 12] = [
+/// The headers a [`Public`] answer may not set: one that would make it one visitor's
+/// (`set-cookie`, `clear-site-data`), those Corten sets itself (caching, compression, security),
+/// those the answer itself has (its type, the place a redirect goes, a range), and those that are
+/// the connection's, not the answer's. Names under `corten-` and `access-control-` (an API's
+/// CORS) are Corten's too, and so is any `*cache-control` and `surrogate-control`: a CDN
+/// obeys them over `Cache-Control`, which Corten makes `private` for an answer it must not
+/// share.
+const NOT_SHARED: [&str; 26] = [
     "set-cookie",
+    "clear-site-data",
     "cache-control",
+    "surrogate-control",
+    "expires",
+    "age",
+    "date",
     "vary",
+    "content-type",
     "content-encoding",
     "content-length",
+    "content-range",
+    "location",
     "content-security-policy",
     "content-security-policy-report-only",
     "x-content-type-options",
@@ -942,36 +957,41 @@ const NOT_SHARED: [&str; 12] = [
     "referrer-policy",
     "cross-origin-opener-policy",
     "strict-transport-security",
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "upgrade",
+    "te",
+    "trailer",
 ];
+
+/// Whether `name` starts (`at_end` false) or ends (`true`) with `part`, when the app compiles.
+const fn has(name: &[u8], part: &[u8], at_end: bool) -> bool {
+    if name.len() < part.len() {
+        return false;
+    }
+    let from = if at_end { name.len() - part.len() } else { 0 };
+    let mut i = 0;
+    while i < part.len() {
+        if name[from + i] != part[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
 
 /// Whether a [`Public`] answer may set the header `name` (lowercase), when the app compiles.
 const fn shared_header(name: &str) -> bool {
     let name = name.as_bytes();
-    let own = b"corten-";
-    if name.len() >= own.len() {
-        let mut i = 0;
-        let mut same = true;
-        while i < own.len() {
-            same &= name[i] == own[i];
-            i += 1;
-        }
-        if same {
-            return false;
-        }
+    if has(name, b"corten-", false) || has(name, b"access-control-", false) || has(name, b"cache-control", true) {
+        return false;
     }
     let mut n = 0;
     while n < NOT_SHARED.len() {
         let refused = NOT_SHARED[n].as_bytes();
-        if refused.len() == name.len() {
-            let mut i = 0;
-            let mut same = true;
-            while i < name.len() {
-                same &= name[i] == refused[i];
-                i += 1;
-            }
-            if same {
-                return false;
-            }
+        if refused.len() == name.len() && has(name, refused, false) {
+            return false;
         }
         n += 1;
     }
@@ -1510,5 +1530,34 @@ where
     #[inline]
     fn call(self, req: Request, state: S) -> Self::Future {
         Marked { inner: self.handler.call(req, state), answer: PhantomData }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_public_answer_takes_the_app_s_headers_and_not_corten_s_or_the_connection_s() {
+        for name in ["x-robots-tag", "link", "content-disposition", "content-language", "etag", "last-modified", "x-cache-tag"] {
+            assert!(super::shared_header(name), "{name}");
+        }
+        for name in [
+            "set-cookie",
+            "cache-control",
+            "cdn-cache-control",
+            "cloudflare-cdn-cache-control",
+            "surrogate-control",
+            "access-control-allow-origin",
+            "corten-mode",
+            "content-type",
+            "location",
+            "content-range",
+            "transfer-encoding",
+            "connection",
+            "te",
+            "age",
+            "clear-site-data",
+        ] {
+            assert!(!super::shared_header(name), "{name}");
+        }
     }
 }

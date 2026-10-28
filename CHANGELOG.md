@@ -758,8 +758,9 @@ Corten is pre-1.0, so any minor version may change the API.
     `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
     and shared as it would be without it. Before, a shared file that had to stay out of search was
     a `Relay`, never compressed (Chase Sets' developer manifest: 161,815 bytes against 19,737 with
-    brotli), or an answer type of the app's own. `set-cookie` and the headers Corten sets itself do
-    not compile. A public answer that adds none costs about 30 instructions more per request,
+    brotli), or an answer type of the app's own. `set-cookie`, the headers Corten sets itself
+    (caching, a CDN's `*-cache-control`, CORS, security), those the answer has (`content-type`,
+    `location`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
     18,404-18,417 to 18,434-18,459 for a public text answer (callgrind, in process, 1,000
     requests, three runs each); the headers are held behind an `Option<Box<..>>`, since a `Vec`
     in place cost about 50 (18,450-18,467)
