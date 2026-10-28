@@ -346,6 +346,14 @@ async fn a_live_watch_sends_the_latest_value_from_where_the_page_is() {
     tokio::task::yield_now().await;
     drop(tx);
     assert_eq!(read.await.unwrap(), "event: patch\nid: 7\ndata: <p id=\"n\">7</p>\n\nevent: end\ndata: end\n\n", "the current one first");
+
+    // A receiver kept in the app's state never reads, so a clone of it has not seen 8: a page
+    // showing 8 still gets nothing until the next change.
+    let (tx, kept) = tokio::sync::watch::channel(7u64);
+    tx.send_replace(8);
+    let current = crate::live_watch(kept.clone(), LiveSince(Some("8".into())), |n| *n, |n| format!(r#"<p id="n">{n}</p>"#));
+    drop(tx);
+    assert_eq!(body(current).await, "event: end\ndata: end\n\n", "nothing to send");
 }
 
 #[tokio::test]

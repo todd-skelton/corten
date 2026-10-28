@@ -285,7 +285,7 @@ async fn sign_out(req: Req) -> HtmlResult {
 /// says which trade it shows (`since`), and a reconnect which one it last got, so the first
 /// fragment is only sent when the browser is behind; otherwise the stream waits for the next.
 async fn trades(State(market): State<Market>, since: LiveSince) -> LiveResponse {
-    corten::live_watch(market.trades.subscribe(), since, |(n, _)| n.to_string(), |(_, text)| LastTrade { text }.to_html())
+    corten::live_watch(market.trades.subscribe(), since, |(n, _)| *n, |(_, text)| LastTrade { text }.to_html())
 }
 
 /// The watchlist screen's data: what the view shows, and what a data client gets.

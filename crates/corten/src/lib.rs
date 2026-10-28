@@ -257,7 +257,8 @@ where
 /// page already showing the current one (`since`, [`LiveSince`]) gets nothing until the next
 /// change, and one that is behind gets the current value first. Values the browser missed in
 /// between are skipped: it only ever needs the latest. The stream ends when the channel's sender
-/// is dropped.
+/// is dropped. Each change is cloned out for each page before it renders, so the sender never
+/// waits on a render; a large value goes in an `Arc`.
 ///
 /// ```
 /// use corten::{prelude::*, LiveResponse, LiveSince};
@@ -273,26 +274,27 @@ where
 ///
 /// // The trade count and the last trade's text.
 /// async fn trades(State(trades): State<watch::Receiver<(u64, String)>>, since: LiveSince) -> LiveResponse {
-///     corten::live_watch(trades, since, |(n, _)| n.to_string(), |(_, text)| LastTrade { text }.to_html())
+///     corten::live_watch(trades, since, |(n, _)| *n, |(_, text)| LastTrade { text }.to_html())
 /// }
 /// ```
-pub fn live_watch<T, C, V>(mut values: tokio::sync::watch::Receiver<T>, since: LiveSince, cursor: C, view: V) -> LiveResponse
+pub fn live_watch<T, K, C, V>(mut values: tokio::sync::watch::Receiver<T>, since: LiveSince, cursor: C, view: V) -> LiveResponse
 where
-    T: Send + Sync + 'static,
-    C: Fn(&T) -> String + Send + 'static,
+    T: Clone + Send + Sync + 'static,
+    K: ToString,
+    C: Fn(&T) -> K + Send + 'static,
     V: Fn(&T) -> String + Send + 'static,
 {
-    let current = cursor(&values.borrow());
+    // Marked seen here, so a receiver cloned from one that never read (kept in the app's state)
+    // or a value sent since it subscribed is not sent again to a page that shows it.
+    let current = cursor(&values.borrow_and_update()).to_string();
     if since.0.as_deref() != Some(current.as_str()) {
         values.mark_changed();
     }
     live(futures_util::stream::unfold((values, cursor, view), |(mut values, cursor, view)| async move {
         values.changed().await.ok()?;
-        let fragment = {
-            let value = values.borrow_and_update();
-            Fragment::new(view(&value)).cursor(cursor(&value))
-        };
-        Some((fragment, (values, cursor, view)))
+        // Copied out, so the sender never waits on a render.
+        let value = values.borrow_and_update().clone();
+        Some((Fragment::new(view(&value)).cursor(cursor(&value).to_string()), (values, cursor, view)))
     }))
 }
 
