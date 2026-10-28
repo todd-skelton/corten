@@ -668,6 +668,11 @@ Corten is pre-1.0, so any minor version may change the API.
      written by hand and given to `Area::route` must have a path of the shape `#[derive(Route)]`
      writes (whole-segment parameters, plain text), or the app does not compile
      ([#203 An app cannot ask whether it routes a path, so a sign-in's return address is checked against a hand-kept list of prefixes](https://github.com/todd-skelton/corten/issues/203)).
+103. `req.nav(&route)` and `req.nav_section(&route)`: a nav link from one mention of its route,
+    `<a {..req.nav(&url::News)}>"News"</a>`, writing `href`, `data-nav` and
+    `aria-current="page"` on its own page. The route's URL is made once, written and compared,
+    where `href={..}` and `aria-current={req.current(&..)}` made it twice; a tag that also writes
+    one of those attributes does not compile. The watchlist and seller-desk use it.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -698,6 +703,8 @@ Corten is pre-1.0, so any minor version may change the API.
    corten::Error>`) is for helpers. A bare `corten::Result` names no answer and does not compile.
 8. The `link` keyword of `#[route]` in a routes module: a route an API serves goes in the API's
    own `#[corten::routes(api = ..)]` module, with its handler.
+9. `Req::current`: `req.nav(&route)` writes the whole nav link, and `req.is_current` answers
+   the question elsewhere.
 
 ### Changed
 

@@ -152,7 +152,7 @@ pub(crate) fn Shell(req: &Req, title: &str, head: impl Render, children: impl Re
                 <Corten />
             </head>
             <body>
-                <header><a href={Root} aria-current={req.current(&Root)}>"home"</a></header>
+                <header><a {..req.nav(&Root)}>"home"</a></header>
                 <main>{children}</main>
             </body>
         </html>
@@ -825,6 +825,50 @@ async fn the_page_key_follows_the_caller_the_handler_read() {
 
     let (_, _, anonymous) = call(app(routes(), Some("ada")), "GET", None).await;
     assert_ne!(meta_content(&anonymous, "corten-shell"), meta_content(&ada, "corten-shell"), "a page that reads no caller");
+}
+
+#[test]
+fn a_nav_link_writes_its_route_once_and_says_when_it_is_the_page() {
+    use crate::{page::Nav, view::Attrs};
+    #[derive(crate::Route)]
+    #[route("/sell")]
+    struct Sell;
+    #[derive(crate::Route)]
+    #[route("/items/{id}")]
+    struct Item<'a> {
+        id: &'a str,
+        tab: Option<&'a str>,
+    }
+    fn attrs<R: crate::Route>(nav: Nav<'_, R>) -> String {
+        let mut out = String::new();
+        nav.render_attrs(&mut out);
+        out
+    }
+    assert_eq!(attrs(Nav { path: "/sell", to: &Sell, section: false }), r#" href="/sell" data-nav aria-current="page""#);
+    assert_eq!(attrs(Nav { path: "/sell/listings", to: &Sell, section: false }), r#" href="/sell" data-nav"#);
+    assert_eq!(
+        attrs(Nav { path: "/sell/listings", to: &Sell, section: true }),
+        r#" href="/sell" data-nav="section" aria-current="page""#
+    );
+    // The path is percent-encoded, and the query is left out of the comparison.
+    let item = Item { id: "a b", tab: Some("x&y") };
+    assert_eq!(
+        attrs(Nav { path: "/items/a%20b", to: &item, section: false }),
+        r#" href="/items/a%20b?tab=x%26y" data-nav aria-current="page""#
+    );
+    // A route written by hand may write a path that escaping for the attribute changes; it is
+    // compared unescaped.
+    struct Terms;
+    impl crate::Route for Terms {
+        const PATH: &'static str = "/terms&privacy";
+        fn write_href(&self, out: &mut String, html: bool) {
+            out.push_str(if html { "/terms&amp;privacy" } else { "/terms&privacy" });
+        }
+    }
+    assert_eq!(
+        attrs(Nav { path: "/terms&privacy", to: &Terms, section: false }),
+        r#" href="/terms&amp;privacy" data-nav aria-current="page""#
+    );
 }
 
 #[test]
