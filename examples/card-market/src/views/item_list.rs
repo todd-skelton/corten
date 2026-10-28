@@ -12,8 +12,9 @@ pub fn ItemList<'a>(req: &'a Req, t: Msg, shelf: Shelf<'a>) -> impl Render {
             Shelf::Items(items) => {
                 <ul class={List}>
                     for (i, item) in items.iter().enumerate() {
-                        // The first row is on screen at once; the rest wait until they are near.
-                        <li><ItemCard req={req} t={t} item={item} eager={i < 4} /></li>
+                        // The first row (five cards at the widest the layout gets) is on screen at
+                        // once; the rest wait until they are near.
+                        <li><ItemCard req={req} t={t} item={item} eager={i < 5} /></li>
                     }
                 </ul>
             }

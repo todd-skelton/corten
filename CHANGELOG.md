@@ -1171,7 +1171,7 @@ Corten is pre-1.0, so any minor version may change the API.
     the link names the card; the item page shows it first, not deferred, with its text. Only the
     built-in demo catalog has art (another source's `item_3` is another card), so the
     benchmark's item page and the item JSON are unchanged. Measured with the demo
-    catalog: Ashen Drake's page is 125 bytes larger (43 with brotli) plus its 377-byte picture
+    catalog: Ashen Drake's page is 126 bytes larger (about 45 with brotli) plus its 377-byte picture
     (brotli); the home page is about 1.4 KB larger (about 100 bytes with brotli) plus the pictures
     that load.
     ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).

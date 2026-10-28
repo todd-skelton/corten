@@ -880,7 +880,7 @@ mod tests {
         assert!(home.find(r#"href="/items/item_2""#).unwrap() < home.find(r#"href="/items/item_10""#).unwrap(), "in id order");
         assert!(
             home.contains(r#"/cards/item_1.svg" width="250" height="350" alt="">"#)
-                && home.contains(r#"/cards/item_5.svg" width="250" height="350" alt="" loading="lazy">"#),
+                && home.contains(r#"/cards/item_6.svg" width="250" height="350" alt="" loading="lazy">"#),
             "each card shows its art, sized, and past the first row loaded near the screen: {home}"
         );
         let item = body(get("/items/item_1").await.unwrap()).await;

@@ -13,7 +13,7 @@
     "contents": "Contenu",
     "included_in": "Inclus dans",
     "image": "Image {n} de {title}",
-    "art": "Illustration de {title}"
+    "art": "{title} : illustration"
   },
   "table": {
     "seller": "Vendeur",
