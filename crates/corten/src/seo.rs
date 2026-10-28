@@ -55,6 +55,10 @@ impl Answer for File {
     type Inputs = AnyInputs;
 }
 
+impl crate::answer::Shareable for File {
+    type ForAll = Self;
+}
+
 /// Most URLs one sitemap file may list. Split larger sets with [`sitemap_index`].
 pub const SITEMAP_MAX_URLS: usize = 50_000;
 

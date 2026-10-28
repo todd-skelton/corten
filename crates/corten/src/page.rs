@@ -311,7 +311,7 @@ macro_rules! error_page_fn {
                     };
                 )*
                 match self(failure, $($t,)*).await {
-                    Ok(HtmlResponse(res)) => res,
+                    Ok(res) => res.0,
                     Err(error) => error.into_response(),
                 }
                 }
@@ -567,12 +567,12 @@ impl Req {
     /// (`html! { <Layout req={req} title="About">..</Layout> }`). A browser gets all of it; a
     /// client navigation gets the title, the page's head tags and `<main>`'s children, and the rest
     /// of the layout does not run.
-    pub fn page(&self, doc: impl Document) -> HtmlResult {
+    pub fn page<For>(&self, doc: impl Document) -> crate::Result<HtmlResponse<For>> {
         self.page_with_status(StatusCode::OK, doc)
     }
 
     /// [`Req::page`] with another status.
-    pub fn page_with_status(&self, status: StatusCode, doc: impl Document) -> HtmlResult {
+    pub fn page_with_status<For>(&self, status: StatusCode, doc: impl Document) -> crate::Result<HtmlResponse<For>> {
         // The last size of each part, so the buffer is allocated once.
         static FULL: AtomicUsize = AtomicUsize::new(16 * 1024);
         static SWAP: AtomicUsize = AtomicUsize::new(16 * 1024);
@@ -599,7 +599,7 @@ impl Req {
         size.store(out.len() + out.len() / 8, Ordering::Relaxed);
         // Only a swap says it is one: a document a cache gave to a navigation fetch by mistake
         // makes the runtime load the URL in full.
-        Ok(HtmlResponse(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)), key)))
+        Ok(HtmlResponse::new(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)), key)))
     }
 
     /// The versioned URL of a static file: `req.asset("style.css")`. A missing file is a bug: it
@@ -828,17 +828,17 @@ impl Req {
     /// document's `<title>`. `data` is the screen's view model, so a native screen or an agent sees
     /// exactly what the view shows; for it, only the document's `<title>` renders.
     #[cfg(feature = "json")]
-    pub fn screen<T: crate::json::ToJson + ?Sized>(&self, data: &T, doc: impl Document) -> HtmlResult {
+    pub fn screen<For, T: crate::json::ToJson + ?Sized>(&self, data: &T, doc: impl Document) -> crate::Result<HtmlResponse<For>> {
         self.screen_with_status(StatusCode::OK, data, doc)
     }
 
     #[cfg(feature = "json")]
-    pub fn screen_with_status<T: crate::json::ToJson + ?Sized>(
+    pub fn screen_with_status<For, T: crate::json::ToJson + ?Sized>(
         &self,
         status: StatusCode,
         data: &T,
         doc: impl Document,
-    ) -> HtmlResult {
+    ) -> crate::Result<HtmlResponse<For>> {
         if self.mode != Mode::Data {
             return self.page_with_status(status, doc);
         }
@@ -853,22 +853,22 @@ impl Req {
         data.write_json(&mut body);
         body.push(b'}');
         let headers = [(header::CONTENT_TYPE, HeaderValue::from_static("application/json")), (header::VARY, self.vary())];
-        Ok(HtmlResponse((status, headers, body).into_response()))
+        Ok(HtmlResponse::new((status, headers, body).into_response()))
     }
 
     /// Answers a `<form data-patch>` submit with fragments: the runtime replaces each element on
     /// the page that has the id of one of `view`'s top-level elements. One without an id would
     /// be dropped in the browser, so `view` is a [`Patch`](crate::view::Patch), which the compiler
     /// checks: usually a component declared `-> impl Patch` whose root has a `#[derive(Id)]` id.
-    pub fn patch(&self, view: impl crate::view::Patch) -> HtmlResult {
+    pub fn patch<For>(&self, view: impl crate::view::Patch) -> crate::Result<HtmlResponse<For>> {
         self.patch_with_status(StatusCode::OK, view)
     }
 
     /// Same as [`Req::patch`] with another status.
-    pub fn patch_with_status(&self, status: StatusCode, view: impl crate::view::Patch) -> HtmlResult {
+    pub fn patch_with_status<For>(&self, status: StatusCode, view: impl crate::view::Patch) -> crate::Result<HtmlResponse<For>> {
         let mut body = String::new();
         self.render_into(view, &mut body)?;
-        Ok(HtmlResponse(html_response(status, body, Some(PATCH_HEADER))))
+        Ok(HtmlResponse::new(html_response(status, body, Some(PATCH_HEADER))))
     }
 
     /// Answers a `data-patch` form (a write, Load more) both ways: with JavaScript
@@ -901,10 +901,14 @@ impl Req {
     /// }
     /// # let _ = App::new(url::router()).router();
     /// ```
-    pub fn patch_or<F, Fut>(&self, view: impl crate::view::Patch, page: F) -> impl Future<Output = HtmlResult>
+    pub fn patch_or<For, F, Fut>(
+        &self,
+        view: impl crate::view::Patch,
+        page: F,
+    ) -> impl Future<Output = crate::Result<HtmlResponse<For>>>
     where
         F: FnOnce() -> Fut,
-        Fut: Future<Output = HtmlResult>,
+        Fut: Future<Output = crate::Result<HtmlResponse<For>>>,
     {
         // The patch is rendered before the future is made, so the future holds the answer and not
         // `view`: a view of non-`Send` references would make the handler's future not `Send`.
@@ -926,16 +930,21 @@ impl Req {
     /// - Otherwise (no JavaScript): `page()`, usually `req.page(..)` for the whole page with the
     ///   form showing the errors; a success status becomes 422. It is only called here, so an
     ///   action never loads data for a page it does not send.
-    pub async fn invalid<F, Fut>(&self, errors: &crate::Errors, form: impl crate::view::Patch, page: F) -> HtmlResult
+    pub async fn invalid<For, F, Fut>(
+        &self,
+        errors: &crate::Errors,
+        form: impl crate::view::Patch,
+        page: F,
+    ) -> crate::Result<HtmlResponse<For>>
     where
         F: FnOnce() -> Fut,
-        Fut: Future<Output = HtmlResult>,
+        Fut: Future<Output = crate::Result<HtmlResponse<For>>>,
     {
         let status = StatusCode::UNPROCESSABLE_ENTITY;
         match self.mode {
             Mode::Action => self.patch_with_status(status, form),
             #[cfg(feature = "json")]
-            Mode::Data => Ok(HtmlResponse(errors.response())),
+            Mode::Data => Ok(HtmlResponse::new(errors.response())),
             _ => {
                 let _ = errors;
                 let mut res = page().await?;
@@ -952,9 +961,9 @@ impl Req {
     /// user acted on), a return address checked to be on this site ([`crate::Local`]), or an
     /// `axum::http::Uri` to leave the app. Works with and without
     /// JavaScript.
-    pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
+    pub fn redirect<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
-        Ok(HtmlResponse(redirect(self.mode, value)))
+        Ok(HtmlResponse::new(redirect(self.mode, value)))
     }
 
     /// Whether a redirect to `to` lands on a route of the app's: the route given to
@@ -1002,13 +1011,13 @@ impl Req {
     /// `data-patch` form is sent there as by [`Req::redirect`]. For a `GET`: after a write,
     /// [`Req::redirect`]. Parameters the old URL had are the route's to carry
     /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
-    pub fn moved(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
+    pub fn moved<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         if self.mode == Mode::Action || (self.mode == Mode::Navigation && (has_fragment(&value) || elsewhere(&value))) {
-            return Ok(HtmlResponse(redirect(self.mode, value)));
+            return Ok(HtmlResponse::new(redirect(self.mode, value)));
         }
         let headers = [(header::LOCATION, value), (header::CACHE_CONTROL, HeaderValue::from_static(MOVED_CACHE))];
-        Ok(HtmlResponse((StatusCode::MOVED_PERMANENTLY, headers).into_response()))
+        Ok(HtmlResponse::new((StatusCode::MOVED_PERMANENTLY, headers).into_response()))
     }
 }
 

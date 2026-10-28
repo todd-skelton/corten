@@ -14,8 +14,9 @@ use std::{
 };
 
 use corten::{
-    ClientIp, Error,
+    ClientIp, Error, HtmlResponse,
     agent::{ToolError, Tools},
+    answer::ForAll,
     axum::{
         extract::{FromRequestParts, Request},
         http::{HeaderMap, HeaderValue, Method, StatusCode, header, request::Parts},
@@ -263,8 +264,9 @@ pub(crate) async fn sitemap() -> Public<seo::File> {
 }
 
 /// A page that is the same for every visitor: a CDN may serve it for a minute, and an older copy
-/// for ten more while it fetches a fresh one.
-fn shared(page: HtmlResult) -> Public<HtmlResult> {
+/// for ten more while it fetches a fresh one. The page is made for everyone (`ForAll`), so it
+/// cannot set a cookie.
+fn shared(page: corten::Result<HtmlResponse<ForAll>>) -> Public<HtmlResult> {
     Public::new(Duration::from_secs(60), page).stale_while_revalidate(Duration::from_secs(600))
 }
 

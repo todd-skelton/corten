@@ -1,4 +1,5 @@
 use super::*;
+use crate::answer::ForOne;
 use crate::cache::Cache;
 use crate::security::cookie::SetCookie;
 use crate::view::{html, Render};
@@ -161,11 +162,16 @@ pub(crate) fn Shell(req: &Req, title: &str, head: impl Render, children: impl Re
 
 /// `req.page` in the tests' layout with no head tags of the page's own.
 pub(crate) trait TestPage {
-    fn test_page(&self, title: &str, main: impl Render) -> HtmlResult;
+    fn test_page(&self, title: &str, main: impl Render) -> HtmlResult {
+        self.test_page_for(title, main)
+    }
+
+    /// The page for whoever its handler answers: inside a `Public`, everyone.
+    fn test_page_for<For>(&self, title: &str, main: impl Render) -> crate::Result<HtmlResponse<For>>;
 }
 
 impl TestPage for Req {
-    fn test_page(&self, title: &str, main: impl Render) -> HtmlResult {
+    fn test_page_for<For>(&self, title: &str, main: impl Render) -> crate::Result<HtmlResponse<For>> {
         self.page(Shell { req: self, title, head: "", children: main })
     }
 }
@@ -243,10 +249,10 @@ fn routes() -> Router {
         "/",
         get(|req: Req| async move {
             let head = html! { <meta name="description" content="About A"> };
-            req.page(Shell { req: &req, title: "A & B", head, children: demo("<script>") })
+            req.page::<ForOne>(Shell { req: &req, title: "A & B", head, children: demo("<script>") })
         })
         .post(|req: Req| async move {
-            req.patch_or(html! { <p id={MsgId}>"saved"</p> }, || async { req.redirect(&Done) }).await
+            req.patch_or(html! { <p id={MsgId}>"saved"</p> }, || async { req.redirect::<ForOne>(&Done) }).await
         }),
     )
 }
@@ -444,7 +450,7 @@ async fn patch_or_builds_the_page_only_without_javascript() {
             axum::routing::post(|req: Req| async move {
                 let page = || async {
                     PAGES.fetch_add(1, Ordering::Relaxed);
-                    req.redirect(&Done)
+                    req.redirect::<ForOne>(&Done)
                 };
                 req.patch_or(html! { <p id={MsgId}>"saved"</p> }, page).await
             }),
@@ -468,7 +474,7 @@ async fn patch_or_keeps_a_handler_send_with_a_view_of_cells() {
         axum::routing::post(|req: Req| async move {
             let count = std::cell::Cell::new(1);
             let count = &count;
-            req.patch_or(html! { <p id={MsgId}>{count.get()}</p> }, || async { req.redirect(&Done) }).await
+            req.patch_or(html! { <p id={MsgId}>{count.get()}</p> }, || async { req.redirect::<ForOne>(&Done) }).await
         }),
     );
     let (_, _, body) = call(app(routes, None), "POST", Some("action")).await;
@@ -489,7 +495,7 @@ async fn screen_is_html_for_browsers_and_json_for_data_clients() {
             "/",
             get(|req: Req| async move {
                 let data = Data { text: "<b>" };
-                req.screen(&data, Shell { req: &req, title: "A & B", head: "", children: demo(data.text) })
+                req.screen::<ForOne, _>(&data, Shell { req: &req, title: "A & B", head: "", children: demo(data.text) })
             }),
         ),
         None,
@@ -756,9 +762,9 @@ fn Plain(req: &Req, title: &str, children: impl Render) -> impl Document {
 #[tokio::test]
 async fn a_page_in_another_layout_has_another_shell_key() {
     let routes = Router::new()
-        .route("/", get(|req: Req| async move { req.page(Shell { req: &req, title: "A", head: "", children: "a" }) }))
-        .route("/b", get(|req: Req| async move { req.page(Shell { req: &req, title: "B", head: "", children: "b" }) }))
-        .route("/plain", get(|req: Req| async move { req.page(Plain { req: &req, title: "P", children: "p" }) }));
+        .route("/", get(|req: Req| async move { req.page::<ForOne>(Shell { req: &req, title: "A", head: "", children: "a" }) }))
+        .route("/b", get(|req: Req| async move { req.page::<ForOne>(Shell { req: &req, title: "B", head: "", children: "b" }) }))
+        .route("/plain", get(|req: Req| async move { req.page::<ForOne>(Plain { req: &req, title: "P", children: "p" }) }));
     let router = app(routes.clone(), None);
     let key = |uri: &'static str, mode: Option<&'static str>| {
         let router = router.clone();
@@ -951,7 +957,7 @@ async fn a_page_that_reads_again_says_so_in_its_head_on_every_surface() {
     let routes = Router::new().route(
         "/",
         get(|req: Req| async move {
-            req.page(Shell {
+            req.page::<ForOne>(Shell {
                 req: &req,
                 title: "Saving",
                 head: ReadAgain { after: Duration::from_secs(2) },
@@ -1020,7 +1026,7 @@ async fn a_page_that_moved_answers_301_in_every_mode_and_a_form_navigates() {
     struct Item<'a> {
         slug: &'a str,
     }
-    let routes = Router::new().route("/", get(|req: Req| async move { req.moved(&Item { slug: "pika chu" }) }));
+    let routes = Router::new().route("/", get(|req: Req| async move { req.moved::<ForOne>(&Item { slug: "pika chu" }) }));
     for (mode, accept) in [(None, Some("text/html")), (Some("nav"), None), (None, Some("application/json"))] {
         let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/", mode, accept).await;
         assert_eq!(status, StatusCode::MOVED_PERMANENTLY, "{mode:?} {accept:?}");
@@ -1042,8 +1048,8 @@ async fn a_redirect_to_a_place_keeps_its_fragment_in_every_mode() {
     #[derive(crate::view::Id)]
     struct PlaceId<'a>(&'a str);
     let routes = Router::new()
-        .route("/", get(|req: Req| async move { req.redirect(&Item { slug: "pika chu" }.at(PlaceId("7 & 8"))) }))
-        .route("/old", get(|req: Req| async move { req.moved(&Item { slug: "pika" }.at(PlaceId("7"))) }));
+        .route("/", get(|req: Req| async move { req.redirect::<ForOne>(&Item { slug: "pika chu" }.at(PlaceId("7 & 8"))) }))
+        .route("/old", get(|req: Req| async move { req.moved::<ForOne>(&Item { slug: "pika" }.at(PlaceId("7"))) }));
     let place = "/items/pika%20chu#place-7%20%26%208";
     let (status, headers, _) = call(app(routes.clone(), None), "GET", None).await;
     assert_eq!((status, &headers["location"]), (StatusCode::SEE_OTHER, &place.parse().unwrap()), "a full load follows it");
@@ -1065,9 +1071,12 @@ async fn a_redirect_to_a_place_keeps_its_fragment_in_every_mode() {
 async fn a_redirect_to_another_origin_is_named_to_a_client_navigation() {
     use axum::http::Uri;
     let routes = Router::new()
-        .route("/away", get(|req: Req| async move { req.redirect(&"https://shop.example/sales?x=1".parse::<Uri>().unwrap()) }))
-        .route("/moved", get(|req: Req| async move { req.moved(&"//shop.example/sales".parse::<Uri>().unwrap()) }))
-        .route("/here", get(|req: Req| async move { req.redirect(&Done) }));
+        .route(
+            "/away",
+            get(|req: Req| async move { req.redirect::<ForOne>(&"https://shop.example/sales?x=1".parse::<Uri>().unwrap()) }),
+        )
+        .route("/moved", get(|req: Req| async move { req.moved::<ForOne>(&"//shop.example/sales".parse::<Uri>().unwrap()) }))
+        .route("/here", get(|req: Req| async move { req.redirect::<ForOne>(&Done) }));
     for (uri, to, full) in [
         ("/away", "https://shop.example/sales?x=1", StatusCode::SEE_OTHER),
         ("/moved", "//shop.example/sales", StatusCode::MOVED_PERMANENTLY),
@@ -1094,8 +1103,8 @@ async fn a_redirect_to_a_place_elsewhere_keeps_its_fragment() {
     use axum::http::Uri;
     static COMPARE: std::sync::LazyLock<Uri> = std::sync::LazyLock::new(|| Uri::from_static("https://example.com/compare?x=1"));
     let routes = Router::new()
-        .route("/old", get(|req: Req| async move { req.moved(&Elsewhere::at(&COMPARE, "fee-calculator")) }))
-        .route("/go", get(|req: Req| async move { req.redirect(&Elsewhere::at(&COMPARE, "fees & taxes")) }));
+        .route("/old", get(|req: Req| async move { req.moved::<ForOne>(&Elsewhere::at(&COMPARE, "fee-calculator")) }))
+        .route("/go", get(|req: Req| async move { req.redirect::<ForOne>(&Elsewhere::at(&COMPARE, "fees & taxes")) }));
     let place = "https://example.com/compare?x=1#fee-calculator";
     let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/old", None, Some("text/html")).await;
     assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &place.parse().unwrap()), "a full load");
@@ -1620,7 +1629,7 @@ fn cached_routes() -> Router {
     let minute = std::time::Duration::from_secs(60);
     let home = || html! { <p>"home"</p> };
     Router::new()
-        .route("/", get(move |req: Req| async move { Public::new(minute, req.test_page("Home", home())) }))
+        .route("/", get(move |req: Req| async move { Public::<HtmlResult>::new(minute, req.test_page_for("Home", home())) }))
         .route(
             "/cookie",
             get(move |req: Req| async move {
@@ -1630,15 +1639,21 @@ fn cached_routes() -> Router {
         .route(
             "/catalog",
             get(move |req: Req| async move {
-                Public::new(minute, req.test_page("Catalog", home())).shared(std::time::Duration::from_secs(86_400))
+                Public::<HtmlResult>::new(minute, req.test_page_for("Catalog", home()))
+                    .shared(std::time::Duration::from_secs(86_400))
             }),
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
         .route(
             "/cookies",
+            // `with_cookie` on a `Public` answer does not compile; a header written by hand still
+            // makes it private when it is sent.
             get(move |req: Req| async move {
-                let page = req.test_page("Home", home()).map(|page| page.with_cookie(SetCookie::new("a", "1")));
-                Public::new(minute, page.map(|page| page.with_cookie(SetCookie::remove("b"))))
+                let page = req.test_page_for("Home", home()).map(|mut page| {
+                    page.headers_mut().append(header::SET_COOKIE, SetCookie::new("a", "1").header());
+                    page
+                });
+                Public::<HtmlResult>::new(minute, page)
             }),
         )
         .route("/plain", get(|req: Req| async move { req.test_page("Plain", html! { <p>"plain"</p> }) }))
@@ -1659,7 +1674,9 @@ async fn with_cookie_sets_each_cookie_in_order() {
     let routes = Router::new().route(
         "/",
         get(|req: Req| async move {
-            Ok::<_, Error>(req.redirect(&Done)?.with_cookie(SetCookie::new("a", "1")).with_cookie(SetCookie::remove("b")))
+            Ok::<_, Error>(
+                req.redirect::<ForOne>(&Done)?.with_cookie(SetCookie::new("a", "1")).with_cookie(SetCookie::remove("b")),
+            )
         }),
     );
     let res = app(routes, None).oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();

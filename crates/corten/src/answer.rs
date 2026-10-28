@@ -97,9 +97,41 @@ pub trait Answer: IntoResponse {
 /// [`Req::page`], [`Req::patch`] and [`Req::redirect`] give. A cookie is
 /// [`HtmlResponse::with_cookie`]; it derefs to the response for any other header of the
 /// handler's own (`res.headers_mut().insert(..)`).
-pub struct HtmlResponse(pub(crate) Response);
+///
+/// `For` is who the answer is for, read from where it goes: [`ForOne`], the visitor who asked
+/// (an [`HtmlResult`]), or [`ForAll`], inside a [`Public`]. The `Req` methods that make one
+/// take it from there, so a handler never names it.
+pub struct HtmlResponse<For = ForOne>(pub(crate) Response, PhantomData<For>);
 
-impl HtmlResponse {
+/// An answer for the visitor who asked: it may set a cookie. What [`HtmlResult`] holds.
+pub struct ForOne;
+
+/// An answer for everyone, inside a [`Public`]: a cache gives it to anyone, so it sets no
+/// cookie, and [`HtmlResponse::with_cookie`] there does not compile.
+pub struct ForAll;
+
+/// Who an answer that sets a cookie can be for: [`ForOne`] alone.
+#[diagnostic::on_unimplemented(
+    message = "a `Public` answer is the same for everyone, so it cannot set a cookie",
+    label = "this answer is `Public`",
+    note = "return a private answer (`HtmlResult`) to set a cookie; a cache would give the cookie to everyone"
+)]
+pub trait SetsCookies: sealed::Sealed {}
+
+impl SetsCookies for ForOne {}
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::ForOne {}
+}
+
+impl<For> HtmlResponse<For> {
+    pub(crate) fn new(res: Response) -> Self {
+        HtmlResponse(res, PhantomData)
+    }
+}
+
+impl<For: SetsCookies> HtmlResponse<For> {
     /// The answer with a `Set-Cookie` header, built by [`SetCookie`](crate::security::cookie::SetCookie)
     /// so its safe flags are the default: `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`.
     /// Each call adds one; an answer that sets a cookie is never stored by a shared cache. This is
@@ -125,6 +157,25 @@ impl HtmlResponse {
     /// }
     /// # let _ = App::new(url::router()).router();
     /// ```
+    ///
+    /// A [`Public`] answer is the same for everyone, so setting a cookie on one does not compile:
+    ///
+    /// ```compile_fail,E0277
+    /// use std::time::Duration;
+    /// use corten::{prelude::*, security::cookie::SetCookie};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     let page = req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> });
+    ///     Public::new(Duration::from_secs(60), page.map(|page| page.with_cookie(SetCookie::new("seen", "1"))))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
     #[must_use]
     pub fn with_cookie(mut self, cookie: crate::security::cookie::SetCookie) -> Self {
         self.0.headers_mut().append(axum::http::header::SET_COOKIE, cookie.header());
@@ -132,13 +183,13 @@ impl HtmlResponse {
     }
 }
 
-impl IntoResponse for HtmlResponse {
+impl<For> IntoResponse for HtmlResponse<For> {
     fn into_response(self) -> Response {
         self.0
     }
 }
 
-impl Deref for HtmlResponse {
+impl<For> Deref for HtmlResponse<For> {
     type Target = Response;
 
     fn deref(&self) -> &Response {
@@ -146,7 +197,7 @@ impl Deref for HtmlResponse {
     }
 }
 
-impl DerefMut for HtmlResponse {
+impl<For> DerefMut for HtmlResponse<For> {
     fn deref_mut(&mut self) -> &mut Response {
         &mut self.0
     }
@@ -155,6 +206,52 @@ impl DerefMut for HtmlResponse {
 impl Answer for HtmlResponse {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+}
+
+/// An answer that can be [`Public`], and what it is there: the same answer, made for everyone.
+/// An [`HtmlResult`] becomes a `Result<HtmlResponse<ForAll>>`, so the `Req` methods that make
+/// it make it for everyone and it cannot set a cookie; an answer that cannot set one (text, JSON,
+/// a [`Relay`]) stays itself.
+pub trait Shareable {
+    /// The answer as [`Public::new`] takes it.
+    type ForAll: IntoResponse;
+}
+
+impl Shareable for HtmlResponse {
+    type ForAll = HtmlResponse<ForAll>;
+}
+
+impl<A: Shareable> Shareable for Result<A, Error> {
+    type ForAll = Result<A::ForAll, Error>;
+}
+
+#[cfg(feature = "json")]
+impl<A: Shareable> Shareable for std::result::Result<A, JsonError> {
+    type ForAll = std::result::Result<A::ForAll, JsonError>;
+}
+
+#[cfg(feature = "json")]
+impl<T> Shareable for crate::Json<T>
+where
+    crate::Json<T>: IntoResponse,
+{
+    type ForAll = Self;
+}
+
+impl Shareable for &'static str {
+    type ForAll = Self;
+}
+
+impl Shareable for String {
+    type ForAll = Self;
+}
+
+impl Shareable for StatusCode {
+    type ForAll = Self;
+}
+
+impl Shareable for Relay {
+    type ForAll = Self;
 }
 
 /// What a page handler returns: `async fn item(req: Req) -> HtmlResult`. A failure is the app's
@@ -382,14 +479,14 @@ impl Answer for corten_feed::FeedResponse {
 /// Only a successful answer is shared; a failure keeps the default, `private, no-cache`. The rules
 /// of [`crate::cache`] still apply when it is sent: a request with a cookie, or a page with the
 /// request's nonce, is answered privately.
-pub struct Public<A> {
+pub struct Public<A: Shareable> {
     cache: Cache,
-    answer: A,
+    answer: A::ForAll,
 }
 
-impl<A> Public<A> {
+impl<A: Shareable> Public<A> {
     /// `answer`, which any cache may keep for `max_age` (whole seconds).
-    pub fn new(max_age: Duration, answer: A) -> Self {
+    pub fn new(max_age: Duration, answer: A::ForAll) -> Self {
         Public { cache: Cache::public(max_age), answer }
     }
 
@@ -411,7 +508,7 @@ impl<A> Public<A> {
     }
 }
 
-impl<A: IntoResponse> IntoResponse for Public<A> {
+impl<A: Shareable> IntoResponse for Public<A> {
     fn into_response(self) -> Response {
         let mut res = self.answer.into_response();
         if res.status().is_success() || res.status().is_redirection() {
@@ -421,7 +518,7 @@ impl<A: IntoResponse> IntoResponse for Public<A> {
     }
 }
 
-impl<A: Answer> Answer for Public<A> {
+impl<A: Answer + Shareable> Answer for Public<A> {
     const FORMAT: Format = A::FORMAT;
     type Inputs = AnonymousInputs;
 }

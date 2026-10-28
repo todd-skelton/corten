@@ -283,7 +283,9 @@ async fn home(req: Req) -> Public<HtmlResult> {
 ```
 
 Its handler may only take inputs that cannot tell who is asking (`Path`, `Query`, `Form`,
-`State`, `Req`, ...): a `Caller`, a `HeaderMap` or a cookie there does not compile. `App` still
+`State`, `Req`, ...): a `Caller`, a `HeaderMap` or a cookie there does not compile, and neither does
+`with_cookie` on its page (the page is `HtmlResponse<ForAll>`; a helper that wraps one in `Public`
+takes `corten::Result<HtmlResponse<ForAll>>`). `App` still
 sends it `private, no-cache` when the request has a cookie or `Authorization`, the response sets
 a cookie or the layout took `req.nonce()`; a client navigation or a data request gets `private`
 with the same lifetime. `.shared(Duration)` gives shared caches a longer lifetime than the
