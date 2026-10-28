@@ -709,6 +709,7 @@ pub mod cookie {
         }
 
         /// Expires the cookie in the browser (sign-out).
+        #[track_caller]
         pub fn remove(name: &str) -> Self {
             Self::new(name, "").max_age(0)
         }
@@ -937,13 +938,18 @@ mod tests {
 
     #[test]
     fn a_path_with_a_control_character_panics_where_it_is_set_not_when_sent() {
-        for path in ["/a\nb", "/a\rb", "/a\x01", "/a\x7f", "/a;b", "a"] {
+        for path in ["/a\nb", "/a\rb", "/a\tb", "/a\x01", "/a\x7f", "/a;b", "a"] {
             let set = std::panic::catch_unwind(|| cookie::SetCookie::new("s", "v").path(path));
             assert!(set.is_err(), "{path:?}");
         }
         assert_eq!(
             cookie::SetCookie::new("s", "v").path("/account").header(),
             "s=v; Path=/account; SameSite=Lax; HttpOnly; Secure"
+        );
+        // A non-ASCII path is not a control character: it is set and sent as its UTF-8 bytes.
+        assert_eq!(
+            cookie::SetCookie::new("s", "v").path("/caf\u{e9}").header().as_bytes(),
+            "s=v; Path=/caf\u{e9}; SameSite=Lax; HttpOnly; Secure".as_bytes()
         );
     }
 
