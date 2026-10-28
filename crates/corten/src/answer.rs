@@ -265,9 +265,12 @@ impl Answer for StatusCode {
 /// passed on with the upstream's body, never replaced by the error page or the JSON error, and
 /// the app's security and cache rules still apply to it, except that a `Content-Security-Policy`
 /// the upstream sent is kept in place of the app's: a relayed page needs the policy its own HTML
-/// was written for (its scripts' nonces and hosts). Without one, the app's applies. When the client leaves, the body is
-/// dropped, and with it the upstream request. What else to drop (`Set-Cookie`, say) is the
-/// route's to decide before it builds the answer.
+/// was written for (its scripts' nonces and hosts). Without one, the app's applies. Corten does
+/// not compress it: its encoding is the upstream's (forward the client's `Accept-Encoding` to
+/// have the upstream compress, with an HTTP client that does not decode the body: for reqwest,
+/// without its `gzip`, `brotli` and `zstd` features). When the client
+/// leaves, the body is dropped, and with it the upstream request. What else to drop
+/// (`Set-Cookie`, say) is the route's to decide before it builds the answer.
 ///
 /// ```
 /// use corten::{axum::{body::Body, http::{HeaderMap, StatusCode}}, prelude::*, Relay};
@@ -328,7 +331,8 @@ impl Answer for Relay {
     type Inputs = AnyInputs;
 }
 
-/// On a [`Relay`]'s response: its failure status is the upstream's, passed on as it is.
+/// On a [`Relay`]'s response: its failure status and its encoding are the upstream's, passed on
+/// as they are.
 #[derive(Clone, Copy)]
 pub(crate) struct Relayed;
 

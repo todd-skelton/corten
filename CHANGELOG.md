@@ -653,7 +653,12 @@ Corten is pre-1.0, so any minor version may change the API.
     catalog, names the prices' currency in their column, and right-aligns the statement's numbers.
     A row is 7 bytes smaller (603 to 596 at 2,000 rows) and about 30 instructions dearer to render
     (its name is now also a whole attribute value, the hole the sort reads).
-101. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this
+101. `SetCookie::try_new(name, value)` returns `Err(InvalidCookie::Name | Value)` for a character a
+    cookie cannot carry, where `new` panics: a token another service answered with no longer turns
+    a sign-in into a 500 the app did not choose. `new` keeps its panic for values the app makes
+    and calls the same rule
+    ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
+102. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this
      site only (one leading `/`, not `//` or `/\`, printable ASCII without `\`, so a control
      character a browser drops cannot make it another host, no `.` or `..` segment, and no
      percent-escaped letter, digit or `-._~` in the path, which Chromium would send unescaped), and
@@ -1229,6 +1234,19 @@ Corten is pre-1.0, so any minor version may change the API.
     sent a `DIALOG` request. One function, `sendsAs`, reads the button for both the patch and the
     navigation path. `corten.js`: 23,032 to 23,264 B (8,442 to 8,503 B gzip)
     ([#196 A data-patch form reads its submit button's raw formmethod and formaction, so formmethod=put sends a PUT where the browser sends a GET](https://github.com/todd-skelton/corten/issues/196)).
+44. A `Relay`'s answer is passed on as it came with feature `compress` on too, as its rustdoc said
+    (the guide said a relayed event stream was compressed; it now says none is): a buffered relayed body was compressed for a client that accepted zstd, brotli or gzip, and a
+    relayed event stream (a model's streamed answer through a gateway) for one that accepted zstd
+    or brotli, holding a compression context (480 KiB reserved for zstd, about 1 MB for brotli)
+    from the budget the app's own live streams share, for as long as it ran, and every compressible
+    relay got `Vary: accept-encoding`. A relay that should be compressed forwards the client's
+    `Accept-Encoding` to its upstream, with a client that does not decode the body. Every other answer pays
+    one look at its extensions: 11 instructions when it has none, 32 when it has one (callgrind)
+    ([#205 With compress on, a Relay's answer is re-encoded per connection, so a gateway holds a 480 KiB coder for every relayed model stream and cannot opt out](https://github.com/todd-skelton/corten/issues/205)).
+45. `SetCookie::path` refuses a control character (a tab or line break) where it is set, and
+    `SetCookie::new`, `path` and `remove` name the caller's line when they panic. Before, such a
+    path passed `path` and panicked when the answer was sent
+    ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1334,6 +1352,10 @@ Corten is pre-1.0, so any minor version may change the API.
 20. `examples/cluster` is `examples/listings-feed`, named for what it is (a seller's listings
     feed served by several instances), like the other examples; the crate it shows is still
     `corten-cluster`. Its package and image are `listings-feed` and `corten-listings-feed`.
+21. The styles guide says where a page whose path is the prefix of other areas (`/account` above
+    `/account/cart`) puts its CSS: in `App::components`, as the home page does, with the pilot's
+    measurement
+    ([#239 A page whose path is the prefix of other areas (/account above /account/cart) cannot have a stylesheet only it links](https://github.com/todd-skelton/corten/issues/239)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
