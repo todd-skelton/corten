@@ -759,7 +759,8 @@ pub trait Href {
 /// A path on this site taken from outside the code, a return address above all
 /// (`/sign-in?next=/account/cart`): what [`Local::parse`] accepts can only lead to this site, so
 /// `req.redirect(&next)` cannot send the user elsewhere (an open redirect). Whether the app has a
-/// page there is [`crate::Req::serves`].
+/// route a redirect can land on there is [`crate::Req::serves`]. `to_string()` gives the whole
+/// address, query and fragment included.
 ///
 /// ```
 /// use corten::route::Local;
@@ -776,22 +777,25 @@ pub struct Local(String);
 impl Local {
     /// `text` when it is a path on this site: it starts with one `/`, not `//` or `/\` (which a
     /// browser reads as another host), and is printable ASCII without `\`, so no control
-    /// character or space a browser drops can turn it into one. Anything else, a full URL
-    /// included, is `None`: send the user to the fallback.
+    /// character or space a browser drops can turn it into one. A `.` or `..` segment (`%2e`
+    /// too) is refused as well: the browser resolves it away before it asks, so the path it asks
+    /// for is not the one [`crate::Req::serves`] would check. Anything else, a full URL included,
+    /// is `None`: send the user to the fallback.
     pub fn parse(text: &str) -> Option<Local> {
         let bytes = text.as_bytes();
         let path = bytes.first() == Some(&b'/') && !matches!(bytes.get(1), Some(b'/' | b'\\'));
-        (path && bytes.iter().all(|&b| b.is_ascii_graphic() && b != b'\\')).then(|| Local(text.to_string()))
+        let printable = bytes.iter().all(|&b| b.is_ascii_graphic() && b != b'\\');
+        let dot = |segment: &str| {
+            let segment = segment.to_ascii_lowercase().replace("%2e", ".");
+            segment == "." || segment == ".."
+        };
+        let dots = text.split(['?', '#']).next().unwrap_or("").split('/').any(dot);
+        (path && printable && !dots).then(|| Local(text.to_string()))
     }
 
     /// The path, without the query or fragment: what the app's routes are matched against.
     pub fn path(&self) -> &str {
         self.0.split(['?', '#']).next().unwrap_or("")
-    }
-
-    /// The whole address, query and fragment included.
-    pub fn as_str(&self) -> &str {
-        &self.0
     }
 }
 
@@ -849,6 +853,10 @@ mod local_tests {
             ("/files/{*rest}", "/files/", false),
             ("/files/{*rest}", "/files", false),
             ("/a/{x}/{y}", "/a/1/2", true),
+            ("/{*rest}", "/", false),
+            ("/{*rest}", "/a", true),
+            ("/items/{id}", "/items/%2F", true),
+            ("/check", "/%63heck", false),
         ] {
             assert_eq!(routes_path(pattern, path), want, "{pattern} {path}");
         }
@@ -856,12 +864,29 @@ mod local_tests {
 
     #[test]
     fn only_a_path_on_this_site_is_local() {
-        for ok in ["/", "/a", "/a?b=c&d=%2F%2F", "/a#x", "/%2F%2Fevil.example", "/a//b", "/a/./b"] {
+        for ok in ["/", "/a", "/a?b=c&d=%2F%2F", "/a#x", "/%2F%2Fevil.example", "/a//b", "/a/.b", "/a/b..", "/a?x=/../"] {
             assert_eq!(Local::parse(ok).map(|l| l.to_string()).as_deref(), Some(ok), "{ok:?}");
         }
-        for bad in
-            ["", "a", "//evil", "/\\evil", "/a\\b", "/\t/evil", "/\n/evil", "/a b", "/caf\u{e9}", "/\x7f", "http://evil", " /a"]
-        {
+        for bad in [
+            "",
+            "a",
+            "//evil",
+            "/\\evil",
+            "/a\\b",
+            "/\t/evil",
+            "/\n/evil",
+            "/a b",
+            "/caf\u{e9}",
+            "/\x7f",
+            "http://evil",
+            " /a",
+            "/a/./b",
+            "/a/..",
+            "/./a",
+            "/a/%2e%2E/b",
+            "/a/.%2E",
+            "/items/..",
+        ] {
             assert!(Local::parse(bad).is_none(), "{bad:?}");
         }
         assert_eq!(Local::parse("/a/b?c#d").unwrap().path(), "/a/b");
@@ -1040,19 +1065,34 @@ impl fmt::Write for Encode<'_> {
 /// ```
 ///
 /// `S` is the state its handlers take (`State<S>`), given with [`Methods::with_state`].
-pub struct Methods<S = ()>(pub(crate) axum::routing::MethodRouter<S>);
+///
+/// It also knows whether one of its handlers is for `GET`, so [`crate::Req::serves`] counts only
+/// routes a redirect can land on.
+pub struct Methods<S = ()>(pub(crate) axum::routing::MethodRouter<S>, pub(crate) bool);
 
 impl<S: Clone + Send + Sync + 'static> Methods<S> {
     /// The handlers with the state they take (`State<S>`), for a router without it:
     /// `get(item_json).with_state(source)`.
     pub fn with_state<S2>(self, state: S) -> Methods<S2> {
-        Methods(self.0.with_state(state))
+        Methods(self.0.with_state(state), self.1)
     }
 
     /// Used by `#[corten::routes]`: a route's handlers for two sets of methods. Not a public API.
     #[doc(hidden)]
     pub fn __merge(self, other: Methods<S>) -> Self {
-        Methods(self.0.merge(other.0))
+        Methods(self.0.merge(other.0), self.1 || other.1)
+    }
+
+    /// Handlers built here by hand, among them one for `GET`.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn reads(router: axum::routing::MethodRouter<S>) -> Self {
+        Methods(router, true)
+    }
+
+    /// Handlers built here by hand, none of them for `GET`.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn writes(router: axum::routing::MethodRouter<S>) -> Self {
+        Methods(router, false)
     }
 }
 
@@ -1072,7 +1112,7 @@ macro_rules! methods {
                 T: 'static,
                 S: Clone + Send + Sync + 'static,
             {
-                Methods(axum::routing::$method(__private::endpoint(handler)))
+                Methods(axum::routing::$method(__private::endpoint(handler)), stringify!($method) == "get")
             }
         )*
 
@@ -1090,7 +1130,7 @@ macro_rules! methods {
                         crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
                     T: 'static,
                 {
-                    Methods(self.0.$method(__private::endpoint(handler)))
+                    Methods(self.0.$method(__private::endpoint(handler)), self.1 || stringify!($method) == "get")
                 }
             )*
         }
@@ -1126,7 +1166,9 @@ impl Routes {
     #[doc(hidden)]
     pub fn __route<R: Route>(self, methods: Methods) -> Self {
         let mut paths = self.1;
-        paths.push(R::PATH);
+        if methods.1 {
+            paths.push(R::PATH);
+        }
         Routes(self.0.route(R::PATH, methods.0), paths)
     }
 }
@@ -1172,7 +1214,7 @@ pub mod __private {
                     T: 'static,
                     S: Clone + Send + Sync + 'static,
                 {
-                    Methods(axum::routing::$method(endpoint(handler)))
+                    Methods(axum::routing::$method(endpoint(handler)), stringify!($method) == "get")
                 }
             )*
 

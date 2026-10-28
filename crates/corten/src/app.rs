@@ -107,7 +107,9 @@ impl<P: Prefix> Area<P> {
             )
         };
         self.routes = self.routes.route(R::PATH, methods.0);
-        self.pages.push(R::PATH);
+        if methods.1 {
+            self.pages.push(R::PATH);
+        }
         self
     }
 

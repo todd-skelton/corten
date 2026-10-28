@@ -860,19 +860,21 @@ impl Req {
 
     /// After a successful write, send the browser to `to` (post/redirect/get): a typed route, a
     /// place on its page (`route.at(RowId(&id))`, so the browser comes back to the element the
-    /// user acted on), or an `axum::http::Uri` to leave the app. Works with and without
+    /// user acted on), a return address checked to be on this site ([`crate::Local`]), or an
+    /// `axum::http::Uri` to leave the app. Works with and without
     /// JavaScript.
     pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         Ok(HtmlResponse(redirect(self.mode, value)))
     }
 
-    /// Whether one of the app's pages is at `to`'s path: a route given to [`crate::App::new`] or
-    /// to an area, matched as the router matches it. A return address the app does not serve
-    /// (a page of another app of the product, or none) goes elsewhere; one it serves is
-    /// `req.redirect(&to)`. An API route or a static file is not a page, so it is not served
-    /// here. The app answers a request to the matched path, which can still be a 404 for a
-    /// record that is not there.
+    /// Whether the app has a route a redirect to `to` can land on: one given to
+    /// [`crate::App::new`] or to an area with a `GET` handler, its path matched as the router
+    /// matches it. A return address the app does not serve (a page of another app of the
+    /// product, or none) goes elsewhere; one it serves is `req.redirect(&to)`. A route that only
+    /// takes writes, an API route and a static file are not served here. Which route answers is
+    /// the path's: a `GET` route that answers JSON counts too, and a record that is not there is
+    /// still a 404.
     ///
     /// ```
     /// use corten::{prelude::*, route::Local};

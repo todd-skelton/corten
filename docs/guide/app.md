@@ -677,11 +677,13 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    `HttpOnly; Secure; SameSite=Lax; Path=/` the default, and an answer that sets a cookie is never
    stored by a shared cache. Never append a `Set-Cookie` header by hand.
    A return address the sign-in page was given (`?next=/account/cart`) is text from outside:
-   `corten::route::Local::parse(&next)` keeps it only when it is a path on this site (not
-   `//host`, `/\host` or a full URL, so the redirect cannot lead elsewhere), and
-   `req.serves(&local)` says whether one of the app's pages, its areas' included, is there. Send
-   the user to it with `req.redirect(&local)`; one another app of the product serves goes there,
-   and anything else to a page of the app's own.
+   `corten::Local::parse(&next)` keeps it only when it is a path on this site (not `//host`,
+   `/\host`, a `..` segment or a full URL, so the redirect cannot lead elsewhere), and
+   `req.serves(&local)` says whether the app has a `GET` route there, its areas' included (not
+   an API's). Send the user to it with `req.redirect(&local)`. A path another app of the product
+   serves is that app's address with the path after it
+   (`Uri::try_from(format!("https://shop.example{local}"))`), and anything else goes to a page of
+   the app's own.
 7. `.message("Invalid API key")` on a refusal is what a client that reads the failure is told:
    the JSON error's message (in the API's own shape, `Api::errors`). The error page a browser
    gets does not show it, and a 503 from `Refused::unavailable` never sends its error. Counting

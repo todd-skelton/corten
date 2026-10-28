@@ -573,8 +573,8 @@ mod tests {
             App::new(Routes::from(Router::new().route("/", get(page)).route("/administrator", get(page))))
                 .dev(dev)
                 .components(&[theme::TOKENS])
-                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(page))).components(&[BadgeList]))
-                .area::<Reports>(|reports| reports.route::<Report>(crate::Methods(get(page))).components(&[REPORT]))
+                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods::reads(get(page))).components(&[BadgeList]))
+                .area::<Reports>(|reports| reports.route::<Report>(crate::Methods::reads(get(page))).components(&[REPORT]))
                 .router()
         };
         let get_page = |app: Router, path: &str, nav: bool| {
@@ -651,8 +651,8 @@ mod tests {
             App::new(Routes::from(axum::Router::new().route("/", get(|| async { "home" }))))
                 .dev(true)
                 .components(&[theme::TOKENS])
-                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(page))).components(&[BadgeList]))
-                .area::<Shop>(|shop| shop.route::<Shop>(crate::Methods(get(page))).components(&[BadgeList, REPORT]))
+                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods::reads(get(page))).components(&[BadgeList]))
+                .area::<Shop>(|shop| shop.route::<Shop>(crate::Methods::reads(get(page))).components(&[BadgeList, REPORT]))
                 .router()
         };
         let get_page = |path: &str| {
