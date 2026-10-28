@@ -119,6 +119,108 @@ pub use client::{ClientIp, ClientZone};
 /// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled
 /// field fails to compile instead of posting a field the handler never reads.
 pub use corten_macros::Fields;
+/// The app's shared state, split for handlers: each field gets axum's `FromRef`, so a handler
+/// takes the part it reads (`State<Market>`) while the routes share one struct
+/// (`#[corten::routes(state = Shared)]`, `App::new(url::router(shared))`). The impl clones the
+/// field, as one written by hand would, and holds where the field's type is `Clone` (a generic
+/// state's part only for the parameters that allow it). A field no handler takes alone is
+/// `#[from_ref(skip)]`. With axum's `macros` feature on, axum exports a derive of the same name:
+/// write `#[derive(corten::FromRef)]` where both are in scope.
+///
+/// ```
+/// use corten::{axum::extract::State, prelude::*};
+///
+/// #[derive(Clone)]
+/// struct Market(u32);
+/// #[derive(Clone)]
+/// struct Lists(&'static str);
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared {
+///     market: Market,
+///     pub lists: Lists,
+///     #[from_ref(skip)]
+///     secret: String,
+/// }
+///
+/// fn part<T: corten::axum::extract::FromRef<Shared>>(shared: &Shared) -> T {
+///     T::from_ref(shared)
+/// }
+/// let shared = Shared { market: Market(7), lists: Lists("a"), secret: String::new() };
+/// assert_eq!(part::<Market>(&shared).0, 7);
+/// assert_eq!(part::<Lists>(&shared).0, "a");
+/// # let _ = &shared.secret;
+/// # async fn handler(State(market): State<Market>) -> String { market.0.to_string() }
+/// ```
+///
+/// Two fields of one type would make `State<T>` ambiguous, so they do not compile until one is
+/// skipped (the error names both fields):
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared {
+///     primary: String,
+///     replica: String,
+/// }
+/// ```
+///
+/// A skipped field gets no impl, so a second field of its type is allowed, and its type is not a
+/// part a handler can take:
+///
+/// ```
+/// use corten::{axum::extract::FromRef, prelude::*};
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared {
+///     primary: String,
+///     #[from_ref(skip)]
+///     replica: String,
+/// }
+/// let shared = Shared { primary: "p".into(), replica: "r".into() };
+/// assert_eq!(String::from_ref(&shared), "p");
+/// # let _ = shared.replica;
+/// ```
+///
+/// ```compile_fail
+/// use corten::{axum::extract::FromRef, prelude::*};
+///
+/// #[derive(Clone)]
+/// struct Keys(u8);
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared {
+///     name: String,
+///     #[from_ref(skip)]
+///     keys: Keys,
+/// }
+/// let shared = Shared { name: String::new(), keys: Keys(1) };
+/// let keys = Keys::from_ref(&shared);
+/// ```
+///
+/// A generic state, a bound with an associated type, and `Self` in a field all work:
+///
+/// ```
+/// use std::sync::Arc;
+/// use corten::{axum::extract::FromRef, prelude::*};
+///
+/// #[derive(Clone)]
+/// struct Part<T>(T);
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared<T: Iterator<Item = u8>, U> {
+///     iter: Arc<T>,
+///     part: Part<U>,
+///     next: Option<Arc<Self>>,
+/// }
+///
+/// let shared = Shared { iter: Arc::new([1u8].into_iter()), part: Part("x"), next: None };
+/// assert_eq!(Part::<&str>::from_ref(&shared).0, "x");
+/// assert!(Option::<Arc<Shared<_, &str>>>::from_ref(&shared).is_none());
+/// let _ = <Arc<std::array::IntoIter<u8, 1>>>::from_ref(&shared);
+/// ```
+pub use corten_macros::FromRef;
 pub use form::{Errors, FieldName, Files, Form, Query, SubmitKey, Upload, UploadError};
 pub use html::escape;
 #[cfg(feature = "json")]
@@ -162,9 +264,9 @@ pub mod prelude {
         route::{delete, get, post, put},
         script::{el, refs, Handler, Ref},
         view::Id,
-        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Files, Form, HtmlResult, Identify, Methods,
-        Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Route, Routes, SubmitKey, Upload,
-        UploadError, UrlValue,
+        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Files, Form, FromRef, HtmlResult, Identify,
+        Methods, Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Route, Routes,
+        SubmitKey, Upload, UploadError, UrlValue,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, JsonLd, JsonResult, ToJson};

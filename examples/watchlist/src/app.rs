@@ -19,10 +19,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use corten::{
     ClientZone, LiveResponse, LiveSince,
-    axum::{
-        extract::FromRef,
-        http::{StatusCode, request::Parts},
-    },
+    axum::http::{StatusCode, request::Parts},
     feed::{FeedResponse, Since},
     prelude::*,
     security::cookie::{self, SetCookie},
@@ -43,29 +40,11 @@ corten::i18n::messages! {
 
 /// What the handlers share: the market, each browser's watchlist and the briefing's readers. A
 /// handler takes the part it needs (`State<Market>`).
-#[derive(Clone)]
+#[derive(Clone, FromRef)]
 pub struct Shared {
     market: Market,
     lists: Lists,
     readers: Readers,
-}
-
-impl FromRef<Shared> for Market {
-    fn from_ref(shared: &Shared) -> Market {
-        shared.market.clone()
-    }
-}
-
-impl FromRef<Shared> for Lists {
-    fn from_ref(shared: &Shared) -> Lists {
-        shared.lists.clone()
-    }
-}
-
-impl FromRef<Shared> for Readers {
-    fn from_ref(shared: &Shared) -> Readers {
-        shared.readers.clone()
-    }
 }
 
 /// The app: its routes, areas and the task that moves the market. Every page brings its

@@ -658,6 +658,10 @@ Corten is pre-1.0, so any minor version may change the API.
     a sign-in into a 500 the app did not choose. `new` keeps its panic for values the app makes
     and calls the same rule
     ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
+102. `#[derive(FromRef)]`, in the prelude: each field of the app's shared state gets axum's
+    `FromRef`, so a handler takes `State<Market>` without a hand-written impl per part. Built on
+    `proc_macro` alone (axum's derive needs its `macros` feature); two fields of one type are a
+    compile error until one is `#[from_ref(skip)]`. The watchlist and card-market use it.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
