@@ -59,8 +59,8 @@ fn the_combo_box_value_is_a_native_select_and_the_input_waits_for_the_script() {
 #[test]
 fn tabs_without_links_are_buttons_and_hide_the_other_panels() {
     let tabs = [
-        Tab { label: &"One", panel: &"first", link: None },
-        Tab { label: &"Two", panel: &"second", link: Some(&Item { id: "x", tab: Some("two") }) },
+        Tab { label: "One", panel: &"first", link: None },
+        Tab { label: "Two", panel: &"second", link: Some(&Item { id: "x", tab: Some("two") }) },
     ];
     let html = TabGroup { id: "t", label: "Parts", tabs: &tabs, selected: 0 }.to_html();
     assert!(
@@ -102,8 +102,8 @@ fn a_menu_button_lists_links_and_actions() {
     #[derive(Route)]
     #[route("/out")]
     struct Out;
-    let items = [MenuItem { label: &"Out", link: &Out, post: true }];
-    let html = MenuButton { id: "m", label: &"Menu", items: &items }.to_html();
+    let items = [MenuItem { label: "Out", link: &Out, post: true }];
+    let html = MenuButton { id: "m", label: "Menu", items: &items }.to_html();
     assert!(
         html.starts_with(r#"<div data-scope="ui-menu-button" data-on="connect:ui.menu_button.connect(@trigger,@menu,*item)">"#),
         "{html}"
