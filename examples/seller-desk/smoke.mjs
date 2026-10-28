@@ -101,7 +101,8 @@ try {
 
   // A price edit: Save shows, Escape restores, an invalid price comes back with its error, a
   // valid one replaces the cell.
-  const cell = "tbody tr:nth-child(2) td:last-child";
+  // Rows by id, so a sort below does not move the cells under the test.
+  const cell = `#${await page.$eval("tbody tr:nth-child(2)", (r) => r.id)} td:last-child`;
   const before = await page.inputValue(`${cell} input`);
   await page.fill(`${cell} input`, "abc");
   check("typing a price shows Save", await page.isVisible(`${cell} button`));
@@ -113,7 +114,7 @@ try {
   await page.waitForSelector(`${cell} input[aria-invalid=true]`, { timeout: 5000 }).catch(() => {});
   check("an invalid price comes back with its error, focused", (await page.evaluate(() => document.activeElement?.getAttribute("aria-invalid"))) === "true");
   // A second row refused too: each field is described by its own row's message.
-  const second = "tbody tr:nth-child(3) td:last-child";
+  const second = `#${await page.$eval("tbody tr:nth-child(3)", (r) => r.id)} td:last-child`;
   await page.fill(`${second} input`, "xyz");
   await page.click(`${second} button`);
   await page.waitForSelector(`${second} input[aria-invalid=true]`, { timeout: 5000 }).catch(() => {});
@@ -124,6 +125,10 @@ try {
     }),
   );
   check("two refused rows: each field is described by its own message", described.length === 2 && described.every((d) => d.own && d.ids === 1), JSON.stringify(described));
+  await page.click("thead button >> nth=3");
+  if ((await page.getAttribute("thead th:nth-child(6)", "aria-sort")) !== "ascending") await page.click("thead button >> nth=3");
+  const last = await page.$$eval("tbody tr", (rows) => rows.slice(-2).map((r) => /** @type {HTMLInputElement} */ (r.cells[5].querySelector("input")).value).sort().join(" "));
+  check("sorting by price puts the refused prices last", last === "abc xyz", last);
   await page.fill(`${second} input`, "3");
   await page.click(`${second} button`);
   await page.waitForFunction((sel) => document.querySelector(sel)?.getAttribute("aria-invalid") === null, `${second} input`, { timeout: 5000 }).catch(() => {});

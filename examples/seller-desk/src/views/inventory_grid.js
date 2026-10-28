@@ -110,14 +110,15 @@ export function clear(root, sel) {
 const texts = new WeakMap();
 
 /**
- * A row's saved price in cents. The price is its own component, PriceCell, which the server
- * patches when a price is saved, so it is read from the cell's input as the server last wrote
- * it (`defaultValue`), not from what is typed there now.
+ * The price a row shows, in cents, or Infinity when it is not a number (a refused edit), so it
+ * sorts last. The price is its own component, PriceCell, which the server patches, so it is read
+ * from the cell's input: the grid sorts what the seller sees.
  * @param {InventoryRow} row
  */
-function savedCents(row) {
+function shownCents(row) {
   const input = row.el.querySelector("input:not([type])");
-  return input instanceof HTMLInputElement ? Math.round(Number(input.defaultValue) * 100) : 0;
+  const cents = input instanceof HTMLInputElement ? Math.round(Number(input.value) * 100) : NaN;
+  return Number.isFinite(cents) ? cents : Infinity;
 }
 
 /** @param {HTMLInputElement} input @param {HTMLParagraphElement} empty @param {Selection} sel */
@@ -134,13 +135,35 @@ export function filter(input, empty, sel) {
   tally(sel);
 }
 
+// One handler per column, so the markup names a column the compiler knows.
+
+/** @param {HTMLButtonElement} button @param {Holds<InventoryRow, HTMLTableSectionElement>} body */
+export function sortByName(button, body) {
+  sort(button, body, "name");
+}
+
+/** @param {HTMLButtonElement} button @param {Holds<InventoryRow, HTMLTableSectionElement>} body */
+export function sortBySet(button, body) {
+  sort(button, body, "set");
+}
+
+/** @param {HTMLButtonElement} button @param {Holds<InventoryRow, HTMLTableSectionElement>} body */
+export function sortByQty(button, body) {
+  sort(button, body, "qty");
+}
+
+/** @param {HTMLButtonElement} button @param {Holds<InventoryRow, HTMLTableSectionElement>} body */
+export function sortByPrice(button, body) {
+  sort(button, body, "price");
+}
+
 /**
  * Sorts the rows by one of their fields, ascending then descending: text in the page's
  * language's order, numbers as numbers.
  * @param {HTMLButtonElement} button @param {Holds<InventoryRow, HTMLTableSectionElement>} body
  * @param {"name" | "set" | "qty" | "price"} by
  */
-export function sort(button, body, by) {
+function sort(button, body, by) {
   const th = /** @type {HTMLTableCellElement} */ (button.closest("th"));
   const descending = th.getAttribute("aria-sort") === "ascending";
   for (const other of Array.from(th.parentElement?.children ?? [])) other.removeAttribute("aria-sort");
@@ -154,8 +177,9 @@ export function sort(button, body, by) {
     const keyed = list.map((row) => ({ el: row.el, key: row[by] }));
     sorted = keyed.sort((a, b) => text.compare(a.key, b.key)).map((r) => r.el);
   } else {
-    const keyed = list.map((row) => ({ el: row.el, key: by === "qty" ? row.qty : savedCents(row) }));
-    sorted = keyed.sort((a, b) => a.key - b.key).map((r) => r.el);
+    const keyed = list.map((row) => ({ el: row.el, key: by === "qty" ? row.qty : shownCents(row) }));
+    // Infinity - Infinity is NaN: two unreadable prices are equal.
+    sorted = keyed.sort((a, b) => (a.key === b.key ? 0 : a.key - b.key)).map((r) => r.el);
   }
   if (descending) sorted.reverse();
   body.append(...sorted);

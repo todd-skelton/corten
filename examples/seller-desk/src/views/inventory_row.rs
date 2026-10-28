@@ -7,10 +7,6 @@ use crate::app::ArchiveInput;
 #[derive(Id)]
 pub struct RowId<'a>(pub &'a str);
 
-/// The cell with a row's name, `row-name-{item id}`, which labels its checkbox.
-#[derive(Id)]
-pub struct RowNameId<'a>(pub &'a str);
-
 /// One item. `view` makes `InventoryRow` in `corten/views`, whose holes the grid's script writes
 /// by name: `selected` (the checkbox and the row's mark), `name` and `set` (the filter and the
 /// sort), `qty` (the live levels).
@@ -38,10 +34,10 @@ pub fn InventoryRow<'a>(
                     value={id}
                     form={ArchiveFormId}
                     checked={selected}
-                    aria-labelledby={RowNameId(id)}
+                    aria-label={name}
                 >
             </td>
-            <td id={RowNameId(id)}>{name}</td>
+            <td>{name}</td>
             <td>{set}</td>
             <td>{condition}</td>
             <td>{qty}</td>

@@ -382,6 +382,24 @@ fn mark_head_tags(html: &str, out: &mut String) {
 ///     page.to_html(),
 ///     r#"<button type="button" command="show-modal" commandfor="archive-dialog">Archive</button><dialog id="archive-dialog"><h2>Archive?</h2></dialog>"#
 /// );
+/// // A keyed id, borrowed, works the same.
+/// #[derive(Id)]
+/// struct RowDialogId<'a>(&'a str);
+/// let row = RowDialogId("i7");
+/// assert_eq!(html! { <Confirm id={&row} title="Edit?" /> }.to_html(), r#"<dialog id="row-dialog-i7"><h2>Edit?</h2></dialog>"#);
+/// ```
+///
+/// Such a prop does not take text:
+///
+/// ```compile_fail
+/// use corten::{prelude::*, view::Id};
+///
+/// #[component]
+/// fn Confirm<I: Id>(id: I) -> impl Render {
+///     html! { <dialog id={id}></dialog> }
+/// }
+///
+/// let page = html! { <Confirm id="archive-dialog" /> };
 /// ```
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an element id",

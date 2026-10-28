@@ -649,8 +649,10 @@ Corten is pre-1.0, so any minor version may change the API.
     and print it with `id={id}` or `commandfor={id}`: `Id` now requires `AttrValue` and `Render`,
     which every `#[derive(Id)]` type has. seller-desk opens its archive dialog with
     `command="show-modal"` and no script, sorts and filters its rows by the row view's fields
-    instead of cell positions, writes its unsaved-prices note from the catalog, shows each price's
-    currency, and right-aligns the statement's numbers.
+    (one handler per column) instead of cell positions, writes its unsaved-prices note from the
+    catalog, names the prices' currency in their column, and right-aligns the statement's numbers.
+    A row is 7 bytes smaller (603 to 596 at 2,000 rows) and about 30 instructions dearer to render
+    (its name is now also a whole attribute value, the hole the sort reads).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

@@ -60,12 +60,12 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
                                     on:change={js::selectAll(scope, sel)}
                                 >
                             </th>
-                            <th><button type="button" on:click={js::sort(target, body, "name")}>"Name"</button></th>
-                            <th><button type="button" on:click={js::sort(target, body, "set")}>"Set"</button></th>
+                            <th><button type="button" on:click={js::sortByName(target, body)}>"Name"</button></th>
+                            <th><button type="button" on:click={js::sortBySet(target, body)}>"Set"</button></th>
                             <th>"Condition"</th>
-                            <th><button type="button" on:click={js::sort(target, body, "qty")}>"Qty"</button></th>
+                            <th><button type="button" on:click={js::sortByQty(target, body)}>"Qty"</button></th>
                             <th>
-                                <button type="button" on:click={js::sort(target, body, "price")}>"Price ("{USD.code()}")"</button>
+                                <button type="button" on:click={js::sortByPrice(target, body)}>"Price ("{USD.code()}")"</button>
                             </th>
                         </tr>
                     </thead>
