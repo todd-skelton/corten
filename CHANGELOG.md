@@ -740,6 +740,19 @@ Corten is pre-1.0, so any minor version may change the API.
     in ui-gallery in Chromium, Firefox and WebKit: a copy (the clipboard's contents in Chromium,
     which lets a test read it), a denied write, no Clipboard API, and no script. Apps' own copy scripts can go
     ([#244 corten-ui has no copy-to-clipboard control, so each app ships its own script for Copy](https://github.com/todd-skelton/corten/issues/244)).
+111. `corten::serve_wrapped(listeners, move |tcp| acceptor.accept(tcp), app)`: `serve_on` with a
+    step of the app's own on each connection before HTTP, a TLS handshake. The step runs in the
+    connection's own task, counts against `App::max_connections` from before the TCP accept, and
+    is closed at `App::header_timeout` when the client stalls before or after it; shutdown ends
+    the steps in progress. Before, an app serving HTTPS ran the handshake in a listener of its own
+    (the guide's 45 lines), outside both limits, so clients that never sent a ClientHello held
+    sockets and tasks with no cap. The library and its configuration (ALPN `http/1.1`) stay the
+    app's; the guide's example is four lines. Checked with rustls: HTTPS answers, ALPN is
+    `http/1.1`, and a client that sends nothing is closed at the header timeout. A plain
+    connection costs about 340 instructions more to open: 27,528-27,543 to 27,841-27,910 for a
+    connection with one request, client included (callgrind, in process, three runs each).
+    Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
+    ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
