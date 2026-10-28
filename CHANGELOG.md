@@ -1502,7 +1502,7 @@ Corten is pre-1.0, so any minor version may change the API.
     same area with its own `caller`, passed in one call,
     `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
     permission from the path. A test holds two modules' callers apart in one area
-    ([#273](https://github.com/todd-skelton/corten/issues/273)).
+    ([#273 A page under an area cannot take its own caller, so a nested form that needs another permission checks it by path or by hand](https://github.com/todd-skelton/corten/issues/273)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

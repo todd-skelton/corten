@@ -812,7 +812,10 @@ fn app(pages: Routes) -> App {
    caller = Reviewer)]`. The app passes both modules to one area,
    `.area(|area| reviews::area(orders::area(area)))`, and each module's handlers are held to its
    caller. The area's stylesheet, deadline and prefix check apply to both. A module may hold a
-   single route.
+   single route. The checks across modules are the app's at build rather than the module's:
+   a route outside the prefix is a compile error at the `.area(..)` call, and two modules
+   serving one path and method, or the same area given in two `.area(..)` calls, stop the app
+   at startup.
 5. An area a library ships is a function the app passes on,
    `.area(shop_admin::area)`. `Area::route::<R>(get(h))` adds a route by hand; Corten's `get`
    checks the handler as a routes module does, and `R`'s path must have the shape
