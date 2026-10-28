@@ -27,7 +27,7 @@ your routes. Each default can be replaced in one line.
 | Connections | a request's head (its line and headers) must arrive within 30 seconds of the connection opening or its last answer, or the connection is closed; no limit on how many are open | `.header_timeout(d)` (`None` behind a proxy that buffers heads), `.max_connections(n)`: past it, connections wait to be accepted |
 | Shutdown | Ctrl-C and `SIGTERM` (on Windows Ctrl-C, Ctrl-Break, the console closing and system shutdown), or the app's `corten::shutdown()`, tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
-| Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`) | |
+| Compression | pages per request (zstd, brotli, gzip), static files once at the highest levels, live streams per event with the compression context kept, so a redraw costs what changed (zstd or brotli; feature `compress`); a `Relay`'s answer goes on as the upstream sent it | |
 | Installable app | off | `.pwa(Pwa::new(manifest))`: manifest, generated service worker, offline page |
 | Languages | none | `.messages::<Msg>()`: `req.t()` and `req.lang()` follow `Accept-Language` |
 | Visitors' time zones | not known: dates are UTC unless a zone is given | `.client_zone()`: the runtime keeps the browser's zone in a `corten-zone` cookie, read by `Option<ClientZone>` ([Views](views.md)) |
@@ -588,9 +588,12 @@ its body as it arrives (`Body::from_stream(res.bytes_stream())` from reqwest). A
 keeps the upstream's body, never the error page or the JSON error. The app's security and cache
 rules still apply, except that a `Content-Security-Policy` the upstream sent replaces the app's:
 a relayed page's scripts were written for its own policy (their nonces and hosts), which the app's
-would block. Without one, the app's applies. A streamed body is passed on as each piece arrives: it is not compressed,
-except an event stream, compressed piece by piece; a body the upstream compressed is passed on
-as it is. When the client leaves, the body is dropped, and
+would block. Without one, the app's applies. A streamed body is passed on as each piece arrives.
+Corten compresses no relayed body, buffered or streamed, an event stream included, so a long
+relayed stream holds no compression context: the encoding is the upstream's. A relay that should
+be compressed forwards the client's `Accept-Encoding`, and the upstream's encoded body goes on as
+it is, as long as the HTTP client does not decode it (for reqwest, leave its `gzip`, `brotli` and
+`zstd` features off). When the client leaves, the body is dropped, and
 the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
 
 ## Who is asking
@@ -673,7 +676,10 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
    answers it with a 500 instead, and under `corten dev` the page says why.
 6. Signing in and out set the cookie on the answer:
    `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, and
-   `SetCookie::remove("session")` to sign out. `SetCookie` (`corten::security::cookie`) makes
+   `SetCookie::remove("session")` to sign out. `new` panics on a value a cookie cannot carry,
+   which suits a token the app made; for one from elsewhere (another service's session token),
+   `SetCookie::try_new` returns an `InvalidCookie` the handler maps to its own answer (a 502,
+   say; `?` alone is a 500). `SetCookie` (`corten::security::cookie`) makes
    `HttpOnly; Secure; SameSite=Lax; Path=/` the default, and an answer that sets a cookie is never
    stored by a shared cache. Never append a `Set-Cookie` header by hand.
 7. `.message("Invalid API key")` on a refusal is what a client that reads the failure is told:

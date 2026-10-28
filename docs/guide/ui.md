@@ -36,6 +36,11 @@ browser has them (Safari has neither in October 2026); the crate does not add on
 toaster is not in the top layer, so an open modal `<dialog>` covers it: a form in a dialog answers
 inside the dialog.
 
+A button opens a dialog, or any popover, with no script: `command="show-modal"` (or
+`popovertarget`) and `commandfor={..}`, the dialog's `#[derive(Id)]` id, which a component that
+renders the dialog for its parent takes as a prop of any id type (`I: Id`). A script calls
+`showModal()` only for what a click cannot do, below.
+
 A form in a dialog that the server refuses comes back with the dialog drawn `open`, and when the
 answer is a whole page (a post without the runtime) `open` is all the platform has: the dialog
 shows, but it is not modal, so focus and Tab leave it for the page behind, which is not inert,

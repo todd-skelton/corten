@@ -242,6 +242,8 @@ module and the sign-in route in a module without it. A check that needs the reco
 author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`. Signing in
 sets the session cookie on the answer, `Ok(req.redirect(&next)?.with_cookie(SetCookie::new("session",
 &token)))` (`SetCookie::remove("session")` signs out); never append a `Set-Cookie` header by hand.
+A token from another service goes through `SetCookie::try_new`, so a value a cookie cannot carry is
+an error the handler answers (a 502), not a panic.
 
 ## Data from another service
 
