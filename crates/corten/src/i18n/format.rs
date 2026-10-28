@@ -898,6 +898,139 @@ impl When {
     }
 }
 
+/// How [`Relative`] writes a time: `in 10 hours`, `in 10 hr.` or `in 10h` in en (`Long`,
+/// `Short`, `Narrow`), as `Intl.RelativeTimeFormat`'s styles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RelativeStyle {
+    Long,
+    Short,
+    Narrow,
+}
+
+impl RelativeStyle {
+    /// The style's name in `Intl.RelativeTimeFormat`.
+    pub fn name(self) -> &'static str {
+        match self {
+            RelativeStyle::Long => "long",
+            RelativeStyle::Short => "short",
+            RelativeStyle::Narrow => "narrow",
+        }
+    }
+}
+
+/// A time relative to another (now) in a locale: what `t.relative(at, now, style)` returns. In the
+/// largest unit it has a whole one of, rounded toward zero: seconds under a minute, then minutes,
+/// hours, and days from a day (10 h 35 min ahead is `in 10 hours`, 90 s ago is `1 minute ago`).
+/// After `now` is the future, at or before it the past. It renders in `html!` as text or an
+/// attribute value, and is a message argument ([`super::Arg`]); `corten_ui::RelativeTime` keeps
+/// it current in the browser.
+#[derive(Clone, Copy)]
+pub struct Relative {
+    data: &'static __private::LocaleData,
+    at: SystemTime,
+    now: SystemTime,
+    style: RelativeStyle,
+}
+
+/// The units a relative time is written in, in seconds (`LocaleData::relative`'s order).
+const RELATIVE_UNITS: [u64; 4] = [1, 60, 3600, 86_400];
+
+impl Relative {
+    #[doc(hidden)]
+    pub fn new(data: &'static __private::LocaleData, at: SystemTime, now: SystemTime, style: RelativeStyle) -> Self {
+        Relative { data, at, now, style }
+    }
+
+    /// The instant it is relative to now.
+    pub fn at(&self) -> SystemTime {
+        self.at
+    }
+
+    /// Its style.
+    pub fn style(&self) -> RelativeStyle {
+        self.style
+    }
+
+    /// The tag of the locale it is written in (its data's: `en` for `en-PH`).
+    pub fn locale(&self) -> &'static str {
+        self.data.tag
+    }
+
+    /// The instant as `<time datetime>` takes it: `2026-03-22T15:04:05Z`, in UTC, to the second.
+    pub fn datetime(&self) -> Datetime {
+        Datetime(self.at)
+    }
+
+    fn write(&self, out: &mut dyn Write) -> fmt::Result {
+        let data = self.data;
+        let (future, seconds) = match self.at.duration_since(self.now) {
+            Ok(ahead) if !ahead.is_zero() => (true, ahead.as_secs()),
+            Ok(_) => (false, 0),
+            Err(behind) => (false, behind.duration().as_secs()),
+        };
+        let unit = RELATIVE_UNITS.iter().rposition(|&size| seconds >= size).unwrap_or(0);
+        let n = seconds / RELATIVE_UNITS[unit];
+        let category = match n {
+            0..=199 => data.plurals[n as usize],
+            _ if n.is_multiple_of(1_000_000) => data.millions,
+            _ => data.plurals[100 + (n % 100) as usize],
+        };
+        let template = data.relative[self.style as usize][unit][usize::from(future)][usize::from(category)];
+        // Some forms have no number: ar's one second is `قبل ثانية واحدة`.
+        let Some((before, after)) = template.split_once('\u{1}') else { return out.write_str(template) };
+        out.write_str(before)?;
+        let mut buf = [0u8; 24];
+        write_grouped(data, &data.plain, itoa(n, false, &mut buf), out)?;
+        out.write_str(after)
+    }
+}
+
+impl Render for Relative {
+    fn render(&self, out: &mut String) {
+        let _ = self.write(out);
+    }
+}
+
+impl AttrValue for Relative {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        out.push_str(name);
+        out.push_str("=\"");
+        self.render(out);
+        out.push('"');
+    }
+}
+
+impl Display for Relative {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.write(f)
+    }
+}
+
+/// An instant as `<time datetime>` takes it: [`Relative::datetime`].
+#[derive(Clone, Copy, Debug)]
+pub struct Datetime(SystemTime);
+
+impl Display for Datetime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let seconds = unix_seconds(self.0);
+        let (year, month, day) = civil_from_days(seconds.div_euclid(86_400));
+        let s = seconds.rem_euclid(86_400);
+        write!(f, "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", s / 3600, s / 60 % 60, s % 60)
+    }
+}
+
+impl Render for Datetime {
+    fn render(&self, out: &mut String) {
+        let _ = write!(out, "{self}");
+    }
+}
+
+impl AttrValue for Datetime {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        let _ = write!(out, "{name}=\"{self}\"");
+    }
+}
+
 /// `n` in ASCII, two digits at least when `two`.
 fn itoa(mut n: u64, two: bool, buf: &mut [u8; 24]) -> &[u8] {
     let mut start = buf.len();
@@ -1212,5 +1345,13 @@ pub mod __private {
         /// An offset (hours at `\u{1}`, minutes at `\u{3}`): whole hours east, west, then with
         /// minutes, east and west.
         pub gmt: [&'static str; 4],
+        /// The plural category (zero, one, two, few, many, other) of each whole number to 199.
+        pub plurals: [u8; 200],
+        /// A multiple of a million's (fr's "many"); any other number over 199 is as
+        /// `100 + n % 100`.
+        pub millions: u8,
+        /// A time relative to now, with the number at `\u{1}`: by `RelativeStyle`, unit (second,
+        /// minute, hour, day), past then future, and plural category.
+        pub relative: [[[[&'static str; 6]; 2]; 4]; 3],
     }
 }

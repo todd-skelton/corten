@@ -238,8 +238,8 @@ mod display_digits;
 mod format;
 
 pub use format::{
-    parse_timestamp, Amount, Currency, DateFormat, DateOnly, DateStyle, Decimal, Formatted, InvalidDecimal, Minor, MoneyFormat,
-    MonthStyle, Number, NumberFormat, Offset, PercentFormat, TimeStyle, Utc, When, Zone,
+    parse_timestamp, Amount, Currency, DateFormat, DateOnly, DateStyle, Datetime, Decimal, Formatted, InvalidDecimal, Minor,
+    MoneyFormat, MonthStyle, Number, NumberFormat, Offset, PercentFormat, Relative, RelativeStyle, TimeStyle, Utc, When, Zone,
 };
 
 /// Compiles catalogs into a messages type. See the [module docs](self).
@@ -430,6 +430,13 @@ impl Arg for Formatted {
 }
 
 impl Arg for When {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        // Locale data and digits, as for `Formatted`.
+        self.render(sink.out)
+    }
+}
+
+impl Arg for Relative {
     fn write_arg(&self, sink: &mut Sink<'_>) {
         // Locale data and digits, as for `Formatted`.
         self.render(sink.out)
@@ -968,6 +975,15 @@ mod tests {
                     let offset = offset.first().map_or(0, |o| o.parse().unwrap());
                     when.zone(Offset::seconds(offset)).to_string()
                 }
+                ["relative", style] => {
+                    let style =
+                        [RelativeStyle::Long, RelativeStyle::Short, RelativeStyle::Narrow][style.parse::<usize>().unwrap()];
+                    let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1 << 32);
+                    let seconds: i64 = input.parse().unwrap();
+                    let by = std::time::Duration::from_secs(seconds.unsigned_abs());
+                    let at = if seconds < 0 { now - by } else { now + by };
+                    Relative::new(data, at, now, style).to_string()
+                }
                 _ => panic!("{line}"),
             };
             assert_eq!(ours, expected, "{tag} {kind} {input}");
@@ -1019,6 +1035,8 @@ mod tests {
                     Arg::<ts::DateFormat>::write_arg(&format, &ctx, &mut out);
                     format!("date {style}")
                 }
+                // Not a script's format: `corten_ui::RelativeTime` has the browser's Intl write it.
+                ["relative", _] => continue,
                 _ => panic!("{line}"),
             };
             let json = out[1..]

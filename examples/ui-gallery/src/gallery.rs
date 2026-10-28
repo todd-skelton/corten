@@ -1,9 +1,13 @@
 //! The page: every corten-ui component, wrapped and styled as a design system would.
+use corten::i18n::RelativeStyle;
 use corten::prelude::*;
-use corten_ui::{Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster, dialog};
+use corten_ui::{
+    Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, RelativeTime, Tab, TabGroup, Toast, Toaster, dialog,
+};
+use std::time::SystemTime;
 
 use crate::{
-    app::{OrderForm, RenameForm, url},
+    app::{EXPIRES_IN, LISTED_AGO, Msg, OrderForm, RenameForm, url},
     field::Field,
 };
 
@@ -18,7 +22,8 @@ pub const COLORS: [Choice; 4] = [
 pub const TABS: [&str; 3] = ["listings", "offers", "sales"];
 
 #[component(css)]
-pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, rename: RenameDialog<'a>) -> impl Render {
+pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, times: Times, rename: RenameDialog<'a>) -> impl Render {
+    let Times { t, now } = times;
     let f = OrderForm::FIELDS;
     let qty = Number {
         value: Some(1.0),
@@ -73,6 +78,17 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, rename: 
                 <MenuResult text="" />
             </section>
             <section class={Card}>
+                <h2>"Relative time"</h2>
+                <p>
+                    {t.offer_listed()}" "
+                    <RelativeTime when={t.relative(now - LISTED_AGO, now, RelativeStyle::Short)} />
+                </p>
+                <p>
+                    {t.offer_expires()}" "
+                    <RelativeTime when={t.relative(now + EXPIRES_IN, now, RelativeStyle::Long)} />
+                </p>
+            </section>
+            <section class={Card}>
                 <h2>"Toast and dialog"</h2>
                 <div class={Buttons}>
                     <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
@@ -85,6 +101,13 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, rename: 
             <Toaster close="Dismiss" seconds={2} toast={Toast { message: toast }} />
         </div>
     }
+}
+
+/// The offer's relative times: written as of `now`, in `t`'s locale.
+#[derive(Clone, Copy)]
+pub struct Times {
+    pub t: Msg,
+    pub now: SystemTime,
 }
 
 /// The order's outcome: in the page, and on its own as the form's patch.

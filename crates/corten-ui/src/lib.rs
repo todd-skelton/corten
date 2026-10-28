@@ -9,6 +9,7 @@
 //! | [`TabGroup`] | tabs with arrow keys; tabs can be links, and the address follows | links to each tab's page |
 //! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
+//! | [`RelativeTime`] | a time relative to now ("in 10 hours") that stays current, on one timer for the page | the time as the server wrote it |
 //! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
 //!
 //! Each is tested in Chromium, Firefox and WebKit (`examples/ui-gallery/smoke.mjs`).
@@ -92,12 +93,14 @@ use corten::{script::script, view::AttrValue, Component, Route};
 mod combo_box;
 mod menu_button;
 mod number_field;
+mod relative_time;
 mod tab_group;
 mod toaster;
 
 pub use combo_box::{Choice, ComboBox, Picker};
 pub use menu_button::{MenuButton, MenuItem};
 pub use number_field::{Number, NumberField, Step};
+pub use relative_time::RelativeTime;
 pub use tab_group::{Tab, TabGroup};
 pub use toaster::{Toast, ToastId, Toaster};
 
@@ -105,7 +108,7 @@ script!(pub mod dialog = "dialog.js");
 
 /// Every component in this crate with a script, and the [`dialog`] handlers, for
 /// `App::components`.
-pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton, Toaster, dialog::COMPONENT];
+pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton, Toaster, RelativeTime, dialog::COMPONENT];
 
 /// A typed route a component links to (`#[derive(Route)]`), as a trait object so a list of
 /// items can hold different routes. A string is not a `Link`.

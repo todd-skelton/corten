@@ -108,7 +108,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the six scripts load and connect", loaded === 6, `${loaded} script(s)`);
+  check("the seven scripts load and connect", loaded === 7, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -324,6 +324,31 @@ async function run(browser) {
   }));
   await page.keyboard.press("Escape");
   check("Escape closes the page's dialog", !(await isModal()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
+  // RelativeTime: the server wrote both times; the browser's clock (faked, from now) moves them.
+  const timed = await (await browser.newContext()).newPage();
+  const timedErrors = [];
+  timed.on("pageerror", (e) => timedErrors.push(String(e)));
+  timed.on("console", (m) => m.type() === "error" && timedErrors.push(m.text()));
+  await timed.clock.install();
+  await timed.goto(`${base}/`);
+  const listed = timed.locator("time").first();
+  const expires = timed.locator("time").nth(1);
+  check("the server writes a time behind now", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
+  check("and one ahead, with its instant", (await expires.textContent()) === "in 1 minute" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test((await expires.getAttribute("datetime")) ?? ""), await expires.textContent());
+  await timed.clock.runFor(31_000);
+  const seconds = async () => Number(/^in (5\d) seconds$/.exec((await expires.textContent()) ?? "")?.[1]);
+  const first = await seconds();
+  check("under a minute ahead, it counts seconds", first > 50, await expires.textContent());
+  await timed.clock.runFor(2_000);
+  check("each second", (await seconds()) === first - 2, `${first} then ${await expires.textContent()}`);
+  await timed.clock.runFor(60_000);
+  check("past it, it says how long ago", /^\d+ seconds? ago$/.test((await expires.textContent()) ?? ""), await expires.textContent());
+  check("the one behind kept its hour", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
+  await timed.clock.runFor(55 * 60_000);
+  check("an hour on, the one behind moves", (await listed.textContent()) === "4 hr. ago" && (await expires.textContent()) === "55 minutes ago", `${await listed.textContent()}, ${await expires.textContent()}`);
+  check("no console errors with relative times", timedErrors.length === 0, timedErrors.join(" | "));
+  await timed.context().close();
+
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
@@ -331,6 +356,7 @@ async function run(browser) {
   // Without JavaScript
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
   await plain.goto(`${base}/`);
+  check("no script: the server's relative time is the text", (await plain.locator("time").first().textContent()) === "3 hr. ago");
   check("no script: the select is the control", (await plain.locator("[data-scope=ui-combo-box] select").isVisible()) && (await plain.locator("[data-scope=ui-combo-box] input").isHidden()));
   await plain.locator("[data-scope=ui-combo-box] select").selectOption("sand");
   // The post loads a new page; waitForLoadState alone can return for the page it left.

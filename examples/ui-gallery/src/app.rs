@@ -10,10 +10,20 @@
 //! | `GET /help` | the menu's link |
 use corten::{Component, prelude::*};
 use serde::Deserialize;
+use std::time::{Duration, SystemTime};
 
 use corten_ui::Toast;
 
-use crate::gallery::{COLORS, Gallery, MenuResult, OrderResult, RenameDialog, TABS};
+use crate::gallery::{COLORS, Gallery, MenuResult, OrderResult, RenameDialog, TABS, Times};
+
+corten::i18n::messages! {
+    /// The gallery's text: one locale, for the relative times.
+    pub struct Msg { "en" => "locales/en.json" }
+}
+
+/// How far the best offer's expiry is ahead of each page, and the listing behind it.
+pub const EXPIRES_IN: Duration = Duration::from_secs(90);
+pub const LISTED_AGO: Duration = Duration::from_secs(3 * 3600 + 5 * 60);
 
 /// Every URL the gallery serves and links to, with the handlers that serve it.
 #[corten::routes]
@@ -70,6 +80,12 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     }
 }
 
+/// The offer's relative times, as of now.
+fn times(req: &Req) -> Times {
+    let (t, now): (Msg, _) = (req.t(), SystemTime::now());
+    Times { t, now }
+}
+
 /// The gallery in the layout.
 fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
     req.page(Layout { req, title: TITLE, children: gallery })
@@ -84,7 +100,10 @@ const TITLE: &str = "corten-ui";
 
 async fn home(req: Req, Query(q): Query<HomeQuery>) -> HtmlResult {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
-    gallery(&req, Gallery { tab, result: "", toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } })
+    gallery(
+        &req,
+        Gallery { tab, result: "", toast: None, times: times(&req), rename: RenameDialog { name: "", errors: &Errors::new() } },
+    )
 }
 
 #[derive(Deserialize, Fields)]
@@ -98,7 +117,16 @@ async fn order(req: Req, Form(form): Form<OrderForm>) -> HtmlResult {
     let color = COLORS.iter().find(|c| c.value == form.color).map_or("no color", |c| c.label);
     let text = format!("Ordered {} in {color} at ${:.2}.", form.qty, form.price);
     let page = || async {
-        gallery(&req, Gallery { tab: 0, result: &text, toast: None, rename: RenameDialog { name: "", errors: &Errors::new() } })
+        gallery(
+            &req,
+            Gallery {
+                tab: 0,
+                result: &text,
+                toast: None,
+                times: times(&req),
+                rename: RenameDialog { name: "", errors: &Errors::new() },
+            },
+        )
     };
     req.patch_or(OrderResult { text: &text }, page).await
 }
@@ -109,7 +137,13 @@ async fn save(req: Req) -> HtmlResult {
     let page = || async {
         gallery(
             &req,
-            Gallery { tab: 0, result: "", toast: Some(SAVED), rename: RenameDialog { name: "", errors: &Errors::new() } },
+            Gallery {
+                tab: 0,
+                result: "",
+                toast: Some(SAVED),
+                times: times(&req),
+                rename: RenameDialog { name: "", errors: &Errors::new() },
+            },
         )
     };
     req.patch_or(Toast { message: Some(SAVED) }, page).await
@@ -129,8 +163,12 @@ async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
     }
     let mut errors = Errors::new();
     errors.add(RenameForm::FIELDS.name, "Give the draft a name.");
-    let page =
-        || async { gallery(&req, Gallery { tab: 0, result: "", toast: None, rename: RenameDialog { name, errors: &errors } }) };
+    let page = || async {
+        gallery(
+            &req,
+            Gallery { tab: 0, result: "", toast: None, times: times(&req), rename: RenameDialog { name, errors: &errors } },
+        )
+    };
     req.invalid(&errors, RenameDialog { name, errors: &errors }, page).await
 }
 
