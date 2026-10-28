@@ -1,0 +1,9 @@
+{
+ "fsw-sveltekit": {
+  "samples": 123,
+  "cpuAvgPct": 13.6,
+  "cpuMaxPct": 17.45,
+  "memAvgMiB": 121.7,
+  "memMaxMiB": 122.1
+ }
+}

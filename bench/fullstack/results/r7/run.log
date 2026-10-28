@@ -1,0 +1,856 @@
+2026-10-28T08:09:11.261Z node cold-start.mjs r7 10
+corten 0 first 200 27.7 ms after the server process started, 5.59MiB
+corten 1 first 200 10.4 ms after the server process started, 1.219MiB
+corten 2 first 200 6.0 ms after the server process started, 1.223MiB
+corten 3 first 200 7.3 ms after the server process started, 1.215MiB
+corten 4 first 200 6.5 ms after the server process started, 1.219MiB
+corten 5 first 200 5.5 ms after the server process started, 1.211MiB
+corten 6 first 200 9.6 ms after the server process started, 1.219MiB
+corten 7 first 200 7.3 ms after the server process started, 1.219MiB
+corten 8 first 200 5.6 ms after the server process started, 1.215MiB
+corten 9 first 200 9.0 ms after the server process started, 1.207MiB
+nextjs 0 first 200 810.7 ms after the server process started, 58.03MiB
+nextjs 1 first 200 715.1 ms after the server process started, 51.38MiB
+nextjs 2 first 200 722.5 ms after the server process started, 51.06MiB
+nextjs 3 first 200 762.0 ms after the server process started, 51.55MiB
+nextjs 4 first 200 726.0 ms after the server process started, 51.24MiB
+nextjs 5 first 200 766.2 ms after the server process started, 51.39MiB
+nextjs 6 first 200 729.4 ms after the server process started, 51.11MiB
+nextjs 7 first 200 729.1 ms after the server process started, 51.23MiB
+nextjs 8 first 200 748.2 ms after the server process started, 51.53MiB
+nextjs 9 first 200 889.1 ms after the server process started, 50.44MiB
+tanstack-start 0 first 200 224.6 ms after the server process started, 26.52MiB
+tanstack-start 1 first 200 228.8 ms after the server process started, 26.42MiB
+tanstack-start 2 first 200 223.0 ms after the server process started, 26.64MiB
+tanstack-start 3 first 200 219.8 ms after the server process started, 26.41MiB
+tanstack-start 4 first 200 219.8 ms after the server process started, 26.35MiB
+tanstack-start 5 first 200 229.7 ms after the server process started, 26.38MiB
+tanstack-start 6 first 200 221.1 ms after the server process started, 26.35MiB
+tanstack-start 7 first 200 221.6 ms after the server process started, 26.94MiB
+tanstack-start 8 first 200 237.7 ms after the server process started, 26.39MiB
+tanstack-start 9 first 200 232.3 ms after the server process started, 26.64MiB
+sveltekit 0 first 200 250.9 ms after the server process started, 23.63MiB
+sveltekit 1 first 200 214.7 ms after the server process started, 23.86MiB
+sveltekit 2 first 200 178.2 ms after the server process started, 24.32MiB
+sveltekit 3 first 200 178.6 ms after the server process started, 23.78MiB
+sveltekit 4 first 200 191.6 ms after the server process started, 24.07MiB
+sveltekit 5 first 200 186.6 ms after the server process started, 23.77MiB
+sveltekit 6 first 200 178.4 ms after the server process started, 23.75MiB
+sveltekit 7 first 200 189.6 ms after the server process started, 23.73MiB
+sveltekit 8 first 200 187.1 ms after the server process started, 23.96MiB
+sveltekit 9 first 200 178.1 ms after the server process started, 23.38MiB
+react-router 0 first 200 419.6 ms after the server process started, 32.08MiB
+react-router 1 first 200 308.5 ms after the server process started, 32.03MiB
+react-router 2 first 200 304.6 ms after the server process started, 32.38MiB
+react-router 3 first 200 309.1 ms after the server process started, 31.89MiB
+react-router 4 first 200 315.9 ms after the server process started, 32.01MiB
+react-router 5 first 200 307.3 ms after the server process started, 32.14MiB
+react-router 6 first 200 313.9 ms after the server process started, 32.13MiB
+react-router 7 first 200 302.8 ms after the server process started, 32.13MiB
+react-router 8 first 200 304.3 ms after the server process started, 32.03MiB
+react-router 9 first 200 306.6 ms after the server process started, 31.76MiB
+leptos 0 first 200 25.5 ms after the server process started, 6.773MiB
+leptos 1 first 200 6.5 ms after the server process started, 1.484MiB
+leptos 2 first 200 6.3 ms after the server process started, 1.48MiB
+leptos 3 first 200 7.9 ms after the server process started, 1.488MiB
+leptos 4 first 200 6.4 ms after the server process started, 1.484MiB
+leptos 5 first 200 8.2 ms after the server process started, 1.48MiB
+leptos 6 first 200 7.2 ms after the server process started, 1.488MiB
+leptos 7 first 200 7.0 ms after the server process started, 1.484MiB
+leptos 8 first 200 7.5 ms after the server process started, 1.484MiB
+leptos 9 first 200 6.8 ms after the server process started, 1.48MiB
+django 0 first 200 1331.1 ms after the server process started, 80.91MiB
+django 1 first 200 1163.0 ms after the server process started, 63.14MiB
+django 2 first 200 1117.9 ms after the server process started, 63.03MiB
+django 3 first 200 1146.1 ms after the server process started, 63.22MiB
+django 4 first 200 1170.8 ms after the server process started, 63.09MiB
+django 5 first 200 1215.5 ms after the server process started, 63.09MiB
+django 6 first 200 1143.2 ms after the server process started, 63.05MiB
+django 7 first 200 1149.5 ms after the server process started, 63.09MiB
+django 8 first 200 1122.3 ms after the server process started, 63MiB
+django 9 first 200 1138.6 ms after the server process started, 63.01MiB
+rails 0 first 200 1368.4 ms after the server process started, 92.64MiB
+rails 1 first 200 1163.0 ms after the server process started, 63.91MiB
+rails 2 first 200 1111.9 ms after the server process started, 63.92MiB
+rails 3 first 200 1107.2 ms after the server process started, 63.92MiB
+rails 4 first 200 1123.8 ms after the server process started, 63.88MiB
+rails 5 first 200 1088.7 ms after the server process started, 63.91MiB
+rails 6 first 200 1102.7 ms after the server process started, 63.89MiB
+rails 7 first 200 1109.1 ms after the server process started, 63.94MiB
+rails 8 first 200 1112.2 ms after the server process started, 63.9MiB
+rails 9 first 200 1109.1 ms after the server process started, 63.9MiB
+laravel 0 first 200 855.5 ms after the server process started, 96.86MiB
+laravel 1 first 200 864.8 ms after the server process started, 95.34MiB
+laravel 2 first 200 841.4 ms after the server process started, 96.49MiB
+laravel 3 first 200 836.8 ms after the server process started, 95.36MiB
+laravel 4 first 200 844.5 ms after the server process started, 95.28MiB
+laravel 5 first 200 842.0 ms after the server process started, 94.48MiB
+laravel 6 first 200 837.6 ms after the server process started, 95.62MiB
+laravel 7 first 200 905.1 ms after the server process started, 96.59MiB
+laravel 8 first 200 846.1 ms after the server process started, 96.95MiB
+laravel 9 first 200 855.8 ms after the server process started, 94.54MiB
+aspnet 0 first 200 746.3 ms after the server process started, 30.61MiB
+aspnet 1 first 200 736.5 ms after the server process started, 30.62MiB
+aspnet 2 first 200 749.7 ms after the server process started, 30.59MiB
+aspnet 3 first 200 762.2 ms after the server process started, 30.83MiB
+aspnet 4 first 200 734.1 ms after the server process started, 30.59MiB
+aspnet 5 first 200 717.5 ms after the server process started, 30.75MiB
+aspnet 6 first 200 727.4 ms after the server process started, 30.6MiB
+aspnet 7 first 200 725.5 ms after the server process started, 30.8MiB
+aspnet 8 first 200 778.5 ms after the server process started, 30.6MiB
+aspnet 9 first 200 713.8 ms after the server process started, 30.54MiB
+spring 0 first 200 8399.0 ms after the server process started, 137.4MiB
+spring 1 first 200 8674.5 ms after the server process started, 139.6MiB
+spring 2 first 200 8285.1 ms after the server process started, 148.1MiB
+spring 3 first 200 8427.2 ms after the server process started, 144.9MiB
+spring 4 first 200 9053.8 ms after the server process started, 138.2MiB
+spring 5 first 200 8663.1 ms after the server process started, 132.8MiB
+spring 6 first 200 8560.5 ms after the server process started, 139.8MiB
+spring 7 first 200 8580.9 ms after the server process started, 137.3MiB
+spring 8 first 200 8580.7 ms after the server process started, 138.7MiB
+spring 9 first 200 8474.7 ms after the server process started, 141.8MiB
+phoenix 0 first 200 1342.2 ms after the server process started, 129.3MiB
+phoenix 1 first 200 1319.6 ms after the server process started, 125.4MiB
+phoenix 2 first 200 1324.3 ms after the server process started, 125.2MiB
+phoenix 3 first 200 1339.8 ms after the server process started, 125.8MiB
+phoenix 4 first 200 1323.1 ms after the server process started, 125.4MiB
+phoenix 5 first 200 1315.1 ms after the server process started, 125.1MiB
+phoenix 6 first 200 1363.4 ms after the server process started, 126MiB
+phoenix 7 first 200 1336.2 ms after the server process started, 125.3MiB
+phoenix 8 first 200 1374.8 ms after the server process started, 125.5MiB
+phoenix 9 first 200 1354.1 ms after the server process started, 125.2MiB
+astro 0 first 200 351.9 ms after the server process started, 45.15MiB
+astro 1 first 200 323.3 ms after the server process started, 36.71MiB
+astro 2 first 200 398.9 ms after the server process started, 37.47MiB
+astro 3 first 200 381.8 ms after the server process started, 37.3MiB
+astro 4 first 200 390.9 ms after the server process started, 36.36MiB
+astro 5 first 200 319.7 ms after the server process started, 36.63MiB
+astro 6 first 200 319.9 ms after the server process started, 36.45MiB
+astro 7 first 200 326.3 ms after the server process started, 36.41MiB
+astro 8 first 200 316.8 ms after the server process started, 36.88MiB
+astro 9 first 200 356.3 ms after the server process started, 36.98MiB
+nuxt 0 first 200 309.1 ms after the server process started, 35.31MiB
+nuxt 1 first 200 311.5 ms after the server process started, 35.06MiB
+nuxt 2 first 200 308.2 ms after the server process started, 35.77MiB
+nuxt 3 first 200 308.0 ms after the server process started, 35.71MiB
+nuxt 4 first 200 304.8 ms after the server process started, 35.3MiB
+nuxt 5 first 200 316.4 ms after the server process started, 35.29MiB
+nuxt 6 first 200 307.9 ms after the server process started, 35.7MiB
+nuxt 7 first 200 308.4 ms after the server process started, 35.87MiB
+nuxt 8 first 200 303.7 ms after the server process started, 35.49MiB
+nuxt 9 first 200 308.1 ms after the server process started, 35.34MiB
+{
+ "corten": {
+  "firstOkMs": {
+   "median": 7.3,
+   "min": 5.5,
+   "max": 27.7
+  },
+  "memAfterFirstRequest": "1.211MiB",
+  "imageMB": 123
+ },
+ "nextjs": {
+  "firstOkMs": {
+   "median": 748.2,
+   "min": 715.1,
+   "max": 889.1
+  },
+  "memAfterFirstRequest": "51.39MiB",
+  "imageMB": 385
+ },
+ "tanstack-start": {
+  "firstOkMs": {
+   "median": 224.6,
+   "min": 219.8,
+   "max": 237.7
+  },
+  "memAfterFirstRequest": "26.38MiB",
+  "imageMB": 332
+ },
+ "sveltekit": {
+  "firstOkMs": {
+   "median": 187.1,
+   "min": 178.1,
+   "max": 250.9
+  },
+  "memAfterFirstRequest": "23.77MiB",
+  "imageMB": 333
+ },
+ "react-router": {
+  "firstOkMs": {
+   "median": 308.5,
+   "min": 302.8,
+   "max": 419.6
+  },
+  "memAfterFirstRequest": "32.14MiB",
+  "imageMB": 353
+ },
+ "leptos": {
+  "firstOkMs": {
+   "median": 7.2,
+   "min": 6.3,
+   "max": 25.5
+  },
+  "memAfterFirstRequest": "1.48MiB",
+  "imageMB": 127
+ },
+ "django": {
+  "firstOkMs": {
+   "median": 1149.5,
+   "min": 1117.9,
+   "max": 1331.1
+  },
+  "memAfterFirstRequest": "63.09MiB",
+  "imageMB": 276
+ },
+ "rails": {
+  "firstOkMs": {
+   "median": 1111.9,
+   "min": 1088.7,
+   "max": 1368.4
+  },
+  "memAfterFirstRequest": "63.91MiB",
+  "imageMB": 431
+ },
+ "laravel": {
+  "firstOkMs": {
+   "median": 846.1,
+   "min": 836.8,
+   "max": 905.1
+  },
+  "memAfterFirstRequest": "94.48MiB",
+  "imageMB": 958
+ },
+ "aspnet": {
+  "firstOkMs": {
+   "median": 736.5,
+   "min": 713.8,
+   "max": 778.5
+  },
+  "memAfterFirstRequest": "30.75MiB",
+  "imageMB": 342
+ },
+ "spring": {
+  "firstOkMs": {
+   "median": 8580.7,
+   "min": 8285.1,
+   "max": 9053.8
+  },
+  "memAfterFirstRequest": "132.8MiB",
+  "imageMB": 516
+ },
+ "phoenix": {
+  "firstOkMs": {
+   "median": 1339.8,
+   "min": 1315.1,
+   "max": 1374.8
+  },
+  "memAfterFirstRequest": "125.1MiB",
+  "imageMB": 262
+ },
+ "astro": {
+  "firstOkMs": {
+   "median": 351.9,
+   "min": 316.8,
+   "max": 398.9
+  },
+  "memAfterFirstRequest": "36.63MiB",
+  "imageMB": 526
+ },
+ "nuxt": {
+  "firstOkMs": {
+   "median": 308.2,
+   "min": 303.7,
+   "max": 316.4
+  },
+  "memAfterFirstRequest": "35.29MiB",
+  "imageMB": 335
+ }
+}
+2026-10-28T08:17:34.016Z node run-ssr.mjs r7 fixture 300 corten,nextjs,tanstack-start,sveltekit,react-router,leptos,django,rails,laravel,aspnet,spring,phoenix,astro,nuxt page
+2026-10-28T08:17:43.764Z corten fixture warmup
+2026-10-28T08:18:16.309Z corten fixture fixed
+2026-10-28T08:19:18.395Z corten fixture sat64
+2026-10-28T08:20:20.470Z corten fixture sat256
+2026-10-28T08:21:33.459Z nextjs fixture warmup
+2026-10-28T08:22:03.963Z nextjs fixture fixed
+2026-10-28T08:23:17.820Z nextjs fixture sat64
+2026-10-28T08:24:19.906Z nextjs fixture sat256
+2026-10-28T08:25:32.452Z tanstack-start fixture warmup
+2026-10-28T08:26:02.955Z tanstack-start fixture fixed
+2026-10-28T08:27:05.041Z tanstack-start fixture sat64
+2026-10-28T08:28:07.136Z tanstack-start fixture sat256
+2026-10-28T08:29:19.616Z sveltekit fixture warmup
+2026-10-28T08:29:50.064Z sveltekit fixture fixed
+2026-10-28T08:30:52.141Z sveltekit fixture sat64
+2026-10-28T08:31:54.226Z sveltekit fixture sat256
+2026-10-28T08:33:06.850Z react-router fixture warmup
+2026-10-28T08:33:37.338Z react-router fixture fixed
+2026-10-28T08:34:39.447Z react-router fixture sat64
+2026-10-28T08:35:41.529Z react-router fixture sat256
+2026-10-28T08:36:53.723Z leptos fixture warmup
+2026-10-28T08:37:24.188Z leptos fixture fixed
+2026-10-28T08:38:26.279Z leptos fixture sat64
+2026-10-28T08:39:28.364Z leptos fixture sat256
+2026-10-28T08:40:42.171Z django fixture warmup
+2026-10-28T08:41:12.712Z django fixture fixed
+2026-10-28T08:42:14.799Z django fixture sat64
+2026-10-28T08:43:16.879Z django fixture sat256
+2026-10-28T08:44:30.558Z rails fixture warmup
+2026-10-28T08:45:01.073Z rails fixture fixed
+2026-10-28T08:46:03.177Z rails fixture sat64
+2026-10-28T08:47:05.261Z rails fixture sat256
+2026-10-28T08:49:14.924Z laravel fixture failed: never answered /items/item_1 within a minute
+2026-10-28T08:49:25.618Z aspnet fixture warmup
+2026-10-28T08:49:56.085Z aspnet fixture fixed
+2026-10-28T08:50:58.173Z aspnet fixture sat64
+2026-10-28T08:52:00.248Z aspnet fixture sat256
+2026-10-28T08:53:21.933Z spring fixture warmup
+2026-10-28T08:53:52.412Z spring fixture fixed
+2026-10-28T08:54:54.505Z spring fixture sat64
+2026-10-28T08:55:56.590Z spring fixture sat256
+2026-10-28T08:57:11.110Z phoenix fixture warmup
+2026-10-28T08:57:41.541Z phoenix fixture fixed
+2026-10-28T08:58:43.621Z phoenix fixture sat64
+2026-10-28T08:59:45.711Z phoenix fixture sat256
+2026-10-28T09:00:58.398Z astro fixture warmup
+2026-10-28T09:01:28.843Z astro fixture fixed
+2026-10-28T09:02:30.920Z astro fixture sat64
+2026-10-28T09:03:33.014Z astro fixture sat256
+2026-10-28T09:04:45.642Z nuxt fixture warmup
+2026-10-28T09:05:16.197Z nuxt fixture fixed
+2026-10-28T09:06:18.281Z nuxt fixture sat64
+2026-10-28T09:07:20.368Z nuxt fixture sat256
+2026-10-28T09:08:22.651Z done
+2026-10-28T09:08:22.676Z node run-ssr.mjs r7 fixture 300 corten,nextjs,tanstack-start,sveltekit,react-router,leptos,django,rails,laravel,aspnet,spring,phoenix,astro,nuxt json
+2026-10-28T09:08:32.410Z corten-json fixture warmup
+2026-10-28T09:09:03.344Z corten-json fixture fixed
+2026-10-28T09:10:05.435Z corten-json fixture sat64
+2026-10-28T09:11:07.524Z corten-json fixture sat256
+2026-10-28T09:12:20.409Z nextjs-json fixture warmup
+2026-10-28T09:12:50.925Z nextjs-json fixture fixed
+2026-10-28T09:13:53.019Z nextjs-json fixture sat64
+2026-10-28T09:14:55.104Z nextjs-json fixture sat256
+2026-10-28T09:16:07.607Z tanstack-start-json fixture warmup
+2026-10-28T09:16:38.087Z tanstack-start-json fixture fixed
+2026-10-28T09:17:40.184Z tanstack-start-json fixture sat64
+2026-10-28T09:18:42.271Z tanstack-start-json fixture sat256
+2026-10-28T09:19:54.716Z sveltekit-json fixture warmup
+2026-10-28T09:20:25.156Z sveltekit-json fixture fixed
+2026-10-28T09:21:27.230Z sveltekit-json fixture sat64
+2026-10-28T09:22:29.313Z sveltekit-json fixture sat256
+2026-10-28T09:23:41.899Z react-router-json fixture warmup
+2026-10-28T09:24:12.365Z react-router-json fixture fixed
+2026-10-28T09:25:14.447Z react-router-json fixture sat64
+2026-10-28T09:26:16.522Z react-router-json fixture sat256
+2026-10-28T09:27:28.665Z leptos-json fixture warmup
+2026-10-28T09:27:59.318Z leptos-json fixture fixed
+2026-10-28T09:29:01.410Z leptos-json fixture sat64
+2026-10-28T09:30:03.501Z leptos-json fixture sat256
+2026-10-28T09:31:17.347Z django-json fixture warmup
+2026-10-28T09:31:47.833Z django-json fixture fixed
+2026-10-28T09:32:49.920Z django-json fixture sat64
+2026-10-28T09:33:51.996Z django-json fixture sat256
+2026-10-28T09:35:05.547Z rails-json fixture warmup
+2026-10-28T09:35:36.015Z rails-json fixture fixed
+2026-10-28T09:36:38.098Z rails-json fixture sat64
+2026-10-28T09:37:40.191Z rails-json fixture sat256
+2026-10-28T09:39:56.346Z laravel-json fixture failed: never answered /api/items/item_1 within a minute
+2026-10-28T09:40:06.952Z aspnet-json fixture warmup
+2026-10-28T09:40:37.414Z aspnet-json fixture fixed
+2026-10-28T09:41:39.499Z aspnet-json fixture sat64
+2026-10-28T09:42:41.596Z aspnet-json fixture sat256
+2026-10-28T09:44:02.377Z spring-json fixture warmup
+2026-10-28T09:44:32.822Z spring-json fixture fixed
+2026-10-28T09:45:34.926Z spring-json fixture sat64
+2026-10-28T09:46:37.018Z spring-json fixture sat256
+2026-10-28T09:47:51.599Z phoenix-json fixture warmup
+2026-10-28T09:48:22.036Z phoenix-json fixture fixed
+2026-10-28T09:49:24.120Z phoenix-json fixture sat64
+2026-10-28T09:50:26.204Z phoenix-json fixture sat256
+2026-10-28T09:51:38.903Z astro-json fixture warmup
+2026-10-28T09:52:09.369Z astro-json fixture fixed
+2026-10-28T09:53:11.455Z astro-json fixture sat64
+2026-10-28T09:54:13.541Z astro-json fixture sat256
+2026-10-28T09:55:26.059Z nuxt-json fixture warmup
+2026-10-28T09:55:56.533Z nuxt-json fixture fixed
+2026-10-28T09:56:58.620Z nuxt-json fixture sat64
+2026-10-28T09:58:00.709Z nuxt-json fixture sat256
+2026-10-28T09:59:03.002Z done
+2026-10-28T09:59:03.028Z node run-ssr.mjs r7 api 150 corten,nextjs,tanstack-start,sveltekit,react-router,leptos,django,rails,laravel,aspnet,spring,phoenix,astro,nuxt page
+2026-10-28T09:59:12.701Z corten api warmup
+2026-10-28T09:59:43.139Z corten api fixed
+2026-10-28T10:00:45.252Z corten api sat64
+2026-10-28T10:01:47.359Z corten api sat256
+2026-10-28T10:02:59.998Z nextjs api warmup
+2026-10-28T10:03:30.518Z nextjs api fixed
+2026-10-28T10:04:56.314Z nextjs api sat64
+2026-10-28T10:05:58.425Z nextjs api sat256
+2026-10-28T10:07:10.587Z tanstack-start api warmup
+2026-10-28T10:07:41.081Z tanstack-start api fixed
+2026-10-28T10:08:43.200Z tanstack-start api sat64
+2026-10-28T10:09:45.302Z tanstack-start api sat256
+2026-10-28T10:10:57.449Z sveltekit api warmup
+2026-10-28T10:11:27.943Z sveltekit api fixed
+2026-10-28T10:12:30.063Z sveltekit api sat64
+2026-10-28T10:13:32.202Z sveltekit api sat256
+2026-10-28T10:14:44.420Z react-router api warmup
+2026-10-28T10:15:14.942Z react-router api fixed
+2026-10-28T10:16:17.057Z react-router api sat64
+2026-10-28T10:17:19.172Z react-router api sat256
+2026-10-28T10:18:31.100Z leptos api warmup
+2026-10-28T10:19:01.548Z leptos api fixed
+2026-10-28T10:20:03.663Z leptos api sat64
+2026-10-28T10:21:05.773Z leptos api sat256
+2026-10-28T10:22:18.841Z django api warmup
+2026-10-28T10:22:49.430Z django api fixed
+2026-10-28T10:23:51.552Z django api sat64
+2026-10-28T10:24:53.658Z django api sat256
+2026-10-28T10:26:06.746Z rails api warmup
+2026-10-28T10:26:37.281Z rails api fixed
+2026-10-28T10:27:39.392Z rails api sat64
+2026-10-28T10:28:41.506Z rails api sat256
+2026-10-28T10:29:54.288Z laravel api warmup
+2026-10-28T10:30:25.035Z laravel api fixed
+2026-10-28T10:31:35.195Z laravel api sat64
+2026-10-28T10:32:37.308Z laravel api sat256
+2026-10-28T10:33:51.120Z aspnet api warmup
+2026-10-28T10:34:21.607Z aspnet api fixed
+2026-10-28T10:35:23.719Z aspnet api sat64
+2026-10-28T10:36:25.837Z aspnet api sat256
+2026-10-28T10:37:46.356Z spring api warmup
+2026-10-28T10:38:16.941Z spring api fixed
+2026-10-28T10:39:20.496Z spring api sat64
+2026-10-28T10:40:22.604Z spring api sat256
+2026-10-28T10:41:35.925Z phoenix api warmup
+2026-10-28T10:42:06.407Z phoenix api fixed
+2026-10-28T10:43:08.523Z phoenix api sat64
+2026-10-28T10:44:10.636Z phoenix api sat256
+2026-10-28T10:45:22.916Z astro api warmup
+2026-10-28T10:45:53.405Z astro api fixed
+2026-10-28T10:46:55.521Z astro api sat64
+2026-10-28T10:47:57.622Z astro api sat256
+2026-10-28T10:49:09.843Z nuxt api warmup
+2026-10-28T10:49:40.400Z nuxt api fixed
+2026-10-28T10:50:42.504Z nuxt api sat64
+2026-10-28T10:51:44.609Z nuxt api sat256
+2026-10-28T10:52:46.916Z done
+2026-10-28T10:52:46.926Z node run-ssr.mjs r7 api 150 corten,nextjs,tanstack-start,sveltekit,react-router,leptos,django,rails,laravel,aspnet,spring,phoenix,astro,nuxt json
+2026-10-28T10:52:56.603Z corten-json api warmup
+2026-10-28T10:53:27.038Z corten-json api fixed
+2026-10-28T10:54:29.148Z corten-json api sat64
+2026-10-28T10:55:31.257Z corten-json api sat256
+2026-10-28T10:56:43.686Z nextjs-json api warmup
+2026-10-28T10:57:14.204Z nextjs-json api fixed
+2026-10-28T10:58:16.316Z nextjs-json api sat64
+2026-10-28T10:59:18.414Z nextjs-json api sat256
+2026-10-28T11:00:30.507Z tanstack-start-json api warmup
+2026-10-28T11:01:00.968Z tanstack-start-json api fixed
+2026-10-28T11:02:03.082Z tanstack-start-json api sat64
+2026-10-28T11:03:05.185Z tanstack-start-json api sat256
+2026-10-28T11:04:17.246Z sveltekit-json api warmup
+2026-10-28T11:04:47.698Z sveltekit-json api fixed
+2026-10-28T11:05:49.820Z sveltekit-json api sat64
+2026-10-28T11:06:51.918Z sveltekit-json api sat256
+2026-10-28T11:08:04.105Z react-router-json api warmup
+2026-10-28T11:08:34.557Z react-router-json api fixed
+2026-10-28T11:09:36.662Z react-router-json api sat64
+2026-10-28T11:10:38.767Z react-router-json api sat256
+2026-10-28T11:11:50.683Z leptos-json api warmup
+2026-10-28T11:12:21.139Z leptos-json api fixed
+2026-10-28T11:13:23.250Z leptos-json api sat64
+2026-10-28T11:14:25.358Z leptos-json api sat256
+2026-10-28T11:15:38.360Z django-json api warmup
+2026-10-28T11:16:08.862Z django-json api fixed
+2026-10-28T11:17:10.967Z django-json api sat64
+2026-10-28T11:18:13.068Z django-json api sat256
+2026-10-28T11:19:26.038Z rails-json api warmup
+2026-10-28T11:19:56.522Z rails-json api fixed
+2026-10-28T11:20:58.639Z rails-json api sat64
+2026-10-28T11:22:00.740Z rails-json api sat256
+2026-10-28T11:23:13.472Z laravel-json api warmup
+2026-10-28T11:23:43.997Z laravel-json api fixed
+2026-10-28T11:24:46.098Z laravel-json api sat64
+2026-10-28T11:25:48.213Z laravel-json api sat256
+2026-10-28T11:27:00.856Z aspnet-json api warmup
+2026-10-28T11:27:31.325Z aspnet-json api fixed
+2026-10-28T11:28:33.438Z aspnet-json api sat64
+2026-10-28T11:29:35.556Z aspnet-json api sat256
+2026-10-28T11:30:54.976Z spring-json api warmup
+2026-10-28T11:31:25.452Z spring-json api fixed
+2026-10-28T11:32:27.571Z spring-json api sat64
+2026-10-28T11:33:29.691Z spring-json api sat256
+2026-10-28T11:34:42.892Z phoenix-json api warmup
+2026-10-28T11:35:13.379Z phoenix-json api fixed
+2026-10-28T11:36:15.481Z phoenix-json api sat64
+2026-10-28T11:37:17.595Z phoenix-json api sat256
+2026-10-28T11:38:29.834Z astro-json api warmup
+2026-10-28T11:39:00.318Z astro-json api fixed
+2026-10-28T11:40:02.430Z astro-json api sat64
+2026-10-28T11:41:04.538Z astro-json api sat256
+2026-10-28T11:42:16.671Z nuxt-json api warmup
+2026-10-28T11:42:47.094Z nuxt-json api fixed
+2026-10-28T11:43:49.205Z nuxt-json api sat64
+2026-10-28T11:44:51.315Z nuxt-json api sat256
+2026-10-28T11:45:53.685Z done
+2026-10-28T11:45:53.695Z node count.mjs r7 3
+corten page {"requests":5000,"failed":0,"userPerRequest":95978,"kernelPerRequest":33804}
+corten page {"requests":5000,"failed":0,"userPerRequest":95477,"kernelPerRequest":33059}
+corten page {"requests":5000,"failed":0,"userPerRequest":95949,"kernelPerRequest":33294}
+corten json {"requests":5000,"failed":0,"userPerRequest":69697,"kernelPerRequest":32851}
+corten json {"requests":5000,"failed":0,"userPerRequest":69530,"kernelPerRequest":33319}
+corten json {"requests":5000,"failed":0,"userPerRequest":69572,"kernelPerRequest":34244}
+nextjs page {"requests":5000,"failed":0,"userPerRequest":17099460,"kernelPerRequest":132653}
+nextjs page {"requests":5000,"failed":0,"userPerRequest":17641839,"kernelPerRequest":134512}
+nextjs page {"requests":5000,"failed":0,"userPerRequest":16669934,"kernelPerRequest":129742}
+nextjs json {"requests":5000,"failed":0,"userPerRequest":1703889,"kernelPerRequest":58002}
+nextjs json {"requests":5000,"failed":0,"userPerRequest":1705323,"kernelPerRequest":59446}
+nextjs json {"requests":5000,"failed":0,"userPerRequest":1709820,"kernelPerRequest":58421}
+tanstack-start page {"requests":5000,"failed":0,"userPerRequest":5418740,"kernelPerRequest":50129}
+tanstack-start page {"requests":5000,"failed":0,"userPerRequest":5327854,"kernelPerRequest":49099}
+tanstack-start page {"requests":5000,"failed":0,"userPerRequest":5238384,"kernelPerRequest":48818}
+tanstack-start json {"requests":5000,"failed":0,"userPerRequest":536471,"kernelPerRequest":33644}
+tanstack-start json {"requests":5000,"failed":0,"userPerRequest":538088,"kernelPerRequest":33624}
+tanstack-start json {"requests":5000,"failed":0,"userPerRequest":564737,"kernelPerRequest":33681}
+sveltekit page {"requests":5000,"failed":0,"userPerRequest":4460226,"kernelPerRequest":44876}
+sveltekit page {"requests":5000,"failed":0,"userPerRequest":4454119,"kernelPerRequest":44230}
+sveltekit page {"requests":5000,"failed":0,"userPerRequest":4452913,"kernelPerRequest":45330}
+sveltekit json {"requests":5000,"failed":0,"userPerRequest":681673,"kernelPerRequest":33680}
+sveltekit json {"requests":5000,"failed":0,"userPerRequest":693322,"kernelPerRequest":33348}
+sveltekit json {"requests":5000,"failed":0,"userPerRequest":698929,"kernelPerRequest":33562}
+react-router page {"requests":5000,"failed":0,"userPerRequest":6468009,"kernelPerRequest":109395}
+react-router page {"requests":5000,"failed":0,"userPerRequest":6571355,"kernelPerRequest":109494}
+react-router page {"requests":5000,"failed":0,"userPerRequest":6424490,"kernelPerRequest":108050}
+react-router json {"requests":5000,"failed":0,"userPerRequest":826159,"kernelPerRequest":69604}
+react-router json {"requests":5000,"failed":0,"userPerRequest":863573,"kernelPerRequest":69799}
+react-router json {"requests":5000,"failed":0,"userPerRequest":832242,"kernelPerRequest":69700}
+leptos page {"requests":5000,"failed":0,"userPerRequest":2722943,"kernelPerRequest":35357}
+leptos page {"requests":5000,"failed":0,"userPerRequest":2717042,"kernelPerRequest":35281}
+leptos page {"requests":5000,"failed":0,"userPerRequest":2722611,"kernelPerRequest":35007}
+leptos json {"requests":5000,"failed":0,"userPerRequest":204078,"kernelPerRequest":33782}
+leptos json {"requests":5000,"failed":0,"userPerRequest":205082,"kernelPerRequest":32251}
+leptos json {"requests":5000,"failed":0,"userPerRequest":204467,"kernelPerRequest":33389}
+django page {"requests":5000,"failed":0,"userPerRequest":12627315,"kernelPerRequest":346746}
+django page {"requests":5000,"failed":0,"userPerRequest":12637728,"kernelPerRequest":345580}
+django page {"requests":5000,"failed":0,"userPerRequest":12646233,"kernelPerRequest":345152}
+django json {"requests":5000,"failed":0,"userPerRequest":1886997,"kernelPerRequest":171590}
+django json {"requests":5000,"failed":0,"userPerRequest":1889383,"kernelPerRequest":170052}
+django json {"requests":5000,"failed":0,"userPerRequest":1886323,"kernelPerRequest":170501}
+rails page {"requests":5000,"failed":0,"userPerRequest":5019703,"kernelPerRequest":323636}
+rails page {"requests":5000,"failed":0,"userPerRequest":5011519,"kernelPerRequest":323665}
+rails page {"requests":5000,"failed":0,"userPerRequest":5013326,"kernelPerRequest":323363}
+rails json {"requests":5000,"failed":0,"userPerRequest":2282059,"kernelPerRequest":285491}
+rails json {"requests":5000,"failed":0,"userPerRequest":2258834,"kernelPerRequest":283349}
+rails json {"requests":5000,"failed":0,"userPerRequest":2284839,"kernelPerRequest":284679}
+laravel page failed: never answered
+laravel json failed: never answered
+aspnet page {"requests":5000,"failed":0,"userPerRequest":1002980,"kernelPerRequest":57454}
+aspnet page {"requests":5000,"failed":0,"userPerRequest":1257602,"kernelPerRequest":57967}
+aspnet page {"requests":5000,"failed":0,"userPerRequest":767518,"kernelPerRequest":54162}
+aspnet json {"requests":5000,"failed":0,"userPerRequest":256861,"kernelPerRequest":79440}
+aspnet json {"requests":5000,"failed":0,"userPerRequest":278801,"kernelPerRequest":81326}
+aspnet json {"requests":5000,"failed":0,"userPerRequest":268439,"kernelPerRequest":77104}
+spring page {"requests":5000,"failed":0,"userPerRequest":6084954,"kernelPerRequest":102882}
+spring page {"requests":5000,"failed":0,"userPerRequest":5896061,"kernelPerRequest":95219}
+spring page {"requests":5000,"failed":0,"userPerRequest":5762208,"kernelPerRequest":100755}
+spring json {"requests":5000,"failed":0,"userPerRequest":1327004,"kernelPerRequest":98292}
+spring json {"requests":5000,"failed":0,"userPerRequest":1786329,"kernelPerRequest":97370}
+spring json {"requests":5000,"failed":0,"userPerRequest":2052232,"kernelPerRequest":99633}
+phoenix page {"requests":5000,"failed":0,"userPerRequest":2138850,"kernelPerRequest":90769}
+phoenix page {"requests":5000,"failed":0,"userPerRequest":2139746,"kernelPerRequest":90650}
+phoenix page {"requests":5000,"failed":0,"userPerRequest":2138833,"kernelPerRequest":89092}
+phoenix json {"requests":5000,"failed":0,"userPerRequest":1551767,"kernelPerRequest":79427}
+phoenix json {"requests":5000,"failed":0,"userPerRequest":1556349,"kernelPerRequest":78495}
+phoenix json {"requests":5000,"failed":0,"userPerRequest":1545473,"kernelPerRequest":78152}
+astro page {"requests":5000,"failed":0,"userPerRequest":2056722,"kernelPerRequest":80280}
+astro page {"requests":5000,"failed":0,"userPerRequest":2046445,"kernelPerRequest":80608}
+astro page {"requests":5000,"failed":0,"userPerRequest":2074140,"kernelPerRequest":81184}
+astro json {"requests":5000,"failed":0,"userPerRequest":1077906,"kernelPerRequest":76533}
+astro json {"requests":5000,"failed":0,"userPerRequest":1075813,"kernelPerRequest":76507}
+astro json {"requests":5000,"failed":0,"userPerRequest":1111364,"kernelPerRequest":76001}
+nuxt page {"requests":5000,"failed":0,"userPerRequest":10298679,"kernelPerRequest":67454}
+nuxt page {"requests":5000,"failed":0,"userPerRequest":9882751,"kernelPerRequest":64708}
+nuxt page {"requests":5000,"failed":0,"userPerRequest":9839924,"kernelPerRequest":65038}
+nuxt json {"requests":5000,"failed":0,"userPerRequest":400212,"kernelPerRequest":31939}
+nuxt json {"requests":5000,"failed":0,"userPerRequest":427159,"kernelPerRequest":32225}
+nuxt json {"requests":5000,"failed":0,"userPerRequest":406199,"kernelPerRequest":31953}
+done
+2026-10-28T12:10:22.855Z node parity.mjs
+{"reference":"corten","compared":["nextjs","tanstack-start","sveltekit","react-router","leptos","django","rails","laravel","aspnet","spring","phoenix","astro","nuxt"],"pages":16,"failures":0}
+2026-10-28T12:10:26.509Z node bytes.mjs r7
+corten {"html":{"raw":11467,"gzip":2358},"js":{"raw":24952,"gzip":9541,"files":4},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":7756,"gzip":2430,"files":2}}
+nextjs {"html":{"raw":25906,"gzip":4892},"js":{"raw":467154,"gzip":139376,"files":7},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+tanstack-start {"html":{"raw":17836,"gzip":4390},"js":{"raw":350830,"gzip":113571,"files":5},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+sveltekit {"html":{"raw":16730,"gzip":3648},"js":{"raw":98612,"gzip":37884,"files":11},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+react-router {"html":{"raw":19962,"gzip":5005},"js":{"raw":317136,"gzip":100964,"files":4},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+leptos {"html":{"raw":18237,"gzip":3552},"js":{"raw":25351,"gzip":7124,"files":1},"wasm":{"raw":737158,"gzip":293577,"files":1},"css":{"raw":2041,"gzip":869,"files":1}}
+django {"html":{"raw":7448,"gzip":1875},"js":{"raw":52985,"gzip":17377,"files":2},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+rails {"html":{"raw":8713,"gzip":2236},"js":{"raw":155818,"gzip":41613,"files":7},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+laravel {"html":{"raw":11036,"gzip":2903},"js":{"raw":261969,"gzip":86336,"files":1},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+aspnet {"html":{"raw":7494,"gzip":1959},"js":{"raw":52985,"gzip":17377,"files":2},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+spring {"html":{"raw":7365,"gzip":1822},"js":{"raw":52985,"gzip":17377,"files":2},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+phoenix {"html":{"raw":10190,"gzip":2497},"js":{"raw":152827,"gzip":47305,"files":1},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+astro {"html":{"raw":9479,"gzip":2658},"js":{"raw":25528,"gzip":9434,"files":3},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":0,"gzip":0,"files":0}}
+nuxt {"html":{"raw":17722,"gzip":4573},"js":{"raw":202058,"gzip":75513,"files":4},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1963,"gzip":823,"files":1}}
+2026-10-28T12:10:36.355Z node browser.mjs corten=http://localhost:18410 nextjs=http://localhost:18411 tanstack-start=http://localhost:18412 sveltekit=http://localhost:18413 react-router=http://localhost:18414 leptos=http://localhost:18415 django=http://localhost:18416 rails=http://localhost:18417 laravel=http://localhost:18418 aspnet=http://localhost:18419 spring=http://localhost:18420 phoenix=http://localhost:18421 astro=http://localhost:18422 nuxt=http://localhost:18423 runs=10 out=r7/browser.json
+{"profile":"desktop","app":"corten","i":0,"id":"item_3","ttfb":3.599999999627471,"fcp":88,"lcp":88,"dcl":80.5,"load":80.90000000037253,"hydratedAt":80.40000000037253,"tbtToHydration":0,"bytes":{"html":2735,"js":10551,"wasm":0,"css":2636,"data":0},"requests":7,"jsHeapUsedMB":1.3685302734375,"actionMs":87.80000000074506,"sortWorked":true,"clientNavMs":12.700000001117587}
+{"profile":"desktop","app":"nextjs","i":0,"id":"item_3","ttfb":16.299999998882413,"fcp":76,"lcp":76,"dcl":66.5,"load":117,"hydratedAt":140,"tbtToHydration":0,"bytes":{"html":5439,"js":141476,"wasm":0,"css":1117,"data":2074},"requests":11,"jsHeapUsedMB":3.116790771484375,"actionMs":88.5,"sortWorked":true,"clientNavMs":74.89999999850988}
+{"profile":"desktop","app":"tanstack-start","i":0,"id":"item_3","ttfb":9.900000000372529,"fcp":64,"lcp":64,"dcl":47.09999999962747,"load":87.5,"hydratedAt":108.69999999925494,"tbtToHydration":0,"bytes":{"html":18067,"js":352330,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.8562278747558594,"actionMs":69.69999999925494,"sortWorked":true,"clientNavMs":27}
+{"profile":"desktop","app":"sveltekit","i":0,"id":"item_3","ttfb":9.900000000372529,"fcp":80,"lcp":80,"dcl":65.90000000037253,"load":66,"hydratedAt":103,"tbtToHydration":0,"bytes":{"html":16963,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1141014099121094,"actionMs":74,"sortWorked":true,"clientNavMs":20.90000000037253}
+{"profile":"desktop","app":"react-router","i":0,"id":"item_3","ttfb":11.700000001117587,"fcp":104,"lcp":104,"dcl":81.09999999962747,"load":90.30000000074506,"hydratedAt":145.90000000037253,"tbtToHydration":0,"bytes":{"html":5014,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.486530303955078,"actionMs":101,"sortWorked":true,"clientNavMs":31.40000000037253}
+{"profile":"desktop","app":"leptos","i":0,"id":"item_3","ttfb":6,"fcp":56,"lcp":56,"dcl":44.29999999888241,"load":44.29999999888241,"hydratedAt":93.5,"tbtToHydration":0,"bytes":{"html":3583,"js":7495,"wasm":283143,"css":1124,"data":0},"requests":4,"jsHeapUsedMB":1.7335777282714844,"actionMs":75.80000000074506,"sortWorked":true,"clientNavMs":23.699999999254942}
+{"profile":"desktop","app":"django","i":0,"id":"item_3","ttfb":8.400000000372529,"fcp":64,"lcp":64,"dcl":50.80000000074506,"load":53.59999999962747,"hydratedAt":47,"tbtToHydration":0,"bytes":{"html":7711,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.5132179260253906,"actionMs":75.29999999888241,"sortWorked":true,"clientNavMs":18.699999999254942}
+{"profile":"desktop","app":"rails","i":0,"id":"item_3","ttfb":18.5,"fcp":64,"lcp":64,"dcl":58.80000000074506,"load":59.09999999962747,"hydratedAt":58.20000000111759,"tbtToHydration":0,"bytes":{"html":8977,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":1.8564872741699219,"actionMs":121.70000000111759,"sortWorked":true,"clientNavMs":26.5}
+{"profile":"desktop","app":"laravel","i":0,"id":"item_3","ttfb":19.899999998509884,"fcp":68,"lcp":68,"dcl":75.09999999962747,"load":75.29999999888241,"hydratedAt":74.89999999850988,"tbtToHydration":0,"bytes":{"html":3329,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.010173797607422,"actionMs":91.09999999962747,"sortWorked":true,"clientNavMs":23}
+{"profile":"desktop","app":"aspnet","i":0,"id":"item_3","ttfb":6,"fcp":64,"lcp":64,"dcl":48.09999999962747,"load":50.90000000037253,"hydratedAt":44.19999999925494,"tbtToHydration":0,"bytes":{"html":7758,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.5127296447753906,"actionMs":74,"sortWorked":true,"clientNavMs":15}
+{"profile":"desktop","app":"spring","i":0,"id":"item_3","ttfb":38.59999999962747,"fcp":84,"lcp":84,"dcl":77.59999999962747,"load":78,"hydratedAt":73.59999999962747,"tbtToHydration":0,"bytes":{"html":7628,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.5135726928710938,"actionMs":108.19999999925494,"sortWorked":true,"clientNavMs":37.29999999888241}
+{"profile":"desktop","app":"phoenix","i":0,"id":"item_3","ttfb":10.199999999254942,"fcp":112,"lcp":112,"dcl":74.59999999962747,"load":78.59999999962747,"hydratedAt":143.69999999925494,"tbtToHydration":0,"bytes":{"html":2844,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.100543975830078,"actionMs":81.70000000111759,"sortWorked":true,"clientNavMs":16.09999999962747}
+{"profile":"desktop","app":"astro","i":0,"id":"item_3","ttfb":8.300000000745058,"fcp":60,"lcp":60,"dcl":55.90000000037253,"load":56,"hydratedAt":55.59999999962747,"tbtToHydration":0,"bytes":{"html":9744,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.35003662109375,"actionMs":75.19999999925494,"sortWorked":true,"clientNavMs":18.299999998882413}
+{"profile":"desktop","app":"nuxt","i":0,"id":"item_3","ttfb":13.099999999627471,"fcp":84,"lcp":84,"dcl":54.90000000037253,"load":57.90000000037253,"hydratedAt":107.90000000037253,"tbtToHydration":0,"bytes":{"html":17961,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.6827850341796875,"actionMs":81.69999999925494,"sortWorked":true,"clientNavMs":22.5}
+{"profile":"desktop","app":"corten","i":1,"id":"item_17","ttfb":4.200000001117587,"fcp":60,"lcp":60,"dcl":51.09999999962747,"load":51.59999999962747,"hydratedAt":51,"tbtToHydration":0,"bytes":{"html":2746,"js":10551,"wasm":0,"css":2636,"data":0},"requests":7,"jsHeapUsedMB":1.3681793212890625,"actionMs":73.09999999962747,"sortWorked":true,"clientNavMs":13}
+{"profile":"desktop","app":"nextjs","i":1,"id":"item_17","ttfb":20.09999999962747,"fcp":76,"lcp":76,"dcl":58.20000000111759,"load":127.59999999962747,"hydratedAt":152.5,"tbtToHydration":0,"bytes":{"html":5476,"js":141476,"wasm":0,"css":1117,"data":2074},"requests":11,"jsHeapUsedMB":3.1925086975097656,"actionMs":71.19999999925494,"sortWorked":true,"clientNavMs":95.90000000037253}
+{"profile":"desktop","app":"tanstack-start","i":1,"id":"item_17","ttfb":14.600000001490116,"fcp":72,"lcp":72,"dcl":61.70000000111759,"load":94.90000000037253,"hydratedAt":116.90000000037253,"tbtToHydration":0,"bytes":{"html":18136,"js":352330,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.9286766052246094,"actionMs":70.09999999962747,"sortWorked":true,"clientNavMs":26.90000000037253}
+{"profile":"desktop","app":"sveltekit","i":1,"id":"item_17","ttfb":8.599999999627471,"fcp":76,"lcp":76,"dcl":64.40000000037253,"load":64.40000000037253,"hydratedAt":98.90000000037253,"tbtToHydration":0,"bytes":{"html":17030,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1722030639648438,"actionMs":74.30000000074506,"sortWorked":true,"clientNavMs":20}
+{"profile":"desktop","app":"react-router","i":1,"id":"item_17","ttfb":16.5,"fcp":88,"lcp":88,"dcl":100.09999999962747,"load":102.19999999925494,"hydratedAt":158.90000000037253,"tbtToHydration":0,"bytes":{"html":5023,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.538105010986328,"actionMs":86.5,"sortWorked":true,"clientNavMs":28.299999998882413}
+{"profile":"desktop","app":"leptos","i":1,"id":"item_17","ttfb":7.599999999627471,"fcp":72,"lcp":72,"dcl":55.20000000111759,"load":55.20000000111759,"hydratedAt":112.09999999962747,"tbtToHydration":0,"bytes":{"html":3620,"js":7497,"wasm":282857,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7379646301269531,"actionMs":75.09999999962747,"sortWorked":true,"clientNavMs":22.40000000037253}
+{"profile":"desktop","app":"django","i":1,"id":"item_17","ttfb":8.5,"fcp":72,"lcp":72,"dcl":48.30000000074506,"load":59.90000000037253,"hydratedAt":44.20000000111759,"tbtToHydration":0,"bytes":{"html":7748,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.5141448974609375,"actionMs":75.70000000111759,"sortWorked":true,"clientNavMs":20.699999999254942}
+{"profile":"desktop","app":"rails","i":1,"id":"item_17","ttfb":12.900000000372529,"fcp":72,"lcp":72,"dcl":65.70000000111759,"load":66,"hydratedAt":64.90000000037253,"tbtToHydration":0,"bytes":{"html":9013,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":1.856109619140625,"actionMs":89,"sortWorked":true,"clientNavMs":20.199999999254942}
+{"profile":"desktop","app":"laravel","i":1,"id":"item_17","ttfb":16.199999999254942,"fcp":64,"lcp":64,"dcl":73.90000000037253,"load":74.09999999962747,"hydratedAt":73.79999999888241,"tbtToHydration":0,"bytes":{"html":3328,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.011260986328125,"actionMs":76.10000000149012,"sortWorked":true,"clientNavMs":22.299999998882413}
+{"profile":"desktop","app":"aspnet","i":1,"id":"item_17","ttfb":7.699999999254942,"fcp":64,"lcp":64,"dcl":50.40000000037253,"load":52.90000000037253,"hydratedAt":46.69999999925494,"tbtToHydration":0,"bytes":{"html":7794,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.5135650634765625,"actionMs":75.5,"sortWorked":true,"clientNavMs":16}
+{"profile":"desktop","app":"spring","i":1,"id":"item_17","ttfb":39.59999999962747,"fcp":92,"lcp":92,"dcl":88.09999999962747,"load":88.59999999962747,"hydratedAt":82.40000000037253,"tbtToHydration":0,"bytes":{"html":7665,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.5142021179199219,"actionMs":75.10000000149012,"sortWorked":true,"clientNavMs":43.40000000037253}
+{"profile":"desktop","app":"phoenix","i":1,"id":"item_17","ttfb":16.200000001117587,"fcp":76,"lcp":76,"dcl":84.5,"load":84.5,"hydratedAt":106.10000000149012,"tbtToHydration":0,"bytes":{"html":2830,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.1001243591308594,"actionMs":81.90000000037253,"sortWorked":true,"clientNavMs":16}
+{"profile":"desktop","app":"astro","i":1,"id":"item_17","ttfb":9.899999998509884,"fcp":60,"lcp":60,"dcl":51.29999999888241,"load":51.5,"hydratedAt":51,"tbtToHydration":0,"bytes":{"html":9779,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.3500747680664062,"actionMs":74.10000000149012,"sortWorked":true,"clientNavMs":18.09999999962747}
+{"profile":"desktop","app":"nuxt","i":1,"id":"item_17","ttfb":17.699999999254942,"fcp":64,"lcp":64,"dcl":68.19999999925494,"load":68.40000000037253,"hydratedAt":92.69999999925494,"tbtToHydration":0,"bytes":{"html":18022,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.749114990234375,"actionMs":71.80000000074506,"sortWorked":true,"clientNavMs":23}
+{"profile":"desktop","app":"corten","i":2,"id":"item_250","ttfb":5.900000000372529,"fcp":64,"lcp":64,"dcl":54,"load":54.30000000074506,"hydratedAt":54,"tbtToHydration":0,"bytes":{"html":2563,"js":10551,"wasm":0,"css":2636,"data":0},"requests":7,"jsHeapUsedMB":1.3677520751953125,"actionMs":72.20000000111759,"sortWorked":true,"clientNavMs":13.199999999254942}
+{"profile":"desktop","app":"nextjs","i":2,"id":"item_250","ttfb":22.300000000745058,"fcp":68,"lcp":68,"dcl":50.90000000037253,"load":115.80000000074506,"hydratedAt":141.7000000011176,"tbtToHydration":0,"bytes":{"html":5258,"js":141476,"wasm":0,"css":1117,"data":2074},"requests":11,"jsHeapUsedMB":3.1818618774414062,"actionMs":71.79999999888241,"sortWorked":true,"clientNavMs":81.90000000037253}
+{"profile":"desktop","app":"tanstack-start","i":2,"id":"item_250","ttfb":10,"fcp":64,"lcp":64,"dcl":47.79999999888241,"load":89.59999999962747,"hydratedAt":111.29999999888241,"tbtToHydration":0,"bytes":{"html":16543,"js":352330,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.9259376525878906,"actionMs":80.29999999888241,"sortWorked":true,"clientNavMs":27.40000000037253}
+{"profile":"desktop","app":"sveltekit","i":2,"id":"item_250","ttfb":7,"fcp":72,"lcp":72,"dcl":60.59999999962747,"load":60.70000000111759,"hydratedAt":94.20000000111759,"tbtToHydration":0,"bytes":{"html":15556,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.1122474670410156,"actionMs":74.5,"sortWorked":true,"clientNavMs":21.59999999962747}
+{"profile":"desktop","app":"react-router","i":2,"id":"item_250","ttfb":10.5,"fcp":100,"lcp":100,"dcl":87,"load":109,"hydratedAt":167,"tbtToHydration":0,"bytes":{"html":4726,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.5588722229003906,"actionMs":100.40000000037253,"sortWorked":true,"clientNavMs":30.59999999962747}
+{"profile":"desktop","app":"leptos","i":2,"id":"item_250","ttfb":5,"fcp":64,"lcp":64,"dcl":42.100000001490116,"load":42.100000001490116,"hydratedAt":105.80000000074506,"tbtToHydration":0,"bytes":{"html":3450,"js":7497,"wasm":282857,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.7358741760253906,"actionMs":74.89999999850988,"sortWorked":true,"clientNavMs":23.300000000745058}
+{"profile":"desktop","app":"django","i":2,"id":"item_250","ttfb":11.400000000372529,"fcp":64,"lcp":64,"dcl":49.80000000074506,"load":52.30000000074506,"hydratedAt":46.20000000111759,"tbtToHydration":0,"bytes":{"html":7844,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.5189476013183594,"actionMs":75.69999999925494,"sortWorked":true,"clientNavMs":18.799999998882413}
+{"profile":"desktop","app":"rails","i":2,"id":"item_250","ttfb":15.400000000372529,"fcp":60,"lcp":60,"dcl":56.19999999925494,"load":56.90000000037253,"hydratedAt":55.5,"tbtToHydration":0,"bytes":{"html":9108,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":1.8564987182617188,"actionMs":90.69999999925494,"sortWorked":true,"clientNavMs":50.79999999888241}
+{"profile":"desktop","app":"laravel","i":2,"id":"item_250","ttfb":19,"fcp":72,"lcp":72,"dcl":78.09999999962747,"load":78.19999999925494,"hydratedAt":77.90000000037253,"tbtToHydration":0,"bytes":{"html":3371,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.0390243530273438,"actionMs":78,"sortWorked":true,"clientNavMs":22.40000000037253}
+{"profile":"desktop","app":"aspnet","i":2,"id":"item_250","ttfb":5.800000000745058,"fcp":64,"lcp":64,"dcl":48.09999999962747,"load":50.80000000074506,"hydratedAt":44.30000000074506,"tbtToHydration":0,"bytes":{"html":7889,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.5180435180664062,"actionMs":75.5,"sortWorked":true,"clientNavMs":15.900000000372529}
+{"profile":"desktop","app":"spring","i":2,"id":"item_250","ttfb":31.700000001117587,"fcp":76,"lcp":76,"dcl":66.5,"load":66.90000000037253,"hydratedAt":62.30000000074506,"tbtToHydration":0,"bytes":{"html":7761,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.5189476013183594,"actionMs":74.39999999850988,"sortWorked":true,"clientNavMs":37.09999999962747}
+{"profile":"desktop","app":"phoenix","i":2,"id":"item_250","ttfb":7.5,"fcp":88,"lcp":88,"dcl":60.20000000111759,"load":62.90000000037253,"hydratedAt":107,"tbtToHydration":0,"bytes":{"html":2891,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.1014366149902344,"actionMs":82.30000000074506,"sortWorked":true,"clientNavMs":16}
+{"profile":"desktop","app":"astro","i":2,"id":"item_250","ttfb":7.200000001117587,"fcp":56,"lcp":56,"dcl":46.30000000074506,"load":49.70000000111759,"hydratedAt":46,"tbtToHydration":0,"bytes":{"html":9873,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.3522758483886719,"actionMs":91.30000000074506,"sortWorked":true,"clientNavMs":17.699999999254942}
+{"profile":"desktop","app":"nuxt","i":2,"id":"item_250","ttfb":42.600000001490116,"fcp":84,"lcp":84,"dcl":87.40000000037253,"load":87.5,"hydratedAt":111.20000000111759,"tbtToHydration":0,"bytes":{"html":16377,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.694225311279297,"actionMs":74.80000000074506,"sortWorked":true,"clientNavMs":24.300000000745058}
+{"profile":"desktop","app":"corten","i":3,"id":"item_1999","ttfb":3,"fcp":68,"lcp":68,"dcl":57.79999999888241,"load":58.19999999925494,"hydratedAt":57.79999999888241,"tbtToHydration":0,"bytes":{"html":2105,"js":9633,"wasm":0,"css":2636,"data":0},"requests":6,"jsHeapUsedMB":1.356689453125,"actionMs":75.59999999962747,"sortWorked":true,"clientNavMs":11.599999999627471}
+{"profile":"desktop","app":"nextjs","i":3,"id":"item_1999","ttfb":16.299999998882413,"fcp":64,"lcp":64,"dcl":42.79999999888241,"load":113.89999999850988,"hydratedAt":136.39999999850988,"tbtToHydration":0,"bytes":{"html":4394,"js":141476,"wasm":0,"css":1117,"data":2074},"requests":11,"jsHeapUsedMB":3.1596527099609375,"actionMs":74.39999999850988,"sortWorked":true,"clientNavMs":83.90000000037253}
+{"profile":"desktop","app":"tanstack-start","i":3,"id":"item_1999","ttfb":13,"fcp":68,"lcp":68,"dcl":49.69999999925494,"load":91.39999999850988,"hydratedAt":114.29999999888241,"tbtToHydration":0,"bytes":{"html":10709,"js":352330,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.80706787109375,"actionMs":71.30000000074506,"sortWorked":true,"clientNavMs":25.5}
+{"profile":"desktop","app":"sveltekit","i":3,"id":"item_1999","ttfb":8.600000001490116,"fcp":72,"lcp":72,"dcl":58,"load":58.100000001490116,"hydratedAt":93,"tbtToHydration":0,"bytes":{"html":9876,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.063892364501953,"actionMs":72.59999999962747,"sortWorked":true,"clientNavMs":21.59999999962747}
+{"profile":"desktop","app":"react-router","i":3,"id":"item_1999","ttfb":10.099999999627471,"fcp":64,"lcp":64,"dcl":51.90000000037253,"load":73.09999999962747,"hydratedAt":134.30000000074506,"tbtToHydration":0,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.384654998779297,"actionMs":69.40000000037253,"sortWorked":true,"clientNavMs":28.300000000745058}
+{"profile":"desktop","app":"leptos","i":3,"id":"item_1999","ttfb":4.200000001117587,"fcp":56,"lcp":56,"dcl":43.5,"load":43.70000000111759,"hydratedAt":89.90000000037253,"tbtToHydration":0,"bytes":{"html":2586,"js":7495,"wasm":282854,"css":1124,"data":0},"requests":4,"jsHeapUsedMB":1.6994247436523438,"actionMs":74.90000000037253,"sortWorked":true,"clientNavMs":23.09999999962747}
+{"profile":"desktop","app":"django","i":3,"id":"item_1999","ttfb":7.199999999254942,"fcp":68,"lcp":68,"dcl":45.09999999962747,"load":55,"hydratedAt":41.5,"tbtToHydration":0,"bytes":{"html":5244,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.5121002197265625,"actionMs":77.5,"sortWorked":true,"clientNavMs":19.100000001490116}
+{"profile":"desktop","app":"rails","i":3,"id":"item_1999","ttfb":8.5,"fcp":76,"lcp":76,"dcl":68.40000000037253,"load":68.90000000037253,"hydratedAt":67.40000000037253,"tbtToHydration":0,"bytes":{"html":6601,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":1.8564987182617188,"actionMs":124.29999999888241,"sortWorked":true,"clientNavMs":47.899999998509884}
+{"profile":"desktop","app":"laravel","i":3,"id":"item_1999","ttfb":13.599999999627471,"fcp":56,"lcp":56,"dcl":63.20000000111759,"load":63.20000000111759,"hydratedAt":63.09999999962747,"tbtToHydration":0,"bytes":{"html":2992,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":1.9721794128417969,"actionMs":77.19999999925494,"sortWorked":true,"clientNavMs":24}
+{"profile":"desktop","app":"aspnet","i":3,"id":"item_1999","ttfb":5.200000001117587,"fcp":60,"lcp":60,"dcl":45.70000000111759,"load":48,"hydratedAt":41.5,"tbtToHydration":0,"bytes":{"html":5288,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.5117263793945312,"actionMs":76.5,"sortWorked":true,"clientNavMs":16.199999999254942}
+{"profile":"desktop","app":"spring","i":3,"id":"item_1999","ttfb":19.5,"fcp":60,"lcp":60,"dcl":55,"load":55.30000000074506,"hydratedAt":50.30000000074506,"tbtToHydration":0,"bytes":{"html":5161,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.5119552612304688,"actionMs":76.5,"sortWorked":true,"clientNavMs":35.80000000074506}
+{"profile":"desktop","app":"phoenix","i":3,"id":"item_1999","ttfb":6.5,"fcp":88,"lcp":88,"dcl":59.59999999962747,"load":62.19999999925494,"hydratedAt":100.40000000037253,"tbtToHydration":0,"bytes":{"html":2432,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.006256103515625,"actionMs":83,"sortWorked":true,"clientNavMs":16}
+{"profile":"desktop","app":"astro","i":3,"id":"item_1999","ttfb":7.5,"fcp":60,"lcp":60,"dcl":54.29999999888241,"load":54.40000000037253,"hydratedAt":54,"tbtToHydration":0,"bytes":{"html":7336,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.3522758483886719,"actionMs":74.09999999962747,"sortWorked":true,"clientNavMs":17.199999999254942}
+{"profile":"desktop","app":"nuxt","i":3,"id":"item_1999","ttfb":13.5,"fcp":68,"lcp":68,"dcl":66.40000000037253,"load":66.5,"hydratedAt":94.5,"tbtToHydration":0,"bytes":{"html":10276,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.6676559448242188,"actionMs":71.90000000037253,"sortWorked":true,"clientNavMs":23.799999998882413}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+page.waitForFunction: Timeout 30000ms exceeded.
+    at loadItem (/bench/bench/fullstack/browser.mjs:89:16)
+    at async file:///bench/bench/fullstack/browser.mjs:127:22 {
+  name: 'TimeoutError'
+}
+
+Node.js v24.22.1
+step failed with 1
+2026-10-28T12:12:06.389Z node summarize.mjs r7
+
+SSR fixture
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 300, 0.2/0.4, 4.1% | 18758, 3.7/8.2 | 16186, 32.1, 0% | 17.3-20.3 MiB |
+| nextjs | FAILED: served 150/s of the fixed rate, 38.69% never sent |  |  |  |
+| nextjs | 150, 1299/57245.8, 100.4% | 179, 374.1/426.2 | 179, 13760.3, 0% | 210.3-214 MiB |
+| tanstack-start | 300, 1.5/35.1, 50.4% | 697, 81.1/152.4 | 713, 424, 0% | 160.8-161.7 MiB |
+| sveltekit | 300, 1/20.1, 37% | 961, 58.8/122.6 | 866, 332.4, 0% | 147-152.7 MiB |
+| react-router | 300, 1.8/46.2, 61% | 543, 108.8/181.2 | 533, 545.9, 0% | 143.7-145.1 MiB |
+| leptos | 300, 0.9/1.1, 22.4% | 1423, 45.5/63.8 | 1260, 332.2, 0% | 15.7-32.9 MiB |
+| django | 300, 2.7/31, 87.6% | 343, 185.7/207.5 | 342, 795.4, 0% | 343.7-344.6 MiB |
+| rails | 300, 1.9/11.7, 61.5% | 529, 120.1/139.4 | 471, 617.2, 0% | 136.6-140.2 MiB |
+| laravel | FAILED: never answered /items/item_1 within a minute |  |  |  |
+| aspnet | 300, 0.5/2.6, 17.3% | 4245, 15.4/23.3 | 4052, 104, 0% | 86.7-90.2 MiB |
+| spring | 300, 1/5.4, 41.2% | 1127, 41.5/322 | 1140, 932.7, 0% | 354-377.4 MiB |
+| phoenix | 300, 1/1.3, 33.5% | 1547, 41.4/54.9 | 1449, 4682.8, 0% | 272.6-298 MiB |
+| astro | 300, 0.9/29.5, 30.9% | 1249, 45/115.3 | 1199, 280.2, 0% | 137.1-138.7 MiB |
+| nuxt | 287, 742.5/28989.1, 100.3% | 322, 198.1/241.8 | 298, 4722.9, 0% | 137.6-139.9 MiB |
+
+SSR api
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 150, 0.8/1.1, 7.1% | 3540, 17.9/23.7 | 3404, 115.8, 0% | 16.3-55.1 MiB |
+| nextjs | FAILED: served 80/s of the fixed rate, 24.29% never sent |  |  |  |
+| nextjs | 80, 2572.4/52859.9, 100.3% | 111, 551.7/787.9 | 103, 26873.1, 0% | 197.4-241 MiB |
+| tanstack-start | 150, 2.7/34.5, 49.8% | 325, 199.9/240.8 | 299, 973.6, 0% | 140.7-170.3 MiB |
+| sveltekit | 150, 2.3/23.5, 42.6% | 381, 168.5/204.3 | 383, 737, 0% | 140.2-153.8 MiB |
+| react-router | 150, 3.3/46.5, 59.9% | 281, 229.6/276 | 287, 1049.5, 0% | 138.4-154.5 MiB |
+| leptos | 150, 1.7/2.3, 21.4% | 775, 85.2/97.4 | 659, 513.2, 0% | 15.1-55.3 MiB |
+| django | 150, 5/7.2, 75.5% | 183, 348.5/375.7 | 180, 1498.8, 0% | 127-127.6 MiB |
+| rails | 150, 3.3/32.2, 53.2% | 384, 165.5/187.4 | 328, 861.4, 0% | 107.7-112.3 MiB |
+| laravel | FAILED: served 99/s of the fixed rate, 23.48% never sent |  |  |  |
+| laravel | 99, 8078.3/10408.7, 98.6% | 103, 621.5/672 | 101, 2649.1, 0% | 123.8-125.3 MiB |
+| aspnet | 150, 1.7/7.5, 33% | 1157, 54.7/79.7 | 1047, 290.5, 0% | 69.8-98.5 MiB |
+| spring | 150, 2.6/13.7, 57.3% | 497, 126.2/233.6 | 399, 1217.4, 0% | 426.6-456.5 MiB |
+| phoenix | 150, 3/3.7, 45.1% | 405, 157.5/204.7 | 397, 7662.1, 0% | 220.5-305 MiB |
+| astro | 150, 2.3/38, 48.2% | 465, 141.7/173.7 | 433, 707.6, 0% | 127.9-148.5 MiB |
+| nuxt | 150, 4/265.1, 72.1% | 211, 301.2/361.8 | 202, 14360.4, 0% | 139-179.7 MiB |
+
+SSR fixture-json
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 300, 0.2/0.4, 3.6% | 24976, 2.2/8.2 | 25852, 33.5, 0% | 17.2-20.1 MiB |
+| nextjs | 300, 0.9/30.4, 30.5% | 1131, 51.5/115.3 | 1120, 300.7, 0% | 172.7-173.9 MiB |
+| tanstack-start | 300, 0.5/4.3, 12.9% | 3482, 16.1/47 | 3285, 120.2, 0% | 139.4-142.7 MiB |
+| sveltekit | 300, 0.5/4.2, 13.6% | 3102, 19.3/50.1 | 3149, 134.8, 0% | 122.4-124.5 MiB |
+| react-router | 300, 0.6/6.2, 17.9% | 2297, 26.1/73.8 | 2268, 180.8, 0% | 121.7-122.7 MiB |
+| leptos | 300, 0.2/0.4, 4.2% | 17038, 4.1/7.7 | 15041, 32.1, 0% | 14.5-17.9 MiB |
+| django | 300, 0.7/1.1, 27.1% | 1304, 48.3/61.1 | 1276, 239.4, 0% | 293.7-294.4 MiB |
+| rails | 300, 1/5.8, 33.4% | 1047, 60.1/80 | 1066, 289.1, 0% | 129.2-130.7 MiB |
+| laravel | FAILED: never answered /api/items/item_1 within a minute |  |  |  |
+| aspnet | 300, 0.3/0.5, 10.2% | 13600, 4.4/8.7 | 11997, 36.1, 0% | 77.9-80.7 MiB |
+| spring | 300, 0.3/1.4, 12.9% | 6340, 6.5/91.7 | 6377, 458.4, 0% | 363.8-389.5 MiB |
+| phoenix | 300, 0.6/0.9, 22.7% | 2387, 26.6/37.8 | 2325, 3454.7, 0% | 290.4-331.5 MiB |
+| astro | 300, 0.7/22.1, 21.6% | 1940, 28.8/79.8 | 1887, 195.7, 0% | 140-141.2 MiB |
+| nuxt | 300, 0.4/0.6, 9.7% | 7393, 7.4/30.9 | 6977, 75.5, 0% | 101.7-103.6 MiB |
+
+SSR api-json
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 150, 0.6/0.9, 5.3% | 4196, 15.1/21.1 | 3705, 107, 0% | 16.3-59.4 MiB |
+| nextjs | 150, 2/53.9, 41% | 362, 186.6/219.2 | 331, 900.2, 0% | 147-187.7 MiB |
+| tanstack-start | 150, 1.5/17, 27.5% | 698, 95.8/121 | 593, 502.2, 0% | 117.4-143.4 MiB |
+| sveltekit | 150, 1.4/14.3, 25.5% | 750, 87.3/113.1 | 639, 474.2, 0% | 123.7-144.2 MiB |
+| react-router | 150, 1.6/26.1, 32.2% | 604, 110.6/134.3 | 530, 569.6, 0% | 121.7-139.5 MiB |
+| leptos | 150, 1.2/1.6, 13.7% | 1225, 52.7/60.9 | 1142, 329.9, 0% | 15.6-55.4 MiB |
+| django | 150, 2.7/3.6, 41.7% | 379, 168.3/189.8 | 389, 709.2, 0% | 76.8-77.4 MiB |
+| rails | 150, 2.1/21.6, 34.8% | 490, 122.7/169.1 | 489, 579.8, 0% | 82.9-85 MiB |
+| laravel | 150, 3.6/12.5, 52.4% | 274, 202/458.5 | 272, 1667.2, 0% | 103.1-118.6 MiB |
+| aspnet | 150, 1.1/4.9, 19.4% | 1757, 36/53.8 | 1591, 201.4, 0% | 59.4-86.1 MiB |
+| spring | 150, 1.5/5.4, 31.9% | 947, 62.3/142.6 | 731, 676.8, 0% | 416.4-450.1 MiB |
+| phoenix | 150, 2.5/3.1, 38.3% | 481, 132.2/171.2 | 484, 6404.3, 0% | 226.6-308.9 MiB |
+| astro | 150, 1.7/27.4, 34.5% | 560, 118.3/141.4 | 529, 582.3, 0% | 128-146.3 MiB |
+| nuxt | 150, 1.3/14.8, 24.4% | 816, 78.1/119.9 | 711, 532.5, 0% | 124.7-142.5 MiB |
+
+Efficiency (requests per CPU-second at 64 users, CPU at the fixed rate, 64-user requests a second per MiB)
+| fixture/corten | 19025/CPU-s | 4.1% at 300/s | 1025/s per MiB |  |  |
+| fixture/nextjs | 179/CPU-s | 87.7% at 150/s | 0.8/s per MiB |  | FAILED |
+| fixture/tanstack-start | 697/CPU-s | 50.3% at 300/s | 4.3/s per MiB |  |  |
+| fixture/sveltekit | 961/CPU-s | 36.8% at 300/s | 6.5/s per MiB |  |  |
+| fixture/react-router | 543/CPU-s | 60.7% at 300/s | 3.8/s per MiB |  |  |
+| fixture/leptos | 1423/CPU-s | 22.3% at 300/s | 87.9/s per MiB |  |  |
+| fixture/django | 343/CPU-s | 86.7% at 300/s | 1/s per MiB |  |  |
+| fixture/rails | 529/CPU-s | 61.5% at 300/s | 3.7/s per MiB |  |  |
+| fixture/aspnet | 4248/CPU-s | 20.7% at 300/s | 48.6/s per MiB |  |  |
+| fixture/spring | 1128/CPU-s | 48.5% at 300/s | 3.2/s per MiB |  |  |
+| fixture/phoenix | 1548/CPU-s | 33.1% at 300/s | 5.5/s per MiB |  |  |
+| fixture/astro | 1249/CPU-s | 30.6% at 300/s | 9/s per MiB |  |  |
+| fixture/nuxt | 322/CPU-s | 100% at 287/s | 2.3/s per MiB |  |  |
+| api/corten | 3541/CPU-s | 7.1% at 150/s | 198.9/s per MiB | item API 45.9% |  |
+| api/nextjs | 111/CPU-s | 79.2% at 80/s | 0.6/s per MiB | item API 2.4% | FAILED |
+| api/tanstack-start | 325/CPU-s | 50.2% at 150/s | 2.3/s per MiB | item API 4.1% |  |
+| api/sveltekit | 381/CPU-s | 42.7% at 150/s | 2.7/s per MiB | item API 4.7% |  |
+| api/react-router | 281/CPU-s | 59.5% at 150/s | 2/s per MiB | item API 3.8% |  |
+| api/leptos | 776/CPU-s | 21.3% at 150/s | 45.3/s per MiB | item API 13.8% |  |
+| api/django | 184/CPU-s | 75% at 150/s | 1.4/s per MiB | item API 4.7% |  |
+| api/rails | 384/CPU-s | 52.6% at 150/s | 3.5/s per MiB | item API 8.2% |  |
+| api/laravel | 105/CPU-s | 98% at 99/s | 0.6/s per MiB | item API 8.9% | FAILED |
+| api/aspnet | 1158/CPU-s | 34.8% at 150/s | 15.7/s per MiB | item API 17.4% |  |
+| api/spring | 497/CPU-s | 63% at 150/s | 1.2/s per MiB | item API 8.3% |  |
+| api/phoenix | 405/CPU-s | 45.2% at 150/s | 1.8/s per MiB | item API 7.2% |  |
+| api/astro | 465/CPU-s | 47.6% at 150/s | 3.6/s per MiB | item API 6.1% |  |
+| api/nuxt | 211/CPU-s | 71.4% at 150/s | 1.5/s per MiB | item API 3% |  |
+| fixture-json/corten | 25934/CPU-s | 3.6% at 300/s | 1372.3/s per MiB |  |  |
+| fixture-json/nextjs | 1131/CPU-s | 30.5% at 300/s | 6.5/s per MiB |  |  |
+| fixture-json/tanstack-start | 3483/CPU-s | 12.9% at 300/s | 24.9/s per MiB |  |  |
+| fixture-json/sveltekit | 3103/CPU-s | 13.6% at 300/s | 25.2/s per MiB |  |  |
+| fixture-json/react-router | 2297/CPU-s | 17.8% at 300/s | 18.8/s per MiB |  |  |
+| fixture-json/leptos | 17161/CPU-s | 4.2% at 300/s | 1120.9/s per MiB |  |  |
+| fixture-json/django | 1307/CPU-s | 27% at 300/s | 4.4/s per MiB |  |  |
+| fixture-json/rails | 1047/CPU-s | 33.3% at 300/s | 8/s per MiB |  |  |
+| fixture-json/aspnet | 13618/CPU-s | 10.6% at 300/s | 171.1/s per MiB |  |  |
+| fixture-json/spring | 6350/CPU-s | 24.1% at 300/s | 17.4/s per MiB |  |  |
+| fixture-json/phoenix | 2391/CPU-s | 22.6% at 300/s | 8/s per MiB |  |  |
+| fixture-json/astro | 1940/CPU-s | 21.7% at 300/s | 13.8/s per MiB |  |  |
+| fixture-json/nuxt | 7394/CPU-s | 9.7% at 300/s | 72.3/s per MiB |  |  |
+| api-json/corten | 4197/CPU-s | 5.3% at 150/s | 218.6/s per MiB | item API 51.3% |  |
+| api-json/nextjs | 362/CPU-s | 41.4% at 150/s | 2.4/s per MiB | item API 4.6% |  |
+| api-json/tanstack-start | 699/CPU-s | 27.5% at 150/s | 5.8/s per MiB | item API 8.2% |  |
+| api-json/sveltekit | 749/CPU-s | 25.5% at 150/s | 5.9/s per MiB | item API 8.7% |  |
+| api-json/react-router | 604/CPU-s | 32.2% at 150/s | 4.9/s per MiB | item API 7.7% |  |
+| api-json/leptos | 1225/CPU-s | 13.7% at 150/s | 71.2/s per MiB | item API 16.1% |  |
+| api-json/django | 379/CPU-s | 41.4% at 150/s | 4.9/s per MiB | item API 6.7% |  |
+| api-json/rails | 490/CPU-s | 34.3% at 150/s | 5.8/s per MiB | item API 8.6% |  |
+| api-json/laravel | 277/CPU-s | 51.9% at 150/s | 2.6/s per MiB | item API 9.7% |  |
+| api-json/aspnet | 1758/CPU-s | 21.4% at 150/s | 28.5/s per MiB | item API 21.8% |  |
+| api-json/spring | 947/CPU-s | 40.4% at 150/s | 2.2/s per MiB | item API 13.9% |  |
+| api-json/phoenix | 481/CPU-s | 38.3% at 150/s | 2.1/s per MiB | item API 7.2% |  |
+| api-json/astro | 560/CPU-s | 34.5% at 150/s | 4.3/s per MiB | item API 6.9% |  |
+| api-json/nuxt | 816/CPU-s | 24.4% at 150/s | 6.4/s per MiB | item API 11.7% |  |
+
+Instructions per request (median, user / kernel)
+| corten/page | 95,949 / 33,294 | 3 runs | 0 failed |
+| corten/json | 69,572 / 33,319 | 3 runs | 0 failed |
+| nextjs/page | 17,099,460 / 132,653 | 3 runs | 0 failed |
+| nextjs/json | 1,705,323 / 58,421 | 3 runs | 0 failed |
+| tanstack-start/page | 5,327,854 / 49,099 | 3 runs | 0 failed |
+| tanstack-start/json | 538,088 / 33,644 | 3 runs | 0 failed |
+| sveltekit/page | 4,454,119 / 44,876 | 3 runs | 0 failed |
+| sveltekit/json | 693,322 / 33,562 | 3 runs | 0 failed |
+| react-router/page | 6,468,009 / 109,395 | 3 runs | 0 failed |
+| react-router/json | 832,242 / 69,700 | 3 runs | 0 failed |
+| leptos/page | 2,722,611 / 35,281 | 3 runs | 0 failed |
+| leptos/json | 204,467 / 33,389 | 3 runs | 0 failed |
+| django/page | 12,637,728 / 345,580 | 3 runs | 0 failed |
+| django/json | 1,886,997 / 170,501 | 3 runs | 0 failed |
+| rails/page | 5,013,326 / 323,636 | 3 runs | 0 failed |
+| rails/json | 2,282,059 / 284,679 | 3 runs | 0 failed |
+| laravel/page | FAILED: never answered /items/item_1 within a minute |
+| laravel/json | FAILED: never answered /api/items/item_1 within a minute |
+| aspnet/page | 1,002,980 / 57,454 | 3 runs | 0 failed |
+| aspnet/json | 268,439 / 79,440 | 3 runs | 0 failed |
+| spring/page | 5,896,061 / 100,755 | 3 runs | 0 failed |
+| spring/json | 1,786,329 / 98,292 | 3 runs | 0 failed |
+| phoenix/page | 2,138,850 / 90,650 | 3 runs | 0 failed |
+| phoenix/json | 1,551,767 / 78,495 | 3 runs | 0 failed |
+| astro/page | 2,056,722 / 80,608 | 3 runs | 0 failed |
+| astro/json | 1,077,906 / 76,507 | 3 runs | 0 failed |
+| nuxt/page | 9,882,751 / 65,038 | 3 runs | 0 failed |
+| nuxt/json | 406,199 / 31,953 | 3 runs | 0 failed |
+
+Cold start
+| corten | 7.3 ms (min 5.5, max 27.7) | 1.211MiB | 123 MB image |
+| nextjs | 748.2 ms (min 715.1, max 889.1) | 51.39MiB | 385 MB image |
+| tanstack-start | 224.6 ms (min 219.8, max 237.7) | 26.38MiB | 332 MB image |
+| sveltekit | 187.1 ms (min 178.1, max 250.9) | 23.77MiB | 333 MB image |
+| react-router | 308.5 ms (min 302.8, max 419.6) | 32.14MiB | 353 MB image |
+| leptos | 7.2 ms (min 6.3, max 25.5) | 1.48MiB | 127 MB image |
+| django | 1149.5 ms (min 1117.9, max 1331.1) | 63.09MiB | 276 MB image |
+| rails | 1111.9 ms (min 1088.7, max 1368.4) | 63.91MiB | 431 MB image |
+| laravel | 846.1 ms (min 836.8, max 905.1) | 94.48MiB | 958 MB image |
+| aspnet | 736.5 ms (min 713.8, max 778.5) | 30.75MiB | 342 MB image |
+| spring | 8580.7 ms (min 8285.1, max 9053.8) | 132.8MiB | 516 MB image |
+| phoenix | 1339.8 ms (min 1315.1, max 1374.8) | 125.1MiB | 262 MB image |
+| astro | 351.9 ms (min 316.8, max 398.9) | 36.63MiB | 526 MB image |
+| nuxt | 308.2 ms (min 303.7, max 316.4) | 35.29MiB | 335 MB image |
+
+Bytes (raw / gzip)
+| corten | html 11.2/2.3 | js 24.4/9.3 (4) | wasm 0.0/0.0 | css 7.6/2.4 |
+| nextjs | html 25.3/4.8 | js 456.2/136.1 (7) | wasm 0.0/0.0 | css 1.9/0.8 |
+| tanstack-start | html 17.4/4.3 | js 342.6/110.9 (5) | wasm 0.0/0.0 | css 1.9/0.8 |
+| sveltekit | html 16.3/3.6 | js 96.3/37.0 (11) | wasm 0.0/0.0 | css 1.9/0.8 |
+| react-router | html 19.5/4.9 | js 309.7/98.6 (4) | wasm 0.0/0.0 | css 1.9/0.8 |
+| leptos | html 17.8/3.5 | js 24.8/7.0 (1) | wasm 719.9/286.7 | css 2.0/0.8 |
+| django | html 7.3/1.8 | js 51.7/17.0 (2) | wasm 0.0/0.0 | css 2.3/0.9 |
+| rails | html 8.5/2.2 | js 152.2/40.6 (7) | wasm 0.0/0.0 | css 2.3/0.9 |
+| laravel | html 10.8/2.8 | js 255.8/84.3 (1) | wasm 0.0/0.0 | css 2.3/0.9 |
+| aspnet | html 7.3/1.9 | js 51.7/17.0 (2) | wasm 0.0/0.0 | css 2.3/0.9 |
+| spring | html 7.2/1.8 | js 51.7/17.0 (2) | wasm 0.0/0.0 | css 2.3/0.9 |
+| phoenix | html 10.0/2.4 | js 149.2/46.2 (1) | wasm 0.0/0.0 | css 2.3/0.9 |
+| astro | html 9.3/2.6 | js 24.9/9.2 (3) | wasm 0.0/0.0 | css 0.0/0.0 |
+| nuxt | html 17.3/4.5 | js 197.3/73.7 (4) | wasm 0.0/0.0 | css 1.9/0.8 |
+
+Browser (median / p90 ms)
+2026-10-28T12:12:09.337Z all done
