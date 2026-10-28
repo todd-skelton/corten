@@ -29,7 +29,8 @@
     "submit": "Set alert",
     "invalid_email": "Enter a valid email address.",
     "invalid_price": "Enter a target price above zero.",
-    "no_listings": "This item has no listings yet, so there is no price to watch."
+    "no_listings": "This item has no listings yet, so there is no price to watch.",
+    "set": "Alert set: we will email {email} when {title} drops below {price}."
   },
   "category": {
     "title": "Category {name}",

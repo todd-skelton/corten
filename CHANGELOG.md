@@ -678,6 +678,18 @@ Corten is pre-1.0, so any minor version may change the API.
     where `href={..}` and `aria-current={req.current(&..)}` made it twice; a tag that also writes
     one of those attributes, or `data-nav` by hand, does not compile. The watchlist and
     seller-desk use it.
+105. `t.parse_money(text, currency)`: money as a person types it in the reader's locale, read
+    back into `Minor` units, what `t.money` writes: `$1,299.50` is `Some(Minor(129950))` in
+    en and `1 299,50 $US` or `12,50` in fr, with or without the symbol, the code, the group
+    separators or the fraction (every amount every locale writes reads back, as it is written
+    and without its direction marks and no-break spaces). A sign, a group of the wrong size, a
+    grouped number that starts with `0` (`0,500`), another locale's decimal
+    separator, more fraction digits than the currency shows (`1.234` dollars, `1.5` yen) or an
+    amount over `u64` is `None`. The watchlist's and seller-desk's hand-written cent readers are
+    gone, and card-market's price alert no longer reads a float: `12,50` on the French page was
+    refused and `1e3` was a thousand dollars, and its confirmation is in the reader's locale
+    (`alert.set`)
+    ([#208 Money typed into a form is parsed by each app, three different ways, and card-market reads it as f64](https://github.com/todd-skelton/corten/issues/208)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1298,6 +1310,15 @@ Corten is pre-1.0, so any minor version may change the API.
     `SetCookie::new`, `path` and `remove` name the caller's line when they panic. Before, such a
     path passed `path` and panicked when the answer was sent
     ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
+46. The two smoke checks that failed now and then in CI say why when they fail: the early form
+    submit (`scripts/smoke.mjs`) reports the navigation requests, responses, commits, failed loads
+    and errors with their times, and ui-gallery's first page names the engine, the scripts that
+    loaded and the failed requests instead of throwing a bare timeout. When either smoke throws (a
+    page whose `load` never comes, as WebKit's first `goto` in `scripts/smoke.mjs` once did), it
+    lists the requests its open pages are still loading, oldest first. None of these reproduced
+    locally, so none is fixed yet
+    ([#232 WebKit smoke: "a form submitted before the first page loads navigates" fails now and then](https://github.com/todd-skelton/corten/issues/232),
+    [#252 ui-gallery smoke: the first page's combo box did not connect within 30 s in Firefox (CI, once)](https://github.com/todd-skelton/corten/issues/252)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

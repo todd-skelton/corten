@@ -13,11 +13,55 @@ const check = (name, ok, detail = "") => {
   if (!ok) failures.push(`[${engine}] ${name}`);
 };
 
+/**
+ * Requests the browser's pages have sent and not finished, with when each was sent: printed when
+ * a run throws (a page that never fires `load`), so the report says which one hangs (#232, #252).
+ * A request leaves when it finishes or fails, or when its page or context closes.
+ * @type {Map<import("@playwright/test").Request, { at: number, context: import("@playwright/test").BrowserContext }>}
+ */
+const inflight = new Map();
+/** @param {import("@playwright/test").Browser} browser */
+function track(browser) {
+  /** @param {(r: import("@playwright/test").Request, at: { context: import("@playwright/test").BrowserContext }) => boolean} gone */
+  const drop = (gone) => {
+    for (const [r, at] of inflight) if (gone(r, at)) inflight.delete(r);
+  };
+  /** @param {import("@playwright/test").Request} r */
+  const pageOf = (r) => {
+    try {
+      return r.frame().page();
+    } catch {
+      return null; // a service worker's request has no frame
+    }
+  };
+  // `newPage` makes its context through `newContext`, so every context is watched here.
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (...args) => {
+    const context = await newContext(...args);
+    context.on("request", (r) => inflight.set(r, { at: Date.now(), context }));
+    context.on("requestfinished", (r) => inflight.delete(r));
+    context.on("requestfailed", (r) => inflight.delete(r));
+    context.on("page", (page) => page.on("close", () => drop((r) => pageOf(r) === page)));
+    context.on("close", () => drop((_, at) => at.context === context));
+    return context;
+  };
+}
+/** What is still loading, oldest first. */
+function pending() {
+  const now = Date.now();
+  return [...inflight].sort((a, b) => a[1].at - b[1].at).map(([r, { at }]) => `  ${now - at}ms ${r.method()} ${r.url()} (${r.resourceType()})`);
+}
+
 for (engine of names) {
   const browser = await engines[engine].launch({ headless: true });
+  track(browser);
   try {
     await run(browser);
+  } catch (error) {
+    console.log(`[${engine}] still loading when it failed:\n${pending().join("\n") || "  nothing"}`);
+    throw error;
   } finally {
+    inflight.clear();
     await browser.close();
   }
 }
@@ -34,8 +78,35 @@ async function run(browser) {
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
+  /** @type {string[]} */
+  const failed = [];
+  /** @param {import("@playwright/test").Request} r */
+  const lost = (r) => failed.push(`${new URL(r.url()).pathname} ${r.failure()?.errorText}`);
+  /** @param {import("@playwright/test").Response} r */
+  const refused = (r) => r.status() >= 400 && failed.push(`${new URL(r.url()).pathname} ${r.status()}`);
+  page.on("requestfailed", lost);
+  page.on("response", refused);
   await page.goto(`${base}/`);
-  await page.waitForFunction(() => document.querySelector('[data-scope=ui-combo-box] [role="combobox"]:not([hidden])') !== null);
+  // The combo box's input shows once its script connects (#252): on a timeout, say what had
+  // loaded and what failed rather than throwing without the engine.
+  const connected = await page
+    .waitForFunction(() => document.querySelector('[data-scope=ui-combo-box] [role="combobox"]:not([hidden])') !== null)
+    .then(() => true)
+    .catch(() => false);
+  if (!connected) {
+    // The page may have crashed or gone: say so rather than lose the rest of the report.
+    const state = await page
+      .evaluate(() => ({
+        readyState: document.readyState,
+        scripts: performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/") || n.includes("corten")).map((n) => new URL(n).pathname),
+      }))
+      .catch((e) => ({ readyState: `unavailable: ${e instanceof Error ? e.message : e}`, scripts: [] }));
+    check("the first page's combo box connects", false, JSON.stringify({ ...state, failed, errors }));
+    return;
+  }
+  // Only the first load's: the gallery's refused forms answer 422 later, as they should.
+  page.off("requestfailed", lost);
+  page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
   check("the six scripts load and connect", loaded === 6, `${loaded} script(s)`);
 

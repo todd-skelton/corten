@@ -96,6 +96,21 @@
 //! let price = Msg::default().money(123450, corten::i18n::Currency::new("USD"));
 //! ```
 //!
+//! - `t.parse_money(text, currency)`: what `t.money` writes, read back from what a person typed
+//!   into a form, in [`Minor`] units. The locale's own form, with or without the symbol, the code,
+//!   the group separators or the fraction; anything else is `None`:
+//!
+//! ```
+//! # corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+//! use corten::i18n::{Currency, Messages as _, Minor};
+//! const USD: Currency = Currency::new("USD");
+//! let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+//! assert_eq!(en.parse_money("$1,299.50", USD), Some(Minor(129950)));
+//! assert_eq!(fr.parse_money("12,50", USD), Some(Minor(1250)));
+//! assert_eq!(fr.parse_money("12.50", USD), None); // en's decimal point on a French page
+//! assert_eq!(en.parse_money("1.234", USD), None); // a tenth of a cent
+//! ```
+//!
 //! - `t.date(at, DateStyle)`, `t.time(at, TimeStyle)` and `t.date_time(at, DateStyle,
 //!   TimeStyle)`: Intl's date styles (`Short` is `3/22/2026`, `Medium` `Mar 22, 2026`, `Long`
 //!   `March 22, 2026`, `Full` with the weekday) and a time with its zone (`3:04 PM UTC`, `Medium`
@@ -641,6 +656,7 @@ impl<A: Args + ?Sized> Display for Found<'_, A> {
 #[doc(hidden)]
 pub mod __private {
     pub use super::format::__private::{Field, LocaleData, Separators};
+    pub use super::format::parse_money;
 
     /// A run of a message: its text (plain and escaped) or an argument's name.
     pub enum Piece {
@@ -687,6 +703,72 @@ impl<F: Fn(&mut Sink<'_>)> Display for Text<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Money typed in a locale is read back in minor units, as `t.money` writes it.
+    #[test]
+    fn money_is_read_back_as_the_locale_writes_it() {
+        let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+        let usd = Currency::new("USD");
+        let read = |t: Msg, text: &str| t.parse_money(text, usd).map(|m| m.0);
+        for (text, cents) in [
+            ("$1,299.50", 129950),
+            ("1299.5", 129950),
+            (" 1,299 ", 129900),
+            (".5", 50),
+            ("0.05", 5),
+            ("USD 12", 1200),
+            ("12 USD", 1200),
+            ("1,234,567.89", 123456789),
+            ("$ 7", 700),
+        ] {
+            assert_eq!(read(en, text), Some(cents), "en {text:?}");
+        }
+        for text in [
+            "",
+            "$",
+            "-1",
+            "+1",
+            "1,2,3",
+            "12,34",
+            "1,2345",
+            ",123",
+            "1.234",
+            "12.",
+            "1e3",
+            "12.50.1",
+            "18446744073709551616",
+            "$$12",
+            "12$",
+            "1,23,456",
+            "1234,567",
+            "1,234,56",
+            "1 234",
+        ] {
+            assert_eq!(read(en, text), None, "en {text:?}");
+        }
+        for (text, cents) in [
+            ("12,50", 1250),
+            ("1\u{202f}299,50\u{a0}$US", 129950),
+            ("1 299,50 $US", 129950),
+            ("1299", 129900),
+            ("12,5 USD", 1250),
+        ] {
+            assert_eq!(read(fr, text), Some(cents), "fr {text:?}");
+        }
+        for text in ["12.50", "1,299.50", "1 29,50"] {
+            assert_eq!(read(fr, text), None, "fr {text:?}: another locale's form");
+        }
+        let jpy = Currency::new("JPY");
+        assert_eq!(en.parse_money("¥1,234", jpy).map(|m| m.0), Some(1234));
+        assert_eq!(en.parse_money("1,234.5", jpy), None, "yen has no fraction");
+        // What `t.money` writes reads back.
+        for cents in [0_u64, 5, 99, 100, 1234, 129950, 100_000_000, 987_654_321_012] {
+            for t in [en, fr] {
+                let text = t.money(Minor(cents), usd).to_string();
+                assert_eq!(read(t, &text), Some(cents), "{} {text:?}", t.locale());
+            }
+        }
+    }
 
     /// An integer argument writes what its `Display` writes, in a page and as text.
     #[test]
@@ -792,6 +874,64 @@ mod tests {
             crate::html! { <td title={en.percent(fee, 1)}>{fr.percent(fee, 1)}</td> }.to_html(),
             "<td title=\"2.9%\">2,9\u{a0}%</td>"
         );
+    }
+
+    /// Every amount every locale writes (Intl's, in cases.tsv, and ours in every currency its data
+    /// has) reads back, and what people type for it without the marks Intl adds: a symbol's
+    /// direction marks, its no-break spaces.
+    #[test]
+    fn every_locale_reads_back_the_money_it_writes() {
+        let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
+        let data = |tag: &str| locales.iter().find(|(t, _)| *t == tag).expect(tag).1;
+        let mut checked = 0;
+        for line in include_str!("i18n/cases.tsv").lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
+            let cols: Vec<&str> = line.split('\t').collect();
+            let (tag, kind, input, expected) = (cols[0], cols[1], cols[2], cols[3]);
+            let Some((amount, code)) = input.split_once(' ').filter(|_| kind == "money") else { continue };
+            if amount.starts_with('-') {
+                continue;
+            }
+            let currency = Currency::parse(code).unwrap();
+            // The amount in minor units, as written: rounded half away from zero to the currency's digits.
+            let shown = usize::from(currency.digits());
+            let (whole, fraction) = amount.split_once('.').unwrap_or((amount, ""));
+            let kept: String = fraction.chars().chain(std::iter::repeat('0')).take(shown).collect();
+            let up = fraction.chars().nth(shown).is_some_and(|d| d >= '5');
+            let minor = Minor(format!("{whole}{kept}").parse::<u64>().unwrap() + u64::from(up));
+            let typed: String = expected.chars().filter(|c| !matches!(c, '\u{200e}' | '\u{200f}' | '\u{61c}')).collect();
+            let typed = typed.replace(['\u{a0}', '\u{202f}'], " ");
+            for text in [expected, &typed] {
+                assert_eq!(format::parse_money(data(tag), text, currency), Some(minor), "{tag} {input} {text:?}");
+            }
+            checked += 1;
+        }
+        assert!(checked > 1000, "{checked}");
+        // Every currency a locale has a symbol for, not only the ones in cases.tsv: a longer symbol
+        // in a later CLDR still reads.
+        for (tag, data) in locales {
+            for (code, ..) in data.currencies {
+                let currency = Currency::parse(code).unwrap();
+                for minor in [0_u64, 7, 1234, 123_456_789] {
+                    let text = Formatted::money(data, &Minor(minor), currency).to_string();
+                    assert_eq!(format::parse_money(data, &text, currency), Some(Minor(minor)), "{tag} {code} {text:?}");
+                }
+            }
+        }
+        let read =
+            |tag: &str, text: &str, code: &str| format::parse_money(data(tag), text, Currency::parse(code).unwrap()).map(|m| m.0);
+        // Typed as people type them: no marks, ASCII or the locale's digits, either case.
+        assert_eq!(read("he", "12.50 ₪", "ILS"), Some(1250));
+        assert_eq!(read("fa", "$۱۲٫۵۰", "USD"), Some(1250));
+        assert_eq!(read("ar-EG", "12.50", "USD"), Some(1250));
+        assert_eq!(read("ar", "21.505 د.ك.", "KWD"), Some(21505));
+        assert_eq!(read("fr-CA", "21,51 $ US", "USD"), Some(2151));
+        assert_eq!(read("fr-CA", "21,51 $US", "USD"), Some(2151));
+        assert_eq!(read("ja", "¥1,234", "JPY"), Some(1234));
+        assert_eq!(read("en", "usd 12", "USD"), Some(1200));
+        // A decimal comma of another locale is not a group.
+        for text in ["0,500", "0,123", "00,123", "1\t234"] {
+            assert_eq!(read("en", text, "KWD"), None, "{text:?}");
+        }
     }
 
     /// Every case `scripts/locale-data.mjs` had Intl write, for every locale: numbers, money and
