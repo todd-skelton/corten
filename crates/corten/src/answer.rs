@@ -78,7 +78,7 @@ pub enum Format {
 
 /// What a handler named in `#[corten::routes]` returns: the type says how the route's failures are
 /// answered ([`Answer::FORMAT`]) and what the handler may read ([`Answer::Inputs`]). Implemented
-/// for [`HtmlResult`], [`JsonResult<T>`], [`Public`], [`NoStore`], text, a bare `StatusCode`,
+/// for [`HtmlResult`], [`JsonResult<T>`], `Result<JsonResponse, JsonError>`, [`Public`], [`NoStore`], text, a bare `StatusCode`,
 /// [`LiveResponse`], feeds and [`crate::seo::File`]; a crate may add its own.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer a route can name",
@@ -166,6 +166,129 @@ pub type HtmlResult = crate::Result<HtmlResponse>;
 /// the handler `?`s its input's field errors (a 422 with the fields) next to any other error.
 #[cfg(feature = "json")]
 pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
+
+/// A JSON answer with a status or a cookie of its own, made from [`crate::Json`]:
+/// `Json(started).with_status(StatusCode::ACCEPTED)`, `Json(session).with_cookie(cookie)`. Its
+/// handler returns `Result<JsonResponse, JsonError>` where one that answers `200` with no cookie
+/// returns [`JsonResult<T>`]. The value is written when it is made, with the same headers as any
+/// JSON answer; it derefs to the response for any other header of the handler's own.
+///
+/// A status here is the app's own answer, body and all: `503 {"error":"No forecast yet"}` reaches
+/// the client as written. A failure (`Err`) is answered as every failure of a JSON route is,
+/// `{"error":{"status","message"}}`.
+///
+/// ```
+/// use corten::{axum::http::StatusCode, json::Raw, prelude::*, security::cookie::SetCookie, JsonResponse};
+///
+/// #[derive(serde::Serialize, ToJson)]
+/// struct Started { ok: bool }
+///
+/// async fn refresh() -> Result<JsonResponse, JsonError> {
+///     Ok(Json(Started { ok: true }).with_status(StatusCode::ACCEPTED))
+/// }
+///
+/// async fn capacity(State(forecast): State<Option<Raw>>) -> Result<JsonResponse, JsonError> {
+///     Ok(match forecast {
+///         Some(doc) => Json(doc).into(),
+///         None => Json(Raw::new(r#"{"error":"No capacity forecast yet"}"#)).with_status(StatusCode::SERVICE_UNAVAILABLE),
+///     })
+/// }
+///
+/// async fn sign_in() -> Result<JsonResponse, JsonError> {
+///     let token = "c2Vzc2lvbg";
+///     Ok(Json(Started { ok: true }).with_cookie(SetCookie::try_new("session", token)?))
+/// }
+/// # let _ = (refresh, capacity, sign_in);
+/// ```
+///
+/// A cookie is a [`SetCookie`](crate::security::cookie::SetCookie), so its safe flags are the
+/// default; text does not compile:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+///
+/// let _ = Json(1).with_cookie("session=abc");
+/// ```
+#[cfg(feature = "json")]
+pub struct JsonResponse(Response);
+
+#[cfg(feature = "json")]
+impl JsonResponse {
+    /// The answer with `status`. A status that has no body (`204`, `304`, a `1xx`) is not one
+    /// for a JSON answer: a debug build panics, where a bare `StatusCode` answer is the way.
+    #[must_use]
+    #[track_caller]
+    pub fn with_status(mut self, status: StatusCode) -> Self {
+        debug_assert!(
+            !(status.is_informational()
+                || matches!(status, StatusCode::NO_CONTENT | StatusCode::RESET_CONTENT | StatusCode::NOT_MODIFIED)),
+            "corten: {status} has no body, so it is not a JSON answer's status; answer with the StatusCode itself"
+        );
+        *self.0.status_mut() = status;
+        self
+    }
+
+    /// The answer with a `Set-Cookie` header, as [`HtmlResponse::with_cookie`]: each call adds
+    /// one, and an answer that sets a cookie is never stored by a shared cache. Never append a
+    /// `Set-Cookie` header by hand.
+    #[must_use]
+    pub fn with_cookie(mut self, cookie: crate::security::cookie::SetCookie) -> Self {
+        self.0.headers_mut().append(axum::http::header::SET_COOKIE, cookie.header());
+        self
+    }
+}
+
+#[cfg(feature = "json")]
+impl<T: crate::json::ToJson> crate::Json<T> {
+    /// This value answered with `status`: [`JsonResponse::with_status`].
+    #[must_use]
+    #[track_caller]
+    pub fn with_status(self, status: StatusCode) -> JsonResponse {
+        JsonResponse::from(self).with_status(status)
+    }
+
+    /// This value answered with a cookie: [`JsonResponse::with_cookie`].
+    #[must_use]
+    pub fn with_cookie(self, cookie: crate::security::cookie::SetCookie) -> JsonResponse {
+        JsonResponse::from(self).with_cookie(cookie)
+    }
+}
+
+#[cfg(feature = "json")]
+impl<T: crate::json::ToJson> From<crate::Json<T>> for JsonResponse {
+    fn from(json: crate::Json<T>) -> Self {
+        JsonResponse(json.into_response())
+    }
+}
+
+#[cfg(feature = "json")]
+impl IntoResponse for JsonResponse {
+    fn into_response(self) -> Response {
+        self.0
+    }
+}
+
+#[cfg(feature = "json")]
+impl Deref for JsonResponse {
+    type Target = Response;
+
+    fn deref(&self) -> &Response {
+        &self.0
+    }
+}
+
+#[cfg(feature = "json")]
+impl DerefMut for JsonResponse {
+    fn deref_mut(&mut self) -> &mut Response {
+        &mut self.0
+    }
+}
+
+#[cfg(feature = "json")]
+impl Answer for JsonResponse {
+    const FORMAT: Format = Format::Json;
+    type Inputs = AnyInputs;
+}
 
 /// A JSON handler's error: an [`Error`] (`?` on any error, as in a page handler) or the
 /// input's field errors, `?` on [`crate::Errors`], answered as the 422 with `fields`. Only a

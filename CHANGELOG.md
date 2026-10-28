@@ -690,6 +690,18 @@ Corten is pre-1.0, so any minor version may change the API.
     refused and `1e3` was a thousand dollars, and its confirmation is in the reader's locale
     (`alert.set`)
     ([#208 Money typed into a form is parsed by each app, three different ways, and card-market reads it as f64](https://github.com/todd-skelton/corten/issues/208)).
+106. A JSON answer with a status or a cookie of its own, and JSON the app already holds:
+    `Json(value).with_status(StatusCode::ACCEPTED)` and `.with_cookie(SetCookie)` make a
+    `JsonResponse` (the handler returns `Result<JsonResponse, JsonError>`), whose status and body
+    reach the client as written, a `503 {"error":..}` of the app's own included; and
+    `corten::json::Raw::new(bytes)` is JSON held as bytes, which `Json(raw)` sends with no parse,
+    serialization or copy and which a value `Json` writes holds as it is. With `compress`, a
+    `Raw` sent again is compressed once (brotli 9 and gzip 9, off the request) and later reads
+    send those forms: on an 80 KB document, 15 ms once instead of 220 µs (zstd 1) to 2.1 ms
+    (brotli 2) on every read, and 5,000 bytes instead of 6,992. Apps no longer write their own
+    `Answer` for these. MEASURE
+    ([#201 A JSON route cannot answer with a status other than 200 or send JSON it already holds as bytes, so each app writes its own Answer](https://github.com/todd-skelton/corten/issues/201),
+    [#234 A JSON answer cannot set a cookie the way an HTML answer can](https://github.com/todd-skelton/corten/issues/234)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

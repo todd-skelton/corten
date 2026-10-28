@@ -153,8 +153,7 @@ pub struct Json<T>(pub T);
 
 impl<T: ToJson> IntoResponse for Json<T> {
     fn into_response(self) -> Response {
-        // `Body::from(Vec)` keeps the vector's allocation: no copy.
-        let mut res = Response::new(Body::from(to_vec(&self.0)));
+        let mut res = self.0.__into_response();
         // Room for the headers `App` adds too, so the map is allocated once.
         res.headers_mut().reserve(12);
         res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(crate::api::JSON));
@@ -188,6 +187,105 @@ pub trait ToJson {
     #[doc(hidden)]
     fn __json_size() -> Option<&'static AtomicUsize> {
         None
+    }
+
+    /// The response [`Json`] sends, before its headers: the value written into a new vector, or
+    /// for [`Raw`] the bytes it holds. Not a public API.
+    #[doc(hidden)]
+    fn __into_response(self) -> Response
+    where
+        Self: Sized,
+    {
+        // `Body::from(Vec)` keeps the vector's allocation: no copy.
+        Response::new(Body::from(to_vec(&self)))
+    }
+}
+
+/// JSON the app already holds as bytes: a document built once when its data changes and read by
+/// many requests, or a file sent as it was written. `Json(raw.clone())` sends the bytes as they
+/// are (a clone shares them), with no parse and no copy; as a field of a value `Json` writes, they
+/// go in as they are too. Built from text that is not one JSON value, it panics in a debug build;
+/// a release build sends it as given.
+///
+/// With feature `compress`, a `Raw` sent a second time is compressed once with brotli and gzip
+/// (levels for a value that changes while the app runs, made off the request), and later reads
+/// send those forms, so a held document is not compressed again for every client. Keep the
+/// `Raw` and clone it for each request; a `Raw` made for one request is compressed as any other
+/// answer.
+///
+/// ```
+/// use corten::{json::Raw, prelude::*};
+///
+/// #[derive(Clone)]
+/// struct Ladders(Raw);
+///
+/// async fn ladders(State(Ladders(doc)): State<Ladders>) -> JsonResult<Raw> {
+///     Ok(Json(doc))
+/// }
+///
+/// let doc = Ladders(Raw::new(r#"{"ladders":[]}"#));
+/// assert_eq!(doc.0.as_bytes(), br#"{"ladders":[]}"#);
+/// # let _ = ladders;
+/// ```
+#[derive(Clone)]
+pub struct Raw(#[cfg(feature = "compress")] Arc<crate::compress::Precompressed>, #[cfg(not(feature = "compress"))] Bytes);
+
+impl Raw {
+    /// The JSON in `bytes`, which must be one JSON value (checked in a debug build).
+    #[track_caller]
+    pub fn new(bytes: impl Into<Bytes>) -> Raw {
+        let bytes = bytes.into();
+        #[cfg(debug_assertions)]
+        if let Err(error) = serde_json::from_slice::<serde::de::IgnoredAny>(&bytes) {
+            panic!("corten: Raw::new takes one JSON value: {error}");
+        }
+        #[cfg(feature = "compress")]
+        return Raw(Arc::new(crate::compress::Precompressed::held(bytes)));
+        #[cfg(not(feature = "compress"))]
+        Raw(bytes)
+    }
+
+    /// The JSON as it is held.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.bytes()
+    }
+
+    fn bytes(&self) -> &Bytes {
+        #[cfg(feature = "compress")]
+        return self.0.identity();
+        #[cfg(not(feature = "compress"))]
+        &self.0
+    }
+}
+
+#[cfg(all(test, feature = "compress"))]
+impl Raw {
+    pub(crate) fn stored_started(&self) -> bool {
+        self.0.started()
+    }
+
+    pub(crate) fn wait_stored(&self) {
+        self.0.wait()
+    }
+}
+
+impl std::fmt::Debug for Raw {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Raw").field(&String::from_utf8_lossy(self.as_bytes())).finish()
+    }
+}
+
+impl ToJson for Raw {
+    fn write_json(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(self.as_bytes());
+    }
+
+    fn __into_response(self) -> Response {
+        #[cfg_attr(not(feature = "compress"), allow(unused_mut))]
+        let mut res = Response::new(Body::from(self.bytes().clone()));
+        #[cfg(feature = "compress")]
+        res.extensions_mut().insert(crate::compress::Stored(self.0));
+        res
     }
 }
 
