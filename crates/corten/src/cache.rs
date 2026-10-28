@@ -227,13 +227,15 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
         headers.insert(header::CACHE_CONTROL, PRIVATE);
         return;
     }
-    if !typed || named {
+    if !typed {
         return;
     }
     if seen.partial {
         headers.insert(header::CACHE_CONTROL, private(&text));
     }
-    headers.append(header::VARY, HeaderValue::from_static("cookie"));
+    if !named {
+        headers.append(header::VARY, HeaderValue::from_static("cookie"));
+    }
 }
 
 /// True when `Cache-Control` text has `directive`.
@@ -277,6 +279,30 @@ mod tests {
         }
         settle(&mut res, seen, "/x");
         res.headers()[header::CACHE_CONTROL].to_str().unwrap().to_string()
+    }
+
+    /// An answer at a URL that names it keeps its year with a request's cookies, but not with a
+    /// caller read, a cookie it sets or the request's nonce, and a client navigation is the
+    /// browser's alone.
+    #[test]
+    fn a_named_answer_ignores_only_the_requests_credentials() {
+        let named = |seen: Seen, cookie: bool| {
+            let mut res = "x".into_response();
+            Cache::immutable().apply(&mut res);
+            if cookie {
+                res.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_static("a=b"));
+            }
+            settle(&mut res, seen, "/x");
+            let vary = res.headers().get(header::VARY).map(|v| v.to_str().unwrap().to_string());
+            (res.headers()[header::CACHE_CONTROL].to_str().unwrap().to_string(), vary)
+        };
+        let year = "public, max-age=31536000, immutable".to_string();
+        assert_eq!(named(seen(), false), (year.clone(), None));
+        assert_eq!(named(Seen { credentials: true, ..seen() }, false), (year, None), "the URL says what it is");
+        assert_eq!(named(Seen { caller: true, credentials: true, ..seen() }, false).0, "private, no-cache");
+        assert_eq!(named(seen(), true).0, "private, no-cache", "it sets a cookie");
+        assert_eq!(named(Seen { nonce: true, ..seen() }, false).0, "private, no-cache");
+        assert_eq!(named(Seen { partial: true, ..seen() }, false).0, "private, max-age=31536000, immutable");
     }
 
     #[test]

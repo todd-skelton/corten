@@ -123,6 +123,10 @@ impl SetsCookies for ForOne {}
 mod sealed {
     pub trait Sealed {}
     impl Sealed for super::ForOne {}
+
+    pub trait Immutable {}
+    impl Immutable for super::Media {}
+    impl Immutable for Result<super::Media, super::Error> {}
 }
 
 impl<For> HtmlResponse<For> {
@@ -774,7 +778,25 @@ impl<A: Shareable> Public<A> {
     /// again (`public, max-age=31536000, immutable`). Since the URL alone says what the answer
     /// is, a request's cookies do not make it private, and no `Vary: cookie` is added; a cookie it
     /// sets, or a caller something read, still does. A URL that does not name its content (a
-    /// user's current picture at `/me/picture`) takes `Public::new` with a lifetime instead.
+    /// user's current picture at `/me/picture`) takes `Public::new` with a lifetime instead, and so
+    /// does anything but bytes: a page, a redirect or JSON changes with the deploy, so only `Media`
+    /// (or `corten::Result<Media>`) can be immutable. `shared` and `stale_while_revalidate` do
+    /// nothing to it; a year covers both.
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::prelude::*;
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     Public::immutable(req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> }))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
     ///
     /// Its handler is held to `Public`'s rule, so one that could tell who is asking does not
     /// compile:
@@ -794,7 +816,7 @@ impl<A: Shareable> Public<A> {
     /// }
     /// # fn main() { let _ = url::router(); }
     /// ```
-    pub fn immutable<T: ForEveryone<Named = A>>(answer: T) -> Self {
+    pub fn immutable<T: ForEveryone<Named = A> + Immutable>(answer: T) -> Self {
         Public { cache: Cache::immutable(), answer: answer.for_all() }
     }
 
@@ -856,6 +878,16 @@ impl<A: Answer> Answer for NoStore<A> {
     type Inputs = A::Inputs;
 }
 
+/// Bytes a URL can name, which [`Public::immutable`] takes: [`Media`], or `corten::Result<Media>`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not bytes a URL can name, so it cannot be immutable",
+    note = "`Public::immutable` takes `Media` or `corten::Result<Media>`; a page, a redirect or JSON changes with the deploy, so give it `Public::new` with a lifetime"
+)]
+pub trait Immutable: sealed::Immutable {}
+
+impl Immutable for Media {}
+impl Immutable for Result<Media, Error> {}
+
 /// A handler may read anything.
 pub struct AnyInputs;
 
@@ -864,7 +896,9 @@ pub struct AnonymousInputs;
 
 /// An input that cannot tell who is asking: no cookie, no credential header, no `Caller`. A
 /// [`Public`] answer's handler takes only these. Implement it for an extractor of the app's own
-/// that reads nothing about the caller.
+/// that reads nothing about the caller. A request's cookies make a `Public::new` answer private
+/// when it is sent, but not a [`Public::immutable`] one, which this marker alone keeps from
+/// depending on who is asking.
 #[diagnostic::on_unimplemented(
     message = "a `Public` answer is the same for everyone, so its handler cannot take `{Self}`",
     label = "`{Self}` may tell who is asking",

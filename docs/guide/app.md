@@ -441,8 +441,10 @@ An answer at a URL that names its content (a hash of its bytes, as an uploaded p
 never changes there. `Public::immutable(answer)` sends it as Corten's versioned files are sent,
 `public, max-age=31536000, immutable`, and since the URL alone says what it is, a request's
 cookies do not make it private and no `Vary: cookie` is added. A cookie it sets or a caller
-something read still does. Its handler is held to the same rule as any `Public` handler. A URL
-that does not name its content (`/me/picture`) takes `Public::new` with a lifetime.
+something read still does. Its handler is held to the same rule as any `Public` handler. It takes
+`Media` or `corten::Result<Media>` only: a page, a redirect or JSON changes with the deploy, so
+`Public::immutable(req.page(..))` does not compile. A URL that does not name its content
+(`/me/picture`) takes `Public::new` with a lifetime.
 
 A full document never carries `corten-page`, so if a cache hands one to a client navigation by
 mistake, the runtime loads the URL as a whole page instead of swapping it in.
