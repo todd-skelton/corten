@@ -58,15 +58,20 @@ pub fn parse_item(input: TokenStream, derive: &str, tuple_ok: bool) -> Result<It
     let mut generics = Vec::new();
     if is_punct(tokens.get(i), '<') {
         let mut depth = 0;
+        // The `>` of an arrow in a bound (`F: Fn() -> u8`) closes nothing.
+        let mut arrow = false;
         loop {
             let Some(token) = tokens.get(i) else { return err(name.span(), "unclosed generics") };
             i += 1;
             if let TokenTree::Punct(p) = token {
                 match p.as_char() {
                     '<' => depth += 1,
-                    '>' => depth -= 1,
+                    '>' if !arrow => depth -= 1,
                     _ => {}
                 }
+                arrow = p.as_char() == '-' && p.spacing() == proc_macro::Spacing::Joint;
+            } else {
+                arrow = false;
             }
             generics.push(token.clone());
             if depth == 0 {

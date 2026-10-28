@@ -219,6 +219,22 @@ pub use corten_macros::Fields;
 /// assert_eq!(Part::<&str>::from_ref(&shared).0, "x");
 /// assert!(Option::<Arc<Shared<_, &str>>>::from_ref(&shared).is_none());
 /// let _ = <Arc<std::array::IntoIter<u8, 1>>>::from_ref(&shared);
+///
+/// // `Self` in a parameter's bound, and a `where` with nothing in it.
+/// trait Wraps<S> {}
+/// #[derive(Clone)]
+/// struct Inner;
+/// impl<S> Wraps<S> for Inner {}
+/// #[derive(Clone, FromRef)]
+/// struct Bound<T: Wraps<Self>> where { part: Arc<T> }
+/// let bound = Bound { part: Arc::new(Inner) };
+/// let _ = <Arc<Inner>>::from_ref(&bound);
+///
+/// // A parameter's default after an arrow in its bound.
+/// #[derive(Clone, FromRef)]
+/// struct Calls<F: Fn() -> u8 = fn() -> u8> { call: Arc<F> }
+/// let calls: Calls = Calls { call: Arc::new((|| 7) as fn() -> u8) };
+/// assert_eq!(<Arc<fn() -> u8>>::from_ref(&calls)(), 7);
 /// ```
 pub use corten_macros::FromRef;
 pub use form::{Errors, FieldName, Files, Form, Query, SubmitKey, Upload, UploadError};

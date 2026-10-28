@@ -61,15 +61,12 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         // `Self` in a field's type is the state; outside the struct it would be the field's type.
         let ty = replace_self(field[j + 2..].iter().cloned().collect(), &state);
         let key = ty.to_string();
-        if let Some((_, first)) = seen.iter().find(|(t, _)| *t == key) {
-            return err(
-                name.span(),
-                format!("`{first}` and `{name}` are both `{key}`, so a handler's State<{key}> could be either: mark one #[from_ref(skip)]"),
-            );
+        if let Err(message) = once(&seen, &key, &name.to_string()) {
+            return err(name.span(), message);
         }
         seen.push((key, name.to_string()));
         let mut header: TokenStream = "#[automatically_derived] impl".parse().expect("parses");
-        header.extend(item.impl_generics.clone());
+        header.extend(replace_self(item.impl_generics.clone(), &state));
         header.extend(q("::corten::axum::extract::FromRef<__A0> for __A1", &[state.clone(), ty.clone()]));
         // The field's type clones for every parameter the impl allows (`Part<T>` only where `T`
         // does), and the struct's own bounds still hold.
@@ -77,6 +74,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         let trailing = bounds.clone().into_iter().last();
         match trailing {
             None => bounds = q("where", &[]),
+            // `where` with nothing after it, or a list that already ends in a comma.
+            Some(TokenTree::Ident(w)) if w.to_string() == "where" => {}
             Some(TokenTree::Punct(p)) if p.as_char() == ',' => {}
             Some(_) => bounds.extend(q(",", &[])),
         }
@@ -94,6 +93,17 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     Ok(out)
 }
 
+/// The field `name`, of type `key`, is the first of its type: `seen` holds each type and the field
+/// that has it.
+fn once(seen: &[(String, String)], key: &str, name: &str) -> Result<(), String> {
+    match seen.iter().find(|(t, _)| t == key) {
+        Some((_, first)) => Err(format!(
+            "`{first}` and `{name}` are both `{key}`, so a handler's State<{key}> could be either: mark one #[from_ref(skip)]"
+        )),
+        None => Ok(()),
+    }
+}
+
 /// `tokens` with each `Self` replaced by `state`, inside groups too.
 fn replace_self(tokens: TokenStream, state: &TokenStream) -> TokenStream {
     let mut out = TokenStream::new();
@@ -109,4 +119,19 @@ fn replace_self(tokens: TokenStream, state: &TokenStream) -> TokenStream {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::once;
+
+    #[test]
+    fn a_second_field_of_one_type_is_refused_naming_both() {
+        let seen = vec![("String".to_string(), "primary".to_string())];
+        assert_eq!(
+            once(&seen, "String", "replica").unwrap_err(),
+            "`primary` and `replica` are both `String`, so a handler's State<String> could be either: mark one #[from_ref(skip)]"
+        );
+        assert!(once(&seen, "Market", "market").is_ok());
+    }
 }
