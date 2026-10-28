@@ -1,6 +1,8 @@
 //! The page: every corten-ui component, wrapped and styled as a design system would.
 use corten::prelude::*;
-use corten_ui::{Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster, dialog};
+use corten_ui::{
+    Choice, ComboBox, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster, dialog,
+};
 
 use crate::{
     app::{OrderForm, RenameForm, url},
@@ -80,6 +82,10 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, sale: bo
                     <a href={url::Home { tab: None, sale: Some(LAST_SALE) }}>"Last sale"</a>
                 </div>
             </section>
+            <section class={Card}>
+                <h2>"Copy"</h2>
+                <OrderNumber number="ORD-1234" />
+            </section>
         </div>
         {rename}
         if sale {
@@ -108,6 +114,21 @@ pub fn MenuResult<'a>(text: &'a str) -> impl Patch {
 
 #[derive(Id)]
 struct MenuResultId;
+
+/// An order number with a button that copies it: the number is on the page once, and the button
+/// shows only where the script can write the clipboard.
+#[component]
+fn OrderNumber<'a>(number: &'a str) -> impl Render {
+    let text = refs();
+    html! {
+        <p>
+            "Order "
+            <code ref={text}>{number}</code>
+            " "
+            <CopyButton text={text} label="Copy" copied="Copied" />
+        </p>
+    }
+}
 
 /// The `sale` query value that opens the last sale's sheet.
 pub const LAST_SALE: &str = "last";

@@ -341,6 +341,24 @@ async function run(browser) {
   await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
   check("loaded at its address, the sheet is modal", await sheetModal());
   await escape("loaded at its address");
+  // CopyButton: shown where the clipboard can be written; a click copies the number's text.
+  const clip = await (await browser.newContext(engine === "chromium" ? { permissions: ["clipboard-read", "clipboard-write"] } : {})).newPage();
+  clip.on("pageerror", (e) => errors.push(e.message));
+  await clip.goto(`${base}/`);
+  const copyButton = clip.getByRole("button", { name: "Copy" });
+  await copyButton.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  check("the copy button shows once its script connects", await copyButton.isVisible());
+  await copyButton.click();
+  const said = clip.locator('[data-scope=ui-copy-button] [aria-live="polite"]');
+  await clip.waitForFunction(() => document.querySelector('[data-scope=ui-copy-button] [aria-live]')?.textContent === "Copied", null, { timeout: 5000 }).catch(() => {});
+  check("a click says it copied, in its live region", (await said.textContent()) === "Copied", await said.textContent());
+  if (engine === "chromium") {
+    check("the clipboard holds the number, from the page's own element", (await clip.evaluate(() => navigator.clipboard.readText())) === "ORD-1234");
+  }
+  await clip.waitForFunction(() => document.querySelector('[data-scope=ui-copy-button] [aria-live]')?.textContent === "Copy", null, { timeout: 5000 }).catch(() => {});
+  check("then its label again", (await said.textContent()) === "Copy", await said.textContent());
+  await clip.context().close();
+
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
@@ -370,4 +388,6 @@ async function run(browser) {
   check("no script: the address opens the sheet", await plainSheet.isVisible());
   await Promise.all([plain.waitForURL((url) => !url.searchParams.has("sale")), plain.getByRole("link", { name: "Close" }).click()]);
   check("no script: its link closes it", (await plainSheet.count()) === 0);
+  await plain.goto(`${base}/`);
+  check("no script: the number is on the page and the copy button is not", (await plain.locator("code", { hasText: "ORD-1234" }).isVisible()) && (await plain.locator("[data-scope=ui-copy-button]").isHidden()));
 }

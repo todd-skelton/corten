@@ -9,6 +9,7 @@
 //! | [`TabGroup`] | tabs with arrow keys; tabs can be links, and the address follows | links to each tab's page |
 //! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
+//! | [`CopyButton`] | copies an element's text to the clipboard and says so, politely | no button; the text is on the page to select |
 //! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
 //! | [`dialog::modalClosedBy`] | the same for a dialog the address opens (`?selected=it_1`), and Escape follows its close link | the dialog is open, and the link closes it |
 //!
@@ -139,12 +140,14 @@
 use corten::{script::script, view::AttrValue, Component, Route};
 
 mod combo_box;
+mod copy_button;
 mod menu_button;
 mod number_field;
 mod tab_group;
 mod toaster;
 
 pub use combo_box::{Choice, ComboBox, Picker};
+pub use copy_button::CopyButton;
 pub use menu_button::{MenuButton, MenuItem};
 pub use number_field::{Number, NumberField, Step};
 pub use tab_group::{Tab, TabGroup};
@@ -154,7 +157,7 @@ script!(pub mod dialog = "dialog.js");
 
 /// Every component in this crate with a script, and the [`dialog`] handlers, for
 /// `App::components`.
-pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton, Toaster, dialog::COMPONENT];
+pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton, Toaster, CopyButton, dialog::COMPONENT];
 
 /// A typed route a component links to (`#[derive(Route)]`), as a trait object so a list of
 /// items can hold different routes. A string is not a `Link`.
