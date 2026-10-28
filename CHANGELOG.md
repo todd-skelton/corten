@@ -690,6 +690,29 @@ Corten is pre-1.0, so any minor version may change the API.
     refused and `1e3` was a thousand dollars, and its confirmation is in the reader's locale
     (`alert.set`)
     ([#208 Money typed into a form is parsed by each app, three different ways, and card-market reads it as f64](https://github.com/todd-skelton/corten/issues/208)).
+106. A JSON answer with a status or a cookie of its own, and JSON the app already holds:
+    `Json(value).with_status(StatusCode::ACCEPTED)` and `.with_cookie(SetCookie)` make a
+    `JsonResponse` (the handler returns `Result<JsonResponse, JsonError>`), whose status and body
+    reach the client as written, a `503 {"error":..}` of the app's own included; and
+    `corten::json::Raw::new(bytes)` is JSON held as bytes (checked once to be one JSON value, an
+    `InvalidJson` error otherwise), which `Json(raw)` sends with no serialization or copy and
+    which a value `Json` writes copies in as it is. With `compress`, a `Raw` sent again is
+    compressed once (brotli 9 and gzip 9, on one background thread) and later reads
+    send those forms: on an 80 KB document, 15 ms once instead of 220 µs (zstd 1) to 2.1 ms
+    (brotli 2) on every read, and 5,000 bytes instead of 6,992. Apps no longer write their own
+    `Answer` for these. A held 80 KB document sent in its stored form costs about 24,100
+    instructions a request (callgrind), where one compressed on each read costs 1.41 million.
+    Every other answer reads `Accept-Encoding` once for both codings, as bytes, and costs what it
+    did: 22,357 to 22,252 instructions for a small JSON answer, 99,935 to 99,940 for an 80-row
+    one, 22,708 to 22,602 for text (two runs each against main)
+    ([#201 A JSON route cannot answer with a status other than 200 or send JSON it already holds as bytes, so each app writes its own Answer](https://github.com/todd-skelton/corten/issues/201),
+    [#234 A JSON answer cannot set a cookie the way an HTML answer can](https://github.com/todd-skelton/corten/issues/234)).
+107. A link to an element on the same page takes its `Id`: `href={FeedbackId.fragment()}` writes
+    `#feedback`, encoded as `route.at(..)` encodes another page's place, so a validation
+    summary's link and the field it names cannot drift apart. It is an attribute value
+    (`view::InPage`), not an address: `req.redirect` to it does not compile, and neither does
+    text in place of the id. Nothing `html!` writes changed
+    ([#254 A link to an element on the same page cannot take an Id, so each app writes its #fragment by hand](https://github.com/todd-skelton/corten/issues/254)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1351,6 +1374,12 @@ Corten is pre-1.0, so any minor version may change the API.
     locally, so none is fixed yet
     ([#232 WebKit smoke: "a form submitted before the first page loads navigates" fails now and then](https://github.com/todd-skelton/corten/issues/232),
     [#252 ui-gallery smoke: the first page's combo box did not connect within 30 s in Firefox (CI, once)](https://github.com/todd-skelton/corten/issues/252)).
+47. `bench/fullstack`'s browser pass stopped in round r7: card-market refuses a price alert on an
+    item with no listings (`item_12345`), and the pass waited 30 s for "Alert set". The form
+    action is no longer timed on that item, for any app, since the others set an alert Corten
+    refuses and the two are different work; the empty item's load, sort and client navigation are
+    measured as before. Medians of the action now come from eight of ten runs per profile
+    ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

@@ -451,7 +451,11 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    from another origin. Desktop is unthrottled; mobile is 4x CPU slowdown, 150 ms RTT, 1.6 Mbps down.
    "Interactive" is when the page's own code marks itself ready (hydration finished, islands
    connected, or the framework's load event). Action is fill, submit, and wait for the
-   confirmation. Navigation is home page to item page.
+   confirmation. Navigation is home page to item page. From round r8, the action is not timed on
+   `item_12345`, which has no listings: card-market refuses an alert there and the others set
+   one, which is different work, so its median comes from 8 of 10 runs, where earlier rounds'
+   came from all 10
+   ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
 7. Bytes (`bytes.mjs`): every script, WASM and stylesheet the item page loads, fetched raw and
    gzipped here at level 6, so server compression settings do not change the comparison.
 8. Efficiency (`summarize.mjs`): requests per CPU-second are a phase's requests over the app's

@@ -107,7 +107,7 @@ use futures_util::{Stream, StreamExt};
 
 pub use answer::{Answer, ForAll, ForOne, HtmlResponse, HtmlResult, LiveResponse, NoStore, Public, Relay};
 #[cfg(feature = "json")]
-pub use answer::{JsonError, JsonResult};
+pub use answer::{JsonError, JsonResponse, JsonResult};
 pub use api::Api;
 pub use app::{listeners, serve, serve_on, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.

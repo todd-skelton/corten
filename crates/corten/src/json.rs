@@ -153,8 +153,7 @@ pub struct Json<T>(pub T);
 
 impl<T: ToJson> IntoResponse for Json<T> {
     fn into_response(self) -> Response {
-        // `Body::from(Vec)` keeps the vector's allocation: no copy.
-        let mut res = Response::new(Body::from(to_vec(&self.0)));
+        let mut res = self.0.__into_response();
         // Room for the headers `App` adds too, so the map is allocated once.
         res.headers_mut().reserve(12);
         res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(crate::api::JSON));
@@ -188,6 +187,143 @@ pub trait ToJson {
     #[doc(hidden)]
     fn __json_size() -> Option<&'static AtomicUsize> {
         None
+    }
+
+    /// The response [`Json`] sends, before its headers: the value written into a new vector, or
+    /// for [`Raw`] the bytes it holds. Not a public API.
+    #[doc(hidden)]
+    fn __into_response(self) -> Response
+    where
+        Self: Sized,
+    {
+        // `Body::from(Vec)` keeps the vector's allocation: no copy.
+        Response::new(Body::from(to_vec(&self)))
+    }
+}
+
+/// JSON the app already holds as bytes: a document built once when its data changes and read by
+/// many requests, or a file sent as it was written. `Json(raw.clone())` sends the bytes as they
+/// are (a clone shares them), with no parse and no copy; as a field of a value `Json` writes, they
+/// are copied in as they are. `Raw::new` reads the bytes through once to check they are one JSON
+/// value (a corrupt file is an error, not a broken answer), so make one per document, not per
+/// request; and clone it, not an `Arc<Raw>`, which `Json` writes as any value.
+///
+/// With feature `compress`, a `Raw` sent a second time is compressed once with brotli and gzip
+/// (levels for a value that changes while the app runs, made off the request), and later reads
+/// send those forms, so a held document is not compressed again for every client. Keep the
+/// `Raw` and clone it for each request; a `Raw` made for one request is compressed as any other
+/// answer.
+///
+/// ```
+/// use std::time::Duration;
+/// use corten::{json::Raw, prelude::*};
+///
+/// #[derive(Clone)]
+/// struct Ladders(Raw);
+///
+/// async fn ladders(State(Ladders(doc)): State<Ladders>) -> Public<JsonResult<Raw>> {
+///     let answer: JsonResult<Raw> = Ok(Json(doc));
+///     Public::new(Duration::from_secs(60), answer)
+/// }
+///
+/// # fn main() -> Result<(), corten::json::InvalidJson> {
+/// let doc = Ladders(Raw::new(r#"{"ladders":[]}"#)?);
+/// assert_eq!(doc.0.as_bytes(), br#"{"ladders":[]}"#);
+/// assert!(Raw::new(r#"{"ladders":["#).is_err());
+/// # let _ = ladders;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone)]
+pub struct Raw(#[cfg(feature = "compress")] Arc<crate::compress::Precompressed>, #[cfg(not(feature = "compress"))] Bytes);
+
+/// Bytes [`Raw::new`] was given that are not one JSON value in UTF-8, and where they stop being
+/// one.
+#[derive(Debug)]
+pub struct InvalidJson(InvalidJsonKind);
+
+#[derive(Debug)]
+enum InvalidJsonKind {
+    Utf8(std::str::Utf8Error),
+    Json(serde_json::Error),
+}
+
+impl std::fmt::Display for InvalidJson {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            InvalidJsonKind::Utf8(error) => write!(f, "not one JSON value: not UTF-8, {error}"),
+            InvalidJsonKind::Json(error) => write!(f, "not one JSON value: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for InvalidJson {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.0 {
+            InvalidJsonKind::Utf8(error) => Some(error),
+            InvalidJsonKind::Json(error) => Some(error),
+        }
+    }
+}
+
+impl Raw {
+    /// The JSON in `bytes`, or an error when they are not one JSON value in UTF-8 (a byte order
+    /// mark included: JSON sent over a network has none).
+    pub fn new(bytes: impl Into<Bytes>) -> Result<Raw, InvalidJson> {
+        let bytes = bytes.into();
+        // UTF-8 first: the parser skips a string it ignores without checking its bytes.
+        let text = std::str::from_utf8(&bytes).map_err(|e| InvalidJson(InvalidJsonKind::Utf8(e)))?;
+        serde_json::from_str::<serde::de::IgnoredAny>(text).map_err(|e| InvalidJson(InvalidJsonKind::Json(e)))?;
+        #[cfg(feature = "compress")]
+        return Ok(Raw(Arc::new(crate::compress::Precompressed::held(bytes))));
+        #[cfg(not(feature = "compress"))]
+        Ok(Raw(bytes))
+    }
+
+    /// The JSON as it is held.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.bytes()
+    }
+
+    fn bytes(&self) -> &Bytes {
+        #[cfg(feature = "compress")]
+        return self.0.identity();
+        #[cfg(not(feature = "compress"))]
+        &self.0
+    }
+}
+
+#[cfg(all(test, feature = "compress"))]
+impl Raw {
+    pub(crate) fn stored_started(&self) -> bool {
+        self.0.started()
+    }
+
+    pub(crate) fn wait_stored(&self) {
+        self.0.wait()
+    }
+}
+
+impl std::fmt::Debug for Raw {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The length and the start: a document can be large.
+        let bytes = self.as_bytes();
+        let start = String::from_utf8_lossy(&bytes[..bytes.len().min(64)]);
+        f.debug_struct("Raw").field("len", &bytes.len()).field("start", &start).finish()
+    }
+}
+
+impl ToJson for Raw {
+    fn write_json(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(self.as_bytes());
+    }
+
+    fn __into_response(self) -> Response {
+        #[cfg_attr(not(feature = "compress"), allow(unused_mut))]
+        let mut res = Response::new(Body::from(self.bytes().clone()));
+        #[cfg(feature = "compress")]
+        res.extensions_mut().insert(crate::compress::Stored(self.0));
+        res
     }
 }
 
