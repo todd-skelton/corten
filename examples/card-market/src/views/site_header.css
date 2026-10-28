@@ -1,0 +1,6 @@
+/* The side padding lines the name up with main's content (1080px wide with --space-5 inside it,
+   style.css), with no wrapper element: the wider of main's padding and half the room beside it. */
+.bar { padding: var(--space-4) max(var(--space-5), calc((100% - 1080px) / 2 + var(--space-5))); border-bottom: 1px solid var(--color-line); background: var(--color-surface); }
+@media (max-width: 40rem) { .bar { padding-inline: var(--space-3); } }
+.bar a { color: var(--color-ink); font-size: var(--font-size-xl); font-weight: 800; letter-spacing: -0.02em; text-decoration: none; }
+.bar a::before { content: ""; display: inline-block; width: 0.7em; height: 0.95em; margin-inline-end: 0.45em; vertical-align: -0.08em; border-radius: 3px; background: linear-gradient(135deg, var(--color-accent), #d97a3a); }

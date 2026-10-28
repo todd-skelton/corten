@@ -48,6 +48,7 @@
     "unavailable": "Indisponible",
     "unavailable_text": "Vérifiez votre connexion et réessayez.",
     "failed": "Une erreur est survenue",
-    "failed_text": "Veuillez réessayer."
+    "failed_text": "Veuillez réessayer.",
+    "home": "Aller aux articles populaires"
   }
 }

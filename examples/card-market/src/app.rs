@@ -526,10 +526,7 @@ mod tests {
     #[tokio::test]
     async fn styles_are_scoped_to_components_and_served_as_one_file_after_the_app_stylesheet() {
         let (_, _, html) = send(Request::get("/items/item_9").body(Body::empty()).unwrap()).await;
-        assert!(
-            html.contains(r#"<section class="item-detail__panel item-detail__summary gap-5 direction-column sm:direction-row">"#),
-            "{html}"
-        );
+        assert!(html.contains(r#"<section class="item-detail__panel item-detail__summary gap-3 sm:gap-5">"#), "{html}");
         assert!(html.contains(r#"<td class="price__amount">"#));
         let link = |name: &str| html.find(&format!(r#"/{name}">"#)).unwrap_or_else(|| panic!("no {name} link"));
         assert!(link("style.css") < link("components.css"), "components come after the app's element defaults");
@@ -848,6 +845,7 @@ mod tests {
         let (status, headers, body) = send(Request::get("/items/nope").body(Body::empty()).unwrap()).await;
         assert_eq!((status, &headers["x-robots-tag"]), (StatusCode::NOT_FOUND, &"noindex".parse().unwrap()));
         assert!(body.contains("<h1>Not found</h1>"), "{body}");
+        assert!(body.contains(r#"<p><a href="/">Go to popular items</a></p>"#), "a way back from a missing page: {body}");
     }
 
     #[tokio::test]
