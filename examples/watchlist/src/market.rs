@@ -61,7 +61,7 @@ impl Market {
 
     /// One trade: the `n`th stock in a fixed walk moves by a fraction of its price, and the last
     /// trade's text follows.
-    fn trade(&self, n: usize) {
+    pub(crate) fn trade(&self, n: usize) {
         let (id, ..) = LISTED[n * 3 % LISTED.len()];
         // Basis points (hundredths of a percent) of the price.
         let step = [35i64, -20, 50, -45, 15, -30, 25][n % 7];

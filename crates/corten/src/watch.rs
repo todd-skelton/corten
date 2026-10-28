@@ -126,6 +126,27 @@ impl Watch {
     }
 }
 
+/// Polls `step`, the app's own step on a connection before HTTP ([`crate::serve_wrapped`]),
+/// for a connection under `watch`: `None` once the watch has expired, so a step that stalls,
+/// reading from the socket or waiting on anything else, ends at the header timeout.
+pub(crate) fn bounded<F: Future>(watch: Option<&Watch>, step: Pin<&mut F>, cx: &mut Context<'_>) -> Poll<Option<F::Output>> {
+    let Some(watch) = watch else {
+        return step.poll(cx).map(Some);
+    };
+    if watch.expired() {
+        return Poll::Ready(None);
+    }
+    if let Poll::Ready(done) = step.poll(cx) {
+        return Poll::Ready(Some(done));
+    }
+    watch.waker.register(cx.waker());
+    // Expired between the first look and the registration: its wake may have been missed.
+    if watch.expired() {
+        return Poll::Ready(None);
+    }
+    Poll::Pending
+}
+
 /// A connection's IO, whose reads fail once its [`Watch`] has expired.
 pub(crate) struct Watched<I> {
     pub io: I,

@@ -295,6 +295,16 @@ that the connection is closed. The limit for one file, the types a field accepts
 it takes are the handler's rules, so it checks them and adds a message to `Errors`. The form
 is then drawn again with its other fields kept and the message next to the input.
 
+The `content_type` a file arrives with is what the client said, as its name is. It decides which
+message the user sees, never how the bytes are sent back: a file named `me.png` may hold HTML.
+To serve an upload, read its type from its first bytes and answer it as a `Media`, whose type is
+one the app names:
+`Media::new("image/png", bytes)`. Kept at a URL that names its bytes (a keyed hash of them,
+`/pictures/{id}`), `Public::immutable(..)` lets every cache keep it for a year, cookies or not,
+and its handler cannot read who is asking; anywhere else it is `private, no-cache` like the rest
+of the app. The watchlist example's
+profile picture (`examples/watchlist/src/account.rs`) does both.
+
 A browser cannot be given its files back by markup. A patch keeps the files chosen in the input
 it replaces until a successful answer, so the user can send them again. Without JavaScript the
 page asks for them again. A body that is not multipart is a 415, and one that breaks the format
@@ -440,8 +450,30 @@ patch (the error page: the server has logged it) or offline stops them quietly a
 part as it was; any answer that is a patch is applied whatever its status, so a handler whose
 read failed after the write can say so in place (`req.patch_with_status(StatusCode::BAD_GATEWAY,
 ..)` in `Mode::Action`: "Saved; reload to see it"). Only a success that is not a patch is logged
-in the console: the route answered its page, not the part. `examples/watchlist`'s
-alerts page has both.
+in the console: the route answered its page, not the part.
+
+A page can ask the same of its parts, with the same `ReadAgain::from` among its markup: when the
+whole page would be the wrong thing to read again (a form the user is filling in, a payment
+provider's frame that would lose what was typed), only the parts are. However the page was
+reached, the runtime starts the read once the page is on the screen, as for a patch; it stops
+when the page is left, or an element with an id beside the tag is replaced (a form's answer,
+which brings its own read). Without JavaScript the tag does nothing, so a page that should
+still update then puts `ReadAgain` in its head as well: with JavaScript a page that reads parts
+again is not read whole.
+
+```rust,ignore
+let again = alerts.behind.then_some(ReadAgain { after: Duration::from_secs(2) });
+let parts = again.map(|again| again.from(&from)); // the route answers the list as a patch
+req.page(html! {
+    <Layout req={&req} title="Alerts" head={again}>
+        <AlertForm />
+        <AlertList alerts={&alerts} />
+        {parts}
+    </Layout>
+})
+```
+
+`examples/watchlist`'s alerts page has all three.
 
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
 the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
