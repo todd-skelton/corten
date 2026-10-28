@@ -9,7 +9,7 @@ checked on the other side.
 |---|---|
 | Handler to markup | `html!` is Rust: a missing field or prop is a compile error |
 | Page to document | `req.page` takes a `Document`: markup that starts with `<html>`, with one `<title>`, one `<Corten />` and one `<main>` outside any `for`, `if` or `match`, or a layout component; a page that is only a fragment does not compile |
-| Links to routes | `#[derive(Route)]`: the router, every link, `req.redirect` and `req.current` use the same struct, and in a `#[corten::routes]` module a route without a handler, or a handler a request cannot call, does not compile; a path as text does not compile (a URL outside the app is an explicit `Uri`), and a place on a page is `route.at(Id)`, not a `#fragment` typed as text |
+| Links to routes | `#[derive(Route)]`: the router, every link, `req.redirect` and a nav link (`req.nav`) use the same struct, and in a `#[corten::routes]` module a route without a handler, or a handler a request cannot call, does not compile; a path as text does not compile (a URL outside the app is an explicit `Uri`), and a place on a page is `route.at(Id)`, not a `#fragment` typed as text |
 | Markup to handlers | `#[component(js)]` reads the script's JSDoc when the crate compiles: `js::name` exists only for an export, and each argument (a ref, typed by the tag it is on; `event`, `target`, `signal`, `scope`; a value) must match its `@param` type |
 | Typed events | `#[event]` structs: `on:Name` must name one, and `Types::components` declares its class in `corten/events` with the fields' types |
 | Markup to stylesheet | `#[component(css)]`: `class={Name}` is a constant from the component's own CSS file |

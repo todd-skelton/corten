@@ -224,18 +224,10 @@ pub fn Layout<'a>(
                     >
                         <nav class={(row(Space::_1), flex_wrap())}>
                             <span class={(weight_bold(), tracking_tight())}>"Watchlist"</span>
-                            <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Stocks"</a>
-                            <a href={news::url::News::default()} data-nav aria-current={req.current(&news::url::News::default())}>
-                                "News"
-                            </a>
-                            <a
-                                href={url::Alerts { until: None }}
-                                data-nav
-                                aria-current={req.current(&url::Alerts { until: None })}
-                            >
-                                "Alerts"
-                            </a>
-                            <a href={account::Account} data-nav aria-current={req.current(&account::Account)}>"Account"</a>
+                            <a {..req.nav(&url::Home)}>"Stocks"</a>
+                            <a {..req.nav(&news::url::News::default())}>"News"</a>
+                            <a {..req.nav(&url::Alerts { until: None })}>"Alerts"</a>
+                            <a {..req.nav(&account::Account)}>"Account"</a>
                         </nav>
                         match viewer {
                             Some(viewer) => <span class={muted()}>"Signed in as "{&viewer.name}</span>,
