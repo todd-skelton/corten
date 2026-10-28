@@ -1,22 +1,27 @@
 //! The desk's views. Each component's script and stylesheet are next to it in `views/`.
 use corten::{Component, prelude::*};
 
-use crate::app::{Item, url};
+use crate::{
+    app::{Item, url},
+    text::Msg,
+};
 
 mod bulk_bar;
 mod confirm_dialog;
 mod inventory_grid;
 mod inventory_row;
 mod price_cell;
+mod statement_table;
 
 pub use bulk_bar::BulkBar;
 pub use confirm_dialog::ConfirmDialog;
 pub use inventory_grid::{ArchiveFormId, InventoryGrid};
 pub use inventory_row::{InventoryRow, RowId};
 pub use price_cell::{PriceCell, PriceEdited};
+pub use statement_table::StatementTable;
 
 /// What the app lists in `App::components`: the scripts, the stylesheets and the row's view.
-pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell, PriceEdited];
+pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell, PriceEdited, StatementTable];
 
 /// An item and its stock level, as a row shows them.
 pub struct Line<'a> {
@@ -52,11 +57,11 @@ pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     }
 }
 
-pub fn desk<'a>(lines: &'a [Line<'a>]) -> impl Render + 'a {
+pub fn desk<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render + 'a {
     html! {
         <h1>"Inventory"</h1>
         <StatusLine text="" />
-        <InventoryGrid lines={lines} />
+        <InventoryGrid lines={lines} t={t} />
     }
 }
 
