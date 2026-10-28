@@ -1183,6 +1183,14 @@ Corten is pre-1.0, so any minor version may change the API.
     and an element has one, so the second got the first's object. They are one object now, and
     `state`'s docs say an element has one state. The seller-desk smoke test, which caught it, now
     runs in CI, and waits for what it checks instead of fixed timers.
+42. In Chromium a submit button's `formmethod` decides how a navigating form goes, as it does in
+    Firefox and without the runtime. The runtime read the method from `NavigateEvent.formData`,
+    which Chromium sets from the form's own method: a `formmethod="post"` button in a GET form was
+    taken over and sent as a GET of its `formaction` with no fields, so the write was dropped
+    without a word, and a `formmethod="get"` button in a POST form loaded the page in full instead
+    of swapping it. It now reads the method from the submitter, else the form. `corten.js`:
+    22,834 to 23,032 B (8,380 to 8,442 B gzip)
+    ([#190 In Chromium, a POST submit button in a GET form is sent as a GET with no fields: the runtime reads the method from NavigateEvent.formData](https://github.com/todd-skelton/corten/issues/190)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

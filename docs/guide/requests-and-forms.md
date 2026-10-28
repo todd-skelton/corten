@@ -308,7 +308,9 @@ value for a checkbox or radio), with its caret. The page keeps what the user see
 scrolls on its own (a filter rail) keeps its scroll, and a `<details>` open on screen stays open
 while one they closed stays closed, so the control is in view and can take focus even when the
 server draws a group open only while one of its options is chosen. Without the mark a navigation goes to the top of
-the new page, as a link should. A link can carry the mark too.
+the new page, as a link should. A link can carry the mark too. A submit button's `formmethod`
+decides how the form goes, as without the runtime: a POST button in a GET form (Save next to
+Apply) is the browser's own post, and a GET button in a POST form is swapped in like any GET.
 
 ```rust,ignore
 <form method="get" action={url::Search} data-keep-place on:change={js::apply(target)}>

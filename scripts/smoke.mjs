@@ -1301,4 +1301,43 @@ async function run(browser) {
     JSON.stringify(loaded),
   );
   await early.close();
+
+  // A navigating form goes the way its submit button says, as without the runtime (#190):
+  // Chromium's NavigateEvent.formData follows the form's own method, not the button's.
+  // Not in WebKit with the Navigation API: Playwright loses its page there (see the probe above).
+  const forms = await browser.newPage();
+  await forms.goto(`${base}/news`);
+  if (engine !== "webkit" && (await forms.evaluate(() => "navigation" in window))) {
+    /** @type {string[]} */
+    const sent = [];
+    forms.on("request", (r) => {
+      const url = new URL(r.url());
+      if (["document", "fetch"].includes(r.resourceType()) && ["/watch", "/news"].includes(url.pathname)) {
+        sent.push(`${r.method()} ${url.pathname}${url.search} ${r.postData() ?? ""}`.trim());
+      }
+    });
+    await forms.evaluate(() => {
+      (/** @type {any} */ (window)).__forms = 1;
+      document.querySelector("main")?.insertAdjacentHTML(
+        "beforeend",
+        '<form id="post-form" method="post" action="/watch"><input type="hidden" name="mine" value="on"><button formmethod="get" formaction="/news">Apply</button></form>',
+      );
+    });
+    await forms.click("#post-form button");
+    await forms.waitForFunction(() => location.search === "?mine=on", null, { timeout: 5000 }).catch(() => {});
+    const swapped = await forms.evaluate(() => (/** @type {any} */ (window)).__forms === 1);
+    check("a GET button in a POST form is a GET, swapped in place", sent.join() === "GET /news?mine=on" && swapped, `${sent.join()} kept=${swapped}`);
+    sent.length = 0;
+    await forms.evaluate(() =>
+      document.querySelector("main")?.insertAdjacentHTML(
+        "beforeend",
+        '<form id="get-form" method="get" action="/news"><input type="hidden" name="id" value="ACME"><button formmethod="post" formaction="/watch">Watch</button></form>',
+      ),
+    );
+    const posted = forms.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/watch", { timeout: 5000 }).catch(() => null);
+    await forms.click("#get-form button");
+    const post = await posted;
+    check("a POST button in a GET form posts its fields", post?.postData() === "id=ACME", sent.join() || "nothing sent");
+  }
+  await forms.close();
 }
