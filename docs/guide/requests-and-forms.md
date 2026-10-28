@@ -311,8 +311,9 @@ server draws a group open only while one of its options is chosen. Without the m
 the new page, as a link should. A link can carry the mark too. A submit button's `formmethod`
 decides how the form goes, as without the runtime: a POST button in a GET form (Save next to
 Apply) is the browser's own post, and a GET button in a POST form is swapped in like any GET.
-A `data-patch` form reads its button the same way: an unknown `formmethod` (`put`) is a GET, and
-an empty `formaction` is the page's own address.
+A `data-patch` form reads its button the same way: an unknown `formmethod` (`put`) is a GET, an
+empty `formaction` is the page's own address, `formenctype` picks the body's encoding, and a
+`dialog` method closes its dialog without sending anything.
 
 ```rust,ignore
 <form method="get" action={url::Search} data-keep-place on:change={js::apply(target)}>

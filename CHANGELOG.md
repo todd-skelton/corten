@@ -1187,11 +1187,14 @@ Corten is pre-1.0, so any minor version may change the API.
     22,834 to 23,032 B (8,380 to 8,442 B gzip)
     ([#190 In Chromium, a POST submit button in a GET form is sent as a GET with no fields: the runtime reads the method from NavigateEvent.formData](https://github.com/todd-skelton/corten/issues/190)).
 43. A `data-patch` form reads its submit button as the browser does: `formmethod="put"` (or any
-    method the browser does not know) is a GET, an empty `formmethod` is a GET, and an empty
-    `formaction` is the page's own address. It read the raw attributes, so it sent a PUT where the
-    browser sends a GET, and the form's own method and action for the empty ones. A form whose
-    method is `dialog` is left to the browser. One function, `sendsAs`, now reads the method for
-    both the patch and the navigation path. `corten.js`: 23,032 to 23,201 B (8,442 to 8,488 B gzip)
+    method the browser does not know) is a GET, an empty `formmethod` is a GET, an empty
+    `formaction` is the page's own address (after `<base href>`, as the browser resolves it), and
+    `formenctype` picks the body's encoding. It read the raw method and action attributes and only
+    the form's `enctype`, so it sent a PUT where the browser sends a GET, used the form's method
+    and action for the empty ones, and sent a `formenctype="multipart/form-data"` button's file
+    as text. A form whose method is `dialog` now closes its dialog and sends nothing; before, it
+    sent a `DIALOG` request. One function, `sendsAs`, reads the button for both the patch and the
+    navigation path. `corten.js`: 23,032 to 23,264 B (8,442 to 8,503 B gzip)
     ([#196 A data-patch form reads its submit button's raw formmethod and formaction, so formmethod=put sends a PUT where the browser sends a GET](https://github.com/todd-skelton/corten/issues/196)).
 ### Documentation
 

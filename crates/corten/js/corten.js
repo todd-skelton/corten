@@ -1269,9 +1269,10 @@ let loaded = document.readyState === "complete";
 if (!loaded) addEventListener("load", () => (loaded = true), { once: true });
 
 /**
- * How and where `form` goes when `submitter` sends it, read as the browser reads them: the
- * button's `formmethod` and `formaction` when it has them (an invalid method is "get", an empty
- * action the document's address), else the form's. Lowercase method, absolute action.
+ * How, where and in what encoding `form` goes when `submitter` sends it, read as the browser
+ * reads them: the button's `formmethod`, `formaction` and `formenctype` when it has them (an
+ * invalid method is "get", an empty action the document's address), else the form's. Lowercase
+ * method, absolute action.
  * @param {HTMLFormElement} form
  * @param {Element | null | undefined} submitter
  */
@@ -1280,6 +1281,7 @@ function sendsAs(form, submitter) {
   return {
     method: button?.hasAttribute("formmethod") ? button.formMethod : formProperty(form, "method"),
     action: button?.hasAttribute("formaction") ? button.formAction : formProperty(form, "action"),
+    enctype: button?.hasAttribute("formenctype") ? button.formEnctype : formProperty(form, "enctype"),
   };
 }
 
@@ -1421,7 +1423,7 @@ document.addEventListener("submit", async (event) => {
   /** @type {RequestInit} */
   const init = { method, headers: { corten: "action" }, signal };
   if (method === "GET") url.search = fields.toString();
-  else init.body = formProperty(form, "enctype") === "multipart/form-data" ? data : fields;
+  else init.body = sends.enctype === "multipart/form-data" ? data : fields;
   formCall(form, "setAttribute", "aria-busy", "true");
   // A write can change any page, so nothing fetched before it is reused.
   if (method !== "GET") {
