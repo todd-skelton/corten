@@ -346,7 +346,8 @@ async fn statement(req: Req, State(desk): State<Desk>) -> NoStore<HtmlResult> {
 /// Sells and restocks a few items every 250 ms, so the grid's live levels have something to show.
 pub async fn simulate_sales(desk: Desk) {
     let mut tick = tokio::time::interval(Duration::from_millis(250));
-    // What each row is restocked to when it sells out: the most a seller keeps at its price.
+    // What each row is restocked to when it sells out: the most a seller keeps at the price it
+    // was listed at.
     let restock: Vec<u32> =
         desk.items.lock().expect("items").iter().map(|item| (*stock(item.price_cents).end()).max(1)).collect();
     let count = restock.len().max(1);
