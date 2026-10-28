@@ -1015,6 +1015,11 @@ Corten is pre-1.0, so any minor version may change the API.
     reading the same type: 1,376,422). Values and errors are unchanged; the reader's tests compare
     every one with serde_json's
     ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+60. examples/watchlist is a module a screen: `home.rs`, `alerts.rs` and `account.rs` beside
+    `news.rs`, with `layout.rs` for the document, `socket.rs` for the WebSocket and each screen's tests next to
+    it; `app.rs` keeps the routes, the app and the error page, and its route table says which file
+    each route is in. No behavior changed: the same 27 tests pass
+    ([#229 watchlist's app.rs is 771 lines of app code for seven screens](https://github.com/todd-skelton/corten/issues/229)).
 61. A message's arguments are `corten::i18n::Arg`, not any `Display`: text, an integer, or a value
     `t` formats (`t.number`, `t.money`, `t.date`, another message). An integer is written from
     its digits with no `core::fmt` and no escaping, so card-market's item-API home page (50
