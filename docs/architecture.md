@@ -28,7 +28,7 @@ backend.
    and agent processes. `corten-feed` uses the same `check_seq` and `apply_ops` rules, so the
    server follower and every client apply patches the same way.
 3. The example's `watch` handler serves a browser with and without JavaScript, and a data
-   client, from one function. `examples/watchlist/src/app.rs` tests all three.
+   client, from one function. `examples/watchlist/src/home.rs` tests all three.
 4. `corten::agent` (feature `agent`): actions as Model Context Protocol tools over HTTP POST.
    `examples/card-market` exposes `items.get` (a read tool returning the screen JSON) and
    `alerts.create` (the same rule the form uses), behind bearer tokens.
