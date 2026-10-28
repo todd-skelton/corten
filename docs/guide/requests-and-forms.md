@@ -53,7 +53,7 @@ the 422 with `fields`, anything else is answered as any failure of a JSON route
 ```rust,ignore
 async fn alert_json(State(source): State<Source>, Json(input): Json<CreateAlert>) -> JsonResult<AlertSet> {
     let price = check(&input)?; // 422, {"error":{..,"fields":{"email":".."}}}
-    let item = source.item(&input.id).await?.ok_or_else(not_found)?; // 500 or 404
+    let item = source.item(&input.id).await?.ok_or_else(Error::not_found)?; // 500 or 404
     Ok(Json(AlertSet::new(&item, price)))
 }
 ```
@@ -436,8 +436,9 @@ page that sends one.
 ## Errors
 
 A page handler returns `HtmlResult`; any `std::error::Error` converts with `?` and becomes a
-500, and `Error::status(StatusCode::NOT_FOUND)` (or `.with_status(..)` on an error) sets
-another status. The app's error page is rendered in the request's mode (a page or a swap) and
+500. A record that is not there is `Error::not_found()` (`load(id).await?.ok_or_else(Error::not_found)?`),
+and `Error::status(StatusCode::FORBIDDEN)` (or `.with_status(..)` on an error) sets any other
+status. The app's error page is rendered in the request's mode (a page or a swap) and
 the message is logged, never shown, except under `corten dev`. An extractor's own rejection (a
 path segment that does not parse, a form of the wrong type) gets the error page too when a
 browser asked. The page is given a `Failure` that says which case it is
