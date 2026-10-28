@@ -1,7 +1,14 @@
+mod account;
+mod alerts;
 mod app;
+mod home;
+mod layout;
 mod lists;
 mod market;
 mod news;
+mod socket;
+#[cfg(test)]
+mod testing;
 mod theme;
 
 #[tokio::main]

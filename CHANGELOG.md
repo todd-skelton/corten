@@ -1026,6 +1026,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `Toast { message: None::<&str> }`; labels of different types in one menu or group (a message
     with arguments beside one without) are each a reference, `[Tab<&dyn Render>; 2]`
     ([#211 A text prop typed &dyn Render needs &"text", and an optional one needs an `as &dyn Render` cast](https://github.com/todd-skelton/corten/issues/211)).
+60. examples/watchlist is a module a screen: `home.rs`, `alerts.rs` and `account.rs` beside
+    `news.rs`, with `layout.rs` for the document, `socket.rs` for the WebSocket and each screen's tests next to
+    it; `app.rs` keeps the routes, the app and the error page, and its route table says which file
+    each route is in. No behavior changed: the same 27 tests pass
+    ([#229 watchlist's app.rs is 771 lines of app code for seven screens](https://github.com/todd-skelton/corten/issues/229)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
