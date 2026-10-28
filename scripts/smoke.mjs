@@ -154,11 +154,11 @@ async function run(browser) {
         };
         (/** @type {any} */ (window)).__marker = 1;
         /** @type {HTMLAnchorElement} */ (document.querySelector('header a[href="/news"]')).click();
-        const news = await until(() => document.title === "News | Corten");
+        const news = await until(() => document.title === "News | Watchlist");
         const note = document.querySelector(".disclaimer__note");
         const border = note ? getComputedStyle(note).borderInlineStartWidth : "";
         history.back();
-        const back = await until(() => document.title === "Watchlist | Corten");
+        const back = await until(() => document.title === "Stocks | Watchlist");
         return { news, border, back, kept: (/** @type {any} */ (window)).__marker === 1, path: location.pathname };
       });
       check(
@@ -434,7 +434,7 @@ async function run(browser) {
   delayWatch = 1200;
   await page.click("#watch-form button");
   await page.click('header a[href="/news"]');
-  await page.waitForFunction(() => document.title === "News | Corten");
+  await page.waitForFunction(() => document.title === "News | Watchlist");
   await page.waitForTimeout(1600);
   check("navigating away abandons a pending submit", abandoned.length === 2, abandoned.join());
   check("the feed stream closes when its component leaves the page (its signal aborts)", (await openFeeds()) === 0);
@@ -628,16 +628,16 @@ async function run(browser) {
   }
 
   await page.goBack();
-  await page.waitForFunction(() => document.title === "Watchlist | Corten");
+  await page.waitForFunction(() => document.title === "Stocks | Watchlist");
   await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
   check("back navigation restores the watchlist and on:connect resubscribes", (await page.getAttribute(live, "data-status")) === "live");
   if (swaps) {
     check("a section's stylesheet stays when the page leaves the section", (await styleLinks()) === 1);
     await page.goForward();
-    await page.waitForFunction(() => document.title === "News | Corten");
+    await page.waitForFunction(() => document.title === "News | Watchlist");
     check("coming back into the section does not link its stylesheet twice", (await styleLinks()) === 1 && (await noteBorder()) === "4px");
     await page.goBack();
-    await page.waitForFunction(() => document.title === "Watchlist | Corten");
+    await page.waitForFunction(() => document.title === "Stocks | Watchlist");
     await page.waitForSelector(`${live}[data-status="live"]`, { timeout: 5000 }).catch(() => {});
   } else {
     for (const name of ["a section's stylesheet stays when the page leaves the section", "coming back into the section does not link its stylesheet twice"]) skip(name, noSwaps);
@@ -654,10 +654,10 @@ async function run(browser) {
   const formatLoaded = () => page.evaluate(() => performance.getEntriesByType("resource").some((e) => e.name.includes("/corten-format.js")));
   check("a page whose handlers take no format does not load the format module", !(await formatLoaded()));
   await page.click('header a[href="/account"]');
-  await page.waitForFunction(() => document.title === "Watchlist | Corten", null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => document.title === "Stocks | Watchlist", null, { timeout: 5000 }).catch(() => {});
   check(
     "a guarded page sends someone signed out to sign in",
-    (await page.title()) === "Watchlist | Corten" && new URL(page.url()).pathname === "/",
+    (await page.title()) === "Stocks | Watchlist" && new URL(page.url()).pathname === "/",
     page.url(),
   );
   // The watchlist's live prices take the money format: reached from the news page, it loads the
@@ -679,7 +679,7 @@ async function run(browser) {
     check("signing in shows the viewer in the shell", ((await page.textContent("header")) ?? "").includes("Signed in as Ada"));
     check("a new shell context loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
     await page.click('header a[href="/account"]');
-    await page.waitForFunction(() => document.title === "Account | Corten", null, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => document.title === "Account | Watchlist", null, { timeout: 5000 }).catch(() => {});
     check("a guarded page opens for someone signed in", ((await page.textContent("main")) ?? "").includes("Signed in as Ada."));
   } else {
     skip("signing in shows the viewer in the shell", "the browser does not send Secure cookies over http");
@@ -687,7 +687,7 @@ async function run(browser) {
   }
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 3));
   await page.click('header a[href="/news"]');
-  await page.waitForFunction(() => document.title === "News | Corten");
+  await page.waitForFunction(() => document.title === "News | Watchlist");
   if (swaps) check("same context: navigation swaps again", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 3));
   else skip("same context: navigation swaps again", noSwaps);
 
@@ -932,9 +932,9 @@ async function run(browser) {
     // data-nav="section": current on its page and every page under it.
     await page.evaluate(() => document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>'));
     await page.click('header a[href="/"]:not(#section-link)');
-    await page.waitForFunction(() => document.title === "Watchlist | Corten");
+    await page.waitForFunction(() => document.title === "Stocks | Watchlist");
     await page.click('header a[href="/news"]');
-    await page.waitForFunction(() => document.title === "News | Corten");
+    await page.waitForFunction(() => document.title === "News | Watchlist");
     check(
       'data-nav="section" marks the link on pages under it',
       (await page.getAttribute("#section-link", "aria-current")) === "page" && (await page.getAttribute('header a[href="/"]:not(#section-link)', "aria-current")) === null,
@@ -989,7 +989,7 @@ async function run(browser) {
     const logged = errors.length;
     await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 5));
     await page.click('header a[href="/news"]');
-    await page.waitForFunction(() => document.title === "News | Corten" && document.readyState === "complete");
+    await page.waitForFunction(() => document.title === "News | Watchlist" && document.readyState === "complete");
     check(
       "a section stylesheet that fails to load makes the page load in full",
       !failStyle && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined)) && (await noteBorder()) === "4px",
@@ -1066,7 +1066,7 @@ async function run(browser) {
       check("each read replaces the history entry", (await page.evaluate(() => history.length)) === entries + 1, `${entries} -> ${await page.evaluate(() => history.length)}`);
       await go(due(10_000));
       await page.click('header a[href="/news"]');
-      await page.waitForFunction(() => document.title === "News | Corten");
+      await page.waitForFunction(() => document.title === "News | Watchlist");
       const left = reads.length;
       await page.waitForTimeout(2200);
       check("navigating away stops the reads", reads.length === left, `${reads.length - left} more reads`);
@@ -1128,7 +1128,7 @@ async function run(browser) {
     check("it stops once the patch no longer asks", again.length === done, `${again.length - done} more reads`);
     await submit();
     await page.click('header a[href="/news"]');
-    await page.waitForFunction(() => document.title === "News | Corten");
+    await page.waitForFunction(() => document.title === "News | Watchlist");
     const away = again.length;
     await page.waitForTimeout(2200);
     check("navigating away stops a patch's reads", again.length === away, `${again.length - away} more reads`);
@@ -1162,7 +1162,7 @@ async function run(browser) {
     document.querySelector("main")?.insertAdjacentHTML("beforeend", '<a id="reload-link" href="/" data-reload>Home</a>');
   });
   await page.click("#reload-link");
-  await page.waitForFunction(() => document.title === "Watchlist | Corten");
+  await page.waitForFunction(() => document.title === "Stocks | Watchlist");
   check("data-reload loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
 
   // A multipart form is sent as FormData. /watch reads a URL-encoded form, so axum rejects it with
@@ -1179,10 +1179,10 @@ async function run(browser) {
     ),
   );
   await page.click("#multipart button");
-  await page.waitForFunction(() => document.title !== "Watchlist | Corten", null, { timeout: 4000 }).catch(() => {});
+  await page.waitForFunction(() => document.title !== "Stocks | Watchlist", null, { timeout: 4000 }).catch(() => {});
   page.off("request", onRequest);
   check("a multipart form is posted as multipart/form-data", types.length === 1 && types[0].startsWith("multipart/form-data"), types.join());
-  check("a request the server rejects shows the app's error page, in its layout", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong | Corten", await page.title());
+  check("a request the server rejects shows the app's error page, in its layout", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong | Watchlist", await page.title());
 
   // A form with a file is read as it arrives: each engine's multipart body, files and fields.
   await page.evaluate(() =>
@@ -1213,7 +1213,7 @@ async function run(browser) {
 
   // Without the page's cookie: the three stocks a first visit watches.
   const json = await (await fetch(base, { headers: { accept: "application/json" } })).json();
-  check("same URL as JSON for data clients", json.title === "Watchlist | Corten" && json.data.stocks.length === 3, JSON.stringify(json.data.stocks.map((/** @type {{ id: string }} */ s) => s.id)));
+  check("same URL as JSON for data clients", json.title === "Stocks | Watchlist" && json.data.stocks.length === 3, JSON.stringify(json.data.stocks.map((/** @type {{ id: string }} */ s) => s.id)));
 
   // A WebSocket (GET /echo): the page's own origin opens it and is answered. Another site's page
   // cannot, though the browser would send the user's cookies with its handshake.
@@ -1288,7 +1288,7 @@ async function run(browser) {
     });
   });
   await early.goto(base, { waitUntil: "commit" });
-  await early.waitForFunction(() => document.title === "News | Corten", null, { timeout: 5000 }).catch(() => {});
+  await early.waitForFunction(() => document.title === "News | Watchlist", null, { timeout: 5000 }).catch(() => {});
   release();
   await early.waitForFunction(() => /** @type {PerformanceNavigationTiming} */ (performance.getEntriesByType("navigation")[0])?.loadEventEnd > 0, null, { timeout: 5000 }).catch(() => {});
   const loaded = await early.evaluate(() => {
@@ -1297,7 +1297,7 @@ async function run(browser) {
   });
   check(
     "a form submitted before the first page loads navigates, and the page loads",
-    loaded.title === "News | Corten" && loaded.load,
+    loaded.title === "News | Watchlist" && loaded.load,
     JSON.stringify(loaded),
   );
   await early.close();

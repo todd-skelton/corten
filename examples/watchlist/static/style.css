@@ -15,6 +15,8 @@ pre { margin: 0; padding: var(--space-3); overflow: auto; border-radius: var(--r
 header nav a { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); color: var(--color-muted); text-decoration: none; font-weight: 500; }
 header nav a:hover { color: var(--color-ink); background: var(--color-bg); }
 header nav a[aria-current="page"] { color: var(--color-accent); background: var(--color-tint); }
+/* A phone: closer links, so the name and the four links fit on one line. */
+@media (max-width: 40rem) { header nav a { padding-inline: var(--space-2); } }
 button, select, input { font: inherit; border-radius: var(--radius-sm); }
 button { white-space: nowrap; padding: var(--space-2) var(--space-4); border: 1px solid var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; cursor: pointer; }
 button:hover { filter: brightness(1.08); }

@@ -748,12 +748,311 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 }
 
 /// Where a redirect or a current-page check points: a typed route, a place on its page
-/// ([`Route::at`]), or an `axum::http::Uri` for a URL the app does not route (a payment page, a
-/// sign-in provider). Text is none of them, so a path typed as a string does not compile. Used by
+/// ([`Route::at`]), a return address checked to be on this site ([`Local`]), or an
+/// `axum::http::Uri` for a URL the app does not route (a payment page, a sign-in provider). Text is none of them, so a path typed as a string does not compile. Used by
 /// [`crate::Req::redirect`] and [`crate::Req::current`].
 pub trait Href {
     /// Calls `f` with the URL.
     fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T;
+}
+
+/// A path on this site taken from outside the code, a return address above all
+/// (`/sign-in?next=/account/cart`): what [`Local::parse`] accepts can only lead to this site, so
+/// `req.redirect(&next)` cannot send the user elsewhere (an open redirect). Whether the app has a
+/// route a redirect can land on there is [`crate::Req::serves`]. `to_string()` gives the whole
+/// address, query and fragment included.
+///
+/// ```
+/// use corten::Local;
+///
+/// assert_eq!(Local::parse("/account/cart?step=2#pay").unwrap().path(), "/account/cart");
+/// // Each of these leads a browser to another site, or is not a path: none is a Local.
+/// for other in ["//evil.example", "/\\evil.example", "/\t/evil.example", "https://evil.example", "account", ""] {
+///     assert!(Local::parse(other).is_none(), "{other:?}");
+/// }
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Local(String);
+
+impl Local {
+    /// `text` when it is a path on this site: it starts with one `/`, not `//` or `/\` (which a
+    /// browser reads as another host), and is printable ASCII without `\`, so no control
+    /// character or space a browser drops can turn it into one. Two more are refused because the
+    /// browser would ask for another path than the one [`crate::Req::serves`] checks: a `.` or
+    /// `..` segment, which it resolves away, and in the path a percent-escaped letter, digit or
+    /// `-._~` (`%61`, `%2e`), which Chromium sends as the plain character. Anything else, a full
+    /// URL included, is `None`: send the user to the fallback.
+    pub fn parse(text: &str) -> Option<Local> {
+        let bytes = text.as_bytes();
+        let path = bytes.first() == Some(&b'/') && !matches!(bytes.get(1), Some(b'/' | b'\\'));
+        let printable = bytes.iter().all(|&b| b.is_ascii_graphic() && b != b'\\');
+        let route = text.split(['?', '#']).next().unwrap_or("");
+        let dots = route.split('/').any(|segment| segment == "." || segment == "..");
+        let unreserved = |pair: &[u8]| {
+            let hex = |b: u8| (b as char).to_digit(16);
+            match (hex(pair[0]), hex(pair[1])) {
+                (Some(high), Some(low)) => {
+                    let b = (high * 16 + low) as u8;
+                    b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~')
+                }
+                _ => false,
+            }
+        };
+        let escaped = route.as_bytes().split(|&b| b == b'%').skip(1).any(|after| after.len() >= 2 && unreserved(&after[..2]));
+        (path && printable && !dots && !escaped).then(|| Local(text.to_string()))
+    }
+
+    /// The path, without the query or fragment: what the app's routes are matched against.
+    pub fn path(&self) -> &str {
+        self.0.split(['?', '#']).next().unwrap_or("")
+    }
+}
+
+impl std::fmt::Display for Local {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Href for Local {
+    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
+        f(&self.0)
+    }
+}
+
+/// Whether `path` has the shape `#[derive(Route)]` writes, checked when the app compiles so a
+/// `Route` written by hand is held to it too: each segment is `{name}` (lowercase letters, digits
+/// and `_`), `{*name}` as the last, or text a browser sends as it is (letters, digits and
+/// `-._~!$*+,;=:@`). [`chosen`] matches only this shape, as the router does. (The derive also
+/// refuses a name used twice; that changes no route's match, so it is not checked here.)
+pub(crate) const fn route_shaped(path: &str) -> bool {
+    const fn plain(c: u8) -> bool {
+        c.is_ascii_alphanumeric()
+            || matches!(c, b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'*' | b'+' | b',' | b';' | b'=' | b':' | b'@')
+    }
+    const fn name(c: u8, first: bool) -> bool {
+        c.is_ascii_lowercase() || c == b'_' || (!first && c.is_ascii_digit())
+    }
+    let b = path.as_bytes();
+    if b.is_empty() || b[0] != b'/' {
+        return false;
+    }
+    let mut start = 1;
+    while start <= b.len() {
+        let mut end = start;
+        while end < b.len() && b[end] != b'/' {
+            end += 1;
+        }
+        if end > start && b[start] == b'{' {
+            let mut j = start + 1;
+            if j < end && b[j] == b'*' {
+                if end != b.len() {
+                    return false;
+                }
+                j += 1;
+            }
+            if b[end - 1] != b'}' || j >= end - 1 || !name(b[j], true) {
+                return false;
+            }
+            while j < end - 1 {
+                if !name(b[j], false) {
+                    return false;
+                }
+                j += 1;
+            }
+        } else {
+            let mut j = start;
+            while j < end {
+                if !plain(b[j]) {
+                    return false;
+                }
+                j += 1;
+            }
+        }
+        start = end + 1;
+    }
+    true
+}
+
+#[cfg(test)]
+#[test]
+fn a_route_path_has_the_shape_the_derive_writes() {
+    for ok in ["/", "/items", "/items/{id}", "/items/{id}/edit", "/files/{*rest}", "/a//b", "/a.b~c", "/{a_1}"] {
+        assert!(route_shaped(ok), "{ok}");
+    }
+    for bad in [
+        "",
+        "items",
+        "/item_{id}",
+        "/{id}x",
+        "/a}",
+        "/{}",
+        "/{*}",
+        "/{a/b}",
+        "/{*x}/y",
+        "/{Id}",
+        "/{1a}",
+        "/a|b",
+        "/a%20b",
+        "/caf\u{e9}",
+        "/{{x}}",
+        "/{",
+        "/{*",
+        "/{a",
+        "/{*x}/",
+    ] {
+        assert!(!route_shaped(bad), "{bad}");
+    }
+}
+
+/// Of `routes` (each pattern, and whether it has a `GET` handler), the one the router picks for
+/// `path`: of those that match, the one whose segments are most specific from the left, text
+/// before `{name}` before `{*rest}`, as matchit tries them.
+pub(crate) fn chosen(routes: &[(&'static str, bool)], path: &str) -> Option<(&'static str, bool)> {
+    let preference = |pattern: &str| -> Vec<u8> {
+        pattern
+            .split('/')
+            .map(|s| {
+                if s.starts_with("{*") {
+                    0
+                } else if s.starts_with('{') {
+                    1
+                } else {
+                    2
+                }
+            })
+            .collect()
+    };
+    routes.iter().copied().filter(|(pattern, _)| routes_path(pattern, path)).max_by_key(|(pattern, _)| preference(pattern))
+}
+
+/// Whether `path` is one `pattern` routes, as axum (matchit) matches it: `{name}` is one segment,
+/// which may be empty when another follows (`/items//edit` is `/items/{id}/edit`) but not when it
+/// is the last; `{*rest}` is the rest of the path (not empty); and the text is compared as it is
+/// written, so `/items/` is not `/items`. A route macro only takes a parameter as a whole
+/// segment, so these are all the shapes a pattern has.
+pub(crate) fn routes_path(pattern: &str, path: &str) -> bool {
+    let (mut pattern, mut path) = (pattern.split('/'), path.split('/'));
+    loop {
+        match (pattern.next(), path.next()) {
+            (None, None) => return true,
+            (Some(want), Some(got)) if want.starts_with("{*") => {
+                return !got.is_empty() || path.next().is_some();
+            }
+            (Some(want), Some(got)) if want.starts_with('{') => {
+                if got.is_empty() && pattern.clone().next().is_none() {
+                    return false;
+                }
+            }
+            (Some(want), Some(got)) if want == got => {}
+            _ => return false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod local_tests {
+    use super::{chosen, routes_path, Local};
+
+    #[test]
+    fn a_path_matches_a_pattern_as_axum_matches_it() {
+        for (pattern, path, want) in [
+            ("/", "/", true),
+            ("/", "/a", false),
+            ("/items", "/items", true),
+            ("/items", "/items/", false),
+            ("/items/{id}", "/items/7", true),
+            ("/items/{id}", "/items/", false),
+            ("/items/{id}/edit", "/items//edit", true),
+            ("/a/{x}/{y}", "/a//", false),
+            ("/a/{x}/{y}", "/a//2", true),
+            ("/items/{id}", "/items/7/edit", false),
+            ("/items/{id}/edit", "/items/7/edit", true),
+            ("/files/{*rest}", "/files/a/b", true),
+            ("/files/{*rest}", "/files/a/", true),
+            ("/files/{*rest}", "/files/", false),
+            ("/files/{*rest}", "/files", false),
+            ("/a/{x}/{y}", "/a/1/2", true),
+            ("/{*rest}", "/", false),
+            ("/{*rest}", "/a", true),
+            ("/items/{id}", "/items/%2F", true),
+            ("/check", "/%63heck", false),
+        ] {
+            assert_eq!(routes_path(pattern, path), want, "{pattern} {path}");
+        }
+    }
+
+    #[test]
+    fn the_route_the_router_picks_decides() {
+        let routes = [
+            ("/cart/{id}", true),
+            ("/cart/add", false),
+            ("/{*page}", true),
+            ("/items/{id}", true),
+            ("/items/{id}/{*rest}", false),
+        ];
+        for (path, want) in [
+            ("/cart/7", Some(("/cart/{id}", true))),
+            ("/cart/add", Some(("/cart/add", false))),
+            ("/about/team", Some(("/{*page}", true))),
+            ("/items/7", Some(("/items/{id}", true))),
+            ("/items/7/x", Some(("/items/{id}/{*rest}", false))),
+            ("/", None),
+        ] {
+            assert_eq!(chosen(&routes, path), want, "{path}");
+        }
+    }
+
+    #[test]
+    fn only_a_path_on_this_site_is_local() {
+        for ok in [
+            "/",
+            "/a",
+            "/a?b=c&d=%2F%2F",
+            "/a#x",
+            "/%2F%2Fevil.example",
+            "/a//b",
+            "/a/.b",
+            "/a/b..",
+            "/a?x=/../",
+            "/a?q=%61",
+            "/a%20b",
+            "/a%2fb",
+            "/50%",
+            "/a%2",
+        ] {
+            assert_eq!(Local::parse(ok).map(|l| l.to_string()).as_deref(), Some(ok), "{ok:?}");
+        }
+        for bad in [
+            "",
+            "a",
+            "//evil",
+            "/\\evil",
+            "/a\\b",
+            "/\t/evil",
+            "/\n/evil",
+            "/a b",
+            "/caf\u{e9}",
+            "/\x7f",
+            "http://evil",
+            " /a",
+            "/a/./b",
+            "/a/..",
+            "/./a",
+            "/a/%2e%2E/b",
+            "/a/.%2E",
+            "/items/..",
+            "/cart/%61dd",
+            "/%7Euser",
+            "/a%2Db",
+            "/a%5Fb",
+            "/%31",
+        ] {
+            assert!(Local::parse(bad).is_none(), "{bad:?}");
+        }
+        assert_eq!(Local::parse("/a/b?c#d").unwrap().path(), "/a/b");
+        assert_eq!(Local::parse("/a#d?x").unwrap().path(), "/a");
+    }
 }
 
 impl Href for axum::http::Uri {
@@ -927,19 +1226,34 @@ impl fmt::Write for Encode<'_> {
 /// ```
 ///
 /// `S` is the state its handlers take (`State<S>`), given with [`Methods::with_state`].
-pub struct Methods<S = ()>(pub(crate) axum::routing::MethodRouter<S>);
+///
+/// It also knows whether one of its handlers is for `GET`, so [`crate::Req::serves`] counts only
+/// routes a redirect can land on.
+pub struct Methods<S = ()>(pub(crate) axum::routing::MethodRouter<S>, pub(crate) bool);
 
 impl<S: Clone + Send + Sync + 'static> Methods<S> {
     /// The handlers with the state they take (`State<S>`), for a router without it:
     /// `get(item_json).with_state(source)`.
     pub fn with_state<S2>(self, state: S) -> Methods<S2> {
-        Methods(self.0.with_state(state))
+        Methods(self.0.with_state(state), self.1)
     }
 
     /// Used by `#[corten::routes]`: a route's handlers for two sets of methods. Not a public API.
     #[doc(hidden)]
     pub fn __merge(self, other: Methods<S>) -> Self {
-        Methods(self.0.merge(other.0))
+        Methods(self.0.merge(other.0), self.1 || other.1)
+    }
+
+    /// Handlers built here by hand, among them one for `GET`.
+    #[cfg(test)]
+    pub(crate) fn reads(router: axum::routing::MethodRouter<S>) -> Self {
+        Methods(router, true)
+    }
+
+    /// Handlers built here by hand, none of them for `GET`.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn writes(router: axum::routing::MethodRouter<S>) -> Self {
+        Methods(router, false)
     }
 }
 
@@ -959,7 +1273,7 @@ macro_rules! methods {
                 T: 'static,
                 S: Clone + Send + Sync + 'static,
             {
-                Methods(axum::routing::$method(__private::endpoint(handler)))
+                Methods(axum::routing::$method(__private::endpoint(handler)), stringify!($method) == "get")
             }
         )*
 
@@ -977,7 +1291,7 @@ macro_rules! methods {
                         crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
                     T: 'static,
                 {
-                    Methods(self.0.$method(__private::endpoint(handler)))
+                    Methods(self.0.$method(__private::endpoint(handler)), self.1 || stringify!($method) == "get")
                 }
             )*
         }
@@ -1001,7 +1315,7 @@ methods!(get, post, put, delete, patch, head, options, trace);
 /// let app = App::new(corten::axum::Router::new().route("/", corten::axum::routing::get(home)));
 /// ```
 #[derive(Default)]
-pub struct Routes(pub(crate) axum::Router);
+pub struct Routes(pub(crate) axum::Router, pub(crate) Vec<(&'static str, bool)>);
 
 impl Routes {
     /// No routes.
@@ -1012,7 +1326,9 @@ impl Routes {
     /// Used by `#[corten::routes]`: `R`'s handlers at its path. Not a public API.
     #[doc(hidden)]
     pub fn __route<R: Route>(self, methods: Methods) -> Self {
-        Routes(self.0.route(R::PATH, methods.0))
+        let mut paths = self.1;
+        paths.push((R::PATH, methods.1));
+        Routes(self.0.route(R::PATH, methods.0), paths)
     }
 }
 
@@ -1020,7 +1336,7 @@ impl Routes {
 #[cfg(test)]
 impl From<axum::Router> for Routes {
     fn from(router: axum::Router) -> Self {
-        Routes(router)
+        Routes(router, Vec::new())
     }
 }
 
@@ -1057,7 +1373,7 @@ pub mod __private {
                     T: 'static,
                     S: Clone + Send + Sync + 'static,
                 {
-                    Methods(axum::routing::$method(endpoint(handler)))
+                    Methods(axum::routing::$method(endpoint(handler)), stringify!($method) == "get")
                 }
             )*
 

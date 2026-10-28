@@ -415,6 +415,11 @@ pub(crate) struct Shared {
     pub allowed_origins: Vec<String>,
     /// Each `Api::allow_origin` mount's prefix and origins, which may also switch under it.
     pub api_origins: Vec<(String, Vec<String>)>,
+    /// The app's route patterns, its own and its areas', each with whether it has a `GET`
+    /// handler ([`Req::serves`]).
+    pub pages: Box<[(&'static str, bool)]>,
+    /// Paths no page is at: Corten's own and the APIs'.
+    pub not_pages: crate::app::NotPages,
 }
 
 impl Shared {
@@ -446,6 +451,8 @@ impl Shared {
             proxies: Vec::new(),
             allowed_origins: Vec::new(),
             api_origins: Vec::new(),
+            pages: Box::default(),
+            not_pages: Default::default(),
         }
     }
 }
@@ -857,11 +864,50 @@ impl Req {
 
     /// After a successful write, send the browser to `to` (post/redirect/get): a typed route, a
     /// place on its page (`route.at(RowId(&id))`, so the browser comes back to the element the
-    /// user acted on), or an `axum::http::Uri` to leave the app. Works with and without
+    /// user acted on), a return address checked to be on this site ([`crate::Local`]), or an
+    /// `axum::http::Uri` to leave the app. Works with and without
     /// JavaScript.
     pub fn redirect(&self, to: &(impl crate::route::Href + ?Sized)) -> HtmlResult {
         let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
         Ok(HtmlResponse(redirect(self.mode, value)))
+    }
+
+    /// Whether a redirect to `to` lands on a route of the app's: the route given to
+    /// [`crate::App::new`] or to an area that the router picks for its path (the most specific,
+    /// as axum picks it) has a `GET` handler. A return address the app does not serve (a page of
+    /// another app of the product, or none) goes elsewhere; one it serves is `req.redirect(&to)`.
+    /// A route that only takes writes, a path under an API and Corten's own paths are not served.
+    /// It does not look at who is asking: a page an area's caller check refuses still counts, and
+    /// a record that is not there is still a 404.
+    ///
+    /// ```
+    /// use corten::{prelude::*, Local};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    ///
+    ///     #[route("/sign-in", post = sign_in)]
+    ///     pub struct SignIn;
+    /// }
+    ///
+    /// # async fn home(req: Req) -> HtmlResult { req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> }) }
+    /// #[derive(serde::Deserialize)]
+    /// struct Credentials { next: Option<String> }
+    ///
+    /// async fn sign_in(req: Req, Form(form): Form<Credentials>) -> HtmlResult {
+    ///     // .. start the session ..
+    ///     match form.next.as_deref().and_then(Local::parse) {
+    ///         Some(next) if req.serves(&next) => req.redirect(&next),
+    ///         _ => req.redirect(&url::Home),
+    ///     }
+    /// }
+    /// # let _ = App::new(url::router()).router();
+    /// ```
+    pub fn serves(&self, to: &crate::Local) -> bool {
+        let path = to.path();
+        !self.shared.not_pages.contains(path) && crate::route::chosen(&self.shared.pages, path).is_some_and(|(_, get)| get)
     }
 
     /// The page is at `to` for good (an item asked for by its id or an old slug, a renamed

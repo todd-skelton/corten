@@ -12,6 +12,7 @@ mod item_list;
 mod listing_sort;
 mod offer_list;
 mod price;
+mod site_header;
 
 pub use alert::{AlertForm, AlertFormView, AlertMessage};
 pub use item_card::ItemCard;
@@ -20,10 +21,12 @@ pub use item_list::ItemList;
 pub use listing_sort::ListingSort;
 pub use offer_list::OfferList;
 pub use price::Price;
+pub use site_header::SiteHeader;
 
 /// Every component with a script or a stylesheet, tokens first: for `App::components` and the
 /// generated types.
-pub const COMPONENTS: &[Component] = &[theme::TOKENS, ItemDetail, AlertForm, Price, ItemList, ItemCard, ListingSort, OfferList];
+pub const COMPONENTS: &[Component] =
+    &[theme::TOKENS, SiteHeader, ItemDetail, AlertForm, Price, ItemList, ItemCard, ListingSort, OfferList];
 
 /// The page for a failed request (`App::error_page`), in the layout; under `corten dev` it shows
 /// the error. The PWA's offline page is `Failure::Offline`.
@@ -45,6 +48,7 @@ pub async fn error_page(failure: Failure, req: Req) -> HtmlResult {
         <Layout req={&req} title={title} head="">
             <h1>{title}</h1>
             <p>{text}</p>
+            <p><a href={routes::Home}>{t.error_home()}</a></p>
             if let Some(detail) = failure.detail() {
                 <pre>{detail}</pre>
             }
@@ -80,7 +84,7 @@ pub fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) 
                 <script type="module" src={req.asset("app.js")}></script>
             </head>
             <body>
-                <header class="site"><a href={routes::Home}>"Card Market"</a></header>
+                <SiteHeader />
                 <main>{children}</main>
             </body>
         </html>

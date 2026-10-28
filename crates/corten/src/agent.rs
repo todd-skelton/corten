@@ -197,7 +197,7 @@ impl<A: Send + 'static> Tools<A> {
         A: 'static,
     {
         // Corten's own handler: it answers JSON-RPC errors in the protocol's shape itself.
-        crate::Methods(post(move |headers: HeaderMap, body: Bytes| {
+        crate::Methods::writes(post(move |headers: HeaderMap, body: Bytes| {
             let tools = self.clone();
             async move { tools.handle(headers, &body).await }
         }))

@@ -203,6 +203,8 @@ pub fn Layout<'a>(
     head: impl Render,
     children: impl Render,
 ) -> impl Document {
+    // The page's side padding, narrower on a phone so the header fits on two lines.
+    let gutter = Responsive::new(Space::_4).sm(Space::_5);
     html! {
         <!DOCTYPE html>
         <html lang="en">
@@ -211,17 +213,17 @@ pub fn Layout<'a>(
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <link rel="stylesheet" href={req.asset("style.css")}>
                 <link rel="icon" type="image/svg+xml" href={req.asset("favicon.svg")}>
-                <title>{title}" | Corten"</title>
+                <title>{title}" | Watchlist"</title>
                 {head}
                 <Corten />
             </head>
             <body class={(bg_bg(), fg_ink())}>
                 <header class={(bg_surface(), border_b_line())}>
                     <div
-                        class={(row(Space::_3), justify_between(), flex_wrap(), max_w_page(), mx_auto(), px_5(), py_3())}
+                        class={(row(Space::_3), justify_between(), flex_wrap(), max_w_page(), mx_auto(), px(gutter), py_3())}
                     >
                         <nav class={(row(Space::_1), flex_wrap())}>
-                            <span class={(weight_bold(), tracking_tight(), px_2())}>"Watchlist"</span>
+                            <span class={(weight_bold(), tracking_tight())}>"Watchlist"</span>
                             <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Stocks"</a>
                             <a href={news::url::News::default()} data-nav aria-current={req.current(&news::url::News::default())}>
                                 "News"
@@ -241,7 +243,7 @@ pub fn Layout<'a>(
                         }
                     </div>
                 </header>
-                <main class={(max_w_page(), mx_auto(), px_5(), py_6())}>{children}</main>
+                <main class={(max_w_page(), mx_auto(), px(gutter), py_6())}>{children}</main>
             </body>
         </html>
     }
@@ -299,7 +301,7 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
             class={(display_grid(), columns(Responsive::new(Columns::_1).md(Columns::Main)), gap_5(), items_start())}
         >
             <section class={card()}>
-                <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} t={t} />
+                <LivePrices stocks={&home.stocks} t={t} />
             </section>
             <aside class={stack(Space::_5)}>
                 <WatchForm others={&home.others} message={&home.message} />
@@ -313,7 +315,7 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 }
 
 /// The watched stocks with their prices and today's change, rendered here first and then kept
-/// current by `live_prices.js` from the feed. The pause button shows only when the script runs,
+/// current by `live_prices.js` from the stocks feed (`url::Stocks`, a route, so not any text). The pause button shows only when the script runs,
 /// since nothing updates without it. The script counts the updates to the stocks shown, with a
 /// message of the page's locale (`t.js()`), and writes each price and change with the page's
 /// money and percent formats, so the text a script computes is the server's. Each row's Remove
@@ -324,7 +326,7 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 /// The cells print the text the market wrote when the price moved (`Stock::price`,
 /// `Stock::change`), in the app's one locale. Styled by `live_prices.css`.
 #[component(css, js)]
-fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Patch {
+fn LivePrices<'a>(stocks: &'a [Stock], t: Msg) -> impl Patch {
     let (pause, price, change, updates) = refs();
     let (updated, money, percent) = (t.js().prices_updates(), t.js().money(USD), t.js().percent(2));
     let f = UnwatchForm::FIELDS;
@@ -332,7 +334,7 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Patch {
         <div
             id={PricesId}
             class={stack(Space::_3)}
-            on:connect={js::watch(scope, pause, price, change, money, percent, feed, signal, updates, updated)}
+            on:connect={js::watch(scope, pause, price, change, money, percent, url::Stocks, signal, updates, updated)}
         >
             <div class={(row(Space::_3), justify_between())}>
                 <h2>"Your stocks"</h2>
@@ -434,7 +436,7 @@ fn LastTrade(text: &str) -> impl Render {
 /// browser that had none.
 fn home_screen(req: &Req, viewer: Option<&Viewer>, watching: &mut Watching, home: &Home) -> HtmlResult {
     let view = home_view(home, req.t());
-    let res = req.screen(home, html! { <Layout req={req} title="Watchlist" viewer={viewer} head="">{view}</Layout> })?;
+    let res = req.screen(home, html! { <Layout req={req} title="Stocks" viewer={viewer} head="">{view}</Layout> })?;
     Ok(watching.with_cookie(res))
 }
 
@@ -504,7 +506,7 @@ fn changed(req: &Req, viewer: Option<&Viewer>, market: &Market, watching: &mut W
         return home_screen(req, viewer, watching, &home);
     }
     let res = req.patch(html! {
-        <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} t={req.t()} />
+        <LivePrices stocks={&home.stocks} t={req.t()} />
         <WatchForm others={&home.others} message={&home.message} />
     })?;
     Ok(watching.with_cookie(res))
@@ -1042,7 +1044,7 @@ mod tests {
         assert_eq!(kind, "application/json");
         assert!(
             body.starts_with(concat!(
-                r#"{"title":"Watchlist | Corten","data":{"stocks":[{"id":"ACME","name":"Acme Corp","price_cents":12999,"#,
+                r#"{"title":"Stocks | Watchlist","data":{"stocks":[{"id":"ACME","name":"Acme Corp","price_cents":12999,"#,
                 r#""open_cents":12999,"change_bp":0,"price":"$129.99","change":"0%"}"#
             )),
             "{body}"
