@@ -104,18 +104,21 @@ card market's tokens and five components; a scale of eight spaces in four breakp
 per utility, so a utility belongs in the file only when pages use it.
 
 Utilities also cost at render time, where a component's classes do not: `class={Card}` is
-static text written when the crate compiles, while `gap_3()` is a value written as the page
-renders. Measured with callgrind (release build, in-process `oneshot`, the difference between
+static text written when the crate compiles, while `gap(Space::_3)` is a value written as the
+page renders. Measured with callgrind (release build, in-process `oneshot`, the difference between
 1,200 and 200 requests over 1,000, median of three runs), moving the watchlist's home page to
 utilities took it from 45,952 instructions a request to 51,201, with a larger page; a profile put
 3,086 of the difference in writing its roughly 60 utility classes. Use
 utilities for layout that varies from page to page, and a component's stylesheet for what repeats.
 A value's own function (`gap_3()`) is its class as static text, with no match: moving the
 watchlist's fixed values to them took its home page from 62,827 instructions a request to 62,162.
- States a utility cannot
+A helper that takes a value (`stack(space)`) keeps the utility's function, which costs a match
+and keeps the scale's type. States a utility cannot
 say (hover, focus, the current link) and element defaults stay in `static/style.css`, and a
-component with rules of its own (`LivePrices`) keeps its stylesheet. A utility's classes are
-static text chosen by a match, so writing them costs what writing a class does.
+component with rules of its own (`LivePrices`) keeps its stylesheet. A utility function's
+classes are static text chosen by a match, so writing them costs what writing a class does.
+`use theme::*` brings in every value's function; an item of the module's own with the same name
+hides it.
 
 ## Areas
 

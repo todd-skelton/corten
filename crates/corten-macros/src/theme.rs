@@ -261,7 +261,7 @@ fn parse(root: &Value) -> Result<Spec, String> {
         };
         for e in keys {
             let function = snake(&format!("{}-{}", u.name, e.key), "utility value")?;
-            let by = format!("utilities.{} value {}", u.name, e.key);
+            let by = format!("utilities.{} value {} (class {}-{})", u.name, e.key, u.name, e.key);
             if let Some((_, first)) = functions.iter().find(|(f, _)| *f == function) {
                 return Err(format!("{first} and {by} are both {function}() in Rust; rename one"));
             }
@@ -545,7 +545,18 @@ mod tests {
                 "border": {"property": "border", "values": {"b": "1px solid"}}
             }}"##,
         );
-        assert!(clash.contains("utility border-b and utilities.border value b are both border_b() in Rust"), "{clash}");
+        assert!(
+            clash.contains("utility border-b and utilities.border value b (class border-b) are both border_b() in Rust"),
+            "{clash}"
+        );
+        // Two values whose classes are the same, `.p-x-1`, where CSS would let the later rule win.
+        let twice = error(
+            r##"{"scales": {"space": {"1": "4px"}}, "utilities": {
+                "p": {"property": "padding", "values": {"x-1": "4px"}},
+                "p-x": {"property": "padding-inline", "scale": "space"}
+            }}"##,
+        );
+        assert!(twice.contains("utilities.p value x-1 (class p-x-1) and utilities.p-x value 1 (class p-x-1)"), "{twice}");
         assert!(error(r##"{"scales": {"self": {"a": "1"}}}"##).contains("no Rust name"));
         let media = |media: &str| {
             error(&format!(

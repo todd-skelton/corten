@@ -5,7 +5,7 @@ use crate::{
     model::{ItemView, Listing, sort_listings},
     routes,
     text::Msg,
-    theme::{Direction, Responsive, Space, direction, gap},
+    theme::{Direction, Responsive, direction, gap_5},
 };
 
 /// The item page borrows the item: rendering copies no strings out of it.
