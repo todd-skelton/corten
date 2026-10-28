@@ -1031,6 +1031,17 @@ Corten is pre-1.0, so any minor version may change the API.
     it; `app.rs` keeps the routes, the app and the error page, and its route table says which file
     each route is in. No behavior changed: the same 27 tests pass
     ([#229 watchlist's app.rs is 771 lines of app code for seven screens](https://github.com/todd-skelton/corten/issues/229)).
+61. A message's arguments are `corten::i18n::Arg`, not any `Display`: text, an integer, or a value
+    `t` formats (`t.number`, `t.money`, `t.date`, another message). An integer is written from
+    its digits with no `core::fmt` and no escaping, so card-market's item-API home page (50
+    `t.home_item(n)` links) went from 64,425 to 58,505 instructions a request (callgrind,
+    release, three runs each), winning back most of what message arguments cost there; the en
+    and fr home pages and a category page are the same bytes. A float no longer compiles as an
+    argument: its text was the same in every locale (`0.9` on a French page), where
+    `t.number(decimal)` writes `0,9`. A type of the app's own implements `Arg` with one method
+    (`sink.str(..)`). Migration: pass a float through `t.number`, and a `Display` type of the
+    app's own as its text or through an `Arg` impl
+    ([#237 The item API's home page got 10% slower in the believable-data change; an integer fast path for message arguments may win it back](https://github.com/todd-skelton/corten/issues/237)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
