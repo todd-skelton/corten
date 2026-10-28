@@ -1794,6 +1794,32 @@ async fn with_cookie_sets_each_cookie_in_order() {
     assert_eq!(cookies, ["a=1; Path=/; SameSite=Lax; HttpOnly; Secure", "b=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]);
 }
 
+/// Bytes as the app names their type: private by default, and a year in any cache when the URL
+/// names the content (`Public::immutable`), cookies or not, unless a caller was read.
+#[tokio::test]
+async fn media_is_sent_as_its_type_and_kept_only_when_its_url_names_its_content() {
+    let png: &'static [u8] = b"\x89PNG\r\n\x1a\n";
+    let routes = Router::new()
+        .route("/fresh", get(move || async move { crate::Media::new("image/png", png) }))
+        .route("/kept", get(move || async move { Public::immutable(crate::Media::new("image/png", png)) }))
+        .route("/gone", get(|| async { Public::immutable(Err::<crate::Media, _>(Error::not_found())) }));
+    let router = app(routes, None);
+    let res = router.clone().oneshot(Request::get("/kept").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/png");
+    assert_eq!(res.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(res.into_body().collect().await.unwrap().to_bytes(), png);
+    assert_eq!(cache_control(&router, "/fresh", &[]).await, "private, no-cache");
+    assert_eq!(cache_control(&router, "/kept", &[]).await, "public, max-age=31536000, immutable");
+    let res =
+        router.clone().oneshot(Request::get("/kept").header("cookie", "session=1").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "public, max-age=31536000, immutable");
+    assert!(
+        res.headers().get(header::VARY).is_none_or(|vary| !vary.to_str().unwrap().contains("cookie")),
+        "the URL alone says what it is"
+    );
+    assert_eq!(cache_control(&router, "/gone", &[]).await, "private, no-cache", "a failure is never kept");
+}
+
 #[tokio::test]
 async fn what_the_app_renders_is_private_unless_it_says_otherwise() {
     let router = app(cached_routes(), None);
