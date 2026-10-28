@@ -56,10 +56,10 @@ pub async fn error_page(failure: Failure, req: Req) -> HtmlResult {
     })
 }
 
-pub fn category<'a>(t: Msg, title: &'a str, items: &'a [Arc<ItemView>]) -> impl Render + 'a {
+pub fn category<'a>(req: &'a Req, t: Msg, title: &'a str, items: &'a [Arc<ItemView>]) -> impl Render + 'a {
     html! {
         <h1>{title}</h1>
-        if !items.is_empty() { <ItemList t={t} shelf={Shelf::Items(items)} /> }
+        if !items.is_empty() { <ItemList req={req} t={t} shelf={Shelf::Items(items)} /> }
         <p><a href={routes::Home}>{t.category_back()}</a></p>
     }
 }
