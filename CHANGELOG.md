@@ -959,6 +959,14 @@ Corten is pre-1.0, so any minor version may change the API.
     `corten.js` went from 24,514 to 22,834 B (9,102 to 8,380 B gzip, -722 B) on every page; a page
     that takes a format loads the 2,074 B module (1,054 B gzip) with its handlers' modules
     ([#159 The item page's JavaScript grew 32% between benchmark rounds r5 and r6 (7.3 to 9.6 KB gzip)](https://github.com/todd-skelton/corten/issues/159)).
+58. `corten::json::from_slice` reads the item API's response in 13% fewer instructions: a field
+    the type does not declare that holds a string, number, `true`, `false` or `null` (most of
+    them) is skipped without the loop that follows nested arrays and objects, and a key is read
+    inline. `examples/card-market`'s `ApiItem`, 20 fixture items averaging 69 KB, release build
+    under callgrind: 924,942 to 803,111 instructions an item, the same in each run (serde_json
+    reading the same type: 1,376,422). Values and errors are unchanged; the reader's tests compare
+    every one with serde_json's
+    ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
