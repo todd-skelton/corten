@@ -164,7 +164,8 @@ impl<S: Source> Cluster<S> {
     }
 }
 
-/// A feed that could not load: its key, and the cause as its source.
+/// A feed that could not load: its key, and the cause as its source. Its message names the cause
+/// too, since Corten logs a failure's message and not its chain.
 #[derive(Debug)]
 struct Unavailable {
     key: String,

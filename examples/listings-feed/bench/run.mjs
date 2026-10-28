@@ -83,7 +83,9 @@ const result = JSON.parse(stdout.trim().split("\n").at(-1));
 // subscribe() never skips a sequence: a gap loads a new snapshot. So the page has lost nothing once
 // it reaches the committed sequence, and each snapshot after the first is a resync.
 const committed = result.committed;
-await until("the page to reach the committed sequence", async () => Number((await shown()).through) >= committed, 20_000).catch(() => {});
+await until("the page to reach the committed sequence", async () => Number((await shown()).through) >= committed, 20_000).catch((e) =>
+  console.error(`${e.message}: the browser's numbers are where it stopped`),
+);
 const seen = await shown();
 const probe = { status: seen.status, patches: Number(seen.changes), snapshots: Number(seen.snapshots), last: Number(seen.through) };
 await browser.close();
