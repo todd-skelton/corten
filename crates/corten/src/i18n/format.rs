@@ -553,12 +553,13 @@ impl Formatted {
 }
 
 /// Money as a person types it in `data`'s locale, read back into the currency's minor units:
-/// what `t.parse_money(text, currency)` returns. The locale's own form is read (`$1,299.50` in en,
-/// `1 299,50 $US` in fr), with or without the symbol or code, the group separators or the
-/// fraction: digits in groups the locale's size when grouped, its decimal separator, at most the
-/// currency's fraction digits. Any space stands for a group separator that is a space. A sign, a
-/// group of the wrong size, another locale's decimal separator, too many fraction digits or an
-/// amount over `u64` is `None`.
+/// what `t.parse_money(text, currency)` returns. What `t.money` writes is read back, and what a
+/// person types for it: with or without the symbol or the code (on either side), the direction
+/// marks, the group separators or the fraction; any space where the locale writes one; the
+/// locale's digits or ASCII ones (and Arabic-Indic ones), `.` where the locale's decimal is `٫`.
+/// A sign, a group of the wrong size, a grouped number whose first group starts with `0`, another
+/// locale's decimal separator, more fraction digits than the currency shows or an amount over
+/// `u64` is `None`.
 #[doc(hidden)]
 pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency) -> Option<Minor<u64>> {
     let code = currency.code();
@@ -567,18 +568,32 @@ pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency)
         Err(_) => data.money[0],
     };
     let (prefix, suffix) = template.split_once('\u{1}')?;
-    let text = text.trim();
-    // The symbol where the locale writes it, or the code on either side.
-    let text = strip_affix(text, prefix.trim(), code, true)
-        .map(str::trim_start)
-        .or_else(|| strip_affix(text, suffix.trim(), code, false).map(str::trim_end))
-        .or_else(|| text.strip_prefix(code).or_else(|| text.strip_suffix(code)).map(str::trim))
-        .unwrap_or(text);
+    let input: String = text.chars().filter(|c| !is_mark(*c)).collect();
+    let mut text = input.trim();
+    // The symbol before the amount and after it, each where the locale writes one, else the code
+    // on either side.
+    let mut stripped = false;
+    if let Some(rest) = strip_affix(text, prefix, code, true) {
+        (text, stripped) = (rest.trim_start(), true);
+    }
+    if let Some(rest) = strip_affix(text, suffix, code, false) {
+        (text, stripped) = (rest.trim_end(), true);
+    }
+    if !stripped {
+        if let Some(rest) = strip_code(text, code, true).or_else(|| strip_code(text, code, false)) {
+            text = rest.trim();
+        }
+    }
     let separators = &data.money_separators;
-    let spaced = separators.group.chars().all(char::is_whitespace);
+    let spaced = separators.group.chars().all(is_space);
+    // The decimal separator as the locale writes it, or `.` where it writes `٫` (no group is `.`).
+    let point = if separators.decimal == "\u{66b}" && separators.group != "." { Some('.') } else { None };
     let (whole, fraction) = match text.split_once(separators.decimal) {
         Some((whole, fraction)) => (whole, Some(fraction)),
-        None => (text, None),
+        None => match point.and_then(|p| text.split_once(p)) {
+            Some((whole, fraction)) => (whole, Some(fraction)),
+            None => (text, None),
+        },
     };
     let mut minor: u64 = 0;
     let mut push = |d: u32| -> Option<()> {
@@ -588,18 +603,22 @@ pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency)
     // The integer digits, with the size of each group as typed: the first, the last (`group`) and
     // whether every one between is the secondary size.
     let [primary, secondary, _] = separators.grouping.map(usize::from);
-    let (mut groups, mut first, mut group, mut middle, mut any) = (1_usize, 0, 0, true, false);
+    let (mut groups, mut first, mut group, mut middle, mut digits) = (1_usize, 0, 0, true, 0);
+    let mut leading_zero = false;
     let mut rest = whole;
     while let Some(c) = rest.chars().next() {
         if let Some(d) = digit(data, c) {
             push(d)?;
-            (group, any) = (group + 1, true);
+            if digits == 0 {
+                leading_zero = d == 0;
+            }
+            (group, digits) = (group + 1, digits + 1);
             rest = &rest[c.len_utf8()..];
             continue;
         }
-        rest = match rest.strip_prefix(separators.group) {
+        rest = match rest.strip_prefix(separators.group).filter(|_| !separators.group.is_empty()) {
             Some(after) => after,
-            None if spaced && c.is_whitespace() => &rest[c.len_utf8()..],
+            None if spaced && is_space(c) => &rest[c.len_utf8()..],
             None => return None,
         };
         if groups == 1 {
@@ -609,7 +628,8 @@ pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency)
         }
         (groups, group) = (groups + 1, 0);
     }
-    if groups > 1 && (first == 0 || first > secondary || group != primary || !middle) {
+    // Grouped as the locale groups: never `0,500` or `00,123`, a decimal comma of another locale.
+    if groups > 1 && (first == 0 || first > secondary || group != primary || !middle || leading_zero) {
         return None;
     }
     let shown = usize::from(currency.digits());
@@ -623,7 +643,7 @@ pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency)
             return None;
         }
     }
-    if !any && written == 0 {
+    if digits == 0 && written == 0 {
         return None;
     }
     for _ in written..shown {
@@ -632,34 +652,84 @@ pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency)
     Some(Minor(minor))
 }
 
-/// `text` without the locale's symbol or code (`affix`, where `\u{2}` stands for the code) at
-/// its start (`front`) or end; `None` when it is not there or the locale writes nothing there.
-fn strip_affix<'a>(text: &'a str, affix: &str, code: &str, front: bool) -> Option<&'a str> {
-    if affix.is_empty() {
-        return None;
-    }
-    let (before, after) = affix.split_once('\u{2}').map_or((affix, None), |(b, a)| (b, Some(a)));
-    if front {
-        let rest = text.strip_prefix(before)?;
-        match after {
-            Some(after) => rest.strip_prefix(code)?.strip_prefix(after),
-            None => Some(rest),
-        }
-    } else {
-        let rest = match after {
-            Some(after) => text.strip_suffix(after)?.strip_suffix(code)?,
-            None => text,
-        };
-        rest.strip_suffix(before)
+/// A direction mark (LRM, RLM, ALM): written around some locales' symbols, never typed.
+fn is_mark(c: char) -> bool {
+    matches!(c, '\u{200e}' | '\u{200f}' | '\u{61c}')
+}
+
+/// A space a person types or a locale writes between groups or around a symbol: a tab or a line
+/// break is not one.
+fn is_space(c: char) -> bool {
+    matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}')
+}
+
+/// One character of a symbol as typed: the half-width form of a full-width one (`￥` is `¥`), and
+/// ASCII letters in either case (`us$`).
+fn fold(c: char) -> char {
+    match c {
+        '\u{ffe5}' => '\u{a5}',
+        '\u{ff04}' => '$',
+        c => c.to_ascii_lowercase(),
     }
 }
 
-/// The value of one of the locale's digits or an ASCII one.
-fn digit(data: &__private::LocaleData, c: char) -> Option<u32> {
-    if c.is_ascii_digit() {
-        return Some(c as u32 - '0' as u32);
+/// `text` without the locale's prefix (`front`) or suffix, a template part where `\u{2}` stands
+/// for the code: its direction marks are skipped and any space in it matches any run of spaces,
+/// none included. `None` when it is not there or the locale writes nothing there.
+fn strip_affix<'a>(text: &'a str, affix: &str, code: &str, front: bool) -> Option<&'a str> {
+    let mut want: Vec<char> = Vec::new();
+    for part in affix.split('\u{2}').enumerate().flat_map(|(i, part)| [(i > 0).then_some(code), Some(part)]).flatten() {
+        want.extend(part.chars().filter(|c| !is_mark(*c)));
     }
-    (c as u32).checked_sub(data.zero as u32).filter(|n| *n < 10)
+    // The spaces between the symbol and the amount are the caller's to trim.
+    let trimmed: Vec<char> = {
+        let s: String = want.iter().collect();
+        let s = if front { s.trim_end().trim_start() } else { s.trim_start().trim_end() };
+        s.chars().collect()
+    };
+    if trimmed.is_empty() {
+        return None;
+    }
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let order = |i: usize, n: usize| if front { i } else { n - 1 - i };
+    let (mut at, mut w) = (0, 0);
+    let (n, m) = (chars.len(), trimmed.len());
+    while w < m {
+        let want = trimmed[order(w, m)];
+        if is_space(want) {
+            while at < n && is_space(chars[order(at, n)].1) {
+                at += 1;
+            }
+            w += 1;
+            continue;
+        }
+        if at < n && fold(chars[order(at, n)].1) == fold(want) {
+            (at, w) = (at + 1, w + 1);
+        } else {
+            return None;
+        }
+    }
+    Some(if front {
+        chars.get(at).map_or("", |(i, _)| &text[*i..])
+    } else {
+        &text[..chars.get(n - at).map_or(text.len(), |(i, _)| *i)]
+    })
+}
+
+/// `text` without the currency's code at its start (`front`) or end, in either case.
+fn strip_code<'a>(text: &'a str, code: &str, front: bool) -> Option<&'a str> {
+    let n = code.len();
+    if front {
+        text.get(..n).filter(|head| head.eq_ignore_ascii_case(code)).map(|_| &text[n..])
+    } else {
+        let at = text.len().checked_sub(n)?;
+        text.get(at..).filter(|tail| tail.eq_ignore_ascii_case(code)).map(|_| &text[..at])
+    }
+}
+
+/// The value of a digit: ASCII, the locale's own, or Arabic-Indic (either form).
+fn digit(data: &__private::LocaleData, c: char) -> Option<u32> {
+    [data.zero, '0', '\u{660}', '\u{6f0}'].into_iter().find_map(|zero| (c as u32).checked_sub(zero as u32).filter(|n| *n < 10))
 }
 
 /// ASCII digits in the locale's digits.

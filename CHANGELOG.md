@@ -681,7 +681,9 @@ Corten is pre-1.0, so any minor version may change the API.
 105. `t.parse_money(text, currency)`: money as a person types it in the reader's locale, read
     back into `Minor` units, what `t.money` writes: `$1,299.50` is `Some(Minor(129950))` in
     en and `1 299,50 $US` or `12,50` in fr, with or without the symbol, the code, the group
-    separators or the fraction. A sign, a group of the wrong size, another locale's decimal
+    separators or the fraction (every amount every locale writes reads back, as it is written
+    and without its direction marks and no-break spaces). A sign, a group of the wrong size, a
+    grouped number that starts with `0` (`0,500`), another locale's decimal
     separator, more fraction digits than the currency shows (`1.234` dollars, `1.5` yen) or an
     amount over `u64` is `None`. The watchlist's and seller-desk's hand-written cent readers are
     gone, and card-market's price alert no longer reads a float: `12,50` on the French page was

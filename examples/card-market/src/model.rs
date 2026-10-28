@@ -1,4 +1,6 @@
-//! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts.
+//! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts,
+//! except the alert's price, read as the reader's locale writes money (`t.parse_money`) where
+//! the bench apps read a float.
 use corten::{Errors, Fields, FromJson, ToJson, i18n::Minor};
 
 use crate::text::{Msg, USD};
