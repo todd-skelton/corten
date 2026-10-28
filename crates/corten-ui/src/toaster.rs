@@ -5,10 +5,10 @@ use corten::prelude::*;
 pub struct ToastId;
 
 /// What an action says when it is done ("Saved.", "3 items archived."), inside a [`Toaster`].
-/// An action answers with it as a patch, `req.patch(Toast { message: Some(&text) })`, which
+/// An action answers with it as a patch, `req.patch(Toast { message: Some(text) })`, which
 /// replaces the toaster's message; `None` renders it `hidden` and empty.
 #[component]
-pub fn Toast<'a>(message: Option<&'a dyn Render>) -> impl Patch {
+pub fn Toast<M: Render>(message: Option<M>) -> impl Patch {
     html! {
         <div id={ToastId} hidden={message.is_none()}>
             if let Some(message) = message { {message} }
@@ -41,12 +41,12 @@ pub fn Toast<'a>(message: Option<&'a dyn Render>) -> impl Patch {
 /// use corten::prelude::*;
 /// use corten_ui::{Toast, Toaster};
 ///
-/// let html = Toaster { close: &"Dismiss", seconds: 5, toast: Toast { message: Some(&"Saved.") } }.to_html();
+/// let html = Toaster { close: "Dismiss", seconds: 5, toast: Toast { message: Some("Saved.") } }.to_html();
 /// assert!(html.contains(r#"<div data-ref="status" role="status"><div id="ui-toast">Saved.</div></div>"#), "{html}");
-/// assert_eq!(Toast { message: None }.to_html(), r#"<div id="ui-toast" hidden></div>"#);
+/// assert_eq!(Toast { message: None::<&str> }.to_html(), r#"<div id="ui-toast" hidden></div>"#);
 /// ```
 #[component(js)]
-pub fn Toaster<'a>(close: &'a dyn Render, seconds: u32, toast: Toast<'a>) -> impl Render {
+pub fn Toaster<C: Render, M: Render>(close: C, seconds: u32, toast: Toast<M>) -> impl Render {
     let (status, button) = refs();
     html! {
         <div on:connect={js::connect(scope, status, button, seconds, signal)}>

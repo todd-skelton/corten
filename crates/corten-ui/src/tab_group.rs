@@ -3,10 +3,10 @@ use corten::prelude::*;
 use crate::{state, Link, Url};
 
 /// One tab of a [`TabGroup`].
-pub struct Tab<'a> {
-    /// What the tab shows.
-    pub label: &'a dyn Render,
-    /// The panel's content.
+pub struct Tab<'a, L> {
+    /// What the tab shows: text, or any view (every tab's the same type).
+    pub label: L,
+    /// The panel's content. Each panel is a view of its own type, so it is a reference to one.
     pub panel: &'a dyn Render,
     /// The page with this tab selected (`ItemRoute { id, tab: Some("offers") }`). Without
     /// JavaScript the tab is a link to it; with JavaScript the tab switches in place and the
@@ -34,15 +34,15 @@ pub struct Tab<'a> {
 ///
 /// let (listings, offers) = (Item { id: "x", tab: None }, Item { id: "x", tab: Some("offers") });
 /// let tabs = [
-///     Tab { label: &"Listings", panel: &html! { <p>"3 listings"</p> }, link: Some(&listings) },
-///     Tab { label: &"Offers", panel: &html! { <p>"No offers"</p> }, link: Some(&offers) },
+///     Tab { label: "Listings", panel: &html! { <p>"3 listings"</p> }, link: Some(&listings) },
+///     Tab { label: "Offers", panel: &html! { <p>"No offers"</p> }, link: Some(&offers) },
 /// ];
 /// let html = TabGroup { id: "book", label: "Market", tabs: &tabs, selected: 1 }.to_html();
 /// assert!(html.contains(r#"<a data-ref="tab" role="tab" id="book-tab-1" href="/items/x?tab=offers" aria-controls="book-panel-1" aria-selected="true""#));
 /// assert!(html.contains(r#"<div data-ref="panel" role="tabpanel" id="book-panel-0" aria-labelledby="book-tab-0" tabindex="0" hidden"#));
 /// ```
 #[component(js)]
-pub fn TabGroup<'a>(id: &'a str, label: &'a str, tabs: &'a [Tab<'a>], selected: usize) -> impl Render {
+pub fn TabGroup<'a, L: Render>(id: &'a str, label: &'a str, tabs: &'a [Tab<'a, L>], selected: usize) -> impl Render {
     let (tab, panel) = refs();
     html! {
         <div on:connect={js::connect(tab)}>

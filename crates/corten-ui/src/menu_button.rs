@@ -3,9 +3,9 @@ use corten::prelude::*;
 use crate::{Link, Url};
 
 /// One item of a [`MenuButton`]'s menu.
-pub struct MenuItem<'a> {
-    /// What the item shows.
-    pub label: &'a dyn Render,
+pub struct MenuItem<'a, L> {
+    /// What the item shows: text, or any view (every item's the same type).
+    pub label: L,
     /// Where it goes, or with `post`, where it posts.
     pub link: &'a dyn Link,
     /// `true`: the item is a form action (`<form method="post" data-patch>`), so it can change
@@ -38,14 +38,14 @@ pub struct MenuItem<'a> {
 /// #[route("/sign-out")]
 /// struct SignOut;
 ///
-/// let items = [MenuItem { label: &"Orders", link: &Orders, post: false }, MenuItem { label: &"Sign out", link: &SignOut, post: true }];
-/// let html = MenuButton { id: "account", label: &"Account", items: &items }.to_html();
+/// let items = [MenuItem { label: "Orders", link: &Orders, post: false }, MenuItem { label: "Sign out", link: &SignOut, post: true }];
+/// let html = MenuButton { id: "account", label: "Account", items: &items }.to_html();
 /// assert!(html.contains(r#"<button data-ref="trigger" type="button" id="account-button" popovertarget="account" aria-haspopup="menu" aria-expanded="false""#));
 /// assert!(html.contains(r#"<a data-ref="item" role="menuitem" href="/orders""#));
 /// assert!(html.contains(r#"<form method="post" action="/sign-out" data-patch><button data-ref="item" role="menuitem""#));
 /// ```
 #[component(js)]
-pub fn MenuButton<'a>(id: &'a str, label: &'a dyn Render, items: &'a [MenuItem<'a>]) -> impl Render {
+pub fn MenuButton<'a, L: Render, I: Render>(id: &'a str, label: L, items: &'a [MenuItem<'a, I>]) -> impl Render {
     let (trigger, menu, item) = refs();
     html! {
         <div on:connect={js::connect(trigger, menu, item)}>

@@ -1007,6 +1007,14 @@ Corten is pre-1.0, so any minor version may change the API.
     reading the same type: 1,376,422). Values and errors are unchanged; the reader's tests compare
     every one with serde_json's
     ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+59. corten-ui's text props take the text: `label="Actions"`, `close="Dismiss"`,
+    `MenuItem { label: "Help", .. }`, `Tab { label: "Offers", .. }` and
+    `Toast { message: Some(text) }`, where each was a `&dyn Render` written `&"Actions"` (and an
+    optional message cast `as &dyn Render`). `MenuButton`, `Toaster` and `Toast` take any
+    `Render`; a menu's items and a group's tabs share one label type. A tab's panel stays a
+    `&dyn Render`, since each panel is a view of its own type. ui-gallery's page renders in the
+    same instructions (callgrind, release: 72,700 to 72,511 a request, within noise)
+    ([#211 A text prop typed &dyn Render needs &"text", and an optional one needs an `as &dyn Render` cast](https://github.com/todd-skelton/corten/issues/211)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
