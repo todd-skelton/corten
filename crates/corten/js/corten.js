@@ -22,8 +22,9 @@
 // 7. A page response whose shell key differs from this page's (the user signed in or out, or a
 //    deploy changed the runtime or assets) is loaded in full instead of swapped.
 // 8. A page that asks to be read again (`ReadAgain`) is fetched again after its delay and
-//    swapped in place, however it was reached; a patch that asks (`ReadAgain::from`) is read
-//    again from its route and applied.
+//    swapped in place, however it was reached; a patch or a page that asks for a part
+//    (`ReadAgain::from`) has it read again from its route and applied (and such a page is not
+//    read whole).
 // Without JavaScript, links and forms still work as plain HTML.
 
 import { parseOn } from "./on.js";

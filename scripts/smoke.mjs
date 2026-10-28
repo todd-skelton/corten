@@ -1156,7 +1156,11 @@ async function run(browser) {
         const from = parts.length;
         await go(await pending());
         await savedSoon();
-        check("a page's part reached by the runtime's navigation is read again", (await saved()) === "Saved." && parts.length > from, `${await saved()} after ${parts.length - from} reads`);
+        check(
+          "a page's part reached by the runtime's navigation is read again, not the page",
+          (await saved()) === "Saved." && parts.length > from && whole.length === 1,
+          `${await saved()} after ${parts.length - from} part reads, ${whole.length} page loads (the navigation's)`,
+        );
         // Away before the read: the runtime's navigation leaves the page, and its part is not read.
         await go(await pending());
         const left = parts.length;
@@ -1165,16 +1169,17 @@ async function run(browser) {
         await page.waitForTimeout(2200);
         check("navigating away stops a page's part reads", parts.length === left, `${parts.length - left} more reads`);
       } else {
-        for (const name of ["a page's part reached by the runtime's navigation is read again", "navigating away stops a page's part reads"]) skip(name, noSwaps);
+        for (const name of ["a page's part reached by the runtime's navigation is read again, not the page", "navigating away stops a page's part reads"]) skip(name, noSwaps);
       }
       page.off("request", onPart);
     }
 
     // The rest reads the page whole: the page as one that asks only that (its head's ReadAgain,
-    // without the part's tag).
+    // without the part's tag). Fetched uncompressed: Playwright does not decode zstd, which
+    // Firefox asks for.
     const wholeOnly = async (/** @type {import("@playwright/test").Route} */ route) => {
       if (route.request().headers()["corten"] === "action") return route.fallback();
-      const res = await route.fetch();
+      const res = await route.fetch({ headers: { ...route.request().headers(), "accept-encoding": "identity" } });
       const headers = res.headers();
       delete headers["content-encoding"];
       delete headers["content-length"];

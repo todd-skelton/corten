@@ -1,7 +1,7 @@
 //! Price alerts: a form checked on the server, the alerts a browser keeps with a way to remove
 //! one, and a store whose reads catch up with its writes a moment later. A write answers with its
 //! receipt, which the address carries (`/alerts?saved=7`); until reads have it, the page says it is
-//! saving and reads itself again.
+//! saving and has its status line and list read again (the whole page, without JavaScript).
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
@@ -248,8 +248,9 @@ fn AlertList<'a>(t: Msg, alerts: &'a [Alert]) -> impl Patch {
 
 /// The alerts page, which reads a write that has not landed yet. Until reads have the address's
 /// receipt the page says so and asks for its status line and list to be read again, which the
-/// runtime does in place however the page was reached, leaving the form as the user has it (without
-/// JavaScript the browser reads the whole page again); once the write is in, the page stops asking. The alerts are not sent: a
+/// runtime does in place however the page was reached, leaving the form as the user has it
+/// (without JavaScript the browser reads the whole page again); once the write is in, the page
+/// stops asking. The alerts are not sent: a
 /// real app tells the user from a task of its own.
 pub(crate) async fn page(
     req: Req,
@@ -275,9 +276,17 @@ pub(crate) async fn page(
     req.patch_or(parts, page).await
 }
 
-/// The alerts page at `from`. While its write lands, the page's `ReadAgain` is for a browser without
-/// JavaScript; with it, the runtime reads only the status line and the list again from `from`.
-fn alerts_page(req: &Req, viewer: Option<&Viewer>, from: &url::Alerts, read: &Reading, input: &AlertInput, errors: &Errors) -> HtmlResult {
+/// The alerts page at `from`. While its write lands, the page's `ReadAgain` is for a browser
+/// without JavaScript; with it, the runtime reads only the status line and the list again from
+/// `from`.
+fn alerts_page(
+    req: &Req,
+    viewer: Option<&Viewer>,
+    from: &url::Alerts,
+    read: &Reading,
+    input: &AlertInput,
+    errors: &Errors,
+) -> HtmlResult {
     let again = (read.status == Status::Saving).then_some(ReadAgain { after: Duration::from_secs(1) });
     let parts = again.map(|again| again.from(from));
     req.page(html! {
@@ -336,7 +345,9 @@ pub(crate) async fn save(
         let read = store.read(Instant::now(), visitor.known(), None);
         let form = AlertForm { input: &input, errors: &errors, status: Status::None };
         let here = url::Alerts { saved: None };
-        return req.invalid(&errors, form, || async { alerts_page(&req, viewer.as_deref(), &here, &read, &input, &errors) }).await;
+        return req
+            .invalid(&errors, form, || async { alerts_page(&req, viewer.as_deref(), &here, &read, &input, &errors) })
+            .await;
     };
     // With JavaScript, the whole form, empty as the page that a save without JavaScript goes to,
     // so a field a refused submit marked is cleared; the reads that follow answer the status line
