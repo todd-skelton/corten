@@ -90,10 +90,10 @@
 //!
 //! **Dialogs the address opens.** A record shown beside its list (`/items?selected=it_1`) is a
 //! dialog the server draws `open` when the address names one, closed by a link to the address
-//! without it. Escape on a modal dialog closes it where the address cannot see, so a reload, Back
-//! or a redraw would open it again. [`dialog::modalClosedBy`] makes it modal as
-//! [`dialog::modal`] does and turns Escape into a click on its close link, so the client
-//! navigation, the history and the address go as for a click:
+//! without it. Escape on a modal dialog closes it where the address cannot see, so a reload or a
+//! redraw would open it again. [`dialog::modalClosedBy`] makes it modal as [`dialog::modal`]
+//! does and turns Escape into a click on its close link, so the client navigation, the address
+//! and the history (Back returns to the dialog, as after the click) go as for a click:
 //!
 //! ```
 //! use corten::prelude::*;
@@ -118,7 +118,8 @@
 //! assert!(html.contains(r#"data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)""#), "{html}");
 //! ```
 //!
-//! The close is a link, put there by a ref, so a button (which changes no address) does not compile:
+//! The close is a link, put there by a ref, so a button (which changes no address) does not
+//! compile:
 //!
 //! ```compile_fail
 //! use corten::prelude::*;

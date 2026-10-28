@@ -19,22 +19,28 @@ export function modal(dialog) {
 }
 
 /**
- * `modal`, for a dialog the address opens (`?selected=it_1`) and a link closes: Escape follows
- * `close`, as a click on it would, so the address, Back and a redraw agree with what the user
- * closed. Only Escape on this dialog: a dialog inside it closes as its own.
+ * `modal`, for a dialog the address opens (`?selected=it_1`) and a link closes: Escape is a click
+ * on `close`, so the address, a reload and a redraw agree with what the user closed, and the
+ * history is what clicking the link makes. Only a `cancel` of this dialog: a file input's picker
+ * dismissed inside it fires one too, which bubbles.
  * @param {HTMLDialogElement} dialog
  * @param {HTMLAnchorElement} close
  * @param {AbortSignal} signal
  */
 export function modalClosedBy(dialog, close, signal) {
   modal(dialog);
+  let followed = false;
   dialog.addEventListener(
     "cancel",
     (event) => {
       if (event.target !== dialog) return;
-      // Open until the page without it replaces it. A browser may not let a page keep a dialog
-      // open on Escape (Chrome refuses a second time without a click between); the link is
-      // followed either way.
+      // Followed once; a second Escape before the page arrives (a slow or failed navigation)
+      // closes the dialog as Escape does.
+      if (followed) return;
+      followed = true;
+      // Open until the page without it replaces it, where the browser allows: Chromium does not
+      // let a page keep a dialog open on Escape without a click since the last time (or since
+      // the page loaded). The link is followed either way.
       event.preventDefault();
       close.click();
     },

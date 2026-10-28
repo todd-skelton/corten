@@ -319,15 +319,28 @@ async function run(browser) {
   const sheetModal = () => page.evaluate(() => !!document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"));
   await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
   check("the address opens the sheet as a modal", await sheetModal());
-  await page.keyboard.press("Escape");
-  await page.waitForURL((url) => !url.searchParams.has("sale"), { timeout: 5000 }).catch(() => {});
-  check("Escape follows the close link: the address no longer names the sale", !new URL(page.url()).searchParams.has("sale"), page.url());
-  check("and the page without it replaces the sheet", (await sheet.count()) === 0);
-  await page.reload();
-  check("a reload does not open it again", (await sheet.count()) === 0);
+  /** Escape on the sheet, then the page without it: the address drops `sale` and the sheet goes. */
+  const escape = async (/** @type {string} */ how) => {
+    await page.keyboard.press("Escape");
+    await page.waitForURL((url) => !url.searchParams.has("sale"), { timeout: 5000 }).catch(() => {});
+    await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    check(`${how}: Escape follows the close link, the address no longer names the sale`, !new URL(page.url()).searchParams.has("sale"), page.url());
+    check(`${how}: the page without it replaces the sheet`, (await sheet.count()) === 0);
+  };
+  await escape("opened by a click");
+  // Back is what the click made: the address that names the sale, the sheet open again.
   await page.goBack();
   await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
   check("Back goes to the address that names it, and the sheet is open again", new URL(page.url()).searchParams.get("sale") === "last" && (await sheetModal()), page.url());
+  await escape("after Back");
+  await page.reload();
+  check("a reload does not open it again", (await sheet.count()) === 0);
+  // Loaded at its address (a shared link), with no click since: Chromium does not let the page
+  // keep it open on Escape, and the link is still followed.
+  await page.goto(`${base}/?sale=last`);
+  await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  check("loaded at its address, the sheet is modal", await sheetModal());
+  await escape("loaded at its address");
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));

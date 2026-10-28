@@ -113,8 +113,8 @@ struct MenuResultId;
 pub const LAST_SALE: &str = "last";
 
 /// The last sale, beside the gallery: the address opens it (`/?sale=last`), and the link back to
-/// the gallery closes it, clicked or by Escape (`dialog::modalClosedBy`), so a reload or Back
-/// shows what the user last saw.
+/// the gallery closes it, clicked or by Escape (`dialog::modalClosedBy`), so a reload shows what
+/// the user last saw.
 #[component]
 pub fn SaleSheet() -> impl Render {
     let close = refs();
