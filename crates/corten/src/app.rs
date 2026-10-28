@@ -382,14 +382,15 @@ impl<M: Middleware> App<M> {
         self
     }
 
-    /// The app's components with a script, a stylesheet or a typed event
-    /// (`#[component(js)]`, `#[component(css)]`, `script!`, `#[event]`, `style::tokens!`), each listed by its constant: `.components(&[TOKENS, OfferList,
+    /// The app's components with a script or a stylesheet
+    /// (`#[component(js)]`, `#[component(css)]`, `script!`, `style::tokens!`), each listed by its constant: `.components(&[TOKENS, OfferList,
     /// ListingSort])`, or a library's list, `.components(ui::COMPONENTS)`. Call it once per list;
     /// the order is the stylesheets' order, so list tokens and libraries first.
     ///
     /// Scripts are served with the static files and preloaded on the pages whose handlers use them;
     /// the stylesheets are one file, `components.css`, linked from every document's `<head>`.
-    /// A component listed twice counts once.
+    /// A component listed twice counts once. The typed events (`#[event]`) a script imports are
+    /// served with it.
     pub fn components(mut self, components: &[crate::Component]) -> Self {
         self.components.extend_from_slice(components);
         self

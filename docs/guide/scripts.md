@@ -148,7 +148,8 @@ row.dispatchEvent(new RowToggled({ id, selected: true }));
 ```
 
 The class bubbles and carries the fields; `Types::components` declares it with the fields' types
-(see [Type safety](type-safety.md)). List the event in `App::components` like a component. A
+(see [Type safety](type-safety.md)). It is served with the script that imports it, so listing
+that script's component is enough: there is no event to list. A
 handler parameter typed with a class imported from `"corten/events"` takes only the `event` of
 an `on:` for that type, a compile error otherwise; the `#[event]` type is in scope in the
 component's module. In `examples/seller-desk`, each price cell sends `PriceEdited` as its price

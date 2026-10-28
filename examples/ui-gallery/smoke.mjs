@@ -108,7 +108,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the seven scripts load and connect", loaded === 7, `${loaded} script(s)`);
+  check("the eight scripts load and connect", loaded === 8, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -413,6 +413,8 @@ async function run(browser) {
   const said = clip.locator('[data-scope=ui-copy-button] [aria-live="polite"]');
   await clip.waitForFunction(() => document.querySelector('[data-scope=ui-copy-button] [aria-live]')?.textContent === "Copied", null, { timeout: 5000 }).catch(() => {});
   check("a click says it copied, in its live region", (await said.textContent()) === "Copied", await said.textContent());
+  const copies = clip.locator('output[aria-label="Copies"]');
+  check("the copy is reported once to the page (Copied bubbles to the paragraph)", (await copies.textContent()) === "1", await copies.textContent());
   if (engine === "chromium") {
     check("the clipboard holds the number, from the page's own element", (await clip.evaluate(() => navigator.clipboard.readText())) === "ORD-1234");
   }
@@ -431,6 +433,7 @@ async function run(browser) {
   await deniedButton.click();
   await denied.waitForTimeout(300);
   check("a denied write leaves the label as it was", (await denied.locator('[data-scope=ui-copy-button] [aria-live]').textContent()) === "Copy");
+  check("a denied write reports no copy", (await denied.locator('output[aria-label="Copies"]').textContent()) === "0");
   await denied.context().close();
   // Without the Clipboard API (an insecure origin) the button stays hidden.
   const insecure = await (await browser.newContext()).newPage();

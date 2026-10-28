@@ -45,7 +45,7 @@ pub mod url {
 }
 
 /// The app's components, then corten-ui's.
-pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery];
+pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery, crate::gallery::OrderNumber];
 
 pub fn app() -> App {
     App::new(url::router()).components(COMPONENTS).components(corten_ui::COMPONENTS)

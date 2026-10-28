@@ -78,7 +78,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     ));
     out.extend(q(
         "#[doc = __A0] #[allow(non_upper_case_globals, dead_code)]",
-        &[literal(&format!(" The `{dom}` event's class, for `App::components`."))],
+        &[literal(&format!(" The `{dom}` event's class, served with the scripts that import it."))],
     ));
     out.extend(stream(vis));
     out.extend(q(

@@ -753,6 +753,14 @@ Corten is pre-1.0, so any minor version may change the API.
     connection with one request, client included (callgrind, in process, three runs each).
     Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
     ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
+112. `corten_ui::Copied`: `CopyButton` dispatches it after a write the browser made, and only
+    then, so an ancestor counts a copy (a referral link's, a share link's) with
+    `on:Copied={js::counted(event)}` instead of keeping a copy script of its own. It bubbles and
+    carries nothing, since the text may be a secret. ui-gallery counts its order number's copies:
+    one for a copy, none for a denied write. `copy_button.js` is 2,457 bytes, 904 with brotli
+    (was 2,223 and 844), and a page with the button fetches `events.js` with it (273 bytes, 174 with brotli, in
+    ui-gallery)
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1204,6 +1212,14 @@ Corten is pre-1.0, so any minor version may change the API.
     plus its 377-byte picture (brotli); the home page is 1,356 bytes larger (105 with brotli) plus
     the pictures that load.
     ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
+70. A typed event (`#[event]`) is served with the script that imports it from `corten/events`,
+    so an app lists the script's component and never the event; a script that imports an event its
+    component's module does not have does not compile. Before, an app that listed `CopyButton`
+    without its event would have had the button's script fail to load. A page whose handlers are
+    in such a script fetches `events.js` with it (`<link rel="modulepreload">`, 64 bytes)
+    rather than after it, one round trip sooner; seller-desk's price cells had waited for it.
+    `Script` has an `events` field, written by `#[component(js)]` and `script!`
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

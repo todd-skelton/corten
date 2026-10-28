@@ -1,7 +1,8 @@
 //! The page: every corten-ui component, wrapped and styled as a design system would.
 use corten::prelude::*;
 use corten_ui::{
-    Choice, ComboBox, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster, dialog,
+    Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster,
+    dialog,
 };
 
 use crate::{
@@ -120,15 +121,19 @@ struct MenuResultId;
 struct OrderNumberId;
 
 /// An order number with a button that copies it: the number is on the page once, and the button
-/// shows only where the script can write the clipboard.
-#[component]
-fn OrderNumber<'a>(number: &'a str) -> impl Render {
+/// shows only where the script can write the clipboard. The paragraph counts the copies the button
+/// reports (`Copied`), as an app counts a shared link's.
+#[component(js)]
+pub fn OrderNumber<'a>(number: &'a str) -> impl Render {
+    let copies = refs();
     html! {
-        <p>
+        <p on:Copied={js::counted(event, copies)}>
             "Order "
             <code id={OrderNumberId}>{number}</code>
             " "
             <CopyButton text={OrderNumberId} label="Copy" copied="Copied" />
+            " "
+            <output ref={copies} aria-label="Copies">"0"</output>
         </p>
     }
 }

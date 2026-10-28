@@ -60,6 +60,9 @@ pub struct Module {
     /// It imports `keep` from `corten`: its handlers keep their component's state, so the
     /// component is scoped.
     pub keeps: bool,
+    /// The classes it imports from `corten/events` when it runs (not a JSDoc type's), each the
+    /// Rust `#[event]` in scope where the script is read: served with the script.
+    pub imports: Vec<String>,
 }
 
 impl Module {
@@ -85,21 +88,26 @@ impl Module {
             None => stem,
         };
         let at = |(line, message): (usize, String)| (span, format!("{file}:{line}: {message}"));
-        let (handlers, groups) = parse(&source).map_err(at)?;
+        let (handlers, groups, imports) = parse_all(&source).map_err(at)?;
         let keeps = keeps(&source).map_err(at)?;
-        Ok(Module { name, file, path: path.display().to_string(), handlers, groups, keeps })
+        Ok(Module { name, file, path: path.display().to_string(), handlers, groups, keeps, imports })
     }
 
-    /// `::corten::script::Script { .. }`.
-    pub fn literal(&self) -> TokenStream {
+    /// `::corten::script::Script { .. }`, where the events it imports are named by `at` and
+    /// their names (`""` in the component's module, `"super::"` in a `script!` module).
+    pub fn literal(&self, at: &str) -> TokenStream {
         let mut names = TokenStream::new();
         for h in &self.handlers {
             names.extend(literal(&h.name));
             names.extend(q(",", &[]));
         }
+        let mut events = TokenStream::new();
+        for class in &self.imports {
+            events.extend(format!("{at}{class},").parse::<TokenStream>().expect("a path parses"));
+        }
         q(
-            "::corten::script::Script { name: __A0, file: __A1, source: ::core::include_str!(__A2), handlers: &[__A3] }",
-            &[literal(&self.name), literal(&self.file), literal(&self.path), names],
+            "::corten::script::Script { name: __A0, file: __A1, source: ::core::include_str!(__A2), handlers: &[__A3], events: &[__A4] }",
+            &[literal(&self.name), literal(&self.file), literal(&self.path), names, events],
         )
     }
 
@@ -344,6 +352,11 @@ pub fn keeps(source: &str) -> Result<bool, (usize, String)> {
 /// The handlers of a script, every top-level `export function` with its JSDoc, and its groups.
 /// Errors carry the 1-based line.
 pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, String)> {
+    parse_all(source).map(|(handlers, groups, _)| (handlers, groups))
+}
+
+/// [`parse`], and the classes the script imports from `corten/events` when it runs.
+fn parse_all(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>, Vec<String>), (usize, String)> {
     let lines: Vec<&str> = source.lines().collect();
     // Raw JSDoc types first: a typedef may come after the handler that uses it.
     /// An export: its name, its parameters' names and JSDoc types, its description.
@@ -363,6 +376,7 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
     let mut raw: Vec<Raw> = Vec::new();
     let mut typedefs: Vec<Typedef> = Vec::new();
     let mut events: Vec<(String, String)> = Vec::new();
+    let mut imports: Vec<String> = Vec::new();
     let mut doc: Option<String> = None;
     let mut i = 0;
     while i < lines.len() {
@@ -416,6 +430,9 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
                 for name in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
                     let (class, local) = name.split_once(" as ").map_or((name, name), |(c, l)| (c.trim(), l.trim()));
                     events.push((local.to_string(), class.to_string()));
+                    if !imports.iter().any(|c| c == class) {
+                        imports.push(class.to_string());
+                    }
                 }
             }
             doc = None;
@@ -516,7 +533,7 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
         }
         handlers.push(Handler { name, params: list, doc });
     }
-    Ok((handlers, groups))
+    Ok((handlers, groups, imports))
 }
 
 /// True for a type that is not written as JSON: one only the browser can supply (an element or
@@ -755,7 +772,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             name: __A0, script: ::core::option::Option::Some(__A1), style: ::core::option::Option::None, event: ::core::option::Option::None,
             view: ::core::option::Option::None,
         };",
-        &[literal(&module.name), module.literal()],
+        &[literal(&module.name), module.literal("super::")],
     );
     Ok(module.module(vis, name.clone(), q("::core::option::Option::Some(&COMPONENT)", &[]), None, items))
 }
@@ -922,5 +939,8 @@ export function toggled(event, sel, c, level, done, cleared, n) {}
                 &Param::Group("Count".into()),
             ]
         );
+        // Served with the script: the classes it imports when it runs, not a JSDoc type's.
+        let (_, _, imports) = parse_all(source).unwrap();
+        assert_eq!(imports, ["RowToggled", "Saved"]);
     }
 }
