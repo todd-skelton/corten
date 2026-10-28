@@ -442,7 +442,7 @@ pub trait Id: AttrValue + Render {
     /// let _ = html! { <a href={"feedback".fragment()}>"Your response"</a> };
     /// ```
     ///
-    /// A place on the page that asked is not an address, so the server does not redirect to one:
+    /// A place on the current page is not an address, so the server does not redirect to one:
     /// a redirect takes [`Route::at`](crate::route::Route::at).
     ///
     /// ```compile_fail,E0277

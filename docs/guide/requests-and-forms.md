@@ -355,9 +355,10 @@ after an edit), redirect to a place on the page: `route.at(ReviewId(&id))` is th
 spell it differently. `href={route.at(..)}` links to one the same way, and a link to an element
 on the page it is in (a validation summary's link to the field it names, a skip link) is
 `href={FeedbackId.fragment()}`, a bare `#feedback` written the same way: it is a jump within the
-document, never a request, so it is an attribute value and not an address `req.redirect` takes. The browser scrolls to
-it after a full load and after the runtime's navigation alike; the runtime fetches the page
-again even when only the `#id` differs from the address, since the write may have changed it.
+document, never a request, so it is an attribute value and not an address `req.redirect` takes.
+The browser scrolls to a route's place after a full load and after the runtime's navigation
+alike; the runtime fetches the page again even when only the `#id` differs from the address,
+since the write may have changed it.
 A client navigation the server sends to a place gets `corten-location` instead of a 303,
 because `fetch` follows a redirect but drops its fragment. So does one sent to another site
 (an `axum::http::Uri` such as `https://pay.example/..`), which `fetch` may not read (the CSP's

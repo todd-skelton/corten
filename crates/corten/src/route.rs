@@ -444,7 +444,8 @@ pub trait Route {
     /// one its markup prints (`<li id={ReviewId(&review.id)}>`). A redirect after a write
     /// (`req.redirect(&account.at(ReviewId(&id)))`) or a link brings the browser back to it.
     /// The markup and the URL cannot spell the id differently, and the browser scrolls to it on
-    /// a full load and after a client navigation alike.
+    /// a full load and after a client navigation alike. A link to a place on the page it is in is
+    /// [`Id::fragment`](crate::view::Id::fragment).
     ///
     /// ```
     /// use corten::prelude::*;
