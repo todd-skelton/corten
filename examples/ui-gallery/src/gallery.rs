@@ -1,7 +1,9 @@
 //! The page: a seller's draft listing for one card, built from every corten-ui component, wrapped
 //! and styled as a design system would.
 use corten::prelude::*;
-use corten_ui::{Choice, ComboBox, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster, dialog};
+use corten_ui::{
+    Choice, ComboBox, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster, dialog,
+};
 
 use crate::{
     app::{RenameForm, SellForm, url},
@@ -91,6 +93,10 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, sale: bo
                     <a href={url::Home { tab: None, sale: Some(LAST_SALE) }}>"Last sale"</a>
                 </div>
             </section>
+            <section class={Card}>
+                <h2>"Stock"</h2>
+                <Sku sku="ASH-DRAKE-NM" />
+            </section>
         </div>
         {rename}
         if sale {
@@ -119,6 +125,25 @@ pub fn MenuResult<'a>(text: &'a str) -> impl Patch {
 
 #[derive(Id)]
 struct MenuResultId;
+
+/// The SKU's element, which its copy button names.
+#[derive(Id)]
+struct SkuId;
+
+/// The draft's SKU, which a seller copies into their own stock sheet, with a button that copies
+/// it: the SKU is on the page once, and the button shows only where the script can write the
+/// clipboard.
+#[component]
+fn Sku<'a>(sku: &'a str) -> impl Render {
+    html! {
+        <p>
+            "SKU "
+            <code id={SkuId}>{sku}</code>
+            " "
+            <CopyButton text={SkuId} label="Copy" copied="Copied" />
+        </p>
+    }
+}
 
 /// The `sale` query value that opens the last sale's sheet.
 pub const LAST_SALE: &str = "last";

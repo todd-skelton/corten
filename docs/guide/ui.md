@@ -13,6 +13,7 @@ no CSS.
 | `TabGroup` | tabs that are typed links to the page with that tab selected | roving focus, arrow keys, switching in place with the address following |
 | `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, `aria-expanded`, the button as the menu's CSS anchor |
 | `Toaster` | the message is part of the page the post answers with | a live region an action's patch fills (`req.patch_or(Toast { message: Some(text) }, page)`), hidden after `seconds` but kept while the pointer or focus is on it or the page is hidden, and a close button |
+| `CopyButton` | no button: the text (an order number, an API secret) is on the page to select | a button, where the browser has the Clipboard API (a secure origin), that copies the text (or a field's value) of the element its `#[derive(Id)]` id names (`<code id={SecretId}>`, `<CopyButton text={SecretId} label={..} copied={..} />`), so the text is on the page once, and says it copied in a polite live region; nothing to copy or a failed write changes nothing |
 
 ```rust,ignore
 let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };
@@ -30,7 +31,7 @@ Everything else Base UI-style libraries provide is already the platform's: `<dia
 `command="show-modal"` for dialogs and alert dialogs, `popover` for popovers and tooltips,
 `<details name>` for accordions, toggletips as a `popover` opened by `popovertarget`, `<select>` (with `appearance: base-select` where supported),
 checkboxes, radios and `<input type="range">`. [examples/ui-gallery](../../examples/ui-gallery) shows
-all five on one screen, a seller's draft listing for a card, styled by a small design system, with a dialog the server refuses a form in and one the
+all six on one screen, a seller's draft listing for a card, styled by a small design system, with a dialog the server refuses a form in and one the
 address opens, and has a browser test that runs in Chromium, Firefox and
 WebKit. A tooltip shown on hover or focus is `interestfor` with `popover="hint"` once every
 browser has them (Safari has neither in October 2026); the crate does not add one meanwhile. The
