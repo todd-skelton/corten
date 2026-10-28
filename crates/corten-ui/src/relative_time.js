@@ -55,7 +55,7 @@ export function connect(time, locale, style, signal) {
  * Whether `format` writes `locale`'s language in its script. A browser without the locale falls
  * back to a parent (`sr-Latn` to `sr`, in Cyrillic) or to its own language, and the server's
  * text is then the right one to keep. A region the browser lacks (`de-AT` as `de`) is the same
- * words.
+ * language in the same script, though a word may differ from the server's.
  * @param {Intl.RelativeTimeFormat} format @param {string} locale
  */
 function speaks(format, locale) {
