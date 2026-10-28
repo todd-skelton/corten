@@ -16,7 +16,7 @@
 //! | `POST /sign-in`, `/sign-out` | `account.rs` | set and clear a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
 //! | `GET /account` | `account.rs` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `POST /avatar` | `account.rs` | a form with a file (`Upload`): the picture is read as it arrives, its type from its bytes, and kept; the header and the account page show it; a body over its limit is answered with a message in the form (`UploadError::TooLarge`) |
-//! | `GET /pictures/{id}` | `account.rs` | an uploaded picture as its type (`Media`), at a URL that names its bytes, so every cache keeps it for good (`Media::immutable`) |
+//! | `GET /pictures/{id}` | `account.rs` | an uploaded picture as its type (`Media`), at a URL that names its bytes, so every cache keeps it for good (`Public::immutable`) |
 //! | `GET /quotes` | `socket.rs` | a WebSocket (`Upgrade`) for a ticker outside the browser: it names stocks and is sent each one's price as it trades; the handshake is checked as a write is, the frames are tokio-tungstenite's, and shutdown closes it |
 use corten::prelude::*;
 
