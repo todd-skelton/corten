@@ -26,7 +26,7 @@ use async_nats::jetstream::{
     consumer::{pull::OrderedConfig, DeliverPolicy},
     stream,
 };
-use corten_feed::{ApplyError, Feed, REPLAY};
+use corten::feed::{ApplyError, Feed, REPLAY};
 use futures_util::StreamExt;
 use sqlx::PgPool;
 use tokio::sync::watch;
@@ -38,7 +38,7 @@ struct Message {
     json: String,
 }
 
-enum Slot<T: corten_feed::Row> {
+enum Slot<T: corten::feed::Row> {
     /// Loading from Postgres. Patches that arrive meanwhile wait in `buffer`. `current` is the
     /// feed being reloaded, if any; requests keep using it until the reload resets it.
     Loading {

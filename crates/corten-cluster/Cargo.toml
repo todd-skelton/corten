@@ -11,8 +11,7 @@ keywords = ["corten", "nats", "postgres", "outbox", "feed"]
 categories = ["web-programming::http-server", "database"]
 
 [dependencies]
-corten-feed.workspace = true
-axum = "0.8"
+corten = { workspace = true, features = ["feed"] }
 async-nats = "0.50"
 futures-util = { version = "0.3", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -22,3 +21,4 @@ tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tower = { version = "0.5", features = ["util"] }
