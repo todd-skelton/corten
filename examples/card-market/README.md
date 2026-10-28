@@ -14,6 +14,8 @@ From this directory:
 corten dev     # http://localhost:3000, the demo catalog built in
 ```
 
+`corten` is the framework's command (`cargo install corten-cli`).
+
 Or in Docker, from the repository root:
 
 ```sh
@@ -24,26 +26,28 @@ docker run --rm -p 3000:8080 -e API_KEYS=dev=dev-key -e AGENT_TOKENS=dev-token c
 | Variable | What it does | Without it |
 |---|---|---|
 | `API_BASE` | the item API the pages read | the demo catalog built in (`fixtures/demo.json`) |
-| `ITEM_SOURCE=fixture`, `FIXTURE_PATH` | items from a JSON file of API responses, loaded at startup (benchmarks) | `fixtures/items.json` when `ITEM_SOURCE=fixture` |
-| `API_KEYS` | partners that may set alerts through `/api/alerts`: `name=key,name=key` | no partner may |
-| `AGENT_TOKENS` | bearer tokens for the MCP endpoint `/mcp`, comma separated | no agent may |
-| `AGENT_ORIGINS` | sites whose pages may call `/mcp` from the browser (CORS) | none |
+| `ITEM_SOURCE=fixture`, `FIXTURE_PATH` | items from a JSON file of API responses, loaded at startup (benchmarks): mount one, such as `fixtures/smoke.json` (`-v "$PWD/examples/card-market/fixtures:/fixtures:ro" -e FIXTURE_PATH=/fixtures/smoke.json`) | `fixtures/items.json`, which the benchmark's `fetch.mjs` writes |
+| `API_KEYS` | partners that may set alerts through `/api/alerts`, sending the key in `X-Api-Key`: `name=key,name=key` | no partner may |
+| `AGENT_TOKENS` | tokens for the MCP endpoint `/mcp`, sent as `Authorization: Bearer <token>`, comma separated | no agent may |
+| `AGENT_ORIGINS` | origins whose pages may call `/mcp` from the browser (CORS), comma separated | none |
 | `WRITES_PER_MINUTE` | writes one client address may make a minute | 20 |
-| `PROXIES` | the load balancers whose `X-Forwarded-For` is trusted, as CIDRs | the connection's address |
-| `HTTPS` | set when served over HTTPS: browsers are told to keep using it (HSTS) | not sent |
+| `PROXIES` | the load balancers whose `X-Forwarded-For` is trusted: addresses or CIDRs, comma separated | the connection's address |
+| `HTTPS` | present (any value) when served over HTTPS: browsers are told to keep using it (HSTS) | not sent |
+| `HOSTS` | the host names the app answers; a request for any other gets a 421 | `localhost` |
+| `HOST`, `PORT` | the address it listens on | both loopback addresses, port 3000 (the image sets `0.0.0.0:8080`) |
 
 ## Where things are
 
 | Piece | File |
 |---|---|
-| Every URL and the handler that serves it (pages, the JSON API, the MCP endpoint) | [`src/main.rs`](src/main.rs) |
-| The app: policy, PWA, deadline, readiness, error page, the write limit, the partner key, the MCP tools, robots and sitemap | [`src/app.rs`](src/app.rs) |
+| Every URL and which handler serves it (pages, the JSON API, the MCP endpoint) | [`src/main.rs`](src/main.rs) |
+| The handlers, and the app: policy, PWA, deadline, readiness, error page, the write limit, the partner key, the MCP tools, robots and sitemap | [`src/app.rs`](src/app.rs) |
 | Where items come from (an API, a fixture, the demo catalog) | [`src/source.rs`](src/source.rs) |
 | The item and the alert's rules | [`src/model.rs`](src/model.rs) |
 | Views, each with its stylesheet and script beside it | [`src/views/`](src/views) |
 | Text in English and French | [`locales/`](locales), [`src/text.rs`](src/text.rs) |
 | Design tokens | [`tokens.json`](tokens.json), [`src/theme.rs`](src/theme.rs) |
-| Card art, icons, the push handler | [`static/`](static) |
+| The stylesheet, icons, the push handler | [`static/`](static) |
 
 The browser test of the production pieces: [`smoke.mjs`](smoke.mjs). The item page is the one
 the [full-stack benchmark](../../bench/fullstack) measures.

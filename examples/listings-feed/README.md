@@ -18,8 +18,14 @@ docker build -f examples/listings-feed/Dockerfile -t corten-listings-feed .
 docker run --rm --network feeds -p 3000:8080 -e DATABASE_URL=postgres://postgres:postgres@feeds-pg/feeds -e NATS_URL=nats://feeds-nats:4222 corten-listings-feed
 ```
 
-Then open http://localhost:3000/sellers/s1. Start a second instance (`-e INSTANCE=b`, another
-port) to see the feed served by both.
+Then open http://localhost:3000/sellers/s1. A second instance on the same network, with the same
+`DATABASE_URL` and `NATS_URL`, `-e INSTANCE=b` and another port, serves the same feed.
+
+To run it with `cargo run` (or `corten dev`) from this directory instead, publish the two
+services' ports (`-p 5432:5432` on Postgres, `-p 4222:4222` on NATS): the defaults below reach
+them on `localhost`. `corten` is the framework's command (`cargo install corten-cli`).
+
+Remove them afterwards: `docker rm -f feeds-pg feeds-nats` and `docker network rm feeds`.
 
 | Variable | What it does | Default |
 |---|---|---|
