@@ -648,7 +648,8 @@ Corten is pre-1.0, so any minor version may change the API.
 100. `SetCookie::try_new(name, value)` returns `Err(InvalidCookie::Name | Value)` for a character a
     cookie cannot carry, where `new` panics: a token another service answered with no longer turns
     a sign-in into a 500 the app did not choose. `new` keeps its panic for values the app makes
-    and calls the same rule
+    and calls the same rule. `SetCookie::path` now refuses a control character where it is set;
+    before, a path with a line break passed it and panicked when the answer was sent
     ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
