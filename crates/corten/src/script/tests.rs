@@ -176,6 +176,45 @@ fn a_handler_made_by_a_parent_keeps_the_parents_scope_inside_a_child() {
     );
 }
 
+/// A component whose script keeps state, with no refs and no `scope`: still scoped, so each
+/// instance keeps its own.
+#[component(js)]
+fn Tally() -> impl Render {
+    html! { <button type="button" on:click={js::bump(target)}>"0"</button> }
+}
+
+/// A scoped child that renders a parent's handler and the markup it is given.
+#[component]
+fn Labeled<'a>(on_change: Handler<'a>, children: impl Render) -> impl Render {
+    let input = refs();
+    html! { <label><input ref={input} on:change={on_change}>{children}</label> }
+}
+
+/// A parent whose state-keeping handler a scoped child renders, as a prop and in its children.
+#[component(js)]
+fn Tallies() -> impl Render {
+    html! {
+        <div>
+            <Labeled on:change={js::bump(target)}>
+                <button type="button" on:click={js::bump(target)}>"0"</button>
+            </Labeled>
+        </div>
+    }
+}
+
+#[test]
+fn a_script_that_keeps_state_scopes_its_component_and_a_childs_element_names_its_home() {
+    assert_eq!(Tally {}.to_html(), r#"<button data-scope="tally" type="button" data-on="click:tally.bump($t)">0</button>"#);
+    assert_eq!(
+        Tallies {}.to_html(),
+        concat!(
+            r#"<div data-scope="tallies"><label data-scope="labeled"><input data-ref="input" "#,
+            r#"data-on="change:tallies.bump($t)/tallies"><button type="button" "#,
+            r#"data-on="click:tallies.bump($t)/tallies">0</button></label></div>"#,
+        )
+    );
+}
+
 #[test]
 fn shared_modules_and_events_are_components() {
     assert_eq!(shared::COMPONENT.script.map(|s| s.name), Some("shared"));
@@ -381,6 +420,7 @@ fn handlers_write_the_shared_wire_vectors() {
         LineItem { name: "a\"b", quantity: 2 }.to_html(),
         RowList { rows: &["x"] }.to_html(),
         Form {}.to_html(),
+        Tallies {}.to_html(),
         StockGrid { rows: &[("a", 1)] }.to_html(),
         scoped("x", || {
             html! {

@@ -4,7 +4,7 @@
 // the latest rows and shows them on resume. Prices and changes are written with the page's
 // formats (t.js().money(USD), t.js().percent(2)), which write what the server rendered; they
 // are written into the page once, for watch, which keeps them for pause.
-import { state, subscribe } from "corten";
+import { keep, subscribe } from "corten";
 /** @import { Message, MoneyFormat, PercentFormat } from "corten" */
 
 /** @typedef {import("../types/app").Stock} Stock Generated from `Stock` in src/market.rs. */
@@ -15,9 +15,9 @@ import { state, subscribe } from "corten";
  * @typedef {{ prices: Map<string, HTMLTableCellElement>, changes: Map<string, HTMLTableCellElement> }} Cells
  */
 
-/** What the component keeps: whether it is paused, the latest rows, and watch's formats. @param {HTMLElement} root */
-const held = (root) =>
-  state(root, () => ({ paused: false, updates: 0, latest: /** @type {Map<string, Stock>} */ (new Map()), formats: /** @type {Formats | null} */ (null) }));
+/** What the component keeps: whether it is paused, the latest rows, and watch's formats. */
+const held = () =>
+  keep(() => ({ paused: false, updates: 0, latest: /** @type {Map<string, Stock>} */ (new Map()), formats: /** @type {Formats | null} */ (null) }));
 
 /**
  * @param {HTMLElement} root @param {HTMLButtonElement} pause
@@ -26,7 +26,7 @@ const held = (root) =>
  * @param {HTMLParagraphElement} updates @param {Message<"count">} updated the count's text, in the page's locale
  */
 export function watch(root, pause, prices, changes, money, percent, feed, signal, updates, updated) {
-  const s = held(root);
+  const s = held();
   const formats = (s.formats = { money, percent });
   /** @type {Cells} */
   const cells = { prices, changes };
@@ -60,11 +60,11 @@ export function watch(root, pause, prices, changes, money, percent, feed, signal
 
 /**
  * The cells are the page's as of the click, so rows put in since watch ran are painted too.
- * @param {HTMLElement} root @param {HTMLButtonElement} button
+ * @param {HTMLButtonElement} button
  * @param {Map<string, HTMLTableCellElement>} prices @param {Map<string, HTMLTableCellElement>} changes
  */
-export function pause(root, button, prices, changes) {
-  const s = held(root);
+export function pause(button, prices, changes) {
+  const s = held();
   s.paused = !s.paused;
   button.setAttribute("aria-pressed", String(s.paused));
   const formats = s.formats;

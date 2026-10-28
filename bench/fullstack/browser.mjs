@@ -20,6 +20,10 @@ const profiles = {
   mobile: { cpu: 4, network: { offline: false, latency: 150, downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8 } },
 };
 const items = ["item_3", "item_17", "item_250", "item_1999", "item_12345"];
+// Those of `items` the fixture gives no market listings. An alert on one is refused by an app that checks
+// (card-market since r7) and set by the others, two different answers, so no app's form action is
+// timed on one; its load, sort and client navigation are (#259).
+const UNLISTED = new Set(["item_12345"]);
 const SORT = "button.sort, [data-scope=listing-sort] > button, listing-sort > button";
 const FIRST_PRICE = ".listings tbody tr:first-child td.price, [data-scope=listing-sort] tbody tr:first-child td.price__amount, listing-sort tbody tr:first-child td.price__amount";
 
@@ -82,13 +86,17 @@ async function loadItem(browser, profile, base, id) {
     const firstPrice = (await priceCell.count()) ? await priceCell.textContent() : null;
     await page.locator(SORT).click();
     await page.waitForFunction(([sel, b]) => /** @type {HTMLElement | null} */ (document.querySelector(sel))?.innerText !== b, [SORT, before], { timeout: 10_000 });
+    m.sortWorked = firstPrice === null ? null : (await priceCell.textContent()) !== firstPrice || before !== null;
+    if (UNLISTED.has(id)) {
+      m.actionMs = null;
+      return m;
+    }
     const t0 = await page.evaluate(() => performance.now());
     await page.locator('input[name="email"]').fill("buyer@example.com");
     await page.locator('input[name="target_price"]').fill("4.5");
     await page.locator('button[type="submit"]').click();
     await page.waitForFunction(() => /Alert set/.test(document.querySelector(".alert-message, #alert-message")?.textContent ?? ""), null, { timeout: 30_000 });
     m.actionMs = (await page.evaluate(() => performance.now())) - t0;
-    m.sortWorked = firstPrice === null ? null : (await priceCell.textContent()) !== firstPrice || before !== null;
     return m;
   } finally {
     await context.close();
