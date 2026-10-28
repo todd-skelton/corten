@@ -72,11 +72,55 @@ const liveEvent = (accept) =>
   check("localhost is answered", local === 200, String(local));
 }
 
+/**
+ * Requests the browser's pages have sent and not finished, with when each was sent: printed when
+ * a run throws (a page that never fires `load`), so the report says which one hangs (#232, #252).
+ * A request leaves when it finishes or fails, or when its page or context closes.
+ * @type {Map<import("@playwright/test").Request, { at: number, context: import("@playwright/test").BrowserContext }>}
+ */
+const inflight = new Map();
+/** @param {import("@playwright/test").Browser} browser */
+function track(browser) {
+  /** @param {(r: import("@playwright/test").Request, at: { context: import("@playwright/test").BrowserContext }) => boolean} gone */
+  const drop = (gone) => {
+    for (const [r, at] of inflight) if (gone(r, at)) inflight.delete(r);
+  };
+  /** @param {import("@playwright/test").Request} r */
+  const pageOf = (r) => {
+    try {
+      return r.frame().page();
+    } catch {
+      return null; // a service worker's request has no frame
+    }
+  };
+  // `newPage` makes its context through `newContext`, so every context is watched here.
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (...args) => {
+    const context = await newContext(...args);
+    context.on("request", (r) => inflight.set(r, { at: Date.now(), context }));
+    context.on("requestfinished", (r) => inflight.delete(r));
+    context.on("requestfailed", (r) => inflight.delete(r));
+    context.on("page", (page) => page.on("close", () => drop((r) => pageOf(r) === page)));
+    context.on("close", () => drop((_, at) => at.context === context));
+    return context;
+  };
+}
+/** What is still loading, oldest first. */
+function pending() {
+  const now = Date.now();
+  return [...inflight].sort((a, b) => a[1].at - b[1].at).map(([r, { at }]) => `  ${now - at}ms ${r.method()} ${r.url()} (${r.resourceType()})`);
+}
+
 for (engine of names) {
   const browser = await engines[engine].launch({ headless: true });
+  track(browser);
   try {
     await run(browser);
+  } catch (error) {
+    console.log(`[${engine}] still loading when it failed:\n${pending().join("\n") || "  nothing"}`);
+    throw error;
   } finally {
+    inflight.clear();
     await browser.close();
   }
 }
@@ -1266,6 +1310,20 @@ async function run(browser) {
   // form submit (one made from on:connect) makes Chromium stop loading the document, and a page
   // taken over then never fires load.
   const early = await browser.newPage();
+  // What the browser did, for the check's detail when it fails (#232): the documents it asked
+  // for and got, the frames it committed, and the loads that failed.
+  /** @type {string[]} */
+  const trail = [];
+  const at = Date.now();
+  const note = (/** @type {string} */ what) => trail.push(`${Date.now() - at}ms ${what}`);
+  early.on("request", (r) => r.isNavigationRequest() && note(`request ${r.method()} ${new URL(r.url()).pathname}`));
+  early.on("response", (r) => r.request().isNavigationRequest() && note(`response ${r.status()} ${new URL(r.url()).pathname}`));
+  early.on("requestfailed", (r) => note(`failed ${new URL(r.url()).pathname} ${r.failure()?.errorText}`));
+  early.on("framenavigated", (f) => f === early.mainFrame() && note(`committed ${new URL(f.url()).pathname}`));
+  early.on("domcontentloaded", () => note("domcontentloaded"));
+  early.on("load", () => note("load"));
+  early.on("console", (m) => m.type() === "error" && note(`console ${m.text()}`));
+  early.on("pageerror", (e) => note(`pageerror ${e.message}`));
   /** @type {() => void} */
   let release = () => {};
   const held = new Promise((/** @type {(v?: unknown) => void} */ r) => (release = r));
@@ -1295,10 +1353,11 @@ async function run(browser) {
     const entry = /** @type {PerformanceNavigationTiming} */ (performance.getEntriesByType("navigation")[0]);
     return { path: new URL(entry.name).pathname, load: entry.loadEventEnd > 0, title: document.title };
   });
+  const navigated = loaded.title === "News | Watchlist" && loaded.load;
   check(
     "a form submitted before the first page loads navigates, and the page loads",
-    loaded.title === "News | Watchlist" && loaded.load,
-    JSON.stringify(loaded),
+    navigated,
+    navigated ? JSON.stringify(loaded) : `${JSON.stringify(loaded)}; ${trail.join(", ")}`,
   );
   await early.close();
 
