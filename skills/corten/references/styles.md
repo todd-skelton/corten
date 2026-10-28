@@ -34,7 +34,10 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
    startup, naming the file; a property a script sets takes a fallback, `var(--x, 0)`.
 6. `static/style.css` holds only element defaults, fonts and the layout. It is linked
    before `<Corten />` in the layout.
-7. Inline `style=` is blocked by the CSP. Use a class or a token utility instead.
+7. Inline `style=` is blocked by the CSP. Use a class or a token utility instead: a fixed value is
+   its own function (`mx_auto()`, `gap_3()`); the utility's function (`gap(space)`,
+   `gap(Responsive::new(Space::_2).md(Space::_4))`) is for a value chosen at run time or per
+   breakpoint.
 8. Every component's CSS ships in one `components.css`. Only when a part of the app most
    visitors never open (an admin area) adds CSS worth measuring, make it an area and list its
    components there, `.area(|area| admin::area(area).components(&[..]))`: their

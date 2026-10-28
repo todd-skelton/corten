@@ -97,7 +97,7 @@ async fn error_page(failure: Failure, req: Req, viewer: Option<Caller<Viewer>>) 
     };
     req.page(html! {
         <Layout req={&req} title={title} viewer={viewer.as_deref()} head="">
-            <section class={(card(), stack(Space::_3), max_w(MaxW::Prose))}>
+            <section class={(card(), stack(Space::_3), max_w_prose())}>
                 <h1>{title}</h1>
                 <p>{text}</p>
                 if let Some(detail) = failure.detail() {
@@ -236,13 +236,13 @@ pub fn Layout<'a>(
                 {head}
                 <Corten />
             </head>
-            <body class={(bg(Color::Bg), fg(Color::Ink))}>
-                <header class={(bg(Color::Surface), border_b(BorderB::Line))}>
+            <body class={(bg_bg(), fg_ink())}>
+                <header class={(bg_surface(), border_b_line())}>
                     <div
-                        class={(row(Space::_3), justify(Justify::Between), wrap(Wrap::Wrap), max_w(MaxW::Page), mx(Mx::Auto), px(Space::_5), py(Space::_3))}
+                        class={(row(Space::_3), justify_between(), flex_wrap(), max_w_page(), mx_auto(), px_5(), py_3())}
                     >
-                        <nav class={(row(Space::_1), wrap(Wrap::Wrap))}>
-                            <span class={(weight(Weight::Bold), tracking(Tracking::Tight), px(Space::_2))}>"Watchlist"</span>
+                        <nav class={(row(Space::_1), flex_wrap())}>
+                            <span class={(weight_bold(), tracking_tight(), px_2())}>"Watchlist"</span>
                             <a href={url::Home} data-nav aria-current={req.current(&url::Home)}>"Stocks"</a>
                             <a href={news::url::News::default()} data-nav aria-current={req.current(&news::url::News::default())}>
                                 "News"
@@ -262,7 +262,7 @@ pub fn Layout<'a>(
                         }
                     </div>
                 </header>
-                <main class={(max_w(MaxW::Page), mx(Mx::Auto), px(Space::_5), py(Space::_6))}>{children}</main>
+                <main class={(max_w_page(), mx_auto(), px_5(), py_6())}>{children}</main>
             </body>
         </html>
     }
@@ -323,14 +323,14 @@ impl Home {
 
 fn home_view(home: &Home, t: Msg) -> impl Render {
     html! {
-        <div class={(stack(Space::_1), mb(Space::_5))}>
+        <div class={(stack(Space::_1), mb_5())}>
             <h1>"Watchlist"</h1>
             <p class={muted()}>
                 "Prices and today's change arrive as trades happen. Without JavaScript the page still shows them."
             </p>
         </div>
         <div
-            class={(display(Display::Grid), columns(Responsive::new(Columns::_1).md(Columns::Main)), gap(Space::_5), items(Items::Start))}
+            class={(display_grid(), columns(Responsive::new(Columns::_1).md(Columns::Main)), gap_5(), items_start())}
         >
             <section class={card()}>
                 <LivePrices stocks={&home.stocks} feed={url::Stocks::PATH} t={t} />
@@ -368,7 +368,7 @@ fn LivePrices<'a>(stocks: &'a [Stock], feed: &'a str, t: Msg) -> impl Patch {
             class={stack(Space::_3)}
             on:connect={js::watch(scope, pause, price, change, money, percent, feed, signal, updates, updated)}
         >
-            <div class={(row(Space::_3), justify(Justify::Between))}>
+            <div class={(row(Space::_3), justify_between())}>
                 <h2>"Your stocks"</h2>
                 <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price, change)}>
                     "Pause updates"
@@ -447,7 +447,7 @@ fn WatchForm<'a>(others: &'a [(&'static str, &'static str)], message: &'a str) -
                     <span class={muted()}>"Stock"</span>
                     <select name={f.id}>for (id, name) in others { <option value={id}>{name}" ("{id}")"</option> }</select>
                 </label>
-                <button class={w(W::Full)}>"Watch"</button>
+                <button class={w_full()}>"Watch"</button>
             }
             <p id={WatchMessageId} aria-live="polite">{message}</p>
         </form>
@@ -649,7 +649,7 @@ fn alerts_page(req: &Req, viewer: Option<&Viewer>, input: &AlertInput, errors: &
     let again = asks_again(until).then_some(ReadAgain { after: Duration::from_secs(1) });
     req.page(html! {
         <Layout req={req} title="Alerts" viewer={viewer} head={again}>
-            <div class={(stack(Space::_4), max_w(MaxW::Prose))}>
+            <div class={(stack(Space::_4), max_w_prose())}>
                 <div class={stack(Space::_1)}>
                     <h1>"Price alerts"</h1>
                     <p class={muted()}>"Hear about it when a stock goes above a price."</p>
@@ -763,9 +763,9 @@ async fn account(req: Req, Caller(viewer): Caller<Viewer>) -> HtmlResult {
     let viewer = &viewer;
     req.page(html! {
         <Layout req={&req} title="Account" viewer={Some(viewer)} head="">
-            <div class={(stack(Space::_4), max_w(MaxW::Prose))}>
+            <div class={(stack(Space::_4), max_w_prose())}>
                 <h1>"Account"</h1>
-                <section class={(card(), row(Space::_3), justify(Justify::Between), wrap(Wrap::Wrap))}>
+                <section class={(card(), row(Space::_3), justify_between(), flex_wrap())}>
                     <p>"Signed in as "{&viewer.name}"."</p>
                     <form method="post" action={url::SignOut} data-patch><button class={secondary()}>"Sign out"</button></form>
                 </section>

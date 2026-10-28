@@ -48,7 +48,7 @@ impl<'a> ItemPage<'a> {
 pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
     let (t, item, message) = (page.t, page.item, page.message.as_str());
     // A column on phones, a row from the small breakpoint up.
-    let summary = (Panel, Summary, gap(Space::_5), direction(Responsive::new(Direction::Column).sm(Direction::Row)));
+    let summary = (Panel, Summary, gap_5(), direction(Responsive::new(Direction::Column).sm(Direction::Row)));
     html! {
         <article>
             <nav class={Crumbs}>for c in &item.categories { <a href={routes::Category { slug: &c.slug }}>{c.name}</a> }</nav>

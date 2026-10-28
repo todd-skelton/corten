@@ -248,6 +248,26 @@ fn parse(root: &Value) -> Result<Spec, String> {
         }
         types.push(ty);
     }
+    // Each utility's function and each of its values' own (`gap_3`, `mx_auto`) share one
+    // namespace: two of one name would not compile, so the file is told which.
+    let mut functions: Vec<(String, String)> = Vec::new();
+    for u in &utilities {
+        functions.push((snake(&u.name, "utility")?, format!("utility {}", u.name)));
+    }
+    for u in &utilities {
+        let keys = match &u.source {
+            Source::Scale(i) => &scales[*i].entries,
+            Source::Values(s) => &s.entries,
+        };
+        for e in keys {
+            let function = snake(&format!("{}-{}", u.name, e.key), "utility value")?;
+            let by = format!("utilities.{} value {}", u.name, e.key);
+            if let Some((_, first)) = functions.iter().find(|(f, _)| *f == function) {
+                return Err(format!("{first} and {by} are both {function}() in Rust; rename one"));
+            }
+            functions.push((function, by));
+        }
+    }
 
     Ok(Spec { breakpoints, scales, themes, utilities })
 }
@@ -391,6 +411,23 @@ fn generate(root: &Value, file: &Path, path: &str) -> Result<TokenStream, String
             Source::Scale(i) => &scales[*i],
             Source::Values(s) => s,
         };
+        for e in &ty.entries {
+            let class = format!("{}-{}", u.name, e.key);
+            let function = snake(&class, "utility value")?;
+            let value = match &u.source {
+                Source::Scale(_) => format!("var(--{}-{})", ty.name, e.key),
+                Source::Values(_) => e.value.clone(),
+            };
+            let doc = format!(
+                " `{class}`, `{}: {value}` at every width. A value per breakpoint, or one chosen as the page renders, is `{}(..)`.",
+                u.property,
+                snake(&u.name, "utility")?
+            );
+            out.extend(q(
+                "#[doc = __A0] #[inline] pub const fn __A1() -> ::corten::style::Class { ::corten::style::Class::__new(__A2) }",
+                &[literal(&doc), id(&function), literal(&class)],
+            ));
+        }
         let mut table = TokenStream::new();
         for e in &ty.entries {
             let mut row = literal(&format!("{}-{}", u.name, e.key));
@@ -501,6 +538,14 @@ mod tests {
         assert!(error(r##"{"scales": {"space": {"1": "4px"}}, "utilities": {"gap": {"property": "gap", "scale": "spacing"}}}"##)
             .contains(r##"no scale "spacing""##));
         assert!(error(r##"{"scale": {}}"##).contains("unknown section"));
+        // `border`'s value `b` would be `border_b()`, which is also the `border-b` utility.
+        let clash = error(
+            r##"{"scales": {"space": {"1": "4px"}}, "utilities": {
+                "border-b": {"property": "border-block-end", "values": {"line": "1px solid"}},
+                "border": {"property": "border", "values": {"b": "1px solid"}}
+            }}"##,
+        );
+        assert!(clash.contains("utility border-b and utilities.border value b are both border_b() in Rust"), "{clash}");
         assert!(error(r##"{"scales": {"self": {"a": "1"}}}"##).contains("no Rust name"));
         let media = |media: &str| {
             error(&format!(
