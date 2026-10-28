@@ -20,7 +20,7 @@ const profiles = {
   mobile: { cpu: 4, network: { offline: false, latency: 150, downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8 } },
 };
 const items = ["item_3", "item_17", "item_250", "item_1999", "item_12345"];
-// Items the fixture gives no market listings. An alert on one is refused by an app that checks
+// Those of `items` the fixture gives no market listings. An alert on one is refused by an app that checks
 // (card-market since r7) and set by the others, two different answers, so no app's form action is
 // timed on one; its load, sort and client navigation are (#259).
 const UNLISTED = new Set(["item_12345"]);
