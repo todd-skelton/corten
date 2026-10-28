@@ -24,7 +24,8 @@ export function modal(dialog) {
  * the close link's address without adding to the history (it does not click the link), so the
  * address, a reload and a redraw agree with what the user closed and Back cannot loop through it.
  * Where the entry before is that address, it goes back to it; otherwise, and in a browser without
- * the Navigation API or for a `data-reload` link, the link's address replaces the dialog's. Only a `cancel` of this dialog: a file input's picker
+ * the Navigation API, the link's address replaces the dialog's. It is a script's navigation, so
+ * attributes on the link (`data-reload`, `data-keep-place`, an `on:click`) do not apply. Only a `cancel` of this dialog: a file input's picker
  * dismissed inside it fires one too, which bubbles. A dialog drawn closed and opened later gets
  * the same.
  * @param {HTMLDialogElement} dialog
@@ -55,11 +56,15 @@ export function modalClosedBy(dialog, close, signal) {
   addEventListener("pageshow", (event) => event.persisted && (followed = false), { signal });
 }
 
-/** To `close`'s address without a new history entry: back, when the entry before is it, else in place of this one. @param {HTMLAnchorElement} close */
+/**
+ * To `close`'s address without a new history entry: back, when the entry before is it, else in
+ * place of this one.
+ * @param {HTMLAnchorElement} close
+ */
 function leave(close) {
   const href = close.href;
   const navigation = /** @type {any} */ (window).navigation;
-  if (!navigation || close.closest("[data-reload]")) return location.replace(href);
+  if (!navigation) return location.replace(href);
   const at = navigation.currentEntry?.index ?? -1;
   if (at > 0 && navigation.entries()[at - 1]?.url === href) navigation.back();
   else navigation.navigate(href, { history: "replace" });

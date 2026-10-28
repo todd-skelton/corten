@@ -95,7 +95,8 @@
 //! does, and a close request (Escape, Android's Back, a click outside a `closedby="any"` dialog)
 //! goes to its close link's address without a new history entry (it does not click the link):
 //! back, when the entry before is that address, else in place of the dialog's entry (always so in
-//! a browser without the Navigation API, where Back then shows the list once more). Android's
+//! a browser without the Navigation API, where Back after a dialog opened from the list shows the
+//! list once more). Attributes on the link (`data-reload`, an `on:click`) do not apply. Android's
 //! Back on an open dialog cannot loop between the two:
 //!
 //! ```

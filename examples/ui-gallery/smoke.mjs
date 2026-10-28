@@ -351,6 +351,15 @@ async function run(browser) {
   // after it leaves the list, and Android's Back on the open sheet cannot loop through it.
   await escape("opened by a click");
   check("opened by a click: closing goes back to the list's entry", (await at()) === listEntry, `${listEntry} -> ${await at()}`);
+  if (listEntry < 0) {
+    // Without the Navigation API the list's address replaced the sheet's: Back shows the list
+    // once more, not the sheet.
+    await page.goBack();
+    await page.waitForLoadState();
+    check("no Navigation API: Back shows the list, not the sheet", new URL(page.url()).pathname === "/" && !new URL(page.url()).search && (await sheet.count()) === 0, page.url());
+    await page.goForward();
+    await page.waitForLoadState();
+  }
   await page.reload();
   check("a reload does not open it again", (await sheet.count()) === 0);
   // A close request other than Escape (Android's Back, closedby="any") is the same `cancel`.

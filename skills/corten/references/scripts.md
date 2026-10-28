@@ -215,4 +215,5 @@ else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS anchor
 `<dialog>` the server can draw `open` (a form it refuses) gets
 `on:connect={corten_ui::dialog::modal(target)}`, so it is modal, not just open; one the address
 opens and a link closes (`?selected=..`) gets `dialog::modalClosedBy(target, close, signal)` with
-the link as the `close` ref, so a close request (Escape) goes to its address. Do not write these handlers in the app.
+the link as the `close` ref, so a close request (Escape) goes to its address. Do not write these
+handlers in the app.
