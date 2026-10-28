@@ -185,14 +185,14 @@ async fn set_price(req: Req, State(desk): State<Desk>, Path(id): Path<String>, F
         let cell = PriceCell { id: &id, cents: None, typed: &input.price, errors: &errors };
         return req.invalid(&errors, cell, || async { req.redirect(&url::Home) }).await;
     };
-    let mut items = desk.items.lock().expect("items");
-    let item = items.iter_mut().find(|i| i.id == id).ok_or_else(corten::Error::not_found)?;
-    item.price_cents = cents;
-    drop(items);
-    if req.mode == Mode::Action {
-        return req.patch(PriceCell { id: &id, cents: Some(cents), typed: "", errors: &Errors::new() });
+    {
+        let mut items = desk.items.lock().expect("items");
+        let item = items.iter_mut().find(|i| i.id == id).ok_or_else(corten::Error::not_found)?;
+        item.price_cents = cents;
     }
-    req.redirect(&url::Home)
+    let none = Errors::new();
+    let cell = PriceCell { id: &id, cents: Some(cents), typed: "", errors: &none };
+    req.patch_or(cell, || async { req.redirect(&url::Home) }).await
 }
 
 #[derive(Deserialize, Fields)]
@@ -206,28 +206,28 @@ pub struct ArchiveInput {
 
 async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveInput>) -> HtmlResult {
     // Checked and recorded under one lock, so two copies of a submit cannot both apply.
-    let mut archived = desk.archived.lock().expect("archived");
-    let done = match archived.get(input.submit.as_str()) {
-        Some(done) => done.clone(),
-        None => {
-            let mut items = desk.items.lock().expect("items");
-            let mut done = Vec::new();
-            for item in items.iter_mut().filter(|i| input.ids.contains(&i.id) && !i.archived) {
-                item.archived = true;
-                done.push(item.id.clone());
+    let done = {
+        let mut archived = desk.archived.lock().expect("archived");
+        match archived.get(input.submit.as_str()) {
+            Some(done) => done.clone(),
+            None => {
+                let mut items = desk.items.lock().expect("items");
+                let mut done = Vec::new();
+                for item in items.iter_mut().filter(|i| input.ids.contains(&i.id) && !i.archived) {
+                    item.archived = true;
+                    done.push(item.id.clone());
+                }
+                archived.insert(input.submit.as_str().to_string(), done.clone());
+                done
             }
-            archived.insert(input.submit.as_str().to_string(), done.clone());
-            done
         }
     };
-    drop(archived);
-    if req.mode != Mode::Action {
-        return req.redirect(&url::Home);
-    }
-    req.patch(html! {
+    // A view renders only when it is sent, so the redirect does not format the status.
+    let removed = html! {
         for id in &done { {Remove(RowId(id))} }
         <StatusLine text={&format!("Archived {} item{}.", done.len(), if done.len() == 1 { "" } else { "s" })} />
-    })
+    };
+    req.patch_or(removed, || async { req.redirect(&url::Home) }).await
 }
 
 /// What the listed stock is worth, by set. Amounts a seller would not want left in a shared

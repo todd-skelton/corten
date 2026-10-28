@@ -383,11 +383,9 @@ pub(crate) async fn create_alert(
         }
     };
     let message = alert_set(&form.title, &form.email, price);
-    if req.mode == Mode::Action {
-        return req.patch(AlertMessage { message: &message });
-    }
     // Without JavaScript the browser posted a plain form: answer with the whole page.
-    req.page(ItemPage::new(t, &item, message).document(&req))
+    let page = || async { req.page(ItemPage::new(t, &item, message.clone()).document(&req)) };
+    req.patch_or(AlertMessage { message: &message }, page).await
 }
 
 /// An alert watches the item's lowest price, so an item with no listings has none to watch. No

@@ -632,6 +632,10 @@ Corten is pre-1.0, so any minor version may change the API.
     `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, in place of
     `res.headers_mut().append(header::SET_COOKIE, cookie.header())`. The cookie is built by
     `SetCookie`, so its safe flags are the default.
+97. `Req::patch_or(view, page)`: a `data-patch` form's answer both ways, the patch with JavaScript
+    and `page()` (the page or a redirect) otherwise, in place of
+    `if req.mode == Mode::Action { return req.patch(view); }`. Like `Req::invalid`, the page's
+    closure runs only without JavaScript, so a patch never loads what only the page shows.
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
