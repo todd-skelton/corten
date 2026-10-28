@@ -13,7 +13,7 @@ checked on the other side.
 | Markup to handlers | `#[component(js)]` reads the script's JSDoc when the crate compiles: `js::name` exists only for an export, and each argument (a ref, typed by the tag it is on; `event`, `target`, `signal`, `scope`; a value) must match its `@param` type |
 | Typed events | `#[event]` structs: `on:Name` must name one, and `Types::components` declares its class in `corten/events` with the fields' types |
 | Markup to stylesheet | `#[component(css)]`: `class={Name}` is a constant from the component's own CSS file |
-| Tokens to views | `tokens!`: scales are enums and utilities take them, per breakpoint |
+| Tokens to views | `tokens!`: scales are enums, each utility value a function (`mx_auto()`), and utilities take values per breakpoint |
 | Tokens to stylesheets | at startup: a `var(--x)` without a fallback must be declared by a stylesheet on the same pages (a component's stylesheet compiles without the theme, so the compiler cannot check it) |
 | Text to catalogs | `messages!`: every locale has every key with the same arguments |
 | Form to handler | `#[derive(Fields)]` names are `FieldName`s, the only key `name=`, `Errors` and corten-ui's fields take; serde parses the post |

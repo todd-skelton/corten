@@ -134,9 +134,12 @@ use std::cell::RefCell;
 /// - `utilities` (optional): classes for one property, from a scale
 ///   (`{"gap": {"property": "gap", "scale": "space"}}`) or from their own values
 ///   (`{"direction": {"property": "flex-direction", "values": {"row": "row", "column": "column"}}}`).
-///   Each is a function, `gap(Space::_2)` or `gap(Responsive::new(Space::_2).md(Space::_4))`,
-///   that returns its classes (`gap-2 md:gap-4`) for `class={..}`. Inline `style=` attributes are
-///   blocked by the content security policy; these are the typed way to set one value per use.
+///   Each value is a function of its own, `gap_2()` and `direction_row()` (`gap-2`,
+///   `direction-row`), for `class={..}`. The utility's function takes a value chosen as the page
+///   renders, `gap(space)`, or one per breakpoint, `gap(Responsive::new(Space::_2).md(Space::_4))`
+///   (`gap-2 md:gap-4`). Two that would have one name (a utility `border-b` and `border`'s value
+///   `b`) are a compile error that names both. Inline `style=` attributes are blocked by the
+///   content security policy; these are the typed way to set one value per use.
 ///
 /// It defines `TOKENS: corten::Component` with the generated stylesheet; list it first in
 /// `App::components` so the components' rules come after it.
@@ -179,7 +182,8 @@ impl Class {
     }
 }
 
-/// Utility classes for one value per breakpoint, from a [`tokens!`] utility: `gap(Space::_2)`.
+/// Utility classes for one value per breakpoint, from a [`tokens!`] utility:
+/// `gap(Responsive::new(Space::_2).md(Space::_4))`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Classes<const N: usize>([Option<&'static str>; N]);
 
@@ -435,7 +439,7 @@ mod tests {
     mod theme {
         crate::style::tokens!("src/style/tokens.json");
     }
-    use theme::{direction, gap, Direction, Responsive, Space};
+    use theme::{direction, direction_column, gap, gap_2, Direction, Responsive, Space};
 
     #[test]
     fn a_stylesheet_names_the_custom_properties_it_declares_and_reads() {
@@ -460,6 +464,12 @@ mod tests {
         assert!(css.starts_with(":root{--color-ink:#1d1b26;"), "{css}");
         assert!(css.contains(".md\\:direction-row{flex-direction:row}"), "{css}");
         assert!(html! { <p class={gap(Responsive::default())}></p> }.to_html() == "<p></p>", "no value, no attribute");
+        // A value at every width is its own function: the class as static text.
+        assert_eq!(
+            html! { <p class={(gap_2(), direction_column())}></p> }.to_html(),
+            r#"<p class="gap-2 direction-column"></p>"#
+        );
+        assert_eq!(gap_2().name(), gap(Space::_2).names().next().unwrap());
     }
 
     #[component(css)]

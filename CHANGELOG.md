@@ -640,6 +640,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `tokio::sync::watch` channel, from where the page is: nothing until the next change when it
     shows the current version, the current value first when it is behind, then the latest after
     each change. It replaces about ten lines of `mark_changed`, `unfold` and `Fragment`.
+99. `tokens!` gives each utility value a function named after its class: `mx_auto()` is `mx-auto`
+    and `gap_3()` is `gap-3`, in place of `mx(Mx::Auto)` and `gap(Space::_3)`. The utility's
+    function stays for a value chosen as the page renders and for one per breakpoint. Two that
+    would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that
+    names both. The watchlist's home page renders in 1.1% fewer instructions (62,827 to 62,162).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
