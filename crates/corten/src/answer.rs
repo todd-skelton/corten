@@ -211,11 +211,59 @@ impl Answer for HtmlResponse {
 /// An answer that can be [`Public`], and what it is there: the same answer, made for everyone.
 /// An [`HtmlResult`] becomes a `Result<HtmlResponse<ForAll>>`, so the `Req` methods that make
 /// it make it for everyone and it cannot set a cookie; an answer that cannot set one (text, JSON,
-/// a [`Relay`]) stays itself.
+/// a [`Relay`]) stays itself. An answer type of the app's own implements it (with
+/// [`ForEveryone`] for `ForAll`) only when it sets no cookie.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be `Public`",
+    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, a live stream or a feed"
+)]
 pub trait Shareable {
     /// The answer as [`Public::new`] takes it.
-    type ForAll: IntoResponse;
+    type ForAll: ForEveryone<Named = Self>;
 }
+
+/// An answer made for everyone, as [`Public::new`] takes it, and the answer type a handler
+/// names for it (`Named`): `Result<HtmlResponse<ForAll>>` is named `HtmlResult`. Lets
+/// `Public::new(age, answer)` find its type from `answer` where no return type says it (a
+/// closure).
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is made for one visitor, so it cannot be `Public`",
+    note = "make the page inside the handler that returns `Public<HtmlResult>` (`req.page` takes who it is for from there), or have a helper return `corten::Result<HtmlResponse<For>>` for any `For` rather than `HtmlResult`"
+)]
+pub trait ForEveryone: IntoResponse {
+    /// The answer type a handler names: `Public<Self::Named>`.
+    type Named;
+}
+
+impl ForEveryone for HtmlResponse<ForAll> {
+    type Named = HtmlResponse;
+}
+
+impl<A: ForEveryone> ForEveryone for Result<A, Error> {
+    type Named = Result<A::Named, Error>;
+}
+
+#[cfg(feature = "json")]
+impl<A: ForEveryone> ForEveryone for std::result::Result<A, JsonError> {
+    type Named = std::result::Result<A::Named, JsonError>;
+}
+
+/// An answer that is itself everywhere: it sets no cookie.
+macro_rules! for_everyone {
+    ($($ty:ty),* $(,)?) => {$(
+        impl ForEveryone for $ty {
+            type Named = Self;
+        }
+        impl Shareable for $ty {
+            type ForAll = Self;
+        }
+    )*};
+}
+
+for_everyone!(&'static str, String, StatusCode, Relay, LiveResponse);
+
+#[cfg(feature = "feed")]
+for_everyone!(corten_feed::FeedResponse);
 
 impl Shareable for HtmlResponse {
     type ForAll = HtmlResponse<ForAll>;
@@ -238,20 +286,12 @@ where
     type ForAll = Self;
 }
 
-impl Shareable for &'static str {
-    type ForAll = Self;
-}
-
-impl Shareable for String {
-    type ForAll = Self;
-}
-
-impl Shareable for StatusCode {
-    type ForAll = Self;
-}
-
-impl Shareable for Relay {
-    type ForAll = Self;
+#[cfg(feature = "json")]
+impl<T> ForEveryone for crate::Json<T>
+where
+    crate::Json<T>: IntoResponse,
+{
+    type Named = Self;
 }
 
 /// What a page handler returns: `async fn item(req: Req) -> HtmlResult`. A failure is the app's
@@ -485,8 +525,32 @@ pub struct Public<A: Shareable> {
 }
 
 impl<A: Shareable> Public<A> {
-    /// `answer`, which any cache may keep for `max_age` (whole seconds).
-    pub fn new(max_age: Duration, answer: A::ForAll) -> Self {
+    /// `answer`, which any cache may keep for `max_age` (whole seconds). Its type says the
+    /// `Public`'s, so a closure needs no annotation: `Public::new(age, "home")` is a
+    /// `Public<&str>`, and `Public::new(age, req.page(..))` a `Public<HtmlResult>` whose page is
+    /// made for everyone.
+    ///
+    /// A page made for one visitor does not fit, so a helper that makes a page for a `Public`
+    /// handler returns `corten::Result<HtmlResponse<For>>` for any `For`, not `HtmlResult`:
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use corten::{prelude::*, HtmlResponse};
+    ///
+    /// fn home_page<For>(req: &Req) -> corten::Result<HtmlResponse<For>> {
+    ///     req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> })
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     Public::new(Duration::from_secs(60), home_page(&req))
+    /// }
+    /// # let _: Methods = get(home);
+    /// ```
+    pub fn new<T>(max_age: Duration, answer: T) -> Self
+    where
+        T: ForEveryone<Named = A>,
+        A: Shareable<ForAll = T>,
+    {
         Public { cache: Cache::public(max_age), answer }
     }
 

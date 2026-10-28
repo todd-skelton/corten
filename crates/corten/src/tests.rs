@@ -1629,7 +1629,7 @@ fn cached_routes() -> Router {
     let minute = std::time::Duration::from_secs(60);
     let home = || html! { <p>"home"</p> };
     Router::new()
-        .route("/", get(move |req: Req| async move { Public::<HtmlResult>::new(minute, req.test_page_for("Home", home())) }))
+        .route("/", get(move |req: Req| async move { Public::new(minute, req.test_page_for("Home", home())) }))
         .route(
             "/cookie",
             get(move |req: Req| async move {
@@ -1639,8 +1639,7 @@ fn cached_routes() -> Router {
         .route(
             "/catalog",
             get(move |req: Req| async move {
-                Public::<HtmlResult>::new(minute, req.test_page_for("Catalog", home()))
-                    .shared(std::time::Duration::from_secs(86_400))
+                Public::new(minute, req.test_page_for("Catalog", home())).shared(std::time::Duration::from_secs(86_400))
             }),
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
@@ -1653,10 +1652,13 @@ fn cached_routes() -> Router {
                     page.headers_mut().append(header::SET_COOKIE, SetCookie::new("a", "1").header());
                     page
                 });
-                Public::<HtmlResult>::new(minute, page)
+                Public::new(minute, page)
             }),
         )
         .route("/plain", get(|req: Req| async move { req.test_page("Plain", html! { <p>"plain"</p> }) }))
+        // A closure has no return type to read: `Public::new` finds its type from the answer.
+        .route("/text", get(move || async move { Public::new(minute, "text") }))
+        .route("/page", get(move |req: Req| async move { Public::new(minute, req.test_page_for("Page", home())) }))
 }
 
 async fn cache_control(router: &Router, uri: &str, extra: &[(&'static str, &'static str)]) -> String {
@@ -1709,6 +1711,8 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
     }
     assert_eq!(cache_control(&router, "/cookie", &[]).await, "private, no-cache", "it sets a cookie");
     assert_eq!(cache_control(&router, "/cookies", &[]).await, "private, no-cache", "it sets cookies");
+    assert_eq!(cache_control(&router, "/text", &[]).await, "public, max-age=60", "a closure's Public");
+    assert_eq!(cache_control(&router, "/page", &[]).await, "public, max-age=60", "a closure's Public page");
     assert_eq!(cache_control(&router, "/catalog", &[]).await, "public, max-age=60, s-maxage=86400");
     assert_eq!(cache_control(&router, "/catalog", &[("corten", "nav")]).await, "private, max-age=60", "the browser's lifetime");
     assert_eq!(cache_control(&router, "/catalog", &[("cookie", "session=abc")]).await, "private, no-cache");
