@@ -79,7 +79,7 @@ pub enum Format {
 /// What a handler named in `#[corten::routes]` returns: the type says how the route's failures are
 /// answered ([`Answer::FORMAT`]) and what the handler may read ([`Answer::Inputs`]). Implemented
 /// for [`HtmlResult`], [`JsonResult<T>`], `Result<JsonResponse, JsonError>`, [`Public`], [`NoStore`], text, a bare `StatusCode`,
-/// [`LiveResponse`], feeds and [`crate::seo::File`]; a crate may add its own.
+/// [`LiveResponse`], feeds, [`Media`] and [`crate::seo::File`]; a crate may add its own.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer a route can name",
     label = "the handler returns this",
@@ -123,6 +123,10 @@ impl SetsCookies for ForOne {}
 mod sealed {
     pub trait Sealed {}
     impl Sealed for super::ForOne {}
+
+    pub trait Immutable {}
+    impl Immutable for super::Media {}
+    impl Immutable for Result<super::Media, super::Error> {}
 }
 
 impl<For> HtmlResponse<For> {
@@ -215,7 +219,7 @@ impl Answer for HtmlResponse {
 /// [`ForEveryone`] for `ForAll`) only when it sets no cookie.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be `Public`",
-    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, a live stream or a feed"
+    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, `Media`, a live stream or a feed"
 )]
 pub trait Shareable {
     /// The answer as [`Public::new`] takes it.
@@ -228,7 +232,7 @@ pub trait Shareable {
 /// closure).
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer made for everyone, so it cannot be `Public`",
-    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, a live stream or a feed"
+    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, `Media`, a live stream or a feed"
 )]
 pub trait ForEveryone: IntoResponse {
     /// The answer type a handler names: `Public<Self::Named>`.
@@ -280,7 +284,7 @@ macro_rules! for_everyone {
     )*};
 }
 
-for_everyone!(&'static str, String, StatusCode, Relay, LiveResponse);
+for_everyone!(&'static str, String, StatusCode, Relay, Media, LiveResponse);
 
 #[cfg(feature = "feed")]
 for_everyone!(corten_feed::FeedResponse);
@@ -632,6 +636,61 @@ impl Answer for Relay {
     type Inputs = AnyInputs;
 }
 
+/// Bytes the app holds, sent as their media type: a picture a user uploaded, a document the app
+/// made. The type is one the app names (`"image/png"`), never the one a client sent with the
+/// bytes: read an upload's type from its first bytes. What keeps a file that holds HTML from
+/// running as a page is the app's headers, which every `Media` gets: browsers do not guess
+/// another type (`X-Content-Type-Options: nosniff`), and the CSP allows no inline script.
+///
+/// It is cached as anything the app answers is (`private, no-cache`). At a URL that names its
+/// content, a hash of the bytes, the bytes never change, so [`Public::immutable`] lets every cache
+/// keep it for a year, as Corten's own versioned files are; its handler cannot read who is asking,
+/// as any `Public` handler cannot.
+///
+/// ```
+/// use corten::{prelude::*, Media};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/pictures/{id}", get = picture)]
+///     pub struct Picture<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+///
+/// // `id` is a hash of the picture's bytes, made when it was uploaded.
+/// async fn picture(Path(id): Path<String>) -> Public<corten::Result<Media>> {
+///     let png: &'static [u8] = b"\x89PNG\r\n\x1a\n";
+///     Public::immutable(match id.as_str() {
+///         "5f2c" => Ok(Media::new("image/png", png)),
+///         _ => Err(corten::Error::not_found()),
+///     })
+/// }
+/// # let _ = App::new(url::router()).router();
+/// ```
+pub struct Media(Response);
+
+impl Media {
+    /// `bytes`, sent as `media_type` (`"image/webp"`), a valid header value.
+    pub fn new(media_type: &'static str, bytes: impl Into<axum::body::Bytes>) -> Self {
+        use axum::http::{header, HeaderValue};
+        let mut res = Response::new(axum::body::Body::from(bytes.into()));
+        res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(media_type));
+        Media(res)
+    }
+}
+
+impl IntoResponse for Media {
+    fn into_response(self) -> Response {
+        self.0
+    }
+}
+
+impl Answer for Media {
+    const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+}
+
 /// On a [`Relay`]'s response: its failure status and its encoding are the upstream's, passed on
 /// as they are.
 #[derive(Clone, Copy)]
@@ -714,6 +773,53 @@ impl<A: Shareable> Public<A> {
         Public { cache: Cache::public(max_age), answer: answer.for_all() }
     }
 
+    /// `answer` at a URL that names its content (a hash of its bytes, as Corten's versioned files
+    /// have), so it never changes there: any cache keeps it for a year and the browser does not ask
+    /// again (`public, max-age=31536000, immutable`). Since the URL alone says what the answer
+    /// is, a request's cookies do not make it private, and no `Vary: cookie` is added; a cookie it
+    /// sets, or a caller something read, still does. A URL that does not name its content (a
+    /// user's current picture at `/me/picture`) takes `Public::new` with a lifetime instead, and so
+    /// does anything but bytes: a page, a redirect or JSON changes with the deploy, so only `Media`
+    /// (or `corten::Result<Media>`) can be immutable. `shared` and `stale_while_revalidate` do
+    /// nothing to it; a year covers both.
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::prelude::*;
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     Public::immutable(req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> }))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
+    ///
+    /// Its handler is held to `Public`'s rule, so one that could tell who is asking does not
+    /// compile:
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::{axum::http::HeaderMap, prelude::*, Media};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/me/picture", get = picture)]
+    ///     pub struct Picture;
+    /// }
+    ///
+    /// async fn picture(headers: HeaderMap) -> Public<Media> {
+    ///     let _ = headers.get("cookie");
+    ///     Public::immutable(Media::new("image/png", &b"\x89PNG"[..]))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
+    pub fn immutable<T: ForEveryone<Named = A> + Immutable>(answer: T) -> Self {
+        Public { cache: Cache::immutable(), answer: answer.for_all() }
+    }
+
     /// After `max_age`, a cache may still serve it for up to `stale` while it fetches a fresh one.
     pub fn stale_while_revalidate(mut self, stale: Duration) -> Self {
         self.cache = self.cache.stale_while_revalidate(stale);
@@ -772,6 +878,16 @@ impl<A: Answer> Answer for NoStore<A> {
     type Inputs = A::Inputs;
 }
 
+/// Bytes a URL can name, which [`Public::immutable`] takes: [`Media`], or `corten::Result<Media>`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not bytes a URL can name, so it cannot be immutable",
+    note = "`Public::immutable` takes `Media` or `corten::Result<Media>`; a page, a redirect or JSON changes with the deploy, so give it `Public::new` with a lifetime"
+)]
+pub trait Immutable: sealed::Immutable {}
+
+impl Immutable for Media {}
+impl Immutable for Result<Media, Error> {}
+
 /// A handler may read anything.
 pub struct AnyInputs;
 
@@ -780,7 +896,9 @@ pub struct AnonymousInputs;
 
 /// An input that cannot tell who is asking: no cookie, no credential header, no `Caller`. A
 /// [`Public`] answer's handler takes only these. Implement it for an extractor of the app's own
-/// that reads nothing about the caller.
+/// that reads nothing about the caller. A request's cookies make a `Public::new` answer private
+/// when it is sent, but not a [`Public::immutable`] one, which this marker alone keeps from
+/// depending on who is asking.
 #[diagnostic::on_unimplemented(
     message = "a `Public` answer is the same for everyone, so its handler cannot take `{Self}`",
     label = "`{Self}` may tell who is asking",
