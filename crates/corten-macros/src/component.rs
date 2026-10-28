@@ -613,7 +613,18 @@ pub(crate) fn split_generics(generics: &[TokenTree]) -> (TokenStream, TokenStrea
     let mut impl_params = Vec::new();
     let mut type_params = Vec::new();
     for param in split(inner, ',') {
-        let default = param.iter().position(|t| is_punct(Some(t), '='));
+        // A default is the `=` outside any angle brackets: `T: Iterator<Item = u8>` has none.
+        // The `>` of an arrow (`Fn() -> u8`) closes nothing.
+        let (mut depth, mut arrow) = (0i32, false);
+        let default = param.iter().position(|t| {
+            match t {
+                TokenTree::Punct(p) if p.as_char() == '<' => depth += 1,
+                TokenTree::Punct(p) if p.as_char() == '>' && !arrow => depth -= 1,
+                _ => {}
+            }
+            arrow = matches!(t, TokenTree::Punct(p) if p.as_char() == '-' && p.spacing() == Spacing::Joint);
+            depth == 0 && is_punct(Some(t), '=')
+        });
         let without_default: Vec<TokenTree> = param[..default.unwrap_or(param.len())].to_vec();
         let name: Vec<TokenTree> = match param.first() {
             Some(TokenTree::Punct(p)) if p.as_char() == '\'' => param[..2].to_vec(),
