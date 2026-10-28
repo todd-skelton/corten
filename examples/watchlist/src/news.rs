@@ -260,12 +260,12 @@ fn whole_page(
     let title = if mine { "Stories about your stocks" } else { "Latest stories" };
     req.page(html! {
         <Layout req={req} title="News" viewer={viewer} head="">
-            <div class={(stack(Space::_1), mb(Space::_5))}>
+            <div class={(stack(Space::_1), mb_5())}>
                 <h1>"Market news"</h1>
                 <p class={muted()}>"What the companies on the market are doing, newest first."</p>
             </div>
             <div
-                class={(display(Display::Grid), columns(Responsive::new(Columns::_1).md(Columns::Side)), gap(Space::_5), items(Items::Start))}
+                class={(display_grid(), columns(Responsive::new(Columns::_1).md(Columns::Side)), gap_5(), items_start())}
             >
                 <aside class={card()}>
                     <NewsFilter sectors={&q.sector} mine={mine} />
@@ -307,10 +307,10 @@ fn StoryItem<'a>(story: &'a Story, t: Msg) -> impl Render {
         <li class={(card(), stack(Space::_2))}>
             <h3><a href={url::Read { id: story.id }}>{story.headline}</a></h3>
             <p>{story.summary}</p>
-            <p class={(row(Space::_3), wrap(Wrap::Wrap), muted())}>
+            <p class={(row(Space::_3), flex_wrap(), muted())}>
                 <span>{story.source}</span>
                 <span>{t.date(published, DateStyle::Medium)}</span>
-                <span class={weight(Weight::Semibold)}>{story.ticker}</span>
+                <span class={weight_semibold()}>{story.ticker}</span>
                 <a href={url::News { filter: NewsQuery::sector(story.sector) }}>{story.sector.label()}</a>
             </p>
         </li>
@@ -332,7 +332,7 @@ fn LoadMore<'a>(sectors: &'a [Sector], mine: bool, shown: usize, total: usize) -
                 <input type="hidden" name={f.mine} value="on">
             }
             <input type="hidden" name={f.shown} value={shown}>
-            <button class={(secondary(), w(W::Full))} hidden={shown >= total}>"Load more stories"</button>
+            <button class={(secondary(), w_full())} hidden={shown >= total}>"Load more stories"</button>
         </form>
     }
 }

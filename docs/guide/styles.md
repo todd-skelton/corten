@@ -31,7 +31,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 | `class={(Row, cond.then_some(Selected), extra)}` | joined when the page renders; `None` adds nothing, an empty list leaves the attribute out |
 | a class nothing uses | `warning: constant Hot is never used` (an error under `-D warnings`) |
 | `#[component(css = OfferList)]` | a helper in the same module shares the stylesheet, and its uses count |
-| `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed responsive utilities: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
+| `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed utilities, a function per value (`gap_2()` prints `gap-2`, `mx_auto()` `mx-auto`) and per utility for a value chosen as the page renders or per breakpoint: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
 | `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
 | `var(--color-accent)` in a component's stylesheet | a startup error unless a stylesheet on the same pages declares it (the token file, a listed component's, a `.css` file in the static directory, or for an area's component one linked from its area), naming the file and the property; `var(--x, fallback)` is not checked |
 | `App::area(\|area\| admin::area(area).components(&[SalesChart, ...]))` | those stylesheets in a file of their own, `sections/admin.css`, linked only from pages at and under `/admin`; a component listed in two places, or tokens in an area, is a startup error, and a page outside the area that renders one is an error under `corten dev` |
@@ -78,13 +78,22 @@ and type, and `src/theme.rs` names the few combinations it repeats as functions:
 
 ```rust,ignore
 pub fn card() -> impl ClassList {
-    (bg(Color::Surface), border(Border::Line), rounded(Radius::Lg), shadow(Shadow::Sm), p(Space::_5))
+    (bg_surface(), border_line(), rounded_lg(), shadow_sm(), p_5())
 }
 
-<div class={(display(Display::Grid), columns(Responsive::new(Columns::_1).md(Columns::Main)), gap(Space::_5))}>
+/// A row of items, `space` apart: a value chosen by the caller goes to the utility's function.
+pub fn row(space: Space) -> impl ClassList {
+    (display_flex(), items_center(), gap(space))
+}
+
+<div class={(display_grid(), columns(Responsive::new(Columns::_1).md(Columns::Main)), gap_5())}>
     <section class={card()}>..</section>
 </div>
 ```
+
+Each value of a utility is a function named after its class, so `mx_auto()` is `mx-auto`, as in
+Tailwind. The utility's own function, `gap(..)`, is for a value the code chooses (`gap(space)`)
+and for one per breakpoint (`Responsive::new(..).md(..)`).
 
 Unlike Tailwind's class strings, a utility the file lacks, a value outside its scale or a
 breakpoint it does not define does not compile, and there is no build step or content scan: the
@@ -101,10 +110,15 @@ page renders. Measured with callgrind (release build, in-process `oneshot`, the 
 utilities took it from 45,952 instructions a request to 51,201, with a larger page; a profile put
 3,086 of the difference in writing its roughly 60 utility classes. Use
 utilities for layout that varies from page to page, and a component's stylesheet for what repeats.
- States a utility cannot
+A value's own function (`gap_3()`) is its class as static text, with no match: moving the
+watchlist's fixed values to them took its home page from 62,827 instructions a request to 62,162.
+A helper that takes a value (`stack(space)`) keeps the utility's function, which costs a match
+and keeps the scale's type. States a utility cannot
 say (hover, focus, the current link) and element defaults stay in `static/style.css`, and a
-component with rules of its own (`LivePrices`) keeps its stylesheet. A utility's classes are
-static text chosen by a match, so writing them costs what writing a class does.
+component with rules of its own (`LivePrices`) keeps its stylesheet. A utility function's
+classes are static text chosen by a match, so writing them costs what writing a class does.
+`use theme::*` brings in every value's function; an item of the module's own with the same name
+hides it.
 
 ## Areas
 

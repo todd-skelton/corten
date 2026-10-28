@@ -5,7 +5,7 @@ use crate::{
     model::{ItemView, Listing, sort_listings},
     routes,
     text::Msg,
-    theme::{Direction, Responsive, Space, direction, gap},
+    theme::{Direction, Responsive, direction, gap_5},
 };
 
 /// The item page borrows the item: rendering copies no strings out of it.
@@ -48,7 +48,7 @@ impl<'a> ItemPage<'a> {
 pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
     let (t, item, message) = (page.t, page.item, page.message.as_str());
     // A column on phones, a row from the small breakpoint up.
-    let summary = (Panel, Summary, gap(Space::_5), direction(Responsive::new(Direction::Column).sm(Direction::Row)));
+    let summary = (Panel, Summary, gap_5(), direction(Responsive::new(Direction::Column).sm(Direction::Row)));
     html! {
         <article>
             <nav class={Crumbs}>for c in &item.categories { <a href={routes::Category { slug: &c.slug }}>{c.name}</a> }</nav>
