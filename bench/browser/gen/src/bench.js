@@ -2,7 +2,7 @@
 // The bench's handlers (Bench in main.rs): plain functions the markup calls with its elements. They
 // change the page through the generated Row view, by name (`row.label += " !!!"`), and through
 // rows(), the list of a parent's Row views. No state, no renders.
-import { state } from "corten";
+import { keep } from "corten";
 import { Row, rows } from "corten/views";
 import { label, nextId, patched } from "../../apps/shared/labels.js";
 /** @import { Holds } from "corten/views" */
@@ -58,7 +58,7 @@ export function patch100(body) {
  * @param {HTMLAnchorElement} link @param {Holds<Row, HTMLTableSectionElement>} body
  */
 export function select(link, body) {
-  const last = state(body, () => /** @type {{ row: Row | undefined }} */ ({ row: undefined }));
+  const last = keep(() => /** @type {{ row: Row | undefined }} */ ({ row: undefined }));
   if (last.row) last.row.selected = false;
   last.row = rows(body, Row).of(link);
   if (last.row) last.row.selected = true;

@@ -106,7 +106,7 @@ pub(crate) fn LivePrices<'a>(stocks: &'a [Stock], t: Msg) -> impl Patch {
         >
             <div class={(row(Space::_3), justify_between())}>
                 <h2>"Your stocks"</h2>
-                <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(scope, target, price, change)}>
+                <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(target, price, change)}>
                     "Pause updates"
                 </button>
             </div>

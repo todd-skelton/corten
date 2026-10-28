@@ -57,6 +57,9 @@ pub struct Module {
     pub path: String,
     pub handlers: Vec<Handler>,
     pub groups: Vec<ArgGroup>,
+    /// It imports `keep` from `corten`: its handlers keep their component's state, so the
+    /// component is scoped.
+    pub keeps: bool,
 }
 
 impl Module {
@@ -81,8 +84,10 @@ impl Module {
             Some(prefix) => format!("{prefix}.{stem}"),
             None => stem,
         };
-        let (handlers, groups) = parse(&source).map_err(|(line, message)| (span, format!("{file}:{line}: {message}")))?;
-        Ok(Module { name, file, path: path.display().to_string(), handlers, groups })
+        let at = |(line, message): (usize, String)| (span, format!("{file}:{line}: {message}"));
+        let (handlers, groups) = parse(&source).map_err(at)?;
+        let keeps = keeps(&source).map_err(at)?;
+        Ok(Module { name, file, path: path.display().to_string(), handlers, groups, keeps })
     }
 
     /// `::corten::script::Script { .. }`.
@@ -100,7 +105,20 @@ impl Module {
 
     /// `mod name { pub fn handler(..) -> Call<..> }`. `owner` is the shared module's component,
     /// marked rendered when a handler renders (a component's own script is its component's).
-    pub fn module(&self, vis: TokenStream, ident: Ident, owner: TokenStream, items: TokenStream) -> TokenStream {
+    /// `home` is the scoped component the handlers belong to, when it is known here (a scoped
+    /// component's own script); otherwise the one rendering when the call is made.
+    pub fn module(
+        &self,
+        vis: TokenStream,
+        ident: Ident,
+        owner: TokenStream,
+        home: Option<&str>,
+        items: TokenStream,
+    ) -> TokenStream {
+        let home = match home {
+            Some(scope) => q("::core::option::Option::Some(__A0)", &[literal(scope)]),
+            None => q("::corten::script::__private::current_scope()", &[]),
+        };
         let mut fns = items;
         for g in &self.groups {
             fns.extend(group(g, &self.file));
@@ -126,7 +144,7 @@ impl Module {
             fns.extend(q(
                 "#[doc = __A0] #[allow(non_snake_case, clippy::too_many_arguments)] #[must_use]
                 pub fn __A1<__A2>(__A3) -> ::corten::script::__private::Call<(__A4)> {
-                    ::corten::script::__private::Call::new(__A5, __A6, __A7, (__A8))
+                    ::corten::script::__private::Call::new(__A5, __A6, __A9, __A10, __A7, (__A8))
                 }",
                 &[
                     literal(&doc),
@@ -138,6 +156,8 @@ impl Module {
                     literal(&h.name),
                     owner.clone(),
                     args,
+                    home.clone(),
+                    q(if self.keeps { "true" } else { "false" }, &[]),
                 ],
             ));
         }
@@ -242,6 +262,83 @@ fn rust_ident(name: &str, i: usize) -> Ident {
     } else {
         Ident::new(name, Span::call_site())
     }
+}
+
+/// True when the script imports `keep` from `corten` (`import { keep, subscribe } from "corten";`).
+/// Any other import of `corten` in code (a namespace or an `import("corten")`) is an error, since it
+/// would hide that.
+pub fn keeps(source: &str) -> Result<bool, (usize, String)> {
+    let by_name = "import corten's functions by name: import { keep } from \"corten\";";
+    let lines: Vec<&str> = source.lines().collect();
+    // Code without its comments: `//` to the end of the line and `/* .. */` (to the end of the line
+    // when it closes on a later one), outside strings.
+    let code = |line: &str| -> String {
+        let mut out = String::new();
+        let mut quote = None;
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            match quote {
+                Some(q) if c == q => quote = None,
+                Some(_) => {}
+                None if c == '"' || c == '\'' || c == '`' => quote = Some(c),
+                None if c == '/' && chars.peek() == Some(&'/') => break,
+                None if c == '/' && chars.peek() == Some(&'*') => {
+                    chars.next();
+                    let mut prev = ' ';
+                    let mut closed = false;
+                    for c in chars.by_ref() {
+                        if prev == '*' && c == '/' {
+                            closed = true;
+                            break;
+                        }
+                        prev = c;
+                    }
+                    if !closed {
+                        break;
+                    }
+                    out.push(' ');
+                    continue;
+                }
+                None => {}
+            }
+            out.push(c);
+        }
+        out.trim().to_string()
+    };
+    let mut keeps = false;
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        // A line inside a block comment (`* @param ..`).
+        if trimmed.starts_with('*') {
+            i += 1;
+            continue;
+        }
+        let line = code(trimmed);
+        let named = |text: &str| text.contains("\"corten\"") || text.contains("'corten'");
+        if line.starts_with("import ") || line.starts_with("import{") {
+            let start = i;
+            let mut statement = line;
+            // Until it ends with its module's name: `import {` and a name a line run on.
+            while !statement.ends_with([';', '"', '\'']) && i + 1 < lines.len() {
+                i += 1;
+                statement.push(' ');
+                statement.push_str(&code(lines[i]));
+            }
+            let from = statement.rsplit_once("from").map(|(_, from)| from.trim().trim_end_matches(';').trim());
+            if matches!(from, Some("\"corten\"" | "'corten'")) {
+                let Some((_, rest)) = statement.split_once('{') else {
+                    return Err((start + 1, by_name.into()));
+                };
+                let names = rest.split_once('}').map_or(rest, |(names, _)| names);
+                keeps |= names.split(',').any(|name| name.split(" as ").next().is_some_and(|n| n.trim() == "keep"));
+            }
+        } else if line.contains("import(") && named(&line) {
+            return Err((i + 1, by_name.into()));
+        }
+        i += 1;
+    }
+    Ok(keeps)
 }
 
 /// The handlers of a script, every top-level `export function` with its JSDoc, and its groups.
@@ -643,6 +740,16 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     let file = crate::tokens::string_value(path).ok_or((path.span(), usage.to_string()))?;
     let located = crate::style::locate(&file, path.span())?;
     let module = Module::read(&located, path.span())?;
+    if module.keeps {
+        return err(
+            path.span(),
+            format!(
+                "{}: keep() is the state of the component whose handler runs, and a script! module is shared by \
+                 components: keep the state in each component's own script (#[component(js)]) or in the DOM",
+                module.file
+            ),
+        );
+    }
     let items = q(
         "#[doc = \" The module, for `App::components`.\"] pub const COMPONENT: ::corten::Component = ::corten::Component {
             name: __A0, script: ::core::option::Option::Some(__A1), style: ::core::option::Option::None, event: ::core::option::Option::None,
@@ -650,7 +757,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         };",
         &[literal(&module.name), module.literal()],
     );
-    Ok(module.module(vis, name.clone(), q("::core::option::Option::Some(&COMPONENT)", &[]), items))
+    Ok(module.module(vis, name.clone(), q("::core::option::Option::Some(&COMPONENT)", &[]), None, items))
 }
 
 #[cfg(test)]
@@ -658,9 +765,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_script_that_imports_keep_keeps_state() {
+        assert_eq!(keeps("import { keep } from \"corten\";"), Ok(true));
+        assert_eq!(keeps("import { subscribe, keep as k } from 'corten';"), Ok(true));
+        assert_eq!(keeps("import {\n  subscribe,\n  keep,\n} from \"corten\";"), Ok(true));
+        assert_eq!(keeps("import { subscribe } from \"corten\";\n/** @import { Message } from \"corten\" */"), Ok(false));
+        assert_eq!(keeps("import { keep } from \"./keep.js\";"), Ok(false));
+        assert_eq!(keeps("import { Row } from \"corten/views\";"), Ok(false));
+        assert_eq!(keeps("import { keep } from \"corten\"; // state per instance"), Ok(true));
+        assert_eq!(keeps("import {keep} from\"corten\""), Ok(true));
+        assert_eq!(keeps("import {\n  fromCents,\n  keep\n} from \"corten\";"), Ok(true));
+        assert_eq!(keeps("/** @typedef {import(\"corten\").Message} M */\n// import(\"corten\")"), Ok(false));
+        assert_eq!(keeps("const m = /** @type {import(\"corten\").Message<\"count\">} */ (x);"), Ok(false));
+        assert_eq!(keeps("/* eslint-disable */ import { keep } from \"corten\";"), Ok(true));
+        assert_eq!(keeps("/**\n * @param {import(\"corten\").Message} m\n */"), Ok(false));
+        assert!(keeps("import * as corten from \"corten\";").unwrap_err().1.contains("by name"));
+        assert!(keeps("const { keep } = await import(\"corten\");").unwrap_err().1.contains("by name"));
+    }
+
+    #[test]
     fn exports_and_jsdoc_types_become_handlers() {
         let source = r#"// @ts-check
-import { state } from "corten";
+import { keep } from "corten";
 
 /**
  * Moves the rest into the table.
@@ -752,7 +878,7 @@ export function f(body, any, odd) {}";
 
     #[test]
     fn typedefs_of_elements_are_groups_and_imported_events_are_rust_types() {
-        let source = r#"import { state } from "corten";
+        let source = r#"import { keep } from "corten";
 import { RowToggled, Saved as Done } from "corten/events";
 /** @typedef {import("corten/events").Cleared} Cleared */
 

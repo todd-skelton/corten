@@ -35,8 +35,8 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
         <section
             class={Grid}
             on:connect={js::live(body, url::Levels, signal)}
-            on:PriceEdited={js::priceEdited(event, scope, body, unsent)}
-            on:submit={js::priceSent(event, scope, body, unsent)}
+            on:PriceEdited={js::priceEdited(event, body, unsent)}
+            on:submit={js::priceSent(event, body, unsent)}
         >
             <div class={Toolbar}>
                 <input
@@ -45,7 +45,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
                     aria-label="Filter"
                     on:input={js::filter(target, empty, sel)}
                 >
-                <BulkBar count={count} bar={bar} archive={ArchiveDialogId} on:clear={js::clear(scope, sel)} />
+                <BulkBar count={count} bar={bar} archive={ArchiveDialogId} on:clear={js::clear(sel)} />
                 <output ref={note} hidden></output>
             </div>
             <div class={Scroll}>
@@ -57,7 +57,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
                                     ref={all}
                                     type="checkbox"
                                     aria-label="Select all"
-                                    on:change={js::selectAll(scope, sel)}
+                                    on:change={js::selectAll(sel)}
                                 >
                             </th>
                             <th><button type="button" on:click={js::sortByName(target, body)}>"Name"</button></th>
@@ -69,7 +69,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
                             </th>
                         </tr>
                     </thead>
-                    <tbody ref={body} on:click={js::toggle(event, select.closest(), scope, sel)}>
+                    <tbody ref={body} on:click={js::toggle(event, select.closest(), sel)}>
                         for line in lines {
                             <InventoryRow
                                 id={&line.item.id}
@@ -95,7 +95,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
                 id={ArchiveDialogId}
                 title="Archive the selected items?"
                 confirm="Archive"
-                on:confirm={js::archive(scope, form, sel)}
+                on:confirm={js::archive(form, sel)}
             >
                 <p>"Archived items leave the grid. Their listings end."</p>
             </ConfirmDialog>

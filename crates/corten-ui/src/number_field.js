@@ -4,14 +4,14 @@
 // Home and End, and the step's decimals. A step sends `input` and `change` like typing does, and
 // the input's own on:input (`sync`) then disables a button at its bound.
 
-import { state } from "corten";
+import { keep } from "corten";
 
 /** Milliseconds a button is held before it repeats, and between repeats. */
 const HOLD = 400;
 const REPEAT = 60;
 
-/** A field's press and hold. @param {HTMLInputElement} input */
-const held = (input) => state(input, () => ({ timer: 0, pointer: false }));
+/** The field's press and hold. */
+const held = () => keep(() => ({ timer: 0, pointer: false }));
 
 /**
  * When the field joins the page: the buttons match the value, and a hold ends wherever the
@@ -21,7 +21,7 @@ const held = (input) => state(input, () => ({ timer: 0, pointer: false }));
  */
 export function connect(decrease, input, increase, signal) {
   sync(decrease, input, increase);
-  const s = held(input);
+  const s = held();
   const release = () => {
     clearTimeout(s.timer);
     // The click that follows this pointerup runs first, and must not step again.
@@ -39,7 +39,7 @@ export function press(event, button, input, by) {
   if (event.button !== 0 || button.disabled) return;
   // Keeps focus where it was (usually the input) and selects no text.
   event.preventDefault();
-  const s = held(input);
+  const s = held();
   s.pointer = true;
   /** @param {number} delay */
   const tick = (delay) => {
@@ -54,7 +54,7 @@ export function press(event, button, input, by) {
  * @param {HTMLInputElement} input @param {number} by
  */
 export function click(input, by) {
-  if (!held(input).pointer) step(input, by);
+  if (!held().pointer) step(input, by);
 }
 
 /** @param {KeyboardEvent} event @param {HTMLInputElement} input */

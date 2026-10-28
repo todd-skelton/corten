@@ -92,11 +92,12 @@ user types sit in a `GET` form that filters them on the server without JavaScrip
 
 ## Components and their roots
 
-A component with refs, or whose handlers take `scope`, has one root element. The root is
-where its refs end: `data-scope="offer-list"` marks it, and a ref resolves to the elements with
-that name inside the root and outside any nested component's root. Two `OfferList`s on one
-page never see each other's rows. The root can be any element, so a component can be a `<tr>`
-or an `<li>`.
+A component with refs, whose handlers take `scope`, or whose script imports `keep` has one root
+element. The root is where its refs and state end: `data-scope="offer-list"` marks it, and a ref
+resolves to the elements with that name inside the root and outside any nested component's root.
+Two `OfferList`s on one page never see each other's rows (a handler a component passes to a
+nested copy of itself resolves to the nearest copy). The root can be any element, so a component
+can be a `<tr>` or an `<li>`.
 
 ## Handlers as props
 
@@ -323,12 +324,28 @@ handlers take none does not download it.
 ## State
 
 A handler is a plain function shared by every instance, so state that outlives one event lives
-in the DOM (an attribute, an `<output>`'s value) or with an element: `state(scope, () => init)`
-from `corten` gives the same object for the same element until it is gone. An element has one
-state, made by the first call's `init`: keep everything a script needs for it in one object
-(`state(scope, () => ({ index: -1, unsent: new Set() }))`), since a second `state(scope, ..)`
-with another `init` gets the first object. That holds across scripts too, so key state on an
-element of the component's own, not on one a `corten-ui` widget renders.
+in the DOM (an attribute, an `<output>`'s value) or with the component: `keep(() => init)` from
+`corten` gives the running handler's component its object, the same one for every handler of that
+instance until its root leaves the page, and another one for each other instance. No element is
+passed. The component is the one whose script the handler is in: a component whose script
+imports `keep` is scoped (its root is marked `data-scope`, refs or not), and a handler it passes
+to a child keeps its state wherever the child renders it, as it keeps its refs. A `script!`
+module is shared by components, so importing `keep` there does not compile. A component has one
+state, made by the first call's `init`, so keep everything in one object the handlers share:
+
+```js
+const kept = () => keep(() => ({ index: -1, unsent: new Set() }));
+
+/** @param {Selection} sel */
+export function clear(sel) {
+  kept().index = -1;
+}
+```
+
+Take it first, while the handler runs: a callback the handler sets up (a timer, a listener, a
+feed's rows) uses the object it got (`const s = kept();` first). Outside any handler `keep`
+throws; inside one that something else's handler interrupts (an event it dispatches, a
+`focus()`, a popover's `toggle`), the other handler's `keep` is that handler's component's.
 
 ## Rules
 

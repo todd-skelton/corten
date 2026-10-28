@@ -113,8 +113,9 @@
 //! One listener per event type on the document runs the handlers; nothing runs per element until
 //! an event reaches it.
 //!
-//! A component is scoped (one root element, marked `data-scope`) when it has refs or one of its
-//! handlers takes `scope`. A variable that happens to be named `scope` does not count:
+//! A component is scoped (one root element, marked `data-scope`) when it has refs, one of its
+//! handlers takes `scope`, or its script imports `keep` (state each instance keeps). A variable
+//! that happens to be named `scope` does not count:
 //!
 //! ```
 //! use corten::prelude::*;
@@ -250,6 +251,14 @@
 //!         </table>
 //!     }
 //! }
+//! # fn main() {}
+//! ```
+//!
+//! State kept in a `script!` module, which components share (`keep` is one component's, in its
+//! own script):
+//!
+//! ```compile_fail
+//! corten::script::script!(mod tally = "script/tally.js");
 //! # fn main() {}
 //! ```
 //!
@@ -1162,6 +1171,8 @@ pub mod __private {
         module: &'static str,
         name: &'static str,
         home: Option<&'static str>,
+        /// Its script imports `keep`, so the runtime needs its home.
+        keeps: bool,
         /// A shared module's own component, marked rendered for the dev check (debug builds).
         #[cfg_attr(not(debug_assertions), allow(dead_code))]
         owner: Option<&'static Component>,
@@ -1170,9 +1181,23 @@ pub mod __private {
 
     impl<A> Call<A> {
         #[inline]
-        pub fn new(module: &'static str, name: &'static str, owner: Option<&'static Component>, args: A) -> Self {
-            Call { module, name, home: SCOPE.with(Cell::get), owner, args }
+        pub fn new(
+            module: &'static str,
+            name: &'static str,
+            home: Option<&'static str>,
+            keeps: bool,
+            owner: Option<&'static Component>,
+            args: A,
+        ) -> Self {
+            Call { module, name, home, keeps, owner, args }
         }
+    }
+
+    /// The scoped component rendering: a `script!` module's or an unscoped component's handlers
+    /// belong to it.
+    #[inline]
+    pub fn current_scope() -> Option<&'static str> {
+        SCOPE.with(Cell::get)
     }
 
     impl<A: Args> Bind for Call<A> {
@@ -1186,8 +1211,18 @@ pub mod __private {
             out.push('.');
             out.push_str(self.name);
             out.push('(');
-            self.args.write_args(&Ctx { current: SCOPE.with(Cell::get), home: self.home }, out);
+            let current = SCOPE.with(Cell::get);
+            self.args.write_args(&Ctx { current, home: self.home }, out);
             out.push(')');
+            // A parent's handler on a child's element: `/form` names the component it belongs to,
+            // whose state `keep` gives it (the element's nearest root is the child's). Only a
+            // script that keeps state needs it.
+            if let (true, Some(home)) = (self.keeps, self.home) {
+                if current != Some(home) {
+                    out.push('/');
+                    out.push_str(home);
+                }
+            }
         }
     }
 
