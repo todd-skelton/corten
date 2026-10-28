@@ -191,26 +191,27 @@ function refName(el, names) {
 /** Each component root's kept state. @type {WeakMap<Element, unknown>} */
 const states = new WeakMap();
 
-/** The element whose handler is running, while it runs: whose component `keep` is for. @type {Element | null} */
+/** The handler running, and the element it is bound on: whose component `keep` is for. @type {[Element, Binding] | null} */
 let running = null;
 
 /**
  * The state the running handler's component keeps, made by `init` the first time and kept while
  * the component's root is on the page: `const s = keep(() => ({ paused: false }))`. Handlers are
  * plain functions, so state that lasts between events lives here (or in the DOM) rather than in
- * the module, which every instance of the component shares; each instance keeps its own, found
- * from the element the handler is bound on, with no element passed. A component has one state,
- * whichever of its handlers asks first: a later call gets that object whatever its `init`, so
- * keep everything in one object (a `const kept = () => keep(() => ({ .. }))` the handlers share).
- * Call it while the handler runs, before an `await`: a timer, a listener or a feed's rows the
- * handler sets up use the object it got.
+ * the module, which every instance of the component shares; each instance keeps its own, with no
+ * element passed. The component is the one whose script the handler is in (a component that
+ * imports `keep` is always scoped), also when a parent passed the handler to a child. A component
+ * has one state, whichever of its handlers asks first: a later call gets that object whatever its
+ * `init`, so keep everything in one object (a `const kept = () => keep(() => ({ .. }))` the
+ * handlers share). Take it first, before an `await` or anything that dispatches an event: a
+ * timer, a listener or a feed's rows the handler sets up use the object it got.
  * @template T
  * @param {() => T} init
  * @returns {T}
  */
 export function keep(init) {
-  if (!running) throw new Error("corten: keep() is for a handler, called while it runs (before an await)");
-  const root = scopeOf(running, null);
+  if (!running) throw new Error("corten: keep() outside a handler");
+  const root = scopeOf(running[0], running[1].home);
   if (states.has(root)) return /** @type {T} */ (states.get(root));
   const made = init();
   states.set(root, made);
@@ -363,6 +364,7 @@ function run(el, binding, event) {
     console.error(`corten: ${binding.module}.js exports no function ${binding.name}`, el);
     return;
   }
+  const outer = running;
   try {
     const args = [];
     for (const arg of binding.args) {
@@ -370,17 +372,13 @@ function run(el, binding, event) {
       if (value === SKIP) return;
       args.push(value);
     }
-    const outer = running;
-    running = el;
-    let result;
-    try {
-      result = handler(...args);
-    } finally {
-      running = outer;
-    }
+    running = [el, binding];
+    const result = handler(...args);
     if (result instanceof Promise) result.catch(reportError);
   } catch (error) {
     reportError(error);
+  } finally {
+    running = outer;
   }
 }
 

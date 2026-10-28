@@ -1055,14 +1055,18 @@ Corten is pre-1.0, so any minor version may change the API.
     app's own as its text or through an `Arg` impl
     ([#237 The item API's home page got 10% slower in the believable-data change; an integer fast path for message arguments may win it back](https://github.com/todd-skelton/corten/issues/237)).
 62. A script keeps state with `keep(() => init)` (from `corten`), which replaces
-    `state(el, init)`: the running handler's component's object, one per instance, found from
-    the element the handler is bound on, so a handler no longer takes the component's root just
-    to find its state. seller-desk's grid handlers lose their `scope` argument (six of them),
-    watchlist's `pause` too, and corten-ui's menu button and number field keep theirs per
-    component. It is called while the handler runs, before an `await`, and throws anywhere else.
-    The runtime is 75 bytes larger gzipped (8,503 to 8,578; brotli 7,663 to 7,724). Migration:
-    `state(scope, () => init)` is `keep(() => init)`, and a `scope` argument used only for it is
-    dropped from the handler and its markup
+    `state(el, init)`: the object of the component whose script the running handler is in, one
+    per instance, so a handler no longer takes the component's root just to find its state. A
+    component whose script imports `keep` is always scoped (`data-scope` on its root, with or
+    without refs), and a parent's handler on a child's element names its component
+    (`data-on="change:form.save($t)/form"`), so it keeps the parent's state wherever the child
+    renders it. A `script!` module, which components share, cannot import `keep` (a compile
+    error). seller-desk's grid handlers lose their `scope` argument (six of them), watchlist's
+    `pause` too, and corten-ui's menu button and number field keep theirs per component. Take
+    the object first, before an `await` or anything that dispatches an event; outside a handler
+    it throws. The runtime is 75 bytes larger gzipped (8,503 to 8,578; brotli 7,663 to 7,724).
+    Migration: `state(scope, () => init)` is `keep(() => init)`, and a `scope` argument used only
+    for it is dropped from the handler and its markup
     ([#238 Runtime state is keyed by an element the handler has to pass: state(root, init)](https://github.com/todd-skelton/corten/issues/238)).
 
 ### Fixed

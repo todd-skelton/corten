@@ -326,9 +326,11 @@ A handler is a plain function shared by every instance, so state that outlives o
 in the DOM (an attribute, an `<output>`'s value) or with the component: `keep(() => init)` from
 `corten` gives the running handler's component its object, the same one for every handler of that
 instance until its root leaves the page, and another one for each other instance. No element is
-passed: the runtime knows which component's handler is running from the element it is bound on
-(its nearest `data-scope`). A component has one state, made by the first call's `init`, so keep
-everything in one object the handlers share:
+passed. The component is the one whose script the handler is in: a component whose script
+imports `keep` is scoped (its root is marked `data-scope`, refs or not), and a handler it passes
+to a child keeps its state wherever the child renders it, as it keeps its refs. A `script!`
+module is shared by components, so importing `keep` there does not compile. A component has one
+state, made by the first call's `init`, so keep everything in one object the handlers share:
 
 ```js
 const kept = () => keep(() => ({ index: -1, unsent: new Set() }));
@@ -339,9 +341,10 @@ export function clear(sel) {
 }
 ```
 
-Call it while the handler runs, before an `await`: a callback the handler sets up (a timer, a
-listener, a feed's rows) uses the object it got (`const s = kept();` first). Called anywhere
-else, it throws.
+Take it first, while the handler runs: a callback the handler sets up (a timer, a listener, a
+feed's rows) uses the object it got (`const s = kept();` first). Outside any handler `keep`
+throws; inside one that something else's handler interrupts (an event it dispatches, a
+`focus()`, a popover's `toggle`), the other handler's `keep` is that handler's component's.
 
 ## Rules
 

@@ -170,8 +170,47 @@ fn a_handler_made_by_a_parent_keeps_the_parents_scope_inside_a_child() {
         html,
         concat!(
             r#"<div data-scope="form"><label data-scope="field"><input data-ref="input" "#,
-            r#"data-on="input:field.trim($t) change:form.enable(@form/save,$c/form)"></label>"#,
+            r#"data-on="input:field.trim($t) change:form.enable(@form/save,$c/form)/form"></label>"#,
             r#"<button data-ref="save">Save</button></div>"#,
+        )
+    );
+}
+
+/// A component whose script keeps state, with no refs and no `scope`: still scoped, so each
+/// instance keeps its own.
+#[component(js)]
+fn Tally() -> impl Render {
+    html! { <button type="button" on:click={js::bump(target)}>"0"</button> }
+}
+
+/// A scoped child that renders a parent's handler and the markup it is given.
+#[component]
+fn Labeled<'a>(on_change: Handler<'a>, children: impl Render) -> impl Render {
+    let input = refs();
+    html! { <label><input ref={input} on:change={on_change}>{children}</label> }
+}
+
+/// A parent whose state-keeping handler a scoped child renders, as a prop and in its children.
+#[component(js)]
+fn Tallies() -> impl Render {
+    html! {
+        <div>
+            <Labeled on:change={js::bump(target)}>
+                <button type="button" on:click={js::bump(target)}>"0"</button>
+            </Labeled>
+        </div>
+    }
+}
+
+#[test]
+fn a_script_that_keeps_state_scopes_its_component_and_a_childs_element_names_its_home() {
+    assert_eq!(Tally {}.to_html(), r#"<button data-scope="tally" type="button" data-on="click:tally.bump($t)">0</button>"#);
+    assert_eq!(
+        Tallies {}.to_html(),
+        concat!(
+            r#"<div data-scope="tallies"><label data-scope="labeled"><input data-ref="input" "#,
+            r#"data-on="change:tallies.bump($t)/tallies"><button type="button" "#,
+            r#"data-on="click:tallies.bump($t)/tallies">0</button></label></div>"#,
         )
     );
 }

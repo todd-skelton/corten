@@ -237,7 +237,7 @@ async function run(browser) {
   const counted = await page.textContent(`${live} [data-ref="updates"]`);
   check("a script fills in a message of the page's locale", /^Price updates: [1-9]\d*$/.test(counted ?? ""), String(counted));
 
-  // A handler with per-component state: on:click={js::pause(scope, target, price, change)}.
+  // A handler with per-component state (keep()): on:click={js::pause(target, price, change)}.
   check("the script reveals its controls", await page.isVisible(`${live} button`));
   await page.click(`${live} button`);
   const paused = await prices();
@@ -247,6 +247,17 @@ async function run(browser) {
     (await page.getAttribute(`${live} button`, "aria-pressed")) === "true" && JSON.stringify(await prices()) === JSON.stringify(paused),
   );
   await page.click(`${live} button`);
+  // keep() is a handler's: called outside one it throws rather than pick a component.
+  const outside = await page.evaluate(async () => {
+    const corten = /** @type {{ keep: (init: () => unknown) => unknown }} */ (await import(/** @type {string} */ ("corten")));
+    try {
+      corten.keep(() => ({}));
+      return "no error";
+    } catch (error) {
+      return String(error);
+    }
+  });
+  check("keep() outside a handler throws", outside.includes("keep() outside a handler"), outside);
   // The page's prices by stock id, written by the script with the page's money format
   // (t.js().money(USD)), and the feed's, which the server wrote.
   // Today's change too: its trend, and the sign of its text.

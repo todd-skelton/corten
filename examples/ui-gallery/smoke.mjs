@@ -144,12 +144,17 @@ async function run(browser) {
   check("a step keeps the step's decimals", (await page.locator("#price").inputValue()) === "12.51", await page.locator("#price").inputValue());
   // Each field keeps its own state (keep()): while the quantity's button is held, the price's
   // button still steps from the keyboard. Sharing one, the held pointer would make it skip.
+  await qty.focus();
+  await page.keyboard.press("Home");
+  const before = Number(await qty.inputValue());
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
+  const holding = Number(await qty.inputValue());
   await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
   const own = await page.locator("#price").inputValue();
   await page.mouse.up();
-  check("each field keeps its own state", own === "12.52", own);
+  // The quantity stepped on the press, so its pointer was held while the price stepped.
+  check("each field keeps its own state", holding === before + 1 && own === "12.52", `quantity ${before} -> ${holding}, price ${own}`);
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
     const field = /** @type {Element} */ (document.querySelector("#price")?.closest("[data-scope=ui-number-field]")?.parentElement);
