@@ -31,7 +31,10 @@
 .actions [role="menuitem"]:focus { outline: none; background: var(--tint); color: var(--accent); }
 .actions > div { justify-self: start; }
 
-/* The toaster has no box; the message is the toast, fixed at the bottom while it shows. */
-.toasts > div { position: fixed; inset: auto 16px 16px auto; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border-radius: 10px; background: var(--ink); color: var(--bg); box-shadow: 0 8px 24px rgb(0 0 0 / 0.2); }
-.toasts > div:has(#ui-toast[hidden]) { display: none; }
+/* The toaster's root is fixed in the corner and never hidden: its live region must be in the page
+   before a message arrives, or the message is often not announced. It is the toast's box only
+   while there is a message. */
+.toasts > div { position: fixed; inset: auto 16px 16px auto; display: flex; align-items: center; gap: 8px; }
+.toasts [role="status"] { color: inherit; }
+.toasts > div:has(#ui-toast:not([hidden])) { padding: 8px 8px 8px 16px; border-radius: 10px; background: var(--ink); color: var(--bg); box-shadow: 0 8px 24px rgb(0 0 0 / 0.2); }
 .toasts button { font: inherit; background: none; color: inherit; border-color: rgb(255 255 255 / 0.3); }

@@ -1163,6 +1163,10 @@ Corten is pre-1.0, so any minor version may change the API.
     ticker closes the socket as too big (1009), a client's close is answered, a send the client
     does not take within 10 seconds ends the socket, and shutdown still closes it with a goodbye
     ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
+68. examples/ui-gallery is one screen: a seller's draft listing for a card, with its quantity,
+    price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
+    dialog and the last sale
+    ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1424,6 +1428,10 @@ Corten is pre-1.0, so any minor version may change the API.
     refuses and the two are different work; the empty item's load, sort and client navigation are
     measured as before. Medians of the action now come from eight of ten runs per profile
     ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
+48. examples/ui-gallery's live regions stay in the page while they are empty: the toaster's root,
+    the form's result and the menu's result were `display: none` until a message came, so the
+    message was often not announced. The toast's box is drawn only while there is a message, and
+    its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

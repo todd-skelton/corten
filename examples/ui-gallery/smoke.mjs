@@ -166,31 +166,31 @@ async function run(browser) {
   check("the design system orders an adornment between the parts", layout === "button span input button", layout);
 
   // ComboBox
-  const color = page.getByLabel("Color");
+  const color = page.getByLabel("Condition");
   check("the label names the text input once the script runs", (await color.getAttribute("role")) === "combobox");
   check("the select is hidden", await page.locator("[data-scope=ui-combo-box] select").isHidden());
-  await color.fill("sand");
+  await color.fill("light");
   const popup = page.locator("[data-scope=ui-combo-box] [popover]");
   check("typing opens the list", (await popup.evaluate((p) => p.matches(":popover-open"))) && (await color.getAttribute("aria-expanded")) === "true");
   const shown = await page.locator('[data-scope=ui-combo-box] [role="option"]:visible').allTextContents();
-  check("the list filters by what was typed", shown.join() === "Desert Sand", shown.join());
+  check("the list filters by what was typed", shown.join() === "Lightly Played", shown.join());
   check("the first match is highlighted", (await color.getAttribute("aria-activedescendant")) !== null);
   await page.keyboard.press("Enter");
-  check("Enter picks it", (await color.inputValue()) === "Desert Sand" && (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "sand");
+  check("Enter picks it", (await color.inputValue()) === "Lightly Played" && (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "lp");
   check("picking closes the list", (await color.getAttribute("aria-expanded")) === "false" && !(await popup.evaluate((p) => p.matches(":popover-open"))));
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   const active = await color.getAttribute("aria-activedescendant");
-  check("Arrow Down opens at the value and moves", active !== null && (await page.locator(`#${active}`).textContent()) === "Forest Green");
+  check("Arrow Down opens at the value and moves", active !== null && (await page.locator(`#${active}`).textContent()) === "Moderately Played");
   await page.keyboard.press("Escape");
-  check("Escape closes and keeps the value", (await color.inputValue()) === "Desert Sand" && (await color.getAttribute("aria-expanded")) === "false");
+  check("Escape closes and keeps the value", (await color.inputValue()) === "Lightly Played" && (await color.getAttribute("aria-expanded")) === "false");
   await color.fill("zzz");
   check("no match shows the status", await page.locator('[data-scope=ui-combo-box] [role="status"]').isVisible());
   await page.keyboard.press("Tab");
-  check("leaving restores the value's text", (await color.inputValue()) === "Desert Sand");
+  check("leaving restores the value's text", (await color.inputValue()) === "Lightly Played");
   await color.click();
-  await page.locator('[data-scope=ui-combo-box] [role="option"]', { hasText: "Salt & Pepper Gray" }).click();
-  check("a click picks", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "gray" && (await color.inputValue()) === "Salt & Pepper Gray");
+  await page.locator('[data-scope=ui-combo-box] [role="option"]', { hasText: "Heavily Played" }).click();
+  check("a click picks", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "hp" && (await color.inputValue()) === "Heavily Played");
   // Open, then measure: CSS anchor positioning puts the list under the input, at least as wide.
   await color.press("ArrowDown");
   const listBox = await page.evaluate(() => {
@@ -203,17 +203,17 @@ async function run(browser) {
   await color.fill("");
   await page.keyboard.press("Tab");
   check("emptying the field clears the value", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "");
-  await page.getByRole("button", { name: "Order" }).click();
+  await page.getByRole("button", { name: "List for sale" }).click();
   const message = await color.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
   check("a required, empty combobox stops the form on the input", message !== "", message);
-  await color.fill("forest green");
+  await color.fill("near mint");
   await page.keyboard.press("Tab");
-  check("typing a label exactly picks it", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "forest");
+  check("typing a label exactly picks it", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "nm");
 
   await qty.fill("3");
-  await page.getByRole("button", { name: "Order" }).click();
-  await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Ordered"));
-  check("the form sends the components' values", (await page.textContent("#result")) === "Ordered 3 in Forest Green at $12.52.", await page.textContent("#result"));
+  await page.getByRole("button", { name: "List for sale" }).click();
+  await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed"));
+  check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.52 each.", await page.textContent("#result"));
 
   // TabGroup
   const tab = (name) => page.getByRole("tab", { name });
@@ -268,6 +268,11 @@ async function run(browser) {
   const toast = page.locator("#ui-toast");
   const dismiss = page.getByRole("button", { name: "Dismiss" });
   check("no message: nothing shows", (await toast.isHidden()) && (await dismiss.isHidden()));
+  const region = await page.evaluate(() => {
+    const toaster = document.querySelector('[role="status"]:has(#ui-toast)');
+    return [toaster, toaster?.parentElement, document.querySelector("#menu-result")].map((e) => (e ? getComputedStyle(e).display : "missing")).join();
+  });
+  check("empty live regions stay in the page, so a message is announced", !/none|missing/.test(region), region);
   const save = page.getByRole("button", { name: "Save draft" });
   await save.click();
   await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Draft saved.");
@@ -409,10 +414,10 @@ async function run(browser) {
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
   await plain.goto(`${base}/`);
   check("no script: the select is the control", (await plain.locator("[data-scope=ui-combo-box] select").isVisible()) && (await plain.locator("[data-scope=ui-combo-box] input").isHidden()));
-  await plain.locator("[data-scope=ui-combo-box] select").selectOption("sand");
+  await plain.locator("[data-scope=ui-combo-box] select").selectOption("lp");
   // The post loads a new page; waitForLoadState alone can return for the page it left.
-  await Promise.all([plain.waitForURL("**/order"), plain.getByRole("button", { name: "Order" }).click()]);
-  check("no script: the form posts the page", (await plain.textContent("#result")) === "Ordered 1 in Desert Sand at $12.50.", await plain.textContent("#result"));
+  await Promise.all([plain.waitForURL("**/sell"), plain.getByRole("button", { name: "List for sale" }).click()]);
+  check("no script: the form posts the page", (await plain.textContent("#result")) === "Listed 1 Lightly Played Ashen Drake at $12.50 each.", await plain.textContent("#result"));
   await plain.getByRole("tab", { name: "Offers" }).click();
   await plain.waitForURL("**/?tab=offers");
   check("no script: a tab is a link to its page", (await plain.getByRole("tabpanel").textContent()) === "Two offers, the best at $10.00.");
