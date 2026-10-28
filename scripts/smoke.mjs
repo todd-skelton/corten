@@ -1290,32 +1290,60 @@ async function run(browser) {
   check("a multipart form is posted as multipart/form-data", types.length === 1 && types[0].startsWith("multipart/form-data"), types.join());
   check("a request the server rejects shows the app's error page, in its layout", (await page.textContent("main h1")) === "Something went wrong" && (await page.title()) === "Something went wrong | Watchlist", await page.title());
 
-  // A form with a file is read as it arrives: each engine's multipart body, files and fields.
-  await page.evaluate(() =>
-    document.querySelector("main")?.insertAdjacentHTML(
-      "beforeend",
-      '<form id="avatar" method="post" action="/avatar" enctype="multipart/form-data" data-patch><input name="name" value="Mew &quot;1st&quot;"><input type="file" name="picture" multiple><p id="avatar-result"></p><button>Send</button></form>',
-    ),
-  );
-  await page.setInputFiles("#avatar [name=picture]", [
-    { name: "card.png", mimeType: "image/png", buffer: Buffer.from("\r\n--png\r\n") },
-    { name: "big.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(70 << 10, 7) },
+  // A form with a file, read as it arrives in each engine's multipart body: the account page's
+  // picture. Its type is read from its bytes, and the answer shows it in the header and on the
+  // page, from a URL every cache keeps. WebKit gets a cookie it sends back over http, as its
+  // sign-in's Secure one is not.
+  if (!signsIn) await page.context().addCookies([{ name: "viewer", value: "Ada", url: base }]);
+  await page.goto(`${base}/account`);
+  /** Uploads one file with the account page's form and gives the status line's text. @param {{ name: string, mimeType: string, buffer: Buffer }} file */
+  const upload = async (file) => {
+    await page.evaluate(() => {
+      const result = document.querySelector("#avatar-result");
+      if (result) result.textContent = "";
+    });
+    await page.setInputFiles("main input[type=file]", [file]);
+    await page.click("main form[enctype] button");
+    await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent, null, { timeout: 8000 }).catch(() => {});
+    return (await page.textContent("#avatar-result")) ?? "";
+  };
+  // A 1x1 PNG, then a line that looks like a multipart boundary, which a picture may hold.
+  const png = Buffer.concat([
+    Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"),
+    Buffer.from("\r\n--png\r\n"),
   ]);
-  await page.click("#avatar button");
-  await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent, null, { timeout: 4000 }).catch(() => {});
-  const uploaded = await page.textContent("#avatar-result");
-  check("a form with files is read as it arrives", uploaded === 'Mew "1st": card.png (image/png, 9 bytes), big.jpg (image/jpeg, too large)', uploaded ?? "");
+  const uploaded = await upload({ name: "card.png", mimeType: "image/png", buffer: png });
+  const shown = await page
+    .waitForFunction(
+      () => {
+        const img = document.querySelector("#viewer-badge img");
+        const big = document.querySelector("#account-picture img");
+        return img instanceof HTMLImageElement && img.complete && img.naturalWidth === 1 && big?.getAttribute("src") === img.getAttribute("src") ? img.getAttribute("src") : null;
+      },
+      null,
+      { timeout: 5000 },
+    )
+    .then((handle) => handle.jsonValue())
+    .catch(() => null);
+  check("an uploaded picture is read as it arrives and shown in the header and on the page", uploaded === "Saved card.png as your picture." && /^\/pictures\/[0-9a-f]{16}$/.test(shown ?? ""), `${uploaded}, ${shown}`);
+  const served = await fetch(new URL(shown ?? "/pictures/none", base));
+  check(
+    "a picture is served as its type, at a URL every cache keeps",
+    served.headers.get("content-type") === "image/png" && served.headers.get("cache-control") === "public, max-age=31536000, immutable",
+    `${served.status} ${served.headers.get("content-type")} ${served.headers.get("cache-control")}`,
+  );
+  const page_ = await upload({ name: "page.png", mimeType: "image/png", buffer: Buffer.from("<script>alert(1)</script>") });
+  check("a file that is not a picture is refused, whatever type it says", page_.startsWith("That file is not a picture"), page_);
+  const big = await upload({ name: "big.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(70 << 10, 0xff) });
+  check("a picture over its limit is refused", big === "The picture is over 64 KB. Choose a smaller one.", big);
   // A body over the handler's limit (1 MiB): the handler answers with the form's message, and the
   // browser, still sending when the answer comes, shows it instead of a network error.
-  await page.setInputFiles("#avatar [name=picture]", [{ name: "huge.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(3 << 20, 7) }]);
-  await page.click("#avatar button");
-  await page.waitForFunction(() => document.querySelector("#avatar-result")?.textContent?.startsWith("The pictures"), null, { timeout: 8000 }).catch(() => {});
-  const over = await page.textContent("#avatar-result");
-  await page.evaluate(() => document.querySelector("#avatar")?.remove());
-  check("a body over its limit is answered in the form", over === "The pictures are over 1 MB together.", over ?? "");
+  const over = await upload({ name: "huge.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(3 << 20, 7) });
+  check("a body over its limit is answered in the form", over === "The form is over 1 MB.", over);
+  if (!signsIn) await page.context().clearCookies({ name: "viewer" });
 
-  // The posts answered 415 and 413 on purpose; the browser logs those as failed resources.
-  check("no console errors after the injected forms", errors.every((e) => e.includes("415") || e.includes("413")), errors.join(" | "));
+  // The posts answered 415, 422 and 413 on purpose; the browser logs those as failed resources.
+  check("no console errors after the injected forms", errors.every((e) => e.includes("415") || e.includes("422") || e.includes("413")), errors.join(" | "));
 
   // Without the page's cookie: the three stocks a first visit watches.
   const json = await (await fetch(base, { headers: { accept: "application/json" } })).json();

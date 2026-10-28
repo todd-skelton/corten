@@ -79,7 +79,7 @@ pub enum Format {
 /// What a handler named in `#[corten::routes]` returns: the type says how the route's failures are
 /// answered ([`Answer::FORMAT`]) and what the handler may read ([`Answer::Inputs`]). Implemented
 /// for [`HtmlResult`], [`JsonResult<T>`], `Result<JsonResponse, JsonError>`, [`Public`], [`NoStore`], text, a bare `StatusCode`,
-/// [`LiveResponse`], feeds and [`crate::seo::File`]; a crate may add its own.
+/// [`LiveResponse`], feeds, [`Media`] and [`crate::seo::File`]; a crate may add its own.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer a route can name",
     label = "the handler returns this",
@@ -215,7 +215,7 @@ impl Answer for HtmlResponse {
 /// [`ForEveryone`] for `ForAll`) only when it sets no cookie.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be `Public`",
-    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, a live stream or a feed"
+    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, `Media`, a live stream or a feed"
 )]
 pub trait Shareable {
     /// The answer as [`Public::new`] takes it.
@@ -228,7 +228,7 @@ pub trait Shareable {
 /// closure).
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer made for everyone, so it cannot be `Public`",
-    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, a live stream or a feed"
+    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, `Media`, a live stream or a feed"
 )]
 pub trait ForEveryone: IntoResponse {
     /// The answer type a handler names: `Public<Self::Named>`.
@@ -280,7 +280,7 @@ macro_rules! for_everyone {
     )*};
 }
 
-for_everyone!(&'static str, String, StatusCode, Relay, LiveResponse);
+for_everyone!(&'static str, String, StatusCode, Relay, Media, LiveResponse);
 
 #[cfg(feature = "feed")]
 for_everyone!(corten_feed::FeedResponse);
@@ -628,6 +628,69 @@ impl IntoResponse for Relay {
 }
 
 impl Answer for Relay {
+    const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+}
+
+/// Bytes the app holds, sent as their media type: a picture a user uploaded, a document the app
+/// made. The type is a `&'static str` the app names (`"image/png"`), never the one a client sent
+/// with the bytes, so an upload that says it is `text/html` cannot come back as a page; a
+/// `String` from a request does not compile there. Browsers do not guess another type
+/// (`X-Content-Type-Options: nosniff`, as on everything `App` serves).
+///
+/// It is cached as anything the app answers is (`private, no-cache`), unless its URL names its
+/// content, a hash of the bytes, so the bytes at that URL never change:
+/// [`Media::immutable`] lets every cache keep it for a year, as Corten's own versioned files
+/// are. That holds with the request's cookies, since the URL alone says what the bytes are; a
+/// handler that reads who is asking (a [`crate::Caller`]) is still answered privately.
+///
+/// ```
+/// use corten::{prelude::*, Media};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/pictures/{id}", get = picture)]
+///     pub struct Picture<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+///
+/// // `id` is a hash of the picture's bytes, made when it was uploaded.
+/// async fn picture(Path(id): Path<String>) -> corten::Result<Media> {
+///     let png: &'static [u8] = b"\x89PNG\r\n\x1a\n";
+///     match id.as_str() {
+///         "5f2c" => Ok(Media::new("image/png", png).immutable()),
+///         _ => Err(corten::Error::not_found()),
+///     }
+/// }
+/// # let _ = App::new(url::router()).router();
+/// ```
+pub struct Media(Response);
+
+impl Media {
+    /// `bytes`, sent as `media_type` (`"image/webp"`).
+    pub fn new(media_type: &'static str, bytes: impl Into<axum::body::Bytes>) -> Self {
+        use axum::http::{header, HeaderValue};
+        let mut res = Response::new(axum::body::Body::from(bytes.into()));
+        res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(media_type));
+        Media(res)
+    }
+
+    /// For a URL that names its content: any cache may keep it for a year, and the browser does not
+    /// ask again (`public, max-age=31536000, immutable`).
+    pub fn immutable(mut self) -> Self {
+        self.0.headers_mut().insert(axum::http::header::CACHE_CONTROL, crate::assets::IMMUTABLE);
+        self
+    }
+}
+
+impl IntoResponse for Media {
+    fn into_response(self) -> Response {
+        self.0
+    }
+}
+
+impl Answer for Media {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
 }

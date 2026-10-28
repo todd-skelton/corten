@@ -713,6 +713,13 @@ Corten is pre-1.0, so any minor version may change the API.
     (`view::InPage`), not an address: `req.redirect` to it does not compile, and neither does
     text in place of the id. Nothing `html!` writes changed
     ([#254 A link to an element on the same page cannot take an Id, so each app writes its #fragment by hand](https://github.com/todd-skelton/corten/issues/254)).
+108. `corten::Media`: bytes the app holds, sent as a media type the app names
+    (`Media::new("image/png", bytes)`, a `&'static str`, so the type a client sent with an upload
+    cannot be the one it is served as). `Media::immutable()` is for a URL that names its content:
+    every cache keeps it for a year, cookies or not, as Corten's versioned files are. `Public<Media>`
+    works too. Before it, a route could serve bytes it held only as an axum `Response`, which a
+    route cannot name.
+
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1119,6 +1126,12 @@ Corten is pre-1.0, so any minor version may change the API.
     are kept under one id, now in the `visitor` cookie (`visitor.rs`), which was `list`, and both
     forget the browser used longest ago past 10,000 (`recent.rs`)
     ([#220 watchlist's alerts page never shows the alerts you saved](https://github.com/todd-skelton/corten/issues/220)).
+66. examples/watchlist keeps the profile picture Ada uploads and shows it on the account page and
+    in the header, from `/pictures/{id}`: an id that is a keyed hash of the bytes, served as a
+    `Media` every cache keeps. The upload reads the picture's type from its first bytes (PNG,
+    JPEG, GIF or WebP), refuses anything else, keeps at most 256 pictures in memory, and needs
+    someone signed in. The file input is styled like the page's buttons
+    ([#221 watchlist's profile picture upload never shows the picture](https://github.com/todd-skelton/corten/issues/221)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

@@ -295,6 +295,15 @@ that the connection is closed. The limit for one file, the types a field accepts
 it takes are the handler's rules, so it checks them and adds a message to `Errors`. The form
 is then drawn again with its other fields kept and the message next to the input.
 
+The `content_type` a file arrives with is what the client said, as its name is. It decides which
+message the user sees, never how the bytes are sent back: a file named `me.png` may hold HTML.
+To serve an upload, read its type from its first bytes and answer it as a `Media`, whose type is
+a `&'static str` the app names (a `String` from the request does not compile there):
+`Media::new("image/png", bytes)`. Kept at a URL that names its bytes (a keyed hash of them,
+`/pictures/{id}`), `Media::new(..).immutable()` lets every cache keep it for a year, cookies or
+not; anywhere else it is `private, no-cache` like the rest of the app. The watchlist example's
+profile picture (`examples/watchlist/src/account.rs`) does both.
+
 A browser cannot be given its files back by markup. A patch keeps the files chosen in the input
 it replaces until a successful answer, so the user can send them again. Without JavaScript the
 page asks for them again. A body that is not multipart is a 415, and one that breaks the format

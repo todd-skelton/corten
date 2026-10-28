@@ -1794,6 +1794,24 @@ async fn with_cookie_sets_each_cookie_in_order() {
     assert_eq!(cookies, ["a=1; Path=/; SameSite=Lax; HttpOnly; Secure", "b=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]);
 }
 
+/// Bytes as the app names their type: private by default, and a year in any cache when the URL
+/// names the content, cookies or not; the client's type is never the one sent.
+#[tokio::test]
+async fn media_is_sent_as_its_type_and_kept_only_when_its_url_names_its_content() {
+    let png: &'static [u8] = b"\x89PNG\r\n\x1a\n";
+    let routes = Router::new()
+        .route("/fresh", get(move || async move { crate::Media::new("image/png", png) }))
+        .route("/kept", get(move || async move { crate::Media::new("image/png", png).immutable() }));
+    let router = app(routes, None);
+    let res = router.clone().oneshot(Request::get("/kept").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/png");
+    assert_eq!(res.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(res.into_body().collect().await.unwrap().to_bytes(), png);
+    assert_eq!(cache_control(&router, "/fresh", &[]).await, "private, no-cache");
+    assert_eq!(cache_control(&router, "/kept", &[]).await, "public, max-age=31536000, immutable");
+    assert_eq!(cache_control(&router, "/kept", &[("cookie", "session=1")]).await, "public, max-age=31536000, immutable");
+}
+
 #[tokio::test]
 async fn what_the_app_renders_is_private_unless_it_says_otherwise() {
     let router = app(cached_routes(), None);
