@@ -345,7 +345,11 @@ async fn a_live_watch_sends_the_latest_value_from_where_the_page_is() {
     let read = tokio::spawn(body(behind));
     tokio::task::yield_now().await;
     drop(tx);
-    assert_eq!(read.await.unwrap(), "event: patch\nid: 7\ndata: <p id=\"n\">7</p>\n\nevent: end\ndata: end\n\n", "the current one first");
+    assert_eq!(
+        read.await.unwrap(),
+        "event: patch\nid: 7\ndata: <p id=\"n\">7</p>\n\nevent: end\ndata: end\n\n",
+        "the current one first"
+    );
 
     // A receiver kept in the app's state never reads, so a clone of it has not seen 8: a page
     // showing 8 still gets nothing until the next change.
