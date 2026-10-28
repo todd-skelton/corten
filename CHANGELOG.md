@@ -722,7 +722,15 @@ Corten is pre-1.0, so any minor version may change the API.
     changes. ui-gallery's last-sale sheet is tested in Chromium, Firefox and WebKit. Apps' own
     `cancel` scripts can go
     ([#257 corten-ui's dialog::modal closes a dialog the address opened without following its close link, so Escape leaves ?selected= behind](https://github.com/todd-skelton/corten/issues/257)).
-109. `corten::serve_wrapped(listeners, move |tcp| acceptor.accept(tcp), app)`: `serve_on` with a
+109. `corten::Media`: bytes the app holds, sent as a media type the app names
+    (`Media::new("image/png", bytes)`; the type is one the app names, read from the bytes, and
+    is never the one a client sent with an upload). `Public::immutable(media)` is for a URL that
+    names its content: every cache keeps it for a year, cookies or not, as Corten's versioned
+    files are. It takes bytes only (a page or JSON changes with the deploy, so it does not
+    compile), and its handler is held to `Public`'s rule, so one that could tell who is asking
+    does not compile. Before it, a route could serve bytes it held only as an axum `Response`,
+    which a route cannot name.
+111. `corten::serve_wrapped(listeners, move |tcp| acceptor.accept(tcp), app)`: `serve_on` with a
     step of the app's own on each connection before HTTP, a TLS handshake. The step runs in the
     connection's own task, counts against `App::max_connections` from before the TCP accept, and
     is closed at `App::header_timeout` when the client stalls before or after it; shutdown ends
@@ -735,6 +743,7 @@ Corten is pre-1.0, so any minor version may change the API.
     connection with one request, client included (callgrind, in process, three runs each).
     Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
     ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
+
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -1155,6 +1164,18 @@ Corten is pre-1.0, so any minor version may change the API.
     refused by the CSP. The failover benchmark ran again on it (`results/failover-r2.json`)
     ([#217 examples/listings-feed does not use App, so its routes skip Corten's compile-time checks](https://github.com/todd-skelton/corten/issues/217),
     [#233 listings-feed's failover benchmark has not been run since the example was renamed](https://github.com/todd-skelton/corten/issues/233)).
+66. examples/watchlist keeps the profile picture Ada uploads and shows it on the account page and
+    in the header, from `/pictures/{id}`: an id that is a keyed hash of the bytes, served as a
+    `Media` every cache keeps. The upload reads the picture's type from its first bytes (PNG,
+    JPEG, GIF or WebP), refuses anything else, keeps at most 256 pictures in memory, and needs
+    someone signed in. The file input is styled like the page's buttons
+    ([#221 watchlist's profile picture upload never shows the picture](https://github.com/todd-skelton/corten/issues/221)).
+67. watchlist's WebSocket is `/quotes`, which a ticker outside the browser opens to follow
+    stocks: it sends a ticker and is sent the stock's feed row, then again each time it trades.
+    It replaces `/echo`, which answered in capitals and which nothing used. A message longer than a
+    ticker closes the socket as too big (1009), a client's close is answered, a send the client
+    does not take within 10 seconds ends the socket, and shutdown still closes it with a goodbye
+    ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
