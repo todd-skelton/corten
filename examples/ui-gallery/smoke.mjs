@@ -329,7 +329,7 @@ async function run(browser) {
   await page.goto(`${base}/`);
   /** This entry's place in the history, where the browser has the Navigation API (a browser without it loads whole pages, and the link's address replaces the sheet's). */
   const at = () => page.evaluate(() => /** @type {any} */ (window).navigation?.currentEntry?.index ?? -1);
-  const before = await at();
+  const listEntry = await at();
   await Promise.all([page.waitForURL("**/?sale=last"), page.getByRole("link", { name: "Last sale" }).click()]);
   const sheet = page.locator('dialog[aria-label="Last sale"]');
   const sheetModal = () => page.evaluate(() => !!document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"));
@@ -350,7 +350,7 @@ async function run(browser) {
   // Opened from the list, closing goes back to the list's entry: no entry is added, so Back
   // after it leaves the list, and Android's Back on the open sheet cannot loop through it.
   await escape("opened by a click");
-  check("opened by a click: closing goes back to the list's entry", (await at()) === before, `${before} -> ${await at()}`);
+  check("opened by a click: closing goes back to the list's entry", (await at()) === listEntry, `${listEntry} -> ${await at()}`);
   await page.reload();
   check("a reload does not open it again", (await sheet.count()) === 0);
   // A close request other than Escape (Android's Back, closedby="any") is the same `cancel`.
@@ -362,7 +362,9 @@ async function run(browser) {
     check("requestClose() leaves the sheet's address too", !new URL(page.url()).searchParams.has("sale") && (await sheet.count()) === 0, page.url());
   }
   // Loaded at its address (a shared link), with no click since: Chromium does not let the page
-  // keep it open on Escape, and the address is still left, in place of the sheet's entry.
+  // keep it open on Escape, and the address is still left, in place of the sheet's entry (the
+  // entry before is another page, so there is no going back to the list).
+  await page.goto(`${base}/?tab=offers`);
   await page.goto(`${base}/?sale=last`);
   await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
   check("loaded at its address, the sheet is modal", await sheetModal());
@@ -371,7 +373,7 @@ async function run(browser) {
   check("loaded at its address: the list replaces the sheet's entry", (await at()) === shared, `${shared} -> ${await at()}`);
   await page.goBack();
   await page.waitForLoadState();
-  check("Back from there does not open the sheet again", !new URL(page.url()).searchParams.has("sale"), page.url());
+  check("Back from there goes to the page before the shared link", new URL(page.url()).searchParams.get("tab") === "offers", page.url());
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
