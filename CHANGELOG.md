@@ -658,6 +658,16 @@ Corten is pre-1.0, so any minor version may change the API.
     a sign-in into a 500 the app did not choose. `new` keeps its panic for values the app makes
     and calls the same rule
     ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
+102. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this
+     site only (one leading `/`, not `//` or `/\`, printable ASCII without `\`, so a control
+     character a browser drops cannot make it another host, no `.` or `..` segment, and no
+     percent-escaped letter, digit or `-._~` in the path, which Chromium would send unescaped), and
+     `req.redirect(&local)` takes it. `req.serves(&local)` says whether the route the router picks
+     for its path (the app's own or an area's, not an API's or Corten's) has a `GET` handler, so a
+     sign-in no longer checks a return address against a list of prefixes kept by hand. A `Route`
+     written by hand and given to `Area::route` must have a path of the shape `#[derive(Route)]`
+     writes (whole-segment parameters, plain text), or the app does not compile
+     ([#203 An app cannot ask whether it routes a path, so a sign-in's return address is checked against a hand-kept list of prefixes](https://github.com/todd-skelton/corten/issues/203)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

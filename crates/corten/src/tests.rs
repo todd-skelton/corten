@@ -277,7 +277,7 @@ async fn a_request_for_another_host_is_misdirected_in_every_mode() {
     let routes = Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) }));
     let router = App::new(Routes::from(routes))
         .error_page(test_error_page, ())
-        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods(get(|| async { "rates" }))))
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods::reads(get(|| async { "rates" }))))
         .router();
     let rebound = "rebound.attacker.example:3917";
     for (uri, extra) in [
@@ -1143,18 +1143,18 @@ fn api_app(settings: impl FnOnce(crate::Api<ApiRoot>) -> crate::Api<ApiRoot>) ->
     .deadline(std::time::Duration::from_millis(50))
     .api::<ApiRoot>(|api| {
         let api = api
-            .route::<ApiItem>(crate::Methods(get(|axum::extract::Path(id): axum::extract::Path<u32>| async move {
+            .route::<ApiItem>(crate::Methods::reads(get(|axum::extract::Path(id): axum::extract::Path<u32>| async move {
                 format!("item {id}")
             })))
-            .route::<ApiMissing>(crate::Methods(get(|| async {
+            .route::<ApiMissing>(crate::Methods::reads(get(|| async {
                 Err::<Response, _>(Error::new("no item 7").with_status(StatusCode::NOT_FOUND))
             })))
-            .route::<ApiDown>(crate::Methods(get(|| async { Err::<Response, _>(Error::new("database password wrong")) })))
-            .route::<ApiTeapot>(crate::Methods(get(|| async {
+            .route::<ApiDown>(crate::Methods::reads(get(|| async { Err::<Response, _>(Error::new("database password wrong")) })))
+            .route::<ApiTeapot>(crate::Methods::reads(get(|| async {
                 (StatusCode::IM_A_TEAPOT, [("content-type", "application/json")], r#"{"mine":1}"#)
             })))
-            .route::<ApiSlow>(crate::Methods(get(std::future::pending::<&'static str>)))
-            .route::<ApiPost>(crate::Methods(axum::routing::post(|| async { "posted" })));
+            .route::<ApiSlow>(crate::Methods::reads(get(std::future::pending::<&'static str>)))
+            .route::<ApiPost>(crate::Methods::writes(axum::routing::post(|| async { "posted" })));
         settings(api)
     })
     .router()
@@ -1166,7 +1166,7 @@ fn api_app(settings: impl FnOnce(crate::Api<ApiRoot>) -> crate::Api<ApiRoot>) ->
 #[tokio::test]
 async fn an_area_or_an_api_sets_its_own_deadline() {
     let slow = || {
-        crate::Methods(get(|| async {
+        crate::Methods::reads(get(|| async {
             tokio::time::sleep(Duration::from_millis(200)).await;
             "done"
         }))
@@ -1347,9 +1347,8 @@ struct ApiKeyed;
 #[tokio::test]
 async fn a_refusal_tells_the_client_why_and_when_to_try_again() {
     let router = api_app(|api| {
-        api.route::<ApiKeyed>(crate::Methods(get(|_: Caller<Keyed>| async { "ok" }))).errors(|status, message| ShapedError {
-            r#type: "error",
-            error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+        api.route::<ApiKeyed>(crate::Methods::reads(get(|_: Caller<Keyed>| async { "ok" }))).errors(|status, message| {
+            ShapedError { r#type: "error", error: ShapedDetail { code: status.as_u16(), message: message.to_string() } }
         })
     });
     let keyed = |key: Option<&'static str>| {
@@ -1421,7 +1420,7 @@ async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pa
 #[tokio::test]
 async fn an_api_at_the_root_makes_the_whole_app_json() {
     let router =
-        App::new(Routes::new()).api::<Root>(|api| api.route::<Items>(crate::Methods(get(|| async { "items" })))).router();
+        App::new(Routes::new()).api::<Root>(|api| api.route::<Items>(crate::Methods::reads(get(|| async { "items" })))).router();
     let (status, headers, body) = call_with(router.clone(), "GET", "/nope", None, Some("text/html")).await;
     assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::NOT_FOUND, "application/json"));
     assert_eq!(body, r#"{"error":{"status":404,"message":"Not Found"}}"#);
@@ -1466,7 +1465,7 @@ async fn an_api_module_serves_its_routes_and_answers_its_failures_as_json() {
 async fn validation_errors_are_the_json_error_with_fields() {
     let router = App::new(Routes::new())
         .api::<ApiRoot>(|api| {
-            api.route::<ApiSignUp>(crate::Methods(axum::routing::post(|| async {
+            api.route::<ApiSignUp>(crate::Methods::writes(axum::routing::post(|| async {
                 let mut errors = Errors::new();
                 errors.add(SignUp::FIELDS.email, "Enter an email address.");
                 Err::<&str, _>(errors)
@@ -1545,7 +1544,7 @@ async fn a_json_handler_question_marks_field_errors_into_a_422_with_the_fields()
 async fn a_json_body_that_does_not_parse_is_a_json_400() {
     let router = App::new(Routes::new())
         .api::<ApiRoot>(|api| {
-            api.route::<ApiItems>(crate::Methods(axum::routing::post(
+            api.route::<ApiItems>(crate::Methods::writes(axum::routing::post(
                 |axum::Json(v): axum::Json<serde_json::Value>| async move { v.to_string() },
             )))
         })
@@ -1646,7 +1645,9 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
 
     let minute = std::time::Duration::from_secs(60);
     let api = App::new(Routes::new())
-        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods(get(move || async move { (Cache::public(minute), "rates") }))))
+        .api::<ApiRoot>(|api| {
+            api.route::<ApiRates>(crate::Methods::reads(get(move || async move { (Cache::public(minute), "rates") })))
+        })
         .router();
     assert_eq!(cache_control(&api, "/api/rates", &[("accept", "application/json")]).await, "public, max-age=60");
     assert_eq!(cache_control(&api, "/api/rates", &[("authorization", "Bearer t")]).await, "private, no-cache");
@@ -2097,7 +2098,7 @@ fn an_area_under_an_api_prefix_fails_at_startup() {
 async fn the_app_answers_unknown_urls_under_an_area_or_api() {
     let fallback = || async { "the app's fallback" };
     let router = App::new(Routes::from(Router::new().route("/", get(|| async { "home" })).fallback(fallback)))
-        .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(|| async { "admin" }))))
+        .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods::reads(get(|| async { "admin" }))))
         .router();
     for uri in ["/nope", "/admin/nope"] {
         let (status, _, body) = call_with(router.clone(), "GET", uri, None, None).await;
@@ -2258,7 +2259,7 @@ async fn an_upgrade_route_switches_for_its_own_origin_and_refuses_other_sites() 
     let addr = listeners[0].local_addr().unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let app = App::new(Routes::from(routes)).api::<ApiRoot>(|api| {
-        api.route::<ApiWs>(crate::Methods(get(|upgrade: Upgrade| async move { upgrade.websocket(echo) })))
+        api.route::<ApiWs>(crate::Methods::reads(get(|upgrade: Upgrade| async move { upgrade.websocket(echo) })))
             .allow_origin("https://partner.example")
     });
     let server = tokio::spawn(crate::app::run(listeners, app, async {
@@ -2403,7 +2404,7 @@ async fn a_relay_passes_the_upstreams_answer_on() {
     }
     let router = App::new(Routes::from(Router::new().route("/relay", get(|| async { upstream(StatusCode::BAD_REQUEST) }))))
         .error_page(test_error_page, ())
-        .api::<ApiRoot>(|api| api.route::<ApiItem>(crate::Methods(get(|| async { upstream(StatusCode::BAD_GATEWAY) }))))
+        .api::<ApiRoot>(|api| api.route::<ApiItem>(crate::Methods::reads(get(|| async { upstream(StatusCode::BAD_GATEWAY) }))))
         .router();
     for (path, status, accept) in [
         ("/relay", StatusCode::BAD_REQUEST, Some("text/html")),
@@ -2607,4 +2608,202 @@ async fn a_taken_ipv6_loopback_port_is_an_error() {
     let error = crate::app::bind(None, port).await.expect_err("the port is taken on ::1");
     assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
     assert_eq!(crate::app::bind(Some("127.0.0.1"), port).await.unwrap().len(), 1, "HOST names one address");
+}
+
+#[crate::routes]
+mod serves_url {
+    #[route("/check", get = serves_check)]
+    pub struct Check;
+
+    #[route("/items/{id}", get = serves_check)]
+    pub struct Item {
+        pub id: u32,
+    }
+
+    #[route("/files/{*rest}", get = serves_check)]
+    pub struct Files {
+        pub rest: String,
+    }
+
+    #[route("/cart/add", post = serves_check)]
+    pub struct AddToCart;
+
+    #[route("/cart/{id}", get = serves_check)]
+    pub struct CartLine {
+        pub id: u32,
+    }
+
+    #[route("/both", post = serves_check, get = serves_check)]
+    pub struct Both;
+
+    #[route("/go", get = serves_go)]
+    pub struct Go;
+}
+
+/// Every GET is a page here, but an API, Corten's own paths and its health checks are not.
+#[crate::routes]
+mod serves_catch_url {
+    #[route("/{*page}", get = serves_check)]
+    pub struct Page {
+        pub page: String,
+    }
+}
+
+#[tokio::test]
+async fn a_catch_all_page_does_not_serve_an_api_or_cortens_own_paths() {
+    let pwa = crate::pwa::Pwa::new(crate::pwa::Manifest::new("A", "A"));
+    let router = App::new(serves_catch_url::router())
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods::reads(get(|| async { "rates" }))))
+        .pwa(pwa)
+        .router();
+    for (p, want) in [
+        ("/about/team", "local served"),
+        ("/api/rates", "local elsewhere"),
+        ("/api", "local elsewhere"),
+        ("/health/live", "local elsewhere"),
+        ("/corten/anything", "local elsewhere"),
+        ("/manifest.webmanifest", "local elsewhere"),
+        ("/service-worker.js", "local elsewhere"),
+        ("/apis", "local served"),
+    ] {
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (status, _, body) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((status, body.as_str()), (StatusCode::OK, want), "{p:?}");
+    }
+}
+
+/// Paths where matching by hand is easy to get wrong: an empty segment, a POST-only route the
+/// router picks over a catch-all page, and a path routed by both the app and an area.
+#[crate::routes]
+mod serves_router_url {
+    #[route("/check", get = serves_check)]
+    pub struct Check;
+
+    #[route("/items/{id}/edit", get = serves_page)]
+    pub struct Edit {
+        pub id: String,
+    }
+
+    #[route("/x/{a}/y", post = serves_page)]
+    pub struct Write {
+        pub a: String,
+    }
+
+    #[route("/shop/cart", get = serves_page)]
+    pub struct CartPage;
+
+    #[route("/{*page}", get = serves_page)]
+    pub struct Page {
+        pub page: String,
+    }
+}
+
+#[crate::routes(area = Shop)]
+mod serves_shop_url {
+    #[route("/shop")]
+    pub struct Shop;
+
+    #[route("/shop/cart", post = serves_page)]
+    pub struct Cart;
+}
+
+#[derive(crate::Route)]
+#[route("/shop/list")]
+struct ShopList;
+
+async fn serves_page() -> &'static str {
+    "page"
+}
+
+/// `req.serves` says a path is served exactly when a GET to it reaches a page.
+#[tokio::test]
+async fn serves_agrees_with_the_router() {
+    let router = App::new(serves_router_url::router())
+        .area(|shop| serves_shop_url::area(shop).route::<ShopList>(crate::route::post(serves_page).get(serves_page)))
+        .router();
+    for (p, want) in [
+        ("/items/7/edit", true),
+        ("/items//edit", true),
+        ("/items/7/", true),
+        ("/x/1/y", false),
+        ("/x//y", false),
+        ("/x/1/z", true),
+        ("/shop/cart", true),
+        ("/shop/list", true),
+        ("/about", true),
+        ("/health/live", false),
+    ] {
+        let (status, _, body) = call_with(router.clone(), "GET", p, None, None).await;
+        let routed = status == StatusCode::OK && body == "page";
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (_, _, says) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((routed, says == "local served"), (want, want), "{p:?}: {status} {body:?}, serves says {says:?}");
+    }
+}
+
+/// A redirect to the return address in `?p=`, or to `/check` when it is not on this site.
+async fn serves_go(req: Req, uri: axum::http::Uri) -> HtmlResult {
+    let p = form_urlencoded::parse(uri.query().unwrap_or("").as_bytes()).find(|(k, _)| k == "p").map(|(_, v)| v.into_owned());
+    match p.as_deref().and_then(crate::Local::parse) {
+        Some(local) => req.redirect(&local),
+        None => req.redirect(&serves_url::Check),
+    }
+}
+
+/// Whether the app serves the path in `?p=`: "local served", "local elsewhere" or "not local".
+async fn serves_check(req: Req, uri: axum::http::Uri) -> String {
+    let p = form_urlencoded::parse(uri.query().unwrap_or("").as_bytes()).find(|(k, _)| k == "p").map(|(_, v)| v.into_owned());
+    match p.as_deref().and_then(crate::route::Local::parse) {
+        Some(local) if req.serves(&local) => "local served".into(),
+        Some(_) => "local elsewhere".into(),
+        None => "not local".into(),
+    }
+}
+
+/// A return address the app serves is one of its pages, its areas' included; an API route, a
+/// static file or Corten's own routes are not; and nothing that leads off the site is a `Local`.
+#[tokio::test]
+async fn an_app_says_whether_it_serves_a_return_address() {
+    let router = App::new(serves_url::router())
+        .area::<admin_url::Admin>(admin_url::area)
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods::reads(get(|| async { "rates" }))))
+        .router();
+    for (p, want) in [
+        ("/check", "local served"),
+        ("/check?x=1#top", "local served"),
+        ("/items/7", "local served"),
+        ("/items/anything", "local served"),
+        ("/files/a/b/c.txt", "local served"),
+        ("/admin", "local served"),
+        ("/admin/users/3", "local served"),
+        ("/items", "local elsewhere"),
+        ("/items/", "local elsewhere"),
+        ("/items/7/edit", "local elsewhere"),
+        ("/files/", "local elsewhere"),
+        ("/check/", "local elsewhere"),
+        ("/api/rates", "local elsewhere"),
+        ("/health/live", "local elsewhere"),
+        ("/admin/users", "local elsewhere"),
+        ("/market/cart", "local elsewhere"),
+        ("/cart/add", "local elsewhere"),
+        ("/cart/7", "local served"),
+        ("/cart/%61dd", "not local"),
+        ("/both", "local served"),
+        ("/items/..", "not local"),
+        ("/check/../admin", "not local"),
+        ("//evil.example/check", "not local"),
+        ("/\\evil.example", "not local"),
+        ("/\t/evil.example", "not local"),
+        ("https://evil.example/check", "not local"),
+        ("check", "not local"),
+    ] {
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (status, _, body) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((status, body.as_str()), (StatusCode::OK, want), "{p:?}");
+    }
+    for (p, location) in [("/items/7?tab=reviews", "/items/7?tab=reviews"), ("//evil.example", "/check")] {
+        let uri = format!("/go?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (status, headers, _) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((status, headers["location"].to_str().unwrap()), (StatusCode::SEE_OTHER, location), "{p:?}");
+    }
 }
