@@ -1288,6 +1288,13 @@ Corten is pre-1.0, so any minor version may change the API.
     `SetCookie::new`, `path` and `remove` name the caller's line when they panic. Before, such a
     path passed `path` and panicked when the answer was sent
     ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
+46. The two smoke checks that failed now and then in CI say why when they fail: the early form
+    submit (`scripts/smoke.mjs`) reports the navigation requests, responses, commits, failed loads
+    and errors with their times, and ui-gallery's first page names the engine, the scripts that
+    loaded and the failed requests instead of throwing a bare timeout. Neither reproduced locally,
+    so neither is fixed yet
+    ([#232 WebKit smoke: "a form submitted before the first page loads navigates" fails now and then](https://github.com/todd-skelton/corten/issues/232),
+    [#252 ui-gallery smoke: the first page's combo box did not connect within 30 s in Firefox (CI, once)](https://github.com/todd-skelton/corten/issues/252)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

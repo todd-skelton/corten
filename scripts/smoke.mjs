@@ -1266,6 +1266,20 @@ async function run(browser) {
   // form submit (one made from on:connect) makes Chromium stop loading the document, and a page
   // taken over then never fires load.
   const early = await browser.newPage();
+  // What the browser did, for the check's detail when it fails (#232): the documents it asked
+  // for and got, the frames it committed, and the loads that failed.
+  /** @type {string[]} */
+  const trail = [];
+  const at = Date.now();
+  const note = (/** @type {string} */ what) => trail.push(`${Date.now() - at}ms ${what}`);
+  early.on("request", (r) => r.isNavigationRequest() && note(`request ${r.method()} ${new URL(r.url()).pathname}`));
+  early.on("response", (r) => r.request().isNavigationRequest() && note(`response ${r.status()} ${new URL(r.url()).pathname}`));
+  early.on("requestfailed", (r) => note(`failed ${new URL(r.url()).pathname} ${r.failure()?.errorText}`));
+  early.on("framenavigated", (f) => f === early.mainFrame() && note(`committed ${new URL(f.url()).pathname}`));
+  early.on("domcontentloaded", () => note("domcontentloaded"));
+  early.on("load", () => note("load"));
+  early.on("console", (m) => m.type() === "error" && note(`console ${m.text()}`));
+  early.on("pageerror", (e) => note(`pageerror ${e.message}`));
   /** @type {() => void} */
   let release = () => {};
   const held = new Promise((/** @type {(v?: unknown) => void} */ r) => (release = r));
@@ -1295,10 +1309,11 @@ async function run(browser) {
     const entry = /** @type {PerformanceNavigationTiming} */ (performance.getEntriesByType("navigation")[0]);
     return { path: new URL(entry.name).pathname, load: entry.loadEventEnd > 0, title: document.title };
   });
+  const navigated = loaded.title === "News | Watchlist" && loaded.load;
   check(
     "a form submitted before the first page loads navigates, and the page loads",
-    loaded.title === "News | Watchlist" && loaded.load,
-    JSON.stringify(loaded),
+    navigated,
+    navigated ? JSON.stringify(loaded) : `${JSON.stringify(loaded)}; ${trail.join(", ")}`,
   );
   await early.close();
 

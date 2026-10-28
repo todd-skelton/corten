@@ -34,8 +34,25 @@ async function run(browser) {
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
+  /** @type {string[]} */
+  const failed = [];
+  page.on("requestfailed", (r) => failed.push(`${new URL(r.url()).pathname} ${r.failure()?.errorText}`));
+  page.on("response", (r) => r.status() >= 400 && failed.push(`${new URL(r.url()).pathname} ${r.status()}`));
   await page.goto(`${base}/`);
-  await page.waitForFunction(() => document.querySelector('[data-scope=ui-combo-box] [role="combobox"]:not([hidden])') !== null);
+  // The combo box's input shows once its script connects (#252): on a timeout, say what had
+  // loaded and what failed rather than throwing without the engine.
+  const connected = await page
+    .waitForFunction(() => document.querySelector('[data-scope=ui-combo-box] [role="combobox"]:not([hidden])') !== null)
+    .then(() => true)
+    .catch(() => false);
+  if (!connected) {
+    const state = await page.evaluate(() => ({
+      readyState: document.readyState,
+      scripts: performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/") || n.includes("corten")).map((n) => new URL(n).pathname),
+    }));
+    check("the first page's combo box connects", false, JSON.stringify({ ...state, failed, errors }));
+    return;
+  }
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
   check("the six scripts load and connect", loaded === 6, `${loaded} script(s)`);
 
