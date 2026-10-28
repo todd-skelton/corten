@@ -730,6 +730,16 @@ Corten is pre-1.0, so any minor version may change the API.
     compile), and its handler is held to `Public`'s rule, so one that could tell who is asking
     does not compile. Before it, a route could serve bytes it held only as an axum `Response`,
     which a route cannot name.
+110. `corten_ui::CopyButton`: a button that copies an element's text (an order number, an API
+    key's one-time secret; a read-only field's value). The element is named by its
+    `#[derive(Id)]` id (`<code id={SecretId}>`, `<CopyButton text={SecretId} label={..}
+    copied={..} />`), so the text is on the page once and a button in a list copies its own row's;
+    text in its place does not compile. The button is drawn `hidden` and shown where the browser
+    has the Clipboard API (a secure origin); after a write it reads the app's `copied` for two
+    seconds in a polite live region, and nothing to copy or a failed write changes nothing. Tested
+    in ui-gallery in Chromium, Firefox and WebKit: a copy (the clipboard's contents in Chromium,
+    which lets a test read it), a denied write, no Clipboard API, and no script. Apps' own copy scripts can go
+    ([#244 corten-ui has no copy-to-clipboard control, so each app ships its own script for Copy](https://github.com/todd-skelton/corten/issues/244)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1157,7 +1167,13 @@ Corten is pre-1.0, so any minor version may change the API.
     JPEG, GIF or WebP), refuses anything else, keeps at most 256 pictures in memory, and needs
     someone signed in. The file input is styled like the page's buttons
     ([#221 watchlist's profile picture upload never shows the picture](https://github.com/todd-skelton/corten/issues/221)).
-67. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+67. watchlist's WebSocket is `/quotes`, which a ticker outside the browser opens to follow
+    stocks: it sends a ticker and is sent the stock's feed row, then again each time it trades.
+    It replaces `/echo`, which answered in capitals and which nothing used. A message longer than a
+    ticker closes the socket as too big (1009), a client's close is answered, a send the client
+    does not take within 10 seconds ends the socket, and shutdown still closes it with a goodbye
+    ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
+68. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
     method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
     tools' own errors have, and a partner's write without a known key is told to send a valid
     one in `X-Api-Key` (`Refused::message`)
@@ -1423,6 +1439,15 @@ Corten is pre-1.0, so any minor version may change the API.
     refuses and the two are different work; the empty item's load, sort and client navigation are
     measured as before. Medians of the action now come from eight of ten runs per profile
     ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
+48. `ReadAgain::from(&route)` in a page's markup starts its read, as in a patch, on a full load
+    and after a navigation: only those parts are read again, and what is beside them (a form the
+    user is filling in, a payment provider's frame) stays. Before, the runtime acted on it only in
+    a patch, so a page had to start the first read with a script of its own. It stops when the
+    page is left or an element with an id beside the tag is replaced; with JavaScript a page that
+    reads parts again is not read whole, so its head's `ReadAgain` is for a browser without it.
+    The watchlist's alerts page reads its status line and list so. The runtime grows by 273 B
+    (72 B brotli)
+    ([#276 A page cannot ask for one of its parts to be read again, so a page holding a third-party frame needs a script to start the read](https://github.com/todd-skelton/corten/issues/276)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
