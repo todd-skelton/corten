@@ -60,9 +60,10 @@ pub(crate) fn app_with(market: Market, alerts: AlertStore) -> App {
     let shared = Shared { market, lists: Lists::default(), alerts, pictures: Pictures::default(), readers: Readers::default() };
     App::new(url::router(shared.clone()))
         .components(&[TOKENS, home::LivePrices])
-        .area(|area| news::url::area(area, shared).components(news::COMPONENTS))
-        .area(account::url::area)
-        .error_page(error_page, ())
+        .area(|area| news::url::area(area, shared.clone()).components(news::COMPONENTS))
+        .area(|area| account::url::area(area, shared.clone()))
+        // The error page shows who is asking, with their picture, so it has the app's state too.
+        .error_page(error_page, shared)
         // Started by `serve` once it listens, stopped at shutdown; a test's `app.router()` starts
         // none, so its prices stay put.
         .task("market", move |signal| market::simulate(trading, signal))

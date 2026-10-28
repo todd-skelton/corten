@@ -81,9 +81,9 @@ Types, counts and per-file sizes are the handler's checks, reported with `errors
 so the form is drawn again with the message beside the input.
 
 To serve an upload back, read its type from its first bytes (never `file.content_type()`, which is
-the client's word) and return `corten::Media::new("image/png", bytes)`: the type is a
-`&'static str` the app names. At a URL that names the bytes (a keyed hash), add `.immutable()` so
-every cache keeps it; never build the response by hand.
+the client's word) and return `corten::Media::new("image/png", bytes)`. At a URL that names the
+bytes (a hash), return `Public::immutable(answer)` so every cache keeps it for a year; its handler
+cannot read who is asking. Never build the response by hand.
 
 ## Checkboxes and lists
 

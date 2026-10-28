@@ -63,6 +63,8 @@ enum Kind {
         stale: u64,
     },
     NoStore,
+    /// At a URL that names its content: a year, and the browser does not ask again.
+    Immutable,
 }
 
 impl Cache {
@@ -79,7 +81,7 @@ impl Cache {
             Kind::Public { max_age, stale, .. } => {
                 Cache { kind: Kind::Public { max_age, shared: Some(shared.as_secs()), stale } }
             }
-            Kind::NoStore => self,
+            Kind::NoStore | Kind::Immutable => self,
         }
     }
 
@@ -88,7 +90,7 @@ impl Cache {
     pub(crate) fn stale_while_revalidate(self, stale: Duration) -> Self {
         match self.kind {
             Kind::Public { max_age, shared, .. } => Cache { kind: Kind::Public { max_age, shared, stale: stale.as_secs() } },
-            Kind::NoStore => self,
+            Kind::NoStore | Kind::Immutable => self,
         }
     }
 
@@ -98,9 +100,17 @@ impl Cache {
         Cache { kind: Kind::NoStore }
     }
 
+    /// At a URL that names its content, so the answer there never changes: any cache keeps it
+    /// for a year, whatever cookies the request carried.
+    pub(crate) fn immutable() -> Self {
+        Cache { kind: Kind::Immutable }
+    }
+
     fn header(self) -> HeaderValue {
-        let Kind::Public { max_age, shared, stale } = self.kind else {
-            return HeaderValue::from_static("no-store");
+        let (max_age, shared, stale) = match self.kind {
+            Kind::Public { max_age, shared, stale } => (max_age, shared, stale),
+            Kind::NoStore => return HeaderValue::from_static("no-store"),
+            Kind::Immutable => return crate::assets::IMMUTABLE,
         };
         let mut text = Vec::with_capacity(80);
         let mut push = |name: &str, n: u64| {
@@ -123,6 +133,9 @@ impl Cache {
     pub(crate) fn apply(self, res: &mut Response) {
         res.headers_mut().insert(header::CACHE_CONTROL, self.header());
         res.extensions_mut().insert(Typed);
+        if self.kind == Kind::Immutable {
+            res.extensions_mut().insert(Named);
+        }
     }
 }
 
@@ -139,6 +152,10 @@ impl IntoResponseParts for Cache {
 /// Marks a `Cache-Control` that came from [`Cache`], which [`settle`] checks against the request.
 #[derive(Clone, Copy)]
 struct Typed;
+
+/// Marks a [`Cache::immutable`] answer: its URL names it, so the request's cookies do not change it.
+#[derive(Clone, Copy)]
+struct Named;
 
 /// The default for what the app renders.
 pub(crate) const PRIVATE: HeaderValue = HeaderValue::from_static("private, no-cache");
@@ -204,11 +221,13 @@ pub(crate) fn settle(res: &mut Response, seen: Seen, path: &str) {
         headers.insert(header::CACHE_CONTROL, PRIVATE);
         return;
     }
-    if seen.caller || (typed && seen.credentials) {
+    let named = res.extensions().get::<Named>().is_some();
+    let headers = res.headers_mut();
+    if seen.caller || (typed && seen.credentials && !named) {
         headers.insert(header::CACHE_CONTROL, PRIVATE);
         return;
     }
-    if !typed {
+    if !typed || named {
         return;
     }
     if seen.partial {

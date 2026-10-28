@@ -1294,6 +1294,7 @@ async function run(browser) {
   // picture. Its type is read from its bytes, and the answer shows it in the header and on the
   // page, from a URL every cache keeps. WebKit gets a cookie it sends back over http, as its
   // sign-in's Secure one is not.
+  const errorsBefore = errors.length;
   if (!signsIn) await page.context().addCookies([{ name: "viewer", value: "Ada", url: base }]);
   await page.goto(`${base}/account`);
   /** Uploads one file with the account page's form and gives the status line's text. @param {{ name: string, mimeType: string, buffer: Buffer }} file */
@@ -1325,7 +1326,7 @@ async function run(browser) {
     )
     .then((handle) => handle.jsonValue())
     .catch(() => null);
-  check("an uploaded picture is read as it arrives and shown in the header and on the page", uploaded === "Saved card.png as your picture." && /^\/pictures\/[0-9a-f]{16}$/.test(shown ?? ""), `${uploaded}, ${shown}`);
+  check("an uploaded picture is read as it arrives and shown in the header and on the page", uploaded === "Saved card.png as your picture." && /^\/pictures\/[0-9a-f]{32}$/.test(shown ?? ""), `${uploaded}, ${shown}`);
   const served = await fetch(new URL(shown ?? "/pictures/none", base));
   check(
     "a picture is served as its type, at a URL every cache keeps",
@@ -1340,10 +1341,13 @@ async function run(browser) {
   // browser, still sending when the answer comes, shows it instead of a network error.
   const over = await upload({ name: "huge.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(3 << 20, 7) });
   check("a body over its limit is answered in the form", over === "The form is over 1 MB.", over);
+  await page.context().clearCookies({ name: "picture" });
   if (!signsIn) await page.context().clearCookies({ name: "viewer" });
 
-  // The posts answered 415, 422 and 413 on purpose; the browser logs those as failed resources.
-  check("no console errors after the injected forms", errors.every((e) => e.includes("415") || e.includes("422") || e.includes("413")), errors.join(" | "));
+  // The posts answered 415, and the uploads 422 and 413, on purpose; the browser logs those as
+  // failed resources.
+  const unplanned = errors.filter((e, i) => !(e.includes("415") || (i >= errorsBefore && (e.includes("422") || e.includes("413")))));
+  check("no console errors after the injected forms", unplanned.length === 0, unplanned.join(" | "));
 
   // Without the page's cookie: the three stocks a first visit watches.
   const json = await (await fetch(base, { headers: { accept: "application/json" } })).json();

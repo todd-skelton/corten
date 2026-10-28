@@ -437,6 +437,13 @@ stay public for clients without credentials. A cache in front of the app must ke
 any other way: a response it builds by hand is not an answer a route can name, and if anything
 read a caller the answer is private whatever its header says.
 
+An answer at a URL that names its content (a hash of its bytes, as an uploaded picture's can be)
+never changes there. `Public::immutable(answer)` sends it as Corten's versioned files are sent,
+`public, max-age=31536000, immutable`, and since the URL alone says what it is, a request's
+cookies do not make it private and no `Vary: cookie` is added. A cookie it sets or a caller
+something read still does. Its handler is held to the same rule as any `Public` handler. A URL
+that does not name its content (`/me/picture`) takes `Public::new` with a lifetime.
+
 A full document never carries `corten-page`, so if a cache hands one to a client navigation by
 mistake, the runtime loads the URL as a whole page instead of swapping it in.
 

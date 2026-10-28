@@ -633,16 +633,15 @@ impl Answer for Relay {
 }
 
 /// Bytes the app holds, sent as their media type: a picture a user uploaded, a document the app
-/// made. The type is a `&'static str` the app names (`"image/png"`), never the one a client sent
-/// with the bytes, so an upload that says it is `text/html` cannot come back as a page; a
-/// `String` from a request does not compile there. Browsers do not guess another type
-/// (`X-Content-Type-Options: nosniff`, as on everything `App` serves).
+/// made. The type is one the app names (`"image/png"`), never the one a client sent with the
+/// bytes: read an upload's type from its first bytes. What keeps a file that holds HTML from
+/// running as a page is the app's headers, which every `Media` gets: browsers do not guess
+/// another type (`X-Content-Type-Options: nosniff`), and the CSP allows no inline script.
 ///
-/// It is cached as anything the app answers is (`private, no-cache`), unless its URL names its
-/// content, a hash of the bytes, so the bytes at that URL never change:
-/// [`Media::immutable`] lets every cache keep it for a year, as Corten's own versioned files
-/// are. That holds with the request's cookies, since the URL alone says what the bytes are; a
-/// handler that reads who is asking (a [`crate::Caller`]) is still answered privately.
+/// It is cached as anything the app answers is (`private, no-cache`). At a URL that names its
+/// content, a hash of the bytes, the bytes never change, so [`Public::immutable`] lets every cache
+/// keep it for a year, as Corten's own versioned files are; its handler cannot read who is asking,
+/// as any `Public` handler cannot.
 ///
 /// ```
 /// use corten::{prelude::*, Media};
@@ -656,31 +655,24 @@ impl Answer for Relay {
 /// }
 ///
 /// // `id` is a hash of the picture's bytes, made when it was uploaded.
-/// async fn picture(Path(id): Path<String>) -> corten::Result<Media> {
+/// async fn picture(Path(id): Path<String>) -> Public<corten::Result<Media>> {
 ///     let png: &'static [u8] = b"\x89PNG\r\n\x1a\n";
-///     match id.as_str() {
-///         "5f2c" => Ok(Media::new("image/png", png).immutable()),
+///     Public::immutable(match id.as_str() {
+///         "5f2c" => Ok(Media::new("image/png", png)),
 ///         _ => Err(corten::Error::not_found()),
-///     }
+///     })
 /// }
 /// # let _ = App::new(url::router()).router();
 /// ```
 pub struct Media(Response);
 
 impl Media {
-    /// `bytes`, sent as `media_type` (`"image/webp"`).
+    /// `bytes`, sent as `media_type` (`"image/webp"`), a valid header value.
     pub fn new(media_type: &'static str, bytes: impl Into<axum::body::Bytes>) -> Self {
         use axum::http::{header, HeaderValue};
         let mut res = Response::new(axum::body::Body::from(bytes.into()));
         res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(media_type));
         Media(res)
-    }
-
-    /// For a URL that names its content: any cache may keep it for a year, and the browser does not
-    /// ask again (`public, max-age=31536000, immutable`).
-    pub fn immutable(mut self) -> Self {
-        self.0.headers_mut().insert(axum::http::header::CACHE_CONTROL, crate::assets::IMMUTABLE);
-        self
     }
 }
 
@@ -775,6 +767,35 @@ impl<A: Shareable> Public<A> {
     /// ```
     pub fn new<T: ForEveryone<Named = A>>(max_age: Duration, answer: T) -> Self {
         Public { cache: Cache::public(max_age), answer: answer.for_all() }
+    }
+
+    /// `answer` at a URL that names its content (a hash of its bytes, as Corten's versioned files
+    /// have), so it never changes there: any cache keeps it for a year and the browser does not ask
+    /// again (`public, max-age=31536000, immutable`). Since the URL alone says what the answer
+    /// is, a request's cookies do not make it private, and no `Vary: cookie` is added; a cookie it
+    /// sets, or a caller something read, still does. A URL that does not name its content (a
+    /// user's current picture at `/me/picture`) takes `Public::new` with a lifetime instead.
+    ///
+    /// Its handler is held to `Public`'s rule, so one that could tell who is asking does not
+    /// compile:
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::{axum::http::HeaderMap, prelude::*, Media};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/me/picture", get = picture)]
+    ///     pub struct Picture;
+    /// }
+    ///
+    /// async fn picture(headers: HeaderMap) -> Public<Media> {
+    ///     let _ = headers.get("cookie");
+    ///     Public::immutable(Media::new("image/png", &b"\x89PNG"[..]))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
+    pub fn immutable<T: ForEveryone<Named = A>>(answer: T) -> Self {
+        Public { cache: Cache::immutable(), answer: answer.for_all() }
     }
 
     /// After `max_age`, a cache may still serve it for up to `stale` while it fetches a fresh one.

@@ -8,6 +8,7 @@ use corten::{
     Error, Media,
     axum::{
         body::Bytes,
+        extract::FromRef,
         http::{StatusCode, request::Parts},
     },
     prelude::*,
@@ -24,7 +25,7 @@ use crate::{
 
 /// Someone's own pages: every route here, now and later, takes the viewer, so no one signed out
 /// reaches one (they are sent to the watchlist, where the sign-in button is).
-#[corten::routes(area = Account, caller = Viewer)]
+#[corten::routes(area = Account, caller = Viewer, state = app::Shared)]
 pub mod url {
     #[route("/account", get = page)]
     pub struct Account;
@@ -38,12 +39,18 @@ pub struct Viewer {
 }
 
 /// A real app reads its session here; the example trusts a cookie, which is fine for a demo and
-/// nothing else. The picture is another cookie, the id the upload answered with.
-impl<S: Sync> Identify<S> for Viewer {
-    async fn identify(parts: &Parts, _: &S) -> Result<Self, Refused> {
+/// nothing else. The picture is another cookie, the id the upload answered with, counted only
+/// while the server still has the picture (not after a restart, or once it is forgotten), so a
+/// page never shows a picture that is not there.
+impl<S: Sync> Identify<S> for Viewer
+where
+    Pictures: FromRef<S>,
+{
+    async fn identify(parts: &Parts, state: &S) -> Result<Self, Refused> {
         match cookie::get(&parts.headers, "viewer").filter(|name| !name.is_empty()) {
             Some(name) => {
-                let picture = cookie::get(&parts.headers, "picture").filter(|id| Pictures::is_id(id)).map(str::to_string);
+                let pictures = Pictures::from_ref(state);
+                let picture = cookie::get(&parts.headers, "picture").filter(|id| pictures.has(id)).map(str::to_string);
                 Ok(Viewer { name: name.into(), picture })
             }
             None => Err(Refused::sign_in(&app::url::Home)),
@@ -59,17 +66,18 @@ pub(crate) async fn sign_out(req: Req) -> HtmlResult {
     Ok(req.redirect(&app::url::Home)?.with_cookie(SetCookie::remove("viewer")).with_cookie(SetCookie::remove("picture")))
 }
 
-/// The pictures people uploaded, by id. An id is a hash of the bytes with a key of this process's,
-/// so its URL names its content (every cache may keep it for good, `Media::immutable`) and no one
-/// can make a picture that takes another's id. They live in memory: at most `KEPT`, and past
-/// that the one shown longest ago is forgotten, as after a restart; its URL is then a 404 and the
-/// header shows the name alone once the picture is uploaded again.
+/// The pictures people uploaded, by id. An id is a 128-bit hash of the bytes with keys of this
+/// process's, so its URL names its content (every cache may keep it for good,
+/// `Public::immutable`) and is hard to guess; on a collision the first picture stays. They live
+/// in memory: at most `KEPT`, and past that the one uploaded longest ago is forgotten, as all are
+/// after a restart. Its URL is then a 404, and the pages show the name alone. Anyone can sign in
+/// here, so anyone can push the others out; a real app keeps pictures in its store, per account.
 #[derive(Clone)]
 pub struct Pictures(Arc<Mutex<Kept>>);
 
 struct Kept {
     pictures: Recent<Picture>,
-    key: RandomState,
+    keys: [RandomState; 2],
 }
 
 #[derive(Clone)]
@@ -87,7 +95,7 @@ const FORM_MAX: usize = 1 << 20;
 
 impl Default for Pictures {
     fn default() -> Self {
-        Pictures(Arc::new(Mutex::new(Kept { pictures: Recent::new(KEPT), key: RandomState::new() })))
+        Pictures(Arc::new(Mutex::new(Kept { pictures: Recent::new(KEPT), keys: [RandomState::new(), RandomState::new()] })))
     }
 }
 
@@ -95,18 +103,20 @@ impl Pictures {
     /// Keeps a picture and gives its id.
     fn keep(&self, media_type: &'static str, bytes: Bytes) -> String {
         let mut kept = self.0.lock().expect("pictures");
-        let id = format!("{:016x}", kept.key.hash_one(&bytes[..]));
+        let [a, b] = &kept.keys;
+        let id = format!("{:016x}{:016x}", a.hash_one(&bytes[..]), b.hash_one(&bytes[..]));
         kept.pictures.entry(&id, || Picture { media_type, bytes });
         id
     }
 
+    /// A picture by id. Reading one does not keep it longer: a cache keeps it for a year, so the
+    /// server sees few reads of the pictures shown most.
     fn get(&self, id: &str) -> Option<Picture> {
-        self.0.lock().expect("pictures").pictures.get_mut(id).cloned()
+        self.0.lock().expect("pictures").pictures.peek(id).cloned()
     }
 
-    /// Whether `id` could be one `keep` gave: 16 hex digits.
-    fn is_id(id: &str) -> bool {
-        id.len() == 16 && id.bytes().all(|b| b.is_ascii_hexdigit())
+    fn has(&self, id: &str) -> bool {
+        self.0.lock().expect("pictures").pictures.peek(id).is_some()
     }
 }
 
@@ -123,10 +133,10 @@ fn picture_type(bytes: &[u8]) -> Option<&'static str> {
 }
 
 /// A picture by its id. The id names the bytes, so the answer never changes and every cache may
-/// keep it; it reads no cookie, which is why it is not in the `Account` area.
-pub(crate) async fn picture(State(pictures): State<Pictures>, Path(id): Path<String>) -> corten::Result<Media> {
-    let picture = pictures.get(&id).ok_or_else(Error::not_found)?;
-    Ok(Media::new(picture.media_type, picture.bytes).immutable())
+/// keep it (`Public::immutable`); it reads no cookie, which is why it is not in the `Account`
+/// area, and taking a `Caller` here would not compile.
+pub(crate) async fn picture(State(pictures): State<Pictures>, Path(id): Path<String>) -> Public<corten::Result<Media>> {
+    Public::immutable(pictures.get(&id).map(|picture| Media::new(picture.media_type, picture.bytes)).ok_or_else(Error::not_found))
 }
 
 #[derive(Deserialize, Fields)]
@@ -216,18 +226,19 @@ pub(crate) async fn avatar(
         upload.fields().await?;
         Ok::<_, UploadError>(picture)
     };
+    // A refusal is the status line with JavaScript, the account page with it without.
+    let refuse = |status, text| match req.mode {
+        Mode::Action => req.patch_with_status(status, AvatarResult { text }),
+        _ => account_page(&req, &viewer, text, status),
+    };
     let (name, kind, bytes) = match read.await {
         Ok(Ok(picture)) => picture,
-        Ok(Err(refused)) => {
-            return req.patch_with_status(StatusCode::UNPROCESSABLE_ENTITY, AvatarResult { text: refused.text() });
-        }
-        Err(UploadError::TooLarge { .. }) => {
-            return req.patch_with_status(StatusCode::PAYLOAD_TOO_LARGE, AvatarResult { text: "The form is over 1 MB." });
-        }
+        Ok(Err(refused)) => return refuse(StatusCode::UNPROCESSABLE_ENTITY, refused.text()),
+        Err(UploadError::TooLarge { .. }) => return refuse(StatusCode::PAYLOAD_TOO_LARGE, "The form is over 1 MB."),
         Err(error) => return Err(error.into()),
     };
     let id = pictures.keep(kind, bytes);
-    let viewer = &Viewer { picture: Some(id.clone()), ..viewer };
+    let viewer = &Viewer { picture: Some(id.clone()), ..viewer.clone() };
     let saved = &format!("Saved {name} as your picture.");
     let res = req
         .patch_or(
@@ -236,7 +247,7 @@ pub(crate) async fn avatar(
                 <AccountPicture viewer={viewer} />
                 <AvatarResult text={saved} />
             },
-            || async { account_page(&req, viewer, saved) },
+            || async { account_page(&req, viewer, saved, StatusCode::OK) },
         )
         .await?;
     // A year: the id only changes with a new upload.
@@ -245,41 +256,44 @@ pub(crate) async fn avatar(
 
 /// Only someone signed in gets here: the handler takes the viewer.
 async fn page(req: Req, Caller(viewer): Caller<Viewer>) -> HtmlResult {
-    account_page(&req, &viewer, "")
+    account_page(&req, &viewer, "", StatusCode::OK)
 }
 
-fn account_page(req: &Req, viewer: &Viewer, result: &str) -> HtmlResult {
+fn account_page(req: &Req, viewer: &Viewer, result: &str, status: StatusCode) -> HtmlResult {
     let f = AvatarForm::FIELDS;
-    req.page(html! {
-        <Layout req={req} title="Account" viewer={Some(viewer)} head="">
-            <div class={(stack(Space::_4), max_w_prose())}>
-                <h1>"Account"</h1>
-                <section class={(card(), row(Space::_3), justify_between(), flex_wrap())}>
-                    <p>"Signed in as "{&viewer.name}"."</p>
-                    <form method="post" action={app::url::SignOut} data-patch>
-                        <button class={secondary()}>"Sign out"</button>
+    req.page_with_status(
+        status,
+        html! {
+            <Layout req={req} title="Account" viewer={Some(viewer)} head="">
+                <div class={(stack(Space::_4), max_w_prose())}>
+                    <h1>"Account"</h1>
+                    <section class={(card(), row(Space::_3), justify_between(), flex_wrap())}>
+                        <p>"Signed in as "{&viewer.name}"."</p>
+                        <form method="post" action={app::url::SignOut} data-patch>
+                            <button class={secondary()}>"Sign out"</button>
+                        </form>
+                    </section>
+                    <form
+                        id={AvatarFormId}
+                        method="post"
+                        action={app::url::Avatar}
+                        enctype="multipart/form-data"
+                        data-patch
+                        class={(card(), stack(Space::_3))}
+                    >
+                        <h2>"Profile picture"</h2>
+                        <AccountPicture viewer={viewer} />
+                        <label class={stack(Space::_1)}>
+                            <span class={muted()}>"A PNG, JPEG, GIF or WebP, up to 64 KB"</span>
+                            <input type="file" name={f.picture} accept="image/png,image/jpeg,image/gif,image/webp" required>
+                        </label>
+                        <div><button>"Upload"</button></div>
+                        <AvatarResult text={result} />
                     </form>
-                </section>
-                <form
-                    id={AvatarFormId}
-                    method="post"
-                    action={app::url::Avatar}
-                    enctype="multipart/form-data"
-                    data-patch
-                    class={(card(), stack(Space::_3))}
-                >
-                    <h2>"Profile picture"</h2>
-                    <AccountPicture viewer={viewer} />
-                    <label class={stack(Space::_1)}>
-                        <span class={muted()}>"A PNG, JPEG, GIF or WebP, up to 64 KB"</span>
-                        <input type="file" name={f.picture} accept="image/png,image/jpeg,image/gif,image/webp" required>
-                    </label>
-                    <div><button>"Upload"</button></div>
-                    <AvatarResult text={result} />
-                </form>
-            </div>
-        </Layout>
-    })
+                </div>
+            </Layout>
+        },
+    )
 }
 
 #[cfg(test)]
@@ -349,13 +363,25 @@ mod tests {
         // The same bytes are the same picture.
         let again = call_on(&router, upload("again.png", PNG)).await;
         assert!(again.headers()["set-cookie"].to_str().unwrap().starts_with(&format!("picture={id};")));
-        assert_eq!(call_on(&router, get("/pictures/0123456789abcdef")).await.status().as_u16(), 404);
+        let missing = call_on(&router, get("/pictures/0123456789abcdef0123456789abcdef")).await;
+        assert_eq!((missing.status().as_u16(), missing.headers()["cache-control"].to_str().unwrap()), (404, "private, no-cache"));
 
+        // A picture the server no longer has (a restart) is not shown.
+        let gone =
+            text(call_on(&router, get_with("/account", "viewer=Ada; picture=0123456789abcdef0123456789abcdef")).await).await;
+        assert!(gone.contains("No picture yet.") && !gone.contains("/pictures/"), "{gone}");
         // Without JavaScript the answer is the account page, the picture in it.
         let page = text(call_on(&router, upload_without_js("me.png", PNG)).await).await;
         assert!(
             page.contains("<h1>Account</h1>") && page.contains("Saved me.png as your picture.") && page.contains(&img),
             "{page}"
+        );
+        let refused = call_on(&router, upload_without_js("me.png", b"<html>")).await;
+        assert_eq!(refused.status().as_u16(), 422);
+        let refused = text(refused).await;
+        assert!(
+            refused.contains("<h1>Account</h1>") && refused.contains("That file is not a picture"),
+            "the page, its message in it"
         );
     }
 

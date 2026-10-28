@@ -714,11 +714,12 @@ Corten is pre-1.0, so any minor version may change the API.
     text in place of the id. Nothing `html!` writes changed
     ([#254 A link to an element on the same page cannot take an Id, so each app writes its #fragment by hand](https://github.com/todd-skelton/corten/issues/254)).
 108. `corten::Media`: bytes the app holds, sent as a media type the app names
-    (`Media::new("image/png", bytes)`, a `&'static str`, so the type a client sent with an upload
-    cannot be the one it is served as). `Media::immutable()` is for a URL that names its content:
-    every cache keeps it for a year, cookies or not, as Corten's versioned files are. `Public<Media>`
-    works too. Before it, a route could serve bytes it held only as an axum `Response`, which a
-    route cannot name.
+    (`Media::new("image/png", bytes)`; the type is one the app names, read from the bytes, and
+    is never the one a client sent with an upload). `Public::immutable(answer)` is for a URL that
+    names its content: every cache keeps it for a year, cookies or not, as Corten's versioned files
+    are, and its handler is held to `Public`'s rule, so one that could tell who is asking does not
+    compile. Before it, a route could serve bytes it held only as an axum `Response`, which a route
+    cannot name.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
