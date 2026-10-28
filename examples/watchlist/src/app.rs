@@ -17,7 +17,7 @@
 //! | `GET /account` | `account.rs` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `POST /avatar` | `account.rs` | a form with a file (`Upload`): the picture is read as it arrives, its type from its bytes, and kept; the header and the account page show it; a body over its limit is answered with a message in the form (`UploadError::TooLarge`) |
 //! | `GET /pictures/{id}` | `account.rs` | an uploaded picture as its type (`Media`), at a URL that names its bytes, so every cache keeps it for good (`Media::immutable`) |
-//! | `GET /echo` | `socket.rs` | a WebSocket (`Upgrade`): the handshake is checked as a write is, the frames are tokio-tungstenite's |
+//! | `GET /quotes` | `socket.rs` | a WebSocket (`Upgrade`) for a ticker outside the browser: it names stocks and is sent each one's price as it trades; the handshake is checked as a write is, the frames are tokio-tungstenite's, and shutdown closes it |
 use corten::prelude::*;
 
 use crate::{
@@ -143,6 +143,7 @@ pub mod url {
     #[route("/alerts/remove", post = alerts::remove)]
     pub struct RemoveAlert;
 
-    #[route("/echo", get = socket::echo)]
-    pub struct Echo;
+    /// Prices as they trade, for a client outside the browser (`socket.rs`).
+    #[route("/quotes", get = socket::quotes)]
+    pub struct Quotes;
 }

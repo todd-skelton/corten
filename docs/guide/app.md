@@ -588,7 +588,7 @@ goes through the host check and the app's middleware.
 A WebSocket's handler takes `corten::upgrade::Upgrade` and returns what `upgrade.websocket(run)`
 gives: the 101 with its `Sec-WebSocket-Accept`, and `run(stream, signal)` on the connection once
 it has switched. Corten reads the handshake and hands over the bytes; the frames are a WebSocket
-library's (`examples/watchlist`'s `/echo` uses tokio-tungstenite):
+library's (`examples/watchlist`'s `/quotes` uses tokio-tungstenite):
 
 ```rust,ignore
 async fn echo(viewer: Caller<Viewer>, upgrade: Upgrade) -> corten::Result<Switch> {
