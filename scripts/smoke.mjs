@@ -1100,7 +1100,7 @@ async function run(browser) {
     // page that waits for it (`/alerts?saved=..`); the store's reads see it 1.5 s later.
     const pending = async () => {
       const from = await page.evaluate(async () => {
-        const res = await fetch("/alerts", { method: "POST", headers: { corten: "action", "content-type": "application/x-www-form-urlencoded" }, body: "id=ACME&above=150" });
+        const res = await fetch("/alerts", { method: "POST", headers: { corten: "action", "content-type": "application/x-www-form-urlencoded" }, body: "id=ACME&above=175" });
         return /data-from="([^"]+)"/.exec(await res.text())?.[1];
       });
       return `${base}${from}`;
@@ -1143,7 +1143,11 @@ async function run(browser) {
         `${reached} -> ${await saved()}`,
       );
       check("each read replaces the history entry", (await page.evaluate(() => history.length)) === entries + 1, `${entries} -> ${await page.evaluate(() => history.length)}`);
-      await go(await pending());
+      // Away while a write lands: the page is reached and left at once, so the check does not
+      // need to see it saving first.
+      const leaving = await pending();
+      await page.evaluate((url) => (/** @type {any} */ (window)).navigation.navigate(url), leaving);
+      await page.waitForFunction((url) => location.href === url, leaving);
       await page.click('header a[href="/news"]');
       await page.waitForFunction(() => document.title === "News | Watchlist");
       const left = reads.length;
@@ -1204,8 +1208,9 @@ async function run(browser) {
     // its visitor cookie, which this browser does not send over http.
     const listed = () => page.$$eval("#alert-list li span", (spans) => spans.map((s) => s.textContent));
     if (signsIn) {
+      // The writes above saved ACME at $175.00; this one, at $150.00, is the only such alert.
       const shown = await listed();
-      check("a saved alert is listed once it lands", shown.includes("ACME above $150.00"), shown.join(", "));
+      check("a saved alert is listed once it lands", shown.filter((s) => s === "ACME above $150.00").length === 1, shown.join(", "));
       await page.click("#alert-list li:last-child button");
       await page.waitForFunction(() => document.getElementById("alert-status")?.textContent === "Saving...", null, { timeout: 5000 }).catch(() => {});
       await savedSoon();

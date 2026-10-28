@@ -16,9 +16,10 @@ pub(crate) fn router() -> Router {
     app(Market::new()).router()
 }
 
-/// The router with an alert store whose writes land at once, for a test that reads one back.
-pub(crate) fn router_landing_at_once() -> Router {
-    app_with(Market::new(), AlertStore::new(std::time::Duration::ZERO)).router()
+/// The router with an alert store whose writes land `lag` after they are made: at once for a test
+/// that reads one back, after the test for one that reads while they land.
+pub(crate) fn router_with_lag(lag: std::time::Duration) -> Router {
+    app_with(Market::new(), AlertStore::new(lag)).router()
 }
 
 pub(crate) async fn call_on(router: &Router, req: Request<Body>) -> Response {

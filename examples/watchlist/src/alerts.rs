@@ -3,7 +3,7 @@
 //! receipt, which the address carries (`/alerts?saved=7`); until reads have it, the page says it is
 //! saving and reads itself again.
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -16,6 +16,7 @@ use crate::{
     app::{Msg, url},
     layout::Layout,
     market::{Market, USD},
+    recent::Recent,
     theme::*,
     visitor::Visitor,
 };
@@ -27,8 +28,8 @@ pub(crate) const LAG: Duration = Duration::from_millis(1500);
 /// Alerts a browser keeps at most.
 const MOST: usize = 20;
 
-/// Browsers whose alerts are kept; past it the one that first saved longest ago is forgotten, so
-/// memory stays bounded however many clients post.
+/// Browsers whose alerts are kept; past it the one used longest ago is forgotten (`Recent`), as
+/// lists are.
 const KEPT: usize = 10_000;
 
 /// One alert: a stock and the price that sets it off, in cents.
@@ -52,19 +53,16 @@ pub struct AlertStore {
     lag: Duration,
 }
 
-#[derive(Default)]
 struct Book {
     /// Each browser's alerts, as reads see them.
-    alerts: HashMap<String, Vec<Alert>>,
-    /// The browsers in the order they first saved, for `KEPT`.
-    order: VecDeque<String>,
+    alerts: Recent<Vec<Alert>>,
     /// Writes reads do not see yet, oldest first: when each lands, its receipt, whose, and what.
     pending: VecDeque<(Instant, u64, String, Change)>,
     /// The receipt of the last write made, and of the last one reads see.
     made: u64,
     landed: u64,
-    /// The next alert's id.
-    next: u64,
+    /// The last alert's id.
+    last: u64,
 }
 
 impl Book {
@@ -72,44 +70,38 @@ impl Book {
     fn catch_up(&mut self, now: Instant) {
         while self.pending.front().is_some_and(|(due, ..)| *due <= now) {
             let (_, receipt, visitor, change) = self.pending.pop_front().expect("checked above");
+            let list = self.alerts.entry(&visitor, Vec::new);
             match change {
-                Change::Add(alert) => {
-                    if !self.alerts.contains_key(&visitor) {
-                        if self.order.len() >= KEPT
-                            && let Some(stale) = self.order.pop_front()
-                        {
-                            self.alerts.remove(&stale);
-                        }
-                        self.order.push_back(visitor.clone());
-                    }
-                    self.alerts.entry(visitor).or_default().push(alert);
-                }
-                Change::Remove(id) => {
-                    if let Some(list) = self.alerts.get_mut(&visitor) {
-                        list.retain(|alert| alert.id != id);
-                    }
-                }
+                Change::Add(alert) => list.push(alert),
+                Change::Remove(id) => list.retain(|alert| alert.id != id),
             }
             self.landed = receipt;
         }
     }
 
-    /// What `visitor`'s alerts will be once every write has landed: how many it has.
-    fn count(&self, visitor: &str) -> usize {
-        let mut n = self.alerts.get(visitor).map_or(0, Vec::len);
+    /// The ids of `visitor`'s alerts once every write made has landed.
+    fn will_have(&mut self, visitor: &str) -> Vec<u64> {
+        let mut ids: Vec<u64> = self.alerts.get_mut(visitor).map_or_else(Vec::new, |list| list.iter().map(|a| a.id).collect());
         for (_, _, whose, change) in &self.pending {
             if whose == visitor {
                 match change {
-                    Change::Add(_) => n += 1,
-                    Change::Remove(_) => n = n.saturating_sub(1),
+                    Change::Add(alert) => ids.push(alert.id),
+                    Change::Remove(id) => ids.retain(|kept| kept != id),
                 }
             }
         }
-        n
+        ids
+    }
+
+    /// Queues `change` to land `lag` after `now`, and returns its receipt.
+    fn write(&mut self, now: Instant, lag: Duration, visitor: &str, change: Change) -> u64 {
+        self.made += 1;
+        self.pending.push_back((now + lag, self.made, visitor.to_string(), change));
+        self.made
     }
 }
 
-/// What a read sees: the browser's alerts, and how far the writes it can see go.
+/// What a read sees: the browser's alerts, and what became of the write it waits for.
 struct Reading {
     alerts: Vec<Alert>,
     status: Status,
@@ -118,7 +110,7 @@ struct Reading {
 /// What became of the write whose receipt the address carries.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Status {
-    /// No receipt, or not one this store gave (an edited address, or one from before a restart).
+    /// No receipt, or a number this store has not given yet (an edited address).
     None,
     Saving,
     Saved,
@@ -126,7 +118,8 @@ enum Status {
 
 impl AlertStore {
     pub fn new(lag: Duration) -> Self {
-        AlertStore { book: Arc::new(Mutex::new(Book::default())), lag }
+        let book = Book { alerts: Recent::new(KEPT), pending: VecDeque::new(), made: 0, landed: 0, last: 0 };
+        AlertStore { book: Arc::new(Mutex::new(book)), lag }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Book> {
@@ -137,7 +130,7 @@ impl AlertStore {
     fn read(&self, now: Instant, visitor: Option<&str>, saved: Option<u64>) -> Reading {
         let mut book = self.lock();
         book.catch_up(now);
-        let alerts = visitor.and_then(|v| book.alerts.get(v)).cloned().unwrap_or_default();
+        let alerts = visitor.and_then(|v| book.alerts.get_mut(v)).cloned().unwrap_or_default();
         let status = match saved {
             Some(receipt) if receipt > 0 && receipt <= book.landed => Status::Saved,
             Some(receipt) if receipt > 0 && receipt <= book.made => Status::Saving,
@@ -146,26 +139,29 @@ impl AlertStore {
         Reading { alerts, status }
     }
 
-    /// Makes a write at `now` and returns its receipt; reads see it `lag` later.
-    fn write(&self, now: Instant, visitor: &str, change: Change) -> u64 {
-        let mut book = self.lock();
-        book.catch_up(now);
-        book.made += 1;
-        let receipt = book.made;
-        book.pending.push_back((now + self.lag, receipt, visitor.to_string(), change));
-        receipt
-    }
-
-    /// Adds an alert for `visitor`, unless it already has `MOST`.
+    /// Adds an alert for `visitor` and returns the write's receipt, unless it would have more than
+    /// `MOST`. The count and the write are made under one lock, so two saves sent at once cannot
+    /// both pass it.
     fn add(&self, now: Instant, visitor: &str, ticker: &'static str, above: u64) -> Option<u64> {
         let mut book = self.lock();
-        if book.count(visitor) >= MOST {
+        book.catch_up(now);
+        if book.will_have(visitor).len() >= MOST {
             return None;
         }
-        book.next += 1;
-        let alert = Alert { id: book.next, ticker, above };
-        drop(book);
-        Some(self.write(now, visitor, Change::Add(alert)))
+        book.last += 1;
+        let alert = Alert { id: book.last, ticker, above };
+        Some(book.write(now, self.lag, visitor, Change::Add(alert)))
+    }
+
+    /// Removes `visitor`'s alert `id` and returns the write's receipt, if it has that alert and
+    /// is not already removing it.
+    fn remove(&self, now: Instant, visitor: &str, id: u64) -> Option<u64> {
+        let mut book = self.lock();
+        book.catch_up(now);
+        if !book.will_have(visitor).contains(&id) {
+            return None;
+        }
+        Some(book.write(now, self.lag, visitor, Change::Remove(id)))
     }
 }
 
@@ -234,7 +230,12 @@ fn AlertList<'a>(t: Msg, alerts: &'a [Alert]) -> impl Patch {
                             <span>{alert.ticker}" above "{t.money(Minor(alert.above), USD)}</span>
                             <form method="post" action={url::RemoveAlert} data-patch>
                                 <input type="hidden" name={f.alert} value={alert.id}>
-                                <button class={secondary()} aria-label={("Remove the ", alert.ticker, " alert")}>"Remove"</button>
+                                <button
+                                    class={secondary()}
+                                    aria-label={("Remove the ", alert.ticker, " alert above ", t.money(Minor(alert.above), USD))}
+                                >
+                                    "Remove"
+                                </button>
                             </form>
                         </li>
                     }
@@ -323,7 +324,7 @@ pub(crate) async fn save(
         _ => None,
     };
     if errors.is_empty() && saved.is_none() {
-        errors.add_form("You have 20 alerts. Remove one to add another.");
+        errors.add_form(format!("You have {MOST} alerts. Remove one to add another."));
     }
     let Some(receipt) = saved.filter(|_| errors.is_empty()) else {
         let read = store.read(Instant::now(), visitor.known(), None);
@@ -345,22 +346,30 @@ pub(crate) async fn save(
 }
 
 /// Removes an alert: the status line says it is saving, and the list is read again until the
-/// write is in.
+/// write is in. One the browser does not have, or is already removing (a second click while the
+/// first lands), writes nothing: the answer is the list as reads see it.
 pub(crate) async fn remove(
     req: Req,
+    viewer: Option<Caller<Viewer>>,
     State(store): State<AlertStore>,
-    mut visitor: Visitor,
+    visitor: Visitor,
     Form(input): Form<RemoveInput>,
 ) -> HtmlResult {
-    let receipt = store.write(Instant::now(), visitor.id(), Change::Remove(input.alert));
+    let now = Instant::now();
+    let Some(receipt) = visitor.known().and_then(|id| store.remove(now, id, input.alert)) else {
+        let read = store.read(now, visitor.known(), None);
+        let list = AlertList { t: req.t(), alerts: &read.alerts };
+        return req
+            .patch_or(list, || async { alerts_page(&req, viewer.as_deref(), &read, &AlertInput::default(), &Errors::new()) })
+            .await;
+    };
     let from = url::Alerts { saved: Some(receipt) };
     let again = ReadAgain { after: Duration::from_secs(1) }.from(&from);
     let status = html! {
         <AlertStatus status={Status::Saving} />
         {again}
     };
-    let res = req.patch_or(status, || async { req.redirect(&from) }).await?;
-    Ok(visitor.with_cookie(res))
+    req.patch_or(status, || async { req.redirect(&from) }).await
 }
 
 /// The alerts page's status line.
@@ -391,7 +400,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::testing::{VISITOR, call, call_on, get_with, post, post_with, router, router_landing_at_once, text};
+    use crate::testing::{VISITOR, call, call_on, get_with, post, post_with, router_with_lag, text};
 
     #[test]
     fn reads_see_a_write_once_it_lands() {
@@ -407,8 +416,10 @@ mod tests {
         // A receipt the store did not give is no write to wait for.
         assert_eq!(store.read(now + LAG, Some("a"), Some(receipt + 1)).status, Status::None);
         assert_eq!(store.read(now + LAG, Some("a"), Some(0)).status, Status::None);
-        let removed = store.write(now + LAG, "a", Change::Remove(1));
+        let removed = store.remove(now + LAG, "a", 1).unwrap();
         assert_eq!(store.read(now + LAG, Some("a"), Some(removed)).alerts.len(), 1, "still there until the removal lands");
+        assert!(store.remove(now + LAG, "a", 1).is_none(), "a second removal writes nothing");
+        assert!(store.remove(now + LAG, "b", 1).is_none(), "nor one of another browser's");
         assert!(store.read(now + LAG * 2, Some("a"), Some(removed)).alerts.is_empty());
     }
 
@@ -419,21 +430,24 @@ mod tests {
         for n in 0..MOST {
             assert!(store.add(now, "a", "ACME", n as u64 + 1).is_some());
         }
-        assert!(store.add(now, "a", "ACME", 99).is_none(), "pending adds count");
-        store.write(now, "a", Change::Remove(1));
-        assert!(store.add(now, "a", "ACME", 99).is_some(), "a pending removal makes room");
+        assert!(store.add(now, "a", "ACME", 99).is_none(), "the twenty-first is refused");
+        assert!(store.remove(now, "a", 999).is_none(), "removing an alert it does not have makes no room");
+        assert!(store.add(now, "a", "ACME", 99).is_none());
+        assert!(store.remove(now, "a", 1).is_some());
+        assert!(store.add(now, "a", "ACME", 99).is_some(), "a removal makes room");
         for n in 0..KEPT {
             store.add(now, &n.to_string(), "ACME", 1);
         }
         store.read(now, None, None);
-        let book = store.lock();
-        assert_eq!((book.alerts.len(), book.order.len()), (KEPT, KEPT));
-        assert!(!book.alerts.contains_key("a"), "the browser that first saved longest ago is forgotten");
+        let mut book = store.lock();
+        assert_eq!(book.alerts.len(), (KEPT, KEPT));
+        assert!(book.alerts.get_mut("a").is_none(), "the browser used longest ago is forgotten");
     }
 
     #[tokio::test]
     async fn an_alert_is_read_again_until_it_lands() {
-        let app = router();
+        // Writes that take an hour to land, so every read here comes before.
+        let app = router_with_lag(Duration::from_secs(3600));
         for (n, price) in ["150", "150.5", ".5", "$1,299.99"].into_iter().enumerate() {
             let body: &'static str = Box::leak(format!("id=ACME&above={price}").into_boxed_str());
             let patch = text(call_on(&app, post_with("/alerts", Some("action"), None, Some(VISITOR), body)).await).await;
@@ -463,7 +477,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_landed_alert_is_listed_and_can_be_removed() {
-        let app = router_landing_at_once();
+        let app = router_with_lag(Duration::ZERO);
         call_on(&app, post_with("/alerts", Some("action"), None, Some(VISITOR), "id=ACME&above=150")).await;
         let req =
             Request::get("/alerts?saved=1").header("corten", "action").header("cookie", VISITOR).body(Body::empty()).unwrap();
@@ -480,6 +494,30 @@ mod tests {
         assert!(removed.starts_with(r#"<p id="alert-status" role="status">Saving...</p><template data-corten-read-again="1" data-from="/alerts?saved=2">"#), "{removed}");
         let page = text(call_on(&app, get_with("/alerts?saved=2", VISITOR)).await).await;
         assert!(page.contains("No alerts yet.") && page.contains(r#"role="status">Saved.</p>"#), "{page}");
+    }
+
+    #[tokio::test]
+    async fn a_removal_of_an_alert_the_browser_does_not_have_answers_the_list() {
+        let app = router_with_lag(Duration::ZERO);
+        call_on(&app, post_with("/alerts", Some("action"), None, Some(VISITOR), "id=ACME&above=150")).await;
+        let other = "visitor=fedcba9876543210fedcba9876543210";
+        let list = text(call_on(&app, post_with("/alerts/remove", Some("action"), None, Some(other), "alert=1")).await).await;
+        assert!(list.starts_with(r#"<section id="alert-list""#) && list.contains("No alerts yet."), "{list}");
+        assert!(!list.contains("data-corten-read-again"), "nothing to wait for: {list}");
+        let page = text(call_on(&app, get_with("/alerts", VISITOR)).await).await;
+        assert!(page.contains("ACME above $150.00"), "the owner's alert stays");
+    }
+
+    #[tokio::test]
+    async fn a_browser_with_twenty_alerts_is_asked_to_remove_one() {
+        let app = router_with_lag(Duration::ZERO);
+        for _ in 0..MOST {
+            call_on(&app, post_with("/alerts", Some("action"), None, Some(VISITOR), "id=ACME&above=150")).await;
+        }
+        let res = call_on(&app, post_with("/alerts", Some("action"), None, Some(VISITOR), "id=ACME&above=150")).await;
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let form = text(res).await;
+        assert!(form.contains("You have 20 alerts. Remove one to add another."), "{form}");
     }
 
     #[tokio::test]

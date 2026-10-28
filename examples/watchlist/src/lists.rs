@@ -4,7 +4,6 @@
 //! written back by each, and the last answer would undo the other. A real app keeps a signed-in
 //! user's list in its database; this one keeps the newest lists in memory.
 use std::{
-    collections::{BTreeMap, HashMap},
     convert::Infallible,
     sync::{Arc, Mutex},
 };
@@ -17,69 +16,40 @@ use corten::{
     },
 };
 
-use crate::{market::Market, visitor::Visitor};
+use crate::{market::Market, recent::Recent, visitor::Visitor};
 
 /// What a browser watches before it changes anything.
 const FIRST_WATCHED: [&str; 3] = ["ACME", "GLBX", "INIT"];
 
-/// Lists kept at most; past it the one used longest ago is forgotten, and its browser starts
-/// again from `FIRST_WATCHED`. Memory stays bounded however many clients post; a list is kept
-/// unless this many others are used before it is used again.
+/// Lists kept at most; past it the one used longest ago is forgotten (`Recent`), and its browser
+/// starts again from `FIRST_WATCHED`.
 const KEPT: usize = 10_000;
 
-#[derive(Clone, Default)]
-pub struct Lists(Arc<Mutex<Kept>>);
+/// Each browser's list. Tickers are the market's own strings, so reading a list copies pointers
+/// alone.
+#[derive(Clone)]
+pub struct Lists(Arc<Mutex<Recent<Vec<&'static str>>>>);
 
-#[derive(Default)]
-struct Kept {
-    /// Each list and when it was last used. Tickers are the market's own strings, so reading a
-    /// list copies pointers alone.
-    lists: HashMap<String, (u64, Vec<&'static str>)>,
-    /// The ids by when their lists were last used, longest ago first.
-    used: BTreeMap<u64, String>,
-    /// The next use's number.
-    clock: u64,
-}
-
-impl Kept {
-    /// Marks `id`'s list used now, and returns it.
-    fn touch(&mut self, id: &str) -> Option<&mut Vec<&'static str>> {
-        let (when, list) = self.lists.get_mut(id)?;
-        let id = self.used.remove(when).expect("every list has a use");
-        *when = self.clock;
-        self.used.insert(self.clock, id);
-        self.clock += 1;
-        Some(list)
+impl Default for Lists {
+    fn default() -> Self {
+        Lists(Arc::new(Mutex::new(Recent::new(KEPT))))
     }
 }
 
 impl Lists {
-    fn lock(&self) -> std::sync::MutexGuard<'_, Kept> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Recent<Vec<&'static str>>> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// The tickers `id`'s list holds, in the order they were added.
     fn get(&self, id: &str) -> Vec<&'static str> {
-        self.lock().touch(id).map_or_else(|| FIRST_WATCHED.to_vec(), |list| list.clone())
+        self.lock().get_mut(id).map_or_else(|| FIRST_WATCHED.to_vec(), |list| list.clone())
     }
 
     /// Changes `id`'s list (made from `FIRST_WATCHED` if it has none) and returns it.
     fn change(&self, id: &str, change: impl FnOnce(&mut Vec<&'static str>)) -> Vec<&'static str> {
         let mut kept = self.lock();
-        if !kept.lists.contains_key(id) {
-            if kept.lists.len() >= KEPT
-                && let Some((_, stale)) = kept.used.pop_first()
-            {
-                kept.lists.remove(&stale);
-            }
-            let now = kept.clock;
-            kept.clock += 1;
-            kept.used.insert(now, id.to_string());
-            let (_, list) = kept.lists.entry(id.to_string()).or_insert((now, FIRST_WATCHED.to_vec()));
-            change(list);
-            return list.clone();
-        }
-        let list = kept.touch(id).expect("checked above");
+        let list = kept.entry(id, || FIRST_WATCHED.to_vec());
         change(list);
         list.clone()
     }
@@ -160,7 +130,6 @@ mod tests {
         lists.change("new", |ids| ids.clear());
         assert_eq!(lists.get("1"), FIRST_WATCHED, "the stalest starts again");
         assert!(lists.get("0").is_empty() && lists.get("new").is_empty());
-        let kept = lists.lock();
-        assert_eq!((kept.lists.len(), kept.used.len()), (KEPT, KEPT));
+        assert_eq!(lists.lock().len(), (KEPT, KEPT));
     }
 }
