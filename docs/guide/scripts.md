@@ -323,12 +323,25 @@ handlers take none does not download it.
 ## State
 
 A handler is a plain function shared by every instance, so state that outlives one event lives
-in the DOM (an attribute, an `<output>`'s value) or with an element: `state(scope, () => init)`
-from `corten` gives the same object for the same element until it is gone. An element has one
-state, made by the first call's `init`: keep everything a script needs for it in one object
-(`state(scope, () => ({ index: -1, unsent: new Set() }))`), since a second `state(scope, ..)`
-with another `init` gets the first object. That holds across scripts too, so key state on an
-element of the component's own, not on one a `corten-ui` widget renders.
+in the DOM (an attribute, an `<output>`'s value) or with the component: `keep(() => init)` from
+`corten` gives the running handler's component its object, the same one for every handler of that
+instance until its root leaves the page, and another one for each other instance. No element is
+passed: the runtime knows which component's handler is running from the element it is bound on
+(its nearest `data-scope`). A component has one state, made by the first call's `init`, so keep
+everything in one object the handlers share:
+
+```js
+const kept = () => keep(() => ({ index: -1, unsent: new Set() }));
+
+/** @param {Selection} sel */
+export function clear(sel) {
+  kept().index = -1;
+}
+```
+
+Call it while the handler runs, before an `await`: a callback the handler sets up (a timer, a
+listener, a feed's rows) uses the object it got (`const s = kept();` first). Called anywhere
+else, it throws.
 
 ## Rules
 

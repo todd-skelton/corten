@@ -71,6 +71,14 @@ async function run(browser) {
   check("the button kept focus where it was", await page.evaluate(() => document.activeElement?.id === "qty"));
   await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).click();
   check("a step keeps the step's decimals", (await page.locator("#price").inputValue()) === "12.51", await page.locator("#price").inputValue());
+  // Each field keeps its own state (keep()): while the quantity's button is held, the price's
+  // button still steps from the keyboard. Sharing one, the held pointer would make it skip.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
+  const own = await page.locator("#price").inputValue();
+  await page.mouse.up();
+  check("each field keeps its own state", own === "12.52", own);
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
     const field = /** @type {Element} */ (document.querySelector("#price")?.closest("[data-scope=ui-number-field]")?.parentElement);
@@ -129,7 +137,7 @@ async function run(browser) {
   await qty.fill("3");
   await page.getByRole("button", { name: "Order" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Ordered"));
-  check("the form sends the components' values", (await page.textContent("#result")) === "Ordered 3 in Forest Green at $12.51.", await page.textContent("#result"));
+  check("the form sends the components' values", (await page.textContent("#result")) === "Ordered 3 in Forest Green at $12.52.", await page.textContent("#result"));
 
   // TabGroup
   const tab = (name) => page.getByRole("tab", { name });

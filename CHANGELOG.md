@@ -1042,6 +1042,16 @@ Corten is pre-1.0, so any minor version may change the API.
     (`sink.str(..)`). Migration: pass a float through `t.number`, and a `Display` type of the
     app's own as its text or through an `Arg` impl
     ([#237 The item API's home page got 10% slower in the believable-data change; an integer fast path for message arguments may win it back](https://github.com/todd-skelton/corten/issues/237)).
+62. A script keeps state with `keep(() => init)` (from `corten`), which replaces
+    `state(el, init)`: the running handler's component's object, one per instance, found from
+    the element the handler is bound on, so a handler no longer takes the component's root just
+    to find its state. seller-desk's grid handlers lose their `scope` argument (six of them),
+    watchlist's `pause` too, and corten-ui's menu button and number field keep theirs per
+    component. It is called while the handler runs, before an `await`, and throws anywhere else.
+    The runtime is 75 bytes larger gzipped (8,503 to 8,578; brotli 7,663 to 7,724). Migration:
+    `state(scope, () => init)` is `keep(() => init)`, and a `scope` argument used only for it is
+    dropped from the handler and its markup
+    ([#238 Runtime state is keyed by an element the handler has to pass: state(root, init)](https://github.com/todd-skelton/corten/issues/238)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

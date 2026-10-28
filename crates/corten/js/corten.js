@@ -188,25 +188,32 @@ function refName(el, names) {
   if (ref !== null) names.add(ref.slice(ref.indexOf("/") + 1));
 }
 
-/** @type {WeakMap<Element, unknown>} */
+/** Each component root's kept state. @type {WeakMap<Element, unknown>} */
 const states = new WeakMap();
 
+/** The element whose handler is running, while it runs: whose component `keep` is for. @type {Element | null} */
+let running = null;
+
 /**
- * The state a script keeps for `el` (usually a component's root: pass `scope`), made by `init`
- * the first time and kept while the element exists. Handlers are plain functions, so state that
- * lasts between events lives here (or in the DOM) rather than in the module, which every
- * instance of the component shares. An element has one state, whichever script asks: a later
- * call gets that object whatever its `init`, so keep everything for `el` in one object, on
- * an element of the component's own.
+ * The state the running handler's component keeps, made by `init` the first time and kept while
+ * the component's root is on the page: `const s = keep(() => ({ paused: false }))`. Handlers are
+ * plain functions, so state that lasts between events lives here (or in the DOM) rather than in
+ * the module, which every instance of the component shares; each instance keeps its own, found
+ * from the element the handler is bound on, with no element passed. A component has one state,
+ * whichever of its handlers asks first: a later call gets that object whatever its `init`, so
+ * keep everything in one object (a `const kept = () => keep(() => ({ .. }))` the handlers share).
+ * Call it while the handler runs, before an `await`: a timer, a listener or a feed's rows the
+ * handler sets up use the object it got.
  * @template T
- * @param {Element} el
  * @param {() => T} init
  * @returns {T}
  */
-export function state(el, init) {
-  if (states.has(el)) return /** @type {T} */ (states.get(el));
+export function keep(init) {
+  if (!running) throw new Error("corten: keep() is for a handler, called while it runs (before an await)");
+  const root = scopeOf(running, null);
+  if (states.has(root)) return /** @type {T} */ (states.get(root));
   const made = init();
-  states.set(el, made);
+  states.set(root, made);
   return made;
 }
 
@@ -363,7 +370,14 @@ function run(el, binding, event) {
       if (value === SKIP) return;
       args.push(value);
     }
-    const result = handler(...args);
+    const outer = running;
+    running = el;
+    let result;
+    try {
+      result = handler(...args);
+    } finally {
+      running = outer;
+    }
     if (result instanceof Promise) result.catch(reportError);
   } catch (error) {
     reportError(error);
@@ -689,7 +703,7 @@ async function apply(html, signal, sent, took) {
       serve(el.content);
       target.append(el.content);
     } else {
-      keep(target, el, sent, took);
+      replaceKeeping(target, el, sent, took);
       put.push(el);
     }
   }
@@ -898,7 +912,7 @@ function opened(root, fresh) {
  * the ones it sent.
  * @param {Element} root @param {Element} fresh @param {Map<Element, string | undefined> | null} sent @param {boolean} [took]
  */
-function keep(root, fresh, sent, took) {
+function replaceKeeping(root, fresh, sent, took) {
   serve(fresh);
   const reopen = opened(root, fresh);
   const focused = document.activeElement;
