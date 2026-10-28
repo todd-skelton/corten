@@ -52,7 +52,12 @@ pub fn CopyButton<'a, I: Id, L: Render>(text: I, label: L, copied: &'a str) -> i
     let said = refs();
     let id = plain_id(&text);
     html! {
-        <button type="button" hidden on:connect={js::connect(target, said, signal)} on:click={js::copy(id.as_str(), said, copied)}>
+        <button
+            type="button"
+            hidden
+            on:connect={js::connect(target, said, signal)}
+            on:click={js::copy(id.as_str(), said, copied)}
+        >
             <span ref={said} aria-live="polite">{label}</span>
         </button>
     }
