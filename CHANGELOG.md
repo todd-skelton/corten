@@ -740,6 +740,19 @@ Corten is pre-1.0, so any minor version may change the API.
     in ui-gallery in Chromium, Firefox and WebKit: a copy (the clipboard's contents in Chromium,
     which lets a test read it), a denied write, no Clipboard API, and no script. Apps' own copy scripts can go
     ([#244 corten-ui has no copy-to-clipboard control, so each app ships its own script for Copy](https://github.com/todd-skelton/corten/issues/244)).
+111. `corten::serve_wrapped(listeners, move |tcp| acceptor.accept(tcp), app)`: `serve_on` with a
+    step of the app's own on each connection before HTTP, a TLS handshake. The step runs in the
+    connection's own task, counts against `App::max_connections` from before the TCP accept, and
+    is closed at `App::header_timeout` when the client stalls before or after it; shutdown ends
+    the steps in progress. Before, an app serving HTTPS ran the handshake in a listener of its own
+    (the guide's 45 lines), outside both limits, so clients that never sent a ClientHello held
+    sockets and tasks with no cap. The library and its configuration (ALPN `http/1.1`) stay the
+    app's; the guide's example is four lines. Checked with rustls: HTTPS answers, ALPN is
+    `http/1.1`, and a client that sends nothing is closed at the header timeout. A plain
+    connection costs about 340 instructions more to open: 27,528-27,543 to 27,841-27,910 for a
+    connection with one request, client included (callgrind, in process, three runs each).
+    Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
+    ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1173,7 +1186,25 @@ Corten is pre-1.0, so any minor version may change the API.
     ticker closes the socket as too big (1009), a client's close is answered, a send the client
     does not take within 10 seconds ends the socket, and shutdown still closes it with a goodbye
     ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
-68. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+68. seller-desk sells card-market's cards: its rows are the three sets' 540 cards, card-market's
+    eleven singles first at the cheapest Near Mint price card-market lists them for (a test
+    reads its fixture), the rest priced by rarity. Most start in Near Mint and some played; past
+    540 rows each card comes again in its next condition at that condition's share of the price.
+    A seller keeps a few copies of a dear card and many of a common, and restocks to that.
+    Names are cards' names (no `#1`, `#2`), and the sets are card-market's three
+    ([#224 seller-desk and card-market give the same card different prices](https://github.com/todd-skelton/corten/issues/224)).
+69. card-market shows card art: a generated SVG for each card of its demo catalog in
+    `static/cards/`, served at a versioned URL every cache keeps (and the PWA's worker with
+    them, cached the first time each loads). The home and category grids show it sized (`width`,
+    `height`), past the first row loaded near the screen (`loading="lazy"`), with `alt=""` since
+    the link names the card; the item page shows it first, not deferred, with its text. Only the
+    built-in demo catalog has art (another source's `item_3` is another card), so the
+    benchmark's item page and the item JSON are unchanged. Measured with the demo
+    catalog (release build, over HTTP): Ashen Drake's page is 126 bytes larger (42 with brotli)
+    plus its 377-byte picture (brotli); the home page is 1,356 bytes larger (105 with brotli) plus
+    the pictures that load.
+    ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
+70. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
     method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
     tools' own errors have, and a partner's write without a known key is told to send a valid
     one in `X-Api-Key` (`Refused::message`)

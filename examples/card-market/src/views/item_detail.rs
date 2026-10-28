@@ -15,13 +15,15 @@ pub struct ItemPage<'a> {
     pub listings: Vec<&'a Listing>,
     pub message: String,
     pub form: AlertFormView<'a>,
+    /// The versioned URL of the store's art for the item, when it has some (`ItemView::art`).
+    pub art: Option<String>,
 }
 
 impl<'a> ItemPage<'a> {
     pub fn new(t: Msg, item: &'a ItemView, message: String) -> Self {
         let listings = sort_listings(&item.listings, false);
         let form = AlertFormView { id: &item.id, title: &item.title, ..AlertFormView::default() };
-        ItemPage { t, item, listings, message, form }
+        ItemPage { t, item, listings, message, form, art: None }
     }
 
     /// The whole page in the app's layout, with the item's description and canonical link.
@@ -30,11 +32,12 @@ impl<'a> ItemPage<'a> {
         'a: 'r,
     {
         let item = self.item;
+        let page = ItemPage { art: item.art.map(|art| req.asset(art)), ..self };
         let head = html! {
             <meta name="description" content={&item.description}>
             <link rel="canonical" href={routes::Item { id: &item.id }}>
         };
-        Layout { req, title: &item.title, head, children: self.view() }
+        Layout { req, title: &item.title, head, children: page.view() }
     }
 
     pub fn view(self) -> ItemDetail<'a> {
@@ -58,6 +61,10 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
             <div class={Gallery}>
                 for (i, url) in item.images.iter().enumerate() {
                     <div class={Image} role="img" aria-label={t.item_image(&item.title, i + 1)} data-src={url}></div>
+                }
+                // The page's main picture: sized, and not deferred.
+                if let Some(src) = &page.art {
+                    <img class={Art} src={src} width="220" height="308" alt={t.item_art(&item.title)}>
                 }
             </div>
             <section class={summary}>
