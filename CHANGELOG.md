@@ -88,7 +88,7 @@ Corten is pre-1.0, so any minor version may change the API.
     the binary. `CONTRIBUTING.md` (Releasing) has the steps, including the first release.
 19. `.github/workflows/ci.yml` runs the checks in `CONTRIBUTING.md` on every pull request and
     push to `main`, plus `cargo publish --workspace --dry-run` and a build on Rust 1.88.
-20. List fields. `corten::Form` and a route's `Params` (Added 115) read a key
+20. List fields. `corten::Form` and a route's `Params` (Added 116) read a key
     sent several times into a `Vec` field, a checkbox's `on` into a `bool`, and a blank field into
     `None`; a scalar sent twice is a 422 (400 for a query) naming the field. `#[derive(Fields)]`
     rejects a `bool` or `Vec` field without `#[serde(default)]`, since a browser sends nothing for
@@ -785,7 +785,19 @@ Corten is pre-1.0, so any minor version may change the API.
     the script is 1.8 KB brotli (5.3 KB as written; component scripts are not minified), on pages
     that use it
     ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
-115. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
+115. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
+    `Json`, `Media`, a page), named by a type (`corten::answer::Header`; Corten names
+    `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
+    and shared as it would be without it. Before, a shared file that had to stay out of search was
+    a `Relay`, never compressed (Chase Sets' developer manifest: 161,815 bytes against 19,737 with
+    brotli), or an answer type of the app's own. `set-cookie`, the headers Corten sets itself
+    (caching, a CDN's `*-cache-control`, CORS, security), those the answer has (`content-type`,
+    `location`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
+    18,404-18,417 to 18,434-18,459 for a public text answer (callgrind, in process, 1,000
+    requests, three runs each); the headers are held behind an `Option<Box<..>>`, since a `Vec`
+    in place cost about 50 (18,450-18,467)
+    ([#287 A Public answer that is not a page cannot take a header of the app's, so a noindex file is an uncompressed Relay or the app's own answer type](https://github.com/todd-skelton/corten/issues/287)).
+116. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
      It has the struct's fields, owned (a `&'a str` or `Cow<'a, str>` is a `String`, a `&'a [T]` a
      `Vec<T>`, any other `&'a T` a `T`; a link's field still needs only `Display`), read
      the way a link writes them: a path parameter percent-decoded, a query parameter by the name
