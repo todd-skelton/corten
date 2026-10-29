@@ -960,12 +960,14 @@ whole app on `Policy` or, better, for the pages that need it on their area's `So
 sign-in or payment flow that reports back from it) and `allow_cross_origin_opener()`
 (`unsafe-none`, the browser's default, for an embed whose sign-in popup on the provider's origin
 talks back to the page, such as Stripe's Connect embedded components, which both stricter values
-break). An area only loosens it, and like a CSP source it gives its pages their own shell key:
+break). `unsafe-none` gives up the page's isolation from other sites' windows (one that opened
+it can navigate it and see when it closes, which cross-site leak attacks use), so keep it to the
+pages that embed such a thing. An area only loosens it, and like a CSP source it gives its pages
+their own shell key:
 
 ```rust,ignore
-.area(|area| settings::url::area(area).policy(|p| {
-    p.script_src("https://connect-js.stripe.com").frame_src("https://connect-js.stripe.com").allow_cross_origin_opener()
-}))
+// With the script, frame, connect and image sources the provider's guide lists for its embed.
+.area(|area| settings::url::area(area).policy(|p| p.script_src("https://connect-js.stripe.com").allow_cross_origin_opener()))
 ```
 
 ## Error pages

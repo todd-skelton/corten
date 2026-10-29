@@ -3479,6 +3479,17 @@ async fn an_area_relaxes_the_opener_policy_of_its_pages_only() {
         (open_home.as_str(), opener(&open, "/pay/card").await),
         ("unsafe-none", (StatusCode::OK, "unsafe-none".into(), open_shell))
     );
+    // Nested areas add up: one inside an area that loosens it keeps the looser value, and a
+    // write another site sent there is refused under it too.
+    let nested = App::new(policy_url::router())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener()))
+        .area(|area| charts_url::area(area).policy(|p| p.allow_popups().script_src("https://js.stripe.com")))
+        .router();
+    assert_eq!(opener(&nested, "/pay/charts/week").await.1, "unsafe-none");
+    let cross = Request::post("/pay/charts/week").header("sec-fetch-site", "cross-site").body(Body::empty()).unwrap();
+    let refused = nested.clone().oneshot(cross).await.unwrap();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    assert_eq!(refused.headers()["cross-origin-opener-policy"], "unsafe-none");
     let popups = App::new(policy_url::router())
         .policy(crate::security::Policy::new().allow_popups())
         .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))

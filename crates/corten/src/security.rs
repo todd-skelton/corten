@@ -208,9 +208,11 @@ impl Policy {
     /// window this page opens, or that opened it, can still reach it. This is for an embed whose
     /// sign-in runs in a popup on the provider's origin that talks back to the page, such as
     /// Stripe's Connect embedded components, which `same-origin` and `same-origin-allow-popups`
-    /// break. It gives up the isolation that keeps a window another site opened from navigating
-    /// the page or reading how many frames it has, so allow it on the pages that embed such a
-    /// thing only ([`Sources::allow_cross_origin_opener`] in their area), not the whole app.
+    /// break. It gives up the page's isolation from other sites' windows: one that opened it, or
+    /// that it opens, keeps a reference to it (it can navigate it, `postMessage` it, see when it
+    /// closes and count its frames, which cross-site leak attacks use to learn about a signed-in
+    /// user), and the browser may run them in one process. Allow it on the pages that embed such
+    /// a thing only ([`Sources::allow_cross_origin_opener`] in their area), not the whole app.
     pub fn allow_cross_origin_opener(mut self) -> Self {
         self.sources = self.sources.allow_cross_origin_opener();
         self
