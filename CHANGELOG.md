@@ -1640,6 +1640,11 @@ Corten is pre-1.0, so any minor version may change the API.
     top of the document. Focus now goes to the nearest element around it that is still on the
     page, focusable only for the move; so does focus on an element patched into one that cannot
     take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
+54. examples/card-market's item page left the right half of a desktop screen empty: the picture
+    stacked under the title. From 56rem the picture is the left column, beside the title, the
+    tags and the price summary; a phone's one column is unchanged. The page gains two wrapping
+    `<div>`s, 74 bytes of its 11,435
+    ([#330 Polish: card-market's item page leaves the right half empty on desktop](https://github.com/todd-skelton/corten/issues/330)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
