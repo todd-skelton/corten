@@ -43,16 +43,28 @@ the framework itself.
   tests: `npm install`, then `npx playwright install chromium firefox webkit` (the core and
   `corten-ui` smoke tests run in all three).
 - Docker, for the example images the smoke tests run against.
+- For measuring (Pull requests, item 2): valgrind, on Linux or in the `rust:1-bookworm`
+  container after `apt-get update && apt-get install -y valgrind`, and for `count.mjs` a Linux
+  host with `perf`, root and cgroup v2.
 
 ## Checks
 
 All of these must pass before a pull request is ready. Run each command separately (shown for
-PowerShell from the repository root; in another shell use `$PWD` for `${PWD}`).
+PowerShell from the repository root; in another shell use `$PWD` for `${PWD}` and
+`checkout=$(basename "$PWD")` for the first line).
+
+Each checkout builds into its own volumes, named after its folder (`corten-target-<folder>`,
+`corten-msrv-target-<folder>`), so two checkouts or worktrees never share one: every checkout is
+mounted at `/src`, and cargo could take one checkout's build for another's and stop with an error
+the code does not have. The folder name must be one Docker accepts in a volume name (letters,
+digits, `_`, `.` and `-`). The registry volume, `corten-cargo`, holds only downloaded crates and
+is shared. When you remove a checkout, remove its two volumes too.
 
 ```powershell
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo fmt --all --check && cargo run -q -p corten-cli -- fmt --check crates examples bench && cargo clippy --workspace --all-features --all-targets -- -D warnings && cargo test --workspace --all-features"
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry --tmpfs /usr/local/cargo/registry/src:exec -v corten-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check && cd /src && cargo publish --workspace --dry-run --locked --allow-dirty"
-docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-msrv-target:/target -e CARGO_TARGET_DIR=/target -w /src rust:1.88-bookworm cargo check --locked --workspace --all-features --all-targets
+$checkout = Split-Path -Leaf $PWD
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo fmt --all --check && cargo run -q -p corten-cli -- fmt --check crates examples bench && cargo clippy --workspace --all-features --all-targets -- -D warnings && cargo test --workspace --all-features"
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry --tmpfs /usr/local/cargo/registry/src:exec -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm sh -c "rustup component add clippy rustfmt >/dev/null 2>&1; cargo test -p corten --no-default-features && cargo build -q -p corten-cli && /target/debug/corten new /tmp/app --corten-path /src/crates/corten && cd /tmp/app && /target/debug/corten check && cd /src && cargo publish --workspace --dry-run --locked --allow-dirty"
+docker run --rm -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-msrv-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -w /src rust:1.88-bookworm cargo check --locked --workspace --all-features --all-targets
 npm run check
 docker build -f examples/watchlist/Dockerfile -t corten-watchlist .
 docker run -d --name corten-watchlist -p 18480:8080 corten-watchlist
@@ -99,13 +111,14 @@ new smoke script's `check` the same watchdog.
 ## Cluster integration tests
 
 `corten-cluster`'s tests run against real Postgres and NATS JetStream when two variables are
-set, and are skipped otherwise:
+set, and are skipped otherwise (`$checkout` as in [Checks](#checks)):
 
 ```powershell
+$checkout = Split-Path -Leaf $PWD
 docker network create corten-test
 docker run -d --name corten-test-pg --network corten-test -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=feeds postgres:16-alpine
 docker run -d --name corten-test-nats --network corten-test nats:2-alpine -js
-docker run --rm --network corten-test -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v corten-target:/target -e CARGO_TARGET_DIR=/target -e CORTEN_TEST_DATABASE_URL=postgres://postgres:postgres@corten-test-pg/feeds -e CORTEN_TEST_NATS_URL=nats://corten-test-nats:4222 -w /src rust:1-bookworm cargo test -p corten-cluster -- --test-threads=1
+docker run --rm --network corten-test -v "${PWD}:/src" -v corten-cargo:/usr/local/cargo/registry -v "corten-target-${checkout}:/target" -e CARGO_TARGET_DIR=/target -e CORTEN_TEST_DATABASE_URL=postgres://postgres:postgres@corten-test-pg/feeds -e CORTEN_TEST_NATS_URL=nats://corten-test-nats:4222 -w /src rust:1-bookworm cargo test -p corten-cluster -- --test-threads=1
 docker rm -f corten-test-pg corten-test-nats
 docker network rm corten-test
 ```
@@ -118,8 +131,34 @@ The failover benchmark is `node examples/listings-feed/bench/run.mjs`; see its h
    doctest for a compile-time guarantee, an `@ts-expect-error` line in
    `scripts/typecheck-fixture.js` for a typing guarantee, and a browser smoke check for anything
    the runtime does.
-2. A change to rendering, the runtime or the request path says what it measured before and after
-   (`render_cost`, bytes shipped, nanoseconds per request).
+2. A change to rendering, the runtime or the request path is measured before and after, with
+   the number that can see the change:
+   1. Work done in process (rendering, routing, serialization, middleware, a handler's own
+      code): instructions per request under callgrind (`valgrind --tool=callgrind`). Count a
+      test that sends 1,200 requests through the router in process with `oneshot` and one that
+      sends 200: the difference over 1,000 leaves out startup and setup. Over a real socket,
+      `bench/fullstack/count.mjs` counts with `perf stat`. A count barely moves with other load
+      on the machine, so it shows a difference of a few percent that times on a laptop or
+      Docker Desktop hide.
+   2. Memory (allocation, buffer sizes, copies, data layout): the count and times, because a
+      count does not see cache misses or memory stalls, and the same count can take longer.
+      For the item page, `render_cost` in `examples/card-market` prints the times of building,
+      rendering and serving it, and the bytes:
+      `CORTEN_FIXTURE=/abs/path/items.json cargo test --release -p card-market -- --ignored render_cost --nocapture`
+      in the Linux container, with the fixture `bench/fullstack/fixtures/fetch.mjs` writes from
+      the item API on `:18400`.
+   3. Waiting and concurrency (I/O, locks, channels, timers, feeds, streaming, startup): time,
+      because a count does not see waiting or how well work overlaps. `bench/fullstack/ab.mjs`
+      runs the two builds' images on one CPU for latency and throughput under load, and
+      `bench/fullstack/cold-start.mjs` times cold start. Take these on a quiet Linux host: on
+      Docker Desktop one image's throughput moved by up to 25% between rounds.
+   4. What the client receives: bytes shipped (the document, patches, the minified runtime,
+      assets), raw and compressed. `render_cost` gives the page's per encoding, and
+      `bench/fullstack/bytes.mjs` every script and stylesheet a page loads.
+
+   Measure release builds and alternate runs of the two. Give the tool, the number of runs and
+   their median and range; when one build's runs vary more than the two builds differ, say so
+   instead of reporting a difference.
 3. Update the guide in `docs/guide/` that describes the behavior, and add a line to
    `CHANGELOG.md` under Unreleased.
 4. Commit messages say what changed and why, in plain sentences.
