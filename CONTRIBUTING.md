@@ -84,6 +84,9 @@ crates there too, and since their version never changes, a shared copy would be 
 any checkout unpacked. The third
 builds on the oldest supported Rust, `rust-version` in the root `Cargo.toml`. The `CI` workflow
 (`.github/workflows/ci.yml`) runs the same checks on every pull request and push to `main`.
+A browser smoke that goes five minutes without finishing a check stops itself (`scripts/stall.mjs`),
+printing the last check it finished and, for the runtime's smoke, the requests still loading; give a
+new smoke script's `check` the same watchdog.
 
 ## Cluster integration tests
 

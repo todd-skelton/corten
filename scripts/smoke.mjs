@@ -4,6 +4,7 @@
 import { chromium, firefox, webkit } from "@playwright/test";
 import http from "node:http";
 import zlib from "node:zlib";
+import { stall } from "./stall.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18480";
 const engines = { chromium, firefox, webkit };
@@ -11,12 +12,15 @@ const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys
 const failures = [];
 let engine = "";
 const skipped = [];
+const seen = stall(5, () => `[${engine}] still loading:\n${pending().join("\n") || "  nothing"}`);
 /** A check this browser cannot make, and why. */
 const skip = (/** @type {string} */ name, /** @type {string} */ why) => {
+  seen(`[${engine}] ${name}`);
   console.log(`skip [${engine}] ${name} (${why})`);
   skipped.push(`[${engine}] ${name}`);
 };
 const check = (name, ok, detail = "") => {
+  seen(`[${engine}] ${name}`);
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };
@@ -1512,10 +1516,17 @@ async function run(browser) {
   await elsewhere.goto("http://other.test/");
   const crossed = await elsewhere.evaluate(talk, quotesUrl);
   check("another site's page cannot open it", crossed === "refused", String(crossed));
-  await elsewhere.close();
+  // CI's Firefox once stopped between that check and the next for an hour (#317), not seen
+  // locally: its route is let go before its context closes, and each step is named to the
+  // watchdog, so a stall says which one.
+  seen(`[${engine}] (step) closing the other site's page`);
+  await elsewhere.unrouteAll({ behavior: "ignoreErrors" });
+  await elsewhere.context().close();
 
+  seen(`[${engine}] (step) opening a context without JavaScript`);
   const noJs = await browser.newContext({ javaScriptEnabled: false });
   const plain = await noJs.newPage();
+  seen(`[${engine}] (step) loading the page without JavaScript`);
   await plain.goto(base);
   check("without JavaScript prices are server-rendered", (await plain.$$('[data-ref="price"]')).length === 3);
   await plain.selectOption("select[name=id]", "SOLR");

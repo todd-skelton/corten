@@ -18,9 +18,9 @@
 
 /* The adornment sits between the price's decrease button and its input: the number field's
    root is display: contents (field.css), so its parts are the control's flex items. */
-.currency { order: 1; color: var(--muted); }
-.currency ~ * > input { order: 2; }
-.currency ~ * > button:last-child { order: 3; }
+.unit { order: 1; color: var(--muted); }
+.unit ~ * > input { order: 2; }
+.unit ~ * > button:last-child { order: 3; }
 
 .book [role="tablist"] { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
 .book [role="tab"] { padding: 8px 12px; border: 0; border-radius: 0; background: none; color: var(--muted); font: inherit; font-weight: 500; text-decoration: none; cursor: pointer; }

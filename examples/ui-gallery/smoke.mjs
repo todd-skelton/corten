@@ -2,13 +2,16 @@
 // Firefox and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
 // Usage: node examples/ui-gallery/smoke.mjs [http://localhost:18482] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
+import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18482";
 const engines = { chromium, firefox, webkit };
 const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys(engines);
 const failures = [];
 let engine = "";
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(`[${engine}] ${name}`);
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };
@@ -141,8 +144,8 @@ async function run(browser) {
   check("release stops the repeat", Number(await qty.inputValue()) === held);
   check("the button kept focus where it was", await page.evaluate(() => document.activeElement?.id === "qty"));
   await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).click();
-  check("a step keeps the step's decimals", (await page.locator("#price").inputValue()) === "12.51", await page.locator("#price").inputValue());
-  // Each field keeps its own state (keep()): while the quantity's button is held, the price's
+  check("a step keeps the step's decimals", (await page.locator("#weight").inputValue()) === "0.6", await page.locator("#weight").inputValue());
+  // Each field keeps its own state (keep()): while the quantity's button is held, the weight's
   // button still steps from the keyboard. Sharing one, the held pointer would make it skip.
   await qty.focus();
   await page.keyboard.press("Home");
@@ -151,13 +154,13 @@ async function run(browser) {
   await page.mouse.down();
   const holding = Number(await qty.inputValue());
   await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
-  const own = await page.locator("#price").inputValue();
+  const own = await page.locator("#weight").inputValue();
   await page.mouse.up();
-  // The quantity stepped on the press, so its pointer was held while the price stepped.
-  check("each field keeps its own state", holding > before && own === "12.52", `quantity ${before} -> ${holding}, price ${own}`);
+  // The quantity stepped on the press, so its pointer was held while the weight stepped.
+  check("each field keeps its own state", holding > before && own === "0.7", `quantity ${before} -> ${holding}, weight ${own}`);
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
-    const field = /** @type {Element} */ (document.querySelector("#price")?.closest("[data-scope=ui-number-field]")?.parentElement);
+    const field = /** @type {Element} */ (document.querySelector("#weight")?.closest("[data-scope=ui-number-field]")?.parentElement);
     return Array.from(field.querySelectorAll("button, span, input"), (el) => [el.localName, Math.round(el.getBoundingClientRect().x)])
       .sort((a, b) => Number(a[1]) - Number(b[1]))
       .map((p) => p[0])
@@ -213,7 +216,7 @@ async function run(browser) {
   await qty.fill("3");
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed"));
-  check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.52 each.", await page.textContent("#result"));
+  check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.50 each, 0.7 oz to ship.", await page.textContent("#result"));
 
   // CheckboxGroup: no region checked stops the form at the group's first box.
   const lastResult = await page.textContent("#result");
@@ -240,7 +243,7 @@ async function run(browser) {
   await qty.fill("2");
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed 2"), null, { timeout: 5000 }).catch(() => {});
-  check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.52 each.", await page.textContent("#result"));
+  check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.50 each, 0.7 oz to ship.", await page.textContent("#result"));
   await page.getByLabel("Pricing").selectOption("fixed");
   check("back to a fixed price, the lowest offer is disabled again", await floor.isDisabled());
   // A reset puts the boxes back as drawn ("United States" checked), and the group is checked again.
@@ -276,12 +279,13 @@ async function run(browser) {
   await expanded("true");
   check("the button opens the menu", (await trigger.getAttribute("aria-expanded")) === "true");
   check("focus moves to the first item", (await page.evaluate(() => document.activeElement?.textContent)) === "Help");
+  // Under the button, or above it where the viewport has no room below (flip-block).
   const menuBox = await page.evaluate(() => {
     const button = document.querySelector("#actions-button")?.getBoundingClientRect();
     const menu = document.querySelector("#actions")?.getBoundingClientRect();
-    return button && menu && { gap: menu.top - button.bottom, left: menu.left - button.left };
+    return button && menu && { gap: Math.max(menu.top - button.bottom, button.top - menu.bottom), left: menu.left - button.left };
   });
-  check("the menu is anchored under its button", !!menuBox && menuBox.gap >= 0 && menuBox.gap <= 8 && Math.abs(menuBox.left) <= 1, JSON.stringify(menuBox));
+  check("the menu is anchored to its button", !!menuBox && menuBox.gap >= 0 && menuBox.gap <= 8 && Math.abs(menuBox.left) <= 1, JSON.stringify(menuBox));
   await page.keyboard.press("ArrowDown");
   check("Arrow Down moves", (await page.evaluate(() => document.activeElement?.textContent)) === "Archive");
   await page.keyboard.press("w");
@@ -576,7 +580,7 @@ async function run(browser) {
   await plain.locator("[data-scope=ui-combo-box] select").selectOption("lp");
   // The post loads a new page; waitForLoadState alone can return for the page it left.
   await Promise.all([plain.waitForURL("**/sell"), plain.getByRole("button", { name: "List for sale" }).click()]);
-  check("no script: the form posts the page", (await plain.textContent("#result")) === "Listed 1 Lightly Played Ashen Drake at $12.50 each.", await plain.textContent("#result"));
+  check("no script: the form posts the page", (await plain.textContent("#result")) === "Listed 1 Lightly Played Ashen Drake at $12.50 each, 0.5 oz to ship.", await plain.textContent("#result"));
   const plainFloor = plain.getByLabel("Lowest offer");
   check("no script: the lowest offer is enabled and optional (the handler checks it)", (await plainFloor.isEnabled()) && !(await plainFloor.evaluate((i) => /** @type {HTMLInputElement} */ (i).required)));
   await plain.getByRole("tab", { name: "Offers" }).click();
