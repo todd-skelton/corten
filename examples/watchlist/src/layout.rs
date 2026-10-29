@@ -51,7 +51,8 @@ pub fn Layout<'a>(
                             <a {..req.nav(&url::Alerts { saved: None })}>"Alerts"</a>
                         </nav>
                         match viewer {
-                            Some(viewer) => <a {..req.nav(&account::url::Account)}><ViewerBadge viewer={viewer} /></a>,
+                            // Named for where it goes, starting with what it shows (the name).
+                            Some(viewer) => <a {..req.nav(&account::url::Account)} aria-label={format!("{}: account", viewer.name)}><ViewerBadge viewer={viewer} /></a>,
                             None => <form method="post" action={url::SignIn} data-patch><button>"Sign in"</button></form>,
                         }
                     </div>
@@ -96,12 +97,12 @@ mod tests {
         let session = sign_in(&router).await;
         let ada = text(call_on(&router, get_with("/", &session)).await).await;
         assert!(
-            ada.contains(r#"<a href="/account" data-nav><span id="viewer-badge""#) && ada.contains(">Ada</span></a>"),
+            ada.contains(r#"<a href="/account" data-nav aria-label="Ada: account"><span id="viewer-badge""#) && ada.contains(">Ada</span></a>"),
             "{ada}"
         );
         assert!(!ada.contains("<button>Sign in</button>"));
         let account = text(call_on(&router, get_with("/account", &session)).await).await;
-        assert!(account.contains(r#"<a href="/account" data-nav aria-current="page"><span id="viewer-badge""#), "{account}");
+        assert!(account.contains(r#"<a href="/account" data-nav aria-current="page" aria-label="Ada: account"><span id="viewer-badge""#), "{account}");
         let lost = Request::get("/nope").header("cookie", &session).header("accept", "text/html").body(Body::empty()).unwrap();
         let lost = text(call_on(&router, lost).await).await;
         assert!(lost.contains("<h1>Not found</h1>") && lost.contains(">Ada</span></a>"), "the error page too: {lost}");

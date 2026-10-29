@@ -106,7 +106,7 @@ When an API answers with a message key and its arguments, show it with
 argument; choose the fallback). Never write a `match` from key strings to methods.
 
 Numbers, money and dates come from `t` too, never `format!` or a `"%"` of your own: `t.number(n)`,
-`t.percent(Decimal::new(bps, 4), 2)` (a ratio, at most 2 fraction digits), `t.money(Minor(cents),
+`t.percent(Decimal::new(bps, 4), 2)` (a ratio, at most 2 fraction digits; `t.change(..)` for a move, `+0.60%`), `t.money(Minor(cents),
 USD)` or `t.money(Decimal::parse(&api.amount)?, USD)` (`const USD: Currency = Currency::new("USD")`;
 never a float), `t.date(at, DateStyle::Medium)` (or `MonthStyle::Long` for `March 2026`), `t.time(at, TimeStyle::Short)` and
 `t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;
