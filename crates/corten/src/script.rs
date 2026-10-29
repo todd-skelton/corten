@@ -989,7 +989,8 @@ pub mod ts {
     pub enum AbortSignal {}
     /// Any other type: a JSON value (feature `json`).
     pub enum Any {}
-    /// An array of elements: `HTMLTableRowElement[]`, a ref put on elements in a loop.
+    /// An array: of elements (`HTMLTableRowElement[]`, a ref put on elements in a loop), or of
+    /// strings (`string[]`, a slice, an array or a `Vec` of them).
     pub struct Array<T>(std::marker::PhantomData<T>);
     /// Elements by their `key`: `Map<string, HTMLTableCellElement>`, a ref put with
     /// `key={item.id}` on elements in a loop.
@@ -1523,6 +1524,50 @@ pub mod __private {
     // JSON has no NaN or infinity.
     values!(ts::Number, |v, out| if v.is_finite() { use std::fmt::Write; let _ = write!(out, "{v}"); } else { out.push_str("null") }; f32, f64);
     values!(ts::Boolean, |v, out| out.push_str(if *v { "true" } else { "false" }); bool);
+
+    /// `[..]` of each string, for a `string[]` parameter.
+    fn json_strs<S: AsRef<str>>(items: &[S], out: &mut String) {
+        out.push('[');
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            json_str(item.as_ref(), out);
+        }
+        out.push(']');
+    }
+
+    /// A list of strings, `string[]`: `values={&["above", "below"]}`, a `Vec<String>`.
+    impl<S: AsRef<str>> Arg<ts::Array<ts::String>> for &[S] {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
+    impl<S: AsRef<str>> Arg<ts::Array<ts::String>> for &&[S] {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
+    impl<S: AsRef<str>, const N: usize> Arg<ts::Array<ts::String>> for [S; N] {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
+    impl<S: AsRef<str>, const N: usize> Arg<ts::Array<ts::String>> for &[S; N] {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(*self, out)
+        }
+    }
+    impl<S: AsRef<str>> Arg<ts::Array<ts::String>> for Vec<S> {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
+    impl<S: AsRef<str>> Arg<ts::Array<ts::String>> for &Vec<S> {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
 
     /// A message for the script to fill in: its text and argument names, made when the crate compiled.
     impl<const ARGS: u64> Arg<ts::Message<ARGS>> for crate::i18n::Template<ARGS> {
