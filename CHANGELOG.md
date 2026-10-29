@@ -841,6 +841,12 @@ Corten is pre-1.0, so any minor version may change the API.
     page the app prints) does not compile, and a page's name starts with the component's
     (`@page packing-slip-thermal`), so two components cannot set one page
     ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
+120. `ReadAgain { after }.without_javascript()` asks only a browser without JavaScript to read the
+    page again: for a page whose changing part a `<corten-live>` relays while a job runs, which
+    with JavaScript keeps itself fresh, and which reading whole would only make open its stream
+    again. It writes the `<noscript>` refresh without the mark the runtime reads; the runtime
+    is unchanged
+    ([#319 A page relayed by <corten-live> cannot ask a browser without JavaScript to read it again](https://github.com/todd-skelton/corten/issues/319)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1640,13 +1646,6 @@ Corten is pre-1.0, so any minor version may change the API.
     top of the document. Focus now goes to the nearest element around it that is still on the
     page, focusable only for the move; so does focus on an element patched into one that cannot
     take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
-54. A page that relays a part with `<corten-live>` and asks to be read again (`ReadAgain` in its
-    head, so a browser without JavaScript reloads while a job runs) was also read whole every few
-    seconds with JavaScript, and each read replaced the `<corten-live>`, which opened its stream
-    again. A `<corten-live>` in `main` now counts like a `ReadAgain::from` part: the head's tag is
-    for a browser without JavaScript, unless the stream gives up (`closed`), when the page is read
-    whole as it would be without a script. `corten.js` grows 30 bytes gzip
-    ([#319 A page relayed by <corten-live> cannot ask a browser without JavaScript to read it again](https://github.com/todd-skelton/corten/issues/319)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

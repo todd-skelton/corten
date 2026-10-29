@@ -1349,7 +1349,9 @@ impl Render for Corten {
 ///
 /// A `data-patch` form's answer asks the same with [`ReadAgain::from`], and so does a page that
 /// should have only some of its parts read again; with JavaScript, a page that does is not read
-/// whole, so its head's `ReadAgain` is then for a browser without it.
+/// whole, so its head's `ReadAgain` is then for a browser without it. A page that keeps itself
+/// fresh another way (a `<corten-live>` relaying the part) asks a browser without JavaScript only:
+/// [`ReadAgain::without_javascript`].
 #[derive(Clone, Copy, Debug)]
 pub struct ReadAgain {
     /// How long until the page is read again.
@@ -1416,6 +1418,36 @@ impl ReadAgain {
     /// ```
     pub fn from<R: crate::route::Route + ?Sized>(self, route: &R) -> ReadAgainFrom<'_, R> {
         ReadAgainFrom { again: self, route }
+    }
+
+    /// Asks only a browser without JavaScript to read the page again: for a page that keeps
+    /// itself fresh with a script, such as one whose changing part a `<corten-live>` relays
+    /// while the job it follows runs. With JavaScript the page is not read whole (which would
+    /// replace the `<corten-live>` and open its stream again); without it, the browser reloads it.
+    /// A page whose stream is unrelated to what it waits for (a ticker beside a saving form) uses
+    /// plain [`ReadAgain`].
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use corten::prelude::*;
+    ///
+    /// let again = ReadAgain { after: Duration::from_secs(2) }.without_javascript();
+    /// assert_eq!(again.to_html(), r#"<noscript><meta http-equiv="refresh" content="2"></noscript>"#);
+    /// ```
+    pub fn without_javascript(self) -> ReadAgainWithoutJavaScript {
+        ReadAgainWithoutJavaScript(self)
+    }
+}
+
+/// [`ReadAgain::without_javascript`]: `<noscript>` and its refresh, without the mark the
+/// runtime reads.
+#[derive(Clone, Copy, Debug)]
+pub struct ReadAgainWithoutJavaScript(ReadAgain);
+
+impl Render for ReadAgainWithoutJavaScript {
+    fn render(&self, out: &mut String) {
+        use std::fmt::Write;
+        let _ = write!(out, r#"<noscript><meta http-equiv="refresh" content="{}"></noscript>"#, self.0.seconds());
     }
 }
 

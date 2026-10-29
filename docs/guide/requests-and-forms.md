@@ -514,10 +514,15 @@ req.page(html! {
 `examples/watchlist`'s alerts page has all three.
 
 A page whose changing part a `<corten-live>` relays ([live data](live-data.md)) already keeps
-itself fresh with JavaScript, so it is not read whole either: `ReadAgain` in its head, while the
-job the stream follows runs, is for a browser without JavaScript. If the stream gives up (its
-`status` is `closed`: the server refused it, and the browser stops retrying) the page is read
-whole after all, as it would be without a script.
+itself fresh with JavaScript; reading it whole would replace the `<corten-live>` and open its
+stream again. While the job the stream follows runs, it asks a browser without JavaScript only:
+
+```rust,ignore
+let again = job.running.then_some(ReadAgain { after: Duration::from_secs(2) }.without_javascript());
+```
+
+The runtime does not read the page whole for it, so it decides nothing from the page's other
+streams: a ticker beside a form that waits for a write keeps plain `ReadAgain`.
 
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
 the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
