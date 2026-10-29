@@ -2009,7 +2009,8 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#210 A component prop cannot be left out, so pages pass head="" and other empty values](https://github.com/todd-skelton/corten/issues/210)).
 31. The views guide says how a layout gets who is signed in: as a prop from the `Caller` its
     handler took, not by reading the request. Rendering is synchronous and `Identify` is async, so
-    the alternative would identify everyone before every render, patches included
+    the alternative needs a second async step before full-page renders, with its own rules for a
+    failed lookup, caching and the page key
     ([#209 Every page handler extracts the viewer only to pass it to the layout](https://github.com/todd-skelton/corten/issues/209)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)

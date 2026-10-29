@@ -93,10 +93,10 @@ second layout.
 Who is signed in reaches the layout the same way as everything else, as a prop the handler
 passes: `viewer={viewer.as_deref()}` from the `Option<Caller<Viewer>>` it took. A layout does not
 read the request itself. Rendering is synchronous and `Identify` is not (a session store, a
-token check), so a layout could not look the viewer up while it renders. Corten would have to
-identify everyone before every render, including the patches and data reads that never draw the
-header. In the handler the lookup runs once, only on the routes that ask for it, and the type says
-which pages show a viewer. A page with more than one call site keeps the viewer in its own
+token check), so a layout could not look the viewer up while it renders. Reading it there would
+need a second async step before each full-page render, and its own rules for a failed lookup,
+for caching it per request and for the page key. In the handler the lookup runs once, only on the
+routes that ask for it, and the type says which pages show a viewer. A page with more than one call site keeps the viewer in its own
 function's parameters (`fn alerts_page(req: &Req, viewer: Option<&Viewer>, ..)`), as watchlist does.
 
 A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
