@@ -1704,6 +1704,13 @@ Corten is pre-1.0, so any minor version may change the API.
     hole of the row's view); on a phone the table keeps the name, quantity and price (it stays a
     table, so each cell has its header); and the statement has a total row
     ([#332 Polish: seller-desk does not look like the client-heavy screen it is](https://github.com/todd-skelton/corten/issues/332)).
+60. CI's Firefox stalled now and then in the watchlist smoke ("still loading: nothing"), at a
+    different step each time, and once lost a page's script context in the ui-gallery Copy check.
+    Playwright 1.60's Firefox driver could lose the commit of a new page's first navigation to a
+    document sent with `Cross-Origin-Opener-Policy: same-origin`, which every Corten page is
+    (microsoft/playwright#42731, fixed in its Firefox build 1551). The tooling is on Playwright
+    1.64.1 (Firefox build 1555), and CI's browser image follows it; Firefox still applies COOP
+    ([#350 CI's Firefox stalls after the early form check, closing a page whose route is still registered](https://github.com/todd-skelton/corten/issues/350)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
