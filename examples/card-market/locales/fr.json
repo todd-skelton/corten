@@ -23,6 +23,24 @@
     "qty": "Qté",
     "price": "Prix"
   },
+  "listing": {
+    "rating": "{rating} ★ ({reviews})"
+  },
+  "grade": {
+    "near_mint": "Quasi neuf",
+    "lightly_played": "Peu joué",
+    "moderately_played": "Joué",
+    "heavily_played": "Très joué",
+    "damaged": "Abîmé",
+    "sealed": "Scellé"
+  },
+  "detail": {
+    "set": "Extension",
+    "number": "Numéro de carte",
+    "rarity": "Rareté",
+    "finish": "Finition",
+    "packs": "Boosters"
+  },
   "alert": {
     "title": "Alerte de prix",
     "email": "E-mail",

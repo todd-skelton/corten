@@ -787,12 +787,12 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
 115. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
     `Json`, `Media`, a page), named by a type (`corten::answer::Header`; Corten names
-    `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
+    `XRobotsTag`, `Link` and `ContentLanguage`). The answer is compressed
     and shared as it would be without it. Before, a shared file that had to stay out of search was
     a `Relay`, never compressed (Chase Sets' developer manifest: 161,815 bytes against 19,737 with
     brotli), or an answer type of the app's own. `set-cookie`, the headers Corten sets itself
     (caching, a CDN's `*-cache-control`, CORS, security), those the answer has (`content-type`,
-    `location`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
+    `location`, `content-disposition`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
     18,404-18,417 to 18,434-18,459 for a public text answer (callgrind, in process, 1,000
     requests, three runs each); the headers are held behind an `Option<Box<..>>`, since a `Vec`
     in place cost about 50 (18,450-18,467)
@@ -896,7 +896,18 @@ Corten is pre-1.0, so any minor version may change the API.
     Today column uses it. `change`, `percent`, `parse_money` and `relative` join the message keys
     `messages!` refuses at the top level, since they are its methods (`button.change` is fine)
     ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
-126. `Signal::finish(|signal| async move { .. })`: work a handler must finish (claim, call,
+126. `Media::attachment(name)` and `Media::inline(name)`: a download names its file on any answer,
+    private ones included (a user's export), where only a `Public` answer could before. The name
+    is written as `filename="cards.csv"` when it is plain ASCII, and otherwise with
+    `filename*=UTF-8''..` (RFC 6266) after a `filename` with `_` for each other character, so a
+    quote, a backslash, a `%`, a `?` or a line break in a user's file name cannot end the header,
+    add a parameter or be decoded as another name. It is the one way to name a download:
+    `Public::header` refuses `content-disposition` when the app builds (Added 115). The guide
+    says to link to one with `download` (or `data-reload` for a file the browser shows), so the
+    runtime does not fetch it on hover and again on click
+    ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
+    No existing answer changes; naming a file costs one header on that answer.
+127. `Signal::finish(|signal| async move { .. })`: work a handler must finish (claim, call,
     release) runs to its end even if the handler is dropped, with a signal of its own that aborts
     when the request's does or shutdown begins, so a slow step stops early and the release after
     it still runs; `serve` waits for it at shutdown within `App::shutdown_grace`. The cancellation
@@ -1823,6 +1834,20 @@ Corten is pre-1.0, so any minor version may change the API.
     "More actions" button. The SKU's copy count shows only after the first copy ("Copies: 2"), and
     `/help` explains each part of the form
     ([#333 Polish: ui-gallery reads as a grid of components rather than a listing screen](https://github.com/todd-skelton/corten/issues/333)).
+67. card-market in French translated its headings but not its prices, ratings, conditions or
+    card details. Its item page and cards now write a price in US dollars as the reader's locale
+    writes money (`0,79 $US`), a seller's rating with the locale's decimal separator, and the
+    conditions and detail labels the catalog names (`Peu joué`, `Rareté`); a value the catalog
+    does not name is shown as the item API sent it. The page reads these from fields the JSON
+    leaves out (`#[serde(skip)]`: cents, a `Decimal` rating, a `Grade`, a `Detail`), so
+    `/api/items/{id}` still answers the benchmark's shared view model, and in English the page
+    reads as before (`parity.mjs`). The listing sort compares each row's `data-cents`, the
+    cents the server sorts by, where it compared a float that was `NaN` without a price, and
+    keeps rows with the same price in the server's order both ways, so a second click restores it, and the
+    scripts guide says when a `data-` attribute is the right tool rather than a view. The smoke
+    checks a price, a rating and a condition in French
+    ([#323 card-market in French translates its headings but not its prices, ratings or card details](https://github.com/todd-skelton/corten/issues/323),
+    [#329 card-market sorts listings by a data-price string instead of through the rows' views](https://github.com/todd-skelton/corten/issues/329)).
 
 ### Documentation
 
