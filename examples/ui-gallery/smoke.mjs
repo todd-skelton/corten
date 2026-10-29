@@ -80,13 +80,6 @@ async function run(browser) {
   const page = await (await browser.newContext()).newPage();
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-  // Requests the page cancelled itself (the runtime's fetch of a page the next navigation
-  // replaced). WebKit can log one as "/localhost:18482/?sale=last due to access control checks"
-  // (the URL without its scheme), which is not an error the page made (#301); a real CORS
-  // refusal fails with another reason and is still counted.
-  /** @type {Set<string>} */
-  const cancelled = new Set();
-  page.on("requestfailed", (r) => /cancel/i.test(r.failure()?.errorText ?? "") && cancelled.add(r.url()));
   page.on("pageerror", (e) => errors.push(e.message));
   /** @type {string[]} */
   const failed = [];
@@ -575,10 +568,15 @@ async function run(browser) {
   );
   await lacking.context().close();
 
-  // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
+  // The refused renames are 422s, which Chromium and WebKit log; nothing else may be. WebKit also
+  // logs a request of the gallery's own origin that the page stopped (the runtime's fetch of a
+  // page the next navigation replaced) as "/localhost:18482/?sale=last due to access control
+  // checks", the URL without its scheme (#301). A request to its own origin is never refused by
+  // CORS, so only another origin's still counts.
+  const own = `/${new URL(base).host}/`;
   const unexpected = errors.filter((e) => {
     const refused = /(\S+) due to access control checks/.exec(e)?.[1];
-    return !/status of 422/.test(e) && !(refused && [...cancelled].some((url) => url.slice(url.indexOf("//") + 1) === refused));
+    return !/status of 422/.test(e) && !refused?.startsWith(own);
   });
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
