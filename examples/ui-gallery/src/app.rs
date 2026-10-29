@@ -4,7 +4,7 @@
 //! |---|---|
 //! | `GET /?tab=offers` | the gallery, with that tab selected |
 //! | `GET /?sale=last` | the gallery with the last sale's sheet open beside it |
-//! | `POST /sell` | the listing form: a patch with JavaScript, the page without |
+//! | `POST /sell` | the listing form: a patch with JavaScript, the page without; refused (422) when it ships nowhere or takes offers with no lowest one |
 //! | `POST /archive`, `POST /watch` | the menu's form actions: archive the draft, watch the card |
 //! | `POST /save` | saving the draft, answered with a toast |
 //! | `POST /rename` | the rename dialog's form: refused, the dialog drawn open; else back to the draft |
@@ -121,9 +121,47 @@ pub struct SellForm {
     pub qty: f64,
     pub price: f64,
     pub condition: String,
+    /// The regions the seller ships to: at least one (`CheckboxGroup`).
+    #[serde(default)]
+    pub ships: Vec<String>,
+    /// `fixed`, or `offers` with the lowest offer the seller accepts (`RequiredWhen`).
+    pub pricing: String,
+    pub floor: Option<f64>,
 }
 
+/// The pricing that takes offers, and needs the lowest one.
+pub const OFFERS: &str = "offers";
+
+/// What a listing that ships nowhere is told, by the browser and by the handler.
+pub const NO_REGION: &str = "Choose where you ship.";
+
+/// Listed, or refused when it ships nowhere or takes offers with no lowest one: the browser stops
+/// both before sending when its script runs, and this is the check without it.
 async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
+    let f = SellForm::FIELDS;
+    let mut errors = Errors::new();
+    if form.ships.is_empty() {
+        errors.add(f.ships, NO_REGION);
+    }
+    if form.pricing == OFFERS && form.floor.is_none() {
+        errors.add(f.floor, "Enter the lowest offer you accept.");
+    }
+    if let Some((_, message)) = errors.iter().next() {
+        let page = || async {
+            gallery(
+                &req,
+                Gallery {
+                    tab: 0,
+                    result: message,
+                    toast: None,
+                    sale: false,
+                    rename: RenameDialog { name: "", errors: &Errors::new() },
+                    times: times(&req),
+                },
+            )
+        };
+        return req.invalid(&errors, OrderResult { text: message }, page).await;
+    }
     let condition = CONDITIONS.iter().find(|c| c.value == form.condition).map_or("ungraded", |c| c.label);
     let text = format!("Listed {} {condition} {CARD} at ${:.2} each.", form.qty, form.price);
     let page = || async {
@@ -214,7 +252,10 @@ async fn help(req: Req) -> HtmlResult {
 
 #[cfg(test)]
 mod tests {
-    use corten::axum::{body::Body, http::Request};
+    use corten::axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
@@ -257,10 +298,37 @@ mod tests {
     #[tokio::test]
     async fn the_form_answers_with_a_patch_or_the_page() {
         let form = || Request::post("/sell").header("content-type", "application/x-www-form-urlencoded");
-        let patch = send(form().header("corten", "action").body(Body::from("qty=2&price=12.50&condition=lp")).unwrap()).await;
+        const LISTED: &str = "qty=2&price=12.50&condition=lp&ships=us&ships=eu&pricing=fixed&floor=";
+        let patch = send(form().header("corten", "action").body(Body::from(LISTED)).unwrap()).await;
         assert_eq!(patch, r#"<p id="result" role="status">Listed 2 Lightly Played Ashen Drake at $12.50 each.</p>"#);
-        let page = send(form().body(Body::from("qty=2&price=12.50&condition=lp")).unwrap()).await;
+        let page = send(form().body(Body::from(LISTED)).unwrap()).await;
         assert!(page.contains("<html") && page.contains("Listed 2 Lightly Played Ashen Drake"));
+    }
+
+    /// What the browser stops when its script runs (no region, offers with no lowest one), the
+    /// handler refuses without it.
+    #[tokio::test]
+    async fn a_listing_that_ships_nowhere_or_takes_offers_without_a_floor_is_refused() {
+        let post = |body: &'static str| {
+            app().router().oneshot(
+                Request::post("/sell")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("corten", "action")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+        };
+        for (body, message) in [
+            ("qty=1&price=1&condition=lp&pricing=fixed&floor=", "Choose where you ship."),
+            ("qty=1&price=1&condition=lp&ships=ca&pricing=offers&floor=", "Enter the lowest offer you accept."),
+        ] {
+            let res = post(body).await.unwrap();
+            assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+            let text = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+            assert_eq!(text, format!(r#"<p id="result" role="status">{message}</p>"#));
+        }
+        let res = post("qty=1&price=1&condition=lp&ships=ca&pricing=offers&floor=5").await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]

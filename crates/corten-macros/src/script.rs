@@ -713,6 +713,10 @@ fn param_type(ty: &str) -> Param {
     let item = ty.strip_suffix("[]").or_else(|| ty.strip_prefix("Array<").and_then(|t| t.strip_suffix('>')));
     if let Some(item) = item {
         let item = item.trim().trim_start_matches('(').trim_end_matches(')').trim();
+        // A list of strings, from a slice, an array or a `Vec` of them.
+        if item == "string" {
+            return Param::Checked("ts::Array<::corten::script::ts::String>".into());
+        }
         return match common(item, element) {
             Some(e) => Param::Checked(format!("ts::Array<::corten::script::el::{e}>")),
             None => Param::Any,
