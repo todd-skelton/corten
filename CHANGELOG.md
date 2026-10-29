@@ -88,7 +88,7 @@ Corten is pre-1.0, so any minor version may change the API.
     the binary. `CONTRIBUTING.md` (Releasing) has the steps, including the first release.
 19. `.github/workflows/ci.yml` runs the checks in `CONTRIBUTING.md` on every pull request and
     push to `main`, plus `cargo publish --workspace --dry-run` and a build on Rust 1.88.
-20. List fields. `corten::Form` and a route's `Params` (Added 113) read a key
+20. List fields. `corten::Form` and a route's `Params` (Added 114) read a key
     sent several times into a `Vec` field, a checkbox's `on` into a `bool`, and a blank field into
     `None`; a scalar sent twice is a 422 (400 for a query) naming the field. `#[derive(Fields)]`
     rejects a `bool` or `Vec` field without `#[serde(default)]`, since a browser sends nothing for
@@ -768,7 +768,16 @@ Corten is pre-1.0, so any minor version may change the API.
     700 more for a page under an area's policy, may be more than noise
     ([#275 A policy is the whole app's, so the origins one page's payment SDK needs are allowed on every page](https://github.com/todd-skelton/corten/issues/275),
     [#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
-113. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
+113. `corten_ui::Copied` (`ui-copied` in the page): `CopyButton` dispatches it after a write the
+    browser made, and only then, so an ancestor counts a copy (a referral link's, a share link's)
+    with `on:Copied={js::counted(event)}` instead of keeping a copy script of its own. It bubbles
+    and carries nothing, since the text may be a secret. ui-gallery counts its SKU's
+    copies: one for a copy, none for a denied write. `copy_button.js` is 2,457 bytes, 904 with
+    brotli (was 2,223 and 844), and a page with the button fetches `events.js` with it, preloaded
+    beside the script so it adds a request but no round trip (276 bytes, 176 with brotli, in
+    ui-gallery)
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
+114. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
      It has the struct's fields, owned (a `&'a str` or `Cow<'a, str>` is a `String`, a `&'a [T]` a
      `Vec<T>`, any other `&'a T` a `T`; a link's field still needs only `Display`), read
      the way a link writes them: a path parameter percent-decoded, a query parameter by the name
@@ -1247,7 +1256,17 @@ Corten is pre-1.0, so any minor version may change the API.
     tools' own errors have, and a partner's write without a known key is told to send a valid
     one in `X-Api-Key` (`Refused::message`)
     ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
-72. The trait a `#[route(query)]` set implements is `corten::route::QueryParams` (it was
+72. A typed event (`#[event]`) is served with the script that imports it from `corten/events`,
+    so an app lists the script's component and never the event; a script that imports an event its
+    component's module does not have does not compile. Before, an app that listed `CopyButton`
+    without its event would have had the button's script fail to load. A page whose handlers are
+    in such a script fetches `events.js` with it (`<link rel="modulepreload">`, 64 bytes)
+    rather than after it, one round trip sooner; seller-desk's price cells had waited for it.
+    `Script` has an `events` field, written by `#[component(js)]` and `script!`. And
+    `on:Copied={..}` listens for the name the event's `#[event]` gave it: a library's carries its
+    prefix (`ui-copied`), which `html!` had dropped, so no listener heard a library's event
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
+73. The trait a `#[route(query)]` set implements is `corten::route::QueryParams` (it was
     `route::Params`), so `Params` is the extractor. The examples read their routes' parameters
     as `Params` (16 handlers); ui-gallery's `HomeQuery` and listings-feed's `MarketQuery` are
     gone, the parameters declared once on the route (`MarketWrite` gains `n`), and watchlist's
@@ -1658,6 +1677,12 @@ Corten is pre-1.0, so any minor version may change the API.
     tests build tokio with `test-util` for the paused clock: each tokio clock read in them checks
     one flag more; apps are not affected
     ([#278 An app cannot run a job on a schedule (hourly at :15, every 5 minutes, daily at 03:30), so each writes the clock, the missed-mark skip and the no-overlap rule itself](https://github.com/todd-skelton/corten/issues/278)).
+25. The app guide (Areas) and the skill say how a page in an area that another permission opens
+    (an order's review form under `/account/purchases`) is declared: a second routes module in the
+    same area with its own `caller`, passed in one call,
+    `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
+    permission from the path. A test holds two modules' callers apart in one area
+    ([#273 A page under an area cannot take its own caller, so a nested form that needs another permission checks it by path or by hand](https://github.com/todd-skelton/corten/issues/273)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

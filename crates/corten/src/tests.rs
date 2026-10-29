@@ -2196,6 +2196,54 @@ fn caller_app() -> Router {
     App::new(caller_url::router()).error_page(test_error_page, ()).area::<admin_url::Admin>(admin_url::area).router()
 }
 
+/// An auditor: another permission than the staff's, for one page in the admin area.
+#[derive(Clone, Hash, Debug)]
+struct Auditor;
+
+impl<S: Sync> crate::Identify<S> for Auditor {
+    async fn identify(parts: &axum::http::request::Parts, state: &S) -> std::result::Result<Self, crate::Refused> {
+        let Viewer(name) = <Viewer as crate::Identify<S>>::identify(parts, state).await?;
+        match name {
+            "ada" | "carol" => Ok(Auditor),
+            _ => Err(crate::Refused::forbidden()),
+        }
+    }
+}
+
+/// A page in the admin area that its own caller may use: a second module in the same area.
+#[crate::routes(area = super::admin_url::Admin, caller = Auditor)]
+mod audit_url {
+    #[route("/admin/users/{id}/audit", get = user_audit)]
+    pub struct UserAudit {
+        pub id: u32,
+    }
+}
+
+async fn user_audit(crate::Params(at): crate::Params<audit_url::UserAudit>, Caller(_): Caller<Auditor>) -> String {
+    format!("audit {}", at.id)
+}
+
+/// Two modules in one area, each holding its handlers to its own caller: a staff member who is
+/// not an auditor reads the user and not the audit, and an auditor who is not staff the other
+/// way round.
+#[tokio::test]
+async fn an_area_takes_modules_with_callers_of_their_own() {
+    let router = App::new(caller_url::router())
+        .error_page(test_error_page, ())
+        .area(|area| audit_url::area(admin_url::area(area)))
+        .router();
+    for (uri, viewer, want) in [
+        ("/admin/users/7", "bob", StatusCode::OK),
+        ("/admin/users/7/audit", "bob", StatusCode::FORBIDDEN),
+        ("/admin/users/7", "carol", StatusCode::FORBIDDEN),
+        ("/admin/users/7/audit", "carol", StatusCode::OK),
+        ("/admin/users/7/audit", "ada", StatusCode::OK),
+    ] {
+        let (status, _, body) = guarded(&router, "GET", uri, Some(viewer), &[]).await;
+        assert_eq!(status, want, "{uri} as {viewer}: {body}");
+    }
+}
+
 async fn guarded(
     router: &Router,
     method: &str,

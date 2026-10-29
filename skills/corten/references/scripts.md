@@ -121,7 +121,8 @@ import { RowToggled } from "corten/events";
 row.dispatchEvent(new RowToggled({ id, selected: true }));
 ```
 
-List the event in `App::components`. Handlers several components share go in their own module:
+The event is served with the component's script that imports it, so it is not listed (only one
+that a `static/` module alone imports is). Handlers several components share go in their own module:
 `script!(pub mod validity = "validity.js");`, listed as `validity::COMPONENT`. A page whose
 handlers call an unlisted module fails in a debug build (500 naming the module): list it, and
 cover each page with a router test so the check runs.

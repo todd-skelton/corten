@@ -340,7 +340,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
                 literal(&doc),
                 TokenTree::Ident(name.clone()).into(),
                 literal(&name.to_string()),
-                some(script.as_ref().map(crate::script::Module::literal)),
+                some(script.as_ref().map(|s| s.literal(""))),
                 some(style),
                 stream(vis.iter().cloned()),
                 some(view),

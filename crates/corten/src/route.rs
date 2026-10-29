@@ -409,6 +409,43 @@ pub use corten_macros::UrlValue;
 /// # fn main() { let _ = corten::App::new(Routes::new()).area(admin::area); }
 /// ```
 ///
+/// A page in the area that another caller may use is a module of its own in the same area, passed
+/// in the same call (`.area(|area| audit::area(admin::area(area)))`); each module's handlers are
+/// held to its own caller, so one there that takes the other module's does not compile:
+///
+/// ```compile_fail,E0631
+/// # use corten::{axum::http::request::Parts, prelude::*};
+/// # #[derive(Clone, Hash)]
+/// # struct Staff;
+/// # impl<S: Sync> Identify<S> for Staff {
+/// #     async fn identify(_parts: &Parts, _state: &S) -> Result<Self, Refused> { Err(Refused::forbidden()) }
+/// # }
+/// # #[derive(Clone, Hash)]
+/// # struct Auditor;
+/// # impl<S: Sync> Identify<S> for Auditor {
+/// #     async fn identify(_parts: &Parts, _state: &S) -> Result<Self, Refused> { Err(Refused::forbidden()) }
+/// # }
+/// #[corten::routes(area = Admin, caller = Staff)]
+/// mod admin {
+///     #[route("/admin", get = dashboard)]
+///     pub struct Admin;
+/// }
+///
+/// #[corten::routes(area = super::admin::Admin, caller = Auditor)]
+/// mod audit {
+///     #[route("/admin/audit", get = audit_log)]
+///     pub struct AuditLog;
+/// }
+///
+/// async fn dashboard(_: Caller<Staff>) -> &'static str {
+///     "admin"
+/// }
+/// async fn audit_log(_: Caller<Staff>) -> &'static str {
+///     "the staff's caller, in the auditors' module"
+/// }
+/// # fn main() { let _ = corten::App::new(Routes::new()).area(|area| audit::area(admin::area(area))); }
+/// ```
+///
 /// A route of the module outside the area's prefix does not compile:
 ///
 /// ```compile_fail
