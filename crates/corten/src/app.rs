@@ -33,7 +33,7 @@ use crate::{
     route::{Methods, Prefix, Route as TypedRoute, Routes},
     security::{Applied, NonceSlot, Policy},
     signal::{self, Watch},
-    task::{Running, Task},
+    task::{Finishing, Running, Task},
     Mode, Signal,
 };
 
@@ -297,6 +297,9 @@ pub struct App<M = ()> {
     apis: Vec<(Mount, Router)>,
     tasks: Vec<Task>,
     grace: Duration,
+    /// Work its handlers finish whether or not they are dropped ([`Signal::finish`]), which
+    /// `serve` waits for at shutdown.
+    finishing: Arc<Finishing>,
     connections: Connections,
     layers: Vec<Box<dyn FnOnce(Router) -> Router + Send>>,
     middleware: M,
@@ -336,6 +339,7 @@ impl App {
             apis: Vec::new(),
             tasks: Vec::new(),
             grace: Duration::from_secs(5),
+            finishing: Arc::default(),
             connections: Connections::default(),
             layers: Vec::new(),
             middleware: (),
@@ -368,6 +372,7 @@ impl App {
             apis: self.apis,
             tasks: self.tasks,
             grace: self.grace,
+            finishing: self.finishing,
             connections: self.connections,
             layers: self.layers,
             middleware,
@@ -795,6 +800,7 @@ impl<M: Middleware> App<M> {
 
         let error_page = self.error_page.unwrap_or_else(|| error_page_fn(default_error_page, ()));
         let mut shared = Shared::new(error_page, assets, head);
+        shared.finishing = self.finishing.clone();
         shared.offline = offline;
         shared.locales = self.locales;
         shared.client_zone = self.client_zone;
@@ -1015,6 +1021,7 @@ where
     M: Middleware,
 {
     let (tasks, grace, connections) = (std::mem::take(&mut app.tasks), app.grace, app.connections);
+    let finishing = app.finishing.clone();
     // Built first: a startup panic (a misplaced area) starts no task.
     let router = app.router();
     let running = Running::start(tasks);
@@ -1023,11 +1030,14 @@ where
         stop.await;
         let _ = stopped.set(tokio::time::Instant::now());
         running.stop();
+        finishing.stop();
     })
     .await;
     // A listener that failed ends the tasks too, with the same grace.
     let began = stopped.get().copied().unwrap_or_else(tokio::time::Instant::now);
+    finishing.stop();
     running.finish(began + grace, grace).await;
+    finishing.wait(began + grace, grace).await;
     served
 }
 

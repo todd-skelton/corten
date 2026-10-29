@@ -896,6 +896,14 @@ Corten is pre-1.0, so any minor version may change the API.
     Today column uses it. `change`, `percent`, `parse_money` and `relative` join the message keys
     `messages!` refuses at the top level, since they are its methods (`button.change` is fine)
     ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
+126. `Signal::finish(|signal| async move { .. })`: work a handler must finish (claim, call,
+    release) runs to its end even if the handler is dropped, with a signal of its own that aborts
+    when the request's does or shutdown begins, so a slow step stops early and the release after
+    it still runs; `serve` waits for it at shutdown within `App::shutdown_grace`. The cancellation
+    guide no longer says awaited work needs no thought: a drop cannot run async cleanup
+    ([#372 A handler dropped when its client leaves cannot release what it holds, and the guide says work it awaits needs no signal](https://github.com/todd-skelton/corten/issues/372)).
+    A request that does not use it costs what it did: the app's `Shared` gains one pointer, read
+    only by `finish`.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

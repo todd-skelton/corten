@@ -61,6 +61,63 @@ impl Running {
     }
 }
 
+/// Work handlers finish whether or not they are dropped ([`Signal::finish`]): told to stop when
+/// shutdown begins, and waited for after the app's tasks, within the same grace.
+#[derive(Default)]
+pub(crate) struct Finishing {
+    stop: Signal,
+    running: std::sync::atomic::AtomicUsize,
+    idle: tokio::sync::Notify,
+}
+
+/// One piece of work [`Finishing`] counts, until it is dropped.
+pub(crate) struct Counted(std::sync::Arc<Finishing>);
+
+impl Finishing {
+    /// Counts one piece of work until the guard is dropped.
+    pub(crate) fn enter(self: &std::sync::Arc<Self>) -> Counted {
+        self.running.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        Counted(self.clone())
+    }
+
+    /// Aborts with [`Abort::Shutdown`] when shutdown begins.
+    pub(crate) fn signal(&self) -> &Signal {
+        &self.stop
+    }
+
+    pub(crate) fn stop(&self) {
+        self.stop.abort(Abort::Shutdown);
+    }
+
+    /// Waits until no work is running, or `until`; work still running then is left to end with
+    /// the process, and logged.
+    pub(crate) async fn wait(&self, until: tokio::time::Instant, grace: Duration) {
+        let idle = async {
+            loop {
+                let notified = self.idle.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                if self.running.load(std::sync::atomic::Ordering::Acquire) == 0 {
+                    return;
+                }
+                notified.await;
+            }
+        };
+        if tokio::time::timeout_at(until, idle).await.is_err() {
+            let left = self.running.load(std::sync::atomic::Ordering::Acquire);
+            tracing::warn!("corten: {left} piece(s) of Signal::finish work still running {grace:?} after shutdown began");
+        }
+    }
+}
+
+impl Drop for Counted {
+    fn drop(&mut self) {
+        if self.0.running.fetch_sub(1, std::sync::atomic::Ordering::AcqRel) == 1 {
+            self.0.idle.notify_waiters();
+        }
+    }
+}
+
 /// A task's future, which logs a panic with the task's name instead of tokio's anonymous one.
 struct Logged {
     name: &'static str,

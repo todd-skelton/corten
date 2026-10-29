@@ -33,7 +33,9 @@ These are what the framework is built around. Code that breaks them fights the f
    without; a feature only a browser can provide (drag and drop, a canvas) needs JavaScript.
 6. **Cleanup is `signal`.** A handler that takes `signal` gets an `AbortSignal` that aborts
    when its element leaves the page; pass it to `addEventListener`, `fetch`, `subscribe` and
-   `mount`. On the server, spawned work watches `req.signal()`.
+   `mount`. On the server, spawned work watches `req.signal()`, and a handler that claims
+   something it must release (a lease, a lock) puts the claim, the call and the release in
+   `signal.finish(|signal| async move { .. })`, which runs to its end even if the handler is dropped.
 7. **Text lives in views or the view model**, never in scripts. A value every surface
    shows (a formatted price) is a field the server fills.
 8. **Prefer the platform.** Use `<dialog>`, `popover`, `<details>`, form validation attributes

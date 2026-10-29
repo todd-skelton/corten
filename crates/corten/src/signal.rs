@@ -1,9 +1,11 @@
 //! [`Signal`]: when the work for a request should stop, like the browser's `AbortSignal`.
 //!
-//! Work a handler awaits needs none of this: when the request ends early (the client went away,
-//! or the deadline in [`crate::App::deadline`] passed) Rust drops the handler's future and
+//! Work a handler awaits needs none of this to stop: when the request ends early (the client went
+//! away, or the deadline in [`crate::App::deadline`] passed) Rust drops the handler's future and
 //! everything it was awaiting. The signal is for work that drop cannot reach: tasks the handler
-//! spawned, a blocking thread, a query running on another server, a loop over a long stream.
+//! spawned, a blocking thread, a query running on another server, a loop over a long stream. A drop
+//! also cannot run async cleanup, so work that must end a certain way (release a lease it claimed)
+//! goes in [`Signal::finish`].
 //!
 //! ```
 //! use corten::Signal;
@@ -48,6 +50,8 @@ pub enum Abort {
     /// The whole response was sent (for a stream, its last event). Work started for the request
     /// ends with it, so a spawned task cannot outlive the request by accident; work meant to
     /// outlive it is a task of the app's ([`crate::App::task`]), which has a signal of its own.
+    /// Work the handler must finish ([`Signal::finish`]) has its own signal, which this one does
+    /// not abort once the handler has its answer.
     Responded,
     /// The client went away before the response was sent: it closed the connection, cancelled the
     /// fetch, or left a stream.
@@ -122,6 +126,83 @@ impl Signal {
         }
         notified.await;
         self.reason().unwrap_or(Abort::Responded)
+    }
+
+    /// Runs `work` to its end even if the handler is dropped, and waits for it: what a handler
+    /// claimed (a lease, a lock in another service, a reservation) is released when the client
+    /// leaves or the deadline passes, which a drop cannot do. `work` gets a signal of its own that
+    /// aborts when this one does (the client left, the deadline passed) or shutdown begins, so it
+    /// can stop a slow step early and still run what follows it; at shutdown `serve` waits for
+    /// it within [`crate::App::shutdown_grace`], after the app's tasks.
+    ///
+    /// ```
+    /// use corten::{prelude::*, Signal};
+    ///
+    /// # struct Gate;
+    /// # impl Gate {
+    /// #     async fn claim(&self) -> u32 { 7 }
+    /// #     async fn release(&self, _lease: u32, _outcome: &str) {}
+    /// # }
+    /// # async fn call_provider(_lease: u32) -> &'static str { "connected" }
+    /// # static GATE: Gate = Gate;
+    /// async fn check(signal: Signal) -> String {
+    ///     signal
+    ///         .finish(|signal| async move {
+    ///             let lease = GATE.claim().await;
+    ///             // The slow call stops when the client leaves; the release after it still runs.
+    ///             let outcome = tokio::select! {
+    ///                 outcome = call_provider(lease) => outcome,
+    ///                 _ = signal.aborted() => "cancelled",
+    ///             };
+    ///             GATE.release(lease, outcome).await;
+    ///             outcome.to_string()
+    ///         })
+    ///         .await
+    /// }
+    /// # let _: Methods = get(check);
+    /// ```
+    ///
+    /// The work runs on a task of its own, so it is `Send + 'static`: it takes what it uses by
+    /// value. A panic in it is the handler's. Keep it to the claim, the work and the release: the
+    /// grace bounds it at shutdown, so a step that ignores the signal can still be cut off there.
+    pub async fn finish<F, Fut, T>(&self, work: F) -> T
+    where
+        F: FnOnce(Signal) -> Fut,
+        Fut: std::future::Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let finishing = self.shared().map(|shared| shared.finishing.clone());
+        let counted = finishing.as_ref().map(|finishing| finishing.enter());
+        let own = Signal::default();
+        let run = work(own.clone());
+        let (request, shutdown) = (self.clone(), finishing.map(|f| f.signal().clone()));
+        let task = tokio::spawn(async move {
+            let _counted = counted;
+            // Passes on the request's abort, or shutdown's, then waits for `run` to end.
+            let forward = async {
+                let reason = match &shutdown {
+                    Some(shutdown) => tokio::select! {
+                        reason = request.aborted() => reason,
+                        reason = shutdown.aborted() => reason,
+                    },
+                    None => request.aborted().await,
+                };
+                own.abort(reason);
+                std::future::pending::<std::convert::Infallible>().await
+            };
+            tokio::select! {
+                biased;
+                out = run => out,
+                never = forward => match never {},
+            }
+        });
+        match task.await {
+            Ok(out) => out,
+            Err(error) => match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(_) => panic!("corten: Signal::finish's work was cancelled: the runtime is shutting down"),
+            },
+        }
     }
 
     /// Marks the request as read by who is asking, whose hash is `hash` (each caller type is

@@ -573,6 +573,8 @@ impl Asked {
 /// Everything a request needs from the app: the error page, where scripts live.
 pub(crate) struct Shared {
     pub error_page: Box<ErrorPage>,
+    /// The app's work that handlers finish ([`crate::Signal::finish`]).
+    pub finishing: Arc<crate::task::Finishing>,
     pub assets: Option<Arc<Assets>>,
     pub scripts_dir: String,
     /// The import map's JSON: the runtime, the app's typed events and views.
@@ -625,6 +627,7 @@ impl Shared {
         head_extra.hash(&mut hasher);
         Shared {
             error_page,
+            finishing: Arc::default(),
             assets,
             scripts_dir,
             import_map,
