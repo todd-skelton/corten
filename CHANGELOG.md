@@ -848,6 +848,13 @@ Corten is pre-1.0, so any minor version may change the API.
     `same-origin`, and a page under another opener policy has its own shell key, so a client
     navigation into or out of the area loads the document in full
     ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
+121. `req.nav_of([(NavTo::section(&url::Desk), "Seller Desk"), (NavTo::page(&url::Money), "Money"), ..])`
+    writes a whole nav's links, each with its item, and marks only the deepest entry that holds the page, for a nav whose entries nest or
+    come from data (an entry is a route or a `Local`, whose path is written as the browser asks
+    for it). Its links name their group (`data-nav-group`), and the runtime ranks the same links
+    after a client navigation wherever the markup puts them; a `req.nav` link is still judged
+    alone. `corten.js` grows 80 bytes gzip
+    ([#341 A nav built from data, or whose current entry is the deepest that holds the page, keeps the first page's aria-current after a client navigation](https://github.com/todd-skelton/corten/issues/341)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
