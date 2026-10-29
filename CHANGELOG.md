@@ -1761,6 +1761,20 @@ Corten is pre-1.0, so any minor version may change the API.
     compile. Reading a route with a four-parameter set costs 4,107 instructions, up from 3,669,
     the same as those parameters on the route itself (callgrind, release build)
     ([#310 A #[route(prefix)] field inside a #[route(query)] set is written into links but Params reads it back empty](https://github.com/todd-skelton/corten/issues/310)).
+66. card-market in French translated its headings but not its prices, ratings, conditions or
+    card details. Its item page and cards now write a price in US dollars as the reader's locale
+    writes money (`0,79 $US`), a seller's rating with the locale's decimal separator, and the
+    conditions and detail labels the catalog names (`Peu joué`, `Rareté`); a value the catalog
+    does not name is shown as the item API sent it. The page reads these from fields the JSON
+    leaves out (`#[serde(skip)]`: cents, a `Decimal` rating, a `Grade`, a `Detail`), so
+    `/api/items/{id}` still answers the benchmark's shared view model, and in English the page
+    reads as before (`parity.mjs`). The listing sort compares each row's `data-cents`, the
+    cents the server sorts by, where it compared a float that was `NaN` without a price, and the
+    scripts guide says when a `data-` attribute is the right tool rather than a view. The smoke
+    checks a price, a rating and a condition in French
+    ([#323 card-market in French translates its headings but not its prices, ratings or card details](https://github.com/todd-skelton/corten/issues/323),
+    [#329 card-market sorts listings by a data-price string instead of through the rows' views](https://github.com/todd-skelton/corten/issues/329)).
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

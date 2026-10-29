@@ -2,12 +2,13 @@
 // ListingSort (listing_sort.rs).
 
 /**
- * Flips the listings between cheapest and dearest first. The rule is sort_listings in src/model.rs.
+ * Flips the listings between cheapest and dearest first, by the cents each row carries (an integer,
+ * the largest for a listing without a price). The rule is sort_listings in src/model.rs.
  * @param {HTMLTableSectionElement} rows @param {HTMLSpanElement} ascending @param {HTMLSpanElement} descending
  */
 export function toggle(rows, ascending, descending) {
   const down = descending.hidden;
-  const sorted = Array.from(rows.rows).sort((a, b) => Number(a.dataset.price) - Number(b.dataset.price));
+  const sorted = Array.from(rows.rows).sort((a, b) => Number(a.dataset.cents) - Number(b.dataset.cents));
   if (down) sorted.reverse();
   rows.replaceChildren(...sorted);
   ascending.hidden = down;

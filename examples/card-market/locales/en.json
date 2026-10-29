@@ -23,6 +23,24 @@
     "qty": "Qty",
     "price": "Price"
   },
+  "listing": {
+    "rating": "{rating} ★ ({reviews})"
+  },
+  "grade": {
+    "near_mint": "Near Mint",
+    "lightly_played": "Lightly Played",
+    "moderately_played": "Moderately Played",
+    "heavily_played": "Heavily Played",
+    "damaged": "Damaged",
+    "sealed": "Sealed"
+  },
+  "detail": {
+    "set": "Set",
+    "number": "Card number",
+    "rarity": "Rarity",
+    "finish": "Finish",
+    "packs": "Packs"
+  },
   "alert": {
     "title": "Price alert",
     "email": "Email",

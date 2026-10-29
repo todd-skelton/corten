@@ -441,6 +441,10 @@ row.label }))`), sort those (text with an `Intl.Collator` for the page's `lang`)
 over a shared function rather than one handler taking the field's name as text: the markup's
 call is checked against the handler's name, while a JSDoc union of strings is any JSON value to
 the Rust compiler. `examples/seller-desk` sorts and filters its grid this way.
+Rows a script only puts in another order, and never writes or makes, need no view: the server
+writes the value each sorts by as a `data-` attribute (the number its own sort uses, such as a
+price in cents, never a cell's text), and the script compares those. `examples/card-market`'s
+listings sort this way, which keeps the views module off a page that needs nothing else from it.
 
 The parameter's type says whose rows it holds: `Holds<Row, HTMLTableSectionElement>` (or
 `Holds<Row, HTMLTemplateElement>` for the template). `tsc` then rejects `rows(body, Card)` and
