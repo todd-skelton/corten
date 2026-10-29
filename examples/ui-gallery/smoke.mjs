@@ -108,7 +108,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the eleven scripts load and connect", loaded === 11, `${loaded} script(s)`);
+  check("the twelve scripts load and connect", loaded === 12, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -484,6 +484,22 @@ async function run(browser) {
   await insecure.waitForFunction(() => document.querySelector("[data-scope=ui-combo-box] input")?.checkVisibility(), null, { timeout: 5000 }).catch(() => {});
   check("without the Clipboard API the button stays hidden", await insecure.locator("[data-scope=ui-copy-button]").isHidden());
   await insecure.context().close();
+  // PrintButton: shown once its script connects; a click opens the print dialog (counted here).
+  const printing = await (await browser.newContext()).newPage();
+  printing.on("pageerror", (e) => errors.push(e.message));
+  await printing.addInitScript(() => {
+    window.print = () => {
+      /** @type {any} */ (window).printed = (/** @type {any} */ (window).printed ?? 0) + 1;
+    };
+  });
+  await printing.goto(`${base}/`);
+  const printButton = printing.getByRole("button", { name: "Print label", exact: true });
+  await printButton.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  check("the print button shows once its script connects", await printButton.isVisible());
+  await printButton.click();
+  const printed = await printing.evaluate(() => /** @type {any} */ (window).printed ?? 0);
+  check("a click opens the print dialog once", printed === 1, String(printed));
+  await printing.context().close();
   // RelativeTime: the server wrote both times; the browser's clock (faked, from now) moves them.
   const timed = await (await browser.newContext()).newPage();
   const timedErrors = [];
@@ -588,4 +604,6 @@ async function run(browser) {
   check("no script: its link closes it", (await plainSheet.count()) === 0);
   await plain.goto(`${base}/`);
   check("no script: the SKU is on the page and the copy button is not", (await plain.locator("code", { hasText: "ASH-DRAKE-NM" }).isVisible()) && (await plain.locator("[data-scope=ui-copy-button]").isHidden()));
+  const plainPrint = plain.locator("button", { hasText: "Print label" });
+  check("no script: the print button is on the page, hidden", (await plainPrint.count()) === 1 && (await plainPrint.isHidden()));
 }
