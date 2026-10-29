@@ -87,7 +87,7 @@ cannot read who is asking. Never build the response by hand.
 
 ## Checkboxes and lists
 
-`Form` and `Query` read a key sent several times into a `Vec`. A `bool` or `Vec` field needs
+`Form` and a route's `Params` read a key sent several times into a `Vec`. A `bool` or `Vec` field needs
 `#[serde(default)]` (`#[derive(Fields)]` does not compile without it), because the browser sends
 nothing for an unchecked box:
 
@@ -105,8 +105,8 @@ Never join values into one field with commas in a script; give each box the name
 the form joins it with `form={ArchiveFormId}` (a `#[derive(Id)]` type). A required list is a
 validation message (`errors.add(f.ids, ..)` when empty), not a missing field; wrap the boxes in
 `corten_ui::CheckboxGroup` (`missing=".."`) so the browser says so before sending. A blank field is
-`None` for an `Option`. A typed route's `Vec` field writes `?condition=nm&condition=lp`, which
-`Query` reads back.
+`None` for an `Option`. A typed route's list field writes `?condition=nm&condition=lp`, which
+its `Params` reads back.
 
 ## Validation
 

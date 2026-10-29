@@ -17,7 +17,7 @@ use std::{borrow::Cow, fmt};
 
 use serde::de::{self, value::StrDeserializer, DeserializeSeed, Deserializer, IntoDeserializer, MapAccess, SeqAccess, Visitor};
 
-type Pair<'a> = (Cow<'a, str>, Cow<'a, str>);
+pub type Pair<'a> = (Cow<'a, str>, Cow<'a, str>);
 
 /// Why a form or query string did not read into its type: the field and what was wrong.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +47,68 @@ pub(crate) fn from_pairs<T: de::DeserializeOwned>(mut pairs: Vec<Pair<'_>>) -> R
     // Stable: the values of one key stay in the order they were sent.
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
     T::deserialize(Form(&pairs))
+}
+
+/// A query string's pairs sorted by key (the values of one key in the order sent), for
+/// [`field`], [`all`] and [`prefixed`]: what `Url` reads a route's query parameters from.
+pub fn sorted_pairs(query: &str) -> Vec<Pair<'_>> {
+    let mut pairs: Vec<Pair<'_>> = form_urlencoded::parse(query.as_bytes()).collect();
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    pairs
+}
+
+/// One field of a route's query, by its key, from [`sorted_pairs`]. A key that is missing is
+/// `None` for an `Option`, empty for a list, and `default` (`#[serde(default)]`) or an
+/// error for anything else, the way a link leaves those out.
+pub fn field<T: de::DeserializeOwned>(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> T>) -> Result<T, FormError> {
+    let start = pairs.partition_point(|(k, _)| k.as_ref() < key);
+    let end = start + pairs[start..].iter().take_while(|(k, _)| k == key).count();
+    match (&pairs[start..end], default) {
+        ([], Some(default)) => Ok(default()),
+        ([], None) => T::deserialize(Missing(key)),
+        (values, _) => T::deserialize(Values(values)).map_err(|e| FormError(format!("{key}: {e}"))),
+    }
+}
+
+/// A `#[route(query)]` field: the parameters it holds, read from all of the query.
+pub fn all<T: de::DeserializeOwned>(pairs: &[Pair<'_>]) -> Result<T, FormError> {
+    T::deserialize(Form(pairs))
+}
+
+/// A `#[route(prefix = "dim.")]` field's parameters: each whose key starts with `prefix`, the
+/// prefix taken off, in order.
+pub fn prefixed<'b>(pairs: &'b [Pair<'_>], prefix: &'b str) -> impl Iterator<Item = (&'b str, &'b str)> {
+    let start = pairs.partition_point(|(k, _)| k.as_ref() < prefix);
+    pairs[start..].iter().map_while(move |(k, v)| Some((k.strip_prefix(prefix)?, v.as_ref())))
+}
+
+/// One text read into `T` as a form field's value is.
+pub fn one<T: de::DeserializeOwned>(text: &str) -> Result<T, FormError> {
+    T::deserialize(Values(&[(Cow::Borrowed(""), Cow::Borrowed(text))]))
+}
+
+/// A key the query does not have: `None`, an empty list, or the error serde gives a missing field.
+struct Missing<'b>(&'b str);
+
+impl<'de> Deserializer<'de> for Missing<'_> {
+    type Error = FormError;
+
+    fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, FormError> {
+        Err(FormError(format!("missing field `{}`", self.0)))
+    }
+
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+        visitor.visit_none()
+    }
+
+    fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+        visitor.visit_seq(List([].iter()))
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
+        unit unit_struct newtype_struct tuple tuple_struct map struct enum identifier ignored_any
+    }
 }
 
 /// The whole form: a map from each key to its values.

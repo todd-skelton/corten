@@ -27,8 +27,8 @@
 //!     pub struct ItemPrice<'a> { pub id: &'a str }
 //! }
 //!
-//! async fn price(Path(id): Path<String>) -> Json<serde_json::Value> {
-//!     Json(serde_json::json!({ "id": id, "lowest": "$0.50" }))
+//! async fn price(item: Params<api::ItemPrice<'_>>) -> Json<serde_json::Value> {
+//!     Json(serde_json::json!({ "id": item.id, "lowest": "$0.50" }))
 //! }
 //!
 //! corten::serve(App::new(pages).api(|routes| api::api(routes).allow_origin("https://partner.example"))).await

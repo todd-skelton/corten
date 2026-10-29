@@ -13,10 +13,10 @@ pub mod url {
     }
 }
 
-async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
+async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
     // Any std::error::Error converts with `?` (a 500 and the error page). For a 404:
     // .ok_or_else(corten::Error::not_found)?
-    let item = load(&id).await?;
+    let item = load(&at.id).await?;
     let head = html! { <meta name="description" content={&item.summary}> };
     req.page(html! {
         <Layout req={&req} title={&item.title} head={head}>
@@ -30,7 +30,7 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
 1. Every route is a struct in the `#[corten::routes]` module that names its handlers,
    `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile);
    `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
-   `#[corten::routes(state = Db)]` and `url::router(db)`; for several parts, `#[derive(Clone, FromRef)] struct Shared { db: Db, market: Market }` and handlers take `State<Market>` (a hand-written `impl FromRef` only for a part computed from the state, not one that clones a field). Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`). An enum field (`pub tab: Option<Tab>`) derives `UrlValue` with `Deserialize`, never a hand-written `Display`: it writes the words serde reads.
+   `#[corten::routes(state = Db)]` and `url::router(db)`; for several parts, `#[derive(Clone, FromRef)] struct Shared { db: Db, market: Market }` and handlers take `State<Market>` (a hand-written `impl FromRef` only for a part computed from the state, not one that clones a field). Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`). A handler reads them back as the route's `Params<url::Item<'_>>` (the fields owned: `at.id` is a `String`); a handler of a route with a path parameter that does not take its own `Params` does not compile, so never read a route's path or query with axum's `Path` or `Query`, or declare a second struct for its query. `Params` refuses (at compile time) a route with a serde key links do not follow (`alias`, `flatten`, `skip`, `with`, a struct-level `default`) and a borrowed `#[route(query)]` set: keep those keys off route structs and make query sets owned. An enum field (`pub tab: Option<Tab>`) derives `UrlValue` with `Deserialize`, never a hand-written `Display`: it writes the words serde reads.
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
    answers `req.moved(&url::Item { id })`, a 301. A place on another site's page is
    `corten::Elsewhere::at(&uri, "id")`, never a `Location` header set by hand. An area's routes are a module of their own,
@@ -65,12 +65,12 @@ async fn show(req: Req, Path(id): Path<String>) -> HtmlResult {
 
 Routes that carry the same query parameters (a list's filters on its live, bulk and confirm
 routes) share one `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` as a
-`#[route(query)] filters: ItemQuery` field; handlers read `Query<ItemQuery>`. Never repeat the
+`#[route(query)] filters: ItemQuery` field; handlers read it as their route's `Params` field (`at.filters`). Never repeat the
 filter fields in each route. Parameters whose names are data (an option per dimension) are a
 `#[route(prefix = "dimension.")] dimensions: &BTreeMap<String, String>` field, never a query string
 built by hand. A parameter whose URL name is not the field's (`?priceMin=`) is renamed with serde
 (`#[serde(rename_all = "camelCase")]` or `#[serde(rename = "..")]`), which the link follows; never
-implement `Params` by hand for it.
+implement `QueryParams` by hand for it.
 
 ## A component
 
@@ -152,8 +152,8 @@ pub mod api {
     pub struct PriceApi<'a> { pub id: &'a str }
 }
 
-async fn price(Path(id): Path<String>) -> JsonResult<Price> {
-    let price = load(&id).await?.ok_or_else(|| Error::new(format!("no item {id}")).with_status(StatusCode::NOT_FOUND))?;
+async fn price(Params(at): Params<api::PriceApi<'_>>) -> JsonResult<Price> {
+    let price = load(&at.id).await?.ok_or_else(|| Error::new(format!("no item {}", at.id)).with_status(StatusCode::NOT_FOUND))?;
     Ok(Json(price))
 }
 
@@ -290,7 +290,7 @@ async fn home(req: Req) -> Public<HtmlResult> {
 }
 ```
 
-Its handler may only take inputs that cannot tell who is asking (`Path`, `Query`, `Form`,
+Its handler may only take inputs that cannot tell who is asking (`Params`, `Form`,
 `State`, `Req`, ...): a `Caller`, a `HeaderMap` or a cookie there does not compile, and neither does
 `with_cookie` on its page (the page is `HtmlResponse<ForAll>`; a helper that wraps one in `Public`
 takes `corten::Result<HtmlResponse<ForAll>>`). `App` still
