@@ -88,7 +88,7 @@ Corten is pre-1.0, so any minor version may change the API.
     the binary. `CONTRIBUTING.md` (Releasing) has the steps, including the first release.
 19. `.github/workflows/ci.yml` runs the checks in `CONTRIBUTING.md` on every pull request and
     push to `main`, plus `cargo publish --workspace --dry-run` and a build on Rust 1.88.
-20. List fields. `corten::Form` and `corten::Query` (in the prelude, replacing axum's) read a key
+20. List fields. `corten::Form` and a route's `Params` (Added 116) read a key
     sent several times into a `Vec` field, a checkbox's `on` into a `bool`, and a blank field into
     `None`; a scalar sent twice is a 422 (400 for a query) naming the field. `#[derive(Fields)]`
     rejects a `bool` or `Vec` field without `#[serde(default)]`, since a browser sends nothing for
@@ -261,9 +261,9 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#33 A page cannot tell whether a <corten-live> element is connected](https://github.com/todd-skelton/corten/issues/33)).
 38. Query sets: `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` declares parameters that
     several routes carry, and `#[route(query)] filters: ItemQuery` on a route's field writes each of
-    them as the route's own parameter (`corten::route::Params`). A list's filters are declared once
+    them as the route's own parameter (`corten::route::QueryParams`). A list's filters are declared once
     for its page, its live rows and its bulk routes, so a route cannot drop one, and making one
-    route's URL from another's copies one value. Handlers read `Query<ItemQuery>`. A
+    route's URL from another's copies one value. Handlers read it as their route's `Params` field. A
     `#[route(query)]` field of another type does not compile. Asked for by the Chase Sets pilot,
     whose 10 item filters were repeated on 5 routes by a `macro_rules!`
     ([#32 A route cannot share a set of query parameters with another route](https://github.com/todd-skelton/corten/issues/32)).
@@ -360,7 +360,7 @@ Corten is pre-1.0, so any minor version may change the API.
     parts a request needs: the title for a data client; the title, the page's head tags (expressions
     and components in `<head>`, marked `data-corten-head`) and `<main>`'s children for a client
     navigation. `<Corten />` is where Corten adds the runtime and the page's scripts and stylesheets.
-    `req.asset`, `req.has_asset`, `req.current`, `req.is_current`, `req.nonce` and `req.lang` are what
+    `req.asset`, `req.has_asset`, `req.nav`, `req.is_current`, `req.nonce` and `req.lang` are what
     a layout reads. On the item page (release, `render_cost`, eight alternating runs against the
     commit before, Windows) a full document is about 7% faster (median 57.5 to 53.8 us) and a
     navigation within noise (47.0 to 47.8 us; another eight runs gave 48.4 to 48.3), with the same
@@ -472,7 +472,7 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#98 #[derive(Fields)] refuses a struct with a lifetime, so a borrowed query struct cannot name its form's controls](https://github.com/todd-skelton/corten/issues/98),
     [#99 #[derive(Route)] reads #[serde(rename_all)] but does not declare it, so a link-only struct must derive a serde trait](https://github.com/todd-skelton/corten/issues/99)).
 68. `Route::at(id)`: a route with a place on its page, `/accounts/ada#review-7`, from the
-    element's `#[derive(Id)]` type, for `req.redirect`, `req.moved`, `req.current` and
+    element's `#[derive(Id)]` type, for `req.redirect`, `req.moved`, `req.is_current` and
     `href={..}`, so a redirect after a write brings the browser back to what the user acted on.
     Text does not compile. A client navigation sent to a place gets `corten-location` (`fetch`
     drops a redirect's fragment), and the runtime fetches the page again when the server sends it
@@ -508,9 +508,395 @@ Corten is pre-1.0, so any minor version may change the API.
 75. `ReadAgain { after }.from(&route)` in a patch: a `data-patch` write whose read is catching up
     answers in place, and the runtime reads the part again from `route` (`corten: action`) until
     it stops asking, instead of the handler waiting for the read or redirecting to a page only to
-    show "saving". The reads stop when the part is replaced or the page changes.
-    `examples/hello`'s saved page has a form that does it. The runtime is 8,829 B gzipped
+    show "saving". The reads stop when the part is replaced or the page changes, or when a read
+    fails without a patch (the error page, offline), quietly: a handler that cannot read says so
+    as a patch, which is applied whatever its status. `examples/hello`'s saved page has a form
+    that does it. The runtime is 8,834 B gzipped
     ([#104 A data-patch answer cannot ask to be read again, so a write whose read is catching up has to navigate](https://github.com/todd-skelton/corten/issues/104)).
+76. `App::task("refresh", |signal| async move { .. })`: work that lives as long as the app (a
+    refresh loop, a queue consumer, a supervised child), started by `corten::serve`. Its `Signal`
+    aborts with the new `Abort::Shutdown` when shutdown begins, and `serve` waits for it, up to
+    `App::shutdown_grace` (5 seconds unless set), before it returns; one still running then is
+    ended and logged by name, and so is one that panics. `App::router` starts none
+    ([#116 Work that lives as long as the app (a refresh loop, a supervised child) has no signal, so shutdown neither stops it nor waits for it](https://github.com/todd-skelton/corten/issues/116)).
+77. `#[derive(UrlValue)]` (in the prelude) on an enum of unit variants writes each variant as the
+    word serde reads for it (its `#[serde(rename_all)]` and `#[serde(rename)]`), so an enum in a
+    route's query or path needs no hand-written `Display` kept in step with serde. A variant with
+    fields, one serde does not read, or a serde attribute it does not follow is a compile error; a
+    test reads every word back through the query reader under each of serde's eight rules.
+    `#[serde(..)]` values passed in by a `macro_rules!` are read by `ToJson` and `FromJson` too
+    ([#129 A query value must be Display while it is read with serde, so an enum in an address spells its words twice](https://github.com/todd-skelton/corten/issues/129)).
+78. `Area::deadline(..)` and `Api::deadline(..)`: routes slower than pages (an upstream that
+    answers in minutes, a report, uploads) get a deadline of their own, or `None`, and every
+    other route keeps `App::deadline`. In nested areas the innermost that sets one decides. The
+    503 and `Abort::Deadline` are the same at every level
+    ([#114 App::deadline is one value for the whole app, so one slow route (an upstream call, an upload) lifts it for every page](https://github.com/todd-skelton/corten/issues/114)).
+79. `corten::serve_on(listeners, app)` serves an app on listeners of its own (anything that
+    implements `axum::serve::Listener`: HTTPS with the app's TLS library, a Unix socket, a socket
+    a supervisor hands over) with `serve`'s shutdown across all of them, and
+    `corten::listeners(3000)` binds the ones `serve` uses (`HOST`:`PORT`, the loopback pair without
+    `HOST`, the port given without `PORT`) for the app to wrap. `serve` is the two together, and
+    an app with another default port serves `listeners(8320)` without setting `PORT` itself. The app guide shows HTTPS on
+    loopback with `tokio-rustls`
+    ([#115 corten::serve takes no listener, so an app that needs TLS or its own socket loses the loopback pair, the stream drain and graceful shutdown](https://github.com/todd-skelton/corten/issues/115)).
+80. `corten::Elsewhere::at(&uri, "fee-calculator")`: a place on a page outside the app, which
+    `req.moved` and `req.redirect` take, so a redirect to another site keeps its `#fragment`
+    (an `axum::http::Uri` drops one it parses). The id is percent-encoded as the browser decodes
+    it; a path in place of a full URL is a debug-build panic, since a place on the app's own page
+    is `route.at(Id)`
+    ([#123 An address outside the app cannot carry a #fragment, so req.moved and req.redirect drop the anchor of an external URL](https://github.com/todd-skelton/corten/issues/123)).
+81. `t.percent(ratio, digits)` writes a ratio as a percentage in the locale (`2.9%`, `2,9 %`,
+    `%2,9`), with at most `digits` fraction digits, and `t.js().percent(digits)` gives a script
+    the same format (`@param {PercentFormat}`). The locale data carries each locale's percent
+    pattern and grouping from CLDR, checked against Intl's `style: "percent"` with
+    `maximumFractionDigits` on 40 values per locale (13 kept as the Rust and script tests' cases). The runtime grows by 99 bytes gzipped
+    ([#119 i18n writes no percentage, so a rate like 2.9% cannot be localized](https://github.com/todd-skelton/corten/issues/119)).
+82. `corten::ClientIp`: the visitor's IP address, for a handler that passes it to an API's
+    per-client limit or limits by it. It is the connection's peer, or behind proxies the app lists
+    (`Policy::proxy("10.0.0.0/8")`, `PROXIES`) the nearest `X-Forwarded-For` address that is not
+    one of them; nothing reads the header otherwise. A `Public` handler cannot take it, and an
+    answer that read it is private
+    ([#120 A handler cannot read the client's address, so an app that calls an API for a visitor cannot pass it on for rate limiting](https://github.com/todd-skelton/corten/issues/120)).
+83. `corten::form::Upload<T>` reads a form posted as `multipart/form-data`, which `Form` answers
+    with a 415. It gives the files one at a time as they arrive: `next_file()`, then
+    `chunk()` to pass a file on without holding it, or `bytes_up_to(max)` (`None` past `max`).
+    Then `fields()` reads the text fields into `T` by `Form`'s rules. A file input is a `Files`
+    field of the form struct, so markup, the files and `Errors` share its `FieldName`.
+    `upload.limit(bytes)` bounds the whole body (2 MiB unless set; 413 past it). Types, counts
+    and sizes per file are the handler's checks, reported as field errors. The parser is
+    Corten's own, with no new dependency
+    ([#140 A form cannot post a file: Form reads only URL-encoded bodies, so a multipart form is a 415 and nothing reads its files](https://github.com/todd-skelton/corten/issues/140)).
+84. `#[corten::routes(api = ApiRoot)]`: an API's routes in a module of their own, each naming its
+    handler as a page route does; the module gives `api(routes)` (`api(routes, state)` with
+    `state = ..`) for `.api(prices::api)`. Only the prefix's route names no handler; a route with
+    none, a route outside the prefix, or `area` and `api` together do not compile.
+    `examples/item-page` serves its JSON and MCP endpoints from such modules and `bench/live` its
+    publish route. The same JSON route costs the same either way: 21,913 instructions per request
+    added by hand, 21,836 from its module (callgrind, median of three; the app guide has the
+    ranges).
+85. `Caller<T>` dereferences to `T`: `viewer.as_deref()` is the `Option<&Viewer>` a layout takes,
+    without `viewer.map(|Caller(v)| v)`.
+86. `.area(admin::area)` and `.api(api::api)` infer the prefix from the module's function; the
+    `::<Admin>` turbofish is needed only for routes added by hand.
+87. `corten::upgrade::Upgrade`: a route that switches its connection, as a WebSocket
+    (`upgrade.websocket(run)`, the frames read by a library such as tokio-tungstenite) or a tunnel
+    relaying an upstream's 101 (`upgrade.switch(headers, run)`). It is checked like any route
+    (`Caller<T>`, the host check, the app's middleware), and its handshake as a write: another
+    site's page gets a 403. The work runs on its own `Signal`, aborted at shutdown. Requests that
+    do not switch run no new code (callgrind: 26,025,236 instructions for 1,200 requests in
+    process, against about 26,030,000 on main). `corten::Relay` passes another server's answer on:
+    its status, its headers less the hop-by-hop ones and its body as it arrives, never replaced by
+    the error page or the JSON error
+    ([#117 A route cannot be a WebSocket or pass an upstream response through](https://github.com/todd-skelton/corten/issues/117)).
+88. An area with no page at its prefix: its module's prefix route names no handler
+    (`#[route("/docs")] pub struct Docs;`) and is then only a `corten::Prefix`, with no `href`,
+    so no link to the unserved URL compiles. `Area` and `Api` take any `Prefix`, which every
+    `Route` is
+    ([#152 An area with no page at its prefix (/items, /sets) must declare the prefix as a link-only route outside its routes module](https://github.com/todd-skelton/corten/issues/152)).
+89. `Api::errors(|status, message| ..)`: the JSON every failure Corten answers under an API is
+    written as, a `ToJson` of the app's, for an API that speaks another protocol's error shape
+    (an Anthropic-compatible gateway). It covers unknown URLs, wrong methods, cross-site writes,
+    the deadline, extractor rejections, `Caller` refusals and handlers' errors, keeping their
+    headers; a handler's own JSON failure and a `Relay` pass through
+    ([#163 An API cannot shape the failures Corten answers itself (404, 405, cross-site 403, Caller 401), so a gateway that must answer in Anthropic's error shape checks keys outside Caller](https://github.com/todd-skelton/corten/issues/163)).
+90. `Option<Upgrade>`: `None` for a request that does not ask to switch, so one URL can be a
+    WebSocket and a page (or a gateway's relayed answer); the handler returns `SwitchOr<A>`,
+    whose failures are answered as `A`'s are. A request that asks is checked as `Upgrade`
+    checks it. Routes that do not take it run no new code.
+91. `corten::shutdown()`: the app begins the graceful shutdown a signal begins (tasks told, live
+    streams ended, listeners closed, requests in progress finished, the grace), from a route a
+    supervisor calls or a task. On Windows, `shutdown_signal` also ends on Ctrl-Break, the console
+    closing and system shutdown, not only Ctrl-C
+    ([#174 An app cannot begin its own graceful shutdown (a route, a task, a supervisor's request), and on Windows only Ctrl-C starts one](https://github.com/todd-skelton/corten/issues/174)).
+92. `App::client_zone()` and `Option<ClientZone>`: a handler knows the visitor's time zone (the
+    browser's IANA name, kept by the runtime in a `corten-zone` cookie from the first page it
+    loads), so a picked date becomes its instant where the user is with no script per form, and a
+    page writes times in their zone with the app's time zone library. `None` until the runtime has
+    run; a bare `ClientZone` and a `Public` handler taking it do not compile. That cookie alone does
+    not make a public page private. The runtime is 78 B larger (gzip)
+    ([#149 A handler cannot know the visitor's time zone, so a picked date needs a script to become an instant and every date is written in UTC](https://github.com/todd-skelton/corten/issues/149)).
+93. `Refused::message` and `Refused::too_many`: a `Caller` refusal tells a client that reads the
+    failure why ("Invalid API key", in the API's error shape) and can be a 429 with `Retry-After`
+    for too many failed attempts, so an API key check stays in `Identify`
+    ([#177 A Caller refusal cannot say why (Invalid API key) or be a 429 for too many failed attempts, so an API key check stays outside Caller](https://github.com/todd-skelton/corten/issues/177)).
+94. A `var(--x)` without a fallback in a listed stylesheet that no stylesheet on the same pages
+    declares (the token file, a component's, a `.css` file in the static directory, an area's for
+    its own pages) fails `App::router` and names the file and the property, so a misspelled
+    token is not a wrong color found in a browser. Checked at startup, about 0.25 ms for 21 KB of
+    CSS, since a component's stylesheet compiles without the theme
+    ([#179 A stylesheet can use a token the theme does not define (var(--color-primary-contrast)), and nothing reports it until a browser draws the wrong color](https://github.com/todd-skelton/corten/issues/179)).
+95. `Error::not_found()`: the 404 a handler answers for a record that is not there,
+    `load(id).await?.ok_or_else(Error::not_found)?`, in place of
+    `.ok_or_else(|| Error::status(StatusCode::NOT_FOUND))?` (or an app's own `fn not_found`).
+96. `HtmlResponse::with_cookie(SetCookie)`: an answer that sets a cookie,
+    `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`, in place of
+    `res.headers_mut().append(header::SET_COOKIE, cookie.header())`. The cookie is built by
+    `SetCookie`, so its safe flags are the default.
+97. `Req::patch_or(view, page)`: a `data-patch` form's answer both ways, the patch with JavaScript
+    and `page()` (the page or a redirect) otherwise, in place of
+    `if req.mode == Mode::Action { return req.patch(view); }`. Like `Req::invalid`, the page's
+    closure runs only without JavaScript, so a patch never loads what only the page shows.
+98. `corten::live_watch(values, since, cursor, view)`: a live stream of one value in a
+    `tokio::sync::watch` channel, from where the page is: nothing until the next change when it
+    shows the current version, the current value first when it is behind, then the latest after
+    each change. It replaces about ten lines of `mark_changed`, `unfold` and `Fragment`.
+99. `tokens!` gives each utility value a function named after its class: `mx_auto()` is `mx-auto`
+    and `gap_3()` is `gap-3`, in place of `mx(Mx::Auto)` and `gap(Space::_3)`. The utility's
+    function stays for a value chosen as the page renders and for one per breakpoint. Two that
+    would share a name (utility `border-b`, and `border`'s value `b`) are a compile error that
+    names both. The watchlist's home page renders in 1.1% fewer instructions (62,827 to 62,162).
+100. A component can take an element id as a prop of any id type (`fn ConfirmDialog<I: Id>(id: I)`)
+    and print it with `id={id}` or `commandfor={id}`: `Id` now requires `AttrValue` and `Render`,
+    which every `#[derive(Id)]` type has. seller-desk opens its archive dialog with
+    `command="show-modal"` and no script, sorts and filters its rows by the row view's fields
+    (one handler per column) instead of cell positions, writes its unsaved-prices note from the
+    catalog, names the prices' currency in their column, and right-aligns the statement's numbers.
+    A row is 7 bytes smaller (603 to 596 at 2,000 rows) and about 30 instructions dearer to render
+    (its name is now also a whole attribute value, the hole the sort reads).
+101. `SetCookie::try_new(name, value)` returns `Err(InvalidCookie::Name | Value)` for a character a
+    cookie cannot carry, where `new` panics: a token another service answered with no longer turns
+    a sign-in into a 500 the app did not choose. `new` keeps its panic for values the app makes
+    and calls the same rule
+    ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
+102. A return address from outside the code: `corten::Local::parse(text)` keeps a path on this
+     site only (one leading `/`, not `//` or `/\`, printable ASCII without `\`, so a control
+     character a browser drops cannot make it another host, no `.` or `..` segment, and no
+     percent-escaped letter, digit or `-._~` in the path, which Chromium would send unescaped), and
+     `req.redirect(&local)` takes it. `req.serves(&local)` says whether the route the router picks
+     for its path (the app's own or an area's, not an API's or Corten's) has a `GET` handler, so a
+     sign-in no longer checks a return address against a list of prefixes kept by hand. A `Route`
+     written by hand and given to `Area::route` must have a path of the shape `#[derive(Route)]`
+     writes (whole-segment parameters, plain text), or the app does not compile
+     ([#203 An app cannot ask whether it routes a path, so a sign-in's return address is checked against a hand-kept list of prefixes](https://github.com/todd-skelton/corten/issues/203)).
+103. `#[derive(FromRef)]`, in the prelude: each field of the app's shared state gets axum's
+    `FromRef`, so a handler takes `State<Market>` without a hand-written impl per part. Built on
+    `proc_macro` alone (axum's derive needs its `macros` feature); two fields of one type are a
+    compile error until one is `#[from_ref(skip)]`. The watchlist and card-market use it.
+104. `req.nav(&route)` and `req.nav_section(&route)`: a nav link from one mention of its route,
+    `<a {..req.nav(&url::News)}>"News"</a>`, writing `href`, `data-nav` and
+    `aria-current="page"` on its own page. The route's URL is made once, written and compared,
+    where `href={..}` and `aria-current={req.current(&..)}` made it twice; a tag that also writes
+    one of those attributes, or `data-nav` by hand, does not compile. The watchlist and
+    seller-desk use it.
+105. `t.parse_money(text, currency)`: money as a person types it in the reader's locale, read
+    back into `Minor` units, what `t.money` writes: `$1,299.50` is `Some(Minor(129950))` in
+    en and `1 299,50 $US` or `12,50` in fr, with or without the symbol, the code, the group
+    separators or the fraction (every amount every locale writes reads back, as it is written
+    and without its direction marks and no-break spaces). A sign, a group of the wrong size, a
+    grouped number that starts with `0` (`0,500`), another locale's decimal
+    separator, more fraction digits than the currency shows (`1.234` dollars, `1.5` yen) or an
+    amount over `u64` is `None`. The watchlist's and seller-desk's hand-written cent readers are
+    gone, and card-market's price alert no longer reads a float: `12,50` on the French page was
+    refused and `1e3` was a thousand dollars, and its confirmation is in the reader's locale
+    (`alert.set`)
+    ([#208 Money typed into a form is parsed by each app, three different ways, and card-market reads it as f64](https://github.com/todd-skelton/corten/issues/208)).
+106. A JSON answer with a status or a cookie of its own, and JSON the app already holds:
+    `Json(value).with_status(StatusCode::ACCEPTED)` and `.with_cookie(SetCookie)` make a
+    `JsonResponse` (the handler returns `Result<JsonResponse, JsonError>`), whose status and body
+    reach the client as written, a `503 {"error":..}` of the app's own included; and
+    `corten::json::Raw::new(bytes)` is JSON held as bytes (checked once to be one JSON value, an
+    `InvalidJson` error otherwise), which `Json(raw)` sends with no serialization or copy and
+    which a value `Json` writes copies in as it is. With `compress`, a `Raw` sent again is
+    compressed once (brotli 9 and gzip 9, on one background thread) and later reads
+    send those forms: on an 80 KB document, 15 ms once instead of 220 µs (zstd 1) to 2.1 ms
+    (brotli 2) on every read, and 5,000 bytes instead of 6,992. Apps no longer write their own
+    `Answer` for these. A held 80 KB document sent in its stored form costs about 24,100
+    instructions a request (callgrind), where one compressed on each read costs 1.41 million.
+    Every other answer reads `Accept-Encoding` once for both codings, as bytes, and costs what it
+    did: 22,357 to 22,252 instructions for a small JSON answer, 99,935 to 99,940 for an 80-row
+    one, 22,708 to 22,602 for text (two runs each against main)
+    ([#201 A JSON route cannot answer with a status other than 200 or send JSON it already holds as bytes, so each app writes its own Answer](https://github.com/todd-skelton/corten/issues/201),
+    [#234 A JSON answer cannot set a cookie the way an HTML answer can](https://github.com/todd-skelton/corten/issues/234)).
+107. A link to an element on the same page takes its `Id`: `href={FeedbackId.fragment()}` writes
+    `#feedback`, encoded as `route.at(..)` encodes another page's place, so a validation
+    summary's link and the field it names cannot drift apart. It is an attribute value
+    (`view::InPage`), not an address: `req.redirect` to it does not compile, and neither does
+    text in place of the id. Nothing `html!` writes changed
+    ([#254 A link to an element on the same page cannot take an Id, so each app writes its #fragment by hand](https://github.com/todd-skelton/corten/issues/254)).
+108. `corten_ui::dialog::modalClosedBy(target, close, signal)`: a dialog the address opens
+    (`?selected=it_1`) is made modal as `dialog::modal` makes one, and a close request on it
+    (Escape, Android's Back) goes to its close link's address (a ref; a button there does not
+    compile) without a new history entry, back when the entry before is the list, so a reload or
+    a redraw no longer opens what the user closed and Back cannot loop through it. A
+    `cancel` from inside it (a file input's picker) is left alone, and without a script nothing
+    changes. ui-gallery's last-sale sheet is tested in Chromium, Firefox and WebKit. Apps' own
+    `cancel` scripts can go
+    ([#257 corten-ui's dialog::modal closes a dialog the address opened without following its close link, so Escape leaves ?selected= behind](https://github.com/todd-skelton/corten/issues/257)).
+109. `corten::Media`: bytes the app holds, sent as a media type the app names
+    (`Media::new("image/png", bytes)`; the type is one the app names, read from the bytes, and
+    is never the one a client sent with an upload). `Public::immutable(media)` is for a URL that
+    names its content: every cache keeps it for a year, cookies or not, as Corten's versioned
+    files are. It takes bytes only (a page or JSON changes with the deploy, so it does not
+    compile), and its handler is held to `Public`'s rule, so one that could tell who is asking
+    does not compile. Before it, a route could serve bytes it held only as an axum `Response`,
+    which a route cannot name.
+110. `corten_ui::CopyButton`: a button that copies an element's text (an order number, an API
+    key's one-time secret; a read-only field's value). The element is named by its
+    `#[derive(Id)]` id (`<code id={SecretId}>`, `<CopyButton text={SecretId} label={..}
+    copied={..} />`), so the text is on the page once and a button in a list copies its own row's;
+    text in its place does not compile. The button is drawn `hidden` and shown where the browser
+    has the Clipboard API (a secure origin); after a write it reads the app's `copied` for two
+    seconds in a polite live region, and nothing to copy or a failed write changes nothing. Tested
+    in ui-gallery in Chromium, Firefox and WebKit: a copy (the clipboard's contents in Chromium,
+    which lets a test read it), a denied write, no Clipboard API, and no script. Apps' own copy scripts can go
+    ([#244 corten-ui has no copy-to-clipboard control, so each app ships its own script for Copy](https://github.com/todd-skelton/corten/issues/244)).
+111. `corten::serve_wrapped(listeners, move |tcp| acceptor.accept(tcp), app)`: `serve_on` with a
+    step of the app's own on each connection before HTTP, a TLS handshake. The step runs in the
+    connection's own task, counts against `App::max_connections` from before the TCP accept, and
+    is closed at `App::header_timeout` when the client stalls before or after it; shutdown ends
+    the steps in progress. Before, an app serving HTTPS ran the handshake in a listener of its own
+    (the guide's 45 lines), outside both limits, so clients that never sent a ClientHello held
+    sockets and tasks with no cap. The library and its configuration (ALPN `http/1.1`) stay the
+    app's; the guide's example is four lines. Checked with rustls: HTTPS answers, ALPN is
+    `http/1.1`, and a client that sends nothing is closed at the header timeout. A plain
+    connection costs about 340 instructions more to open: 27,528-27,543 to 27,841-27,910 for a
+    connection with one request, client included (callgrind, in process, three runs each).
+    Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
+    ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
+112. `Area::policy(|p| p.script_src(..).frame_src(..))`: an area's pages add to the app's
+    Content-Security-Policy, so a payment provider's scripts and frames, or style attributes for
+    sizes drawn from data, are allowed on the pages that need them and not on every other page.
+    It only adds (`security::Sources`), nested areas add up, and each area's header is built
+    once at startup. A client navigation into or out of such an area loads the page in full, since
+    a document keeps the policy it loaded with; an area that adds only what the app has keeps the
+    app's. A request finds its area's policy once, by path, and only when some area adds to the
+    policy. Per request (callgrind, in process, 1,000 requests, median of three runs, range in
+    parentheses), a page outside the area went from 19,695 (18,936-19,698) to 19,095
+    (19,095-19,407) with no area policy and 19,122 (19,020-19,728) with one, and a page in the
+    area from 19,792 (19,786-20,696) to 20,042 (20,018-20,042), and 20,511 (20,083-20,733) under
+    its policy. The same build moves by up to 760 between runs, so only the last, about 500 to
+    700 more for a page under an area's policy, may be more than noise
+    ([#275 A policy is the whole app's, so the origins one page's payment SDK needs are allowed on every page](https://github.com/todd-skelton/corten/issues/275),
+    [#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
+113. `corten_ui::Copied` (`ui-copied` in the page): `CopyButton` dispatches it after a write the
+    browser made, and only then, so an ancestor counts a copy (a referral link's, a share link's)
+    with `on:Copied={js::counted(event)}` instead of keeping a copy script of its own. It bubbles
+    and carries nothing, since the text may be a secret. ui-gallery counts its SKU's
+    copies: one for a copy, none for a denied write. `copy_button.js` is 2,457 bytes, 904 with
+    brotli (was 2,223 and 844), and a page with the button fetches `events.js` with it, preloaded
+    beside the script so it adds a request but no round trip (276 bytes, 176 with brotli, in
+    ui-gallery)
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
+114. A time relative to now: `t.relative(at, now, RelativeStyle)` writes "in 10 hours" or "3 hr.
+    ago" in the request's locale (each locale's plural forms and words from CLDR, checked against
+    Intl), and `corten_ui::RelativeTime` keeps it current in the browser on one timer for the
+    page, so a live stream no longer redraws every second or resends its part each minute to move
+    a countdown. Each locale an app lists adds about 2.3 KB of pointers and 0.4 to 3 KB of text;
+    the script is 1.8 KB brotli (5.3 KB as written; component scripts are not minified), on pages
+    that use it
+    ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
+115. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
+    `Json`, `Media`, a page), named by a type (`corten::answer::Header`; Corten names
+    `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
+    and shared as it would be without it. Before, a shared file that had to stay out of search was
+    a `Relay`, never compressed (Chase Sets' developer manifest: 161,815 bytes against 19,737 with
+    brotli), or an answer type of the app's own. `set-cookie`, the headers Corten sets itself
+    (caching, a CDN's `*-cache-control`, CORS, security), those the answer has (`content-type`,
+    `location`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
+    18,404-18,417 to 18,434-18,459 for a public text answer (callgrind, in process, 1,000
+    requests, three runs each); the headers are held behind an `Option<Box<..>>`, since a `Vec`
+    in place cost about 50 (18,450-18,467)
+    ([#287 A Public answer that is not a page cannot take a header of the app's, so a noindex file is an uncompressed Relay or the app's own answer type](https://github.com/todd-skelton/corten/issues/287)).
+116. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
+     It has the struct's fields, owned (a `&'a str` or `Cow<'a, str>` is a `String`, a `&'a [T]` a
+     `Vec<T>`, any other `&'a T` a `T`; a link's field still needs only `Display`), read
+     the way a link writes them: a path parameter percent-decoded, a query parameter by the name
+     serde reads (`rename`, `rename_all`; `None`, empty or the field's `#[serde(default)]` when the
+     link leaves it out), a `#[route(query)]` set from the whole query, a `#[route(prefix = ..)]`
+     map from its prefixed keys. A request whose parameters do not fit is a 400
+     (`ParamsRejection`). A route with a serde key links do not follow (`alias`, `flatten`,
+     `skip`, `with`, `default` on the struct and the like) or a borrowed `#[route(query)]` set
+     still writes links, but taking its `Params` does not compile. In a
+     `#[corten::routes]` module, a handler of a route with a parameter in its path that does not
+     take its own `Params` (one that reads the path with axum's `Path`, or another route's
+     `Params`) does not compile (`compile_fail` doctests). On the request path it costs what
+     `Path<String>` did: the item page 82,041 to 81,975 instructions per request (the mean of three
+     runs on main, which spread over 425, and two here) and its JSON 57,687 to 57,680 (callgrind,
+     release, the benchmark fixture) ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
+117. `corten_ui::CheckboxGroup`: checkboxes of one name of which at least one must be checked
+    (`<CheckboxGroup legend=".." missing="Choose where you ship.">`). While none is, its script
+    keeps the first enabled box invalid with the app's message, so the browser stops the submit and says so
+    at the group, as for a required text field; HTML's `required` on a checkbox means that one box.
+    Without the script the form is sent and the handler refuses it, as before. 914 bytes, 379
+    with brotli, on the pages that use it
+    ([#272 A group of checkboxes cannot require one to be checked without a script, so a form that needs a choice is sent with none](https://github.com/todd-skelton/corten/issues/272)).
+118. `corten_ui::RequiredWhen`: fields required only for some values of another field (a refund
+    amount for a partial refund), `<RequiredWhen control={f.kind} values={&["partial"]}>`. The
+    control is a `FieldName`, so a misspelled one does not compile, and its values are a
+    `string[]` parameter, which a handler call now checks and fills from a slice, an array or a
+    `Vec` of strings in every build (before, only as an unchecked JSON value with feature `json`). While the control has one of
+    the values every field in the set is `required`; for any other the set is disabled, so it is
+    neither checked nor sent; an app hides it with `:has` on the control, which holds before the
+    script runs. Without the script the
+    fields are optional and the handler checks the rule. 1,906 bytes, 678 with brotli, on the
+    pages that use it. ui-gallery's listing shows both (where it ships, and the lowest offer when it
+    takes offers), and its handler refuses what the browser would have stopped
+    ([#269 A field required only for one choice of another field needs a script, so the browser cannot check it before the form is sent](https://github.com/todd-skelton/corten/issues/269)).
+119. corten-ui's `PrintButton` opens the browser's print dialog. It is drawn hidden and its script
+    shows it, so without a script there is no button that does nothing, and the browser's Print
+    command still prints the page. Its script is 736 bytes (too small to compress), on the pages
+    that use it. The styles guide's new Printing section covers paper sizes: named `@page` rules
+    in a component's own stylesheet, scoped `@media print` rules, and layout chrome that hides
+    itself. **Breaking:** in a component's stylesheet an `@page` with no name (which sets every
+    page the app prints) does not compile, and a page's name starts with the component's
+    (`@page packing-slip-thermal`), so two components cannot set one page
+    ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
+120. An area can loosen `Cross-Origin-Opener-Policy` for its pages only: `Sources::allow_popups()`
+    (`same-origin-allow-popups`) and `Sources::allow_cross_origin_opener()` (`unsafe-none`, which
+    Stripe's Connect embedded components need for their sign-in popup), and
+    `Policy::allow_cross_origin_opener()` for the whole app. The rest of the app keeps
+    `same-origin`, and a page under another opener policy has its own shell key, so a client
+    navigation into or out of the area loads the document in full
+    ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
+121. `req.nav_of([(NavTo::section(&url::Desk), "Seller Desk"), (NavTo::page(&url::Money), "Money"), ..])`
+    writes a whole nav's links, each with its item, and marks only the deepest entry that holds the page, for a nav whose entries nest or
+    come from data (an entry is a route or a `Local`, whose path is written as the browser asks
+    for it). Its links name their group (`data-nav-group`), and the runtime ranks the same links
+    after a client navigation wherever the markup puts them; a `req.nav` link is still judged
+    alone. `corten.js` grows 80 bytes gzip
+    ([#341 A nav built from data, or whose current entry is the deepest that holds the page, keeps the first page's aria-current after a client navigation](https://github.com/todd-skelton/corten/issues/341)).
+122. `ReadAgain { after }.without_javascript()` asks only a browser without JavaScript to read the
+    page again: for a page whose changing part a `<corten-live>` relays while a job runs, which
+    with JavaScript keeps itself fresh, and which reading whole would only make open its stream
+    again. It writes the `<noscript>` refresh without the mark the runtime reads; the runtime
+    is unchanged
+    ([#319 A page relayed by <corten-live> cannot ask a browser without JavaScript to read it again](https://github.com/todd-skelton/corten/issues/319)).
+123. A script that imports another script module of its directory (`import { loadStripe } from
+     "./stripe.js"`) has it preloaded on the pages that load it, with what that one imports, so the
+     browser fetches them together instead of one round trip after the other. The tag is made
+     when the app starts, so a page costs nothing more to render: one import over a 100 ms
+     round trip ran at 245 ms instead of 342 (Chromium, median of 10 cold loads, a local server
+     delaying each answer 100 ms). An import of a module the app does not list is a startup
+     error that names both (it was a 404 in the browser). The preload helps a full page load; a
+     client navigation still fetches a new module's imports after it. The scripts guide describes
+     relative imports
+     ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
+124. Middleware for part of the app: `Area::middleware` and `Api::middleware` run after the
+     app's middleware for each request at the area's or API's prefix (an outer area's before an
+     inner one's, then an API's under it, each in the order given), so a rate limit picks its
+     routes by where they are, never by a path the middleware compares. A middleware refuses with
+     a `Refused` (`Refused::too_many(wait).into_response()`), answered in the request's mode as a
+     `Caller`'s refusal is, `Retry-After` included, and the default error page says "Too many
+     requests" for a 429. It reads the client's address with `ClientIp::of(&mut req)` without
+     splitting the request. card-market's write limit is now on its item pages' area and its
+     partner API, with no path checks
+     ([#327 Middleware is app-wide only, so card-market's write limit picks its routes by comparing paths and builds its 429 by hand](https://github.com/todd-skelton/corten/issues/327)).
+     Measured per request (callgrind, release profile, 5 runs): an app whose areas and APIs have
+     none runs 19,976 to 19,988 instructions against main's 19,696, all of it in glibc's
+     allocator: the allocations are the same (count and sizes, DHAT) and Corten's own code is
+     within 18 (13,971 against 13,953). A request in an area with a pass-through middleware runs
+     21,374 to 21,511 against 20,497 to 20,646 with none (one boxed future), and one outside it
+     19,909 to 19,913.
+125. `t.change(ratio, digits)` and `t.js().change(digits)`: a ratio as a change (a price's move
+    today), with exactly `digits` fraction digits and a sign on a gain as on a loss, none on what
+    rounds to zero (`+0.60%`, `-0.30%`, `0.00%`; `+0,60 %` in fr, `+%0,60` in tr), as Intl's
+    `signDisplay: "exceptZero"` writes it, so a column of them lines up. Each locale's data gains
+    the template for a gain; the script's format is a `PercentFormat` with that third template,
+    and `scripts/format.mjs` checks it on the same cases as the server (Intl wrote them). watchlist's
+    Today column uses it. `change`, `percent`, `parse_money` and `relative` join the message keys
+    `messages!` refuses at the top level, since they are its methods (`button.change` is fine)
+    ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
+
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
@@ -536,6 +922,19 @@ Corten is pre-1.0, so any minor version may change the API.
    page)`; build routes in a `#[corten::routes]` module instead of an axum `Router`. A layer on
    one route's method router has no replacement: a route's needs are its handler's extractors
    and answer, and the app's own steps are `Middleware`.
+7. `Result` from the prelude, and `corten::Result`'s default `Response`: a handler answers with
+   `HtmlResult`, `JsonResult<T>` or another answer, and `corten::Result<T>` (`Result<T,
+   corten::Error>`) is for helpers. A bare `corten::Result` names no answer and does not compile.
+8. The `link` keyword of `#[route]` in a routes module: a route an API serves goes in the API's
+   own `#[corten::routes(api = ..)]` module, with its handler.
+9. `Req::current`: `req.nav(&route)` writes the whole nav link, and `req.is_current` answers
+   the question elsewhere.
+10. `STATIC_DIR`, the default `static/` read from the working directory, `App::assets(dir)`,
+    `Req::has_asset`, and `Assets::load`, `Assets::build` and `Assets::url` from the public API:
+    static files are compiled in (Changed 73).
+11. `corten::Query`, and axum's `Path` from the prelude: a route's parameters are its `Params`,
+    whether its handler is named in a routes module or added by hand (`Area::route`), and a
+    `GET` form's fields its `Form` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
 
 ### Changed
 
@@ -788,6 +1187,236 @@ Corten is pre-1.0, so any minor version may change the API.
     `agent::Tools::route` returns `Methods`, for `Api::route`.
 49. Reading a `Caller` makes the answer private even when its `Cache-Control` was written by
     hand (by a middleware, or on an `HtmlResponse`), not only when it came from `Public`.
+50. **Breaking:** an app answers only requests whose `Host` is `localhost` (or a name under it),
+    an IP address, missing, or a name it lists: `Policy::host("shop.example")` (`.shop.example`
+    for its subdomains too) or `HOSTS=shop.example` where the deploy sets `HOST` and `PORT`. Any
+    other gets `421 Misdirected Request` before routing, with nothing of the app run, so a
+    DNS-rebound page cannot use an app on loopback (or a private network) as its own origin;
+    `Policy::any_host()` (`HOSTS=*`) answers every name. The first refused name is logged. A
+    deployed app behind a domain adds its names; the bench scripts pass their container names
+    ([#113 An app on loopback answers any Host, so a DNS-rebound page can read and write its routes](https://github.com/todd-skelton/corten/issues/113)).
+51. **Breaking:** `corten::serve` takes an `App`, not anything that becomes a router, so the
+    app's tasks cannot be left behind on the way. A tower layer around the whole app is
+    `App::layer(l)` instead of `corten::serve(app.router().layer(l))`.
+52. A request carries the app's shared state in its `Signal` rather than as an extension of its
+    own, so its extensions fit their first allocation: 207 fewer instructions for a page, 647 for
+    a signed-in page and 849 for the error page (callgrind, release build, in-process `oneshot`,
+    median of three).
+53. CI runs the browser smoke tests in Playwright's image for the `@playwright/test` version in
+    `package.json`, which has the three browsers and their system libraries. Installing them on
+    the runner (`npx playwright install --with-deps`) fetched about a hundred packages from the
+    Ubuntu mirror on every run, and stalled until it was cancelled when the mirror slowed to a few
+    KB/s (twice on 2026-10-27, 15 and 5 minutes).
+54. `bench/fullstack` measures what a request costs: `run-ssr.mjs` reads each phase's CPU time from
+    the container's cgroup counter (`cpu-time.mjs`), and `summarize.mjs` adds requests per
+    CPU-second, requests a second per MiB and the item API's CPU to `summary.json`. With items in
+    memory the load generator also gets the item API's idle cores: in r6 four could not keep
+    Corten's core busy (93% for the page, 88% for the JSON).
+55. `bench/fullstack/item-api/server.mjs` runs a server process per core it may use (two on a
+    bench droplet), each listening with `SO_REUSEPORT`. In r6 its one process used 39-40% of a core
+    for Corten's item-API runs and would have capped an app about 2.6x faster
+    ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+    On Docker Desktop (shared with other work, so rough), pinned to two cores, it served
+    4,400-6,600 items a second to 64 users in three runs against 3,600-4,000 in two with one
+    process, using about 1.9 cores. Responses are byte for byte the same.
+56. `JsonResult<T>`'s error is `JsonError`: `check(&input)?` answers 422 with the fields
+    (`{"error":{..,"fields":{..}}}`), and `?` on any other error is answered as before. Before,
+    a JSON handler that checked its input and loaded a record could not `?` both, and the
+    `Result<Json<T>, Errors>` the docs named did not compile. On a page `?` on `Errors` still
+    does not compile (a `compile_fail` doctest): a page's form answers with `req.invalid`.
+    Migration: `return Err(Error::status(..))` in a `JsonResult` handler is `Err(Error::status(..))?`
+    (or `.into()`); `?` is unchanged.
+57. The runtime no longer carries the code that writes numbers, money and dates for a script
+    (`t.js().money(USD)` and the rest): it is a module of its own, `corten-format`, served with the
+    app's scripts and loaded as a module script by the pages whose handlers take a format.
+    `corten.js` went from 24,514 to 22,834 B (9,102 to 8,380 B gzip, -722 B) on every page; a page
+    that takes a format loads the 2,074 B module (1,054 B gzip) with its handlers' modules
+    ([#159 The item page's JavaScript grew 32% between benchmark rounds r5 and r6 (7.3 to 9.6 KB gzip)](https://github.com/todd-skelton/corten/issues/159)).
+58. `corten::json::from_slice` reads the item API's response in 13% fewer instructions: a field
+    the type does not declare that holds a string, number, `true`, `false` or `null` (most of
+    them) is skipped without the loop that follows nested arrays and objects, and a key is read
+    inline. `examples/card-market`'s `ApiItem`, 20 fixture items averaging 69 KB, release build
+    under callgrind: 924,942 to 803,111 instructions an item, the same in each run (serde_json
+    reading the same type: 1,376,422). Values and errors are unchanged; the reader's tests compare
+    every one with serde_json's
+    ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+59. corten-ui's text props take the text: `label="Actions"`, `close="Dismiss"`,
+    `MenuItem { label: "Help", .. }`, `Tab { label: "Offers", .. }` and
+    `Toast { message: Some(text) }`, where each was a `&dyn Render` written `&"Actions"` (and an
+    optional message cast `as &dyn Render`). `MenuButton`, `MenuItem`, `Tab`, `TabGroup`,
+    `Toaster` and `Toast` take any `Render`; a menu's items and a group's tabs share one label
+    type. A tab's panel stays a `&dyn Render`, since each panel is a view of its own type.
+    ui-gallery's page renders in the same instructions (callgrind, release: 72,700 to 72,511 a
+    request, within noise). Migration: drop the `&` from a label; an empty toast is
+    `Toast { message: None::<&str> }`; labels of different types in one menu or group (a message
+    with arguments beside one without) are each a reference, `[Tab<&dyn Render>; 2]`
+    ([#211 A text prop typed &dyn Render needs &"text", and an optional one needs an `as &dyn Render` cast](https://github.com/todd-skelton/corten/issues/211)).
+60. examples/watchlist is a module a screen: `home.rs`, `alerts.rs` and `account.rs` beside
+    `news.rs`, with `layout.rs` for the document, `socket.rs` for the WebSocket and each screen's tests next to
+    it; `app.rs` keeps the routes, the app and the error page, and its route table says which file
+    each route is in. No behavior changed: the same 27 tests pass
+    ([#229 watchlist's app.rs is 771 lines of app code for seven screens](https://github.com/todd-skelton/corten/issues/229)).
+61. A message's arguments are `corten::i18n::Arg`, not any `Display`: text, an integer, or a value
+    `t` formats (`t.number`, `t.money`, `t.date`, another message). An integer is written from
+    its digits with no `core::fmt` and no escaping, so card-market's item-API home page (50
+    `t.home_item(n)` links) went from 64,425 to 58,505 instructions a request (callgrind,
+    release, three runs each), winning back most of what message arguments cost there; the en
+    and fr home pages and a category page are the same bytes. A float no longer compiles as an
+    argument: its text was the same in every locale (`0.9` on a French page), where
+    `t.number(decimal)` writes `0,9`. A type of the app's own implements `Arg` with one method
+    (`sink.str(..)`). Migration: pass a float through `t.number`, and a `Display` type of the
+    app's own as its text or through an `Arg` impl
+    ([#237 The item API's home page got 10% slower in the believable-data change; an integer fast path for message arguments may win it back](https://github.com/todd-skelton/corten/issues/237)).
+62. A `Public` answer that sets a cookie does not compile: `HtmlResponse<For>` says who an answer
+    is for, `ForOne` (the default, what `HtmlResult` holds) or `ForAll` (inside `Public`), and
+    `with_cookie` is only on `ForOne`. The `Req` methods that make a page, a patch or a redirect
+    take `For` from where the answer goes (the handler's return type, Corten's `get`, or
+    `Public::new`, which finds the `Public`'s type from its answer), so handlers and closures are
+    written as before. Before, the cookie compiled and the page was sent `private, no-cache`,
+    which a CDN never keeps, with a warning only under `corten dev`; a `Set-Cookie` written by
+    hand is still caught that way. No code runs differently (`For` is a type alone; card-market's
+    public home page: 33,741 to 33,881 instructions a request, callgrind medians of three, where
+    main's own runs spread from 33,701 to 33,933).
+    Migration: a helper that makes a page for a `Public` handler returns
+    `corten::Result<HtmlResponse<For>>` for any `For` instead of `HtmlResult` (`Public::new`
+    says the page "is not an answer made for everyone"); one that wraps a page in `Public` takes
+    `corten::Result<HtmlResponse<ForAll>>`, as card-market's `shared` does; a closure given to
+    axum's own `get` (tests only: an app cannot mount one) names it, `req.page::<ForOne>(..)`;
+    `Public<A>` needs `A: Shareable`, which every answer that can be public implements, and an
+    answer type of the app's own implements only when it sets no cookie
+    ([#235 A Public answer that sets a cookie compiles, and is only made private when it is sent](https://github.com/todd-skelton/corten/issues/235)).
+63. A script keeps state with `keep(() => init)` (from `corten`), which replaces `state(el,
+    init)`: the object of the component whose script the running handler is in, one per
+    instance, so a handler no longer takes the component's root just to find its state. A
+    component whose script imports `keep` is always scoped (`data-scope` on its root, with or
+    without refs), and such a component's handler on a child's element names its component
+    (`data-on="change:form.save($t)/form"`), so it keeps the parent's state wherever the child
+    renders it; markup a parent gives a child keeps the parent's handlers' `scope` too. A
+    `script!` module, which components share, cannot import `keep` (a compile error).
+    seller-desk's grid handlers lose their `scope` argument (six of them), watchlist's `pause`
+    too, and corten-ui's menu button and number field keep theirs per component. Take the object
+    first, before an `await` or anything that dispatches an event; outside a handler it throws.
+    The runtime is 90 bytes larger gzipped (8,503 to 8,593; brotli 7,663 to 7,742);
+    card-market's item page renders as before (58,644 to 58,654 instructions, callgrind).
+    Migration: `state(scope, () => init)` is `keep(() => init)`, and a `scope` argument used only
+    for it is dropped from the handler and its markup
+    ([#238 Runtime state is keyed by an element the handler has to pass: state(root, init)](https://github.com/todd-skelton/corten/issues/238)).
+64. examples/watchlist keeps the alerts a browser saves and lists them, each with a Remove
+    button. They live in a store whose reads catch up with its writes 1.5 s later, as a replica
+    would: a write answers with its receipt (`/alerts?saved=7`), and the page or the patched
+    status line and list are read again (`ReadAgain`) until reads have it. Before, the address
+    carried the time the alert would land and nothing was kept. A browser's watchlist and alerts
+    are kept under one id, now in the `visitor` cookie (`visitor.rs`), which was `list`, and both
+    forget the browser used longest ago past 10,000 (`recent.rs`)
+    ([#220 watchlist's alerts page never shows the alerts you saved](https://github.com/todd-skelton/corten/issues/220)).
+65. `corten-cluster`'s `Cluster::snapshot`, `live` and `live_with` return
+    `corten::Result<FeedResponse>`, an answer a Corten route names, instead of an axum
+    `Response`: an unknown feed is a 404 and Postgres out of reach a 503, both answered as JSON as
+    any failure of a feed's route is. The crate depends on `corten` (feature `feed`) instead of
+    axum and `corten-feed`. Migration: a handler that returned the `Response` names
+    `corten::Result<FeedResponse>`; outside a Corten app, call `.into_response()` on it.
+    `examples/listings-feed` is an `App`: the feed in a routes module, the benchmark's
+    writes and reads under `App::api` (`/api/feeds/{seller}/market`, `/seq`, `/api/stats`),
+    the instance's name from a middleware (`X-Instance`), Corten's health checks (`/health/ready`
+    checks Postgres), and the browser probe a page whose `#[component(js)]` follows the feed
+    (`/sellers/{seller}`, a 404 for a seller with no feed), where an inline script would be
+    refused by the CSP. The failover benchmark ran again on it (`results/failover-r2.json`)
+    ([#217 examples/listings-feed does not use App, so its routes skip Corten's compile-time checks](https://github.com/todd-skelton/corten/issues/217),
+    [#233 listings-feed's failover benchmark has not been run since the example was renamed](https://github.com/todd-skelton/corten/issues/233)).
+66. examples/watchlist keeps the profile picture Ada uploads and shows it on the account page and
+    in the header, from `/pictures/{id}`: an id that is a keyed hash of the bytes, served as a
+    `Media` every cache keeps. The upload reads the picture's type from its first bytes (PNG,
+    JPEG, GIF or WebP), refuses anything else, keeps at most 256 pictures in memory, and needs
+    someone signed in. The file input is styled like the page's buttons
+    ([#221 watchlist's profile picture upload never shows the picture](https://github.com/todd-skelton/corten/issues/221)).
+67. watchlist's WebSocket is `/quotes`, which a ticker outside the browser opens to follow
+    stocks: it sends a ticker and is sent the stock's feed row, then again each time it trades.
+    It replaces `/echo`, which answered in capitals and which nothing used. A message longer than a
+    ticker closes the socket as too big (1009), a client's close is answered, a send the client
+    does not take within 10 seconds ends the socket, and shutdown still closes it with a goodbye
+    ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
+68. seller-desk sells card-market's cards: its rows are the three sets' 540 cards, card-market's
+    eleven singles first at the cheapest Near Mint price card-market lists them for (a test
+    reads its fixture), the rest priced by rarity. Most start in Near Mint and some played; past
+    540 rows each card comes again in its next condition at that condition's share of the price.
+    A seller keeps a few copies of a dear card and many of a common, and restocks to that.
+    Names are cards' names (no `#1`, `#2`), and the sets are card-market's three
+    ([#224 seller-desk and card-market give the same card different prices](https://github.com/todd-skelton/corten/issues/224)).
+69. card-market shows card art: a generated SVG for each card of its demo catalog in
+    `static/cards/`, served at a versioned URL every cache keeps (and the PWA's worker with
+    them, cached the first time each loads). The home and category grids show it sized (`width`,
+    `height`), past the first row loaded near the screen (`loading="lazy"`), with `alt=""` since
+    the link names the card; the item page shows it first, not deferred, with its text. Only the
+    built-in demo catalog has art (another source's `item_3` is another card), so the
+    benchmark's item page and the item JSON are unchanged. Measured with the demo
+    catalog (release build, over HTTP): Ashen Drake's page is 126 bytes larger (42 with brotli)
+    plus its 377-byte picture (brotli); the home page is 1,356 bytes larger (105 with brotli) plus
+    the pictures that load.
+    ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
+70. examples/ui-gallery is one screen: a seller's draft listing for a card, with its quantity,
+    price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
+    dialog, the last sale, and its SKU with a copy button
+    ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
+71. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+    method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
+    tools' own errors have, and a partner's write without a known key is told to send a valid
+    one in `X-Api-Key` (`Refused::message`)
+    ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
+72. A typed event (`#[event]`) is served with the script that imports it from `corten/events`,
+    so an app lists the script's component and never the event; a script that imports an event its
+    component's module does not have does not compile. Before, an app that listed `CopyButton`
+    without its event would have had the button's script fail to load. A page whose handlers are
+    in such a script fetches `events.js` with it (`<link rel="modulepreload">`, 64 bytes)
+    rather than after it, one round trip sooner; seller-desk's price cells had waited for it.
+    `Script` has an `events` field, written by `#[component(js)]` and `script!`. And
+    `on:Copied={..}` listens for the name the event's `#[event]` gave it: a library's carries its
+    prefix (`ui-copied`), which `html!` had dropped, so no listener heard a library's event
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
+73. **Breaking:** static files are compiled into the program. `corten::assets::embed!(pub struct
+    Static = "static")` makes a constant per file (`Static::STYLE_CSS`, `Static::ICONS_192_PNG`)
+    and `App::assets(Static)` serves them; `req.asset(Static::STYLE_CSS)` is its versioned URL,
+    written without an allocation, and a misspelled or removed file does not compile. A name from
+    data is `req.find_asset(name)`, an `Option`, replacing `has_asset`. The binary is the whole
+    deploy: the Dockerfiles no longer copy `static/`, and an app no longer writes a lookup next to
+    `current_exe()`. A file name a URL cannot carry (a space, `#`, `?`, `%`), two files with
+    one constant, or a directory that is not there is a compile error; dotfiles are left out. A file
+    added with no change to the code is in the program from the next build that compiles the crate
+    (the Dockerfiles touch every source first). Under `corten dev` the app reads the directory from
+    disk, and `corten dev` restarts it without compiling when only those files were edited or
+    added (a removed file builds, and a failed build is tried again at the next change). A
+    release binary holds no path from the build machine. The PWA names its files the same way
+    (75). Measured on card-market (release,
+    callgrind, three runs each): startup 1,470,715-1,485,822 instructions to 1,381,406-1,387,180,
+    the item page 81,556-81,740 to 77,294-77,524 per request (`req.asset` no longer looks a string
+    up and allocates the URL), and the binary 6,729,592 to 6,752,216 bytes (+22,624, the files)
+    ([#268 Static files are a directory found at run time, so a built program cannot be deployed by itself and each app writes its own lookup](https://github.com/todd-skelton/corten/issues/268)).
+74. The trait a `#[route(query)]` set implements is `corten::route::QueryParams` (it was
+    `route::Params`), so `Params` is the extractor. The examples read their routes' parameters
+    as `Params` (16 handlers); ui-gallery's `HomeQuery` and listings-feed's `MarketQuery` are
+    gone, the parameters declared once on the route (`MarketWrite` gains `n`), and watchlist's
+    `Alerts` no longer derives `Deserialize` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
+75. **Breaking:** the PWA names its files by the constants `embed!` makes, so a misspelled or
+    removed icon or worker script does not compile (it was a startup panic):
+    `Manifest::icon(Static::ICONS_192_PNG, "192x192")`, `maskable_icon` the same, and
+    `Pwa::import_script(Static::SW_PUSH_JS)`. An icon another site serves is a `Uri`
+    (`Uri::from_static("https://cdn.example.com/192.png")`), its type read from the path without
+    the query. The worker script is always a file of the static directory, so it is same-origin by
+    its type; a path (`import_script("/abs/sw.js")`) is no longer taken. A file the app's static
+    directory does not serve (none given, or another app's) is still a startup panic, now in
+    release builds too
+    ([#297 The PWA names its icons and worker script by path, so a misspelled file is a startup panic, not a compile error](https://github.com/todd-skelton/corten/issues/297)).
+76. examples/listings-feed is a seller's page, not only a load harness: `/sellers/{seller}` draws
+    the first 500 listings in a table (`ListingTable`, rows from a `#[component(view)]`, prices
+    in the page's money format) from the feed's read, and one `subscribe()` keeps the counts and
+    the rows current as changes arrive from any instance. A form posts a market move
+    (`POST /sellers/{seller}/market`, the submit key its idempotency key) and patches its result
+    in place; without JavaScript it redirects to the page with the write's sequence
+    (`?after=`), which asks to be read again until its instance has the write. The `Listing`
+    type the script reads is generated (`types/app.d.ts`); the outputs `bench/run.mjs` reads
+    keep their names. `examples/listings-feed/smoke.mjs` checks the page in a browser against
+    Postgres and NATS, in CI too
+    ([#334 listings-feed is a benchmark harness listed as an example](https://github.com/todd-skelton/corten/issues/334)).
+
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
@@ -926,6 +1555,237 @@ Corten is pre-1.0, so any minor version may change the API.
     The runtime notes the elements that scroll as they do, so keeping a place reads only those (0.1 ms on a page of 4,770 elements in Chromium, against 15 ms reading every element's scroll; measured), and is 167 B larger gzipped (8,362 to 8,529 B, measured).
 27. A release build of `corten` compiles without a warning: the check that a patch has an id on
     each top-level element, which runs in debug builds only, is no longer compiled into release.
+28. The error page keeps the headers of the failure it replaces: a request id, `Retry-After`,
+    `WWW-Authenticate` and `Server-Timing` a handler or a middleware set were dropped (only
+    `Allow` was kept), on the sign-in redirect and the offline page too. The ones that described
+    the old body and `Cache-Control` are the error page's
+    ([#126 The error page drops the headers a middleware or handler set on the failed response (Retry-After, a request id, Server-Timing)](https://github.com/todd-skelton/corten/issues/126)).
+29. A client navigation to a page in another layout loads it in full: the shell key includes the
+    layout (a hash of where its `html!` document is written, a constant), so the first layout's
+    header and footer no longer stay around the next page's `<main>`, and links between layouts
+    need no `data-reload`. The default error document is a layout of its own too
+    ([#122 Client navigation between pages with different layouts keeps the first layout, because the shell key does not include the layout](https://github.com/todd-skelton/corten/issues/122)).
+30. A link to a route that redirects to another site (`req.redirect(&uri)` or `req.moved(&uri)`)
+    leaves the app in one request: a client navigation gets `corten-location` and the browser
+    goes there, where before the runtime's `fetch` followed the redirect, the CSP's `connect-src`
+    refused it with a console error (the hover's prefetch too), and the page reloaded to follow it
+    again
+    ([#131 A client navigation to a route that redirects to another origin is blocked by connect-src, then reloads](https://github.com/todd-skelton/corten/issues/131)).
+31. `html!` reads a pattern with braces as Rust does: `if let Shape::Circle { r } = shape { .. }`
+    and `for Point { x, y } in points { .. }` took the pattern's braces for the body and did not
+    compile. `corten fmt` reads them the same way
+    ([#142 html! if let cannot take a struct pattern: the pattern's braces are read as the body](https://github.com/todd-skelton/corten/issues/142)).
+32. A patch keeps the files chosen in a file input it replaces, as it keeps typed text, so a
+    refused upload redraws its input marked invalid with the files still chosen; a successful
+    answer to the form that sent them clears them. The runtime grows by 47 bytes gzipped
+    ([#143 A patch drops the files chosen in a file input it replaces, so a refused upload cannot mark its input invalid](https://github.com/todd-skelton/corten/issues/143)).
+33. A `data-keep-place` swap keeps the scroll of an element that scrolls on its own (a filter
+    rail) when the swap lands before that element's `scroll` event, which comes at the next
+    frame: a control focus scrolled into view, or a slow machine. It counts the focused control's
+    ancestors as scrolled, and an element whose scroll it restored. The runtime grows by 38 bytes
+    gzipped
+    ([#130 Firefox sometimes loses the filter rail's own scroll after a data-keep-place swap (smoke: 76 -> 0)](https://github.com/todd-skelton/corten/issues/130)).
+34. A link to a new page goes to the top of it (or to its `#id`) in Chromium too. Chromium could leave
+    a page the runtime swapped in where the last one was scrolled (seen from About to Home, and on
+    a link to the page already open), though Firefox and WebKit went to the top; the runtime now
+    scrolls itself, as it already did for a page the server sent to an `#id`. Back and forward
+    still return to where the user was. Found when `examples/watchlist`'s taller About page made
+    the smoke test's "a plain link still goes to the top" fail. The runtime is 6 B larger gzipped
+    (9,018 to 9,024 B, measured).
+35. A field with a hint of its own can point at the hint and at its error: `e.aria(field).hint(&HintId)`
+    writes one `aria-describedby` naming both. Before, the hint needed a second
+    `aria-describedby` on the tag, which the browser dropped, or the error's id written by hand.
+    A start tag that writes `aria-describedby` or `aria-invalid` beside `e.aria(..)` no longer
+    compiles, since the browser would keep only one of them
+    ([#147 A field with its own hint cannot also point at its error: Within::aria writes a second aria-describedby, which the browser drops](https://github.com/todd-skelton/corten/issues/147)).
+36. A body over `Upload::limit` can be answered with the form and a message. `Upload`'s reads
+    return `UploadError` (`TooLarge`, `Malformed`, `Fields`), which `?` still turns into a 413,
+    400 or 422; a handler matches `UploadError::TooLarge` instead of comparing statuses or reading
+    `Content-Length`. The rest of an over-limit body is now read past (up to 64 MiB) before the
+    answer: before, Chromium (and Firefox, for a 20 MB body) took the closed connection for a
+    network error and showed nothing, not even the error page
+    ([#150 A handler cannot read an Error's status, so an upload over Upload::limit (413) cannot draw the form again with a message](https://github.com/todd-skelton/corten/issues/150)).
+37. A page whose handlers call a script module the app does not serve is an error in debug builds
+    (a router test, `cargo run`), naming the module to list; a release build logs it. Before, it
+    rendered with a 200 and only the browser found the 404, after which the module's handlers did
+    nothing
+    ([#157 A page that names a script! module the app does not serve renders fine; only the browser finds the 404, and its handlers silently do nothing](https://github.com/todd-skelton/corten/issues/157)).
+38. A `Relay` keeps the upstream's `Content-Security-Policy` in place of the app's, so a relayed
+    page's own scripts run. Before, the app's policy replaced it and blocked them
+    ([#164 A Relay loses the upstream's Content-Security-Policy, so a relayed page's own scripts are blocked](https://github.com/todd-skelton/corten/issues/164)).
+39. A connection that never finished its request head was held open for as long as the client
+    liked (measured: 150 s and counting), since `serve` never bounded it. A head now
+    has 30 seconds (`App::header_timeout`), after which the connection is closed, and
+    `App::max_connections(n)` caps how many are open. Both apply to `serve_on` too: Corten now
+    accepts connections itself instead of through `axum::serve`; the check costs a keep-alive
+    request about 300 instructions, which the accept loop saves, so a request costs what it did
+    ([#170 A client that never finishes its request head holds a connection open forever](https://github.com/todd-skelton/corten/issues/170)).
+40. The watchlist smoke's check that controls named `action` or `method` do not change a post
+    failed in Firefox about one run in three: it saw the post the check before it sent (whose
+    message it already matched), which Firefox reported late, not a second post. That check now
+    waits for its own answer, and the next one names each post's stock. The runtime never sent
+    a post twice: the route the smoke intercepts saw one per submit
+    ([#161 Firefox smoke: the shadowed-controls form is seen posting twice now and then](https://github.com/todd-skelton/corten/issues/161)).
+41. `examples/seller-desk`: typing a price threw `unsent.add is not a function` and the
+    "prices not saved" note never showed. The grid kept two `state(scope, ..)`s for one element,
+    and an element has one, so the second got the first's object. They are one object now, and
+    `state`'s docs say an element has one state. The seller-desk smoke test, which caught it, now
+    runs in CI, and waits for what it checks instead of fixed timers.
+42. In Chromium a submit button's `formmethod` decides how a navigating form goes, as it does in
+    Firefox and without the runtime. The runtime read the method from `NavigateEvent.formData`,
+    which Chromium sets from the form's own method: a `formmethod="post"` button in a GET form was
+    taken over and sent as a GET of its `formaction` with no fields, so the write was dropped
+    without a word, and a `formmethod="get"` button in a POST form loaded the page in full instead
+    of swapping it. It now reads the method from the submitter, else the form. `corten.js`:
+    22,834 to 23,032 B (8,380 to 8,442 B gzip)
+    ([#190 In Chromium, a POST submit button in a GET form is sent as a GET with no fields: the runtime reads the method from NavigateEvent.formData](https://github.com/todd-skelton/corten/issues/190)).
+43. A `data-patch` form reads its submit button as the browser does: `formmethod="put"` (or any
+    method the browser does not know) is a GET, an empty `formmethod` is a GET, an empty
+    `formaction` is the page's own address, a relative one resolves against `<base href>`, and a
+    `formenctype` of `multipart/form-data` sends multipart. It read the raw method and action attributes and only
+    the form's `enctype`, so it sent a PUT where the browser sends a GET, used the form's method
+    and action for the empty ones, and sent a `formenctype="multipart/form-data"` button's file
+    as text. A form whose method is `dialog` now closes its dialog and sends nothing; before, it
+    sent a `DIALOG` request. One function, `sendsAs`, reads the button for both the patch and the
+    navigation path. `corten.js`: 23,032 to 23,264 B (8,442 to 8,503 B gzip)
+    ([#196 A data-patch form reads its submit button's raw formmethod and formaction, so formmethod=put sends a PUT where the browser sends a GET](https://github.com/todd-skelton/corten/issues/196)).
+44. A `Relay`'s answer is passed on as it came with feature `compress` on too, as its rustdoc said
+    (the guide said a relayed event stream was compressed; it now says none is): a buffered relayed body was compressed for a client that accepted zstd, brotli or gzip, and a
+    relayed event stream (a model's streamed answer through a gateway) for one that accepted zstd
+    or brotli, holding a compression context (480 KiB reserved for zstd, about 1 MB for brotli)
+    from the budget the app's own live streams share, for as long as it ran, and every compressible
+    relay got `Vary: accept-encoding`. A relay that should be compressed forwards the client's
+    `Accept-Encoding` to its upstream, with a client that does not decode the body. Every other answer pays
+    one look at its extensions: 11 instructions when it has none, 32 when it has one (callgrind)
+    ([#205 With compress on, a Relay's answer is re-encoded per connection, so a gateway holds a 480 KiB coder for every relayed model stream and cannot opt out](https://github.com/todd-skelton/corten/issues/205)).
+45. `SetCookie::path` refuses a control character (a tab or line break) where it is set, and
+    `SetCookie::new`, `path` and `remove` name the caller's line when they panic. Before, such a
+    path passed `path` and panicked when the answer was sent
+    ([#204 SetCookie::new panics on a value it cannot carry, so a token from another service can turn a sign-in into a 500](https://github.com/todd-skelton/corten/issues/204)).
+46. The two smoke checks that failed now and then in CI say why when they fail: the early form
+    submit (`scripts/smoke.mjs`) reports the navigation requests, responses, commits, failed loads
+    and errors with their times, and ui-gallery's first page names the engine, the scripts that
+    loaded and the failed requests instead of throwing a bare timeout. When either smoke throws (a
+    page whose `load` never comes, as WebKit's first `goto` in `scripts/smoke.mjs` once did), it
+    lists the requests its open pages are still loading, oldest first. None of these reproduced
+    locally, so none is fixed yet
+    ([#232 WebKit smoke: "a form submitted before the first page loads navigates" fails now and then](https://github.com/todd-skelton/corten/issues/232),
+    [#252 ui-gallery smoke: the first page's combo box did not connect within 30 s in Firefox (CI, once)](https://github.com/todd-skelton/corten/issues/252)).
+47. `bench/fullstack`'s browser pass stopped in round r7: card-market refuses a price alert on an
+    item with no listings (`item_12345`), and the pass waited 30 s for "Alert set". The form
+    action is no longer timed on that item, for any app, since the others set an alert Corten
+    refuses and the two are different work; the empty item's load, sort and client navigation are
+    measured as before. Medians of the action now come from eight of ten runs per profile
+    ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
+48. `ReadAgain::from(&route)` in a page's markup starts its read, as in a patch, on a full load
+    and after a navigation: only those parts are read again, and what is beside them (a form the
+    user is filling in, a payment provider's frame) stays. Before, the runtime acted on it only in
+    a patch, so a page had to start the first read with a script of its own. It stops when the
+    page is left or an element with an id beside the tag is replaced; with JavaScript a page that
+    reads parts again is not read whole, so its head's `ReadAgain` is for a browser without it.
+    The watchlist's alerts page reads its status line and list so. The runtime grows by 273 B
+    (72 B brotli)
+    ([#276 A page cannot ask for one of its parts to be read again, so a page holding a third-party frame needs a script to start the read](https://github.com/todd-skelton/corten/issues/276)).
+49. examples/ui-gallery's live regions stay in the page while they are empty: the toaster's root,
+    the form's result and the menu's result were `display: none` until a message came, so the
+    message was often not announced. The toast's box is drawn only while there is a message, and
+    its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
+50. A `data-patch` form whose submit an `on:submit` handler cancelled was sent anyway: the runtime
+    sent it before the page's handlers ran. A handler that stops the submit's propagation still
+    gets the patch ([#199 A data-patch form still sends when an on:submit handler cancels the submit event](https://github.com/todd-skelton/corten/issues/199)).
+51. A `data-patch` form's body is the browser's: a file field is the file's name (it was
+    `[object File]`), line breaks are CRLF, a `text/plain` form is sent as text, not urlencoded,
+    and neither content type names a charset. A file chosen again while the first is on its way is a
+    new submit unless it is the same file (name, size and time), not a double click ([#200 A data-patch form's urlencoded body differs from the browser's: a file is [object File], line breaks are not CRLF, and text/plain is sent urlencoded](https://github.com/todd-skelton/corten/issues/200)). With 50, `corten.js` grows 201 bytes gzip.
+52. The idle-connection test measured the timeout from its own call, not from the clock's tick the
+    connection went idle at, so it failed under load when the clock's thread lagged. It now checks
+    what the clock promises, and expiry itself is unchanged
+    ([#279 watch test: an idle connection can expire early when the clock's thread lags, and the test fails under load](https://github.com/todd-skelton/corten/issues/279)).
+53. A patch that took the focused element away (a row removed, or the last row of a list drawn
+    again without it) left focus on the body, so a keyboard or screen reader user was sent to the
+    top of the document. Focus now goes to the nearest element around it that is still on the
+    page, focusable only for the move; so does focus on an element patched into one that cannot
+    take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
+54. CI's browser job could hang for an hour or more when a Playwright call never returned (Firefox,
+    after the watchlist smoke closed another site's page), holding the runner with no report of
+    where. The job now has a 30 minute limit (a passing one takes 11 to 14), and every browser smoke
+    stops itself after five minutes with no check finished, printing the last check it finished and,
+    for the runtime's smoke, the requests still loading ([#317 CI: the browser job can hang for an
+    hour in the watchlist smoke, and has no timeout](https://github.com/todd-skelton/corten/issues/317)).
+55. The ui-gallery smoke failed now and then in WebKit with "due to access control checks" for
+    `/?sale=last`: WebKit reports a request to the page's own origin that did not finish (the
+    hover prefetch, or a load the next navigation dropped) that way, as a page error, and
+    Playwright does not always report that request as failed. Such a message for the gallery's
+    own origin, which CORS never refuses, no longer fails the smoke; another origin's still does
+    ([#301 ui-gallery smoke: WebKit logged a console error for /?sale=last, due to access control checks (CI, once)](https://github.com/todd-skelton/corten/issues/301)).
+56. examples/seller-desk started its sales simulation with `tokio::spawn` in `main`, so it ran on
+    through shutdown and outside the app. It is the app's `task` now, started once the server
+    listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
+    runs one late tick instead of every missed one back to back
+    ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
+57. corten-ui's `NumberField` could drop a step asked for with Enter or Space on a button: a
+    pointer press set a flag that skipped the next click, and cleared it in a timer after the
+    release, so a key that came before that timer ran (on a busy page) did nothing. The field now
+    records the button each pointer pressed and skips only that press's own click (a key's click
+    has `detail` 0 and always steps); a press released off the button, cancelled, or on a button
+    disabled at its bound makes no click and is forgotten ([#316 ui-gallery smoke (CI, Chromium): a keyboard
+    step on the second number field is lost while the first is held](https://github.com/todd-skelton/corten/issues/316)).
+58. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
+    Under load, a slow read used to add real seconds, and "each second" failed
+    ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
+59. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
+    headers show they sort and which way (`aria-sort`); the rows scroll inside the grid under a
+    header that stays, with the item count above them (an archive's answer replaces it, and while
+    the filter is on it says how many rows it shows of how many, kept true as an archive removes
+    rows); a row at quantity 0 is marked sold out, kept current by the live levels (a `sold_out`
+    hole of the row's view); on a phone the table keeps the name, quantity and price (it stays a
+    table, so each cell has its header); and the statement has a total row
+    ([#332 Polish: seller-desk does not look like the client-heavy screen it is](https://github.com/todd-skelton/corten/issues/332)).
+60. examples/watchlist signed a visitor in by trusting a `viewer` cookie that held their name, so
+    anyone could set one and be anyone, and signing out only cleared it in that browser. Signing in
+    now starts a session the server keeps, named by a random token in an `HttpOnly` `Secure`
+    cookie; the profile picture is kept in the session, not a cookie of its own; signing out ends
+    the session on the server, and signing in again ends the one the browser had
+    ([#322 watchlist signs a visitor in by trusting a plain viewer cookie, so anyone can set it and act as anyone](https://github.com/todd-skelton/corten/issues/322)).
+61. examples/card-market's item page left the right half of a desktop screen empty: the picture
+    stacked under the title. From 56rem the picture is the left column, beside the title, the
+    tags and the price summary; a phone's one column is unchanged. The page gains two wrapping
+    `<div>`s, 74 bytes of its 11,435
+    ([#330 Polish: card-market's item page leaves the right half empty on desktop](https://github.com/todd-skelton/corten/issues/330)).
+62. CI's Firefox stalled now and then in the watchlist smoke ("still loading: nothing"), at a
+    different step each time, and once lost a page's script context in the ui-gallery Copy check.
+    The likely cause is Playwright 1.60's Firefox driver, which could lose the commit of a new
+    page's first navigation to a document sent with `Cross-Origin-Opener-Policy: same-origin`, as
+    Corten's pages are by default ([microsoft/playwright#42731 Firefox page.goto never resolves on the first navigation to a page with COOP same-origin](https://github.com/microsoft/playwright/issues/42731),
+    fixed in its Firefox build 1551); the race did not reproduce locally. The tooling is on
+    Playwright 1.64.1 (Firefox build 1555), and CI's browser image follows it; Firefox still
+    applies COOP. Its WebKit 27.2 logs a CSP refusal for the style it sets inside every `<select>`
+    (WebKit bug 327212); in that WebKit the smokes set that line aside and report every other CSP
+    violation from the page's `securitypolicyviolation` events instead (`scripts/browser-bugs.mjs`)
+    ([#350 CI's Firefox stalls after the early form check, closing a page whose route is still registered](https://github.com/todd-skelton/corten/issues/350)).
+63. A nav link a patch put on the page kept the `aria-current` the server wrote, judged against
+    the request that made the patch (a form's action, a `ReadAgain`'s `data-from`) rather than
+    the page. The runtime now marks nav links after a patch that puts one on the page or removes
+    one, as after a navigation; a patch without one (a ticker's) only looks through the elements it
+    put. `corten.js` grows 65 bytes gzip ([#347 A nav link a patch puts on the page keeps the mark the server judged against the form's action, not the page](https://github.com/todd-skelton/corten/issues/347)).
+64. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
+    back empty: `Params` read a set with serde's derive, which knows nothing of the prefix. A set
+    is now read field by field the way a route reads its own, so a list it leaves out is empty
+    (it was a 400 without `#[serde(default)]`), a field's own `#[serde(default)]` fills what the
+    query leaves out, and a set needs no `Deserialize`. **Breaking:** a set's serde keys that a
+    route's reader does not follow (`alias`, `flatten`, `deny_unknown_fields`, the struct's own
+    `default`, ...) make `Params` of a route that includes it not compile, naming the key, as they
+    do on the route (a struct's `default` would read a link's `None` back as the default's
+    value); and a route whose own query names and its sets' could be read back as each other's
+    (one name written twice, which was a 400, or a prefix another name starts with) does not
+    compile. Reading a route with a four-parameter set costs 4,107 instructions, up from 3,669,
+    the same as those parameters on the route itself (callgrind, release build)
+    ([#310 A #[route(prefix)] field inside a #[route(query)] set is written into links but Params reads it back empty](https://github.com/todd-skelton/corten/issues/310)).
+65. examples/watchlist's header wrapped to two rows on a phone, and its alerts page used the left
+    half of a desktop screen. The header is one row at 390 px: the viewer's name (and picture) is
+    the link to their account, where the Account link was, and a visitor has a shorter "Sign in"
+    button in its place. The alerts form and list sit side by side from 48rem
+    ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -938,15 +1798,18 @@ Corten is pre-1.0, so any minor version may change the API.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
 6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
-   from round r5 (2026-10-25, one c-8 droplet, Xeon Platinum 8168 as in r4, the tree at
-   `f80d4a1`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 21,735 item pages
-   and 25,200 JSON responses a second from memory at 64 users (r4: 18,043 and 18,934), and 3,240
-   item-API pages against ASP.NET Core's 998 (r4: 2,142 and 915). A page costs 103,877 user
-   instructions and the JSON 69,291 (r4: 123,693 and 133,308). The unchanged apps moved by up to
-   17% between the two droplets. Django passed the in-memory page test it failed in r4; Nuxt,
-   Next.js and Laravel failed as before. The item page loads 7.3 KB of JavaScript (gzip; r4
-   6.2 KB).
-7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
+   from round r6 (2026-10-27, one c-8 droplet, Xeon Platinum 8280, faster than r5's 8168, the tree
+   at `cf8ac0f`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 23,416 item pages
+   and 27,625 JSON responses a second from memory at 64 users (r5: 21,735 and 25,200), and 3,615
+   item-API pages against ASP.NET Core's 1,171 (r5: 3,240 and 998). A page costs 95,038 user
+   instructions and the JSON 69,444 (r5: 103,877 and 69,291). The unchanged apps rose by a median
+   of 14-27% on the faster CPU, more than Corten's 8-12%, and Corten's item-API JSON held (3,753;
+   r5 3,787). Nuxt and Django passed the in-memory page test; Next.js and Laravel failed as
+   before. The item page loads 9.6 KB of JavaScript (gzip; r5 7.3 KB).
+   A new table gives what a request costs: pages per CPU-second (Corten 25,124, ASP.NET Core
+   4,285), CPU for 300 pages a second (4.1% against 17%) and pages a second per MiB (1,110 against
+   50).
+7. `Form` in the prelude is `corten::Form` (Added 20), and a route's parameters its `Params`. Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
    dependency of `corten`; it was already in axum's tree.
@@ -972,7 +1835,113 @@ Corten is pre-1.0, so any minor version may change the API.
 13. The app guide says why a JSON 400 under `App::api` costs about 500 instructions more since
     every route goes through the checks (Added 65): the checked `get` marks a JSON route's
     failed response with an extension, profiled under callgrind in place of "most likely".
-14. The checks in `CONTRIBUTING.md` build into volumes named after the checkout's folder
+14. The examples use the patterns they lacked. `examples/item-page`: a moved address (`req.moved`),
+    `Policy::new().hsts()` behind `HTTPS`, `.deadline`, `.ready` (the item API answers), a
+    category page shared longer by CDNs (`.shared(..)`) with its breadcrumbs as `JsonLd`, and an
+    alert on an item with no listings answered with a whole-form error (`Errors::add_form`).
+    `examples/seller-desk`: a `Middleware` (`Server-Timing`), an archive made idempotent by
+    `SubmitKey`, a `NoStore` statement page, a nav from `req.nav`, and a typed event
+    (`#[event] PriceEdited`) a price cell sends the grid, which counts the prices not saved.
+15. The examples are named for what they are: `examples/hello` is `examples/watchlist` (a stock
+    watchlist) and `examples/item-page` is `examples/card-market` (a trading-card store), with
+    their packages, images and CI steps. Every example has a designed layout in light and dark.
+    The watchlist is styled utility-first from its token file's utilities (`display`, `gap`,
+    `p`, `bg`, `columns`, ...), with the repeated combinations named in `src/theme.rs`, and the
+    styles guide compares that with Tailwind.
+16. Every pull request is reviewed against the values before it merges, by someone who did not
+    write it, who looks for the way the change breaks a value (CONTRIBUTING.md, Review). The
+    order that decides between conflicting values now sits with the values in the README
+    rather than in AGENTS.md, which has an agent start a new agent for the review, and a pull
+    request template asks for the checks, the measurements and the findings.
+17. `examples/watchlist` is a stock watchlist whose pages each do a job a user has. You watch
+    and remove stocks from a market of eight; each browser's list is kept on the server under a
+    random id in a `list` cookie (the 10,000 used most recently) and changed under a lock, so two
+    removals sent at once both land. Each row's Remove button submits the watch form (`formaction`), and the list and the
+    form are patched in place. Each row shows today's change, from the server (`t.percent`) and
+    from the script (`t.js().percent(2)`). The market moves from a task of the app's
+    (`App::task`, which stops at shutdown) rather than `tokio::spawn`. The About page is now
+    News: one query struct (`#[route(query)] filter: NewsQuery`) for the sector filter, whose
+    sectors are `#[derive(UrlValue)]`, the "only stocks I watch" filter and Load more; a briefing
+    signup checked on the server (field errors, `req.invalid`) that sends the browser back to its
+    form (`route.at(Id)`); and stories that link to a place on the publisher's page
+    (`Elsewhere::at`). The saved page is now Alerts, a price alert checked on the server and
+    answered while its read catches up (`ReadAgain`), and the avatar upload has a form on the
+    Account page, with sign out. The smoke test follows the new pages: a list a patch replaces
+    opens one new stream and closes the old one, the list survives a reload, the change cells
+    follow the feed, a sector's box lists its stories, a refused price comes back marked with
+    focus on it, and a story's place stays in the address.
+18. `examples/card-market` shows a partner API and a write limit. `POST /api/alerts` sets an
+    alert for a partner's user: the handler takes `Caller<Partner>`, found by the `X-Api-Key`
+    header (`API_KEYS`, no partner without it), so a request without a known key is a JSON 401,
+    and the form's rules answer with the fields. A middleware of the app's (`WriteLimit`)
+    allows about 20 writes a minute from one client (`ClientIp`, an IPv6 address by its /64;
+    `WRITES_PER_MINUTE` to change it) and answers the next with a 429 and `Retry-After`; a
+    partner's alerts are counted by the partner, whatever address it sends from; reads pass
+    straight through, so pages a CDN keeps stay public, and agents answer to their token, which
+    no longer defaults to `dev-token` (`AGENT_TOKENS`). The smoke test runs the container with
+    Docker's networks as its proxies (`PROXIES`), so each forwarded address has its own count.
+19. The examples show believable data and fit a phone. card-market, run with no item source
+    (`API_BASE` or `ITEM_SOURCE`), serves a demo catalog built into it (`fixtures/demo.json`):
+    original cards in three sets, sellers, offers and a sealed box with its contents. Its home
+    page lists the source's items as cards (name, set, lowest price) and a category page lists
+    its items; against the item API, which has no list, the home page links the first ids as
+    before. Tables too wide for a phone scroll inside their panel (the item page) or their box
+    (seller-desk's grid). seller-desk's statement writes its amounts with `t.money` and its
+    words from a catalog, not a hand-written `$`.
+20. `examples/cluster` is `examples/listings-feed`, named for what it is (a seller's listings
+    feed served by several instances), like the other examples; the crate it shows is still
+    `corten-cluster`. Its package and image are `listings-feed` and `corten-listings-feed`.
+21. The styles guide says where a page whose path is the prefix of other areas (`/account` above
+    `/account/cart`) puts its CSS: in `App::components`, as the home page does, with the pilot's
+    measurement
+    ([#239 A page whose path is the prefix of other areas (/account above /account/cart) cannot have a stylesheet only it links](https://github.com/todd-skelton/corten/issues/239)).
+22. The examples write no seam as text: card-market's header is a component with scoped
+    classes (`SiteHeader`, lined up with the page below it) instead of `class="site"`, and the
+    watchlist's `LivePrices` passes its feed's route to the script (`url::Stocks`) instead of
+    taking `url::Stocks::PATH` as a `&str`. The watchlist's titles end in "| Watchlist" (its home
+    is "Stocks") and its header fits a phone on two lines; card-market's error page links home,
+    its item page's tables and price summary fit a phone, its alert form keeps less room under
+    it, and its demo cards name their rarity twice (the chips and the details) instead of four
+    times: the subtitle is the set and number, and no tag repeats a field or a chip.
+23. Each example has a README: what the app is, how to run it (`corten dev` and Docker) with
+    the environment it reads, and which file holds each piece. The main README lists the examples
+    in the order to read them, watchlist first
+    ([#230 No example has a README that says how to run it and where each feature is](https://github.com/todd-skelton/corten/issues/230)).
+24. Work on a schedule is a task with tokio's intervals: `App::task`'s documentation and the
+    guide (app.md, "On a schedule") show a job hourly at :15 and one every five minutes in one
+    loop, so they never overlap, keeping each job's last run for a status page, run on a paused
+    tokio clock in a doctest; the guide says what is left to the app (the monotonic clock's jumps,
+    the next run's time, local wall times). The guide's task example and the watchlist's market
+    task now use `MissedTickBehavior::Skip` (an overrun is followed by one late run; tokio's
+    default, `Burst`, runs once for each missed mark, back to back) and poll the signal first
+    (`biased`), so no run starts once shutdown has begun. Corten adds no scheduler. Corten's own
+    tests build tokio with `test-util` for the paused clock: each tokio clock read in them checks
+    one flag more; apps are not affected
+    ([#278 An app cannot run a job on a schedule (hourly at :15, every 5 minutes, daily at 03:30), so each writes the clock, the missed-mark skip and the no-overlap rule itself](https://github.com/todd-skelton/corten/issues/278)).
+25. The app guide (Areas) and the skill say how a page in an area that another permission opens
+    (an order's review form under `/account/purchases`) is declared: a second routes module in the
+    same area with its own `caller`, passed in one call,
+    `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
+    permission from the path. A test holds two modules' callers apart in one area
+    ([#273 A page under an area cannot take its own caller, so a nested form that needs another permission checks it by path or by hand](https://github.com/todd-skelton/corten/issues/273)).
+26. CONTRIBUTING's check 2 unpacks sources into a throwaway `--tmpfs`, so its publish dry run builds
+    against Corten's crates as they are now, not a copy an earlier run left in the shared volume
+    ([#300 Check 2's publish dry run builds corten-ui against a stale corten unpacked in the shared registry volume](https://github.com/todd-skelton/corten/issues/300)).
+27. `corten_ui::NumberField` says it is for counts and measures (a quantity, a weight), not
+    money, and the UI guide says a price is a text input with `inputmode="decimal"` read by
+    `t.parse_money`: a number input takes only the browser's decimal syntax, and its value is an
+    `f64`. ui-gallery's price and lowest offer are such inputs now, read as money and written
+    with `t.money`, its quantity is a `u32`, and its second number field is the shipping weight
+    ([#286 corten-ui's NumberField cannot show back a refused entry or take a price in the reader's locale](https://github.com/todd-skelton/corten/issues/286),
+    [#325 ui-gallery reads the listing's quantity and price as f64 and writes money with format!](https://github.com/todd-skelton/corten/issues/325)).
+28. CONTRIBUTING (Pull requests, item 2) says which measurement fits which change: instructions per
+    request for work done in process (callgrind in process, `count.mjs` with `perf` over a socket),
+    times as well when memory changes (`render_cost`, with its command and fixture), time on a
+    quiet host for waiting and concurrency (`ab.mjs`, `cold-start.mjs`), and bytes for what the
+    client receives (`render_cost`, `bytes.mjs`), from alternated release runs reported with their
+    median and range; Tooling lists valgrind and `perf`. AGENTS.md, the README's values and the
+    pull request template point to it rather than naming `nanoseconds per request`.
+29. The checks in `CONTRIBUTING.md` build into volumes named after the checkout's folder
     (`corten-target-<folder>`, `corten-msrv-target-<folder>`) instead of one `corten-target` for
     every checkout, where cargo could take one checkout's build for another's and fail to compile
     code that was fine.

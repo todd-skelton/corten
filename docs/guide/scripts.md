@@ -51,7 +51,7 @@ export function showAll(rows, rest, button) {
 | `row.closest()` | the element with ref `row` around the event's target (the handler runs only inside one) |
 | `js::Selection { rows: row, count }` | a `@typedef` of elements: one object argument |
 | `event`, `target`, `signal`, `scope` | the event (`MouseEvent` for a click), the element with the `on:`, an `AbortSignal` that aborts when it leaves the page, the component's root element |
-| a Rust value: `&str`, a number, `bool`, a typed route, any `ToJson` (feature `json`) | the JSON value (an integer past 2^53 stops debug builds, since a JavaScript number cannot hold it exactly: pass a 64-bit id as a string) |
+| a Rust value: `&str`, a number, `bool`, a typed route, a slice, array or `Vec` of strings for `string[]`, any `ToJson` (feature `json`) | the JSON value (an integer past 2^53 stops debug builds, since a JavaScript number cannot hold it exactly: pass a 64-bit id as a string) |
 | `on:connect={..}` | runs when the element joins the page (first load, navigation, patch, a script's insert); on the first load it runs before the page's `load`, and a navigation it starts then (a link it clicks, a form it submits) is a full page load, not a swap |
 
 **What the compiler checks.** `#[component(js)]` reads the script when the crate compiles and
@@ -92,11 +92,12 @@ user types sit in a `GET` form that filters them on the server without JavaScrip
 
 ## Components and their roots
 
-A component with refs, or whose handlers take `scope`, has one root element. The root is
-where its refs end: `data-scope="offer-list"` marks it, and a ref resolves to the elements with
-that name inside the root and outside any nested component's root. Two `OfferList`s on one
-page never see each other's rows. The root can be any element, so a component can be a `<tr>`
-or an `<li>`.
+A component with refs, whose handlers take `scope`, or whose script imports `keep` has one root
+element. The root is where its refs and state end: `data-scope="offer-list"` marks it, and a ref
+resolves to the elements with that name inside the root and outside any nested component's root.
+Two `OfferList`s on one page never see each other's rows (a handler a component passes to a
+nested copy of itself resolves to the nearest copy). The root can be any element, so a component
+can be a `<tr>` or an `<li>`.
 
 ## Handlers as props
 
@@ -147,10 +148,14 @@ row.dispatchEvent(new RowToggled({ id, selected: true }));
 ```
 
 The class bubbles and carries the fields; `Types::components` declares it with the fields' types
-(see [Type safety](type-safety.md)). List the event in `App::components` like a component. A
+(see [Type safety](type-safety.md)). It is served with the component's or `script!` module's script that imports it, so listing
+that component is enough; only an event no such script imports (one a module in `static/`
+imports, or `import()` loads) is listed in `App::components` itself. Two different events with
+one name are a startup error, and a library's are named under its prefix (`ui-copied`). A
 handler parameter typed with a class imported from `"corten/events"` takes only the `event` of
 an `on:` for that type, a compile error otherwise; the `#[event]` type is in scope in the
-component's module.
+component's module (for `script!`, the module that invokes it), or the script does not compile. In `examples/seller-desk`, each price cell sends `PriceEdited` as its price
+is typed or put back, and the grid around the cells counts the prices not saved.
 
 ## Lists and larger components
 
@@ -228,7 +233,24 @@ the two cannot drift.
 
 Handlers several components use live in a module of their own:
 `script!(pub mod validity = "validity.js");` declares `validity::check(..)` and the constant
-`validity::COMPONENT` to list.
+`validity::COMPONENT` to list. A page whose handlers call a module the app does not list (a
+component's or a `script!` module's) is an error in a debug build, so a router test or
+`cargo run` finds it before a browser does; a release build logs it each time such a page
+renders and leaves the page's other modules working. Which handlers a page calls depends on what it renders, so this
+is checked when it renders, not when the crate compiles.
+
+A script can import another script module with a relative path, by its file name:
+`import { loadStripe } from "./stripe.js";` in `payment_entry.js` loads the `script!` module
+declared from `stripe.js`. Every script is served from the same directory of the same version, so
+the path is `./{file name}`. A page that loads `payment_entry.js` preloads `stripe.js` with it
+(and what that imports), so the browser fetches both at once rather than finding the import once
+the first has arrived (on a full page load; a page the runtime swaps in imports its modules
+itself). The imported module is a component's or a `script!` module, so it exports only
+functions with JSDoc types like any handler module; a helper that exports anything else is a plain
+file of the static directory's `scripts/`. An import of a module the app does not serve fails when
+the app starts, since the browser would get a 404. A dynamic `import("./x.js")` is left for when
+it runs, and is not preloaded. A library's scripts are served by their prefixed names, so one
+imports another as `./ui.listbox.js`; an import without the prefix does not compile.
 
 ## Libraries
 
@@ -303,18 +325,44 @@ export function total(rows, out, money, day) {
 `t.js().money(USD)` a `MoneyFormat` (`format(minor)`: an integer of minor units, as
 `t.money(Minor(..), USD)` takes; a float is rounded to one), and `t.js().date(DateStyle)`,
 `.time(TimeStyle)` and `.date_time(..)` a `DateFormat` (`format(at)`: a `Date`, milliseconds or
-ISO text), in UTC unless `.zone(Offset::hours(-5))`. A format of the wrong kind does not compile
+ISO text), in UTC unless `.zone(Offset::hours(-5))`, and `t.js().percent(2)` a `PercentFormat`
+(`format(ratio)`, `format(0.029)` or `format("0.029")`, as `t.percent(ratio, 2)` writes it;
+`t.js().change(2)` is one that writes as `t.change(ratio, 2)` does). A format of the wrong kind does not compile
 at the call. Each is sent in `data-on` as the locale's separators, templates and names, and the
 runtime writes with the server's algorithm, so the text a script writes is the text the server
 rendered (`scripts/format.mjs` checks the two on every case), not what the browser's `Intl`
 writes, which differs by browser and version. A zone with daylight saving time has no fixed
 offset to send: write those dates on the server.
 
+The code that writes them is a module of its own (about 1 KB gzip), not part of the runtime: a
+page whose handlers take a format loads it as a module script next to theirs, and a page whose
+handlers take none does not download it.
+
 ## State
 
 A handler is a plain function shared by every instance, so state that outlives one event lives
-in the DOM (an attribute, an `<output>`'s value) or with an element: `state(scope, () => init)`
-from `corten` gives the same object for the same element until it is gone.
+in the DOM (an attribute, an `<output>`'s value) or with the component: `keep(() => init)` from
+`corten` gives the running handler's component its object, the same one for every handler of that
+instance until its root leaves the page, and another one for each other instance. No element is
+passed. The component is the one whose script the handler is in: a component whose script
+imports `keep` is scoped (its root is marked `data-scope`, refs or not), and a handler it passes
+to a child keeps its state wherever the child renders it, as it keeps its refs. A `script!`
+module is shared by components, so importing `keep` there does not compile. A component has one
+state, made by the first call's `init`, so keep everything in one object the handlers share:
+
+```js
+const kept = () => keep(() => ({ index: -1, unsent: new Set() }));
+
+/** @param {Selection} sel */
+export function clear(sel) {
+  kept().index = -1;
+}
+```
+
+Take it first, while the handler runs: a callback the handler sets up (a timer, a listener, a
+feed's rows) uses the object it got (`const s = kept();` first). Outside any handler `keep`
+throws; inside one that something else's handler interrupts (an event it dispatches, a
+`focus()`, a popover's `toggle`), the other handler's `keep` is that handler's component's.
 
 ## Rules
 
@@ -386,7 +434,14 @@ else, and a handler that gets the list's parent (and the `<template>`, to make n
 | `replace(items)` | shows exactly `items`: rows with a key it had keep their element and are filled again |
 
 One parent has one list, whichever handler asks, and it notices rows changed without it (a
-server patch, a sort) the next time it is used.
+server patch, a sort) the next time it is used. A sort or a filter reads the rows' properties,
+not cells by index, so a column moved in the markup cannot sort by the wrong one and `tsc` checks
+the field's name and type: read each row's key once (`list.map((row) => ({ el: row.el, key:
+row.label }))`), sort those (text with an `Intl.Collator` for the page's `lang`), then
+`body.append(...)` the elements. Give each column its own handler (`sortByName`, `sortByPrice`)
+over a shared function rather than one handler taking the field's name as text: the markup's
+call is checked against the handler's name, while a JSDoc union of strings is any JSON value to
+the Rust compiler. `examples/seller-desk` sorts and filters its grid this way.
 
 The parameter's type says whose rows it holds: `Holds<Row, HTMLTableSectionElement>` (or
 `Holds<Row, HTMLTemplateElement>` for the template). `tsc` then rejects `rows(body, Card)` and

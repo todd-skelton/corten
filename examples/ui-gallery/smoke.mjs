@@ -2,22 +2,70 @@
 // Firefox and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
 // Usage: node examples/ui-gallery/smoke.mjs [http://localhost:18482] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
+import { stall } from "../../scripts/stall.mjs";
+import { browserBug } from "../../scripts/browser-bugs.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18482";
 const engines = { chromium, firefox, webkit };
 const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys(engines);
 const failures = [];
 let engine = "";
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(`[${engine}] ${name}`);
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };
 
+/**
+ * Requests the browser's pages have sent and not finished, with when each was sent: printed when
+ * a run throws (a page that never fires `load`), so the report says which one hangs (#232, #252).
+ * A request leaves when it finishes or fails, or when its page or context closes.
+ * @type {Map<import("@playwright/test").Request, { at: number, context: import("@playwright/test").BrowserContext }>}
+ */
+const inflight = new Map();
+/** @param {import("@playwright/test").Browser} browser */
+function track(browser) {
+  /** @param {(r: import("@playwright/test").Request, at: { context: import("@playwright/test").BrowserContext }) => boolean} gone */
+  const drop = (gone) => {
+    for (const [r, at] of inflight) if (gone(r, at)) inflight.delete(r);
+  };
+  /** @param {import("@playwright/test").Request} r */
+  const pageOf = (r) => {
+    try {
+      return r.frame().page();
+    } catch {
+      return null; // a service worker's request has no frame
+    }
+  };
+  // `newPage` makes its context through `newContext`, so every context is watched here.
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (...args) => {
+    const context = await newContext(...args);
+    context.on("request", (r) => inflight.set(r, { at: Date.now(), context }));
+    context.on("requestfinished", (r) => inflight.delete(r));
+    context.on("requestfailed", (r) => inflight.delete(r));
+    context.on("page", (page) => page.on("close", () => drop((r) => pageOf(r) === page)));
+    context.on("close", () => drop((_, at) => at.context === context));
+    return context;
+  };
+}
+/** What is still loading, oldest first. */
+function pending() {
+  const now = Date.now();
+  return [...inflight].sort((a, b) => a[1].at - b[1].at).map(([r, { at }]) => `  ${now - at}ms ${r.method()} ${r.url()} (${r.resourceType()})`);
+}
+
 for (engine of names) {
   const browser = await engines[engine].launch({ headless: true });
+  track(browser);
   try {
     await run(browser);
+  } catch (error) {
+    console.log(`[${engine}] still loading when it failed:\n${pending().join("\n") || "  nothing"}`);
+    throw error;
   } finally {
+    inflight.clear();
     await browser.close();
   }
 }
@@ -30,14 +78,43 @@ console.log("\nall passed");
 
 /** @param {import("@playwright/test").Browser} browser */
 async function run(browser) {
+  // A console error the browser logs for its own bug (scripts/browser-bugs.mjs) is not the page's.
+  const bug = browserBug(browser);
   const page = await (await browser.newContext()).newPage();
   const errors = [];
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  page.on("console", (m) => m.type() === "error" && !bug(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
+  /** @type {string[]} */
+  const failed = [];
+  /** @param {import("@playwright/test").Request} r */
+  const lost = (r) => failed.push(`${new URL(r.url()).pathname} ${r.failure()?.errorText}`);
+  /** @param {import("@playwright/test").Response} r */
+  const refused = (r) => r.status() >= 400 && failed.push(`${new URL(r.url()).pathname} ${r.status()}`);
+  page.on("requestfailed", lost);
+  page.on("response", refused);
   await page.goto(`${base}/`);
-  await page.waitForFunction(() => document.querySelector('[data-scope=ui-combo-box] [role="combobox"]:not([hidden])') !== null);
+  // The combo box's input shows once its script connects (#252): on a timeout, say what had
+  // loaded and what failed rather than throwing without the engine.
+  const connected = await page
+    .waitForFunction(() => document.querySelector('[data-scope=ui-combo-box] [role="combobox"]:not([hidden])') !== null)
+    .then(() => true)
+    .catch(() => false);
+  if (!connected) {
+    // The page may have crashed or gone: say so rather than lose the rest of the report.
+    const state = await page
+      .evaluate(() => ({
+        readyState: document.readyState,
+        scripts: performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/") || n.includes("corten")).map((n) => new URL(n).pathname),
+      }))
+      .catch((e) => ({ readyState: `unavailable: ${e instanceof Error ? e.message : e}`, scripts: [] }));
+    check("the first page's combo box connects", false, JSON.stringify({ ...state, failed, errors }));
+    return;
+  }
+  // Only the first load's: the gallery's refused forms answer 422 later, as they should.
+  page.off("requestfailed", lost);
+  page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the six scripts load and connect", loaded === 6, `${loaded} script(s)`);
+  check("the twelve scripts load and connect", loaded === 12, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -70,10 +147,48 @@ async function run(browser) {
   check("release stops the repeat", Number(await qty.inputValue()) === held);
   check("the button kept focus where it was", await page.evaluate(() => document.activeElement?.id === "qty"));
   await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).click();
-  check("a step keeps the step's decimals", (await page.locator("#price").inputValue()) === "12.51", await page.locator("#price").inputValue());
+  check("a step keeps the step's decimals", (await page.locator("#weight").inputValue()) === "0.6", await page.locator("#weight").inputValue());
+  // Each field keeps its own state (keep()): while the quantity's button is held, the weight's
+  // button still steps from the keyboard. Sharing one, the held pointer would make it skip.
+  await qty.focus();
+  await page.keyboard.press("Home");
+  const before = Number(await qty.inputValue());
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  const holding = Number(await qty.inputValue());
+  await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
+  const own = await page.locator("#weight").inputValue();
+  await page.mouse.up();
+  // The quantity stepped on the press, so its pointer was held while the weight stepped.
+  check("each field keeps its own state", holding > before && own === "0.7", `quantity ${before} -> ${holding}, weight ${own}`);
+  // A press released off its button makes no click, so nothing is left to skip the next key's.
+  const up = await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).boundingBox();
+  await page.mouse.move(up.x + up.width / 2, up.y + up.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(up.x + up.width / 2, up.y - 80);
+  await page.mouse.up();
+  await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
+  const after = await page.locator("#weight").inputValue();
+  check("a press released elsewhere steps once, and the next key steps", after === "0.9", after);
+  // A key's click right after a pointer's, in the same task (before any timer can run): the
+  // pointer's stepped on its press, its click does not step again, and the key's does (#316).
+  const sameTask = await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).evaluate((button) => {
+    const input = /** @type {HTMLInputElement} */ (document.getElementById("weight"));
+    const from = input.value;
+    const at = { bubbles: true, cancelable: true, composed: true, button: 0, pointerId: 7, isPrimary: true };
+    button.dispatchEvent(new PointerEvent("pointerdown", at));
+    button.dispatchEvent(new PointerEvent("pointerup", at));
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    button.click();
+    return `${from} -> ${input.value}`;
+  });
+  check("a key's click right after a pointer's steps once more", sameTask === "0.9 -> 1.1", sameTask);
+  const fewer = page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(0);
+  for (const key of ["Enter", "Space", "Enter", "Space"]) await fewer.press(key);
+  check("Enter and Space on decrease step down", (await page.locator("#weight").inputValue()) === "0.7", await page.locator("#weight").inputValue());
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
-    const field = /** @type {Element} */ (document.querySelector("#price")?.closest("[data-scope=ui-number-field]")?.parentElement);
+    const field = /** @type {Element} */ (document.querySelector("#weight")?.closest("[data-scope=ui-number-field]")?.parentElement);
     return Array.from(field.querySelectorAll("button, span, input"), (el) => [el.localName, Math.round(el.getBoundingClientRect().x)])
       .sort((a, b) => Number(a[1]) - Number(b[1]))
       .map((p) => p[0])
@@ -82,31 +197,31 @@ async function run(browser) {
   check("the design system orders an adornment between the parts", layout === "button span input button", layout);
 
   // ComboBox
-  const color = page.getByLabel("Color");
+  const color = page.getByLabel("Condition");
   check("the label names the text input once the script runs", (await color.getAttribute("role")) === "combobox");
   check("the select is hidden", await page.locator("[data-scope=ui-combo-box] select").isHidden());
-  await color.fill("sand");
+  await color.fill("light");
   const popup = page.locator("[data-scope=ui-combo-box] [popover]");
   check("typing opens the list", (await popup.evaluate((p) => p.matches(":popover-open"))) && (await color.getAttribute("aria-expanded")) === "true");
   const shown = await page.locator('[data-scope=ui-combo-box] [role="option"]:visible').allTextContents();
-  check("the list filters by what was typed", shown.join() === "Desert Sand", shown.join());
+  check("the list filters by what was typed", shown.join() === "Lightly Played", shown.join());
   check("the first match is highlighted", (await color.getAttribute("aria-activedescendant")) !== null);
   await page.keyboard.press("Enter");
-  check("Enter picks it", (await color.inputValue()) === "Desert Sand" && (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "sand");
+  check("Enter picks it", (await color.inputValue()) === "Lightly Played" && (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "lp");
   check("picking closes the list", (await color.getAttribute("aria-expanded")) === "false" && !(await popup.evaluate((p) => p.matches(":popover-open"))));
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   const active = await color.getAttribute("aria-activedescendant");
-  check("Arrow Down opens at the value and moves", active !== null && (await page.locator(`#${active}`).textContent()) === "Forest Green");
+  check("Arrow Down opens at the value and moves", active !== null && (await page.locator(`#${active}`).textContent()) === "Moderately Played");
   await page.keyboard.press("Escape");
-  check("Escape closes and keeps the value", (await color.inputValue()) === "Desert Sand" && (await color.getAttribute("aria-expanded")) === "false");
+  check("Escape closes and keeps the value", (await color.inputValue()) === "Lightly Played" && (await color.getAttribute("aria-expanded")) === "false");
   await color.fill("zzz");
   check("no match shows the status", await page.locator('[data-scope=ui-combo-box] [role="status"]').isVisible());
   await page.keyboard.press("Tab");
-  check("leaving restores the value's text", (await color.inputValue()) === "Desert Sand");
+  check("leaving restores the value's text", (await color.inputValue()) === "Lightly Played");
   await color.click();
-  await page.locator('[data-scope=ui-combo-box] [role="option"]', { hasText: "Salt & Pepper Gray" }).click();
-  check("a click picks", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "gray" && (await color.inputValue()) === "Salt & Pepper Gray");
+  await page.locator('[data-scope=ui-combo-box] [role="option"]', { hasText: "Heavily Played" }).click();
+  check("a click picks", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "hp" && (await color.inputValue()) === "Heavily Played");
   // Open, then measure: CSS anchor positioning puts the list under the input, at least as wide.
   await color.press("ArrowDown");
   const listBox = await page.evaluate(() => {
@@ -119,17 +234,54 @@ async function run(browser) {
   await color.fill("");
   await page.keyboard.press("Tab");
   check("emptying the field clears the value", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "");
-  await page.getByRole("button", { name: "Order" }).click();
+  await page.getByRole("button", { name: "List for sale" }).click();
   const message = await color.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
   check("a required, empty combobox stops the form on the input", message !== "", message);
-  await color.fill("forest green");
+  await color.fill("near mint");
   await page.keyboard.press("Tab");
-  check("typing a label exactly picks it", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "forest");
+  check("typing a label exactly picks it", (await page.locator("[data-scope=ui-combo-box] select").inputValue()) === "nm");
 
   await qty.fill("3");
-  await page.getByRole("button", { name: "Order" }).click();
-  await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Ordered"));
-  check("the form sends the components' values", (await page.textContent("#result")) === "Ordered 3 in Forest Green at $12.51.", await page.textContent("#result"));
+  await page.getByRole("button", { name: "List for sale" }).click();
+  await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed"));
+  check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.50 each, 0.7 oz to ship.", await page.textContent("#result"));
+
+  // CheckboxGroup: no region checked stops the form at the group's first box.
+  const lastResult = await page.textContent("#result");
+  const sellValid = () => page.evaluate(() => /** @type {HTMLFormElement} */ (document.querySelector('form[action$="/sell"]')).checkValidity());
+  const shipsValid = () => page.evaluate(() => Array.from(document.querySelectorAll('form[action$="/sell"] fieldset input[type="checkbox"]')).every((box) => /** @type {HTMLInputElement} */ (box).checkValidity()));
+  const us = page.getByRole("checkbox", { name: "United States" });
+  await us.uncheck();
+  const shipMessage = await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
+  await page.getByRole("button", { name: "List for sale" }).click();
+  await page.waitForTimeout(300);
+  check("a group with no box checked stops the form at its first box, with the app's message", shipMessage === "Choose where you ship." && !(await sellValid()) && (await page.textContent("#result")) === lastResult, shipMessage);
+  await page.getByRole("checkbox", { name: "Canada" }).check();
+  check("one box checked, the group is valid", (await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) === "");
+  // RequiredWhen: the lowest offer applies only to offers.
+  const floor = page.getByLabel("Lowest offer");
+  const floorRequired = () => floor.evaluate((i) => /** @type {HTMLInputElement} */ (i).required);
+  check("for a fixed price the lowest offer is disabled and not required", (await floor.isDisabled()) && !(await floorRequired()));
+  await page.getByLabel("Pricing").selectOption("offers");
+  check("accepting offers makes the lowest offer required", (await floor.isEnabled()) && (await floorRequired()));
+  await page.getByRole("button", { name: "List for sale" }).click();
+  await page.waitForTimeout(300);
+  check("an empty lowest offer stops the form", (await floor.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) !== "" && (await page.textContent("#result")) === lastResult);
+  await floor.fill("5");
+  await qty.fill("2");
+  await page.getByRole("button", { name: "List for sale" }).click();
+  await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed 2"), null, { timeout: 5000 }).catch(() => {});
+  check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.50 each, 0.7 oz to ship.", await page.textContent("#result"));
+  await page.getByLabel("Pricing").selectOption("fixed");
+  check("back to a fixed price, the lowest offer is disabled again", await floor.isDisabled());
+  // A reset puts the boxes back as drawn ("United States" checked), and the group is checked again.
+  // Only the group's boxes: the reset also empties the condition, which is drawn with no choice.
+  await us.uncheck();
+  await page.getByRole("checkbox", { name: "Canada" }).uncheck();
+  const unchecked = await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
+  await page.evaluate(() => /** @type {HTMLFormElement} */ (document.querySelector('form[action$="/sell"]')).reset());
+  await page.waitForTimeout(100);
+  check("a form reset checks the group again", unchecked === "Choose where you ship." && (await us.isChecked()) && (await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) === "" && (await shipsValid()), unchecked);
 
   // TabGroup
   const tab = (name) => page.getByRole("tab", { name });
@@ -155,12 +307,13 @@ async function run(browser) {
   await expanded("true");
   check("the button opens the menu", (await trigger.getAttribute("aria-expanded")) === "true");
   check("focus moves to the first item", (await page.evaluate(() => document.activeElement?.textContent)) === "Help");
+  // Under the button, or above it where the viewport has no room below (flip-block).
   const menuBox = await page.evaluate(() => {
     const button = document.querySelector("#actions-button")?.getBoundingClientRect();
     const menu = document.querySelector("#actions")?.getBoundingClientRect();
-    return button && menu && { gap: menu.top - button.bottom, left: menu.left - button.left };
+    return button && menu && { gap: Math.max(menu.top - button.bottom, button.top - menu.bottom), left: menu.left - button.left };
   });
-  check("the menu is anchored under its button", !!menuBox && menuBox.gap >= 0 && menuBox.gap <= 8 && Math.abs(menuBox.left) <= 1, JSON.stringify(menuBox));
+  check("the menu is anchored to its button", !!menuBox && menuBox.gap >= 0 && menuBox.gap <= 8 && Math.abs(menuBox.left) <= 1, JSON.stringify(menuBox));
   await page.keyboard.press("ArrowDown");
   check("Arrow Down moves", (await page.evaluate(() => document.activeElement?.textContent)) === "Archive");
   await page.keyboard.press("w");
@@ -184,6 +337,11 @@ async function run(browser) {
   const toast = page.locator("#ui-toast");
   const dismiss = page.getByRole("button", { name: "Dismiss" });
   check("no message: nothing shows", (await toast.isHidden()) && (await dismiss.isHidden()));
+  const region = await page.evaluate(() => {
+    const toaster = document.querySelector('[role="status"]:has(#ui-toast)');
+    return [toaster, toaster?.parentElement, document.querySelector("#menu-result")].map((e) => (e ? getComputedStyle(e).display : "missing")).join();
+  });
+  check("empty live regions stay in the page, so a message is announced", !/none|missing/.test(region), region);
   const save = page.getByRole("button", { name: "Save draft" });
   await save.click();
   await page.waitForFunction(() => document.querySelector("#ui-toast")?.textContent === "Draft saved.");
@@ -240,18 +398,234 @@ async function run(browser) {
   }));
   await page.keyboard.press("Escape");
   check("Escape closes the page's dialog", !(await isModal()) && !(await rename.evaluate((d) => /** @type {HTMLDialogElement} */ (d).open)));
-  // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
-  const unexpected = errors.filter((e) => !/status of 422/.test(e));
+
+  // dialog::modalClosedBy: a sheet the address opens, which a close request leaves for its
+  // link's address.
+  await page.goto(`${base}/`);
+  /**
+   * This entry's place in the history, where the browser has the Navigation API (a browser
+   * without it loads whole pages, and the link's address replaces the sheet's).
+   */
+  const at = () => page.evaluate(() => /** @type {any} */ (window).navigation?.currentEntry?.index ?? -1);
+  /**
+   * The page's own address. Not `page.url()` or `waitForURL`: Playwright's WebKit does not
+   * report the runtime's navigation from `/` to `/?sale=last` (a push that changes only the
+   * query), so its URL stays at `/` while `location` and the history have moved on, and a click
+   * that waits for that navigation never returns (`noWaitAfter` on the link's clicks).
+   */
+  const href = () => page.evaluate(() => location.href);
+  /** @param {boolean} open whether the address names the sale */
+  const saleInAddress = (open) =>
+    page.waitForFunction((open) => new URL(location.href).searchParams.has("sale") === open, open, { timeout: 5000 }).catch(() => {});
+  const listEntry = await at();
+  await page.getByRole("link", { name: "Last sale" }).click({ noWaitAfter: true });
+  await saleInAddress(true);
+  const sheet = page.locator('dialog[aria-label="Last sale"]');
+  const sheetModal = () => page.evaluate(() => !!document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"));
+  await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  check("the address opens the sheet as a modal", await sheetModal());
+  /** Escape on the sheet, then the page without it: the address drops `sale` and the sheet goes. */
+  const escape = async (/** @type {string} */ how) => {
+    await page.keyboard.press("Escape");
+    await saleInAddress(false);
+    await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    check(`${how}: Escape goes to the close link's address, which does not name the sale`, !new URL(await href()).searchParams.has("sale"), await href());
+    check(`${how}: the page without it replaces the sheet`, (await sheet.count()) === 0);
+  };
+  const openSheet = async () => {
+    await page.getByRole("link", { name: "Last sale" }).click({ noWaitAfter: true });
+    await saleInAddress(true);
+    await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  };
+  // Opened from the list, closing goes back to the list's entry: no entry is added, so Back
+  // after it leaves the list, and Android's Back on the open sheet cannot loop through it.
+  await escape("opened by a click");
+  check("opened by a click: closing goes back to the list's entry", (await at()) === listEntry, `${listEntry} -> ${await at()}`);
+  if (listEntry < 0) {
+    // Without the Navigation API the list's address replaced the sheet's: Back shows the list
+    // once more, not the sheet.
+    await page.goBack();
+    await page.waitForLoadState();
+    check("no Navigation API: Back shows the list, not the sheet", new URL(page.url()).pathname === "/" && !new URL(page.url()).search && (await sheet.count()) === 0, page.url());
+    await page.goForward();
+    await page.waitForLoadState();
+  }
+  await page.reload();
+  check("a reload does not open it again", (await sheet.count()) === 0);
+  // A close request other than Escape (Android's Back, closedby="any") is the same `cancel`.
+  if (await page.evaluate(() => "requestClose" in HTMLDialogElement.prototype)) {
+    await openSheet();
+    // Not the locator's evaluate: the close replaces the sheet as it runs, and a locator then
+    // waits for it to come back.
+    await page.evaluate(() => /** @type {any} */ (document.querySelector('dialog[aria-label="Last sale"]'))?.requestClose());
+    await saleInAddress(false);
+    await sheet.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    check("requestClose() leaves the sheet's address too", !new URL(await href()).searchParams.has("sale") && (await sheet.count()) === 0, await href());
+  }
+  // Loaded at its address (a shared link), with no click since: Chromium does not let the page
+  // keep it open on Escape, and the address is still left, in place of the sheet's entry (the
+  // entry before is another page, so there is no going back to the list).
+  await page.goto(`${base}/?tab=offers`);
+  await page.goto(`${base}/?sale=last`);
+  await page.waitForFunction(() => document.querySelector('dialog[aria-label="Last sale"]')?.matches(":modal"), null, { timeout: 5000 }).catch(() => {});
+  check("loaded at its address, the sheet is modal", await sheetModal());
+  const shared = await at();
+  await escape("loaded at its address");
+  check("loaded at its address: the list replaces the sheet's entry", (await at()) === shared, `${shared} -> ${await at()}`);
+  await page.goBack();
+  await page.waitForLoadState();
+  check("Back from there goes to the page before the shared link", new URL(await href()).searchParams.get("tab") === "offers", await href());
+  // CopyButton: shown where the browser has the Clipboard API; a click copies the SKU.
+  const clip = await (await browser.newContext(engine === "chromium" ? { permissions: ["clipboard-read", "clipboard-write"] } : {})).newPage();
+  clip.on("console", (m) => m.type() === "error" && !bug(m.text()) && errors.push(m.text()));
+  clip.on("pageerror", (e) => errors.push(e.message));
+  await clip.goto(`${base}/`);
+  const copyButton = clip.getByRole("button", { name: "Copy", exact: true });
+  await copyButton.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  check("the copy button shows once its script connects", await copyButton.isVisible());
+  await copyButton.click();
+  const said = clip.locator('[data-scope=ui-copy-button] [aria-live="polite"]');
+  await clip.waitForFunction(() => document.querySelector('[data-scope=ui-copy-button] [aria-live]')?.textContent === "Copied", null, { timeout: 5000 }).catch(() => {});
+  check("a click says it copied, in its live region", (await said.textContent()) === "Copied", await said.textContent());
+  const copies = clip.locator('output[aria-label="Copies"]');
+  check("the copy is reported once to the page (Copied bubbles to the paragraph)", (await copies.textContent()) === "1", await copies.textContent());
+  if (engine === "chromium") {
+    check("the clipboard holds the SKU, from the page's own element", (await clip.evaluate(() => navigator.clipboard.readText())) === "ASH-DRAKE-NM");
+  }
+  await clip.waitForFunction(() => document.querySelector('[data-scope=ui-copy-button] [aria-live]')?.textContent === "Copy", null, { timeout: 5000 }).catch(() => {});
+  check("then its label again", (await said.textContent()) === "Copy", await said.textContent());
+  await clip.context().close();
+  // A write the browser refuses changes nothing: the button never says it copied.
+  const denied = await (await browser.newContext()).newPage();
+  denied.on("pageerror", (e) => errors.push(e.message));
+  await denied.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new DOMException("denied", "NotAllowedError")) } });
+  });
+  await denied.goto(`${base}/`);
+  const deniedButton = denied.getByRole("button", { name: "Copy", exact: true });
+  await deniedButton.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  await deniedButton.click();
+  await denied.waitForTimeout(300);
+  check("a denied write leaves the label as it was", (await denied.locator('[data-scope=ui-copy-button] [aria-live]').textContent()) === "Copy");
+  check("a denied write reports no copy", (await denied.locator('output[aria-label="Copies"]').textContent()) === "0");
+  await denied.context().close();
+  // Without the Clipboard API (an insecure origin) the button stays hidden.
+  const insecure = await (await browser.newContext()).newPage();
+  await insecure.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: undefined }));
+  await insecure.goto(`${base}/`);
+  await insecure.waitForFunction(() => document.querySelector("[data-scope=ui-combo-box] input")?.checkVisibility(), null, { timeout: 5000 }).catch(() => {});
+  check("without the Clipboard API the button stays hidden", await insecure.locator("[data-scope=ui-copy-button]").isHidden());
+  await insecure.context().close();
+  // PrintButton: shown once its script connects; a click opens the print dialog (counted here).
+  const printing = await (await browser.newContext()).newPage();
+  printing.on("pageerror", (e) => errors.push(e.message));
+  await printing.addInitScript(() => {
+    window.print = () => {
+      /** @type {any} */ (window).printed = (/** @type {any} */ (window).printed ?? 0) + 1;
+    };
+  });
+  await printing.goto(`${base}/`);
+  const printButton = printing.getByRole("button", { name: "Print label", exact: true });
+  await printButton.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  check("the print button shows once its script connects", await printButton.isVisible());
+  await printButton.click();
+  const printed = await printing.evaluate(() => /** @type {any} */ (window).printed ?? 0);
+  check("a click opens the print dialog once", printed === 1, String(printed));
+  await printing.context().close();
+  // RelativeTime: the server wrote both times; the browser's clock (faked, from now) moves them.
+  const timed = await (await browser.newContext()).newPage();
+  const timedErrors = [];
+  timed.on("pageerror", (e) => timedErrors.push(String(e)));
+  timed.on("console", (m) => m.type() === "error" && !bug(m.text()) && timedErrors.push(m.text()));
+  // Paused before the page loads, so only runFor moves its time: a slow read under load adds no
+  // seconds, and the pause cannot land in the page's past.
+  await timed.clock.install();
+  await timed.clock.pauseAt(Date.now() + 1_000);
+  await timed.goto(`${base}/`);
+  const listed = timed.locator("time").first();
+  const expires = timed.locator("time").nth(1);
+  check("the server writes a time behind now", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
+  check("and one ahead, with its instant", (await expires.textContent()) === "in 1 minute" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{3})?Z$/.test((await expires.getAttribute("datetime")) ?? ""), await expires.textContent());
+  // To 58.5 seconds before the expiry, measured on the page, whatever the server's and the page's
+  // clocks differ by.
+  const until = Date.parse((await expires.getAttribute("datetime")) ?? "") - (await timed.evaluate(() => Date.now()));
+  await timed.clock.runFor(Math.max(0, until - 58_500));
+  const seconds = async () => Number(/^in (5\d) seconds$/.exec((await expires.textContent()) ?? "")?.[1]);
+  const first = await seconds();
+  check("under a minute ahead, it counts seconds", first > 50, await expires.textContent());
+  await timed.clock.runFor(2_000);
+  check("each second", (await seconds()) === first - 2, `${first} then ${await expires.textContent()}`);
+  await timed.clock.runFor(60_000);
+  check("past it, it says how long ago", /^\d+ seconds? ago$/.test((await expires.textContent()) ?? ""), await expires.textContent());
+  check("the one behind kept its hour", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
+  await timed.clock.runFor(55 * 60_000);
+  check("an hour on, the one behind moves", (await listed.textContent()) === "4 hr. ago" && (await expires.textContent()) === "55 minutes ago", `${await listed.textContent()}, ${await expires.textContent()}`);
+  // Back from sleep: the clock moved two hours and no timer ran; the page coming back redraws.
+  await timed.clock.setSystemTime((await timed.evaluate(() => Date.now())) + 2 * 3600_000);
+  await timed.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  check("the page coming back redraws as of its clock", (await listed.textContent()) === "6 hr. ago" && (await expires.textContent()) === "2 hours ago", `${await listed.textContent()}, ${await expires.textContent()}`);
+  // A time put in place of another, as a patch does: the new one is kept current, the old one let
+  // go. The clock first moves past the page's timer with nothing to say so (a sleep), so the new
+  // time cannot count on that timer.
+  await timed.clock.setSystemTime((await timed.evaluate(() => Date.now())) + 2 * 3600_000);
+  await timed.evaluate(() => {
+    const old = /** @type {HTMLTimeElement} */ (document.querySelectorAll("time")[1]);
+    const time = /** @type {HTMLTimeElement} */ (old.cloneNode(false));
+    time.dateTime = new Date(Date.now() + 90_000).toISOString();
+    time.textContent = "in 1 minute";
+    old.replaceWith(time);
+  });
+  await timed.clock.runFor(31_000);
+  check("a time that replaces another is kept current", /^in 5\d seconds$/.test((await expires.textContent()) ?? ""), await expires.textContent());
+  check("no console errors with relative times", timedErrors.length === 0, timedErrors.join(" | "));
+  await timed.context().close();
+  // A browser without the page's locale falls back to another language: the server's text stays.
+  const lacking = await (await browser.newContext()).newPage();
+  const lackingErrors = [];
+  lacking.on("pageerror", (e) => lackingErrors.push(String(e)));
+  lacking.on("console", (m) => m.type() === "error" && !bug(m.text()) && lackingErrors.push(m.text()));
+  await lacking.addInitScript(() => {
+    const options = Intl.RelativeTimeFormat.prototype.resolvedOptions;
+    Intl.RelativeTimeFormat.prototype.resolvedOptions = function () {
+      /** @type {any} */ (window).asked = (/** @type {any} */ (window).asked ?? 0) + 1;
+      return { ...options.call(this), locale: "fr" };
+    };
+  });
+  await lacking.clock.install();
+  await lacking.goto(`${base}/`);
+  await lacking.clock.runFor(31_000);
+  const asked = await lacking.evaluate(() => /** @type {any} */ (window).asked ?? 0);
+  check(
+    "a locale the browser lacks keeps the server's text",
+    asked > 0 && lackingErrors.length === 0 && (await lacking.locator("time").nth(1).textContent()) === "in 1 minute",
+    `${await lacking.locator("time").nth(1).textContent()}, asked ${asked}, ${lackingErrors.join(" | ")}`,
+  );
+  await lacking.context().close();
+
+  // The refused renames are 422s, which Chromium and WebKit log; nothing else may be. WebKit also
+  // reports a request to the gallery's own origin that did not finish (the hover prefetch of
+  // /?sale=last, or a load the next navigation dropped) as a fetch that "cannot load
+  // http://localhost:18482/?sale=last due to access control checks"; Playwright splits that page
+  // error at its first colon, so the text here starts "/localhost:18482/?sale=last" (#301). A
+  // request to its own origin is never refused by CORS, so only another origin's still counts.
+  const ownOrigin = `/${new URL(base).host}/`;
+  const unexpected = errors.filter((e) => {
+    const refused = /(\S+) due to access control checks/.exec(e)?.[1];
+    return !/status of 422/.test(e) && !refused?.startsWith(ownOrigin);
+  });
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
   // Without JavaScript
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
   await plain.goto(`${base}/`);
+  check("no script: the server's relative time is the text", (await plain.locator("time").first().textContent()) === "3 hr. ago");
   check("no script: the select is the control", (await plain.locator("[data-scope=ui-combo-box] select").isVisible()) && (await plain.locator("[data-scope=ui-combo-box] input").isHidden()));
-  await plain.locator("[data-scope=ui-combo-box] select").selectOption("sand");
+  await plain.locator("[data-scope=ui-combo-box] select").selectOption("lp");
   // The post loads a new page; waitForLoadState alone can return for the page it left.
-  await Promise.all([plain.waitForURL("**/order"), plain.getByRole("button", { name: "Order" }).click()]);
-  check("no script: the form posts the page", (await plain.textContent("#result")) === "Ordered 1 in Desert Sand at $12.50.", await plain.textContent("#result"));
+  await Promise.all([plain.waitForURL("**/sell"), plain.getByRole("button", { name: "List for sale" }).click()]);
+  check("no script: the form posts the page", (await plain.textContent("#result")) === "Listed 1 Lightly Played Ashen Drake at $12.50 each, 0.5 oz to ship.", await plain.textContent("#result"));
+  const plainFloor = plain.getByLabel("Lowest offer");
+  check("no script: the lowest offer is enabled and optional (the handler checks it)", (await plainFloor.isEnabled()) && !(await plainFloor.evaluate((i) => /** @type {HTMLInputElement} */ (i).required)));
   await plain.getByRole("tab", { name: "Offers" }).click();
   await plain.waitForURL("**/?tab=offers");
   check("no script: a tab is a link to its page", (await plain.getByRole("tabpanel").textContent()) === "Two offers, the best at $10.00.");
@@ -264,4 +638,13 @@ async function run(browser) {
   check("no script: the button opens the dialog", await plain.locator("#rename").isVisible());
   await Promise.all([plain.waitForURL("**/rename"), plain.getByRole("button", { name: "Rename", exact: true }).click()]);
   check("no script: refused, the dialog is open with the error", (await plain.locator("#rename").isVisible()) && ((await plain.locator("#rename").textContent()) ?? "").includes("Give the draft a name."));
+  await plain.goto(`${base}/?sale=last`);
+  const plainSheet = plain.locator('dialog[aria-label="Last sale"]');
+  check("no script: the address opens the sheet", await plainSheet.isVisible());
+  await Promise.all([plain.waitForURL((url) => !url.searchParams.has("sale")), plain.getByRole("link", { name: "Close" }).click()]);
+  check("no script: its link closes it", (await plainSheet.count()) === 0);
+  await plain.goto(`${base}/`);
+  check("no script: the SKU is on the page and the copy button is not", (await plain.locator("code", { hasText: "ASH-DRAKE-NM" }).isVisible()) && (await plain.locator("[data-scope=ui-copy-button]").isHidden()));
+  const plainPrint = plain.locator("button", { hasText: "Print label" });
+  check("no script: the print button is on the page, hidden", (await plainPrint.count()) === 1 && (await plainPrint.isHidden()));
 }

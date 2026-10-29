@@ -2,13 +2,13 @@
 // MenuButton (menu_button.rs). The browser opens and dismisses the menu (popover,
 // popovertarget); this adds the menu keys, focus and aria-expanded, and names the button as the
 // menu's anchor, so the design system places the menu with CSS anchor positioning.
-import { state } from "corten";
+import { keep } from "corten";
 
 /**
  * The item to focus when the menu opens (first, 0, or last, -1), and whether focus was in the
- * menu as it closed. @param {HTMLDivElement} menu
+ * menu as it closed.
  */
-const opening = (menu) => state(menu, () => ({ start: 0, focused: false }));
+const opening = () => keep(() => ({ start: 0, focused: false }));
 
 /** @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu @param {HTMLElement[]} items */
 export function connect(trigger, menu, items) {
@@ -23,7 +23,7 @@ export function connect(trigger, menu, items) {
 export function open(event, menu) {
   if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
   event.preventDefault();
-  opening(menu).start = event.key === "ArrowDown" ? 0 : -1;
+  opening().start = event.key === "ArrowDown" ? 0 : -1;
   menu.showPopover();
 }
 
@@ -34,14 +34,14 @@ export function open(event, menu) {
  * @param {ToggleEvent} event @param {HTMLDivElement} menu
  */
 export function closing(event, menu) {
-  if (event.newState === "closed") opening(menu).focused = menu.contains(document.activeElement);
+  if (event.newState === "closed") opening().focused = menu.contains(document.activeElement);
 }
 
 /** @param {ToggleEvent} event @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu @param {HTMLElement[]} items */
 export function toggled(event, trigger, menu, items) {
   const open = event.newState === "open";
   trigger.setAttribute("aria-expanded", String(open));
-  const s = opening(menu);
+  const s = opening();
   if (open) {
     items.at(s.start)?.focus();
     s.start = 0;

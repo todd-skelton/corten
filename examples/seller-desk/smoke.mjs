@@ -1,11 +1,14 @@
 // Browser smoke test and timings for the seller desk.
 // Usage: node examples/seller-desk/smoke.mjs http://localhost:18484
 import { chromium } from "@playwright/test";
+import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2];
 if (!base) throw new Error("usage: node examples/seller-desk/smoke.mjs <base url>");
 const failures = [];
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(name);
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(name);
 };
@@ -77,31 +80,44 @@ try {
 
   await time("filter keystroke", () => {
     const input = /** @type {HTMLInputElement} */ (document.querySelector("input[type=search]"));
-    input.value = "jungle";
+    input.value = "tidebreak";
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   const visible = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).length);
-  const jungle = await page.$$eval("tbody tr", (rows) => rows.filter((r) => r.cells[2].textContent === "Jungle").length);
-  check("filter hides rows that do not match", visible === jungle && visible > 0, `${visible} of ${jungle}`);
+  const inSet = await page.$$eval("tbody tr", (rows) => rows.filter((r) => r.cells[2].textContent === "Tidebreak").length);
+  check("filter hides rows that do not match", visible === inSet && visible > 0, `${visible} of ${inSet}`);
+  const shownText = () => page.$eval("#item-count", (p) => p.previousElementSibling?.textContent ?? "");
+  check(
+    "the filter says how many it shows of how many, in the item count's place",
+    (await shownText()) === `${visible.toLocaleString("en")} of ${nav.rows.toLocaleString("en")} shown` && (await page.isHidden("#item-count")),
+    await shownText(),
+  );
   await page.click("thead input[type=checkbox]");
   check("select all with a filter selects only the visible rows", (await count()) === String(visible), await count());
   await page.click("[role=group] button:nth-of-type(2)");
   await page.fill("input[type=search]", "");
+  check("with the filter cleared the item count is back", (await page.isVisible("#item-count")) && (await shownText()) === "");
+  check("on a desktop the set and condition are their own columns, not repeated under the name", await page.isHidden("tbody tr td:nth-child(2) small"));
 
   await time("sort by price (moves every row)", () => /** @type {HTMLButtonElement} */ (document.querySelectorAll("thead button")[3]).click());
   const prices = await page.$$eval("tbody tr", (rows) => rows.slice(0, 5).map((r) => Number(/** @type {HTMLInputElement} */ (r.cells[5].querySelector("input")).value)));
   check("sort orders rows by price", prices.every((p, i) => i === 0 || prices[i - 1] <= p), prices.join(" "));
   await time("sort again (descending)", () => /** @type {HTMLButtonElement} */ (document.querySelectorAll("thead button")[3]).click());
+  await page.click("thead button >> nth=0");
+  const names = await page.$$eval("tbody tr", (rows) => rows.slice(0, 30).map((r) => r.cells[1].firstElementChild?.textContent ?? ""));
+  check("sort orders rows by name, read from the row's field", names.every((n, i) => i === 0 || names[i - 1].localeCompare(n, "en") <= 0), names.slice(0, 5).join(", "));
   await page.click("tbody tr:first-child input[type=checkbox]");
   check("handlers still run on rows after they moved", (await count()) === "1");
   await page.click("[role=group] button:nth-of-type(2)");
 
   // A price edit: Save shows, Escape restores, an invalid price comes back with its error, a
   // valid one replaces the cell.
-  const cell = "tbody tr:nth-child(2) td:last-child";
+  // Rows by id, so a sort below does not move the cells under the test.
+  const cell = `#${await page.$eval("tbody tr:nth-child(2)", (r) => r.id)} td:last-child`;
   const before = await page.inputValue(`${cell} input`);
   await page.fill(`${cell} input`, "abc");
   check("typing a price shows Save", await page.isVisible(`${cell} button`));
+  check("the grid counts the unsaved price in the catalog's words", (await page.textContent("[role=group] + output")) === "1 price not saved", await page.textContent("[role=group] + output"));
   await page.press(`${cell} input`, "Escape");
   check("Escape puts the saved price back", (await page.inputValue(`${cell} input`)) === before && !(await page.isVisible(`${cell} button`)));
   await page.fill(`${cell} input`, "abc");
@@ -109,7 +125,7 @@ try {
   await page.waitForSelector(`${cell} input[aria-invalid=true]`, { timeout: 5000 }).catch(() => {});
   check("an invalid price comes back with its error, focused", (await page.evaluate(() => document.activeElement?.getAttribute("aria-invalid"))) === "true");
   // A second row refused too: each field is described by its own row's message.
-  const second = "tbody tr:nth-child(3) td:last-child";
+  const second = `#${await page.$eval("tbody tr:nth-child(3)", (r) => r.id)} td:last-child`;
   await page.fill(`${second} input`, "xyz");
   await page.click(`${second} button`);
   await page.waitForSelector(`${second} input[aria-invalid=true]`, { timeout: 5000 }).catch(() => {});
@@ -120,6 +136,10 @@ try {
     }),
   );
   check("two refused rows: each field is described by its own message", described.length === 2 && described.every((d) => d.own && d.ids === 1), JSON.stringify(described));
+  await page.click("thead button >> nth=3");
+  if ((await page.getAttribute("thead th:nth-child(6)", "aria-sort")) !== "ascending") await page.click("thead button >> nth=3");
+  const last = await page.$$eval("tbody tr", (rows) => rows.slice(-2).map((r) => /** @type {HTMLInputElement} */ (r.cells[5].querySelector("input")).value).sort().join(" "));
+  check("sorting by price puts the refused prices last", last === "abc xyz", last);
   await page.fill(`${second} input`, "3");
   await page.click(`${second} button`);
   await page.waitForFunction((sel) => document.querySelector(sel)?.getAttribute("aria-invalid") === null, `${second} input`, { timeout: 5000 }).catch(() => {});
@@ -133,13 +153,27 @@ try {
 
   // Text typed while the form is on its way is kept when the answer lands, with the focus and
   // caret; the server's markup (the error) still applies.
-  let release = () => {};
+  // Each price request is held until `release()`. `held()` waits until one is, so a release never
+  // comes before its request, and a release with any other number held fails the run.
+  /** @type {(() => void)[]} */
+  const pending = [];
+  /** @type {() => void} */
+  let arrived = () => {};
   await page.route("**/items/*/price", async (route) => {
-    await new Promise((resolve) => (release = () => resolve(undefined)));
+    await new Promise((resolve) => {
+      pending.push(() => resolve(undefined));
+      arrived();
+    });
     await route.continue();
   });
+  const held = () => (pending.length ? Promise.resolve() : new Promise((resolve) => (arrived = () => resolve(undefined))));
+  const release = () => {
+    if (pending.length !== 1) throw new Error(`expected one held price request, found ${pending.length}`);
+    pending.splice(0).forEach((go) => go());
+  };
   await page.fill(`${cell} input`, "x");
   await page.click(`${cell} button`);
+  await held();
   await page.focus(`${cell} input`);
   await page.keyboard.type("yz");
   await page.keyboard.press("ArrowLeft");
@@ -159,7 +193,7 @@ try {
   await page.click(`${cell} button`);
   const elsewhere = "tbody tr:nth-child(3) td:last-child input";
   await page.focus(elsewhere);
-  await page.waitForTimeout(200);
+  await held();
   const answered = page.waitForResponse("**/items/*/price");
   await page.evaluate((sel) => ((/** @type {any} */ (window)).__oldCell = document.querySelector(sel)), `${cell} input`);
   release();
@@ -169,22 +203,39 @@ try {
     "an invalid answer does not take the focus from a field the user moved to",
     await page.evaluate((sel) => document.activeElement === document.querySelector(sel), elsewhere),
   );
+  pending.splice(0).forEach((go) => go());
   await page.unroute("**/items/*/price");
   await page.fill(`${cell} input`, "7.50");
   await page.click(`${cell} button`);
   await page.waitForFunction((sel) => document.querySelector(sel)?.getAttribute("aria-invalid") === null, `${cell} input`, { timeout: 5000 }).catch(() => {});
 
-  // Archive two rows through the confirm dialog (a child given the grid's dialog ref and handler).
-  const ids = await page.$$eval("tbody tr", (rows) => rows.slice(0, 2).map((r) => r.id));
-  await page.click("tbody tr:nth-child(1) input[type=checkbox]");
-  await page.click("tbody tr:nth-child(2) input[type=checkbox]");
+  // Archive two rows through the confirm dialog, which the bulk bar's button opens with commandfor,
+  // with the filter on: its count follows the rows the patch removes.
+  await page.fill("input[type=search]", "tidebreak");
+  const filtered = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).length);
+  const ids = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).slice(0, 2).map((r) => r.id));
+  await page.click(`#${ids[0]} input[type=checkbox]`);
+  await page.click(`#${ids[1]} input[type=checkbox]`);
   await page.click("[role=group] button:nth-of-type(1)");
   check("Archive opens the dialog", await page.isVisible("dialog[open]"));
+  const itemCount = () => page.textContent("#item-count");
+  const countBefore = await itemCount();
   await page.click("dialog button[value=confirm]");
   await page.waitForFunction(() => /Archived/.test(document.getElementById("desk-status")?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
   check("confirming archives the rows", (await page.textContent("#desk-status")) === "Archived 2 items.", await page.textContent("#desk-status"));
   const left = await page.$$eval(ids.map((id) => `#${id}`).join(","), (rows) => rows.length);
   check("the patch removed the archived rows and the selection is clear", left === 0 && (await count()) === "0", `${left} left`);
+  check(
+    "the filter's count follows the archive",
+    (await shownText()) === `${(filtered - 2).toLocaleString("en")} of ${(nav.rows - 2).toLocaleString("en")} shown`,
+    await shownText(),
+  );
+  await page.fill("input[type=search]", "");
+  check(
+    "the archive's answer counts the items left",
+    countBefore === `${nav.rows.toLocaleString("en")} items` && (await itemCount()) === `${(nav.rows - 2).toLocaleString("en")} items`,
+    `${countBefore} -> ${await itemCount()}`,
+  );
   await page.click("tbody tr:nth-child(1) input[type=checkbox]");
   check("the rows that moved up still select", (await count()) === "1");
   await page.click("[role=group] button:nth-of-type(2)");
@@ -193,8 +244,47 @@ try {
   // Live levels: the feed changes some stock cells.
   const levels = () => page.$$eval("tbody tr > td:nth-child(5)", (cells) => cells.map((c) => c.textContent).join());
   const first = await levels();
-  await page.waitForTimeout(1200);
-  check("live levels update stock cells", (await levels()) !== first);
+  const changed = await page
+    .waitForFunction((was) => [...document.querySelectorAll("tbody tr > td:nth-child(5)")].map((c) => c.textContent).join() !== was, first, { timeout: 10_000 })
+    .then(() => true, () => false);
+  check("live levels update stock cells", changed);
+  // A row at 0 is marked sold out, and only such a row: the live levels sell rows out and restock
+  // them, so wait for a row whose mark the script changed, then compare every row.
+  const marked = () => page.$$eval("tbody tr[data-sold-out]", (rows) => rows.map((r) => r.id).sort().join());
+  const marksBefore = await marked();
+  const flipped = await page
+    .waitForFunction((was) => [...document.querySelectorAll("tbody tr[data-sold-out]")].map((r) => r.id).sort().join() !== was, marksBefore, { timeout: 15_000 })
+    .then(() => true, () => false);
+  const soldOutMarked = await page.$$eval("tbody tr", (rows) => rows.every((r) => (r.querySelector("td:nth-child(5)")?.textContent === "0") === r.hasAttribute("data-sold-out")));
+  check("a row is marked sold out exactly while its quantity is 0, as the levels change", flipped && soldOutMarked && marksBefore !== "", `${flipped} ${soldOutMarked} ${marksBefore.split(",").length} marked before`);
+
+  // On a phone the table keeps the name, quantity and price, and a price being edited (its Save
+  // button, then its error) fits without the grid scrolling sideways.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phoneCell = "tbody tr:not([hidden]) td:last-child";
+  const fits = () => page.evaluate((sel) => {
+    const scroll = /** @type {HTMLElement} */ (document.querySelector("tbody")?.closest("table")?.parentElement);
+    const box = scroll.getBoundingClientRect();
+    const parts = [...(document.querySelector(sel)?.querySelectorAll("input, button, p") ?? [])].map((el) => el.getBoundingClientRect());
+    const inside = parts.every((r) => r.width > 0 && r.left >= box.left && r.right <= box.right);
+    const headers = [...document.querySelectorAll("thead th")].filter((th) => getComputedStyle(th).display !== "none").length;
+    const under = document.querySelector("tbody tr:not([hidden]) td:nth-child(2) small");
+    const subline = under !== null && getComputedStyle(under).display !== "none" && /\S \u00b7 \S/.test(under.textContent ?? "");
+    const cells = [...(document.querySelector("tbody tr")?.children ?? [])].filter((td) => getComputedStyle(td).display !== "none").length;
+    return { inside, sideways: scroll.scrollWidth > scroll.clientWidth, headers, cells, parts: parts.length, subline };
+  }, phoneCell);
+  await page.fill(`${phoneCell} input`, "12.34");
+  const editing = await fits();
+  check(
+    "on a phone the edited price and its Save button fit, every cell under its header, the set and condition under the name",
+    editing.inside && !editing.sideways && editing.headers === 4 && editing.cells === 4 && editing.parts >= 2 && editing.subline,
+    JSON.stringify(editing),
+  );
+  await page.fill(`${phoneCell} input`, "abc");
+  await page.click(`${phoneCell} button`);
+  await page.waitForSelector(`${phoneCell} p`, { timeout: 5000 }).catch(() => {});
+  const refused = await fits();
+  check("on a phone a refused price's error fits too", refused.inside && !refused.sideways && refused.parts >= 3, JSON.stringify(refused));
 
   // Memory with the page settled.
   const heap = await page.evaluate(() => {

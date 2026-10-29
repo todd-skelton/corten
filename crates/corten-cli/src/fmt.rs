@@ -608,16 +608,33 @@ impl<'a> Parser<'a> {
     }
 
     /// `keyword head { body }`: the text up to the brace, the body's nodes, and whether the body
-    /// was written with a line break after its `{`.
+    /// was written with a line break after its `{`. A pattern's braces are the pattern's, as
+    /// `html!` reads them: a `let` pattern's up to its lone `=`, a `for` pattern's up to `in`.
     fn until_brace(&mut self) -> Parsed<(Text, Vec<Child>, bool)> {
         let start = self.i;
+        let mut ends_at = self.is(0, Kind::Ident, "for").then_some("in");
         self.i += 1;
         if self.is(0, Kind::Ident, "if") {
             self.i += 1;
         }
-        while !self.is(0, Kind::Open, "{") {
+        while ends_at.is_some() || !self.is(0, Kind::Open, "{") {
             if self.i >= self.end {
                 return Err("expected { .. }".into());
+            }
+            if ends_at.is_none() && self.is(0, Kind::Ident, "let") {
+                ends_at = Some("=");
+            } else if ends_at == Some("in") && self.is(0, Kind::Ident, "in") {
+                ends_at = None;
+            } else if ends_at == Some("=") && self.is(0, Kind::Punct, "=") {
+                // A lone `=`: not part of `==`, `=>`, `<=`, `!=` or a range's `..=`.
+                let at = self.tokens[self.i];
+                let touches = |t: Option<&Token>, before: bool| {
+                    t.is_some_and(|t| t.kind == Kind::Punct && if before { t.end == at.start } else { t.start == at.end })
+                };
+                let before = (self.i > 0).then(|| &self.tokens[self.i - 1]);
+                if !touches(before, true) && !touches(self.peek(1), false) {
+                    ends_at = None;
+                }
             }
             self.skip_tree()?;
         }

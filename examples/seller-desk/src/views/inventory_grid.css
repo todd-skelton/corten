@@ -1,10 +1,42 @@
-.grid { display: grid; gap: 8px; }
-.toolbar { display: flex; gap: 12px; align-items: center; min-height: 36px; }
-.toolbar input[type="search"] { font: inherit; padding: 6px 8px; width: 20rem; }
-.table { border-collapse: collapse; width: 100%; }
-.table th, .table td { border-bottom: 1px solid #e3e1ea; padding: 4px 8px; text-align: left; }
-.table th button { all: unset; cursor: pointer; font-weight: 600; }
-.table th[aria-sort="ascending"] button::after { content: " \2191"; }
-.table th[aria-sort="descending"] button::after { content: " \2193"; }
-.table tr[data-selected] { background: #efe9fb; }
-.empty { color: #6b6880; }
+.grid { display: grid; gap: 12px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; min-height: 36px; }
+.toolbar input[type="search"] { width: 20rem; max-width: 100%; }
+.toolbar [role="group"] { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: 8px; background: var(--tint); }
+.toolbar > output { color: var(--danger); font-weight: 500; }
+/* How many items there are, at the toolbar's end; while the filter is on, how many it shows of
+   them, in the item count's place. */
+.counts { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.counts:has(> output:not([hidden])) > :not(output) { display: none; }
+/* The rows scroll inside their box, under a header that stays. */
+.scroll { overflow: auto; max-height: min(70vh, 44rem); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); scroll-padding-top: 44px; }
+.table { border-collapse: separate; border-spacing: 0; }
+.table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: inset 0 -1px var(--line); border-bottom: 0; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover { background: var(--bg); }
+.table th:first-child, .table td:first-child { width: 44px; }
+.table th:nth-child(5), .table td:nth-child(5), .table th:nth-child(6), .table td:nth-child(6) { text-align: end; font-variant-numeric: tabular-nums; }
+/* A sortable header is a button: it says so on hover and focus, and shows the sort it applies. */
+.table th button { white-space: nowrap; padding: 2px 4px; margin: -2px -4px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.table th button:hover { color: var(--ink); background: var(--bg); }
+/* The arrows are drawn, not read: `aria-sort` says the order. */
+.table th button::after { content: " \2195" / ""; opacity: 0.45; }
+.table th[aria-sort] button { color: var(--ink); }
+.table th[aria-sort="ascending"] button::after { content: " \2191" / ""; opacity: 1; }
+.table th[aria-sort="descending"] button::after { content: " \2193" / ""; opacity: 1; }
+.table tr[data-selected] { background: var(--tint); }
+/* Sold out: the row fades, and its quantity is marked. */
+.table tr[data-sold-out] td:not(:first-child, :last-child) { color: var(--muted); }
+.table tr[data-sold-out] td:nth-child(5) { color: var(--danger); font-weight: 600; }
+.empty { color: var(--muted); text-align: center; padding: 24px; }
+/* The set and the condition under the name: on a phone only, where their columns step out. */
+.table td small { display: none; }
+/* On a phone the table keeps what a seller acts on: the name, the quantity and the price. The
+   set and the condition columns step out, header and cells together, so it is still a table
+   whose cells each have their header, and they show in a muted line under the name. */
+@media (max-width: 40rem) {
+  .table :is(th, td):is(:nth-child(3), :nth-child(4)) { display: none; }
+  .table td small { display: block; color: var(--muted); font-size: 12px; }
+  .table :is(th, td) { padding: 8px 6px; }
+  .table th:first-child, .table td:first-child { width: 32px; }
+  .toolbar input[type="search"] { width: 100%; }
+}

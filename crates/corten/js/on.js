@@ -4,13 +4,15 @@
 // writes (`crates/corten/src/script/wire.json`). Bundled into dist/corten.js.
 
 /**
- * One handler call of a `data-on` attribute: `click:cart_line.confirm($e,@dialog,"Lamp")`.
- * @typedef {{ type: string, module: string, name: string, args: Arg[] }} Binding
+ * One handler call of a `data-on` attribute: `click:cart_line.confirm($e,@dialog,"Lamp")`, and
+ * the component it belongs to when a parent passed it to a child (`..(@form/save)/form`).
+ * @typedef {{ type: string, module: string, name: string, args: Arg[], home: string | null }} Binding
  * @typedef {{ kind: "@" | "*" | "#" | "^", owner: string | null, name: string } | { kind: "$e" | "$t" | "$s" | "$c", owner: string | null } | { kind: "v", value: unknown } | { kind: "{", fields: [string, Arg][] } | { kind: "%", parts: string[] } | { kind: "f", spec: import("./format.js").Spec }} Arg
  */
 
 /**
- * Parses `type:module.name(arg,arg) type:module.name()`. Arguments are refs (`@rows`, every one:
+ * Parses `type:module.name(arg,arg) type:module.name()`, each call followed by `/home` when it
+ * is a parent's on a child's element. Arguments are refs (`@rows`, every one:
  * `*rows`, every one by its `data-key`: `#rows`, the one around the event's target: `^rows`,
  * another component's: `@offer-list/rows`), the browser's values (`$e` event, `$t` the element
  * with the attribute, `$s` its signal, `$c` the component's root, `$c/offer-list`), a group of
@@ -36,8 +38,11 @@ export function parseOn(source) {
     /** @type {Arg[]} */
     const args = [];
     const close = split(source, open + 1, ")", (part) => args.push(parseArg(part)));
-    list.push({ type: source.slice(i, colon), module: source.slice(colon + 1, dot), name: source.slice(dot + 1, open), args });
-    i = close + 1;
+    let end = source.indexOf(" ", close);
+    if (end < 0) end = n;
+    const home = source[close + 1] === "/" ? source.slice(close + 2, end) : null;
+    list.push({ type: source.slice(i, colon), module: source.slice(colon + 1, dot), name: source.slice(dot + 1, open), args, home });
+    i = end;
   }
   return list;
 }

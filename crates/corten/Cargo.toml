@@ -18,6 +18,9 @@ futures-util = { version = "0.3", default-features = false }
 getrandom = "0.3"
 # Already in axum's tree: the response body type, for the request signal.
 http-body = "1"
+# Already in axum's tree (axum::serve): a connection that switches protocols (corten::upgrade).
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio", "service"] }
 # Already in axum's tree: the traits App's middleware implements.
 tower-layer = "0.3"
 tower-service = "0.3"
@@ -25,7 +28,7 @@ tower-service = "0.3"
 form_urlencoded = "1"
 # Already in axum's tree (through serde_json): float digits for views.
 zmij = "1"
-tokio = { version = "1", default-features = false, features = ["net", "signal", "sync", "time"] }
+tokio = { version = "1", default-features = false, features = ["net", "rt", "signal", "sync", "time"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"], optional = true }
 # Already in axum's tree. Always on for `Form` and `Query`; `json` adds the derive.
@@ -59,7 +62,7 @@ agent = ["types"]
 all-features = true
 
 [dev-dependencies]
-tokio = { version = "1", features = ["io-util", "macros", "rt", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["io-util", "macros", "rt", "rt-multi-thread", "test-util", "time"] }
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
 serde = { version = "1", features = ["derive"] }

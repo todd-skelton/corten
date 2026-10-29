@@ -54,6 +54,33 @@ fn Priced(t: Msg) -> impl Render {
     html! { <output ref={out} on:connect={shared::priced(out, t.js().number(), t.js().money(USD), when)}></output> }
 }
 
+/// A `string[]` parameter takes a slice, an array or a `Vec` of strings, with no feature.
+#[component]
+fn Named<'a>(list: &'a [&'a str]) -> impl Render {
+    let out = refs();
+    let owned = vec![String::from("a\"b<")];
+    html! {
+        <p
+            ref={out}
+            on:connect={shared::named(out, list)}
+            on:click={shared::named(out, &owned)}
+            on:input={shared::named(out, ["x", "y"])}
+        ></p>
+    }
+}
+
+#[test]
+fn a_list_of_strings_is_a_json_array() {
+    let html = Named { list: &["above", "below"] }.to_html();
+    assert_eq!(
+        html,
+        concat!(
+            r#"<p data-scope="named" data-ref="out" data-on="connect:shared.named(@out,[&quot;above&quot;,&quot;below&quot;]) "#,
+            r#"click:shared.named(@out,[&quot;a\&quot;b&lt;&quot;]) input:shared.named(@out,[&quot;x&quot;,&quot;y&quot;])"></p>"#
+        )
+    );
+}
+
 #[test]
 fn a_script_gets_the_pages_formats() {
     let en = Priced { t: Msg::for_locale("en") }.to_html();
@@ -176,6 +203,45 @@ fn a_handler_made_by_a_parent_keeps_the_parents_scope_inside_a_child() {
     );
 }
 
+/// A component whose script keeps state, with no refs and no `scope`: still scoped, so each
+/// instance keeps its own.
+#[component(js)]
+fn Tally() -> impl Render {
+    html! { <button type="button" on:click={js::bump(target)}>"0"</button> }
+}
+
+/// A scoped child that renders a parent's handler and the markup it is given.
+#[component]
+fn Labeled<'a>(on_change: Handler<'a>, children: impl Render) -> impl Render {
+    let input = refs();
+    html! { <label><input ref={input} on:change={on_change}>{children}</label> }
+}
+
+/// A parent whose state-keeping handler a scoped child renders, as a prop and in its children.
+#[component(js)]
+fn Tallies() -> impl Render {
+    html! {
+        <div>
+            <Labeled on:change={js::bump(target)}>
+                <button type="button" on:click={js::bump(target)}>"0"</button>
+            </Labeled>
+        </div>
+    }
+}
+
+#[test]
+fn a_script_that_keeps_state_scopes_its_component_and_a_childs_element_names_its_home() {
+    assert_eq!(Tally {}.to_html(), r#"<button data-scope="tally" type="button" data-on="click:tally.bump($t)">0</button>"#);
+    assert_eq!(
+        Tallies {}.to_html(),
+        concat!(
+            r#"<div data-scope="tallies"><label data-scope="labeled"><input data-ref="input" "#,
+            r#"data-on="change:tallies.bump($t)/tallies"><button type="button" "#,
+            r#"data-on="click:tallies.bump($t)/tallies">0</button></label></div>"#,
+        )
+    );
+}
+
 #[test]
 fn shared_modules_and_events_are_components() {
     assert_eq!(shared::COMPONENT.script.map(|s| s.name), Some("shared"));
@@ -285,6 +351,112 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
     assert!(!body.contains("modulepreload") && !body.contains(r#"src="/assets/"#), "{body}");
 }
 
+/// A script that imports a typed event brings it: the app lists the script alone, and a page
+/// whose handlers are in it maps `corten/events` and fetches it with the script, not after it.
+#[tokio::test]
+async fn a_script_brings_the_events_it_imports_and_its_page_fetches_them_with_it() {
+    use axum::{body::Body, http::Request, routing::get, Router};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let get_page = |app: Router| async move {
+        let res = app.oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+        String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+    };
+    let grid = Router::new().route(
+        "/",
+        get(|req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Stock", StockGrid { rows: &[("a", 1)] }) }),
+    );
+    let body = get_page(crate::App::new(Routes::from(grid)).components(&[js::COMPONENT]).router()).await;
+    let events = body.split_once(r#""corten/events":""#).expect("the import map maps corten/events").1.split_once('"').unwrap().0;
+    assert!(events.ends_with("/events.js"), "{body}");
+    assert!(body.contains(&format!(r#"<link rel="modulepreload" href="{events}">"#)), "{body}");
+    let app = crate::App::new(Routes::new()).components(&[js::COMPONENT]).router();
+    let res = app.oneshot(Request::get(events).body(Body::empty()).unwrap()).await.unwrap();
+    let source = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(source.contains("export const RowToggled = event(\"row-toggled\");"), "{source}");
+    // A page whose handlers are in a script that imports no event does not fetch them.
+    let lines =
+        Router::new().route(
+            "/",
+            get(|req: crate::Req| async move {
+                crate::tests::TestPage::test_page(&req, "Cart", LineItem { name: "Lamp", quantity: 2 })
+            }),
+        );
+    let body = get_page(crate::App::new(Routes::from(lines)).components(&[LineItem, js::COMPONENT]).router()).await;
+    assert!(body.contains("/scripts/line_item.js") && !body.contains("events.js\">"), "{body}");
+}
+
+/// The formatter a format argument needs is a module of its own: a page whose handlers take a
+/// format loads it with theirs, and a page whose handlers take none does not.
+#[tokio::test]
+async fn a_page_loads_the_format_module_only_when_its_handlers_take_a_format() {
+    use axum::{body::Body, http::Request, routing::get, Router};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let fetch = |app: Router, uri: String| async move {
+        let res = app.oneshot(Request::get(uri).body(Body::empty()).unwrap()).await.unwrap();
+        String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+    };
+    let routes = Router::new()
+        .route(
+            "/priced",
+            get(|req: crate::Req| async move {
+                crate::tests::TestPage::test_page(&req, "Priced", Priced { t: Msg::for_locale("en") })
+            }),
+        )
+        .route(
+            "/cart",
+            get(|req: crate::Req| async move {
+                crate::tests::TestPage::test_page(&req, "Cart", LineItem { name: "Lamp", quantity: 2 })
+            }),
+        );
+    let app = || crate::App::new(Routes::from(routes.clone())).components(&[shared::COMPONENT, LineItem, Badge]).router();
+    let priced = fetch(app(), "/priced".into()).await;
+    let src = |name: &str| {
+        priced
+            .split(r#"<script type="module" src=""#)
+            .skip(1)
+            .map(|s| s.split('"').next().unwrap())
+            .find(|s| s.ends_with(name))
+            .map(str::to_string)
+    };
+    assert!(src("/scripts/shared.js").is_some(), "{priced}");
+    let format = src("/scripts/corten-format.js").expect("the format module is a module script of the page");
+    let cart = fetch(app(), "/cart".into()).await;
+    assert!(cart.contains("/scripts/line_item.js") && !cart.contains("corten-format"), "{cart}");
+    let source = fetch(app(), format).await;
+    assert!(source.contains("formatter") && source.contains(r#"name: "corten-format""#), "{source}");
+}
+
+/// A page whose handlers call a module the app does not serve fails in a debug build (a router
+/// test finds it), instead of rendering a page whose handlers would do nothing.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_page_whose_handlers_call_an_unserved_module_fails_in_debug_builds() {
+    use axum::{body::Body, http::Request, routing::get, Router};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let page = || {
+        Router::new().route(
+            "/",
+            get(|req: crate::Req| async move {
+                crate::tests::TestPage::test_page(&req, "Cart", LineItem { name: "Lamp", quantity: 2 })
+            }),
+        )
+    };
+    let res = crate::App::new(Routes::from(page())).components(&[Badge]).router();
+    let res = res.oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    let res = crate::App::new(Routes::from(page())).components(&[LineItem, Badge]).router();
+    let res = res.oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), axum::http::StatusCode::OK, "listed, it is served");
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert!(String::from_utf8_lossy(&body).contains("line_item.js"));
+}
+
 #[test]
 fn view_ids_are_fnv1a_as_the_macros_compute_them() {
     assert_eq!((script::view_id(""), script::view_id("a")), (0xcbf2_9ce4_8422_2325, 0xaf63_dc4c_8601_ec8c));
@@ -311,6 +483,7 @@ fn handlers_write_the_shared_wire_vectors() {
         LineItem { name: "a\"b", quantity: 2 }.to_html(),
         RowList { rows: &["x"] }.to_html(),
         Form {}.to_html(),
+        Tallies {}.to_html(),
         StockGrid { rows: &[("a", 1)] }.to_html(),
         scoped("x", || {
             html! {

@@ -30,12 +30,18 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 4. A helper in the same module that shares the file: `#[component(css = OfferList)]`.
 5. Design tokens: `corten::style::tokens!("tokens.json")` gives custom properties, themes
    (`[data-theme="dark"]`) and typed scales. Put `TOKENS` first in `App::components`.
+   A `var(--x)` without a fallback that no stylesheet on the same pages declares fails at
+   startup, naming the file; a property a script sets takes a fallback, `var(--x, 0)`.
 6. `static/style.css` holds only element defaults, fonts and the layout. It is linked
    before `<Corten />` in the layout.
-7. Inline `style=` is blocked by the CSP. Use a class or a token utility instead.
+7. Inline `style=` is blocked by the CSP. Use a class or a token utility instead: a fixed value is
+   its own function (`mx_auto()`, `gap_3()`); the utility's function (`gap(space)`,
+   `gap(Responsive::new(Space::_2).md(Space::_4))`) is for a value chosen at run time or per
+   breakpoint. A size drawn from data (a meter, a chart) goes in an area that allows style
+   attributes for its pages only: `.area(|area| dash::area(area).policy(|p| p.allow_style_attributes()))`.
 8. Every component's CSS ships in one `components.css`. Only when a part of the app most
    visitors never open (an admin area) adds CSS worth measuring, make it an area and list its
-   components there, `.area::<Admin>(|admin| admin.route::<..>(..).components(&[..]))`: their
+   components there, `.area(|area| admin::area(area).components(&[..]))`: their
    stylesheet is linked from pages under that prefix only. A component used in several areas
    is listed in each (they share a file of its rules); one most pages use stays in
    `App::components`, and so do tokens. Details: `docs/guide/styles.md`, "Areas".

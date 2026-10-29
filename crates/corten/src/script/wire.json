@@ -15,7 +15,8 @@
               "owner": null,
               "name": "save"
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -41,7 +42,8 @@
               "kind": "v",
               "value": "a\"b"
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -63,7 +65,8 @@
               "owner": null,
               "name": "row"
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -84,7 +87,8 @@
               "kind": "v",
               "value": "x"
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -101,7 +105,8 @@
               "kind": "$t",
               "owner": null
             }
-          ]
+          ],
+          "home": null
         },
         {
           "type": "change",
@@ -117,7 +122,44 @@
               "kind": "$c",
               "owner": "form"
             }
-          ]
+          ],
+          "home": null
+        }
+      ]
+    },
+    {
+      "name": "a parent's handler that keeps state, on a child's element",
+      "attr": "change:tallies.bump($t)/tallies",
+      "parsed": [
+        {
+          "type": "change",
+          "module": "tallies",
+          "name": "bump",
+          "args": [
+            {
+              "kind": "$t",
+              "owner": null
+            }
+          ],
+          "home": "tallies"
+        }
+      ]
+    },
+    {
+      "name": "the same, in markup the parent gave the child",
+      "attr": "click:tallies.bump($t)/tallies",
+      "parsed": [
+        {
+          "type": "click",
+          "module": "tallies",
+          "name": "bump",
+          "args": [
+            {
+              "kind": "$t",
+              "owner": null
+            }
+          ],
+          "home": "tallies"
         }
       ]
     },
@@ -142,7 +184,8 @@
               "kind": "v",
               "value": true
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -167,7 +210,8 @@
               "kind": "v",
               "value": false
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -192,7 +236,8 @@
               "kind": "v",
               "value": true
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -219,7 +264,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -258,7 +304,8 @@
                 ]
               ]
             }
-          ]
+          ],
+          "home": null
         },
         {
           "type": "row-toggled",
@@ -290,7 +337,8 @@
                 ]
               ]
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -312,7 +360,8 @@
               "kind": "v",
               "value": "a"
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -333,7 +382,8 @@
               "kind": "$c",
               "owner": null
             }
-          ]
+          ],
+          "home": null
         }
       ],
       "from": "corten-ui"
@@ -360,7 +410,8 @@
                 " listings"
               ]
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -386,7 +437,8 @@
                 " annonces"
               ]
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -408,7 +460,8 @@
                 "),\\"
               ]
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -449,7 +502,8 @@
                 ]
               ]
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -490,7 +544,8 @@
                 ]
               ]
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -569,7 +624,8 @@
                 "o": -18000
               }
             }
-          ]
+          ],
+          "home": null
         }
       ]
     },
@@ -648,7 +704,8 @@
                 "o": -18000
               }
             }
-          ]
+          ],
+          "home": null
         }
       ]
     }

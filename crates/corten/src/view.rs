@@ -198,7 +198,7 @@ pub enum Part {
 ///
 /// ```compile_fail
 /// # use corten::prelude::*;
-/// async fn home(req: Req) -> Result {
+/// async fn home(req: Req) -> HtmlResult {
 ///     req.page(html! { <h1>"Home"</h1> })
 /// }
 /// ```
@@ -218,13 +218,22 @@ impl<T: Document + ?Sized> Document for &T {
 pub struct DocHtml<F> {
     render: Cell<Option<F>>,
     size: &'static AtomicUsize,
+    shell: u64,
 }
 
 impl<F: FnOnce(&mut String, Part)> DocHtml<F> {
-    /// Used by `html!`, which gives every call site its own `size`.
-    pub fn new(size: &'static AtomicUsize, render: F) -> Self {
-        DocHtml { render: Cell::new(Some(render)), size }
+    /// Used by `html!`, which gives every call site its own `size`, and `shell`, a hash of where
+    /// the call site is: which layout rendered the page.
+    pub fn new(size: &'static AtomicUsize, shell: u64, render: F) -> Self {
+        DocHtml { render: Cell::new(Some(render)), size, shell }
     }
+}
+
+thread_local! {
+    /// The `shell` of the last [`DocHtml`] rendered on this thread: the layout of the page being
+    /// rendered, part of its shell key, so a client navigation to a page in another layout loads
+    /// it in full.
+    pub(crate) static SHELL: Cell<u64> = const { Cell::new(0) };
 }
 
 impl<F: FnOnce(&mut String, Part)> Render for DocHtml<F> {
@@ -244,6 +253,7 @@ impl<F: FnOnce(&mut String, Part)> Render for DocHtml<F> {
 impl<F: FnOnce(&mut String, Part)> Document for DocHtml<F> {
     #[inline]
     fn render_part(&self, out: &mut String, part: Part) {
+        SHELL.set(self.shell);
         match self.render.take() {
             Some(render) => render(out, part),
             None => panic!("a view from html! renders once; call the function that builds it again"),
@@ -349,15 +359,122 @@ fn mark_head_tags(html: &str, out: &mut String) {
 /// #[derive(corten::view::Id)]
 /// struct CellId<'a> { row: &'a str, column: u8 }
 /// ```
+///
+/// A component that renders an element for its parent takes the id as a prop of any id type,
+/// so the parent names it once and points a button at it (`commandfor`, `for`):
+///
+/// ```
+/// use corten::{prelude::*, view::Id};
+///
+/// #[component]
+/// fn Confirm<I: Id>(id: I, title: &'static str) -> impl Render {
+///     html! { <dialog id={id}><h2>{title}</h2></dialog> }
+/// }
+///
+/// #[derive(Id)]
+/// struct ArchiveDialogId;
+///
+/// let page = html! {
+///     <button type="button" command="show-modal" commandfor={ArchiveDialogId}>"Archive"</button>
+///     <Confirm id={ArchiveDialogId} title="Archive?" />
+/// };
+/// assert_eq!(
+///     page.to_html(),
+///     r#"<button type="button" command="show-modal" commandfor="archive-dialog">Archive</button><dialog id="archive-dialog"><h2>Archive?</h2></dialog>"#
+/// );
+/// // A keyed id, borrowed, works the same.
+/// #[derive(Id)]
+/// struct RowDialogId<'a>(&'a str);
+/// let row = RowDialogId("i7");
+/// assert_eq!(html! { <Confirm id={&row} title="Edit?" /> }.to_html(), r#"<dialog id="row-dialog-i7"><h2>Edit?</h2></dialog>"#);
+/// ```
+///
+/// Such a prop does not take text:
+///
+/// ```compile_fail
+/// use corten::{prelude::*, view::Id};
+///
+/// #[component]
+/// fn Confirm<I: Id>(id: I) -> impl Render {
+///     html! { <dialog id={id}></dialog> }
+/// }
+///
+/// let page = html! { <Confirm id="archive-dialog" /> };
+/// ```
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an element id",
     label = "an element id is a `#[derive(Id)]` type, like `RowId(&item.id)`"
 )]
-pub trait Id {
+pub trait Id: AttrValue + Render {
     /// The id without its key: `"row"`.
     const NAME: &'static str;
     /// Writes the id (escaped for an attribute).
     fn write_id(&self, out: &mut String);
+
+    /// A link to this element on the same page, `#id`: a validation summary's link to the field
+    /// it names, a skip link. The id is written as [`Route::at`](crate::route::Route::at) writes
+    /// another page's place, so the link and the element cannot differ.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Id)]
+    /// struct FeedbackId;
+    ///
+    /// #[derive(Id)]
+    /// struct RowId<'a>(&'a str);
+    ///
+    /// let form = html! {
+    ///     <a href={FeedbackId.fragment()}>"Your response"</a>
+    ///     <textarea id={FeedbackId} name="feedback"></textarea>
+    /// };
+    /// assert_eq!(form.to_html(), r##"<a href="#feedback">Your response</a><textarea id="feedback" name="feedback"></textarea>"##);
+    /// // Percent-encoded where the id needs it, as the browser reads a fragment.
+    /// let row = RowId("7 & 8");
+    /// assert_eq!(html! { <a href={row.fragment()}>"Row"</a> }.to_html(), r##"<a href="#row-7%20%26%208">Row</a>"##);
+    /// ```
+    ///
+    /// It takes the id's type, so text does not compile:
+    ///
+    /// ```compile_fail,E0599
+    /// use corten::prelude::*;
+    ///
+    /// let _ = html! { <a href={"feedback".fragment()}>"Your response"</a> };
+    /// ```
+    ///
+    /// A place on the current page is not an address, so the server does not redirect to one:
+    /// a redirect takes [`Route::at`](crate::route::Route::at).
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(Id)]
+    /// struct FeedbackId;
+    ///
+    /// async fn reply(req: Req) -> HtmlResult {
+    ///     req.redirect(&FeedbackId.fragment())
+    /// }
+    /// ```
+    fn fragment(&self) -> InPage<'_, Self> {
+        InPage(self)
+    }
+}
+
+/// A link to an element on the same page, `#id`, made by [`Id::fragment`]: an attribute value
+/// (`href={FeedbackId.fragment()}`), not an address.
+pub struct InPage<'a, I: ?Sized>(&'a I);
+
+impl<I: Id + ?Sized> Render for InPage<'_, I> {
+    fn render(&self, out: &mut String) {
+        out.push('#');
+        crate::route::write_fragment(self.0, out);
+    }
+}
+
+impl<I: Id + ?Sized> AttrValue for InPage<'_, I> {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        quoted(name, self, out)
+    }
 }
 
 pub use corten_macros::Id;
@@ -946,6 +1063,30 @@ macro_rules! attr_text {
 attr_text!(str, String, Cow<'_, str>, char, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64);
 
 /// Attributes spread into a start tag with `{..value}`.
+///
+/// A start tag that writes an attribute the spread's type writes as well (as [`aria`] writes
+/// `aria-describedby`) does not compile, since a browser keeps an attribute's first value and
+/// drops the rest:
+///
+/// ```compile_fail,E0080
+/// use corten::prelude::*;
+///
+/// #[derive(Id)]
+/// struct SignUpId;
+/// #[derive(Id)]
+/// struct EmailHintId;
+/// #[derive(serde::Deserialize, Fields)]
+/// struct SignUp { email: String }
+///
+/// let errors = Errors::new();
+/// let e = errors.within(SignUpId);
+/// let f = SignUp::FIELDS;
+/// // The hint goes to `aria` instead: `{..e.aria(f.email).hint(&EmailHintId)}`.
+/// let view = html! { <input name={f.email} aria-describedby={EmailHintId} {..e.aria(f.email)}> };
+/// # let _ = view.to_html();
+/// ```
+///
+/// [`aria`]: crate::form::Within::aria
 pub trait Attrs {
     fn render_attrs(&self, out: &mut String);
 }
@@ -993,6 +1134,98 @@ impl<N: AsRef<str>, V: AttrValue> Attrs for Vec<(N, V)> {
 #[doc(hidden)]
 pub mod __private {
     use std::fmt::Display;
+
+    /// The attributes a start tag writes besides its spread, lowercase.
+    pub trait Written {
+        const NAMES: &'static [&'static str];
+    }
+
+    /// The attributes a spread's type may write, lowercase. A type that writes fixed attributes
+    /// declares them here, and `html!` refuses a start tag that writes one of them as well.
+    pub trait Writes {
+        const WRITES: &'static [&'static str];
+    }
+
+    impl<T: Writes + ?Sized> Writes for &T {
+        const WRITES: &'static [&'static str] = T::WRITES;
+    }
+
+    impl<T: Writes> Writes for Option<T> {
+        const WRITES: &'static [&'static str] = T::WRITES;
+    }
+
+    /// A spread in a start tag that writes other attributes: `(&Spread(&attrs)).check::<N>()`
+    /// meets [`Declared`] when the spread's type is [`Writes`], else [`Undeclared`] (a type
+    /// whose attributes are only known when it renders, or a `dyn Attrs`).
+    pub struct Spread<'a, T: ?Sized>(pub &'a T);
+
+    pub trait Declared {
+        fn check<N: Written>(&self);
+    }
+
+    impl<T: Writes + ?Sized> Declared for Spread<'_, T> {
+        #[inline(always)]
+        fn check<N: Written>(&self) {
+            const {
+                assert!(
+                    !overlap(T::WRITES, N::NAMES),
+                    "corten: a start tag writes an attribute its spread writes too, and a browser keeps only the first; let the spread write it (a hint goes to `e.aria(field).hint(&HintId)`)"
+                )
+            }
+        }
+    }
+
+    pub trait Undeclared {
+        #[inline(always)]
+        fn check<N: Written>(&self) {}
+    }
+
+    impl<T: ?Sized> Undeclared for &Spread<'_, T> {}
+
+    /// Whether a name is in both lists (both lowercase).
+    const fn overlap(a: &[&str], b: &[&str]) -> bool {
+        let mut i = 0;
+        while i < a.len() {
+            let mut j = 0;
+            while j < b.len() {
+                if same(a[i].as_bytes(), b[j].as_bytes()) {
+                    return true;
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+        false
+    }
+
+    const fn same(a: &[u8], b: &[u8]) -> bool {
+        if a.len() != b.len() {
+            return false;
+        }
+        let mut i = 0;
+        while i < a.len() {
+            if a[i] != b[i] {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+
+    /// Which `html!` document this is, from where it is written (FNV-1a): the same in every build
+    /// of the same source, so every instance of a deploy gives a layout the same key.
+    pub const fn shell_id(file: &str, line: u32, column: u32) -> u64 {
+        const PRIME: u64 = 0x0000_0100_0000_01b3;
+        let bytes = file.as_bytes();
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut i = 0;
+        while i < bytes.len() {
+            hash = (hash ^ bytes[i] as u64).wrapping_mul(PRIME);
+            i += 1;
+        }
+        hash = (hash ^ line as u64).wrapping_mul(PRIME);
+        (hash ^ column as u64).wrapping_mul(PRIME)
+    }
 
     use super::{escape_display, AttrValue, Render};
 

@@ -246,10 +246,6 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             &[TokenTree::Ident(Ident::new(field, Span::call_site())).into(), literal(field)],
         ));
     }
-    let (body, has_refs) = refs(&body, &scope_name)?;
-    let scoped = has_refs || handlers_take_scope(&body.stream());
-    let body = if scoped { mark_root(&body, &scope_name)? } else { body };
-
     let script = match args.js {
         Some(span) => {
             let file = format!("{}.js", crate::names::snake(&name.to_string()));
@@ -258,6 +254,10 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         }
         None => None,
     };
+    let (body, has_refs) = refs(&body, &scope_name)?;
+    // A script that keeps state (`keep`) keeps it on the component's root, one per instance.
+    let scoped = has_refs || handlers_take_scope(&body.stream()) || script.as_ref().is_some_and(|s| s.keeps);
+    let body = if scoped { mark_root(&body, &scope_name)? } else { body };
 
     let css = args.css;
     let css_owner = match &css {
@@ -308,6 +308,9 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             TokenStream::new(),
             Ident::new("js", Span::call_site()),
             q("::core::option::Option::None", &[]),
+            // A scoped component's handlers are its own wherever they render, children a child
+            // renders included.
+            scoped.then_some(scope_name.as_str()),
             TokenStream::new(),
         ));
     }
@@ -337,7 +340,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
                 literal(&doc),
                 TokenTree::Ident(name.clone()).into(),
                 literal(&name.to_string()),
-                some(script.as_ref().map(crate::script::Module::literal)),
+                some(script.as_ref().map(|s| s.literal(""))),
                 some(style),
                 stream(vis.iter().cloned()),
                 some(view),
@@ -525,7 +528,7 @@ fn mark_root(body: &Group, scope: &str) -> Result<Group, Error> {
     if !at_end {
         return err(
             body.span(),
-            "a component with refs ends with html! { <root> .. </root> }: the root element is where its refs end",
+            "a component with refs, a handler taking scope, or a script that keeps state (keep) ends with html! { <root> .. </root> }: the root element is where its refs and state end",
         );
     }
     let TokenTree::Group(g) = &tokens[n - 1] else { unreachable!() };
@@ -613,7 +616,18 @@ pub(crate) fn split_generics(generics: &[TokenTree]) -> (TokenStream, TokenStrea
     let mut impl_params = Vec::new();
     let mut type_params = Vec::new();
     for param in split(inner, ',') {
-        let default = param.iter().position(|t| is_punct(Some(t), '='));
+        // A default is the `=` outside any angle brackets: `T: Iterator<Item = u8>` has none.
+        // The `>` of an arrow (`Fn() -> u8`) closes nothing.
+        let (mut depth, mut arrow) = (0i32, false);
+        let default = param.iter().position(|t| {
+            match t {
+                TokenTree::Punct(p) if p.as_char() == '<' => depth += 1,
+                TokenTree::Punct(p) if p.as_char() == '>' && !arrow => depth -= 1,
+                _ => {}
+            }
+            arrow = matches!(t, TokenTree::Punct(p) if p.as_char() == '-' && p.spacing() == Spacing::Joint);
+            depth == 0 && is_punct(Some(t), '=')
+        });
         let without_default: Vec<TokenTree> = param[..default.unwrap_or(param.len())].to_vec();
         let name: Vec<TokenTree> = match param.first() {
             Some(TokenTree::Punct(p)) if p.as_char() == '\'' => param[..2].to_vec(),

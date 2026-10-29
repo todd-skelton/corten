@@ -28,6 +28,14 @@ export const apiBase = `http://${apiContainer}:8080`;
 export const appCpus = process.env.BENCH_APP_CPUS ? ["--cpuset-cpus", process.env.BENCH_APP_CPUS] : ["--cpus", "1"];
 export const loadCpus = process.env.BENCH_LOAD_CPUS ? ["--cpuset-cpus", process.env.BENCH_LOAD_CPUS] : ["--cpus", "4"];
 /**
+ * The load generator's cores for one run-ssr source. With items in memory the item API sits idle,
+ * so BENCH_FIXTURE_LOAD_CPUS can give k6 its cores as well: four were not enough to keep Corten's
+ * core busy (93% for the page and 88% for the JSON in r6), and an app whose core is not busy
+ * shows fewer requests a second than it can serve.
+ */
+export const loadCpusFor = (source) =>
+  source === "fixture" && process.env.BENCH_FIXTURE_LOAD_CPUS ? ["--cpuset-cpus", process.env.BENCH_FIXTURE_LOAD_CPUS] : loadCpus;
+/**
  * The load generator's network namespace: every local port, and TIME_WAIT ports reused for new
  * connections. A server that closes each connection (gunicorn's sync workers) would otherwise use
  * up k6's ports within a minute at a few thousand requests a second.
@@ -39,7 +47,8 @@ export const k6User = process.getuid ? ["--user", `${process.getuid()}:${process
 /** `docker run` arguments for one app. `source` is "api" or "fixture". */
 export function runArgs(name, app, source, fixturesDir) {
   const args = ["run", "-d", "--name", `fsw-${name}`, "--network", network, ...appCpus, "--memory", "1g", "-p", `${app.port}:8080`];
-  args.push("-e", `API_BASE=${apiBase}`, "-e", "PORT=8080");
+  // The load generator calls the app by its container name, which Corten answers only when listed.
+  args.push("-e", `API_BASE=${apiBase}`, "-e", "PORT=8080", "-e", `HOSTS=fsw-${name}`);
   if (source === "fixture") args.push("-v", `${fixturesDir}:/fixtures:ro`, "-e", "ITEM_SOURCE=fixture", "-e", "FIXTURE_PATH=/fixtures/items.json");
   args.push(app.image);
   return args;

@@ -1,8 +1,11 @@
 use super::*;
+use crate::answer::ForOne;
 use crate::cache::Cache;
+use crate::security::cookie::SetCookie;
 use crate::view::{html, Render};
-use axum::{body::Body, extract::Path, http::Request, routing::get, Router};
+use axum::{body::Body, http::Request, routing::get, Router};
 use http_body_util::BodyExt;
+use std::time::Duration;
 use tower::ServiceExt;
 
 fn demo(text: &str) -> impl Render + '_ {
@@ -34,6 +37,13 @@ paths! {
     ApiItems = "/api/items",
     Items = "/items",
     Admin = "/admin",
+    AdminSlow = "/admin/slow",
+    AdminQuick = "/admin/quick",
+    AdminQuickSlow = "/admin/quick/slow",
+    AdminOther = "/admin/other",
+    AdminOtherSlow = "/admin/other/slow",
+    AdminHooks = "/admin/hooks",
+    AdminHooksPing = "/admin/hooks/ping",
 }
 
 std::thread_local! {
@@ -71,6 +81,67 @@ impl crate::Middleware for AsViewer {
     }
 }
 
+/// Stamps every answer with a request id and two `Server-Timing` values, and answers 429 with
+/// `Retry-After` itself when asked to by `x-flood`.
+struct Stamp;
+
+impl crate::Middleware for Stamp {
+    async fn call(&self, req: axum::extract::Request, next: impl crate::Next) -> Response {
+        use axum::http::{header, HeaderValue};
+        let mut res = if req.headers().contains_key("x-flood") {
+            let mut res = crate::Error::status(StatusCode::TOO_MANY_REQUESTS).into_response();
+            res.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_static("7"));
+            res
+        } else {
+            next.run(req).await
+        };
+        let headers = res.headers_mut();
+        headers.insert("x-request-id", HeaderValue::from_static("r-1"));
+        headers.append("server-timing", HeaderValue::from_static("app;dur=1"));
+        headers.append("server-timing", HeaderValue::from_static("db;dur=2"));
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=600"));
+        res
+    }
+}
+
+/// A failure that becomes the error page keeps what the handler and the middleware said besides
+/// the body (a request id, `Retry-After`, every `Server-Timing` value), in every mode; the error
+/// page's own type and `Cache-Control` win.
+#[tokio::test]
+async fn the_error_page_keeps_the_headers_of_the_failure_it_replaces() {
+    use axum::http::header;
+    let routes = Router::new().route(
+        "/busy",
+        get(|| async { (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "30"), (header::CONTENT_TYPE, "text/x-old")]) }),
+    );
+    let router = App::new(Routes::from(routes)).error_page(test_error_page, ()).middleware(Stamp).router();
+    for mode in [None, Some("nav")] {
+        for (uri, flood, status, retry) in
+            [("/nope", false, 404, None), ("/busy", false, 429, Some("30")), ("/nope", true, 429, Some("7"))]
+        {
+            let mut req = Request::get(uri).header("accept", "text/html");
+            if let Some(mode) = mode {
+                req = req.header("corten", mode);
+            }
+            if flood {
+                req = req.header("x-flood", "1");
+            }
+            let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            let at = format!("{mode:?} {uri} flood={flood}");
+            assert_eq!(res.status().as_u16(), status, "{at}");
+            let headers = res.headers();
+            assert_eq!(headers["x-request-id"], "r-1", "{at}");
+            let timing: Vec<_> = headers.get_all("server-timing").iter().collect();
+            assert_eq!(timing, ["app;dur=1", "db;dur=2"], "{at}");
+            assert_eq!(headers.get(header::RETRY_AFTER).map(|v| v.to_str().unwrap()), retry, "{at}");
+            assert!(headers[header::CONTENT_TYPE].to_str().unwrap().starts_with("text/html"), "{at}: {headers:?}");
+            assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache", "{at}: an error page is never shared");
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            assert!(String::from_utf8_lossy(&body).contains("<h1>"), "{at}: the error page");
+        }
+    }
+}
+
 /// The tests' layout: the page's title and head tags, and a header that marks the current page.
 #[crate::component]
 pub(crate) fn Shell(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
@@ -84,7 +155,7 @@ pub(crate) fn Shell(req: &Req, title: &str, head: impl Render, children: impl Re
                 <Corten />
             </head>
             <body>
-                <header><a href={Root} aria-current={req.current(&Root)}>"home"</a></header>
+                <header><a {..req.nav(&Root)}>"home"</a></header>
                 <main>{children}</main>
             </body>
         </html>
@@ -93,11 +164,16 @@ pub(crate) fn Shell(req: &Req, title: &str, head: impl Render, children: impl Re
 
 /// `req.page` in the tests' layout with no head tags of the page's own.
 pub(crate) trait TestPage {
-    fn test_page(&self, title: &str, main: impl Render) -> HtmlResult;
+    fn test_page(&self, title: &str, main: impl Render) -> HtmlResult {
+        self.test_page_for(title, main)
+    }
+
+    /// The page for whoever its handler answers: inside a `Public`, everyone.
+    fn test_page_for<For>(&self, title: &str, main: impl Render) -> crate::Result<HtmlResponse<For>>;
 }
 
 impl TestPage for Req {
-    fn test_page(&self, title: &str, main: impl Render) -> HtmlResult {
+    fn test_page_for<For>(&self, title: &str, main: impl Render) -> crate::Result<HtmlResponse<For>> {
         self.page(Shell { req: self, title, head: "", children: main })
     }
 }
@@ -175,14 +251,10 @@ fn routes() -> Router {
         "/",
         get(|req: Req| async move {
             let head = html! { <meta name="description" content="About A"> };
-            req.page(Shell { req: &req, title: "A & B", head, children: demo("<script>") })
+            req.page::<ForOne>(Shell { req: &req, title: "A & B", head, children: demo("<script>") })
         })
         .post(|req: Req| async move {
-            if req.mode == Mode::Action {
-                req.patch(html! { <p id={MsgId}>"saved"</p> })
-            } else {
-                req.redirect(&Done)
-            }
+            req.patch_or(html! { <p id={MsgId}>"saved"</p> }, || async { req.redirect::<ForOne>(&Done) }).await
         }),
     )
 }
@@ -190,6 +262,55 @@ fn routes() -> Router {
 /// The app as `App` assembles it, with the tests' error page, every request sent as `viewer`.
 fn app(routes: Router, viewer: Option<&'static str>) -> Router {
     App::new(Routes::from(routes)).error_page(test_error_page, ()).middleware(AsViewer(viewer)).router()
+}
+
+/// The status and body of `GET uri` with `Host: host` (none when empty), plus `extra` headers.
+async fn for_host(router: &Router, uri: &str, host: &str, extra: &[(&str, &str)]) -> (StatusCode, String) {
+    let mut req = Request::get(uri);
+    if !host.is_empty() {
+        req = req.header("host", host);
+    }
+    for (name, value) in extra {
+        req = req.header(*name, *value);
+    }
+    let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    let status = res.status();
+    (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+}
+
+/// A DNS-rebound page names a host the app is not: every route, in every mode, answers 421 and
+/// runs nothing of the app's, not even its error page.
+#[tokio::test]
+async fn a_request_for_another_host_is_misdirected_in_every_mode() {
+    let routes = Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) }));
+    let router = App::new(Routes::from(routes))
+        .error_page(test_error_page, ())
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods::reads(get(|| async { "rates" }))))
+        .router();
+    let rebound = "rebound.attacker.example:3917";
+    for (uri, extra) in [
+        ("/", &[][..]),
+        ("/", &[("corten", "nav")][..]),
+        ("/", &[("accept", "application/json")][..]),
+        ("/missing", &[("accept", "text/html")][..]),
+        ("/api/rates", &[][..]),
+        ("/health/live", &[][..]),
+    ] {
+        let (status, body) = for_host(&router, uri, rebound, extra).await;
+        assert_eq!((status, body.as_str()), (StatusCode::MISDIRECTED_REQUEST, "Misdirected request."), "{uri} {extra:?}");
+    }
+    for host in ["localhost:3917", "127.0.0.1:3917", "[::1]:3917", ""] {
+        assert_eq!(for_host(&router, "/", host, &[]).await.0, StatusCode::OK, "{host:?}");
+    }
+    let named = App::new(Routes::from(Router::new().route("/", get(|| async { "home" }))))
+        .policy(crate::security::Policy::new().host("shop.example"))
+        .router();
+    assert_eq!(for_host(&named, "/", "shop.example", &[]).await.0, StatusCode::OK);
+    assert_eq!(for_host(&named, "/", "www.shop.example", &[]).await.0, StatusCode::MISDIRECTED_REQUEST);
+    let any = App::new(Routes::from(Router::new().route("/", get(|| async { "home" }))))
+        .policy(crate::security::Policy::new().any_host())
+        .router();
+    assert_eq!(for_host(&any, "/", rebound, &[]).await.0, StatusCode::OK);
 }
 
 #[tokio::test]
@@ -200,6 +321,48 @@ async fn a_live_stream_that_finishes_tells_the_element_to_stop() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers["content-type"], "text/event-stream");
     assert_eq!(body, "event: patch\ndata: <p id=\"late\">Ready</p>\n\nevent: end\ndata: end\n\n");
+}
+
+/// `live_watch` sends the current value only to a page that is behind, then each change, and
+/// ends when the value's sender goes.
+#[tokio::test]
+async fn a_live_watch_sends_the_latest_value_from_where_the_page_is() {
+    use crate::LiveSince;
+    let (tx, rx) = tokio::sync::watch::channel(7u64);
+    let stream = |since: Option<&str>| {
+        let since = LiveSince(since.map(str::to_string));
+        crate::live_watch(rx.clone(), since, |n| n.to_string(), |n| format!(r#"<p id="n">{n}</p>"#))
+    };
+    let (behind, current) = (stream(Some("6")), stream(Some("7")));
+    let first = stream(None);
+    tx.send_replace(8);
+    tx.send_replace(9); // the browser only needs the latest: 8 is skipped
+    drop(tx);
+    let body = |res: LiveResponse| async move {
+        String::from_utf8(res.into_response().into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+    };
+    let nine = "event: patch\nid: 9\ndata: <p id=\"n\">9</p>\n\nevent: end\ndata: end\n\n";
+    assert_eq!(body(current).await, nine, "a page showing 7 gets the next change");
+    assert_eq!(body(behind).await, nine, "a page behind gets the latest");
+    assert_eq!(body(first).await, nine);
+    let (tx, rx) = tokio::sync::watch::channel(7u64);
+    let behind = crate::live_watch(rx, LiveSince(Some("6".into())), |n| n.to_string(), |n| format!(r#"<p id="n">{n}</p>"#));
+    let read = tokio::spawn(body(behind));
+    tokio::task::yield_now().await;
+    drop(tx);
+    assert_eq!(
+        read.await.unwrap(),
+        "event: patch\nid: 7\ndata: <p id=\"n\">7</p>\n\nevent: end\ndata: end\n\n",
+        "the current one first"
+    );
+
+    // A receiver kept in the app's state never reads, so a clone of it has not seen 8: a page
+    // showing 8 still gets nothing until the next change.
+    let (tx, kept) = tokio::sync::watch::channel(7u64);
+    tx.send_replace(8);
+    let current = crate::live_watch(kept.clone(), LiveSince(Some("8".into())), |n| *n, |n| format!(r#"<p id="n">{n}</p>"#));
+    drop(tx);
+    assert_eq!(body(current).await, "event: end\ndata: end\n\n", "nothing to send");
 }
 
 #[tokio::test]
@@ -277,6 +440,49 @@ async fn action_returns_patch_and_plain_post_redirects() {
     assert_eq!(headers["location"], "/done");
 }
 
+/// `patch_or`'s page is built only for a submit without JavaScript, so a patch never loads what
+/// only the page shows.
+#[tokio::test]
+async fn patch_or_builds_the_page_only_without_javascript() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static PAGES: AtomicUsize = AtomicUsize::new(0);
+    let routes = || {
+        Router::new().route(
+            "/",
+            axum::routing::post(|req: Req| async move {
+                let page = || async {
+                    PAGES.fetch_add(1, Ordering::Relaxed);
+                    req.redirect::<ForOne>(&Done)
+                };
+                req.patch_or(html! { <p id={MsgId}>"saved"</p> }, page).await
+            }),
+        )
+    };
+    let (_, headers, _) = call(app(routes(), None), "POST", Some("action")).await;
+    assert_eq!((headers["corten-patch"].to_str().unwrap(), PAGES.load(Ordering::Relaxed)), ("1", 0));
+    let (status, _, _) = call(app(routes(), None), "POST", None).await;
+    assert_eq!((status, PAGES.load(Ordering::Relaxed)), (StatusCode::SEE_OTHER, 1));
+    // A data client gets the page's answer too, not a JSON error as from `invalid`.
+    let (status, _, _) = call_with(app(routes(), None), "POST", "/", None, Some("application/json")).await;
+    assert_eq!((status, PAGES.load(Ordering::Relaxed)), (StatusCode::SEE_OTHER, 2));
+}
+
+/// A view of references that are not `Sync` (`&Cell`) keeps the handler's future `Send`: the
+/// patch is rendered before `patch_or`'s future holds anything.
+#[tokio::test]
+async fn patch_or_keeps_a_handler_send_with_a_view_of_cells() {
+    let routes = Router::new().route(
+        "/",
+        axum::routing::post(|req: Req| async move {
+            let count = std::cell::Cell::new(1);
+            let count = &count;
+            req.patch_or(html! { <p id={MsgId}>{count.get()}</p> }, || async { req.redirect::<ForOne>(&Done) }).await
+        }),
+    );
+    let (_, _, body) = call(app(routes, None), "POST", Some("action")).await;
+    assert_eq!(body, r#"<p id="msg">1</p>"#);
+}
+
 #[cfg(feature = "json")]
 #[derive(crate::json::ToJson)]
 struct Data {
@@ -291,7 +497,7 @@ async fn screen_is_html_for_browsers_and_json_for_data_clients() {
             "/",
             get(|req: Req| async move {
                 let data = Data { text: "<b>" };
-                req.screen(&data, Shell { req: &req, title: "A & B", head: "", children: demo(data.text) })
+                req.screen::<ForOne, _>(&data, Shell { req: &req, title: "A & B", head: "", children: demo(data.text) })
             }),
         ),
         None,
@@ -535,6 +741,58 @@ async fn a_handler_that_panics_gets_the_error_page_and_the_server_keeps_serving(
     assert!(body.contains("index out of bounds"), "under corten dev the page shows the panic: {body}");
 }
 
+/// A second layout, as a marketing page and an account page might have.
+#[crate::component]
+fn Plain(req: &Req, title: &str, children: impl Render) -> impl Document {
+    html! {
+        <html lang={req.lang()}>
+            <head>
+                <title>{title}</title>
+                <Corten />
+            </head>
+            <body>
+                <header>"Plain"</header>
+                <main>{children}</main>
+            </body>
+        </html>
+    }
+}
+
+/// The shell key names the layout that rendered the page: pages in one layout share it, so a
+/// navigation between them swaps `<main>`; a page in another layout (or the default error
+/// document) has another, so the runtime loads it in full rather than keep the first layout.
+#[tokio::test]
+async fn a_page_in_another_layout_has_another_shell_key() {
+    let routes = Router::new()
+        .route("/", get(|req: Req| async move { req.page::<ForOne>(Shell { req: &req, title: "A", head: "", children: "a" }) }))
+        .route("/b", get(|req: Req| async move { req.page::<ForOne>(Shell { req: &req, title: "B", head: "", children: "b" }) }))
+        .route("/plain", get(|req: Req| async move { req.page::<ForOne>(Plain { req: &req, title: "P", children: "p" }) }));
+    let router = app(routes.clone(), None);
+    let key = |uri: &'static str, mode: Option<&'static str>| {
+        let router = router.clone();
+        async move {
+            let (status, headers, body) = call_with(router, "GET", uri, mode, None).await;
+            assert_eq!(status, StatusCode::OK, "{uri}");
+            let key = headers["corten-shell"].to_str().unwrap().to_string();
+            if mode.is_none() {
+                assert_eq!(meta_content(&body, "corten-shell"), key, "{uri}: the document and its header agree");
+            }
+            key
+        }
+    };
+    let home = key("/", None).await;
+    assert_eq!(key("/b", Some("nav")).await, home, "the same layout swaps in");
+    let plain = key("/plain", Some("nav")).await;
+    assert_ne!(plain, home, "another layout loads in full");
+    assert_eq!(key("/plain", None).await, plain, "a layout's key is the same in every mode");
+
+    // An app without an error page: an unknown URL is Corten's plain document, not the layout.
+    let bare = App::new(Routes::from(routes)).router();
+    let (_, nope, _) = call_with(bare.clone(), "GET", "/nope", Some("nav"), None).await;
+    let (_, page, _) = call_with(bare, "GET", "/", Some("nav"), None).await;
+    assert_ne!(nope["corten-shell"], page["corten-shell"], "the default error document is another layout");
+}
+
 #[tokio::test]
 async fn health_reports_liveness_and_readiness() {
     let router = App::new(Routes::new()).ready(|| async { false }).router();
@@ -575,6 +833,144 @@ async fn the_page_key_follows_the_caller_the_handler_read() {
 
     let (_, _, anonymous) = call(app(routes(), Some("ada")), "GET", None).await;
     assert_ne!(meta_content(&anonymous, "corten-shell"), meta_content(&ada, "corten-shell"), "a page that reads no caller");
+}
+
+#[test]
+fn a_nav_link_writes_its_route_once_and_says_when_it_is_the_page() {
+    use crate::{page::Nav, view::Attrs};
+    #[derive(crate::Route)]
+    #[route("/sell")]
+    struct Sell;
+    #[derive(crate::Route)]
+    #[route("/items/{id}")]
+    struct Item<'a> {
+        id: &'a str,
+        tab: Option<&'a str>,
+    }
+    fn attrs<R: crate::Route>(nav: Nav<'_, R>) -> String {
+        let mut out = String::new();
+        nav.render_attrs(&mut out);
+        out
+    }
+    assert_eq!(attrs(Nav { path: "/sell", to: &Sell, section: false }), r#" href="/sell" data-nav aria-current="page""#);
+    assert_eq!(attrs(Nav { path: "/sell/listings", to: &Sell, section: false }), r#" href="/sell" data-nav"#);
+    assert_eq!(
+        attrs(Nav { path: "/sell/listings", to: &Sell, section: true }),
+        r#" href="/sell" data-nav="section" aria-current="page""#
+    );
+    // A sibling that starts with the same text is not under the section.
+    assert_eq!(attrs(Nav { path: "/seller", to: &Sell, section: true }), r#" href="/sell" data-nav="section""#);
+    // A section written with a trailing slash holds the pages under it, and itself.
+    #[derive(crate::Route)]
+    #[route("/shop/")]
+    struct Shop;
+    assert_eq!(
+        attrs(Nav { path: "/shop/boots", to: &Shop, section: true }),
+        r#" href="/shop/" data-nav="section" aria-current="page""#
+    );
+    assert_eq!(
+        attrs(Nav { path: "/shop/", to: &Shop, section: true }),
+        r#" href="/shop/" data-nav="section" aria-current="page""#
+    );
+    // The path is percent-encoded, and the query is left out of the comparison.
+    let item = Item { id: "a b", tab: Some("x&y") };
+    assert_eq!(
+        attrs(Nav { path: "/items/a%20b", to: &item, section: false }),
+        r#" href="/items/a%20b?tab=x%26y" data-nav aria-current="page""#
+    );
+    // A route written by hand may write a path that escaping for the attribute changes; it is
+    // compared unescaped.
+    struct Terms;
+    impl crate::Route for Terms {
+        const PATH: &'static str = "/terms&privacy";
+        fn write_href(&self, out: &mut String, html: bool) {
+            out.push_str(if html { "/terms&amp;privacy" } else { "/terms&privacy" });
+        }
+    }
+    assert_eq!(
+        attrs(Nav { path: "/terms&privacy", to: &Terms, section: false }),
+        r#" href="/terms&amp;privacy" data-nav aria-current="page""#
+    );
+}
+
+/// A whole nav's links: of the entries that hold the page, only the deepest is current, as the
+/// runtime judges a `<nav>` after a client navigation (#341).
+#[test]
+fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
+    use crate::{
+        page::{nav_links, NavTo},
+        view::Attrs,
+        Local,
+    };
+    #[derive(crate::Route)]
+    #[route("/")]
+    struct Home;
+    #[derive(crate::Route)]
+    #[route("/account/desk")]
+    struct Desk;
+    #[derive(crate::Route)]
+    #[route("/account/desk/money")]
+    struct Money;
+    let help = Local::parse("/help?topic=a&b").unwrap();
+    let written = |nav: crate::page::NavLinks<()>| {
+        nav.links()
+            .map(|(link, ())| {
+                let mut out = String::new();
+                link.render_attrs(&mut out);
+                out
+            })
+            .collect::<Vec<_>>()
+    };
+    let group = |links: &[String]| {
+        let groups: Vec<_> =
+            links.iter().map(|link| link.split(r#" data-nav-group=""#).nth(1).unwrap()[..8].to_string()).collect();
+        assert!(groups.iter().all(|g| *g == groups[0] && g.bytes().all(|b| b.is_ascii_hexdigit())), "{groups:?}");
+        groups[0].clone()
+    };
+    let marked = |path: &str| {
+        let links = written(nav_links(
+            path,
+            [NavTo::page(&Home), NavTo::section(&Desk), NavTo::section(&Money), NavTo::page(&help)].map(|e| (e, ())),
+        ));
+        let g = format!(r#" data-nav-group="{}""#, group(&links));
+        links.into_iter().map(|link| link.replace(&g, "")).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        marked("/account/desk/repricing"),
+        [
+            r#" href="/" data-nav"#,
+            r#" href="/account/desk" data-nav="section" aria-current="page""#,
+            r#" href="/account/desk/money" data-nav="section""#,
+            r#" href="/help?topic=a&amp;b" data-nav"#,
+        ]
+    );
+    let money = marked("/account/desk/money/payouts");
+    assert!(!money[1].contains("aria-current") && money[2].ends_with(r#" aria-current="page""#), "{money:?}");
+    assert!(marked("/")
+        .iter()
+        .filter(|link| link.contains("aria-current"))
+        .eq([&r#" href="/" data-nav aria-current="page""#.to_string()]));
+    assert!(marked("/help").last().unwrap().ends_with(r#" aria-current="page""#), "an entry from data takes part");
+    assert!(marked("/elsewhere").iter().all(|link| !link.contains("aria-current")));
+
+    // The group names the entries: the same nav twice is one group, another nav is another.
+    let of = |path: &str, entries: [NavTo; 2]| written(nav_links(path, entries.map(|e| (e, ()))));
+    let desk = of("/", [NavTo::section(&Desk), NavTo::page(&Money)]);
+    assert_eq!(group(&desk), group(&of("/account", [NavTo::section(&Desk), NavTo::page(&Money)])));
+    assert_ne!(group(&desk), group(&of("/", [NavTo::page(&Desk), NavTo::page(&Money)])));
+    assert_ne!(group(&desk), group(&of("/", [NavTo::section(&Money), NavTo::page(&Desk)])));
+
+    // Each link comes with its entry's item.
+    let labels: Vec<_> =
+        nav_links("/", [(NavTo::page(&Home), "Home"), (NavTo::section(&Desk), "Desk")]).links().map(|(_, l)| *l).collect();
+    assert_eq!(labels, ["Home", "Desk"]);
+
+    // A path from data is written as the browser asks for it, so the server compares what it is
+    // sent: `"` and `|` are percent-encoded in the path (not in the query).
+    let odd = Local::parse(r#"/a"b|c?q="|""#).unwrap();
+    let links = written(nav_links("/a%22b%7Cc", [(NavTo::page(&odd), ())]));
+    assert!(links[0].starts_with(r#" href="/a%22b%7Cc?q=&quot;|&quot;" data-nav data-nav-group=""#), "{links:?}");
+    assert!(links[0].ends_with(r#" aria-current="page""#), "{links:?}");
 }
 
 #[test]
@@ -643,7 +1039,7 @@ async fn a_page_that_reads_again_says_so_in_its_head_on_every_surface() {
     let routes = Router::new().route(
         "/",
         get(|req: Req| async move {
-            req.page(Shell {
+            req.page::<ForOne>(Shell {
                 req: &req,
                 title: "Saving",
                 head: ReadAgain { after: Duration::from_secs(2) },
@@ -658,6 +1054,31 @@ async fn a_page_that_reads_again_says_so_in_its_head_on_every_surface() {
         "in <head>, where the browser reads it without JavaScript: {document}"
     );
     assert!(!headers.contains_key("refresh"), "not the header, which outlives the runtime's navigations");
+    let (_, _, swap) = call(app(routes, None), "GET", Some("nav")).await;
+    assert!(swap.starts_with(&format!("<title>Saving</title>{tag}<p>")), "a navigation's head tags: {swap}");
+}
+
+/// `ReadAgain::without_javascript` in the head (#319): the same refresh, without the mark the
+/// runtime reads, on a full load and in a navigation's head tags.
+#[tokio::test]
+async fn a_page_that_reads_again_only_without_javascript_has_no_mark_in_its_head() {
+    use std::time::Duration;
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            req.page::<ForOne>(Shell {
+                req: &req,
+                title: "Saving",
+                head: ReadAgain { after: Duration::from_secs(2) }.without_javascript(),
+                children: html! { <p>"Saving"</p> },
+            })
+        }),
+    );
+    let tag = r#"<noscript data-corten-head><meta http-equiv="refresh" content="2"></noscript>"#;
+    let (_, headers, document) = call(app(routes.clone(), None), "GET", None).await;
+    assert!(document.contains(&format!("<title>Saving</title>{tag}")), "{document}");
+    assert!(!document.contains("data-corten-read-again"), "the runtime finds nothing to read again: {document}");
+    assert!(!headers.contains_key("refresh"));
     let (_, _, swap) = call(app(routes, None), "GET", Some("nav")).await;
     assert!(swap.starts_with(&format!("<title>Saving</title>{tag}<p>")), "a navigation's head tags: {swap}");
 }
@@ -712,7 +1133,7 @@ async fn a_page_that_moved_answers_301_in_every_mode_and_a_form_navigates() {
     struct Item<'a> {
         slug: &'a str,
     }
-    let routes = Router::new().route("/", get(|req: Req| async move { req.moved(&Item { slug: "pika chu" }) }));
+    let routes = Router::new().route("/", get(|req: Req| async move { req.moved::<ForOne>(&Item { slug: "pika chu" }) }));
     for (mode, accept) in [(None, Some("text/html")), (Some("nav"), None), (None, Some("application/json"))] {
         let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/", mode, accept).await;
         assert_eq!(status, StatusCode::MOVED_PERMANENTLY, "{mode:?} {accept:?}");
@@ -734,8 +1155,8 @@ async fn a_redirect_to_a_place_keeps_its_fragment_in_every_mode() {
     #[derive(crate::view::Id)]
     struct PlaceId<'a>(&'a str);
     let routes = Router::new()
-        .route("/", get(|req: Req| async move { req.redirect(&Item { slug: "pika chu" }.at(PlaceId("7 & 8"))) }))
-        .route("/old", get(|req: Req| async move { req.moved(&Item { slug: "pika" }.at(PlaceId("7"))) }));
+        .route("/", get(|req: Req| async move { req.redirect::<ForOne>(&Item { slug: "pika chu" }.at(PlaceId("7 & 8"))) }))
+        .route("/old", get(|req: Req| async move { req.moved::<ForOne>(&Item { slug: "pika" }.at(PlaceId("7"))) }));
     let place = "/items/pika%20chu#place-7%20%26%208";
     let (status, headers, _) = call(app(routes.clone(), None), "GET", None).await;
     assert_eq!((status, &headers["location"]), (StatusCode::SEE_OTHER, &place.parse().unwrap()), "a full load follows it");
@@ -748,6 +1169,65 @@ async fn a_redirect_to_a_place_keeps_its_fragment_in_every_mode() {
     assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &"/items/pika#place-7".parse().unwrap()));
     let (status, headers, _) = call_with(app(routes, None), "GET", "/old", None, Some("text/html")).await;
     assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &"/items/pika#place-7".parse().unwrap()));
+}
+
+/// A client navigation's `fetch` cannot follow a redirect to another origin (the CSP's
+/// `connect-src`, else CORS), so it is told where to go and the browser goes there itself; a full
+/// load still gets the 303 or 301.
+#[tokio::test]
+async fn a_redirect_to_another_origin_is_named_to_a_client_navigation() {
+    use axum::http::Uri;
+    let routes = Router::new()
+        .route(
+            "/away",
+            get(|req: Req| async move { req.redirect::<ForOne>(&"https://shop.example/sales?x=1".parse::<Uri>().unwrap()) }),
+        )
+        .route("/moved", get(|req: Req| async move { req.moved::<ForOne>(&"//shop.example/sales".parse::<Uri>().unwrap()) }))
+        .route("/here", get(|req: Req| async move { req.redirect::<ForOne>(&Done) }));
+    for (uri, to, full) in [
+        ("/away", "https://shop.example/sales?x=1", StatusCode::SEE_OTHER),
+        ("/moved", "//shop.example/sales", StatusCode::MOVED_PERMANENTLY),
+    ] {
+        for mode in ["nav", "action"] {
+            let (status, headers, _) = call_with(app(routes.clone(), None), "GET", uri, Some(mode), None).await;
+            assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &to.parse().unwrap()), "{uri} {mode}");
+            assert!(!headers.contains_key("location"), "{uri} {mode}: nothing for fetch to follow");
+        }
+        let (status, headers, _) = call_with(app(routes.clone(), None), "GET", uri, None, Some("text/html")).await;
+        assert_eq!((status, &headers["location"]), (full, &to.parse().unwrap()), "{uri}: a full load follows it");
+    }
+    // A path on this origin is still a redirect fetch follows, in one round trip.
+    let (status, headers, _) = call_with(app(routes, None), "GET", "/here", Some("nav"), None).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(!headers.contains_key("corten-location"));
+}
+
+/// A place on a page outside the app keeps its `#fragment` through `moved` and `redirect`, which
+/// an `axum::http::Uri` alone drops.
+#[tokio::test]
+async fn a_redirect_to_a_place_elsewhere_keeps_its_fragment() {
+    use crate::route::Elsewhere;
+    use axum::http::Uri;
+    static COMPARE: std::sync::LazyLock<Uri> = std::sync::LazyLock::new(|| Uri::from_static("https://example.com/compare?x=1"));
+    let routes = Router::new()
+        .route("/old", get(|req: Req| async move { req.moved::<ForOne>(&Elsewhere::at(&COMPARE, "fee-calculator")) }))
+        .route("/go", get(|req: Req| async move { req.redirect::<ForOne>(&Elsewhere::at(&COMPARE, "fees & taxes")) }));
+    let place = "https://example.com/compare?x=1#fee-calculator";
+    let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/old", None, Some("text/html")).await;
+    assert_eq!((status, &headers["location"]), (StatusCode::MOVED_PERMANENTLY, &place.parse().unwrap()), "a full load");
+    let (status, headers, _) = call_with(app(routes.clone(), None), "GET", "/old", Some("nav"), None).await;
+    assert_eq!((status, &headers["corten-location"]), (StatusCode::NO_CONTENT, &place.parse().unwrap()), "a client navigation");
+    let (status, headers, _) = call_with(app(routes, None), "GET", "/go", None, Some("text/html")).await;
+    let to = "https://example.com/compare?x=1#fees%20&%20taxes";
+    assert_eq!((status, &headers["location"]), (StatusCode::SEE_OTHER, &to.parse().unwrap()));
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "Elsewhere::at takes a full URL outside the app")]
+fn a_place_elsewhere_on_a_path_panics_in_debug_builds() {
+    let path = axum::http::Uri::from_static("/items/pika");
+    let _ = crate::route::Elsewhere::at(&path, "place-7");
 }
 
 #[cfg(debug_assertions)]
@@ -788,7 +1268,16 @@ fn field_names_follow_serde_and_reach_markup() {
     let e = errors.within(SignUpId);
     let html = html! { <input name={f.email} {..e.aria(f.email)}> }.to_html();
     assert_eq!(html, r#"<input name="email" aria-invalid="true" aria-describedby="sign-up-email-error">"#);
+    // A hint of its own: one aria-describedby naming the hint, then the error. The hint's id is a
+    // temporary, which lives as long as the spread renders.
+    let field = String::from("email");
+    let e = errors.within(SignUpId);
+    let html = html! { <input name={f.email} {..e.aria(f.email).hint(&FieldHintId(&field))}> }.to_html();
+    assert_eq!(html, r#"<input name="email" aria-invalid="true" aria-describedby="field-hint-email sign-up-email-error">"#);
 }
+
+#[derive(crate::view::Id)]
+struct FieldHintId<'a>(&'a str);
 
 #[tokio::test]
 async fn error_pages_render_in_the_shell() {
@@ -828,21 +1317,171 @@ fn api_app(settings: impl FnOnce(crate::Api<ApiRoot>) -> crate::Api<ApiRoot>) ->
     .deadline(std::time::Duration::from_millis(50))
     .api::<ApiRoot>(|api| {
         let api = api
-            .route::<ApiItem>(crate::Methods(get(|axum::extract::Path(id): axum::extract::Path<u32>| async move {
+            .route::<ApiItem>(crate::Methods::reads(get(|axum::extract::Path(id): axum::extract::Path<u32>| async move {
                 format!("item {id}")
             })))
-            .route::<ApiMissing>(crate::Methods(get(|| async {
+            .route::<ApiMissing>(crate::Methods::reads(get(|| async {
                 Err::<Response, _>(Error::new("no item 7").with_status(StatusCode::NOT_FOUND))
             })))
-            .route::<ApiDown>(crate::Methods(get(|| async { Err::<Response, _>(Error::new("database password wrong")) })))
-            .route::<ApiTeapot>(crate::Methods(get(|| async {
+            .route::<ApiDown>(crate::Methods::reads(get(|| async { Err::<Response, _>(Error::new("database password wrong")) })))
+            .route::<ApiTeapot>(crate::Methods::reads(get(|| async {
                 (StatusCode::IM_A_TEAPOT, [("content-type", "application/json")], r#"{"mine":1}"#)
             })))
-            .route::<ApiSlow>(crate::Methods(get(std::future::pending::<&'static str>)))
-            .route::<ApiPost>(crate::Methods(axum::routing::post(|| async { "posted" })));
+            .route::<ApiSlow>(crate::Methods::reads(get(std::future::pending::<&'static str>)))
+            .route::<ApiPost>(crate::Methods::writes(axum::routing::post(|| async { "posted" })));
         settings(api)
     })
     .router()
+}
+
+/// An area or an API with a deadline of its own: its routes get it, and every other page keeps
+/// the app's. In nested areas the innermost that sets one decides; one that sets none takes its
+/// parent's.
+#[tokio::test]
+async fn an_area_or_an_api_sets_its_own_deadline() {
+    let slow = || {
+        crate::Methods::reads(get(|| async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            "done"
+        }))
+    };
+    let router = App::new(Routes::from(Router::new().route("/slow", slow().0)))
+        .error_page(test_error_page, ())
+        .deadline(Duration::from_millis(50))
+        .area::<Admin>(|admin| admin.route::<AdminSlow>(slow()).deadline(Duration::from_secs(10)))
+        .area::<AdminQuick>(|quick| quick.route::<AdminQuickSlow>(slow()).deadline(Duration::from_millis(20)))
+        .area::<AdminOther>(|other| other.route::<AdminOtherSlow>(slow()))
+        .api::<ApiRoot>(|api| api.route::<ApiSlow>(slow()).deadline(None))
+        .router();
+    let status = |uri| {
+        let router = router.clone();
+        async move { call_with(router, "GET", uri, None, Some("text/html")).await.0 }
+    };
+    assert_eq!(status("/slow").await, StatusCode::SERVICE_UNAVAILABLE, "a page keeps the app's deadline");
+    assert_eq!(status("/admin/slow").await, StatusCode::OK, "the area's own");
+    assert_eq!(status("/admin/other/slow").await, StatusCode::OK, "a nested area without one takes its parent's");
+    assert_eq!(status("/admin/quick/slow").await, StatusCode::SERVICE_UNAVAILABLE, "the innermost decides");
+    assert_eq!(status("/api/slow").await, StatusCode::OK, "None removes it for the API");
+}
+
+/// Writes its name into `x-steps` on the way in, so a test reads the order middleware ran in;
+/// with `refuse`, a request with `x-flood` is turned away with a 429.
+struct Step(&'static str, bool);
+
+impl crate::Middleware for Step {
+    async fn call(&self, mut req: Request<Body>, next: impl crate::Next) -> axum::response::Response {
+        use axum::response::IntoResponse;
+        let steps = req.headers().get("x-steps").map(|v| format!("{} {}", v.to_str().unwrap(), self.0));
+        let steps = steps.unwrap_or_else(|| self.0.to_string());
+        req.headers_mut().insert("x-steps", steps.parse().unwrap());
+        if self.1 && req.headers().contains_key("x-flood") {
+            return crate::Refused::too_many(Duration::from_millis(7_500)).into_response();
+        }
+        next.run(req).await
+    }
+}
+
+/// An area's or an API's middleware runs for its own routes only (and a nested area's), after
+/// the app's, outermost first and each in the order given; a refusal from one is answered in the
+/// request's mode, as a caller's is.
+#[tokio::test]
+async fn an_area_or_an_api_has_middleware_of_its_own() {
+    let steps = || {
+        crate::Methods::reads(get(|headers: axum::http::HeaderMap| async move {
+            headers.get("x-steps").map_or(String::new(), |v| v.to_str().unwrap().to_string())
+        }))
+    };
+    let router = App::new(Routes::from(Router::new().route("/slow", steps().0)))
+        .error_page(test_error_page, ())
+        .middleware(Step("app", false))
+        .area::<AdminQuick>(|quick| quick.route::<AdminQuickSlow>(steps()).middleware(Step("quick", false)))
+        .area::<Admin>(|admin| {
+            admin
+                .middleware((Step("admin", false), Step("limit", true)))
+                .route::<AdminSlow>(steps())
+                .middleware(Step("last", false))
+        })
+        .area::<AdminOther>(|other| other.route::<AdminOtherSlow>(steps()))
+        .api::<ApiRoot>(|api| api.route::<ApiSlow>(steps()).middleware(Step("api", true)))
+        .api::<AdminHooks>(|hooks| hooks.route::<AdminHooksPing>(steps()).middleware(Step("hooks", false)))
+        .router();
+    let body = |uri| {
+        let router = router.clone();
+        async move { call_with(router, "GET", uri, None, Some("text/html")).await.2 }
+    };
+    assert_eq!(body("/slow").await, "app", "a route outside every area meets the app's only");
+    assert_eq!(
+        body("/admin/slow").await,
+        "app admin limit last",
+        "the area's, in the order given, given before or after its routes"
+    );
+    assert_eq!(body("/admin/quick/slow").await, "app admin limit last quick", "an outer area's, then the inner one's");
+    assert_eq!(body("/admin/other/slow").await, "app admin limit last", "a nested area without any has its parent's");
+    assert_eq!(body("/api/slow").await, "app api");
+    assert_eq!(body("/admin/hooks/ping").await, "app admin limit last hooks", "an API under the area meets the area's first");
+    assert!(body("/admin/nope").await.contains("Not found"), "an unknown URL under the area is the app's 404");
+
+    let flood = |uri: &'static str, accept: &'static str| {
+        let router = router.clone();
+        async move {
+            let req = Request::get(uri).header("accept", accept).header("x-flood", "1").body(Body::empty()).unwrap();
+            let (parts, body) = router.oneshot(req).await.unwrap().into_parts();
+            (parts.status, parts.headers, String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap())
+        }
+    };
+    let (status, headers, body) = flood("/admin/slow", "text/html").await;
+    assert_eq!(
+        (status, &headers["retry-after"]),
+        (StatusCode::TOO_MANY_REQUESTS, &"8".parse::<axum::http::HeaderValue>().unwrap())
+    );
+    assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"), "a browser gets the error page: {headers:?}");
+    let (status, headers, body2) = flood("/api/slow", "text/html").await;
+    assert_eq!(
+        (status, &headers["retry-after"]),
+        (StatusCode::TOO_MANY_REQUESTS, &"8".parse::<axum::http::HeaderValue>().unwrap())
+    );
+    assert_eq!(body2, r#"{"error":{"status":429,"message":"Too Many Requests"}}"#, "JSON under an API");
+    let (status, _, _) = flood("/admin/nope", "text/html").await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "an unknown URL under the area meets its middleware");
+    let (status, _, body3) = flood("/admin/hooks/ping", "text/html").await;
+    assert_eq!(
+        (status, &body3[..]),
+        (StatusCode::TOO_MANY_REQUESTS, r#"{"error":{"status":429,"message":"Too Many Requests"}}"#),
+        "and an API under it, in JSON"
+    );
+    let (status, _, _) = flood("/slow", "text/html").await;
+    assert_eq!(status, StatusCode::OK, "the app's other routes never meet the limit");
+    assert!(!body.is_empty());
+}
+
+/// A middleware reads the client's address as a handler would, and the answer is then private.
+#[tokio::test]
+async fn a_middleware_reads_the_client_address() {
+    struct Seen;
+    impl crate::Middleware for Seen {
+        async fn call(&self, mut req: Request<Body>, next: impl crate::Next) -> axum::response::Response {
+            let ip = crate::ClientIp::of(&mut req).map_or("none".to_string(), |crate::ClientIp(ip)| ip.to_string());
+            req.headers_mut().insert("x-ip", ip.parse().unwrap());
+            next.run(req).await
+        }
+    }
+    let routes = Router::new().route(
+        "/",
+        get(|headers: axum::http::HeaderMap, ip: Option<crate::ClientIp>| async move {
+            format!(
+                "{} {}",
+                headers["x-ip"].to_str().unwrap(),
+                ip.map_or("none".to_string(), |crate::ClientIp(ip)| ip.to_string())
+            )
+        }),
+    );
+    let router = App::new(Routes::from(routes))
+        .middleware(Seen)
+        .router()
+        .layer(axum::extract::connect_info::MockConnectInfo(std::net::SocketAddr::from(([203, 0, 113, 8], 1))));
+    let (status, headers, body) = call_with(router, "GET", "/", None, Some("text/html")).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "203.0.113.8 203.0.113.8"), "the same address both ways");
+    assert_eq!(headers["cache-control"], "private, no-cache", "an answer for one address is private");
 }
 
 /// What most HTTP clients send: `*/*`, or no `Accept` at all, or a browser's own.
@@ -931,6 +1570,103 @@ async fn a_caller_is_looked_up_only_by_the_handlers_that_read_it_and_once() {
     assert_eq!((body.as_str(), LOOKUPS.with(|n| n.get())), ("ada", 1), "two readers, one lookup");
 }
 
+#[cfg(feature = "json")]
+#[derive(crate::ToJson)]
+struct ShapedError {
+    r#type: &'static str,
+    error: ShapedDetail,
+}
+
+#[cfg(feature = "json")]
+#[derive(crate::ToJson)]
+struct ShapedDetail {
+    code: u16,
+    message: String,
+}
+
+/// `Api::errors` writes every failure Corten answers under the prefix in the API's own shape.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn an_api_writes_the_failures_corten_answers_in_its_own_shape() {
+    let router = api_app(|api| {
+        api.errors(|status, message| ShapedError {
+            r#type: "error",
+            error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+        })
+    });
+    let shaped = |code: u16, message: &str| format!(r#"{{"type":"error","error":{{"code":{code},"message":{message:?}}}}}"#);
+    for (method, path, status, message) in [
+        ("GET", "/api/nope", 404, "Not Found"),
+        ("GET", "/api/post", 405, "Method Not Allowed"),
+        ("GET", "/api/missing", 404, "no item 7"),
+        ("GET", "/api/down", 500, "Internal Server Error"),
+        ("GET", "/api/items/x", 400, "Invalid URL: Cannot parse `x` to a `u32`"),
+        ("GET", "/api/slow", 503, "Service Unavailable"),
+    ] {
+        let (got, headers, body) = call_with(router.clone(), method, path, None, None).await;
+        assert_eq!((got.as_u16(), &body[..]), (status, &shaped(status, message)[..]), "{method} {path}");
+        assert_eq!(headers["content-type"], "application/json");
+    }
+    let (_, headers, _) = call_with(router.clone(), "GET", "/api/post", None, None).await;
+    assert_eq!(headers["allow"], "POST", "what the failure says besides its body stays");
+    let cross = Request::post("/api/post").header("origin", "https://evil.example").header("sec-fetch-site", "cross-site");
+    let res = router.clone().oneshot(cross.body(Body::empty()).unwrap()).await.unwrap();
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body, shaped(403, "Cross-site request refused."));
+    let (_, _, body) = call_with(router, "GET", "/api/teapot", None, None).await;
+    assert_eq!(body, r#"{"mine":1}"#, "a handler's own JSON failure passes through");
+}
+
+/// A key check that says why it refused, and locks out a client with too many failed attempts.
+#[derive(Clone, Hash, Debug)]
+struct Keyed;
+
+impl<S: Sync> crate::Identify<S> for Keyed {
+    async fn identify(parts: &axum::http::request::Parts, _: &S) -> std::result::Result<Self, crate::Refused> {
+        match parts.headers.get("x-api-key").map(|v| v.as_bytes()) {
+            Some(b"k1") => Ok(Keyed),
+            Some(b"locked") => Err(crate::Refused::too_many(std::time::Duration::from_millis(1500))
+                .message("Too many failed attempts; try again later")),
+            _ => Err(crate::Refused::unauthorized().message("Invalid API key")),
+        }
+    }
+}
+
+#[derive(crate::Route)]
+#[route("/api/keyed")]
+struct ApiKeyed;
+
+/// A refusal says why, in the API's own shape, and a lockout is a 429 that says when to try again.
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_refusal_tells_the_client_why_and_when_to_try_again() {
+    let router = api_app(|api| {
+        api.route::<ApiKeyed>(crate::Methods::reads(get(|_: Caller<Keyed>| async { "ok" }))).errors(|status, message| {
+            ShapedError { r#type: "error", error: ShapedDetail { code: status.as_u16(), message: message.to_string() } }
+        })
+    });
+    let keyed = |key: Option<&'static str>| {
+        let mut req = Request::get("/api/keyed");
+        if let Some(key) = key {
+            req = req.header("x-api-key", key);
+        }
+        let router = router.clone();
+        async move {
+            let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            let (status, retry) = (res.status().as_u16(), res.headers().get("retry-after").cloned());
+            (status, retry, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+        }
+    };
+    assert_eq!(keyed(Some("k1")).await, (200, None, "ok".to_string()));
+    assert_eq!(
+        keyed(None).await,
+        (401, None, r#"{"type":"error","error":{"code":401,"message":"Invalid API key"}}"#.to_string())
+    );
+    let (status, retry, body) = keyed(Some("locked")).await;
+    assert_eq!((status, retry.as_ref().map(|v| v.to_str().unwrap())), (429, Some("2")), "whole seconds, rounded up");
+    assert_eq!(body, r#"{"type":"error","error":{"code":429,"message":"Too many failed attempts; try again later"}}"#);
+}
+
 #[tokio::test]
 async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pages() {
     let router = api_app(|api| api.allow_origin("https://partner.example/"));
@@ -978,7 +1714,7 @@ async fn an_allowed_origin_may_call_the_api_from_the_browser_but_not_post_the_pa
 #[tokio::test]
 async fn an_api_at_the_root_makes_the_whole_app_json() {
     let router =
-        App::new(Routes::new()).api::<Root>(|api| api.route::<Items>(crate::Methods(get(|| async { "items" })))).router();
+        App::new(Routes::new()).api::<Root>(|api| api.route::<Items>(crate::Methods::reads(get(|| async { "items" })))).router();
     let (status, headers, body) = call_with(router.clone(), "GET", "/nope", None, Some("text/html")).await;
     assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::NOT_FOUND, "application/json"));
     assert_eq!(body, r#"{"error":{"status":404,"message":"Not Found"}}"#);
@@ -986,12 +1722,261 @@ async fn an_api_at_the_root_makes_the_whole_app_json() {
     assert_eq!((status, &body[..]), (StatusCode::OK, "ok"), "Corten's own routes keep their behavior");
 }
 
+/// Query parameters a route carries as a set (`#[route(query)]`).
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize, crate::Route)]
+#[route(query)]
+pub struct ParamsPaging {
+    pub page: Option<u32>,
+}
+
+/// A set with each kind of parameter a route has: renamed, a list with no `#[serde(default)]`,
+/// a prefix and a set of its own. It derives no `Deserialize`: `Params` reads it by its keys.
+#[derive(Clone, Debug, Default, PartialEq, crate::Route)]
+#[route(query)]
+#[serde(rename_all = "camelCase")]
+pub struct SetProbe {
+    pub sort_by: Option<String>,
+    pub tags: Vec<String>,
+    #[route(prefix = "dimension.")]
+    pub dims: Vec<(String, String)>,
+    #[route(query)]
+    pub paging: ParamsPaging,
+}
+
+#[derive(crate::Route)]
+#[route("/probe")]
+pub struct SetRoute {
+    pub q: Option<String>,
+    #[route(query)]
+    pub set: SetProbe,
+}
+
+/// A set's fields with defaults of their own: a parameter the query leaves out is the field's.
+#[derive(Debug, PartialEq, crate::Route)]
+#[route(query)]
+pub struct DefaultedSet {
+    #[serde(default = "first_page")]
+    pub page: u32,
+    #[serde(default)]
+    pub size: u32,
+    #[route(prefix = "f.")]
+    pub facets: std::collections::BTreeMap<String, String>,
+}
+
+fn first_page() -> u32 {
+    1
+}
+
+/// A set with a type parameter.
+#[derive(Debug, PartialEq, crate::Route)]
+#[route(query)]
+pub struct PickSet<T: std::fmt::Display> {
+    pub pick: Option<T>,
+}
+
+#[derive(crate::Route)]
+#[route("/defaulted")]
+pub struct DefaultedRoute {
+    #[route(query)]
+    pub set: DefaultedSet,
+    #[route(query)]
+    pub pick: PickSet<u32>,
+}
+
+/// A set only links use: its field needs only `Display`.
+#[derive(crate::Route)]
+#[route(query)]
+pub struct ShownSet {
+    pub tab: Option<Shown>,
+}
+
+#[derive(crate::Route)]
+#[route("/shown-set")]
+struct ShownSetLink {
+    #[route(query)]
+    set: ShownSet,
+}
+
+#[test]
+fn a_query_set_reads_back_what_its_links_write() {
+    use crate::route::FromUrl;
+    let set = SetProbe {
+        sort_by: Some("price".into()),
+        tags: vec!["a".into(), "b&c".into()],
+        dims: vec![("form".into(), "graded".into()), ("grade".into(), "PSA 8".into())],
+        paging: ParamsPaging { page: Some(3) },
+    };
+    let href = SetRoute { q: Some("x".into()), set: set.clone() }.href();
+    assert_eq!(href, "/probe?q=x&sortBy=price&tags=a&tags=b%26c&dimension.form=graded&dimension.grade=PSA%208&page=3");
+    let read = <SetRoute as FromUrl>::__read((), href.split_once('?').unwrap().1).unwrap();
+    assert_eq!((read.q.as_deref(), &read.set), (Some("x"), &set), "the prefix field is read back, not left empty");
+    let read = <SetRoute as FromUrl>::__read((), "").unwrap();
+    assert_eq!(read.set, SetProbe::default(), "a missing list is empty, as on a route");
+    for query in ["page=x", "sortBy=a&sortBy=b"] {
+        assert!(<SetRoute as FromUrl>::__read((), query).is_err(), "{query}");
+    }
+    let read = <DefaultedRoute as FromUrl>::__read((), "size=5&f.kind=graded&pick=7").unwrap();
+    let facets = std::collections::BTreeMap::from([("kind".to_string(), "graded".to_string())]);
+    assert_eq!((&read.set, &read.pick), (&DefaultedSet { page: 1, size: 5, facets }, &PickSet { pick: Some(7) }));
+    let empty = <DefaultedRoute as FromUrl>::__read((), "").unwrap().set;
+    assert_eq!(empty, DefaultedSet { page: 1, size: 0, facets: Default::default() });
+    let link = ShownSetLink { set: ShownSet { tab: Some(Shown("a b".into())) } };
+    assert_eq!(link.href(), "/shown-set?tab=a%20b");
+}
+
+/// Every kind of parameter a route has, which its handler reads back as the link wrote it.
+#[crate::routes]
+mod params_url {
+    #[route("/shops/{shop}/items/{id}", get = params_item)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Item<'a> {
+        pub shop: &'a str,
+        pub id: u32,
+        pub sort_by: Option<&'a str>,
+        pub tags: &'a [&'a str],
+        #[serde(default)]
+        pub mine: bool,
+        #[route(query)]
+        pub paging: super::ParamsPaging,
+        #[route(prefix = "dim.")]
+        pub dims: &'a std::collections::BTreeMap<String, String>,
+    }
+
+    #[route("/files/{*rest}", get = params_file)]
+    pub struct File<'a> {
+        pub rest: std::borrow::Cow<'a, str>,
+    }
+}
+
+/// A value a link prints but nothing reads back: neither `Clone`, `Send` nor `Deserialize`.
+pub struct Shown(std::rc::Rc<str>);
+
+impl std::fmt::Display for Shown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// A route used only for links still needs only `Display` of its fields.
+#[derive(crate::Route)]
+#[route("/shown/{value}")]
+#[serde(deny_unknown_fields)]
+struct LinkOnly<'a> {
+    value: &'a Shown,
+    #[serde(alias = "t")]
+    tab: Option<&'a Shown>,
+}
+
+/// The same fields with no serde key: its hidden owned twin is written, and asks nothing of
+/// `Shown` until a handler reads the route's `Params`.
+#[derive(crate::Route)]
+#[route("/shown-twin/{value}")]
+struct LinkTwin<'a> {
+    value: &'a Shown,
+    tab: Option<&'a Shown>,
+}
+
+async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
+    let (shop, id, sort, tags, mine, page, dims) =
+        (&item.shop, item.id, &item.sort_by, &item.tags, item.mine, item.paging.page, &item.dims);
+    format!("{shop}|{id}|{sort:?}|{tags:?}|{mine}|{page:?}|{dims:?}")
+}
+
+async fn params_file(file: crate::Params<params_url::File<'_>>) -> String {
+    file.rest.clone()
+}
+
+#[tokio::test]
+async fn a_handler_reads_its_routes_parameters_as_the_link_wrote_them() {
+    let router = App::new(params_url::router()).router();
+    let dims = std::collections::BTreeMap::from([
+        ("form".to_string(), "graded".to_string()),
+        ("grade".to_string(), "PSA 8".to_string()),
+    ]);
+    let link = params_url::Item {
+        shop: "a b/c",
+        id: 7,
+        sort_by: Some("price"),
+        tags: &["x", "y&z"],
+        mine: true,
+        paging: ParamsPaging { page: Some(2) },
+        dims: &dims,
+    };
+    assert_eq!(
+        link.href(),
+        "/shops/a%20b%2Fc/items/7?sortBy=price&tags=x&tags=y%26z&mine=true&page=2&dim.form=graded&dim.grade=PSA%208"
+    );
+    let (status, _, body) = call_with(router.clone(), "GET", &link.href(), None, None).await;
+    assert_eq!(
+        (status, &body[..]),
+        (StatusCode::OK, r#"a b/c|7|Some("price")|["x", "y&z"]|true|Some(2)|{"form": "graded", "grade": "PSA 8"}"#)
+    );
+    let empty = std::collections::BTreeMap::new();
+    let plain = params_url::Item {
+        shop: "s",
+        id: 1,
+        sort_by: None,
+        tags: &[],
+        mine: false,
+        paging: ParamsPaging::default(),
+        dims: &empty,
+    };
+    let (status, _, body) = call_with(router.clone(), "GET", "/shops/s/items/1", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "s|1|None|[]|false|None|{}"), "{}", plain.href());
+    let (_, _, body) = call_with(router.clone(), "GET", "/shops/s/items/1?sortBy=&other=1", None, None).await;
+    assert_eq!(body, "s|1|None|[]|false|None|{}", "a blank value is none, and a parameter the route does not have is ignored");
+    for uri in
+        ["/shops/s/items/seven", "/shops/s/items/1?mine=maybe", "/shops/s/items/1?page=x", "/shops/s/items/1?sortBy=a&sortBy=b"]
+    {
+        let (status, _, _) = call_with(router.clone(), "GET", uri, None, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
+    }
+    let shown = Shown("x y".into());
+    assert_eq!(LinkOnly { value: &shown, tab: Some(&shown) }.href(), "/shown/x%20y?tab=x%20y");
+    assert_eq!(LinkTwin { value: &shown, tab: None }.href(), "/shown-twin/x%20y");
+    let file = params_url::File { rest: "docs/a b.txt".into() };
+    let (_, _, body) = call_with(router, "GET", &file.href(), None, None).await;
+    assert_eq!(body, "docs/a b.txt", "{}", file.href());
+}
+
+/// An API's routes in a module of their own, sharing the module's state; its prefix route names
+/// no handler.
+#[crate::routes(api = ModRoot, state = u32)]
+mod api_module {
+    #[route("/v1")]
+    pub struct ModRoot;
+
+    #[route("/v1/items/{id}", get = module_item)]
+    pub struct ModItem {
+        pub id: u32,
+    }
+}
+
+async fn module_item(axum::extract::State(base): axum::extract::State<u32>, item: crate::Params<api_module::ModItem>) -> String {
+    format!("item {}", base + item.id)
+}
+
+#[tokio::test]
+async fn an_api_module_serves_its_routes_and_answers_its_failures_as_json() {
+    let router = App::new(Routes::new()).api(|routes| api_module::api(routes, 100)).router();
+    let (status, _, body) = call_with(router.clone(), "GET", "/v1/items/7", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "item 107"), "the handler gets the module's state");
+    for (uri, status) in
+        [("/v1/items/seven", StatusCode::BAD_REQUEST), ("/v1", StatusCode::NOT_FOUND), ("/v1/nope", StatusCode::NOT_FOUND)]
+    {
+        let (got, headers, body) = call_with(router.clone(), "GET", uri, None, Some("text/html")).await;
+        assert_eq!((got, headers["content-type"].to_str().unwrap()), (status, "application/json"), "{uri}");
+        assert!(body.starts_with(r#"{"error":{"status":"#), "{uri}: {body}");
+    }
+    assert_eq!(api_module::ModItem { id: 7 }.to_string(), "/v1/items/7", "the structs still build links");
+}
+
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn validation_errors_are_the_json_error_with_fields() {
     let router = App::new(Routes::new())
         .api::<ApiRoot>(|api| {
-            api.route::<ApiSignUp>(crate::Methods(axum::routing::post(|| async {
+            api.route::<ApiSignUp>(crate::Methods::writes(axum::routing::post(|| async {
                 let mut errors = Errors::new();
                 errors.add(SignUp::FIELDS.email, "Enter an email address.");
                 Err::<&str, _>(errors)
@@ -1006,12 +1991,180 @@ async fn validation_errors_are_the_json_error_with_fields() {
     );
 }
 
+/// A JSON route that checks its input and loads a record, each with `?`.
+#[cfg(feature = "json")]
+#[crate::routes(api = CheckedRoot)]
+mod checked_api {
+    #[route("/checked")]
+    pub struct CheckedRoot;
+
+    #[route("/checked/{n}", post = checked)]
+    pub struct Checked {
+        pub n: u32,
+    }
+}
+
+#[cfg(feature = "json")]
+async fn checked(checked: crate::Params<checked_api::Checked>) -> crate::JsonResult<u32> {
+    let n = checked.n;
+    let mut errors = Errors::new();
+    if n == 0 {
+        errors.add(SignUp::FIELDS.email, "Enter a number above zero.");
+    }
+    let n = errors.into_result(n)?;
+    // A load that fails, next to the check.
+    let n = n.checked_mul(1000).ok_or_else(|| Error::new("too large to load"))?;
+    Ok(crate::Json(n))
+}
+
+/// JSON answers with a status or a cookie of their own, in a routes module and under an API.
+#[cfg(feature = "json")]
+#[crate::routes]
+mod own_json_url {
+    #[route("/started", post = own_started)]
+    pub struct Started;
+
+    #[route("/forecast", get = own_forecast)]
+    pub struct Forecast;
+
+    #[route("/session", post = own_session)]
+    pub struct Session;
+
+    #[route("/held", get = own_held)]
+    pub struct Held;
+}
+
+#[cfg(feature = "json")]
+#[crate::routes(api = OwnApiRoot)]
+mod own_json_api {
+    #[route("/v1")]
+    pub struct OwnApiRoot;
+
+    #[route("/v1/forecast", get = own_forecast)]
+    pub struct ApiForecast;
+}
+
+#[cfg(feature = "json")]
+#[derive(serde::Serialize, crate::ToJson)]
+struct OwnStarted {
+    ok: bool,
+}
+
+#[cfg(feature = "json")]
+async fn own_started() -> Result<crate::JsonResponse, JsonError> {
+    Ok(crate::Json(OwnStarted { ok: true }).with_status(StatusCode::ACCEPTED))
+}
+
+#[cfg(feature = "json")]
+async fn own_forecast() -> Result<crate::JsonResponse, JsonError> {
+    let problem = crate::json::Raw::new(r#"{"error":"No capacity forecast yet"}"#)?;
+    Ok(crate::Json(problem).with_status(StatusCode::SERVICE_UNAVAILABLE))
+}
+
+#[cfg(feature = "json")]
+async fn own_session() -> Result<crate::JsonResponse, JsonError> {
+    let token = SetCookie::try_new("session", "abc")?;
+    Ok(crate::Json(OwnStarted { ok: true }).with_cookie(token).with_cookie(SetCookie::remove("old")))
+}
+
+#[cfg(feature = "json")]
+async fn own_held() -> crate::JsonResult<crate::json::Raw> {
+    Ok(crate::Json(crate::json::Raw::new(r#"{"rows":[1,2]}"#)?))
+}
+
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_json_answer_has_a_status_and_cookies_of_its_own() {
+    let router = App::new(own_json_url::router()).api(own_json_api::api).router();
+    let (status, headers, body) = call_with(router.clone(), "POST", "/started", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::ACCEPTED, r#"{"ok":true}"#));
+    assert_eq!(headers["content-type"], "application/json");
+    // The app's own 503 reaches the client as written, in a routes module and under an API.
+    for uri in ["/forecast", "/v1/forecast"] {
+        let (status, headers, body) = call_with(router.clone(), "GET", uri, None, Some("text/html")).await;
+        assert_eq!((status, &body[..]), (StatusCode::SERVICE_UNAVAILABLE, r#"{"error":"No capacity forecast yet"}"#), "{uri}");
+        assert_eq!(headers["content-type"], "application/json");
+    }
+    let (status, headers, body) = call_with(router.clone(), "POST", "/session", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, r#"{"ok":true}"#));
+    let cookies: Vec<_> = headers.get_all("set-cookie").iter().map(|v| v.to_str().unwrap()).collect();
+    assert_eq!(
+        cookies,
+        ["session=abc; Path=/; SameSite=Lax; HttpOnly; Secure", "old=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]
+    );
+    assert!(headers["cache-control"].to_str().unwrap().contains("private"));
+    let (status, _, body) = call_with(router, "GET", "/held", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, r#"{"rows":[1,2]}"#));
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_held_document_is_written_as_it_is_inside_another_value() {
+    use crate::json::ToJson;
+    #[derive(crate::ToJson)]
+    struct Page {
+        id: u32,
+        rows: crate::json::Raw,
+    }
+    let doc = crate::json::Raw::new(r#"{"rows":[1,2]}"#).unwrap();
+    assert_eq!(vec![doc.clone(), doc.clone()].to_json(), r#"[{"rows":[1,2]},{"rows":[1,2]}]"#);
+    assert_eq!(Page { id: 7, rows: doc }.to_json(), r#"{"id":7,"rows":{"rows":[1,2]}}"#);
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_held_document_that_is_not_one_json_value_is_an_error() {
+    use crate::json::Raw;
+    for text in ["{\"rows\": [1,", "", "{} {}", "nul", "\u{feff}{}"] {
+        let error = Raw::new(text).unwrap_err();
+        assert!(error.to_string().starts_with("not one JSON value: "), "{text:?}: {error}");
+    }
+    // A string in another encoding (Windows-1252's é) is not JSON, though the parser skips it.
+    let error = Raw::new(&b"{\"name\":\"caf\xE9\"}"[..]).unwrap_err();
+    assert!(error.to_string().starts_with("not one JSON value: not UTF-8"), "{error}");
+    assert_eq!(Raw::new(" [1] ").unwrap().as_bytes(), b" [1] ");
+}
+
+#[cfg(feature = "json")]
+#[tokio::test]
+async fn a_json_handler_question_marks_field_errors_into_a_422_with_the_fields() {
+    let router = App::new(Routes::new()).api(checked_api::api).router();
+    let (status, _, body) = call_with(router.clone(), "POST", "/checked/2", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "2000"));
+    let (status, headers, body) = call_with(router.clone(), "POST", "/checked/0", None, Some("text/html")).await;
+    assert_eq!((status, headers["content-type"].to_str().unwrap()), (StatusCode::UNPROCESSABLE_ENTITY, "application/json"));
+    assert_eq!(
+        body,
+        r#"{"error":{"status":422,"message":"email: Enter a number above zero.","fields":{"email":"Enter a number above zero."}}}"#
+    );
+    // Any other error is still a 500, whose message a client does not see.
+    let (status, _, body) = call_with(router, "POST", "/checked/4294968", None, None).await;
+    assert_eq!(
+        (status, &body[..]),
+        (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":{"status":500,"message":"Internal Server Error"}}"#)
+    );
+    // An API with its own error shape writes the 500 in it; the fields keep Corten's shape.
+    let shaped = App::new(Routes::new())
+        .api(|api| {
+            checked_api::api(api).errors(|status, message| ShapedError {
+                r#type: "error",
+                error: ShapedDetail { code: status.as_u16(), message: message.to_string() },
+            })
+        })
+        .router();
+    let (_, _, body) = call_with(shaped.clone(), "POST", "/checked/4294968", None, None).await;
+    assert_eq!(body, r#"{"type":"error","error":{"code":500,"message":"Internal Server Error"}}"#);
+    let (status, _, body) = call_with(shaped, "POST", "/checked/0", None, None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body.ends_with(r#""fields":{"email":"Enter a number above zero."}}}"#), "{body}");
+}
+
 #[cfg(feature = "json")]
 #[tokio::test]
 async fn a_json_body_that_does_not_parse_is_a_json_400() {
     let router = App::new(Routes::new())
         .api::<ApiRoot>(|api| {
-            api.route::<ApiItems>(crate::Methods(axum::routing::post(
+            api.route::<ApiItems>(crate::Methods::writes(axum::routing::post(
                 |axum::Json(v): axum::Json<serde_json::Value>| async move { v.to_string() },
             )))
         })
@@ -1029,7 +2182,7 @@ fn cached_routes() -> Router {
     let minute = std::time::Duration::from_secs(60);
     let home = || html! { <p>"home"</p> };
     Router::new()
-        .route("/", get(move |req: Req| async move { Public::new(minute, req.test_page("Home", home())) }))
+        .route("/", get(move |req: Req| async move { Public::new(minute, req.test_page_for("Home", home())) }))
         .route(
             "/cookie",
             get(move |req: Req| async move {
@@ -1039,11 +2192,26 @@ fn cached_routes() -> Router {
         .route(
             "/catalog",
             get(move |req: Req| async move {
-                Public::new(minute, req.test_page("Catalog", home())).shared(std::time::Duration::from_secs(86_400))
+                Public::new(minute, req.test_page_for("Catalog", home())).shared(std::time::Duration::from_secs(86_400))
             }),
         )
         .route("/statement", get(move |req: Req| async move { NoStore(req.test_page("Statement", home())) }))
+        .route(
+            "/cookies",
+            // `with_cookie` on a `Public` answer does not compile; a header written by hand still
+            // makes it private when it is sent.
+            get(move |req: Req| async move {
+                let page = req.test_page_for("Home", home()).map(|mut page| {
+                    page.headers_mut().append(header::SET_COOKIE, SetCookie::new("a", "1").header());
+                    page
+                });
+                Public::new(minute, page)
+            }),
+        )
         .route("/plain", get(|req: Req| async move { req.test_page("Plain", html! { <p>"plain"</p> }) }))
+        // A closure has no return type to read: `Public::new` finds its type from the answer.
+        .route("/text", get(move || async move { Public::new(minute, "text") }))
+        .route("/page", get(move |req: Req| async move { Public::new(minute, req.test_page_for("Page", home())) }))
 }
 
 async fn cache_control(router: &Router, uri: &str, extra: &[(&'static str, &'static str)]) -> String {
@@ -1053,6 +2221,48 @@ async fn cache_control(router: &Router, uri: &str, extra: &[(&'static str, &'sta
     }
     let res = router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
     res.headers()[header::CACHE_CONTROL].to_str().unwrap().to_string()
+}
+
+/// Each `with_cookie` adds one `Set-Cookie`, in order, with the safe flags.
+#[tokio::test]
+async fn with_cookie_sets_each_cookie_in_order() {
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            Ok::<_, Error>(
+                req.redirect::<ForOne>(&Done)?.with_cookie(SetCookie::new("a", "1")).with_cookie(SetCookie::remove("b")),
+            )
+        }),
+    );
+    let res = app(routes, None).oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    let cookies: Vec<_> = res.headers().get_all(header::SET_COOKIE).iter().map(|c| c.to_str().unwrap()).collect();
+    assert_eq!(cookies, ["a=1; Path=/; SameSite=Lax; HttpOnly; Secure", "b=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]);
+}
+
+/// Bytes as the app names their type: private by default, and a year in any cache when the URL
+/// names the content (`Public::immutable`), cookies or not, unless a caller was read.
+#[tokio::test]
+async fn media_is_sent_as_its_type_and_kept_only_when_its_url_names_its_content() {
+    let png: &'static [u8] = b"\x89PNG\r\n\x1a\n";
+    let routes = Router::new()
+        .route("/fresh", get(move || async move { crate::Media::new("image/png", png) }))
+        .route("/kept", get(move || async move { Public::immutable(crate::Media::new("image/png", png)) }))
+        .route("/gone", get(|| async { Public::immutable(Err::<crate::Media, _>(Error::not_found())) }));
+    let router = app(routes, None);
+    let res = router.clone().oneshot(Request::get("/kept").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/png");
+    assert_eq!(res.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(res.into_body().collect().await.unwrap().to_bytes(), png);
+    assert_eq!(cache_control(&router, "/fresh", &[]).await, "private, no-cache");
+    assert_eq!(cache_control(&router, "/kept", &[]).await, "public, max-age=31536000, immutable");
+    let res =
+        router.clone().oneshot(Request::get("/kept").header("cookie", "session=1").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "public, max-age=31536000, immutable");
+    assert!(
+        res.headers().get(header::VARY).is_none_or(|vary| !vary.to_str().unwrap().contains("cookie")),
+        "the URL alone says what it is"
+    );
+    assert_eq!(cache_control(&router, "/gone", &[]).await, "private, no-cache", "a failure is never kept");
 }
 
 #[tokio::test]
@@ -1079,18 +2289,94 @@ async fn a_public_page_is_shared_only_when_nothing_makes_it_personal() {
         assert_eq!(cache_control(&router, "/", &[partial]).await, "private, max-age=60", "only the document: {partial:?}");
     }
     assert_eq!(cache_control(&router, "/cookie", &[]).await, "private, no-cache", "it sets a cookie");
+    assert_eq!(cache_control(&router, "/cookies", &[]).await, "private, no-cache", "it sets cookies");
+    assert_eq!(cache_control(&router, "/text", &[]).await, "public, max-age=60", "a closure's Public");
+    assert_eq!(cache_control(&router, "/page", &[]).await, "public, max-age=60", "a closure's Public page");
     assert_eq!(cache_control(&router, "/catalog", &[]).await, "public, max-age=60, s-maxage=86400");
     assert_eq!(cache_control(&router, "/catalog", &[("corten", "nav")]).await, "private, max-age=60", "the browser's lifetime");
     assert_eq!(cache_control(&router, "/catalog", &[("cookie", "session=abc")]).await, "private, no-cache");
+    // App::client_zone's cookie says where the visitor is, not who: alone, it shares as before.
+    assert_eq!(cache_control(&router, "/", &[("cookie", "corten-zone=America/Chicago")]).await, "public, max-age=60");
+    assert_eq!(cache_control(&router, "/", &[("cookie", "corten-zone=America/Chicago; session=abc")]).await, "private, no-cache");
     let inline = App::new(Routes::from(Router::new().route("/", get(inline_page)))).router();
     assert_eq!(cache_control(&inline, "/", &[]).await, "private, no-cache", "the layout took the nonce");
 
     let minute = std::time::Duration::from_secs(60);
     let api = App::new(Routes::new())
-        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods(get(move || async move { (Cache::public(minute), "rates") }))))
+        .api::<ApiRoot>(|api| {
+            api.route::<ApiRates>(crate::Methods::reads(get(move || async move { (Cache::public(minute), "rates") })))
+        })
         .router();
     assert_eq!(cache_control(&api, "/api/rates", &[("accept", "application/json")]).await, "public, max-age=60");
     assert_eq!(cache_control(&api, "/api/rates", &[("authorization", "Bearer t")]).await, "private, no-cache");
+}
+
+/// `App::client_zone` asks the runtime for the browser's time zone, and `Option<ClientZone>` reads
+/// it: a name the browser could write, otherwise `None`. Taking it without the setting is a 500 in
+/// a debug build.
+#[tokio::test]
+async fn a_handler_reads_the_visitors_time_zone_once_the_app_asks_for_it() {
+    use crate::ClientZone;
+    let routes = || {
+        Routes::from(
+            Router::new().route("/", get(|req: Req| async move { req.test_page("Home", html! { <p>"home"</p> }) })).route(
+                "/zone",
+                get(|zone: Option<ClientZone>| async move { zone.map_or_else(|| "none".to_string(), |ClientZone(zone)| zone) }),
+            )
+            .route(
+                "/zone-page",
+                get(|req: Req, zone: Option<ClientZone>| async move { req.test_page("Zone", html! {
+                    <p>{format!("{zone:?}")}</p>
+                }) }),
+            ),
+        )
+    };
+    let get_with = |router: Router, uri: &'static str, cookie: Option<&'static str>| async move {
+        let mut req = Request::get(uri);
+        if let Some(cookie) = cookie {
+            req = req.header("cookie", cookie);
+        }
+        let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let status = res.status();
+        (status, String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap())
+    };
+    let router = App::new(routes()).client_zone().router();
+    // Reading the zone keeps the answer private but not out of the layout: the page around
+    // `<main>` is the same, so the runtime swaps it in rather than loading it in full.
+    let shell = |uri: &'static str| {
+        let router = router.clone();
+        async move {
+            let req = Request::get(uri).header("corten", "nav").header("cookie", "corten-zone=America/Chicago");
+            let res = router.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            (res.headers().get("corten-shell").cloned(), res.headers().get("cache-control").cloned())
+        }
+    };
+    let (home, zoned) = (shell("/").await, shell("/zone-page").await);
+    assert!(home.0.is_some() && home.0 == zoned.0, "same layout: {home:?} {zoned:?}");
+    assert!(zoned.1.as_ref().is_some_and(|v| v.to_str().unwrap().contains("private")), "{zoned:?}");
+    let (_, page) = get_with(router.clone(), "/", None).await;
+    assert!(page.contains(r#"<meta name="corten-zone">"#), "the runtime is asked to keep it: {page}");
+    assert_eq!(get_with(router.clone(), "/zone", None).await.1, "none", "before the runtime has run");
+    for (cookie, zone) in [
+        ("corten-zone=America/Chicago", "America/Chicago"),
+        ("session=abc; corten-zone=Etc/GMT+5", "Etc/GMT+5"),
+        ("corten-zone=America/Argentina/Buenos_Aires", "America/Argentina/Buenos_Aires"),
+        ("corten-zone=<script>", "none"),
+        ("corten-zone=../../etc/passwd", "none"),
+        ("corten-zone=", "none"),
+    ] {
+        assert_eq!(get_with(router.clone(), "/zone", Some(cookie)).await.1, zone, "{cookie}");
+    }
+
+    let without = App::new(routes()).router();
+    let (_, page) = get_with(without.clone(), "/", None).await;
+    assert!(!page.contains("corten-zone"), "no cookie unless the app asks");
+    let (status, body) = get_with(without, "/zone", Some("corten-zone=America/Chicago")).await;
+    if cfg!(debug_assertions) {
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "a debug build names the missing App::client_zone()");
+    } else {
+        assert_eq!((status, body.as_str()), (StatusCode::OK, "none"), "a release build logs it and reads none");
+    }
 }
 
 #[tokio::test]
@@ -1164,6 +2450,33 @@ mod admin_url {
     }
 }
 
+/// An area with no page at its prefix: `Docs` is only the prefix, with no `href`.
+#[crate::routes(area = Docs)]
+mod docs_url {
+    #[route("/docs")]
+    pub struct Docs;
+
+    #[route("/docs/{page}", get = doc_page)]
+    pub struct DocPage<'a> {
+        pub page: &'a str,
+    }
+}
+
+async fn doc_page(doc: crate::Params<docs_url::DocPage<'_>>) -> String {
+    format!("doc {}", doc.page)
+}
+
+#[tokio::test]
+async fn an_area_may_have_no_page_at_its_prefix() {
+    use crate::Prefix;
+    assert_eq!(docs_url::Docs::PREFIX, "/docs");
+    let router = App::new(Routes::new()).area(docs_url::area).router();
+    let (status, _, body) = call_with(router.clone(), "GET", &docs_url::DocPage { page: "intro" }.href(), None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "doc intro"));
+    let (status, _, _) = call_with(router, "GET", "/docs", None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "nothing is served at the prefix, and the app's 404 answers it");
+}
+
 async fn caller_home(req: Req) -> HtmlResult {
     req.test_page("Home", html! { <p>"home"</p> })
 }
@@ -1184,8 +2497,8 @@ async fn sign_in(req: Req) -> HtmlResult {
 }
 
 /// The same for everyone: it may read only what cannot tell who is asking.
-async fn catalog(Path(id): Path<u32>) -> Public<String> {
-    Public::new(std::time::Duration::from_secs(60), format!("item {id}"))
+async fn catalog(item: crate::Params<caller_url::Catalog>) -> Public<String> {
+    Public::new(std::time::Duration::from_secs(60), format!("item {}", item.id))
 }
 
 async fn admin_home(req: Req, Caller(staff): Caller<Staff>) -> HtmlResult {
@@ -1197,12 +2510,60 @@ async fn admin_save(Caller(_): Caller<Staff>, crate::Form(_): Fields) -> &'stati
     "saved"
 }
 
-async fn admin_user(Path(id): Path<u32>, Caller(_): Caller<Staff>) -> String {
-    format!("user {id}")
+async fn admin_user(user: crate::Params<admin_url::User>, Caller(_): Caller<Staff>) -> String {
+    format!("user {}", user.id)
 }
 
 fn caller_app() -> Router {
     App::new(caller_url::router()).error_page(test_error_page, ()).area::<admin_url::Admin>(admin_url::area).router()
+}
+
+/// An auditor: another permission than the staff's, for one page in the admin area.
+#[derive(Clone, Hash, Debug)]
+struct Auditor;
+
+impl<S: Sync> crate::Identify<S> for Auditor {
+    async fn identify(parts: &axum::http::request::Parts, state: &S) -> std::result::Result<Self, crate::Refused> {
+        let Viewer(name) = <Viewer as crate::Identify<S>>::identify(parts, state).await?;
+        match name {
+            "ada" | "carol" => Ok(Auditor),
+            _ => Err(crate::Refused::forbidden()),
+        }
+    }
+}
+
+/// A page in the admin area that its own caller may use: a second module in the same area.
+#[crate::routes(area = super::admin_url::Admin, caller = Auditor)]
+mod audit_url {
+    #[route("/admin/users/{id}/audit", get = user_audit)]
+    pub struct UserAudit {
+        pub id: u32,
+    }
+}
+
+async fn user_audit(crate::Params(at): crate::Params<audit_url::UserAudit>, Caller(_): Caller<Auditor>) -> String {
+    format!("audit {}", at.id)
+}
+
+/// Two modules in one area, each holding its handlers to its own caller: a staff member who is
+/// not an auditor reads the user and not the audit, and an auditor who is not staff the other
+/// way round.
+#[tokio::test]
+async fn an_area_takes_modules_with_callers_of_their_own() {
+    let router = App::new(caller_url::router())
+        .error_page(test_error_page, ())
+        .area(|area| audit_url::area(admin_url::area(area)))
+        .router();
+    for (uri, viewer, want) in [
+        ("/admin/users/7", "bob", StatusCode::OK),
+        ("/admin/users/7/audit", "bob", StatusCode::FORBIDDEN),
+        ("/admin/users/7", "carol", StatusCode::FORBIDDEN),
+        ("/admin/users/7/audit", "carol", StatusCode::OK),
+        ("/admin/users/7/audit", "ada", StatusCode::OK),
+    ] {
+        let (status, _, body) = guarded(&router, "GET", uri, Some(viewer), &[]).await;
+        assert_eq!(status, want, "{uri} as {viewer}: {body}");
+    }
 }
 
 async fn guarded(
@@ -1402,8 +2763,8 @@ struct Quote {
 }
 
 #[cfg(feature = "json")]
-async fn price(Path(id): Path<u32>, Caller(partner): Caller<Partner>) -> JsonResult<Quote> {
-    Ok(Json(Quote { id, partner: partner.0 }))
+async fn price(price: crate::Params<json_url::Price>, Caller(partner): Caller<Partner>) -> JsonResult<Quote> {
+    Ok(Json(Quote { id: price.id, partner: partner.0 }))
 }
 
 #[cfg(feature = "json")]
@@ -1443,7 +2804,7 @@ fn an_area_under_an_api_prefix_fails_at_startup() {
 async fn the_app_answers_unknown_urls_under_an_area_or_api() {
     let fallback = || async { "the app's fallback" };
     let router = App::new(Routes::from(Router::new().route("/", get(|| async { "home" })).fallback(fallback)))
-        .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(|| async { "admin" }))))
+        .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods::reads(get(|| async { "admin" }))))
         .router();
     for uri in ["/nope", "/admin/nope"] {
         let (status, _, body) = call_with(router.clone(), "GET", uri, None, None).await;
@@ -1469,7 +2830,7 @@ async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
 
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let routes = Router::new().route("/", get(|| async { "hi" }));
-    let server = tokio::spawn(crate::app::serve_on(listeners, routes, async {
+    let server = tokio::spawn(crate::app::serve_router(listeners, crate::app::plain, routes, Default::default(), async {
         let _ = stopped.await;
     }));
     for addr in &addrs {
@@ -1481,6 +2842,548 @@ async fn without_a_host_the_app_listens_on_both_loopback_addresses() {
     }
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
+}
+
+/// A server for `app` on a free port of `127.0.0.1` until `stop` is sent.
+async fn served<M: crate::Middleware>(
+    app: App<M>,
+) -> (tokio::sync::oneshot::Sender<()>, tokio::task::JoinHandle<std::io::Result<()>>) {
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app, async {
+        let _ = stopped.await;
+    }));
+    (stop, server)
+}
+
+/// One request on a fresh connection to `addr`, with `headers` (lines ending in `\r\n`); the
+/// answer as text.
+async fn raw_get(addr: std::net::SocketAddr, path: &str, headers: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let request = format!("GET {path} HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n{headers}\r\n");
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).await.unwrap();
+    answer
+}
+
+/// `App::header_timeout` closes a connection that never finishes its request head, and
+/// `App::max_connections` accepts no more connections than it allows until one closes.
+#[tokio::test]
+async fn a_connection_is_held_only_as_long_and_as_many_as_the_app_allows() {
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let serve = |app: App| async move {
+        let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+        let addr = listeners[0].local_addr().unwrap();
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app, async {
+            let _ = stopped.await;
+        }));
+        (addr, stop, server)
+    };
+    let routes = || {
+        Routes::from(Router::new().route("/", get(|| async { "hi" })).route(
+            "/slow",
+            get(|| async {
+                tokio::time::sleep(Duration::from_millis(700)).await;
+                "slow"
+            }),
+        ))
+    };
+
+    let (addr, stop, server) = serve(App::new(routes()).header_timeout(Duration::from_millis(300))).await;
+    let mut slow = tokio::net::TcpStream::connect(addr).await.unwrap();
+    slow.write_all(b"GET / HTTP/1.1\r\nhost: localhost\r\n").await.unwrap();
+    let mut rest = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut rest)).await;
+    assert!(closed.is_ok(), "an unfinished head is not held past the timeout");
+    assert!(raw_get(addr, "/", "").await.ends_with("hi"), "a request that finishes its head is answered");
+    assert!(raw_get(addr, "/slow", "").await.ends_with("slow"), "a handler may take longer than the head's timeout");
+    let mut idle = tokio::net::TcpStream::connect(addr).await.unwrap();
+    idle.write_all(b"GET / HTTP/1.1\r\nhost: localhost\r\n\r\n").await.unwrap();
+    let mut answered = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), idle.read_to_end(&mut answered)).await;
+    assert!(closed.is_ok(), "an idle keep-alive connection is closed after the timeout");
+    assert!(String::from_utf8_lossy(&answered).ends_with("hi"), "after its answer");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    let (addr, stop, server) = serve(App::new(routes()).header_timeout(None).max_connections(1)).await;
+    let mut held = tokio::net::TcpStream::connect(addr).await.unwrap();
+    held.write_all(b"GET / HTTP/1.1\r\nhost: localhost\r\n\r\n").await.unwrap();
+    let mut first = [0u8; 12];
+    held.read_exact(&mut first).await.unwrap();
+    assert_eq!(&first, b"HTTP/1.1 200");
+    let second = tokio::spawn(raw_get(addr, "/", ""));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!second.is_finished(), "a second connection waits while the first is open");
+    drop(held);
+    let answer = tokio::time::timeout(Duration::from_secs(3), second).await.expect("answered once the first closes").unwrap();
+    assert!(answer.ends_with("hi"), "{answer}");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+/// `corten::serve_wrapped`: the app's step on each connection before HTTP (a TLS handshake) runs
+/// in the connection's own task, counts against `App::max_connections` and is closed at
+/// `App::header_timeout` when it stalls; a step that fails closes the connection.
+#[tokio::test]
+async fn a_step_before_http_is_counted_and_timed_as_the_connection() {
+    use std::time::{Duration, Instant};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    // A stand-in for a handshake: the client sends "hello\n" first, anything else fails it.
+    async fn hello(mut tcp: tokio::net::TcpStream) -> std::io::Result<tokio::net::TcpStream> {
+        let mut greeting = [0u8; 6];
+        tcp.read_exact(&mut greeting).await?;
+        match &greeting {
+            b"hello\n" => Ok(tcp),
+            _ => Err(std::io::Error::other("not a greeting")),
+        }
+    }
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let routes = Routes::from(Router::new().route("/", get(|| async { "hi" })));
+    let app = App::new(routes).header_timeout(Duration::from_millis(300)).max_connections(1);
+    let server = tokio::spawn(crate::app::run(listeners, hello, app, async {
+        let _ = stopped.await;
+    }));
+    let request = |greeting: &'static [u8]| async move {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut sent = greeting.to_vec();
+        sent.extend_from_slice(b"GET / HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n");
+        // A failed step may close the connection before all of it is read.
+        let _ = stream.write_all(&sent).await;
+        let mut answer = String::new();
+        let _ = stream.read_to_string(&mut answer).await;
+        answer
+    };
+    assert!(request(b"hello\n").await.ends_with("hi"), "after its step, the connection is HTTP");
+    assert_eq!(request(b"howdy\n").await, "", "a step that fails closes the connection");
+
+    // A client that opens a connection and never finishes its step holds the only slot, until
+    // the header timeout closes it.
+    let started = Instant::now();
+    let mut stalled = tokio::net::TcpStream::connect(addr).await.unwrap();
+    stalled.write_all(b"hel").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let next = tokio::spawn(request(b"hello\n"));
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert!(!next.is_finished(), "a connection in its step counts against max_connections");
+    let mut rest = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), stalled.read_to_end(&mut rest)).await;
+    assert!(closed.is_ok(), "a stalled step is not held past the header timeout");
+    assert!(started.elapsed() >= Duration::from_millis(250), "{:?}", started.elapsed());
+    let answer = tokio::time::timeout(Duration::from_secs(3), next).await.expect("answered once it closes").unwrap();
+    assert!(answer.ends_with("hi"), "{answer}");
+
+    // One clock from the accept to the head: a step that takes most of the timeout leaves the
+    // rest for the head, not the whole timeout again.
+    let started = Instant::now();
+    let mut slow = tokio::net::TcpStream::connect(addr).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    slow.write_all(b"hello\n").await.unwrap();
+    let mut rest = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut rest)).await;
+    assert!(closed.is_ok(), "a connection with no head after its step is closed");
+    assert!(started.elapsed() < Duration::from_millis(420), "at the header timeout from the accept: {:?}", started.elapsed());
+
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    // Shutdown ends a step in progress, with no header timeout to end it otherwise.
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let routes = Routes::from(Router::new().route("/", get(|| async { "hi" })));
+    let server = tokio::spawn(crate::app::run(listeners, hello, App::new(routes).header_timeout(None), async {
+        let _ = stopped.await;
+    }));
+    let mut stalled = tokio::net::TcpStream::connect(addr).await.unwrap();
+    stalled.write_all(b"hel").await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server).await.expect("shutdown does not wait for a step").unwrap().unwrap();
+    let mut rest = Vec::new();
+    assert_eq!(stalled.read_to_end(&mut rest).await.map(|_| rest.len()).unwrap_or(0), 0, "and closes it");
+}
+
+/// A route that takes `Upgrade` switches the connection: a WebSocket handshake from the page's own
+/// origin or from a client that is not a browser gets its 101 and then the bytes, one from another
+/// site is refused as a cross-site write is, and a request that does not ask to switch is a 426,
+/// or, where the route takes `Option<Upgrade>`, its other answer.
+#[tokio::test]
+async fn an_upgrade_route_switches_for_its_own_origin_and_refuses_other_sites() {
+    use crate::upgrade::{Switch, SwitchOr, Upgrade};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    async fn echo(mut stream: crate::upgrade::Stream, _: crate::Signal) {
+        let mut buf = [0u8; 64];
+        while let Ok(n @ 1..) = stream.read(&mut buf).await {
+            if stream.write_all(&buf[..n]).await.is_err() {
+                break;
+            }
+        }
+    }
+    let routes = Router::new()
+        .route("/ws", get(|upgrade: Upgrade| async move { upgrade.websocket(echo) }))
+        .route(
+            "/tunnel",
+            get(|upgrade: Upgrade| async move {
+                let mut headers = axum::http::HeaderMap::new();
+                headers.insert("x-upstream", "yes".parse().unwrap());
+                Ok::<Switch, crate::Error>(upgrade.switch(headers, echo))
+            }),
+        )
+        .route(
+            "/either",
+            get(|upgrade: Option<Upgrade>| async move {
+                match upgrade {
+                    Some(upgrade) => Ok::<_, crate::Error>(upgrade.websocket(echo)?.into()),
+                    None => Ok(SwitchOr::Answer("not a socket")),
+                }
+            }),
+        );
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let app = App::new(Routes::from(routes)).api::<ApiRoot>(|api| {
+        api.route::<ApiWs>(crate::Methods::reads(get(|upgrade: Upgrade| async move { upgrade.websocket(echo) })))
+            .allow_origin("https://partner.example")
+    });
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app, async {
+        let _ = stopped.await;
+    }));
+    // The answer's head, and the connection for what follows it.
+    let handshake = |path: &'static str, protocol: &'static str, extra: &'static str| async move {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let request = format!(
+            "GET {path} HTTP/1.1\r\nhost: localhost\r\nconnection: keep-alive, Upgrade\r\nupgrade: {protocol}\r\nsec-websocket-version: 13\r\nsec-websocket-key: dGhlIHNhbXBsZSBub25jZQ==\r\n{extra}\r\n"
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut head = Vec::new();
+        while !head.ends_with(b"\r\n\r\n") {
+            let mut byte = [0u8; 1];
+            if stream.read(&mut byte).await.unwrap() == 0 {
+                break;
+            }
+            head.push(byte[0]);
+        }
+        (String::from_utf8(head).unwrap().to_ascii_lowercase(), stream)
+    };
+    let echoes = |mut stream: tokio::net::TcpStream| async move {
+        stream.write_all(b"ping").await.unwrap();
+        let mut back = [0u8; 4];
+        stream.read_exact(&mut back).await.unwrap();
+        &back == b"ping"
+    };
+
+    let (head, stream) = handshake("/ws", "websocket", "origin: http://localhost\r\nsec-fetch-site: same-origin\r\n").await;
+    assert!(head.starts_with("http/1.1 101"), "{head}");
+    assert!(head.contains("sec-websocket-accept: s3pplmbitxaq9kygzzhzrbk+xoo="), "{head}");
+    assert!(echoes(stream).await, "the switched connection carries bytes both ways");
+
+    let (head, stream) = handshake("/ws", "websocket", "").await;
+    assert!(head.starts_with("http/1.1 101"), "a client that is not a browser switches: {head}");
+    assert!(echoes(stream).await);
+
+    let (head, _) = handshake("/ws", "websocket", "origin: https://evil.example\r\nsec-fetch-site: cross-site\r\n").await;
+    assert!(head.starts_with("http/1.1 403"), "another site's page cannot open it with the user's cookies: {head}");
+    let (head, _) = handshake("/ws", "websocket", "origin: https://evil.example\r\n").await;
+    assert!(head.starts_with("http/1.1 403"), "nor an older browser's, by its Origin alone: {head}");
+
+    let (head, _) = handshake("/ws", "chat", "").await;
+    assert!(head.starts_with("http/1.1 400"), "only a WebSocket handshake is accepted as one: {head}");
+
+    let plain = raw_get(addr, "/ws", "").await;
+    assert!(plain.starts_with("HTTP/1.1 426"), "{plain}");
+
+    let (head, stream) = handshake("/either", "websocket", "").await;
+    assert!(head.starts_with("http/1.1 101"), "{head}");
+    assert!(echoes(stream).await);
+    let plain = raw_get(addr, "/either", "").await;
+    assert!(plain.starts_with("HTTP/1.1 200") && plain.ends_with("not a socket"), "{plain}");
+    let (head, _) = handshake("/either", "websocket", "origin: https://evil.example\r\nsec-fetch-site: cross-site\r\n").await;
+    assert!(head.starts_with("http/1.1 403"), "a switch it asks for is held to what Upgrade is: {head}");
+
+    // An API's allowed site may open its sockets, as it may write to it, but not with cookies.
+    let partner = "origin: https://partner.example\r\nsec-fetch-site: cross-site\r\n";
+    let (head, stream) = handshake("/api/ws", "websocket", partner).await;
+    assert!(head.starts_with("http/1.1 101"), "{head}");
+    assert!(echoes(stream).await);
+    let (head, _) = handshake(
+        "/api/ws",
+        "websocket",
+        "origin: https://partner.example\r\nsec-fetch-site: cross-site\r\ncookie: session=abc\r\n",
+    )
+    .await;
+    assert!(head.starts_with("http/1.1 403"), "{head}");
+    let (head, _) = handshake("/ws", "websocket", partner).await;
+    assert!(head.starts_with("http/1.1 403"), "the pages' sockets still refuse the partner: {head}");
+
+    let (head, stream) = handshake("/tunnel", "remote", "").await;
+    assert!(head.starts_with("http/1.1 101") && head.contains("x-upstream: yes") && head.contains("upgrade: remote"), "{head}");
+    assert!(echoes(stream).await);
+
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+#[derive(crate::Route)]
+#[route("/api/ws")]
+struct ApiWs;
+
+/// A relayed answer goes through the whole app uncompressed, a page-sized body and an event stream
+/// alike, so a long model stream holds no compression context (#205).
+#[cfg(feature = "compress")]
+#[tokio::test]
+async fn a_relay_is_not_compressed_by_the_app() {
+    fn upstream(content_type: &'static str, body: Body) -> crate::Relay {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("content-type", content_type.parse().unwrap());
+        crate::Relay::new(StatusCode::OK, headers, body)
+    }
+    let page = "<p>relayed</p>".repeat(300);
+    let events = "event: delta\ndata: {\"text\":\"hello\"}\n\n".repeat(100);
+    let (p, e, own) = (page.clone(), events.clone(), page.clone());
+    let router = App::new(Routes::from(
+        Router::new()
+            .route("/own", get(move || async move { axum::response::Html(own) }))
+            .route("/page", get(move || async move { upstream("text/html; charset=utf-8", Body::from(p)) }))
+            .route(
+                "/stream",
+                get(move || async move {
+                    let chunk = Ok::<_, std::convert::Infallible>(axum::body::Bytes::from(e));
+                    upstream("text/event-stream", Body::from_stream(futures_util::stream::iter([chunk])))
+                }),
+            ),
+    ))
+    .router();
+    for (path, sent) in [("/page", &page), ("/stream", &events)] {
+        let req = Request::get(path).header("accept-encoding", "zstd, br, gzip").body(Body::empty()).unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{path}");
+        assert!(
+            !res.headers().contains_key("content-encoding") && !res.headers().contains_key("vary"),
+            "{path}: {:?}",
+            res.headers()
+        );
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&body[..], sent.as_bytes(), "{path}");
+    }
+    // The same body as the app's own answer is compressed, so the app does compress.
+    let req = Request::get("/own").header("accept-encoding", "zstd, br, gzip").body(Body::empty()).unwrap();
+    let res = router.oneshot(req).await.unwrap();
+    assert_eq!(res.headers()["content-encoding"], "zstd");
+}
+
+/// A relayed answer is passed on as the upstream gave it: its failure status and body, never the
+/// error page or the JSON error, without the hop-by-hop headers.
+#[tokio::test]
+async fn a_relay_passes_the_upstreams_answer_on() {
+    fn upstream(status: StatusCode) -> crate::Relay {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("content-type", "text/plain".parse().unwrap());
+        headers.insert("connection", "keep-alive, x-hop".parse().unwrap());
+        headers.insert("x-hop", "1".parse().unwrap());
+        headers.insert("keep-alive", "timeout=5".parse().unwrap());
+        headers.insert("transfer-encoding", "chunked".parse().unwrap());
+        headers.insert("x-upstream", "kept".parse().unwrap());
+        crate::Relay::new(status, headers, Body::from("upstream says no"))
+    }
+    let router = App::new(Routes::from(Router::new().route("/relay", get(|| async { upstream(StatusCode::BAD_REQUEST) }))))
+        .error_page(test_error_page, ())
+        .api::<ApiRoot>(|api| api.route::<ApiItem>(crate::Methods::reads(get(|| async { upstream(StatusCode::BAD_GATEWAY) }))))
+        .router();
+    for (path, status, accept) in [
+        ("/relay", StatusCode::BAD_REQUEST, Some("text/html")),
+        ("/relay", StatusCode::BAD_REQUEST, Some("application/json")),
+        ("/api/items/7", StatusCode::BAD_GATEWAY, None),
+    ] {
+        let (got, headers, body) = call_with(router.clone(), "GET", path, None, accept).await;
+        assert_eq!((got, &body[..]), (status, "upstream says no"), "{path} {accept:?}");
+        assert_eq!(headers["x-upstream"], "kept");
+        for hop in ["connection", "x-hop", "keep-alive", "transfer-encoding"] {
+            assert!(!headers.contains_key(hop), "{path}: {hop} is the upstream connection's, not ours");
+        }
+        assert!(headers.contains_key("x-content-type-options"), "the app's security headers still apply");
+    }
+
+    // A relayed page keeps the upstream's own CSP, which its scripts were written for; without one
+    // the app's applies.
+    let page = |csp: Option<&'static str>| {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("content-type", "text/html".parse().unwrap());
+        if let Some(csp) = csp {
+            headers.insert("content-security-policy", csp.parse().unwrap());
+        }
+        crate::Relay::new(StatusCode::OK, headers, Body::from("<script nonce=upstream></script>"))
+    };
+    let router = App::new(Routes::from(
+        Router::new()
+            .route("/own", get(move || async move { page(Some("script-src 'nonce-upstream'")) }))
+            .route("/none", get(move || async move { page(None) })),
+    ))
+    .router();
+    let (_, headers, _) = call_with(router.clone(), "GET", "/own", None, Some("text/html")).await;
+    assert_eq!(headers["content-security-policy"], "script-src 'nonce-upstream'");
+    assert_eq!(headers["x-frame-options"], "DENY", "the app's other headers still apply");
+    let (_, headers, _) = call_with(router, "GET", "/none", None, Some("text/html")).await;
+    assert!(headers["content-security-policy"].to_str().unwrap().starts_with("default-src 'self'"));
+
+    // An upstream's event stream reaches the client a piece at a time, not when it ends.
+    let (send, receive) = tokio::sync::mpsc::channel::<Result<&'static str, std::io::Error>>(1);
+    let stream = std::sync::Arc::new(std::sync::Mutex::new(Some(tokio_stream_of(receive))));
+    let router = App::new(Routes::from(Router::new().route(
+        "/events",
+        get(move || {
+            let body = Body::from_stream(stream.lock().unwrap().take().unwrap());
+            async move {
+                let mut headers = axum::http::HeaderMap::new();
+                headers.insert("content-type", "text/event-stream".parse().unwrap());
+                crate::Relay::new(StatusCode::OK, headers, body)
+            }
+        }),
+    )))
+    .router();
+    let res = router.oneshot(Request::get("/events").body(Body::empty()).unwrap()).await.unwrap();
+    let mut body = res.into_body();
+    send.send(Ok("data: one\n\n")).await.unwrap();
+    let first = tokio::time::timeout(std::time::Duration::from_secs(2), body.frame()).await;
+    let first = first.expect("the first event arrives while the stream is open").unwrap().unwrap();
+    assert_eq!(first.into_data().unwrap(), "data: one\n\n");
+    drop(send);
+}
+
+/// A stream of the pieces `receive` gets, until its sender is dropped.
+fn tokio_stream_of<T>(receive: tokio::sync::mpsc::Receiver<T>) -> impl futures_util::Stream<Item = T> {
+    futures_util::stream::unfold(receive, |mut receive| async move { receive.recv().await.map(|item| (item, receive)) })
+}
+
+/// `corten::serve` gives each request its connection's peer, which `ClientIp` reads. A proxy's `X-Forwarded-For` is followed only when the
+/// app trusts the peer, and the answer is private to the address.
+#[tokio::test]
+async fn the_client_ip_is_the_peer_or_what_a_trusted_proxy_forwards() {
+    let app = |policy: crate::security::Policy| {
+        let routes = Router::new().route("/ip", get(|crate::ClientIp(ip): crate::ClientIp| async move { ip.to_string() }));
+        App::new(Routes::from(routes)).policy(policy)
+    };
+    let body = |answer: &str| answer.rsplit("\r\n").next().unwrap().to_string();
+    let forwarded = "x-forwarded-for: 1.1.1.1, 198.51.100.7\r\n";
+
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, app(crate::security::Policy::new()), async {
+        let _ = stopped.await;
+    }));
+    let answer = raw_get(addr, "/ip", forwarded).await;
+    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    assert_eq!(body(&answer), "127.0.0.1", "without a trusted proxy the header is anyone's");
+    assert!(answer.to_ascii_lowercase().contains("cache-control: private"), "{answer}");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
+    let addr = listeners[0].local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let behind = app(crate::security::Policy::new().proxy("127.0.0.0/8"));
+    let server = tokio::spawn(crate::app::run(listeners, crate::app::plain, behind, async {
+        let _ = stopped.await;
+    }));
+    assert_eq!(body(&raw_get(addr, "/ip", forwarded).await), "198.51.100.7");
+    assert_eq!(body(&raw_get(addr, "/ip", "").await), "127.0.0.1");
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
+
+/// Without a connection (a test's `oneshot`), `ClientIp` is a 500 that says why and
+/// `Option<ClientIp>` is `None`; axum's `MockConnectInfo` gives it one.
+#[tokio::test]
+async fn without_a_connection_there_is_no_client_ip() {
+    use axum::extract::connect_info::MockConnectInfo;
+    let routes = || {
+        Router::new()
+            .route("/ip", get(|crate::ClientIp(ip): crate::ClientIp| async move { ip.to_string() }))
+            .route("/maybe", get(|ip: Option<crate::ClientIp>| async move { format!("{ip:?}") }))
+    };
+    let router = App::new(Routes::from(routes())).router();
+    let (status, _, _) = call_with(router.clone(), "GET", "/ip", None, None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let (status, _, body) = call_with(router, "GET", "/maybe", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "None"));
+    let mocked =
+        App::new(Routes::from(routes())).router().layer(MockConnectInfo(std::net::SocketAddr::from(([203, 0, 113, 9], 4711))));
+    let (status, _, body) = call_with(mocked, "GET", "/ip", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "203.0.113.9"));
+}
+
+/// A task of the app's is told when shutdown begins, and `serve` waits for it to finish what it
+/// was writing before it returns.
+#[tokio::test]
+async fn shutdown_tells_the_tasks_and_waits_for_them() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    let written = Arc::new(AtomicBool::new(false));
+    let (reason_tx, reason) = tokio::sync::oneshot::channel();
+    let journal = written.clone();
+    let app = App::new(Routes::new()).task("journal", move |signal: Signal| async move {
+        let why = signal.aborted().await;
+        // The write in progress when the signal came.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        journal.store(true, Ordering::SeqCst);
+        let _ = reason_tx.send(why);
+    });
+    let (stop, server) = served(app).await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!server.is_finished() && !written.load(Ordering::SeqCst));
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+    assert!(written.load(Ordering::SeqCst), "serve returned before the task finished");
+    assert_eq!(reason.await.unwrap(), crate::Abort::Shutdown);
+}
+
+/// A task that ignores the signal is ended at the grace, so it cannot hold the process; one that
+/// panics ends alone, and the app keeps serving.
+#[tokio::test]
+async fn a_task_past_the_grace_is_ended_and_one_that_panics_ends_alone() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    struct Dropped(Arc<AtomicBool>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    let dropped = Arc::new(AtomicBool::new(false));
+    let guard = Dropped(dropped.clone());
+    let routes = Routes::from(Router::new().route("/", get(|| async { "hi" })));
+    let app = App::new(routes)
+        .shutdown_grace(Duration::from_millis(50))
+        .task("stuck", move |_signal: Signal| async move {
+            let _guard = guard;
+            std::future::pending::<()>().await
+        })
+        .task("broken", |_signal: Signal| async move { panic!("the task failed") });
+    let (stop, server) = served(app).await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!server.is_finished(), "a task that panicked took the server with it");
+    let started = std::time::Instant::now();
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), server).await.expect("a stuck task held serve").unwrap().unwrap();
+    assert!(started.elapsed() >= Duration::from_millis(50), "serve did not wait the grace");
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !dropped.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the stuck task was left running");
 }
 
 /// A `[::1]` port another process holds is an error, not a server only `127.0.0.1` reaches:
@@ -1495,4 +3398,425 @@ async fn a_taken_ipv6_loopback_port_is_an_error() {
     let error = crate::app::bind(None, port).await.expect_err("the port is taken on ::1");
     assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
     assert_eq!(crate::app::bind(Some("127.0.0.1"), port).await.unwrap().len(), 1, "HOST names one address");
+}
+
+#[crate::routes]
+mod serves_url {
+    #[route("/check", get = serves_check)]
+    pub struct Check;
+
+    #[route("/items/{id}", get = serves_item)]
+    pub struct Item {
+        pub id: u32,
+    }
+
+    #[route("/files/{*rest}", get = serves_files)]
+    pub struct Files {
+        pub rest: String,
+    }
+
+    #[route("/cart/add", post = serves_check)]
+    pub struct AddToCart;
+
+    #[route("/cart/{id}", get = serves_cart_line)]
+    pub struct CartLine {
+        pub id: u32,
+    }
+
+    #[route("/both", post = serves_check, get = serves_check)]
+    pub struct Both;
+
+    #[route("/go", get = serves_go)]
+    pub struct Go;
+}
+
+/// Every GET is a page here, but an API, Corten's own paths and its health checks are not.
+#[crate::routes]
+mod serves_catch_url {
+    #[route("/{*page}", get = serves_any)]
+    pub struct Page {
+        pub page: String,
+    }
+}
+
+#[tokio::test]
+async fn a_catch_all_page_does_not_serve_an_api_or_cortens_own_paths() {
+    let pwa = crate::pwa::Pwa::new(crate::pwa::Manifest::new("A", "A"));
+    let router = App::new(serves_catch_url::router())
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods::reads(get(|| async { "rates" }))))
+        .pwa(pwa)
+        .router();
+    for (p, want) in [
+        ("/about/team", "local served"),
+        ("/api/rates", "local elsewhere"),
+        ("/api", "local elsewhere"),
+        ("/health/live", "local elsewhere"),
+        ("/corten/anything", "local elsewhere"),
+        ("/manifest.webmanifest", "local elsewhere"),
+        ("/service-worker.js", "local elsewhere"),
+        ("/apis", "local served"),
+    ] {
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (status, _, body) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((status, body.as_str()), (StatusCode::OK, want), "{p:?}");
+    }
+}
+
+/// Paths where matching by hand is easy to get wrong: an empty segment, a POST-only route the
+/// router picks over a catch-all page, and a path routed by both the app and an area.
+#[crate::routes]
+mod serves_router_url {
+    #[route("/check", get = serves_check)]
+    pub struct Check;
+
+    #[route("/items/{id}/edit", get = serves_edit)]
+    pub struct Edit {
+        pub id: String,
+    }
+
+    #[route("/x/{a}/y", post = serves_write)]
+    pub struct Write {
+        pub a: String,
+    }
+
+    #[route("/shop/cart", get = serves_page)]
+    pub struct CartPage;
+
+    #[route("/{*page}", get = serves_router_page)]
+    pub struct Page {
+        pub page: String,
+    }
+}
+
+#[crate::routes(area = Shop)]
+mod serves_shop_url {
+    #[route("/shop")]
+    pub struct Shop;
+
+    #[route("/shop/cart", post = serves_page)]
+    pub struct Cart;
+}
+
+#[derive(crate::Route)]
+#[route("/shop/list")]
+struct ShopList;
+
+async fn serves_page() -> &'static str {
+    "page"
+}
+
+// The routes above with a parameter in their path, each read by a handler that takes its `Params`.
+async fn serves_edit(_: crate::Params<serves_router_url::Edit>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_write(_: crate::Params<serves_router_url::Write>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_router_page(_: crate::Params<serves_router_url::Page>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_item(_: crate::Params<serves_url::Item>, req: Req, uri: axum::http::Uri) -> String {
+    serves_check(req, uri).await
+}
+
+async fn serves_files(_: crate::Params<serves_url::Files>, req: Req, uri: axum::http::Uri) -> String {
+    serves_check(req, uri).await
+}
+
+async fn serves_cart_line(_: crate::Params<serves_url::CartLine>, req: Req, uri: axum::http::Uri) -> String {
+    serves_check(req, uri).await
+}
+
+async fn serves_any(_: crate::Params<serves_catch_url::Page>, req: Req, uri: axum::http::Uri) -> String {
+    serves_check(req, uri).await
+}
+
+/// `req.serves` says a path is served exactly when a GET to it reaches a page.
+#[tokio::test]
+async fn serves_agrees_with_the_router() {
+    let router = App::new(serves_router_url::router())
+        .area(|shop| serves_shop_url::area(shop).route::<ShopList>(crate::route::post(serves_page).get(serves_page)))
+        .router();
+    for (p, want) in [
+        ("/items/7/edit", true),
+        ("/items//edit", true),
+        ("/items/7/", true),
+        ("/x/1/y", false),
+        ("/x//y", false),
+        ("/x/1/z", true),
+        ("/shop/cart", true),
+        ("/shop/list", true),
+        ("/about", true),
+        ("/health/live", false),
+    ] {
+        let (status, _, body) = call_with(router.clone(), "GET", p, None, None).await;
+        let routed = status == StatusCode::OK && body == "page";
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (_, _, says) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((routed, says == "local served"), (want, want), "{p:?}: {status} {body:?}, serves says {says:?}");
+    }
+}
+
+/// A redirect to the return address in `?p=`, or to `/check` when it is not on this site.
+async fn serves_go(req: Req, uri: axum::http::Uri) -> HtmlResult {
+    let p = form_urlencoded::parse(uri.query().unwrap_or("").as_bytes()).find(|(k, _)| k == "p").map(|(_, v)| v.into_owned());
+    match p.as_deref().and_then(crate::Local::parse) {
+        Some(local) => req.redirect(&local),
+        None => req.redirect(&serves_url::Check),
+    }
+}
+
+/// Whether the app serves the path in `?p=`: "local served", "local elsewhere" or "not local".
+async fn serves_check(req: Req, uri: axum::http::Uri) -> String {
+    let p = form_urlencoded::parse(uri.query().unwrap_or("").as_bytes()).find(|(k, _)| k == "p").map(|(_, v)| v.into_owned());
+    match p.as_deref().and_then(crate::route::Local::parse) {
+        Some(local) if req.serves(&local) => "local served".into(),
+        Some(_) => "local elsewhere".into(),
+        None => "not local".into(),
+    }
+}
+
+/// A return address the app serves is one of its pages, its areas' included; an API route, a
+/// static file or Corten's own routes are not; and nothing that leads off the site is a `Local`.
+#[tokio::test]
+async fn an_app_says_whether_it_serves_a_return_address() {
+    let router = App::new(serves_url::router())
+        .area::<admin_url::Admin>(admin_url::area)
+        .api::<ApiRoot>(|api| api.route::<ApiRates>(crate::Methods::reads(get(|| async { "rates" }))))
+        .router();
+    for (p, want) in [
+        ("/check", "local served"),
+        ("/check?x=1#top", "local served"),
+        ("/items/7", "local served"),
+        ("/items/anything", "local served"),
+        ("/files/a/b/c.txt", "local served"),
+        ("/admin", "local served"),
+        ("/admin/users/3", "local served"),
+        ("/items", "local elsewhere"),
+        ("/items/", "local elsewhere"),
+        ("/items/7/edit", "local elsewhere"),
+        ("/files/", "local elsewhere"),
+        ("/check/", "local elsewhere"),
+        ("/api/rates", "local elsewhere"),
+        ("/health/live", "local elsewhere"),
+        ("/admin/users", "local elsewhere"),
+        ("/market/cart", "local elsewhere"),
+        ("/cart/add", "local elsewhere"),
+        ("/cart/7", "local served"),
+        ("/cart/%61dd", "not local"),
+        ("/both", "local served"),
+        ("/items/..", "not local"),
+        ("/check/../admin", "not local"),
+        ("//evil.example/check", "not local"),
+        ("/\\evil.example", "not local"),
+        ("/\t/evil.example", "not local"),
+        ("https://evil.example/check", "not local"),
+        ("check", "not local"),
+    ] {
+        let uri = format!("/check?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (status, _, body) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((status, body.as_str()), (StatusCode::OK, want), "{p:?}");
+    }
+    for (p, location) in [("/items/7?tab=reviews", "/items/7?tab=reviews"), ("//evil.example", "/check")] {
+        let uri = format!("/go?p={}", form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>());
+        let (status, headers, _) = call_with(router.clone(), "GET", &uri, None, None).await;
+        assert_eq!((status, headers["location"].to_str().unwrap()), (StatusCode::SEE_OTHER, location), "{p:?}");
+    }
+}
+
+/// A `Public` answer with a header of the app's keeps it, and is compressed and shared as one
+/// without it; a failure does not get it.
+#[tokio::test]
+async fn a_public_answer_takes_a_header_and_is_still_compressed() {
+    use crate::answer::{Link, XRobotsTag};
+    use axum::http::HeaderValue;
+    let text = "# Example\n".repeat(400);
+    let body = text.clone();
+    let router = App::new(Routes::from(
+        Router::new()
+            .route(
+                "/llms.txt",
+                get(move || async move {
+                    Public::new(Duration::from_secs(60), body)
+                        .header::<XRobotsTag>(HeaderValue::from_static("noindex, nofollow"))
+                        .header::<Link>(HeaderValue::from_static("</a>; rel=\"a\""))
+                        .header::<Link>(HeaderValue::from_static("</b>; rel=\"b\""))
+                }),
+            )
+            .route(
+                "/gone",
+                get(|| async {
+                    Public::new(Duration::from_secs(60), crate::Result::<String>::Err(crate::Error::not_found()))
+                        .header::<Link>(HeaderValue::from_static("</gone>; rel=\"gone\""))
+                }),
+            )
+            .route(
+                "/old",
+                get(|req: Req| async move {
+                    Public::new(Duration::from_secs(60), req.moved(&serves_url::Check))
+                        .header::<Link>(HeaderValue::from_static("</check>; rel=\"canonical\""))
+                }),
+            ),
+    ))
+    .router();
+    let req = Request::get("/llms.txt").header("accept-encoding", "zstd, br, gzip").body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let headers = res.headers();
+    assert_eq!(headers["x-robots-tag"], "noindex, nofollow");
+    assert_eq!(headers.get_all("link").iter().count(), 2, "{headers:?}");
+    #[cfg(feature = "compress")]
+    assert_eq!(headers["content-encoding"], "zstd", "{headers:?}");
+    assert_eq!(headers["cache-control"], "public, max-age=60", "{headers:?}");
+    // An error is the error page, without the answer's headers.
+    let res = router.clone().oneshot(Request::get("/gone").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert!(res.headers().get("link").is_none(), "{:?}", res.headers());
+    // A redirect keeps them.
+    let res = router.oneshot(Request::get("/old").body(Body::empty()).unwrap()).await.unwrap();
+    assert!(res.status().is_redirection(), "{}", res.status());
+    assert_eq!(res.headers()["link"], "</check>; rel=\"canonical\"");
+}
+
+#[crate::routes]
+mod policy_url {
+    #[route("/", get = policy_page)]
+    pub struct Home;
+}
+
+#[crate::routes(area = Pay)]
+mod pay_url {
+    #[route("/pay")]
+    pub struct Pay;
+
+    #[route("/pay/card", get = policy_page)]
+    pub struct Card;
+}
+
+/// An area inside `/pay` that adds to it.
+#[crate::routes(area = Charts)]
+mod charts_url {
+    #[route("/pay/charts")]
+    pub struct Charts;
+
+    #[route("/pay/charts/week", get = policy_page)]
+    pub struct Week;
+}
+
+async fn policy_page(req: Req) -> HtmlResult {
+    req.test_page("Page", html! { <p>"page"</p> })
+}
+
+fn policy_app() -> Router {
+    App::new(policy_url::router())
+        .policy(crate::security::Policy::new().img_src("https://img.example"))
+        .area(|area| pay_url::area(area).policy(|p| p.script_src("https://js.stripe.com").frame_src("https://js.stripe.com")))
+        .area(|area| charts_url::area(area).policy(|p| p.allow_style_attributes().script_src("https://js.stripe.com")))
+        .router()
+}
+
+/// What a page answers: its CSP and its shell key.
+async fn csp_and_shell(router: &Router, path: &str) -> (StatusCode, String, String) {
+    let res = router.clone().oneshot(Request::get(path).body(Body::empty()).unwrap()).await.unwrap();
+    let status = res.status();
+    let csp = res.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap().to_string();
+    let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    let shell = body.split(r#"name="corten-shell" content=""#).nth(1).map_or("", |rest| &rest[..16]).to_string();
+    (status, csp, shell)
+}
+
+/// An area's policy adds to the app's on its pages only, nested areas add up, and a page whose
+/// policy differs has another shell key, so a client navigation to it loads the document in full.
+#[tokio::test]
+async fn an_area_adds_to_the_policy_of_its_pages_only() {
+    let router = policy_app();
+    let (status, home, home_shell) = csp_and_shell(&router, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(home.contains("img-src 'self' data: https: https://img.example;") && home.contains("frame-src 'none';"), "{home}");
+    assert!(!home.contains("stripe") && !home.contains("style-src-attr"), "{home}");
+    let (_, card, card_shell) = csp_and_shell(&router, "/pay/card").await;
+    assert!(card.contains(" https://js.stripe.com; style-src") && card.contains("frame-src https://js.stripe.com;"), "{card}");
+    assert!(card.contains("https://img.example") && !card.contains("style-src-attr"), "the app's sources stay: {card}");
+    let (_, week, week_shell) = csp_and_shell(&router, "/pay/charts/week").await;
+    assert!(week.contains("frame-src https://js.stripe.com;") && week.ends_with("; style-src-attr 'unsafe-inline'"), "{week}");
+    assert_eq!(week.matches("https://js.stripe.com").count(), 2, "a source both areas add is listed once: {week}");
+    assert!(
+        home_shell != card_shell && card_shell != week_shell && home_shell != week_shell,
+        "{home_shell} {card_shell} {week_shell}"
+    );
+    // An unknown URL in the area is answered under its policy, as its pages are.
+    let res = router.clone().oneshot(Request::get("/pay/nothing").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_eq!(res.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap(), card);
+    // A write another site sent to the area is refused under the area's policy too.
+    let cross = Request::post("/pay/card").header("sec-fetch-site", "cross-site").body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(cross).await.unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(res.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap(), card);
+    // A page outside every area that adds keeps the shell key it had without any.
+    let img = || crate::security::Policy::new().img_src("https://img.example");
+    let plain = App::new(policy_url::router()).policy(img()).router();
+    assert_eq!(csp_and_shell(&plain, "/").await, (StatusCode::OK, home.clone(), home_shell.clone()));
+    // An area that adds only what the app has keeps the app's policy and shell key: a navigation
+    // into it is not a full load.
+    let same = App::new(policy_url::router())
+        .policy(img())
+        .area(|area| pay_url::area(area).policy(|p| p.img_src("https://img.example")))
+        .router();
+    assert_eq!(csp_and_shell(&same, "/pay/card").await, (StatusCode::OK, home, home_shell));
+}
+
+/// An area relaxes the opener policy on its pages only (Stripe's Connect embedded components
+/// sign in through a popup that needs `unsafe-none`), and a page under another one has another
+/// shell key, since a document keeps the opener policy it loaded with.
+#[tokio::test]
+async fn an_area_relaxes_the_opener_policy_of_its_pages_only() {
+    async fn opener(router: &Router, path: &str) -> (StatusCode, String, String) {
+        let res = router.clone().oneshot(Request::get(path).body(Body::empty()).unwrap()).await.unwrap();
+        let opener = res.headers()["cross-origin-opener-policy"].to_str().unwrap().to_string();
+        let (status, _, shell) = csp_and_shell(router, path).await;
+        (status, opener, shell)
+    }
+    let router =
+        App::new(policy_url::router()).area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener())).router();
+    let (_, home, home_shell) = opener(&router, "/").await;
+    assert_eq!(home, "same-origin");
+    let (_, card, card_shell) = opener(&router, "/pay/card").await;
+    assert_eq!(card, "unsafe-none");
+    assert_ne!(home_shell, card_shell, "a navigation into the area loads the document in full");
+    assert_eq!(csp_and_shell(&router, "/").await.1, csp_and_shell(&router, "/pay/card").await.1, "the CSP is the app's");
+    // An unknown URL in the area is answered under its policy, as its pages are.
+    assert_eq!(opener(&router, "/pay/nothing").await.1, "unsafe-none");
+    // Only relaxing: an area's allow_popups under an app that allows any opener changes nothing,
+    // and one the app already has keeps the app's shell key.
+    let open = App::new(policy_url::router())
+        .policy(crate::security::Policy::new().allow_cross_origin_opener())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))
+        .router();
+    let (_, open_home, open_shell) = opener(&open, "/").await;
+    assert_eq!(
+        (open_home.as_str(), opener(&open, "/pay/card").await),
+        ("unsafe-none", (StatusCode::OK, "unsafe-none".into(), open_shell))
+    );
+    // Nested areas add up: one inside an area that loosens it keeps the looser value, and a
+    // write another site sent there is refused under it too.
+    let nested = App::new(policy_url::router())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener()))
+        .area(|area| charts_url::area(area).policy(|p| p.allow_popups().script_src("https://js.stripe.com")))
+        .router();
+    assert_eq!(opener(&nested, "/pay/charts/week").await.1, "unsafe-none");
+    let cross = Request::post("/pay/charts/week").header("sec-fetch-site", "cross-site").body(Body::empty()).unwrap();
+    let refused = nested.clone().oneshot(cross).await.unwrap();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    assert_eq!(refused.headers()["cross-origin-opener-policy"], "unsafe-none");
+    let popups = App::new(policy_url::router())
+        .policy(crate::security::Policy::new().allow_popups())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))
+        .router();
+    let (_, popups_home, popups_shell) = opener(&popups, "/").await;
+    assert_eq!(popups_home, "same-origin-allow-popups");
+    assert_eq!(opener(&popups, "/pay/card").await.2, popups_shell);
 }

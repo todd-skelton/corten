@@ -14,7 +14,8 @@
 //!
 //! Catalogs are JSON objects of strings; nested objects make dotted keys, and each key is a method
 //! (`item.listing_count` is `item_listing_count`). `{name}` in a message is an argument, so
-//! `"{count} listings"` takes one parameter, `count`, of any `Display` type; `{{` is a brace. An
+//! `"{count} listings"` takes one parameter, `count`, an [`Arg`]: text, an integer, or a value `t`
+//! formats (`t.number(..)`, `t.money(..)`, `t.date(..)`); `{{` is a brace. An
 //! argument may be named like a Rust keyword (`{type}` is the parameter `r#type`) or in camel
 //! case (`{updatedAt}` is the parameter `updated_at`), so a catalog shared with other apps
 //! compiles as it is; `by_key` and `Message<"updatedAt">` use the catalog's names.
@@ -79,8 +80,8 @@
 //! Each renders escaped in `html!`, as text or an attribute value. The data (separators, currency
 //! symbols, date patterns, month names) is CLDR's, as Intl in Node writes it, checked against Intl
 //! for every locale (`scripts/locale-data.mjs`). `messages!` puts in the app only the locales it
-//! lists, and it is linked only when the app formats something (measured: `examples/hello`, `en`,
-//! grew 22.9 KB with the code; item-page, `en` and `fr`, not at all). A tag without data of its
+//! lists, and it is linked only when the app formats something (measured: `examples/watchlist`, `en`,
+//! grew 22.9 KB with the code; card-market, `en` and `fr`, not at all). A tag without data of its
 //! own has its language's (`fr-LU` is `fr`), and a language Corten has no data for is a build
 //! error. Numbers are written in the locale's digits (`fa` has `۱٬۲۳۴`), dates in the Gregorian
 //! calendar.
@@ -93,6 +94,21 @@
 //! ```compile_fail
 //! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
 //! let price = Msg::default().money(123450, corten::i18n::Currency::new("USD"));
+//! ```
+//!
+//! - `t.parse_money(text, currency)`: what `t.money` writes, read back from what a person typed
+//!   into a form, in [`Minor`] units. The locale's own form, with or without the symbol, the code,
+//!   the group separators or the fraction; anything else is `None`:
+//!
+//! ```
+//! # corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+//! use corten::i18n::{Currency, Messages as _, Minor};
+//! const USD: Currency = Currency::new("USD");
+//! let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+//! assert_eq!(en.parse_money("$1,299.50", USD), Some(Minor(129950)));
+//! assert_eq!(fr.parse_money("12,50", USD), Some(Minor(1250)));
+//! assert_eq!(fr.parse_money("12.50", USD), None); // en's decimal point on a French page
+//! assert_eq!(en.parse_money("1.234", USD), None); // a tenth of a cent
 //! ```
 //!
 //! - `t.date(at, DateStyle)`, `t.time(at, TimeStyle)` and `t.date_time(at, DateStyle,
@@ -153,9 +169,10 @@
 //! A number, an amount or a date a script works out is written with the page's format, so it is
 //! what the server would have rendered: `t.js().number()`, `t.js().money(USD)` and
 //! `t.js().date(DateStyle::Short)` (or `.time(..)`, `.date_time(..)`, in UTC unless
-//! `.zone(Offset::hours(-5))`) are passed to a handler whose JSDoc takes a `NumberFormat`,
-//! `MoneyFormat` or `DateFormat` (from `"corten"`), and the script calls `price(123450)` (minor
-//! units) or `when(Date.now())`. The format is sent as the locale's separators, templates and
+//! `.zone(Offset::hours(-5))`) and `t.js().percent(2)` (or `t.js().change(2)`) are passed to a
+//! handler whose JSDoc takes a `NumberFormat`, `MoneyFormat`, `DateFormat` or `PercentFormat`
+//! (from `"corten"`), and the script calls `price(123450)` (minor units), `when(Date.now())` or
+//! `rate(0.029)`. The format is sent as the locale's separators, templates and
 //! names (`%{..}`), and the runtime writes with the same algorithm (`scripts/format.mjs` checks
 //! it on every case the server is checked on), not the browser's `Intl`, whose data differs by
 //! browser and version. A zone with daylight saving time has no fixed offset to send: write
@@ -216,14 +233,14 @@
 
 use std::fmt::{self, Display};
 
-use crate::view::{escape_display, AttrValue, Render};
+use crate::view::{escape_display, escape_into, AttrValue, Render};
 
 mod display_digits;
 mod format;
 
 pub use format::{
-    parse_timestamp, Amount, Currency, DateFormat, DateOnly, DateStyle, Decimal, Formatted, InvalidDecimal, Minor, MoneyFormat,
-    MonthStyle, Number, NumberFormat, Offset, TimeStyle, Utc, When, Zone,
+    parse_timestamp, Amount, Currency, DateFormat, DateOnly, DateStyle, Datetime, Decimal, Formatted, InvalidDecimal, Minor,
+    MoneyFormat, MonthStyle, Number, NumberFormat, Offset, PercentFormat, Relative, RelativeStyle, TimeStyle, Utc, When, Zone,
 };
 
 /// Compiles catalogs into a messages type. See the [module docs](self).
@@ -289,20 +306,219 @@ pub struct Sink<'a> {
 }
 
 impl Sink<'_> {
-    /// A run of the message's own text, given plain and already escaped.
+    /// A run of the message's own text, given plain and already escaped: for `messages!` alone,
+    /// since it writes `html` as it is. An [`Arg`] writes with [`Sink::str`] or [`Sink::display`].
+    #[doc(hidden)]
     #[inline]
     pub fn text(&mut self, plain: &str, html: &str) {
         self.out.push_str(if self.html { html } else { plain });
     }
 
-    /// An argument: escaped in a page, as is in plain text.
+    /// An argument, which writes itself ([`Arg`]).
     #[inline]
-    pub fn arg<T: Display + ?Sized>(&mut self, value: &T) {
+    pub fn arg<T: Arg + ?Sized>(&mut self, value: &T) {
+        value.write_arg(self)
+    }
+
+    /// Text: escaped in a page, as is in plain text.
+    #[inline]
+    pub fn str(&mut self, text: &str) {
+        if self.html {
+            escape_into(text, self.out);
+        } else {
+            self.out.push_str(text);
+        }
+    }
+
+    /// A `Display` value's text: escaped in a page, as is in plain text.
+    pub fn display(&mut self, value: &(impl Display + ?Sized)) {
         if self.html {
             escape_display(value, self.out);
         } else {
             let _ = fmt::Write::write_fmt(self.out, format_args!("{value}"));
         }
+    }
+
+    /// Text that needs no escaping (digits, the locale's own formats).
+    #[inline]
+    fn plain(&mut self, text: &str) {
+        self.out.push_str(text);
+    }
+}
+
+/// A value a message puts in its text: text (`&str`, `String`), an integer, or what `t` formats
+/// in the locale (`t.number(..)`, `t.money(..)`, `t.date(..)`) or another message. An integer
+/// is written as its digits, as a script's message writes it (`String(n)`), with no
+/// `core::fmt` on the way; a number a reader reads as an amount goes through `t.number`. A
+/// float is none of these: `t.number(Decimal::..)` writes it in the reader's form. A type of the
+/// app's own implements it with the `Sink` it gets:
+///
+/// ```
+/// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+/// use corten::i18n::{Arg, Messages as _, Sink};
+/// use corten::prelude::*;
+///
+/// enum Grade { Mint, Played }
+/// impl Arg for Grade {
+///     fn write_arg(&self, sink: &mut Sink<'_>) {
+///         sink.str(match self { Grade::Mint => "<Mint>", Grade::Played => "Played" })
+///     }
+/// }
+///
+/// let en = Msg::for_locale("en");
+/// assert_eq!(en.item_image(Grade::Mint, 12).to_html(), "&lt;Mint&gt; image 12");
+/// assert_eq!(en.item_image(&Grade::Played, -3_i64).to_string(), "Played image -3");
+/// ```
+///
+/// A float is not one, since its text would be the same in every locale:
+///
+/// ```compile_fail,E0277
+/// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+/// use corten::i18n::Messages as _;
+///
+/// let _ = Msg::for_locale("fr").item_listing_count(2.5).to_string();
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be a message argument",
+    label = "not text, an integer or a value `t` formats",
+    note = "pass text, an integer, or a value the locale formats (t.number(..), t.money(..), t.date(..)); a float goes through t.number(Decimal); a type of the app's own implements corten::i18n::Arg"
+)]
+pub trait Arg {
+    /// Writes the value into the message.
+    fn write_arg(&self, sink: &mut Sink<'_>);
+}
+
+impl Arg for str {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for String {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for std::borrow::Cow<'_, str> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for char {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self.encode_utf8(&mut [0; 4]))
+    }
+}
+
+impl<T: Arg + ?Sized> Arg for &T {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        (**self).write_arg(sink)
+    }
+}
+
+impl Arg for Formatted {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        // The locale data has none of `<>&"` (the generator checks); a group separator `'`
+        // (de-CH) is safe in text and in the double-quoted attributes `html!` writes.
+        self.render(sink.out)
+    }
+}
+
+impl Arg for When {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        // Locale data and digits, as for `Formatted`.
+        self.render(sink.out)
+    }
+}
+
+impl Arg for Relative {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        // Locale data and digits, as for `Formatted`.
+        self.render(sink.out)
+    }
+}
+
+impl Arg for std::sync::Arc<str> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for std::rc::Rc<str> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl Arg for Box<str> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.str(self)
+    }
+}
+
+impl<F: Fn(&mut Sink<'_>)> Arg for Text<F> {
+    #[inline]
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        (self.0)(sink)
+    }
+}
+
+impl<A: Args + ?Sized> Arg for Found<'_, A> {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        self.write(sink)
+    }
+}
+
+macro_rules! unsigned_arg {
+    ($($t:ty),*) => {$(
+        impl Arg for $t {
+            #[inline]
+            fn write_arg(&self, sink: &mut Sink<'_>) {
+                let mut buf = [0; 20];
+                let digits = crate::ascii::digits(*self as u64, &mut buf);
+                // Digits are ASCII.
+                sink.plain(std::str::from_utf8(digits).unwrap_or_default())
+            }
+        }
+    )*};
+}
+unsigned_arg!(u8, u16, u32, u64, usize);
+
+macro_rules! signed_arg {
+    ($($t:ty),*) => {$(
+        impl Arg for $t {
+            #[inline]
+            fn write_arg(&self, sink: &mut Sink<'_>) {
+                if *self < 0 {
+                    sink.plain("-");
+                }
+                let mut buf = [0; 20];
+                let digits = crate::ascii::digits(self.unsigned_abs() as u64, &mut buf);
+                sink.plain(std::str::from_utf8(digits).unwrap_or_default())
+            }
+        }
+    )*};
+}
+signed_arg!(i8, i16, i32, i64, isize);
+
+impl Arg for u128 {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.display(self)
+    }
+}
+
+impl Arg for i128 {
+    fn write_arg(&self, sink: &mut Sink<'_>) {
+        sink.display(self)
     }
 }
 
@@ -326,7 +542,8 @@ impl<const ARGS: u64> Template<ARGS> {
 
 /// The arguments of a message found by its key (`by_key`, from [`messages!`]), by name: pairs
 /// (`[("count", 3)]`), a map, or a JSON object (feature `json`; a string is written without its
-/// quotes, any other value as its JSON).
+/// quotes, any other value as its JSON). Each is written as given, by its `Display`, since it is
+/// data the app got at run time: a number in it is not in the reader's form.
 pub trait Args {
     /// Calls `write` with the argument `name` and returns true, or returns false when there is none.
     fn arg(&self, name: &str, write: &mut dyn FnMut(&dyn Display)) -> bool;
@@ -413,7 +630,7 @@ impl<'a, A: Args + ?Sized> Found<'a, A> {
             match piece {
                 __private::Piece::Text(plain, html) => sink.text(plain, html),
                 __private::Piece::Arg(name) => {
-                    self.args.arg(name, &mut |value| sink.arg(value));
+                    self.args.arg(name, &mut |value| sink.display(value));
                 }
             }
         }
@@ -447,6 +664,7 @@ impl<A: Args + ?Sized> Display for Found<'_, A> {
 #[doc(hidden)]
 pub mod __private {
     pub use super::format::__private::{Field, LocaleData, Separators};
+    pub use super::format::parse_money;
 
     /// A run of a message: its text (plain and escaped) or an argument's name.
     pub enum Piece {
@@ -494,6 +712,95 @@ impl<F: Fn(&mut Sink<'_>)> Display for Text<F> {
 mod tests {
     use super::*;
 
+    /// Money typed in a locale is read back in minor units, as `t.money` writes it.
+    #[test]
+    fn money_is_read_back_as_the_locale_writes_it() {
+        let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+        let usd = Currency::new("USD");
+        let read = |t: Msg, text: &str| t.parse_money(text, usd).map(|m| m.0);
+        for (text, cents) in [
+            ("$1,299.50", 129950),
+            ("1299.5", 129950),
+            (" 1,299 ", 129900),
+            (".5", 50),
+            ("0.05", 5),
+            ("USD 12", 1200),
+            ("12 USD", 1200),
+            ("1,234,567.89", 123456789),
+            ("$ 7", 700),
+        ] {
+            assert_eq!(read(en, text), Some(cents), "en {text:?}");
+        }
+        for text in [
+            "",
+            "$",
+            "-1",
+            "+1",
+            "1,2,3",
+            "12,34",
+            "1,2345",
+            ",123",
+            "1.234",
+            "12.",
+            "1e3",
+            "12.50.1",
+            "18446744073709551616",
+            "$$12",
+            "12$",
+            "1,23,456",
+            "1234,567",
+            "1,234,56",
+            "1 234",
+        ] {
+            assert_eq!(read(en, text), None, "en {text:?}");
+        }
+        for (text, cents) in [
+            ("12,50", 1250),
+            ("1\u{202f}299,50\u{a0}$US", 129950),
+            ("1 299,50 $US", 129950),
+            ("1299", 129900),
+            ("12,5 USD", 1250),
+        ] {
+            assert_eq!(read(fr, text), Some(cents), "fr {text:?}");
+        }
+        for text in ["12.50", "1,299.50", "1 29,50"] {
+            assert_eq!(read(fr, text), None, "fr {text:?}: another locale's form");
+        }
+        let jpy = Currency::new("JPY");
+        assert_eq!(en.parse_money("¥1,234", jpy).map(|m| m.0), Some(1234));
+        assert_eq!(en.parse_money("1,234.5", jpy), None, "yen has no fraction");
+        // What `t.money` writes reads back.
+        for cents in [0_u64, 5, 99, 100, 1234, 129950, 100_000_000, 987_654_321_012] {
+            for t in [en, fr] {
+                let text = t.money(Minor(cents), usd).to_string();
+                assert_eq!(read(t, &text), Some(cents), "{} {text:?}", t.locale());
+            }
+        }
+    }
+
+    /// An integer argument writes what its `Display` writes, in a page and as text.
+    #[test]
+    fn integer_arguments_write_their_digits() {
+        fn both<T: Arg + Display>(n: T) {
+            let mut out = String::new();
+            n.write_arg(&mut Sink { out: &mut out, html: true });
+            assert_eq!(out, n.to_string());
+            out.clear();
+            n.write_arg(&mut Sink { out: &mut out, html: false });
+            assert_eq!(out, n.to_string());
+        }
+        macro_rules! each {
+            ($($t:ty),*) => {$(
+                for n in [<$t>::MIN, <$t>::MAX, 0, 1, 9, 10, 99, 100] { both(n); }
+                both(<$t>::MAX / 3);
+            )*};
+        }
+        each!(u8, u16, u32, u64, usize, u128, i8, i16, i32, i64, isize, i128);
+        for n in [-1_i64, -9, -10, -1234567] {
+            both(n);
+        }
+    }
+
     /// The month styles, by their index in the cases after the other 14.
     const MONTHS: [MonthStyle; 2] = [MonthStyle::Short, MonthStyle::Long];
 
@@ -524,7 +831,12 @@ mod tests {
         assert_eq!(Msg::for_locale("FR"), fr);
         assert_eq!(Msg::default().locale(), "en");
         // Arguments named like Rust keywords are raw parameters; the catalog keeps its names.
-        assert_eq!(en.attention_detail("TCGplayer", "alias", 0.9).to_string(), "TCGplayer · alias · confidence 0.9");
+        let confidence: Decimal = "0.9".parse().unwrap();
+        assert_eq!(
+            en.attention_detail("TCGplayer", "alias", en.number(confidence)).to_string(),
+            "TCGplayer · alias · confidence 0.9"
+        );
+        assert_eq!(fr.attention_detail("P", "alias", fr.number(confidence)).to_string(), "P · alias · confiance 0,9");
         let by_key = fr.by_key("attention.detail", &[("provider", "P"), ("type", "alias"), ("match", "1")]);
         assert_eq!(by_key.unwrap().to_string(), "P · alias · confiance 1");
         // camelCase arguments: snake case parameters, the catalog's names by key.
@@ -555,6 +867,97 @@ mod tests {
         }
     }
 
+    /// `t.percent` takes a ratio, rounds to the digits asked for and drops trailing zeros; a
+    /// basis-point rate is `Decimal::new(bps, 4)`.
+    #[test]
+    fn a_ratio_is_written_as_the_locale_writes_a_percentage() {
+        let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+        let fee = Decimal::new(290, 4);
+        assert_eq!(en.percent(fee, 2).to_string(), "2.9%");
+        assert_eq!(fr.percent(fee, 2).to_string(), "2,9\u{a0}%");
+        assert_eq!(en.percent(Decimal::new(1, 3), 0).to_string(), "0%");
+        assert_eq!(en.percent(Decimal::new(-125, 5), 2).to_string(), "-0.13%", "half away from zero");
+        assert_eq!(en.percent(12, 2).to_string(), "1,200%", "an integer is a ratio too");
+        assert_eq!(
+            crate::html! { <td title={en.percent(fee, 1)}>{fr.percent(fee, 1)}</td> }.to_html(),
+            "<td title=\"2.9%\">2,9\u{a0}%</td>"
+        );
+    }
+
+    /// `t.change` writes a change for a column that lines up: always its digits, a sign on a gain
+    /// as on a loss, and none on what rounds to zero.
+    #[test]
+    fn a_change_has_its_digits_and_a_sign() {
+        let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+        assert_eq!(en.change(Decimal::new(60, 4), 2).to_string(), "+0.60%");
+        assert_eq!(en.change(Decimal::new(-30, 4), 2).to_string(), "-0.30%");
+        assert_eq!(en.change(Decimal::new(-4, 5), 2).to_string(), "0.00%", "rounds to zero: no sign");
+        assert_eq!(en.change(0, 1).to_string(), "0.0%");
+        let many = format!("+0.6{}%", "0".repeat(36));
+        assert_eq!(en.change(Decimal::new(6, 3), 40).to_string(), many, "at most 38 digits in all");
+        assert_eq!(en.change(Decimal::new(12_345, 3), 255).to_string().len(), "+1,234.".len() + 34 + 1);
+        assert_eq!(en.change(Decimal::new(125, 5), 2).to_string(), "+0.13%", "half away from zero");
+        assert_eq!(fr.change(Decimal::new(60, 4), 2).to_string(), "+0,60\u{a0}%", "the locale's sign in place");
+    }
+
+    /// Every amount every locale writes (Intl's, in cases.tsv, and ours in every currency its data
+    /// has) reads back, and what people type for it without the marks Intl adds: a symbol's
+    /// direction marks, its no-break spaces.
+    #[test]
+    fn every_locale_reads_back_the_money_it_writes() {
+        let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
+        let data = |tag: &str| locales.iter().find(|(t, _)| *t == tag).expect(tag).1;
+        let mut checked = 0;
+        for line in include_str!("i18n/cases.tsv").lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
+            let cols: Vec<&str> = line.split('\t').collect();
+            let (tag, kind, input, expected) = (cols[0], cols[1], cols[2], cols[3]);
+            let Some((amount, code)) = input.split_once(' ').filter(|_| kind == "money") else { continue };
+            if amount.starts_with('-') {
+                continue;
+            }
+            let currency = Currency::parse(code).unwrap();
+            // The amount in minor units, as written: rounded half away from zero to the currency's digits.
+            let shown = usize::from(currency.digits());
+            let (whole, fraction) = amount.split_once('.').unwrap_or((amount, ""));
+            let kept: String = fraction.chars().chain(std::iter::repeat('0')).take(shown).collect();
+            let up = fraction.chars().nth(shown).is_some_and(|d| d >= '5');
+            let minor = Minor(format!("{whole}{kept}").parse::<u64>().unwrap() + u64::from(up));
+            let typed: String = expected.chars().filter(|c| !matches!(c, '\u{200e}' | '\u{200f}' | '\u{61c}')).collect();
+            let typed = typed.replace(['\u{a0}', '\u{202f}'], " ");
+            for text in [expected, &typed] {
+                assert_eq!(format::parse_money(data(tag), text, currency), Some(minor), "{tag} {input} {text:?}");
+            }
+            checked += 1;
+        }
+        assert!(checked > 1000, "{checked}");
+        // Every currency a locale has a symbol for, not only the ones in cases.tsv: a longer symbol
+        // in a later CLDR still reads.
+        for (tag, data) in locales {
+            for (code, ..) in data.currencies {
+                let currency = Currency::parse(code).unwrap();
+                for minor in [0_u64, 7, 1234, 123_456_789] {
+                    let text = Formatted::money(data, &Minor(minor), currency).to_string();
+                    assert_eq!(format::parse_money(data, &text, currency), Some(Minor(minor)), "{tag} {code} {text:?}");
+                }
+            }
+        }
+        let read =
+            |tag: &str, text: &str, code: &str| format::parse_money(data(tag), text, Currency::parse(code).unwrap()).map(|m| m.0);
+        // Typed as people type them: no marks, ASCII or the locale's digits, either case.
+        assert_eq!(read("he", "12.50 ₪", "ILS"), Some(1250));
+        assert_eq!(read("fa", "$۱۲٫۵۰", "USD"), Some(1250));
+        assert_eq!(read("ar-EG", "12.50", "USD"), Some(1250));
+        assert_eq!(read("ar", "21.505 د.ك.", "KWD"), Some(21505));
+        assert_eq!(read("fr-CA", "21,51 $ US", "USD"), Some(2151));
+        assert_eq!(read("fr-CA", "21,51 $US", "USD"), Some(2151));
+        assert_eq!(read("ja", "¥1,234", "JPY"), Some(1234));
+        assert_eq!(read("en", "usd 12", "USD"), Some(1200));
+        // A decimal comma of another locale is not a group.
+        for text in ["0,500", "0,123", "00,123", "1\t234"] {
+            assert_eq!(read("en", text, "KWD"), None, "{text:?}");
+        }
+    }
+
     /// Every case `scripts/locale-data.mjs` had Intl write, for every locale: numbers, money and
     /// dates in fixed zones.
     #[test]
@@ -568,6 +971,12 @@ mod tests {
             let data = locales.iter().find(|(t, _)| *t == tag).expect(tag).1;
             let ours = match kind.split(' ').collect::<Vec<_>>()[..] {
                 ["number"] => Formatted::number(data, Decimal::parse(input).unwrap()).to_string(),
+                ["percent", digits] => {
+                    Formatted::percent(data, Decimal::parse(input).unwrap(), digits.parse().unwrap()).to_string()
+                }
+                ["change", digits] => {
+                    Formatted::change(data, Decimal::parse(input).unwrap(), digits.parse().unwrap()).to_string()
+                }
                 ["money"] => {
                     let (amount, code) = input.split_once(' ').unwrap();
                     Formatted::money(data, &Decimal::parse(amount).unwrap(), Currency::parse(code).unwrap()).to_string()
@@ -586,12 +995,35 @@ mod tests {
                     let offset = offset.first().map_or(0, |o| o.parse().unwrap());
                     when.zone(Offset::seconds(offset)).to_string()
                 }
+                ["relative", style] => {
+                    let style =
+                        [RelativeStyle::Long, RelativeStyle::Short, RelativeStyle::Narrow][style.parse::<usize>().unwrap()];
+                    let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1 << 32);
+                    let seconds: i64 = input.parse().unwrap();
+                    let by = std::time::Duration::from_secs(seconds.unsigned_abs());
+                    let at = if seconds < 0 { now - by } else { now + by };
+                    Relative::new(data, at, now, style).to_string()
+                }
                 _ => panic!("{line}"),
             };
             assert_eq!(ours, expected, "{tag} {kind} {input}");
             checked += 1;
         }
         assert!(checked > 9000, "{checked}");
+    }
+
+    /// `<time datetime>`: to the millisecond where there is one, rounded down before 1970 too.
+    #[test]
+    fn a_relative_time_says_its_instant_to_the_millisecond() {
+        use std::time::{Duration, UNIX_EPOCH};
+        let data = corten_macros::__all_locales!().iter().find(|(t, _)| *t == "en").unwrap().1;
+        let now = UNIX_EPOCH + Duration::from_secs(1_774_191_845);
+        let at = |t| Relative::new(data, t, now, RelativeStyle::Narrow).datetime().to_string();
+        assert_eq!(at(now), "2026-03-22T15:04:05Z");
+        assert_eq!(at(now + Duration::from_millis(250)), "2026-03-22T15:04:05.250Z");
+        assert_eq!(at(UNIX_EPOCH - Duration::from_micros(1)), "1969-12-31T23:59:59.999Z");
+        assert_eq!(Relative::new(data, now, now, RelativeStyle::Long).to_string(), "0 seconds ago");
+        assert_eq!(Relative::new(data, now + Duration::from_secs(38_100), now, RelativeStyle::Narrow).to_string(), "in 10h");
     }
 
     /// The format each case's page would send a script (`t.js().number()`, `.money(..)`,
@@ -616,6 +1048,14 @@ mod tests {
                     Arg::<ts::NumberFormat>::write_arg(&NumberFormat::new(data), &ctx, &mut out);
                     "number".to_string()
                 }
+                ["percent", digits] => {
+                    Arg::<ts::PercentFormat>::write_arg(&PercentFormat::new(data, digits.parse().unwrap()), &ctx, &mut out);
+                    format!("percent {digits}")
+                }
+                ["change", digits] => {
+                    Arg::<ts::PercentFormat>::write_arg(&PercentFormat::change(data, digits.parse().unwrap()), &ctx, &mut out);
+                    format!("change {digits}")
+                }
                 ["money"] => {
                     let code = input.split_once(' ').unwrap().1;
                     Arg::<ts::MoneyFormat>::write_arg(&MoneyFormat::new(data, Currency::parse(code).unwrap()), &ctx, &mut out);
@@ -633,6 +1073,8 @@ mod tests {
                     Arg::<ts::DateFormat>::write_arg(&format, &ctx, &mut out);
                     format!("date {style}")
                 }
+                // Not a script's format: `corten_ui::RelativeTime` has the browser's Intl write it.
+                ["relative", _] => continue,
                 _ => panic!("{line}"),
             };
             let json = out[1..]

@@ -28,15 +28,15 @@ backend.
    and agent processes. `corten-feed` uses the same `check_seq` and `apply_ops` rules, so the
    server follower and every client apply patches the same way.
 3. The example's `watch` handler serves a browser with and without JavaScript, and a data
-   client, from one function. `examples/hello/src/app.rs` tests all three.
+   client, from one function. `examples/watchlist/src/home.rs` tests all three.
 4. `corten::agent` (feature `agent`): actions as Model Context Protocol tools over HTTP POST.
-   `examples/item-page` exposes `items.get` (a read tool returning the screen JSON) and
+   `examples/card-market` exposes `items.get` (a read tool returning the screen JSON) and
    `alerts.create` (the same rule the form uses), behind bearer tokens.
 5. PWA: a manifest and a generated service worker (`corten::pwa`) make the web app installable
-   with an offline fallback page; the item-page smoke test checks both in Chromium.
+   with an offline fallback page; the card-market smoke test checks both in Chromium.
 6. JSON-only routes (`App::api`): endpoints with no screen (webhooks, OAuth callbacks, calls
    between services, public APIs, the MCP endpoint) under a prefix where every failure is JSON
-   and there is no document or nonce. `examples/item-page` mounts its MCP endpoint this
+   and there is no document or nonce. `examples/card-market` mounts its MCP endpoint this
    way, and lets agents' pages on `AGENT_ORIGINS` call it from the browser.
 
 ## Native apps (next, not built)
@@ -78,6 +78,7 @@ definition:
 | Feed rows to script | the row struct | `corten::types` writes `types/app.d.ts`; `subscribe<Row>` types the snapshot and every patch |
 | Form fields to handler | the input struct | `#[derive(Fields)]`: views print `Input::FIELDS.email`, a `FieldName`, and `Errors` takes only that, so a renamed field is a compile error |
 | Links to routes | the route struct (`#[derive(Route)]`) | the router mounts `Route::PATH`; a path parameter without a field, a link missing a field, or a redirect or current-page check given a path as text does not compile |
+| Route parameters to handler | the route struct | the handler reads them back as `Params<Route>`, the struct's fields owned and read by the names the link writes; in a routes module a handler of a route with a path parameter that does not take its own `Params` does not compile |
 | Markup to stylesheet | the component's CSS file (`#[component(css)]`) | each class is a constant only that component (and helpers that name it, `css = Owner`) can use; a class the file lacks, or one written as text, does not compile; an unused class is a dead-code warning; a rule that does not start inside the component does not compile |
 | Views to tokens | the token file (`tokens!`) | scales are enums, utilities take them per breakpoint, and a theme that overrides a token its scale lacks does not compile |
 | Text to catalogs | the default locale's catalog (`messages!`) | every locale must have the same keys and arguments; a key is a method and an argument a parameter, so a misspelling does not compile |
@@ -130,13 +131,16 @@ library. Measured against a production marketplace app:
 | Need | Owner | Why |
 |---|---|---|
 | Pages, patches, handlers, feeds across instances, CSP and CSRF, assets, head tags, PWA, catalog, sitemap, health, shutdown, agent tools | Framework | Built and tested earlier. |
-| Layout data on client navigation | Framework: page key (from the `Caller` a handler read), `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the layout went stale. It reloads when the caller or deploy changes and keeps `aria-current` right. |
+| Layout data on client navigation | Framework: page key (from the `Caller` a handler read), `data-nav` and `data-nav-group` | Client navigation swaps only `<main>`, so only the framework can know the layout went stale. It reloads when the caller or deploy changes and keeps `aria-current` right. |
 | Which nav items show for which roles | App | Roles and permissions are the app's model; the layout component decides. |
 | Which routes need sign-in or a permission | Framework: `Caller<T>` and `Identify`, `caller = T` on a routes module; the decision is the app's | The answer has to come out right in each request mode (a redirect, `corten-location`, a JSON 401, the error page) and before the handler reads the body, and a route that forgets it should not compile, which only the framework can check. Who passes is the app's model, in its `Identify`. |
+| Return addresses (`?next=`) | Framework: `Local`, `Req::serves` | A check that a path stays on the site has to know how browsers read `//`, `/\` and dot segments, and whether the app has a page there has to match the route the router picks, which only the framework holds. Where to send a user without one is the app's. |
 | Field errors | Framework: `Errors`, `req.invalid`, focus on first invalid field | The 422 has to come out right in each request mode (patch, page, JSON) and as an agent error; that is transport the framework owns. |
 | Routes with no screen (webhooks, public APIs) | Framework: `JsonResult<T>`, `App::api` | The framework's error pages and nonce assume a browser asking for a page; only the framework can switch them off for a prefix and answer every failure as JSON instead. |
 | HTTP caching of pages and JSON | Framework: `Public<..>`, `private, no-cache` by default | Only the framework sees everything that makes a response personal (a caller read, the request's credentials, the mode, the nonce, a cookie set), so only it can refuse to mark such a response shareable. What to cache on the server (data, queries) is the app's, since only the app knows when its data changes. |
-| Cross-origin calls to those routes (CORS) | Framework: `Api::allow_origin` | The framework's same-origin check refuses cross-site writes, so it is the only layer that can let one site's calls through for some routes while the pages keep refusing them. Anything beyond one allowed site and its preflight is `tower-http`'s CORS layer around the app (`app.router().layer(..)`). |
+| Which host names the app answers to | Framework: `Policy::host`, `HOSTS` | The framework chooses the loopback bind and is the only layer in front of every route (the app's, the API's, `/health`, `/corten`), so it is the one place a DNS-rebound request can be turned away before any of them runs. Which names are the app's is the deploy's, in `HOSTS`. |
+| The client's address behind a proxy | Framework: `ClientIp`, `Policy::proxy`, `PROXIES` | Only the framework holds the connection, so only it can give a handler the peer, and which hop of `X-Forwarded-For` to believe is one rule that every handler reading it has to get right (a header anyone can write). Which proxies are in front is the deploy's, in `PROXIES`. |
+| Cross-origin calls to those routes (CORS) | Framework: `Api::allow_origin` | The framework's same-origin check refuses cross-site writes, so it is the only layer that can let one site's calls through for some routes while the pages keep refusing them. Anything beyond one allowed site and its preflight is `tower-http`'s CORS layer around the app (`App::layer`). |
 | Types across the server/browser seam | Framework: `corten::types` (TypeScript from the Rust types), `#[component(js)]` handler calls checked against JSDoc, `#[event]`, `subscribe<Row>`, `#[derive(Fields)]` | The framework defines the seams (handler calls, events, feeds, form posts, tools), so it is the only layer that can type both ends. |
 | Response compression | Framework: `corten::compress` | The framework serves the runtime and assets and knows they never change (compress once, best level) and that pages are generated per request (fastest level that pays). A generic layer re-compresses static files on every request at a level tuned for neither. |
 | Validation rules and messages | App | Domain rules; messages come from the app's catalog. |

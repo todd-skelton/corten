@@ -1,0 +1,16 @@
+{
+  "grid": {
+    "unsent_one": "{count} price not saved",
+    "unsent_other": "{count} prices not saved",
+    "items_one": "{count} item",
+    "items_other": "{count} items",
+    "shown": "{shown} of {total} shown"
+  },
+  "statement": {
+    "title": "Statement",
+    "set": "Set",
+    "items": "Items",
+    "value": "Stock value",
+    "total": "Total"
+  }
+}

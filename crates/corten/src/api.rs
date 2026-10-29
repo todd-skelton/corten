@@ -18,14 +18,20 @@
 //!   check on writes work as they do for pages.
 //!
 //! ```ignore
-//! async fn price(Path(id): Path<String>) -> Json<serde_json::Value> {
-//!     Json(serde_json::json!({ "id": id, "lowest": "$0.50" }))
+//! #[corten::routes(api = ApiRoot)]
+//! mod api {
+//!     #[route("/api")]
+//!     pub struct ApiRoot;
+//!
+//!     #[route("/api/items/{id}/price", get = price)]
+//!     pub struct ItemPrice<'a> { pub id: &'a str }
 //! }
 //!
-//! corten::serve(App::new(pages).api::<ApiRoot>(|api| {
-//!     api.route::<ItemPrice>(get(price)).allow_origin("https://partner.example")
-//! }))
-//! .await
+//! async fn price(item: Params<api::ItemPrice<'_>>) -> Json<serde_json::Value> {
+//!     Json(serde_json::json!({ "id": item.id, "lowest": "$0.50" }))
+//! }
+//!
+//! corten::serve(App::new(pages).api(|routes| api::api(routes).allow_origin("https://partner.example"))).await
 //! ```
 //!
 //! The same example compiles in `docs/guide/app.md` (JSON-only routes).
@@ -42,22 +48,45 @@ use axum::{
     Router,
 };
 
-use crate::{html::json_string, route::Route as TypedRoute};
+use crate::{
+    html::json_string,
+    route::{Prefix, Route as TypedRoute},
+};
 
 /// Routes that answer only JSON, with their settings, under the prefix `P`: what
 /// [`crate::App::api`] gives its function to fill in.
 pub struct Api<P> {
     pub(crate) routes: Router,
     pub(crate) origins: Vec<String>,
+    deadline: Option<Option<std::time::Duration>>,
+    errors: Option<ErrorShape>,
+    middleware: Vec<std::sync::Arc<dyn crate::middleware::Erased>>,
     types: PhantomData<fn() -> P>,
 }
 
-impl<P: TypedRoute> Api<P> {
+/// How an API writes the failures Corten answers for it ([`Api::errors`]): a status and a
+/// message to a JSON body.
+#[derive(Clone)]
+pub(crate) struct ErrorShape(std::sync::Arc<WriteError>);
+
+type WriteError = dyn Fn(StatusCode, &str) -> Vec<u8> + Send + Sync;
+
+impl<P: Prefix> Api<P> {
     pub(crate) fn new() -> Self {
-        Api { routes: Router::new(), origins: Vec::new(), types: PhantomData }
+        Api {
+            routes: Router::new(),
+            origins: Vec::new(),
+            deadline: None,
+            errors: None,
+            middleware: Vec::new(),
+            types: PhantomData,
+        }
     }
 
-    /// A route of the API, at `R::PATH`: `.route::<ItemJson>(get(item_json))`, with
+    /// A route of the API added by hand, at `R::PATH`, for one a routes module cannot name: an
+    /// endpoint built from a value, like the MCP endpoint, `.route::<Mcp>(tools.route())`. A
+    /// function goes in the API's `#[corten::routes(api = ..)]` module instead. Otherwise
+    /// `.route::<ItemJson>(get(item_json))`, with
     /// `.with_state(state)` on the [`crate::Methods`] when its handlers take `State`. `R`'s path is at
     /// or under the prefix, or the app does not build, so no route of the API is served outside
     /// it (and its settings).
@@ -78,11 +107,79 @@ impl<P: TypedRoute> Api<P> {
     pub fn route<R: TypedRoute>(mut self, methods: crate::Methods) -> Self {
         const {
             assert!(
-                under_const(P::PATH, R::PATH),
+                under_const(P::PREFIX, R::PATH),
                 "corten: a route of an API is at or under its prefix (the note below names the API's prefix and the route)"
             )
         };
         self.routes = self.routes.route(R::PATH, methods.0);
+        self
+    }
+
+    /// A step of the API's own in each request under its prefix (a partner's rate limit, a usage
+    /// count), after the app's middleware ([`crate::App::middleware`]) and before the handler:
+    /// `.middleware(PartnerLimit::new(600))`, or a tuple run in order. Given again, it runs after
+    /// what was given before. A request anywhere else never meets it. It refuses with a
+    /// [`crate::Refused`], which is JSON here like every failure; see [`crate::middleware`].
+    pub fn middleware<M: crate::Middleware>(mut self, middleware: M) -> Self {
+        self.middleware.push(std::sync::Arc::new(middleware));
+        self
+    }
+
+    /// How long these routes may take to start their answer, in place of [`crate::App::deadline`]
+    /// for every request under the prefix: `.deadline(Duration::from_secs(300))` for an API that
+    /// waits on a slow upstream (a model, a report), so the rest of the app keeps its shorter one.
+    /// Past it the answer is the JSON 503 and the request's [`crate::Signal`] aborts with
+    /// [`crate::Abort::Deadline`], as at the app's. `None` removes it, for routes that bound
+    /// themselves.
+    pub fn deadline(mut self, deadline: impl Into<Option<std::time::Duration>>) -> Self {
+        self.deadline = Some(deadline.into());
+        self
+    }
+
+    /// The JSON every failure Corten answers under the prefix is written as, in place of
+    /// `{"error":{"status","message"}}`, for an API that speaks another protocol's error shape:
+    /// an unknown URL (404), a wrong method (405, with `Allow`), a cross-site write (403), the
+    /// deadline (503), a request an extractor rejects, a `Caller` that refuses (401 or 403, with
+    /// `WWW-Authenticate`) and a handler's `Error`. `message` is what the client may be told: a
+    /// 4xx's message, a 5xx's reason (and its message under `corten dev`). A failure with a JSON
+    /// body of the handler's own, and a [`crate::Relay`]'s, pass through as they are, and so
+    /// does the 422 of the input's field errors (`?` on `Errors` in a `JsonResult` handler,
+    /// `req.invalid`), which keeps Corten's shape: a status and a message have no place for its
+    /// `fields`.
+    ///
+    /// ```
+    /// use corten::{axum::http::StatusCode, prelude::*};
+    ///
+    /// #[derive(ToJson)]
+    /// struct Failure { r#type: &'static str, error: Detail }
+    ///
+    /// #[derive(ToJson)]
+    /// struct Detail { r#type: &'static str, message: String }
+    ///
+    /// fn shape(status: StatusCode, message: &str) -> Failure {
+    ///     let kind = match status.as_u16() {
+    ///         401 => "authentication_error",
+    ///         403 => "permission_error",
+    ///         404 => "not_found_error",
+    ///         429 => "rate_limit_error",
+    ///         400..=499 => "invalid_request_error",
+    ///         _ => "api_error",
+    ///     };
+    ///     Failure { r#type: "error", error: Detail { r#type: kind, message: message.to_string() } }
+    /// }
+    ///
+    /// #[corten::routes(api = V1)]
+    /// mod v1 {
+    ///     #[route("/v1")]
+    ///     pub struct V1;
+    /// }
+    ///
+    /// let app = App::new(Routes::new()).api(|api| v1::api(api).errors(shape));
+    /// # let _ = app.router();
+    /// ```
+    #[cfg(feature = "json")]
+    pub fn errors<T: crate::ToJson>(mut self, write: impl Fn(StatusCode, &str) -> T + Send + Sync + 'static) -> Self {
+        self.errors = Some(ErrorShape(std::sync::Arc::new(move |status, message| crate::json::to_vec(&write(status, message)))));
         self
     }
 
@@ -108,11 +205,23 @@ impl<P: TypedRoute> Api<P> {
 pub(crate) struct Mount {
     pub prefix: String,
     origins: Vec<String>,
+    /// The API's own deadline, when it set one ([`Api::deadline`]).
+    pub deadline: Option<Option<std::time::Duration>>,
+    /// How its failures are written, when it says ([`Api::errors`]).
+    pub errors: Option<ErrorShape>,
+    /// Its own middleware ([`Api::middleware`]), in the order it runs.
+    pub middleware: crate::middleware::Stack,
 }
 
 impl Mount {
     pub fn new<P>(prefix: String, api: &Api<P>) -> Self {
-        Mount { prefix, origins: api.origins.clone() }
+        Mount {
+            prefix,
+            origins: api.origins.clone(),
+            deadline: api.deadline,
+            errors: api.errors.clone(),
+            middleware: api.middleware.iter().cloned().collect(),
+        }
     }
 
     pub fn contains(&self, path: &str) -> bool {
@@ -238,11 +347,11 @@ pub(crate) fn shown(status: StatusCode, detail: Option<&str>, dev: bool) -> &str
     }
 }
 
-/// `res` with its failure as the JSON error body; a success, or a failure with a body of the
-/// handler's own that is not plain text, is returned unchanged.
-pub(crate) async fn json_failure(res: Response, dev: bool) -> Response {
+/// `res` with its failure as the JSON error body (in `shape`, when the API gave one); a success,
+/// or a failure with a body of the handler's own that is not plain text, is returned unchanged.
+pub(crate) async fn json_failure(res: Response, dev: bool, shape: Option<&ErrorShape>) -> Response {
     let status = res.status();
-    if !(status.is_client_error() || status.is_server_error()) {
+    if !(status.is_client_error() || status.is_server_error()) || res.extensions().get::<crate::answer::Relayed>().is_some() {
         return res;
     }
     let failed = res.extensions().get::<crate::Failed>().map(|f| f.0.clone());
@@ -265,7 +374,11 @@ pub(crate) async fn json_failure(res: Response, dev: bool) -> Response {
         }
         None => None,
     };
-    let body = error_body(status, shown(status, detail.as_deref(), dev));
+    let shown = shown(status, detail.as_deref(), dev);
+    let body = match shape {
+        Some(ErrorShape(write)) => write(status, shown),
+        None => error_body(status, shown).into_bytes(),
+    };
     parts.headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(JSON));
     parts.headers.remove(header::CONTENT_LENGTH);
     parts.headers.remove(HeaderName::from_static("corten-page"));

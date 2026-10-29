@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 
-use corten_feed::Change;
+use corten::feed::Change;
 
 use super::*;
 
@@ -135,7 +135,7 @@ async fn two_instances_converge_and_a_late_one_backfills_its_replay_log() {
     let c = Cluster::start(pool.clone(), async_nats::connect(&nats).await.unwrap(), Items, options("c")).await.unwrap();
     let fc = c.feed(&feed).await.unwrap().unwrap();
     assert_eq!(fc.seq(), 20);
-    let cursor = Since(Some(corten_feed::Cursor::new(fc.generation(), 15)));
+    let cursor = Since(Some(corten::feed::Cursor::new(fc.generation(), 15)));
     let body = fc.live(cursor).into_body();
     let mut stream = body.into_data_stream();
     let first = futures_util::StreamExt::next(&mut stream).await.unwrap().unwrap();
@@ -189,7 +189,7 @@ async fn an_unused_feed_is_unloaded_and_loads_again_with_its_replay_log() {
 
     // A live stream keeps it loaded: a handle alone does not, so without the stream the feed
     // could be unloaded (and stop following) before the relay publishes the patches.
-    let stream = loaded.live(Since(Some(corten_feed::Cursor::new(&generation, 0))));
+    let stream = loaded.live(Since(Some(corten::feed::Cursor::new(&generation, 0))));
     for n in 1..=3 {
         set(&pool, &feed, n, None).await;
     }
@@ -203,8 +203,53 @@ async fn an_unused_feed_is_unloaded_and_loads_again_with_its_replay_log() {
     eventually("unloaded", || !cluster.stats().iter().any(|(k, _, _)| k == &feed)).await;
     let again = cluster.feed(&feed).await.unwrap().unwrap();
     assert_eq!((again.seq(), again.generation()), (3, generation.as_str()));
-    let body = again.live(Since(Some(corten_feed::Cursor::new(&generation, 1)))).into_body();
+    let body = again.live(Since(Some(corten::feed::Cursor::new(&generation, 1)))).into_body();
     let first = futures_util::StreamExt::next(&mut body.into_data_stream()).await.unwrap().unwrap();
     let text = String::from_utf8(first.to_vec()).unwrap();
     assert!(text.contains(&format!("id: {generation}-2\n")) && !text.contains("event: sync"), "{text}");
+}
+
+/// The feed's routes as an app serves them.
+#[corten::routes(state = Cluster<Items>)]
+mod url {
+    #[route("/feeds/{key}", get = feed_snapshot)]
+    pub struct FeedUrl<'a> {
+        pub key: &'a str,
+    }
+}
+
+async fn feed_snapshot(
+    corten::prelude::State(cluster): corten::prelude::State<Cluster<Items>>,
+    corten::Params(feed): corten::Params<url::FeedUrl<'_>>,
+) -> corten::Result<FeedResponse> {
+    cluster.snapshot(&feed.key).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_feed_route_answers_a_snapshot_and_json_404_for_a_feed_that_does_not_exist() {
+    use tower::ServiceExt;
+    let Some((db, nats)) = urls() else { return eprintln!("skipped: set CORTEN_TEST_DATABASE_URL and CORTEN_TEST_NATS_URL") };
+    let pool = pool(&db).await;
+    let feed = key("route");
+    new_feed(&pool, &feed).await;
+    let options = Options { instance: "route".into(), ..Options::default() };
+    let cluster = Cluster::start(pool, async_nats::connect(&nats).await.unwrap(), Items, options).await.unwrap();
+    let get = |path: String| {
+        let app = corten::App::new(url::router(cluster.clone())).router();
+        async move {
+            let req = corten::axum::http::Request::get(path).body(corten::axum::body::Body::empty()).unwrap();
+            let res = app.oneshot(req).await.unwrap();
+            let status = res.status();
+            let kind = res.headers()["content-type"].to_str().unwrap().to_string();
+            let body = corten::axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            (status, kind, String::from_utf8(body.to_vec()).unwrap())
+        }
+    };
+    let (status, _, body) = get(format!("/feeds/{feed}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(r#""id":"a""#), "{body}");
+    // A browser asked too (no Accept for JSON): a feed's route answers its failures as JSON.
+    let (status, kind, body) = get(format!("/feeds/{}", key("missing"))).await;
+    assert_eq!((status, kind.as_str()), (StatusCode::NOT_FOUND, "application/json"));
+    assert!(body.contains(r#""status":404"#) && body.contains("no feed missing"), "{body}");
 }

@@ -1,7 +1,7 @@
-//! Forms: reading what a form posts ([`Form`], [`Query`]) and validation errors for it, shared
+//! Forms: reading what a form posts ([`Form`]) and validation errors for it, shared
 //! by every surface.
 //!
-//! [`Form`] and [`Query`] read a body or a query string the way a browser sends it, a key once
+//! [`Form`] and [`crate::Params`] read a body or a query string the way a browser sends it, a key once
 //! per value, so a `Vec` field gets every checked box or selected option, a `bool` reads a
 //! checkbox (`on`), and a blank field is `None` for an `Option`:
 //!
@@ -60,6 +60,8 @@
 //! assert_eq!(Terms { price_min: Some("5"), in_stock: None }.href(), "/search?priceMin=5");
 //! ```
 //!
+//! Its handler reads what the form sent back as the route's own [`crate::Params`].
+//!
 //! The rest of this module carries validation errors to each surface.
 //!
 //! The rules stay in the app (they are business rules); Corten only carries the result to each
@@ -101,27 +103,30 @@
 use std::fmt;
 
 use axum::{
-    extract::{rejection::RawFormRejection, FromRequest, FromRequestParts, RawForm, Request},
-    http::{header, request::Parts, HeaderValue, Method, StatusCode},
+    extract::{rejection::RawFormRejection, FromRequest, RawForm, Request},
+    http::{header, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::de::DeserializeOwned;
 
 use crate::view::{escape_into, quoted, AttrValue, Attrs, Id, Render};
 
-mod de;
+pub(crate) mod de;
+mod upload;
 pub use de::{from_bytes, FormError};
+pub use upload::{File, Files, Upload, UploadError};
+
+/// Implemented by `#[derive(Fields)]` for a form with [`Files`], whose fields nothing else reads.
+#[doc(hidden)]
+pub trait __FileInputs {
+    fn __file_inputs(&self) -> usize;
+}
 
 /// A form's fields: the body of a `POST` (`application/x-www-form-urlencoded`), or the query
 /// string of a `GET`, read into `T` the way a browser sends them (see the [module](self)).
 /// As an extractor it reads the body, so it comes last among a handler's arguments.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Form<T>(pub T);
-
-/// The query string read into `T` as [`Form`] reads a body: `?condition=nm&condition=lp` is a
-/// `Vec` field with both. A typed route's list field writes it that way.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Query<T>(pub T);
 
 impl<T: DeserializeOwned, S: Send + Sync> FromRequest<S> for Form<T> {
     type Rejection = FormRejection;
@@ -138,18 +143,7 @@ impl<T: DeserializeOwned, S: Send + Sync> FromRequest<S> for Form<T> {
     }
 }
 
-impl<T: DeserializeOwned, S: Send + Sync> FromRequestParts<S> for Query<T> {
-    type Rejection = FormRejection;
-
-    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, FormRejection> {
-        let query = parts.uri.query().unwrap_or_default();
-        from_bytes(query.as_bytes())
-            .map(Query)
-            .map_err(|error| FormRejection::invalid(StatusCode::BAD_REQUEST, "Failed to deserialize query string", error))
-    }
-}
-
-/// Why [`Form`] or [`Query`] refused a request: plain text, as axum's rejections are, so a
+/// Why [`Form`] or [`crate::Params`] refused a request: plain text, as axum's rejections are, so a
 /// browser gets the app's error page (the text under it in dev mode) and a JSON client the JSON
 /// error.
 #[derive(Debug)]
@@ -162,7 +156,7 @@ pub enum FormRejection {
 }
 
 impl FormRejection {
-    fn invalid(status: StatusCode, what: &str, error: FormError) -> Self {
+    pub(crate) fn invalid(status: StatusCode, what: &str, error: FormError) -> Self {
         FormRejection::Invalid(status, format!("{what}: {error}"))
     }
 }
@@ -205,7 +199,7 @@ macro_rules! deref {
         }
     )*};
 }
-deref!(Form, Query);
+deref!(Form);
 
 /// The name a form field posts under, from `#[derive(Fields)]`: `Input::FIELDS.email`. Markup
 /// prints it (`name={f.email}`) and [`Errors`] is keyed by it, so renaming or misspelling a field
@@ -333,9 +327,11 @@ pub struct Within<'a, I> {
 
 impl<I: Id> Within<'_, I> {
     /// `aria-invalid="true" aria-describedby="{form}-{field}-error"` when `field` has an error,
-    /// else nothing: `<input name={f.email} {..e.aria(f.email)}>`.
+    /// else nothing: `<input name={f.email} {..e.aria(f.email)}>`. A field with a hint of its own
+    /// gives it here, `{..e.aria(f.email).hint(&EmailHintId)}`, and is described by the hint and
+    /// then the error; a tag that writes `aria-describedby` itself as well does not compile.
     pub fn aria(&self, field: FieldName) -> Aria<'_, I> {
-        Aria { form: &self.form, field, invalid: self.errors.has(field) }
+        Aria { form: &self.form, field, invalid: self.errors.has(field), hint: None }
     }
 
     /// `<p class="field-error" id="{form}-{field}-error">message</p>` when `field` has an error,
@@ -358,13 +354,48 @@ pub struct Aria<'a, I> {
     form: &'a I,
     field: FieldName,
     invalid: bool,
+    hint: Option<&'a dyn WriteId>,
+}
+
+impl<'a, I> Aria<'a, I> {
+    /// The field's hint, the element with the id `hint` (a `#[derive(Id)]`), which describes it
+    /// always, ahead of its error: `aria-describedby="{hint} {form}-{field}-error"`.
+    pub fn hint<H: Id>(self, hint: &'a H) -> Self {
+        Aria { hint: Some(hint), ..self }
+    }
+}
+
+/// [`Id`] without its `NAME`, so a hint of any `Id` type is held behind one pointer.
+trait WriteId {
+    fn write_id(&self, out: &mut String);
+}
+
+impl<T: Id + ?Sized> WriteId for T {
+    fn write_id(&self, out: &mut String) {
+        Id::write_id(self, out)
+    }
+}
+
+impl<I> crate::view::__private::Writes for Aria<'_, I> {
+    const WRITES: &'static [&'static str] = &["aria-invalid", "aria-describedby"];
 }
 
 impl<I: Id> Attrs for Aria<'_, I> {
     fn render_attrs(&self, out: &mut String) {
         if self.invalid {
-            out.push_str(r#" aria-invalid="true" aria-describedby=""#);
-            message_id(self.form, self.field, out);
+            out.push_str(r#" aria-invalid="true""#);
+        }
+        if self.invalid || self.hint.is_some() {
+            out.push_str(r#" aria-describedby=""#);
+            if let Some(hint) = self.hint {
+                hint.write_id(out);
+                if self.invalid {
+                    out.push(' ');
+                }
+            }
+            if self.invalid {
+                message_id(self.form, self.field, out);
+            }
             out.push('"');
         }
     }
@@ -553,8 +584,8 @@ impl serde::Serialize for Errors {
 /// `{"error":{"status":422,"message":"email: Enter an email address.","fields":{"email":"Enter an email address."}}}`.
 /// A message about the whole form comes first in `message` and is `form` too:
 /// `{"error":{"status":422,"message":"Sold out.","form":"Sold out.","fields":{}}}`.
-/// An [`crate::App::api`] handler returns it as its error, `Result<Json<T>, Errors>`; pages use
-/// [`crate::Req::invalid`], which answers this way to data clients.
+/// A JSON handler `?`s it (`check(&input)?` in a `JsonResult<T>` handler, whose error is a
+/// [`crate::JsonError`]); pages use [`crate::Req::invalid`], which answers this way to data clients.
 #[cfg(feature = "json")]
 impl axum::response::IntoResponse for Errors {
     fn into_response(self) -> axum::response::Response {
@@ -626,6 +657,27 @@ mod tests {
         assert_eq!(Errors::new().into_result(1), Ok(1));
     }
 
+    #[derive(crate::view::Id)]
+    struct HintId<'a>(&'a str);
+
+    #[test]
+    fn a_hint_describes_its_field_ahead_of_the_error() {
+        let mut e = Errors::new();
+        e.add(PRICE, "Enter a price.");
+        let row = e.within(RowId("s1"));
+        let attrs = |aria: Aria<'_, RowId<'_>>| {
+            let mut out = String::new();
+            aria.render_attrs(&mut out);
+            out
+        };
+        assert_eq!(
+            attrs(row.aria(PRICE).hint(&HintId("a<b"))),
+            r#" aria-invalid="true" aria-describedby="hint-a&lt;b row-s1-price-error""#
+        );
+        assert_eq!(attrs(row.aria(NAME).hint(&HintId("n"))), r#" aria-describedby="hint-n""#);
+        assert_eq!(attrs(row.aria(NAME)), "");
+    }
+
     #[test]
     fn the_form_has_a_message_of_its_own() {
         let mut e = Errors::new();
@@ -690,23 +742,6 @@ mod tests {
         assert!(crate::api::is_plain_text(res.headers()));
         let bad_get = Form::<Picks>::from_request(request("GET", "/?page=x", None, ""), &()).await.unwrap_err();
         assert_eq!(bad_get.into_response().status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn query_reads_repeated_keys() {
-        let (mut parts, _) = request("GET", "/search?ids=nm&ids=lp", None, "").into_parts();
-        let Query(picks): Query<Picks> = Query::from_request_parts(&mut parts, &()).await.unwrap();
-        assert_eq!(picks.ids, ["nm", "lp"]);
-        let (mut parts, _) = request("GET", "/search", None, "").into_parts();
-        let Query(picks): Query<Picks> = Query::from_request_parts(&mut parts, &()).await.unwrap();
-        assert!(picks.ids.is_empty() && picks.page.is_none());
-        let (mut parts, _) = request("GET", "/search?page=1&page=2", None, "").into_parts();
-        let bad = Query::<Picks>::from_request_parts(&mut parts, &()).await.unwrap_err();
-        assert_eq!(
-            bad.to_string(),
-            "Failed to deserialize query string: page: sent 2 times; a field that takes several values is a Vec"
-        );
-        assert_eq!(bad.into_response().status(), StatusCode::BAD_REQUEST);
     }
 
     #[cfg(feature = "json")]

@@ -44,6 +44,39 @@ impl Decimal {
         Some(Decimal { negative, mantissa, scale: frac.len() as u8 })
     }
 
+    /// This ratio as a percentage, the value Ã— 100, with at most `digits` fraction digits:
+    /// rounded half away from zero, without trailing zeros (0.0290 is 2.9), as Intl's
+    /// `maximumFractionDigits` writes it.
+    fn percent(self, digits: u8) -> Self {
+        let shifted = self.hundredfold();
+        let mut d = if shifted.scale > digits { shifted.rescale(digits) } else { shifted };
+        while d.scale > 0 && d.mantissa % 10 == 0 {
+            d.mantissa /= 10;
+            d.scale -= 1;
+        }
+        d
+    }
+
+    /// This ratio as a change: the percentage with exactly `digits` fraction digits (0.006 is
+    /// 0.60), rounded half away from zero, as Intl writes it given both `minimumFractionDigits`
+    /// and `maximumFractionDigits`.
+    fn change(self, digits: u8) -> Self {
+        let d = self.hundredfold();
+        // At most 38 digits in all, as a `Decimal` holds: those of the whole part (before
+        // rounding), then the fraction's (`format.js` caps them the same way).
+        let whole = d.mantissa / 10u128.pow(u32::from(d.scale));
+        let whole_digits = whole.checked_ilog10().map_or(1, |n| n as u8 + 1);
+        d.rescale(digits.min(38u8.saturating_sub(whole_digits)))
+    }
+
+    /// The value times 100, moving the point.
+    fn hundredfold(self) -> Self {
+        match self.scale.checked_sub(2) {
+            Some(scale) => Decimal { scale, ..self },
+            None => Decimal { mantissa: self.mantissa.saturating_mul(10u128.pow(u32::from(2 - self.scale))), scale: 0, ..self },
+        }
+    }
+
     /// The same value with `digits` fraction digits: padded with zeros, or rounded half away from
     /// zero (21.505 is 21.51), as Intl rounds an amount.
     fn rescale(self, digits: u8) -> Self {
@@ -459,31 +492,63 @@ fn unix_seconds(at: SystemTime) -> i64 {
     }
 }
 
-/// A number or an amount of money in a locale: what `t.number` and `t.money` return. It renders
-/// in `html!` as text or an attribute value, and is a message argument like any `Display` value.
+/// A number, an amount of money, a percentage or a change in a locale: what `t.number`,
+/// `t.money`, `t.percent` and `t.change` return. It renders in `html!` as text or an attribute value, and is a message
+/// argument ([`super::Arg`]).
 #[derive(Clone, Copy)]
 pub struct Formatted {
     data: &'static __private::LocaleData,
     value: Decimal,
-    currency: Option<Currency>,
+    kind: Kind,
+}
+
+#[derive(Clone, Copy)]
+enum Kind {
+    Number,
+    Money(Currency),
+    /// `value` is already Ã— 100 and rounded.
+    Percent,
+    /// `value` is already times 100 and rounded to its digits; a gain is written with its sign.
+    Change,
 }
 
 impl Formatted {
     #[doc(hidden)]
     pub fn number(data: &'static __private::LocaleData, value: Decimal) -> Self {
-        Formatted { data, value, currency: None }
+        Formatted { data, value, kind: Kind::Number }
     }
 
     #[doc(hidden)]
     pub fn money(data: &'static __private::LocaleData, amount: &impl Amount, currency: Currency) -> Self {
-        Formatted { data, value: amount.in_digits(currency.digits()), currency: Some(currency) }
+        Formatted { data, value: amount.in_digits(currency.digits()), kind: Kind::Money(currency) }
+    }
+
+    #[doc(hidden)]
+    pub fn percent(data: &'static __private::LocaleData, ratio: Decimal, digits: u8) -> Self {
+        Formatted { data, value: ratio.percent(digits), kind: Kind::Percent }
+    }
+
+    #[doc(hidden)]
+    pub fn change(data: &'static __private::LocaleData, ratio: Decimal, digits: u8) -> Self {
+        Formatted { data, value: ratio.change(digits), kind: Kind::Change }
     }
 
     fn write(&self, out: &mut dyn Write) -> fmt::Result {
         let data = self.data;
         let negative = usize::from(self.value.negative);
-        let Some(currency) = self.currency else {
-            return self.write_in(data.number[negative], &data.plain, "", out);
+        let currency = match self.kind {
+            Kind::Number => return self.write_in(data.number[negative], &data.plain, "", out),
+            Kind::Percent => return self.write_in(data.percent[negative], &data.percent_separators, "", out),
+            // As Intl's `signDisplay: "exceptZero"`: no sign on what rounds to zero, either way.
+            Kind::Change => {
+                let template = match (self.value.mantissa, self.value.negative) {
+                    (0, _) => data.percent[0],
+                    (_, true) => data.percent[1],
+                    (_, false) => data.percent[2],
+                };
+                return self.write_in(template, &data.percent_separators, "", out);
+            }
+            Kind::Money(currency) => currency,
         };
         let code = currency.code();
         let template = match data.currencies.binary_search_by(|(c, ..)| (*c).cmp(code)) {
@@ -518,6 +583,192 @@ impl Formatted {
         }
         out.write_str(&template[start..])
     }
+}
+
+/// Money as a person types it in `data`'s locale, read back into the currency's minor units:
+/// what `t.parse_money(text, currency)` returns. What `t.money` writes is read back, and what a
+/// person types for it: with or without the symbol or the code (on either side), the direction
+/// marks, the group separators or the fraction; any space where the locale writes one; the
+/// locale's digits or ASCII ones (and Arabic-Indic ones), `.` where the locale's decimal is `٫`.
+/// A sign, a group of the wrong size, a grouped number whose first group starts with `0`, another
+/// locale's decimal separator, more fraction digits than the currency shows or an amount over
+/// `u64` is `None`.
+#[doc(hidden)]
+pub fn parse_money(data: &__private::LocaleData, text: &str, currency: Currency) -> Option<Minor<u64>> {
+    let code = currency.code();
+    let template = match data.currencies.binary_search_by(|(c, ..)| (*c).cmp(code)) {
+        Ok(i) => data.currencies[i].1,
+        Err(_) => data.money[0],
+    };
+    let (prefix, suffix) = template.split_once('\u{1}')?;
+    // Direction marks are dropped; most input has none, and is read where it lies.
+    let unmarked: std::borrow::Cow<'_, str> =
+        if text.chars().any(is_mark) { text.chars().filter(|c| !is_mark(*c)).collect::<String>().into() } else { text.into() };
+    let mut text = unmarked.trim();
+    // The symbol before the amount and after it, each where the locale writes one, else the code
+    // on either side.
+    let mut stripped = false;
+    if let Some(rest) = strip_affix(text, prefix, code, true) {
+        (text, stripped) = (rest.trim_start(), true);
+    }
+    if let Some(rest) = strip_affix(text, suffix, code, false) {
+        (text, stripped) = (rest.trim_end(), true);
+    }
+    if !stripped {
+        if let Some(rest) = strip_code(text, code, true).or_else(|| strip_code(text, code, false)) {
+            text = rest.trim();
+        }
+    }
+    let separators = &data.money_separators;
+    let spaced = separators.group.chars().all(is_space);
+    // The decimal separator as the locale writes it, or `.` where it writes `٫` (no group is `.`).
+    let point = if separators.decimal == "\u{66b}" && separators.group != "." { Some('.') } else { None };
+    let (whole, fraction) = match text.split_once(separators.decimal) {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => match point.and_then(|p| text.split_once(p)) {
+            Some((whole, fraction)) => (whole, Some(fraction)),
+            None => (text, None),
+        },
+    };
+    let mut minor: u64 = 0;
+    let mut push = |d: u32| -> Option<()> {
+        minor = minor.checked_mul(10)?.checked_add(u64::from(d))?;
+        Some(())
+    };
+    // The integer digits, with the size of each group as typed: the first, the last (`group`) and
+    // whether every one between is the secondary size.
+    let [primary, secondary, _] = separators.grouping.map(usize::from);
+    let (mut groups, mut first, mut group, mut middle, mut digits) = (1_usize, 0, 0, true, 0);
+    let mut leading_zero = false;
+    let mut rest = whole;
+    while let Some(c) = rest.chars().next() {
+        if let Some(d) = digit(data, c) {
+            push(d)?;
+            if digits == 0 {
+                leading_zero = d == 0;
+            }
+            (group, digits) = (group + 1, digits + 1);
+            rest = &rest[c.len_utf8()..];
+            continue;
+        }
+        rest = match rest.strip_prefix(separators.group).filter(|_| !separators.group.is_empty()) {
+            Some(after) => after,
+            None if spaced && is_space(c) => &rest[c.len_utf8()..],
+            None => return None,
+        };
+        if groups == 1 {
+            first = group;
+        } else {
+            middle &= group == secondary;
+        }
+        (groups, group) = (groups + 1, 0);
+    }
+    // Grouped as the locale groups: never `0,500` or `00,123`, a decimal comma of another locale.
+    if groups > 1 && (first == 0 || first > secondary || group != primary || !middle || leading_zero) {
+        return None;
+    }
+    let shown = usize::from(currency.digits());
+    let mut written = 0;
+    if let Some(fraction) = fraction {
+        for c in fraction.chars() {
+            push(digit(data, c)?)?;
+            written += 1;
+        }
+        if written == 0 || written > shown {
+            return None;
+        }
+    }
+    if digits == 0 && written == 0 {
+        return None;
+    }
+    for _ in written..shown {
+        push(0)?;
+    }
+    Some(Minor(minor))
+}
+
+/// A direction mark (LRM, RLM, ALM): written around some locales' symbols, never typed.
+fn is_mark(c: char) -> bool {
+    matches!(c, '\u{200e}' | '\u{200f}' | '\u{61c}')
+}
+
+/// A space a person types or a locale writes between groups or around a symbol: a tab or a line
+/// break is not one there (at either end of the text, any whitespace is trimmed).
+fn is_space(c: char) -> bool {
+    matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}')
+}
+
+/// One character of a symbol as typed: the half-width form of a full-width one (`￥` is `¥`), and
+/// ASCII letters in either case (`us$`).
+fn fold(c: char) -> char {
+    match c {
+        '\u{ffe5}' => '\u{a5}',
+        '\u{ff04}' => '$',
+        c => c.to_ascii_lowercase(),
+    }
+}
+
+/// `text` without the locale's prefix (`front`) or suffix, a template part where `\u{2}` stands
+/// for the code: its direction marks are skipped and a space in it matches any run of spaces,
+/// none included. `None` when it is not there or the locale writes nothing there.
+fn strip_affix<'a>(text: &'a str, affix: &str, code: &str, front: bool) -> Option<&'a str> {
+    let mut want: [char; 24] = ['\0'; 24];
+    let mut len = 0;
+    for c in affix.chars() {
+        let mut put = |c: char| -> Option<()> {
+            *want.get_mut(len)? = c;
+            len += 1;
+            Some(())
+        };
+        if c == '\u{2}' {
+            for c in code.chars() {
+                put(c)?;
+            }
+        } else if !is_mark(c) {
+            put(c)?;
+        }
+    }
+    let want = &want[..len];
+    if want.iter().all(|c| is_space(*c)) {
+        return None;
+    }
+    let mut chars = text.char_indices();
+    let mut next = || if front { chars.next() } else { chars.next_back() };
+    let mut pending = next();
+    let wanted: &mut dyn Iterator<Item = &char> = if front { &mut want.iter() } else { &mut want.iter().rev() };
+    for want in wanted {
+        if is_space(*want) {
+            while pending.is_some_and(|(_, c)| is_space(c)) {
+                pending = next();
+            }
+        } else if pending.is_some_and(|(_, c)| fold(c) == fold(*want)) {
+            pending = next();
+        } else {
+            return None;
+        }
+    }
+    // `pending` is the first character left on the amount's side, or none.
+    Some(match (pending, front) {
+        (Some((i, _)), true) => &text[i..],
+        (Some((i, c)), false) => &text[..i + c.len_utf8()],
+        (None, _) => "",
+    })
+}
+
+/// `text` without the currency's code at its start (`front`) or end, in either case.
+fn strip_code<'a>(text: &'a str, code: &str, front: bool) -> Option<&'a str> {
+    let n = code.len();
+    if front {
+        text.get(..n).filter(|head| head.eq_ignore_ascii_case(code)).map(|_| &text[n..])
+    } else {
+        let at = text.len().checked_sub(n)?;
+        text.get(at..).filter(|tail| tail.eq_ignore_ascii_case(code)).map(|_| &text[..at])
+    }
+}
+
+/// The value of a digit: ASCII, the locale's own, or Arabic-Indic (either form).
+fn digit(data: &__private::LocaleData, c: char) -> Option<u32> {
+    [data.zero, '0', '\u{660}', '\u{6f0}'].into_iter().find_map(|zero| (c as u32).checked_sub(zero as u32).filter(|n| *n < 10))
 }
 
 /// ASCII digits in the locale's digits.
@@ -558,7 +809,8 @@ fn write_grouped(data: &__private::LocaleData, s: &__private::Separators, int: &
 }
 impl Render for Formatted {
     fn render(&self, out: &mut String) {
-        // The locale data has no character HTML would read (the generator checks).
+        // The locale data has none of `<>&"` (the generator checks); a group separator `'`
+        // (de-CH) is safe in text and in the double-quoted attributes `html!` writes.
         let _ = self.write(out);
     }
 }
@@ -580,7 +832,7 @@ impl Display for Formatted {
 
 /// A date, a time or both in a locale: what `t.date`, `t.time` and `t.date_time` return. In UTC
 /// unless [`When::zone`] says otherwise. It renders in `html!` as text or an attribute value, and
-/// is a message argument like any `Display` value.
+/// is a message argument ([`super::Arg`]).
 #[derive(Clone, Copy)]
 pub struct When {
     data: &'static __private::LocaleData,
@@ -679,6 +931,153 @@ impl When {
     }
 }
 
+/// How [`Relative`] writes a time: `in 10 hours`, `in 10 hr.` or `in 10h` in en (`Long`,
+/// `Short`, `Narrow`), as `Intl.RelativeTimeFormat`'s styles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RelativeStyle {
+    Long,
+    Short,
+    Narrow,
+}
+
+impl RelativeStyle {
+    /// The style's name in `Intl.RelativeTimeFormat`.
+    pub fn name(self) -> &'static str {
+        match self {
+            RelativeStyle::Long => "long",
+            RelativeStyle::Short => "short",
+            RelativeStyle::Narrow => "narrow",
+        }
+    }
+}
+
+/// A time relative to another (now) in a locale: what `t.relative(at, now, style)` returns. In the
+/// largest unit it has a whole one of, rounded toward zero: seconds under a minute, then minutes,
+/// hours, and days from a day (10 h 35 min ahead is `in 10 hours`, 90 s ago is `1 minute ago`).
+/// After `now` is the future, at or before it the past. It renders in `html!` as text or an
+/// attribute value, and is a message argument ([`super::Arg`]); `corten_ui::RelativeTime` keeps
+/// it current in the browser.
+#[derive(Clone, Copy)]
+pub struct Relative {
+    data: &'static __private::LocaleData,
+    at: SystemTime,
+    now: SystemTime,
+    style: RelativeStyle,
+}
+
+/// The units a relative time is written in, in seconds (`LocaleData::relative`'s order).
+const RELATIVE_UNITS: [u64; 4] = [1, 60, 3600, 86_400];
+
+impl Relative {
+    #[doc(hidden)]
+    pub fn new(data: &'static __private::LocaleData, at: SystemTime, now: SystemTime, style: RelativeStyle) -> Self {
+        Relative { data, at, now, style }
+    }
+
+    /// The instant it is relative to now.
+    pub fn at(&self) -> SystemTime {
+        self.at
+    }
+
+    /// Its style.
+    pub fn style(&self) -> RelativeStyle {
+        self.style
+    }
+
+    /// The tag of the locale it is written in (its data's: `en` for `en-PH`).
+    pub fn locale(&self) -> &'static str {
+        self.data.tag
+    }
+
+    /// The instant as `<time datetime>` takes it: `2026-03-22T15:04:05Z` (`..05.250Z` with
+    /// milliseconds), in UTC.
+    pub fn datetime(&self) -> Datetime {
+        Datetime(self.at)
+    }
+
+    fn write(&self, out: &mut dyn Write) -> fmt::Result {
+        let data = self.data;
+        let (future, seconds) = match self.at.duration_since(self.now) {
+            Ok(ahead) if !ahead.is_zero() => (true, ahead.as_secs()),
+            Ok(_) => (false, 0),
+            Err(behind) => (false, behind.duration().as_secs()),
+        };
+        let unit = RELATIVE_UNITS.iter().rposition(|&size| seconds >= size).unwrap_or(0);
+        let n = seconds / RELATIVE_UNITS[unit];
+        let category = match n {
+            0..=199 => data.plurals[n as usize],
+            _ if n.is_multiple_of(1_000_000) => data.millions,
+            _ => data.plurals[100 + (n % 100) as usize],
+        };
+        let template = data.relative[self.style as usize][unit][usize::from(future)][usize::from(category)];
+        // Some forms have no number: ar's one second is `قبل ثانية واحدة`.
+        let Some((before, after)) = template.split_once('\u{1}') else { return out.write_str(template) };
+        out.write_str(before)?;
+        let mut buf = [0u8; 24];
+        write_grouped(data, &data.plain, itoa(n, false, &mut buf), out)?;
+        out.write_str(after)
+    }
+}
+
+impl Render for Relative {
+    fn render(&self, out: &mut String) {
+        let _ = self.write(out);
+    }
+}
+
+impl AttrValue for Relative {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        out.push_str(name);
+        out.push_str("=\"");
+        self.render(out);
+        out.push('"');
+    }
+}
+
+impl Display for Relative {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.write(f)
+    }
+}
+
+/// An instant as `<time datetime>` takes it, to the millisecond where it has one:
+/// [`Relative::datetime`].
+#[derive(Clone, Copy, Debug)]
+pub struct Datetime(SystemTime);
+
+impl Display for Datetime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Milliseconds since the epoch, rounded down (before it too).
+        let millis = match self.0.duration_since(UNIX_EPOCH) {
+            Ok(after) => after.as_millis() as i128,
+            Err(before) => {
+                let d = before.duration();
+                -(d.as_millis() as i128) - i128::from(!d.subsec_nanos().is_multiple_of(1_000_000))
+            }
+        };
+        let seconds = millis.div_euclid(1000) as i64;
+        let (year, month, day) = civil_from_days(seconds.div_euclid(86_400));
+        let s = seconds.rem_euclid(86_400);
+        write!(f, "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)?;
+        match millis.rem_euclid(1000) {
+            0 => f.write_str("Z"),
+            ms => write!(f, ".{ms:03}Z"),
+        }
+    }
+}
+
+impl Render for Datetime {
+    fn render(&self, out: &mut String) {
+        let _ = write!(out, "{self}");
+    }
+}
+
+impl AttrValue for Datetime {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        let _ = write!(out, "{name}=\"{self}\"");
+    }
+}
+
 /// `n` in ASCII, two digits at least when `two`.
 fn itoa(mut n: u64, two: bool, buf: &mut [u8; 24]) -> &[u8] {
     let mut start = buf.len();
@@ -721,6 +1120,17 @@ pub struct NumberFormat {
     data: &'static __private::LocaleData,
 }
 
+/// `t.js().percent(digits)` or `t.js().change(digits)`: the locale's percentage format, for a
+/// handler whose JSDoc takes a `PercentFormat` (from `corten`), which writes `format(ratio)` as
+/// `t.percent(ratio, digits)` (or `t.change(ratio, digits)`) does.
+#[derive(Clone, Copy)]
+pub struct PercentFormat {
+    data: &'static __private::LocaleData,
+    digits: u8,
+    /// A change's: exactly `digits` fraction digits, and a sign on a gain.
+    change: bool,
+}
+
 /// `t.js().money(currency)`: an amount's format, for a handler whose JSDoc takes a `MoneyFormat`
 /// (from `corten`), which writes `format(minor)` as `t.money(Minor(minor), currency)` does.
 #[derive(Clone, Copy)]
@@ -744,6 +1154,18 @@ impl NumberFormat {
     #[doc(hidden)]
     pub fn new(data: &'static __private::LocaleData) -> Self {
         NumberFormat { data }
+    }
+}
+
+impl PercentFormat {
+    #[doc(hidden)]
+    pub fn new(data: &'static __private::LocaleData, digits: u8) -> Self {
+        PercentFormat { data, digits, change: false }
+    }
+
+    #[doc(hidden)]
+    pub fn change(data: &'static __private::LocaleData, digits: u8) -> Self {
+        PercentFormat { data, digits, change: true }
     }
 }
 
@@ -785,21 +1207,26 @@ mod wire {
     use std::fmt::Write;
 
     pub(super) fn open(data: &LocaleData, out: &mut String) {
+        // The runtime's formatter is a module of its own, which this page now loads.
+        crate::script::uses(crate::script::FORMAT_MODULE);
         out.push_str("%{&quot;z&quot;:");
         let mut zero = [0u8; 4];
         json_str(data.zero.encode_utf8(&mut zero), out);
     }
 
-    pub(super) fn separators(s: &Separators, templates: [&str; 2], out: &mut String) {
+    pub(super) fn separators(s: &Separators, templates: &[&str], out: &mut String) {
         out.push_str(",&quot;s&quot;:[");
         json_str(s.decimal, out);
         out.push(',');
         json_str(s.group, out);
         let _ = write!(out, ",{},{},{}]", s.grouping[0], s.grouping[1], s.grouping[2]);
         out.push_str(",&quot;t&quot;:[");
-        json_str(templates[0], out);
-        out.push(',');
-        json_str(templates[1], out);
+        for (i, template) in templates.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            json_str(template, out);
+        }
         out.push(']');
     }
 
@@ -864,8 +1291,18 @@ mod wire {
 impl crate::script::Arg<crate::script::ts::NumberFormat> for NumberFormat {
     fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
         wire::open(self.data, out);
-        wire::separators(&self.data.plain, self.data.number, out);
+        wire::separators(&self.data.plain, &self.data.number, out);
         out.push('}');
+    }
+}
+
+impl crate::script::Arg<crate::script::ts::PercentFormat> for PercentFormat {
+    fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
+        wire::open(self.data, out);
+        // A change's has the third template, a gain's, which tells the script it is one.
+        let templates = if self.change { &self.data.percent[..] } else { &self.data.percent[..2] };
+        wire::separators(&self.data.percent_separators, templates, out);
+        let _ = write!(out, ",&quot;p&quot;:{}}}", self.digits);
     }
 }
 
@@ -879,7 +1316,7 @@ impl crate::script::Arg<crate::script::ts::MoneyFormat> for MoneyFormat {
             Err(_) => data.money.map(|t| t.replace('\u{2}', code)),
         };
         wire::open(data, out);
-        wire::separators(&data.money_separators, [&pos, &neg], out);
+        wire::separators(&data.money_separators, &[pos.as_str(), neg.as_str()], out);
         let _ = write!(out, ",&quot;d&quot;:{}}}", self.currency.digits());
     }
 }
@@ -951,6 +1388,11 @@ pub mod __private {
         pub money_separators: Separators,
         /// A number, positive and negative.
         pub number: [&'static str; 2],
+        /// A percentage's separators (bn groups a number 12,34,567 and a percentage 1,234,567%).
+        pub percent_separators: Separators,
+        /// A percentage, positive and negative, with the locale's sign in place, then a gain as a
+        /// change writes it (`+5%` in en, `+%5` in tr).
+        pub percent: [&'static str; 3],
         /// An amount in a currency written by its code (`CHF 5.00`), positive and negative.
         pub money: [&'static str; 2],
         /// Each currency written otherwise, by code: positive and negative, the symbol in place.
@@ -963,5 +1405,13 @@ pub mod __private {
         /// An offset (hours at `\u{1}`, minutes at `\u{3}`): whole hours east, west, then with
         /// minutes, east and west.
         pub gmt: [&'static str; 4],
+        /// The plural category (zero, one, two, few, many, other) of each whole number to 199.
+        pub plurals: [u8; 200],
+        /// A multiple of a million's (fr's "many"); any other number over 199 is as
+        /// `100 + n % 100`.
+        pub millions: u8,
+        /// A time relative to now, with the number at `\u{1}`: by `RelativeStyle`, unit (second,
+        /// minute, hour, day), past then future, and plural category.
+        pub relative: [[[[&'static str; 6]; 2]; 4]; 3],
     }
 }

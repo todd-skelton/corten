@@ -37,11 +37,18 @@ framework's shape, and what it does not do yet.
    (`tokio::join!`) and rendering in microseconds, the most it saves is the slowest source's
    wait. A part that is slow and optional is a `<corten-live>` whose stream sends it when it is
    ready and ends.
-8. **Static file names are checked when the layout renders, not when it compiles.** The static
-   directory is chosen at run time (`App::assets`, `STATIC_DIR`), so a compile-time check would
-   look in the wrong place for some apps, and an app names only a few files, all in its layout.
-   `req.asset("style.css")` panics on a missing file in debug builds, so `corten dev` and the
-   page test `corten new` writes find a typo on the first render.
+8. **Static files are compiled into the program, a constant per file.** `embed!(pub struct
+   Static = "static")` includes the directory when the crate compiles, so the binary is the
+   whole deploy (no directory beside it to find or keep in step), and a page names a file by its
+   constant, `req.asset(Static::STYLE_CSS)`: a typo or a removed file does not compile. A name
+   that comes from data (an uploaded picture's) is `req.find_asset(name)`, an `Option`. The
+   cost is that a file added with no change to the code is seen at the next build that compiles
+   the crate, since a macro cannot ask cargo to watch a directory; `corten dev` reads the
+   directory where the macro read it, so it serves the new file at once and restarts without a
+   build when only those files changed (a removed file builds, so a page that names it does not
+   compile), and the release Dockerfiles touch every source before
+   building, so the crate compiles with every file. The PWA's icons and worker script are
+   named by their constants too; an icon another site serves is a `Uri`.
 
 9. **Work happens where it is fastest for the user.** The server renders the first page, so it
    arrives finished, and answers what only it can: a write, and data the page does not have. What
@@ -74,7 +81,12 @@ framework's shape, and what it does not do yet.
    a `#[derive(Id)]` id, which the compiler checks (`view::Patch`), so no patch loses an element in
    the browser.
 3. A handler reaches the page only through its arguments: refs, `event`, `target`, `signal`,
-   `scope` and values. State that outlives an event is the DOM itself or `state(el, init)`.
+   `scope` and values. State that outlives an event is the DOM itself or `keep(init)`, the
+   running handler's component's own. (Two exceptions: `CopyButton` copies an element outside
+   its component, which it is given as a typed `Id` value and finds by that id, since refs do
+   not reach outside a component; and `RelativeTime` keeps the page's relative times in its
+   module, so one timer serves them all, with a `visibilitychange` and a `pageshow` listener for
+   the life of the page that read the clock again when it comes back.)
 4. User-facing text lives in views, the view model or the catalog, never in scripts. Text that
    depends on what a script computed ("3 selected") is a catalog message the markup passes
    unfilled (`t.js().rows_selected()`) and the script fills in (`label({ count })`): the
@@ -87,8 +99,8 @@ framework's shape, and what it does not do yet.
    (formatted text included). Then `req.screen` gives every surface the same data.
 7. `App` configures the whole app; a part of it under a URL prefix is an `Area` (or an `Api`
    for routes that answer only JSON), which owns its routes. Its prefix and its routes are route
-   types (`.area::<Admin>(|admin| admin.route::<AdminUser>(..))`), so a route outside the prefix
-   does not compile. A new setting that applies to a prefix goes on `Area` or `Api`, never on
+   types (`#[corten::routes(area = Admin)]` or `(api = ApiRoot)` on the module of its routes,
+   `.area(admin::area)`), so a route outside the prefix does not compile. A new setting that applies to a prefix goes on `Area` or `Api`, never on
    `App` as a method taking a prefix string. Who is asking is not a setting: a handler takes
    `Caller<T>`, and an area's routes module says `caller = T`, so a handler there that does not
    take it does not compile. Before adding to `App`, check whether the
@@ -96,7 +108,9 @@ framework's shape, and what it does not do yet.
    with one way to give each; reorganize it when it does not, rather than add a second way.
 8. A mistake the compiler can see is a compile error, with a `compile_fail` doctest: a type, a
    trait bound, or a `const` assertion over a route's `PATH`. One it cannot see (two settings
-   that clash, a file missing from `static/`) fails at startup, and only what depends on the
+   that clash, a `var(--x)` no stylesheet on its pages declares, a PWA that names a static file in
+   an app given no static directory)
+   fails at startup, and only what depends on the
    request is checked per request. A check that moves earlier also leaves the request path.
 9. A layout's props are what most pages set: the title and the page's own head tags. A page that
    needs a different document (a print view, an embed) uses another layout component; a layout
@@ -151,14 +165,26 @@ framework's shape, and what it does not do yet.
     The lookup runs only when a handler or middleware reads it, once per request, and reading
     it makes the answer private. A route's answer type says how it fails (`HtmlResult`: the
     error page; `JsonResult<T>`: JSON) and whether a shared cache may keep it (`Public<..>`,
-    whose handler may only take `Anonymous` inputs). A check that depends on the record (the
-    author, the organization) stays in its handler. That an area's or an API's routes are
-    under its prefix is a `const` assertion, which the compiler evaluates when it builds the
-    app (`cargo build`, `cargo test`, `corten check`), not under `cargo check` alone. Every
-    route reaches the app through these checks: `App::new` takes the `Routes` a
+    whose handler may only take `Anonymous` inputs and whose page cannot set a cookie). A check
+    that depends on the record (the author, the organization) stays in its handler. That an
+    area's or an API's routes are under its prefix is a `const` assertion, which the compiler
+    evaluates when it builds the app (`cargo build`, `cargo test`, `corten check`), not under
+    `cargo check` alone. Every route reaches the app through these checks: `App::new` takes the
+    `Routes` a
     `#[corten::routes]` module makes, and `Area::route` and `Api::route` take `Methods`, made
     by Corten's `get`, `post` and the others, which check the same things. A plain axum
-    `Router` or method router does not fit any of them, so there is no unchecked way in.
+    `Router` or method router does not fit any of them, so there is no unchecked way in. A
+    WebSocket (`Upgrade`) and another server's answer passed on (`Relay`) are such routes too.
 12. A request goes through fixed stages in one order (`corten::middleware`); the app's own
     steps are a `Middleware` tuple at one place in it, resolved at compile time, not hooks at
-    several.
+    several. An area's or an API's own steps (`Area::middleware`, `Api::middleware`) run right
+    after the app's, for the requests at its prefix; they are boxed, since which run depends on
+    the path, and an app with none pays nothing for them.
+13. A connection switches protocols (a WebSocket, a relayed tunnel) only over HTTP/1.1 served by
+    `corten::serve`; HTTP/2's extended `CONNECT` is not supported. Corten reads the handshake
+    and hands over the bytes: frames, message limits, buffering and per-message checks are the
+    WebSocket library's and the route's. The work on a switched connection is told when shutdown
+    begins and is not waited for.
+14. Connections are HTTP/1.1. A request's head must arrive within `App::header_timeout` (30
+    seconds), which also closes an idle keep-alive connection; how many may be open is
+    `App::max_connections`, unbounded unless set.

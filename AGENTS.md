@@ -6,16 +6,8 @@ reason that a smaller change cannot meet.
 
 ## Values
 
-Every change follows the values in `README.md` (Values). When they conflict, this order decides:
-
-1. Correctness and reliability.
-2. Performance at the user's end.
-3. Compile-time safety and one way to do things: a mistake the compiler can catch is a compile
-   error, not a startup panic or a per-request check (`docs/design.md`, Rules).
-4. Developer convenience.
-
-For example, the deadline timer that cost 640 ns per request was reworked, not accepted for
-convenience. And a nicer API that slows every page loses.
+Every change follows the values in `README.md` (Values), and when two conflict, the order given
+there decides. A change is reviewed against them before it is done (below).
 
 ## Where things go
 
@@ -36,9 +28,9 @@ convenience. And a nicer API that slows every page loses.
    Styles are a CSS file per component (`#[component(css)]`, scoped at compile time, `class={Name}`)
    and tokens from `tokens!`; never write one of a component's classes as a string, and keep
    inline `style=` out (the CSP blocks it).
-   A compile-time guarantee gets a `compile_fail` doctest next to the feature. A change to what `html!` generates needs the item page's
-   `render_cost` test before and after (`CORTEN_FIXTURE=bench/fullstack/fixtures/items.json`,
-   release build) so rendering does not get slower unnoticed.
+   A compile-time guarantee gets a `compile_fail` doctest next to the feature. A change to what
+   `html!` generates measures the item page's `render_cost` before and after (below), so
+   rendering does not get slower unnoticed.
 4. The `corten` command: `crates/corten-cli`, standard library only. `template/` is the app
    `corten new` writes; it must pass `corten check` with rustfmt's default settings.
    `corten fmt` lays out `html!` bodies and only ever changes whitespace (it compares tokens
@@ -48,9 +40,9 @@ convenience. And a nicer API that slows every page loses.
    when they are stale). The `data-on` format is written by `crates/corten/src/script.rs` and
    read by `crates/corten/js/on.js`; a change to it updates `crates/corten/src/script/wire.json`,
    which both sides are tested against (`cargo test` and `npm run check`).
-6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/hello`
+6. Every behavior the runtime has is covered by `scripts/smoke.mjs` against `examples/watchlist`
    (live reload under `corten dev` by `scripts/smoke-dev.mjs`), and production modules (security, assets, PWA, head tags, compression) by
-   `examples/item-page/smoke.mjs`. Add the check with the behavior.
+   `examples/card-market/smoke.mjs`. Add the check with the behavior.
 7. Types across seams: never hand-write a type the server already defines. Handler calls are
    checked against each handler's JSDoc when the crate compiles; feed rows and typed events
    (`#[event]`) against the declarations `corten::types` generates (`examples/*/types/app.d.ts`,
@@ -63,8 +55,18 @@ convenience. And a nicer API that slows every page loses.
    `examples/ui-gallery/smoke.mjs`.
 9. `bench/` is not part of the workspace. Its apps are built only by `bench/fullstack` scripts.
 
-## Checks (all must pass before you report done)
+## Before you report done
 
-Run every command in [CONTRIBUTING.md](CONTRIBUTING.md#checks), each separately, and remove the
-containers afterwards. Update the guide that describes a changed behavior, and add a line to
-`CHANGELOG.md` under Unreleased.
+1. Run every command in [CONTRIBUTING.md](CONTRIBUTING.md#checks), each separately, and remove
+   the containers afterwards. All must pass.
+2. Measure a change to rendering, the runtime or the request path with the number that can see
+   it, as [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) (item 2) describes.
+3. Update the guide that describes a changed behavior, and add a line to `CHANGELOG.md` under
+   Unreleased.
+4. Have the change reviewed as [CONTRIBUTING.md](CONTRIBUTING.md#review) describes: start a new
+   agent that did not write it, and give it the diff, `README.md` (Values), `docs/design.md` and
+   CONTRIBUTING.md (Review), not your reasoning or summary. Fix each finding or say why it
+   stands, and review again after a fix that changes behavior.
+5. Report the checks, the measurements, and each finding with what you did about it, in the
+   pull request description and to whoever asked for the change. A pull request merges only
+   after its review.

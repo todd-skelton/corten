@@ -13,7 +13,7 @@ render of the same call site.
 | `href={url}`, `href={("/items/", &id)}` | an attribute; a tuple prints its parts without building a string |
 | `hidden={flag}`, `class={maybe}` | `bool` prints the bare name or nothing; `None` leaves the attribute out |
 | `<input {..e.aria(field)}>` | spreads `Attrs` |
-| `for`, `if`/`else`, `match`, `let` | as in Rust, with markup in the braces |
+| `for`, `if`/`else`, `match`, `let` | as in Rust, with markup in the braces; patterns too (`if let Shape::Circle { r } = shape`) |
 | `<Card title="x" compact>children</Card>` | a component: a struct with those fields (`compact` is `true`), children in `children` |
 | `<>...</>`, `<!DOCTYPE html>`, `<input>` | fragments, the doctype, void elements without a closing tag |
 
@@ -30,6 +30,10 @@ app's to change; Corten adds nothing around it.
 ```rust
 use corten::prelude::*;
 
+# corten::assets::embed! { pub struct Static = "src/assets/fixture"; }
+// The files in `static/`, compiled into the program (`App::assets(Static)`):
+// corten::assets::embed! { pub struct Static = "static"; }
+
 #[component]
 fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
     html! {
@@ -37,7 +41,7 @@ fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> i
         <html lang={req.lang()}>
             <head>
                 <meta charset="utf-8">
-                <link rel="stylesheet" href={req.asset("style.css")}>
+                <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
                 <title>{title}" | Shop"</title>
                 {head}
                 <Corten />
@@ -72,7 +76,35 @@ one `<main>`, not inside a `for`, `if` or `match`. Each part renders for the req
 So the layout costs a navigation nothing, and what the layout shows that a navigation cannot
 update (the signed-in user, from a `Caller` the handler took) is covered by the page key: when it
 changes, the runtime loads the next page in full. Keep a layout's props to what most pages set (the title,
-their head tags); a page that needs a different document uses another layout.
+their head tags); a page that needs a different document uses another layout. Each layout's
+`html!` document has a key of its own (from where it is written), so a link from a page in one
+layout to a page in another loads it in full, with no `data-reload`. A prop that changes the
+layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
+second layout.
+
+A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
+`href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
+that stays current on the pages under it). The full load renders `aria-current`, and the runtime
+moves it after each client navigation, so the header is right without rendering again. It does
+the same after a patch that puts a nav link on the page, which the server marked against the
+request that made the patch (a form's action), not the page. A tag
+that writes `href`, `data-nav` or `aria-current` itself beside the spread does not compile, nor
+does `data-nav` written by hand.
+
+Each `req.nav` link is judged alone, so a section and a page under it (Seller Desk at
+`/account/desk`, Money at `/account/desk/money`) are both current on Money's page. A nav whose
+entries nest, or that is read from data, is written whole with `req.nav_of`: of its entries
+that hold the page, only the deepest is current. Its links carry the group they were ranked in
+(`data-nav-group`), so the runtime ranks the same links after a client navigation wherever the
+markup puts them, so render every link it gives back: leave out an entry the user may not see
+before the call. Each entry comes with its item (a label, or the row it was read from), which
+`links()` hands back beside its link. An entry is a route or a `Local` path, written as the
+browser asks for it (a link to another site is a plain link, never current):
+
+```rust,ignore
+let nav = req.nav_of(items.iter().map(|item| (NavTo::section(&item.href), item)));
+html! { <nav>for (link, item) in nav.links() { <a {..link}>{&item.label}</a> }</nav> }
+```
 
 Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`
 (feature `json`) writes a `ToJson` value in `<script type="application/ld+json">` with `<` as
@@ -126,7 +158,8 @@ req.patch(html! { {Remove(OfferId(&sold.id))} })                             // 
 | What | Fails to compile when |
 |---|---|
 | `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
-| `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument |
+| `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument, or passes one that is not text, an integer or a value `t` formats (a float goes through `t.number`) |
+| `#[derive(UrlValue)]` | the enum has a variant with fields, a variant serde does not read (`skip_deserializing`), or a serde attribute that changes its words in a way it does not follow |
 | `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol); the struct holds more than one key |
 
 An id is the type's name without `Id`, in kebab case (`OfferId` is `offer-`, then the key; a
@@ -136,7 +169,10 @@ symbol, so two copies of one library in a program (two versions) that both defin
 not link.
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
-parameters left out). Messages are split into text and arguments when the crate compiles: one
+parameters left out). A query field is anything `Display`; an enum in an address (a tab, a sort,
+what a redirect says happened) derives `UrlValue` beside `Deserialize`, which writes each
+variant as the word serde reads (`#[serde(rename_all = "kebab-case")]`: `AwaitingLabel` is
+`awaiting-label`), so the link and the handler cannot disagree. Messages are split into text and arguments when the crate compiles: one
 without arguments is a `&'static str`, one with arguments writes its pieces into the page,
 escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
 
@@ -156,18 +192,61 @@ html! {
     <td>{t.money(Minor(line.cents), USD)}</td>                           // $1,234.50, 1 234,50 $US
     <td>{t.money(Decimal::parse(&api.amount).unwrap_or_default(), USD)}</td> // "21.50" from an API
     <td>{t.number(listing.count)}</td>                                     // 1,234
+    <td>{t.percent(Decimal::new(fee_bps, 4), 2)}</td>                      // 2.9%, 2,9 %, %2,9
+    <td>{t.change(Decimal::new(stock.change_bp, 4), 2)}</td>               // +0.60%, -0.30%, 0.00%
     <p>{t.item_pending(t.date_time(at, DateStyle::Medium, TimeStyle::Short))}</p> // Mar 22, 2026, 12:00 PM UTC
     <p>{t.account_member_since(t.date(joined, MonthStyle::Long))}</p>     // Member since March 2025
 }
 ```
 
-`t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
+`t.percent(ratio, digits)` takes the ratio (0.029 for 2.9%, so 290 basis points are
+`Decimal::new(290, 4)`) and writes at most `digits` fraction digits, rounded half away from zero
+and without trailing zeros, with the locale's sign where it puts it. `t.change(ratio, digits)` is
+the same ratio as a change (a price's move today, in a column that lines up): exactly `digits`
+fraction digits and a sign on a gain as on a loss (`+0.60%`, `+0,60 %`, `+%0,60`), none on what
+rounds to zero (`0.00%`). `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
 a bare integer (it could be either, so it does not compile), with the digits the currency is
-shown with (0 for JPY, 3 for KWD). `MonthStyle` writes the month and year without the day, in
-the locale's order and words (`Mar 2026`, `MÃ¤rz 2026`); it has no time, so `t.date_time` does
+shown with (0 for JPY, 3 for KWD). A price a person types into a form is read back the same way:
+`t.parse_money(&input.price, USD)` is `Some(Minor(129950))` for `$1,299.50` in en and for
+`1 299,50 $US` or `1299,5` in fr (with or without the symbol, the code, the groups or the
+fraction, and without the direction marks some locales write), and `None` for a sign, a group of
+the wrong size, a grouped number that starts with `0` (`0,500`), another locale's decimal
+separator, more fraction digits than the currency has or an amount over `u64`. Every amount
+every locale writes reads back, so a form never reads money
+as a float or with a parser of its own. `MonthStyle` writes the month and year without the day, in
+the locale's order and words (`Mar 2026`, `März 2026`); it has no time, so `t.date_time` does
 not take one. A date is in UTC unless `.zone(Offset::hours(-5))` or a zone
 of your own (`corten::i18n::Zone`, for one with daylight saving time) says otherwise, so a page
 reads the same wherever it is rendered; `parse_timestamp` reads the RFC 3339 text APIs send.
+For dates where the visitor is ("your listings come back on Nov 2"), the app sets
+`App::client_zone()` and a handler takes `Option<ClientZone>`: the browser's IANA name
+(`America/Chicago`), which the runtime keeps in a cookie from the first page it loads, so the
+form posts and pages after it carry it. `None` is a first load or a browser without
+JavaScript. The app's time zone library (`jiff`, `chrono-tz`) turns the name into its `Zone`
+(a newtype that implements `corten::i18n::Zone`) and a picked date into the instant it means
+there, with no script per form. A handler that takes it answers privately (`Cache-Control:
+private`), so a `Public` one cannot; the layout around `<main>` is the same in every zone, so
+reading it does not make the runtime load the next page in full.
+
+A time relative to now ("resets in 10 hours", "updated 3 min. ago") is `t.relative(at, now,
+RelativeStyle::Long)` (or `Short`, `Narrow`): in the largest unit it has a whole one of, rounded
+toward zero, in the locale's plural forms. Written that way it is right only when drawn, so put it
+in `corten_ui::RelativeTime`, which renders a `<time datetime>` and has the browser write it
+again, in the same locale and style, each time its text would change, on one timer for the page.
+A live part then sends only when its data changes, not to move a countdown, and its server does
+not redraw every open page on a clock:
+
+```rust,ignore
+html! { <p>"Resets "<RelativeTime when={t.relative(window.resets_at, now, RelativeStyle::Long)} /></p> }
+```
+
+Days are the largest unit ("in 45 days"); a time further off reads better as `t.date`. The
+browser counts from its own clock and writes with its own `Intl.RelativeTimeFormat`, so a browser
+whose CLDR is older than the server's may word a unit slightly differently once it takes over, and
+one without the locale (or with only another script of it) keeps the server's text. Without
+JavaScript the text is as old as the page. With it, a page from a cache or the back/forward cache
+is written again as it shows, and a page in a hidden tab is brought up to date when it is shown.
+
 Each listed locale's separators, currency symbols and date patterns are CLDR's, checked against
 Intl, and only the locales `messages!` lists are in the app. A script that writes a number, an
 amount or a date takes the page's format (`t.js().money(USD)`) and writes the same text

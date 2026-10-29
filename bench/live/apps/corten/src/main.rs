@@ -33,12 +33,10 @@ struct Publish {
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let feed: Feed<Tick> = Feed::new([]);
-    corten::serve(App::new(url::router(feed.clone())).api::<url::Publish>(|api| api.route::<url::Publish>(post(publish).with_state(feed))))
-        .await
+    corten::serve(App::new(url::router(feed.clone())).api(|routes| ingest::api(routes, feed))).await
 }
 
-/// The page, the feed's snapshot and its live stream, and the publish route, which `App::api`
-/// serves (so a failure there is JSON).
+/// The page, the feed's snapshot and its live stream.
 #[corten::routes(state = Feed<Tick>)]
 mod url {
     #[route("/", get = home)]
@@ -49,8 +47,12 @@ mod url {
 
     #[route("/live/feed/live", get = live)]
     pub struct Live;
+}
 
-    #[route("/live/publish", link)]
+/// The publish route, an API of one route, so a failure there is JSON.
+#[corten::routes(api = Publish, state = Feed<Tick>)]
+mod ingest {
+    #[route("/live/publish", post = publish)]
     pub struct Publish;
 }
 

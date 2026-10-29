@@ -40,6 +40,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 "::corten::view::DocHtml::new({
                     static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
                     &SIZE
+                }, {
+                    const SHELL: u64 = ::corten::view::__private::shell_id(file!(), line!(), column!());
+                    SHELL
                 }, move |__OUT: &mut ::std::string::String, __PART: ::corten::view::Part| {
                     #[allow(unused_imports)]
                     use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _};
@@ -760,6 +763,9 @@ impl Cursor {
                     if name == "key" {
                         name = "data-key".into();
                     }
+                    if name == "data-nav" || name == "data-nav-group" {
+                        return err(span, format!("{name} is printed by Corten: write <a {{..req.nav(&url::News)}}> (or req.nav_section, or a link of req.nav_of), which writes href, data-nav, data-nav-group and aria-current from one mention of the route"));
+                    }
                     if name == "data-ref" || name == "data-on" || name == "data-scope" {
                         return err(span, "data-ref, data-on and data-scope are printed by Corten: write ref={rows} (with let (rows) = refs();) or on:click={js::show(rows)}");
                     }
@@ -878,15 +884,30 @@ impl Cursor {
         }
     }
 
-    /// Tokens up to the next top-level `{...}` group, and the group.
-    fn until_brace(&mut self, what: &str) -> Result<(TokenStream, Group), Error> {
+    /// Tokens up to the body, the next top-level `{...}` group, and the group. A pattern's
+    /// braces are its own, as in Rust: a `let` pattern's up to its `=` (`if let Shape::Circle { r }
+    /// = shape`, each `let` of a chain), and, when `pattern` is set, a `for` pattern's up to `in`.
+    fn until_brace(&mut self, what: &str, pattern: bool) -> Result<(TokenStream, Group), Error> {
         let start = self.span();
-        let mut head = Vec::new();
+        let mut head: Vec<TokenTree> = Vec::new();
+        // Where a pattern ends: `=` for a `let`, `in` for a `for`; `None` outside one.
+        let mut ends_at: Option<&str> = pattern.then_some("in");
         while let Some(token) = self.next() {
-            match token {
-                TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => return Ok((stream(head), g)),
-                other => head.push(other),
+            match (&token, ends_at) {
+                (TokenTree::Group(g), None) if g.delimiter() == Delimiter::Brace => return Ok((stream(head), g.clone())),
+                (TokenTree::Ident(id), None) if id.to_string() == "let" => ends_at = Some("="),
+                (TokenTree::Ident(id), Some("in")) if id.to_string() == "in" => ends_at = None,
+                // A lone `=`: not part of `==`, `=>`, `<=`, `!=` or a range's `..=`.
+                (TokenTree::Punct(p), Some("=")) if p.as_char() == '=' => {
+                    let joined_before =
+                        matches!(head.last(), Some(TokenTree::Punct(prev)) if prev.spacing() == proc_macro::Spacing::Joint);
+                    if !joined_before && p.spacing() == proc_macro::Spacing::Alone {
+                        ends_at = None;
+                    }
+                }
+                _ => {}
             }
+            head.push(token);
         }
         err(start, format!("expected {{ ... }} after {what}"))
     }
@@ -906,7 +927,7 @@ impl Cursor {
 
     fn block_for(&mut self) -> Result<Node, Error> {
         let keyword = self.next().unwrap();
-        let (head, body) = self.until_brace("for ... in ...")?;
+        let (head, body) = self.until_brace("for ... in ...", true)?;
         let mut tokens = stream([keyword]);
         tokens.extend(head);
         Ok(Node::Block { head: vec![tokens], bodies: vec![Cursor::of(&body).nodes(None)?], arms: false })
@@ -917,7 +938,7 @@ impl Cursor {
         let mut bodies = Vec::new();
         let mut keyword = stream([self.next().unwrap()]);
         loop {
-            let (cond, body) = self.until_brace("if")?;
+            let (cond, body) = self.until_brace("if", false)?;
             keyword.extend(cond);
             heads.push(keyword);
             bodies.push(Cursor::of(&body).nodes(None)?);
@@ -944,7 +965,7 @@ impl Cursor {
 
     fn block_match(&mut self) -> Result<Node, Error> {
         let keyword = self.next().unwrap();
-        let (scrutinee, arms) = self.until_brace("match")?;
+        let (scrutinee, arms) = self.until_brace("match", false)?;
         let mut cursor = Cursor::of(&arms);
         let mut head = stream([keyword]);
         head.extend(scrutinee);
@@ -1333,17 +1354,19 @@ impl Gen {
                     let mut binds = TokenStream::new();
                     for attr in attrs {
                         let Attr::On(event, span, expr) = attr else { continue };
+                        // A typed event's name is the one its `#[event]` gave it (a library's carries its
+                        // prefix: `ui-copied`), so it is read from the type rather than derived here.
                         let (printed, ty) = if event.starts_with(|c: char| c.is_ascii_uppercase()) {
                             let ty: TokenStream = TokenTree::Ident(Ident::new(event, *span)).into();
                             self.checks.extend(q("::corten::script::__private::is_event::<__A0>();", std::slice::from_ref(&ty)));
-                            (crate::names::kebab(event), ty)
+                            (q("<__A0 as ::corten::script::DomEvent>::NAME", std::slice::from_ref(&ty)), ty)
                         } else {
                             let ty: TokenStream =
                                 format!("::corten::script::ev::{}", crate::dom::event(event)).parse().expect("a path parses");
-                            (event.clone(), ty)
+                            (literal(event), ty)
                         };
                         let expr = keywords(expr.clone(), &ty, &target);
-                        binds.extend(q("(__A0, &(__A1) as &dyn ::corten::script::Bind),", &[literal(&printed), expr]));
+                        binds.extend(q("(__A0, &(__A1) as &dyn ::corten::script::Bind),", &[printed, expr]));
                     }
                     self.code(q("::corten::script::__private::data_on(__OUT, &[__A0]);", &[binds]));
                 }
@@ -1368,7 +1391,35 @@ impl Gen {
                     &[expr.clone(), literal(&format!(" {attr}"))],
                 )),
                 Attr::Spread(expr) => {
-                    self.code(q("::corten::view::Attrs::render_attrs(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                    // What else the tag writes, which the spread must not write again.
+                    let written: Vec<String> = attrs
+                        .iter()
+                        .filter_map(|other| match other {
+                            Attr::Bare(name) | Attr::Static(name, _) | Attr::Expr(name, _) => {
+                                Some(format!("{:?}", name.to_ascii_lowercase()))
+                            }
+                            Attr::Ref(..) => Some("\"data-ref\"".into()),
+                            Attr::On(..) => Some("\"data-on\"".into()),
+                            Attr::Spread(_) => None,
+                        })
+                        .collect();
+                    if written.is_empty() {
+                        self.code(q("::corten::view::Attrs::render_attrs(&(__A0), __OUT);", std::slice::from_ref(expr)))
+                    } else {
+                        // The check is a call that does nothing, or does not compile when the
+                        // spread's type declares (`Writes`) one of the names; one evaluation of
+                        // the expression serves the check and the render.
+                        let names: TokenStream = format!(
+                            "struct __CortenWritten; impl ::corten::view::__private::Written for __CortenWritten {{ const NAMES: &'static [&'static str] = &[{}]; }} #[allow(unused_imports)] use ::corten::view::__private::{{Declared as _, Undeclared as _}};",
+                            written.join(", ")
+                        )
+                        .parse()
+                        .expect("the names parse");
+                        self.code(q(
+                            "{ __A1 match &(__A0) { __spread => { (&::corten::view::__private::Spread(__spread)).check::<__CortenWritten>(); ::corten::view::Attrs::render_attrs(__spread, __OUT); } } }",
+                            &[expr.clone(), names],
+                        ))
+                    }
                 }
             }
         }

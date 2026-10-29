@@ -5,7 +5,7 @@ price-alert form that posts and patches a message), and the same item as JSON, b
 
 | App | Stack | Directory |
 |---|---|---|
-| corten | Corten 0.1 (Rust, axum, `html!` views, handlers) | [examples/item-page](../../examples/item-page) |
+| corten | Corten 0.1 (Rust, axum, `html!` views, handlers) | [examples/card-market](../../examples/card-market) |
 | leptos | Leptos 0.8 (Rust, SSR plus WASM hydration, axum) | [apps/leptos](apps/leptos) |
 | nextjs | Next.js 16.4.2, App Router, React Server Components, server action | [apps/nextjs](apps/nextjs) |
 | tanstack-start | TanStack Start 1.169.3, React 19, server functions, Nitro | [apps/tanstack-start](apps/tanstack-start) |
@@ -33,10 +33,11 @@ The same apps hold the live-updates comparison in [bench/live](../live/README.md
 
 ## Results
 
-All numbers are measured, from one run (`results/r5/`, 2026-10-25 UTC, the tree at `f80d4a1`) on one
-DigitalOcean c-8 droplet (Intel Xeon Platinum 8168); see [Method](#method). Failed means the app could not do the
+All numbers are measured, from one run (`results/r6/`, 2026-10-27 UTC, the tree at `cf8ac0f`) on one
+DigitalOcean c-8 droplet (Intel Xeon Platinum 8280); see [Method](#method). Failed means the app could not do the
 test with its usual settings in one CPU and 1 GiB (see caveat 5); its other numbers are kept
-where it produced any. r4 (`results/r4/`, the same CPU model, Corten at `05fcb74`, before the
+where it produced any. r5 (`results/r5/`, a Platinum 8168, Corten at `f80d4a1`, before the
+read-again, place-keeping and catalog-formatting runtime that r6's item page loads), r4 (`results/r4/`, the same CPU model, Corten at `05fcb74`, before the
 JSON derives, the views runtime and the cheaper escape and route parameters), r3 (`results/r3/`, a Platinum 8280, Corten before it parsed the item API's
 response into typed structs), r2 (`results/r2/`, a Platinum 8280, Corten before handlers replaced
 islands and before `corten::Json`) and r1 (`results/r1/`, six frameworks, a Platinum 8168 and
@@ -46,122 +47,166 @@ islands and before `corten::Json`) and r1 (`results/r1/`, six frameworks, a Plat
 
 | App | Process start to first 200, median (min-max) of 10 | Memory after first request | Image |
 |---|---|---|---|
-| **corten** | 6.3 ms (6.1 ms-22 ms) | 1.094 MiB | 122 MB |
-| leptos | 8.6 ms (7.7 ms-11 ms) | 1.48 MiB | 127 MB |
-| sveltekit | 191 ms (176 ms-200 ms) | 23.85 MiB | 333 MB |
-| tanstack-start | 226 ms (211 ms-259 ms) | 26.4 MiB | 332 MB |
-| react-router | 323 ms (309 ms-374 ms) | 32.06 MiB | 353 MB |
-| nuxt | 335 ms (327 ms-534 ms) | 35.54 MiB | 335 MB |
-| astro | 363 ms (330 ms-401 ms) | 36.75 MiB | 526 MB |
-| nextjs | 747 ms (722 ms-866 ms) | 51.37 MiB | 385 MB |
-| aspnet | 814 ms (746 ms-891 ms) | 30.87 MiB | 341 MB |
-| laravel | 998 ms (912 ms-1.1 s) | 96.21 MiB | 943 MB |
-| django | 1.2 s (1.1 s-1.6 s) | 62.26 MiB | 276 MB |
-| rails | 1.5 s (1.2 s-1.6 s) | 63.88 MiB | 431 MB |
-| phoenix | 1.6 s (1.5 s-1.8 s) | 125.7 MiB | 262 MB |
-| spring | 8.9 s (8.1 s-9.4 s) | 140.6 MiB | 516 MB |
+| **corten** | 6.0 ms (5.1 ms-32 ms) | 1.105 MiB | 123 MB |
+| leptos | 6.9 ms (6.1 ms-12 ms) | 1.484 MiB | 127 MB |
+| sveltekit | 178 ms (170 ms-192 ms) | 24.31 MiB | 333 MB |
+| tanstack-start | 222 ms (208 ms-283 ms) | 26.37 MiB | 332 MB |
+| react-router | 313 ms (301 ms-358 ms) | 31.77 MiB | 353 MB |
+| nuxt | 314 ms (306 ms-404 ms) | 35.68 MiB | 335 MB |
+| astro | 328 ms (316 ms-393 ms) | 36.82 MiB | 526 MB |
+| nextjs | 707 ms (697 ms-782 ms) | 51.36 MiB | 385 MB |
+| aspnet | 749 ms (740 ms-788 ms) | 30.57 MiB | 342 MB |
+| laravel | 876 ms (840 ms-945 ms) | 96.3 MiB | 958 MB |
+| rails | 1.1 s (1.1 s-1.1 s) | 63.88 MiB | 431 MB |
+| django | 1.1 s (1.1 s-1.3 s) | 63.22 MiB | 279 MB |
+| phoenix | 1.3 s (1.3 s-1.4 s) | 125.5 MiB | 262 MB |
+| spring | 8.5 s (8.3 s-8.8 s) | 146.6 MiB | 516 MB |
 
 ### Item page, items in memory (no database)
 
 | App | 300/s offered: served, p50 / p99, CPU | 64 users: req/s, p50 / p99 | 256 users: req/s, p99, errors | Memory under load |
 |---|---|---|---|---|
-| **corten** | 300/s, 0.3 ms / 0.4 ms, 5% | 21,735, 2.4 ms / 11 ms | 20,026, 40 ms, 0% | 20-25 MiB |
-| aspnet | 300/s, 0.6 ms / 2.7 ms, 23% | 3,951, 16 ms / 25 ms | 3,684, 111 ms, 0% | 85-87 MiB |
-| leptos | 300/s, 1.0 ms / 1.3 ms, 26% | 1,384, 45 ms / 70 ms | 1,160, 370 ms, 0% | 15-35 MiB |
-| phoenix | 300/s, 1.1 ms / 1.4 ms, 38% | 1,346, 47 ms / 65 ms | 1,382, 220 ms, 0% | 282-299 MiB |
-| astro | 300/s, 1.0 ms / 32 ms, 32% | 1,225, 46 ms / 120 ms | 1,141, 318 ms, 0% | 140-140 MiB |
-| spring | 300/s, 1.1 ms / 6.3 ms, 46% | 981, 44 ms / 455 ms | 1,000, 1.2 s, 0% | 360-381 MiB |
-| sveltekit | 300/s, 1.3 ms / 26 ms, 45% | 784, 77 ms / 154 ms | 704, 480 ms, 0% | 149-154 MiB |
-| tanstack-start | 300/s, 1.5 ms / 47 ms, 55% | 625, 90 ms / 186 ms | 632, 537 ms, 0% | 163-164 MiB |
-| react-router | 300/s, 2.1 ms / 55 ms, 68% | 482, 125 ms / 203 ms | 476, 669 ms, 0% | 139-141 MiB |
-| rails | 300/s, 3.9 ms / 83 ms, 85% | 375, 173 ms / 204 ms | 348, 850 ms, 0% | 135-139 MiB |
-| django | 271/s, 2.2 s / 3.7 s, 101% | 269, 230 ms / 330 ms | 252, 1.2 s, 0% | 344-345 MiB |
-| nuxt | **failed**: 192/s served, 753 ms / 48.9 s, 100% | 304, 210 ms / 255 ms | 284, 2.3 s, 0% | 139-145 MiB |
-| nextjs | **failed**: 141/s served, 1.4 s / 57.7 s, 100% | 165, 396 ms / 476 ms | 167, 12.4 s, 0% | 215-221 MiB |
+| **corten** | 300/s, 0.2 ms / 0.4 ms, 4% | 23,416, 2.1 ms / 11 ms | 20,831, 39 ms, 0% | 20-26 MiB |
+| aspnet | 300/s, 0.5 ms / 2.5 ms, 17% | 4,298, 15 ms / 22 ms | 4,190, 95 ms, 0% | 86-89 MiB |
+| phoenix | 300/s, 1.0 ms / 1.3 ms, 33% | 1,614, 39 ms / 52 ms | 1,522, 2.3 s, 0% | 280-297 MiB |
+| leptos | 300/s, 0.9 ms / 1.1 ms, 23% | 1,487, 42 ms / 62 ms | 1,321, 311 ms, 0% | 16-33 MiB |
+| astro | 300/s, 0.9 ms / 30 ms, 31% | 1,263, 45 ms / 114 ms | 1,230, 277 ms, 0% | 134-135 MiB |
+| spring | 300/s, 1.1 ms / 5.3 ms, 40% | 1,114, 42 ms / 320 ms | 1,111, 1.0 s, 0% | 356-380 MiB |
+| sveltekit | 300/s, 1.0 ms / 20 ms, 36% | 986, 56 ms / 124 ms | 861, 330 ms, 0% | 148-151 MiB |
+| tanstack-start | 300/s, 1.4 ms / 37 ms, 49% | 705, 80 ms / 150 ms | 716, 446 ms, 0% | 168-169 MiB |
+| react-router | 300/s, 1.8 ms / 46 ms, 60% | 550, 107 ms / 180 ms | 545, 534 ms, 0% | 143-145 MiB |
+| rails | 300/s, 1.9 ms / 42 ms, 65% | 537, 119 ms / 137 ms | 478, 597 ms, 0% | 136-141 MiB |
+| django | 300/s, 2.7 ms / 12 ms, 85% | 346, 185 ms / 203 ms | 342, 792 ms, 0% | 344-345 MiB |
+| nuxt | 291/s, 717 ms / 21.7 s, 100% | 325, 196 ms / 244 ms | 304, 3.6 s, 0% | 132-136 MiB |
+| nextjs | **failed**: 151/s served, 1.3 s / 57.2 s, 100% | 186, 362 ms / 413 ms | 184, 6.7 s, 0% | 214-224 MiB |
 | laravel | **failed**: never answered /items/item_1 within a minute | - | - | - |
 
 ### The item as JSON, items in memory
 
 | App | 300/s offered: served, p50 / p99, CPU | 64 users: req/s, p50 / p99 | 256 users: req/s, p99, errors | Memory under load |
 |---|---|---|---|---|
-| **corten** | 300/s, 0.2 ms / 0.4 ms, 4% | 25,200, 2.0 ms / 11 ms | 22,488, 37 ms, 0% | 20-24 MiB |
-| leptos | 300/s, 0.3 ms / 0.4 ms, 5% | 17,036, 3.2 ms / 11 ms | 19,048, 39 ms, 0% | 14-18 MiB |
-| aspnet | 300/s, 0.3 ms / 0.5 ms, 15% | 12,311, 4.8 ms / 12 ms | 11,890, 43 ms, 0% | 77-80 MiB |
-| spring | 300/s, 0.3 ms / 1.2 ms, 11% | 7,698, 6.0 ms / 73 ms | 7,645, 268 ms, 0% | 349-374 MiB |
-| nuxt | 300/s, 0.4 ms / 0.6 ms, 10% | 6,978, 8.0 ms / 36 ms | 6,757, 92 ms, 0% | 98-100 MiB |
-| tanstack-start | 300/s, 0.5 ms / 4.8 ms, 14% | 3,687, 14 ms / 48 ms | 3,369, 128 ms, 0% | 144-146 MiB |
-| sveltekit | 300/s, 0.5 ms / 4.3 ms, 14% | 3,381, 15 ms / 51 ms | 3,314, 140 ms, 0% | 125-127 MiB |
-| react-router | 300/s, 0.7 ms / 2.3 ms, 19% | 2,364, 24 ms / 88 ms | 2,326, 194 ms, 0% | 113-116 MiB |
-| phoenix | 300/s, 0.7 ms / 1.0 ms, 27% | 1,944, 32 ms / 50 ms | 1,874, 3.0 s, 0% | 287-346 MiB |
-| astro | 300/s, 0.7 ms / 24 ms, 23% | 1,852, 30 ms / 87 ms | 1,917, 199 ms, 0% | 139-140 MiB |
-| django | 300/s, 0.8 ms / 1.2 ms, 30% | 1,125, 54 ms / 76 ms | 1,144, 283 ms, 0% | 294-294 MiB |
-| nextjs | 300/s, 0.9 ms / 38 ms, 33% | 1,086, 53 ms / 131 ms | 1,087, 317 ms, 0% | 170-171 MiB |
-| rails | 300/s, 1.3 ms / 11 ms, 42% | 877, 72 ms / 101 ms | 852, 383 ms, 0% | 129-130 MiB |
+| **corten** | 300/s, 0.2 ms / 0.4 ms, 4% | 27,625, 1.7 ms / 11 ms | 23,081, 37 ms, 0% | 20-25 MiB |
+| leptos | 300/s, 0.2 ms / 0.4 ms, 4% | 21,360, 2.5 ms / 11 ms | 20,524, 38 ms, 0% | 15-18 MiB |
+| aspnet | 300/s, 0.3 ms / 0.8 ms, 11% | 14,541, 4.1 ms / 11 ms | 12,703, 43 ms, 0% | 78-81 MiB |
+| spring | 300/s, 0.3 ms / 1.2 ms, 14% | 7,970, 5.9 ms / 67 ms | 7,890, 324 ms, 0% | 353-376 MiB |
+| nuxt | 300/s, 0.4 ms / 0.6 ms, 10% | 7,285, 7.6 ms / 35 ms | 6,378, 100 ms, 0% | 100-102 MiB |
+| tanstack-start | 300/s, 0.5 ms / 4.1 ms, 13% | 3,691, 14 ms / 46 ms | 3,585, 116 ms, 0% | 140-142 MiB |
+| sveltekit | 300/s, 0.4 ms / 3.7 ms, 13% | 3,411, 14 ms / 48 ms | 3,310, 134 ms, 0% | 122-125 MiB |
+| react-router | 300/s, 0.6 ms / 2.1 ms, 18% | 2,534, 23 ms / 73 ms | 2,452, 177 ms, 0% | 117-120 MiB |
+| phoenix | 300/s, 0.6 ms / 0.9 ms, 23% | 2,500, 25 ms / 37 ms | 2,445, 3.5 s, 0% | 293-326 MiB |
+| astro | 300/s, 0.7 ms / 23 ms, 22% | 1,962, 28 ms / 80 ms | 1,963, 188 ms, 0% | 136-138 MiB |
+| django | 300/s, 0.7 ms / 1.0 ms, 26% | 1,356, 45 ms / 60 ms | 1,332, 230 ms, 0% | 297-297 MiB |
+| nextjs | 300/s, 0.9 ms / 34 ms, 31% | 1,140, 51 ms / 115 ms | 1,137, 285 ms, 0% | 173-174 MiB |
+| rails | 300/s, 1.1 ms / 5.8 ms, 34% | 1,065, 59 ms / 77 ms | 1,051, 294 ms, 0% | 129-130 MiB |
 | laravel | **failed**: never answered /api/items/item_1 within a minute | - | - | - |
 
 ### Item page, item fetched from the item API
 
 | App | 150/s offered: served, p50 / p99, CPU | 64 users: req/s, p50 / p99 | 256 users: req/s, p99, errors | Memory under load |
 |---|---|---|---|---|
-| **corten** | 150/s, 0.9 ms / 1.1 ms, 8% | 3,240, 19 ms / 27 ms | 3,072, 126 ms, 0% | 18-59 MiB |
-| aspnet | 150/s, 1.9 ms / 17 ms, 41% | 998, 61 ms / 103 ms | 892, 363 ms, 0% | 70-98 MiB |
-| leptos | 150/s, 1.9 ms / 2.7 ms, 25% | 670, 96 ms / 121 ms | 590, 766 ms, 0% | 16-56 MiB |
-| spring | 150/s, 3.4 ms / 50 ms, 78% | 435, 143 ms / 274 ms | 362, 1.3 s, 0% | 423-457 MiB |
-| astro | 150/s, 2.3 ms / 41 ms, 46% | 407, 161 ms / 207 ms | 395, 755 ms, 0% | 127-149 MiB |
-| sveltekit | 150/s, 2.5 ms / 27 ms, 48% | 321, 199 ms / 248 ms | 314, 928 ms, 0% | 143-158 MiB |
-| phoenix | 150/s, 3.5 ms / 5.8 ms, 60% | 305, 210 ms / 304 ms | 296, 5.8 s, 0% | 212-309 MiB |
-| tanstack-start | 150/s, 3.0 ms / 45 ms, 55% | 288, 223 ms / 266 ms | 276, 1.1 s, 0% | 139-169 MiB |
-| rails | 150/s, 4.3 ms / 47 ms, 67% | 260, 249 ms / 299 ms | 240, 1.2 s, 0% | 107-113 MiB |
-| react-router | 150/s, 3.7 ms / 154 ms, 65% | 244, 262 ms / 323 ms | 257, 4.7 s, 0% | 133-151 MiB |
-| nuxt | 150/s, 15 ms / 788 ms, 86% | 187, 340 ms / 386 ms | 184, 19.1 s, 0% | 134-186 MiB |
-| django | 146/s, 1.1 s / 1.5 s, 101% | 162, 380 ms / 542 ms | 150, 2.1 s, 0% | 126-126 MiB |
-| nextjs | **failed**: 77/s served, 2.6 s / 53.7 s, 100% | 107, 587 ms / 912 ms | 99, 29.1 s, 0% | 253-256 MiB |
-| laravel | **failed**: 78/s served, 11.9 s / 13.4 s, 100% | 81, 781 ms / 988 ms | 78, 3.6 s, 0% | 121-126 MiB |
+| **corten** | 150/s, 0.8 ms / 1.1 ms, 7% | 3,615, 16 ms / 25 ms | 3,506, 118 ms, 0% | 18-61 MiB |
+| aspnet | 150/s, 1.7 ms / 8.3 ms, 35% | 1,171, 54 ms / 80 ms | 1,029, 290 ms, 0% | 72-99 MiB |
+| leptos | 150/s, 1.8 ms / 2.2 ms, 22% | 787, 83 ms / 97 ms | 665, 508 ms, 0% | 15-55 MiB |
+| spring | 150/s, 2.6 ms / 10 ms, 56% | 484, 130 ms / 237 ms | 403, 1.1 s, 0% | 425-456 MiB |
+| astro | 150/s, 2.2 ms / 38 ms, 45% | 450, 146 ms / 175 ms | 437, 687 ms, 0% | 128-147 MiB |
+| phoenix | 150/s, 2.9 ms / 3.8 ms, 45% | 406, 157 ms / 207 ms | 408, 5.5 s, 0% | 212-335 MiB |
+| sveltekit | 150/s, 2.4 ms / 25 ms, 44% | 392, 164 ms / 195 ms | 371, 761 ms, 0% | 143-158 MiB |
+| rails | 150/s, 3.2 ms / 30 ms, 51% | 387, 165 ms / 184 ms | 332, 829 ms, 0% | 107-110 MiB |
+| tanstack-start | 150/s, 2.7 ms / 34 ms, 51% | 325, 201 ms / 233 ms | 304, 2.9 s, 0% | 135-167 MiB |
+| react-router | 150/s, 3.3 ms / 91 ms, 60% | 283, 230 ms / 260 ms | 295, 996 ms, 0% | 137-154 MiB |
+| nuxt | 150/s, 6.5 ms / 331 ms, 78% | 203, 312 ms / 365 ms | 197, 15.7 s, 0% | 132-189 MiB |
+| django | 150/s, 5.0 ms / 9.2 ms, 76% | 183, 348 ms / 387 ms | 185, 1.4 s, 0% | 127-128 MiB |
+| nextjs | **failed**: 79/s served, 2.6 s / 52.6 s, 100% | 112, 549 ms / 866 ms | 105, 24.9 s, 0% | 207-251 MiB |
+| laravel | **failed**: 103/s served, 7.5 s / 9.8 s, 99% | 102, 624 ms / 732 ms | 101, 2.7 s, 0% | 117-125 MiB |
 
 ### The item as JSON, fetched from the item API
 
 | App | 150/s offered: served, p50 / p99, CPU | 64 users: req/s, p50 / p99 | 256 users: req/s, p99, errors | Memory under load |
 |---|---|---|---|---|
-| **corten** | 150/s, 0.8 ms / 1.1 ms, 7% | 3,787, 16 ms / 26 ms | 3,425, 123 ms, 0% | 18-60 MiB |
-| aspnet | 150/s, 1.5 ms / 9.5 ms, 30% | 1,317, 47 ms / 80 ms | 1,221, 280 ms, 0% | 58-87 MiB |
-| leptos | 150/s, 1.5 ms / 2.1 ms, 17% | 916, 73 ms / 88 ms | 859, 432 ms, 0% | 15-54 MiB |
-| spring | 150/s, 1.6 ms / 5.8 ms, 31% | 823, 74 ms / 156 ms | 693, 701 ms, 0% | 417-456 MiB |
-| nuxt | 150/s, 1.6 ms / 18 ms, 28% | 746, 86 ms / 134 ms | 678, 559 ms, 0% | 121-138 MiB |
-| sveltekit | 150/s, 1.7 ms / 17 ms, 30% | 624, 104 ms / 137 ms | 562, 564 ms, 0% | 123-141 MiB |
-| tanstack-start | 150/s, 1.7 ms / 21 ms, 32% | 603, 110 ms / 145 ms | 532, 585 ms, 0% | 122-143 MiB |
-| react-router | 150/s, 2.0 ms / 31 ms, 40% | 505, 129 ms / 158 ms | 458, 657 ms, 0% | 121-137 MiB |
-| astro | 150/s, 2.1 ms / 33 ms, 40% | 497, 131 ms / 161 ms | 459, 659 ms, 0% | 123-138 MiB |
-| rails | 150/s, 3.1 ms / 31 ms, 50% | 336, 188 ms / 268 ms | 352, 898 ms, 0% | 82-84 MiB |
-| phoenix | 150/s, 3.1 ms / 5.4 ms, 52% | 330, 190 ms / 272 ms | 341, 5.8 s, 0% | 227-312 MiB |
-| nextjs | 150/s, 2.4 ms / 65 ms, 48% | 312, 214 ms / 258 ms | 295, 3.5 s, 0% | 149-189 MiB |
-| django | 150/s, 3.5 ms / 5.3 ms, 55% | 265, 245 ms / 295 ms | 272, 1.1 s, 0% | 76-76 MiB |
-| laravel | 150/s, 5.0 ms / 23 ms, 71% | 227, 283 ms / 348 ms | 197, 1.4 s, 0% | 100-115 MiB |
+| **corten** | 150/s, 0.8 ms / 1.1 ms, 7% | 3,753, 17 ms / 24 ms | 3,628, 107 ms, 0% | 17-61 MiB |
+| aspnet | 150/s, 1.2 ms / 5.7 ms, 23% | 1,695, 37 ms / 55 ms | 1,570, 208 ms, 0% | 59-86 MiB |
+| leptos | 150/s, 1.4 ms / 1.8 ms, 15% | 1,194, 54 ms / 62 ms | 1,149, 300 ms, 0% | 16-56 MiB |
+| spring | 150/s, 1.7 ms / 6.0 ms, 33% | 846, 71 ms / 156 ms | 732, 631 ms, 0% | 413-448 MiB |
+| nuxt | 150/s, 1.5 ms / 17 ms, 27% | 799, 81 ms / 123 ms | 695, 516 ms, 0% | 121-142 MiB |
+| sveltekit | 150/s, 1.5 ms / 16 ms, 28% | 695, 96 ms / 118 ms | 619, 509 ms, 0% | 122-145 MiB |
+| tanstack-start | 150/s, 1.6 ms / 18 ms, 29% | 690, 98 ms / 122 ms | 601, 502 ms, 0% | 120-145 MiB |
+| react-router | 150/s, 1.9 ms / 28 ms, 36% | 572, 115 ms / 139 ms | 504, 573 ms, 0% | 121-138 MiB |
+| astro | 150/s, 1.9 ms / 30 ms, 38% | 554, 119 ms / 141 ms | 497, 578 ms, 0% | 125-142 MiB |
+| rails | 150/s, 2.3 ms / 22 ms, 37% | 470, 128 ms / 177 ms | 464, 619 ms, 0% | 83-88 MiB |
+| phoenix | 150/s, 2.6 ms / 3.3 ms, 40% | 454, 140 ms / 179 ms | 456, 6.7 s, 0% | 226-311 MiB |
+| nextjs | 150/s, 2.3 ms / 56 ms, 44% | 355, 191 ms / 218 ms | 330, 1.5 s, 0% | 150-186 MiB |
+| django | 150/s, 3.0 ms / 3.7 ms, 45% | 337, 190 ms / 208 ms | 330, 828 ms, 0% | 77-78 MiB |
+| laravel | 150/s, 4.1 ms / 10 ms, 58% | 262, 220 ms / 464 ms | 253, 1.8 s, 0% | 102-117 MiB |
 
 ### Instructions per request
 
 | App | Item page: user / kernel | JSON: user / kernel |
 |---|---|---|
-| **corten** | 103,877 / 33,530 | 69,291 / 33,525 |
-| aspnet | 1,259,416 / 58,261 | 268,810 / 60,107 |
-| astro | 2,057,084 / 80,867 | 1,092,856 / 77,303 |
-| phoenix | 2,143,013 / 95,676 | 1,561,003 / 85,759 |
-| leptos | 2,724,688 / 36,016 | 204,910 / 33,423 |
-| sveltekit | 4,469,276 / 47,144 | 682,489 / 33,662 |
-| rails | 5,010,004 / 339,334 | 2,278,145 / 295,479 |
-| tanstack-start | 5,312,995 / 50,663 | 537,769 / 33,672 |
-| spring | 5,698,927 / 99,663 | 1,212,492 / 96,484 |
-| react-router | 6,440,693 / 110,824 | 865,133 / 70,622 |
-| nuxt | 9,810,514 / 67,459 | 425,232 / 32,319 |
-| django | 12,641,283 / 356,389 | 1,896,608 / 172,384 |
-| nextjs | 17,085,250 / 135,451 | 1,696,172 / 58,526 |
+| **corten** | 95,038 / 33,192 | 69,444 / 34,117 |
+| aspnet | 1,027,009 / 60,415 | 268,061 / 60,771 |
+| astro | 2,062,613 / 80,833 | 1,087,272 / 77,083 |
+| phoenix | 2,142,108 / 91,072 | 1,549,527 / 79,845 |
+| leptos | 2,731,557 / 35,143 | 203,756 / 33,018 |
+| sveltekit | 4,465,666 / 45,179 | 686,953 / 33,814 |
+| rails | 5,009,173 / 328,362 | 2,275,040 / 283,616 |
+| tanstack-start | 5,315,131 / 49,850 | 512,569 / 33,377 |
+| spring | 5,817,331 / 97,131 | 1,394,151 / 101,801 |
+| react-router | 6,451,010 / 109,052 | 875,998 / 70,265 |
+| nuxt | 9,877,929 / 67,335 | 421,756 / 32,435 |
+| django | 12,616,229 / 348,975 | 1,885,395 / 171,430 |
+| nextjs | 17,295,179 / 134,154 | 1,710,624 / 58,309 |
 | laravel | **failed**: did not start | **failed**: did not start |
+
+### Efficiency
+
+What each request costs the machine, from the same runs as the tables above. Pages per
+CPU-second is requests a second at 64 users over the share of its one core the app used: work per
+request, which does not depend on whether the load kept the core busy. CPU for 300 pages/s is the
+fixed-rate phase, what a steady modest load costs. Pages/s per MiB is the 64-user rate over the
+app's peak memory in that phase. Instruction counts (above) are the steadiest form of the same
+cost; these also include allocation, waiting and the kernel.
+
+| App | Pages per CPU-second: memory / item API | JSON per CPU-second: memory / item API | CPU for 300 pages/s from memory | Pages/s per MiB, from memory | Peak memory, 64 users |
+|---|---|---|---|---|---|
+| **corten** | 25,124 / 3,544 | 31,572 / 3,676 | 4.1% | 1,110 | 21.1 MiB |
+| aspnet | 4,285 / 1,162 | 14,512 / 1,680 | 17% | 50 | 86.2 MiB |
+| phoenix | 1,608 / 404 | 2,480 / 452 | 33% | 5.7 | 280.9 MiB |
+| leptos | 1,478 / 783 | 22,044 / 1,181 | 23% | 91 | 16.4 MiB |
+| astro | 1,253 / 449 | 1,941 / 552 | 31% | 9.4 | 134.1 MiB |
+| spring | 1,109 / 481 | 7,907 / 839 | 40% | 3.1 | 356.3 MiB |
+| sveltekit | 979 / 390 | 3,371 / 691 | 36% | 6.7 | 148 MiB |
+| tanstack-start | 701 / 323 | 3,636 / 687 | 49% | 4.2 | 168.1 MiB |
+| react-router | 548 / 282 | 2,504 / 568 | 60% | 3.8 | 143.6 MiB |
+| rails | 531 / 383 | 1,045 / 466 | 65% | 3.8 | 142 MiB |
+| django | 344 / 182 | 1,342 / 336 | 85% | 1.0 | 344.3 MiB |
+| nuxt | 324 / 202 | 7,256 / 796 | 100%, 291/s served | 2.5 | 131.8 MiB |
+| nextjs | failed (185) / failed (111) | 1,129 / 354 | failed (100%, 151/s served) | failed (0.9) | 214.3 MiB |
+| laravel | **failed** / failed (102) | **failed** / 263 | **failed** | **failed** | **failed** |
+
+Corten renders a page from memory with 40 µs of CPU (25,124 per CPU-second), 5.9x ASP.NET Core
+(233 µs) and 17x Leptos, and its JSON with 32 µs, against Leptos's 45 and ASP.NET Core's 69. At
+300 pages a second it used 4.1% of its core, ASP.NET Core 17% and Leptos 23%; that is 7,317 pages
+per CPU-second, under a third of its rate at 64 users, since at a low rate each request also pays
+for waking the server, and a once-a-second sample is coarse at 4%. It serves 1,110 pages a second
+per MiB: 12x Leptos (91), which peaks lower (16.4 MiB against 21.1) but serves a sixteenth of
+the pages, and 22x ASP.NET Core (50). From the item API, fetching and parsing the 55 KB item
+costs Corten about 240 µs a page, six times the page itself
+([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
+
+In r6 Corten's core was 93% busy at 64 users for the page from memory and 88% for the JSON, the
+only app below 97% (Leptos's JSON was at 96.9%): four load-generator cores could not keep it
+busy, so its requests a second from memory are below what it can serve, while its requests per
+CPU-second are not affected. From r7 the load generator also gets the item API's two cores, which
+are idle with items in memory, and each phase's CPU time is read from the container's cgroup
+counter rather than from once-a-second samples (`cpu-time.mjs`; `cpuCounted` in
+`summary.json`).
 
 ### Bytes the item page loads (raw / gzip, KB)
 
 | App | HTML | JavaScript (files) | WASM | CSS |
 |---|---|---|---|---|
-| **corten** | 11.1 / 2.3 | 18.4 / 7.3 (4) | 0 | 4.6 / 1.6 |
 | astro | 9.3 / 2.6 | 24.9 / 9.2 (3) | 0 | 0.0 / 0.0 |
+| **corten** | 11.2 / 2.3 | 24.9 / 9.6 (4) | 0 | 4.6 / 1.6 |
 | django | 7.3 / 1.8 | 51.7 / 17.0 (2) | 0 | 2.3 / 0.9 |
 | aspnet | 7.3 / 1.9 | 51.7 / 17.0 (2) | 0 | 2.3 / 0.9 |
 | spring | 7.2 / 1.8 | 51.7 / 17.0 (2) | 0 | 2.3 / 0.9 |
@@ -180,76 +225,75 @@ islands and before `corten::Json`) and r1 (`results/r1/`, six frameworks, a Plat
 | App | Interactive | LCP | Blocking time | Form action | Client navigation | JS heap |
 |---|---|---|---|---|---|---|
 | Desktop | | | | | | |
-| aspnet | 55 (57) ms | 80 ms | 0 ms | 76 ms | 18 (20) ms | 1.5 MB |
-| django | 57 (59) ms | 80 ms | 0 ms | 75 ms | 22 (27) ms | 1.5 MB |
-| astro | 63 (69) ms | 72 ms | 0 ms | 75 ms | 19 (21) ms | 1.4 MB |
-| **corten** | 65 (69) ms | 76 ms | 0 ms | 75 ms | 13 (14) ms | 1.4 MB |
-| rails | 69 (72) ms | 76 ms | 0 ms | 89 ms | 29 (38) ms | 1.9 MB |
-| spring | 69 (70) ms | 80 ms | 0 ms | 75 ms | 36 (80) ms | 1.5 MB |
-| laravel | 83 (89) ms | 72 ms | 0 ms | 90 ms | 26 (28) ms | 2 MB |
-| nuxt | 101 (116) ms | 76 ms | 0 ms | 72 ms | 25 (26) ms | 2.7 MB |
-| sveltekit | 110 (116) ms | 84 ms | 0 ms | 75 ms | 22 (24) ms | 2.1 MB |
-| leptos | 115 (136) ms | 92 ms | 0 ms | 73 ms | 26 (28) ms | 1.7 MB |
-| phoenix | 120 (125) ms | 96 ms | 0 ms | 82 ms | 19 (20) ms | 2.1 MB |
-| tanstack-start | 127 (135) ms | 80 ms | 0 ms | 82 ms | 29 (31) ms | 2.9 MB |
-| nextjs | 162 (169) ms | 80 ms | 1 ms | 75 ms | 127 (155) ms | 3.2 MB |
-| react-router | 167 (171) ms | 116 ms | 0 ms | 97 ms | 32 (35) ms | 2.5 MB |
+| django | 45 (48) ms | 68 ms | 0 ms | 76 ms | 21 (29) ms | 1.5 MB |
+| aspnet | 45 (47) ms | 64 ms | 0 ms | 78 ms | 16 (19) ms | 1.5 MB |
+| astro | 54 (56) ms | 60 ms | 0 ms | 76 ms | 18 (19) ms | 1.4 MB |
+| rails | 57 (63) ms | 64 ms | 0 ms | 91 ms | 26 (33) ms | 1.9 MB |
+| **corten** | 58 (62) ms | 64 ms | 0 ms | 75 ms | 13 (15) ms | 1.4 MB |
+| spring | 61 (75) ms | 76 ms | 0 ms | 77 ms | 32 (61) ms | 1.5 MB |
+| laravel | 71 (74) ms | 64 ms | 0 ms | 77 ms | 24 (24) ms | 2 MB |
+| nuxt | 97 (99) ms | 72 ms | 0 ms | 73 ms | 24 (26) ms | 2.7 MB |
+| sveltekit | 99 (102) ms | 76 ms | 0 ms | 74 ms | 21 (23) ms | 2.1 MB |
+| phoenix | 99 (113) ms | 84 ms | 0 ms | 82 ms | 16 (17) ms | 2.1 MB |
+| leptos | 107 (120) ms | 88 ms | 0 ms | 75 ms | 24 (24) ms | 1.7 MB |
+| tanstack-start | 115 (119) ms | 68 ms | 0 ms | 73 ms | 28 (29) ms | 2.9 MB |
+| nextjs | 148 (151) ms | 72 ms | 0 ms | 74 ms | 137 (163) ms | 3.2 MB |
+| react-router | 159 (181) ms | 104 ms | 0 ms | 84 ms | 29 (33) ms | 2.5 MB |
 | Mobile (4x CPU, 150 ms RTT, 1.6 Mbps) | | | | | | |
-| aspnet | 434 (435) ms | 412 ms | 10 ms | 301 ms | 243 (254) ms | 1.5 MB |
-| django | 443 (446) ms | 412 ms | 2 ms | 295 ms | 244 (248) ms | 1.5 MB |
-| **corten** | 450 (465) ms | 456 ms | 4 ms | 284 ms | 198 (201) ms | 1.4 MB |
-| spring | 612 (616) ms | 428 ms | 5 ms | 293 ms | 242 (244) ms | 1.5 MB |
-| astro | 625 (631) ms | 276 ms | 0 ms | 314 ms | 247 (251) ms | 1.4 MB |
-| sveltekit | 845 (863) ms | 480 ms | 4 ms | 288 ms | 269 (273) ms | 2.1 MB |
-| laravel | 877 (880) ms | 420 ms | 16 ms | 348 ms | 217 (219) ms | 2 MB |
-| phoenix | 948 (973) ms | 412 ms | 60 ms | 147 ms | 132 (137) ms | 2.1 MB |
-| react-router | 1,061 (1,080) ms | 436 ms | 37 ms | 354 ms | 255 (271) ms | 2.6 MB |
-| rails | 1,151 (1,158) ms | 424 ms | 6 ms | 311 ms | 254 (259) ms | 1.9 MB |
-| nextjs | 1,412 (1,424) ms | 408 ms | 165 ms | 301 ms | 448 (456) ms | 3.1 MB |
-| nuxt | 1,482 (1,528) ms | 440 ms | 54 ms | 281 ms | 282 (292) ms | 2.7 MB |
-| leptos | 1,849 (1,861) ms | 424 ms | 81 ms | 301 ms | 249 (253) ms | 1.7 MB |
-| tanstack-start | 2,324 (2,327) ms | 420 ms | 63 ms | 287 ms | 345 (354) ms | 2.9 MB |
+| aspnet | 427 (431) ms | 400 ms | 2 ms | 295 ms | 243 (247) ms | 1.5 MB |
+| django | 437 (438) ms | 408 ms | 5 ms | 295 ms | 244 (248) ms | 1.5 MB |
+| **corten** | 449 (454) ms | 444 ms | 0 ms | 286 ms | 197 (201) ms | 1.4 MB |
+| spring | 608 (613) ms | 420 ms | 2 ms | 301 ms | 245 (247) ms | 1.5 MB |
+| astro | 621 (626) ms | 272 ms | 0 ms | 313 ms | 242 (245) ms | 1.4 MB |
+| sveltekit | 845 (851) ms | 464 ms | 4 ms | 285 ms | 270 (273) ms | 2.1 MB |
+| laravel | 876 (882) ms | 416 ms | 21 ms | 333 ms | 217 (221) ms | 2 MB |
+| phoenix | 930 (949) ms | 400 ms | 49 ms | 152 ms | 134 (136) ms | 2.1 MB |
+| react-router | 1,055 (1,058) ms | 432 ms | 31 ms | 350 ms | 262 (266) ms | 2.6 MB |
+| rails | 1,147 (1,153) ms | 416 ms | 2 ms | 316 ms | 253 (256) ms | 1.9 MB |
+| nextjs | 1,398 (1,410) ms | 400 ms | 150 ms | 310 ms | 448 (455) ms | 3.1 MB |
+| nuxt | 1,489 (1,497) ms | 432 ms | 59 ms | 287 ms | 280 (284) ms | 2.7 MB |
+| leptos | 1,839 (1,844) ms | 416 ms | 72 ms | 301 ms | 253 (256) ms | 1.7 MB |
+| tanstack-start | 2,323 (2,327) ms | 424 ms | 64 ms | 296 ms | 344 (349) ms | 2.9 MB |
 
 ### What the numbers say
 
-1. Rendering from memory: Corten serves 21,735 item pages a second at 64 users, 5.5x ASP.NET
-   Core (3,951), the next fastest, and 16x Leptos (1,384). A page costs it 103,877 user-mode
-   instructions; ASP.NET Core 1.26 million, Leptos 2.7 million, Next.js 17 million.
-2. JSON from memory: Corten leads with 25,200 a second, then Leptos (17,036) and ASP.NET Core
-   (12,311). Corten's JSON costs 69,291 user-mode instructions, a third of Leptos's (204,910)
+1. Rendering from memory: Corten serves 23,416 item pages a second at 64 users, 5.4x ASP.NET
+   Core (4,298), the next fastest, and 16x Leptos (1,487). A page costs it 95,038 user-mode
+   instructions; ASP.NET Core 1.03 million, Leptos 2.7 million, Next.js 17 million.
+2. JSON from memory: Corten leads with 27,625 a second, then Leptos (21,360) and ASP.NET Core
+   (14,541). Corten's JSON costs 69,444 user-mode instructions, a third of Leptos's (203,756)
    and less than its own HTML page.
 3. With the item API every request fetches and parses about 55 KB of JSON, and that dominates.
-   Corten parses only the fields the page reads (see below) and serves 3,240 pages a second,
-   3.2x ASP.NET Core (998) and 4.8x Leptos (670); the rest serve 162-435. As JSON from the item
-   API: Corten 3,787, ASP.NET Core 1,317, Leptos 916. At 150 a second Corten's page used 8% of
-   its core, ASP.NET Core's 41%.
-4. Failed: Next.js could not serve 300 pages a second from memory (141, p99 57.7 s) or 150 from
-   the item API (77). Laravel did not start for the in-memory runs: each Octane worker loads the
+   Corten parses only the fields the page reads (see below) and serves 3,615 pages a second,
+   3.1x ASP.NET Core (1,171) and 4.6x Leptos (787); the rest serve 183-484. As JSON from the item
+   API: Corten 3,753, ASP.NET Core 1,695, Leptos 1,194. At 150 a second Corten's page used 7% of
+   its core, ASP.NET Core's 35%.
+4. Failed: Next.js could not serve 300 pages a second from memory (151, p99 57.2 s) or 150 from
+   the item API (79). Laravel did not start for the in-memory runs: each Octane worker loads the
    508 items into PHP arrays, which PHP's default `memory_limit` (128 MB) does not allow; with the
-   item API it served 78 of 150 pages a second and kept up with the JSON. Nuxt failed the
-   in-memory page test again (192 of 300, 8.4% never sent). Django served 271 of 300 in-memory
-   pages a second, inside the rule (4.1% never sent, r4 5.9%) but at 100% CPU and a median of
-   2.2 s, and 146 of 150 item-API pages a second at 100% CPU.
-5. Cold start: Corten and Leptos answer 6.3 ms and 8.6 ms after their process starts and hold
-   1.1 MiB and 1.5 MiB after the first request. The Node frameworks take 191-747 ms and
-   24-51 MiB; Spring Boot 8.9 s and 141 MiB.
-6. Browser: on desktop the server-rendered apps with small scripts (ASP.NET Core, Django, Astro,
-   Corten, Rails, Spring) are interactive in 55-69 ms. On the throttled phone Corten is
-   interactive in 450 ms, with the htmx apps (434-443 ms), against 1,412 ms for Next.js,
-   1,849 ms for Leptos (WASM) and 2,324 ms for TanStack Start. Corten's client navigation is the
-   fastest on desktop (13 ms); on the phone Phoenix's is (132 ms against 198 ms), over its
-   already-open LiveView socket. Corten's item page loads 7.3 KB of JavaScript (gzip) in four
-   files, against 6.2 KB in r4: the views runtime landed between the two rounds.
+   item API it served 103 of 150 pages a second and kept up with the JSON. On this faster CPU
+   Nuxt passed the in-memory page test it failed in r4 and r5 (291 of 300, 1.5% never sent) at
+   100% CPU and a median of 717 ms, and Django passed it at 85% CPU.
+5. Cold start: Corten and Leptos answer 6.0 ms and 6.9 ms after their process starts and hold
+   1.1 MiB and 1.5 MiB after the first request. The Node frameworks take 178-707 ms and
+   24-51 MiB; Spring Boot 8.5 s and 147 MiB.
+6. Browser: on desktop the server-rendered apps with small scripts (Django, ASP.NET Core, Astro,
+   Rails, Corten, Spring) are interactive in 45-61 ms. On the throttled phone Corten is
+   interactive in 449 ms, with the htmx apps (427-437 ms), against 1,398 ms for Next.js,
+   1,839 ms for Leptos (WASM) and 2,323 ms for TanStack Start. Corten's client navigation is the
+   fastest on desktop (13 ms); on the phone Phoenix's is (134 ms against 197 ms), over its
+   already-open LiveView socket. Corten's item page loads 9.6 KB of JavaScript (gzip) in four
+   files, against 7.3 KB in r5, now more than Astro's 9.2 KB.
 
-r5 ran on the same CPU model as r4 (Platinum 8168), with every app but Corten unchanged, and
-the unchanged apps still moved: ASP.NET Core's page from memory 3,951 a second against 3,385
-(+17%), Leptos's 1,384 against 1,282 (+8%), Spring's 981 against 1,050 (-7%). So part of Corten's
-change is the droplet: its page from memory rose 20% (18,043 to 21,735), about as much as ASP.NET
-Core's. Its other rows rose more than any unchanged app's: JSON from memory 33% (18,934 to
-25,200), the item-API page 51% (2,142 to 3,240) and its JSON 66% (2,283 to 3,787). Instruction
-counts, which do not depend on the droplet, fell 16% for the page (123,693 to 103,877) and 48% for
-the JSON (133,308 to 69,291); Leptos's page held (2,724,688 against 2,725,430). Counts compare
-across rounds, and requests a second only within one.
+r6 ran on a Platinum 8280, faster than r5's Platinum 8168, and every app but Corten was
+unchanged: their 64-user requests a second rose by a median of 14% for the page from memory, 18%
+for the JSON from memory, 17% for the item-API page and 27% for the item-API JSON. Corten's rose
+less in each: 8% (21,735 to 23,416), 10% (25,200 to 27,625), 12% (3,240 to 3,615), and its
+item-API JSON not at all (3,787 to 3,753); at 150 a second that route used 6.5% of its core, as
+in r5 (6.6%), while ASP.NET Core's fell from 30% to 22.5%. Instruction counts, which do not
+depend on the droplet, fell 8.5% for Corten's page (103,877 to 95,038) and held for its JSON
+(69,291 to 69,444) and for Leptos's page (2,724,688 against 2,731,557). Counts compare across
+rounds, and requests a second only within one.
 
 ### Browser pass after the many-rows change (round browser-3, 2026-10-23)
 
@@ -325,7 +369,7 @@ Corten's item-API page fell from 1,290 a second in r2 to 1,175 in r3 as the unch
 was Corten's own cost. Every request parsed the 55 KB response into a `serde_json::Value` and
 then read the view from it, 3.47 million instructions an item in process (callgrind), against
 about 124,000 to render the page. ASP.NET Core deserializes into typed records and skips the
-members it does not use. `examples/item-page` now deserializes into `ApiItem`, structs of only
+members it does not use. `examples/card-market` now deserializes into `ApiItem`, structs of only
 the fields the page reads (1.08 million instructions an item), and the same views come out for
 all 508 fixture items. Leptos's app, as it is written, still parses into a `Value`.
 
@@ -340,9 +384,9 @@ one at a time, alternating, two rounds, items from the item API (`results/ab-typ
 | Page, user instructions a request | 4,395,372 | 1,385,381 | 5.4-9.2 million (JIT and GC vary) |
 | JSON, user instructions a request | 4,387,294 | 1,398,989 | |
 
-Instructions are `count.mjs ... api`, median of 3 x 5,000 requests. r5, on a slower
-droplet and with Corten's JSON derives, serves 3,240 item-API pages a second against ASP.NET Core's
-998 (3.2x; 2.3x in the A/B and in r4), at 8% of its core at 150 a second against 41%.
+Instructions are `count.mjs ... api`, median of 3 x 5,000 requests. r6, on a
+Platinum 8280 like this A/B's, serves 3,615 item-API pages a second against ASP.NET Core's 1,171
+(3.1x; 2.3x in the A/B and in r4, 3.2x in r5), at 7% of its core at 150 a second against 35%.
 
 ### Corten before and after its type and performance pass (Docker Desktop, 2026-10-21)
 
@@ -370,24 +414,29 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
 ## Method
 
 1. Machine: a DigitalOcean CPU-optimized droplet (`c-8`: 8 dedicated vCPUs, Intel Xeon Platinum
-   8168 at 2.7 GHz in r4 and r5, 16 GB), Ubuntu 24.04, kernel 6.8, Docker 29.9, Node 24, created for the run
+   8280 at 2.7 GHz in r6, 16 GB), Ubuntu 24.04, kernel 6.8, Docker 29.9, Node 24, created for the run
    and destroyed after it (`droplet.mjs`). Droplets of one size are not all the same CPU (r1's,
-   r4's and r5's were a Platinum 8168, r2's and r3's a Platinum 8280), so times are compared within a
+   r4's and r5's were a Platinum 8168, r2's, r3's and r6's a Platinum 8280), so times are compared within a
    round, never across rounds.
 2. Cores: the app under test pinned to core 1 with 1 GiB of memory, the item API to cores 2-3,
    the load generator (k6) to cores 4-7, the system and Docker on core 0. One app runs at a time.
+   From r7, with items in memory, k6 also gets cores 2-3, which the item API does not use then.
 3. Cold start (`cold-start.mjs`): the container runs a shell that writes the time and execs the
    server; a probe in the same network namespace polls for the first 200 of an item page (items
    from the item API). Docker's own container setup is not in the number. 10 runs each.
 4. Server rendering (`run-ssr.mjs`): a 30 s warmup with 32 users (long enough for the JVM's and
    .NET's JITs), then 60 s at a fixed rate (300/s from memory, 150/s from the API), 60 s with 64
    closed-loop users, and 60 s with 256. Items 1 to 500, skewed toward low ids. Responses
-   uncompressed. CPU and memory are sampled from `docker stats` each second.
+   uncompressed. CPU and memory are sampled from `docker stats` each second; from r7 each
+   phase's CPU time is also read from the container's cgroup counter before and after it
+   (`cpu-time.mjs`, `<app>-<phase>-cpu.json`).
    - Items in memory: a 27.7 MB fixture of 508 items loaded at start, so only the framework is
      measured.
    - Item API: every request fetches the item (about 55 KB of JSON) over HTTP from
      `item-api/server.mjs`, which serves the fixture's responses the way the production API does
-     with a warm cache, and parses it.
+     with a warm cache, and parses it. From r7 it runs one Node process per core it has (two), so
+     it can serve about twice what r6's single process could; its CPU next to each item-API phase
+     (`apiCpuPct`) is a percentage of one core, up to 200.
    - JSON: `GET /api/items/{id}` answers the view model the page renders (about 9 KB), written by
      the framework's usual JSON path. Same lookup as the page; only the output differs.
 5. Instructions per request (`count.mjs`): `perf stat` counts the app container's user and
@@ -402,10 +451,18 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    from another origin. Desktop is unthrottled; mobile is 4x CPU slowdown, 150 ms RTT, 1.6 Mbps down.
    "Interactive" is when the page's own code marks itself ready (hydration finished, islands
    connected, or the framework's load event). Action is fill, submit, and wait for the
-   confirmation. Navigation is home page to item page.
+   confirmation. Navigation is home page to item page. From round r8, the action is not timed on
+   `item_12345`, which has no listings: card-market refuses an alert there and the others set
+   one, which is different work, so its median comes from 8 of 10 runs, where earlier rounds'
+   came from all 10
+   ([#259 Benchmark round r7 has no browser numbers: Corten refuses the price alert on item_12345, which has no listings, and browser.mjs times out waiting for 'Alert set'](https://github.com/todd-skelton/corten/issues/259)).
 7. Bytes (`bytes.mjs`): every script, WASM and stylesheet the item page loads, fetched raw and
    gzipped here at level 6, so server compression settings do not change the comparison.
-8. k6 runs with every local port and reuses ports in TIME_WAIT: gunicorn's sync workers close
+8. Efficiency (`summarize.mjs`): requests per CPU-second are a phase's requests over the app's
+   CPU time in it (the cgroup counter; before r7, the 64-user rate over the sampled average),
+   requests a second per MiB are the 64-user rate over the phase's peak memory, and the item API's
+   sampled CPU is kept next to each item-API phase (`apiCpuPct`).
+9. k6 runs with every local port and reuses ports in TIME_WAIT: gunicorn's sync workers close
    each connection, and at a few thousand requests a second k6 otherwise ran out of ports
    (r2's first attempt stopped there).
 
@@ -426,26 +483,29 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
    rendered pages.
 6. The images include the live benchmark's routes (`/live/...`), which the item page does not
    touch.
-7. Laravel ran with PHP's default `memory_limit` throughout r3, r4 and r5. (r2's main run had raised it
+7. Laravel ran with PHP's default `memory_limit` throughout r3 to r6. (r2's main run had raised it
    to 512 MB and measured Laravel again with the default afterwards; `results/r2/laravel-rerun.log`.)
 8. r4's droplet had a slower CPU than r3's (Platinum 8168 against 8280). Django and Nuxt, which
    passed r3's in-memory page test near their limit, failed it on r4's; their settings did not
    change. r3's numbers stay in `results/r3/`. In r5, on the same CPU model as r4, Django passed
-   it again (4.1% never sent) and Nuxt did not.
-9. r5 measured the tree at `f80d4a1` (`results/r5/commit.txt`). Changes merged to `main` after
+   it again (4.1% never sent) and Nuxt did not; in r6, on a Platinum 8280, both passed.
+9. r6 measured the tree at `cf8ac0f` (`results/r6/commit.txt`). Changes merged to `main` after
    that are not in these numbers.
+10. r6's efficiency numbers divide by CPU sampled once a second, which is coarse for an app using
+    a few percent of its core (Corten's 4.1% at the fixed rate); from r7 they divide by the
+    counted CPU time. Requests per CPU-second, like requests a second, compare only within a round.
 
 ## Running it
 
 ```sh
 # On a fresh droplet, created and destroyed for the run (needs doctl and an SSH key there):
-node bench/fullstack/droplet.mjs r6 --ssh-key <id> [--region sfo2]
+node bench/fullstack/droplet.mjs r7 --ssh-key <id> [--region sfo2]
 # Or by hand, from the repository root: the images, the fixture, then everything.
-docker build -f examples/item-page/Dockerfile -t cb-corten .
+docker build -f examples/card-market/Dockerfile -t cb-corten .
 for app in nextjs tanstack-start sveltekit react-router leptos django rails laravel aspnet spring phoenix astro nuxt; do
   docker build -t cb-$app bench/fullstack/apps/$app
 done
 node bench/fullstack/fixtures/fetch.mjs http://localhost:18400   # or any {"item_1": {...}} file
-cd bench/fullstack && node run-all.mjs r6 10
+cd bench/fullstack && node run-all.mjs r7 10
 node check-app.mjs <app>    # before adding an app: parity, JSON and 404s against corten
 ```

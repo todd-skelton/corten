@@ -7,6 +7,15 @@ export interface Level {
   qty: number;
 }
 
+/** The app's typed events (#[event]), dispatched by scripts and listened for with on:Name. */
+declare module "corten/events" {
+  /** The `price-edited` event, from #[event] PriceEdited. */
+  export class PriceEdited extends Event {
+    constructor(init: { unsent: boolean });
+    readonly unsent: boolean;
+  }
+}
+
 /** The app's views (#[component(view)]): each one's holes, read from and written to the page. */
 declare module "corten/views" {
   /** What #[component(view)] generates for a component whose root has key={..}. */
@@ -61,12 +70,14 @@ declare module "corten/views" {
   export class InventoryRow {
     constructor(el: Element);
     readonly el: HTMLTableRowElement;
+    name: string;
     set: string;
     condition: string;
     qty: number;
+    sold_out: boolean;
     selected: boolean;
     /** Writes every hole of `el` (a InventoryRow's root) from `data`. */
-    static fill(el: Element, data: { set: string; condition: string; qty: number; selected: boolean }): void;
+    static fill(el: Element, data: { name: string; set: string; condition: string; qty: number; sold_out: boolean; selected: boolean }): void;
     /** The key of a InventoryRow's root (its key={id}). */
     static key(el: Element): string;
   }

@@ -226,6 +226,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "card-market"
+version = "0.1.0"
+dependencies = [
+ "corten",
+ "http-body-util",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+]
+
+[[package]]
 name = "cc"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -252,21 +266,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",
  "rand_core 0.10.1",
-]
-
-[[package]]
-name = "cluster"
-version = "0.1.0"
-dependencies = [
- "async-nats",
- "axum",
- "corten",
- "corten-cluster",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tower-http",
 ]
 
 [[package]]
@@ -305,6 +304,8 @@ dependencies = [
  "getrandom 0.3.4",
  "http-body",
  "http-body-util",
+ "hyper",
+ "hyper-util",
  "schemars",
  "serde",
  "serde_json",
@@ -327,13 +328,13 @@ name = "corten-cluster"
 version = "0.1.0"
 dependencies = [
  "async-nats",
- "axum",
- "corten-feed",
+ "corten",
  "futures-util",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "tower",
 ]
 
 [[package]]
@@ -367,6 +368,7 @@ name = "corten-ui"
 version = "0.1.0"
 dependencies = [
  "corten",
+ "serde",
 ]
 
 [[package]]
@@ -567,7 +569,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -787,19 +789,6 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
-
-[[package]]
-name = "hello"
-version = "0.1.0"
-dependencies = [
- "corten",
- "futures-util",
- "http-body-util",
- "schemars",
- "serde",
- "tokio",
- "tower",
-]
 
 [[package]]
 name = "hex"
@@ -1044,20 +1033,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
 
 [[package]]
-name = "item-page"
-version = "0.1.0"
-dependencies = [
- "corten",
- "http-body-util",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tower",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1125,6 +1100,20 @@ checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "listings-feed"
+version = "0.1.0"
+dependencies = [
+ "async-nats",
+ "corten",
+ "corten-cluster",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]
@@ -1774,6 +1763,7 @@ dependencies = [
  "http-body-util",
  "schemars",
  "serde",
+ "serde_json",
  "tokio",
  "tower",
 ]
@@ -2377,6 +2367,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2515,6 +2517,18 @@ checksum = "9fe58ebd5edd976e0fe0f8a14d2a04b7c81ef153ea9a54eebc42e67c2c23b4e5"
 dependencies = [
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48ac77174b19c110a50ab2128b24215ac9cb40e0e12e093fb602d175c569d22"
+dependencies = [
+ "bytes",
+ "log",
+ "rand 0.10.3",
+ "thiserror",
 ]
 
 [[package]]
@@ -2682,6 +2696,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23f0c9c52aa7cd7d77769a4cfe2a9adb1b331f489a41d912ce14513d5ab995c6"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "watchlist"
+version = "0.1.0"
+dependencies = [
+ "corten",
+ "futures-util",
+ "http-body-util",
+ "schemars",
+ "serde",
+ "tokio",
+ "tokio-tungstenite",
+ "tower",
 ]
 
 [[package]]

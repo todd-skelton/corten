@@ -47,13 +47,16 @@ use tokio::sync::Notify;
 pub enum Abort {
     /// The whole response was sent (for a stream, its last event). Work started for the request
     /// ends with it, so a spawned task cannot outlive the request by accident; work meant to
-    /// outlive it does not take the signal.
+    /// outlive it is a task of the app's ([`crate::App::task`]), which has a signal of its own.
     Responded,
     /// The client went away before the response was sent: it closed the connection, cancelled the
     /// fetch, or left a stream.
     Disconnected,
     /// The handler ran past the app's deadline ([`crate::App::deadline`]) and the client got 503.
     Deadline,
+    /// The app is shutting down: the reason a task's signal aborts ([`crate::App::task`]); a
+    /// request's never does.
+    Shutdown,
 }
 
 /// Aborts once, when the request's work should stop, and says why ([`Abort`]). Cloning is cheap
@@ -77,9 +80,22 @@ struct Inner {
     /// The first callers marked, so the error page, which looks them up again, does not mark one
     /// twice (the key mixes them by XOR, so a second mark would take it out).
     marked: [AtomicU64; 4],
+    /// The app's, for a request it serves: carried here rather than as a request extension of
+    /// its own, so the request's extensions stay within their first allocation.
+    shared: Option<Arc<crate::page::Shared>>,
 }
 
 impl Signal {
+    /// A request's signal in an app.
+    pub(crate) fn for_app(shared: Arc<crate::page::Shared>) -> Signal {
+        Signal(Arc::new(Inner { shared: Some(shared), ..Inner::default() }))
+    }
+
+    /// The app's shared state, for a request an app serves.
+    pub(crate) fn shared(&self) -> Option<&Arc<crate::page::Shared>> {
+        self.0.shared.as_ref()
+    }
+
     /// Whether the signal has aborted: a cheap check for a loop on a blocking thread.
     pub fn is_aborted(&self) -> bool {
         self.0.reason.load(Ordering::Acquire) != 0
@@ -91,6 +107,7 @@ impl Signal {
             1 => Some(Abort::Responded),
             2 => Some(Abort::Disconnected),
             3 => Some(Abort::Deadline),
+            4 => Some(Abort::Shutdown),
             _ => None,
         }
     }
@@ -119,6 +136,12 @@ impl Signal {
         }
         self.0.personal.store(true, Ordering::Relaxed);
         self.0.callers.fetch_xor(hash, Ordering::Relaxed);
+    }
+
+    /// Marks the answer as differing by something of the visitor's that does not change the page
+    /// around `<main>` (their time zone): private, but not part of the page's key.
+    pub(crate) fn mark_personal(&self) {
+        self.0.personal.store(true, Ordering::Relaxed);
     }
 
     /// The app's error page is answering the request.

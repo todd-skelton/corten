@@ -1,16 +1,18 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
 //! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(ToJson)]` and `#[derive(FromJson)]` (see `corten::json`), `#[derive(Route)]` (see
-//! `corten::route`), `#[derive(Id)]` (see `corten::view::Id`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
-//! `tokens!` and component stylesheets (see `corten::style`).
+//! `corten::route`), `#[derive(Id)]` (see `corten::view::Id`), `#[derive(FromRef)]` (see `corten::FromRef`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
+//! `tokens!` and component stylesheets (see `corten::style`), and `embed!` (see `corten::assets`).
 //!
 //! Written against `proc_macro` alone (no `syn` or `quote`), so the crate has no dependencies
 //! and builds in about a second.
 
+mod assets;
 mod component;
 mod derive;
 mod dom;
 mod event;
 mod from_json;
+mod from_ref;
 mod html;
 mod id;
 mod json;
@@ -24,6 +26,7 @@ mod style;
 mod theme;
 mod to_json;
 mod tokens;
+mod url_value;
 
 use proc_macro::{Delimiter, Group, Spacing, TokenStream, TokenTree};
 
@@ -49,6 +52,19 @@ pub fn derive_route(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, item: TokenStream) -> TokenStream {
     routes::expand(args, item).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// An enum of unit variants written in URLs as the words serde reads. Documented at
+/// `corten::route::UrlValue`.
+#[proc_macro_derive(UrlValue, attributes(serde))]
+pub fn derive_url_value(input: TokenStream) -> TokenStream {
+    url_value::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// One `FromRef` impl per field of the app's state. Documented at `corten::FromRef`.
+#[proc_macro_derive(FromRef, attributes(from_ref))]
+pub fn derive_from_ref(input: TokenStream) -> TokenStream {
+    from_ref::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// An element id as a type. Documented at `corten::view::Id`.
@@ -88,6 +104,13 @@ pub fn script(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn tokens(input: TokenStream) -> TokenStream {
     theme::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// A static directory compiled into the program, a constant per file. Documented at
+/// `corten::assets`.
+#[proc_macro]
+pub fn embed(input: TokenStream) -> TokenStream {
+    assets::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// Message catalogs checked and compiled into a type. Documented at `corten::i18n`.
@@ -173,6 +196,8 @@ fn fields(input: TokenStream) -> Result<String, String> {
         None => Default::default(),
     };
     let mut names = Vec::new();
+    // The `Files` fields (file inputs): nothing reads them, so the code below does.
+    let mut files = Vec::new();
     for field in split_fields(body.stream()) {
         let mut rename = None;
         let mut skip = false;
@@ -213,6 +238,19 @@ fn fields(input: TokenStream) -> Result<String, String> {
                 TokenTree::Ident(id) => {
                     ident = Some(id.to_string());
                     // After the name and its `:`, the type.
+                    let ty = field.get(j + 2..).unwrap_or_default();
+                    if matches!(
+                        ty.iter()
+                            .rev()
+                            .find_map(|t| match t {
+                                TokenTree::Ident(id) => Some(id.to_string()),
+                                _ => None,
+                            })
+                            .as_deref(),
+                        Some("Files")
+                    ) {
+                        files.push(id.to_string());
+                    }
                     if !default {
                         if let Some(what) = left_out_when_empty(field.get(j + 2..).unwrap_or_default()) {
                             return Err(format!(
@@ -250,6 +288,13 @@ fn fields(input: TokenStream) -> Result<String, String> {
         out += &format!("        {ident}: ::corten::form::FieldName::__new({wire:?}),\n");
     }
     out += "    };\n}\n";
+    if !files.is_empty() {
+        let read: Vec<String> = files.iter().map(|f| format!("&self.{f}")).collect();
+        out += &format!(
+            "impl {impl_generics} ::corten::form::__FileInputs for {name} {type_generics} {where_clause} {{\n    fn __file_inputs(&self) -> usize {{\n        [{}].len()\n    }}\n}}\n",
+            read.join(", ")
+        );
+    }
     Ok(out)
 }
 

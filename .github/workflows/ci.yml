@@ -46,6 +46,8 @@ jobs:
 
   browser:
     runs-on: ubuntu-24.04
+    # A passing run takes 11 to 14 minutes; a hung one would hold the runner for six hours (#317).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -53,32 +55,62 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run check
-      - name: hello
+      # The smoke tests run in Playwright's image, which has the three browsers and the system
+      # libraries they need, for the @playwright/test version in package.json. Installing them on
+      # the runner (`npx playwright install --with-deps`) fetched about a hundred apt packages from
+      # the Ubuntu mirror on every run, and when the mirror slowed to a few KB/s the step stalled
+      # until it was cancelled. `--network host` reaches the example servers at localhost.
+      - name: Playwright's image
         run: |
-          docker build -f examples/hello/Dockerfile -t corten-hello .
-          docker run -d --name corten-hello -p 18480:8080 corten-hello
+          image="mcr.microsoft.com/playwright:v$(node -p 'require("@playwright/test/package.json").version')-noble"
+          docker pull "$image"
+          run="docker run --rm --network host --ipc host -v $PWD:/src -w /src"
+          echo "PLAYWRIGHT=$run $image" >> "$GITHUB_ENV"
+          # For a test that restarts its server: the runner's docker CLI and socket as well.
+          echo "PLAYWRIGHT_WITH_DOCKER=$run -v $(command -v docker):/usr/local/bin/docker:ro -v /var/run/docker.sock:/var/run/docker.sock $image" >> "$GITHUB_ENV"
+      - name: watchlist
+        run: |
+          docker build -f examples/watchlist/Dockerfile -t corten-watchlist .
+          docker run -d --name corten-watchlist -p 18480:8080 corten-watchlist
           timeout 120 sh -c 'until curl -so /dev/null http://localhost:18480/; do sleep 1; done'
-          npm run smoke -- http://localhost:18480
-          docker rm -f corten-hello
-      - name: hello under corten dev
+          $PLAYWRIGHT npm run smoke -- http://localhost:18480
+          docker rm -f corten-watchlist
+      - name: watchlist under corten dev
         run: |
-          docker run -d --name corten-hello-dev -p 18483:8080 -e CORTEN_DEV=1 corten-hello
+          docker run -d --name corten-watchlist-dev -p 18483:8080 -e CORTEN_DEV=1 corten-watchlist
           timeout 120 sh -c 'until curl -so /dev/null http://localhost:18483/; do sleep 1; done'
-          node scripts/smoke-dev.mjs http://localhost:18483 corten-hello-dev
-          docker rm -f corten-hello-dev
-      - name: item-page
+          $PLAYWRIGHT_WITH_DOCKER node scripts/smoke-dev.mjs http://localhost:18483 corten-watchlist-dev
+          docker rm -f corten-watchlist-dev
+      - name: card-market
         run: |
-          docker build -f examples/item-page/Dockerfile -t corten-item-page .
-          docker run -d --name corten-item-page -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -e AGENT_ORIGINS=http://127.0.0.1:18481 -v "$PWD/examples/item-page/fixtures:/fixtures:ro" corten-item-page
+          docker build -f examples/card-market/Dockerfile -t corten-card-market .
+          docker run -d --name corten-card-market -p 18481:8080 -e ITEM_SOURCE=fixture -e FIXTURE_PATH=/fixtures/smoke.json -e AGENT_ORIGINS=http://127.0.0.1:18481 -e PROXIES=172.16.0.0/12,192.168.0.0/16 -e API_KEYS=dev=dev-key -e AGENT_TOKENS=dev-token -v "$PWD/examples/card-market/fixtures:/fixtures:ro" corten-card-market
           timeout 120 sh -c 'until curl -so /dev/null http://localhost:18481/; do sleep 1; done'
-          node examples/item-page/smoke.mjs http://localhost:18481
-          docker rm -f corten-item-page
+          $PLAYWRIGHT node examples/card-market/smoke.mjs http://localhost:18481
+          docker rm -f corten-card-market
       - name: ui-gallery
         run: |
           docker build -f examples/ui-gallery/Dockerfile -t corten-ui-gallery .
           docker run -d --name corten-ui-gallery -p 18482:8080 corten-ui-gallery
           timeout 120 sh -c 'until curl -so /dev/null http://localhost:18482/; do sleep 1; done'
-          node examples/ui-gallery/smoke.mjs http://localhost:18482
+          $PLAYWRIGHT node examples/ui-gallery/smoke.mjs http://localhost:18482
           docker rm -f corten-ui-gallery
+      - name: seller-desk
+        run: |
+          docker build -f examples/seller-desk/Dockerfile -t corten-seller-desk .
+          docker run -d --name corten-seller-desk -p 18484:8080 corten-seller-desk
+          timeout 120 sh -c 'until curl -so /dev/null http://localhost:18484/; do sleep 1; done'
+          $PLAYWRIGHT node examples/seller-desk/smoke.mjs http://localhost:18484
+          docker rm -f corten-seller-desk
+      - name: listings-feed
+        run: |
+          docker network create feeds
+          docker run -d --name feeds-pg --network feeds -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=feeds postgres:16-alpine
+          docker run -d --name feeds-nats --network feeds nats:2-alpine -js
+          docker build -f examples/listings-feed/Dockerfile -t corten-listings-feed .
+          docker run -d --name corten-listings-feed --network feeds -p 18485:8080 -e DATABASE_URL=postgres://postgres:postgres@feeds-pg/feeds -e NATS_URL=nats://feeds-nats:4222 corten-listings-feed
+          timeout 120 sh -c 'until curl -sf -o /dev/null http://localhost:18485/health/ready; do sleep 1; done'
+          $PLAYWRIGHT node examples/listings-feed/smoke.mjs http://localhost:18485
+          docker rm -f corten-listings-feed feeds-pg feeds-nats
+          docker network rm feeds

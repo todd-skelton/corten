@@ -1,0 +1,28 @@
+/* The app's own stylesheet: element defaults and the shell. Each component's styles are next to
+   it (src/views/*.css) and the tokens are tokens.json; Corten serves both as components.css. */
+:root { color-scheme: light; }
+:root:not([data-theme="light"]) { color-scheme: light dark; }
+:root { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--color-ink); background: var(--color-bg); }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1080px; margin: 0 auto; padding: var(--space-6) var(--space-5); }
+h1 { margin: 8px 0 4px; font-size: 32px; letter-spacing: -0.02em; line-height: 1.2; }
+h2 { margin: 0 0 12px; font-size: 18px; }
+/* A phone: less room around the page, a smaller heading (after the rules it changes). */
+@media (max-width: 40rem) { main { padding: var(--space-4) var(--space-3); } h1 { font-size: 26px; } }
+a { color: var(--color-accent); }
+table { width: 100%; border-collapse: collapse; font-size: var(--font-size-md); }
+th { color: var(--color-muted); font-weight: 500; font-size: var(--font-size-sm); }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--color-line); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--color-bg); }
+button { border: 1px solid var(--color-line); background: var(--color-surface); color: var(--color-ink); border-radius: var(--radius-sm); padding: 7px 14px; cursor: pointer; font: inherit; font-weight: 500; }
+button:hover { border-color: var(--color-accent); color: var(--color-accent); }
+button[type="submit"] { background: var(--color-accent); border-color: var(--color-accent); color: #fff; font-weight: 600; }
+button[type="submit"]:hover { color: #fff; filter: brightness(1.08); }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
+dt { color: var(--color-muted); }
+dd { margin: 0; }
+/* Corten's form errors (Errors::message). */
+.field-error { flex-basis: 100%; margin: 0; color: var(--color-danger); font-size: var(--font-size-sm); }

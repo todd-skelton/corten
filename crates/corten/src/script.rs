@@ -113,8 +113,9 @@
 //! One listener per event type on the document runs the handlers; nothing runs per element until
 //! an event reaches it.
 //!
-//! A component is scoped (one root element, marked `data-scope`) when it has refs or one of its
-//! handlers takes `scope`. A variable that happens to be named `scope` does not count:
+//! A component is scoped (one root element, marked `data-scope`) when it has refs, one of its
+//! handlers takes `scope`, or its script imports `keep` (state each instance keeps). A variable
+//! that happens to be named `scope` does not count:
 //!
 //! ```
 //! use corten::prelude::*;
@@ -228,6 +229,26 @@
 //! # fn main() {}
 //! ```
 //!
+//! A script that imports an event its component's module does not have: the event is served
+//! with the script, so it is the Rust `#[event]` in scope (`stock_grid.js` imports `RowToggled`):
+//!
+//! ```compile_fail,E0425
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn StockGrid() -> impl Render {
+//!     let (row, count) = refs();
+//!     let sel = js::Selection { rows: row, count };
+//!     html! {
+//!         <table>
+//!             <tbody on:click={js::toggle(row.closest(), sel)}><tr ref={row}></tr></tbody>
+//!             <caption><output ref={count}></output></caption>
+//!         </table>
+//!     }
+//! }
+//! # fn main() {}
+//! ```
+//!
 //! A group field on the wrong element (`count` is an `<output>`):
 //!
 //! ```compile_fail
@@ -250,6 +271,14 @@
 //!         </table>
 //!     }
 //! }
+//! # fn main() {}
+//! ```
+//!
+//! State kept in a `script!` module, which components share (`keep` is one component's, in its
+//! own script):
+//!
+//! ```compile_fail
+//! corten::script::script!(mod tally = "script/tally.js");
 //! # fn main() {}
 //! ```
 //!
@@ -283,6 +312,12 @@ pub struct Script {
     pub source: &'static str,
     /// The functions it exports, which the markup may call.
     pub handlers: &'static [&'static str],
+    /// The typed events (`#[event]`) it imports from `corten/events` when it runs. They are
+    /// served with it, so an app that lists the script's component has them without listing them.
+    pub events: &'static [crate::Component],
+    /// The script modules of its directory it imports (`import { load } from "./stripe.js"` is
+    /// `"stripe"`): a page that loads it preloads them, and the app must list them.
+    pub imports: &'static [&'static str],
 }
 
 /// A typed DOM event, from [`event`]: its name in the page and its fields, for the class the
@@ -957,7 +992,8 @@ pub mod ts {
     pub enum AbortSignal {}
     /// Any other type: a JSON value (feature `json`).
     pub enum Any {}
-    /// An array of elements: `HTMLTableRowElement[]`, a ref put on elements in a loop.
+    /// An array: of elements (`HTMLTableRowElement[]`, a ref put on elements in a loop), or of
+    /// strings (`string[]`, a slice, an array or a `Vec` of them).
     pub struct Array<T>(std::marker::PhantomData<T>);
     /// Elements by their `key`: `Map<string, HTMLTableCellElement>`, a ref put with
     /// `key={item.id}` on elements in a loop.
@@ -972,6 +1008,9 @@ pub mod ts {
     pub enum NumberFormat {}
     /// `MoneyFormat` (from `corten`): an amount's format in a currency, `t.js().money(USD)`.
     pub enum MoneyFormat {}
+    /// `PercentFormat` (from `corten`): the page's percentage format, `t.js().percent(2)`, or its
+    /// change format, `t.js().change(2)`.
+    pub enum PercentFormat {}
     /// `DateFormat` (from `corten`): a date's format, `t.js().date(DateStyle::Medium)`.
     pub enum DateFormat {}
 }
@@ -1036,6 +1075,26 @@ thread_local! {
     static SCOPE: Cell<Option<&'static str>> = const { Cell::new(None) };
     /// The script modules the page's handlers use, while a page renders.
     static MODULES: RefCell<Option<Vec<&'static str>>> = const { RefCell::new(None) };
+}
+
+/// The module of numbers, money and dates for a script (`js/format.js`, minified into
+/// `js/dist/format.js`): served with the app's scripts, and loaded by the pages whose handlers
+/// take a format (`t.js().money(USD)`), not by every page with the runtime. Not a name a
+/// component's script can have (they are snake_case).
+pub(crate) const FORMAT_MODULE: &str = "corten-format";
+
+/// [`FORMAT_MODULE`]'s source.
+pub(crate) const FORMAT_JS: &str = include_str!("../js/dist/format.js");
+
+/// Notes that the page rendering uses script module `name`, so its head loads it.
+pub(crate) fn uses(name: &'static str) {
+    MODULES.with(|m| {
+        if let Some(list) = m.borrow_mut().as_mut() {
+            if !list.contains(&name) {
+                list.push(name);
+            }
+        }
+    });
 }
 
 /// Runs `render` and returns the script modules its handlers use, in first-use order.
@@ -1140,6 +1199,8 @@ pub mod __private {
         module: &'static str,
         name: &'static str,
         home: Option<&'static str>,
+        /// Its script imports `keep`, so the runtime needs its home.
+        keeps: bool,
         /// A shared module's own component, marked rendered for the dev check (debug builds).
         #[cfg_attr(not(debug_assertions), allow(dead_code))]
         owner: Option<&'static Component>,
@@ -1148,20 +1209,28 @@ pub mod __private {
 
     impl<A> Call<A> {
         #[inline]
-        pub fn new(module: &'static str, name: &'static str, owner: Option<&'static Component>, args: A) -> Self {
-            Call { module, name, home: SCOPE.with(Cell::get), owner, args }
+        pub fn new(
+            module: &'static str,
+            name: &'static str,
+            home: Option<&'static str>,
+            keeps: bool,
+            owner: Option<&'static Component>,
+            args: A,
+        ) -> Self {
+            Call { module, name, home, keeps, owner, args }
         }
+    }
+
+    /// The scoped component rendering: a `script!` module's or an unscoped component's handlers
+    /// belong to it.
+    #[inline]
+    pub fn current_scope() -> Option<&'static str> {
+        SCOPE.with(Cell::get)
     }
 
     impl<A: Args> Bind for Call<A> {
         fn write_bind(&self, out: &mut String) {
-            MODULES.with(|m| {
-                if let Some(list) = m.borrow_mut().as_mut() {
-                    if !list.contains(&self.module) {
-                        list.push(self.module);
-                    }
-                }
-            });
+            uses(self.module);
             #[cfg(debug_assertions)]
             if let Some(owner) = self.owner {
                 crate::style::__private::rendered(owner);
@@ -1170,8 +1239,18 @@ pub mod __private {
             out.push('.');
             out.push_str(self.name);
             out.push('(');
-            self.args.write_args(&Ctx { current: SCOPE.with(Cell::get), home: self.home }, out);
+            let current = SCOPE.with(Cell::get);
+            self.args.write_args(&Ctx { current, home: self.home }, out);
             out.push(')');
+            // A parent's handler on a child's element: `/form` names the component it belongs to,
+            // whose state `keep` gives it (the element's nearest root is the child's). Only a
+            // script that keeps state needs it.
+            if let (true, Some(home)) = (self.keeps, self.home) {
+                if current != Some(home) {
+                    out.push('/');
+                    out.push_str(home);
+                }
+            }
         }
     }
 
@@ -1449,6 +1528,50 @@ pub mod __private {
     // JSON has no NaN or infinity.
     values!(ts::Number, |v, out| if v.is_finite() { use std::fmt::Write; let _ = write!(out, "{v}"); } else { out.push_str("null") }; f32, f64);
     values!(ts::Boolean, |v, out| out.push_str(if *v { "true" } else { "false" }); bool);
+
+    /// `[..]` of each string, for a `string[]` parameter.
+    fn json_strs<S: AsRef<str>>(items: &[S], out: &mut String) {
+        out.push('[');
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            json_str(item.as_ref(), out);
+        }
+        out.push(']');
+    }
+
+    /// A list of strings, `string[]`: `values={&["above", "below"]}`, a `Vec<String>`.
+    impl<S: AsRef<str>> Arg<ts::Array<ts::String>> for &[S] {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
+    impl<S: AsRef<str>> Arg<ts::Array<ts::String>> for &&[S] {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
+    impl<S: AsRef<str>, const N: usize> Arg<ts::Array<ts::String>> for [S; N] {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
+    impl<S: AsRef<str>, const N: usize> Arg<ts::Array<ts::String>> for &[S; N] {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(*self, out)
+        }
+    }
+    impl<S: AsRef<str>> Arg<ts::Array<ts::String>> for Vec<S> {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
+    impl<S: AsRef<str>> Arg<ts::Array<ts::String>> for &Vec<S> {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            json_strs(self, out)
+        }
+    }
 
     /// A message for the script to fill in: its text and argument names, made when the crate compiled.
     impl<const ARGS: u64> Arg<ts::Message<ARGS>> for crate::i18n::Template<ARGS> {

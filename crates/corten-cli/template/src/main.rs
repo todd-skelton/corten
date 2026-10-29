@@ -20,11 +20,12 @@ pub mod url {
     pub struct Greet;
 }
 
-/// The routes, the error page and the components with scripts or styles. Security headers, static
-/// files, health checks, compression and live reload are Corten's defaults; see `App` to change
-/// them.
+/// The routes, the static files, the error page and the components with scripts or styles.
+/// Security headers, health checks, compression and live reload are Corten's defaults; see `App`
+/// to change them.
 fn app() -> App {
     App::new(url::router())
+        .assets(views::Static)
         .error_page(views::error_page, ())
         .components(&[views::ClickCounter])
 }
@@ -42,10 +43,8 @@ struct GreetForm {
 /// page comes back. One handler serves both.
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
     let name = form.name.trim();
-    match req.mode {
-        Mode::Action => req.patch(views::Greeting { name }),
-        _ => req.page(views::home(&req, name)),
-    }
+    let page = || async { req.page(views::home(&req, name)) };
+    req.patch_or(views::Greeting { name }, page).await
 }
 
 #[cfg(test)]

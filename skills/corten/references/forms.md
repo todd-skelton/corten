@@ -28,10 +28,9 @@ fn Greeting(name: &str) -> impl Patch {
 }
 
 async fn greet(req: Req, Form(form): Form<GreetForm>) -> HtmlResult {
-    match req.mode {
-        Mode::Action => req.patch(Greeting { name: &form.name }),  // the runtime swaps #greeting
-        _ => req.page(home_page(&req, &form.name)),                 // no JavaScript: the whole page
-    }
+    // With JavaScript the runtime swaps #greeting; without, the whole page. The page closure
+    // runs only then, so a patch never loads the page's data.
+    req.patch_or(Greeting { name: &form.name }, || async { req.page(home_page(&req, &form.name)) }).await
 }
 ```
 
@@ -39,15 +38,56 @@ A patch may hold several top-level elements; each replaces the element with the 
 each needs one, a `#[derive(Id)]` type: `req.patch` and `req.invalid` take a `Patch`, and a view
 whose top level has text, an element without an id or an id written as text does not compile. A
 component a patch sends is rooted at the element with the id and declared `-> impl Patch`. Fields
-the user edited (after the form was sent) and the focus carry over to the new markup, so a patch
-can include the form the user is typing in.
+the user edited (after the form was sent), the files chosen in a file input (until a successful
+answer to the form that sent them) and the focus carry over to the new markup, so a patch can
+include the form the user is typing in, and a refusal can mark a file input invalid.
 After a write that should change the URL, use `req.redirect(&Route)` instead. To come back to
 the element the user acted on, redirect to `route.at(RowId(&id))` (the route with `#row-7`,
-from the element's `#[derive(Id)]`); never format a `#fragment` by hand.
+from the element's `#[derive(Id)]`); a link within the page, such as an error summary's link to
+its field, is `href={FieldId.fragment()}`. Never format a `#fragment` by hand.
+
+## Files
+
+A form with `<input type="file">` posts `multipart/form-data` (`enctype="multipart/form-data"`).
+Name the input with a `Files` field of the form struct and take `Upload<T>`, never `Form` (it
+answers 415) or a raw body with a parser of your own:
+
+```rust
+#[derive(serde::Deserialize, Fields)]
+struct NewListing { title: String, photos: Files }   // <input type="file" name={f.photos} multiple>
+
+async fn create(req: Req, mut upload: Upload<NewListing>) -> HtmlResult {
+    let f = NewListing::FIELDS;
+    upload.limit(60 << 20);                     // the whole body (2 MiB unless set), before reading
+    let mut errors = Errors::new();
+    while let Some(mut file) = upload.next_file().await? {
+        if !file.is(f.photos) { continue }      // skipped, not stored
+        match file.bytes_up_to(10 << 20).await? {   // or file.chunk() to stream it on
+            Some(bytes) => { /* keep it */ }
+            None => errors.add(f.photos, "Each photo can be up to 10 MB."),
+        }
+    }
+    let input = upload.fields().await?;         // the text fields, by Form's rules
+    ..
+}
+```
+
+A body over `upload.limit` makes every read return `UploadError::TooLarge` (`?`: a 413 and the
+error page). To answer it in the form, put the reads in one `async` block returning
+`Result<_, UploadError>` and match `Err(UploadError::TooLarge { .. })` once; never compare
+statuses or check `Content-Length` by hand.
+
+Types, counts and per-file sizes are the handler's checks, reported with `errors.add(f.photos, ..)`
+so the form is drawn again with the message beside the input.
+
+To serve an upload back, read its type from its first bytes (never `file.content_type()`, which is
+the client's word) and return `corten::Media::new("image/png", bytes)`. At a URL that names the
+bytes (a hash), return `Public::immutable(answer)` so every cache keeps it for a year; its handler
+cannot read who is asking. Never build the response by hand.
 
 ## Checkboxes and lists
 
-`Form` and `Query` read a key sent several times into a `Vec`. A `bool` or `Vec` field needs
+`Form` and a route's `Params` read a key sent several times into a `Vec`. A `bool` or `Vec` field needs
 `#[serde(default)]` (`#[derive(Fields)]` does not compile without it), because the browser sends
 nothing for an unchecked box:
 
@@ -63,9 +103,10 @@ struct ArchiveInput {
 
 Never join values into one field with commas in a script; give each box the name. A box outside
 the form joins it with `form={ArchiveFormId}` (a `#[derive(Id)]` type). A required list is a
-validation message (`errors.add(f.ids, ..)` when empty), not a missing field. A blank field is
-`None` for an `Option`. A typed route's `Vec` field writes `?condition=nm&condition=lp`, which
-`Query` reads back.
+validation message (`errors.add(f.ids, ..)` when empty), not a missing field; wrap the boxes in
+`corten_ui::CheckboxGroup` (`missing=".."`) so the browser says so before sending. A blank field is
+`None` for an `Option`. A typed route's list field writes `?condition=nm&condition=lp`, which
+its `Params` reads back.
 
 ## Validation
 
@@ -95,6 +136,10 @@ let e = form.errors.within(AlertFormId);
 {e.message(f.email)}
 ```
 
+A field with a hint of its own gives the hint's id to the spread,
+`{..e.aria(f.email).hint(&EmailHintId)}`, never a second `aria-describedby` on the tag (the
+browser keeps only the first, and `html!` refuses it).
+
 A refusal that belongs to no field (a cross-field rule, or the backend saying no) is
 `errors.add_form(text)`, shown once at the top of the form with `{form.errors.form_message()}`.
 Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
@@ -120,4 +165,6 @@ let price = match check(t, &form) {
 ```
 
 Keep the HTML attributes (`required`, `type="email"`, `inputmode`) too: the browser checks them
-first, and the server check is the one that counts.
+first, and the server check is the one that counts. A field required only for some values of
+another goes in `corten_ui::RequiredWhen` (`control={f.kind} values={&["partial"]}`), never a
+script of the app's, and the handler checks the same rule.

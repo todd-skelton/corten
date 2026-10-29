@@ -65,6 +65,7 @@ mod ascii;
 pub mod assets;
 pub mod cache;
 pub mod caller;
+mod client;
 #[cfg(feature = "compress")]
 pub mod compress;
 pub mod form;
@@ -81,9 +82,12 @@ pub mod security;
 pub mod seo;
 mod signal;
 pub mod style;
+mod task;
 #[cfg(feature = "types")]
 pub mod types;
+pub mod upgrade;
 pub mod view;
+mod watch;
 
 use std::{
     convert::Infallible,
@@ -101,28 +105,150 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 
+pub use answer::{Answer, ForAll, ForOne, HtmlResponse, HtmlResult, LiveResponse, Media, NoStore, Public, Relay};
 #[cfg(feature = "json")]
-pub use answer::JsonResult;
-pub use answer::{Answer, HtmlResponse, HtmlResult, LiveResponse, NoStore, Public};
+pub use answer::{JsonError, JsonResponse, JsonResult};
 pub use api::Api;
-pub use app::{serve, App, Area};
+pub use app::{listeners, serve, serve_on, serve_wrapped, App, Area};
 /// The axum version Corten is built on, so an app never depends on a second one.
 pub use axum;
 pub use caller::{Caller, Identify, Refused};
+pub use client::{ClientIp, ClientZone};
 /// Form field names as constants: `#[derive(Deserialize, Fields)] struct AlertInput { email: String }`
 /// gives `AlertInput::FIELDS.email`, the [`FieldName`] `"email"` (serde `rename` and `rename_all`
 /// applied). Use them for `name=` in the form and in [`Errors::add`], and a renamed or misspelled
 /// field fails to compile instead of posting a field the handler never reads.
 pub use corten_macros::Fields;
-pub use form::{Errors, FieldName, Form, Query, SubmitKey};
+/// The app's shared state, split for handlers: each field gets axum's `FromRef`, so a handler
+/// takes the part it reads (`State<Market>`) while the routes share one struct
+/// (`#[corten::routes(state = Shared)]`, `App::new(url::router(shared))`). The impl clones the
+/// field, as one written by hand would, and holds where the field's type is `Clone` (a generic
+/// state's part only for the parameters that allow it). A field no handler takes alone is
+/// `#[from_ref(skip)]`. With axum's `macros` feature on, axum exports a derive of the same name:
+/// write `#[derive(corten::FromRef)]` where both are in scope.
+///
+/// ```
+/// use corten::{axum::extract::State, prelude::*};
+///
+/// #[derive(Clone)]
+/// struct Market(u32);
+/// #[derive(Clone)]
+/// struct Lists(&'static str);
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared {
+///     market: Market,
+///     pub lists: Lists,
+///     #[from_ref(skip)]
+///     secret: String,
+/// }
+///
+/// fn part<T: corten::axum::extract::FromRef<Shared>>(shared: &Shared) -> T {
+///     T::from_ref(shared)
+/// }
+/// let shared = Shared { market: Market(7), lists: Lists("a"), secret: String::new() };
+/// assert_eq!(part::<Market>(&shared).0, 7);
+/// assert_eq!(part::<Lists>(&shared).0, "a");
+/// # let _ = &shared.secret;
+/// # async fn handler(State(market): State<Market>) -> String { market.0.to_string() }
+/// ```
+///
+/// Two fields of one type would make `State<T>` ambiguous, so they do not compile until one is
+/// skipped (the error names both fields):
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared {
+///     primary: String,
+///     replica: String,
+/// }
+/// ```
+///
+/// A skipped field gets no impl, so a second field of its type is allowed, and its type is not a
+/// part a handler can take:
+///
+/// ```
+/// use corten::{axum::extract::FromRef, prelude::*};
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared {
+///     primary: String,
+///     #[from_ref(skip)]
+///     replica: String,
+/// }
+/// let shared = Shared { primary: "p".into(), replica: "r".into() };
+/// assert_eq!(String::from_ref(&shared), "p");
+/// # let _ = shared.replica;
+/// ```
+///
+/// ```compile_fail
+/// use corten::{axum::extract::FromRef, prelude::*};
+///
+/// #[derive(Clone)]
+/// struct Keys(u8);
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared {
+///     name: String,
+///     #[from_ref(skip)]
+///     keys: Keys,
+/// }
+/// let shared = Shared { name: String::new(), keys: Keys(1) };
+/// let keys = Keys::from_ref(&shared);
+/// ```
+///
+/// A generic state, a bound with an associated type, and `Self` in a field all work:
+///
+/// ```
+/// use std::sync::Arc;
+/// use corten::{axum::extract::FromRef, prelude::*};
+///
+/// #[derive(Clone)]
+/// struct Part<T>(T);
+///
+/// #[derive(Clone, FromRef)]
+/// struct Shared<T: Iterator<Item = u8>, U> {
+///     iter: Arc<T>,
+///     part: Part<U>,
+///     next: Option<Arc<Self>>,
+/// }
+///
+/// let shared = Shared { iter: Arc::new([1u8].into_iter()), part: Part("x"), next: None };
+/// assert_eq!(Part::<&str>::from_ref(&shared).0, "x");
+/// assert!(Option::<Arc<Shared<_, &str>>>::from_ref(&shared).is_none());
+/// let _ = <Arc<std::array::IntoIter<u8, 1>>>::from_ref(&shared);
+///
+/// // `Self` in a parameter's bound, and a `where` with nothing in it.
+/// trait Wraps<S> {}
+/// #[derive(Clone)]
+/// struct Inner;
+/// impl<S> Wraps<S> for Inner {}
+/// #[derive(Clone, FromRef)]
+/// struct Bound<T: Wraps<Self>> where { part: Arc<T> }
+/// let bound = Bound { part: Arc::new(Inner) };
+/// let _ = <Arc<Inner>>::from_ref(&bound);
+///
+/// // A parameter's default after an arrow in its bound.
+/// #[derive(Clone, FromRef)]
+/// struct Calls<F: Fn() -> u8 = fn() -> u8> { call: Arc<F> }
+/// let calls: Calls = Calls { call: Arc::new((|| 7) as fn() -> u8) };
+/// assert_eq!(<Arc<fn() -> u8>>::from_ref(&calls)(), 7);
+/// ```
+pub use corten_macros::FromRef;
+pub use form::{Errors, FieldName, Files, Form, SubmitKey, Upload, UploadError};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};
 pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
-pub use page::{Corten, ErrorPageFn, Failure, Mode, ReadAgain, ReadAgainFrom, Req, MODE_HEADER};
-pub use route::{routes, Href, Methods, Route, Routes};
+pub use page::{
+    Corten, ErrorPageFn, Failure, Mode, Nav, NavLink, NavLinks, NavTarget, NavTo, ReadAgain, ReadAgainFrom,
+    ReadAgainWithoutJavaScript, Req, MODE_HEADER,
+};
+pub use route::{routes, Elsewhere, Href, Local, Methods, Params, ParamsRejection, Prefix, Route, Routes, UrlValue};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
@@ -150,15 +276,16 @@ pub struct Component {
 /// What most files need: `use corten::prelude::*;`.
 pub mod prelude {
     pub use crate::{
-        axum::extract::{Path, State},
+        axum::extract::State,
         component, html,
         i18n::Messages as _,
         raw,
         route::{delete, get, post, put},
         script::{el, refs, Handler, Ref},
         view::Id,
-        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Form, HtmlResult, Identify, Methods,
-        Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Result, Route, Routes, SubmitKey,
+        Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Files, Form, FromRef, HtmlResult, Identify,
+        Methods, Middleware, Mode, Next, NoStore, Params, Patch, Public, ReadAgain, Refused, Render, Req, Route, Routes,
+        SubmitKey, Upload, UploadError, UrlValue,
     };
     #[cfg(feature = "json")]
     pub use crate::{FromJson, Json, JsonLd, JsonResult, ToJson};
@@ -244,6 +371,52 @@ where
             .keep_alive(KeepAlive::default())
             .into_response(),
     )
+}
+
+/// A [`live`] stream of one value that changes (the last trade, a count, a status), kept in a
+/// `tokio::sync::watch` channel: `view` renders it and `cursor` names the version it is, so a
+/// page already showing the current one (`since`, [`LiveSince`]) gets nothing until the next
+/// change, and one that is behind gets the current value first. Values the browser missed in
+/// between are skipped: it only ever needs the latest. The stream ends when the channel's sender
+/// is dropped. Each change is cloned out for each page before it renders, so the sender never
+/// waits on a render; a large value goes in an `Arc`.
+///
+/// ```
+/// use corten::{prelude::*, LiveResponse, LiveSince};
+/// use tokio::sync::watch;
+///
+/// #[derive(Id)]
+/// struct LastTradeId;
+///
+/// #[component]
+/// fn LastTrade(text: &str) -> impl Patch {
+///     html! { <p id={LastTradeId}>{text}</p> }
+/// }
+///
+/// // The trade count and the last trade's text.
+/// async fn trades(State(trades): State<watch::Receiver<(u64, String)>>, since: LiveSince) -> LiveResponse {
+///     corten::live_watch(trades, since, |(n, _)| *n, |(_, text)| LastTrade { text }.to_html())
+/// }
+/// ```
+pub fn live_watch<T, K, C, V>(mut values: tokio::sync::watch::Receiver<T>, since: LiveSince, cursor: C, view: V) -> LiveResponse
+where
+    T: Clone + Send + Sync + 'static,
+    K: ToString,
+    C: Fn(&T) -> K + Send + 'static,
+    V: Fn(&T) -> String + Send + 'static,
+{
+    // Marked seen here, so a receiver cloned from one that never read (kept in the app's state)
+    // or a value sent since it subscribed is not sent again to a page that shows it.
+    let current = cursor(&values.borrow_and_update()).to_string();
+    if since.0.as_deref() != Some(current.as_str()) {
+        values.mark_changed();
+    }
+    live(futures_util::stream::unfold((values, cursor, view), |(mut values, cursor, view)| async move {
+        values.changed().await.ok()?;
+        // Copied out, so the sender never waits on a render.
+        let value = values.borrow_and_update().clone();
+        Some((Fragment::new(view(&value)).cursor(cursor(&value).to_string()), (values, cursor, view)))
+    }))
 }
 
 /// One item of a [`live`] stream: rendered HTML, and the app's cursor after it.
@@ -390,29 +563,69 @@ where
     )
 }
 
-/// Handler result. Any `std::error::Error` converts with `?` and becomes a 500.
-///
-/// The error type defaults to [`Error`], so `Result` alone is a handler's answer and
-/// `Result<T, E>` is still the standard two-parameter result under `use corten::prelude::*`:
+/// A result whose error is Corten's [`Error`], for the code a handler calls: any
+/// `std::error::Error` converts with `?` and becomes a 500. A handler itself returns what it
+/// answers: [`HtmlResult`] is this with the answer in it, and [`JsonResult`]'s error, a
+/// [`JsonError`], takes this one with `?` (and the input's field errors too). It is not in
+/// the prelude, so `Result` in an app is the standard one:
 ///
 /// ```
 /// use corten::prelude::*;
 ///
-/// fn count(text: &str, field: FieldName, errors: &mut Errors) -> Result<u32, ()> {
-///     text.parse().map_err(|_| errors.add(field, "Enter a whole number."))
+/// fn count(text: &str) -> corten::Result<u32> {
+///     Ok(text.parse::<u32>()?)
 /// }
 ///
-/// async fn page() -> Result {
-///     Ok(().into_response())
+/// fn parse(text: &str, field: FieldName, errors: &mut Errors) -> Result<u32, ()> {
+///     text.parse().map_err(|_| errors.add(field, "Enter a whole number."))
 /// }
-/// # use corten::axum::response::IntoResponse;
 /// ```
-pub type Result<T = Response, E = Error> = std::result::Result<T, E>;
+///
+/// A bare `corten::Result` names no answer, so it is not a handler's type:
+///
+/// ```compile_fail
+/// async fn page() -> corten::Result {
+///     Ok(())
+/// }
+/// ```
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// Resolves when the process is asked to stop (Ctrl-C, or `SIGTERM` from a container runtime),
-/// after ending every open [`live`] stream and live feed stream (feature `feed`) so a graceful
-/// shutdown is not held open by them. Pass it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`.
+/// Whether the app has asked to stop ([`shutdown`]).
+static ASKED: LazyLock<tokio::sync::watch::Sender<bool>> = LazyLock::new(|| tokio::sync::watch::channel(false).0);
+
+/// Begins the graceful shutdown a signal begins ([`shutdown_signal`]): the app's
+/// [tasks](App::task) are told to stop, live streams end, the listeners close, requests in
+/// progress finish, and [`serve`] returns once the tasks have too (or [`App::shutdown_grace`] has
+/// passed). For a process with no signal to send it: a route a supervisor calls (whose answer is
+/// sent, as a request in progress, before its connection closes), a task that decides the app is
+/// done, or a service on Windows started without a console. A second call, or a signal after it,
+/// changes nothing.
+///
+/// It is process-wide and cannot be undone: it stops every [`serve`] in the process, including
+/// one started after the call. A test binary that runs a route calling it stops every other test's
+/// server too, so such a route is tested with the call behind something the test replaces.
+///
+/// ```
+/// use corten::{axum::http::StatusCode, prelude::*};
+///
+/// async fn stop(/* Caller<Supervisor> */) -> StatusCode {
+///     corten::shutdown();
+///     StatusCode::ACCEPTED
+/// }
+/// # let _: Methods = post(stop);
+/// ```
+pub fn shutdown() {
+    ASKED.send_replace(true);
+}
+
+/// Resolves when the process is asked to stop (Ctrl-C; `SIGTERM` from a container runtime on
+/// Unix; Ctrl-Break, closing the console or the system shutting down on Windows) or the app asks
+/// ([`shutdown`]), after ending every open [`live`] stream and live feed stream (feature `feed`)
+/// so a graceful shutdown is not held open by them. [`serve`] uses it; an app that serves its
+/// router another way passes it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`,
+/// and then runs no [`App::task`].
 pub async fn shutdown_signal() {
+    use futures_util::future::select;
     let interrupt = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -425,9 +638,38 @@ pub async fn shutdown_signal() {
             Err(_) => std::future::pending::<()>().await,
         }
     };
-    #[cfg(not(unix))]
+    // What Windows sends a console process: Ctrl-Break (how a supervisor stops a process group),
+    // the console closing, and the system shutting down. Windows ends the process a few seconds
+    // after the console closes, whatever is still running.
+    #[cfg(windows)]
+    let terminate = async {
+        use tokio::signal::windows;
+        let close = async {
+            match windows::ctrl_close() {
+                Ok(mut close) => close.recv().await,
+                Err(_) => std::future::pending().await,
+            }
+        };
+        let shutdown = async {
+            match windows::ctrl_shutdown() {
+                Ok(mut shutdown) => shutdown.recv().await,
+                Err(_) => std::future::pending().await,
+            }
+        };
+        let interrupt = async {
+            match windows::ctrl_break() {
+                Ok(mut interrupt) => interrupt.recv().await,
+                Err(_) => std::future::pending().await,
+            }
+        };
+        select(std::pin::pin!(close), select(std::pin::pin!(shutdown), std::pin::pin!(interrupt))).await;
+    };
+    #[cfg(not(any(unix, windows)))]
     let terminate = std::future::pending::<()>();
-    futures_util::future::select(std::pin::pin!(interrupt), std::pin::pin!(terminate)).await;
+    let asked = async {
+        let _ = ASKED.subscribe().wait_for(|asked| *asked).await;
+    };
+    select(std::pin::pin!(asked), select(std::pin::pin!(interrupt), std::pin::pin!(terminate))).await;
     tracing::info!("corten: shutting down");
     DRAINING.send_replace(true);
     #[cfg(feature = "feed")]
@@ -448,10 +690,30 @@ impl Error {
         Error { status: StatusCode::INTERNAL_SERVER_ERROR, source: error.into() }
     }
 
-    /// An error with a specific status, for example 404 for a missing record or 403 for a
-    /// permission check: `return Err(Error::status(StatusCode::NOT_FOUND))`.
+    /// An error with a specific status, for example 403 for a permission check (404 is
+    /// [`Error::not_found`]): `return Err(Error::status(StatusCode::FORBIDDEN))` (in a JSON handler,
+    /// `Err(Error::status(..))?` or `.into()`, since its error is a [`JsonError`]).
     pub fn status(status: StatusCode) -> Self {
         Error { status, source: status.canonical_reason().unwrap_or("error").into() }
+    }
+
+    /// 404, for a record that is not there: `load(id).await?.ok_or_else(Error::not_found)?`. The
+    /// most common status a handler sets, so it has a name; others are [`Error::status`]. Its
+    /// message is `Not Found`; for a JSON client that should read a specific one,
+    /// `Error::new("no item 7").with_status(StatusCode::NOT_FOUND)`.
+    ///
+    /// ```
+    /// use corten::{axum::http::StatusCode, Error};
+    ///
+    /// fn find(id: u32) -> corten::Result<&'static str> {
+    ///     let name = [(7, "Ada")].into_iter().find(|(n, _)| *n == id).map(|(_, name)| name);
+    ///     name.ok_or_else(Error::not_found)
+    /// }
+    /// # use corten::axum::response::IntoResponse;
+    /// assert_eq!(find(8).unwrap_err().into_response().status(), StatusCode::NOT_FOUND);
+    /// ```
+    pub fn not_found() -> Self {
+        Error::status(StatusCode::NOT_FOUND)
     }
 
     /// The same error with another status: `Error::new("no item 7").with_status(StatusCode::NOT_FOUND)`.

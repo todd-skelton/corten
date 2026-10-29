@@ -20,7 +20,22 @@ struct Form {
 #[test]
 fn every_component_has_its_script_and_no_css() {
     let names: Vec<_> = COMPONENTS.iter().map(|c| c.script.expect("a script").name).collect();
-    assert_eq!(names, ["ui.number_field", "ui.combo_box", "ui.tab_group", "ui.menu_button", "ui.toaster", "ui.dialog"]);
+    assert_eq!(
+        names,
+        [
+            "ui.number_field",
+            "ui.combo_box",
+            "ui.tab_group",
+            "ui.menu_button",
+            "ui.toaster",
+            "ui.copy_button",
+            "ui.print_button",
+            "ui.relative_time",
+            "ui.checkbox_group",
+            "ui.required_when",
+            "ui.dialog"
+        ]
+    );
     for c in COMPONENTS {
         let script = c.script.unwrap();
         assert!(c.style.is_none(), "{} ships no CSS", c.name);
@@ -59,8 +74,8 @@ fn the_combo_box_value_is_a_native_select_and_the_input_waits_for_the_script() {
 #[test]
 fn tabs_without_links_are_buttons_and_hide_the_other_panels() {
     let tabs = [
-        Tab { label: &"One", panel: &"first", link: None },
-        Tab { label: &"Two", panel: &"second", link: Some(&Item { id: "x", tab: Some("two") }) },
+        Tab { label: "One", panel: &"first", link: None },
+        Tab { label: "Two", panel: &"second", link: Some(&Item { id: "x", tab: Some("two") }) },
     ];
     let html = TabGroup { id: "t", label: "Parts", tabs: &tabs, selected: 0 }.to_html();
     assert!(
@@ -88,7 +103,7 @@ fn tabs_without_links_are_buttons_and_hide_the_other_panels() {
 fn a_number_field_disables_the_button_at_each_bound() {
     let at_max = Number { value: Some(5.0), min: Some(0.0), max: Some(5.0), ..Number::new("n", Form::FIELDS.n, "Less", "More") };
     let html = NumberField { field: &at_max }.to_html();
-    assert!(html.contains(r#"aria-label="Less" tabindex="-1" data-on="pointerdown:ui.number_field.press($e,$t,@input,-1) click:ui.number_field.click(@input,-1)">"#), "{html}");
+    assert!(html.contains(r#"aria-label="Less" tabindex="-1" data-on="pointerdown:ui.number_field.press($e,$t,@input,-1) click:ui.number_field.click($e,$t,@input,-1)">"#), "{html}");
     assert!(
         html.contains(r#"aria-label="More" tabindex="-1" disabled data-on="pointerdown:ui.number_field.press($e,$t,@input,1)"#),
         "{html}"
@@ -102,8 +117,8 @@ fn a_menu_button_lists_links_and_actions() {
     #[derive(Route)]
     #[route("/out")]
     struct Out;
-    let items = [MenuItem { label: &"Out", link: &Out, post: true }];
-    let html = MenuButton { id: "m", label: &"Menu", items: &items }.to_html();
+    let items = [MenuItem { label: "Out", link: &Out, post: true }];
+    let html = MenuButton { id: "m", label: "Menu", items: &items }.to_html();
     assert!(
         html.starts_with(r#"<div data-scope="ui-menu-button" data-on="connect:ui.menu_button.connect(@trigger,@menu,*item)">"#),
         "{html}"

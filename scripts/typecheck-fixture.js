@@ -4,18 +4,20 @@
 // Handler parameters need nothing here: the Rust markup's calls are checked against each
 // handler's JSDoc when the crate compiles. What crosses into scripts as JSON or as an event is
 // declared from the Rust types in examples/*/types/app.d.ts.
-import { state, subscribe } from "corten";
+import { keep, subscribe } from "corten";
 // @ts-expect-error The runtime takes a module's exports from the line Corten appends; it exports no hook for it.
 import { register } from "corten";
 
-/** @typedef {import("../examples/hello/types/app").Stock} Stock Generated from the Rust struct. */
+/** @typedef {import("../examples/watchlist/types/app").Stock} Stock Generated from the Rust struct. */
 
-/** @param {HTMLElement} root @param {AbortSignal} signal */
-export function connect(root, signal) {
-  const s = state(root, () => ({ ticks: 0 }));
+/** @param {AbortSignal} signal */
+export function connect(signal) {
+  const s = keep(() => ({ ticks: 0 }));
   s.ticks += 1;
   // @ts-expect-error State has only what its init returns.
   s.tick;
+  // @ts-expect-error keep() finds the component itself: it takes no element.
+  keep(document.body, () => ({ ticks: 0 }));
   subscribe("/feed/stocks", { snapshot() {}, patch() {} }, { signal });
   // @ts-expect-error subscribe() returns nothing to stop it with; pass a signal.
   subscribe("/feed/stocks", { snapshot() {}, patch() {} })();
@@ -52,11 +54,13 @@ export function selected(out, label) {
   out.textContent = label({});
 }
 
-/** @import { NumberFormat, MoneyFormat, DateFormat } from "corten" */
+/** @import { NumberFormat, MoneyFormat, DateFormat, PercentFormat } from "corten" */
 
-/** @param {HTMLOutputElement} out @param {NumberFormat} count @param {MoneyFormat} price @param {DateFormat} when */
-export function formatted(out, count, price, when) {
-  out.textContent = `${count(1234)} ${count("21.5")} ${price(123450)} ${when(Date.now())} ${when(new Date())}`;
+/** @param {HTMLOutputElement} out @param {NumberFormat} count @param {MoneyFormat} price @param {DateFormat} when @param {PercentFormat} rate */
+export function formatted(out, count, price, when, rate) {
+  out.textContent = `${count(1234)} ${count("21.5")} ${price(123450)} ${when(Date.now())} ${when(new Date())} ${rate(0.029)} ${rate("0.029")}`;
+  // @ts-expect-error A ratio, not a date.
+  rate(new Date());
   // @ts-expect-error An amount is an integer of minor units, not its text.
   price("12.50");
   // @ts-expect-error A date's format takes a date, not an object.

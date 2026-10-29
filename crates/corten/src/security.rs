@@ -44,11 +44,17 @@ impl<S: Send + Sync> FromRequestParts<S> for Nonce {
     }
 }
 
-/// Where the request's nonce is made, at most once, when something asks for it.
+/// Where the request's nonce is made, at most once, when something asks for it. A page's request
+/// has one; it also carries what the page's area policy adds to its shell key, found with its CSP.
 #[derive(Clone, Default)]
-pub(crate) struct NonceSlot(Arc<OnceLock<Nonce>>);
+pub(crate) struct NonceSlot(Arc<OnceLock<Nonce>>, pub(crate) u64);
 
 impl NonceSlot {
+    /// A page's slot, with what its area's policy adds to its shell key (0 for the app's).
+    pub fn new(shell: u64) -> Self {
+        NonceSlot(Arc::default(), shell)
+    }
+
     pub fn get(&self) -> &Nonce {
         self.0.get_or_init(Nonce::generate)
     }
@@ -91,21 +97,18 @@ pub(crate) fn random_hex() -> [u8; 32] {
     text
 }
 
-/// Security policy for every response of a router. Build it once at startup.
+/// Security policy for every response of a router (an area's pages add to it:
+/// [`crate::Area::policy`]). Build it once at startup.
 #[derive(Clone, Debug)]
 pub struct Policy {
-    script: Vec<String>,
-    style: Vec<String>,
-    img: Vec<String>,
-    connect: Vec<String>,
-    frame: Vec<String>,
-    font: Vec<String>,
-    form_action: Vec<String>,
-    style_attributes: bool,
+    sources: Sources,
     hsts: bool,
     allowed_origins: Vec<String>,
     report_only: bool,
-    popups: bool,
+    /// The names the app answers to besides `localhost` and IP addresses; `None`: any.
+    hosts: Option<Vec<String>>,
+    /// The proxies whose `X-Forwarded-For` [`crate::ClientIp`] follows.
+    proxies: Vec<crate::client::Network>,
 }
 
 impl Default for Policy {
@@ -118,51 +121,46 @@ impl Policy {
     /// Same-origin everything, `https:` and `data:` images, no frames, no plugins.
     pub fn new() -> Self {
         Policy {
-            script: Vec::new(),
-            style: Vec::new(),
-            img: vec!["data:".into(), "https:".into()],
-            connect: Vec::new(),
-            frame: Vec::new(),
-            font: Vec::new(),
-            form_action: Vec::new(),
-            style_attributes: false,
+            sources: Sources { img: vec!["data:".into(), "https:".into()], ..Sources::default() },
             hsts: false,
             allowed_origins: Vec::new(),
             report_only: false,
-            popups: false,
+            hosts: Some(Vec::new()),
+            proxies: Vec::new(),
         }
     }
 
-    /// Another origin scripts may load from (a payment SDK, for example).
+    /// Another origin scripts may load from (a payment SDK, for example). One only some pages
+    /// need is their area's ([`crate::Area::policy`]).
     pub fn script_src(mut self, source: &str) -> Self {
-        self.script.push(checked(source));
+        self.sources = self.sources.script_src(source);
         self
     }
 
     pub fn style_src(mut self, source: &str) -> Self {
-        self.style.push(checked(source));
+        self.sources = self.sources.style_src(source);
         self
     }
 
     pub fn img_src(mut self, source: &str) -> Self {
-        self.img.push(checked(source));
+        self.sources = self.sources.img_src(source);
         self
     }
 
     /// Another origin `fetch` and `EventSource` may reach.
     pub fn connect_src(mut self, source: &str) -> Self {
-        self.connect.push(checked(source));
+        self.sources = self.sources.connect_src(source);
         self
     }
 
     /// An origin the page may embed in an `<iframe>` (payment fields, for example).
     pub fn frame_src(mut self, source: &str) -> Self {
-        self.frame.push(checked(source));
+        self.sources = self.sources.frame_src(source);
         self
     }
 
     pub fn font_src(mut self, source: &str) -> Self {
-        self.font.push(checked(source));
+        self.sources = self.sources.font_src(source);
         self
     }
 
@@ -174,14 +172,15 @@ impl Policy {
     /// cross-origin post as CSRF), so posting here and redirecting is usually simpler. Writes
     /// coming in from another site are [`Policy::allow_origin`].
     pub fn form_action(mut self, source: &str) -> Self {
-        self.form_action.push(checked(source));
+        self.sources = self.sources.form_action(source);
         self
     }
 
     /// Allows `style="..."` attributes in markup. Off by default; setting `element.style` from
-    /// script is always allowed.
+    /// script is always allowed. Pages that draw sizes from data in one part of the app allow
+    /// them there only ([`crate::Area::policy`]).
     pub fn allow_style_attributes(mut self) -> Self {
-        self.style_attributes = true;
+        self.sources = self.sources.allow_style_attributes();
         self
     }
 
@@ -199,10 +198,101 @@ impl Policy {
 
     /// Lets popups this site opens keep `window.opener` (`Cross-Origin-Opener-Policy:
     /// same-origin-allow-popups`), for sign-in or payment flows that report back from a popup.
-    /// Without it the policy is `same-origin`.
+    /// Without it the policy is `same-origin`. One part of the app only: [`Sources::allow_popups`].
     pub fn allow_popups(mut self) -> Self {
-        self.popups = true;
+        self.sources = self.sources.allow_popups();
         self
+    }
+
+    /// Sends `Cross-Origin-Opener-Policy: unsafe-none` (the browser's default): another site's
+    /// window this page opens, or that opened it, can still reach it. This is for an embed whose
+    /// sign-in runs in a popup on the provider's origin that talks back to the page, such as
+    /// Stripe's Connect embedded components, which `same-origin` and `same-origin-allow-popups`
+    /// break. It gives up the page's isolation from other sites' windows: one that opened it, or
+    /// that it opens, keeps a reference to it (it can navigate it, `postMessage` it, see when it
+    /// closes and count its frames, which cross-site leak attacks use to learn about a signed-in
+    /// user), and the browser may run them in one process. Allow it on the pages that embed such
+    /// a thing only ([`Sources::allow_cross_origin_opener`] in their area), not the whole app.
+    pub fn allow_cross_origin_opener(mut self) -> Self {
+        self.sources = self.sources.allow_cross_origin_opener();
+        self
+    }
+
+    /// A name the app answers to (`shop.example`; `.shop.example` for it and every subdomain).
+    /// By default a request is answered only when its `Host` is `localhost` (or a name under
+    /// it), an IP address or missing; any other gets `421 Misdirected Request` before routing.
+    /// Otherwise a page on a name someone else controls could point that name at this machine
+    /// (DNS rebinding) and use every route as if it were the app's own origin, the same-origin
+    /// check included, which matters most for an app on loopback, where "only this machine can
+    /// reach it" is the whole access model. A deployed app lists the names it is served under
+    /// (behind a proxy that rewrites `Host`, the name the proxy sends). A name with a port, a
+    /// scheme or a path is a startup panic:
+    ///
+    /// ```should_panic
+    /// corten::security::Policy::new().host("https://shop.example");
+    /// ```
+    pub fn host(mut self, name: &str) -> Self {
+        let name = name.trim_end_matches('.').to_ascii_lowercase();
+        let bare = name.strip_prefix('.').unwrap_or(&name);
+        assert!(
+            !bare.is_empty() && bare.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.'),
+            "corten: Policy::host takes a name (shop.example, or .shop.example for its subdomains too), not {name:?}"
+        );
+        if let Some(hosts) = &mut self.hosts {
+            hosts.push(name);
+        }
+        self
+    }
+
+    /// Answers whatever `Host` a request names, for an app whose names are not known in advance
+    /// (one served under each customer's own domain) and that checks them itself. See
+    /// [`Policy::host`] for what this gives up.
+    pub fn any_host(mut self) -> Self {
+        self.hosts = None;
+        self
+    }
+
+    /// True when the app answers to the request's host: `localhost` or a name under it, an IP
+    /// address, a name given to [`Policy::host`], or no host at all (HTTP/1.0; a test's request).
+    pub(crate) fn answers(&self, req: &Request) -> bool {
+        let Some(hosts) = &self.hosts else { return true };
+        let host = match req.uri().host() {
+            Some(host) => host.as_bytes(),
+            None => match req.headers().get(header::HOST) {
+                Some(host) => host.as_bytes(),
+                None => return true,
+            },
+        };
+        let named = answers(host, hosts);
+        if !named {
+            refused_host(host);
+        }
+        named
+    }
+
+    /// A proxy in front of the app (`10.0.0.5`), or a network of them (`10.0.0.0/8`, `fc00::/7`),
+    /// whose `X-Forwarded-For` [`ClientIp`](crate::ClientIp) follows back to the client. Without
+    /// one the client is the connection's peer, and the header is not read: anyone can write it.
+    /// List only the addresses requests come from when they come through the proxy: a client
+    /// that can reach the app from a listed address can name any address it likes. A deploy sets
+    /// `PROXIES` (comma separated) where it sets `HOST` and `PORT`. Anything but an address or a
+    /// network, or a network with host bits set, is a startup panic:
+    ///
+    /// ```should_panic
+    /// corten::security::Policy::new().proxy("10.0.0.1/8");
+    /// ```
+    pub fn proxy(mut self, network: &str) -> Self {
+        let parsed = crate::client::Network::parse(network.trim());
+        let Some(parsed) = parsed else {
+            panic!("corten: Policy::proxy takes an address (10.0.0.5) or a network (10.0.0.0/8) with no host bits set, not {network:?}")
+        };
+        self.proxies.push(parsed);
+        self
+    }
+
+    /// The proxies [`Policy::proxy`] trusts.
+    pub(crate) fn proxies(&self) -> &[crate::client::Network] {
+        &self.proxies
     }
 
     /// Sends the CSP as `Content-Security-Policy-Report-Only`, to try a policy on a live site.
@@ -222,19 +312,20 @@ impl Policy {
         let list = |extra: &[String]| extra.iter().fold(String::new(), |acc, s| acc + " " + s);
         let nonce = nonce.map_or_else(String::new, |n| format!(" 'nonce-{n}'"));
         let import_map = hash_source(import_map);
+        let s = &self.sources;
         let mut csp = format!(
             "default-src 'self'; script-src 'self' {import_map}{nonce}{}; style-src 'self'{nonce}{}; img-src 'self'{}; \
              connect-src 'self'{}; font-src 'self'{}; frame-src {}; object-src 'none'; base-uri 'self'; form-action 'self'{}; \
              frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'",
-            list(&self.script),
-            list(&self.style),
-            list(&self.img),
-            list(&self.connect),
-            list(&self.font),
-            if self.frame.is_empty() { "'none'".to_string() } else { list(&self.frame).trim_start().to_string() },
-            list(&self.form_action),
+            list(&s.script),
+            list(&s.style),
+            list(&s.img),
+            list(&s.connect),
+            list(&s.font),
+            if s.frame.is_empty() { "'none'".to_string() } else { list(&s.frame).trim_start().to_string() },
+            list(&s.form_action),
         );
-        if self.style_attributes {
+        if s.style_attributes {
             csp.push_str("; style-src-attr 'unsafe-inline'");
         }
         csp
@@ -244,20 +335,151 @@ impl Policy {
     /// headers, and handlers see the request's [`Nonce`]. [`crate::App`] applies its policy
     /// itself; this is for a router served without one.
     pub fn apply<S: Clone + Send + Sync + 'static>(self, router: Router<S>) -> Router<S> {
-        let policy = Arc::new(Applied::new(self, &crate::import_map(None, None)));
+        let policy = Arc::new(Applied::new(self, &crate::import_map(None, None), &[]));
         router.layer(middleware::from_fn(move |mut req: Request, next: Next| {
             let policy = policy.clone();
             async move {
+                if !policy.answers(&req) {
+                    return misdirected();
+                }
                 if let Some(refused) = policy.refuse(req.method(), req.headers(), &[]) {
                     return refused;
                 }
                 let nonce = NonceSlot::default();
                 req.extensions_mut().insert(nonce.clone());
                 let mut res = next.run(req).await;
-                policy.headers(&mut res, Some(&nonce));
+                policy.headers(&mut res, Some((&nonce, &policy.csp)));
                 res
             }
         }))
+    }
+}
+
+/// What a part of the app adds to its [`Policy`] for its pages, given to
+/// [`crate::Area::policy`]: `.policy(|p| p.script_src("https://js.stripe.com"))`. Each source is
+/// one the [`Policy`] method of the same name adds for every page; only adding is possible, so
+/// an area never allows less than the app.
+#[derive(Clone, Debug, Default)]
+pub struct Sources {
+    script: Vec<String>,
+    style: Vec<String>,
+    img: Vec<String>,
+    connect: Vec<String>,
+    frame: Vec<String>,
+    font: Vec<String>,
+    form_action: Vec<String>,
+    style_attributes: bool,
+    opener: Opener,
+}
+
+/// `Cross-Origin-Opener-Policy`, from the most isolated: an area only moves it down the list.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+enum Opener {
+    #[default]
+    SameOrigin,
+    AllowPopups,
+    Unsafe,
+}
+
+impl Opener {
+    fn header(self) -> HeaderValue {
+        HeaderValue::from_static(match self {
+            Opener::SameOrigin => "same-origin",
+            Opener::AllowPopups => "same-origin-allow-popups",
+            Opener::Unsafe => "unsafe-none",
+        })
+    }
+}
+
+impl Sources {
+    /// Another origin scripts may load from ([`Policy::script_src`]).
+    pub fn script_src(mut self, source: &str) -> Self {
+        self.script.push(checked(source));
+        self
+    }
+
+    /// Another origin stylesheets may load from ([`Policy::style_src`]).
+    pub fn style_src(mut self, source: &str) -> Self {
+        self.style.push(checked(source));
+        self
+    }
+
+    /// Another origin images may load from ([`Policy::img_src`]).
+    pub fn img_src(mut self, source: &str) -> Self {
+        self.img.push(checked(source));
+        self
+    }
+
+    /// Another origin `fetch` and `EventSource` may reach ([`Policy::connect_src`]).
+    pub fn connect_src(mut self, source: &str) -> Self {
+        self.connect.push(checked(source));
+        self
+    }
+
+    /// An origin the page may embed in an `<iframe>` ([`Policy::frame_src`]).
+    pub fn frame_src(mut self, source: &str) -> Self {
+        self.frame.push(checked(source));
+        self
+    }
+
+    /// Another origin fonts may load from ([`Policy::font_src`]).
+    pub fn font_src(mut self, source: &str) -> Self {
+        self.font.push(checked(source));
+        self
+    }
+
+    /// Another origin a form may send the user to ([`Policy::form_action`]).
+    pub fn form_action(mut self, source: &str) -> Self {
+        self.form_action.push(checked(source));
+        self
+    }
+
+    /// Allows `style="..."` attributes in markup ([`Policy::allow_style_attributes`]).
+    pub fn allow_style_attributes(mut self) -> Self {
+        self.style_attributes = true;
+        self
+    }
+
+    /// Lets popups these pages open keep `window.opener` ([`Policy::allow_popups`]).
+    pub fn allow_popups(mut self) -> Self {
+        self.opener = self.opener.max(Opener::AllowPopups);
+        self
+    }
+
+    /// `Cross-Origin-Opener-Policy: unsafe-none` on these pages, for an embed whose sign-in
+    /// popup talks back to them ([`Policy::allow_cross_origin_opener`]).
+    pub fn allow_cross_origin_opener(mut self) -> Self {
+        self.opener = Opener::Unsafe;
+        self
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        let Sources { script, style, img, connect, frame, font, form_action, style_attributes, opener } = self;
+        [script, style, img, connect, frame, font, form_action].iter().all(|list| list.is_empty())
+            && !style_attributes
+            && *opener == Opener::SameOrigin
+    }
+
+    /// Adds `more`'s sources, each once.
+    fn add(&mut self, more: &Sources) {
+        let pairs = [
+            (&mut self.script, &more.script),
+            (&mut self.style, &more.style),
+            (&mut self.img, &more.img),
+            (&mut self.connect, &more.connect),
+            (&mut self.frame, &more.frame),
+            (&mut self.font, &more.font),
+            (&mut self.form_action, &more.form_action),
+        ];
+        for (list, more) in pairs {
+            for source in more {
+                if !list.contains(source) {
+                    list.push(source.clone());
+                }
+            }
+        }
+        self.style_attributes |= more.style_attributes;
+        self.opener = self.opener.max(more.opener);
     }
 }
 
@@ -317,7 +539,7 @@ fn sha256(data: &[u8]) -> [u8; 32] {
 }
 
 /// Standard base64 with padding.
-fn base64(bytes: &[u8]) -> String {
+pub(crate) fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
@@ -337,9 +559,29 @@ fn base64(bytes: &[u8]) -> String {
 /// A policy in use: its CSP split around the nonce, and the headers that do not change.
 pub(crate) struct Applied {
     policy: Policy,
-    csp_parts: Vec<String>,
-    without_nonce: HeaderValue,
+    /// The app's pages' CSP.
+    pub csp: Csp,
+    /// The CSP and opener policy of the pages of each area whose policy adds something the app's
+    /// lacks, innermost prefix first, with what it adds to a page's shell key: a client navigation
+    /// between pages with different policies loads the document in full, since a document keeps
+    /// the policies it loaded with.
+    areas: Vec<(&'static str, Csp, u64)>,
     api_csp: HeaderValue,
+}
+
+/// One CSP for pages, split around the nonce once, at startup, and the opener policy sent with it.
+pub(crate) struct Csp {
+    parts: Vec<String>,
+    without_nonce: HeaderValue,
+    opener: HeaderValue,
+}
+
+impl Csp {
+    fn new(policy: &Policy, import_map: &str) -> Self {
+        let parts = policy.csp_with(Some("\0"), import_map).split('\0').map(str::to_string).collect();
+        let without_nonce = HeaderValue::try_from(policy.csp_with(None, import_map)).expect("CSP sources are checked tokens");
+        Csp { parts, without_nonce, opener: policy.sources.opener.header() }
+    }
 }
 
 impl std::ops::Deref for Applied {
@@ -353,12 +595,42 @@ impl std::ops::Deref for Applied {
 const API_CSP: &str = "default-src 'none'; frame-ancestors 'none'";
 
 impl Applied {
-    /// `import_map` is the text of the app's import map, allowed by its hash.
-    pub fn new(policy: Policy, import_map: &str) -> Self {
-        // The header is the same text around each nonce, so split it once here.
-        let csp_parts = policy.csp_with(Some("\0"), import_map).split('\0').map(str::to_string).collect();
-        let without_nonce = HeaderValue::try_from(policy.csp_with(None, import_map)).expect("CSP sources are checked tokens");
-        Applied { policy, csp_parts, without_nonce, api_csp: HeaderValue::from_static(API_CSP) }
+    /// `import_map` is the text of the app's import map, allowed by its hash. `areas` are the
+    /// prefixes of the areas that add to the policy, with what each adds: a page in one gets the
+    /// app's sources, then those of each such area it is under, outermost first.
+    pub fn new(policy: Policy, import_map: &str, areas: &[(&'static str, &Sources)]) -> Self {
+        let csp = Csp::new(&policy, import_map);
+        let mut placed: Vec<(&'static str, Csp, u64)> = areas
+            .iter()
+            .filter_map(|&(prefix, _)| {
+                let mut outer: Vec<_> = areas.iter().filter(|(other, _)| crate::api::under(other, prefix)).collect();
+                outer.sort_by_key(|(other, _)| other.len());
+                let mut merged = policy.clone();
+                for (_, sources) in outer {
+                    merged.sources.add(sources);
+                }
+                let area = Csp::new(&merged, import_map);
+                // An area that adds nothing the app lacks keeps the app's policy and shell key.
+                if area.without_nonce == csp.without_nonce && area.opener == csp.opener {
+                    return None;
+                }
+                let mut hasher = std::hash::DefaultHasher::new();
+                std::hash::Hash::hash(area.without_nonce.as_bytes(), &mut hasher);
+                std::hash::Hash::hash(area.opener.as_bytes(), &mut hasher);
+                Some((prefix, area, std::hash::Hasher::finish(&hasher) | 1))
+            })
+            .collect();
+        placed.sort_by_key(|(prefix, ..)| std::cmp::Reverse(prefix.len()));
+        Applied { policy, csp, areas: placed, api_csp: HeaderValue::from_static(API_CSP) }
+    }
+
+    /// The CSP of the pages at `path` and what it adds to their shell key: its innermost area's
+    /// that adds to the policy, else the app's (and 0).
+    pub fn csp_for(&self, path: &str) -> (&Csp, u64) {
+        if self.areas.is_empty() {
+            return (&self.csp, 0);
+        }
+        self.areas.iter().find(|(prefix, ..)| crate::api::under(prefix, path)).map_or((&self.csp, 0), |(_, csp, key)| (csp, *key))
     }
 
     /// The 403 for a write another site sent, if this is one. `origins` are the extra origins
@@ -370,9 +642,10 @@ impl Applied {
         Some((StatusCode::FORBIDDEN, "Cross-site request refused.").into_response())
     }
 
-    /// The security headers. `nonce` is the request's slot, or `None` for a response that is
-    /// never a page (an API route, a refused write), which gets a CSP that allows nothing.
-    pub fn headers(&self, res: &mut Response, nonce: Option<&NonceSlot>) {
+    /// The security headers. `page` is the request's nonce slot and the CSP of pages at its
+    /// path, or `None` for a response that is never a page (an API route, a misdirected
+    /// request), which gets a CSP that allows nothing and the app's opener policy.
+    pub fn headers(&self, res: &mut Response, page: Option<(&NonceSlot, &Csp)>) {
         let headers = res.headers_mut();
         // Room for the headers below and `Cache-Control` (`Vary` from compression is appended to an
         // existing one, or added): the map grows at most once, and not at all when a page reserved
@@ -380,21 +653,35 @@ impl Applied {
         headers.reserve(6 + usize::from(self.hsts) + usize::from(!headers.contains_key(header::VARY)));
         let csp_header =
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
-        let csp = match nonce.map(|slot| slot.taken()) {
+        let opener = page.map_or(&self.csp.opener, |(_, csp)| &csp.opener).clone();
+        let csp = match page.map(|(slot, csp)| (slot.taken(), csp)) {
             None => Some(self.api_csp.clone()),
-            Some(None) => Some(self.without_nonce.clone()),
-            Some(Some(nonce)) => HeaderValue::try_from(self.csp_parts.join(&*nonce.0)).ok(),
+            Some((None, csp)) => Some(csp.without_nonce.clone()),
+            Some((Some(nonce), csp)) => HeaderValue::try_from(csp.parts.join(&*nonce.0)).ok(),
         };
-        if let Some(csp) = csp {
-            headers.insert(csp_header, csp);
+        // A response that brings a policy of its own is a relayed page (or a bug): it keeps it.
+        if let Some(brought) = csp.and_then(|csp| headers.insert(csp_header, csp)) {
+            self.keep_relayed(res, brought);
         }
+        let headers = res.headers_mut();
         headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
         headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("strict-origin-when-cross-origin"));
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
-        let opener = if self.popups { "same-origin-allow-popups" } else { "same-origin" };
-        headers.insert(HeaderName::from_static("cross-origin-opener-policy"), HeaderValue::from_static(opener));
+        headers.insert(HeaderName::from_static("cross-origin-opener-policy"), opener);
         if self.hsts {
             headers.insert(header::STRICT_TRANSPORT_SECURITY, HeaderValue::from_static("max-age=31536000; includeSubDomains"));
+        }
+    }
+
+    /// A relayed page keeps the policy its own HTML was written for (its scripts' nonces and
+    /// hosts), which the app's would block. Out of [`Applied::headers`], which every response runs.
+    #[cold]
+    #[inline(never)]
+    fn keep_relayed(&self, res: &mut Response, brought: HeaderValue) {
+        if res.extensions().get::<crate::answer::Relayed>().is_some() {
+            let name =
+                if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
+            res.headers_mut().insert(name, brought);
         }
     }
 }
@@ -402,7 +689,7 @@ impl Applied {
 /// True when the request's `Origin` is one of `origins` and it carries no cookies: a site allowed
 /// for an API authenticates with a token, so a write it sends with the user's cookies (a
 /// `SameSite=None` session and `credentials: "include"`) is refused like any cross-site write.
-fn allowed(headers: &HeaderMap, origins: &[String]) -> bool {
+pub(crate) fn allowed(headers: &HeaderMap, origins: &[String]) -> bool {
     !origins.is_empty()
         && !headers.contains_key(header::COOKIE)
         && headers
@@ -421,28 +708,87 @@ impl Policy {
         if matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
             return true;
         }
-        let origin =
-            headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(|o| o.trim_end_matches('/').to_ascii_lowercase());
-        if let Some(origin) = &origin {
-            if self.allowed_origins.iter().any(|allowed| allowed == origin) {
-                return true;
-            }
-        }
-        match headers.get("sec-fetch-site").map(HeaderValue::as_bytes) {
-            // `none`: the user started it (typed URL, bookmark); no other site can cause it.
-            Some(b"same-origin" | b"none") => return true,
-            Some(_) => return false,
-            None => {}
-        }
-        match origin {
-            None => true,
-            Some(origin) if origin == "null" => false,
-            Some(origin) => {
-                let host = headers.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
-                origin.split_once("://").is_some_and(|(_, rest)| rest == host)
-            }
+        write_allowed(&self.allowed_origins, headers)
+    }
+
+    /// The other origins [`Policy::allow_origin`] lets write.
+    pub(crate) fn allowed_origins(&self) -> &[String] {
+        &self.allowed_origins
+    }
+}
+
+/// Whether a write with `headers` comes from the app's own pages, one of `allowed` (lowercase
+/// origins), or a client that is not a browser: [`Policy::same_origin`] past its methods, and
+/// what a switch to a WebSocket is held to ([`crate::upgrade::Upgrade`]).
+pub(crate) fn write_allowed(allowed: &[String], headers: &HeaderMap) -> bool {
+    let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(|o| o.trim_end_matches('/').to_ascii_lowercase());
+    if let Some(origin) = &origin {
+        if allowed.iter().any(|allowed| allowed == origin) {
+            return true;
         }
     }
+    match headers.get("sec-fetch-site").map(HeaderValue::as_bytes) {
+        // `none`: the user started it (typed URL, bookmark); no other site can cause it.
+        Some(b"same-origin" | b"none") => return true,
+        Some(_) => return false,
+        None => {}
+    }
+    match origin {
+        None => true,
+        Some(origin) if origin == "null" => false,
+        Some(origin) => {
+            let host = headers.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
+            origin.split_once("://").is_some_and(|(_, rest)| rest == host)
+        }
+    }
+}
+
+/// True when `host` (a `Host` header: a name or an address, and maybe a port) is `localhost` or a
+/// name under it, an IP address, or one of `names` (`.name`: it and its subdomains).
+fn answers(host: &[u8], names: &[String]) -> bool {
+    // `[::1]:3000`: an IPv6 address is always in brackets.
+    if host.first() == Some(&b'[') {
+        return true;
+    }
+    let name = match host.iter().rposition(|&b| b == b':') {
+        Some(colon) if host[colon + 1..].iter().all(u8::is_ascii_digit) => &host[..colon],
+        Some(_) => return false,
+        None => host,
+    };
+    let name = name.strip_suffix(b".").unwrap_or(name);
+    if name.eq_ignore_ascii_case(b"localhost") || ends_with(name, b".localhost") {
+        return true;
+    }
+    // An IPv4 address: digits and dots, which no DNS name a browser resolves is.
+    if !name.is_empty() && name.iter().all(|&b| b.is_ascii_digit() || b == b'.') {
+        return std::str::from_utf8(name).is_ok_and(|n| n.parse::<std::net::Ipv4Addr>().is_ok());
+    }
+    names.iter().any(|allowed| match allowed.strip_prefix('.') {
+        Some(domain) => name.eq_ignore_ascii_case(domain.as_bytes()) || ends_with(name, allowed.as_bytes()),
+        None => name.eq_ignore_ascii_case(allowed.as_bytes()),
+    })
+}
+
+fn ends_with(name: &[u8], suffix: &[u8]) -> bool {
+    name.len() > suffix.len() && name[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+}
+
+/// Logs the first refused host of the process: a deployed app that has not listed its name
+/// answers 421 to everyone, and this says why.
+#[cold]
+fn refused_host(host: &[u8]) {
+    static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        let host = String::from_utf8_lossy(host);
+        tracing::warn!(
+            "corten: refused a request for host {host:?} (421): if the app is served under that name, list it with Policy::host"
+        );
+    }
+}
+
+/// The answer to a request for a host the app does not answer to.
+pub(crate) fn misdirected() -> Response {
+    (StatusCode::MISDIRECTED_REQUEST, "Misdirected request.").into_response()
 }
 
 /// Rejects a source that would break out of its directive.
@@ -478,17 +824,67 @@ pub mod cookie {
         path: String,
     }
 
+    /// What [`SetCookie::try_new`] refused: a name or value with a character a cookie cannot carry
+    /// (a space, `;`, `,`, `"`, `\`, a control or a non-ASCII byte; `=` too in a name, and an empty
+    /// name). A quoted value, which a cookie can carry, is refused too: [`get`] would hand the
+    /// quotes back with it. `Name` is the app's own mistake, since names are its literals.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum InvalidCookie {
+        Name,
+        Value,
+    }
+
+    impl std::fmt::Display for InvalidCookie {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(match self {
+                InvalidCookie::Name => "a cookie name with a character a cookie cannot carry",
+                InvalidCookie::Value => "a cookie value with a character a cookie cannot carry",
+            })
+        }
+    }
+
+    impl std::error::Error for InvalidCookie {}
+
     impl SetCookie {
         /// Panics if the name or value contains characters a cookie cannot carry; a session token
-        /// should be URL-safe base64 or hex.
+        /// should be URL-safe base64 or hex. For a value from elsewhere (a token another service
+        /// answered with, text a user typed), [`SetCookie::try_new`] lets the handler answer.
+        #[track_caller]
         pub fn new(name: &str, value: &str) -> Self {
-            let token = |s: &str| s.bytes().all(|b| b.is_ascii_graphic() && !matches!(b, b';' | b',' | b'"' | b'\\' | b'='));
-            assert!(!name.is_empty() && token(name), "invalid cookie name {name:?}");
-            assert!(
-                value.bytes().all(|b| b.is_ascii_graphic() && !matches!(b, b';' | b',' | b'"' | b'\\')),
-                "invalid cookie value"
-            );
-            SetCookie {
+            match Self::try_new(name, value) {
+                Ok(cookie) => cookie,
+                Err(InvalidCookie::Name) => panic!("invalid cookie name {name:?}"),
+                Err(InvalidCookie::Value) => panic!("invalid cookie value"),
+            }
+        }
+
+        /// The cookie, or which part it cannot carry. `?` on it in a handler is a 500; to answer
+        /// a value from another service otherwise, map that case:
+        ///
+        /// ```
+        /// use corten::{axum::http::StatusCode, security::cookie::{InvalidCookie, SetCookie}, Error};
+        ///
+        /// fn session(token: &str) -> Result<SetCookie, Error> {
+        ///     SetCookie::try_new("session", token).map_err(|e| match e {
+        ///         // The token the identity service answered with: its fault, a 502.
+        ///         InvalidCookie::Value => Error::new(e).with_status(StatusCode::BAD_GATEWAY),
+        ///         // The name is this app's literal: its own bug, a 500.
+        ///         InvalidCookie::Name => Error::new(e),
+        ///     })
+        /// }
+        /// # use corten::axum::response::IntoResponse;
+        /// assert!(session("c2Vzc2lvbg").is_ok());
+        /// assert_eq!(session("a; b").unwrap_err().into_response().status(), StatusCode::BAD_GATEWAY);
+        /// ```
+        pub fn try_new(name: &str, value: &str) -> Result<Self, InvalidCookie> {
+            let octet = |b: u8| b.is_ascii_graphic() && !matches!(b, b';' | b',' | b'"' | b'\\');
+            if name.is_empty() || !name.bytes().all(|b| octet(b) && b != b'=') {
+                return Err(InvalidCookie::Name);
+            }
+            if !value.bytes().all(octet) {
+                return Err(InvalidCookie::Value);
+            }
+            Ok(SetCookie {
                 name: name.into(),
                 value: value.into(),
                 max_age: None,
@@ -496,10 +892,11 @@ pub mod cookie {
                 secure: true,
                 same_site: "Lax",
                 path: "/".into(),
-            }
+            })
         }
 
         /// Expires the cookie in the browser (sign-out).
+        #[track_caller]
         pub fn remove(name: &str) -> Self {
             Self::new(name, "").max_age(0)
         }
@@ -526,8 +923,10 @@ pub mod cookie {
             self
         }
 
+        /// Panics on a path that does not start with `/`, or has a `;` or a control character.
+        #[track_caller]
         pub fn path(mut self, path: &str) -> Self {
-            assert!(path.starts_with('/') && !path.contains(';'), "invalid cookie path");
+            assert!(path.starts_with('/') && !path.bytes().any(|b| b == b';' || b.is_ascii_control()), "invalid cookie path");
             self.path = path.into();
             self
         }
@@ -543,7 +942,7 @@ pub mod cookie {
             if self.secure {
                 out.push_str("; Secure");
             }
-            HeaderValue::try_from(out).expect("checked in new")
+            HeaderValue::try_from(out).expect("checked in try_new and path")
         }
     }
 }
@@ -558,6 +957,49 @@ mod tests {
             map.insert(*k, HeaderValue::from_static(v));
         }
         map
+    }
+
+    #[test]
+    fn the_app_answers_to_localhost_ip_addresses_and_its_own_names() {
+        let names = ["shop.example".to_string(), ".corp.example".to_string()];
+        for host in [
+            "localhost",
+            "localhost:3000",
+            "LocalHost.",
+            "app.localhost:8080",
+            "127.0.0.1",
+            "127.0.0.1:3917",
+            "10.0.0.7:8080",
+            "[::1]:3000",
+            "[::1]",
+            "shop.example",
+            "Shop.Example:443",
+            "corp.example",
+            "admin.corp.example",
+        ] {
+            assert!(answers(host.as_bytes(), &names), "{host}");
+        }
+        for host in [
+            "rebound.attacker.example:3917",
+            "localhost.attacker.example",
+            "evil-localhost",
+            "1.2.3.4.attacker.example",
+            "999.1.1.1",
+            "www.shop.example",
+            "shop.example.attacker.example",
+            "xcorp.example",
+            "localhost:3000:1",
+            "localhost:abc",
+            "",
+        ] {
+            assert!(!answers(host.as_bytes(), &names), "{host}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Policy::host takes a name")]
+    fn a_host_with_a_port_is_a_startup_panic() {
+        let _ = Policy::new().host("shop.example:443");
     }
 
     #[test]
@@ -649,5 +1091,60 @@ mod tests {
         let h = headers(&[("cookie", "a=1; __Host-session=abc123; b=2")]);
         assert_eq!(cookie::get(&h, "__Host-session"), Some("abc123"));
         assert_eq!(cookie::get(&h, "c"), None);
+    }
+
+    #[test]
+    fn a_value_a_cookie_cannot_carry_is_an_error_to_answer() {
+        use cookie::{InvalidCookie, SetCookie};
+        for value in ["Ada; Lovelace", "a b", "a,b", "\"q\"", "back\\slash", "caf\u{e9}", "tab\t", "nl\n", "nul\0", "del\x7f"] {
+            assert_eq!(SetCookie::try_new("viewer", value).unwrap_err(), InvalidCookie::Value, "{value:?}");
+        }
+        for name in ["", "a=b", "a b", "a;b", "a,b", "a\"b", "a\\b", "caf\u{e9}", "a\0", "a\x7f"] {
+            assert_eq!(SetCookie::try_new(name, "v").unwrap_err(), InvalidCookie::Name, "{name:?}");
+        }
+        let ok = SetCookie::try_new("session", "c2Vz-c2lv_bg==").unwrap();
+        assert_eq!(ok.header(), "session=c2Vz-c2lv_bg==; Path=/; SameSite=Lax; HttpOnly; Secure");
+        assert_eq!(
+            SetCookie::try_new("s", "").unwrap().header(),
+            "s=; Path=/; SameSite=Lax; HttpOnly; Secure",
+            "an empty value is a cookie"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid cookie value")]
+    fn new_still_panics_on_a_literal_it_cannot_carry() {
+        let _ = cookie::SetCookie::new("viewer", "Ada; Lovelace");
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid cookie name \"a b\"")]
+    fn new_still_panics_on_a_name_it_cannot_carry() {
+        let _ = cookie::SetCookie::new("a b", "v");
+    }
+
+    #[test]
+    fn a_path_with_a_control_character_panics_where_it_is_set_not_when_sent() {
+        for path in ["/a\nb", "/a\rb", "/a\tb", "/a\x01", "/a\x7f", "/a;b", "a"] {
+            let set = std::panic::catch_unwind(|| cookie::SetCookie::new("s", "v").path(path));
+            assert!(set.is_err(), "{path:?}");
+        }
+        assert_eq!(
+            cookie::SetCookie::new("s", "v").path("/account").header(),
+            "s=v; Path=/account; SameSite=Lax; HttpOnly; Secure"
+        );
+        // A non-ASCII path is not a control character: it is set and sent as its UTF-8 bytes.
+        assert_eq!(
+            cookie::SetCookie::new("s", "v").path("/caf\u{e9}").header().as_bytes(),
+            "s=v; Path=/caf\u{e9}; SameSite=Lax; HttpOnly; Secure".as_bytes()
+        );
+    }
+
+    #[test]
+    fn try_new_with_question_mark_is_a_500() {
+        fn sign_in() -> crate::Result<cookie::SetCookie> {
+            Ok(cookie::SetCookie::try_new("session", "a b")?)
+        }
+        assert_eq!(sign_in().unwrap_err().into_response().status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

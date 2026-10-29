@@ -53,11 +53,15 @@ export function showAll(rows, rest, button) {
 3. A wrong ref type, wrong event type, wrong value type or a handler the script does not export
    is a compile error at the call. `tsc --checkJs` checks the function bodies.
 4. `on:connect={..}` runs when the element joins the page: first load, navigation, a patch.
-5. A component with refs, or whose handlers take `scope`, has one root element; refs resolve
-   inside it and outside nested components. Any element can be the root, a `<tr>` included.
+5. A component with refs, whose handlers take `scope`, or whose script imports `keep`, has one
+   root element; refs resolve inside it and outside nested components. Any element can be the root, a `<tr>` included.
 6. A ref on several kinds of element: `ref={tab as HTMLElement}`.
-7. State that outlives one event lives in the DOM or in `state(scope, () => init)` from
-   `corten`. Handlers are shared by every instance, so never keep state in module variables.
+7. State that outlives one event lives in the DOM or in `keep(() => init)` from `corten`: the
+   running handler's component's object, one per instance (a second call with another `init`
+   gets the first one), with no element passed, so a handler takes no `scope` just for its state.
+   Take it first, before any `await`. Only a component's own script imports it, not a `script!`
+   module. Handlers are shared by every instance, so never keep state in
+   module variables.
 8. A control that does nothing without the script renders `hidden`; an `on:connect` handler
    shows it.
 9. List the component in `App::components`.
@@ -92,7 +96,7 @@ and do not render every variant in a `<template>` for the script to copy.
 A number, amount or date the script works out is written with the page's format, never
 `Intl` or `toFixed`: pass `t.js().number()`, `t.js().money(USD)` or `t.js().date(DateStyle::Medium)`
 (`.time(..)`, `.date_time(..)`, `.zone(Offset::hours(-5))`) and take it as
-`@param {NumberFormat}`, `{MoneyFormat}` or `{DateFormat}` (from `"corten"`); call `money(cents)`
+`@param {NumberFormat}`, `{MoneyFormat}`, `{DateFormat}` or `{PercentFormat}` (`t.js().percent(2)` or `t.js().change(2)`, from `"corten"`); call `money(cents)`
 or `when(Date.now())`. It writes what the server's `t.money` and `t.date` write. A zone with
 daylight saving time stays on the server.
 
@@ -117,32 +121,30 @@ import { RowToggled } from "corten/events";
 row.dispatchEvent(new RowToggled({ id, selected: true }));
 ```
 
-List the event in `App::components`. Handlers several components share go in their own module:
-`script!(pub mod validity = "validity.js");`.
+The event is served with the component's script that imports it, so it is not listed (only one
+that a `static/` module alone imports is). Handlers several components share go in their own module:
+`script!(pub mod validity = "validity.js");`, listed as `validity::COMPONENT`. A page whose
+handlers call an unlisted module fails in a debug build (500 naming the module): list it, and
+cover each page with a router test so the check runs.
 
 ## A fragment the server keeps current
 
 No script needed. Stream components with an `id`; the runtime swaps each one in, like a patch:
 
 ```rust
-// in the page
-<corten-live src={Trades}><LastTrade text={&last} /></corten-live>
+// in the page: the trade count it was drawn at, so a current page is not sent it again
+<corten-live src={Trades} since={n}><LastTrade text={&last} /></corten-live>
 
-// GET /live/trades
-async fn trades(State(m): State<Market>) -> impl IntoResponse {
-    let next = m.trades.subscribe();                       // a tokio watch channel
-    corten::live(futures_util::stream::unfold(next, |mut next| async move {
-        next.changed().await.ok()?;
-        let html = LastTrade { text: &next.borrow_and_update() }.to_html();
-        Some((html, next))
-    }))
+// GET /live/trades: one value in a tokio watch channel, (trade count, text)
+async fn trades(State(m): State<Market>, since: LiveSince) -> LiveResponse {
+    corten::live_watch(m.trades.subscribe(), since, |(n, _)| *n, |(_, text)| LastTrade { text }.to_html())
 }
 ```
 
-When the data has a version, resume instead of redrawing: `Fragment::new(html).cursor(v)` for
-each item, `<corten-live src={Trades} since={v}>` in the page, and a `LiveSince(since)`
-argument that says where the browser is (the page's `since`, or `Last-Event-ID` after a
-reconnect). Send nothing until the next change when it is current. See the live-data guide.
+Another source (a change stream, a queue) is `corten::live(stream)`: give each item its version,
+`Fragment::new(html).cursor(v)`, and use the `LiveSince` argument (the page's `since`, or
+`Last-Event-ID` after a reconnect) to send nothing until the next change when it is current. A
+slow part sent once is a stream of one item. See the live-data guide.
 
 The element shows its connection as `status` (`connecting`, `live`, `reconnecting`, `closed`,
 `ended`) and `stale-since` (when a live stream dropped): style a stale part with
@@ -209,8 +211,10 @@ export function select(link, body) {
 
 ## Widgets
 
-Use `corten-ui` (number field, combobox, tabs, menu button, toaster) before writing one. For anything
-else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS anchor positioning. A
-`<dialog>` the server can draw `open` (a form it refuses) gets
-`on:connect={corten_ui::dialog::modal(target)}`, so it is modal, not just open; do not write that
-handler in the app.
+Use `corten-ui` (number field, combobox, tabs, menu button, toaster, copy button, checkbox group, required-when) before writing
+one. For anything else, use the platform first: `<dialog>`, `popover`, `<details>`, and CSS
+anchor positioning. A `<dialog>` the server can draw `open` (a form it refuses) gets
+`on:connect={corten_ui::dialog::modal(target)}`, so it is modal, not just open; one the address
+opens and a link closes (`?selected=..`) gets `dialog::modalClosedBy(target, close, signal)` with
+the link as the `close` ref, so a close request (Escape) goes to its address. Do not write these
+handlers in the app.

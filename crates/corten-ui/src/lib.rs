@@ -9,7 +9,13 @@
 //! | [`TabGroup`] | tabs with arrow keys; tabs can be links, and the address follows | links to each tab's page |
 //! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
+//! | [`CopyButton`] | copies an element's text to the clipboard, says so politely, and tells the page ([`Copied`]) | no button; the text is on the page to select |
+//! | [`PrintButton`] | opens the browser's print dialog; the page's print styles say what prints | no button; the browser's Print command prints the page |
+//! | [`RelativeTime`] | a time relative to now ("in 10 hours") that stays current, on one timer for the page | the time as the server wrote it |
+//! | [`CheckboxGroup`] | checkboxes of one name of which one must be checked; the browser says so before sending | the form is sent, and the handler refuses it |
+//! | [`RequiredWhen`] | fields required only for some values of another field, disabled for the rest | the fields are optional, and the handler checks the rule |
 //! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
+//! | [`dialog::modalClosedBy`] | the same for a dialog the address opens (`?selected=it_1`), and a close request (Escape) goes to its close link's address | the dialog is open, and the link closes it |
 //!
 //! Each is tested in Chromium, Firefox and WebKit (`examples/ui-gallery/smoke.mjs`).
 //!
@@ -53,7 +59,7 @@
 //! use corten::prelude::*;
 //! use corten_ui::MenuItem;
 //!
-//! let item = MenuItem { label: &"Orders", link: &"/orders", post: false };
+//! let item = MenuItem { label: "Orders", link: &"/orders", post: false };
 //! ```
 //!
 //! **Dialogs the server draws open.** A form in a `<dialog>` that the server refuses comes back
@@ -86,18 +92,80 @@
 //!
 //! let html = html! { <div open on:connect={dialog::modal(target)}></div> };
 //! ```
+//!
+//! **Dialogs the address opens.** A record shown beside its list (`/items?selected=it_1`) is a
+//! dialog the server draws `open` when the address names one, closed by a link to the address
+//! without it. Escape on a modal dialog closes it where the address cannot see, so a reload or a
+//! redraw would open it again. [`dialog::modalClosedBy`] makes it modal as [`dialog::modal`]
+//! does, and a close request (Escape, Android's Back, a click outside a `closedby="any"` dialog)
+//! goes to its close link's address without a new history entry (it does not click the link):
+//! back, when the entry before is that address, else in place of the dialog's entry (always so in
+//! a browser without the Navigation API, where Back after a dialog opened from the list shows the
+//! list once more). Attributes on the link (`data-reload`, `data-keep-place`, an `on:click`) do
+//! not apply. Android's Back on an open dialog cannot loop between the two:
+//!
+//! ```
+//! use corten::prelude::*;
+//! use corten_ui::dialog;
+//!
+//! #[derive(Route)]
+//! #[route("/items")]
+//! struct Items<'a> { selected: Option<&'a str> }
+//!
+//! #[component]
+//! fn ItemSheet<'a>(name: &'a str) -> impl Render {
+//!     let close = refs();
+//!     html! {
+//!         <dialog open aria-label={name} on:connect={dialog::modalClosedBy(target, close, signal)}>
+//!             <h2>{name}</h2>
+//!             <a ref={close} href={Items { selected: None }}>"Close"</a>
+//!         </dialog>
+//!     }
+//! }
+//!
+//! let html = ItemSheet { name: "Lamp" }.to_html();
+//! assert!(html.contains(r#"data-on="connect:ui.dialog.modalClosedBy($t,@close,$s)""#), "{html}");
+//! ```
+//!
+//! The close is a link, put there by a ref, so a button (which changes no address) does not
+//! compile:
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//! use corten_ui::dialog;
+//!
+//! #[component]
+//! fn ItemSheet() -> impl Render {
+//!     let close = refs();
+//!     html! {
+//!         <dialog open on:connect={dialog::modalClosedBy(target, close, signal)}>
+//!             <button ref={close} type="button">"Close"</button>
+//!         </dialog>
+//!     }
+//! }
+//! ```
 
 use corten::{script::script, view::AttrValue, Component, Route};
 
+mod checkbox_group;
 mod combo_box;
+mod copy_button;
 mod menu_button;
 mod number_field;
+mod print_button;
+mod relative_time;
+mod required_when;
 mod tab_group;
 mod toaster;
 
+pub use checkbox_group::CheckboxGroup;
 pub use combo_box::{Choice, ComboBox, Picker};
+pub use copy_button::{Copied, CopyButton};
 pub use menu_button::{MenuButton, MenuItem};
 pub use number_field::{Number, NumberField, Step};
+pub use print_button::PrintButton;
+pub use relative_time::RelativeTime;
+pub use required_when::RequiredWhen;
 pub use tab_group::{Tab, TabGroup};
 pub use toaster::{Toast, ToastId, Toaster};
 
@@ -105,7 +173,19 @@ script!(pub mod dialog = "dialog.js");
 
 /// Every component in this crate with a script, and the [`dialog`] handlers, for
 /// `App::components`.
-pub const COMPONENTS: &[Component] = &[NumberField, ComboBox, TabGroup, MenuButton, Toaster, dialog::COMPONENT];
+pub const COMPONENTS: &[Component] = &[
+    NumberField,
+    ComboBox,
+    TabGroup,
+    MenuButton,
+    Toaster,
+    CopyButton,
+    PrintButton,
+    RelativeTime,
+    CheckboxGroup,
+    RequiredWhen,
+    dialog::COMPONENT,
+];
 
 /// A typed route a component links to (`#[derive(Route)]`), as a trait object so a list of
 /// items can hold different routes. A string is not a `Link`.

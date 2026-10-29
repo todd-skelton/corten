@@ -73,10 +73,14 @@ const RESERVED: &[&str] = &[
     "js",
     "by_key",
     "number",
+    "percent",
+    "change",
     "money",
+    "parse_money",
     "date",
     "time",
     "date_time",
+    "relative",
 ];
 
 #[derive(Debug, PartialEq)]
@@ -276,7 +280,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         } else {
             let mut params = TokenStream::new();
             for arg in &args {
-                params.extend(q("__A0: impl ::std::fmt::Display,", &[arg_ident(arg).into()]));
+                params.extend(q("__A0: impl ::corten::i18n::Arg,", &[arg_ident(arg).into()]));
             }
             by_locale = q(
                 "::corten::i18n::Text::new(move |__corten_sink: &mut ::corten::i18n::Sink<'_>| __A0)",
@@ -317,10 +321,32 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         #[inline] __A2 fn number(self, n: impl ::corten::i18n::Number) -> ::corten::i18n::Formatted {
             ::corten::i18n::Formatted::number(self.__corten_locale(), n.to_decimal())
         }
+        /// A ratio as a percentage in this locale, with at most `digits` fraction digits (rounded
+        /// half away from zero, trailing zeros dropped): `t.percent(Decimal::new(29, 3), 2)` is
+        /// `2.9%` in en, `2,9 %` in fr and `%2,9` in tr.
+        #[inline] __A2 fn percent(self, ratio: impl ::corten::i18n::Number, digits: u8) -> ::corten::i18n::Formatted {
+            ::corten::i18n::Formatted::percent(self.__corten_locale(), ratio.to_decimal(), digits)
+        }
+        /// A ratio as a change in this locale (a price's move today): a percentage with exactly
+        /// `digits` fraction digits (rounded half away from zero) and a sign, none when it rounds
+        /// to zero, so a column of them lines up: `t.change(Decimal::new(6, 3), 2)` is `+0.60%` in
+        /// en, `+0,60 %` in fr and `+%0,60` in tr.
+        #[inline] __A2 fn change(self, ratio: impl ::corten::i18n::Number, digits: u8) -> ::corten::i18n::Formatted {
+            ::corten::i18n::Formatted::change(self.__corten_locale(), ratio.to_decimal(), digits)
+        }
         /// An amount of money in this locale: `t.money(Minor(123450), USD)` is `$1,234.50` in en and
         /// `1 234,50 $US` in fr.
         #[inline] __A2 fn money(self, amount: impl ::corten::i18n::Amount, currency: ::corten::i18n::Currency) -> ::corten::i18n::Formatted {
             ::corten::i18n::Formatted::money(self.__corten_locale(), &amount, currency)
+        }
+        /// Money as a person types it in this locale, in the currency's minor units: what
+        /// `money` writes, read back: `$1,299.50` is `Some(Minor(129950))` in USD in en, and `12,50`
+        /// is `Some(Minor(1250))` in fr. With or without
+        /// the symbol or code and the group separators; a sign, a group of the wrong size, another
+        /// locale's decimal separator, more fraction digits than the currency shows, or an amount
+        /// over `u64` is `None`.
+        #[inline] __A2 fn parse_money(self, text: &str, currency: ::corten::i18n::Currency) -> ::core::option::Option<::corten::i18n::Minor<u64>> {
+            ::corten::i18n::__private::parse_money(self.__corten_locale(), text, currency)
         }
         /// A date in this locale, in UTC unless `.zone(..)` says otherwise: `Mar 22, 2026` (en, `Medium`).
         #[inline] __A2 fn date(self, at: impl ::core::convert::Into<::std::time::SystemTime>, style: impl ::corten::i18n::DateOnly) -> ::corten::i18n::When {
@@ -339,6 +365,17 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             time: ::corten::i18n::TimeStyle,
         ) -> ::corten::i18n::When {
             ::corten::i18n::When::date_time(self.__corten_locale(), at.into(), date, time)
+        }
+        /// `at` relative to `now` in this locale, in the largest unit it has a whole one of:
+        /// `in 10 hours` (en, `Long`) for 10 h 35 min ahead, `3 min. ago` (`Short`).
+        /// `corten_ui::RelativeTime` keeps it current in the browser.
+        #[inline] __A2 fn relative(
+            self,
+            at: impl ::core::convert::Into<::std::time::SystemTime>,
+            now: impl ::core::convert::Into<::std::time::SystemTime>,
+            style: ::corten::i18n::RelativeStyle,
+        ) -> ::corten::i18n::Relative {
+            ::corten::i18n::Relative::new(self.__corten_locale(), at.into(), now.into(), style)
         }",
         &[data, TokenTree::Literal(proc_macro::Literal::usize_unsuffixed(count)).into(), vis.clone()],
     ));
@@ -362,6 +399,10 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             "#[doc(hidden)] #[inline] fn __corten_locale(self) -> &'static ::corten::i18n::__private::LocaleData { __A0(self.0).__corten_locale() }
             /// This locale's number format, for a handler whose JSDoc takes a NumberFormat: it writes format(n) as t.number(n) does.
             #[inline] __A1 fn number(self) -> ::corten::i18n::NumberFormat { ::corten::i18n::NumberFormat::new(self.__corten_locale()) }
+            /// This locale's percentage format, for a handler whose JSDoc takes a PercentFormat: it writes format(ratio) as t.percent(ratio, digits) does.
+            #[inline] __A1 fn percent(self, digits: u8) -> ::corten::i18n::PercentFormat { ::corten::i18n::PercentFormat::new(self.__corten_locale(), digits) }
+            /// This locale's change format, for a handler whose JSDoc takes a PercentFormat: it writes format(ratio) as t.change(ratio, digits) does.
+            #[inline] __A1 fn change(self, digits: u8) -> ::corten::i18n::PercentFormat { ::corten::i18n::PercentFormat::change(self.__corten_locale(), digits) }
             /// An amount's format in `currency`, for a handler whose JSDoc takes a MoneyFormat: it writes format(minor) as t.money(Minor(minor), currency) does.
             #[inline] __A1 fn money(self, currency: ::corten::i18n::Currency) -> ::corten::i18n::MoneyFormat { ::corten::i18n::MoneyFormat::new(self.__corten_locale(), currency) }
             /// A date's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.date(at, style) does.
@@ -622,12 +663,13 @@ fn display(parts: &[Part]) -> String {
 pub fn method_name(key: &str) -> Result<String, String> {
     let name: String = key.chars().map(|c| if c == '.' || c == '-' { '_' } else { c }).collect();
     let valid = name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && !RESERVED.contains(&name.as_str());
-    if valid {
-        Ok(name)
-    } else {
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !valid {
         Err(format!("the key {key:?} cannot be a method name; use letters, digits and _ (dots become _)"))
+    } else if RESERVED.contains(&name.as_str()) {
+        Err(format!("the key {key:?} is a word Rust or messages! uses (t.number, t.change, ...); put it under a group (\"button.{name}\") or rename it"))
+    } else {
+        Ok(name)
     }
 }
 
@@ -714,6 +756,8 @@ mod tests {
         assert_eq!(method_name("item.listing_count").unwrap(), "item_listing_count");
         assert_eq!(method_name("nav.sign-in").unwrap(), "nav_sign_in");
         assert!(method_name("type").is_err());
+        assert!(method_name("change").is_err(), "a method messages! writes");
+        assert!(method_name("button.change").is_ok());
         assert!(method_name("1st").is_err());
     }
 

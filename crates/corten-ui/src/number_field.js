@@ -4,14 +4,14 @@
 // Home and End, and the step's decimals. A step sends `input` and `change` like typing does, and
 // the input's own on:input (`sync`) then disables a button at its bound.
 
-import { state } from "corten";
+import { keep } from "corten";
 
 /** Milliseconds a button is held before it repeats, and between repeats. */
 const HOLD = 400;
 const REPEAT = 60;
 
-/** A field's press and hold. @param {HTMLInputElement} input */
-const held = (input) => state(input, () => ({ timer: 0, pointer: false }));
+/** The field's press and hold, and the button each pointer is pressing, by pointer id. */
+const held = () => keep(() => ({ timer: 0, pressed: /** @type {Map<number, HTMLButtonElement>} */ (new Map()) }));
 
 /**
  * When the field joins the page: the buttons match the value, and a hold ends wherever the
@@ -21,11 +21,17 @@ const held = (input) => state(input, () => ({ timer: 0, pointer: false }));
  */
 export function connect(decrease, input, increase, signal) {
   sync(decrease, input, increase);
-  const s = held(input);
-  const release = () => {
+  const s = held();
+  /** @param {Event} event */
+  const release = (event) => {
     clearTimeout(s.timer);
-    // The click that follows this pointerup runs first, and must not step again.
-    setTimeout(() => (s.pointer = false));
+    if (!(event instanceof PointerEvent)) return s.pressed.clear(); // the window lost focus
+    // Released on the button it pressed, a click follows, the press's own (`click` takes it);
+    // released anywhere else, cancelled, or on a button now disabled (at a bound), none does.
+    const button = s.pressed.get(event.pointerId);
+    if (event.type !== "pointerup" || !button || button.disabled || !button.contains(/** @type {Node} */ (event.target))) {
+      s.pressed.delete(event.pointerId);
+    }
   };
   for (const type of ["pointerup", "pointercancel", "blur"]) addEventListener(type, release, { signal });
   signal.addEventListener("abort", () => clearTimeout(s.timer));
@@ -39,8 +45,8 @@ export function press(event, button, input, by) {
   if (event.button !== 0 || button.disabled) return;
   // Keeps focus where it was (usually the input) and selects no text.
   event.preventDefault();
-  const s = held(input);
-  s.pointer = true;
+  const s = held();
+  s.pressed.set(event.pointerId, button);
   /** @param {number} delay */
   const tick = (delay) => {
     if (step(input, by)) s.timer = setTimeout(() => tick(REPEAT), delay);
@@ -50,11 +56,15 @@ export function press(event, button, input, by) {
 }
 
 /**
- * Enter or Space on a button; a pointer press has stepped already.
- * @param {HTMLInputElement} input @param {number} by
+ * Enter or Space on a button, or an assistive technology's click; the click that ends a pointer's
+ * press has stepped already, on the press. A key's click has `detail` 0, so it always steps.
+ * @param {MouseEvent} event @param {HTMLButtonElement} button @param {HTMLInputElement} input @param {number} by
  */
-export function click(input, by) {
-  if (!held(input).pointer) step(input, by);
+export function click(event, button, input, by) {
+  const { pressed } = held();
+  const pointer = event.detail > 0 ? [...pressed].find(([, pressing]) => pressing === button)?.[0] : undefined;
+  if (pointer === undefined) step(input, by);
+  else pressed.delete(pointer);
 }
 
 /** @param {KeyboardEvent} event @param {HTMLInputElement} input */

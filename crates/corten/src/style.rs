@@ -117,7 +117,7 @@
 
 use std::cell::RefCell;
 
-/// A design-token file as CSS and Rust. See [the module](self) and `examples/item-page/tokens.json`.
+/// A design-token file as CSS and Rust. See [the module](self) and `examples/card-market/tokens.json`.
 ///
 /// `tokens!("tokens.json")` (the path from the crate's root) reads:
 ///
@@ -134,9 +134,12 @@ use std::cell::RefCell;
 /// - `utilities` (optional): classes for one property, from a scale
 ///   (`{"gap": {"property": "gap", "scale": "space"}}`) or from their own values
 ///   (`{"direction": {"property": "flex-direction", "values": {"row": "row", "column": "column"}}}`).
-///   Each is a function, `gap(Space::_2)` or `gap(Responsive::new(Space::_2).md(Space::_4))`,
-///   that returns its classes (`gap-2 md:gap-4`) for `class={..}`. Inline `style=` attributes are
-///   blocked by the content security policy; these are the typed way to set one value per use.
+///   Each value is a function of its own, `gap_2()` and `direction_row()` (`gap-2`,
+///   `direction-row`), for `class={..}`. The utility's function takes a value chosen as the page
+///   renders, `gap(space)`, or one per breakpoint, `gap(Responsive::new(Space::_2).md(Space::_4))`
+///   (`gap-2 md:gap-4`). Two that would have one name (a utility `border-b` and `border`'s value
+///   `b`) are a compile error that names both. Inline `style=` attributes are blocked by the
+///   content security policy; these are the typed way to set one value per use.
 ///
 /// It defines `TOKENS: corten::Component` with the generated stylesheet; list it first in
 /// `App::components` so the components' rules come after it.
@@ -179,7 +182,8 @@ impl Class {
     }
 }
 
-/// Utility classes for one value per breakpoint, from a [`tokens!`] utility: `gap(Space::_2)`.
+/// Utility classes for one value per breakpoint, from a [`tokens!`] utility:
+/// `gap(Responsive::new(Space::_2).md(Space::_4))`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Classes<const N: usize>([Option<&'static str>; N]);
 
@@ -298,6 +302,104 @@ pub(crate) fn collect<T>(render: impl FnOnce() -> T) -> (T, Vec<&'static crate::
 }
 
 /// Used by the code `html!` and `#[component]` generate. Not a public API.
+/// The custom properties `css` declares (`--gap: 4px` in a block, `@property --gap`) and those
+/// it reads with `var(--gap)` and no fallback, comments and strings skipped. A `var()` with a
+/// fallback is skipped whole: the fallback is what it is for.
+pub(crate) fn custom_properties(css: &str) -> (Vec<&str>, Vec<&str>) {
+    let b = css.as_bytes();
+    let (mut declared, mut needed) = (Vec::new(), Vec::new());
+    let ident = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_') || c >= 0x80;
+    let name_end = |mut i: usize| {
+        while i < b.len() && (ident(b[i]) || b[i] == b'\\') {
+            i += if b[i] == b'\\' { 2 } else { 1 };
+        }
+        i.min(b.len())
+    };
+    let space = |mut i: usize| {
+        while b.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        i
+    };
+    let string_end = |mut i: usize, quote: u8| {
+        i += 1;
+        while i < b.len() && b[i] != quote {
+            i += if b[i] == b'\\' { 2 } else { 1 };
+        }
+        (i + 1).min(b.len())
+    };
+    let mut i = 0;
+    // The last byte that is not whitespace or in a comment: a declaration follows `{` or `;`.
+    let mut last = b'{';
+    while i < b.len() {
+        let c = b[i];
+        if c == b'/' && b.get(i + 1) == Some(&b'*') {
+            i = css[i + 2..].find("*/").map_or(b.len(), |end| i + 2 + end + 2);
+            continue;
+        }
+        if c.is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        if c == b'"' || c == b'\'' {
+            i = string_end(i, c);
+            last = c;
+            continue;
+        }
+        if c == b'-' && b.get(i + 1) == Some(&b'-') && matches!(last, b'{' | b';') {
+            let end = name_end(i + 2);
+            if end > i + 2 && b.get(space(end)) == Some(&b':') {
+                declared.push(&css[i..end]);
+            }
+            (i, last) = (end, b'-');
+            continue;
+        }
+        if c == b'@' && css[i..].starts_with("@property") {
+            let start = space(i + "@property".len());
+            if css[start..].starts_with("--") {
+                let end = name_end(start + 2);
+                declared.push(&css[start..end]);
+                (i, last) = (end, b'-');
+                continue;
+            }
+        }
+        if (c | 0x20) == b'v' && css.get(i..i + 4).is_some_and(|s| s.eq_ignore_ascii_case("var(")) && (i == 0 || !ident(b[i - 1]))
+        {
+            let start = space(i + 4);
+            if css[start..].starts_with("--") {
+                let end = name_end(start + 2);
+                match b.get(space(end)) {
+                    Some(b')') => needed.push(&css[start..end]),
+                    Some(b',') => {
+                        // To the `)` that closes this `var(`.
+                        let (mut j, mut depth) = (space(end) + 1, 1);
+                        while j < b.len() && depth > 0 {
+                            match b[j] {
+                                b'(' => depth += 1,
+                                b')' => depth -= 1,
+                                q @ (b'"' | b'\'') => {
+                                    j = string_end(j, q);
+                                    continue;
+                                }
+                                _ => {}
+                            }
+                            j += 1;
+                        }
+                        (i, last) = (j, b')');
+                        continue;
+                    }
+                    _ => {}
+                }
+                (i, last) = (end, b'-');
+                continue;
+            }
+        }
+        last = c;
+        i += 1;
+    }
+    (declared, needed)
+}
+
 #[doc(hidden)]
 pub mod __private {
     use super::{ClassList, RENDERED};
@@ -337,7 +439,18 @@ mod tests {
     mod theme {
         crate::style::tokens!("src/style/tokens.json");
     }
-    use theme::{direction, gap, Direction, Responsive, Space};
+    use theme::{direction, direction_column, gap, gap_2, Direction, Responsive, Space};
+
+    #[test]
+    fn a_stylesheet_names_the_custom_properties_it_declares_and_reads() {
+        let css = "/* var(--commented) */ :root{--ink:#111;--space-1 : 4px}.a--b:hover{color:var(--ink)}
+.x { padding: var( --space-1 ); margin: var(--gap, var(--nope)); content: \"var(--quoted)\"; background: VAR(--bg) }
+@property --angle { syntax: '<angle>'; inherits: false; initial-value: 0deg }
+@supports (--x: 1) { .y { width: calc(var(--w) * 2); --é-ä: 1 } }";
+        let (declared, needed) = custom_properties(css);
+        assert_eq!(declared, ["--ink", "--space-1", "--angle", "--é-ä"]);
+        assert_eq!(needed, ["--ink", "--space-1", "--bg", "--w"]);
+    }
 
     #[test]
     fn tokens_are_typed_scales_and_utilities_are_classes_per_breakpoint() {
@@ -351,6 +464,12 @@ mod tests {
         assert!(css.starts_with(":root{--color-ink:#1d1b26;"), "{css}");
         assert!(css.contains(".md\\:direction-row{flex-direction:row}"), "{css}");
         assert!(html! { <p class={gap(Responsive::default())}></p> }.to_html() == "<p></p>", "no value, no attribute");
+        // A value at every width is its own function: the class as static text.
+        assert_eq!(
+            html! { <p class={(gap_2(), direction_column())}></p> }.to_html(),
+            r#"<p class="gap-2 direction-column"></p>"#
+        );
+        assert_eq!(gap_2().name(), gap(Space::_2).names().next().unwrap());
     }
 
     #[component(css)]
@@ -454,8 +573,8 @@ mod tests {
             App::new(Routes::from(Router::new().route("/", get(page)).route("/administrator", get(page))))
                 .dev(dev)
                 .components(&[theme::TOKENS])
-                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(page))).components(&[BadgeList]))
-                .area::<Reports>(|reports| reports.route::<Report>(crate::Methods(get(page))).components(&[REPORT]))
+                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods::reads(get(page))).components(&[BadgeList]))
+                .area::<Reports>(|reports| reports.route::<Report>(crate::Methods::reads(get(page))).components(&[REPORT]))
                 .router()
         };
         let get_page = |app: Router, path: &str, nav: bool| {
@@ -532,8 +651,8 @@ mod tests {
             App::new(Routes::from(axum::Router::new().route("/", get(|| async { "home" }))))
                 .dev(true)
                 .components(&[theme::TOKENS])
-                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods(get(page))).components(&[BadgeList]))
-                .area::<Shop>(|shop| shop.route::<Shop>(crate::Methods(get(page))).components(&[BadgeList, REPORT]))
+                .area::<Admin>(|admin| admin.route::<Admin>(crate::Methods::reads(get(page))).components(&[BadgeList]))
+                .area::<Shop>(|shop| shop.route::<Shop>(crate::Methods::reads(get(page))).components(&[BadgeList, REPORT]))
                 .router()
         };
         let get_page = |path: &str| {

@@ -2,6 +2,11 @@ use corten::{axum::http::StatusCode, prelude::*};
 
 use crate::{GreetForm, url};
 
+corten::assets::embed! {
+    /// The files in `static/`, compiled into the program: `Static::STYLE_CSS` is `static/style.css`.
+    pub struct Static = "static";
+}
+
 /// The document around every page; it is yours to change. `<Corten />` is where Corten adds the
 /// runtime and the page's scripts and stylesheets. A client navigation gets only the `<title>`
 /// and `<main>`'s children, so the rest runs on full page loads only. For tags a page sets itself
@@ -14,8 +19,8 @@ pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={req.asset("style.css")}>
-                <link rel="icon" type="image/svg+xml" href={req.asset("favicon.svg")}>
+                <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
+                <link rel="icon" type="image/svg+xml" href={req.asset(Static::FAVICON_SVG)}>
                 <title>{title}</title>
                 <Corten />
             </head>
@@ -38,6 +43,9 @@ pub async fn error_page(failure: Failure, req: Req) -> HtmlResult {
         Failure::CrossSite => ("Not allowed", "This request came from another site."),
         Failure::Refused { status } if *status == StatusCode::UNAUTHORIZED => {
             ("Sign in needed", "Sign in to see this page.")
+        }
+        Failure::Refused { status } if *status == StatusCode::TOO_MANY_REQUESTS => {
+            ("Too many requests", "Wait a moment and try again.")
         }
         Failure::Refused { .. } => ("Not allowed", "You do not have access to this page."),
         Failure::Unidentified { .. } => (

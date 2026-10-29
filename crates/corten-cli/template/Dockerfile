@@ -13,7 +13,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM debian:bookworm-slim
 WORKDIR /app
 COPY --from=build /server /app/server
-COPY static /app/static
-ENV HOST=0.0.0.0 PORT=8080 STATIC_DIR=/app/static
+# Behind a domain, add the names the app is served under (HOSTS=shop.example): any other Host
+# gets 421, so a DNS-rebound page cannot use the app. localhost and IP addresses always answer.
+ENV HOST=0.0.0.0 PORT=8080
 EXPOSE 8080
 CMD ["/app/server"]

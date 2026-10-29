@@ -25,8 +25,8 @@
 //! struct Quote { id: u32, cents: u32 }
 //!
 //! // A path that does not parse is a JSON 400, whatever the client accepts.
-//! async fn price(Path(id): Path<u32>) -> JsonResult<Quote> {
-//!     Ok(Json(Quote { id, cents: 900 }))
+//! async fn price(price: Params<url::Price>) -> JsonResult<Quote> {
+//!     Ok(Json(Quote { id: price.id, cents: 900 }))
 //! }
 //! # let _ = App::new(url::router()).router();
 //! ```
@@ -78,8 +78,8 @@ pub enum Format {
 
 /// What a handler named in `#[corten::routes]` returns: the type says how the route's failures are
 /// answered ([`Answer::FORMAT`]) and what the handler may read ([`Answer::Inputs`]). Implemented
-/// for [`HtmlResult`], [`JsonResult<T>`], [`Public`], [`NoStore`], text, a bare `StatusCode`,
-/// [`LiveResponse`], feeds and [`crate::seo::File`]; a crate may add its own.
+/// for [`HtmlResult`], [`JsonResult<T>`], `Result<JsonResponse, JsonError>`, [`Public`], [`NoStore`], text, a bare `StatusCode`,
+/// [`LiveResponse`], feeds, [`Media`] and [`crate::seo::File`]; a crate may add its own.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an answer a route can name",
     label = "the handler returns this",
@@ -94,17 +94,106 @@ pub trait Answer: IntoResponse {
 }
 
 /// A page, a patch or a redirect, as a whole response (status and headers too): what
-/// [`Req::page`], [`Req::patch`] and [`Req::redirect`] give. It derefs to the response, for a
-/// header of the handler's own (`res.headers_mut().append(SET_COOKIE, ..)`).
-pub struct HtmlResponse(pub(crate) Response);
+/// [`Req::page`], [`Req::patch`] and [`Req::redirect`] give. A cookie is
+/// [`HtmlResponse::with_cookie`]; it derefs to the response for any other header of the
+/// handler's own (`res.headers_mut().insert(..)`).
+///
+/// `For` is who the answer is for, read from where it goes: [`ForOne`], the visitor who asked
+/// (an [`HtmlResult`]), or [`ForAll`], inside a [`Public`]. The `Req` methods that make one
+/// take it from there, so a handler never names it.
+pub struct HtmlResponse<For = ForOne>(pub(crate) Response, PhantomData<For>);
 
-impl IntoResponse for HtmlResponse {
+/// An answer for the visitor who asked: it may set a cookie. What [`HtmlResult`] holds.
+pub struct ForOne;
+
+/// An answer for everyone, inside a [`Public`]: a cache gives it to anyone, so it sets no
+/// cookie, and [`HtmlResponse::with_cookie`] there does not compile.
+pub struct ForAll;
+
+/// Who an answer that sets a cookie can be for: [`ForOne`] alone.
+#[diagnostic::on_unimplemented(
+    message = "a `Public` answer is the same for everyone, so it cannot set a cookie",
+    label = "this answer is `Public`",
+    note = "return a private answer (`HtmlResult`) to set a cookie; a cache would give the cookie to everyone"
+)]
+pub trait SetsCookies: sealed::Sealed {}
+
+impl SetsCookies for ForOne {}
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::ForOne {}
+
+    pub trait Immutable {}
+    impl Immutable for super::Media {}
+    impl Immutable for Result<super::Media, super::Error> {}
+}
+
+impl<For> HtmlResponse<For> {
+    pub(crate) fn new(res: Response) -> Self {
+        HtmlResponse(res, PhantomData)
+    }
+}
+
+impl<For: SetsCookies> HtmlResponse<For> {
+    /// The answer with a `Set-Cookie` header, built by [`SetCookie`](crate::security::cookie::SetCookie)
+    /// so its safe flags are the default: `Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::new("session", &token)))`.
+    /// Each call adds one; an answer that sets a cookie is never stored by a shared cache. This is
+    /// the way to set one: never append a `Set-Cookie` header by hand.
+    ///
+    /// ```
+    /// use corten::{prelude::*, security::cookie::SetCookie};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    ///
+    ///     #[route("/sign-out", post = sign_out)]
+    ///     pub struct SignOut;
+    /// }
+    ///
+    /// # async fn home(req: Req) -> HtmlResult {
+    /// #     req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> })
+    /// # }
+    /// async fn sign_out(req: Req) -> HtmlResult {
+    ///     Ok(req.redirect(&url::Home)?.with_cookie(SetCookie::remove("session")))
+    /// }
+    /// # let _ = App::new(url::router()).router();
+    /// ```
+    ///
+    /// A [`Public`] answer is the same for everyone, so setting a cookie on one does not compile:
+    ///
+    /// ```compile_fail,E0277
+    /// use std::time::Duration;
+    /// use corten::{prelude::*, security::cookie::SetCookie};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     let page = req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> });
+    ///     Public::new(Duration::from_secs(60), page.map(|page| page.with_cookie(SetCookie::new("seen", "1"))))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
+    #[must_use]
+    pub fn with_cookie(mut self, cookie: crate::security::cookie::SetCookie) -> Self {
+        self.0.headers_mut().append(axum::http::header::SET_COOKIE, cookie.header());
+        self
+    }
+}
+
+impl<For> IntoResponse for HtmlResponse<For> {
     fn into_response(self) -> Response {
         self.0
     }
 }
 
-impl Deref for HtmlResponse {
+impl<For> Deref for HtmlResponse<For> {
     type Target = Response;
 
     fn deref(&self) -> &Response {
@@ -112,7 +201,7 @@ impl Deref for HtmlResponse {
     }
 }
 
-impl DerefMut for HtmlResponse {
+impl<For> DerefMut for HtmlResponse<For> {
     fn deref_mut(&mut self) -> &mut Response {
         &mut self.0
     }
@@ -123,14 +212,325 @@ impl Answer for HtmlResponse {
     type Inputs = AnyInputs;
 }
 
+/// An answer that can be [`Public`], and what it is there: the same answer, made for everyone.
+/// An [`HtmlResult`] becomes a `Result<HtmlResponse<ForAll>>`, so the `Req` methods that make
+/// it make it for everyone and it cannot set a cookie; an answer that cannot set one (text, JSON,
+/// a [`Relay`]) stays itself. An answer type of the app's own implements it (with
+/// [`ForEveryone`] for `ForAll`) only when it sets no cookie.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be `Public`",
+    note = "a `Public` answer is a page, a patch or a redirect (`HtmlResult`), `JsonResult<T>`, text, a status, a `Relay`, `Media`, a live stream or a feed"
+)]
+pub trait Shareable {
+    /// The answer as [`Public::new`] takes it.
+    type ForAll: ForEveryone<Named = Self>;
+}
+
+/// An answer made for everyone, as [`Public::new`] takes it, and the answer type a handler
+/// names for it (`Named`): `Result<HtmlResponse<ForAll>>` is named `HtmlResult`. Lets
+/// `Public::new(age, answer)` find its type from `answer` where no return type says it (a
+/// closure).
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not an answer made for everyone, so it cannot be `Public`",
+    note = "a page made for one visitor (`HtmlResult`) cannot be: make it in the handler that returns `Public<HtmlResult>`, or have a helper return `corten::Result<HtmlResponse<For>>` for any `For`; a `Public` answer is a page, a patch or a redirect, `JsonResult<T>`, text, a status, a `Relay`, `Media`, a live stream or a feed"
+)]
+pub trait ForEveryone: IntoResponse {
+    /// The answer type a handler names: `Public<Self::Named>`.
+    type Named: Shareable;
+
+    /// Itself, as the type `Public<Self::Named>` holds (the same type, named another way).
+    #[doc(hidden)]
+    fn for_all(self) -> <Self::Named as Shareable>::ForAll;
+}
+
+impl ForEveryone for HtmlResponse<ForAll> {
+    type Named = HtmlResponse;
+
+    fn for_all(self) -> Self {
+        self
+    }
+}
+
+impl<A: ForEveryone> ForEveryone for Result<A, Error> {
+    type Named = Result<A::Named, Error>;
+
+    fn for_all(self) -> Result<<A::Named as Shareable>::ForAll, Error> {
+        self.map(A::for_all)
+    }
+}
+
+#[cfg(feature = "json")]
+impl<A: ForEveryone> ForEveryone for std::result::Result<A, JsonError> {
+    type Named = std::result::Result<A::Named, JsonError>;
+
+    fn for_all(self) -> std::result::Result<<A::Named as Shareable>::ForAll, JsonError> {
+        self.map(A::for_all)
+    }
+}
+
+/// An answer that is itself everywhere: it sets no cookie.
+macro_rules! for_everyone {
+    ($($ty:ty),* $(,)?) => {$(
+        impl ForEveryone for $ty {
+            type Named = Self;
+
+            fn for_all(self) -> Self {
+                self
+            }
+        }
+        impl Shareable for $ty {
+            type ForAll = Self;
+        }
+    )*};
+}
+
+for_everyone!(&'static str, String, StatusCode, Relay, Media, LiveResponse);
+
+#[cfg(feature = "feed")]
+for_everyone!(corten_feed::FeedResponse);
+
+impl Shareable for HtmlResponse {
+    type ForAll = HtmlResponse<ForAll>;
+}
+
+impl<A: Shareable> Shareable for Result<A, Error> {
+    type ForAll = Result<A::ForAll, Error>;
+}
+
+#[cfg(feature = "json")]
+impl<A: Shareable> Shareable for std::result::Result<A, JsonError> {
+    type ForAll = std::result::Result<A::ForAll, JsonError>;
+}
+
+#[cfg(feature = "json")]
+impl<T> Shareable for crate::Json<T>
+where
+    crate::Json<T>: IntoResponse,
+{
+    type ForAll = Self;
+}
+
+#[cfg(feature = "json")]
+impl<T> ForEveryone for crate::Json<T>
+where
+    crate::Json<T>: IntoResponse,
+{
+    type Named = Self;
+
+    fn for_all(self) -> Self {
+        self
+    }
+}
+
 /// What a page handler returns: `async fn item(req: Req) -> HtmlResult`. A failure is the app's
 /// error page for a browser.
 pub type HtmlResult = crate::Result<HtmlResponse>;
 
 /// What a JSON handler returns: `async fn price(..) -> JsonResult<Quote>`. Every failure of the
-/// route, a path or body that does not parse included, is JSON.
+/// route, a path or body that does not parse included, is JSON. Its error is a [`JsonError`], so
+/// the handler `?`s its input's field errors (a 422 with the fields) next to any other error.
 #[cfg(feature = "json")]
-pub type JsonResult<T> = crate::Result<crate::Json<T>>;
+pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
+
+/// A JSON answer with a status or a cookie of its own, made from [`crate::Json`]:
+/// `Json(started).with_status(StatusCode::ACCEPTED)`, `Json(session).with_cookie(cookie)`. Its
+/// handler returns `Result<JsonResponse, JsonError>` where one that answers `200` with no cookie
+/// returns [`JsonResult<T>`]. The value is written when it is made, with the same headers as any
+/// JSON answer; it derefs to the response for any other header of the handler's own.
+///
+/// A status here is the app's own answer, body and all: `503 {"error":"No forecast yet"}` reaches
+/// the client as written. A failure (`Err`) is answered as every failure of a JSON route is,
+/// `{"error":{"status","message"}}`.
+///
+/// ```
+/// use corten::{axum::http::StatusCode, json::Raw, prelude::*, security::cookie::SetCookie, JsonError, JsonResponse};
+///
+/// #[derive(serde::Serialize, ToJson)]
+/// struct Started { ok: bool }
+///
+/// #[derive(serde::Serialize, ToJson)]
+/// struct Problem { error: &'static str }
+///
+/// async fn refresh() -> Result<JsonResponse, JsonError> {
+///     Ok(Json(Started { ok: true }).with_status(StatusCode::ACCEPTED))
+/// }
+///
+/// async fn capacity(State(forecast): State<Option<Raw>>) -> Result<JsonResponse, JsonError> {
+///     Ok(match forecast {
+///         Some(doc) => Json(doc).into(),
+///         None => Json(Problem { error: "No capacity forecast yet" }).with_status(StatusCode::SERVICE_UNAVAILABLE),
+///     })
+/// }
+///
+/// async fn sign_in() -> Result<JsonResponse, JsonError> {
+///     let token = "c2Vzc2lvbg";
+///     Ok(Json(Started { ok: true }).with_cookie(SetCookie::try_new("session", token)?))
+/// }
+/// # let _ = (refresh, capacity, sign_in);
+/// ```
+///
+/// A cookie is a [`SetCookie`](crate::security::cookie::SetCookie), so its safe flags are the
+/// default; text does not compile:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+///
+/// let _ = Json(1).with_cookie("session=abc");
+/// ```
+///
+/// It answers the visitor who asked, so it is never [`Public`]: a cache would give its cookie to
+/// everyone. A public JSON answer is a [`JsonResult<T>`], held bytes included
+/// (`Public<JsonResult<Raw>>`).
+///
+/// ```compile_fail,E0277
+/// use std::time::Duration;
+/// use corten::{prelude::*, JsonError, JsonResponse};
+///
+/// async fn rates() -> Public<Result<JsonResponse, JsonError>> {
+///     let answer: Result<JsonResponse, JsonError> = Ok(Json(1).into());
+///     Public::new(Duration::from_secs(60), answer)
+/// }
+/// ```
+#[cfg(feature = "json")]
+pub struct JsonResponse(Response);
+
+#[cfg(feature = "json")]
+impl JsonResponse {
+    /// The answer with `status`. A status that has no body (`204`, `304`, a `1xx`) is not one
+    /// for a JSON answer: a debug build panics, where a bare `StatusCode` answer is the way.
+    #[must_use]
+    #[track_caller]
+    pub fn with_status(mut self, status: StatusCode) -> Self {
+        debug_assert!(
+            !(status.is_informational()
+                || matches!(status, StatusCode::NO_CONTENT | StatusCode::RESET_CONTENT | StatusCode::NOT_MODIFIED)),
+            "corten: {status} has no body, so it is not a JSON answer's status; answer with the StatusCode itself"
+        );
+        *self.0.status_mut() = status;
+        self
+    }
+
+    /// The answer with a `Set-Cookie` header, as [`HtmlResponse::with_cookie`]: each call adds
+    /// one, and an answer that sets a cookie is never stored by a shared cache. Never append a
+    /// `Set-Cookie` header by hand.
+    #[must_use]
+    pub fn with_cookie(mut self, cookie: crate::security::cookie::SetCookie) -> Self {
+        self.0.headers_mut().append(axum::http::header::SET_COOKIE, cookie.header());
+        self
+    }
+}
+
+#[cfg(feature = "json")]
+impl<T: crate::json::ToJson> crate::Json<T> {
+    /// This value answered with `status`: [`JsonResponse::with_status`].
+    #[must_use]
+    #[track_caller]
+    pub fn with_status(self, status: StatusCode) -> JsonResponse {
+        JsonResponse::from(self).with_status(status)
+    }
+
+    /// This value answered with a cookie: [`JsonResponse::with_cookie`].
+    #[must_use]
+    pub fn with_cookie(self, cookie: crate::security::cookie::SetCookie) -> JsonResponse {
+        JsonResponse::from(self).with_cookie(cookie)
+    }
+}
+
+#[cfg(feature = "json")]
+impl<T: crate::json::ToJson> From<crate::Json<T>> for JsonResponse {
+    fn from(json: crate::Json<T>) -> Self {
+        JsonResponse(json.into_response())
+    }
+}
+
+#[cfg(feature = "json")]
+impl IntoResponse for JsonResponse {
+    fn into_response(self) -> Response {
+        self.0
+    }
+}
+
+#[cfg(feature = "json")]
+impl Deref for JsonResponse {
+    type Target = Response;
+
+    fn deref(&self) -> &Response {
+        &self.0
+    }
+}
+
+#[cfg(feature = "json")]
+impl DerefMut for JsonResponse {
+    fn deref_mut(&mut self) -> &mut Response {
+        &mut self.0
+    }
+}
+
+#[cfg(feature = "json")]
+impl Answer for JsonResponse {
+    const FORMAT: Format = Format::Json;
+    type Inputs = AnyInputs;
+}
+
+/// A JSON handler's error: an [`Error`] (`?` on any error, as in a page handler) or the
+/// input's field errors, `?` on [`crate::Errors`], answered as the 422 with `fields`. Only a
+/// JSON handler takes field errors this way: a page shows its form again with
+/// [`crate::Req::invalid`], so `?` on `Errors` there does not compile:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// fn check(email: &str) -> Result<(), Errors> {
+///     let mut errors = Errors::new();
+///     if !email.contains('@') {
+///         errors.add_form("Enter an email address.");
+///     }
+///     errors.into_result(())
+/// }
+///
+/// async fn sign_up(req: Req) -> HtmlResult {
+///     check("ada")?;
+///     req.page(html! { <html><head><title>"Hi"</title><Corten /></head><body><main>"Hi"</main></body></html> })
+/// }
+/// ```
+#[cfg(feature = "json")]
+#[derive(Debug)]
+pub enum JsonError {
+    /// Any failure, answered as every failure of a JSON route is.
+    Error(Error),
+    /// The input's field errors: 422, `{"error":{..,"fields":{..}}}`.
+    Fields(crate::Errors),
+}
+
+#[cfg(feature = "json")]
+impl<E: Into<Error>> From<E> for JsonError {
+    fn from(error: E) -> Self {
+        JsonError::Error(error.into())
+    }
+}
+
+#[cfg(feature = "json")]
+impl From<crate::Errors> for JsonError {
+    fn from(errors: crate::Errors) -> Self {
+        JsonError::Fields(errors)
+    }
+}
+
+#[cfg(feature = "json")]
+impl IntoResponse for JsonError {
+    fn into_response(self) -> Response {
+        match self {
+            JsonError::Error(error) => error.into_response(),
+            JsonError::Fields(errors) => errors.into_response(),
+        }
+    }
+}
+
+#[cfg(feature = "json")]
+impl<A: Answer> Answer for std::result::Result<A, JsonError> {
+    const FORMAT: Format = A::FORMAT;
+    type Inputs = A::Inputs;
+}
 
 #[cfg(feature = "json")]
 impl<T> Answer for crate::Json<T>
@@ -162,6 +562,139 @@ impl Answer for StatusCode {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
 }
+
+/// Another server's answer, passed on as it came, for a route that relays an upstream (a gateway,
+/// a backend for a frontend): its status, its headers less the hop-by-hop ones (`Connection` and
+/// the headers it names, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`,
+/// `Trailer`, `Transfer-Encoding`, `Upgrade`), and its body as it arrives. A failure status is
+/// passed on with the upstream's body, never replaced by the error page or the JSON error, and
+/// the app's security and cache rules still apply to it, except that a `Content-Security-Policy`
+/// the upstream sent is kept in place of the app's: a relayed page needs the policy its own HTML
+/// was written for (its scripts' nonces and hosts). Without one, the app's applies. Corten does
+/// not compress it: its encoding is the upstream's (forward the client's `Accept-Encoding` to
+/// have the upstream compress, with an HTTP client that does not decode the body: for reqwest,
+/// without its `gzip`, `brotli` and `zstd` features). When the client
+/// leaves, the body is dropped, and with it the upstream request. What else to drop
+/// (`Set-Cookie`, say) is the route's to decide before it builds the answer.
+///
+/// ```
+/// use corten::{axum::{body::Body, http::{HeaderMap, StatusCode}}, prelude::*, Relay};
+///
+/// async fn models() -> corten::Result<Relay> {
+///     // The upstream's answer, from the app's HTTP client: for reqwest,
+///     // `Relay::new(res.status(), res.headers().clone(), Body::from_stream(res.bytes_stream()))`.
+///     let (status, headers, body) = (StatusCode::BAD_GATEWAY, HeaderMap::new(), Body::from("upstream down"));
+///     Ok(Relay::new(status, headers, body))
+/// }
+/// # let _: Methods = get(models);
+/// ```
+pub struct Relay(Response);
+
+impl Relay {
+    /// The answer with `status`, `headers` (hop-by-hop ones removed) and `body`.
+    pub fn new(status: StatusCode, mut headers: axum::http::HeaderMap, body: axum::body::Body) -> Self {
+        use axum::http::header;
+        let named: Vec<String> = headers
+            .get_all(header::CONNECTION)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(','))
+            .map(|name| name.trim().to_ascii_lowercase())
+            .filter(|name| !name.is_empty())
+            .collect();
+        for name in &named {
+            headers.remove(name.as_str());
+        }
+        for name in [
+            header::CONNECTION,
+            header::PROXY_AUTHENTICATE,
+            header::PROXY_AUTHORIZATION,
+            header::TE,
+            header::TRAILER,
+            header::TRANSFER_ENCODING,
+            header::UPGRADE,
+        ] {
+            headers.remove(name);
+        }
+        headers.remove("keep-alive");
+        let mut res = Response::new(body);
+        *res.status_mut() = status;
+        *res.headers_mut() = headers;
+        res.extensions_mut().insert(Relayed);
+        Relay(res)
+    }
+}
+
+impl IntoResponse for Relay {
+    fn into_response(self) -> Response {
+        self.0
+    }
+}
+
+impl Answer for Relay {
+    const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+}
+
+/// Bytes the app holds, sent as their media type: a picture a user uploaded, a document the app
+/// made. The type is one the app names (`"image/png"`), never the one a client sent with the
+/// bytes: read an upload's type from its first bytes. What keeps a file that holds HTML from
+/// running as a page is the app's headers, which every `Media` gets: browsers do not guess
+/// another type (`X-Content-Type-Options: nosniff`), and the CSP allows no inline script.
+///
+/// It is cached as anything the app answers is (`private, no-cache`). At a URL that names its
+/// content, a hash of the bytes, the bytes never change, so [`Public::immutable`] lets every cache
+/// keep it for a year, as Corten's own versioned files are; its handler cannot read who is asking,
+/// as any `Public` handler cannot.
+///
+/// ```
+/// use corten::{prelude::*, Media};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/pictures/{id}", get = picture)]
+///     pub struct Picture<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+///
+/// // `id` is a hash of the picture's bytes, made when it was uploaded.
+/// async fn picture(picture: Params<url::Picture<'_>>) -> Public<corten::Result<Media>> {
+///     let png: &'static [u8] = b"\x89PNG\r\n\x1a\n";
+///     Public::immutable(match picture.id.as_str() {
+///         "5f2c" => Ok(Media::new("image/png", png)),
+///         _ => Err(corten::Error::not_found()),
+///     })
+/// }
+/// # let _ = App::new(url::router()).router();
+/// ```
+pub struct Media(Response);
+
+impl Media {
+    /// `bytes`, sent as `media_type` (`"image/webp"`), a valid header value.
+    pub fn new(media_type: &'static str, bytes: impl Into<axum::body::Bytes>) -> Self {
+        use axum::http::{header, HeaderValue};
+        let mut res = Response::new(axum::body::Body::from(bytes.into()));
+        res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(media_type));
+        Media(res)
+    }
+}
+
+impl IntoResponse for Media {
+    fn into_response(self) -> Response {
+        self.0
+    }
+}
+
+impl Answer for Media {
+    const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+}
+
+/// On a [`Relay`]'s response: its failure status and its encoding are the upstream's, passed on
+/// as they are.
+#[derive(Clone, Copy)]
+pub(crate) struct Relayed;
 
 /// Fragments streamed to `<corten-live>`: what [`crate::live`] gives.
 pub struct LiveResponse(pub(crate) Response);
@@ -209,15 +742,88 @@ impl Answer for corten_feed::FeedResponse {
 /// Only a successful answer is shared; a failure keeps the default, `private, no-cache`. The rules
 /// of [`crate::cache`] still apply when it is sent: a request with a cookie, or a page with the
 /// request's nonce, is answered privately.
-pub struct Public<A> {
+pub struct Public<A: Shareable> {
     cache: Cache,
-    answer: A,
+    answer: A::ForAll,
+    /// The app's headers ([`Public::header`]): `None` unless it adds one, so an answer without
+    /// them is one word larger and its drop is a null check.
+    // Boxed so an answer without them is one word larger, not three (a `Vec` in place measured
+    // about 20 instructions a request more).
+    #[allow(clippy::box_collection)]
+    headers: Option<Box<Vec<(axum::http::HeaderName, axum::http::HeaderValue)>>>,
 }
 
-impl<A> Public<A> {
-    /// `answer`, which any cache may keep for `max_age` (whole seconds).
-    pub fn new(max_age: Duration, answer: A) -> Self {
-        Public { cache: Cache::public(max_age), answer }
+impl<A: Shareable> Public<A> {
+    /// `answer`, which any cache may keep for `max_age` (whole seconds). Its type says the
+    /// `Public`'s, so a closure needs no annotation: `Public::new(age, "home")` is a
+    /// `Public<&str>`, and `Public::new(age, req.page(..))` a `Public<HtmlResult>` whose page is
+    /// made for everyone.
+    ///
+    /// A page made for one visitor does not fit, so a helper that makes a page for a `Public`
+    /// handler returns `corten::Result<HtmlResponse<For>>` for any `For`, not `HtmlResult`:
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use corten::{prelude::*, HtmlResponse};
+    ///
+    /// fn home_page<For>(req: &Req) -> corten::Result<HtmlResponse<For>> {
+    ///     req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> })
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     Public::new(Duration::from_secs(60), home_page(&req))
+    /// }
+    /// # let _: Methods = get(home);
+    /// ```
+    pub fn new<T: ForEveryone<Named = A>>(max_age: Duration, answer: T) -> Self {
+        Public { cache: Cache::public(max_age), answer: answer.for_all(), headers: None }
+    }
+
+    /// `answer` at a URL that names its content (a hash of its bytes, as Corten's versioned files
+    /// have), so it never changes there: any cache keeps it for a year and the browser does not ask
+    /// again (`public, max-age=31536000, immutable`). Since the URL alone says what the answer
+    /// is, a request's cookies do not make it private, and no `Vary: cookie` is added; a cookie it
+    /// sets, or a caller something read, still does. A URL that does not name its content (a
+    /// user's current picture at `/me/picture`) takes `Public::new` with a lifetime instead, and so
+    /// does anything but bytes: a page, a redirect or JSON changes with the deploy, so only `Media`
+    /// (or `corten::Result<Media>`) can be immutable. `shared` and `stale_while_revalidate` do
+    /// nothing to it; a year covers both.
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::prelude::*;
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/", get = home)]
+    ///     pub struct Home;
+    /// }
+    ///
+    /// async fn home(req: Req) -> Public<HtmlResult> {
+    ///     Public::immutable(req.page(html! { <html><head><title>"Home"</title><Corten /></head><body><main>"Home"</main></body></html> }))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
+    ///
+    /// Its handler is held to `Public`'s rule, so one that could tell who is asking does not
+    /// compile:
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::{axum::http::HeaderMap, prelude::*, Media};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/me/picture", get = picture)]
+    ///     pub struct Picture;
+    /// }
+    ///
+    /// async fn picture(headers: HeaderMap) -> Public<Media> {
+    ///     let _ = headers.get("cookie");
+    ///     Public::immutable(Media::new("image/png", &b"\x89PNG"[..]))
+    /// }
+    /// # fn main() { let _ = url::router(); }
+    /// ```
+    pub fn immutable<T: ForEveryone<Named = A> + Immutable>(answer: T) -> Self {
+        Public { cache: Cache::immutable(), answer: answer.for_all(), headers: None }
     }
 
     /// After `max_age`, a cache may still serve it for up to `stale` while it fetches a fresh one.
@@ -236,19 +842,182 @@ impl<A> Public<A> {
         self.cache = self.cache.shared(shared);
         self
     }
+
+    /// A header of the app's on the answer, named by a type ([`Header`]): a file that stays out
+    /// of search, a download's file name. It is added to the answer's own headers when the answer
+    /// succeeds (or redirects), and Corten compresses the answer as it would without it.
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use corten::{answer::XRobotsTag, axum::http::HeaderValue, prelude::*};
+    ///
+    /// async fn llms() -> Public<String> {
+    ///     let noindex = HeaderValue::from_static("noindex, nofollow");
+    ///     Public::new(Duration::from_secs(3600), "# Example".to_string()).header::<XRobotsTag>(noindex)
+    /// }
+    /// # let _: Methods = get(llms);
+    /// ```
+    ///
+    /// The name is checked when the app builds (`cargo build`, `cargo test`; `cargo check` does
+    /// not evaluate it). A header that would make the answer one visitor's (`set-cookie`), one
+    /// Corten sets itself (`cache-control` and a CDN's `*-cache-control`, `vary`, the encoding
+    /// and length, the security headers, CORS, `corten-*`), one the answer has (`content-type`,
+    /// `location`) or one of the connection's does not compile, and neither does a name that is
+    /// not a lowercase header name:
+    ///
+    /// ```compile_fail,E0080
+    /// use std::time::Duration;
+    /// use corten::{answer::Header, axum::http::HeaderValue, prelude::*};
+    ///
+    /// struct SetCookie;
+    /// impl Header for SetCookie {
+    ///     const NAME: &'static str = "set-cookie";
+    /// }
+    ///
+    /// async fn home() -> Public<&'static str> {
+    ///     Public::new(Duration::from_secs(60), "home").header::<SetCookie>(HeaderValue::from_static("a=b"))
+    /// }
+    /// # let _: Methods = get(home);
+    /// ```
+    pub fn header<H: Header>(mut self, value: axum::http::HeaderValue) -> Self {
+        let name = const {
+            assert!(
+                shared_header(H::NAME),
+                "corten: a Public answer cannot set this header: it would make the answer one visitor's, or Corten or the answer sets it (the type named in `header::<..>` below)"
+            );
+            axum::http::HeaderName::from_static(H::NAME)
+        };
+        self.headers.get_or_insert_default().push((name, value));
+        self
+    }
 }
 
-impl<A: IntoResponse> IntoResponse for Public<A> {
+/// A header a [`Public`] answer may carry ([`Public::header`]), named by a type, so its name is
+/// checked when the app compiles. Corten names the common ones ([`XRobotsTag`], [`Link`],
+/// [`ContentDisposition`], [`ContentLanguage`]); an app names another the same way:
+///
+/// ```
+/// struct ContentLocation;
+/// impl corten::answer::Header for ContentLocation {
+///     const NAME: &'static str = "content-location";
+/// }
+/// ```
+pub trait Header {
+    /// The header's name, in lowercase (`"x-robots-tag"`).
+    const NAME: &'static str;
+}
+
+macro_rules! headers {
+    ($($(#[$doc:meta])* $name:ident = $text:literal;)*) => {
+        $(
+            $(#[$doc])*
+            pub struct $name;
+            impl Header for $name {
+                const NAME: &'static str = $text;
+            }
+        )*
+    };
+}
+
+headers! {
+    /// `X-Robots-Tag`: what search engines may do with the answer (`noindex, nofollow`), for a
+    /// file, where a page would use a `<meta name="robots">`.
+    XRobotsTag = "x-robots-tag";
+    /// `Link`: a related resource (`<https://example.com/item/7>; rel="canonical"`). Added
+    /// twice, it is sent twice.
+    Link = "link";
+    /// `Content-Disposition`: a download and its file name (`attachment; filename="cards.csv"`).
+    ContentDisposition = "content-disposition";
+    /// `Content-Language`: the language the answer is in (`en`).
+    ContentLanguage = "content-language";
+}
+
+/// The headers a [`Public`] answer may not set: one that would make it one visitor's
+/// (`set-cookie`, `clear-site-data`), those Corten sets itself (caching, compression, security),
+/// those the answer itself has (its type, the place a redirect goes, a range), and those that are
+/// the connection's, not the answer's. Names under `corten-` and `access-control-` (an API's
+/// CORS) are Corten's too, and so is any `*cache-control` and `surrogate-control`: a CDN
+/// obeys them over `Cache-Control`, which Corten makes `private` for an answer it must not
+/// share.
+const NOT_SHARED: [&str; 26] = [
+    "set-cookie",
+    "clear-site-data",
+    "cache-control",
+    "surrogate-control",
+    "expires",
+    "age",
+    "date",
+    "vary",
+    "content-type",
+    "content-encoding",
+    "content-length",
+    "content-range",
+    "location",
+    "content-security-policy",
+    "content-security-policy-report-only",
+    "x-content-type-options",
+    "x-frame-options",
+    "referrer-policy",
+    "cross-origin-opener-policy",
+    "strict-transport-security",
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "upgrade",
+    "te",
+    "trailer",
+];
+
+/// Whether `name` starts (`at_end` false) or ends (`true`) with `part`, when the app compiles.
+const fn has(name: &[u8], part: &[u8], at_end: bool) -> bool {
+    if name.len() < part.len() {
+        return false;
+    }
+    let from = if at_end { name.len() - part.len() } else { 0 };
+    let mut i = 0;
+    while i < part.len() {
+        if name[from + i] != part[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// Whether a [`Public`] answer may set the header `name` (lowercase), when the app compiles.
+const fn shared_header(name: &str) -> bool {
+    let name = name.as_bytes();
+    if has(name, b"corten-", false) || has(name, b"access-control-", false) || has(name, b"cache-control", true) {
+        return false;
+    }
+    let mut n = 0;
+    while n < NOT_SHARED.len() {
+        let refused = NOT_SHARED[n].as_bytes();
+        if refused.len() == name.len() && has(name, refused, false) {
+            return false;
+        }
+        n += 1;
+    }
+    true
+}
+
+impl<A: Shareable> IntoResponse for Public<A> {
     fn into_response(self) -> Response {
         let mut res = self.answer.into_response();
         if res.status().is_success() || res.status().is_redirection() {
             self.cache.apply(&mut res);
+            if let Some(added) = self.headers {
+                let headers = res.headers_mut();
+                for (name, value) in *added {
+                    headers.append(name, value);
+                }
+            }
         }
         res
     }
 }
 
-impl<A: Answer> Answer for Public<A> {
+impl<A: Answer + Shareable> Answer for Public<A> {
     const FORMAT: Format = A::FORMAT;
     type Inputs = AnonymousInputs;
 }
@@ -278,6 +1047,16 @@ impl<A: Answer> Answer for NoStore<A> {
     type Inputs = A::Inputs;
 }
 
+/// Bytes a URL can name, which [`Public::immutable`] takes: [`Media`], or `corten::Result<Media>`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not bytes a URL can name, so it cannot be immutable",
+    note = "`Public::immutable` takes `Media` or `corten::Result<Media>`; a page, a redirect or JSON changes with the deploy, so give it `Public::new` with a lifetime"
+)]
+pub trait Immutable: sealed::Immutable {}
+
+impl Immutable for Media {}
+impl Immutable for Result<Media, Error> {}
+
 /// A handler may read anything.
 pub struct AnyInputs;
 
@@ -286,7 +1065,9 @@ pub struct AnonymousInputs;
 
 /// An input that cannot tell who is asking: no cookie, no credential header, no `Caller`. A
 /// [`Public`] answer's handler takes only these. Implement it for an extractor of the app's own
-/// that reads nothing about the caller.
+/// that reads nothing about the caller. A request's cookies make a `Public::new` answer private
+/// when it is sent, but not a [`Public::immutable`] one, which this marker alone keeps from
+/// depending on who is asking.
 #[diagnostic::on_unimplemented(
     message = "a `Public` answer is the same for everyone, so its handler cannot take `{Self}`",
     label = "`{Self}` may tell who is asking",
@@ -296,8 +1077,9 @@ pub trait Anonymous {}
 
 impl<T> Anonymous for axum::extract::Path<T> {}
 impl<T> Anonymous for axum::extract::Query<T> {}
-impl<T> Anonymous for crate::Query<T> {}
+impl<R: crate::route::FromUrl + ?Sized> Anonymous for crate::route::Params<R> {}
 impl<T> Anonymous for crate::Form<T> {}
+impl<T> Anonymous for crate::form::Upload<T> {}
 impl<T> Anonymous for State<T> {}
 impl<T: Anonymous> Anonymous for Option<T> {}
 impl Anonymous for Req {}
@@ -374,12 +1156,13 @@ arities!(A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16);
 pub struct At<const N: usize>;
 
 /// The handler's arguments include `T` (`I` is where, found by the compiler). A routes module
-/// with `caller = Viewer` holds every handler in it to taking `Caller<Viewer>`.
+/// with `caller = Viewer` holds every handler in it to taking `Caller<Viewer>`, and a route with a
+/// parameter in its path its handlers to taking its `Params`.
 #[doc(hidden)]
 #[diagnostic::on_unimplemented(
-    message = "every route in this module takes `{T}`, and this handler does not",
+    message = "this handler's route needs `{T}`, and the handler does not take it",
     label = "this handler",
-    note = "add `{T}` to the handler's arguments, or move its route to a module without `caller = ..` (a public page)"
+    note = "add `{T}` to the handler's arguments: every route of a module with `caller = ..` takes its `Caller<..>`, and a route with a parameter in its path its own `Params<..>`"
 )]
 pub trait Holds<T, I> {}
 
@@ -751,5 +1534,34 @@ where
     #[inline]
     fn call(self, req: Request, state: S) -> Self::Future {
         Marked { inner: self.handler.call(req, state), answer: PhantomData }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_public_answer_takes_the_app_s_headers_and_not_corten_s_or_the_connection_s() {
+        for name in ["x-robots-tag", "link", "content-disposition", "content-language", "etag", "last-modified", "x-cache-tag"] {
+            assert!(super::shared_header(name), "{name}");
+        }
+        for name in [
+            "set-cookie",
+            "cache-control",
+            "cdn-cache-control",
+            "cloudflare-cdn-cache-control",
+            "surrogate-control",
+            "access-control-allow-origin",
+            "corten-mode",
+            "content-type",
+            "location",
+            "content-range",
+            "transfer-encoding",
+            "connection",
+            "te",
+            "age",
+            "clear-site-data",
+        ] {
+            assert!(!super::shared_header(name), "{name}");
+        }
     }
 }

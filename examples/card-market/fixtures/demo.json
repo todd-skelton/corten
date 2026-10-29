@@ -1,0 +1,1339 @@
+{
+ "item_1": {
+  "catalog_item_id": "item_1",
+  "title": "Ashen Drake",
+  "subtitle": "Ember Reach · No. 001/180",
+  "description": "A dragon that nests in cooling lava fields. Its wings scatter cinders over every lane it flies.",
+  "display_badges": [
+   {
+    "label": "Rare"
+   },
+   {
+    "label": "Holo"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Ember Reach",
+    "slug": "ember-reach"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Ember Reach"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "001/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Rare"
+   },
+   {
+    "fieldId": "finish",
+    "fieldName": "Finish",
+    "value": "Holo"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "42.50",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 2,
+   "total_visible_quantity": 6
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_1_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 1,
+    "price_amount": "42.50",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_1_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Lightly Played",
+    "ship_from_code": "US",
+    "visible_quantity": 2,
+    "price_amount": "45.48",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_1_o1",
+    "buyer_display_name": "Sofia M.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "36.13",
+    "price_currency_code": "USD"
+   }
+  ]
+ },
+ "item_2": {
+  "catalog_item_id": "item_2",
+  "title": "Lantern Warden",
+  "subtitle": "Hollow Crown · No. 002/180",
+  "description": "Keeps a single flame alight through the long night of the Hollow Court.",
+  "display_badges": [
+   {
+    "label": "Uncommon"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Hollow Crown",
+    "slug": "hollow-crown"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Hollow Crown"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "002/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Uncommon"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "3.25",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 3,
+   "total_visible_quantity": 14
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_2_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Lightly Played",
+    "ship_from_code": "US",
+    "visible_quantity": 4,
+    "price_amount": "3.25",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_2_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Near Mint",
+    "ship_from_code": "CA",
+    "visible_quantity": 1,
+    "price_amount": "3.48",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_2_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Moderately Played",
+    "ship_from_code": "GB",
+    "visible_quantity": 2,
+    "price_amount": "3.71",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_2_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "2.67",
+    "price_currency_code": "USD"
+   }
+  ],
+  "included_in": [
+   {
+    "line_id": "item_12_c1",
+    "contained_catalog_item_id": "item_2",
+    "container_catalog_item_id": "item_12",
+    "container_item": {
+     "title": "Hollow Crown Collector Box"
+    },
+    "quantity": 1
+   }
+  ]
+ },
+ "item_3": {
+  "catalog_item_id": "item_3",
+  "title": "Salt Oracle",
+  "subtitle": "Tidebreak · No. 003/180",
+  "description": "Reads the future in the crystals the tide leaves behind.",
+  "display_badges": [
+   {
+    "label": "Mythic"
+   },
+   {
+    "label": "Foil"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Tidebreak",
+    "slug": "tidebreak"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Tidebreak"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "003/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Mythic"
+   },
+   {
+    "fieldId": "finish",
+    "fieldName": "Finish",
+    "value": "Foil"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "118.00",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 4,
+   "total_visible_quantity": 3
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_3_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Near Mint",
+    "ship_from_code": "CA",
+    "visible_quantity": 3,
+    "price_amount": "118.00",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_3_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Moderately Played",
+    "ship_from_code": "GB",
+    "visible_quantity": 4,
+    "price_amount": "126.26",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_3_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 1,
+    "price_amount": "134.52",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_3_l4",
+    "seller_display_name": "Dragon's Hoard TCG",
+    "seller_average_rating": "4.6",
+    "seller_review_count": 341,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 2,
+    "price_amount": "142.78",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_3_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "96.76",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_3_o2",
+    "buyer_display_name": "Marcus L.",
+    "product_summary": "Lightly Played",
+    "quantity_requested": 2,
+    "price_amount": "93.22",
+    "price_currency_code": "USD"
+   }
+  ]
+ },
+ "item_4": {
+  "catalog_item_id": "item_4",
+  "title": "Gravel Sprite",
+  "subtitle": "Ember Reach · No. 004/180",
+  "description": "Small, loud and always underfoot.",
+  "display_badges": [
+   {
+    "label": "Common"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Ember Reach",
+    "slug": "ember-reach"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Ember Reach"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "004/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Common"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "0.35",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 5,
+   "total_visible_quantity": 40
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_4_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Moderately Played",
+    "ship_from_code": "GB",
+    "visible_quantity": 2,
+    "price_amount": "0.35",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_4_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 3,
+    "price_amount": "0.37",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_4_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 4,
+    "price_amount": "0.40",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_4_l4",
+    "seller_display_name": "Dragon's Hoard TCG",
+    "seller_average_rating": "4.6",
+    "seller_review_count": 341,
+    "product_summary": "Lightly Played",
+    "ship_from_code": "US",
+    "visible_quantity": 1,
+    "price_amount": "0.42",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_4_l5",
+    "seller_display_name": "Mint & Sleeve",
+    "seller_average_rating": "5.0",
+    "seller_review_count": 87,
+    "product_summary": "Near Mint",
+    "ship_from_code": "CA",
+    "visible_quantity": 2,
+    "price_amount": "0.45",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_4_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "0.29",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_4_o2",
+    "buyer_display_name": "Marcus L.",
+    "product_summary": "Lightly Played",
+    "quantity_requested": 2,
+    "price_amount": "0.28",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_4_o3",
+    "buyer_display_name": "Hana K.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "0.27",
+    "price_currency_code": "USD"
+   }
+  ],
+  "included_in": [
+   {
+    "line_id": "item_12_c2",
+    "contained_catalog_item_id": "item_4",
+    "container_catalog_item_id": "item_12",
+    "container_item": {
+     "title": "Hollow Crown Collector Box"
+    },
+    "quantity": 1
+   }
+  ]
+ },
+ "item_5": {
+  "catalog_item_id": "item_5",
+  "title": "Crown of Thorns and Glass",
+  "subtitle": "Hollow Crown · No. 005/180",
+  "description": "The last relic of a queen who ruled from a shattered throne.",
+  "display_badges": [
+   {
+    "label": "Rare"
+   },
+   {
+    "label": "Showcase"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Hollow Crown",
+    "slug": "hollow-crown"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Hollow Crown"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "005/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Rare"
+   },
+   {
+    "fieldId": "finish",
+    "fieldName": "Finish",
+    "value": "Showcase"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "27.80",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 2,
+   "total_visible_quantity": 5
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_5_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 1,
+    "price_amount": "27.80",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_5_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 2,
+    "price_amount": "29.75",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_5_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "22.80",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_5_o2",
+    "buyer_display_name": "Marcus L.",
+    "product_summary": "Lightly Played",
+    "quantity_requested": 2,
+    "price_amount": "21.96",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_5_o3",
+    "buyer_display_name": "Hana K.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "21.13",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_5_o4",
+    "buyer_display_name": "Diego R.",
+    "product_summary": "Moderately Played",
+    "quantity_requested": 2,
+    "price_amount": "20.29",
+    "price_currency_code": "USD"
+   }
+  ]
+ },
+ "item_6": {
+  "catalog_item_id": "item_6",
+  "title": "Undertow Serpent",
+  "subtitle": "Tidebreak · No. 006/180",
+  "description": "Pulls ships down without ever breaking the surface.",
+  "display_badges": [
+   {
+    "label": "Uncommon"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Tidebreak",
+    "slug": "tidebreak"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Tidebreak"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "006/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Uncommon"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "2.10",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 3,
+   "total_visible_quantity": 18
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_6_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 4,
+    "price_amount": "2.10",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_6_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Lightly Played",
+    "ship_from_code": "US",
+    "visible_quantity": 1,
+    "price_amount": "2.25",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_6_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Near Mint",
+    "ship_from_code": "CA",
+    "visible_quantity": 2,
+    "price_amount": "2.39",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_6_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "1.72",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_6_o2",
+    "buyer_display_name": "Marcus L.",
+    "product_summary": "Lightly Played",
+    "quantity_requested": 2,
+    "price_amount": "1.66",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_6_o3",
+    "buyer_display_name": "Hana K.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "1.60",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_6_o4",
+    "buyer_display_name": "Diego R.",
+    "product_summary": "Moderately Played",
+    "quantity_requested": 2,
+    "price_amount": "1.53",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_6_o5",
+    "buyer_display_name": "Ama O.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "1.47",
+    "price_currency_code": "USD"
+   }
+  ]
+ },
+ "item_7": {
+  "catalog_item_id": "item_7",
+  "title": "Cinder Cartographer",
+  "subtitle": "Ember Reach · No. 007/180",
+  "description": "Maps the volcano's moods so the caravans know when to run.",
+  "display_badges": [
+   {
+    "label": "Rare"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Ember Reach",
+    "slug": "ember-reach"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Ember Reach"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "007/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Rare"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "9.60",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 4,
+   "total_visible_quantity": 8
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_7_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Lightly Played",
+    "ship_from_code": "US",
+    "visible_quantity": 3,
+    "price_amount": "9.60",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_7_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Near Mint",
+    "ship_from_code": "CA",
+    "visible_quantity": 4,
+    "price_amount": "10.27",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_7_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Moderately Played",
+    "ship_from_code": "GB",
+    "visible_quantity": 1,
+    "price_amount": "10.94",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_7_l4",
+    "seller_display_name": "Dragon's Hoard TCG",
+    "seller_average_rating": "4.6",
+    "seller_review_count": 341,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 2,
+    "price_amount": "11.62",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_7_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "7.87",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_7_o2",
+    "buyer_display_name": "Marcus L.",
+    "product_summary": "Lightly Played",
+    "quantity_requested": 2,
+    "price_amount": "7.58",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_7_o3",
+    "buyer_display_name": "Hana K.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "7.30",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_7_o4",
+    "buyer_display_name": "Diego R.",
+    "product_summary": "Moderately Played",
+    "quantity_requested": 2,
+    "price_amount": "7.01",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_7_o5",
+    "buyer_display_name": "Ama O.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "6.72",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_7_o6",
+    "buyer_display_name": "Lukas B.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 2,
+    "price_amount": "6.43",
+    "price_currency_code": "USD"
+   }
+  ]
+ },
+ "item_8": {
+  "catalog_item_id": "item_8",
+  "title": "Moth Court Herald",
+  "subtitle": "Hollow Crown · No. 008/180",
+  "description": "Announces every guest, invited or not.",
+  "display_badges": [
+   {
+    "label": "Common"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Hollow Crown",
+    "slug": "hollow-crown"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Hollow Crown"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "008/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Common"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "0.50",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 5,
+   "total_visible_quantity": 31
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_8_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Near Mint",
+    "ship_from_code": "CA",
+    "visible_quantity": 2,
+    "price_amount": "0.50",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_8_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Moderately Played",
+    "ship_from_code": "GB",
+    "visible_quantity": 3,
+    "price_amount": "0.54",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_8_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 4,
+    "price_amount": "0.57",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_8_l4",
+    "seller_display_name": "Dragon's Hoard TCG",
+    "seller_average_rating": "4.6",
+    "seller_review_count": 341,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 1,
+    "price_amount": "0.60",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_8_l5",
+    "seller_display_name": "Mint & Sleeve",
+    "seller_average_rating": "5.0",
+    "seller_review_count": 87,
+    "product_summary": "Lightly Played",
+    "ship_from_code": "US",
+    "visible_quantity": 2,
+    "price_amount": "0.64",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_8_o1",
+    "buyer_display_name": "Sofia M.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "0.42",
+    "price_currency_code": "USD"
+   }
+  ],
+  "included_in": [
+   {
+    "line_id": "item_12_c3",
+    "contained_catalog_item_id": "item_8",
+    "container_catalog_item_id": "item_12",
+    "container_item": {
+     "title": "Hollow Crown Collector Box"
+    },
+    "quantity": 1
+   }
+  ]
+ },
+ "item_9": {
+  "catalog_item_id": "item_9",
+  "title": "Pearl Diver",
+  "subtitle": "Tidebreak · No. 009/180",
+  "description": "Holds her breath for a full verse of the sea-song.",
+  "display_badges": [
+   {
+    "label": "Common"
+   },
+   {
+    "label": "Foil"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Tidebreak",
+    "slug": "tidebreak"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Tidebreak"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "009/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Common"
+   },
+   {
+    "fieldId": "finish",
+    "fieldName": "Finish",
+    "value": "Foil"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "1.40",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 2,
+   "total_visible_quantity": 22
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_9_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Moderately Played",
+    "ship_from_code": "GB",
+    "visible_quantity": 1,
+    "price_amount": "1.40",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_9_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 2,
+    "price_amount": "1.50",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_9_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "1.15",
+    "price_currency_code": "USD"
+   }
+  ]
+ },
+ "item_10": {
+  "catalog_item_id": "item_10",
+  "title": "Kiln Colossus",
+  "subtitle": "Ember Reach · No. 010/180",
+  "description": "Built to fire bricks for a city; now it fires the city.",
+  "display_badges": [
+   {
+    "label": "Mythic"
+   },
+   {
+    "label": "Holo"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Ember Reach",
+    "slug": "ember-reach"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Ember Reach"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "010/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Mythic"
+   },
+   {
+    "fieldId": "finish",
+    "fieldName": "Finish",
+    "value": "Holo"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "86.00",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 3,
+   "total_visible_quantity": 2
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_10_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 4,
+    "price_amount": "86.00",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_10_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 1,
+    "price_amount": "92.02",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_10_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Lightly Played",
+    "ship_from_code": "US",
+    "visible_quantity": 2,
+    "price_amount": "98.04",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_10_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "70.52",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_10_o2",
+    "buyer_display_name": "Marcus L.",
+    "product_summary": "Lightly Played",
+    "quantity_requested": 2,
+    "price_amount": "67.94",
+    "price_currency_code": "USD"
+   }
+  ]
+ },
+ "item_11": {
+  "catalog_item_id": "item_11",
+  "title": "Regent of Ash",
+  "subtitle": "Hollow Crown · No. 011/180",
+  "description": "Rules what is left.",
+  "display_badges": [
+   {
+    "label": "Mythic"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Hollow Crown",
+    "slug": "hollow-crown"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Hollow Crown"
+   },
+   {
+    "fieldId": "number",
+    "fieldName": "Card number",
+    "value": "011/180"
+   },
+   {
+    "fieldId": "rarity",
+    "fieldName": "Rarity",
+    "value": "Mythic"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "64.75",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 4,
+   "total_visible_quantity": 4
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_11_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Near Mint",
+    "ship_from_code": "US",
+    "visible_quantity": 3,
+    "price_amount": "64.75",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_11_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Lightly Played",
+    "ship_from_code": "US",
+    "visible_quantity": 4,
+    "price_amount": "69.28",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_11_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Near Mint",
+    "ship_from_code": "CA",
+    "visible_quantity": 1,
+    "price_amount": "73.82",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_11_l4",
+    "seller_display_name": "Dragon's Hoard TCG",
+    "seller_average_rating": "4.6",
+    "seller_review_count": 341,
+    "product_summary": "Moderately Played",
+    "ship_from_code": "GB",
+    "visible_quantity": 2,
+    "price_amount": "78.35",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_11_o1",
+    "buyer_display_name": "Priya S.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "53.09",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_11_o2",
+    "buyer_display_name": "Marcus L.",
+    "product_summary": "Lightly Played",
+    "quantity_requested": 2,
+    "price_amount": "51.15",
+    "price_currency_code": "USD"
+   },
+   {
+    "offer_id": "item_11_o3",
+    "buyer_display_name": "Hana K.",
+    "product_summary": "Near Mint",
+    "quantity_requested": 1,
+    "price_amount": "49.21",
+    "price_currency_code": "USD"
+   }
+  ],
+  "included_in": [
+   {
+    "line_id": "item_12_c4",
+    "contained_catalog_item_id": "item_11",
+    "container_catalog_item_id": "item_12",
+    "container_item": {
+     "title": "Hollow Crown Collector Box"
+    },
+    "quantity": 1
+   }
+  ]
+ },
+ "item_12": {
+  "catalog_item_id": "item_12",
+  "title": "Hollow Crown Collector Box",
+  "subtitle": "Hollow Crown · Sealed",
+  "description": "Twelve sealed packs and one foil promo card. Every card in the set can be pulled from it.",
+  "display_badges": [
+   {
+    "label": "Sealed"
+   }
+  ],
+  "tags": [],
+  "categories": [
+   {
+    "name": "Sealed product",
+    "slug": "sealed"
+   }
+  ],
+  "field_values": [
+   {
+    "fieldId": "set",
+    "fieldName": "Set",
+    "value": "Hollow Crown"
+   },
+   {
+    "fieldId": "packs",
+    "fieldName": "Packs",
+    "value": "12"
+   }
+  ],
+  "market_summary": {
+   "lowest_price_amount": "149.99",
+   "lowest_price_currency_code": "USD",
+   "active_listing_count": 3,
+   "total_visible_quantity": 7
+  },
+  "market_listings": [
+   {
+    "listing_id": "item_12_l1",
+    "seller_display_name": "Northgate Games",
+    "seller_average_rating": "4.9",
+    "seller_review_count": 1832,
+    "product_summary": "Sealed",
+    "ship_from_code": "US",
+    "visible_quantity": 2,
+    "price_amount": "149.99",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_12_l2",
+    "seller_display_name": "Card Cellar",
+    "seller_average_rating": "4.7",
+    "seller_review_count": 612,
+    "product_summary": "Sealed",
+    "ship_from_code": "US",
+    "visible_quantity": 3,
+    "price_amount": "161.99",
+    "price_currency_code": "USD"
+   },
+   {
+    "listing_id": "item_12_l3",
+    "seller_display_name": "Tidewater Collectibles",
+    "seller_average_rating": "4.8",
+    "seller_review_count": 2290,
+    "product_summary": "Sealed",
+    "ship_from_code": "CA",
+    "visible_quantity": 4,
+    "price_amount": "173.99",
+    "price_currency_code": "USD"
+   }
+  ],
+  "offer_demand_matches": [
+   {
+    "offer_id": "item_12_o1",
+    "buyer_display_name": "Hana K.",
+    "product_summary": "Sealed",
+    "quantity_requested": 1,
+    "price_amount": "135.00",
+    "price_currency_code": "USD"
+   }
+  ],
+  "contents": [
+   {
+    "line_id": "item_12_c1",
+    "contained_catalog_item_id": "item_2",
+    "container_catalog_item_id": "item_12",
+    "contained_item": {
+     "title": "Lantern Warden"
+    },
+    "quantity": 1
+   },
+   {
+    "line_id": "item_12_c2",
+    "contained_catalog_item_id": "item_4",
+    "container_catalog_item_id": "item_12",
+    "contained_item": {
+     "title": "Gravel Sprite"
+    },
+    "quantity": 1
+   },
+   {
+    "line_id": "item_12_c3",
+    "contained_catalog_item_id": "item_8",
+    "container_catalog_item_id": "item_12",
+    "contained_item": {
+     "title": "Moth Court Herald"
+    },
+    "quantity": 1
+   },
+   {
+    "line_id": "item_12_c4",
+    "contained_catalog_item_id": "item_11",
+    "container_catalog_item_id": "item_12",
+    "contained_item": {
+     "title": "Regent of Ash"
+    },
+    "quantity": 1
+   }
+  ]
+ }
+}

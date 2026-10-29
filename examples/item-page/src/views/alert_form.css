@@ -1,5 +1,0 @@
-.form form { display: flex; gap: var(--space-3); align-items: end; flex-wrap: wrap; }
-.form label { display: grid; gap: var(--space-1); font-size: var(--font-size-sm); color: var(--color-muted); }
-.form input { border: 1px solid var(--color-line); border-radius: var(--radius-sm); padding: 6px 8px; font: inherit; }
-.form input[aria-invalid="true"] { border-color: var(--color-danger); }
-.message { min-height: 1.2em; color: var(--color-accent); }
