@@ -1,11 +1,12 @@
 //! Corten's macros, re-exported by the `corten` crate: `html!` and `#[component]` (see
 //! `corten::view`), `#[derive(Fields)]` (see `corten::Fields`), `#[derive(ToJson)]` and `#[derive(FromJson)]` (see `corten::json`), `#[derive(Route)]` (see
 //! `corten::route`), `#[derive(Id)]` (see `corten::view::Id`), `#[derive(FromRef)]` (see `corten::FromRef`), `#[event]` and `script!` (see `corten::script`), `messages!` (see `corten::i18n`) and
-//! `tokens!` and component stylesheets (see `corten::style`).
+//! `tokens!` and component stylesheets (see `corten::style`), and `embed!` (see `corten::assets`).
 //!
 //! Written against `proc_macro` alone (no `syn` or `quote`), so the crate has no dependencies
 //! and builds in about a second.
 
+mod assets;
 mod component;
 mod derive;
 mod dom;
@@ -103,6 +104,13 @@ pub fn script(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn tokens(input: TokenStream) -> TokenStream {
     theme::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// A static directory compiled into the program, a constant per file. Documented at
+/// `corten::assets`.
+#[proc_macro]
+pub fn embed(input: TokenStream) -> TokenStream {
+    assets::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// Message catalogs checked and compiled into a type. Documented at `corten::i18n`.

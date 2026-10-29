@@ -16,7 +16,7 @@ pub struct ItemPage<'a> {
     pub message: String,
     pub form: AlertFormView<'a>,
     /// The versioned URL of the store's art for the item, when it has some (`ItemView::art`).
-    pub art: Option<String>,
+    pub art: Option<corten::assets::AssetUrl<'a>>,
 }
 
 impl<'a> ItemPage<'a> {
@@ -32,7 +32,7 @@ impl<'a> ItemPage<'a> {
         'a: 'r,
     {
         let item = self.item;
-        let page = ItemPage { art: item.art.map(|art| req.asset(art)), ..self };
+        let page: ItemPage<'r> = ItemPage { art: item.art.map(|art| req.asset(art)), ..self };
         let head = html! {
             <meta name="description" content={&item.description}>
             <link rel="canonical" href={routes::Item { id: &item.id }}>

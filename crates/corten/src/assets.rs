@@ -1,6 +1,52 @@
 //! Static files with one content version in the URL: `/assets/{version}/style.css`.
 //!
-//! [`Assets::load`] reads a directory into memory at startup and hashes it. Every URL carries the
+//! The app's static directory is compiled into the program by [`embed!`], which gives each file
+//! a constant, so a page names one by it and a missing file does not compile:
+//!
+//! ```
+//! corten::assets::embed!(pub struct Static = "src/assets/fixture");
+//!
+//! # use corten::prelude::*;
+//! fn head(req: &Req) -> impl Render + '_ {
+//!     html! { <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}> }
+//! }
+//! let _ = App::new(Routes::new()).assets(Static);
+//! ```
+//!
+//! ```compile_fail,E0599
+//! corten::assets::embed!(pub struct Static = "src/assets/fixture");
+//!
+//! # use corten::prelude::*;
+//! fn head(req: &Req) -> impl Render + '_ {
+//!     html! { <link rel="stylesheet" href={req.asset(Static::STYLES_CSS)}> }
+//! }
+//! ```
+//!
+//! A directory that is not there, or two files with one constant (`item-1.svg` and
+//! `item_1.svg`), do not compile, nor does a file name a URL cannot carry as it is (a space,
+//! `#`, `?`, `%`; the fixture has `50%.css`):
+//!
+//! ```compile_fail
+//! corten::assets::embed!(pub struct Static = "src/assets/missing");
+//! ```
+//!
+//! ```compile_fail
+//! corten::assets::embed!(pub struct Static = "src/assets/clash");
+//! ```
+//!
+//! ```compile_fail
+//! corten::assets::embed!(pub struct Static = "src/assets/unsafe");
+//! ```
+//!
+//! Nor does a path outside the directory it names (the crate's root, `..`, an absolute path):
+//!
+//! ```compile_fail
+//! corten::assets::embed!(pub struct Static = "src/..");
+//! ```
+//!
+//! The program is the whole deploy: nothing is read from disk, except under `corten dev`, which
+//! reads the directory the macro read, so a file added to it is served without a rebuild. The
+//! files are hashed at startup. Every URL carries the
 //! hash, so browsers, CDNs and the service worker may cache the files forever, and a deploy
 //! that changes any file changes every URL. The version is a directory prefix, not a per-file
 //! name, so scripts keep importing each other with relative paths. Handler scripts
@@ -21,7 +67,6 @@ use std::{
     sync::Arc,
 };
 
-#[cfg(not(feature = "compress"))]
 use axum::body::Bytes;
 use axum::{
     extract::Path as UrlPath,
@@ -32,6 +77,82 @@ use axum::{
 };
 
 use crate::{fnv, Component};
+
+pub use corten_macros::embed;
+
+/// A static directory compiled into the program: the struct [`embed!`] declares. Give it to
+/// `App::assets`.
+pub trait Embed {
+    /// Where the macro read the directory, for `corten dev` to read again: its full path in a
+    /// debug build, empty in a release build (which never reads the disk).
+    const DIR: &'static str;
+    /// The struct's path (`shop::views::Static`), which each of its files carries, so a file of
+    /// another app's directory is found in debug builds.
+    const OWNER: &'static str;
+    /// Each file: its path in the directory (`icons/192.png`) and its bytes.
+    const FILES: &'static [(&'static str, &'static [u8])];
+}
+
+/// A file of the app's static directory, a constant [`embed!`] makes (`Static::STYLE_CSS`).
+/// `req.asset(file)` is its versioned URL.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Asset {
+    owner: &'static str,
+    path: &'static str,
+}
+
+impl Asset {
+    #[doc(hidden)]
+    pub const fn __embedded(owner: &'static str, path: &'static str) -> Self {
+        Asset { owner, path }
+    }
+
+    /// Its path in the directory, `icons/192.png`.
+    pub const fn path(self) -> &'static str {
+        self.path
+    }
+}
+
+/// A static file's versioned URL, written where it is used: `/assets/{version}/style.css`.
+#[derive(Clone, Copy, Debug)]
+pub struct AssetUrl<'a> {
+    prefix: &'a str,
+    path: &'a str,
+}
+
+impl<'a> AssetUrl<'a> {
+    /// `/{path}`, for a file no directory serves.
+    pub(crate) const fn unserved(path: &'a str) -> Self {
+        AssetUrl { prefix: "/", path }
+    }
+
+    fn write(&self, out: &mut String) {
+        out.push_str(self.prefix);
+        crate::view::Render::render(self.path, out);
+    }
+}
+
+impl std::fmt::Display for AssetUrl<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.prefix)?;
+        f.write_str(self.path)
+    }
+}
+
+impl crate::view::Render for AssetUrl<'_> {
+    fn render(&self, out: &mut String) {
+        self.write(out)
+    }
+}
+
+impl crate::view::AttrValue for AssetUrl<'_> {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        out.push_str(name);
+        out.push_str("=\"");
+        self.write(out);
+        out.push('"');
+    }
+}
 
 /// The file the components' stylesheets are joined into.
 pub const STYLESHEET: &str = "components.css";
@@ -96,12 +217,15 @@ pub struct Assets {
     stylesheet: Option<String>,
     /// Each section stylesheet: the prefixes whose pages link it, its URL and the components in it.
     sections: Vec<Section>,
+    /// The `embed!` struct the files came from (`Embed::OWNER`), when the app gave one.
+    pub(crate) owner: Option<&'static str>,
 }
 
 impl Assets {
     /// Reads every file under `dir` and serves them at `{mount}/{version}/...` (`mount` is
     /// usually `/assets`).
-    pub fn load(dir: impl AsRef<Path>, mount: &str) -> io::Result<Self> {
+    #[cfg(test)]
+    pub(crate) fn load(dir: impl AsRef<Path>, mount: &str) -> io::Result<Self> {
         Self::build(Some(dir.as_ref()), &[], mount)
     }
 
@@ -109,32 +233,31 @@ impl Assets {
     /// `events.js` and the components' stylesheets joined into `components.css`, served at
     /// `{mount}/{version}/...`. A component listed twice counts once; two different scripts with one
     /// name or two components with one class prefix (`ui::Card` and `admin::Card`) are an error.
-    pub fn build(dir: Option<&Path>, components: &[Component], mount: &str) -> io::Result<Self> {
-        Self::build_with(dir, components, &[], mount)
+    #[cfg(test)]
+    pub(crate) fn build(dir: Option<&Path>, components: &[Component], mount: &str) -> io::Result<Self> {
+        let files = match dir {
+            Some(dir) => read_dir(dir)?,
+            None => Vec::new(),
+        };
+        Self::build_with(files, components, &[], mount)
     }
 
-    /// [`Assets::build`] with sections: each section's components are served the same way, but
+    /// The files, components and sections, with sections: each section's components are served the same way, but
     /// their stylesheets are joined into `sections/{prefix}.css` instead of `components.css`. A
     /// component several sections list is in one file those sections share,
     /// `sections/{a}+{b}.css`, with the others the same sections share. A component with a
     /// stylesheet is in `components` or in sections, not both, and a token file's (global)
     /// stylesheet only in `components`.
     pub(crate) fn build_with(
-        dir: Option<&Path>,
+        files: Vec<(String, Bytes)>,
         components: &[Component],
         sections: &[(&str, &[Component])],
         mount: &str,
     ) -> io::Result<Self> {
         let mount = mount.trim_end_matches('/');
         assert!(mount.starts_with('/'), "the assets mount is an absolute path, like /assets");
-        let mut paths = Vec::new();
-        if let Some(dir) = dir {
-            collect(dir, dir, &mut paths)?;
-        }
-        let mut sources = Vec::with_capacity(paths.len() + components.len() + 1);
-        for (url, path) in paths {
-            sources.push((url, std::fs::read(&path)?));
-        }
+        let mut sources = files;
+        sources.reserve(components.len() + 1);
         let clash = |message: String| io::Error::new(io::ErrorKind::AlreadyExists, message);
         // Where each component is listed: 0 is `components`, i + 1 the section i.
         // Each script's typed events follow it, where it is listed.
@@ -196,7 +319,7 @@ impl Assets {
                         script.name, component.name, script.file
                     )));
                 }
-                sources.push((url, crate::script::served(script.name, script.source).into_bytes()));
+                sources.push((url, crate::script::served(script.name, script.source).into_bytes().into()));
                 registered.insert(script.name.to_string());
                 if !script.events.is_empty() {
                     imports_events.insert(script.name.to_string());
@@ -264,21 +387,21 @@ impl Assets {
             if sources.iter().any(|(u, _)| *u == url) {
                 return Err(clash(format!("the static directory has a {url}, the name of Corten's script formats")));
             }
-            sources.push((url, crate::script::served(name, crate::script::FORMAT_JS).into_bytes()));
+            sources.push((url, crate::script::served(name, crate::script::FORMAT_JS).into_bytes().into()));
             registered.insert(name.to_string());
         }
         if !events.is_empty() {
             if sources.iter().any(|(u, _)| u == EVENTS) {
                 return Err(clash(format!("the static directory has an {EVENTS}, the name of the typed events' module")));
             }
-            sources.push((EVENTS.to_string(), events.into_bytes()));
+            sources.push((EVENTS.to_string(), events.into_bytes().into()));
         }
         let all: Vec<Component> = seen.iter().map(|(c, _)| **c).collect();
         if let Some(views) = crate::script::views_module(&all).map_err(clash)? {
             if sources.iter().any(|(u, _)| u == VIEWS) {
                 return Err(clash(format!("the static directory has a {VIEWS}, the name of the views' module")));
             }
-            sources.push((VIEWS.to_string(), views.into_bytes()));
+            sources.push((VIEWS.to_string(), views.into_bytes().into()));
         }
         let styles: Vec<(&str, crate::Style)> = seen.iter().filter_map(|(c, _)| Some((c.name, c.style?))).collect();
         undeclared_properties(&sheets, &sources, &styles, sections)?;
@@ -287,7 +410,7 @@ impl Assets {
             if sources.iter().any(|(u, _)| u == STYLESHEET) {
                 return Err(clash(format!("the static directory has a {STYLESHEET}, the name of the components' stylesheet")));
             }
-            sources.push((STYLESHEET.to_string(), css.into_bytes()));
+            sources.push((STYLESHEET.to_string(), css.into_bytes().into()));
         }
         // In the order the sections are listed, each section's own file before the files it shares.
         sheets.sort_by_key(|(at, _, _)| (at[0], at.len()));
@@ -298,7 +421,7 @@ impl Assets {
             if sources.iter().any(|(u, _)| *u == file) {
                 return Err(clash(format!("the static directory has a {file}, the name of a section's stylesheet")));
             }
-            sources.push((file.clone(), css.into_bytes()));
+            sources.push((file.clone(), css.into_bytes().into()));
             section_files.push(Section { prefixes, href: file, components });
         }
         sources.sort_by(|a, b| a.0.cmp(&b.0));
@@ -316,9 +439,7 @@ impl Assets {
             digest = fnv::extend(digest, &hash.to_le_bytes());
             let content_type = content_type(&url);
             #[cfg(feature = "compress")]
-            let body = crate::compress::Precompressed::new(body.into(), content_type);
-            #[cfg(not(feature = "compress"))]
-            let body = body.into();
+            let body = crate::compress::Precompressed::new(body, content_type);
             files.insert(url.clone(), File { body, content_type, hash });
         }
         let version = format!("{:012x}", digest >> 16);
@@ -354,6 +475,7 @@ impl Assets {
             registered,
             stylesheet,
             sections,
+            owner: None,
         })
     }
 
@@ -367,9 +489,26 @@ impl Assets {
         self.stylesheet.as_deref()
     }
 
+    /// The URL of `file`. One of another app's directory is a bug, found in debug builds.
+    pub fn asset(&self, file: Asset) -> AssetUrl<'_> {
+        debug_assert!(
+            self.owner == Some(file.owner),
+            "corten: {} is a file of {}, and this app's static directory is {} (App::assets)",
+            file.path,
+            file.owner,
+            self.owner.unwrap_or("none")
+        );
+        AssetUrl { prefix: &self.prefix, path: file.path }
+    }
+
+    /// The URL of the file at `path` (`cards/item_1.svg`), a name from data, when there is one.
+    pub fn find<'a>(&'a self, path: &'a str) -> Option<AssetUrl<'a>> {
+        self.files.contains_key(path).then_some(AssetUrl { prefix: &self.prefix, path })
+    }
+
     /// The URL for `path` (relative to the directory, like `style.css`). A typo is a bug, so a
     /// missing file panics in debug builds and is logged in release.
-    pub fn url(&self, path: &str) -> String {
+    pub(crate) fn url(&self, path: &str) -> String {
         if !self.files.contains_key(path) {
             if cfg!(debug_assertions) {
                 panic!("corten: no static file {path:?}");
@@ -516,7 +655,7 @@ pub(crate) struct Section {
 /// component's stylesheet is compiled without the theme; this runs once, at startup.
 fn undeclared_properties(
     sheets: &[(Vec<usize>, String, Vec<&'static str>)],
-    sources: &[(String, Vec<u8>)],
+    sources: &[(String, Bytes)],
     styles: &[(&str, crate::Style)],
     sections: &[(&str, &[Component])],
 ) -> io::Result<()> {
@@ -591,6 +730,23 @@ fn section_file(prefixes: &[String]) -> String {
     format!("sections/{}.css", names.join("+"))
 }
 
+/// Every file under `dir`, by its path there (`icons/192.png`): for `corten dev`, which reads the
+/// directory an [`embed!`] read, so a file added since the build is served.
+pub(crate) fn read_dir(dir: &Path) -> io::Result<Vec<(String, Bytes)>> {
+    let mut paths = Vec::new();
+    collect(dir, dir, &mut paths)?;
+    let mut files = Vec::with_capacity(paths.len());
+    for (url, path) in paths {
+        files.push((url, Bytes::from(std::fs::read(&path)?)));
+    }
+    Ok(files)
+}
+
+/// The files [`embed!`] compiled in, with no copy.
+pub(crate) fn embedded<E: Embed>() -> Vec<(String, Bytes)> {
+    E::FILES.iter().map(|(path, body)| ((*path).to_string(), Bytes::from_static(body))).collect()
+}
+
 fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -599,8 +755,12 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> io::Res
         if entry.file_name().to_string_lossy().starts_with('.') {
             continue;
         }
-        if entry.file_type()?.is_dir() {
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
             collect(root, &path, out)?;
+        } else if kind.is_symlink() && path.is_dir() {
+            // `embed!` refuses a linked directory, so one added under `corten dev` is not served.
+            continue;
         } else {
             let relative = path.strip_prefix(root).expect("walked from root");
             let url = relative.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
@@ -695,6 +855,28 @@ mod tests {
             event: None,
             view: None,
         }
+    }
+
+    #[test]
+    fn a_name_from_data_is_found_only_when_the_directory_has_it() {
+        let files = vec![("cards/item-1.svg".to_string(), Bytes::from_static(b"<svg/>"))];
+        let mut assets = Assets::build_with(files, &[], &[], "/assets").unwrap();
+        let url = assets.find("cards/item-1.svg").expect("there").to_string();
+        assert_eq!(url, format!("{}cards/item-1.svg", assets.prefix()));
+        assert!(assets.find("cards/item-2.svg").is_none());
+        assets.owner = Some("shop::Static");
+        let file = Asset::__embedded("shop::Static", "cards/item-1.svg");
+        assert_eq!(assets.asset(file).to_string(), url);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "is a file of admin::Static")]
+    fn another_apps_file_is_found_in_debug_builds() {
+        let files = vec![("style.css".to_string(), Bytes::from_static(b"a{}"))];
+        let mut assets = Assets::build_with(files, &[], &[], "/assets").unwrap();
+        assets.owner = Some("shop::Static");
+        let _ = assets.asset(Asset::__embedded("admin::Static", "style.css"));
     }
 
     #[test]
@@ -827,15 +1009,18 @@ mod tests {
         let admin = styled("Admin", "admin", ".admin__a{--admin-ink:red}");
         let report = styled("Report", "report", ".report__a{color:var(--admin-ink)}");
         let nested: &[(&str, &[Component])] = &[("/admin", &[admin]), ("/admin/reports", &[report])];
-        assert!(Assets::build_with(None, &[tokens], nested, "/assets").is_ok());
+        assert!(Assets::build_with(Vec::new(), &[tokens], nested, "/assets").is_ok());
         let apart: &[(&str, &[Component])] = &[("/admin", &[admin]), ("/reports", &[report])];
-        let error = Assets::build_with(None, &[tokens], apart, "/assets").err().expect("declared on other pages").to_string();
+        let error =
+            Assets::build_with(Vec::new(), &[tokens], apart, "/assets").err().expect("declared on other pages").to_string();
         assert!(
             error.contains("x.css (Report) reads var(--admin-ink), which no stylesheet on the pages of /reports declares"),
             "{error}"
         );
-        let error =
-            Assets::build_with(None, &[tokens, report], &[("/admin", &[admin])], "/assets").err().expect("an area's").to_string();
+        let error = Assets::build_with(Vec::new(), &[tokens, report], &[("/admin", &[admin])], "/assets")
+            .err()
+            .expect("an area's")
+            .to_string();
         assert!(error.contains("x.css (Report) reads var(--admin-ink), which no stylesheet declares"), "{error}");
     }
 
@@ -847,7 +1032,7 @@ mod tests {
         let table = styled("Table", "table", ".table__a{}");
         let sections: &[(&str, &[Component])] =
             &[("/admin", &[chart, SCRIPT, chart]), ("/admin/reports", &[table]), ("/scripts-only", &[SCRIPT])];
-        let assets = Arc::new(Assets::build_with(None, &[tokens, card], sections, "/assets").unwrap());
+        let assets = Arc::new(Assets::build_with(Vec::new(), &[tokens, card], sections, "/assets").unwrap());
         assert!(assets.has_script("x_y"), "a section's scripts are served like the rest");
         let urls: Vec<_> = assets.section_stylesheets().iter().map(|s| (s.prefixes.join(" "), s.href.clone())).collect();
         assert_eq!(
@@ -870,12 +1055,12 @@ mod tests {
         assert_eq!(&body(assets.url("sections/admin.css")).await[..], b".chart__a{}", "listed twice, joined once");
         assert_ne!(
             assets.version(),
-            Assets::build_with(None, &[tokens, card], &[("/admin", &[table])], "/assets").unwrap().version(),
+            Assets::build_with(Vec::new(), &[tokens, card], &[("/admin", &[table])], "/assets").unwrap().version(),
             "a section's stylesheet is part of the version"
         );
 
         let error = |components: &[Component], sections: &[(&str, &[Component])]| {
-            Assets::build_with(None, components, sections, "/assets").err().expect("an error").to_string()
+            Assets::build_with(Vec::new(), components, sections, "/assets").err().expect("an error").to_string()
         };
         let twice = error(&[card], &[("/admin", &[card])]);
         assert!(twice.contains("Card is listed in App::components and in the area /admin"), "{twice}");
@@ -888,7 +1073,10 @@ mod tests {
         let prefix = error(&[card], &[("/admin", &[styled("admin::Card", "card", ".card__b{}")])]);
         assert!(prefix.contains("both style .card__*"), "{prefix}");
         let root = dir("section-clash", &[("sections/admin.css", "a{}")]);
-        let file = Assets::build_with(Some(&root), &[], &[("/admin", &[chart])], "/assets").err().expect("taken").to_string();
+        let file = Assets::build_with(read_dir(&root).unwrap(), &[], &[("/admin", &[chart])], "/assets")
+            .err()
+            .expect("taken")
+            .to_string();
         assert!(file.contains("has a sections/admin.css"), "{file}");
     }
 
@@ -899,7 +1087,7 @@ mod tests {
         let saved = styled("Saved", "saved", ".saved__a{}");
         let sections: &[(&str, &[Component])] =
             &[("/search", &[page, saved, facet]), ("/categories", &[facet, page]), ("/cart", &[])];
-        let assets = Arc::new(Assets::build_with(None, &[], sections, "/assets").unwrap());
+        let assets = Arc::new(Assets::build_with(Vec::new(), &[], sections, "/assets").unwrap());
         let files: Vec<_> =
             assets.section_stylesheets().iter().map(|s| (s.prefixes.join(" "), s.href.clone(), s.components.join(" "))).collect();
         assert_eq!(

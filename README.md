@@ -35,7 +35,7 @@ over server-sent events. One request handler serves the browser, native apps and
   assets, cache headers that never share one user's page with another, compression, health
   checks, graceful shutdown and an installable PWA, from `corten::serve(App::new(routes))`. Routes
   with no screen go in a `#[corten::routes(api = ApiRoot)]` module, `.api(api::api)`, and answer only JSON.
-- **No JavaScript toolchain in the app.** One binary and a `static/` directory.
+- **No JavaScript toolchain in the app.** One binary, with the `static/` directory compiled into it.
 
 ## Status
 
