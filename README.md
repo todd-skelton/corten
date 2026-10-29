@@ -424,8 +424,9 @@ is:
    in the browser than forms and links.
 4. [ui-gallery](examples/ui-gallery): a seller's draft listing built from every `corten-ui`
    component, styled by a small design system.
-5. [listings-feed](examples/listings-feed): a seller's listings as one feed served by several
-   instances, a page that follows it, and the failover benchmark.
+5. [listings-feed](examples/listings-feed): a seller's listings table kept live by one feed that
+   several instances serve (Postgres and NATS through `corten-cluster`), for when one instance is
+   not enough; its failover benchmark kills instances while browsers follow.
 
 ## Contributing
 

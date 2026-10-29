@@ -20,7 +20,7 @@ crates/
 examples/watchlist/  A stock watchlist: live prices, news, alerts; scripts/smoke.mjs tests the runtime against it
 examples/card-market/ A trading-card store (home, categories, item pages) with every production module on; smoke.mjs tests it
 examples/seller-desk/ A seller's inventory desk: a client-heavy screen built with handlers
-examples/listings-feed/ A seller's listings feed on corten-cluster, a page that follows it, and the failover benchmark
+examples/listings-feed/ A seller's listings kept live by a feed on corten-cluster, served by several instances, and the failover benchmark; smoke.mjs tests the page
 examples/ui-gallery/ corten-ui styled by a small design system; smoke.mjs tests it in a browser
 docs/              Guides (docs/guide), design decisions and limits, surfaces (architecture.md)
 skills/corten/     The agent skill for building apps on Corten
@@ -73,6 +73,14 @@ docker build -f examples/seller-desk/Dockerfile -t corten-seller-desk .
 docker run -d --name corten-seller-desk -p 18484:8080 corten-seller-desk
 node examples/seller-desk/smoke.mjs http://localhost:18484
 docker rm -f corten-seller-desk
+docker network create feeds
+docker run -d --name feeds-pg --network feeds -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=feeds postgres:16-alpine
+docker run -d --name feeds-nats --network feeds nats:2-alpine -js
+docker build -f examples/listings-feed/Dockerfile -t corten-listings-feed .
+docker run -d --name corten-listings-feed --network feeds -p 18485:8080 -e DATABASE_URL=postgres://postgres:postgres@feeds-pg/feeds -e NATS_URL=nats://feeds-nats:4222 corten-listings-feed
+node examples/listings-feed/smoke.mjs http://localhost:18485
+docker rm -f corten-listings-feed feeds-pg feeds-nats
+docker network rm feeds
 ```
 
 The first command also compiles every `rust` code block in `README.md` and `docs/guide/` as a

@@ -1109,6 +1109,7 @@ dependencies = [
  "async-nats",
  "corten",
  "corten-cluster",
+ "schemars",
  "serde",
  "serde_json",
  "sqlx",

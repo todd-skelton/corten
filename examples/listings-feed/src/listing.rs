@@ -1,9 +1,11 @@
 //! The listing row, stored as `listings.data` and sent on the feed, with deterministic samples.
 
 use corten::feed::Row;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// A seller's listing, what the feed sends.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct Listing {
     pub id: String,
     pub title: String,

@@ -1,0 +1,24 @@
+.listings { display: grid; gap: 12px; }
+/* The feed's state: a row of small figures, which wraps on a phone. */
+.feed { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.feed div { display: grid; gap: 2px; }
+.feed dt { color: var(--muted); font-size: 12px; }
+.feed dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.feed output[name="status"] { color: var(--accent); }
+.count { margin: 0; color: var(--muted); }
+/* The rows scroll inside their box, under a header that stays. */
+.scroll { overflow: auto; max-height: min(70vh, 44rem); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.table th, .table td { padding: 8px 12px; text-align: start; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.table thead th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table td small { display: block; color: var(--muted); font-size: 12px; }
+.table th:nth-child(n+4), .table td:nth-child(n+4) { text-align: end; font-variant-numeric: tabular-nums; }
+/* Priced over the market low: the market low is marked, so the seller sees what to lower. */
+.table tr[data-above] td:last-child { color: var(--warn); font-weight: 600; }
+.table tr[data-paused] td { color: var(--muted); }
+.table tr[data-paused] td:first-child span::after { content: " · paused"; font-size: 12px; }
+/* A phone: the category and the condition step out. */
+@media (max-width: 40rem) {
+  .table th:nth-child(2), .table td:nth-child(2), .table th:nth-child(3), .table td:nth-child(3) { display: none; }
+}

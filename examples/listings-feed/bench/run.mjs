@@ -59,14 +59,14 @@ await until("b", () => /listening/.test(logs("fb-b")));
 docker("run", "-d", "--name", "fb-lb", ...net, "--ip", "10.77.77.30", "-p", "18420:8080", "-v", `${join(here, "nginx.conf")}:/etc/nginx/nginx.conf:ro`, "nginx:1.27-alpine");
 await until("load balancer", async () => (await fetch("http://localhost:18420/health/ready").catch(() => null))?.ok);
 
-// A real browser on the seller's page (FeedMonitor, corten.js subscribe()), through the load
+// A real browser on the seller's page (ListingTable, corten.js subscribe()), through the load
 // balancer, for the whole run.
 const browser = await chromium.launch();
 const page = await browser.newPage();
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 await page.goto("http://localhost:18420/sellers/s1");
-/** The monitor's outputs by name: status, listings, through, changes, snapshots. */
+/** The table's outputs by name: status, listings, through, changes, snapshots. */
 const shown = () =>
   page.evaluate(() => Object.fromEntries([...document.querySelectorAll("output[name]")].map((o) => [o.getAttribute("name"), o.textContent ?? ""])));
 await until("the page's feed", async () => (await shown()).status === "live");

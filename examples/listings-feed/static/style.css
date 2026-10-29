@@ -1,0 +1,30 @@
+/* Element defaults and the page's frame. The table's rules are next to it (src/listing_table.css). */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+:root {
+  color-scheme: light dark;
+  --ink: light-dark(#1b1d24, #e8e9ef);
+  --muted: light-dark(#646877, #9a9eae);
+  --line: light-dark(#e3e5ec, #2c2f3a);
+  --bg: light-dark(#f5f6f9, #111318);
+  --surface: light-dark(#fff, #191b22);
+  --accent: light-dark(#4338ca, #a5b4fc);
+  --accent-ink: light-dark(#fff, #12132b);
+  --warn: light-dark(#b45309, #fbbf24);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+body { margin: 0; }
+main { display: grid; gap: 16px; max-width: 72rem; margin: 0 auto; padding: 24px; }
+main > header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -0.01em; }
+main > header p { margin: 0; max-width: 46rem; color: var(--muted); }
+main > header strong { color: var(--ink); }
+button { font: inherit; font-weight: 600; padding: 8px 16px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: var(--accent-ink); cursor: pointer; white-space: nowrap; }
+button:hover { filter: brightness(1.08); }
+form[aria-busy="true"] { opacity: .6; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[role="status"] { margin: 0; color: var(--muted); }
+[role="status"]:empty { display: none; }
+@media (max-width: 40rem) { main { padding: 16px; } }
