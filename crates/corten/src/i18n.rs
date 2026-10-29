@@ -900,6 +900,20 @@ mod tests {
         assert_eq!(fr.change(Decimal::new(60, 4), 2).to_string(), "+0,60\u{a0}%", "the locale's sign in place");
     }
 
+    /// `t.money` places a code only in the template that writes a currency by its code; every
+    /// currency a locale has a symbol for has it in place.
+    #[test]
+    fn a_currency_with_a_symbol_has_no_code_to_place() {
+        let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
+        for (tag, data) in locales {
+            for (code, positive, negative) in data.currencies {
+                assert!(!positive.contains('\u{2}') && !negative.contains('\u{2}'), "{tag} {code}");
+                assert_eq!(code.len(), 3, "{tag} {code}");
+            }
+            assert!(data.currencies.is_sorted_by_key(|(code, ..)| *code), "{tag}");
+        }
+    }
+
     /// Every amount every locale writes (Intl's, in cases.tsv, and ours in every currency its data
     /// has) reads back, and what people type for it without the marks Intl adds: a symbol's
     /// direction marks, its no-break spaces.
