@@ -60,9 +60,7 @@ there decides. A change is reviewed against them before it is done (below).
 1. Run every command in [CONTRIBUTING.md](CONTRIBUTING.md#checks), each separately, and remove
    the containers afterwards. All must pass.
 2. Measure a change to rendering, the runtime or the request path with the number that can see
-   it: instructions per request (callgrind) for work done in process, time as well for memory,
-   time for waiting and concurrency, bytes for what the client receives.
-   [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) (item 2) says which fits and how to report it.
+   it, as [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) (item 2) describes.
 3. Update the guide that describes a changed behavior, and add a line to `CHANGELOG.md` under
    Unreleased.
 4. Have the change reviewed as [CONTRIBUTING.md](CONTRIBUTING.md#review) describes: start a new

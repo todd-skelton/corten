@@ -1897,11 +1897,12 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#286 corten-ui's NumberField cannot show back a refused entry or take a price in the reader's locale](https://github.com/todd-skelton/corten/issues/286),
     [#325 ui-gallery reads the listing's quantity and price as f64 and writes money with format!](https://github.com/todd-skelton/corten/issues/325)).
 28. CONTRIBUTING (Pull requests, item 2) says which measurement fits which change: instructions
-    per request under callgrind for work done in process, `render_cost`'s times as well when
-    memory changes, time for waiting and concurrency (`bench/fullstack/ab.mjs`,
-    `cold-start.mjs`), and bytes for what the client receives, from alternated release runs
-    reported with their median and range. AGENTS.md, the README's values and the pull request
-    template point to it rather than naming `nanoseconds per request`.
+    per request under callgrind for work done in process (`count.mjs` over a socket), times as
+    well when memory changes (`render_cost`, with its command and fixture), time on a quiet host
+    for waiting and concurrency (`ab.mjs`, `cold-start.mjs`), and bytes for what the client
+    receives (`render_cost`, `bytes.mjs`), from alternated release runs reported with their
+    median and range; Tooling lists valgrind and `perf`. AGENTS.md, the README's values and the
+    pull request template point to it rather than naming `nanoseconds per request`.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

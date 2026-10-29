@@ -43,6 +43,8 @@ the framework itself.
   tests: `npm install`, then `npx playwright install chromium firefox webkit` (the core and
   `corten-ui` smoke tests run in all three).
 - Docker, for the example images the smoke tests run against.
+- For measuring (Pull requests, item 2): valgrind, on Linux or in the `rust:1-bookworm`
+  container after `apt-get install valgrind`, and `perf` on a Linux host for `count.mjs`.
 
 ## Checks
 
@@ -113,21 +115,26 @@ The failover benchmark is `node examples/listings-feed/bench/run.mjs`; see its h
 2. A change to rendering, the runtime or the request path is measured before and after, with
    the number that can see the change:
    1. Work done in process (rendering, routing, serialization, middleware, a handler's own
-      code): instructions per request under callgrind (`valgrind --tool=callgrind`), with the
-      request sent through the router in process by `oneshot`. For rendering, run the item
-      page's `render_cost` test (`examples/card-market`,
-      `CORTEN_FIXTURE=bench/fullstack/fixtures/items.json`) under it. A count barely moves with
-      other load on the machine, so it shows a difference of a few percent that times on a
-      laptop or Docker Desktop hide.
-   2. Memory (allocation, buffer sizes, copies, data layout): the count and `render_cost`'s
-      times, because a count does not see cache misses or memory stalls, and the same count
-      can take longer.
+      code): instructions per request under callgrind (`valgrind --tool=callgrind`). Send the
+      requests through the router in process with `oneshot`, and count a run of 1,200 and one
+      of 200: the difference over 1,000 leaves out startup and setup. Over a real socket,
+      `bench/fullstack/count.mjs` counts with `perf stat`. A count barely moves with other load
+      on the machine, so it shows a difference of a few percent that times on a laptop or
+      Docker Desktop hide.
+   2. Memory (allocation, buffer sizes, copies, data layout): the count and times, because a
+      count does not see cache misses or memory stalls, and the same count can take longer.
+      For the item page, `render_cost` in `examples/card-market` prints the times of building,
+      rendering and serving it, and the bytes:
+      `CORTEN_FIXTURE=/abs/path/items.json cargo test --release -p card-market -- --ignored render_cost --nocapture`,
+      with the fixture `bench/fullstack/fixtures/fetch.mjs` writes.
    3. Waiting and concurrency (I/O, locks, channels, timers, feeds, streaming, startup): time,
       because a count does not see waiting or how well work overlaps. `bench/fullstack/ab.mjs`
       runs the two builds' images on one CPU for latency and throughput under load, and
-      `bench/fullstack/cold-start.mjs` times cold start.
+      `bench/fullstack/cold-start.mjs` times cold start. Take these on a quiet Linux host: on
+      Docker Desktop one image's throughput moved by up to 25% between rounds.
    4. What the client receives: bytes shipped (the document, patches, the minified runtime,
-      assets), raw and compressed.
+      assets), raw and compressed. `render_cost` gives the page's per encoding, and
+      `bench/fullstack/bytes.mjs` every script and stylesheet a page loads.
 
    Measure release builds and alternate runs of the two. Give the tool, the number of runs and
    their median and range; when one build's runs vary more than the two builds differ, say so
