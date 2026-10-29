@@ -12,7 +12,8 @@
     "details": "Details",
     "contents": "Contents",
     "included_in": "Included in",
-    "image": "{title} image {n}"
+    "image": "{title} image {n}",
+    "art": "{title} card art"
   },
   "table": {
     "seller": "Seller",

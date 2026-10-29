@@ -31,8 +31,8 @@ Everything else Base UI-style libraries provide is already the platform's: `<dia
 `command="show-modal"` for dialogs and alert dialogs, `popover` for popovers and tooltips,
 `<details name>` for accordions, toggletips as a `popover` opened by `popovertarget`, `<select>` (with `appearance: base-select` where supported),
 checkboxes, radios and `<input type="range">`. [examples/ui-gallery](../../examples/ui-gallery) shows
-all six styled by a small design system, a dialog the server refuses a form in and one the
-address opens, with a browser test that runs in Chromium, Firefox and
+all six on one screen, a seller's draft listing for a card, styled by a small design system, with a dialog the server refuses a form in and one the
+address opens, and has a browser test that runs in Chromium, Firefox and
 WebKit. A tooltip shown on hover or focus is `interestfor` with `popover="hint"` once every
 browser has them (Safari has neither in October 2026); the crate does not add one meanwhile. The
 toaster is not in the top layer, so an open modal `<dialog>` covers it: a form in a dialog answers
