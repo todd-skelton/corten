@@ -673,7 +673,7 @@ function modulesOf(node) {
  * imported first, so its handlers run from the first event. The server's markup wins, except for
  * what the user is doing: a field they edited keeps their text, a dialog, `<details>` or popover
  * they opened stays open (a modal dialog modal) unless the server changed it, and focus stays where
- * it was.
+ * it was, or near it when the patch takes its element away ({@link focusNear}).
  * @param {string} html
  * @param {AbortSignal} [signal] Nothing changes once it aborts.
  */
@@ -697,7 +697,12 @@ async function apply(html, signal, sent, took) {
     const id = idOf(el);
     const target = id ? document.getElementById(id) : null;
     if (el.hasAttribute("data-corten-read-again")) again = el;
-    else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) target?.remove();
+    else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) {
+      // Focus in it goes to the nearest element around it that can take focus.
+      const up = target?.contains(document.activeElement) && target.parentElement;
+      target?.remove();
+      if (up) focusNear(up);
+    }
     else if (!target) console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
     else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-append")) {
       put.push(...Array.from(el.content.children));
@@ -933,7 +938,8 @@ function replaceKeeping(root, fresh, sent, took) {
   serve(fresh);
   const reopen = opened(root, fresh);
   const focused = document.activeElement;
-  const next = focused !== document.body && focused && root.contains(focused) ? counterpart(root, fresh, focused) : null;
+  const inside = focused && focused !== document.body && root.contains(focused);
+  const next = inside ? counterpart(root, fresh, focused) : null;
   /** File inputs of `fresh` and the files to give them once they are in the page. @type {[any, FileList | null][]} */
   const files = [];
   for (const f of [root, ...Array.from(root.querySelectorAll("input, textarea, select"))]) {
@@ -961,6 +967,40 @@ function replaceKeeping(root, fresh, sent, took) {
       const { selectionStart, selectionEnd, selectionDirection } = /** @type {HTMLInputElement} */ (focused);
       if (selectionStart !== null) /** @type {HTMLInputElement} */ (next).setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? undefined);
     } catch {}
+  }
+  // The focused element went with the patch, or its counterpart cannot take focus.
+  if (inside && document.activeElement === document.body) focusNear(focused, root, fresh);
+}
+
+/**
+ * Focuses `el`, or else the nearest element around it that can take focus, so a keyboard or
+ * screen reader user whose element a patch took away stays where they were rather than at the
+ * top of the document. With `fresh`, `el` is in `root`, which `fresh` replaced: each element up
+ * to `root` stands for its counterpart in `fresh`, then the walk goes on from `fresh`'s parent.
+ * One that is not focusable is made so for the move (`tabindex="-1"`), until focus leaves it
+ * for another element (not for another window, which leaves it focused).
+ * @param {Element | null | undefined} el @param {Element} [root] @param {Element} [fresh]
+ */
+function focusNear(el, root, fresh) {
+  while (el && el !== document.body) {
+    const to = fresh ? counterpart(/** @type {Element} */ (root), fresh, el) : el;
+    if (to instanceof HTMLElement) {
+      const made = !to.hasAttribute("tabindex");
+      if (made) to.tabIndex = -1;
+      to.focus({ preventScroll: true });
+      if (document.activeElement === to) {
+        if (made) {
+          const off = () => document.activeElement !== to && (to.removeAttribute("tabindex"), to.removeEventListener("blur", off));
+          to.addEventListener("blur", off);
+        }
+        return;
+      }
+      if (made) to.removeAttribute("tabindex");
+    }
+    if (fresh && el === root) {
+      el = fresh.parentElement;
+      fresh = undefined;
+    } else el = el.parentElement;
   }
 }
 
