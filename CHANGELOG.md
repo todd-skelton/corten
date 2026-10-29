@@ -832,6 +832,13 @@ Corten is pre-1.0, so any minor version may change the API.
     pages that use it. ui-gallery's listing shows both (where it ships, and the lowest offer when it
     takes offers), and its handler refuses what the browser would have stopped
     ([#269 A field required only for one choice of another field needs a script, so the browser cannot check it before the form is sent](https://github.com/todd-skelton/corten/issues/269)).
+119. A script that imports another script module of its directory (`import { loadStripe } from
+     "./stripe.js"`) has it preloaded on the pages that load it, with what that one imports, so the
+     browser fetches them together instead of one round trip after the other. The tag is made
+     when the app starts, so a page costs nothing more to render. An import of a module the app
+     does not list is a startup error that names both (it was a 404 in the browser). The scripts
+     guide describes relative imports
+     ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

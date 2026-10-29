@@ -239,6 +239,15 @@ component's or a `script!` module's) is an error in a debug build, so a router t
 renders and leaves the page's other modules working. Which handlers a page calls depends on what it renders, so this
 is checked when it renders, not when the crate compiles.
 
+A script can import another script module with a relative path, by its file name:
+`import { loadStripe } from "./stripe.js";` in `payment_entry.js` loads the `script!` module
+declared from `stripe.js`. Every script is served from the same directory of the same version, so
+the path is `./{file name}`. A page that loads `payment_entry.js` preloads `stripe.js` with it
+(and what that imports), so the browser fetches both at once rather than finding the import once
+the first has arrived. List the imported module where its importer is listed: an import of a module
+the app does not serve fails when the app starts, since the browser would get a 404. A dynamic
+`import("./x.js")` is left for when it runs, and is not preloaded.
+
 ## Libraries
 
 A crate of components for other apps prefixes the names it puts in the page, so they never meet

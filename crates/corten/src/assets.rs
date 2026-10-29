@@ -289,6 +289,8 @@ impl Assets {
         let mut registered = std::collections::HashSet::new();
         // The scripts that import `corten/events`, so a page that loads one preloads it too.
         let mut imports_events = std::collections::HashSet::new();
+        // The script modules each listed script imports from its directory, preloaded with it.
+        let mut module_imports: HashMap<String, &'static [&'static str]> = HashMap::new();
         for (at, component) in listed {
             if let Some((same, first)) = seen.iter().find(|(c, _)| c.name == component.name) {
                 let script = |c: &Component| c.script.map(|s| s.source);
@@ -323,6 +325,9 @@ impl Assets {
                 registered.insert(script.name.to_string());
                 if !script.events.is_empty() {
                     imports_events.insert(script.name.to_string());
+                }
+                if !script.imports.is_empty() {
+                    module_imports.insert(script.name.to_string(), script.imports);
                 }
             }
             if let Some(event) = component.event {
@@ -433,6 +438,19 @@ impl Assets {
             .filter(|name| !name.contains('/'))
             .map(str::to_string)
             .collect();
+        // An import of a script the app does not serve would 404 in the browser: an error now.
+        let mut importers: Vec<_> = module_imports.iter().collect();
+        importers.sort_unstable_by_key(|(name, _)| name.as_str());
+        for (name, imports) in importers {
+            if let Some(missing) = imports.iter().find(|i| !scripts.contains(**i)) {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!(
+                        "scripts/{name}.js imports ./{missing}.js, and no listed component or script! module is {missing}: list it where {name} is listed (App::components or the area's)"
+                    ),
+                ));
+            }
+        }
         for (url, body) in sources {
             let hash = fnv::hash(&body);
             digest = fnv::extend(digest, url.as_bytes());
@@ -450,12 +468,26 @@ impl Assets {
         let mut module_tags: Vec<ModuleTag> = scripts
             .iter()
             .map(|name: &String| {
-                let tag = if registered.contains(name) {
+                let mut tag = if registered.contains(name) {
                     format!(r#"<script type="module" src="{scripts_dir}{name}.js"></script>"#)
                 } else {
                     format!(r#"<link rel="modulepreload" href="{scripts_dir}{name}.js">"#)
                 };
-                ModuleTag { name: name.as_str().into(), tag: tag.into(), imports_events: imports_events.contains(name) }
+                // The modules it imports, and theirs, fetched with it rather than once it arrives.
+                let mut events = imports_events.contains(name);
+                let mut found: Vec<&str> = vec![name];
+                let mut at = 0;
+                while at < found.len() {
+                    for &next in module_imports.get(found[at]).copied().unwrap_or_default() {
+                        if !found.contains(&next) {
+                            found.push(next);
+                            tag.push_str(&format!(r#"<link rel="modulepreload" href="{scripts_dir}{next}.js">"#));
+                            events |= imports_events.contains(next);
+                        }
+                    }
+                    at += 1;
+                }
+                ModuleTag { name: name.as_str().into(), tag: tag.into(), imports_events: events }
             })
             .collect();
         module_tags.sort_unstable_by(|a, b| a.name.cmp(&b.name));
@@ -841,6 +873,7 @@ mod tests {
             source: "export function f() {}",
             handlers: &["f"],
             events: &[],
+            imports: &[],
         }),
         style: None,
         event: None,
@@ -897,6 +930,36 @@ mod tests {
         assert!(error.to_string().contains("two scripts named x_y"), "{error}");
     }
 
+    /// A script that imports another of its directory has it preloaded with it, and its imports
+    /// in turn; a page that loads the importer fetches them at once, not once it has arrived.
+    #[test]
+    fn a_scripts_imports_are_preloaded_with_it() {
+        const fn script(name: &'static str, imports: &'static [&'static str]) -> Component {
+            Component {
+                name,
+                script: Some(crate::Script { name, file: name, source: name, handlers: &[], events: &[], imports }),
+                style: None,
+                event: None,
+                view: None,
+            }
+        }
+        const ENTRY: Component = script("entry", &["stripe"]);
+        const STRIPE: Component = script("stripe", &["theme", "entry"]);
+        const THEME: Component = script("theme", &[]);
+        let assets = Assets::build(None, &[ENTRY, STRIPE, THEME], "/assets").unwrap();
+        let (tag, _) = assets.module("entry").unwrap();
+        let dir = &assets.scripts_dir;
+        assert_eq!(
+            tag,
+            format!(
+                r#"<script type="module" src="{dir}entry.js"></script><link rel="modulepreload" href="{dir}stripe.js"><link rel="modulepreload" href="{dir}theme.js">"#
+            )
+        );
+        assert_eq!(assets.module("theme").unwrap().0, format!(r#"<script type="module" src="{dir}theme.js"></script>"#));
+        let error = Assets::build(None, &[ENTRY], "/assets").err().expect("stripe is not listed");
+        assert!(error.to_string().contains("scripts/entry.js imports ./stripe.js"), "{error}");
+    }
+
     #[test]
     fn typed_events_are_one_module_of_classes() {
         const TOGGLED: Component = Component {
@@ -920,6 +983,7 @@ mod tests {
                 source: "import { RowToggled } from \"corten/events\";\nexport function f() {}",
                 handlers: &["f"],
                 events: &[TOGGLED],
+                imports: &[],
             }),
             style: None,
             event: None,
