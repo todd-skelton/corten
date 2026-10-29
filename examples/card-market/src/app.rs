@@ -16,9 +16,10 @@ use std::{
 use corten::{
     ClientIp, Error, ForAll, HtmlResponse,
     agent::{ToolError, Tools},
+    answer::XRobotsTag,
     axum::{
         extract::Request,
-        http::{HeaderMap, Method, StatusCode, request::Parts},
+        http::{HeaderMap, HeaderValue, Method, StatusCode, request::Parts},
         response::{IntoResponse, Response},
     },
     i18n::Minor,
@@ -329,7 +330,8 @@ impl Breadcrumbs {
 }
 
 /// A category changes less often than the home page: a CDN keeps it for an hour, while a browser
-/// still checks again after a minute.
+/// still checks again after a minute. A category nothing is in (a slug from an old link) still
+/// answers its page, but asks search engines not to list it (`X-Robots-Tag: noindex`).
 pub(crate) async fn category(
     req: Req,
     State(source): State<Source>,
@@ -346,7 +348,8 @@ pub(crate) async fn category(
     let (title, items) = (title.as_str(), items.as_slice());
     let req = &req;
     let page = req.page(html! { <Layout req={req} title={title} head={head}>{views::category(req, t, title, items)}</Layout> });
-    shared(page).shared(Duration::from_secs(3600))
+    let answer = shared(page).shared(Duration::from_secs(3600));
+    if items.is_empty() { answer.header::<XRobotsTag>(HeaderValue::from_static("noindex")) } else { answer }
 }
 
 /// The item's old address, moved for good.
@@ -888,6 +891,7 @@ mod tests {
         let (_, headers, html) = send(Request::get("/categories/promo").body(Body::empty()).unwrap()).await;
         let cache = headers["cache-control"].to_str().unwrap();
         assert!(cache.starts_with("public, max-age=60,") && cache.contains("s-maxage=3600"), "{cache}");
+        assert_eq!(headers["x-robots-tag"], "noindex", "nothing is in this category: not for search results");
         assert!(
             html.contains(r#"<script type="application/ld+json" data-corten-head>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Popular items","item":"https://cards.example.com/"},{"@type":"ListItem","position":2,"name":"Category promo","item":"https://cards.example.com/categories/promo"}]}</script>"#),
             "{html}"
@@ -946,7 +950,9 @@ mod tests {
         let other = super::app(Source::fixture(include_str!("../fixtures/demo.json")).unwrap()).router();
         let res = other.oneshot(Request::get("/items/item_1").body(Body::empty()).unwrap()).await.unwrap();
         assert!(!body(res).await.contains("cards/"), "art is the demo catalog's alone");
-        let category = body(get("/categories/tidebreak").await.unwrap()).await;
+        let category = get("/categories/tidebreak").await.unwrap();
+        assert!(!category.headers().contains_key("x-robots-tag"), "a category with cards may be listed");
+        let category = body(category).await;
         assert!(category.contains("<h1>Tidebreak</h1>") && category.contains("Salt Oracle"), "{category}");
         assert!(!category.contains("Ashen Drake"), "only the category's cards");
         let boxed = body(get("/items/item_12").await.unwrap()).await;
