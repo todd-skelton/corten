@@ -1677,9 +1677,10 @@ Corten is pre-1.0, so any minor version may change the API.
     for the runtime's smoke, the requests still loading ([#317 CI: the browser job can hang for an
     hour in the watchlist smoke, and has no timeout](https://github.com/todd-skelton/corten/issues/317)).
 55. The ui-gallery smoke failed now and then in WebKit with "due to access control checks" for
-    `/?sale=last`: WebKit logs a fetch the runtime cancelled (the next navigation replaced it)
-    that way. A request the page cancelled no longer counts as a console error; a real CORS
-    refusal fails with another reason and still does
+    `/?sale=last`: WebKit reports a request to the page's own origin that did not finish (the
+    hover prefetch, or a load the next navigation dropped) that way, as a page error, and
+    Playwright does not always report that request as failed. Such a message for the gallery's
+    own origin, which CORS never refuses, no longer fails the smoke; another origin's still does
     ([#301 ui-gallery smoke: WebKit logged a console error for /?sale=last, due to access control checks (CI, once)](https://github.com/todd-skelton/corten/issues/301)).
 56. examples/seller-desk started its sales simulation with `tokio::spawn` in `main`, so it ran on
     through shutdown and outside the app. It is the app's `task` now, started once the server
