@@ -170,8 +170,13 @@ symbol, and so is the class prefix of a component with a stylesheet and the name
 script: names are global to the app, so two features that each write a `SettingsForm` (or a
 `SettingsFormId`) fail to build, at the second one, rather than the app when it starts. Name
 them by feature (`ShippingSettingsForm`). `cargo check` does not link, so it does not see this;
-`cargo build` and `cargo test` (and `corten check`) do. A library's names (a crate with a
-script prefix) also carry its version, so two versions of one library in a program still link.
+`cargo build` and `cargo test` (and `corten check`) do, and so does a `script!` module, served
+by its name as a component's script is. The check is the declaration's, not the page's: two
+identical declarations of one component (a module declared in both `lib.rs` and `main.rs`, a
+macro that writes one component in several modules) fail too, so declare each once. A library's
+ids and scripts (a crate with a script prefix, which their names in the page carry) also carry
+its version, so two versions of one library in a program still link; its classes do not carry
+the prefix (`.card__*`), so a library's `Card` with a stylesheet and the app's clash.
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
 parameters left out). A query field is anything `Display`; an enum in an address (a tab, a sort,

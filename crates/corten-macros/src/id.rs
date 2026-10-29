@@ -59,19 +59,21 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             &[],
         ),
     ));
-    out.extend(one_per_program("two_ids_are", &name));
+    out.extend(one_per_program("two_ids_are", &name, true));
     Ok(out)
 }
 
 /// An exported symbol for a name the whole program shares (an id, a component's classes, a
 /// script's module), so a second item with the same name fails to build, in this crate or in any
 /// other linked into the program, rather than the app when it starts. The symbol says what
-/// clashed (`corten__two_ids_are__settings_form`), since the error names only the symbol. A
-/// library's (a crate with a prefix) also carries its version, so two semver-incompatible versions
-/// of one library still link together.
-pub fn one_per_program(what: &str, name: &str) -> TokenStream {
+/// clashed (`corten__two_ids_are__settings_form`), since the error names only the symbol. With
+/// `versioned`, a library's (a crate with a prefix, whose names in the page carry it) also carries
+/// its version, so two semver-incompatible versions of one library still link together; a name
+/// the page writes without the prefix (a class) is not versioned, since two versions would write
+/// the same one.
+pub fn one_per_program(what: &str, name: &str, versioned: bool) -> TokenStream {
     let mut symbol = name.to_string();
-    if crate::script::prefix().is_some() {
+    if versioned && crate::script::prefix().is_some() {
         symbol = format!("{symbol}__{}", std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
     }
     let symbol: String = symbol.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
