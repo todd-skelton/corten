@@ -1431,9 +1431,23 @@ function named(el, name) {
  */
 const submits = new Map();
 
-document.addEventListener("submit", async (event) => {
+/**
+ * A form's entries as the browser sends them in a body that is not multipart, or in a GET's
+ * query: a file is its name, and every line break in a name or value is CRLF.
+ * @param {FormData} data
+ * @returns {[string, string][]}
+ */
+const sentEntries = (data) => {
+  const crlf = (/** @type {string} */ text) => text.replace(/\r\n?|\n/g, "\r\n");
+  return Array.from(data, ([name, value]) => [crlf(name), crlf(typeof value === "string" ? value : value.name)]);
+};
+
+// On the window, so it runs after every other handler of the submit (an `on:submit` listens on
+// the document): one that cancels it stops the form, as it would without the runtime. One that
+// stops its propagation keeps it from the runtime, and the browser sends it.
+addEventListener("submit", async (event) => {
   const form = event.target;
-  if (!(form instanceof HTMLFormElement) || !formCall(form, "hasAttribute", "data-patch")) return;
+  if (event.defaultPrevented || !(form instanceof HTMLFormElement) || !formCall(form, "hasAttribute", "data-patch")) return;
   const submitter = /** @type {SubmitEvent} */ (event).submitter;
   const sends = sendsAs(form, submitter);
   // A dialog's form closes the dialog and sends nothing: the browser's to do.
@@ -1442,7 +1456,8 @@ document.addEventListener("submit", async (event) => {
   const data = new FormData(form, submitter);
   const method = sends.method.toUpperCase();
   const url = new URL(sends.action);
-  const fields = new URLSearchParams(/** @type {any} */ (data));
+  const entries = sentEntries(data);
+  const fields = new URLSearchParams(entries);
   const sent = sentState(form);
   const key = `${method} ${url.href} ${fields}`;
   const previous = submits.get(form);
@@ -1454,7 +1469,11 @@ document.addEventListener("submit", async (event) => {
   /** @type {RequestInit} */
   const init = { method, headers: { corten: "action" }, signal };
   if (method === "GET") url.search = fields.toString();
-  else init.body = sends.enctype === "multipart/form-data" ? data : fields;
+  else if (sends.enctype === "multipart/form-data") init.body = data;
+  else if (sends.enctype === "text/plain") {
+    init.body = entries.map(([name, value]) => `${name}=${value}\r\n`).join("");
+    init.headers = { corten: "action", "content-type": "text/plain" };
+  } else init.body = fields;
   formCall(form, "setAttribute", "aria-busy", "true");
   // A write can change any page, so nothing fetched before it is reused.
   if (method !== "GET") {

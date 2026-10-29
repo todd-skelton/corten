@@ -1562,6 +1562,11 @@ Corten is pre-1.0, so any minor version may change the API.
     the form's result and the menu's result were `display: none` until a message came, so the
     message was often not announced. The toast's box is drawn only while there is a message, and
     its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
+50. A `data-patch` form whose submit an `on:submit` handler cancelled was sent anyway: the runtime
+    sent it before the page's handlers ran ([#199 A data-patch form still sends when an on:submit handler cancels the submit event](https://github.com/todd-skelton/corten/issues/199)).
+51. A `data-patch` form's body is the browser's: a file field is the file's name (it was
+    `[object File]`, so a second file looked like a double click), line breaks are CRLF, and a
+    `text/plain` form is sent as text, not urlencoded ([#200 A data-patch form's urlencoded body differs from the browser's: a file is [object File], line breaks are not CRLF, and text/plain is sent urlencoded](https://github.com/todd-skelton/corten/issues/200)). `corten.js` grows 127 bytes gzip.
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

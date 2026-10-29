@@ -1619,6 +1619,39 @@ async function run(browser) {
     return !d.open && d.returnValue === "ok";
   });
   check("a data-patch form in a dialog closes it and sends nothing", dialog === "nothing sent" && closed, `${dialog} closed=${closed}`);
+  // A handler that cancels the submit stops a data-patch form, as it stops any form (#199). It
+  // listens on the document after the runtime loaded, where the page's on:submit handlers listen.
+  const canceled = await firstSent(
+    '<form id="patch-cancel" method="post" action="/watch" data-patch><input type="hidden" name="id" value="ACME"><button>Go</button></form>',
+    async () => {
+      await forms.evaluate(() => document.addEventListener("submit", (event) => /** @type {Element} */ (event.target).id === "patch-cancel" && event.preventDefault()));
+      await forms.click("#patch-cancel button");
+    },
+    1500,
+  );
+  check("a data-patch form whose submit a handler cancels sends nothing", canceled === "nothing sent", canceled);
+  // A data-patch form's body is the browser's (#200): a file is its name, a line break is CRLF.
+  const encoded = await firstSent(
+    '<form id="patch-encoded" method="post" action="/watch" data-patch><textarea name="note">a\nb</textarea><input type="file" name="doc"><button>Go</button></form>',
+    async () => {
+      await forms.setInputFiles("#patch-encoded input[type=file]", { name: "list.txt", mimeType: "text/plain", buffer: Buffer.from("ACME") });
+      await forms.click("#patch-encoded button");
+    },
+  );
+  check("a data-patch form sends a file's name and CRLF line breaks", encoded === "POST /watch note=a%0D%0Ab&doc=list.txt (runtime)", encoded);
+  // text/plain is sent as text/plain: each entry on its own line, nothing escaped.
+  await forms.goto(`${base}/news`);
+  await forms.evaluate(() =>
+    document
+      .querySelector("main")
+      ?.insertAdjacentHTML("beforeend", '<form id="patch-plain" method="post" action="/watch" enctype="text/plain" data-patch><input type="hidden" name="id" value="ACME"><input type="hidden" name="n" value="a b&c"><button>Go</button></form>'),
+  );
+  const plainSent = forms.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/watch", { timeout: 5000 }).catch(() => null);
+  await forms.click("#patch-plain button");
+  const plain = await plainSent;
+  const plainBody = plain?.postData() ?? "";
+  const plainType = plain?.headers()["content-type"] ?? "";
+  check("a text/plain data-patch form sends text/plain", plainBody === "id=ACME\r\nn=a b&c\r\n" && plainType === "text/plain", `${JSON.stringify(plainBody)} ${plainType}`);
   if (engine !== "webkit" && (await forms.evaluate(() => "navigation" in window))) {
     // A submit input outside its form (form=), and a form sent with no button.
     const outside = await firstSent(
