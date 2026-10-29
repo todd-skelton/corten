@@ -65,6 +65,14 @@ struct File {
     hash: u64,
 }
 
+/// A script module's tag in a page's head.
+struct ModuleTag {
+    name: Box<str>,
+    tag: Box<str>,
+    /// It imports the typed events, so a page that loads it preloads them.
+    imports_events: bool,
+}
+
 /// A directory of static files served under a versioned prefix. Load it once, at startup.
 pub struct Assets {
     mount: String,
@@ -79,7 +87,7 @@ pub struct Assets {
     registered: std::collections::HashSet<String>,
     /// Each script module's tag in a page's head, sorted by name: a `<script type="module">` for a
     /// registered module, else a `<link rel="modulepreload">`. Made here so a page only looks it up.
-    module_tags: Box<[(Box<str>, Box<str>, bool)]>,
+    module_tags: Box<[ModuleTag]>,
     /// The views' module preload tag, when the app lists any `#[component(view)]`.
     views_tag: Option<Box<str>>,
     /// The typed events' module preload tag, when a listed script imports any `#[event]`.
@@ -318,7 +326,7 @@ impl Assets {
         let stylesheet = files.contains_key(STYLESHEET).then(|| format!("{prefix}{STYLESHEET}"));
         let sections = section_files.into_iter().map(|s| Section { href: format!("{prefix}{}", s.href), ..s }).collect();
         let scripts_dir = format!("{prefix}scripts/");
-        let mut module_tags: Vec<(Box<str>, Box<str>, bool)> = scripts
+        let mut module_tags: Vec<ModuleTag> = scripts
             .iter()
             .map(|name: &String| {
                 let tag = if registered.contains(name) {
@@ -326,10 +334,10 @@ impl Assets {
                 } else {
                     format!(r#"<link rel="modulepreload" href="{scripts_dir}{name}.js">"#)
                 };
-                (name.as_str().into(), tag.into(), imports_events.contains(name))
+                ModuleTag { name: name.as_str().into(), tag: tag.into(), imports_events: imports_events.contains(name) }
             })
             .collect();
-        module_tags.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        module_tags.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         let views_tag = files.contains_key(VIEWS).then(|| format!(r#"<link rel="modulepreload" href="{prefix}{VIEWS}">"#).into());
         let events_tag =
             files.contains_key(EVENTS).then(|| format!(r#"<link rel="modulepreload" href="{prefix}{EVENTS}">"#).into());
@@ -405,9 +413,9 @@ impl Assets {
 
     /// The tag that loads the script module `name`, and whether it imports the typed events.
     pub(crate) fn module(&self, name: &str) -> Option<(&str, bool)> {
-        let at = self.module_tags.binary_search_by(|(n, _, _)| (**n).cmp(name)).ok()?;
-        let (_, tag, events) = &self.module_tags[at];
-        Some((tag, *events))
+        let at = self.module_tags.binary_search_by(|m| (*m.name).cmp(name)).ok()?;
+        let module = &self.module_tags[at];
+        Some((&module.tag, module.imports_events))
     }
 
     /// The typed events' module preload tag, when a listed script imports any `#[event]`.
