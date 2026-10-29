@@ -1,6 +1,10 @@
-use corten::prelude::*;
+use corten::{i18n::Minor, prelude::*};
 
-use crate::{items, model::ItemView, text::Msg};
+use crate::{
+    items,
+    model::ItemView,
+    text::{Msg, USD},
+};
 
 /// An item in a list (the home page, a category): its picture, its name, its set and the lowest
 /// price, as one link to its page. The picture is a versioned static file, sized so the grid does
@@ -15,9 +19,10 @@ pub fn ItemCard<'a>(req: &'a Req, t: Msg, item: &'a ItemView, eager: bool) -> im
             }
             <strong>{item.title}</strong>
             if let Some(subtitle) = &item.subtitle { <span class={Set}>{subtitle}</span> }
-            match item.summary.as_ref().and_then(|s| s.lowest.as_deref()) {
-                Some(lowest) => <span class={From}>{t.card_from(lowest)}</span>,
-                None => <span class={From}>{t.item_no_listings()}</span>,
+            match item.summary.as_ref().map(|s| (s.lowest_cents, s.lowest.as_deref())) {
+                Some((Some(cents), _)) => <span class={From}>{t.card_from(t.money(Minor(cents), USD))}</span>,
+                Some((None, Some(sent))) => <span class={From}>{t.card_from(sent)}</span>,
+                _ => <span class={From}>{t.item_no_listings()}</span>,
             }
         </a>
     }

@@ -1,7 +1,10 @@
 use corten::prelude::*;
 
 use super::Price;
-use crate::{model::Offer, text::Msg};
+use crate::{
+    model::Offer,
+    text::{self, Msg},
+};
 
 /// Offers shown before "Show all".
 const OFFERS_SHOWN: usize = 5;
@@ -24,10 +27,10 @@ pub fn OfferList<'a>(t: Msg, offers: &'a [Offer]) -> impl Render {
                         <th>{t.table_price()}</th>
                     </tr>
                 </thead>
-                <tbody ref={rows}>for o in first { <OfferRow o={o} /> }</tbody>
+                <tbody ref={rows}>for o in first { <OfferRow t={t} o={o} /> }</tbody>
             </table>
             if !more.is_empty() {
-                <template ref={rest}>for o in more { <OfferRow o={o} /> }</template>
+                <template ref={rest}>for o in more { <OfferRow t={t} o={o} /> }</template>
                 <button type="button" on:click={js::showAll(rows, rest, target)}>
                     {t.item_show_all_offers(offers.len())}
                 </button>
@@ -37,13 +40,13 @@ pub fn OfferList<'a>(t: Msg, offers: &'a [Offer]) -> impl Render {
 }
 
 #[component]
-fn OfferRow(o: &Offer) -> impl Render {
+fn OfferRow(t: Msg, o: &Offer) -> impl Render {
     html! {
         <tr>
             <td>{o.buyer}</td>
-            <td>{o.condition}</td>
+            <td>{text::condition(t, o.grade, &o.condition)}</td>
             <td>{o.quantity}</td>
-            <Price amount={&o.price} />
+            <Price t={t} cents={o.cents} sent={&o.price} />
         </tr>
     }
 }
