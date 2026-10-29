@@ -77,6 +77,13 @@ async function run(browser) {
   const page = await (await browser.newContext()).newPage();
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  // Requests the page cancelled itself (the runtime's fetch of a page the next navigation
+  // replaced). WebKit can log one as "/localhost:18482/?sale=last due to access control checks"
+  // (the URL without its scheme), which is not an error the page made (#301); a real CORS
+  // refusal fails with another reason and is still counted.
+  /** @type {Set<string>} */
+  const cancelled = new Set();
+  page.on("requestfailed", (r) => /cancel/i.test(r.failure()?.errorText ?? "") && cancelled.add(r.url()));
   page.on("pageerror", (e) => errors.push(e.message));
   /** @type {string[]} */
   const failed = [];
@@ -565,7 +572,7 @@ async function run(browser) {
   await lacking.context().close();
 
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
-  const unexpected = errors.filter((e) => !/status of 422/.test(e));
+  const unexpected = errors.filter((e) => !/status of 422/.test(e) && !(/due to access control checks/.test(e) && [...cancelled].some((url) => e.includes(url.slice(url.indexOf("//") + 1)))));
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
   // Without JavaScript

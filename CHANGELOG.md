@@ -1640,6 +1640,11 @@ Corten is pre-1.0, so any minor version may change the API.
     top of the document. Focus now goes to the nearest element around it that is still on the
     page, focusable only for the move; so does focus on an element patched into one that cannot
     take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
+54. The ui-gallery smoke failed now and then in WebKit with "due to access control checks" for
+    `/?sale=last`: WebKit logs a fetch the runtime cancelled (the next navigation replaced it)
+    that way. A request the page cancelled no longer counts as a console error; a real CORS
+    refusal fails with another reason and still does
+    ([#301 ui-gallery smoke: WebKit logged a console error for /?sale=last, due to access control checks (CI, once)](https://github.com/todd-skelton/corten/issues/301)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
