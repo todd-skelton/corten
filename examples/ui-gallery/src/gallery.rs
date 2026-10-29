@@ -46,7 +46,8 @@ pub fn Gallery<'a>(
         required: true,
         ..Number::new("qty", f.qty, "Fewer", "More")
     };
-    let price = Number { value: Some(12.5), min: Some(0.0), step: 0.01, ..Number::new("price", f.price, "Lower", "Higher") };
+    // A measure with decimals; the price is money, a text input read by `t.parse_money`.
+    let weight = Number { value: Some(0.5), min: Some(0.1), step: 0.1, ..Number::new("weight", f.weight, "Lighter", "Heavier") };
     let condition = Picker {
         required: true,
         ..Picker::new("condition", f.condition, "Choose a condition", "No matching condition", &CONDITIONS)
@@ -68,9 +69,12 @@ pub fn Gallery<'a>(
                 <h2>"List for sale"</h2>
                 <form class={Order} method="post" action={url::Sell} data-patch>
                     <Field id="qty" label="Quantity"><NumberField field={&qty} /></Field>
-                    <Field id="price" label="Price">
-                        <span class={Currency}>"$"</span>
-                        <NumberField field={&price} />
+                    <Field id="price" label="Price (USD)">
+                        <input id="price" name={f.price} inputmode="decimal" value="12.50" required>
+                    </Field>
+                    <Field id="weight" label="Shipping weight">
+                        <span class={Unit}>"oz"</span>
+                        <NumberField field={&weight} />
                     </Field>
                     <Field id="condition" label="Condition"><ComboBox field={&condition} /></Field>
                     <CheckboxGroup legend="Ships to" missing={NO_REGION}>
@@ -87,7 +91,7 @@ pub fn Gallery<'a>(
                     <RequiredWhen control={f.pricing} values={&[OFFERS]}>
                         <div class={Floor}>
                             <Field id="floor" label="Lowest offer">
-                                <input id="floor" type="number" name={f.floor} min="0" step="0.01">
+                                <input id="floor" name={f.floor} inputmode="decimal">
                             </Field>
                         </div>
                     </RequiredWhen>

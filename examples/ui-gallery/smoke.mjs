@@ -141,8 +141,8 @@ async function run(browser) {
   check("release stops the repeat", Number(await qty.inputValue()) === held);
   check("the button kept focus where it was", await page.evaluate(() => document.activeElement?.id === "qty"));
   await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).click();
-  check("a step keeps the step's decimals", (await page.locator("#price").inputValue()) === "12.51", await page.locator("#price").inputValue());
-  // Each field keeps its own state (keep()): while the quantity's button is held, the price's
+  check("a step keeps the step's decimals", (await page.locator("#weight").inputValue()) === "0.6", await page.locator("#weight").inputValue());
+  // Each field keeps its own state (keep()): while the quantity's button is held, the weight's
   // button still steps from the keyboard. Sharing one, the held pointer would make it skip.
   await qty.focus();
   await page.keyboard.press("Home");
@@ -151,13 +151,13 @@ async function run(browser) {
   await page.mouse.down();
   const holding = Number(await qty.inputValue());
   await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
-  const own = await page.locator("#price").inputValue();
+  const own = await page.locator("#weight").inputValue();
   await page.mouse.up();
-  // The quantity stepped on the press, so its pointer was held while the price stepped.
-  check("each field keeps its own state", holding > before && own === "12.52", `quantity ${before} -> ${holding}, price ${own}`);
+  // The quantity stepped on the press, so its pointer was held while the weight stepped.
+  check("each field keeps its own state", holding > before && own === "0.7", `quantity ${before} -> ${holding}, weight ${own}`);
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
-    const field = /** @type {Element} */ (document.querySelector("#price")?.closest("[data-scope=ui-number-field]")?.parentElement);
+    const field = /** @type {Element} */ (document.querySelector("#weight")?.closest("[data-scope=ui-number-field]")?.parentElement);
     return Array.from(field.querySelectorAll("button, span, input"), (el) => [el.localName, Math.round(el.getBoundingClientRect().x)])
       .sort((a, b) => Number(a[1]) - Number(b[1]))
       .map((p) => p[0])
@@ -213,7 +213,7 @@ async function run(browser) {
   await qty.fill("3");
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed"));
-  check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.52 each.", await page.textContent("#result"));
+  check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.50 each.", await page.textContent("#result"));
 
   // CheckboxGroup: no region checked stops the form at the group's first box.
   const lastResult = await page.textContent("#result");
@@ -240,7 +240,7 @@ async function run(browser) {
   await qty.fill("2");
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed 2"), null, { timeout: 5000 }).catch(() => {});
-  check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.52 each.", await page.textContent("#result"));
+  check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.50 each.", await page.textContent("#result"));
   await page.getByLabel("Pricing").selectOption("fixed");
   check("back to a fixed price, the lowest offer is disabled again", await floor.isDisabled());
   // A reset puts the boxes back as drawn ("United States" checked), and the group is checked again.

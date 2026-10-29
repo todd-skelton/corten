@@ -1743,9 +1743,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
     permission from the path. A test holds two modules' callers apart in one area
     ([#273 A page under an area cannot take its own caller, so a nested form that needs another permission checks it by path or by hand](https://github.com/todd-skelton/corten/issues/273)).
-26. `corten_ui::NumberField` says it is for counts (a quantity, seats), and the UI guide says a price
-    is a text input with `inputmode="decimal"` read by `t.parse_money`: a number input takes only
-    the browser's decimal syntax and holds a float
+26. `corten_ui::NumberField` says it is for counts and measures (a quantity, a weight), not
+    money, and the UI guide says a price is a text input with `inputmode="decimal"` read by
+    `t.parse_money`: a number input takes only the browser's decimal syntax, and its value is an
+    `f64`. ui-gallery's price and lowest offer are such inputs now, read as money, and its second
+    number field is the shipping weight
     ([#286 corten-ui's NumberField cannot show back a refused entry or take a price in the reader's locale](https://github.com/todd-skelton/corten/issues/286)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
