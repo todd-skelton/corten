@@ -4,10 +4,13 @@
 .chips { list-style: none; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
 .chips li { border: 1px solid var(--color-line); color: var(--color-muted); border-radius: var(--radius-pill); padding: 2px 10px; font-size: var(--font-size-sm); background: var(--color-surface); }
 .gallery { display: flex; gap: var(--space-3); margin: var(--space-4) 0; overflow-x: auto; }
-/* On a wide screen the picture is the left column, beside the title and, under it, the price. */
+/* On a wide screen the picture is the left column, beside the title and, under it, the price.
+   The column is as wide as the pictures, at most two (`ItemView::images`); an item with none
+   has no gallery, so the text takes the whole width. */
 @media (min-width: 56rem) {
-  .top { display: grid; grid-template-columns: fit-content(50%) minmax(0, 1fr); grid-template-rows: auto 1fr; grid-template-areas: "art intro" "art summary"; column-gap: var(--space-6); align-items: start; margin-bottom: var(--space-4); }
+  .top { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; grid-template-areas: "art intro" "art summary"; column-gap: var(--space-6); align-items: start; margin-bottom: var(--space-4); }
   .top > .intro { grid-area: intro; }
+  .top:not(:has(> .gallery)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "summary"; }
   .top > .gallery { grid-area: art; margin: 0; }
   .top > .summary { grid-area: summary; margin: var(--space-4) 0 0; }
   .intro h1 { margin-top: var(--space-2); }

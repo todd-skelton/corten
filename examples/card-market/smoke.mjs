@@ -52,13 +52,27 @@ try {
     return {
       accent: getComputedStyle(root).getPropertyValue("--color-accent").trim(),
       price: css("[data-scope=listing-sort] tbody td:last-child").fontVariantNumeric,
-      summary: css("article > section").flexDirection,
+      summary: css("article > div > section").columnGap,
       themes: [light, dark],
     };
   });
   check("design tokens are custom properties", styles.accent === "#6b3fd4", styles.accent);
   check("a component's scoped stylesheet applies", styles.price === "tabular-nums", styles.price);
-  check("a responsive utility applies at this width", styles.summary === "row", styles.summary);
+  check("a responsive utility applies at this width", /^\d+px$/.test(styles.summary), styles.summary);
+  // The item page's top: on a desktop the picture beside the title and the price; on a phone one
+  // column, title, picture, price.
+  const top = () =>
+    page.evaluate(() => {
+      const box = (/** @type {string} */ s) => /** @type {Element} */ (document.querySelector(s)).getBoundingClientRect();
+      const [title, gallery, price] = [box("article h1"), box("article > div > div:nth-child(2)"), box("article > div > section")];
+      return { beside: gallery.right <= title.left && gallery.right <= price.left && price.top < gallery.bottom, stacked: title.bottom <= gallery.top && gallery.bottom <= price.top };
+    });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const wide = await top();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phone = await top();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  check("the item's picture sits beside its title and price on a desktop, above the price on a phone", wide.beside && phone.stacked, JSON.stringify({ wide, phone }));
   check("a theme overrides tokens", styles.themes[0] === "#1d1b26" && styles.themes[1] === "#ecebf2", styles.themes.join(" "));
 
   const firstPrice = () => page.textContent("[data-scope=listing-sort] tbody tr:first-child td:last-child");

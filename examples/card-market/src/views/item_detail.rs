@@ -65,15 +65,18 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
                     if let Some(subtitle) = &item.subtitle { <p class={Subtitle}>{subtitle}</p> }
                     <ul class={Chips}>for badge in &item.badges { <li>{badge}</li> }</ul>
                 </div>
-                <div class={Gallery}>
-                    for (i, url) in item.images.iter().enumerate() {
-                        <div class={Image} role="img" aria-label={t.item_image(&item.title, i + 1)} data-src={url}></div>
-                    }
-                    // The page's main picture: sized, and not deferred.
-                    if let Some(src) = &page.art {
-                        <img class={Art} src={src} width="220" height="308" alt={t.item_art(&item.title)}>
-                    }
-                </div>
+                // An item with no picture has no gallery, and its text takes the width.
+                if !item.images.is_empty() || page.art.is_some() {
+                    <div class={Gallery}>
+                        for (i, url) in item.images.iter().enumerate() {
+                            <div class={Image} role="img" aria-label={t.item_image(&item.title, i + 1)} data-src={url}></div>
+                        }
+                        // The page's main picture: sized, and not deferred.
+                        if let Some(src) = &page.art {
+                            <img class={Art} src={src} width="220" height="308" alt={t.item_art(&item.title)}>
+                        }
+                    </div>
+                }
                 <section class={summary}>
                     match &item.summary {
                         Some(s) => {
