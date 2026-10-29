@@ -193,6 +193,23 @@ variant as the word serde reads (`#[serde(rename_all = "kebab-case")]`: `Awaitin
 without arguments is a `&'static str`, one with arguments writes its pieces into the page,
 escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
 
+### Text: literals or the catalog
+
+An app chooses once, by how many locales it has:
+
+1. **One locale.** Fixed text is a literal in the view (`<h1>"Statement"</h1>`). The catalog
+   holds only what a literal cannot be: a count with its plural (`grid.items_one`,
+   `grid.items_other`), text with arguments, and text a script fills in
+   (`t.js().prices_updates()`). Numbers, money and dates still go through `t`, which writes them
+   for the locale.
+2. **More than one locale.** Every word a reader sees goes through the catalog, so a locale that
+   lacks one does not compile. A name that is the same in every language (the store's) may stay
+   a literal.
+
+Moving from the first to the second is mechanical: each literal becomes a key. card-market is
+the second kind (English and French); watchlist, seller-desk, ui-gallery and listings-feed are
+the first.
+
 A message the page cannot name in its source, because another service answers with its key
 (`{"titleKey": "queue.item.title", "titleParams": {..}}`), is `t.by_key(key, &args)`: the
 message with that catalog key (dotted, as in the JSON) in the request's locale, its arguments

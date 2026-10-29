@@ -1840,6 +1840,10 @@ Corten is pre-1.0, so any minor version may change the API.
     checks a price, a rating and a condition in French
     ([#323 card-market in French translates its headings but not its prices, ratings or card details](https://github.com/todd-skelton/corten/issues/323),
     [#329 card-market sorts listings by a data-price string instead of through the rows' views](https://github.com/todd-skelton/corten/issues/329)).
+68. `messages!` with an empty catalog (`{}`, an app that uses `t` only for the locale's formats:
+    numbers, money, dates and relative times) failed to compile under `#![deny(warnings)]`: its `by_key` had a `match` whose only arm
+    returned, so the line after it was unreachable. A doctest compiles an empty catalog with
+    warnings denied.
 
 ### Documentation
 
@@ -2000,14 +2004,21 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten-target-<folder>`, `corten-msrv-target-<folder>`) instead of one `corten-target` for
     every checkout, where cargo could take one checkout's build for another's and fail to compile
     code that was fine.
-30. Every prop is written where a component is used, an empty one too (`head=""`). The views guide
+30. The views guide (Text: literals or the catalog) and the design rules say when text is a
+    literal and when it goes through the catalog: an app with one locale writes fixed text as
+    literals and keeps in its catalog only counts, text with arguments and text a script fills;
+    an app with more than one locale writes all of it through the catalog. seller-desk's
+    statement, ui-gallery's activity card and listings-feed's move status, which were the only
+    fixed text those one-locale apps put in their catalogs, are literals now
+    ([#218 Examples write user-facing text two ways: watchlist has a catalog but writes most text as literals](https://github.com/todd-skelton/corten/issues/218)).
+31. Every prop is written where a component is used, an empty one too (`head=""`). The views guide
     says why: stable Rust cannot leave a field to a default, and filling a left-out `impl Render`
     prop would fix its type. It also shows how several answers share one component's props, with
     a function for the common value and `..` for the rest. A `compile_fail` doctest on
     `#[component]` covers a left-out prop. ui-gallery's five answers build their `Gallery` that
     way, where each wrote all six props
     ([#210 A component prop cannot be left out, so pages pass head="" and other empty values](https://github.com/todd-skelton/corten/issues/210)).
-31. The views guide says how a layout gets who is signed in: as a prop from the `Caller` its
+32. The views guide says how a layout gets who is signed in: as a prop from the `Caller` its
     handler took, not by reading the request. Rendering is synchronous and `Identify` is async, so
     the alternative needs a second async step before full-page renders, with its own rules for a
     failed lookup, caching and the page key
