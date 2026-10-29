@@ -21,6 +21,14 @@ render of the same call site.
 component renders inside a page and on its own as a patch, and the two cannot drift. A view owns
 what it captures and renders once, so it can be returned from a function.
 
+Every prop is written where the component is used, an empty one too: `head=""` for a page that
+adds no head tags, `toast={None}` for no toast. A prop left out does not compile, so the markup
+always says what the component gets. Rust has no stable way to leave a struct field to a default
+(default field values are unstable), and filling a left-out `impl Render` prop would fix its type
+for every caller. When several answers build one component with most props the same, a function
+gives the common value and each answer changes its part:
+`Gallery { toast: Some(SAVED), ..listings(&req, &none) }`.
+
 ## The document
 
 A page is a whole HTML document, built from components like everything else: the app's layout
@@ -81,6 +89,15 @@ their head tags); a page that needs a different document uses another layout. Ea
 layout to a page in another loads it in full, with no `data-reload`. A prop that changes the
 layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
 second layout.
+
+Who is signed in reaches the layout the same way as everything else, as a prop the handler
+passes: `viewer={viewer.as_deref()}` from the `Option<Caller<Viewer>>` it took. A layout does not
+read the request itself. Rendering is synchronous and `Identify` is not (a session store, a
+token check), so a layout could not look the viewer up while it renders. Corten would have to
+identify everyone before every render, including the patches and data reads that never draw the
+header. In the handler the lookup runs once, only on the routes that ask for it, and the type says
+which pages show a viewer. A page with more than one call site keeps the viewer in its own
+function's parameters (`fn alerts_page(req: &Req, viewer: Option<&Viewer>, ..)`), as watchlist does.
 
 A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
 `href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
