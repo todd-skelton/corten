@@ -603,14 +603,15 @@ async function run(browser) {
   await lacking.context().close();
 
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be. WebKit also
-  // logs a request of the gallery's own origin that the page stopped (the runtime's fetch of a
-  // page the next navigation replaced) as "/localhost:18482/?sale=last due to access control
-  // checks", the URL without its scheme (#301). A request to its own origin is never refused by
-  // CORS, so only another origin's still counts.
-  const own = `/${new URL(base).host}/`;
+  // reports a request to the gallery's own origin that did not finish (the hover prefetch of
+  // /?sale=last, or a load the next navigation dropped) as a fetch that "cannot load
+  // http://localhost:18482/?sale=last due to access control checks"; Playwright splits that page
+  // error at its first colon, so the text here starts "/localhost:18482/?sale=last" (#301). A
+  // request to its own origin is never refused by CORS, so only another origin's still counts.
+  const ownOrigin = `/${new URL(base).host}/`;
   const unexpected = errors.filter((e) => {
     const refused = /(\S+) due to access control checks/.exec(e)?.[1];
-    return !/status of 422/.test(e) && !refused?.startsWith(own);
+    return !/status of 422/.test(e) && !refused?.startsWith(ownOrigin);
   });
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
