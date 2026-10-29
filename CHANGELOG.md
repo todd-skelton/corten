@@ -1726,7 +1726,12 @@ Corten is pre-1.0, so any minor version may change the API.
     (WebKit bug 327212); in that WebKit the smokes set that line aside and report every other CSP
     violation from the page's `securitypolicyviolation` events instead (`scripts/browser-bugs.mjs`)
     ([#350 CI's Firefox stalls after the early form check, closing a page whose route is still registered](https://github.com/todd-skelton/corten/issues/350)).
-63. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
+63. A nav link a patch put on the page kept the `aria-current` the server wrote, judged against
+    the request that made the patch (a form's action, a `ReadAgain`'s `data-from`) rather than
+    the page. The runtime now marks nav links after a patch that puts one on the page or removes
+    one, as after a navigation; a patch without one (a ticker's) only looks through the elements it
+    put. `corten.js` grows 65 bytes gzip ([#347 A nav link a patch puts on the page keeps the mark the server judged against the form's action, not the page](https://github.com/todd-skelton/corten/issues/347)).
+64. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
     back empty: `Params` read a set with serde's derive, which knows nothing of the prefix. A set
     is now read field by field the way a route reads its own, so a list it leaves out is empty
     (it was a 400 without `#[serde(default)]`), the set's own `#[serde(default)]` fills what the
