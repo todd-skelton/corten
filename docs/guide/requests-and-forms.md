@@ -519,6 +519,20 @@ req.page(html! {
 
 `examples/watchlist`'s alerts page has all three.
 
+A page whose changing part a `<corten-live>` relays ([live data](live-data.md)) already keeps
+itself fresh with JavaScript; reading it whole would replace the `<corten-live>` and open its
+stream again. While the job the stream follows runs, it asks a browser without JavaScript only:
+
+```rust,ignore
+let again = job.running.then_some(ReadAgain { after: Duration::from_secs(2) }.without_javascript());
+```
+
+With JavaScript the `<corten-live>` alone keeps the page fresh, so its stream should send the
+job's last state before it ends: when a stream ends, the element stays as its last fragment drew
+it, and nothing reads the page again. Only a stream that follows the job counts: a page whose
+`<corten-live>` relays something else (a price ticker) while it waits for a write keeps plain
+`ReadAgain`.
+
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
 the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
 page that sends one.
