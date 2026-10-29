@@ -506,6 +506,13 @@ impl Assets {
         self.files.contains_key(path).then_some(AssetUrl { prefix: &self.prefix, path })
     }
 
+    /// The URL for `path` (relative to the directory, like `style.css`), which must be there.
+    #[cfg(test)]
+    pub(crate) fn url(&self, path: &str) -> String {
+        assert!(self.files.contains_key(path), "no static file {path:?}");
+        format!("{}{path}", self.prefix)
+    }
+
     /// True when the directory has `path` (relative, like `style.css`).
     pub fn contains(&self, path: &str) -> bool {
         self.files.contains_key(path)
