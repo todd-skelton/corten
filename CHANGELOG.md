@@ -1405,6 +1405,17 @@ Corten is pre-1.0, so any minor version may change the API.
     directory does not serve (none given, or another app's) is still a startup panic, now in
     release builds too
     ([#297 The PWA names its icons and worker script by path, so a misspelled file is a startup panic, not a compile error](https://github.com/todd-skelton/corten/issues/297)).
+76. examples/listings-feed is a seller's page, not only a load harness: `/sellers/{seller}` draws
+    the first 500 listings in a table (`ListingTable`, rows from a `#[component(view)]`, prices
+    in the page's money format) from the feed's read, and one `subscribe()` keeps the counts and
+    the rows current as changes arrive from any instance. A form posts a market move
+    (`POST /sellers/{seller}/market`, the submit key its idempotency key) and patches its result
+    in place; without JavaScript it redirects to the page with the write's sequence
+    (`?after=`), which asks to be read again until its instance has the write. The `Listing`
+    type the script reads is generated (`types/app.d.ts`); the outputs `bench/run.mjs` reads
+    keep their names. `examples/listings-feed/smoke.mjs` checks the page in a browser against
+    Postgres and NATS, in CI too
+    ([#334 listings-feed is a benchmark harness listed as an example](https://github.com/todd-skelton/corten/issues/334)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
