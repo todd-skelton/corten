@@ -1257,6 +1257,116 @@ async fn an_area_or_an_api_sets_its_own_deadline() {
     assert_eq!(status("/api/slow").await, StatusCode::OK, "None removes it for the API");
 }
 
+/// Writes its name into `x-steps` on the way in, so a test reads the order middleware ran in;
+/// with `refuse`, a request with `x-flood` is turned away with a 429.
+struct Step(&'static str, bool);
+
+impl crate::Middleware for Step {
+    async fn call(&self, mut req: Request<Body>, next: impl crate::Next) -> axum::response::Response {
+        use axum::response::IntoResponse;
+        let steps = req.headers().get("x-steps").map(|v| format!("{} {}", v.to_str().unwrap(), self.0));
+        let steps = steps.unwrap_or_else(|| self.0.to_string());
+        req.headers_mut().insert("x-steps", steps.parse().unwrap());
+        if self.1 && req.headers().contains_key("x-flood") {
+            return crate::Refused::too_many(Duration::from_millis(7_500)).into_response();
+        }
+        next.run(req).await
+    }
+}
+
+/// An area's or an API's middleware runs for its own routes only (and a nested area's), after
+/// the app's, outermost first and each in the order given; a refusal from one is answered in the
+/// request's mode, as a caller's is.
+#[tokio::test]
+async fn an_area_or_an_api_has_middleware_of_its_own() {
+    let steps = || {
+        crate::Methods::reads(get(|headers: axum::http::HeaderMap| async move {
+            headers.get("x-steps").map_or(String::new(), |v| v.to_str().unwrap().to_string())
+        }))
+    };
+    let router = App::new(Routes::from(Router::new().route("/slow", steps().0)))
+        .error_page(test_error_page, ())
+        .middleware(Step("app", false))
+        .area::<AdminQuick>(|quick| quick.route::<AdminQuickSlow>(steps()).middleware(Step("quick", false)))
+        .area::<Admin>(|admin| {
+            admin
+                .middleware((Step("admin", false), Step("limit", true)))
+                .route::<AdminSlow>(steps())
+                .middleware(Step("last", false))
+        })
+        .area::<AdminOther>(|other| other.route::<AdminOtherSlow>(steps()))
+        .api::<ApiRoot>(|api| api.route::<ApiSlow>(steps()).middleware(Step("api", true)))
+        .router();
+    let body = |uri| {
+        let router = router.clone();
+        async move { call_with(router, "GET", uri, None, Some("text/html")).await.2 }
+    };
+    assert_eq!(body("/slow").await, "app", "a route outside every area meets the app's only");
+    assert_eq!(
+        body("/admin/slow").await,
+        "app admin limit last",
+        "the area's, in the order given, given before or after its routes"
+    );
+    assert_eq!(body("/admin/quick/slow").await, "app admin limit last quick", "an outer area's, then the inner one's");
+    assert_eq!(body("/admin/other/slow").await, "app admin limit last", "a nested area without any has its parent's");
+    assert_eq!(body("/api/slow").await, "app api");
+    assert!(body("/admin/nope").await.contains("Not found"), "an unknown URL under the area is the app's 404");
+
+    let flood = |uri: &'static str, accept: &'static str| {
+        let router = router.clone();
+        async move {
+            let req = Request::get(uri).header("accept", accept).header("x-flood", "1").body(Body::empty()).unwrap();
+            let (parts, body) = router.oneshot(req).await.unwrap().into_parts();
+            (parts.status, parts.headers, String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap())
+        }
+    };
+    let (status, headers, body) = flood("/admin/slow", "text/html").await;
+    assert_eq!(
+        (status, &headers["retry-after"]),
+        (StatusCode::TOO_MANY_REQUESTS, &"8".parse::<axum::http::HeaderValue>().unwrap())
+    );
+    assert!(headers["content-type"].to_str().unwrap().starts_with("text/html"), "a browser gets the error page: {headers:?}");
+    let (status, headers, body2) = flood("/api/slow", "text/html").await;
+    assert_eq!(
+        (status, &headers["retry-after"]),
+        (StatusCode::TOO_MANY_REQUESTS, &"8".parse::<axum::http::HeaderValue>().unwrap())
+    );
+    assert_eq!(body2, r#"{"error":{"status":429,"message":"Too Many Requests"}}"#, "JSON under an API");
+    let (status, _, _) = flood("/slow", "text/html").await;
+    assert_eq!(status, StatusCode::OK, "the app's other routes never meet the limit");
+    assert!(!body.is_empty());
+}
+
+/// A middleware reads the client's address as a handler would, and the answer is then private.
+#[tokio::test]
+async fn a_middleware_reads_the_client_address() {
+    struct Seen;
+    impl crate::Middleware for Seen {
+        async fn call(&self, mut req: Request<Body>, next: impl crate::Next) -> axum::response::Response {
+            let ip = crate::ClientIp::of(&mut req).map_or("none".to_string(), |crate::ClientIp(ip)| ip.to_string());
+            req.headers_mut().insert("x-ip", ip.parse().unwrap());
+            next.run(req).await
+        }
+    }
+    let routes = Router::new().route(
+        "/",
+        get(|headers: axum::http::HeaderMap, ip: Option<crate::ClientIp>| async move {
+            format!(
+                "{} {}",
+                headers["x-ip"].to_str().unwrap(),
+                ip.map_or("none".to_string(), |crate::ClientIp(ip)| ip.to_string())
+            )
+        }),
+    );
+    let router = App::new(Routes::from(routes))
+        .middleware(Seen)
+        .router()
+        .layer(axum::extract::connect_info::MockConnectInfo(std::net::SocketAddr::from(([203, 0, 113, 8], 1))));
+    let (status, headers, body) = call_with(router, "GET", "/", None, Some("text/html")).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "203.0.113.8 203.0.113.8"), "the same address both ways");
+    assert_eq!(headers["cache-control"], "private, no-cache", "an answer for one address is private");
+}
+
 /// What most HTTP clients send: `*/*`, or no `Accept` at all, or a browser's own.
 const ACCEPTS: [Option<&str>; 4] = [Some("*/*"), None, Some("text/html,application/xhtml+xml"), Some("application/json")];
 

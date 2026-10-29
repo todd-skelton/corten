@@ -848,6 +848,19 @@ Corten is pre-1.0, so any minor version may change the API.
     `same-origin`, and a page under another opener policy has its own shell key, so a client
     navigation into or out of the area loads the document in full
     ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
+121. Middleware for part of the app: `Area::middleware` and `Api::middleware` run after the
+    app's middleware for each request under the area's or API's prefix (an outer area's before an
+    inner one's, each in the order given), so a route is in a rate limit or not by where it is
+    declared, never by a path the middleware compares. A middleware refuses with a `Refused`
+    (`Refused::too_many(wait).into_response()`), answered in the request's mode as a `Caller`'s
+    refusal is, `Retry-After` included, and reads the client's address with
+    `ClientIp::of(&mut req)` without splitting the request. card-market's write limit is now on
+    its item pages' area and its partner API, with no path checks
+    ([#327 Middleware is app-wide only, so card-market's write limit picks its routes by comparing paths and builds its 429 by hand](https://github.com/todd-skelton/corten/issues/327)).
+    An app whose areas and APIs have none runs the same request as before: its allocations are
+    unchanged (count and sizes, DHAT) and Corten's own instructions per request are within 18
+    (callgrind, 13,953 against 13,971 outside libc's allocator); an area's pass-through middleware
+    costs about 860 to 1,000 instructions per request in it (one boxed future).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

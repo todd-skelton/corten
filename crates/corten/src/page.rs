@@ -1083,10 +1083,10 @@ fn unserved_module(name: &str) -> String {
 /// has no route for it. A [`Mode::Data`] request, every request on an `api` route and every
 /// failure of a JSON route ([`crate::JsonResult`]) gets the failure as JSON instead
 /// ([`crate::api`]). A request a [`crate::Caller`] sent to sign in is redirected there.
-pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
+pub(crate) async fn render_errors<S: crate::app::Steps>(
     shared: &Arc<Shared>,
     req: Request,
-    next: Next<'_, M>,
+    next: Next<'_, S>,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
     api: Option<&crate::api::Mount>,
@@ -1232,9 +1232,9 @@ fn sign_in_loops(path: &str, to: &HeaderValue) -> Option<String> {
 
 /// The handler's response, through [`within_deadline`]; a handler that panics is answered as a
 /// handler error (500), whose message only `corten dev` shows.
-async fn run<M: crate::middleware::Middleware>(
+async fn run<S: crate::app::Steps>(
     req: Request,
-    next: Next<'_, M>,
+    next: Next<'_, S>,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
 ) -> Response {
@@ -1267,9 +1267,9 @@ async fn run<M: crate::middleware::Middleware>(
 }
 
 /// The handler's response, or an empty 503 once it has waited past `deadline`.
-async fn within_deadline<M: crate::middleware::Middleware>(
+async fn within_deadline<S: crate::app::Steps>(
     req: Request,
-    next: Next<'_, M>,
+    next: Next<'_, S>,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
     (method, uri): (&axum::http::Method, &Uri),

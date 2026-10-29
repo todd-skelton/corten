@@ -237,7 +237,17 @@ impl<S: Send + Sync, T: Identify<S>> FromRequestParts<S> for Caller<T> {
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Response> {
-        find::<S, T>(parts, state).await.map(Caller).map_err(|why| match why {
+        find::<S, T>(parts, state).await.map(Caller).map_err(|why| Refused(why).into_response())
+    }
+}
+
+/// A refusal as an answer, for a [`crate::Middleware`] that turns a request away:
+/// `return Refused::too_many(wait).into_response();`. It is answered in the request's mode as a
+/// [`Caller`]'s refusal is: the error page for a browser (a sign-in is a redirect), JSON for an
+/// API or a data client, with `Retry-After` on a 429.
+impl IntoResponse for Refused {
+    fn into_response(self) -> Response {
+        match self.0 {
             Why::SignIn(to, message) => {
                 let mut res = StatusCode::UNAUTHORIZED.into_response();
                 res.extensions_mut().insert(SignIn(to));
@@ -248,7 +258,7 @@ impl<S: Send + Sync, T: Identify<S>> FromRequestParts<S> for Caller<T> {
             }
             Why::Refusal { status, message, retry_after } => refused(status, message, retry_after),
             Why::Unavailable(message) => unidentified(&message),
-        })
+        }
     }
 }
 

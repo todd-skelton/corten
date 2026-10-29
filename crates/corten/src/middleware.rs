@@ -11,7 +11,10 @@
 //! 4. The deadline and the panic catch start ([`crate::Failure::TimedOut`],
 //!    [`crate::Failure::Panicked`]).
 //! 5. The app's middleware, in the order given ([`crate::App::middleware`]). The route has been
-//!    matched, so axum's `MatchedPath` names it.
+//!    matched, so axum's `MatchedPath` names it. Then, for a request under an area's or an API's
+//!    prefix, its own middleware ([`crate::Area::middleware`], [`crate::Api::middleware`]): an
+//!    outer area's before an inner one's, each in the order given. A request anywhere else never
+//!    meets it.
 //! 6. The handler's extractors (a [`crate::Caller`] is looked up here, only when read), the
 //!    handler.
 //! 7. A failure becomes its route's answer: JSON for a JSON route or a data client, the app's
@@ -19,10 +22,14 @@
 //! 8. Security headers, `Cache-Control` (private when anything read a caller), compression.
 //!
 //! Whatever a middleware answers (a 429) leaves through 7 and 8 like a handler's answer. A header
-//! it sets on a failure (a request id, `Retry-After`) stays on the error page.
+//! it sets on a failure (a request id, `Retry-After`) stays on the error page. A middleware that
+//! turns a request away answers with a [`crate::Refused`] (`Refused::too_many(wait)`,
+//! `Refused::forbidden()`), answered in the request's mode as a [`crate::Caller`]'s refusal is:
+//! the error page for a browser, JSON for an API or a data client, `Retry-After` on a 429.
 //!
 //! ```
-//! use corten::{axum::{extract::Request, http::{HeaderValue, StatusCode}, response::{IntoResponse, Response}}, prelude::*};
+//! use std::time::Duration;
+//! use corten::{axum::{extract::Request, http::HeaderValue, response::{IntoResponse, Response}}, prelude::*};
 //!
 //! struct RequestId;
 //!
@@ -39,7 +46,7 @@
 //! impl Middleware for RateLimit {
 //!     async fn call(&self, req: Request, next: impl Next) -> Response {
 //!         if req.headers().contains_key("x-flood") {
-//!             return corten::Error::status(StatusCode::TOO_MANY_REQUESTS).into_response();
+//!             return Refused::too_many(Duration::from_secs(30)).into_response();
 //!         }
 //!         next.run(req).await
 //!     }
@@ -49,12 +56,40 @@
 //! # let _ = app.router();
 //! ```
 //!
+//! Middleware that belongs to part of the app is given to that part, an area or an API, so a route
+//! is in or out of it by where it is declared, never by a path compared in the middleware:
+//!
+//! ```
+//! # use corten::{axum::{extract::Request, response::{IntoResponse, Response}}, prelude::*};
+//! # struct RateLimit;
+//! # impl Middleware for RateLimit {
+//! #     async fn call(&self, req: Request, next: impl Next) -> Response { next.run(req).await }
+//! # }
+//! #[corten::routes(area = Admin)]
+//! mod admin {
+//!     #[route("/admin")]
+//!     pub struct Admin;
+//! }
+//!
+//! #[corten::routes(api = ApiRoot)]
+//! mod api {
+//!     #[route("/api")]
+//!     pub struct ApiRoot;
+//! }
+//!
+//! let app = App::new(Routes::new())
+//!     .area(|area| admin::area(area).middleware(RateLimit))
+//!     .api(|routes| api::api(routes).middleware(RateLimit));
+//! # let _ = app.router();
+//! ```
+//!
 //! A tower layer still goes around the whole app ([`crate::App::layer`]), outside every stage,
 //! for what must see the raw request first.
 
-use std::future::Future;
+use std::{convert::Infallible, future::Future, pin::Pin, sync::Arc};
 
 use axum::{extract::Request, response::Response};
+use futures_util::future::Either;
 
 /// The rest of the request after a middleware: the next middleware, then the handler.
 pub trait Next: Send {
@@ -139,6 +174,57 @@ macro_rules! refs {
     (@chain $req:ident, $next:ident, $first:ident $(, $rest:ident)+) => {
         $first.call($req, Then { middleware: ($($rest,)+), next: $next })
     };
+}
+
+/// A middleware with its type erased: an area's or an API's ([`crate::Area::middleware`],
+/// [`crate::Api::middleware`]), which the request finds by its path at run time.
+pub(crate) trait Erased: Send + Sync + 'static {
+    fn call_boxed<'a>(&'a self, req: Request, next: Rest<'a>) -> Pin<Box<dyn Future<Output = Response> + Send + 'a>>;
+}
+
+impl<M: Middleware> Erased for M {
+    fn call_boxed<'a>(&'a self, req: Request, next: Rest<'a>) -> Pin<Box<dyn Future<Output = Response> + Send + 'a>> {
+        Box::pin(self.call(req, next))
+    }
+}
+
+/// The middleware of some routes, in the order they run.
+pub(crate) type Stack = Arc<[Arc<dyn Erased>]>;
+
+/// The rest of the request after the app's middleware: the area's or API's middleware still to
+/// run (none for most routes), then the route.
+pub(crate) struct Rest<'a> {
+    pub(crate) stack: &'a [Arc<dyn Erased>],
+    pub(crate) route: axum::routing::Route,
+}
+
+impl Next for Rest<'_> {
+    #[inline]
+    fn run(self, req: Request) -> impl Future<Output = Response> + Send {
+        match self.stack.split_first() {
+            Some((first, stack)) => Either::Left(first.call_boxed(req, Rest { stack, route: self.route })),
+            None => Either::Right(handle(self.route, req)),
+        }
+    }
+}
+
+/// The route alone, after the app's middleware, for a request in no area or API with middleware.
+pub(crate) struct Handle(pub(crate) axum::routing::Route);
+
+impl Next for Handle {
+    #[inline]
+    fn run(self, req: Request) -> impl Future<Output = Response> + Send {
+        handle(self.0, req)
+    }
+}
+
+/// The route's own future, not an async block around it, which would move the request once more.
+#[inline]
+fn handle(mut route: axum::routing::Route, req: Request) -> impl Future<Output = Response> + Send {
+    futures_util::FutureExt::map(tower_service::Service::call(&mut route, req), |res: Result<Response, Infallible>| match res {
+        Ok(res) => res,
+        Err(never) => match never {},
+    })
 }
 
 refs!(A);

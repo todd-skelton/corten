@@ -2,6 +2,7 @@ use corten::prelude::*;
 
 use super::{AlertForm, AlertFormView, AlertMessage, Layout, ListingSort, OfferList};
 use crate::{
+    items,
     model::{ItemView, Listing, sort_listings},
     routes,
     text::Msg,
@@ -35,7 +36,7 @@ impl<'a> ItemPage<'a> {
         let page: ItemPage<'r> = ItemPage { art: item.art.map(|art| req.asset(art)), ..self };
         let head = html! {
             <meta name="description" content={&item.description}>
-            <link rel="canonical" href={routes::Item { id: &item.id }}>
+            <link rel="canonical" href={items::Item { id: &item.id }}>
         };
         Layout { req, title: &item.title, head, children: page.view() }
     }
@@ -100,7 +101,7 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
                     <h2>{t.item_contents()}</h2>
                     <ul>
                         for c in &item.contents {
-                            <li><a href={routes::Item { id: &c.item_id }}>{c.title}</a>" × "{c.quantity}</li>
+                            <li><a href={items::Item { id: &c.item_id }}>{c.title}</a>" × "{c.quantity}</li>
                         }
                     </ul>
                 </section>
@@ -110,7 +111,7 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
                     <h2>{t.item_included_in()}</h2>
                     <ul>
                         for c in &item.included_in {
-                            <li><a href={routes::Item { id: &c.item_id }}>{c.title}</a>" × "{c.quantity}</li>
+                            <li><a href={items::Item { id: &c.item_id }}>{c.title}</a>" × "{c.quantity}</li>
                         }
                     </ul>
                 </section>

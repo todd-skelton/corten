@@ -337,7 +337,8 @@ before it:
 3. The request gets its `Signal`, its nonce and the app.
 4. The deadline and the panic catch start (`Failure::TimedOut`, `Failure::Panicked`).
 5. The app's middleware, in the order given. The route has been matched, so axum's
-   `MatchedPath` names it.
+   `MatchedPath` names it. Then, for a request under an area's or an API's prefix, its own
+   middleware: an outer area's before an inner one's, each in the order given.
 6. The handler's extractors (a `Caller` is looked up here, only when read), then the handler.
 7. A failure becomes its route's answer: JSON for a JSON route or a data client, the app's error
    page for a browser.
@@ -347,7 +348,8 @@ A step of the app's own is a `Middleware`, given once to `App::middleware`; seve
 run in order:
 
 ```rust
-use corten::{axum::{extract::Request, http::{HeaderValue, StatusCode}, response::{IntoResponse, Response}}, prelude::*};
+use std::time::Duration;
+use corten::{axum::{extract::Request, http::HeaderValue, response::{IntoResponse, Response}}, prelude::*};
 
 struct RequestId;
 
@@ -364,7 +366,7 @@ struct RateLimit;
 impl Middleware for RateLimit {
     async fn call(&self, req: Request, next: impl Next) -> Response {
         if req.headers().contains_key("x-flood") {
-            return corten::Error::status(StatusCode::TOO_MANY_REQUESTS).into_response();
+            return Refused::too_many(Duration::from_secs(30)).into_response();
         }
         next.run(req).await
     }
@@ -376,15 +378,53 @@ let app = App::new(Routes::new()).middleware((RequestId, RateLimit));
 
 Whatever a middleware answers (the 429 above) leaves through stages 7 and 8 like a handler's
 answer, so it gets the error page (with the headers it set, `Retry-After` included), the security
-headers and `Cache-Control`. A middleware can
+headers and `Cache-Control`. One that turns a request away answers with a `Refused`
+(`too_many`, `forbidden`, `unauthorized`, `unavailable`), which is answered in the request's
+mode as a `Caller`'s refusal is: the error page for a browser, JSON for an API or a data client.
+A middleware can
 read a `Caller` the same way a handler does (`Caller::<Viewer>::from_request_parts`), and the
-handler then reuses that lookup. The tuple is resolved when the crate compiles, so nothing is
+handler then reuses that lookup; `ClientIp::of(&mut req)` gives the client's address, as a
+handler's `Option<ClientIp>` does. The tuple is resolved when the crate compiles, so nothing is
 boxed: a middleware that only passes the request on costs about 230 instructions (its `async fn`
 moves the request into its future), where axum's `from_fn` boxes the rest of the stack again
 for every request (about 700).
 
+Middleware that belongs to part of the app is given to that part, an area or an API, so a route
+is in it or not by where it is declared, never by a path the middleware compares. A request
+anywhere else never meets it:
+
+```rust
+# use corten::{axum::{extract::Request, response::Response}, prelude::*};
+# struct WriteLimit;
+# impl Middleware for WriteLimit {
+#     async fn call(&self, req: Request, next: impl Next) -> Response { next.run(req).await }
+# }
+#[corten::routes(area = Items)]
+mod items {
+    #[route("/items")]
+    pub struct Items;
+}
+
+#[corten::routes(api = ApiRoot)]
+mod api {
+    #[route("/api")]
+    pub struct ApiRoot;
+}
+
+let app = App::new(Routes::new())
+    .area(|area| items::area(area).middleware(WriteLimit))   // the item pages' forms
+    .api(|routes| api::api(routes).middleware(WriteLimit)); // the partner API
+# let _ = app.router();
+```
+
+Like an area's deadline and policy, its middleware covers every request at its prefix or under
+it: its routes, its nested areas' (the outer area's middleware runs first) and an unknown URL
+there. Given again, a middleware runs after what was given before. Each one a request meets costs
+one boxed future on top of what it does, and a request outside every area and API pays a few
+instructions (measured in the CHANGELOG). card-market limits writes this way.
+
 A tower layer still goes around the whole app (`.layer(l)`), outside every stage, for what must
-see the raw request first: a cap on body size, a limit per address.
+see the raw request first: a cap on body size.
 There is no layer for one route: what a route needs is in its handler's arguments (an
 extractor) and its return type.
 

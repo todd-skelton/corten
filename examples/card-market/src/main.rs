@@ -13,11 +13,6 @@ mod routes {
     #[route("/", get = app::home)]
     pub struct Home;
 
-    #[route("/items/{id}", get = app::show, post = app::create_alert)]
-    pub struct Item<'a> {
-        pub id: &'a str,
-    }
-
     /// Where an item was before the site moved to `/items/`: a permanent redirect, so links and
     /// search results that still name it land on the page.
     #[route("/item/{id}", get = app::old_item)]
@@ -35,6 +30,20 @@ mod routes {
 
     #[route("/sitemap.xml", get = app::sitemap)]
     pub struct Sitemap;
+}
+
+/// The item pages, where a visitor writes (a price alert): the write limit is on this area, so a
+/// route is limited by being declared here, not by its path. `Items` is the prefix, so it needs
+/// no handler of its own.
+#[corten::routes(area = Items, state = source::Source)]
+mod items {
+    #[route("/items")]
+    pub struct Items;
+
+    #[route("/items/{id}", get = app::show, post = app::create_alert)]
+    pub struct Item<'a> {
+        pub id: &'a str,
+    }
 }
 
 /// The JSON routes, for other services: every failure under `/api` is JSON, whatever the client
