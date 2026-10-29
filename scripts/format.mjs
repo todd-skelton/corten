@@ -38,10 +38,10 @@ for (const [tag, kind, input, expected] of rows("cases.tsv")) {
     check(`${tag} number ${input}`, format(input), expected);
     // A number the script computed, when it is the same value.
     if (String(Number(input)) === input) check(`${tag} number ${input} (a number)`, format(Number(input)), expected);
-  } else if (what === "percent") {
-    const format = formatter(specs.get(`${tag} percent ${style}`));
-    check(`${tag} percent ${style} ${input}`, format(input), expected);
-    if (String(Number(input)) === input) check(`${tag} percent ${style} ${input} (a number)`, format(Number(input)), expected);
+  } else if (what === "percent" || what === "change") {
+    const format = formatter(specs.get(`${tag} ${what} ${style}`));
+    check(`${tag} ${what} ${style} ${input}`, format(input), expected);
+    if (String(Number(input)) === input) check(`${tag} ${what} ${style} ${input} (a number)`, format(Number(input)), expected);
   } else if (what === "money") {
     const [amount, code] = input.split(" ");
     const spec = specs.get(`${tag} money ${code}`);
@@ -53,5 +53,13 @@ for (const [tag, kind, input, expected] of rows("cases.tsv")) {
     check(`${tag} ${kind} ${input} (a Date)`, formatter(spec)(new Date(input)), expected);
   }
 }
+// A number a script works out may be one JavaScript prints with an exponent; it is written as its
+// digits. And a change keeps at most 38 digits in all, as the server's Decimal does.
+const change = formatter(specs.get("en change 2"));
+check("a change of 1e-7", change(1e-7), "0.00%");
+check("a change of -1e-7", change(-1e-7), "0.00%");
+check("a change of 0.00006", change(6e-5), "+0.01%");
+check("a percentage of 1e21", formatter(specs.get("en percent 0"))(1e21), "100,000,000,000,000,000,000,000%");
+check("a change with more digits than fit", formatter({ ...specs.get("en change 2"), p: 40 })("0.006"), `+0.${"6".padEnd(37, "0")}%`);
 console.log(`format: ${checked - failed} of ${checked} cases write what the server writes`);
 process.exit(failed || checked < 9000 ? 1 : 0);

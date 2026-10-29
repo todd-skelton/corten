@@ -96,7 +96,7 @@ and do not render every variant in a `<template>` for the script to copy.
 A number, amount or date the script works out is written with the page's format, never
 `Intl` or `toFixed`: pass `t.js().number()`, `t.js().money(USD)` or `t.js().date(DateStyle::Medium)`
 (`.time(..)`, `.date_time(..)`, `.zone(Offset::hours(-5))`) and take it as
-`@param {NumberFormat}`, `{MoneyFormat}`, `{DateFormat}` or `{PercentFormat}` (`t.js().percent(2)`, from `"corten"`); call `money(cents)`
+`@param {NumberFormat}`, `{MoneyFormat}`, `{DateFormat}` or `{PercentFormat}` (`t.js().percent(2)` or `t.js().change(2)`, from `"corten"`); call `money(cents)`
 or `when(Date.now())`. It writes what the server's `t.money` and `t.date` write. A zone with
 daylight saving time stays on the server.
 

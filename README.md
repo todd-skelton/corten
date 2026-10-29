@@ -194,9 +194,11 @@ static site (a static site generator is simpler).
 1. **Fast, and proven fast.** Speed at the user's end is the goal, and every claim has a measured
    number behind it. The work goes where it is fastest for the user: the server renders the first
    page and anything that needs its data, and the browser does what it can with what it already
-   has. A server render that is slower than a client action is the wrong choice. A change to rendering, the runtime or the request path is measured before and after
-   (`render_cost`, bytes shipped, nanoseconds per request). We say no to features that cost every
-   user to help a few, like view transitions on every swap.
+   has. A server render that is slower than a client action is the wrong choice. A change to
+   rendering, the runtime or the request path is measured before and after with the number that
+   can see it: instructions per request, time, or bytes shipped
+   ([CONTRIBUTING.md](CONTRIBUTING.md#pull-requests)). We say no to features that cost
+   every user to help a few, like view transitions on every swap.
 2. **The platform first.** Use what the browser and HTTP already provide: custom elements,
    `FormData`, `AbortSignal`, the Navigation API, popover, server-sent events, native validation.
    Build only what the platform lacks, and remove it once the platform catches up. One idea
@@ -424,8 +426,9 @@ is:
    in the browser than forms and links.
 4. [ui-gallery](examples/ui-gallery): a seller's draft listing built from every `corten-ui`
    component, styled by a small design system.
-5. [listings-feed](examples/listings-feed): a seller's listings as one feed served by several
-   instances, a page that follows it, and the failover benchmark.
+5. [listings-feed](examples/listings-feed): a seller's listings table kept live by one feed that
+   several instances serve (Postgres and NATS through `corten-cluster`), for when one instance is
+   not enough; its failover benchmark kills instances while browsers follow.
 
 ## Contributing
 

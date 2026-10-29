@@ -20,7 +20,7 @@ crates/
 examples/watchlist/  A stock watchlist: live prices, news, alerts; scripts/smoke.mjs tests the runtime against it
 examples/card-market/ A trading-card store (home, categories, item pages) with every production module on; smoke.mjs tests it
 examples/seller-desk/ A seller's inventory desk: a client-heavy screen built with handlers
-examples/listings-feed/ A seller's listings feed on corten-cluster, a page that follows it, and the failover benchmark
+examples/listings-feed/ A seller's listings kept live by a feed on corten-cluster, served by several instances, and the failover benchmark; smoke.mjs tests the page
 examples/ui-gallery/ corten-ui styled by a small design system; smoke.mjs tests it in a browser
 docs/              Guides (docs/guide), design decisions and limits, surfaces (architecture.md)
 skills/corten/     The agent skill for building apps on Corten
@@ -43,6 +43,9 @@ the framework itself.
   tests: `npm install`, then `npx playwright install chromium firefox webkit` (the core and
   `corten-ui` smoke tests run in all three).
 - Docker, for the example images the smoke tests run against.
+- For measuring (Pull requests, item 2): valgrind, on Linux or in the `rust:1-bookworm`
+  container after `apt-get update && apt-get install -y valgrind`, and for `count.mjs` a Linux
+  host with `perf`, root and cgroup v2.
 
 ## Checks
 
@@ -73,6 +76,14 @@ docker build -f examples/seller-desk/Dockerfile -t corten-seller-desk .
 docker run -d --name corten-seller-desk -p 18484:8080 corten-seller-desk
 node examples/seller-desk/smoke.mjs http://localhost:18484
 docker rm -f corten-seller-desk
+docker network create feeds
+docker run -d --name feeds-pg --network feeds -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=feeds postgres:16-alpine
+docker run -d --name feeds-nats --network feeds nats:2-alpine -js
+docker build -f examples/listings-feed/Dockerfile -t corten-listings-feed .
+docker run -d --name corten-listings-feed --network feeds -p 18485:8080 -e DATABASE_URL=postgres://postgres:postgres@feeds-pg/feeds -e NATS_URL=nats://feeds-nats:4222 corten-listings-feed
+node examples/listings-feed/smoke.mjs http://localhost:18485
+docker rm -f corten-listings-feed feeds-pg feeds-nats
+docker network rm feeds
 ```
 
 The first command also compiles every `rust` code block in `README.md` and `docs/guide/` as a
@@ -110,8 +121,34 @@ The failover benchmark is `node examples/listings-feed/bench/run.mjs`; see its h
    doctest for a compile-time guarantee, an `@ts-expect-error` line in
    `scripts/typecheck-fixture.js` for a typing guarantee, and a browser smoke check for anything
    the runtime does.
-2. A change to rendering, the runtime or the request path says what it measured before and after
-   (`render_cost`, bytes shipped, nanoseconds per request).
+2. A change to rendering, the runtime or the request path is measured before and after, with
+   the number that can see the change:
+   1. Work done in process (rendering, routing, serialization, middleware, a handler's own
+      code): instructions per request under callgrind (`valgrind --tool=callgrind`). Count a
+      test that sends 1,200 requests through the router in process with `oneshot` and one that
+      sends 200: the difference over 1,000 leaves out startup and setup. Over a real socket,
+      `bench/fullstack/count.mjs` counts with `perf stat`. A count barely moves with other load
+      on the machine, so it shows a difference of a few percent that times on a laptop or
+      Docker Desktop hide.
+   2. Memory (allocation, buffer sizes, copies, data layout): the count and times, because a
+      count does not see cache misses or memory stalls, and the same count can take longer.
+      For the item page, `render_cost` in `examples/card-market` prints the times of building,
+      rendering and serving it, and the bytes:
+      `CORTEN_FIXTURE=/abs/path/items.json cargo test --release -p card-market -- --ignored render_cost --nocapture`
+      in the Linux container, with the fixture `bench/fullstack/fixtures/fetch.mjs` writes from
+      the item API on `:18400`.
+   3. Waiting and concurrency (I/O, locks, channels, timers, feeds, streaming, startup): time,
+      because a count does not see waiting or how well work overlaps. `bench/fullstack/ab.mjs`
+      runs the two builds' images on one CPU for latency and throughput under load, and
+      `bench/fullstack/cold-start.mjs` times cold start. Take these on a quiet Linux host: on
+      Docker Desktop one image's throughput moved by up to 25% between rounds.
+   4. What the client receives: bytes shipped (the document, patches, the minified runtime,
+      assets), raw and compressed. `render_cost` gives the page's per encoding, and
+      `bench/fullstack/bytes.mjs` every script and stylesheet a page loads.
+
+   Measure release builds and alternate runs of the two. Give the tool, the number of runs and
+   their median and range; when one build's runs vary more than the two builds differ, say so
+   instead of reporting a difference.
 3. Update the guide in `docs/guide/` that describes the behavior, and add a line to
    `CHANGELOG.md` under Unreleased.
 4. Commit messages say what changed and why, in plain sentences.

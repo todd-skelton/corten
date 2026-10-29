@@ -193,6 +193,7 @@ html! {
     <td>{t.money(Decimal::parse(&api.amount).unwrap_or_default(), USD)}</td> // "21.50" from an API
     <td>{t.number(listing.count)}</td>                                     // 1,234
     <td>{t.percent(Decimal::new(fee_bps, 4), 2)}</td>                      // 2.9%, 2,9 %, %2,9
+    <td>{t.change(Decimal::new(stock.change_bp, 4), 2)}</td>               // +0.60%, -0.30%, 0.00%
     <p>{t.item_pending(t.date_time(at, DateStyle::Medium, TimeStyle::Short))}</p> // Mar 22, 2026, 12:00 PM UTC
     <p>{t.account_member_since(t.date(joined, MonthStyle::Long))}</p>     // Member since March 2025
 }
@@ -200,7 +201,10 @@ html! {
 
 `t.percent(ratio, digits)` takes the ratio (0.029 for 2.9%, so 290 basis points are
 `Decimal::new(290, 4)`) and writes at most `digits` fraction digits, rounded half away from zero
-and without trailing zeros, with the locale's sign where it puts it. `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
+and without trailing zeros, with the locale's sign where it puts it. `t.change(ratio, digits)` is
+the same ratio as a change (a price's move today, in a column that lines up): exactly `digits`
+fraction digits and a sign on a gain as on a loss (`+0.60%`, `+0,60 %`, `+%0,60`), none on what
+rounds to zero (`0.00%`). `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
 a bare integer (it could be either, so it does not compile), with the digits the currency is
 shown with (0 for JPY, 3 for KWD). A price a person types into a form is read back the same way:
 `t.parse_money(&input.price, USD)` is `Some(Minor(129950))` for `$1,299.50` in en and for
