@@ -45,7 +45,8 @@ framework's shape, and what it does not do yet.
    cost is that a file added with no change to the code is seen at the next build that compiles
    the crate, since a macro cannot ask cargo to watch a directory; `corten dev` reads the
    directory where the macro read it, so it serves the new file at once and restarts without a
-   build when only those files changed, and the release Dockerfiles touch every source before
+   build when only those files changed (a removed file builds, so a page that names it does not
+   compile), and the release Dockerfiles touch every source before
    building, so the crate compiles with every file. The PWA's icons and worker script are still
    named by path and checked at startup.
 

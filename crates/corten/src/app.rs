@@ -1339,11 +1339,14 @@ fn load_assets(
     }
     let owner = files.map(|f| f.owner);
     let files = match files {
-        // Under `corten dev` (run in the crate's root), the directory as it is now, and `corten
-        // dev` is told where it is, so a change to it alone restarts the app without a build.
-        Some(StaticFiles { dir, .. }) if dev && std::path::Path::new(dir).is_dir() => {
-            if let (Some(list), Ok(here)) = (std::env::var_os("CORTEN_DEV_ASSETS"), std::env::current_dir()) {
-                let _ = std::fs::write(list, here.join(dir).to_string_lossy().as_bytes());
+        // Under `corten dev`, the directory as it is now (a debug build knows where `embed!` read
+        // it), and `corten dev` is told where it is, so a change to it alone restarts the app.
+        Some(StaticFiles { dir, .. }) if dev && !dir.is_empty() && std::path::Path::new(dir).is_dir() => {
+            if let Some(list) = std::env::var_os("CORTEN_DEV_ASSETS") {
+                use std::io::Write;
+                // Appended: a program with two apps lists both directories.
+                let _ =
+                    std::fs::OpenOptions::new().create(true).append(true).open(list).and_then(|mut file| writeln!(file, "{dir}"));
             }
             crate::assets::read_dir(std::path::Path::new(dir))
                 .unwrap_or_else(|error| panic!("corten: could not read the static files in {dir}: {error}"))
@@ -1363,7 +1366,7 @@ fn load_assets(
 /// The static directory `App::assets` was given.
 #[derive(Clone, Copy)]
 struct StaticFiles {
-    /// Where `embed!` read it, from the crate's root.
+    /// Where `embed!` read it, in a debug build (empty in a release build).
     dir: &'static str,
     /// The `embed!` struct, which its files name.
     owner: &'static str,
@@ -1381,14 +1384,16 @@ mod tests {
 
     #[test]
     fn dev_reads_the_static_directory_from_disk_and_a_release_the_files_compiled_in() {
-        // Tests run in the crate's root, as `corten dev` runs the app.
-        let files = StaticFiles { dir: "src/assets/fixture", owner: "tests::Static", files: none };
+        let files =
+            StaticFiles { dir: concat!(env!("CARGO_MANIFEST_DIR"), "/src/assets/fixture"), owner: "tests::Static", files: none };
         let dev = load_assets(Some(files), true, &[], &[]).expect("assets");
         assert!(dev.contains("style.css") && dev.contains("icons/192.png"));
         assert_eq!(dev.owner, Some("tests::Static"));
         let release = load_assets(Some(files), false, &[], &[]).expect("assets");
         assert!(!release.contains("style.css"), "compiled in: nothing here");
-        let elsewhere = StaticFiles { dir: "src/assets/not-here", ..files };
-        assert!(!load_assets(Some(elsewhere), true, &[], &[]).expect("assets").contains("style.css"));
+        for elsewhere in [concat!(env!("CARGO_MANIFEST_DIR"), "/src/assets/not-here"), ""] {
+            let files = StaticFiles { dir: elsewhere, ..files };
+            assert!(!load_assets(Some(files), true, &[], &[]).expect("assets").contains("style.css"), "{elsewhere}");
+        }
     }
 }

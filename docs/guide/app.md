@@ -411,7 +411,8 @@ An edited file rebuilds the crate. A file added to the directory with no change 
 the program from the next build that compiles the crate (a macro cannot ask cargo to watch a
 directory); the Dockerfiles `corten new` writes touch every source before building, so a release
 build has every file. `corten dev` reads the directory where `embed!` read it, so it serves a
-new file at once, and a change to those files alone restarts the app without compiling it. File
+new file at once, and an edit or a new file there alone restarts the app without compiling it
+(a removed file, or any other change, builds). File
 names are URLs, so they are letters, digits and `- _ . ~ @ + , = !`; another character is a
 compile error. A program with two apps gives
 each its own `embed!`. Dotfiles are left out.

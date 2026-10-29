@@ -39,8 +39,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // The copy last started, and whether the change since needs no build.
     let mut running: Option<PathBuf> = None;
     let mut restart_only = false;
+    // A failed build is tried again at the next change, whatever it is.
+    let mut failed = false;
     loop {
-        if let (true, Some(copy)) = (restart_only, &running) {
+        if let (true, false, Some(copy)) = (restart_only, failed, &running) {
             stop(&mut server);
             server = Some(start(copy, &port, &root, &assets_list)?);
         } else {
@@ -63,8 +65,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     std::fs::copy(&binary, &copy).map_err(|e| format!("copy {}: {e}", binary.display()))?;
                     server = Some(start(&copy, &port, &root, &assets_list)?);
                     running = Some(copy);
+                    failed = false;
                 }
-                Err(message) => eprintln!("corten: {message}; the last good build keeps running"),
+                Err(message) => {
+                    eprintln!("corten: {message}; the last good build keeps running");
+                    failed = true;
+                }
             }
         }
         // Wait for a change, settling for a moment so a save of several files is one rebuild.
@@ -85,7 +91,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 seen = now;
                 eprintln!(
                     "corten: change detected, {}",
-                    if restart_only { "restarting (static files only)" } else { "rebuilding" }
+                    if restart_only && !failed { "restarting (static files only)" } else { "rebuilding" }
                 );
                 break;
             }
@@ -112,14 +118,14 @@ fn stop(server: &mut Option<Child>) {
     }
 }
 
-/// True when something changed between `before` and `after` and every changed file is under one
-/// of `dirs`: the app reads those itself in dev, so a restart serves them.
+/// True when something changed between `before` and `after`, every changed file is under one of
+/// `dirs`, and none was removed: the app reads those itself in dev, so a restart serves them. A
+/// removed file builds, so a page that still names it does not compile.
 fn only_under(before: &BTreeMap<PathBuf, SystemTime>, after: &BTreeMap<PathBuf, SystemTime>, dirs: &[PathBuf]) -> bool {
-    let changed = after
-        .iter()
-        .filter(|(path, time)| before.get(*path) != Some(*time))
-        .map(|(path, _)| path)
-        .chain(before.keys().filter(|path| !after.contains_key(*path)));
+    let changed = after.iter().filter(|(path, time)| before.get(*path) != Some(*time)).map(|(path, _)| path);
+    if before.keys().any(|path| !after.contains_key(path)) {
+        return false;
+    }
     let mut any = false;
     for path in changed {
         if !dirs.iter().any(|dir| path.starts_with(dir)) {
@@ -315,7 +321,7 @@ mod tests {
         assert!(!only_under(&before, &before, &dirs), "nothing changed");
         let mut removed = before.clone();
         removed.remove(&file("/app/static/style.css"));
-        assert!(only_under(&before, &removed, &dirs));
+        assert!(!only_under(&before, &removed, &dirs), "a removed file builds: a page may still name it");
     }
 
     #[test]

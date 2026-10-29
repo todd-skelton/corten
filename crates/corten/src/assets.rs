@@ -24,7 +24,7 @@
 //!
 //! A directory that is not there, or two files with one constant (`item-1.svg` and
 //! `item_1.svg`), do not compile, nor does a file name a URL cannot carry as it is (a space,
-//! `#`, `?`, `%`):
+//! `#`, `?`, `%`; the fixture has `50%.css`):
 //!
 //! ```compile_fail
 //! corten::assets::embed!(pub struct Static = "src/assets/missing");
@@ -32,6 +32,16 @@
 //!
 //! ```compile_fail
 //! corten::assets::embed!(pub struct Static = "src/assets/clash");
+//! ```
+//!
+//! ```compile_fail
+//! corten::assets::embed!(pub struct Static = "src/assets/unsafe");
+//! ```
+//!
+//! Nor does a path outside the directory it names (the crate's root, `..`, an absolute path):
+//!
+//! ```compile_fail
+//! corten::assets::embed!(pub struct Static = "src/..");
 //! ```
 //!
 //! The program is the whole deploy: nothing is read from disk, except under `corten dev`, which
@@ -73,8 +83,8 @@ pub use corten_macros::embed;
 /// A static directory compiled into the program: the struct [`embed!`] declares. Give it to
 /// `App::assets`.
 pub trait Embed {
-    /// The directory the macro read, from the crate's root (`static`), for `corten dev` to read
-    /// again (it runs the app there).
+    /// Where the macro read the directory, for `corten dev` to read again: its full path in a
+    /// debug build, empty in a release build (which never reads the disk).
     const DIR: &'static str;
     /// The struct's path (`shop::views::Static`), which each of its files carries, so a file of
     /// another app's directory is found in debug builds.
@@ -702,8 +712,12 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> io::Res
         if entry.file_name().to_string_lossy().starts_with('.') {
             continue;
         }
-        if entry.file_type()?.is_dir() {
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
             collect(root, &path, out)?;
+        } else if kind.is_symlink() && path.is_dir() {
+            // `embed!` refuses a linked directory, so one added under `corten dev` is not served.
+            continue;
         } else {
             let relative = path.strip_prefix(root).expect("walked from root");
             let url = relative.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");

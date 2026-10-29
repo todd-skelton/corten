@@ -1226,7 +1226,9 @@ Corten is pre-1.0, so any minor version may change the API.
     one constant, or a directory that is not there is a compile error; dotfiles are left out. A file
     added with no change to the code is in the program from the next build that compiles the crate
     (the Dockerfiles touch every source first). Under `corten dev` the app reads the directory from
-    disk, and `corten dev` restarts it without compiling when only those files changed. The PWA's
+    disk, and `corten dev` restarts it without compiling when only those files were edited or
+    added (a removed file builds, and a failed build is tried again at the next change). A
+    release binary holds no path from the build machine. The PWA's
     icons and worker script are still paths checked at startup. Measured on card-market (release,
     callgrind, three runs each): startup 1,470,715-1,485,822 instructions to 1,381,406-1,387,180,
     the item page 81,556-81,740 to 77,294-77,524 per request (`req.asset` no longer looks a string

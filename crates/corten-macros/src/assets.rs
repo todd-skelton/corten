@@ -5,6 +5,9 @@
 //! ask cargo to watch a directory; `corten dev` reads the directory itself and restarts the app
 //! without a build when only its files changed.
 //!
+//! A debug build keeps the directory's full path (`Embed::DIR`) for `corten dev`; a release
+//! build keeps none. A linked directory is refused rather than followed.
+//!
 //! A file's name is its URL, so the names are checked here: letters, digits and `- _ . ~ @ + , = !`
 //! only, which a URL carries as they are (`#`, `?`, `%` or a space would break it).
 
@@ -47,8 +50,17 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         return err(rest[0].span(), usage);
     }
     let relative = string_value(path).ok_or_else(|| (path.span(), usage.to_string()))?;
-    if relative.trim_matches(['/', '.']).is_empty() {
-        return err(path.span(), "name the static directory under the crate's root (\"static\"), not the root itself");
+    {
+        use std::path::Component;
+        let parts: Vec<Component> = Path::new(&relative).components().collect();
+        if !parts.iter().all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+            || !parts.iter().any(|c| matches!(c, Component::Normal(_)))
+        {
+            return err(
+                path.span(),
+                "name a directory inside the crate (\"static\"): not the crate's root, a path with .., or an absolute path",
+            );
+        }
     }
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
     let dir = root.join(&relative);
@@ -90,6 +102,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         ));
         list.extend(q("(__A0, ::core::include_bytes!(__A1)),", &[literal(url), literal(file)]));
     }
+    let dir_text = dir.to_str().ok_or_else(|| (path.span(), format!("{}: the path is not UTF-8", dir.display())))?;
     let ident: TokenStream = TokenTree::Ident(name.clone()).into();
     let mut out = attrs;
     out.extend(q("#[derive(Clone, Copy, Debug)]", &[]));
@@ -99,11 +112,11 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         #[allow(dead_code)]
         impl __A0 { __A1 }
         impl ::corten::assets::Embed for __A0 {
-            const DIR: &'static str = __A2;
+            const DIR: &'static str = if ::core::cfg!(debug_assertions) { __A2 } else { \"\" };
             const OWNER: &'static str = ::core::concat!(::core::module_path!(), \"::\", __A4);
             const FILES: &'static [(&'static str, &'static [u8])] = &[__A3];
         }",
-        &[ident, consts, literal(relative.trim_end_matches('/')), list, literal(&name.to_string())],
+        &[ident, consts, literal(dir_text), list, literal(&name.to_string())],
     ));
     Ok(out)
 }
@@ -117,8 +130,14 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> std::io
         if entry.file_name().to_string_lossy().starts_with('.') {
             continue;
         }
-        // `is_dir` follows a link, so a linked directory is walked like any other.
-        if path.is_dir() {
+        let kind = entry.file_type()?;
+        if kind.is_symlink() && path.is_dir() {
+            return Err(std::io::Error::other(format!(
+                "{} is a linked directory, which is not followed; move its files in",
+                path.display()
+            )));
+        }
+        if kind.is_dir() {
             collect(root, &path, out)?;
         } else {
             let relative = path.strip_prefix(root).expect("walked from root");
