@@ -1723,10 +1723,105 @@ async fn an_api_at_the_root_makes_the_whole_app_json() {
 }
 
 /// Query parameters a route carries as a set (`#[route(query)]`).
-#[derive(Clone, Default, serde::Deserialize, crate::Route)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize, crate::Route)]
 #[route(query)]
 pub struct ParamsPaging {
     pub page: Option<u32>,
+}
+
+/// A set with each kind of parameter a route has: renamed, a list with no `#[serde(default)]`,
+/// a prefix and a set of its own. It derives no `Deserialize`: `Params` reads it by its keys.
+#[derive(Clone, Debug, Default, PartialEq, crate::Route)]
+#[route(query)]
+#[serde(rename_all = "camelCase")]
+pub struct SetProbe {
+    pub sort_by: Option<String>,
+    pub tags: Vec<String>,
+    #[route(prefix = "dimension.")]
+    pub dims: Vec<(String, String)>,
+    #[route(query)]
+    pub paging: ParamsPaging,
+}
+
+#[derive(crate::Route)]
+#[route("/probe")]
+pub struct SetRoute {
+    pub q: Option<String>,
+    #[route(query)]
+    pub set: SetProbe,
+}
+
+/// A set's fields with defaults of their own: a parameter the query leaves out is the field's.
+#[derive(Debug, PartialEq, crate::Route)]
+#[route(query)]
+pub struct DefaultedSet {
+    #[serde(default = "first_page")]
+    pub page: u32,
+    #[serde(default)]
+    pub size: u32,
+    #[route(prefix = "f.")]
+    pub facets: std::collections::BTreeMap<String, String>,
+}
+
+fn first_page() -> u32 {
+    1
+}
+
+/// A set with a type parameter.
+#[derive(Debug, PartialEq, crate::Route)]
+#[route(query)]
+pub struct PickSet<T: std::fmt::Display> {
+    pub pick: Option<T>,
+}
+
+#[derive(crate::Route)]
+#[route("/defaulted")]
+pub struct DefaultedRoute {
+    #[route(query)]
+    pub set: DefaultedSet,
+    #[route(query)]
+    pub pick: PickSet<u32>,
+}
+
+/// A set only links use: its field needs only `Display`.
+#[derive(crate::Route)]
+#[route(query)]
+pub struct ShownSet {
+    pub tab: Option<Shown>,
+}
+
+#[derive(crate::Route)]
+#[route("/shown-set")]
+struct ShownSetLink {
+    #[route(query)]
+    set: ShownSet,
+}
+
+#[test]
+fn a_query_set_reads_back_what_its_links_write() {
+    use crate::route::FromUrl;
+    let set = SetProbe {
+        sort_by: Some("price".into()),
+        tags: vec!["a".into(), "b&c".into()],
+        dims: vec![("form".into(), "graded".into()), ("grade".into(), "PSA 8".into())],
+        paging: ParamsPaging { page: Some(3) },
+    };
+    let href = SetRoute { q: Some("x".into()), set: set.clone() }.href();
+    assert_eq!(href, "/probe?q=x&sortBy=price&tags=a&tags=b%26c&dimension.form=graded&dimension.grade=PSA%208&page=3");
+    let read = <SetRoute as FromUrl>::__read((), href.split_once('?').unwrap().1).unwrap();
+    assert_eq!((read.q.as_deref(), &read.set), (Some("x"), &set), "the prefix field is read back, not left empty");
+    let read = <SetRoute as FromUrl>::__read((), "").unwrap();
+    assert_eq!(read.set, SetProbe::default(), "a missing list is empty, as on a route");
+    for query in ["page=x", "sortBy=a&sortBy=b"] {
+        assert!(<SetRoute as FromUrl>::__read((), query).is_err(), "{query}");
+    }
+    let read = <DefaultedRoute as FromUrl>::__read((), "size=5&f.kind=graded&pick=7").unwrap();
+    let facets = std::collections::BTreeMap::from([("kind".to_string(), "graded".to_string())]);
+    assert_eq!((&read.set, &read.pick), (&DefaultedSet { page: 1, size: 5, facets }, &PickSet { pick: Some(7) }));
+    let empty = <DefaultedRoute as FromUrl>::__read((), "").unwrap().set;
+    assert_eq!(empty, DefaultedSet { page: 1, size: 0, facets: Default::default() });
+    let link = ShownSetLink { set: ShownSet { tab: Some(Shown("a b".into())) } };
+    assert_eq!(link.href(), "/shown-set?tab=a%20b");
 }
 
 /// Every kind of parameter a route has, which its handler reads back as the link wrote it.
