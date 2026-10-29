@@ -1,12 +1,15 @@
 //! The page: a seller's draft listing for one card, built from every corten-ui component, wrapped
 //! and styled as a design system would.
+use corten::i18n::RelativeStyle;
 use corten::prelude::*;
 use corten_ui::{
-    Choice, ComboBox, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster, dialog,
+    Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, RelativeTime, Tab, TabGroup, Toast,
+    Toaster, dialog,
 };
+use std::time::SystemTime;
 
 use crate::{
-    app::{RenameForm, SellForm, url},
+    app::{EXPIRES_IN, LISTED_AGO, Msg, RenameForm, SellForm, url},
     field::Field,
 };
 
@@ -26,7 +29,15 @@ pub const CONDITIONS: [Choice; 5] = [
 pub const TABS: [&str; 3] = ["listings", "offers", "sales"];
 
 #[component(css)]
-pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, sale: bool, rename: RenameDialog<'a>) -> impl Render {
+pub fn Gallery<'a>(
+    tab: usize,
+    result: &'a str,
+    toast: Option<&'a str>,
+    sale: bool,
+    times: Times,
+    rename: RenameDialog<'a>,
+) -> impl Render {
+    let Times { t, now } = times;
     let f = SellForm::FIELDS;
     let qty = Number {
         value: Some(1.0),
@@ -86,6 +97,17 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, sale: bo
                 <MenuResult text="" />
             </section>
             <section class={Card}>
+                <h2>"Relative time"</h2>
+                <p>
+                    {t.offer_listed()}" "
+                    <RelativeTime when={t.relative(now - LISTED_AGO, now, RelativeStyle::Short)} />
+                </p>
+                <p>
+                    {t.offer_expires()}" "
+                    <RelativeTime when={t.relative(now + EXPIRES_IN, now, RelativeStyle::Long)} />
+                </p>
+            </section>
+            <section class={Card}>
                 <h2>"Draft"</h2>
                 <div class={Buttons}>
                     <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
@@ -106,6 +128,13 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, sale: bo
             <Toaster close="Dismiss" seconds={2} toast={Toast { message: toast }} />
         </div>
     }
+}
+
+/// The offer's relative times: written as of `now`, in `t`'s locale.
+#[derive(Clone, Copy)]
+pub struct Times {
+    pub t: Msg,
+    pub now: SystemTime,
 }
 
 /// The listing's outcome: in the page, and on its own as the form's patch.
@@ -132,15 +161,19 @@ struct SkuId;
 
 /// The draft's SKU, which a seller copies into their own stock sheet, with a button that copies
 /// it: the SKU is on the page once, and the button shows only where the script can write the
-/// clipboard.
-#[component]
-fn Sku<'a>(sku: &'a str) -> impl Render {
+/// clipboard. The paragraph counts the copies the button reports (`Copied`), as an app counts a
+/// shared link's.
+#[component(js)]
+pub fn Sku<'a>(sku: &'a str) -> impl Render {
+    let copies = refs();
     html! {
-        <p>
+        <p on:Copied={js::counted(event, copies)}>
             "SKU "
             <code id={SkuId}>{sku}</code>
             " "
             <CopyButton text={SkuId} label="Copy" copied="Copied" />
+            " "
+            <output ref={copies} aria-label="Copies">"0"</output>
         </p>
     }
 }

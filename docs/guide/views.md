@@ -206,6 +206,26 @@ JavaScript. The app's time zone library (`jiff`, `chrono-tz`) turns the name int
 there, with no script per form. A handler that takes it answers privately (`Cache-Control:
 private`), so a `Public` one cannot; the layout around `<main>` is the same in every zone, so
 reading it does not make the runtime load the next page in full.
+
+A time relative to now ("resets in 10 hours", "updated 3 min. ago") is `t.relative(at, now,
+RelativeStyle::Long)` (or `Short`, `Narrow`): in the largest unit it has a whole one of, rounded
+toward zero, in the locale's plural forms. Written that way it is right only when drawn, so put it
+in `corten_ui::RelativeTime`, which renders a `<time datetime>` and has the browser write it
+again, in the same locale and style, each time its text would change, on one timer for the page.
+A live part then sends only when its data changes, not to move a countdown, and its server does
+not redraw every open page on a clock:
+
+```rust,ignore
+html! { <p>"Resets "<RelativeTime when={t.relative(window.resets_at, now, RelativeStyle::Long)} /></p> }
+```
+
+Days are the largest unit ("in 45 days"); a time further off reads better as `t.date`. The
+browser counts from its own clock and writes with its own `Intl.RelativeTimeFormat`, so a browser
+whose CLDR is older than the server's may word a unit slightly differently once it takes over, and
+one without the locale (or with only another script of it) keeps the server's text. Without
+JavaScript the text is as old as the page. With it, a page from a cache or the back/forward cache
+is written again as it shows, and a page in a hidden tab is brought up to date when it is shown.
+
 Each listed locale's separators, currency symbols and date patterns are CLDR's, checked against
 Intl, and only the locales `messages!` lists are in the app. A script that writes a number, an
 amount or a date takes the page's format (`t.js().money(USD)`) and writes the same text

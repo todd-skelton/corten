@@ -768,6 +768,23 @@ Corten is pre-1.0, so any minor version may change the API.
     700 more for a page under an area's policy, may be more than noise
     ([#275 A policy is the whole app's, so the origins one page's payment SDK needs are allowed on every page](https://github.com/todd-skelton/corten/issues/275),
     [#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
+113. `corten_ui::Copied` (`ui-copied` in the page): `CopyButton` dispatches it after a write the
+    browser made, and only then, so an ancestor counts a copy (a referral link's, a share link's)
+    with `on:Copied={js::counted(event)}` instead of keeping a copy script of its own. It bubbles
+    and carries nothing, since the text may be a secret. ui-gallery counts its SKU's
+    copies: one for a copy, none for a denied write. `copy_button.js` is 2,457 bytes, 904 with
+    brotli (was 2,223 and 844), and a page with the button fetches `events.js` with it, preloaded
+    beside the script so it adds a request but no round trip (276 bytes, 176 with brotli, in
+    ui-gallery)
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
+114. A time relative to now: `t.relative(at, now, RelativeStyle)` writes "in 10 hours" or "3 hr.
+    ago" in the request's locale (each locale's plural forms and words from CLDR, checked against
+    Intl), and `corten_ui::RelativeTime` keeps it current in the browser on one timer for the
+    page, so a live stream no longer redraws every second or resends its part each minute to move
+    a countdown. Each locale an app lists adds about 2.3 KB of pointers and 0.4 to 3 KB of text;
+    the script is 1.8 KB brotli (5.3 KB as written; component scripts are not minified), on pages
+    that use it
+    ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -803,7 +820,7 @@ Corten is pre-1.0, so any minor version may change the API.
    the question elsewhere.
 10. `STATIC_DIR`, the default `static/` read from the working directory, `App::assets(dir)`,
     `Req::has_asset`, and `Assets::load`, `Assets::build` and `Assets::url` from the public API:
-    static files are compiled in (Changed 72).
+    static files are compiled in (Changed 73).
 
 ### Changed
 
@@ -1231,7 +1248,17 @@ Corten is pre-1.0, so any minor version may change the API.
     tools' own errors have, and a partner's write without a known key is told to send a valid
     one in `X-Api-Key` (`Refused::message`)
     ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
-72. **Breaking:** static files are compiled into the program. `corten::assets::embed!(pub struct
+72. A typed event (`#[event]`) is served with the script that imports it from `corten/events`,
+    so an app lists the script's component and never the event; a script that imports an event its
+    component's module does not have does not compile. Before, an app that listed `CopyButton`
+    without its event would have had the button's script fail to load. A page whose handlers are
+    in such a script fetches `events.js` with it (`<link rel="modulepreload">`, 64 bytes)
+    rather than after it, one round trip sooner; seller-desk's price cells had waited for it.
+    `Script` has an `events` field, written by `#[component(js)]` and `script!`. And
+    `on:Copied={..}` listens for the name the event's `#[event]` gave it: a library's carries its
+    prefix (`ui-copied`), which `html!` had dropped, so no listener heard a library's event
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
+73. **Breaking:** static files are compiled into the program. `corten::assets::embed!(pub struct
     Static = "static")` makes a constant per file (`Static::STYLE_CSS`, `Static::ICONS_192_PNG`)
     and `App::assets(Static)` serves them; `req.asset(Static::STYLE_CSS)` is its versioned URL,
     written without an allocation, and a misspelled or removed file does not compile. A name from
@@ -1655,6 +1682,12 @@ Corten is pre-1.0, so any minor version may change the API.
     tests build tokio with `test-util` for the paused clock: each tokio clock read in them checks
     one flag more; apps are not affected
     ([#278 An app cannot run a job on a schedule (hourly at :15, every 5 minutes, daily at 03:30), so each writes the clock, the missed-mark skip and the no-overlap rule itself](https://github.com/todd-skelton/corten/issues/278)).
+25. The app guide (Areas) and the skill say how a page in an area that another permission opens
+    (an order's review form under `/account/purchases`) is declared: a second routes module in the
+    same area with its own `caller`, passed in one call,
+    `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
+    permission from the path. A test holds two modules' callers apart in one area
+    ([#273 A page under an area cannot take its own caller, so a nested form that needs another permission checks it by path or by hand](https://github.com/todd-skelton/corten/issues/273)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -11,10 +11,20 @@
 //! | `GET /help` | the menu's link |
 use corten::{Component, prelude::*};
 use serde::Deserialize;
+use std::time::{Duration, SystemTime};
 
 use corten_ui::Toast;
 
-use crate::gallery::{CARD, CONDITIONS, Gallery, LAST_SALE, MenuResult, OrderResult, RenameDialog, TABS};
+use crate::gallery::{CARD, CONDITIONS, Gallery, LAST_SALE, MenuResult, OrderResult, RenameDialog, TABS, Times};
+
+corten::i18n::messages! {
+    /// The gallery's text: one locale, for the relative times.
+    pub struct Msg { "en" => "locales/en.json" }
+}
+
+/// How far the best offer's expiry is ahead of each page, and the listing behind it.
+pub const EXPIRES_IN: Duration = Duration::from_secs(90);
+pub const LISTED_AGO: Duration = Duration::from_secs(3 * 3600 + 5 * 60);
 
 corten::assets::embed! {
     /// The files in `static/`, compiled into the program: `Static::STYLE_CSS` is `static/style.css`.
@@ -50,7 +60,7 @@ pub mod url {
 }
 
 /// The app's components, then corten-ui's.
-pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery];
+pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery, crate::gallery::Sku];
 
 pub fn app() -> App {
     App::new(url::router()).assets(Static).components(COMPONENTS).components(corten_ui::COMPONENTS)
@@ -77,6 +87,12 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
     }
 }
 
+/// The offer's relative times, as of now.
+fn times(req: &Req) -> Times {
+    let (t, now): (Msg, _) = (req.t(), SystemTime::now());
+    Times { t, now }
+}
+
 /// The gallery in the layout.
 fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
     req.page(Layout { req, title: TITLE, children: gallery })
@@ -93,7 +109,17 @@ const TITLE: &str = "Sell Ashen Drake | corten-ui";
 async fn home(req: Req, Query(q): Query<HomeQuery>) -> HtmlResult {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
     let sale = q.sale.as_deref() == Some(LAST_SALE);
-    gallery(&req, Gallery { tab, result: "", toast: None, sale, rename: RenameDialog { name: "", errors: &Errors::new() } })
+    gallery(
+        &req,
+        Gallery {
+            tab,
+            result: "",
+            toast: None,
+            sale,
+            times: times(&req),
+            rename: RenameDialog { name: "", errors: &Errors::new() },
+        },
+    )
 }
 
 #[derive(Deserialize, Fields)]
@@ -114,6 +140,7 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
                 result: &text,
                 toast: None,
                 sale: false,
+                times: times(&req),
                 rename: RenameDialog { name: "", errors: &Errors::new() },
             },
         )
@@ -132,6 +159,7 @@ async fn save(req: Req) -> HtmlResult {
                 result: "",
                 toast: Some(SAVED),
                 sale: false,
+                times: times(&req),
                 rename: RenameDialog { name: "", errors: &Errors::new() },
             },
         )
@@ -154,7 +182,17 @@ async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
     let mut errors = Errors::new();
     errors.add(RenameForm::FIELDS.name, "Give the draft a name.");
     let page = || async {
-        gallery(&req, Gallery { tab: 0, result: "", toast: None, sale: false, rename: RenameDialog { name, errors: &errors } })
+        gallery(
+            &req,
+            Gallery {
+                tab: 0,
+                result: "",
+                toast: None,
+                sale: false,
+                times: times(&req),
+                rename: RenameDialog { name, errors: &errors },
+            },
+        )
     };
     req.invalid(&errors, RenameDialog { name, errors: &errors }, page).await
 }
@@ -212,6 +250,14 @@ mod tests {
             page.contains(r#"id="book-tab-1" href="/?tab=offers" aria-controls="book-panel-1" aria-selected="true""#),
             "{page}"
         );
+    }
+
+    #[tokio::test]
+    async fn the_paragraph_listens_for_the_event_the_copy_button_dispatches() {
+        // A library's event carries its prefix; the listener names the event by its type, so the
+        // two cannot drift apart.
+        let page = send(Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(page.contains(r#"data-on="ui-copied:sku.counted($e,@copies)""#), "{page}");
     }
 
     #[tokio::test]

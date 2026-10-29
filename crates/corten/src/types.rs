@@ -68,13 +68,14 @@ impl Types {
     }
 
     /// Adds the typed events among the app's components (the list it gives `App::components`)
-    /// to `corten/events`, with the types of their fields, and the views (`#[component(view)]`)
-    /// to `corten/views`.
+    /// and those their scripts import, to `corten/events`, with the types of their fields, and the
+    /// views (`#[component(view)]`) to `corten/views`.
     pub fn components(mut self, components: &[crate::Component]) -> Self {
         for view in components.iter().filter_map(|c| c.view) {
             self.views.insert(view.class, view.ts);
         }
-        for event in components.iter().filter_map(|c| c.event) {
+        let imported = components.iter().filter_map(|c| c.script).flat_map(|s| s.events);
+        for event in components.iter().chain(imported).filter_map(|c| c.event) {
             let mut fields = String::new();
             let mut init = Vec::new();
             for field in event.fields {

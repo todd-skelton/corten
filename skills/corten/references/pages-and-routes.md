@@ -110,7 +110,10 @@ Numbers, money and dates come from `t` too, never `format!` or a `"%"` of your o
 USD)` or `t.money(Decimal::parse(&api.amount)?, USD)` (`const USD: Currency = Currency::new("USD")`;
 never a float), `t.date(at, DateStyle::Medium)` (or `MonthStyle::Long` for `March 2026`), `t.time(at, TimeStyle::Short)` and
 `t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;
-`corten::i18n::parse_timestamp` reads an API's RFC 3339 text). Each is a message argument too
+`corten::i18n::parse_timestamp` reads an API's RFC 3339 text). A time relative to now ("in 10
+hours") is `t.relative(at, now, RelativeStyle::Long)` inside `corten_ui::RelativeTime`, which
+keeps it current in the browser; never redraw a live part on a timer to move one. Each is a message
+argument too
 (`corten::i18n::Arg`: text, an integer, or these; a float does not compile, so it goes through
 `t.number`). Money a form posts is read with `t.parse_money(&input.price, USD)`
 (`Option<Minor<u64>>`, in the reader's locale), never `parse::<f64>()` or a parser of your own. A
@@ -242,7 +245,11 @@ of its routes are route types: a route outside the prefix, or a prefix with a pa
 not build. A page that shows something either way (a layout's "Sign in") takes
 `Option<Caller<Viewer>>`. Reads and writes at one URL are separate handlers (`get = show,
 post = save`), so each takes what it needs. A private app puts `caller = Staff` on its routes
-module and the sign-in route in a module without it. A check that needs the record (only its
+module and the sign-in route in a module without it. A route in an area that another caller may
+use (a review form under `/account/purchases/{id}` that needs another permission) is a second
+module in the same area with that caller, `#[corten::routes(area = super::orders::Purchases,
+caller = Reviewer)]`, passed in one call, `.area(|area| reviews::area(orders::area(area)))`;
+never pick the permission from the path in `identify`. A check that needs the record (only its
 author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`. Signing in
 sets the session cookie on the answer, `Ok(req.redirect(&next)?.with_cookie(SetCookie::new("session",
 &token)))` (`SetCookie::remove("session")` signs out); never append a `Set-Cookie` header by hand.

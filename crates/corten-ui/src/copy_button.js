@@ -1,9 +1,10 @@
 // @ts-check
 // CopyButton (copy_button.rs). The button is drawn hidden: without a script it cannot copy, and
 // the text stays on the page to select. This shows it where the browser can write the clipboard,
-// copies the named element's text on a click, and says so for a moment.
+// copies the named element's text on a click, says so for a moment, and tells the page.
 
 import { keep } from "corten";
+import { Copied } from "corten/events";
 
 /** How long the button says it copied, in milliseconds. */
 const SAID = 2000;
@@ -29,11 +30,12 @@ export function connect(button, said, signal) {
 /**
  * Writes the text of the element with id `id` (a form field's value) to the clipboard; once it
  * is written, `said` reads `copied` for a moment (a polite live region, so it is announced), then
- * its label again. Nothing to copy, or a failed write, changes nothing, so the button never
- * claims a copy that did not happen.
- * @param {string} id @param {HTMLSpanElement} said @param {string} copied
+ * its label again, and the button dispatches a `Copied` the page can count. Nothing to copy, or a
+ * failed write, changes nothing and dispatches nothing, so neither the button nor the page claims
+ * a copy that did not happen.
+ * @param {HTMLButtonElement} button @param {string} id @param {HTMLSpanElement} said @param {string} copied
  */
-export async function copy(id, said, copied) {
+export async function copy(button, id, said, copied) {
   // Taken before the write: keep() reads the running handler, which an await leaves.
   const s = shown();
   const from = document.getElementById(id);
@@ -51,4 +53,5 @@ export async function copy(id, said, copied) {
     said.replaceChildren(...label);
     s.label = null;
   }, SAID);
+  button.dispatchEvent(new Copied());
 }

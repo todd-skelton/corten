@@ -186,6 +186,14 @@ struct File {
     hash: u64,
 }
 
+/// A script module's tag in a page's head.
+struct ModuleTag {
+    name: Box<str>,
+    tag: Box<str>,
+    /// It imports the typed events, so a page that loads it preloads them.
+    imports_events: bool,
+}
+
 /// A directory of static files served under a versioned prefix. Load it once, at startup.
 pub struct Assets {
     mount: String,
@@ -200,9 +208,11 @@ pub struct Assets {
     registered: std::collections::HashSet<String>,
     /// Each script module's tag in a page's head, sorted by name: a `<script type="module">` for a
     /// registered module, else a `<link rel="modulepreload">`. Made here so a page only looks it up.
-    module_tags: Box<[(Box<str>, Box<str>)]>,
+    module_tags: Box<[ModuleTag]>,
     /// The views' module preload tag, when the app lists any `#[component(view)]`.
     views_tag: Option<Box<str>>,
+    /// The typed events' module preload tag, when a listed script imports any `#[event]`.
+    events_tag: Option<Box<str>>,
     /// The joined component stylesheets' URL, when any component has one.
     stylesheet: Option<String>,
     /// Each section stylesheet: the prefixes whose pages link it, its URL and the components in it.
@@ -250,10 +260,15 @@ impl Assets {
         sources.reserve(components.len() + 1);
         let clash = |message: String| io::Error::new(io::ErrorKind::AlreadyExists, message);
         // Where each component is listed: 0 is `components`, i + 1 the section i.
+        // Each script's typed events follow it, where it is listed.
         let listed = components
             .iter()
             .map(|c| (0, c))
-            .chain(sections.iter().enumerate().flat_map(|(i, (_, list))| list.iter().map(move |c| (i + 1, c))));
+            .chain(sections.iter().enumerate().flat_map(|(i, (_, list))| list.iter().map(move |c| (i + 1, c))))
+            .flat_map(|(at, c)| {
+                let events = c.script.as_ref().map_or(&[][..], |s| s.events);
+                std::iter::once((at, c)).chain(events.iter().map(move |e| (at, e)))
+            });
         let place = |at: usize| if at == 0 { "App::components".to_string() } else { format!("the area {}", sections[at - 1].0) };
         // The sections that list each styled component: one that several list is in their shared file.
         let mut listed_in: Vec<(&str, Vec<usize>)> = Vec::new();
@@ -272,6 +287,8 @@ impl Assets {
         let mut sheets: Vec<(Vec<usize>, String, Vec<&'static str>)> = Vec::new();
         let mut events = String::new();
         let mut registered = std::collections::HashSet::new();
+        // The scripts that import `corten/events`, so a page that loads one preloads it too.
+        let mut imports_events = std::collections::HashSet::new();
         for (at, component) in listed {
             if let Some((same, first)) = seen.iter().find(|(c, _)| c.name == component.name) {
                 let script = |c: &Component| c.script.map(|s| s.source);
@@ -304,8 +321,20 @@ impl Assets {
                 }
                 sources.push((url, crate::script::served(script.name, script.source).into_bytes().into()));
                 registered.insert(script.name.to_string());
+                if !script.events.is_empty() {
+                    imports_events.insert(script.name.to_string());
+                }
             }
             if let Some(event) = component.event {
+                if let Some(other) =
+                    seen.iter().filter_map(|(c, _)| c.event).find(|e| e.class == event.class || e.name == event.name)
+                {
+                    return Err(clash(format!(
+                        "two events are {} ({:?}): `corten/events` has one class and the page one event of a name, so rename one",
+                        if other.class == event.class { event.class } else { event.name },
+                        [other.class, event.class]
+                    )));
+                }
                 if events.is_empty() {
                     events.push_str(EVENT_CLASS);
                 }
@@ -418,7 +447,7 @@ impl Assets {
         let stylesheet = files.contains_key(STYLESHEET).then(|| format!("{prefix}{STYLESHEET}"));
         let sections = section_files.into_iter().map(|s| Section { href: format!("{prefix}{}", s.href), ..s }).collect();
         let scripts_dir = format!("{prefix}scripts/");
-        let mut module_tags: Vec<(Box<str>, Box<str>)> = scripts
+        let mut module_tags: Vec<ModuleTag> = scripts
             .iter()
             .map(|name: &String| {
                 let tag = if registered.contains(name) {
@@ -426,14 +455,17 @@ impl Assets {
                 } else {
                     format!(r#"<link rel="modulepreload" href="{scripts_dir}{name}.js">"#)
                 };
-                (name.as_str().into(), tag.into())
+                ModuleTag { name: name.as_str().into(), tag: tag.into(), imports_events: imports_events.contains(name) }
             })
             .collect();
-        module_tags.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        module_tags.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         let views_tag = files.contains_key(VIEWS).then(|| format!(r#"<link rel="modulepreload" href="{prefix}{VIEWS}">"#).into());
+        let events_tag =
+            files.contains_key(EVENTS).then(|| format!(r#"<link rel="modulepreload" href="{prefix}{EVENTS}">"#).into());
         Ok(Assets {
             module_tags: module_tags.into(),
             views_tag,
+            events_tag,
             scripts_dir,
             mount: mount.into(),
             version,
@@ -515,8 +547,19 @@ impl Assets {
 
     /// The tag that loads the script module `name` with a page, when there is one.
     pub(crate) fn module_tag(&self, name: &str) -> Option<&str> {
-        let at = self.module_tags.binary_search_by(|(n, _)| (**n).cmp(name)).ok()?;
-        Some(&self.module_tags[at].1)
+        self.module(name).map(|(tag, _)| tag)
+    }
+
+    /// The tag that loads the script module `name`, and whether it imports the typed events.
+    pub(crate) fn module(&self, name: &str) -> Option<(&str, bool)> {
+        let at = self.module_tags.binary_search_by(|m| (*m.name).cmp(name)).ok()?;
+        let module = &self.module_tags[at];
+        Some((&module.tag, module.imports_events))
+    }
+
+    /// The typed events' module preload tag, when a listed script imports any `#[event]`.
+    pub(crate) fn events_tag(&self) -> Option<&str> {
+        self.events_tag.as_deref()
     }
 
     /// The views' module preload tag, when the app lists any `#[component(view)]`.
@@ -529,7 +572,7 @@ impl Assets {
         &self.scripts_dir
     }
 
-    /// The URL of the typed events' module, when the app lists any `#[event]`.
+    /// The URL of the typed events' module, when a listed script imports any `#[event]`.
     pub fn events(&self) -> Option<String> {
         self.files.contains_key(EVENTS).then(|| format!("{}{EVENTS}", self.prefix))
     }
@@ -792,7 +835,13 @@ mod tests {
 
     const SCRIPT: Component = Component {
         name: "XY",
-        script: Some(crate::Script { name: "x_y", file: "x_y.js", source: "export function f() {}", handlers: &["f"] }),
+        script: Some(crate::Script {
+            name: "x_y",
+            file: "x_y.js",
+            source: "export function f() {}",
+            handlers: &["f"],
+            events: &[],
+        }),
         style: None,
         event: None,
         view: None,
@@ -861,6 +910,40 @@ mod tests {
         assert_eq!(assets.events(), Some(assets.url(EVENTS)));
         let File { hash, .. } = &assets.files[EVENTS];
         assert_ne!(*hash, 0);
+        // A script that imports the event brings it: the app lists only the script's component,
+        // and listing the event as well changes nothing.
+        const GRID: Component = Component {
+            name: "Grid",
+            script: Some(crate::Script {
+                name: "grid",
+                file: "grid.js",
+                source: "import { RowToggled } from \"corten/events\";\nexport function f() {}",
+                handlers: &["f"],
+                events: &[TOGGLED],
+            }),
+            style: None,
+            event: None,
+            view: None,
+        };
+        let carried = Assets::build(None, &[GRID], "/assets").unwrap();
+        assert_eq!(carried.events(), Some(carried.url(EVENTS)));
+        let module = |a: &Assets| {
+            #[cfg(feature = "compress")]
+            let body = a.files[EVENTS].body.identity();
+            #[cfg(not(feature = "compress"))]
+            let body = &a.files[EVENTS].body;
+            String::from_utf8(body.to_vec()).unwrap()
+        };
+        assert!(module(&carried).contains("export const RowToggled = event(\"row-toggled\");"), "{}", module(&carried));
+        let both = Assets::build(None, &[GRID, TOGGLED], "/assets").unwrap();
+        assert_eq!(module(&both), module(&carried));
+        // Another event of the same class (an app's own, beside a library's) is an error, not merged.
+        const OTHER: Component = Component {
+            event: Some(crate::script::EventDef { class: "RowToggled", name: "ui-row-toggled", fields: &[] }),
+            ..TOGGLED
+        };
+        let error = Assets::build(None, &[GRID, OTHER], "/assets").err().expect("two RowToggled");
+        assert!(error.to_string().contains("two events are RowToggled"), "{error}");
     }
 
     #[test]

@@ -148,10 +148,13 @@ row.dispatchEvent(new RowToggled({ id, selected: true }));
 ```
 
 The class bubbles and carries the fields; `Types::components` declares it with the fields' types
-(see [Type safety](type-safety.md)). List the event in `App::components` like a component. A
+(see [Type safety](type-safety.md)). It is served with the component's or `script!` module's script that imports it, so listing
+that component is enough; only an event no such script imports (one a module in `static/`
+imports, or `import()` loads) is listed in `App::components` itself. Two different events with
+one name are a startup error, and a library's are named under its prefix (`ui-copied`). A
 handler parameter typed with a class imported from `"corten/events"` takes only the `event` of
 an `on:` for that type, a compile error otherwise; the `#[event]` type is in scope in the
-component's module. In `examples/seller-desk`, each price cell sends `PriceEdited` as its price
+component's module (for `script!`, the module that invokes it), or the script does not compile. In `examples/seller-desk`, each price cell sends `PriceEdited` as its price
 is typed or put back, and the grid around the cells counts the prices not saved.
 
 ## Lists and larger components

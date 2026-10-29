@@ -1,5 +1,12 @@
 use corten::{prelude::*, view::Id};
 
+/// The event a [`CopyButton`] dispatches once it has written the clipboard (`ui-copied` in the
+/// page, under this crate's prefix). It bubbles from the button, so an ancestor hears the copies of the buttons inside it,
+/// and it carries nothing: the text may be a secret, and the element that heard it knows what it
+/// holds. A denied write, or nothing to copy, dispatches nothing.
+#[corten::script::event]
+pub struct Copied {}
+
 /// A button that copies the text of an element on the page: an order number, a tracking number,
 /// an invite link, an API key's one-time secret. The element is named by its `#[derive(Id)]` id
 /// (`text={SecretId}`, `text={TrackingId(&parcel.id)}` in a list), so the text is on the page
@@ -14,6 +21,10 @@ use corten::{prelude::*, view::Id};
 /// icon with it included). Nothing to copy, or a failed write (no permission), changes nothing, so
 /// the button never says it copied when it did not. Both texts are the app's, in the page's
 /// language.
+///
+/// After a write, and only then, the button dispatches a [`Copied`] event, which bubbles, so an
+/// ancestor can count the copy (`on:Copied={js::counted(event)}`). Listing `CopyButton` serves
+/// the event's class; the app does not list `Copied`.
 ///
 /// Parts: the `button` and the `span[aria-live=polite]` inside it that holds its text.
 ///
@@ -36,7 +47,7 @@ use corten::{prelude::*, view::Id};
 /// .to_html();
 /// // Each button names its own row's element (ids in this crate's examples start with `ui-`).
 /// assert!(html.contains(r#"<code id="ui-tracking-1Z998">1Z998</code><button data-scope="ui-copy-button" type="button" hidden"#), "{html}");
-/// assert!(html.contains("copy(&quot;ui-tracking-1Z998&quot;,@said,"), "{html}");
+/// assert!(html.contains("copy($t,&quot;ui-tracking-1Z998&quot;,@said,"), "{html}");
 /// ```
 ///
 /// The element is named by its id type, so text in its place does not compile:
@@ -56,7 +67,7 @@ pub fn CopyButton<'a, I: Id, L: Render>(text: I, label: L, copied: &'a str) -> i
             type="button"
             hidden
             on:connect={js::connect(target, said, signal)}
-            on:click={js::copy(id.as_str(), said, copied)}
+            on:click={js::copy(target, id.as_str(), said, copied)}
         >
             <span ref={said} aria-live="polite">{label}</span>
         </button>
