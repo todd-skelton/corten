@@ -108,7 +108,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the nine scripts load and connect", loaded === 9, `${loaded} script(s)`);
+  check("the eleven scripts load and connect", loaded === 11, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -214,6 +214,43 @@ async function run(browser) {
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed"));
   check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.52 each.", await page.textContent("#result"));
+
+  // CheckboxGroup: no region checked stops the form at the group's first box.
+  const lastResult = await page.textContent("#result");
+  const sellValid = () => page.evaluate(() => /** @type {HTMLFormElement} */ (document.querySelector('form[action$="/sell"]')).checkValidity());
+  const shipsValid = () => page.evaluate(() => Array.from(document.querySelectorAll('form[action$="/sell"] fieldset input[type="checkbox"]')).every((box) => /** @type {HTMLInputElement} */ (box).checkValidity()));
+  const us = page.getByRole("checkbox", { name: "United States" });
+  await us.uncheck();
+  const shipMessage = await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
+  await page.getByRole("button", { name: "List for sale" }).click();
+  await page.waitForTimeout(300);
+  check("a group with no box checked stops the form at its first box, with the app's message", shipMessage === "Choose where you ship." && !(await sellValid()) && (await page.textContent("#result")) === lastResult, shipMessage);
+  await page.getByRole("checkbox", { name: "Canada" }).check();
+  check("one box checked, the group is valid", (await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) === "");
+  // RequiredWhen: the lowest offer applies only to offers.
+  const floor = page.getByLabel("Lowest offer");
+  const floorRequired = () => floor.evaluate((i) => /** @type {HTMLInputElement} */ (i).required);
+  check("for a fixed price the lowest offer is disabled and not required", (await floor.isDisabled()) && !(await floorRequired()));
+  await page.getByLabel("Pricing").selectOption("offers");
+  check("accepting offers makes the lowest offer required", (await floor.isEnabled()) && (await floorRequired()));
+  await page.getByRole("button", { name: "List for sale" }).click();
+  await page.waitForTimeout(300);
+  check("an empty lowest offer stops the form", (await floor.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) !== "" && (await page.textContent("#result")) === lastResult);
+  await floor.fill("5");
+  await qty.fill("2");
+  await page.getByRole("button", { name: "List for sale" }).click();
+  await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed 2"), null, { timeout: 5000 }).catch(() => {});
+  check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.52 each.", await page.textContent("#result"));
+  await page.getByLabel("Pricing").selectOption("fixed");
+  check("back to a fixed price, the lowest offer is disabled again", await floor.isDisabled());
+  // A reset puts the boxes back as drawn ("United States" checked), and the group is checked again.
+  // Only the group's boxes: the reset also empties the condition, which is drawn with no choice.
+  await us.uncheck();
+  await page.getByRole("checkbox", { name: "Canada" }).uncheck();
+  const unchecked = await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
+  await page.evaluate(() => /** @type {HTMLFormElement} */ (document.querySelector('form[action$="/sell"]')).reset());
+  await page.waitForTimeout(100);
+  check("a form reset checks the group again", unchecked === "Choose where you ship." && (await us.isChecked()) && (await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) === "" && (await shipsValid()), unchecked);
 
   // TabGroup
   const tab = (name) => page.getByRole("tab", { name });
@@ -524,6 +561,8 @@ async function run(browser) {
   // The post loads a new page; waitForLoadState alone can return for the page it left.
   await Promise.all([plain.waitForURL("**/sell"), plain.getByRole("button", { name: "List for sale" }).click()]);
   check("no script: the form posts the page", (await plain.textContent("#result")) === "Listed 1 Lightly Played Ashen Drake at $12.50 each.", await plain.textContent("#result"));
+  const plainFloor = plain.getByLabel("Lowest offer");
+  check("no script: the lowest offer is enabled and optional (the handler checks it)", (await plainFloor.isEnabled()) && !(await plainFloor.evaluate((i) => /** @type {HTMLInputElement} */ (i).required)));
   await plain.getByRole("tab", { name: "Offers" }).click();
   await plain.waitForURL("**/?tab=offers");
   check("no script: a tab is a link to its page", (await plain.getByRole("tabpanel").textContent()) === "Two offers, the best at $10.00.");
