@@ -1426,6 +1426,10 @@ Corten is pre-1.0, so any minor version may change the API.
     (`values={&[Pricing::Offers]}`). ui-gallery reads its condition, pricing, regions, tab and
     sale sheet as enums, where it compared strings
     ([#324 corten-ui choices are strings, so nothing ties a Picker or ComboBox value to the field that reads it](https://github.com/todd-skelton/corten/issues/324)).
+78. examples/card-market answers a category nothing is in (a slug from an old link) with
+    `X-Robots-Tag: noindex` (`Public::header`), so search engines do not list an empty page; a
+    category with cards is unchanged
+    ([#335 Some framework features appear in no example: Area::policy, Public::header, Req::signal, Refused::too_many](https://github.com/todd-skelton/corten/issues/335)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
