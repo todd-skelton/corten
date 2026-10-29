@@ -276,12 +276,13 @@ async function run(browser) {
   await expanded("true");
   check("the button opens the menu", (await trigger.getAttribute("aria-expanded")) === "true");
   check("focus moves to the first item", (await page.evaluate(() => document.activeElement?.textContent)) === "Help");
+  // Under the button, or above it where the viewport has no room below (flip-block).
   const menuBox = await page.evaluate(() => {
     const button = document.querySelector("#actions-button")?.getBoundingClientRect();
     const menu = document.querySelector("#actions")?.getBoundingClientRect();
-    return button && menu && { gap: menu.top - button.bottom, left: menu.left - button.left };
+    return button && menu && { gap: Math.max(menu.top - button.bottom, button.top - menu.bottom), left: menu.left - button.left };
   });
-  check("the menu is anchored under its button", !!menuBox && menuBox.gap >= 0 && menuBox.gap <= 8 && Math.abs(menuBox.left) <= 1, JSON.stringify(menuBox));
+  check("the menu is anchored to its button", !!menuBox && menuBox.gap >= 0 && menuBox.gap <= 8 && Math.abs(menuBox.left) <= 1, JSON.stringify(menuBox));
   await page.keyboard.press("ArrowDown");
   check("Arrow Down moves", (await page.evaluate(() => document.activeElement?.textContent)) === "Archive");
   await page.keyboard.press("w");
