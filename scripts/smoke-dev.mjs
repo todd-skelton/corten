@@ -24,7 +24,8 @@ try {
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
   await page.waitForTimeout(300);
   check("the page stays while the server runs", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
-  execFileSync("docker", ["restart", "-t", "1", container], { stdio: "ignore" });
+  // Bounded: a blocking call holds the event loop, so the stall watchdog could not stop it.
+  execFileSync("docker", ["restart", "-t", "1", container], { stdio: "ignore", timeout: 60_000 });
   await page.waitForFunction((b) => document.querySelector('meta[name="corten-dev"]')?.getAttribute("content") !== b, boot, { timeout: 20000 }).catch(() => {});
   const after = await page.getAttribute('meta[name="corten-dev"]', "content").catch(() => null);
   check("the open page reloads when the server restarts", !!after && after !== boot && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined)));

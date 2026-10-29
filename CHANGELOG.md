@@ -1643,7 +1643,7 @@ Corten is pre-1.0, so any minor version may change the API.
 54. CI's browser job could hang for an hour or more when a Playwright call never returned (Firefox,
     after the watchlist smoke closed another site's page), holding the runner with no report of
     where. The job now has a 30 minute limit (a passing one takes 11 to 14), and every browser smoke
-    stops itself after five minutes with no check finished, printing the last check it passed and,
+    stops itself after five minutes with no check finished, printing the last check it finished and,
     for the runtime's smoke, the requests still loading ([#317 CI: the browser job can hang for an
     hour in the watchlist smoke, and has no timeout](https://github.com/todd-skelton/corten/issues/317)).
 ### Documentation

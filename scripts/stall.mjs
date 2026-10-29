@@ -1,7 +1,8 @@
 // @ts-check
 // A browser smoke that stops making progress (a Playwright call that never returns) would otherwise
 // hold its CI job until GitHub's six-hour limit (#317). Each smoke's `check` reports here; after
-// `minutes` with none, the run says which check it got past last, and what `report` adds, and exits.
+// `minutes` with none, the run names the last check it finished (passed or failed), and what
+// `report` adds, and exits.
 
 /**
  * Starts the watchdog and returns the function each check calls with its name.
