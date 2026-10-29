@@ -73,6 +73,29 @@ CSP; one-off values come from the token utilities instead. Pages that must draw 
 `.policy(|p| p.allow_style_attributes())` ([app guide](app.md#a-policy-for-part-of-the-app)), so
 the rest of the app keeps the protection.
 
+## Printing
+
+A page prints with its components' own print rules. An `@media print` block is scoped like any
+other, each rule starting at one of the file's classes, and an `@page` rule is copied as written,
+so a named page gives the paper size to the elements that ask for it:
+
+```css
+/* src/views/packing_slip.css */
+@page slip-thermal { size: 4in 6in; margin: 0.15in; }
+@page slip-letter { size: letter; margin: 0.5in; }
+.slip { break-after: page; }
+.slip.thermal { page: slip-thermal; }
+.slip.letter { page: slip-letter; }
+@media print { .actions { display: none; } }
+```
+
+A page's name belongs to the app, not the component (an at-rule is not scoped), so name it after
+the component. An unnamed `@page` applies to everything the app prints, so it goes in
+`static/style.css`, with resets for the elements no component owns (`main`'s margins). A
+component's stylesheet cannot reach the layout's header or navigation, so each layout component
+hides itself with its own `@media print` rule. corten-ui's `PrintButton` opens the print dialog;
+without a script, the browser's Print command prints the same page.
+
 ## Utility-first
 
 A page can be styled mostly in its markup, as Tailwind does, from the token file's utilities.

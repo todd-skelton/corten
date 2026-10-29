@@ -660,6 +660,15 @@ mod tests {
         assert!(scope("h2 { margin: 0 }", "x").unwrap_err().contains("`h2` styles elements this component does not own"));
         assert!(scope(".a, h2 { margin: 0 }", "x").unwrap_err().contains("line 1"));
         assert!(scope("@media print { body { margin: 0 } }", "x").is_err(), "at-rules do not unscope");
+        let print = scope(
+            "@page slip-4x6 { size: 4in 6in; margin: 0 }\n.slip { page: slip-4x6 }\n@media print { .bar { display: none } }",
+            "x",
+        );
+        assert_eq!(
+            print.map(|s| s.css),
+            Ok("@page slip-4x6{size:4in 6in;margin:0}.x__slip{page:slip-4x6}@media print{.x__bar{display:none}}".to_string()),
+            "a named page is the app's; print rules are scoped"
+        );
         assert!(scope("\n\n@import \"x.css\";", "x").unwrap_err().starts_with("line 3: @import"));
         assert!(scope(".a { color: red", "x").unwrap_err().contains("never closed"));
         assert!(scope(".a__b { color: red }", "x").is_err());
