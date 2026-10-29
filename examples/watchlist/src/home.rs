@@ -86,7 +86,7 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 /// current by `live_prices.js` from the stocks feed (`url::Stocks`, a route, so not any text). The pause button shows only when the script runs,
 /// since nothing updates without it. The script counts the updates to the stocks shown, with a
 /// message of the page's locale (`t.js()`), and writes each price and change with the page's
-/// money and percent formats, so the text a script computes is the server's. Each row's Remove
+/// money and change formats, so the text a script computes is the server's. Each row's Remove
 /// button submits the watch form (`form={WatchFormId}`) to `/unwatch`, so every change to the
 /// list is one form's submit, and the runtime keeps only the newest answer. A change replaces
 /// the component, whose new rows subscribe again (a snapshot, then the stream); it starts
@@ -96,7 +96,7 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 #[component(css, js)]
 pub(crate) fn LivePrices<'a>(stocks: &'a [Stock], t: Msg) -> impl Patch {
     let (pause, price, change, updates) = refs();
-    let (updated, money, percent) = (t.js().prices_updates(), t.js().money(USD), t.js().percent(2));
+    let (updated, money, percent) = (t.js().prices_updates(), t.js().money(USD), t.js().change(2));
     let f = UnwatchForm::FIELDS;
     html! {
         <div
@@ -312,16 +312,16 @@ mod tests {
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/scripts/live_prices.js\">"), "the script module is preloaded: {body}");
         assert!(
-            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,#change,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;\u0001%&quot;,&quot;-\u0001%&quot;],&quot;p&quot;:2},&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
-            "the script gets the money and percent formats and the message it fills in, once: {body}"
+            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,#change,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;\u0001%&quot;,&quot;-\u0001%&quot;,&quot;+\u0001%&quot;],&quot;p&quot;:2},&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
+            "the script gets the money and change formats and the message it fills in, once: {body}"
         );
         assert!(
             body.contains(r#"<td data-ref="price" class="live-prices__amount" data-key="ACME">$129.99</td>"#),
             "server renders prices first: {body}"
         );
         assert!(
-            body.contains(r#"<td data-ref="change" class="live-prices__change" data-key="ACME" data-trend="flat">0%</td>"#),
-            "and today's change, in the page's percent format: {body}"
+            body.contains(r#"<td data-ref="change" class="live-prices__change" data-key="ACME" data-trend="flat">0.00%</td>"#),
+            "and today's change, in the page's change format: {body}"
         );
         assert_eq!(rows(&body), ["ACME", "GLBX", "INIT"], "a first visit watches three");
         assert!(
@@ -394,7 +394,7 @@ mod tests {
         assert!(
             body.starts_with(concat!(
                 r#"{"title":"Stocks | Watchlist","data":{"stocks":[{"id":"ACME","name":"Acme Corp","price_cents":12999,"#,
-                r#""open_cents":12999,"change_bp":0,"price":"$129.99","change":"0%"}"#
+                r#""open_cents":12999,"change_bp":0,"price":"$129.99","change":"0.00%"}"#
             )),
             "{body}"
         );

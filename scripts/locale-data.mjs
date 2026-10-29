@@ -94,7 +94,9 @@ function localeData(tag) {
   // (bn groups a number 12,34,567 and a percentage 1,234,567%).
   const pf = new Intl.NumberFormat(tag, { style: "percent" });
   const ofPercent = separators(new Intl.NumberFormat(tag, { style: "percent", maximumFractionDigits: 2 }), 100);
-  const percent = [template(pf.formatToParts(5)), template(pf.formatToParts(-5))];
+  // A change (signDisplay "exceptZero") writes a gain with the locale's plus sign: `+5%`, `+5 %`.
+  const change = new Intl.NumberFormat(tag, { style: "percent", signDisplay: "exceptZero" });
+  const percent = [template(pf.formatToParts(5)), template(pf.formatToParts(-5)), template(change.formatToParts(5))];
 
   // Money: the form of a currency whose symbol is its code (`CHF 5.00`, and any code Intl does not
   // know), positive and negative, with the code at \u0002; and each currency written otherwise
@@ -332,6 +334,18 @@ function formatPercent(d, text, digits) {
   return d.percent[neg ? 1 : 0].replace("\u0001", body(d, d.ofPercent, i, f));
 }
 
+/** `text` (a ratio) as a change: a percentage with exactly `digits` fraction digits and a sign,
+ * none when it rounds to zero. */
+function formatChange(d, text, digits) {
+  const negative = text.startsWith("-");
+  let [int, frac = ""] = text.replace(/^[-+]/, "").split(".");
+  frac = frac.padEnd(2, "0");
+  const shifted = `${negative ? "-" : ""}${int}${frac.slice(0, 2)}.${frac.slice(2)}`;
+  const [neg, i, f] = round(shifted.endsWith(".") ? shifted.slice(0, -1) : shifted, digits);
+  const zero = /^0*$/.test(i + f);
+  return d.percent[zero ? 0 : neg ? 1 : 2].replace("\u0001", body(d, d.ofPercent, i, f));
+}
+
 function formatMoney(d, text, code) {
   const digits = displayDigits[code] ?? 2;
   const [negative, int, frac] = round(text, digits);
@@ -388,6 +402,9 @@ function formatDate(d, style, date, offset) {
 // Ratios, each written with at most 0, 1, 2 and 4 fraction digits.
 const RATIOS = ["0.029", "-0.5", "1", "0", "12.345", "0.00125", "1234.5", "-0.00004", "0.0290", "0.995"];
 const RATIO_DIGITS = [0, 1, 2, 4];
+// A change: gains, losses, and ones that round to zero either way.
+const CHANGES = [...RATIOS, "0.006", "-0.003", "0.00004", "-0.000049", "-0.00005", "0.00005"];
+const CASE_CHANGES = ["0.006", "-0.003", "0", "-0.00004", "12.345", "-0.5"];
 const NUMBERS = ["0", "7", "-7", "999", "1234", "12345", "123456", "1234567", "-1234567", "1234567890123", "1234.5", "-0.25", "1234567.891", "0.5"];
 const CURRENCIES = ["USD", "EUR", "JPY", "GBP", "CHF", "CAD", "INR", "KWD", "BRL", "CNY", "KRW", "MXN", "PLN", "SEK", "HUF", "COP"];
 const AMOUNTS = ["1234.5", "-5", "0", "21.505", "-0.004", "1234567.125", "0.995"];
@@ -427,6 +444,14 @@ for (const tag of [...LANGUAGES, ...REGIONS]) {
       const intl = new Intl.NumberFormat(tag, { style: "percent", maximumFractionDigits: digits }).format(r);
       expect(tag, `percent ${digits}`, r, formatPercent(d, r, digits), intl);
       if (digits === 2 || r === "12.345") forCases.push([`percent ${digits}`, r, intl]);
+    }
+  }
+  for (const r of CHANGES) {
+    for (const digits of RATIO_DIGITS) {
+      const options = { style: "percent", minimumFractionDigits: digits, maximumFractionDigits: digits, signDisplay: "exceptZero" };
+      const intl = new Intl.NumberFormat(tag, options).format(r);
+      expect(tag, `change ${digits}`, r, formatChange(d, r, digits), intl);
+      if (digits === 2 && CASE_CHANGES.includes(r)) forCases.push([`change ${digits}`, r, intl]);
     }
   }
   for (const code of Intl.supportedValuesOf("currency")) {

@@ -1008,7 +1008,8 @@ pub mod ts {
     pub enum NumberFormat {}
     /// `MoneyFormat` (from `corten`): an amount's format in a currency, `t.js().money(USD)`.
     pub enum MoneyFormat {}
-    /// `PercentFormat` (from `corten`): the page's percentage format, `t.js().percent(2)`.
+    /// `PercentFormat` (from `corten`): the page's percentage format, `t.js().percent(2)`, or its
+    /// change format, `t.js().change(2)`.
     pub enum PercentFormat {}
     /// `DateFormat` (from `corten`): a date's format, `t.js().date(DateStyle::Medium)`.
     pub enum DateFormat {}

@@ -887,6 +887,15 @@ Corten is pre-1.0, so any minor version may change the API.
      within 18 (13,971 against 13,953). A request in an area with a pass-through middleware runs
      21,374 to 21,511 against 20,497 to 20,646 with none (one boxed future), and one outside it
      19,909 to 19,913.
+125. `t.change(ratio, digits)` and `t.js().change(digits)`: a ratio as a change (a price's move
+    today), with exactly `digits` fraction digits and a sign on a gain as on a loss, none on what
+    rounds to zero (`+0.60%`, `-0.30%`, `0.00%`; `+0,60 %` in fr, `+%0,60` in tr), as Intl's
+    `signDisplay: "exceptZero"` writes it, so a column of them lines up. Each locale's data gains
+    the template for a gain; the script's format is a `PercentFormat` with that third template,
+    and `scripts/format.mjs` checks it on the same cases as the server (Intl wrote them). watchlist's
+    Today column uses it. `change`, `percent`, `parse_money` and `relative` join the message keys
+    `messages!` refuses at the top level, since they are its methods (`button.change` is fine)
+    ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1761,6 +1770,11 @@ Corten is pre-1.0, so any minor version may change the API.
     compile. Reading a route with a four-parameter set costs 4,107 instructions, up from 3,669,
     the same as those parameters on the route itself (callgrind, release build)
     ([#310 A #[route(prefix)] field inside a #[route(query)] set is written into links but Params reads it back empty](https://github.com/todd-skelton/corten/issues/310)).
+65. examples/watchlist's header wrapped to two rows on a phone, and its alerts page used the left
+    half of a desktop screen. The header is one row at 390 px: the viewer's name (and picture) is
+    the link to their account, where the Account link was, and a visitor has a shorter "Sign in"
+    button in its place. The alerts form and list sit side by side from 48rem
+    ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

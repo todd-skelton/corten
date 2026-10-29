@@ -48,16 +48,33 @@ impl Decimal {
     /// rounded half away from zero, without trailing zeros (0.0290 is 2.9), as Intl's
     /// `maximumFractionDigits` writes it.
     fn percent(self, digits: u8) -> Self {
-        let shifted = match self.scale.checked_sub(2) {
-            Some(scale) => Decimal { scale, ..self },
-            None => Decimal { mantissa: self.mantissa.saturating_mul(10u128.pow(u32::from(2 - self.scale))), scale: 0, ..self },
-        };
+        let shifted = self.hundredfold();
         let mut d = if shifted.scale > digits { shifted.rescale(digits) } else { shifted };
         while d.scale > 0 && d.mantissa % 10 == 0 {
             d.mantissa /= 10;
             d.scale -= 1;
         }
         d
+    }
+
+    /// This ratio as a change: the percentage with exactly `digits` fraction digits (0.006 is
+    /// 0.60), rounded half away from zero, as Intl writes it given both `minimumFractionDigits`
+    /// and `maximumFractionDigits`.
+    fn change(self, digits: u8) -> Self {
+        let d = self.hundredfold();
+        // At most 38 digits in all, as a `Decimal` holds: those of the whole part (before
+        // rounding), then the fraction's (`format.js` caps them the same way).
+        let whole = d.mantissa / 10u128.pow(u32::from(d.scale));
+        let whole_digits = whole.checked_ilog10().map_or(1, |n| n as u8 + 1);
+        d.rescale(digits.min(38u8.saturating_sub(whole_digits)))
+    }
+
+    /// The value times 100, moving the point.
+    fn hundredfold(self) -> Self {
+        match self.scale.checked_sub(2) {
+            Some(scale) => Decimal { scale, ..self },
+            None => Decimal { mantissa: self.mantissa.saturating_mul(10u128.pow(u32::from(2 - self.scale))), scale: 0, ..self },
+        }
     }
 
     /// The same value with `digits` fraction digits: padded with zeros, or rounded half away from
@@ -475,8 +492,8 @@ fn unix_seconds(at: SystemTime) -> i64 {
     }
 }
 
-/// A number, an amount of money or a percentage in a locale: what `t.number`, `t.money` and
-/// `t.percent` return. It renders in `html!` as text or an attribute value, and is a message
+/// A number, an amount of money, a percentage or a change in a locale: what `t.number`,
+/// `t.money`, `t.percent` and `t.change` return. It renders in `html!` as text or an attribute value, and is a message
 /// argument ([`super::Arg`]).
 #[derive(Clone, Copy)]
 pub struct Formatted {
@@ -491,6 +508,8 @@ enum Kind {
     Money(Currency),
     /// `value` is already Ã— 100 and rounded.
     Percent,
+    /// `value` is already times 100 and rounded to its digits; a gain is written with its sign.
+    Change,
 }
 
 impl Formatted {
@@ -509,12 +528,26 @@ impl Formatted {
         Formatted { data, value: ratio.percent(digits), kind: Kind::Percent }
     }
 
+    #[doc(hidden)]
+    pub fn change(data: &'static __private::LocaleData, ratio: Decimal, digits: u8) -> Self {
+        Formatted { data, value: ratio.change(digits), kind: Kind::Change }
+    }
+
     fn write(&self, out: &mut dyn Write) -> fmt::Result {
         let data = self.data;
         let negative = usize::from(self.value.negative);
         let currency = match self.kind {
             Kind::Number => return self.write_in(data.number[negative], &data.plain, "", out),
             Kind::Percent => return self.write_in(data.percent[negative], &data.percent_separators, "", out),
+            // As Intl's `signDisplay: "exceptZero"`: no sign on what rounds to zero, either way.
+            Kind::Change => {
+                let template = match (self.value.mantissa, self.value.negative) {
+                    (0, _) => data.percent[0],
+                    (_, true) => data.percent[1],
+                    (_, false) => data.percent[2],
+                };
+                return self.write_in(template, &data.percent_separators, "", out);
+            }
             Kind::Money(currency) => currency,
         };
         let code = currency.code();
@@ -1087,13 +1120,15 @@ pub struct NumberFormat {
     data: &'static __private::LocaleData,
 }
 
-/// `t.js().percent(digits)`: the locale's percentage format, for a handler whose JSDoc takes a
-/// `PercentFormat` (from `corten`), which writes `format(ratio)` as `t.percent(ratio, digits)`
-/// does.
+/// `t.js().percent(digits)` or `t.js().change(digits)`: the locale's percentage format, for a
+/// handler whose JSDoc takes a `PercentFormat` (from `corten`), which writes `format(ratio)` as
+/// `t.percent(ratio, digits)` (or `t.change(ratio, digits)`) does.
 #[derive(Clone, Copy)]
 pub struct PercentFormat {
     data: &'static __private::LocaleData,
     digits: u8,
+    /// A change's: exactly `digits` fraction digits, and a sign on a gain.
+    change: bool,
 }
 
 /// `t.js().money(currency)`: an amount's format, for a handler whose JSDoc takes a `MoneyFormat`
@@ -1125,7 +1160,12 @@ impl NumberFormat {
 impl PercentFormat {
     #[doc(hidden)]
     pub fn new(data: &'static __private::LocaleData, digits: u8) -> Self {
-        PercentFormat { data, digits }
+        PercentFormat { data, digits, change: false }
+    }
+
+    #[doc(hidden)]
+    pub fn change(data: &'static __private::LocaleData, digits: u8) -> Self {
+        PercentFormat { data, digits, change: true }
     }
 }
 
@@ -1174,16 +1214,19 @@ mod wire {
         json_str(data.zero.encode_utf8(&mut zero), out);
     }
 
-    pub(super) fn separators(s: &Separators, templates: [&str; 2], out: &mut String) {
+    pub(super) fn separators(s: &Separators, templates: &[&str], out: &mut String) {
         out.push_str(",&quot;s&quot;:[");
         json_str(s.decimal, out);
         out.push(',');
         json_str(s.group, out);
         let _ = write!(out, ",{},{},{}]", s.grouping[0], s.grouping[1], s.grouping[2]);
         out.push_str(",&quot;t&quot;:[");
-        json_str(templates[0], out);
-        out.push(',');
-        json_str(templates[1], out);
+        for (i, template) in templates.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            json_str(template, out);
+        }
         out.push(']');
     }
 
@@ -1248,7 +1291,7 @@ mod wire {
 impl crate::script::Arg<crate::script::ts::NumberFormat> for NumberFormat {
     fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
         wire::open(self.data, out);
-        wire::separators(&self.data.plain, self.data.number, out);
+        wire::separators(&self.data.plain, &self.data.number, out);
         out.push('}');
     }
 }
@@ -1256,7 +1299,9 @@ impl crate::script::Arg<crate::script::ts::NumberFormat> for NumberFormat {
 impl crate::script::Arg<crate::script::ts::PercentFormat> for PercentFormat {
     fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
         wire::open(self.data, out);
-        wire::separators(&self.data.percent_separators, self.data.percent, out);
+        // A change's has the third template, a gain's, which tells the script it is one.
+        let templates = if self.change { &self.data.percent[..] } else { &self.data.percent[..2] };
+        wire::separators(&self.data.percent_separators, templates, out);
         let _ = write!(out, ",&quot;p&quot;:{}}}", self.digits);
     }
 }
@@ -1271,7 +1316,7 @@ impl crate::script::Arg<crate::script::ts::MoneyFormat> for MoneyFormat {
             Err(_) => data.money.map(|t| t.replace('\u{2}', code)),
         };
         wire::open(data, out);
-        wire::separators(&data.money_separators, [&pos, &neg], out);
+        wire::separators(&data.money_separators, &[pos.as_str(), neg.as_str()], out);
         let _ = write!(out, ",&quot;d&quot;:{}}}", self.currency.digits());
     }
 }
@@ -1345,8 +1390,9 @@ pub mod __private {
         pub number: [&'static str; 2],
         /// A percentage's separators (bn groups a number 12,34,567 and a percentage 1,234,567%).
         pub percent_separators: Separators,
-        /// A percentage, positive and negative, with the locale's sign in place.
-        pub percent: [&'static str; 2],
+        /// A percentage, positive and negative, with the locale's sign in place, then a gain as a
+        /// change writes it (`+5%` in en, `+%5` in tr).
+        pub percent: [&'static str; 3],
         /// An amount in a currency written by its code (`CHF 5.00`), positive and negative.
         pub money: [&'static str; 2],
         /// Each currency written otherwise, by code: positive and negative, the symbol in place.

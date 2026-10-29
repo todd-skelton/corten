@@ -15,7 +15,8 @@ corten::assets::embed! {
 
 /// The document around every page: its title, its own `head` tags, who is looking and the page.
 /// Client navigation swaps the title, the tags and the page only; signing in changes the viewer,
-/// which makes the runtime load the next page in full.
+/// which makes the runtime load the next page in full. The header is one row on a phone: the
+/// viewer is the link to their account, and a visitor has the sign-in button in its place.
 #[component]
 pub fn Layout<'a>(
     req: &'a Req,
@@ -24,7 +25,7 @@ pub fn Layout<'a>(
     head: impl Render,
     children: impl Render,
 ) -> impl Document {
-    // The page's side padding, narrower on a phone so the header fits on two lines.
+    // The page's side padding, narrower on a phone so the header fits on one line.
     let gutter = Responsive::new(Space::_4).sm(Space::_5);
     html! {
         <!DOCTYPE html>
@@ -48,11 +49,13 @@ pub fn Layout<'a>(
                             <a {..req.nav(&url::Home)}>"Stocks"</a>
                             <a {..req.nav(&news::url::News::default())}>"News"</a>
                             <a {..req.nav(&url::Alerts { saved: None })}>"Alerts"</a>
-                            <a {..req.nav(&account::url::Account)}>"Account"</a>
                         </nav>
                         match viewer {
-                            Some(viewer) => <ViewerBadge viewer={viewer} />,
-                            None => <form method="post" action={url::SignIn} data-patch><button>"Sign in as Ada"</button></form>,
+                            // Named for where it goes, starting with what it shows (the name).
+                            Some(viewer) => <a {..req.nav(&account::url::Account)} aria-label={format!("{}: account", viewer.name)}>
+                                <ViewerBadge viewer={viewer} />
+                            </a>,
+                            None => <form method="post" action={url::SignIn} data-patch><button>"Sign in"</button></form>,
                         }
                     </div>
                 </header>
@@ -62,19 +65,20 @@ pub fn Layout<'a>(
     }
 }
 
-/// The header's badge: who is signed in, with their picture once they upload one. The upload's
-/// answer replaces it by its id.
+/// The header's badge, inside the link to their account: who is signed in, with their picture
+/// once they upload one. The upload's answer replaces it by its id, and the link around it keeps
+/// its mark as the current page.
 #[derive(Id)]
 pub struct ViewerBadgeId;
 
 #[component]
 pub fn ViewerBadge<'a>(viewer: &'a Viewer) -> impl Patch {
     html! {
-        <span id={ViewerBadgeId} class={(row(Space::_2), muted())}>
+        <span id={ViewerBadgeId} class={row(Space::_2)}>
             if let Some(id) = &viewer.picture {
                 <img src={url::Picture { id }} alt="" width="28" height="28" class={rounded_pill()}>
             }
-            "Signed in as "{&viewer.name}
+            {&viewer.name}
         </span>
     }
 }
@@ -90,13 +94,24 @@ mod tests {
         let (_, guest) = send(get("/news")).await;
         assert!(guest.contains(r#"<a href="/news" data-nav aria-current="page">News</a>"#), "{guest}");
         assert!(guest.contains(r#"<a href="/" data-nav>Stocks</a>"#));
-        assert!(guest.contains("Sign in as Ada"));
+        assert!(guest.contains("<button>Sign in</button>") && !guest.contains(r#"href="/account""#), "{guest}");
         let router = router();
         let session = sign_in(&router).await;
         let ada = text(call_on(&router, get_with("/", &session)).await).await;
-        assert!(ada.contains("Signed in as Ada") && !ada.contains("Sign in as Ada"));
+        assert!(
+            ada.contains(r#"<a href="/account" data-nav aria-label="Ada: account"><span id="viewer-badge""#)
+                && ada.contains(">Ada</span></a>"),
+            "{ada}"
+        );
+        assert!(!ada.contains("<button>Sign in</button>"));
+        let account = text(call_on(&router, get_with("/account", &session)).await).await;
+        assert!(
+            account
+                .contains(r#"<a href="/account" data-nav aria-current="page" aria-label="Ada: account"><span id="viewer-badge""#),
+            "{account}"
+        );
         let lost = Request::get("/nope").header("cookie", &session).header("accept", "text/html").body(Body::empty()).unwrap();
         let lost = text(call_on(&router, lost).await).await;
-        assert!(lost.contains("<h1>Not found</h1>") && lost.contains("Signed in as Ada"), "the error page too: {lost}");
+        assert!(lost.contains("<h1>Not found</h1>") && lost.contains(">Ada</span></a>"), "the error page too: {lost}");
     }
 }

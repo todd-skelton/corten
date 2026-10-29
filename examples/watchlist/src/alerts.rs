@@ -291,15 +291,16 @@ fn alerts_page(
     let parts = again.map(|again| again.from(from));
     req.page(html! {
         <Layout req={req} title="Alerts" viewer={viewer} head={again}>
-            <div class={(stack(Space::_4), max_w_prose())}>
-                <div class={stack(Space::_1)}>
-                    <h1>"Price alerts"</h1>
-                    <p class={muted()}>"Hear about it when a stock goes above a price."</p>
-                </div>
+            <div class={(stack(Space::_1), mb_5())}>
+                <h1>"Price alerts"</h1>
+                <p class={muted()}>"Hear about it when a stock goes above a price."</p>
+            </div>
+            // The form beside the list on a wide screen, above it on a phone.
+            <div class={(display_grid(), columns(Responsive::new(Columns::_1).md(Columns::_2)), gap_5(), items_start())}>
                 <AlertForm input={input} errors={errors} status={read.status} />
                 <AlertList t={req.t()} alerts={&read.alerts} />
-                {parts}
             </div>
+            {parts}
         </Layout>
     })
 }

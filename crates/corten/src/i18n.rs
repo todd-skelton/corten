@@ -169,9 +169,10 @@
 //! A number, an amount or a date a script works out is written with the page's format, so it is
 //! what the server would have rendered: `t.js().number()`, `t.js().money(USD)` and
 //! `t.js().date(DateStyle::Short)` (or `.time(..)`, `.date_time(..)`, in UTC unless
-//! `.zone(Offset::hours(-5))`) and `t.js().percent(2)` are passed to a handler whose JSDoc takes
-//! a `NumberFormat`, `MoneyFormat`, `DateFormat` or `PercentFormat` (from `"corten"`), and the
-//! script calls `price(123450)` (minor units), `when(Date.now())` or `rate(0.029)`. The format is sent as the locale's separators, templates and
+//! `.zone(Offset::hours(-5))`) and `t.js().percent(2)` (or `t.js().change(2)`) are passed to a
+//! handler whose JSDoc takes a `NumberFormat`, `MoneyFormat`, `DateFormat` or `PercentFormat`
+//! (from `"corten"`), and the script calls `price(123450)` (minor units), `when(Date.now())` or
+//! `rate(0.029)`. The format is sent as the locale's separators, templates and
 //! names (`%{..}`), and the runtime writes with the same algorithm (`scripts/format.mjs` checks
 //! it on every case the server is checked on), not the browser's `Intl`, whose data differs by
 //! browser and version. A zone with daylight saving time has no fixed offset to send: write
@@ -883,6 +884,22 @@ mod tests {
         );
     }
 
+    /// `t.change` writes a change for a column that lines up: always its digits, a sign on a gain
+    /// as on a loss, and none on what rounds to zero.
+    #[test]
+    fn a_change_has_its_digits_and_a_sign() {
+        let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+        assert_eq!(en.change(Decimal::new(60, 4), 2).to_string(), "+0.60%");
+        assert_eq!(en.change(Decimal::new(-30, 4), 2).to_string(), "-0.30%");
+        assert_eq!(en.change(Decimal::new(-4, 5), 2).to_string(), "0.00%", "rounds to zero: no sign");
+        assert_eq!(en.change(0, 1).to_string(), "0.0%");
+        let many = format!("+0.6{}%", "0".repeat(36));
+        assert_eq!(en.change(Decimal::new(6, 3), 40).to_string(), many, "at most 38 digits in all");
+        assert_eq!(en.change(Decimal::new(12_345, 3), 255).to_string().len(), "+1,234.".len() + 34 + 1);
+        assert_eq!(en.change(Decimal::new(125, 5), 2).to_string(), "+0.13%", "half away from zero");
+        assert_eq!(fr.change(Decimal::new(60, 4), 2).to_string(), "+0,60\u{a0}%", "the locale's sign in place");
+    }
+
     /// Every amount every locale writes (Intl's, in cases.tsv, and ours in every currency its data
     /// has) reads back, and what people type for it without the marks Intl adds: a symbol's
     /// direction marks, its no-break spaces.
@@ -956,6 +973,9 @@ mod tests {
                 ["number"] => Formatted::number(data, Decimal::parse(input).unwrap()).to_string(),
                 ["percent", digits] => {
                     Formatted::percent(data, Decimal::parse(input).unwrap(), digits.parse().unwrap()).to_string()
+                }
+                ["change", digits] => {
+                    Formatted::change(data, Decimal::parse(input).unwrap(), digits.parse().unwrap()).to_string()
                 }
                 ["money"] => {
                     let (amount, code) = input.split_once(' ').unwrap();
@@ -1031,6 +1051,10 @@ mod tests {
                 ["percent", digits] => {
                     Arg::<ts::PercentFormat>::write_arg(&PercentFormat::new(data, digits.parse().unwrap()), &ctx, &mut out);
                     format!("percent {digits}")
+                }
+                ["change", digits] => {
+                    Arg::<ts::PercentFormat>::write_arg(&PercentFormat::change(data, digits.parse().unwrap()), &ctx, &mut out);
+                    format!("change {digits}")
                 }
                 ["money"] => {
                     let code = input.split_once(' ').unwrap().1;

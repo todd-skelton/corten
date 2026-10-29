@@ -2,7 +2,7 @@
 // LivePrices (home.rs): keeps the server-rendered prices and today's change current from the
 // feed, which carries the whole market; the rows are the watched stocks. While paused it keeps
 // the latest rows and shows them on resume. Prices and changes are written with the page's
-// formats (t.js().money(USD), t.js().percent(2)), which write what the server rendered; they
+// formats (t.js().money(USD), t.js().change(2)), which write what the server rendered; they
 // are written into the page once, for watch, which keeps them for pause.
 import { keep, subscribe } from "corten";
 /** @import { Message, MoneyFormat, PercentFormat } from "corten" */
