@@ -1626,6 +1626,9 @@ Corten is pre-1.0, so any minor version may change the API.
     connection went idle at, so it failed under load when the clock's thread lagged. It now checks
     what the clock promises, and expiry itself is unchanged
     ([#279 watch test: an idle connection can expire early when the clock's thread lags, and the test fails under load](https://github.com/todd-skelton/corten/issues/279)).
+53. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
+    Under load, a slow read used to add real seconds, and "each second" failed
+    ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
 
 ### Documentation
 

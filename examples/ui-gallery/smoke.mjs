@@ -491,6 +491,8 @@ async function run(browser) {
   timed.on("console", (m) => m.type() === "error" && timedErrors.push(m.text()));
   await timed.clock.install();
   await timed.goto(`${base}/`);
+  // Paused, so only runFor moves the page's time: a slow read under load adds no seconds.
+  await timed.clock.pauseAt((await timed.evaluate(() => Date.now())) + 200);
   const listed = timed.locator("time").first();
   const expires = timed.locator("time").nth(1);
   check("the server writes a time behind now", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
