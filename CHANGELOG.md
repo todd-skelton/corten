@@ -1622,6 +1622,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `[object File]`), line breaks are CRLF, a `text/plain` form is sent as text, not urlencoded,
     and neither content type names a charset. A file chosen again while the first is on its way is a
     new submit unless it is the same file (name, size and time), not a double click ([#200 A data-patch form's urlencoded body differs from the browser's: a file is [object File], line breaks are not CRLF, and text/plain is sent urlencoded](https://github.com/todd-skelton/corten/issues/200)). With 50, `corten.js` grows 201 bytes gzip.
+52. The idle-connection test measured the timeout from its own call, not from the clock's tick the
+    connection went idle at, so it failed under load when the clock's thread lagged. It now checks
+    what the clock promises, and expiry itself is unchanged
+    ([#279 watch test: an idle connection can expire early when the clock's thread lags, and the test fails under load](https://github.com/todd-skelton/corten/issues/279)).
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
