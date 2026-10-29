@@ -12,9 +12,9 @@ pub fn StatementTable<'a>(t: Msg, sets: &'a [(&'a str, usize, u64)]) -> impl Ren
         <table class={Table}>
             <thead>
                 <tr>
-                    <th>{t.statement_set()}</th>
-                    <th>{t.statement_items()}</th>
-                    <th>{t.statement_value()}</th>
+                    <th>"Set"</th>
+                    <th>"Items"</th>
+                    <th>"Stock value"</th>
                 </tr>
             </thead>
             <tbody>
@@ -28,7 +28,7 @@ pub fn StatementTable<'a>(t: Msg, sets: &'a [(&'a str, usize, u64)]) -> impl Ren
             </tbody>
             <tfoot>
                 <tr>
-                    <th scope="row">{t.statement_total()}</th>
+                    <th scope="row">"Total"</th>
                     <td>{t.number(items)}</td>
                     <td>{t.money(Minor(cents), USD)}</td>
                 </tr>
