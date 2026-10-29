@@ -5,6 +5,7 @@ import { chromium, firefox, webkit } from "@playwright/test";
 import http from "node:http";
 import zlib from "node:zlib";
 import { stall } from "./stall.mjs";
+import { browserBug } from "./browser-bugs.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18480";
 const engines = { chromium, firefox, webkit };
@@ -134,13 +135,15 @@ process.exit(failures.length ? 1 : 0);
 
 /** @param {import("@playwright/test").Browser} browser */
 async function run(browser) {
+  // A console error the browser logs for its own bug (scripts/browser-bugs.mjs) is not the page's.
+  const bug = browserBug(browser);
   const page = await browser.newPage();
   const errors = [];
   // Firefox logs an open stream that a full page load cuts (data-reload, an error page, a section
   // stylesheet that failed), and the stream the status check drops on purpose, as an error, in one
   // of two wordings.
   const cut = /was interrupted while the page was loading|can.t establish a connection to the server at \S+\/live\/(trades|flaky)/;
-  page.on("console", (m) => m.type() === "error" && !cut.test(m.text()) && errors.push(m.text()));
+  page.on("console", (m) => m.type() === "error" && !bug(m.text()) && !cut.test(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
   // Every EventSource the page opens, to see which are still open.
   await page.addInitScript(() => {
@@ -679,7 +682,7 @@ async function run(browser) {
   {
     const away = await browser.newPage();
     const awayErrors = [];
-    away.on("console", (m) => m.type() === "error" && awayErrors.push(m.text()));
+    away.on("console", (m) => m.type() === "error" && !bug(m.text()) && awayErrors.push(m.text()));
     await away.route("https://news.example.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Elsewhere</title>" }));
     let asked = 0;
     away.on("request", (r) => new URL(r.url()).pathname === "/news/acme-outlook/read" && asked++);
@@ -1023,6 +1026,33 @@ async function run(browser) {
   await page.evaluate(
     (html) => document.querySelector("main")?.insertAdjacentHTML("beforeend", `<form id="upload" method="post" action="/upload-test" enctype="multipart/form-data" data-patch>${html}<button>Send</button></form>`),
     part(""),
+  );
+  // A nav link a patch puts on the page is marked against the page, not the request that made
+  // the patch (#347): the server marked "elsewhere" (the form's action) and not this page.
+  await page.evaluate(() => document.querySelector("main")?.insertAdjacentHTML("beforeend", '<div id="nav-part"></div>'));
+  const patchedMarks = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    const here = location.pathname;
+    await patch(`<div id="nav-part"><a id="patched-here" href="${here}" data-nav>Here</a><a id="patched-there" href="/elsewhere" data-nav aria-current="page">There</a></div>`);
+    // Appended (`Append`) as well as replaced.
+    await patch(`<template id="nav-part" data-append><a id="appended-here" href="${here}" data-nav>Here</a></template>`);
+    const marks = ["patched-here", "patched-there", "appended-here"].map((id) => document.getElementById(id)?.getAttribute("aria-current") ?? "-").join(" ");
+    // A group (Req::nav_of) whose deepest link a patch removes: the section at "/" takes the mark.
+    await patch(
+      `<div id="nav-part"><a id="group-root" href="/" data-nav="section" data-nav-group="p">All</a><span id="group-deep"><a href="${here}" data-nav data-nav-group="p">Here</a></span></div>`,
+    );
+    const root = () => document.getElementById("group-root")?.getAttribute("aria-current") ?? "-";
+    const before = root();
+    await patch('<template id="group-deep" data-remove></template>');
+    const after = root();
+    document.getElementById("nav-part")?.remove();
+    return { marks, root: `${before} -> ${after}`, here };
+  });
+  check("a nav link a patch puts on the page is marked against the page", patchedMarks.marks === "page - page", patchedMarks.marks);
+  check(
+    "a patch that removes a group's current link marks the next deepest",
+    patchedMarks.root === (patchedMarks.here === "/" ? "page -> page" : "- -> page"),
+    `${patchedMarks.root} on ${patchedMarks.here}`,
   );
   const errorsBeforeUpload = errors.length;
   let uploadStatus = 422;
