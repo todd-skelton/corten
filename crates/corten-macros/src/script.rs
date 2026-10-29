@@ -60,6 +60,9 @@ pub struct Module {
     /// It imports `keep` from `corten`: its handlers keep their component's state, so the
     /// component is scoped.
     pub keeps: bool,
+    /// The classes it imports from `corten/events` when it runs (not a JSDoc type's), each the
+    /// Rust `#[event]` in scope where the script is read: served with the script.
+    pub imports: Vec<String>,
 }
 
 impl Module {
@@ -85,21 +88,33 @@ impl Module {
             None => stem,
         };
         let at = |(line, message): (usize, String)| (span, format!("{file}:{line}: {message}"));
-        let (handlers, groups) = parse(&source).map_err(at)?;
+        let (handlers, groups, imports) = parse_all(&source).map_err(at)?;
         let keeps = keeps(&source).map_err(at)?;
-        Ok(Module { name, file, path: path.display().to_string(), handlers, groups, keeps })
+        Ok(Module { name, file, path: path.display().to_string(), handlers, groups, keeps, imports })
     }
 
-    /// `::corten::script::Script { .. }`.
-    pub fn literal(&self) -> TokenStream {
+    /// `::corten::script::Script { .. }`, where the events it imports are named by `at` and
+    /// their names (`""` in the component's module, `"super::"` in a `script!` module).
+    pub fn literal(&self, at: &str) -> TokenStream {
         let mut names = TokenStream::new();
         for h in &self.handlers {
             names.extend(literal(&h.name));
             names.extend(q(",", &[]));
         }
+        let mut events = TokenStream::new();
+        // Each import is an `#[event]`, not another component's constant.
+        let mut checks = TokenStream::new();
+        for class in &self.imports {
+            events.extend(format!("{at}{class},").parse::<TokenStream>().expect("a path parses"));
+            checks.extend(
+                format!("const _: fn() = ::corten::script::__private::is_event::<{at}{class}>;")
+                    .parse::<TokenStream>()
+                    .expect("a path parses"),
+            );
+        }
         q(
-            "::corten::script::Script { name: __A0, file: __A1, source: ::core::include_str!(__A2), handlers: &[__A3] }",
-            &[literal(&self.name), literal(&self.file), literal(&self.path), names],
+            "{ __A5 ::corten::script::Script { name: __A0, file: __A1, source: ::core::include_str!(__A2), handlers: &[__A3], events: &[__A4] } }",
+            &[literal(&self.name), literal(&self.file), literal(&self.path), names, events, checks],
         )
     }
 
@@ -343,7 +358,41 @@ pub fn keeps(source: &str) -> Result<bool, (usize, String)> {
 
 /// The handlers of a script, every top-level `export function` with its JSDoc, and its groups.
 /// Errors carry the 1-based line.
+#[cfg(test)]
 pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, String)> {
+    parse_all(source).map(|(handlers, groups, _)| (handlers, groups))
+}
+
+/// A script's handlers, groups and the classes it imports from `corten/events` when it runs.
+type Parsed = (Vec<Handler>, Vec<ArgGroup>, Vec<String>);
+
+/// A line of an import without its comments (`// ..` to the end, `/* .. */`), which may sit
+/// between the names.
+fn without_comments(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find('/') {
+        match rest[at + 1..].chars().next() {
+            Some('/') => {
+                out.push_str(&rest[..at]);
+                return out.trim_end().to_string();
+            }
+            Some('*') => {
+                out.push_str(&rest[..at]);
+                rest = rest[at + 2..].split_once("*/").map_or("", |(_, after)| after);
+            }
+            _ => {
+                out.push_str(&rest[..=at]);
+                rest = &rest[at + 1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out.trim_end().to_string()
+}
+
+/// [`parse`], and the classes the script imports from `corten/events` when it runs.
+fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
     let lines: Vec<&str> = source.lines().collect();
     // Raw JSDoc types first: a typedef may come after the handler that uses it.
     /// An export: its name, its parameters' names and JSDoc types, its description.
@@ -363,11 +412,21 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
     let mut raw: Vec<Raw> = Vec::new();
     let mut typedefs: Vec<Typedef> = Vec::new();
     let mut events: Vec<(String, String)> = Vec::new();
+    let mut imports: Vec<String> = Vec::new();
     let mut doc: Option<String> = None;
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i];
         let trimmed = line.trim();
+        // A plain comment: an import in it is not one.
+        if trimmed.starts_with("/*") && !trimmed.starts_with("/**") {
+            while !lines[i].contains("*/") && i + 1 < lines.len() {
+                i += 1;
+            }
+            doc = None;
+            i += 1;
+            continue;
+        }
         if trimmed.starts_with("/**") {
             let mut block = String::new();
             let start = i;
@@ -402,11 +461,11 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
         }
         if trimmed.starts_with("import ") || trimmed.starts_with("import{") {
             let start = i;
-            let mut statement = trimmed.to_string();
+            let mut statement = without_comments(trimmed);
             while !statement.contains(" from ") && !statement.ends_with(';') && i + 1 < lines.len() {
                 i += 1;
                 statement.push(' ');
-                statement.push_str(lines[i].trim());
+                statement.push_str(&without_comments(lines[i].trim()));
             }
             if statement.contains("\"corten/events\"") || statement.contains("'corten/events'") {
                 let names = statement.split_once('{').and_then(|(_, rest)| rest.split_once('}')).map(|(names, _)| names);
@@ -416,6 +475,9 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
                 for name in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
                     let (class, local) = name.split_once(" as ").map_or((name, name), |(c, l)| (c.trim(), l.trim()));
                     events.push((local.to_string(), class.to_string()));
+                    if !imports.iter().any(|c| c == class) {
+                        imports.push(class.to_string());
+                    }
                 }
             }
             doc = None;
@@ -516,7 +578,7 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
         }
         handlers.push(Handler { name, params: list, doc });
     }
-    Ok((handlers, groups))
+    Ok((handlers, groups, imports))
 }
 
 /// True for a type that is not written as JSON: one only the browser can supply (an element or
@@ -755,7 +817,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             name: __A0, script: ::core::option::Option::Some(__A1), style: ::core::option::Option::None, event: ::core::option::Option::None,
             view: ::core::option::Option::None,
         };",
-        &[literal(&module.name), module.literal()],
+        &[literal(&module.name), module.literal("super::")],
     );
     Ok(module.module(vis, name.clone(), q("::core::option::Option::Some(&COMPONENT)", &[]), None, items))
 }
@@ -922,5 +984,11 @@ export function toggled(event, sel, c, level, done, cleared, n) {}
                 &Param::Group("Count".into()),
             ]
         );
+        // Served with the script: the classes it imports when it runs, not a JSDoc type's.
+        let (_, _, imports) = parse_all(source).unwrap();
+        assert_eq!(imports, ["RowToggled", "Saved"]);
+        // Comments between the names, and an import in a comment, are not imports.
+        let commented = "/* import { Old } from \"corten/events\"; */\nimport {\n  Added, // the row's\n  /* kept */ Removed,\n} from \"corten/events\";\nexport function f() {}\n";
+        assert_eq!(parse_all(commented).unwrap().2, ["Added", "Removed"]);
     }
 }

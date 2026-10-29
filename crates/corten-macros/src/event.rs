@@ -42,11 +42,16 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         _ => {
             return err(
                 name.span(),
-                format!("an event is a struct with braces, so its name is free for the constant App::components lists: struct {name} {{}}"),
+                format!("an event is a struct with braces, so its name is free for the constant scripts that import it carry: struct {name} {{}}"),
             )
         }
     };
-    let dom = kebab(&name.to_string());
+    // A library's events are named under its scripts' prefix (`ui-copied`), as its scopes are, so
+    // they never meet an app's.
+    let dom = match crate::script::prefix() {
+        Some(prefix) => format!("{prefix}-{}", kebab(&name.to_string())),
+        None => kebab(&name.to_string()),
+    };
     let mut list = TokenStream::new();
     for field in crate::component::split(fields, ',') {
         let mut p = 0;
@@ -78,7 +83,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     ));
     out.extend(q(
         "#[doc = __A0] #[allow(non_upper_case_globals, dead_code)]",
-        &[literal(&format!(" The `{dom}` event's class, for `App::components`."))],
+        &[literal(&format!(" The `{dom}` event's class, served with the scripts that import it."))],
     ));
     out.extend(stream(vis));
     out.extend(q(

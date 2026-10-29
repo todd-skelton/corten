@@ -9,7 +9,7 @@
 //! | [`TabGroup`] | tabs with arrow keys; tabs can be links, and the address follows | links to each tab's page |
 //! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
-//! | [`CopyButton`] | copies an element's text to the clipboard and says so, politely | no button; the text is on the page to select |
+//! | [`CopyButton`] | copies an element's text to the clipboard, says so politely, and tells the page ([`Copied`]) | no button; the text is on the page to select |
 //! | [`dialog::modal`] | a `<dialog>` the server draws `open` (a refused form) is modal: focus in it, the page behind inert | the dialog is open, not modal |
 //! | [`dialog::modalClosedBy`] | the same for a dialog the address opens (`?selected=it_1`), and a close request (Escape) goes to its close link's address | the dialog is open, and the link closes it |
 //!
@@ -151,7 +151,7 @@ mod tab_group;
 mod toaster;
 
 pub use combo_box::{Choice, ComboBox, Picker};
-pub use copy_button::CopyButton;
+pub use copy_button::{Copied, CopyButton};
 pub use menu_button::{MenuButton, MenuItem};
 pub use number_field::{Number, NumberField, Step};
 pub use tab_group::{Tab, TabGroup};

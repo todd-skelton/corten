@@ -768,6 +768,15 @@ Corten is pre-1.0, so any minor version may change the API.
     700 more for a page under an area's policy, may be more than noise
     ([#275 A policy is the whole app's, so the origins one page's payment SDK needs are allowed on every page](https://github.com/todd-skelton/corten/issues/275),
     [#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
+113. `corten_ui::Copied` (`ui-copied` in the page): `CopyButton` dispatches it after a write the
+    browser made, and only then, so an ancestor counts a copy (a referral link's, a share link's)
+    with `on:Copied={js::counted(event)}` instead of keeping a copy script of its own. It bubbles
+    and carries nothing, since the text may be a secret. ui-gallery counts its SKU's
+    copies: one for a copy, none for a denied write. `copy_button.js` is 2,457 bytes, 904 with
+    brotli (was 2,223 and 844), and a page with the button fetches `events.js` with it, preloaded
+    beside the script so it adds a request but no round trip (276 bytes, 176 with brotli, in
+    ui-gallery)
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1228,6 +1237,16 @@ Corten is pre-1.0, so any minor version may change the API.
     tools' own errors have, and a partner's write without a known key is told to send a valid
     one in `X-Api-Key` (`Refused::message`)
     ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
+72. A typed event (`#[event]`) is served with the script that imports it from `corten/events`,
+    so an app lists the script's component and never the event; a script that imports an event its
+    component's module does not have does not compile. Before, an app that listed `CopyButton`
+    without its event would have had the button's script fail to load. A page whose handlers are
+    in such a script fetches `events.js` with it (`<link rel="modulepreload">`, 64 bytes)
+    rather than after it, one round trip sooner; seller-desk's price cells had waited for it.
+    `Script` has an `events` field, written by `#[component(js)]` and `script!`. And
+    `on:Copied={..}` listens for the name the event's `#[event]` gave it: a library's carries its
+    prefix (`ui-copied`), which `html!` had dropped, so no listener heard a library's event
+    ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
