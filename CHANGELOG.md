@@ -1815,8 +1815,8 @@ Corten is pre-1.0, so any minor version may change the API.
     "More actions" button. The SKU's copy count shows only after the first copy ("Copies: 2"), and
     `/help` explains each part of the form
     ([#333 Polish: ui-gallery reads as a grid of components rather than a listing screen](https://github.com/todd-skelton/corten/issues/333)).
-67. `messages!` with an empty catalog (`{}`, an app that uses `t` only for numbers, money and
-    dates) failed to compile under `#![deny(warnings)]`: its `by_key` had a `match` whose only arm
+67. `messages!` with an empty catalog (`{}`, an app that uses `t` only for the locale's formats:
+    numbers, money, dates and relative times) failed to compile under `#![deny(warnings)]`: its `by_key` had a `match` whose only arm
     returned, so the line after it was unreachable. A doctest compiles an empty catalog with
     warnings denied.
 

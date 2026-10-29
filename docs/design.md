@@ -90,7 +90,7 @@ framework's shape, and what it does not do yet.
 4. User-facing text lives in views, the view model or the catalog, never in scripts. Which of
    the first and the last is one rule per app (`docs/guide/views.md`, Text): an app with one
    locale writes fixed text as literals in its views, and the catalog holds only what needs it (a
-   count, text a script fills); an app with more than one locale writes all of it through the
+   count, text with arguments, text a script fills); an app with more than one locale writes all of it through the
    catalog. Text that
    depends on what a script computed ("3 selected") is a catalog message the markup passes
    unfilled (`t.js().rows_selected()`) and the script fills in (`label({ count })`): the
