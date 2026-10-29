@@ -16,6 +16,7 @@ use std::{
 };
 
 use corten::{
+    Signal,
     axum::{extract::Request, http::HeaderValue, response::Response},
     feed::{Feed, FeedResponse, Row, Since},
     prelude::*,
@@ -198,8 +199,17 @@ impl Desk {
     }
 }
 
+/// The app: its routes, its middleware and the sales that move the stock levels. `serve` starts
+/// the sales once it listens and stops them at shutdown; a test's `app.router()` starts none, so
+/// its levels stay put.
 pub fn app(desk: Desk) -> App<ServerTiming> {
-    App::new(url::router(desk)).assets(views::Static).components(views::COMPONENTS).messages::<Msg>().middleware(ServerTiming)
+    let sales = desk.clone();
+    App::new(url::router(desk))
+        .assets(views::Static)
+        .components(views::COMPONENTS)
+        .messages::<Msg>()
+        .middleware(ServerTiming)
+        .task("sales", move |signal| simulate_sales(sales, signal))
 }
 
 /// Tells the browser's developer tools how long the server took to answer (`Server-Timing`): the
@@ -353,9 +363,11 @@ async fn statement(req: Req, State(desk): State<Desk>) -> NoStore<HtmlResult> {
     }))
 }
 
-/// Sells and restocks a few items every 250 ms, so the grid's live levels have something to show.
-pub async fn simulate_sales(desk: Desk) {
+/// Sells and restocks a few items every 250 ms, so the grid's live levels have something to show,
+/// until the app shuts down.
+async fn simulate_sales(desk: Desk, signal: Signal) {
     let mut tick = tokio::time::interval(Duration::from_millis(250));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // What each row is restocked to when it sells out: the most a seller keeps at the price it
     // was listed at.
     let restock: Vec<u32> =
@@ -363,7 +375,11 @@ pub async fn simulate_sales(desk: Desk) {
     let count = restock.len().max(1);
     let mut n = 0usize;
     loop {
-        tick.tick().await;
+        tokio::select! {
+            biased;
+            _ = signal.aborted() => return,
+            _ = tick.tick() => {}
+        }
         desk.levels.write(|tx| {
             for k in 0..4 {
                 let row = (n * 7 + k * 131) % count;
@@ -503,7 +519,8 @@ mod tests {
         assert!(html.contains("/scripts/inventory_grid.js\">") && html.contains("/scripts/price_cell.js\">"), "{html}");
         let sel = "{body:@body,all:@all,count:@count,bar:@bar}";
         assert!(
-            html.contains(&format!(r#"data-on="click:inventory_grid.toggle($e,^select,{sel})""#)),
+            html.contains(&format!(r#" click:inventory_grid.toggle($e,^select,{sel})">"#))
+                && html.matches("inventory_grid.toggle(").count() == 1,
             "one handler for every row: {html}"
         );
         assert!(html.contains(r#"<tr data-key="i00003" id="row-i00003"><td><input data-ref="select""#), "{html}");

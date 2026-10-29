@@ -4,7 +4,7 @@
     "unsent_other": "{count} prices not saved",
     "items_one": "{count} item",
     "items_other": "{count} items",
-    "shown": "{count} shown of"
+    "shown": "{shown} of {total} shown"
   },
   "statement": {
     "title": "Statement",

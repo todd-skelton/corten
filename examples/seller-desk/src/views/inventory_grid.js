@@ -32,12 +32,13 @@ import { InventoryRow, rows } from "corten/views";
  */
 
 /**
- * What the filter updates: the note for no match, and how many rows it shows, in the catalog's
- * words. The markup builds it once, `js::Found { empty, shown, text }`.
+ * What the filter updates: the note for no match, and how many rows it shows of how many there
+ * are, in the catalog's words (the item count steps aside while it shows). The markup builds it
+ * once, `js::Found { empty, shown, text }`.
  * @typedef {object} Found
  * @property {HTMLParagraphElement} empty
  * @property {HTMLOutputElement} shown
- * @property {Message<"count">} text
+ * @property {Message<"shown" | "total">} text
  */
 
 /**
@@ -132,16 +133,43 @@ function shownCents(row) {
 export function filter(input, found, sel) {
   const query = input.value.trim().toLocaleLowerCase();
   let shown = 0;
+  let total = 0;
   for (const row of rows(sel.body, InventoryRow)) {
     let text = texts.get(row.el);
     if (text === undefined) texts.set(row.el, (text = `${row.name} ${row.set}`.toLocaleLowerCase()));
     row.el.hidden = query !== "" && !text.includes(query);
+    total += 1;
     if (!row.el.hidden) shown += 1;
   }
-  found.empty.hidden = shown > 0;
-  found.shown.value = found.text({ count: shown });
-  found.shown.hidden = query === "";
+  showFound(found, shown, total, query !== "");
   tally(sel);
+}
+
+/**
+ * Keeps the filter's count true when rows leave (an archive's patch removes them) until the grid
+ * leaves the page. With no filter on, the item count the server wrote says it.
+ * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {Found} found @param {AbortSignal} signal
+ */
+export function recount(body, found, signal) {
+  const watch = new MutationObserver(() => {
+    if (found.shown.hidden) return;
+    let shown = 0;
+    let total = 0;
+    for (const row of rows(body, InventoryRow)) {
+      total += 1;
+      if (!row.el.hidden) shown += 1;
+    }
+    showFound(found, shown, total, true);
+  });
+  watch.observe(body, { childList: true });
+  signal.addEventListener("abort", () => watch.disconnect());
+}
+
+/** @param {Found} found @param {number} shown @param {number} total @param {boolean} filtering */
+function showFound(found, shown, total, filtering) {
+  found.empty.hidden = shown > 0;
+  found.shown.value = filtering ? found.text({ shown, total }) : "";
+  found.shown.hidden = !filtering;
 }
 
 // One handler per column, so the markup names a column the compiler knows.

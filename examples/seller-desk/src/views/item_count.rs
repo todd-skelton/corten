@@ -8,7 +8,7 @@ pub struct ItemCountId;
 
 /// How many items the desk holds, at the end of the grid's toolbar. The server writes it, and an
 /// archive's answer replaces it, so it counts what the server kept; the grid's filter says how
-/// many of them it shows beside it.
+/// many of them it shows in its place.
 #[component(css)]
 pub fn ItemCount(t: Msg, count: usize) -> impl Patch {
     html! {
