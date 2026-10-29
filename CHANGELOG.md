@@ -841,6 +841,13 @@ Corten is pre-1.0, so any minor version may change the API.
     page the app prints) does not compile, and a page's name starts with the component's
     (`@page packing-slip-thermal`), so two components cannot set one page
     ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
+120. An area can loosen `Cross-Origin-Opener-Policy` for its pages only: `Sources::allow_popups()`
+    (`same-origin-allow-popups`) and `Sources::allow_cross_origin_opener()` (`unsafe-none`, which
+    Stripe's Connect embedded components need for their sign-in popup), and
+    `Policy::allow_cross_origin_opener()` for the whole app. The rest of the app keeps
+    `same-origin`, and a page under another opener policy has its own shell key, so a client
+    navigation into or out of the area loads the document in full
+    ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1640,7 +1647,23 @@ Corten is pre-1.0, so any minor version may change the API.
     top of the document. Focus now goes to the nearest element around it that is still on the
     page, focusable only for the move; so does focus on an element patched into one that cannot
     take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
-54. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
+54. CI's browser job could hang for an hour or more when a Playwright call never returned (Firefox,
+    after the watchlist smoke closed another site's page), holding the runner with no report of
+    where. The job now has a 30 minute limit (a passing one takes 11 to 14), and every browser smoke
+    stops itself after five minutes with no check finished, printing the last check it finished and,
+    for the runtime's smoke, the requests still loading ([#317 CI: the browser job can hang for an
+    hour in the watchlist smoke, and has no timeout](https://github.com/todd-skelton/corten/issues/317)).
+55. The ui-gallery smoke failed now and then in WebKit with "due to access control checks" for
+    `/?sale=last`: WebKit logs a fetch the runtime cancelled (the next navigation replaced it)
+    that way. A request the page cancelled no longer counts as a console error; a real CORS
+    refusal fails with another reason and still does
+    ([#301 ui-gallery smoke: WebKit logged a console error for /?sale=last, due to access control checks (CI, once)](https://github.com/todd-skelton/corten/issues/301)).
+56. examples/seller-desk started its sales simulation with `tokio::spawn` in `main`, so it ran on
+    through shutdown and outside the app. It is the app's `task` now, started once the server
+    listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
+    runs one late tick instead of every missed one back to back
+    ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
+57. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
     Under load, a slow read used to add real seconds, and "each second" failed
     ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
 ### Documentation
