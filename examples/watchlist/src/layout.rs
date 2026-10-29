@@ -83,7 +83,7 @@ pub fn ViewerBadge<'a>(viewer: &'a Viewer) -> impl Patch {
 mod tests {
     use corten::axum::{body::Body, http::Request};
 
-    use crate::testing::{get, get_with, send};
+    use crate::testing::{call_on, get, get_with, router, send, sign_in, text};
 
     #[tokio::test]
     async fn the_shell_marks_the_current_link_and_shows_the_viewer() {
@@ -91,11 +91,12 @@ mod tests {
         assert!(guest.contains(r#"<a href="/news" data-nav aria-current="page">News</a>"#), "{guest}");
         assert!(guest.contains(r#"<a href="/" data-nav>Stocks</a>"#));
         assert!(guest.contains("Sign in as Ada"));
-        let (_, ada) = send(get_with("/", "viewer=Ada")).await;
+        let router = router();
+        let session = sign_in(&router).await;
+        let ada = text(call_on(&router, get_with("/", &session)).await).await;
         assert!(ada.contains("Signed in as Ada") && !ada.contains("Sign in as Ada"));
-        let lost =
-            Request::get("/nope").header("cookie", "viewer=Ada").header("accept", "text/html").body(Body::empty()).unwrap();
-        let (_, lost) = send(lost).await;
+        let lost = Request::get("/nope").header("cookie", &session).header("accept", "text/html").body(Body::empty()).unwrap();
+        let lost = text(call_on(&router, lost).await).await;
         assert!(lost.contains("<h1>Not found</h1>") && lost.contains("Signed in as Ada"), "the error page too: {lost}");
     }
 }

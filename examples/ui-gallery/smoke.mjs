@@ -3,6 +3,7 @@
 // Usage: node examples/ui-gallery/smoke.mjs [http://localhost:18482] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
 import { stall } from "../../scripts/stall.mjs";
+import { browserBug } from "../../scripts/browser-bugs.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18482";
 const engines = { chromium, firefox, webkit };
@@ -77,9 +78,11 @@ console.log("\nall passed");
 
 /** @param {import("@playwright/test").Browser} browser */
 async function run(browser) {
+  // A console error the browser logs for its own bug (scripts/browser-bugs.mjs) is not the page's.
+  const bug = browserBug(browser);
   const page = await (await browser.newContext()).newPage();
   const errors = [];
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  page.on("console", (m) => m.type() === "error" && !bug(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
   /** @type {string[]} */
   const failed = [];
@@ -474,7 +477,7 @@ async function run(browser) {
   check("Back from there goes to the page before the shared link", new URL(await href()).searchParams.get("tab") === "offers", await href());
   // CopyButton: shown where the browser has the Clipboard API; a click copies the SKU.
   const clip = await (await browser.newContext(engine === "chromium" ? { permissions: ["clipboard-read", "clipboard-write"] } : {})).newPage();
-  clip.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  clip.on("console", (m) => m.type() === "error" && !bug(m.text()) && errors.push(m.text()));
   clip.on("pageerror", (e) => errors.push(e.message));
   await clip.goto(`${base}/`);
   const copyButton = clip.getByRole("button", { name: "Copy", exact: true });
@@ -533,14 +536,20 @@ async function run(browser) {
   const timed = await (await browser.newContext()).newPage();
   const timedErrors = [];
   timed.on("pageerror", (e) => timedErrors.push(String(e)));
-  timed.on("console", (m) => m.type() === "error" && timedErrors.push(m.text()));
+  timed.on("console", (m) => m.type() === "error" && !bug(m.text()) && timedErrors.push(m.text()));
+  // Paused before the page loads, so only runFor moves its time: a slow read under load adds no
+  // seconds, and the pause cannot land in the page's past.
   await timed.clock.install();
+  await timed.clock.pauseAt(Date.now() + 1_000);
   await timed.goto(`${base}/`);
   const listed = timed.locator("time").first();
   const expires = timed.locator("time").nth(1);
   check("the server writes a time behind now", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
   check("and one ahead, with its instant", (await expires.textContent()) === "in 1 minute" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{3})?Z$/.test((await expires.getAttribute("datetime")) ?? ""), await expires.textContent());
-  await timed.clock.runFor(31_000);
+  // To 58.5 seconds before the expiry, measured on the page, whatever the server's and the page's
+  // clocks differ by.
+  const until = Date.parse((await expires.getAttribute("datetime")) ?? "") - (await timed.evaluate(() => Date.now()));
+  await timed.clock.runFor(Math.max(0, until - 58_500));
   const seconds = async () => Number(/^in (5\d) seconds$/.exec((await expires.textContent()) ?? "")?.[1]);
   const first = await seconds();
   check("under a minute ahead, it counts seconds", first > 50, await expires.textContent());
@@ -574,7 +583,7 @@ async function run(browser) {
   const lacking = await (await browser.newContext()).newPage();
   const lackingErrors = [];
   lacking.on("pageerror", (e) => lackingErrors.push(String(e)));
-  lacking.on("console", (m) => m.type() === "error" && lackingErrors.push(m.text()));
+  lacking.on("console", (m) => m.type() === "error" && !bug(m.text()) && lackingErrors.push(m.text()));
   await lacking.addInitScript(() => {
     const options = Intl.RelativeTimeFormat.prototype.resolvedOptions;
     Intl.RelativeTimeFormat.prototype.resolvedOptions = function () {
