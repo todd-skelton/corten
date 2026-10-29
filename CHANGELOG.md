@@ -843,9 +843,10 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
 120. `req.nav_of([NavTo::section(&url::Desk), NavTo::page(&url::Money), ..])` writes a whole nav's
     links and marks only the deepest entry that holds the page, for a nav whose entries nest or
-    come from data (an entry is a route or a `Local`). The runtime applies the same rule to each
-    `<nav>` after a client navigation. **Changed:** a section link and a deeper link in one
-    `<nav>` are no longer both marked current after a navigation. `corten.js` grows 76 bytes gzip
+    come from data (an entry is a route or a `Local`, whose path is written as the browser asks
+    for it). Its links name their group (`data-nav-group`), and the runtime ranks the same links
+    after a client navigation wherever the markup puts them; a `req.nav` link is still judged
+    alone. `corten.js` grows 80 bytes gzip
     ([#341 A nav built from data, or whose current entry is the deepest that holds the page, keeps the first page's aria-current after a client navigation](https://github.com/todd-skelton/corten/issues/341)).
 
 ### Removed

@@ -89,11 +89,13 @@ moves it after each client navigation, so the header is right without rendering 
 that writes `href`, `data-nav` or `aria-current` itself beside the spread does not compile, nor
 does `data-nav` written by hand.
 
-In one `<nav>`, only the deepest link that holds the page is current: a section and a page
-under it (Seller Desk at `/account/desk`, Money at `/account/desk/money`) are not both marked.
-A nav whose entries nest, or that is read from data, is written whole with `req.nav_of`, so the
-server marks the same entry the runtime does after a navigation; an entry is a route or a
-`Local` path (a link to another site is a plain link, never current):
+Each `req.nav` link is judged alone, so a section and a page under it (Seller Desk at
+`/account/desk`, Money at `/account/desk/money`) are both current on Money's page. A nav whose
+entries nest, or that is read from data, is written whole with `req.nav_of`: of its entries
+that hold the page, only the deepest is current. Its links carry the group they were ranked in
+(`data-nav-group`), so the runtime ranks the same links after a client navigation wherever the
+markup puts them. An entry is a route or a `Local` path, written as the browser asks for it (a
+link to another site is a plain link, never current):
 
 ```rust,ignore
 let nav = req.nav_of(items.iter().map(|item| NavTo::section(&item.href)));
