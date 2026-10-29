@@ -539,7 +539,9 @@ something read still does. Its handler is held to the same rule as any `Public` 
 (`/me/picture`) takes `Public::new` with a lifetime.
 
 A header of the app's goes on a public answer with `Public::header`, named by a type: a file
-that must stay out of search (`llms.txt`, a manifest), a download's file name.
+that must stay out of search (`llms.txt`, a manifest), a canonical link. A download's file
+name is the answer's own, `Media::attachment(name)`
+(see [Requests and forms](requests-and-forms.md)).
 
 ```rust,ignore
 use corten::answer::XRobotsTag;
@@ -551,15 +553,15 @@ async fn manifest() -> Public<Media> {
 ```
 
 The answer is compressed and shared as it would be without the header, which a `Relay` (another
-server's answer, sent as it came) is not. Corten names `XRobotsTag`, `Link`,
-`ContentDisposition` and `ContentLanguage`; an app names another with `impl
+server's answer, sent as it came) is not. Corten names `XRobotsTag`, `Link` and
+`ContentLanguage`; an app names another with `impl
 corten::answer::Header for ContentLocation { const NAME: &'static str = "content-location"; }`.
 Which names a public answer may set is checked when the app builds (`cargo build` and `cargo
 test`; `cargo check` does not evaluate it): `set-cookie` (the answer would be one visitor's), the
 headers Corten sets itself (`cache-control`, a CDN's `cdn-cache-control` and
 `surrogate-control`, which it would obey over Corten's, `vary`, the encoding and length, the
 security headers, CORS's `access-control-*`, `corten-*`), those the answer has (`content-type`,
-`location`) and the connection's (`transfer-encoding`) do not compile. Headers are added to a
+`location`, `content-disposition`) and the connection's (`transfer-encoding`) do not compile. Headers are added to a
 success or a redirect; an error is the error page, without them.
 
 A full document never carries `corten-page`, so if a cache hands one to a client navigation by
