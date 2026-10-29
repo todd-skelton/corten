@@ -88,7 +88,7 @@ Corten is pre-1.0, so any minor version may change the API.
     the binary. `CONTRIBUTING.md` (Releasing) has the steps, including the first release.
 19. `.github/workflows/ci.yml` runs the checks in `CONTRIBUTING.md` on every pull request and
     push to `main`, plus `cargo publish --workspace --dry-run` and a build on Rust 1.88.
-20. List fields. `corten::Form` and a route's `Params` (Added 114) read a key
+20. List fields. `corten::Form` and a route's `Params` (Added 115) read a key
     sent several times into a `Vec` field, a checkbox's `on` into a `bool`, and a blank field into
     `None`; a scalar sent twice is a 422 (400 for a query) naming the field. `#[derive(Fields)]`
     rejects a `bool` or `Vec` field without `#[serde(default)]`, since a browser sends nothing for
@@ -777,7 +777,15 @@ Corten is pre-1.0, so any minor version may change the API.
     beside the script so it adds a request but no round trip (276 bytes, 176 with brotli, in
     ui-gallery)
     ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
-114. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
+114. A time relative to now: `t.relative(at, now, RelativeStyle)` writes "in 10 hours" or "3 hr.
+    ago" in the request's locale (each locale's plural forms and words from CLDR, checked against
+    Intl), and `corten_ui::RelativeTime` keeps it current in the browser on one timer for the
+    page, so a live stream no longer redraws every second or resends its part each minute to move
+    a countdown. Each locale an app lists adds about 2.3 KB of pointers and 0.4 to 3 KB of text;
+    the script is 1.8 KB brotli (5.3 KB as written; component scripts are not minified), on pages
+    that use it
+    ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
+115. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
      It has the struct's fields, owned (a `&'a str` or `Cow<'a, str>` is a `String`, a `&'a [T]` a
      `Vec<T>`, any other `&'a T` a `T`; a link's field still needs only `Display`), read
      the way a link writes them: a path parameter percent-decoded, a query parameter by the name

@@ -108,7 +108,7 @@ async function run(browser) {
   page.off("requestfailed", lost);
   page.off("response", refused);
   const loaded = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/scripts/")).length);
-  check("the eight scripts load and connect", loaded === 8, `${loaded} script(s)`);
+  check("the nine scripts load and connect", loaded === 9, `${loaded} script(s)`);
 
   // NumberField
   const qty = page.locator("#qty");
@@ -447,6 +447,69 @@ async function run(browser) {
   await insecure.waitForFunction(() => document.querySelector("[data-scope=ui-combo-box] input")?.checkVisibility(), null, { timeout: 5000 }).catch(() => {});
   check("without the Clipboard API the button stays hidden", await insecure.locator("[data-scope=ui-copy-button]").isHidden());
   await insecure.context().close();
+  // RelativeTime: the server wrote both times; the browser's clock (faked, from now) moves them.
+  const timed = await (await browser.newContext()).newPage();
+  const timedErrors = [];
+  timed.on("pageerror", (e) => timedErrors.push(String(e)));
+  timed.on("console", (m) => m.type() === "error" && timedErrors.push(m.text()));
+  await timed.clock.install();
+  await timed.goto(`${base}/`);
+  const listed = timed.locator("time").first();
+  const expires = timed.locator("time").nth(1);
+  check("the server writes a time behind now", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
+  check("and one ahead, with its instant", (await expires.textContent()) === "in 1 minute" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{3})?Z$/.test((await expires.getAttribute("datetime")) ?? ""), await expires.textContent());
+  await timed.clock.runFor(31_000);
+  const seconds = async () => Number(/^in (5\d) seconds$/.exec((await expires.textContent()) ?? "")?.[1]);
+  const first = await seconds();
+  check("under a minute ahead, it counts seconds", first > 50, await expires.textContent());
+  await timed.clock.runFor(2_000);
+  check("each second", (await seconds()) === first - 2, `${first} then ${await expires.textContent()}`);
+  await timed.clock.runFor(60_000);
+  check("past it, it says how long ago", /^\d+ seconds? ago$/.test((await expires.textContent()) ?? ""), await expires.textContent());
+  check("the one behind kept its hour", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
+  await timed.clock.runFor(55 * 60_000);
+  check("an hour on, the one behind moves", (await listed.textContent()) === "4 hr. ago" && (await expires.textContent()) === "55 minutes ago", `${await listed.textContent()}, ${await expires.textContent()}`);
+  // Back from sleep: the clock moved two hours and no timer ran; the page coming back redraws.
+  await timed.clock.setSystemTime((await timed.evaluate(() => Date.now())) + 2 * 3600_000);
+  await timed.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  check("the page coming back redraws as of its clock", (await listed.textContent()) === "6 hr. ago" && (await expires.textContent()) === "2 hours ago", `${await listed.textContent()}, ${await expires.textContent()}`);
+  // A time put in place of another, as a patch does: the new one is kept current, the old one let
+  // go. The clock first moves past the page's timer with nothing to say so (a sleep), so the new
+  // time cannot count on that timer.
+  await timed.clock.setSystemTime((await timed.evaluate(() => Date.now())) + 2 * 3600_000);
+  await timed.evaluate(() => {
+    const old = /** @type {HTMLTimeElement} */ (document.querySelectorAll("time")[1]);
+    const time = /** @type {HTMLTimeElement} */ (old.cloneNode(false));
+    time.dateTime = new Date(Date.now() + 90_000).toISOString();
+    time.textContent = "in 1 minute";
+    old.replaceWith(time);
+  });
+  await timed.clock.runFor(31_000);
+  check("a time that replaces another is kept current", /^in 5\d seconds$/.test((await expires.textContent()) ?? ""), await expires.textContent());
+  check("no console errors with relative times", timedErrors.length === 0, timedErrors.join(" | "));
+  await timed.context().close();
+  // A browser without the page's locale falls back to another language: the server's text stays.
+  const lacking = await (await browser.newContext()).newPage();
+  const lackingErrors = [];
+  lacking.on("pageerror", (e) => lackingErrors.push(String(e)));
+  lacking.on("console", (m) => m.type() === "error" && lackingErrors.push(m.text()));
+  await lacking.addInitScript(() => {
+    const options = Intl.RelativeTimeFormat.prototype.resolvedOptions;
+    Intl.RelativeTimeFormat.prototype.resolvedOptions = function () {
+      /** @type {any} */ (window).asked = (/** @type {any} */ (window).asked ?? 0) + 1;
+      return { ...options.call(this), locale: "fr" };
+    };
+  });
+  await lacking.clock.install();
+  await lacking.goto(`${base}/`);
+  await lacking.clock.runFor(31_000);
+  const asked = await lacking.evaluate(() => /** @type {any} */ (window).asked ?? 0);
+  check(
+    "a locale the browser lacks keeps the server's text",
+    asked > 0 && lackingErrors.length === 0 && (await lacking.locator("time").nth(1).textContent()) === "in 1 minute",
+    `${await lacking.locator("time").nth(1).textContent()}, asked ${asked}, ${lackingErrors.join(" | ")}`,
+  );
+  await lacking.context().close();
 
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
   const unexpected = errors.filter((e) => !/status of 422/.test(e));
@@ -455,6 +518,7 @@ async function run(browser) {
   // Without JavaScript
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
   await plain.goto(`${base}/`);
+  check("no script: the server's relative time is the text", (await plain.locator("time").first().textContent()) === "3 hr. ago");
   check("no script: the select is the control", (await plain.locator("[data-scope=ui-combo-box] select").isVisible()) && (await plain.locator("[data-scope=ui-combo-box] input").isHidden()));
   await plain.locator("[data-scope=ui-combo-box] select").selectOption("lp");
   // The post loads a new page; waitForLoadState alone can return for the page it left.
