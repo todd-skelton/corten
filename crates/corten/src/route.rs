@@ -1228,9 +1228,8 @@ impl fmt::Write for Encode<'_> {
 /// is a `String`, a `&'a [T]` a `Vec<T>`, any other `&'a T` a `T`), filled the way a link writes them:
 /// a path parameter from its segment, percent-decoded; a query parameter by the name serde reads
 /// (`None`, or empty for a list, when the query leaves it out; a field with `#[serde(default)]`
-/// its default); a `#[route(query)]` field's set each of its fields the same way (a set's
-/// container `#[serde(default)]` is followed); a `#[route(prefix = "dim.")]`
-/// field from each parameter with the prefix, taken off. A request whose parameters do not
+/// its default); a `#[route(query)]` field's set each of its fields the same way; a
+/// `#[route(prefix = "dim.")]` field from each parameter with the prefix, taken off. A request whose parameters do not
 /// fit is a `400 Bad Request`.
 ///
 /// So the link and the handler cannot disagree about a parameter's name or type, and a handler
@@ -1298,7 +1297,7 @@ impl fmt::Write for Encode<'_> {
 /// ```
 ///
 /// A field `Params` has no owned form for (a borrowed `#[route(query)]` set) or a `#[serde(..)]`
-/// key it does not follow (`alias`, `with`, `flatten`, `skip`, a route's container `default`, ...),
+/// key it does not follow (`alias`, `with`, `flatten`, `skip`, a container `default`, ...),
 /// on the route or on a query set it includes, leaves the route's links as they are, and a handler that
 /// takes its `Params` does not compile, rather than read the parameters differently from how
 /// links write them:
@@ -1337,6 +1336,30 @@ impl fmt::Write for Encode<'_> {
 ///
 /// async fn show(item: Params<url::Item<'_>>) -> String {
 ///     item.id.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A set's container `#[serde(default)]` is refused the same way: a link of a set whose default
+/// has `sort: Some("name")` writes no `sort` for `None`, which the default would read back as
+/// `Some("name")`. A field's own `#[serde(default)]` is followed.
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// #[serde(default)]
+/// pub struct Paging { pub limit: Option<String> }
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/orders", get = list)]
+///     pub struct Orders { #[route(query)] pub paging: super::Paging }
+/// }
+///
+/// async fn list(orders: Params<url::Orders>) -> String {
+///     orders.paging.limit.clone().unwrap_or_default()
 /// }
 /// # fn main() {}
 /// ```
@@ -1391,6 +1414,34 @@ impl fmt::Write for Encode<'_> {
 /// #[derive(Route)]
 /// #[route("/items")]
 /// pub struct Items { pub from: Option<u32>, #[route(query)] pub filters: Filters }
+/// ```
+///
+/// ```compile_fail,E0080
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// pub struct Paging { pub page: Option<u32> }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// pub struct Items { pub page: Option<u32>, #[route(query)] pub paging: Paging }
+/// ```
+///
+/// ```compile_fail,E0080
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// pub struct Paging { pub page: Option<u32> }
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// pub struct Filters { pub page: Option<u32>, #[route(query)] pub paging: Paging }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// pub struct Items { #[route(query)] pub filters: Filters }
 /// ```
 pub struct Params<R: FromUrl + ?Sized>(pub R::Params);
 

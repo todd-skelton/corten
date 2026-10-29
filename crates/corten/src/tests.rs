@@ -1629,21 +1629,20 @@ pub struct SetRoute {
     pub set: SetProbe,
 }
 
-/// A set's own `#[serde(default)]`: a parameter the query leaves out is the default's.
+/// A set's fields with defaults of their own: a parameter the query leaves out is the field's.
 #[derive(Debug, PartialEq, crate::Route)]
 #[route(query)]
-#[serde(default)]
 pub struct DefaultedSet {
+    #[serde(default = "first_page")]
     pub page: u32,
+    #[serde(default)]
     pub size: u32,
     #[route(prefix = "f.")]
     pub facets: std::collections::BTreeMap<String, String>,
 }
 
-impl Default for DefaultedSet {
-    fn default() -> Self {
-        DefaultedSet { page: 1, size: 20, facets: Default::default() }
-    }
+fn first_page() -> u32 {
+    1
 }
 
 /// A set with a type parameter.
@@ -1697,7 +1696,8 @@ fn a_query_set_reads_back_what_its_links_write() {
     let read = <DefaultedRoute as FromUrl>::__read((), "size=5&f.kind=graded&pick=7").unwrap();
     let facets = std::collections::BTreeMap::from([("kind".to_string(), "graded".to_string())]);
     assert_eq!((&read.set, &read.pick), (&DefaultedSet { page: 1, size: 5, facets }, &PickSet { pick: Some(7) }));
-    assert_eq!(<DefaultedRoute as FromUrl>::__read((), "").unwrap().set, DefaultedSet::default());
+    let empty = <DefaultedRoute as FromUrl>::__read((), "").unwrap().set;
+    assert_eq!(empty, DefaultedSet { page: 1, size: 0, facets: Default::default() });
     let link = ShownSetLink { set: ShownSet { tab: Some(Shown("a b".into())) } };
     assert_eq!(link.href(), "/shown-set?tab=a%20b");
 }

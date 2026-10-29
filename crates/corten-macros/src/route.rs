@@ -189,7 +189,7 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
             None => borrowed.push(field),
         }
     }
-    let unfollowed = unfollowed_serde(&item.attrs, fields, false)?;
+    let unfollowed = unfollowed_serde(&item.attrs, fields)?;
     if !borrowed.is_empty() || unfollowed.is_some() {
         let mut bounds = TokenStream::new();
         for field in borrowed {
@@ -264,7 +264,7 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
             query.push((field, ty));
         }
     }
-    query_reads(&query, None, &mut reads, &mut bounds)?;
+    query_reads(&query, &mut reads, &mut bounds)?;
     let pairs = if !query.is_empty() {
         q("let __pairs = ::corten::route::__private::sorted_pairs(__query);", &[])
     } else {
@@ -304,12 +304,7 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
 /// reads itself. Each read is through a bound on `Later<'__corten, T>` (into `bounds`), which
 /// names the impl's lifetime, so it is checked where `Params` is used: a link's field needs only
 /// `Display`.
-fn query_reads(
-    fields: &[(&Field, &TokenStream)],
-    container_default: Option<&TokenStream>,
-    reads: &mut TokenStream,
-    bounds: &mut TokenStream,
-) -> Result<(), Error> {
+fn query_reads(fields: &[(&Field, &TokenStream)], reads: &mut TokenStream, bounds: &mut TokenStream) -> Result<(), Error> {
     for &(field, ty) in fields {
         let ident: TokenStream = TokenTree::Ident(field.ident.clone()).into();
         let later = q("::corten::route::__private::Later<'__corten, __A0>", std::slice::from_ref(ty));
@@ -328,11 +323,6 @@ fn query_reads(
         } else {
             bounds.extend(q("__A0: ::corten::route::__private::Deserialized<T = __A1>,", &[later.clone(), ty.clone()]));
             let default = match serde_default(field)? {
-                // A set's `#[serde(default)]`: the field of the set's default, as serde reads it.
-                None if container_default.is_some() => q(
-                    "::core::option::Option::Some((|| (__A0).__A1) as fn() -> _)",
-                    &[container_default.cloned().unwrap_or_default(), ident.clone()],
-                ),
                 None => q("::core::option::Option::None", &[]),
                 Some(None) => q("::core::option::Option::Some(::core::default::Default::default as fn() -> _)", &[]),
                 Some(Some(path)) => q("::core::option::Option::Some(__A0 as fn() -> _)", &[path]),
@@ -349,30 +339,15 @@ fn query_reads(
 /// `ReadQuery` for a `#[route(query)]` set, so `Params` of a route that includes it reads its
 /// fields as a route reads its own. Only for a set with no lifetime parameters, so its fields own
 /// their values; `Params` of a route with another set does not compile, and with a serde key the
-/// reader does not follow names the key. The set's own `#[serde(default)]` is followed: a field
-/// the query leaves out is the default's.
+/// reader does not follow names the key, as on a route (a container `#[serde(default)]` too: a
+/// link of the set's default writes none of what that default fills, so it could not be read back).
 fn read_query(item: &Item, fields: &[Field]) -> Result<TokenStream, Error> {
     if item.impl_generics.clone().into_iter().any(|t| is_punct(Some(&t), '\'')) {
         return Ok(TokenStream::new());
     }
     let types: Vec<TokenStream> = fields.iter().map(|f| f.ty.iter().cloned().collect()).collect();
-    let mut container_default = None;
-    for attr in &item.attrs {
-        for (key, value) in crate::serde_args(attr).map_err(|m| (attr.span(), m))? {
-            if key != "default" {
-                continue;
-            }
-            container_default = Some(match value {
-                None => q("<Self as ::core::default::Default>::default()", &[]),
-                Some(path) => match path.parse::<TokenStream>() {
-                    Ok(path) => q("__A0()", &[path]),
-                    Err(_) => return err(attr.span(), format!("#[serde(default = {path:?})] is not a path")),
-                },
-            });
-        }
-    }
     let mut bounds = TokenStream::new();
-    let body = if let Some(key) = unfollowed_serde(&item.attrs, fields, true)? {
+    let body = if let Some(key) = unfollowed_serde(&item.attrs, fields)? {
         let key = Ident::new(&key, Span::call_site());
         bounds.extend(q(
             "::corten::route::__private::Later<'__corten, ::corten::route::__private::serde_key::__A0>: ::corten::route::__private::Followed,",
@@ -382,7 +357,7 @@ fn read_query(item: &Item, fields: &[Field]) -> Result<TokenStream, Error> {
     } else {
         let mut reads = TokenStream::new();
         let query: Vec<_> = fields.iter().zip(&types).collect();
-        query_reads(&query, container_default.as_ref(), &mut reads, &mut bounds)?;
+        query_reads(&query, &mut reads, &mut bounds)?;
         q("::core::result::Result::Ok(Self { __A0 })", &[reads])
     };
     Ok(q(
@@ -597,12 +572,12 @@ fn owned(ty: &[TokenTree]) -> Option<TokenStream> {
 /// The first serde key a route's reader does not follow: `Params` reads the parameters itself,
 /// by the names links write, so a key that would change how serde reads one makes `Params` of the
 /// route not compile, rather than read differently.
-fn unfollowed_serde(attrs: &[Group], fields: &[Field], follows_default: bool) -> Result<Option<String>, Error> {
+fn unfollowed_serde(attrs: &[Group], fields: &[Field]) -> Result<Option<String>, Error> {
     const FIELD: &[&str] = &["alias", "deserialize_with", "with", "flatten", "skip", "skip_deserializing", "borrow"];
     const CONTAINER: &[&str] = &["default", "deny_unknown_fields", "from", "try_from", "transparent"];
     for attr in attrs {
         for (key, _) in crate::serde_args(attr).map_err(|m| (attr.span(), m))? {
-            if CONTAINER.contains(&key.as_str()) && !(follows_default && key == "default") {
+            if CONTAINER.contains(&key.as_str()) {
                 return Ok(Some(key));
             }
         }

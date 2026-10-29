@@ -116,8 +116,10 @@ Links write a route's parameters by name with `Display`, so `Params` refuses wha
 back differently: a `#[serde(..)]` key on the route struct that links do not follow (`alias`,
 `flatten`, `skip`, `skip_deserializing`, `with`, `deserialize_with`, `borrow` on a
 field; `default`, `deny_unknown_fields`, `from`, `try_from`, `transparent` on the struct), on the
-route or on a `#[route(query)]` set it includes (a set's own `default` is followed: a parameter
-the query leaves out is the default's), and a set that borrows. Such a route still writes
+route or on a `#[route(query)]` set it includes, and a set that borrows. A struct's `default`
+is refused because a link of the default writes nothing for what it fills (`None`, an empty
+list), which the default would read back as its own value; give the field its own
+`#[serde(default)]` or `#[serde(default = "path")]` instead. Such a route still writes
 links; a handler that takes its `Params` does not compile, and the error names the key or the
 borrowed type.
 

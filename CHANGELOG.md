@@ -1735,14 +1735,15 @@ Corten is pre-1.0, so any minor version may change the API.
 64. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
     back empty: `Params` read a set with serde's derive, which knows nothing of the prefix. A set
     is now read field by field the way a route reads its own, so a list it leaves out is empty
-    (it was a 400 without `#[serde(default)]`), the set's own `#[serde(default)]` fills what the
+    (it was a 400 without `#[serde(default)]`), a field's own `#[serde(default)]` fills what the
     query leaves out, and a set needs no `Deserialize`. **Breaking:** a set's serde keys that a
-    route's reader does not follow (`alias`, `flatten`, `deny_unknown_fields`, ...) make `Params`
-    of a route that includes it not compile, naming the key, as they do on the route; and a route
-    whose own query names and its sets' could be read back as each other's (one name written
-    twice, which was a 400, or a prefix another name starts with) does not compile. Reading a
-    route with a four-parameter set costs 4,107 instructions, up from 3,669, the same as those
-    parameters on the route itself (callgrind, release build)
+    route's reader does not follow (`alias`, `flatten`, `deny_unknown_fields`, the struct's own
+    `default`, ...) make `Params` of a route that includes it not compile, naming the key, as they
+    do on the route (a struct's `default` would read a link's `None` back as the default's
+    value); and a route whose own query names and its sets' could be read back as each other's
+    (one name written twice, which was a 400, or a prefix another name starts with) does not
+    compile. Reading a route with a four-parameter set costs 4,107 instructions, up from 3,669,
+    the same as those parameters on the route itself (callgrind, release build)
     ([#310 A #[route(prefix)] field inside a #[route(query)] set is written into links but Params reads it back empty](https://github.com/todd-skelton/corten/issues/310)).
 ### Documentation
 
