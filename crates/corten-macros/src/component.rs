@@ -298,11 +298,15 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         let style_owner = css_owner.clone().unwrap_or_else(|| name.clone());
         if own_css {
             items.extend(css.items(&name));
+            // Two components that style `.{prefix}__*` fail to build, not the app when it starts.
+            items.extend(crate::id::one_per_program("two_components_style", &css.prefix));
         }
         scope.extend(css.scope(&style_owner, &used));
     }
     let has_constant = own_css || script.is_some() || view.is_some();
     if let Some(module) = &script {
+        // Two components whose scripts are served at one URL fail to build.
+        items.extend(crate::id::one_per_program("two_scripts_are", &module.name));
         // Inside `render`, so two components in one file each have their own `js`.
         scope.extend(module.module(
             TokenStream::new(),

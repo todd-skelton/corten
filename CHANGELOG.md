@@ -1803,6 +1803,13 @@ Corten is pre-1.0, so any minor version may change the API.
     "More actions" button. The SKU's copy count shows only after the first copy ("Copies: 2"), and
     `/help` explains each part of the form
     ([#333 Polish: ui-gallery reads as a grid of components rather than a listing screen](https://github.com/todd-skelton/corten/issues/333)).
+67. Two components with one name in different modules (each feature's `SettingsForm`)
+    with a stylesheet or a script fail to build, at the second one, instead of the app panicking
+    when it starts ("both style .settings-form__*", "two scripts named"): like an id, each class
+    prefix and script name is an exported symbol, and the symbols now say what clashed
+    (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
+    `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
+    ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
 
 ### Documentation
 

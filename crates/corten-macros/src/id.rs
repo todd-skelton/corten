@@ -3,8 +3,8 @@
 //!
 //! `struct DeskStatusId;` is `desk-status`; `struct RowId<'a>(&'a str);` is `row-` and its key.
 //! The name is the type's, without a trailing `Id`, in kebab case (after the library prefix,
-//! `ui-`, in a crate that sets one). Each name is also an exported symbol, so two ids with the same
-//! name in one program fail to build. A library's symbol (a crate with a prefix) also carries its
+//! `ui-`, in a crate that sets one). Each name is also an exported symbol ([`one_per_program`]), so
+//! two ids with the same name in one program fail to build. A library's symbol (a crate with a prefix) also carries its
 //! version, so two semver-incompatible versions of one library still link together.
 
 use proc_macro::{TokenStream, TokenTree};
@@ -59,18 +59,26 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             &[],
         ),
     ));
-    // One symbol per name: a second id with the same name is a duplicate symbol, in this crate or
-    // in any other linked into the program.
-    let mut symbol = name.clone();
+    out.extend(one_per_program("two_ids_are", &name));
+    Ok(out)
+}
+
+/// An exported symbol for a name the whole program shares (an id, a component's classes, a
+/// script's module), so a second item with the same name fails to build, in this crate or in any
+/// other linked into the program, rather than the app when it starts. The symbol says what
+/// clashed (`corten__two_ids_are__settings_form`), since the error names only the symbol. A
+/// library's (a crate with a prefix) also carries its version, so two semver-incompatible versions
+/// of one library still link together.
+pub fn one_per_program(what: &str, name: &str) -> TokenStream {
+    let mut symbol = name.to_string();
     if crate::script::prefix().is_some() {
         symbol = format!("{symbol}__{}", std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
     }
     let symbol: String = symbol.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-    out.extend(q(
-        "const _: () = { #[unsafe(export_name = __A0)] #[used] static __CORTEN_ID: u8 = 0; };",
-        &[string(&format!("corten_id__{symbol}")).into()],
-    ));
-    Ok(out)
+    q(
+        "const _: () = { #[unsafe(export_name = __A0)] #[used] static __CORTEN_NAME: u8 = 0; };",
+        &[string(&format!("corten__{what}__{symbol}")).into()],
+    )
 }
 
 /// The number of comma-separated items at the top level of a group (`<..>` nests).

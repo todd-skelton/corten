@@ -145,6 +145,30 @@
 //! # }
 //! ```
 //!
+//! A script is served by its name (`scripts/cart_line.js`), so two components with one name in
+//! different modules fail to build, at link, rather than the app when it starts; the error names
+//! the symbol `corten__two_scripts_are__cart_line`:
+//!
+//! ```compile_fail
+//! mod orders {
+//!     use corten::prelude::*;
+//!     #[component(js)]
+//!     pub fn CartLine() -> impl Render {
+//!         html! { <li></li> }
+//!     }
+//! }
+//! mod returns {
+//!     use corten::prelude::*;
+//!     #[component(js)]
+//!     pub fn CartLine() -> impl Render {
+//!         html! { <li></li> }
+//!     }
+//! }
+//! fn main() {
+//!     let _ = (orders::CartLine, returns::CartLine);
+//! }
+//! ```
+//!
 //! What does not compile:
 //!
 //! A ref on an element the handler does not take (`enable` takes a `<button>`):

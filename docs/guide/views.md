@@ -160,13 +160,18 @@ req.patch(html! { {Remove(OfferId(&sold.id))} })                             // 
 | `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
 | `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument, or passes one that is not text, an integer or a value `t` formats (a float goes through `t.number`) |
 | `#[derive(UrlValue)]` | the enum has a variant with fields, a variant serde does not read (`skip_deserializing`), or a serde attribute that changes its words in a way it does not follow |
-| `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol); the struct holds more than one key |
+| `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol, `corten__two_ids_are__offer`); the struct holds more than one key |
+| `#[component(css)]`, `#[component(js)]` | two components in one program have the same name, so they would style one `.name__*` or serve one `scripts/name.js` (each is a linker symbol, `corten__two_components_style__offer_list`, `corten__two_scripts_are__offer_list`) |
 
 An id is the type's name without `Id`, in kebab case (`OfferId` is `offer-`, then the key; a
 unit struct, `StatusId`, is just `status`). Use one for every element a patch replaces or
 removes, and for `for`, `popovertarget` or `commandfor` across components. Its name is a linker
-symbol, so two copies of one library in a program (two versions) that both define an id do
-not link.
+symbol, and so is the class prefix of a component with a stylesheet and the name of one with a
+script: names are global to the app, so two features that each write a `SettingsForm` (or a
+`SettingsFormId`) fail to build, at the second one, rather than the app when it starts. Name
+them by feature (`ShippingSettingsForm`). `cargo check` does not link, so it does not see this;
+`cargo build` and `cargo test` (and `corten check`) do. A library's names (a crate with a
+script prefix) also carry its version, so two versions of one library in a program still link.
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
 parameters left out). A query field is anything `Display`; an enum in an address (a tab, a sort,
