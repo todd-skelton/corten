@@ -1686,6 +1686,14 @@ Corten is pre-1.0, so any minor version may change the API.
 58. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
     Under load, a slow read used to add real seconds, and "each second" failed
     ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
+59. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
+    headers show they sort and which way (`aria-sort`); the rows scroll inside the grid under a
+    header that stays, with the item count above them (an archive's answer replaces it, and while
+    the filter is on it says how many rows it shows of how many, kept true as an archive removes
+    rows); a row at quantity 0 is marked sold out, kept current by the live levels (a `sold_out`
+    hole of the row's view); on a phone the table keeps the name, quantity and price (it stays a
+    table, so each cell has its header); and the statement has a total row
+    ([#332 Polish: seller-desk does not look like the client-heavy screen it is](https://github.com/todd-skelton/corten/issues/332)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

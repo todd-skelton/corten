@@ -6,7 +6,7 @@
 // grid keeps only the last clicked row, for shift-click ranges.
 import { keep, subscribe } from "corten";
 import { InventoryRow, rows } from "corten/views";
-/** @import { Message } from "corten" */
+/** @import { Message, NumberFormat } from "corten" */
 /** @import { Holds } from "corten/views" */
 /** @import { PriceEdited } from "corten/events" */
 
@@ -24,11 +24,24 @@ import { InventoryRow, rows } from "corten/views";
 
 /**
  * The note that counts prices typed and not saved, and its text in the page's locale: one
- * message per plural form. The markup builds it once, `js::Unsent { note, one, other }`.
+ * message per plural form, and its numbers in the page's format. The markup builds it once,
+ * `js::Unsent { note, one, other, number }`.
  * @typedef {object} Unsent
  * @property {HTMLOutputElement} note
  * @property {Message<"count">} one
  * @property {Message<"count">} other
+ * @property {NumberFormat} number
+ */
+
+/**
+ * What the filter updates: the note for no match, and how many rows it shows of how many there
+ * are, in the catalog's words and the page's number format (the item count steps aside while it
+ * shows). The markup builds it once, `js::Found { empty, shown, text, number }`.
+ * @typedef {object} Found
+ * @property {HTMLParagraphElement} empty
+ * @property {HTMLOutputElement} shown
+ * @property {Message<"shown" | "total">} text
+ * @property {NumberFormat} number
  */
 
 /**
@@ -46,7 +59,9 @@ export function live(body, feed, signal) {
   /** @param {Level} level */
   const show = (level) => {
     const row = list.get(level.id);
-    if (row) row.qty = level.qty;
+    if (!row) return;
+    row.qty = level.qty;
+    row.sold_out = level.qty === 0;
   };
   subscribe(
     feed,
@@ -117,18 +132,47 @@ function shownCents(row) {
   return Number.isFinite(cents) ? cents : Infinity;
 }
 
-/** @param {HTMLInputElement} input @param {HTMLParagraphElement} empty @param {Selection} sel */
-export function filter(input, empty, sel) {
+/** @param {HTMLInputElement} input @param {Found} found @param {Selection} sel */
+export function filter(input, found, sel) {
   const query = input.value.trim().toLocaleLowerCase();
   let shown = 0;
+  let total = 0;
   for (const row of rows(sel.body, InventoryRow)) {
     let text = texts.get(row.el);
     if (text === undefined) texts.set(row.el, (text = `${row.name} ${row.set}`.toLocaleLowerCase()));
     row.el.hidden = query !== "" && !text.includes(query);
+    total += 1;
     if (!row.el.hidden) shown += 1;
   }
-  empty.hidden = shown > 0;
+  showFound(found, shown, total, query !== "");
   tally(sel);
+}
+
+/**
+ * Keeps the filter's count true when rows leave (an archive's patch removes them) until the grid
+ * leaves the page. With no filter on, the item count the server wrote says it.
+ * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {Found} found @param {AbortSignal} signal
+ */
+export function recount(body, found, signal) {
+  const watch = new MutationObserver(() => {
+    if (found.shown.hidden) return;
+    let shown = 0;
+    let total = 0;
+    for (const row of rows(body, InventoryRow)) {
+      total += 1;
+      if (!row.el.hidden) shown += 1;
+    }
+    showFound(found, shown, total, true);
+  });
+  watch.observe(body, { childList: true });
+  signal.addEventListener("abort", () => watch.disconnect());
+}
+
+/** @param {Found} found @param {number} shown @param {number} total @param {boolean} filtering */
+function showFound(found, shown, total, filtering) {
+  found.empty.hidden = shown > 0;
+  found.shown.value = filtering ? found.text({ shown: found.number(shown), total: found.number(total) }) : "";
+  found.shown.hidden = !filtering;
 }
 
 // One handler per column, so the markup names a column the compiler knows.
@@ -220,10 +264,10 @@ export function priceSent(event, body, note) {
 }
 
 /** @param {Set<HTMLTableRowElement>} unsent @param {Unsent} note */
-function showUnsent(unsent, { note, one, other }) {
+function showUnsent(unsent, { note, one, other, number }) {
   // An archived row has left the page, and its edit with it.
   for (const el of unsent) if (!el.isConnected) unsent.delete(el);
-  note.value = (unsent.size === 1 ? one : other)({ count: unsent.size });
+  note.value = (unsent.size === 1 ? one : other)({ count: number(unsent.size) });
   note.hidden = unsent.size === 0;
 }
 
