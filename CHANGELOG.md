@@ -1673,6 +1673,13 @@ Corten is pre-1.0, so any minor version may change the API.
     listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
     runs one late tick instead of every missed one back to back
     ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
+57. corten-ui's `NumberField` could drop a step asked for with Enter or Space on a button: a
+    pointer press set a flag that skipped the next click, and cleared it in a timer after the
+    release, so a key that came before that timer ran (on a busy page) did nothing. The field now
+    records the button each pointer pressed and skips only that press's own click (a key's click
+    has `detail` 0 and always steps); a press released off the button, cancelled, or on a button
+    disabled at its bound makes no click and is forgotten ([#316 ui-gallery smoke (CI, Chromium): a keyboard
+    step on the second number field is lost while the first is held](https://github.com/todd-skelton/corten/issues/316)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
