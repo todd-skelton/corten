@@ -1031,11 +1031,13 @@ async function run(browser) {
     const { patch } = await import("corten");
     const here = location.pathname;
     await patch(`<div id="nav-part"><a id="patched-here" href="${here}" data-nav>Here</a><a id="patched-there" href="/elsewhere" data-nav aria-current="page">There</a></div>`);
-    const marks = ["patched-here", "patched-there"].map((id) => document.getElementById(id)?.getAttribute("aria-current") ?? "-").join(" ");
+    // Appended (`Append`) as well as replaced.
+    await patch(`<template id="nav-part" data-append><a id="appended-here" href="${here}" data-nav>Here</a></template>`);
+    const marks = ["patched-here", "patched-there", "appended-here"].map((id) => document.getElementById(id)?.getAttribute("aria-current") ?? "-").join(" ");
     document.getElementById("nav-part")?.remove();
     return marks;
   });
-  check("a nav link a patch puts on the page is marked against the page", patchedMarks === "page -", patchedMarks);
+  check("a nav link a patch puts on the page is marked against the page", patchedMarks === "page - page", patchedMarks);
   const errorsBeforeUpload = errors.length;
   let uploadStatus = 422;
   await page.route("**/upload-test", (route) =>

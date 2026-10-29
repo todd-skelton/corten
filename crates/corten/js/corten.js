@@ -693,6 +693,8 @@ async function apply(html, signal, sent, took) {
   /** The elements this patch puts on the page. @type {Element[]} */
   const put = [];
   let again;
+  // Whether it removes a nav link, which can leave another of its nav current.
+  let navs = false;
   for (const el of Array.from(content.children)) {
     const id = idOf(el);
     const target = id ? document.getElementById(id) : null;
@@ -700,6 +702,7 @@ async function apply(html, signal, sent, took) {
     else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) {
       // Focus in it goes to the nearest element around it that can take focus.
       const up = target?.contains(document.activeElement) && target.parentElement;
+      navs ||= !!target && holdsNav(target);
       target?.remove();
       if (up) focusNear(up);
     }
@@ -714,8 +717,9 @@ async function apply(html, signal, sent, took) {
     }
   }
   // The server marked a nav link in the patch against the request that made it (a form's action),
-  // not this page: mark it as a navigation would. Only then, so a ticker's patches cost nothing.
-  if (put.some((el) => el.matches(NAV) || el.querySelector(NAV))) markCurrent();
+  // not this page: mark it as a navigation would. Only then: a patch without one (a ticker's)
+  // only looks through what it put.
+  if (navs || put.some(holdsNav)) markCurrent();
   if (again) readPatchAgain(again, put);
 }
 
@@ -1115,6 +1119,13 @@ async function stylesOf(content) {
 
 /** A nav link the runtime keeps `aria-current` on (`Req::nav`). */
 const NAV = "a[href][data-nav]";
+
+/**
+ * True when `el` is or holds a nav link. Called through the prototype: a form's field named
+ * `matches` would hide the form's own.
+ * @param {Element} el
+ */
+const holdsNav = (el) => Element.prototype.matches.call(el, NAV) || !!Element.prototype.querySelector.call(el, NAV);
 
 /**
  * Sets `aria-current="page"` on `<a data-nav>` links to this page (`data-nav="section"`: to this

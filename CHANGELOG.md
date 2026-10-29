@@ -1665,9 +1665,9 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
 57. A nav link a patch put on the page kept the `aria-current` the server wrote, judged against
     the request that made the patch (a form's action, a `ReadAgain`'s `data-from`) rather than
-    the page. The runtime now marks nav links after a patch that puts one on the page, as after a
-    navigation; a patch without one (a ticker's) does no more work. `corten.js` grows 29 bytes
-    gzip ([#347 A nav link a patch puts on the page keeps the mark the server judged against the form's action, not the page](https://github.com/todd-skelton/corten/issues/347)).
+    the page. The runtime now marks nav links after a patch that puts one on the page or removes
+    one, as after a navigation; a patch without one (a ticker's) only looks through the elements it
+    put. `corten.js` grows 67 bytes gzip ([#347 A nav link a patch puts on the page keeps the mark the server judged against the form's action, not the page](https://github.com/todd-skelton/corten/issues/347)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
