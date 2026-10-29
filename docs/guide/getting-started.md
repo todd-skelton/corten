@@ -33,7 +33,7 @@ The CLI is a convenience over cargo, not a build system: an app is an ordinary c
 | `src/main.rs` | the routes (`#[corten::routes] mod url`), their handlers and `App` |
 | `src/views.rs` | the layout (the whole document), the error page and the pages, in `html!` |
 | `src/click_counter.js`, `.css` | the `ClickCounter` component's handlers and stylesheet, next to it |
-| `static/` | the app's own CSS (element defaults, the layout), its favicon (`favicon.svg`, Corten's mark until you replace it), images; served at versioned URLs |
+| `static/` | the app's own CSS (element defaults, the layout), its favicon (`favicon.svg`, Corten's mark until you replace it), images; compiled into the program (`embed!`, a constant per file) and served at versioned URLs |
 | `AGENTS.md` | the rules for an AI agent working on the app |
 | `Dockerfile` | a release build in a slim image |
 
@@ -47,6 +47,10 @@ answers with the fragment to replace; without JavaScript the same handler return
 ```rust,no_run
 use corten::prelude::*;
 
+# corten::assets::embed! { pub struct Static = "src/assets/fixture"; }
+// The files in `static/`, compiled into the program (`corten new` writes this in `views.rs`):
+// corten::assets::embed! { pub struct Static = "static"; }
+
 #[corten::routes]
 mod url {
     #[route("/", get = home)]
@@ -58,7 +62,7 @@ mod url {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let app = App::new(url::router()).error_page(error_page, ());
+    let app = App::new(url::router()).assets(Static).error_page(error_page, ());
     corten::serve(app).await
 }
 
@@ -104,7 +108,7 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
         <html lang={req.lang()}>
             <head>
                 <meta charset="utf-8">
-                <link rel="stylesheet" href={req.asset("style.css")}>
+                <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
                 <title>{title}</title>
                 <Corten />
             </head>

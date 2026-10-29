@@ -54,7 +54,7 @@ impl Source {
     }
 
     /// A catalog from `json`, with `art` for each item the responses give no pictures of.
-    fn load(json: &str, art: fn(&str) -> Option<&'static str>) -> Result<Self, Box<dyn std::error::Error>> {
+    fn load(json: &str, art: fn(&str) -> Option<corten::assets::Asset>) -> Result<Self, Box<dyn std::error::Error>> {
         let raw: HashMap<String, &serde_json::value::RawValue> = serde_json::from_str(json)?;
         let mut items = HashMap::with_capacity(raw.len());
         for (id, value) in raw {

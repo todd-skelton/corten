@@ -6,6 +6,11 @@ use crate::{
     text::Msg,
 };
 
+corten::assets::embed! {
+    /// The files in `static/`, compiled into the program: `Static::STYLE_CSS` is `static/style.css`.
+    pub struct Static = "static";
+}
+
 mod bulk_bar;
 mod confirm_dialog;
 mod inventory_grid;
@@ -38,8 +43,8 @@ pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={req.asset("style.css")}>
-                <link rel="icon" type="image/svg+xml" href={req.asset("favicon.svg")}>
+                <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
+                <link rel="icon" type="image/svg+xml" href={req.asset(Static::FAVICON_SVG)}>
                 <title>{title}</title>
                 <Corten />
             </head>

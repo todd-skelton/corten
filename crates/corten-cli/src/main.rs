@@ -51,7 +51,7 @@ fn main() -> ExitCode {
         Some("dev") => dev::run(&args[1..]),
         Some("build") => cargo(&["build", "--release"]).map(|()| {
             println!(
-                "\ncorten: built the release binary in target/release. Deploy it with the static/ directory next to it (see Dockerfile)."
+                "\ncorten: built the release binary in target/release. It is the whole deploy: the static files are compiled into it (see Dockerfile)."
             );
         }),
         Some("fmt") => fmt::run(&args[1..]),
