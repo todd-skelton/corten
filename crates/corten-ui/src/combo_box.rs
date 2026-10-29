@@ -2,13 +2,13 @@ use corten::{prelude::*, view::Attrs};
 
 /// One option of a [`ComboBox`]: a value of the type the form's field reads, and its label.
 ///
-/// The value is written as its `Display` says, so an enum deriving `UrlValue` and `Deserialize`
-/// offers the words serde reads back: the field is `condition: Condition`, the options are
-/// `Choice { value: Condition::NearMint, label: "Near Mint" }`, and a form with a word outside the
-/// enum is refused (422) as one with a value of the wrong kind is.
+/// The value is written as the text its `AsRef<str>` gives, so an enum deriving `UrlValue` and
+/// `Deserialize` offers the words serde reads back: the field is `condition: Condition`, the
+/// options are `Choice { value: Condition::NearMint, label: "Near Mint" }`, and a form with a word
+/// outside the enum is refused (422) as one with a value of the wrong kind is.
 #[derive(Clone, Copy)]
 pub struct Choice<'a, V> {
-    /// What the form sends, written by its `Display`.
+    /// What the form sends: the text its `AsRef<str>` gives.
     pub value: V,
     /// What the user reads and types to find it.
     pub label: &'a str,
@@ -102,7 +102,7 @@ impl<'a, V> Picker<'a, V> {
 /// assert!(html.contains(r#"role="combobox""#) && html.contains(r#"value="Desert Sand""#));
 /// ```
 #[component(js)]
-pub fn ComboBox<'a, V: Copy + PartialEq + std::fmt::Display>(field: &'a Picker<'a, V>) -> impl Render {
+pub fn ComboBox<'a, V: Copy + PartialEq + AsRef<str>>(field: &'a Picker<'a, V>) -> impl Render {
     let f = field;
     let (select, input, popup, list, empty) = refs();
     let shown = f.value.and_then(|v| f.options.iter().find(|o| o.value == v)).map(|o| o.label);
@@ -119,7 +119,7 @@ pub fn ComboBox<'a, V: Copy + PartialEq + std::fmt::Display>(field: &'a Picker<'
             >
                 <option value="">{f.placeholder}</option>
                 for o in f.options {
-                    <option value={o.value} selected={f.value == Some(o.value)}>{o.label}</option>
+                    <option value={o.value.as_ref()} selected={f.value == Some(o.value)}>{o.label}</option>
                 }
             </select>
             <input

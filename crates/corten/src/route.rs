@@ -2163,6 +2163,20 @@ mod tests {
         AwaitingLabel,
     }
 
+    /// The derive names the primitive `str` by its full path, so an app's type of that name (or a
+    /// raw identifier) is not mistaken for it.
+    #[test]
+    fn url_value_derives_for_an_enum_named_str() {
+        #[allow(non_camel_case_types)]
+        #[derive(corten::UrlValue, Clone, Copy)]
+        enum r#str {
+            r#type,
+            Sand,
+        }
+        assert_eq!(r#str::r#type.as_ref(), "type");
+        assert_eq!(r#str::Sand.to_string(), "Sand");
+    }
+
     /// Each word `UrlValue` writes is the one serde reads back as the same variant, under every
     /// rule, through the reader `Params` uses.
     #[test]

@@ -1417,8 +1417,8 @@ Corten is pre-1.0, so any minor version may change the API.
     Postgres and NATS, in CI too
     ([#334 listings-feed is a benchmark harness listed as an example](https://github.com/todd-skelton/corten/issues/334)).
 77. **Breaking:** `corten_ui::Choice` and `Picker` carry the type the form field reads:
-    `Choice<'a, V> { value: V, label }` and `Picker { value: Option<V>, .. }`, the value written by
-    its `Display`. With a `#[derive(UrlValue, Deserialize)]` enum
+    `Choice<'a, V> { value: V, label }` and `Picker { value: Option<V>, .. }`, the value written as
+    the text its `AsRef<str>` gives. With a `#[derive(UrlValue, Deserialize)]` enum
     (`Choice { value: Condition::NearMint, label: "Near Mint" }` for `condition: Condition`) the
     words the combo box offers are the words the handler reads, a selected value of another type
     does not compile, and a form with any other word is refused (422). `#[derive(UrlValue)]` also

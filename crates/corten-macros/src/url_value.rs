@@ -99,9 +99,9 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     let mut out = TokenStream::new();
     for (header, body) in [
         (
-            "::core::convert::AsRef<str> for",
+            "::core::convert::AsRef<::core::primitive::str> for",
             "#[inline]
-            fn as_ref(&self) -> &str {
+            fn as_ref(&self) -> &::core::primitive::str {
                 match *self { __A0 }
             }",
         ),
@@ -109,7 +109,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             "::core::fmt::Display for",
             "#[inline]
             fn fmt(&self, __f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                __f.write_str(::core::convert::AsRef::<str>::as_ref(self))
+                __f.write_str(::core::convert::AsRef::<::core::primitive::str>::as_ref(self))
             }",
         ),
     ] {

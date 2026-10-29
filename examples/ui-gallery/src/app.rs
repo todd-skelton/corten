@@ -359,6 +359,31 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
     }
 
+    /// The choices are enums: a word the page does not offer (a forged post) is refused before the
+    /// handler runs, as a malformed number is.
+    #[tokio::test]
+    async fn a_word_the_page_does_not_offer_is_refused() {
+        for body in [
+            "qty=1&price=1&weight=1&condition=mint&ships=us&pricing=fixed&floor=",
+            "qty=1&price=1&weight=1&condition=lp&ships=mars&pricing=fixed&floor=",
+            "qty=1&price=1&weight=1&condition=lp&ships=us&pricing=auction&floor=",
+        ] {
+            let res = app()
+                .router()
+                .oneshot(
+                    Request::post("/sell")
+                        .header("content-type", "application/x-www-form-urlencoded")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        }
+        let tab = app().router().oneshot(Request::get("/?tab=bids").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(tab.status(), StatusCode::BAD_REQUEST, "a tab the page does not have");
+    }
+
     #[tokio::test]
     async fn the_address_opens_the_sale_sheet_and_its_link_closes_it() {
         let open = send(Request::get("/?sale=last").body(Body::empty()).unwrap()).await;
