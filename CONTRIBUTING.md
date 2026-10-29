@@ -44,7 +44,8 @@ the framework itself.
   `corten-ui` smoke tests run in all three).
 - Docker, for the example images the smoke tests run against.
 - For measuring (Pull requests, item 2): valgrind, on Linux or in the `rust:1-bookworm`
-  container after `apt-get install valgrind`, and `perf` on a Linux host for `count.mjs`.
+  container after `apt-get update && apt-get install -y valgrind`, and for `count.mjs` a Linux
+  host with `perf`, root and cgroup v2.
 
 ## Checks
 
@@ -115,9 +116,9 @@ The failover benchmark is `node examples/listings-feed/bench/run.mjs`; see its h
 2. A change to rendering, the runtime or the request path is measured before and after, with
    the number that can see the change:
    1. Work done in process (rendering, routing, serialization, middleware, a handler's own
-      code): instructions per request under callgrind (`valgrind --tool=callgrind`). Send the
-      requests through the router in process with `oneshot`, and count a run of 1,200 and one
-      of 200: the difference over 1,000 leaves out startup and setup. Over a real socket,
+      code): instructions per request under callgrind (`valgrind --tool=callgrind`). Count a
+      test that sends 1,200 requests through the router in process with `oneshot` and one that
+      sends 200: the difference over 1,000 leaves out startup and setup. Over a real socket,
       `bench/fullstack/count.mjs` counts with `perf stat`. A count barely moves with other load
       on the machine, so it shows a difference of a few percent that times on a laptop or
       Docker Desktop hide.
@@ -125,8 +126,9 @@ The failover benchmark is `node examples/listings-feed/bench/run.mjs`; see its h
       count does not see cache misses or memory stalls, and the same count can take longer.
       For the item page, `render_cost` in `examples/card-market` prints the times of building,
       rendering and serving it, and the bytes:
-      `CORTEN_FIXTURE=/abs/path/items.json cargo test --release -p card-market -- --ignored render_cost --nocapture`,
-      with the fixture `bench/fullstack/fixtures/fetch.mjs` writes.
+      `CORTEN_FIXTURE=/abs/path/items.json cargo test --release -p card-market -- --ignored render_cost --nocapture`
+      in the Linux container, with the fixture `bench/fullstack/fixtures/fetch.mjs` writes from
+      the item API on `:18400`.
    3. Waiting and concurrency (I/O, locks, channels, timers, feeds, streaming, startup): time,
       because a count does not see waiting or how well work overlaps. `bench/fullstack/ab.mjs`
       runs the two builds' images on one CPU for latency and throughput under load, and
