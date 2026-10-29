@@ -653,7 +653,8 @@ impl<R: Route + ?Sized, I: crate::view::Id> fmt::Display for At<'_, R, I> {
 /// assert_eq!(ItemsLive { filters, since: Some(7) }.href(), "/items/live?search=red%20%26%20blue&page=2&since=7");
 /// assert_eq!(Items { filters: ItemQuery::default() }.href(), "/items");
 ///
-/// // A route's handler reads the same struct back, as the field of its `Params<Items>`.
+/// // A route's handler reads the same struct back, as the field of its `Params<Items>`: each
+/// // field by its key, as a route reads its own (a prefix field by its prefix).
 /// let read: ItemQuery = corten::form::from_bytes(b"search=red%20%26%20blue&page=2").unwrap();
 /// assert_eq!((read.search.as_deref(), read.page), (Some("red & blue"), Some(2)));
 /// ```
@@ -1290,9 +1291,10 @@ impl fmt::Write for Encode<'_> {
 /// ```
 ///
 /// A field `Params` has no owned form for (a borrowed `#[route(query)]` set) or a `#[serde(..)]`
-/// key it does not follow (`alias`, `with`, `flatten`, `skip`, a container `default`, ...) leaves
-/// the route's links as they are, and a handler that takes its `Params` does not compile, rather
-/// than read the parameters differently from how serde would:
+/// key it does not follow (`alias`, `with`, `flatten`, `skip`, a container `default`, ...), on the
+/// route or on a query set it includes, leaves the route's links as they are, and a handler that
+/// takes its `Params` does not compile, rather than read the parameters differently from how
+/// links write them:
 ///
 /// ```compile_fail,E0277
 /// use corten::prelude::*;
@@ -1305,6 +1307,26 @@ impl fmt::Write for Encode<'_> {
 /// mod url {
 ///     #[route("/items/{id}", get = show)]
 ///     pub struct Item<'a> { pub id: &'a str, #[route(query)] pub filters: super::Filters<'a> }
+/// }
+///
+/// async fn show(item: Params<url::Item<'_>>) -> String {
+///     item.id.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// #[serde(default)]
+/// pub struct Filters { pub q: Option<String> }
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> { pub id: &'a str, #[route(query)] pub filters: super::Filters }
 /// }
 ///
 /// async fn show(item: Params<url::Item<'_>>) -> String {
@@ -1624,8 +1646,8 @@ pub mod __private {
     }
     methods!(get, post, put, delete, patch, head, options, trace);
 
-    pub use crate::form::de::sorted_pairs;
-    use crate::form::{de::Pair, FormError};
+    pub use crate::form::de::{sorted_pairs, Pair};
+    use crate::form::FormError;
 
     /// `T`, named with a lifetime of the `FromUrl` impl, so a bound on it (that a field reads
     /// back) is checked where `Params` is used, not where the route is declared: a link needs
@@ -1659,18 +1681,18 @@ pub mod __private {
         pub struct transparent;
     }
 
-    /// Never implemented: a route with a serde key `Params` does not follow has no `Params`.
+    /// Never implemented: a route or query set with a serde key `Params` does not follow has no
+    /// `Params`.
     #[diagnostic::on_unimplemented(
         message = "`Params` reads a route's parameters by the names its links write, and does not follow this #[serde(..)] key: `{Self}`",
-        note = "remove the key from the route struct; a #[route(query)] set's own serde keys are read by serde"
+        note = "remove the key from the route struct, or from the #[route(query)] set that has it"
     )]
     pub trait Followed {}
 
-    /// A query parameter read by serde: by its key, or a `#[route(query)]` field from them all.
+    /// A query parameter read by serde, by its key.
     pub trait Deserialized {
         type T;
         fn field(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> Self::T>) -> Result<Self::T, FormError>;
-        fn all(pairs: &[Pair<'_>]) -> Result<Self::T, FormError>;
     }
 
     impl<T: serde::de::DeserializeOwned> Deserialized for Later<'_, T> {
@@ -1680,11 +1702,18 @@ pub mod __private {
         fn field(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> T>) -> Result<T, FormError> {
             crate::form::de::field(pairs, key, default)
         }
+    }
 
-        #[inline]
-        fn all(pairs: &[Pair<'_>]) -> Result<T, FormError> {
-            crate::form::de::all(pairs)
-        }
+    /// A `#[route(query)]` set read back for `Params`: each of its fields by the key its links
+    /// write, as a route reads its own (a prefix field by its prefix, a set inside it as a set).
+    /// `'c` names the `FromUrl` impl's lifetime, so a field that cannot be read is an error where
+    /// `Params` is used, not where the set is declared.
+    #[diagnostic::on_unimplemented(
+        message = "`Params` cannot read this #[route(query)] set back: `{Self}`",
+        note = "a set Params reads is `#[derive(Route)] #[route(query)]` and owns its fields (String, not &'a str)"
+    )]
+    pub trait ReadQuery<'c>: Sized {
+        fn read_query(pairs: &[Pair<'_>]) -> Result<Self, FormError>;
     }
 
     /// A `#[route(prefix = "dim.")]` field: a `BTreeMap` or a `Vec` of pairs.

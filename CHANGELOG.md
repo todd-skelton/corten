@@ -1612,6 +1612,15 @@ Corten is pre-1.0, so any minor version may change the API.
     `[object File]`), line breaks are CRLF, a `text/plain` form is sent as text, not urlencoded,
     and neither content type names a charset. A file chosen again while the first is on its way is a
     new submit unless it is the same file (name, size and time), not a double click ([#200 A data-patch form's urlencoded body differs from the browser's: a file is [object File], line breaks are not CRLF, and text/plain is sent urlencoded](https://github.com/todd-skelton/corten/issues/200)). With 50, `corten.js` grows 201 bytes gzip.
+52. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
+    back empty: `Params` read a set with serde's derive, which knows nothing of the prefix. A set
+    is now read field by field the way a route reads its own, so a list it leaves out is empty
+    (it was a 400 without `#[serde(default)]`), and a set needs no `Deserialize`. **Breaking:** a
+    set's serde keys that a route's reader does not follow (`alias`, `flatten`, a container
+    `default`, ...) make `Params` of a route that includes it not compile, naming the key, as
+    they do on the route. Reading a route with a four-parameter set costs 4,107 instructions, up
+    from 3,669, the same as those parameters on the route itself (callgrind, release build)
+    ([#310 A #[route(prefix)] field inside a #[route(query)] set is written into links but Params reads it back empty](https://github.com/todd-skelton/corten/issues/310)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

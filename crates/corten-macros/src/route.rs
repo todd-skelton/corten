@@ -30,7 +30,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     // `#[route(query)]`: query parameters shared by several routes, with no path of their own.
     if item.attrs.iter().any(is_route_query) {
         let body = query_body(&fields);
-        return Ok(item.impl_block(
+        let mut out = item.impl_block(
             "::corten::route::QueryParams",
             q(
                 "#[allow(unused_variables)]
@@ -41,7 +41,9 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                 }",
                 &[body],
             ),
-        ));
+        );
+        out.extend(read_query(&item, &fields)?);
+        return Ok(out);
     }
     // `#[route("/..", get = show)]` outside a routes module: only a routes module routes.
     for attr in &item.attrs {
@@ -246,42 +248,19 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
             q("::corten::route::__private::InPath((__A0))", &[path_names]),
         )
     };
-    // Each query field is read through a bound on `Later<'__corten, T>`, which names the impl's
-    // lifetime, so it is checked where `Params` is used: a link's field needs only `Display`.
     let mut reads = TokenStream::new();
     let mut bounds = TokenStream::new();
-    let mut query = false;
+    let mut query = Vec::new();
     for (field, ty) in fields.iter().zip(&types) {
-        let ident: TokenStream = TokenTree::Ident(field.ident.clone()).into();
         if in_path(field) {
-            reads.extend(q("__A0,", &[ident]));
-            continue;
-        }
-        query = true;
-        let later = q("::corten::route::__private::Later<'__corten, __A0>", std::slice::from_ref(ty));
-        if field.attrs.iter().any(is_route_query) {
-            bounds.extend(q("__A0: ::corten::route::__private::Deserialized<T = __A1>,", &[later.clone(), ty.clone()]));
-            reads.extend(q("__A0: <__A1 as ::corten::route::__private::Deserialized>::all(&__pairs)?,", &[ident, later]));
-        } else if let Some((prefix, _)) = route_prefix(field)? {
-            bounds.extend(q("__A0: ::corten::route::__private::Prefixed<T = __A1>,", &[later.clone(), ty.clone()]));
-            reads.extend(q(
-                "__A0: <__A1 as ::corten::route::__private::Prefixed>::prefixed(&__pairs, __A2)?,",
-                &[ident, later, string(&prefix).into()],
-            ));
+            reads.extend([TokenTree::Ident(field.ident.clone())]);
+            reads.extend(q(",", &[]));
         } else {
-            bounds.extend(q("__A0: ::corten::route::__private::Deserialized<T = __A1>,", &[later.clone(), ty.clone()]));
-            let default = match serde_default(field)? {
-                None => q("::core::option::Option::None", &[]),
-                Some(None) => q("::core::option::Option::Some(::core::default::Default::default as fn() -> _)", &[]),
-                Some(Some(path)) => q("::core::option::Option::Some(__A0 as fn() -> _)", &[path]),
-            };
-            reads.extend(q(
-                "__A0: <__A1 as ::corten::route::__private::Deserialized>::field(&__pairs, __A2, __A3)?,",
-                &[ident, later, string(&field.key).into(), default],
-            ));
+            query.push((field, ty));
         }
     }
-    let pairs = if query {
+    query_reads(&query, &mut reads, &mut bounds)?;
+    let pairs = if !query.is_empty() {
         q("let __pairs = ::corten::route::__private::sorted_pairs(__query);", &[])
     } else {
         q("let _ = __query;", &[])
@@ -313,6 +292,89 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
         ],
     ));
     Ok(out)
+}
+
+/// Each query field read back from `__pairs` the way [`query_writes`] writes it (`name: value,`
+/// into `reads`): by its key, a prefix field by its prefix, a `#[route(query)]` field as its set
+/// reads itself. Each read is through a bound on `Later<'__corten, T>` (into `bounds`), which
+/// names the impl's lifetime, so it is checked where `Params` is used: a link's field needs only
+/// `Display`.
+fn query_reads(fields: &[(&Field, &TokenStream)], reads: &mut TokenStream, bounds: &mut TokenStream) -> Result<(), Error> {
+    for &(field, ty) in fields {
+        let ident: TokenStream = TokenTree::Ident(field.ident.clone()).into();
+        let later = q("::corten::route::__private::Later<'__corten, __A0>", &[ty.clone()]);
+        if field.attrs.iter().any(is_route_query) {
+            bounds.extend(q("__A0: ::corten::route::__private::ReadQuery<'__corten>,", &[ty.clone()]));
+            reads.extend(q(
+                "__A0: <__A1 as ::corten::route::__private::ReadQuery<'__corten>>::read_query(&__pairs)?,",
+                &[ident, ty.clone()],
+            ));
+        } else if let Some((prefix, _)) = route_prefix(field)? {
+            bounds.extend(q("__A0: ::corten::route::__private::Prefixed<T = __A1>,", &[later.clone(), ty.clone()]));
+            reads.extend(q(
+                "__A0: <__A1 as ::corten::route::__private::Prefixed>::prefixed(&__pairs, __A2)?,",
+                &[ident, later, string(&prefix).into()],
+            ));
+        } else {
+            bounds.extend(q("__A0: ::corten::route::__private::Deserialized<T = __A1>,", &[later.clone(), ty.clone()]));
+            let default = match serde_default(field)? {
+                None => q("::core::option::Option::None", &[]),
+                Some(None) => q("::core::option::Option::Some(::core::default::Default::default as fn() -> _)", &[]),
+                Some(Some(path)) => q("::core::option::Option::Some(__A0 as fn() -> _)", &[path]),
+            };
+            reads.extend(q(
+                "__A0: <__A1 as ::corten::route::__private::Deserialized>::field(&__pairs, __A2, __A3)?,",
+                &[ident, later, string(&field.key).into(), default],
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// `ReadQuery` for a `#[route(query)]` set, so `Params` of a route that includes it reads its
+/// fields as a route reads its own. Only for a set whose fields own their values; `Params` of a
+/// route with another set does not compile, and with a serde key the reader does not follow names
+/// the key.
+fn read_query(item: &Item, fields: &[Field]) -> Result<TokenStream, Error> {
+    let mut types = Vec::new();
+    for field in fields {
+        let ty: TokenStream = field.ty.iter().cloned().collect();
+        match owned(&field.ty) {
+            Some(owned) if owned.to_string() == ty.to_string() => types.push(ty),
+            _ => return Ok(TokenStream::new()),
+        }
+    }
+    let mut bounds = TokenStream::new();
+    let body = if let Some(key) = unfollowed_serde(&item.attrs, fields)? {
+        let key = Ident::new(&key, Span::call_site());
+        bounds.extend(q(
+            "::corten::route::__private::Later<'__corten, ::corten::route::__private::serde_key::__A0>: ::corten::route::__private::Followed,",
+            &[TokenTree::Ident(key).into()],
+        ));
+        q("::core::unreachable!()", &[])
+    } else {
+        let mut reads = TokenStream::new();
+        let query: Vec<_> = fields.iter().zip(&types).collect();
+        query_reads(&query, &mut reads, &mut bounds)?;
+        q("::core::result::Result::Ok(Self { __A0 })", &[reads])
+    };
+    Ok(q(
+        "#[automatically_derived]
+        impl __A0 ::corten::route::__private::ReadQuery<'__corten> for __A1 __A2 __A3 {
+            #[inline]
+            #[allow(unused_variables)]
+            fn read_query(__pairs: &[::corten::route::__private::Pair<'_>]) -> ::core::result::Result<Self, ::corten::form::FormError> {
+                __A4
+            }
+        }",
+        &[
+            with_lifetime(&item.impl_generics),
+            TokenTree::Ident(item.name.clone()).into(),
+            item.type_generics.clone(),
+            with_bounds(&item.where_clause, bounds),
+            body,
+        ],
+    ))
 }
 
 /// The struct's own where-clause with `bounds` added.
