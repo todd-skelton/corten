@@ -204,8 +204,8 @@ impl<P: Prefix> Area<P> {
     /// so a client navigation into or out of such an area loads the page in full (its shell key
     /// differs); a patch from the area's routes is applied under the policy of the page it lands
     /// on, and a page that answers a form from a page under another policy reloads that page. A
-    /// request finds its area's policy once, by path, and only when some area adds a source the
-    /// app's policy lacks. A policy for one route is an area of one page.
+    /// request finds its area's policy once, by path, and only when some area adds something the
+    /// app's policy lacks (a source, or a looser `Cross-Origin-Opener-Policy`). A policy for one route is an area of one page.
     ///
     /// What is the whole app's (the names it answers to, HSTS, other sites' writes) is not an
     /// area's to change:
