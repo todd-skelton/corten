@@ -1,6 +1,8 @@
 //! The seller's page: who the seller is, the form that moves some market lows, and the listings
 //! the feed keeps current. The failover benchmark keeps one open in a real browser through the
 //! load balancer while it kills instances.
+use std::time::Duration;
+
 use corten::prelude::*;
 
 use crate::{
@@ -30,8 +32,11 @@ pub fn page<'a>(
     instance: &'a str,
     lines: &'a [Line<'a>],
     total: usize,
+    behind: bool,
     t: Msg,
 ) -> impl Document + 'a {
+    // A write the feed has not brought yet: without JavaScript nothing else would show it.
+    let again = behind.then_some(ReadAgain { after: Duration::from_secs(1) }.without_javascript());
     html! {
         <!DOCTYPE html>
         <html lang="en">
@@ -40,6 +45,7 @@ pub fn page<'a>(
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
                 <title>"Listings for "{seller}</title>
+                {again}
                 <Corten />
             </head>
             <body>

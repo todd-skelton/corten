@@ -103,9 +103,11 @@ pub fn app(shared: Shared) -> App<InstanceHeader> {
 /// The pages and the feeds, which a browser reads.
 #[corten::routes(state = Shared)]
 pub mod url {
+    /// `after` is a write the page should show: the form's answer without JavaScript.
     #[route("/sellers/{seller}", get = page)]
     pub struct Seller<'a> {
         pub seller: &'a str,
+        pub after: Option<u64>,
     }
 
     #[route("/sellers/{seller}/market", post = move_market)]
@@ -161,7 +163,8 @@ impl Middleware for InstanceHeader {
 
 /// The seller's page, its first listings rendered from this instance's copy of the feed. A seller
 /// with no feed is the 404 page, rather than a page whose script asks for a feed that is not
-/// there; Postgres out of reach is the 503 page.
+/// there; Postgres out of reach is the 503 page. Asked for a write the feed has not brought yet
+/// (`after`), it asks a browser without JavaScript to read it again; the script follows the feed.
 async fn page(
     req: Req,
     State(cluster): State<Cluster<Listings>>,
@@ -170,9 +173,11 @@ async fn page(
 ) -> HtmlResult {
     let feed = cluster.feed(&at.seller).await.map_err(unavailable)?.ok_or_else(Error::not_found)?;
     let (shown, total): (Vec<Listing>, usize) = feed.read(|rows| (rows.values().take(SHOWN).cloned().collect(), rows.len()));
+    let seq = feed.seq();
     let t = req.t();
     let lines: Vec<Line> = shown.iter().map(|listing| Line::new(t, listing)).collect();
-    req.page(page::page(&req, &at.seller, &instance.name, &lines, total, t))
+    let behind = at.after.is_some_and(|after| seq < after);
+    req.page(page::page(&req, &at.seller, &instance.name, &lines, total, behind, t))
 }
 
 #[derive(Deserialize, Fields)]
@@ -193,10 +198,10 @@ async fn move_market(
     Form(input): Form<MoveInput>,
 ) -> HtmlResult {
     let roll = market.writes.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ listing::now();
-    write_market(&pool, &market, &at.seller, 5, roll, Some(input.submit.as_str())).await.map_err(unavailable)?;
+    let written = write_market(&pool, &market, &at.seller, 5, roll, Some(input.submit.as_str())).await.map_err(unavailable)?;
     let t: Msg = req.t();
     req.patch_or(html! { <MoveStatus text={t.listings_moved()} /> }, || async {
-        req.redirect(&url::Seller { seller: &at.seller })
+        req.redirect(&url::Seller { seller: &at.seller, after: written.seq })
     })
     .await
 }
