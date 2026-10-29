@@ -61,7 +61,12 @@ impl Decimal {
     /// 0.60), rounded half away from zero, as Intl writes it given both `minimumFractionDigits`
     /// and `maximumFractionDigits`.
     fn change(self, digits: u8) -> Self {
-        self.hundredfold().rescale(digits)
+        let d = self.hundredfold();
+        // At most 38 digits in all, as a `Decimal` holds: those of the whole part (before
+        // rounding), then the fraction's (`format.js` caps them the same way).
+        let whole = d.mantissa / 10u128.pow(u32::from(d.scale));
+        let whole_digits = whole.checked_ilog10().map_or(1, |n| n as u8 + 1);
+        d.rescale(digits.min(38u8.saturating_sub(whole_digits)))
     }
 
     /// The value times 100, moving the point.

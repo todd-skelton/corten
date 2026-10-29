@@ -36,7 +36,7 @@ export function formatter(spec) {
   }
   const p = spec.p;
   return (n) => {
-    const m = /^([-+]?)(\d*)(?:\.(\d+))?$/.exec(typeof n === "number" ? (Number.isInteger(n) ? n.toFixed(0) : String(n)) : n);
+    const m = /^([-+]?)(\d*)(?:\.(\d+))?$/.exec(typeof n === "number" ? plain(n) : n);
     if (!m || !(m[2] || m[3])) return String(n);
     if (p === undefined) return number(spec, m[1] === "-" ? 1 : 0, m[2].replace(/^0+(?=\d)/, "") || "0", m[3] ?? "");
     // A percentage: the ratio Ã— 100, moving the point in the text (0.029 * 100 is
@@ -44,16 +44,37 @@ export function formatter(spec) {
     let f = (m[3] ?? "").padEnd(2, "0");
     let i = m[2] + f.slice(0, 2);
     f = f.slice(2);
-    if (f.length > p) {
-      const s = String(BigInt(i + f.slice(0, p)) + BigInt(f[p] > "4")).padStart(p + 1, "0");
-      [i, f] = [s.slice(0, s.length - p), s.slice(s.length - p)];
+    const change = spec.t?.length === 3;
+    // A change has at most 38 digits in all, as the server's Decimal: the whole part's, then the
+    // fraction's.
+    const q = change ? Math.max(0, Math.min(p, 38 - (i.replace(/^0+(?=\d)/, "") || "0").length)) : p;
+    if (f.length > q) {
+      const s = String(BigInt(i + f.slice(0, q)) + BigInt(f[q] > "4")).padStart(q + 1, "0");
+      [i, f] = [s.slice(0, s.length - q), s.slice(s.length - q)];
     }
     i = i.replace(/^0+(?=\d)/, "");
-    if (spec.t?.length !== 3) return number(spec, m[1] === "-" ? 1 : 0, i, f.replace(/0+$/, ""));
-    // A change: exactly `p` digits, and a sign unless it rounds to zero.
-    f = f.padEnd(p, "0");
+    if (!change) return number(spec, m[1] === "-" ? 1 : 0, i, f.replace(/0+$/, ""));
+    // A change: exactly its digits, and a sign unless it rounds to zero.
+    f = f.padEnd(q, "0");
     return number(spec, /[1-9]/.test(i + f) ? (m[1] === "-" ? 1 : 2) : 0, i, f);
   };
+}
+
+/**
+ * A number as decimal text with no exponent, the digits JavaScript prints for it: `1e-7` is
+ * "0.0000001" and `1e21` "1000000000000000000000", so a ratio a script works out is written, not
+ * passed through as "1e-7". @param {number} n
+ */
+function plain(n) {
+  const s = String(n);
+  const e = s.indexOf("e");
+  if (e < 0) return s;
+  const [, sign, int, frac = ""] = /** @type {RegExpExecArray} */ (/^(-?)(\d+)(?:\.(\d+))?$/.exec(s.slice(0, e)));
+  const all = int + frac;
+  const point = int.length + Number(s.slice(e + 1));
+  if (point <= 0) return `${sign}0.${"0".repeat(-point)}${all}`;
+  if (point >= all.length) return sign + all + "0".repeat(point - all.length);
+  return `${sign}${all.slice(0, point)}.${all.slice(point)}`;
 }
 
 /** ASCII digits in the locale's. @param {string} zero @param {string} ascii */

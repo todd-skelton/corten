@@ -893,6 +893,9 @@ mod tests {
         assert_eq!(en.change(Decimal::new(-30, 4), 2).to_string(), "-0.30%");
         assert_eq!(en.change(Decimal::new(-4, 5), 2).to_string(), "0.00%", "rounds to zero: no sign");
         assert_eq!(en.change(0, 1).to_string(), "0.0%");
+        let many = format!("+0.6{}%", "0".repeat(36));
+        assert_eq!(en.change(Decimal::new(6, 3), 40).to_string(), many, "at most 38 digits in all");
+        assert_eq!(en.change(Decimal::new(12_345, 3), 255).to_string().len(), "+1,234.".len() + 34 + 1);
         assert_eq!(en.change(Decimal::new(125, 5), 2).to_string(), "+0.13%", "half away from zero");
         assert_eq!(fr.change(Decimal::new(60, 4), 2).to_string(), "+0,60\u{a0}%", "the locale's sign in place");
     }

@@ -871,6 +871,14 @@ Corten is pre-1.0, so any minor version may change the API.
      client navigation still fetches a new module's imports after it. The scripts guide describes
      relative imports
      ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
+124. `t.change(ratio, digits)` and `t.js().change(digits)`: a ratio as a change (a price's move
+    today), with exactly `digits` fraction digits and a sign on a gain as on a loss, none on what
+    rounds to zero (`+0.60%`, `-0.30%`, `0.00%`; `+0,60 %` in fr, `+%0,60` in tr), as Intl's
+    `signDisplay: "exceptZero"` writes it, so a column of them lines up. Each locale's data gains
+    the template for a gain; the script's format is a `PercentFormat` with that third template,
+    and `scripts/format.mjs` checks it on the same cases as the server (Intl wrote them). watchlist's
+    Today column uses it
+    ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -910,14 +918,6 @@ Corten is pre-1.0, so any minor version may change the API.
 11. `corten::Query`, and axum's `Path` from the prelude: a route's parameters are its `Params`,
     whether its handler is named in a routes module or added by hand (`Area::route`), and a
     `GET` form's fields its `Form` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
-124. `t.change(ratio, digits)` and `t.js().change(digits)`: a ratio as a change (a price's move
-    today), with exactly `digits` fraction digits and a sign on a gain as on a loss, none on what
-    rounds to zero (`+0.60%`, `-0.30%`, `0.00%`; `+0,60 %` in fr, `+%0,60` in tr), as Intl's
-    `signDisplay: "exceptZero"` writes it, so a column of them lines up. Each locale's data gains
-    the template for a gain; the script's format is a `PercentFormat` with that third template,
-    and `scripts/format.mjs` checks it on the same cases as the server (Intl wrote them). watchlist's
-    Today column uses it
-    ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
 
 ### Changed
 
@@ -1723,6 +1723,12 @@ Corten is pre-1.0, so any minor version may change the API.
     tags and the price summary; a phone's one column is unchanged. The page gains two wrapping
     `<div>`s, 74 bytes of its 11,435
     ([#330 Polish: card-market's item page leaves the right half empty on desktop](https://github.com/todd-skelton/corten/issues/330)).
+62. examples/watchlist's header wrapped to two rows on a phone, and its alerts page used the left
+    half of a desktop screen. The header is one row at 390 px: the viewer's name (and picture) is
+    the link to their account, where the Account link was, and a visitor has a shorter "Sign in"
+    button in its place. The alerts form and list sit side by side from 48rem
+    ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1871,11 +1877,6 @@ Corten is pre-1.0, so any minor version may change the API.
     with `t.money`, its quantity is a `u32`, and its second number field is the shipping weight
     ([#286 corten-ui's NumberField cannot show back a refused entry or take a price in the reader's locale](https://github.com/todd-skelton/corten/issues/286),
     [#325 ui-gallery reads the listing's quantity and price as f64 and writes money with format!](https://github.com/todd-skelton/corten/issues/325)).
-62. examples/watchlist's header wrapped to two rows on a phone, and its alerts page used the left
-    half of a desktop screen. The header is one row at 390 px: the viewer's name (and picture) is
-    the link to their account, where the Account link was, and a visitor has a shorter "Sign in"
-    button in its place. The alerts form and list sit side by side from 48rem
-    ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

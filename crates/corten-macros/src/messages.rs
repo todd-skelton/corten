@@ -73,10 +73,14 @@ const RESERVED: &[&str] = &[
     "js",
     "by_key",
     "number",
+    "percent",
+    "change",
     "money",
+    "parse_money",
     "date",
     "time",
     "date_time",
+    "relative",
 ];
 
 #[derive(Debug, PartialEq)]
@@ -659,12 +663,13 @@ fn display(parts: &[Part]) -> String {
 pub fn method_name(key: &str) -> Result<String, String> {
     let name: String = key.chars().map(|c| if c == '.' || c == '-' { '_' } else { c }).collect();
     let valid = name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && !RESERVED.contains(&name.as_str());
-    if valid {
-        Ok(name)
-    } else {
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !valid {
         Err(format!("the key {key:?} cannot be a method name; use letters, digits and _ (dots become _)"))
+    } else if RESERVED.contains(&name.as_str()) {
+        Err(format!("the key {key:?} is a word Rust or messages! uses (t.number, t.change, ...); put it under a group (\"button.{name}\") or rename it"))
+    } else {
+        Ok(name)
     }
 }
 
@@ -751,6 +756,8 @@ mod tests {
         assert_eq!(method_name("item.listing_count").unwrap(), "item_listing_count");
         assert_eq!(method_name("nav.sign-in").unwrap(), "nav_sign_in");
         assert!(method_name("type").is_err());
+        assert!(method_name("change").is_err(), "a method messages! writes");
+        assert!(method_name("button.change").is_ok());
         assert!(method_name("1st").is_err());
     }
 
