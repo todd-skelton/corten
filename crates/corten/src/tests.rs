@@ -2393,6 +2393,37 @@ async fn media_is_sent_as_its_type_and_kept_only_when_its_url_names_its_content(
     assert_eq!(cache_control(&router, "/gone", &[]).await, "private, no-cache", "a failure is never kept");
 }
 
+/// A download names its file on a private answer, and is compressed as any text is; a public
+/// one keeps the name too.
+#[tokio::test]
+async fn a_download_names_its_file_and_stays_private() {
+    let csv = "id,name\n7,Pikachu\n".repeat(200);
+    let routes = Router::new()
+        .route("/export", get(move || async move { crate::Media::new("text/csv", csv).attachment("Pokémon.csv") }))
+        .route(
+            "/slip",
+            get(move || async move {
+                Public::immutable(crate::Media::new("application/pdf", &b"%PDF-1.7"[..]).attachment("x").inline("slip.pdf"))
+            }),
+        );
+    let router = app(routes, None);
+    let res = router
+        .clone()
+        .oneshot(Request::get("/export").header("accept-encoding", "gzip").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        res.headers()[header::CONTENT_DISPOSITION],
+        "attachment; filename=\"Pok_mon.csv\"; filename*=UTF-8''Pok%C3%A9mon.csv"
+    );
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "private, no-cache");
+    #[cfg(feature = "compress")]
+    assert_eq!(res.headers()[header::CONTENT_ENCODING], "gzip");
+    let res = router.oneshot(Request::get("/slip").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.headers()[header::CONTENT_DISPOSITION], "inline; filename=\"slip.pdf\"", "the last one given");
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "public, max-age=31536000, immutable");
+}
+
 #[tokio::test]
 async fn what_the_app_renders_is_private_unless_it_says_otherwise() {
     let router = app(cached_routes(), None);

@@ -383,6 +383,23 @@ and its handler cannot read who is asking; anywhere else it is `private, no-cach
 of the app. The watchlist example's
 profile picture (`examples/watchlist/src/account.rs`) does both.
 
+A file the user downloads names itself on its `Media`: `.attachment("shipments-2026-10-29.csv")`
+to save it, `.inline("packing-slips.pdf")` to show it where the browser can and save it under
+that name. It stays private unless the handler says `Public`, so a user's export is not cached
+for anyone else. Corten writes a name that is not plain ASCII as `filename*=UTF-8''..` (RFC 6266),
+which browsers read, and a quote or line break in a name taken from user data cannot change the
+header. The browser still cleans the name it saves (a `/`, a `:`, a control character), and an
+empty name lets it name the file from the URL. Link to a download with `download`
+(`<a href={export} download>`), or `data-reload` for a file the browser shows: without one, the
+runtime fetches the link on hover and again on click, running the handler twice.
+
+```rust,ignore
+async fn export(caller: Caller<Viewer>) -> corten::Result<Media> {
+    let csv = shipments_csv(&caller).await?;
+    Ok(Media::new("text/csv", csv).attachment("shipments.csv"))
+}
+```
+
 A browser cannot be given its files back by markup. A patch keeps the files chosen in the input
 it replaces until a successful answer, so the user can send them again. Without JavaScript the
 page asks for them again. A body that is not multipart is a 415, and one that breaks the format

@@ -678,6 +678,95 @@ impl Media {
         res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(media_type));
         Media(res)
     }
+
+    /// Saved as a file named `file_name` rather than shown (`Content-Disposition: attachment`):
+    /// a user's export. It stays private like any answer that is not [`Public`].
+    ///
+    /// ```
+    /// use corten::{prelude::*, Media};
+    ///
+    /// async fn export() -> Media {
+    ///     Media::new("text/csv", "id,name\n7,Pikachu\n").attachment("shipments-2026-10-29.csv")
+    /// }
+    /// # let _: Methods = get(export);
+    /// ```
+    ///
+    /// A plain ASCII name is written `filename="cards.csv"`, and any other with
+    /// `filename*=UTF-8''..` (RFC 6266), which browsers read, after a `filename` with `_` for
+    /// each other character, for a client that does not. A quote, a backslash, a `%`, a `?`
+    /// (`=?..?=` is decoded as RFC 2047 by some browsers) or a control character never reaches
+    /// the header unencoded, so a name from user data cannot end the header or add a parameter.
+    /// The browser still cleans the name it saves (a `/`, a `:`, a control character) as it does
+    /// any. An empty name sends no `filename`, and the browser names the file from the URL. The
+    /// last of `attachment` and [`Media::inline`] given is the one sent.
+    ///
+    /// A link to it takes `download` (`<a href={export} download>`), or `data-reload` for an
+    /// `inline` file the browser shows: either keeps the runtime from fetching it on hover and on
+    /// click, which would run its handler twice.
+    ///
+    /// It is the one way to name a download, so a [`Public`] answer cannot set the header itself:
+    ///
+    /// ```compile_fail,E0080
+    /// use std::time::Duration;
+    /// use corten::{answer::Header, axum::http::HeaderValue, prelude::*, Media};
+    ///
+    /// struct Disposition;
+    /// impl Header for Disposition {
+    ///     const NAME: &'static str = "content-disposition";
+    /// }
+    ///
+    /// async fn catalog() -> Public<Media> {
+    ///     let name = HeaderValue::from_static("attachment; filename=\"cards.csv\"");
+    ///     Public::new(Duration::from_secs(60), Media::new("text/csv", "id\n")).header::<Disposition>(name)
+    /// }
+    /// # let _: Methods = get(catalog);
+    /// ```
+    pub fn attachment(self, file_name: &str) -> Self {
+        self.disposition("attachment", file_name)
+    }
+
+    /// Shown in the browser when it can be (a PDF in its viewer), and saved as `file_name` when
+    /// the user saves it (`Content-Disposition: inline`). Written as [`Media::attachment`]'s.
+    pub fn inline(self, file_name: &str) -> Self {
+        self.disposition("inline", file_name)
+    }
+
+    fn disposition(mut self, kind: &str, file_name: &str) -> Self {
+        let value = disposition(kind, file_name);
+        let value = axum::http::HeaderValue::try_from(value).expect("a disposition is visible ASCII");
+        self.0.headers_mut().insert(axum::http::header::CONTENT_DISPOSITION, value);
+        self
+    }
+}
+
+/// `{kind}; filename="{name}"`, and `; filename*=UTF-8''{name}` when the name is not plain
+/// ASCII: each character outside it is `_` in `filename`, and each byte outside RFC 8187's
+/// `attr-char` is %-encoded in `filename*`. A `%` and a `?` are not plain either, since some
+/// clients decode `%XX` and RFC 2047's `=?..?=` in `filename` (RFC 6266, appendix D). An empty
+/// name is `{kind}` alone.
+fn disposition(kind: &str, name: &str) -> String {
+    if name.is_empty() {
+        return kind.to_string();
+    }
+    let plain = |c: char| matches!(c, ' '..='~') && !matches!(c, '"' | '\\' | '%' | '?');
+    let mut out = String::with_capacity(kind.len() + name.len() + 13);
+    out.push_str(kind);
+    out.push_str("; filename=\"");
+    out.extend(name.chars().map(|c| if plain(c) { c } else { '_' }));
+    out.push('"');
+    if !name.chars().all(plain) {
+        out.push_str("; filename*=UTF-8''");
+        for b in name.bytes() {
+            if b.is_ascii_alphanumeric() || b"!#$&+-.^_`|~".contains(&b) {
+                out.push(char::from(b));
+            } else {
+                out.push('%');
+                out.push(char::from(b"0123456789ABCDEF"[usize::from(b >> 4)]));
+                out.push(char::from(b"0123456789ABCDEF"[usize::from(b & 15)]));
+            }
+        }
+    }
+    out
 }
 
 impl IntoResponse for Media {
@@ -844,7 +933,8 @@ impl<A: Shareable> Public<A> {
     }
 
     /// A header of the app's on the answer, named by a type ([`Header`]): a file that stays out
-    /// of search, a download's file name. It is added to the answer's own headers when the answer
+    /// of search, a canonical link. A download's file name is the answer's own
+    /// ([`Media::attachment`]). It is added to the answer's own headers when the answer
     /// succeeds (or redirects), and Corten compresses the answer as it would without it.
     ///
     /// ```
@@ -862,7 +952,7 @@ impl<A: Shareable> Public<A> {
     /// not evaluate it). A header that would make the answer one visitor's (`set-cookie`), one
     /// Corten sets itself (`cache-control` and a CDN's `*-cache-control`, `vary`, the encoding
     /// and length, the security headers, CORS, `corten-*`), one the answer has (`content-type`,
-    /// `location`) or one of the connection's does not compile, and neither does a name that is
+    /// `location`, `content-disposition`) or one of the connection's does not compile, and neither does a name that is
     /// not a lowercase header name:
     ///
     /// ```compile_fail,E0080
@@ -894,7 +984,7 @@ impl<A: Shareable> Public<A> {
 
 /// A header a [`Public`] answer may carry ([`Public::header`]), named by a type, so its name is
 /// checked when the app compiles. Corten names the common ones ([`XRobotsTag`], [`Link`],
-/// [`ContentDisposition`], [`ContentLanguage`]); an app names another the same way:
+/// [`ContentLanguage`]); an app names another the same way:
 ///
 /// ```
 /// struct ContentLocation;
@@ -926,20 +1016,19 @@ headers! {
     /// `Link`: a related resource (`<https://example.com/item/7>; rel="canonical"`). Added
     /// twice, it is sent twice.
     Link = "link";
-    /// `Content-Disposition`: a download and its file name (`attachment; filename="cards.csv"`).
-    ContentDisposition = "content-disposition";
     /// `Content-Language`: the language the answer is in (`en`).
     ContentLanguage = "content-language";
 }
 
 /// The headers a [`Public`] answer may not set: one that would make it one visitor's
 /// (`set-cookie`, `clear-site-data`), those Corten sets itself (caching, compression, security),
-/// those the answer itself has (its type, the place a redirect goes, a range), and those that are
+/// those the answer itself has (its type, the place a redirect goes, a range, a download's file
+/// name, which [`Media::attachment`] writes escaped), and those that are
 /// the connection's, not the answer's. Names under `corten-` and `access-control-` (an API's
 /// CORS) are Corten's too, and so is any `*cache-control` and `surrogate-control`: a CDN
 /// obeys them over `Cache-Control`, which Corten makes `private` for an answer it must not
 /// share.
-const NOT_SHARED: [&str; 26] = [
+const NOT_SHARED: [&str; 27] = [
     "set-cookie",
     "clear-site-data",
     "cache-control",
@@ -952,6 +1041,7 @@ const NOT_SHARED: [&str; 26] = [
     "content-encoding",
     "content-length",
     "content-range",
+    "content-disposition",
     "location",
     "content-security-policy",
     "content-security-policy-report-only",
@@ -1540,8 +1630,38 @@ where
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_download_s_name_is_quoted_when_plain_and_encoded_when_not() {
+        use super::disposition;
+        assert_eq!(disposition("attachment", "shipments-2026-10-29.csv"), r#"attachment; filename="shipments-2026-10-29.csv""#);
+        assert_eq!(disposition("inline", "packing slips.pdf"), r#"inline; filename="packing slips.pdf""#);
+        assert_eq!(disposition("attachment", ""), "attachment", "the browser names it from the URL");
+        // Not ASCII: a fallback, then the exact name, each byte of its UTF-8 encoded.
+        assert_eq!(
+            disposition("attachment", "Pokémon ✓.csv"),
+            r#"attachment; filename="Pok_mon _.csv"; filename*=UTF-8''Pok%C3%A9mon%20%E2%9C%93.csv"#
+        );
+        // A quote, a backslash or a line break cannot end the parameter or the header.
+        assert_eq!(
+            disposition("attachment", "a\"b\\c\r\nSet-Cookie: x=1;.csv"),
+            r#"attachment; filename="a_b_c__Set-Cookie: x=1;.csv"; filename*=UTF-8''a%22b%5Cc%0D%0ASet-Cookie%3A%20x%3D1%3B.csv"#
+        );
+        // Some clients decode % in `filename`, so a name with one has the exact form too.
+        assert_eq!(disposition("attachment", "100%.txt"), r#"attachment; filename="100_.txt"; filename*=UTF-8''100%25.txt"#);
+        // Some decode RFC 2047 in `filename`, which would swap the name for another.
+        assert_eq!(
+            disposition("attachment", "=?UTF-8?B?ZXZpbC5leGU=?=.csv"),
+            r#"attachment; filename="=_UTF-8_B_ZXZpbC5leGU=_=.csv"; filename*=UTF-8''%3D%3FUTF-8%3FB%3FZXZpbC5leGU%3D%3F%3D.csv"#
+        );
+        for name in ["", "a\u{0}b", "\u{7f}", "日本語.pdf", "tab\there"] {
+            let value = disposition("inline", name);
+            assert!(value.bytes().all(|b| (0x20..0x7f).contains(&b)), "{value}");
+            assert!(axum::http::HeaderValue::try_from(value).is_ok());
+        }
+    }
+
+    #[test]
     fn a_public_answer_takes_the_app_s_headers_and_not_corten_s_or_the_connection_s() {
-        for name in ["x-robots-tag", "link", "content-disposition", "content-language", "etag", "last-modified", "x-cache-tag"] {
+        for name in ["x-robots-tag", "link", "content-language", "etag", "last-modified", "x-cache-tag"] {
             assert!(super::shared_header(name), "{name}");
         }
         for name in [
@@ -1555,6 +1675,7 @@ mod tests {
             "content-type",
             "location",
             "content-range",
+            "content-disposition",
             "transfer-encoding",
             "connection",
             "te",

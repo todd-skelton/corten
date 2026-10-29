@@ -83,7 +83,10 @@ so the form is drawn again with the message beside the input.
 To serve an upload back, read its type from its first bytes (never `file.content_type()`, which is
 the client's word) and return `corten::Media::new("image/png", bytes)`. At a URL that names the
 bytes (a hash), return `Public::immutable(answer)` so every cache keeps it for a year; its handler
-cannot read who is asking. Never build the response by hand.
+cannot read who is asking. A download names its file with `.attachment("cards.csv")` (or
+`.inline(..)` to show it), which escapes the name; never set `Content-Disposition` yourself.
+Link to it with `download` (`data-reload` for an `inline` file), so the runtime does not fetch
+it on hover and again on click. Never build the response by hand.
 
 ## Checkboxes and lists
 

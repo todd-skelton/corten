@@ -787,12 +787,12 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
 115. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
     `Json`, `Media`, a page), named by a type (`corten::answer::Header`; Corten names
-    `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
+    `XRobotsTag`, `Link` and `ContentLanguage`). The answer is compressed
     and shared as it would be without it. Before, a shared file that had to stay out of search was
     a `Relay`, never compressed (Chase Sets' developer manifest: 161,815 bytes against 19,737 with
     brotli), or an answer type of the app's own. `set-cookie`, the headers Corten sets itself
     (caching, a CDN's `*-cache-control`, CORS, security), those the answer has (`content-type`,
-    `location`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
+    `location`, `content-disposition`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
     18,404-18,417 to 18,434-18,459 for a public text answer (callgrind, in process, 1,000
     requests, three runs each); the headers are held behind an `Option<Box<..>>`, since a `Vec`
     in place cost about 50 (18,450-18,467)
@@ -896,7 +896,18 @@ Corten is pre-1.0, so any minor version may change the API.
     Today column uses it. `change`, `percent`, `parse_money` and `relative` join the message keys
     `messages!` refuses at the top level, since they are its methods (`button.change` is fine)
     ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
-126. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
+126. `Media::attachment(name)` and `Media::inline(name)`: a download names its file on any answer,
+    private ones included (a user's export), where only a `Public` answer could before. The name
+    is written as `filename="cards.csv"` when it is plain ASCII, and otherwise with
+    `filename*=UTF-8''..` (RFC 6266) after a `filename` with `_` for each other character, so a
+    quote, a backslash, a `%`, a `?` or a line break in a user's file name cannot end the header,
+    add a parameter or be decoded as another name. It is the one way to name a download:
+    `Public::header` refuses `content-disposition` when the app builds (Added 115). The guide
+    says to link to one with `download` (or `data-reload` for a file the browser shows), so the
+    runtime does not fetch it on hover and again on click
+    ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
+    No existing answer changes; naming a file costs one header on that answer.
+127. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
     form, its fields posted as `ship_to.street` (`f.ship_to.street`), so a field group is defined
     once and a form can hold two of one type. `#[fields(rows)] #[serde(default)] domains:
     BTreeMap<Domain, DomainLimits>` is one group per row, each field named by the row's key,
@@ -906,8 +917,9 @@ Corten is pre-1.0, so any minor version may change the API.
     error on one row's field marks that input only, with its own message id. `at` takes only the
     map's key type (a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, by its word); a key's other characters
     are %-encoded. A group of groups, rows in a group or a row, and rows without a default do not
-    compile. `Form` and `corten::form::from_bytes` read both with Corten's own form reader; a
-    plain form costs what it did (below)
+    compile. `Form` and `corten::form::from_bytes` read both with Corten's own form reader. A
+    refused form of plain fields costs 1,491 instructions where it took 1,481 (three fields given
+    an error, marked and printed; callgrind, release build)
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
 ### Removed
@@ -1439,7 +1451,19 @@ Corten is pre-1.0, so any minor version may change the API.
     (`values={&[Pricing::Offers]}`). ui-gallery reads its condition, pricing, regions, tab and
     sale sheet as enums, where it compared strings
     ([#324 corten-ui choices are strings, so nothing ties a Picker or ComboBox value to the field that reads it](https://github.com/todd-skelton/corten/issues/324)).
-78. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
+78. `t.money`, `t.number`, `t.percent` and `t.change` write a value in about 40% fewer
+    instructions: 574 for an amount or a rating in `en` where they took 949, 602 in `fr` where
+    they took 1,003 (callgrind, release build, 30 amounts in US dollars and 20 two-place ratings
+    per round). A page writes into its `String` without a `dyn Write` call per piece, the digits
+    are made in `u64` (a `u128` division is a library call), the template is searched as bytes,
+    and the currency's code is compared as a number and written only where the locale writes a
+    currency by its code. The text is the same; a test checks that no symbol template has a code
+    to place.
+79. examples/card-market answers a category nothing is in (a slug from an old link) with
+    `X-Robots-Tag: noindex` (`Public::header`), so search engines do not list an empty page; a
+    category with cards is unchanged
+    ([#335 Some framework features appear in no example: Area::policy, Public::header, Req::signal, Refused::too_many](https://github.com/todd-skelton/corten/issues/335)).
+80. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
     name alone (`FieldName`, with `as_str`), and a group's or a row's field is a
     `FieldName<Group>`, `FieldName<Row<'k>>` or `FieldName<RowGroup<'k>>`, written, not stored:
     compare it with text with `==` (`f.ship_to.street == "ship_to.street"`) and write it with
@@ -1827,6 +1851,20 @@ Corten is pre-1.0, so any minor version may change the API.
     "More actions" button. The SKU's copy count shows only after the first copy ("Copies: 2"), and
     `/help` explains each part of the form
     ([#333 Polish: ui-gallery reads as a grid of components rather than a listing screen](https://github.com/todd-skelton/corten/issues/333)).
+67. card-market in French translated its headings but not its prices, ratings, conditions or
+    card details. Its item page and cards now write a price in US dollars as the reader's locale
+    writes money (`0,79 $US`), a seller's rating with the locale's decimal separator, and the
+    conditions and detail labels the catalog names (`Peu joué`, `Rareté`); a value the catalog
+    does not name is shown as the item API sent it. The page reads these from fields the JSON
+    leaves out (`#[serde(skip)]`: cents, a `Decimal` rating, a `Grade`, a `Detail`), so
+    `/api/items/{id}` still answers the benchmark's shared view model, and in English the page
+    reads as before (`parity.mjs`). The listing sort compares each row's `data-cents`, the
+    cents the server sorts by, where it compared a float that was `NaN` without a price, and
+    keeps rows with the same price in the server's order both ways, so a second click restores it, and the
+    scripts guide says when a `data-` attribute is the right tool rather than a view. The smoke
+    checks a price, a rating and a condition in French
+    ([#323 card-market in French translates its headings but not its prices, ratings or card details](https://github.com/todd-skelton/corten/issues/323),
+    [#329 card-market sorts listings by a data-price string instead of through the rows' views](https://github.com/todd-skelton/corten/issues/329)).
 
 ### Documentation
 

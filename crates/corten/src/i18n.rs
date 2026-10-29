@@ -900,6 +900,38 @@ mod tests {
         assert_eq!(fr.change(Decimal::new(60, 4), 2).to_string(), "+0,60\u{a0}%", "the locale's sign in place");
     }
 
+    /// A value past `u64` is written digit for digit, as one that fits is.
+    #[test]
+    fn a_value_past_u64_keeps_every_digit() {
+        let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
+        let en = locales.iter().find(|(t, _)| *t == "en").unwrap().1;
+        let max = Decimal::new(i128::MAX, 0);
+        assert_eq!(max.to_string(), "170141183460469231731687303715884105727");
+        assert_eq!(Decimal::new(i128::MAX, 38).to_string(), "1.70141183460469231731687303715884105727");
+        assert_eq!(Decimal::new(i128::MIN + 1, 2).to_string(), "-1701411834604692317316873037158841057.27");
+        assert_eq!(Formatted::number(en, max).to_string(), "170,141,183,460,469,231,731,687,303,715,884,105,727");
+        let past = Decimal::new(i128::from(u64::MAX) + 1, 0);
+        assert_eq!(Formatted::number(en, past).to_string(), "18,446,744,073,709,551,616");
+        assert_eq!(
+            Formatted::money(en, &Minor(u128::from(u64::MAX) + 1), Currency::new("USD")).to_string(),
+            "$184,467,440,737,095,516.16"
+        );
+    }
+
+    /// `t.money` places a code only in the template that writes a currency by its code; every
+    /// currency a locale has a symbol for has it in place.
+    #[test]
+    fn a_currency_with_a_symbol_has_no_code_to_place() {
+        let locales: &[(&str, &__private::LocaleData)] = corten_macros::__all_locales!();
+        for (tag, data) in locales {
+            for (code, positive, negative) in data.currencies {
+                assert!(!positive.contains('\u{2}') && !negative.contains('\u{2}'), "{tag} {code}");
+                assert_eq!(code.len(), 3, "{tag} {code}");
+            }
+            assert!(data.currencies.is_sorted_by_key(|(code, ..)| *code), "{tag}");
+        }
+    }
+
     /// Every amount every locale writes (Intl's, in cases.tsv, and ours in every currency its data
     /// has) reads back, and what people type for it without the marks Intl adds: a symbol's
     /// direction marks, its no-break spaces.

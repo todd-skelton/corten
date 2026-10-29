@@ -92,12 +92,17 @@ try {
   check("a theme overrides tokens", styles.themes[0] === "#1d1b26" && styles.themes[1] === "#ecebf2", styles.themes.join(" "));
 
   const firstPrice = () => page.textContent("[data-scope=listing-sort] tbody tr:first-child td:last-child");
+  const rowOrder = () => page.$$eval("[data-scope=listing-sort] tbody tr", (rows) => rows.map((r) => r.textContent).join("|"));
   const sort = "[data-scope=listing-sort] > button";
   const before = await firstPrice();
+  const order = await rowOrder();
   await page.click(sort);
   check("a click runs the listing sort handler", (await firstPrice()) !== before && (await page.innerText(sort)) === "Price: high to low");
   await page.click(sort);
-  check("a second click restores the server's order", (await firstPrice()) === before && (await page.innerText(sort)) === "Price: low to high");
+  check(
+    "a second click restores the server's order, rows with the same price included",
+    (await firstPrice()) === before && (await rowOrder()) === order && (await page.innerText(sort)) === "Price: low to high",
+  );
   const more = await page.$("[data-scope=offer-list] button");
   if (more) {
     const rows = await page.$$eval("[data-scope=offer-list] tbody tr", (r) => r.length);
@@ -259,6 +264,17 @@ try {
   check("a category page carries its breadcrumbs as structured data", (await category.text()).includes('"@type":"BreadcrumbList"'));
   const ready = await fetch(`${base}/health/ready`);
   check("the app is ready once its item source answers", ready.status === 200, String(ready.status));
+
+  // In French the item page is French throughout: its prices as French writes US dollars, the
+  // ratings with a decimal comma, and the conditions the catalog names (the fixture's cheapest
+  // listing is Lightly Played; the rest are "Near Mint, English", shown as the item API sent it).
+  const french = await (await fetch(`${base}/items/item_5`, { headers: { "accept-language": "fr" } })).text();
+  const cheapest = new Intl.NumberFormat("fr", { style: "currency", currency: "USD" }).format(0.79);
+  check(
+    "in French a price, a rating and a condition are French",
+    french.includes(cheapest) && french.includes("4,58 ★ (274)") && french.includes("Peu joué") && !french.includes("$0.79"),
+    [cheapest, "4,58 ★ (274)", "Peu joué"].map((t) => `${t}: ${french.includes(t)}`).join(", "),
+  );
 
   // A partner's service sets alerts with its API key (`X-Api-Key`, `API_KEYS`); without one it
   // is a JSON 401, and the form's rules answer with the fields.
