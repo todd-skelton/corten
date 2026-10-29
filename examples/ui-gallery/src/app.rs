@@ -77,15 +77,9 @@ fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
     req.page(Layout { req, title: TITLE, children: gallery })
 }
 
-#[derive(Deserialize)]
-struct HomeQuery {
-    tab: Option<String>,
-    sale: Option<String>,
-}
-
 const TITLE: &str = "Sell Ashen Drake | corten-ui";
 
-async fn home(req: Req, Query(q): Query<HomeQuery>) -> HtmlResult {
+async fn home(req: Req, Params(q): Params<url::Home<'_>>) -> HtmlResult {
     let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
     let sale = q.sale.as_deref() == Some(LAST_SALE);
     gallery(&req, Gallery { tab, result: "", toast: None, sale, rename: RenameDialog { name: "", errors: &Errors::new() } })

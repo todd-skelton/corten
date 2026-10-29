@@ -133,9 +133,8 @@ pub mod url {
     pub struct Trades;
 
     /// The alerts page; `saved` is the receipt of a write the page waits for (see
-    /// `alerts::page`). The handler reads it back with this struct.
+    /// `alerts::page`), which reads it back as `Params<url::Alerts>`.
     #[route("/alerts", get = alerts::page, post = alerts::save)]
-    #[derive(serde::Deserialize)]
     pub struct Alerts {
         pub saved: Option<u64>,
     }

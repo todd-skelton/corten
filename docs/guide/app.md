@@ -355,7 +355,7 @@ async fn home(req: Req) -> Public<HtmlResult> {
 }
 ```
 
-Its handler may only take inputs that cannot tell who is asking (`Path`, `Query`, `Form`,
+Its handler may only take inputs that cannot tell who is asking (`Params`, `Form`,
 `State`, `Req`, `Signal`, `Json`, ..., marked `Anonymous`), so a `Caller`, a `HeaderMap` or a
 cookie in a public handler does not compile. Only a successful answer or a redirect is shared;
 a failure keeps `private, no-cache`.
@@ -448,8 +448,8 @@ mod api {
     pub struct ItemPrice<'a> { pub id: &'a str }
 }
 
-async fn price(Path(id): Path<String>) -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "id": id, "lowest": "$0.50" }))
+async fn price(Params(item): Params<api::ItemPrice<'_>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "id": item.id, "lowest": "$0.50" }))
 }
 
 fn app(pages: Routes) -> App {
@@ -765,8 +765,8 @@ async fn dashboard(req: Req, _: Caller<Staff>) -> HtmlResult {
     req.page(html! { <Layout req={&req} title="Admin"><h1>"Admin"</h1></Layout> })
 }
 
-async fn user(req: Req, _: Caller<Staff>, Path(id): Path<String>) -> HtmlResult {
-    req.page(html! { <Layout req={&req} title="User"><h1>{id}</h1></Layout> })
+async fn user(req: Req, _: Caller<Staff>, Params(user): Params<admin::User<'_>>) -> HtmlResult {
+    req.page(html! { <Layout req={&req} title="User"><h1>{user.id}</h1></Layout> })
 }
 
 #[component]

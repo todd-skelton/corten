@@ -270,8 +270,13 @@ fn parse_price(t: Msg, text: &str) -> Option<u32> {
     (cents > 0).then_some(cents)
 }
 
-async fn set_price(req: Req, State(desk): State<Desk>, Path(id): Path<String>, Form(input): Form<PriceInput>) -> HtmlResult {
-    let f = PriceInput::FIELDS;
+async fn set_price(
+    req: Req,
+    State(desk): State<Desk>,
+    Params(at): Params<url::SetPrice<'_>>,
+    Form(input): Form<PriceInput>,
+) -> HtmlResult {
+    let (f, id) = (PriceInput::FIELDS, at.id);
     let Some(cents) = parse_price(req.t(), &input.price) else {
         let mut errors = Errors::new();
         errors.add(f.price, "Enter a price above zero, like 12.50.");

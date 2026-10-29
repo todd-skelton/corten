@@ -25,8 +25,8 @@
 //! struct Quote { id: u32, cents: u32 }
 //!
 //! // A path that does not parse is a JSON 400, whatever the client accepts.
-//! async fn price(Path(id): Path<u32>) -> JsonResult<Quote> {
-//!     Ok(Json(Quote { id, cents: 900 }))
+//! async fn price(price: Params<url::Price>) -> JsonResult<Quote> {
+//!     Ok(Json(Quote { id: price.id, cents: 900 }))
 //! }
 //! # let _ = App::new(url::router()).router();
 //! ```
@@ -659,9 +659,9 @@ impl Answer for Relay {
 /// }
 ///
 /// // `id` is a hash of the picture's bytes, made when it was uploaded.
-/// async fn picture(Path(id): Path<String>) -> Public<corten::Result<Media>> {
+/// async fn picture(picture: Params<url::Picture<'_>>) -> Public<corten::Result<Media>> {
 ///     let png: &'static [u8] = b"\x89PNG\r\n\x1a\n";
-///     Public::immutable(match id.as_str() {
+///     Public::immutable(match picture.id.as_str() {
 ///         "5f2c" => Ok(Media::new("image/png", png)),
 ///         _ => Err(corten::Error::not_found()),
 ///     })
@@ -908,7 +908,7 @@ pub trait Anonymous {}
 
 impl<T> Anonymous for axum::extract::Path<T> {}
 impl<T> Anonymous for axum::extract::Query<T> {}
-impl<T> Anonymous for crate::Query<T> {}
+impl<R: crate::route::FromUrl + ?Sized> Anonymous for crate::route::Params<R> {}
 impl<T> Anonymous for crate::Form<T> {}
 impl<T> Anonymous for crate::form::Upload<T> {}
 impl<T> Anonymous for State<T> {}
@@ -987,12 +987,13 @@ arities!(A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16);
 pub struct At<const N: usize>;
 
 /// The handler's arguments include `T` (`I` is where, found by the compiler). A routes module
-/// with `caller = Viewer` holds every handler in it to taking `Caller<Viewer>`.
+/// with `caller = Viewer` holds every handler in it to taking `Caller<Viewer>`, and a route with a
+/// parameter in its path its handlers to taking its `Params`.
 #[doc(hidden)]
 #[diagnostic::on_unimplemented(
-    message = "every route in this module takes `{T}`, and this handler does not",
+    message = "this handler's route needs `{T}`, and the handler does not take it",
     label = "this handler",
-    note = "add `{T}` to the handler's arguments, or move its route to a module without `caller = ..` (a public page)"
+    note = "add `{T}` to the handler's arguments: every route of a module with `caller = ..` takes its `Caller<..>`, and a route with a parameter in its path its own `Params<..>`"
 )]
 pub trait Holds<T, I> {}
 

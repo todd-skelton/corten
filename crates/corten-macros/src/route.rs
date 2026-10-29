@@ -8,10 +8,10 @@
 
 use proc_macro::TokenStream;
 
-use proc_macro::{Delimiter, Span, TokenTree};
+use proc_macro::{Delimiter, Group, Ident, Span, TokenTree};
 
 use crate::{
-    derive::{named_fields, parse, string, Field},
+    derive::{named_fields, parse, string, Field, Item},
     tokens::{err, is_ident, is_punct, q, string_value, Error},
 };
 
@@ -31,7 +31,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     if item.attrs.iter().any(is_route_query) {
         let body = query_body(&fields);
         return Ok(item.impl_block(
-            "::corten::route::Params",
+            "::corten::route::QueryParams",
             q(
                 "#[allow(unused_variables)]
                 fn write_params(&self, __corten_first: &mut bool, __corten_html: bool, __OUT: &mut ::std::string::String) {
@@ -152,6 +152,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             &[],
         ),
     ));
+    out.extend(from_url(&item, &fields, &segments)?);
     out.extend(item.impl_block(
         "::std::fmt::Display",
         q(
@@ -162,6 +163,228 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         ),
     ));
     Ok(out)
+}
+
+/// `FromUrl`, for `corten::Params`: the struct's fields, owned (`__ItemParams`), read back from a
+/// request. Only for a struct with fields and no type parameters whose fields are each owned or a
+/// reference (`&'a str`, `&'a [T]`, `&'a T`); for another, `Params` does not compile and says so.
+fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<TokenStream, Error> {
+    if fields.is_empty() || !only_lifetimes(&item.impl_generics) {
+        return Ok(TokenStream::new());
+    }
+    let mut types = Vec::new();
+    for field in fields {
+        match owned(&field.ty) {
+            Some(ty) => types.push(ty),
+            None => return Ok(TokenStream::new()),
+        }
+    }
+    let twin = Ident::new(&format!("__{}Params", item.name), item.name.span());
+    let mut body = TokenStream::new();
+    for (field, ty) in fields.iter().zip(&types) {
+        body.extend(field.vis.iter().cloned());
+        body.extend([TokenTree::Ident(field.ident.clone())]);
+        body.extend(q(":", &[]));
+        body.extend(ty.clone());
+        body.extend(q(",", &[]));
+    }
+    let mut out = q("#[doc(hidden)] #[allow(dead_code, non_camel_case_types)]", &[]);
+    out.extend(item.vis.clone());
+    out.extend(q("struct", &[]));
+    out.extend([TokenTree::Ident(twin.clone()), TokenTree::Group(Group::new(Delimiter::Brace, body))]);
+
+    // The path's parameters, in its order, as a tuple axum's `Path` reads.
+    let in_path = |f: &Field| segments.iter().any(|s| matches!(s, Segment::Param(n) | Segment::Rest(n) if *n == f.name));
+    let mut path_types = TokenStream::new();
+    let mut path_names = TokenStream::new();
+    for segment in segments {
+        if let Segment::Param(name) | Segment::Rest(name) = segment {
+            let at = fields.iter().position(|f| f.name == *name).expect("checked by expand");
+            path_types.extend(types[at].clone());
+            path_types.extend(q(",", &[]));
+            path_names.extend([TokenTree::Ident(fields[at].ident.clone())]);
+            path_names.extend(q(",", &[]));
+        }
+    }
+    let (path_type, path_pattern) = if path_names.is_empty() {
+        (q("()", &[]), q("()", &[]))
+    } else {
+        (
+            q("::corten::route::__private::InPath<(__A0)>", &[path_types]),
+            q("::corten::route::__private::InPath((__A0))", &[path_names]),
+        )
+    };
+    // Each query field is read through a bound on `Later<'__corten, T>`, which names the impl's
+    // lifetime, so it is checked where `Params` is used: a link's field needs only `Display`.
+    let mut reads = TokenStream::new();
+    let mut bounds = TokenStream::new();
+    let mut query = false;
+    for (field, ty) in fields.iter().zip(&types) {
+        let ident: TokenStream = TokenTree::Ident(field.ident.clone()).into();
+        if in_path(field) {
+            reads.extend(q("__A0,", &[ident]));
+            continue;
+        }
+        query = true;
+        let later = q("::corten::route::__private::Later<'__corten, __A0>", std::slice::from_ref(ty));
+        if field.attrs.iter().any(is_route_query) {
+            bounds.extend(q("__A0: ::corten::route::__private::Deserialized<T = __A1>,", &[later.clone(), ty.clone()]));
+            reads.extend(q("__A0: <__A1 as ::corten::route::__private::Deserialized>::all(&__pairs)?,", &[ident, later]));
+        } else if let Some((prefix, _)) = route_prefix(field)? {
+            bounds.extend(q("__A0: ::corten::route::__private::Prefixed<T = __A1>,", &[later.clone(), ty.clone()]));
+            reads.extend(q(
+                "__A0: <__A1 as ::corten::route::__private::Prefixed>::prefixed(&__pairs, __A2)?,",
+                &[ident, later, string(&prefix).into()],
+            ));
+        } else {
+            bounds.extend(q("__A0: ::corten::route::__private::Deserialized<T = __A1>,", &[later.clone(), ty.clone()]));
+            let default = match serde_default(field)? {
+                None => q("::core::option::Option::None", &[]),
+                Some(None) => q("::core::option::Option::Some(::core::default::Default::default as fn() -> _)", &[]),
+                Some(Some(path)) => q("::core::option::Option::Some(__A0 as fn() -> _)", &[path]),
+            };
+            reads.extend(q(
+                "__A0: <__A1 as ::corten::route::__private::Deserialized>::field(&__pairs, __A2, __A3)?,",
+                &[ident, later, string(&field.key).into(), default],
+            ));
+        }
+    }
+    let pairs = if query {
+        q("let __pairs = ::corten::route::__private::sorted_pairs(__query);", &[])
+    } else {
+        q("let _ = __query;", &[])
+    };
+    // `impl<'__corten, 'a> FromUrl for Item<'a> where ..`.
+    let mut generics: Vec<TokenTree> = item.impl_generics.clone().into_iter().collect();
+    let lifetime = q("'__corten", &[]);
+    if generics.is_empty() {
+        generics = q("<__A0>", &[lifetime]).into_iter().collect();
+    } else {
+        generics.splice(1..1, q("__A0,", &[lifetime]));
+    }
+    let mut where_clause = item.where_clause.clone();
+    if !bounds.is_empty() {
+        if where_clause.is_empty() {
+            where_clause.extend(q("where", &[]));
+        } else if !matches!(where_clause.clone().into_iter().last(), Some(TokenTree::Punct(p)) if p.as_char() == ',') {
+            where_clause.extend(q(",", &[]));
+        }
+        where_clause.extend(bounds);
+    }
+    out.extend(q(
+        "#[automatically_derived]
+        impl __A5 ::corten::route::FromUrl for __A6 __A7 __A8 {
+            type Params = __A0;
+            type Path = __A1;
+            #[inline]
+            fn __read(__path: Self::Path, __query: &str) -> ::core::result::Result<__A0, ::corten::form::FormError> {
+                let __A2 = __path;
+                __A3
+                ::core::result::Result::Ok(__A0 { __A4 })
+            }
+        }",
+        &[
+            TokenTree::Ident(twin).into(),
+            path_type,
+            path_pattern,
+            pairs,
+            reads,
+            generics.into_iter().collect(),
+            TokenTree::Ident(item.name.clone()).into(),
+            item.type_generics.clone(),
+            where_clause,
+        ],
+    ));
+    Ok(out)
+}
+
+/// `<'a, 'b>` or nothing: generics a route's owned twin can leave out.
+fn only_lifetimes(generics: &TokenStream) -> bool {
+    let tokens: Vec<TokenTree> = generics.clone().into_iter().collect();
+    let Some((TokenTree::Punct(open), inner)) = tokens.split_first() else { return true };
+    if open.as_char() != '<' {
+        return false;
+    }
+    let inner = &inner[..inner.len().saturating_sub(1)];
+    inner.split(|t| is_punct(Some(t), ',')).all(|param| param.is_empty() || is_punct(param.first(), '\''))
+}
+
+/// A field's type with each reference owned: `&'a str` is `String`, `&'a [T]` `Vec<T>`, any
+/// other `&'a T` `<T as ToOwned>::Owned`. `None` for a type that borrows another way
+/// (`Cow<'a, str>`).
+fn owned(ty: &[TokenTree]) -> Option<TokenStream> {
+    let mut out = TokenStream::new();
+    let mut i = 0;
+    while i < ty.len() {
+        match &ty[i] {
+            TokenTree::Punct(p) if p.as_char() == '&' => {
+                if !is_punct(ty.get(i + 1), '\'') || !matches!(ty.get(i + 2), Some(TokenTree::Ident(_))) {
+                    return None;
+                }
+                let start = i + 3;
+                let mut end = start;
+                let mut depth = 0;
+                while let Some(token) = ty.get(end) {
+                    if let TokenTree::Punct(p) = token {
+                        match p.as_char() {
+                            '<' => depth += 1,
+                            '>' | ',' if depth == 0 => break,
+                            '>' => depth -= 1,
+                            _ => {}
+                        }
+                    }
+                    end += 1;
+                }
+                let referent = &ty[start..end];
+                if referent
+                    .iter()
+                    .any(|t| matches!(t, TokenTree::Ident(id) if id.to_string() == "dyn" || id.to_string() == "impl"))
+                {
+                    return None;
+                }
+                out.extend(match referent {
+                    [TokenTree::Ident(id)] if id.to_string() == "str" => q("::std::string::String", &[]),
+                    [TokenTree::Group(g)] if g.delimiter() == Delimiter::Bracket => {
+                        let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                        q("::std::vec::Vec<__A0>", &[owned(&inner)?])
+                    }
+                    _ => q("<__A0 as ::std::borrow::ToOwned>::Owned", &[owned(referent)?]),
+                });
+                i = end;
+            }
+            TokenTree::Punct(p) if p.as_char() == '\'' => return None,
+            TokenTree::Group(g) => {
+                let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                let mut group = Group::new(g.delimiter(), owned(&inner)?);
+                group.set_span(g.span());
+                out.extend([TokenTree::Group(group)]);
+                i += 1;
+            }
+            other => {
+                out.extend([other.clone()]);
+                i += 1;
+            }
+        }
+    }
+    Some(out)
+}
+
+/// `#[serde(default)]` (`Some(None)`) or `#[serde(default = "path")]` (`Some(Some(path))`).
+fn serde_default(field: &Field) -> Result<Option<Option<TokenStream>>, Error> {
+    for attr in &field.attrs {
+        for (key, value) in crate::serde_args(attr).map_err(|m| (attr.span(), m))? {
+            if key == "default" {
+                return match value {
+                    None => Ok(Some(None)),
+                    Some(path) => match path.parse::<TokenStream>() {
+                        Ok(path) => Ok(Some(Some(path))),
+                        Err(_) => err(attr.span(), format!("#[serde(default = {path:?})] is not a path")),
+                    },
+                };
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// Each field's query key: the name serde reads it by, with the struct's `rename_all` and the
@@ -284,7 +507,10 @@ fn query_writes(fields: &[&Field]) -> TokenStream {
     for field in fields {
         let ident: TokenStream = proc_macro::TokenTree::Ident(field.ident.clone()).into();
         if field.attrs.iter().any(is_route_query) {
-            body.extend(q("::corten::route::Params::write_params(&self.__A0, __corten_first, __corten_html, __OUT);", &[ident]));
+            body.extend(q(
+                "::corten::route::QueryParams::write_params(&self.__A0, __corten_first, __corten_html, __OUT);",
+                &[ident],
+            ));
         } else if let Ok(Some((prefix, _))) = route_prefix(field) {
             body.extend(q(
                 "::corten::route::Pairs::write_pairs(&self.__A0, __A1, __corten_first, __corten_html, __OUT);",

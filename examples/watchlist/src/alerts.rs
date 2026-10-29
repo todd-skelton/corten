@@ -257,7 +257,7 @@ pub(crate) async fn page(
     viewer: Option<Caller<Viewer>>,
     State(store): State<AlertStore>,
     visitor: Visitor,
-    Query(at): Query<url::Alerts>,
+    Params(at): Params<url::Alerts>,
 ) -> HtmlResult {
     let read = store.read(Instant::now(), visitor.known(), at.saved);
     let t: Msg = req.t();
