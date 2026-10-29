@@ -17,7 +17,7 @@ use axum::{
         connect_info::{ConnectInfo, MockConnectInfo},
         FromRequestParts, OptionalFromRequestParts,
     },
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, Extensions, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 
@@ -60,22 +60,42 @@ use crate::{Error, Signal};
 pub struct ClientIp(pub IpAddr);
 
 impl ClientIp {
-    /// Looked up once per request: a second read must not mark the caller again.
+    /// The address of who sent `req`, for a [`crate::Middleware`] (a limit by address), the
+    /// same as a handler that takes `Option<ClientIp>` gets: `None` when it cannot be known.
+    /// The answer is then private to that address, as a handler's would be.
+    pub fn of(req: &mut axum::extract::Request) -> Option<Self> {
+        let (found, fresh) = Self::look(req.extensions(), req.headers());
+        if fresh {
+            req.extensions_mut().insert(Found(found));
+        }
+        found
+    }
+
     fn find(parts: &mut Parts) -> Option<Self> {
-        if let Some(Found(found)) = parts.extensions.get::<Found>() {
-            return *found;
+        let (found, fresh) = Self::look(&parts.extensions, &parts.headers);
+        if fresh {
+            parts.extensions.insert(Found(found));
+        }
+        found
+    }
+
+    /// The address, and whether it was looked up now (to be kept for the next read): once per
+    /// request, since a second read must not mark the caller again.
+    fn look(extensions: &Extensions, headers: &HeaderMap) -> (Option<Self>, bool) {
+        if let Some(Found(found)) = extensions.get::<Found>() {
+            return (*found, false);
         }
         // A test's address first, then the connection's.
-        let peer = match parts.extensions.get::<ConnectInfo<SocketAddr>>() {
+        let peer = match extensions.get::<ConnectInfo<SocketAddr>>() {
             Some(ConnectInfo(peer)) => Peer::Ip(peer.ip()),
-            None => match parts.extensions.get::<MockConnectInfo<SocketAddr>>() {
+            None => match extensions.get::<MockConnectInfo<SocketAddr>>() {
                 Some(MockConnectInfo(peer)) => Peer::Ip(peer.ip()),
                 None => PEER.get(),
             },
         };
-        let signal = parts.extensions.get::<Signal>();
+        let signal = extensions.get::<Signal>();
         let proxies = signal.and_then(Signal::shared).map_or(&[][..], |shared| &shared.proxies[..]);
-        let forwarded = parts.headers.get_all("x-forwarded-for").iter().rev().flat_map(|value| {
+        let forwarded = headers.get_all("x-forwarded-for").iter().rev().flat_map(|value| {
             // A value that is not text ends the walk where it is, like an entry that is not an address.
             value.to_str().map_or_else(|_| "?".split(','), |value| value.split(',')).rev()
         });
@@ -87,8 +107,7 @@ impl ClientIp {
             ip.hash(&mut hasher);
             signal.mark_caller(hasher.finish());
         }
-        parts.extensions.insert(Found(found));
-        found
+        (found, true)
     }
 }
 

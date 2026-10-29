@@ -290,7 +290,8 @@ pub enum Failure {
     CrossSite,
     /// The handler needs a [`crate::Caller`] the request does not have, or one who may not do
     /// this, and there is nowhere to sign in: 401 or 403, or 429 for a client with too many failed
-    /// attempts ([`crate::Refused`]).
+    /// attempts ([`crate::Refused`]); or a middleware turned the request away with a `Refused`
+    /// (a rate limit's 429).
     Refused { status: StatusCode },
     /// Who is asking could not be found out now ([`crate::Refused::unavailable`]: the session
     /// store is down), so the request was neither let through nor sent to sign in (503). Not a
@@ -370,6 +371,9 @@ fn default_error_document(req: &Req, failure: Failure) -> impl crate::view::Docu
         Failure::NotFound => ("Not found", "There is nothing at this address."),
         Failure::CrossSite => ("Not allowed", "This request came from another site."),
         Failure::Refused { status } if status == StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
+        Failure::Refused { status } if status == StatusCode::TOO_MANY_REQUESTS => {
+            ("Too many requests", "Wait a moment and try again.")
+        }
         Failure::Refused { .. } => ("Not allowed", "You do not have access to this page."),
         Failure::Unidentified { .. } => ("Not available", "We could not check who you are. Try again in a moment."),
         Failure::TimedOut | Failure::Offline => ("Not available", "Check your connection and try again."),
@@ -1284,10 +1288,10 @@ fn unserved_module(name: &str) -> String {
 /// has no route for it. A [`Mode::Data`] request, every request on an `api` route and every
 /// failure of a JSON route ([`crate::JsonResult`]) gets the failure as JSON instead
 /// ([`crate::api`]). A request a [`crate::Caller`] sent to sign in is redirected there.
-pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
+pub(crate) async fn render_errors<S: crate::app::Steps>(
     shared: &Arc<Shared>,
     req: Request,
-    next: Next<'_, M>,
+    next: Next<'_, S>,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
     api: Option<&crate::api::Mount>,
@@ -1433,9 +1437,9 @@ fn sign_in_loops(path: &str, to: &HeaderValue) -> Option<String> {
 
 /// The handler's response, through [`within_deadline`]; a handler that panics is answered as a
 /// handler error (500), whose message only `corten dev` shows.
-async fn run<M: crate::middleware::Middleware>(
+async fn run<S: crate::app::Steps>(
     req: Request,
-    next: Next<'_, M>,
+    next: Next<'_, S>,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
 ) -> Response {
@@ -1468,9 +1472,9 @@ async fn run<M: crate::middleware::Middleware>(
 }
 
 /// The handler's response, or an empty 503 once it has waited past `deadline`.
-async fn within_deadline<M: crate::middleware::Middleware>(
+async fn within_deadline<S: crate::app::Steps>(
     req: Request,
-    next: Next<'_, M>,
+    next: Next<'_, S>,
     deadline: Option<std::time::Duration>,
     signal: &crate::Signal,
     (method, uri): (&axum::http::Method, &Uri),

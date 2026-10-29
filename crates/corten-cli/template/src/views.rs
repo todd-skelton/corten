@@ -44,6 +44,9 @@ pub async fn error_page(failure: Failure, req: Req) -> HtmlResult {
         Failure::Refused { status } if *status == StatusCode::UNAUTHORIZED => {
             ("Sign in needed", "Sign in to see this page.")
         }
+        Failure::Refused { status } if *status == StatusCode::TOO_MANY_REQUESTS => {
+            ("Too many requests", "Wait a moment and try again.")
+        }
         Failure::Refused { .. } => ("Not allowed", "You do not have access to this page."),
         Failure::Unidentified { .. } => (
             "Not available",
