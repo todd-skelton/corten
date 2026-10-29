@@ -80,7 +80,10 @@ below) read what a browser sends the way it sends it, a key once per value.
 `#[derive(Fields)]` refuses a `bool` or `Vec` field without `#[serde(default)]`, since the browser
 sends nothing when no box is checked and the form would fail exactly then. A required list is a
 validation rule (`errors.add(f.ids, ..)` when it is empty), so the user gets a message, not an
-error page. A box outside the `<form>`, in a table row, joins it with `form={ArchiveFormId}`
+error page; `corten_ui::CheckboxGroup` around the boxes has the browser say so before the form is
+sent, and a field required only for one choice of another (a refund amount for a partial refund)
+is `corten_ui::RequiredWhen`. The handler's check stays: it is what a browser without scripts
+gets. A box outside the `<form>`, in a table row, joins it with `form={ArchiveFormId}`
 (an `Id`); `examples/seller-desk` posts its checked rows that way.
 
 A route's handler reads its parameters back as the route's `Params`: the struct's fields, owned
