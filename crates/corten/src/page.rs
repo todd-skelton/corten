@@ -290,7 +290,8 @@ pub enum Failure {
     CrossSite,
     /// The handler needs a [`crate::Caller`] the request does not have, or one who may not do
     /// this, and there is nowhere to sign in: 401 or 403, or 429 for a client with too many failed
-    /// attempts ([`crate::Refused`]).
+    /// attempts ([`crate::Refused`]); or a middleware turned the request away with a `Refused`
+    /// (a rate limit's 429).
     Refused { status: StatusCode },
     /// Who is asking could not be found out now ([`crate::Refused::unavailable`]: the session
     /// store is down), so the request was neither let through nor sent to sign in (503). Not a
@@ -370,6 +371,9 @@ fn default_error_document(req: &Req, failure: Failure) -> impl crate::view::Docu
         Failure::NotFound => ("Not found", "There is nothing at this address."),
         Failure::CrossSite => ("Not allowed", "This request came from another site."),
         Failure::Refused { status } if status == StatusCode::UNAUTHORIZED => ("Sign in needed", "Sign in to see this page."),
+        Failure::Refused { status } if status == StatusCode::TOO_MANY_REQUESTS => {
+            ("Too many requests", "Wait a moment and try again.")
+        }
         Failure::Refused { .. } => ("Not allowed", "You do not have access to this page."),
         Failure::Unidentified { .. } => ("Not available", "We could not check who you are. Try again in a moment."),
         Failure::TimedOut | Failure::Offline => ("Not available", "Check your connection and try again."),

@@ -872,20 +872,21 @@ Corten is pre-1.0, so any minor version may change the API.
      relative imports
      ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
 124. Middleware for part of the app: `Area::middleware` and `Api::middleware` run after the
-    app's middleware for each request under the area's or API's prefix (an outer area's before an
-    inner one's, each in the order given), so a route is in a rate limit or not by where it is
-    declared, never by a path the middleware compares. A middleware refuses with a `Refused`
-    (`Refused::too_many(wait).into_response()`), answered in the request's mode as a `Caller`'s
-    refusal is, `Retry-After` included, and reads the client's address with
-    `ClientIp::of(&mut req)` without splitting the request. card-market's write limit is now on
-    its item pages' area and its partner API, with no path checks
-    ([#327 Middleware is app-wide only, so card-market's write limit picks its routes by comparing paths and builds its 429 by hand](https://github.com/todd-skelton/corten/issues/327)).
-    Measured per request (callgrind, release profile): an app whose areas and APIs have none runs
-    the same request as before, with the same allocations (count and sizes, DHAT) and Corten's own
-    instructions within 18 of main's (13,971 against 13,953, outside libc's allocator); where an
-    area has some, a request outside it pays the lookup of its path (19,913 against 19,706), and
-    one in it pays one boxed future per middleware (a pass-through one: 21,374 to 21,511 against
-    20,510).
+     app's middleware for each request at the area's or API's prefix (an outer area's before an
+     inner one's, then an API's under it, each in the order given), so a rate limit picks its
+     routes by where they are, never by a path the middleware compares. A middleware refuses with
+     a `Refused` (`Refused::too_many(wait).into_response()`), answered in the request's mode as a
+     `Caller`'s refusal is, `Retry-After` included, and the default error page says "Too many
+     requests" for a 429. It reads the client's address with `ClientIp::of(&mut req)` without
+     splitting the request. card-market's write limit is now on its item pages' area and its
+     partner API, with no path checks
+     ([#327 Middleware is app-wide only, so card-market's write limit picks its routes by comparing paths and builds its 429 by hand](https://github.com/todd-skelton/corten/issues/327)).
+     Measured per request (callgrind, release profile, 5 runs): an app whose areas and APIs have
+     none runs 19,976 to 19,988 instructions against main's 19,696, all of it in glibc's
+     allocator: the allocations are the same (count and sizes, DHAT) and Corten's own code is
+     within 18 (13,971 against 13,953). A request in an area with a pass-through middleware runs
+     21,374 to 21,511 against 20,497 to 20,646 with none (one boxed future), and one outside it
+     19,909 to 19,913.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

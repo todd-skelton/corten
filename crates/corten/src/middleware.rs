@@ -56,8 +56,9 @@
 //! # let _ = app.router();
 //! ```
 //!
-//! Middleware that belongs to part of the app is given to that part, an area or an API, so a route
-//! is in or out of it by where it is declared, never by a path compared in the middleware:
+//! Middleware that belongs to part of the app is given to that part, an area or an API, and runs
+//! for each request at its prefix (its routes, nested areas and APIs, an unknown URL there),
+//! never by a path compared in the middleware:
 //!
 //! ```
 //! # use corten::{axum::{extract::Request, response::{IntoResponse, Response}}, prelude::*};
@@ -97,7 +98,8 @@ pub trait Next: Send {
     fn run(self, req: Request) -> impl Future<Output = Response> + Send;
 }
 
-/// A step of the app's own in every request; see [`crate::middleware`]. Several are a tuple,
+/// A step of the app's own in every request, or of an area's or an API's in each request at its
+/// prefix; see [`crate::middleware`]. Several are a tuple,
 /// run in order: `(RequestId, RateLimit)`.
 pub trait Middleware: Send + Sync + 'static {
     /// Answers the request, usually by running `next` and changing what it gives.

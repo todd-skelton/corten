@@ -141,7 +141,8 @@ pub trait Identify<S>: Clone + Hash + Send + Sync + 'static {
     fn identify(parts: &Parts, state: &S) -> impl Future<Output = Result<Self, Refused>> + Send;
 }
 
-/// Why there is no caller, from [`Identify::identify`].
+/// Why there is no caller, from [`Identify::identify`], or why a middleware turned a request
+/// away (`Refused::too_many(wait).into_response()`).
 #[derive(Debug)]
 pub struct Refused(Why);
 

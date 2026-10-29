@@ -32,9 +32,9 @@ mod routes {
     pub struct Sitemap;
 }
 
-/// The item pages, where a visitor writes (a price alert): the write limit is on this area, so a
-/// route is limited by being declared here, not by its path. `Items` is the prefix, so it needs
-/// no handler of its own.
+/// The item pages, where a visitor writes (a price alert): the write limit is on this area, so
+/// every request under `/items` meets it and the limit compares no paths. `Items` is the
+/// prefix, so it needs no handler of its own.
 #[corten::routes(area = Items, state = source::Source)]
 mod items {
     #[route("/items")]

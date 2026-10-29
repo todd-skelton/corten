@@ -42,6 +42,8 @@ paths! {
     AdminQuickSlow = "/admin/quick/slow",
     AdminOther = "/admin/other",
     AdminOtherSlow = "/admin/other/slow",
+    AdminHooks = "/admin/hooks",
+    AdminHooksPing = "/admin/hooks/ping",
 }
 
 std::thread_local! {
@@ -1401,6 +1403,7 @@ async fn an_area_or_an_api_has_middleware_of_its_own() {
         })
         .area::<AdminOther>(|other| other.route::<AdminOtherSlow>(steps()))
         .api::<ApiRoot>(|api| api.route::<ApiSlow>(steps()).middleware(Step("api", true)))
+        .api::<AdminHooks>(|hooks| hooks.route::<AdminHooksPing>(steps()).middleware(Step("hooks", false)))
         .router();
     let body = |uri| {
         let router = router.clone();
@@ -1415,6 +1418,7 @@ async fn an_area_or_an_api_has_middleware_of_its_own() {
     assert_eq!(body("/admin/quick/slow").await, "app admin limit last quick", "an outer area's, then the inner one's");
     assert_eq!(body("/admin/other/slow").await, "app admin limit last", "a nested area without any has its parent's");
     assert_eq!(body("/api/slow").await, "app api");
+    assert_eq!(body("/admin/hooks/ping").await, "app admin limit last hooks", "an API under the area meets the area's first");
     assert!(body("/admin/nope").await.contains("Not found"), "an unknown URL under the area is the app's 404");
 
     let flood = |uri: &'static str, accept: &'static str| {
@@ -1437,6 +1441,14 @@ async fn an_area_or_an_api_has_middleware_of_its_own() {
         (StatusCode::TOO_MANY_REQUESTS, &"8".parse::<axum::http::HeaderValue>().unwrap())
     );
     assert_eq!(body2, r#"{"error":{"status":429,"message":"Too Many Requests"}}"#, "JSON under an API");
+    let (status, _, _) = flood("/admin/nope", "text/html").await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "an unknown URL under the area meets its middleware");
+    let (status, _, body3) = flood("/admin/hooks/ping", "text/html").await;
+    assert_eq!(
+        (status, &body3[..]),
+        (StatusCode::TOO_MANY_REQUESTS, r#"{"error":{"status":429,"message":"Too Many Requests"}}"#),
+        "and an API under it, in JSON"
+    );
     let (status, _, _) = flood("/slow", "text/html").await;
     assert_eq!(status, StatusCode::OK, "the app's other routes never meet the limit");
     assert!(!body.is_empty());

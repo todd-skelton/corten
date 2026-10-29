@@ -859,6 +859,13 @@ impl<M: Middleware> App<M> {
             })
             .collect();
         area_middleware.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
+        // An API under an area's prefix meets the area's middleware (and its enclosing areas')
+        // before its own, as a nested area would.
+        for mount in &mut mounts {
+            if let Some((_, around)) = area_middleware.iter().find(|(prefix, _)| crate::api::under(prefix, &mount.prefix)) {
+                mount.middleware = around.iter().chain(mount.middleware.iter()).cloned().collect();
+            }
+        }
         owned.extend(self.areas.into_iter().map(|area| area.routes));
         // The app's own routes are merged last: when two routers both have axum's default
         // fallback, a merge keeps the one merged in, and the app's answers unknown URLs.
