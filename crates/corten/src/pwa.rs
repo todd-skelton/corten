@@ -199,7 +199,12 @@ impl Manifest {
             if i > 0 {
                 out.push(',');
             }
-            out.push_str(&format!(r#"{{"src":{},"sizes":{},"type":{}"#, json_string(&src.url()), json_string(sizes), json_string(mime)));
+            out.push_str(&format!(
+                r#"{{"src":{},"sizes":{},"type":{}"#,
+                json_string(&src.url()),
+                json_string(sizes),
+                json_string(mime)
+            ));
             if let Some(purpose) = purpose {
                 out.push_str(&format!(r#","purpose":"{purpose}""#));
             }
@@ -312,8 +317,7 @@ impl Pwa {
         let mut precache = self.precache.clone();
         precache.push(crate::runtime_path().to_string());
         let cache = format!("corten-{}-{}", self.version, crate::runtime_version());
-        let imports =
-            if imports.is_empty() { String::new() } else { format!("importScripts(...{});\n", list(&imports)) };
+        let imports = if imports.is_empty() { String::new() } else { format!("importScripts(...{});\n", list(&imports)) };
         WORKER_TEMPLATE
             .replace("__IMPORTS__", &imports)
             .replace("__CACHE__", &json_string(&cache))

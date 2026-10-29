@@ -506,18 +506,6 @@ impl Assets {
         self.files.contains_key(path).then_some(AssetUrl { prefix: &self.prefix, path })
     }
 
-    /// The URL for `path` (relative to the directory, like `style.css`). A typo is a bug, so a
-    /// missing file panics in debug builds and is logged in release.
-    pub(crate) fn url(&self, path: &str) -> String {
-        if !self.files.contains_key(path) {
-            if cfg!(debug_assertions) {
-                panic!("corten: no static file {path:?}");
-            }
-            tracing::error!("corten: no static file {path:?}");
-        }
-        format!("{}{path}", self.prefix)
-    }
-
     /// True when the directory has `path` (relative, like `style.css`).
     pub fn contains(&self, path: &str) -> bool {
         self.files.contains_key(path)
