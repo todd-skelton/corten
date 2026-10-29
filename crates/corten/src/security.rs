@@ -44,11 +44,17 @@ impl<S: Send + Sync> FromRequestParts<S> for Nonce {
     }
 }
 
-/// Where the request's nonce is made, at most once, when something asks for it.
+/// Where the request's nonce is made, at most once, when something asks for it. A page's request
+/// has one; it also carries what the page's area policy adds to its shell key, found with its CSP.
 #[derive(Clone, Default)]
-pub(crate) struct NonceSlot(Arc<OnceLock<Nonce>>);
+pub(crate) struct NonceSlot(Arc<OnceLock<Nonce>>, pub(crate) u64);
 
 impl NonceSlot {
+    /// A page's slot, with what its area's policy adds to its shell key (0 for the app's).
+    pub fn new(shell: u64) -> Self {
+        NonceSlot(Arc::default(), shell)
+    }
+
     pub fn get(&self) -> &Nonce {
         self.0.get_or_init(Nonce::generate)
     }
@@ -91,17 +97,11 @@ pub(crate) fn random_hex() -> [u8; 32] {
     text
 }
 
-/// Security policy for every response of a router. Build it once at startup.
+/// Security policy for every response of a router (an area's pages add to it:
+/// [`crate::Area::policy`]). Build it once at startup.
 #[derive(Clone, Debug)]
 pub struct Policy {
-    script: Vec<String>,
-    style: Vec<String>,
-    img: Vec<String>,
-    connect: Vec<String>,
-    frame: Vec<String>,
-    font: Vec<String>,
-    form_action: Vec<String>,
-    style_attributes: bool,
+    sources: Sources,
     hsts: bool,
     allowed_origins: Vec<String>,
     report_only: bool,
@@ -122,14 +122,7 @@ impl Policy {
     /// Same-origin everything, `https:` and `data:` images, no frames, no plugins.
     pub fn new() -> Self {
         Policy {
-            script: Vec::new(),
-            style: Vec::new(),
-            img: vec!["data:".into(), "https:".into()],
-            connect: Vec::new(),
-            frame: Vec::new(),
-            font: Vec::new(),
-            form_action: Vec::new(),
-            style_attributes: false,
+            sources: Sources { img: vec!["data:".into(), "https:".into()], ..Sources::default() },
             hsts: false,
             allowed_origins: Vec::new(),
             report_only: false,
@@ -139,36 +132,37 @@ impl Policy {
         }
     }
 
-    /// Another origin scripts may load from (a payment SDK, for example).
+    /// Another origin scripts may load from (a payment SDK, for example). One only some pages
+    /// need is their area's ([`crate::Area::policy`]).
     pub fn script_src(mut self, source: &str) -> Self {
-        self.script.push(checked(source));
+        self.sources = self.sources.script_src(source);
         self
     }
 
     pub fn style_src(mut self, source: &str) -> Self {
-        self.style.push(checked(source));
+        self.sources = self.sources.style_src(source);
         self
     }
 
     pub fn img_src(mut self, source: &str) -> Self {
-        self.img.push(checked(source));
+        self.sources = self.sources.img_src(source);
         self
     }
 
     /// Another origin `fetch` and `EventSource` may reach.
     pub fn connect_src(mut self, source: &str) -> Self {
-        self.connect.push(checked(source));
+        self.sources = self.sources.connect_src(source);
         self
     }
 
     /// An origin the page may embed in an `<iframe>` (payment fields, for example).
     pub fn frame_src(mut self, source: &str) -> Self {
-        self.frame.push(checked(source));
+        self.sources = self.sources.frame_src(source);
         self
     }
 
     pub fn font_src(mut self, source: &str) -> Self {
-        self.font.push(checked(source));
+        self.sources = self.sources.font_src(source);
         self
     }
 
@@ -180,14 +174,15 @@ impl Policy {
     /// cross-origin post as CSRF), so posting here and redirecting is usually simpler. Writes
     /// coming in from another site are [`Policy::allow_origin`].
     pub fn form_action(mut self, source: &str) -> Self {
-        self.form_action.push(checked(source));
+        self.sources = self.sources.form_action(source);
         self
     }
 
     /// Allows `style="..."` attributes in markup. Off by default; setting `element.style` from
-    /// script is always allowed.
+    /// script is always allowed. Pages that draw sizes from data in one part of the app allow
+    /// them there only ([`crate::Area::policy`]).
     pub fn allow_style_attributes(mut self) -> Self {
-        self.style_attributes = true;
+        self.sources = self.sources.allow_style_attributes();
         self
     }
 
@@ -305,19 +300,20 @@ impl Policy {
         let list = |extra: &[String]| extra.iter().fold(String::new(), |acc, s| acc + " " + s);
         let nonce = nonce.map_or_else(String::new, |n| format!(" 'nonce-{n}'"));
         let import_map = hash_source(import_map);
+        let s = &self.sources;
         let mut csp = format!(
             "default-src 'self'; script-src 'self' {import_map}{nonce}{}; style-src 'self'{nonce}{}; img-src 'self'{}; \
              connect-src 'self'{}; font-src 'self'{}; frame-src {}; object-src 'none'; base-uri 'self'; form-action 'self'{}; \
              frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'",
-            list(&self.script),
-            list(&self.style),
-            list(&self.img),
-            list(&self.connect),
-            list(&self.font),
-            if self.frame.is_empty() { "'none'".to_string() } else { list(&self.frame).trim_start().to_string() },
-            list(&self.form_action),
+            list(&s.script),
+            list(&s.style),
+            list(&s.img),
+            list(&s.connect),
+            list(&s.font),
+            if s.frame.is_empty() { "'none'".to_string() } else { list(&s.frame).trim_start().to_string() },
+            list(&s.form_action),
         );
-        if self.style_attributes {
+        if s.style_attributes {
             csp.push_str("; style-src-attr 'unsafe-inline'");
         }
         csp
@@ -327,7 +323,7 @@ impl Policy {
     /// headers, and handlers see the request's [`Nonce`]. [`crate::App`] applies its policy
     /// itself; this is for a router served without one.
     pub fn apply<S: Clone + Send + Sync + 'static>(self, router: Router<S>) -> Router<S> {
-        let policy = Arc::new(Applied::new(self, &crate::import_map(None, None)));
+        let policy = Arc::new(Applied::new(self, &crate::import_map(None, None), &[]));
         router.layer(middleware::from_fn(move |mut req: Request, next: Next| {
             let policy = policy.clone();
             async move {
@@ -340,10 +336,102 @@ impl Policy {
                 let nonce = NonceSlot::default();
                 req.extensions_mut().insert(nonce.clone());
                 let mut res = next.run(req).await;
-                policy.headers(&mut res, Some(&nonce));
+                policy.headers(&mut res, Some((&nonce, &policy.csp)));
                 res
             }
         }))
+    }
+}
+
+/// What a part of the app adds to its [`Policy`]'s CSP for its pages, given to
+/// [`crate::Area::policy`]: `.policy(|p| p.script_src("https://js.stripe.com"))`. Each source is
+/// one the [`Policy`] method of the same name adds for every page; only adding is possible, so
+/// an area never allows less than the app.
+#[derive(Clone, Debug, Default)]
+pub struct Sources {
+    script: Vec<String>,
+    style: Vec<String>,
+    img: Vec<String>,
+    connect: Vec<String>,
+    frame: Vec<String>,
+    font: Vec<String>,
+    form_action: Vec<String>,
+    style_attributes: bool,
+}
+
+impl Sources {
+    /// Another origin scripts may load from ([`Policy::script_src`]).
+    pub fn script_src(mut self, source: &str) -> Self {
+        self.script.push(checked(source));
+        self
+    }
+
+    /// Another origin stylesheets may load from ([`Policy::style_src`]).
+    pub fn style_src(mut self, source: &str) -> Self {
+        self.style.push(checked(source));
+        self
+    }
+
+    /// Another origin images may load from ([`Policy::img_src`]).
+    pub fn img_src(mut self, source: &str) -> Self {
+        self.img.push(checked(source));
+        self
+    }
+
+    /// Another origin `fetch` and `EventSource` may reach ([`Policy::connect_src`]).
+    pub fn connect_src(mut self, source: &str) -> Self {
+        self.connect.push(checked(source));
+        self
+    }
+
+    /// An origin the page may embed in an `<iframe>` ([`Policy::frame_src`]).
+    pub fn frame_src(mut self, source: &str) -> Self {
+        self.frame.push(checked(source));
+        self
+    }
+
+    /// Another origin fonts may load from ([`Policy::font_src`]).
+    pub fn font_src(mut self, source: &str) -> Self {
+        self.font.push(checked(source));
+        self
+    }
+
+    /// Another origin a form may send the user to ([`Policy::form_action`]).
+    pub fn form_action(mut self, source: &str) -> Self {
+        self.form_action.push(checked(source));
+        self
+    }
+
+    /// Allows `style="..."` attributes in markup ([`Policy::allow_style_attributes`]).
+    pub fn allow_style_attributes(mut self) -> Self {
+        self.style_attributes = true;
+        self
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        let Sources { script, style, img, connect, frame, font, form_action, style_attributes } = self;
+        [script, style, img, connect, frame, font, form_action].iter().all(|list| list.is_empty()) && !style_attributes
+    }
+
+    /// Adds `more`'s sources, each once.
+    fn add(&mut self, more: &Sources) {
+        let pairs = [
+            (&mut self.script, &more.script),
+            (&mut self.style, &more.style),
+            (&mut self.img, &more.img),
+            (&mut self.connect, &more.connect),
+            (&mut self.frame, &more.frame),
+            (&mut self.font, &more.font),
+            (&mut self.form_action, &more.form_action),
+        ];
+        for (list, more) in pairs {
+            for source in more {
+                if !list.contains(source) {
+                    list.push(source.clone());
+                }
+            }
+        }
+        self.style_attributes |= more.style_attributes;
     }
 }
 
@@ -423,9 +511,28 @@ pub(crate) fn base64(bytes: &[u8]) -> String {
 /// A policy in use: its CSP split around the nonce, and the headers that do not change.
 pub(crate) struct Applied {
     policy: Policy,
-    csp_parts: Vec<String>,
-    without_nonce: HeaderValue,
+    /// The app's pages' CSP.
+    pub csp: Csp,
+    /// The CSP of the pages of each area whose policy adds a source the app's lacks, innermost
+    /// prefix first, with what it adds to a page's shell key: a client navigation between pages
+    /// with different policies loads the document in full, since a document keeps the CSP it
+    /// loaded with.
+    areas: Vec<(&'static str, Csp, u64)>,
     api_csp: HeaderValue,
+}
+
+/// One CSP for pages, split around the nonce once, at startup.
+pub(crate) struct Csp {
+    parts: Vec<String>,
+    without_nonce: HeaderValue,
+}
+
+impl Csp {
+    fn new(policy: &Policy, import_map: &str) -> Self {
+        let parts = policy.csp_with(Some("\0"), import_map).split('\0').map(str::to_string).collect();
+        let without_nonce = HeaderValue::try_from(policy.csp_with(None, import_map)).expect("CSP sources are checked tokens");
+        Csp { parts, without_nonce }
+    }
 }
 
 impl std::ops::Deref for Applied {
@@ -439,12 +546,41 @@ impl std::ops::Deref for Applied {
 const API_CSP: &str = "default-src 'none'; frame-ancestors 'none'";
 
 impl Applied {
-    /// `import_map` is the text of the app's import map, allowed by its hash.
-    pub fn new(policy: Policy, import_map: &str) -> Self {
-        // The header is the same text around each nonce, so split it once here.
-        let csp_parts = policy.csp_with(Some("\0"), import_map).split('\0').map(str::to_string).collect();
-        let without_nonce = HeaderValue::try_from(policy.csp_with(None, import_map)).expect("CSP sources are checked tokens");
-        Applied { policy, csp_parts, without_nonce, api_csp: HeaderValue::from_static(API_CSP) }
+    /// `import_map` is the text of the app's import map, allowed by its hash. `areas` are the
+    /// prefixes of the areas that add to the policy, with what each adds: a page in one gets the
+    /// app's sources, then those of each such area it is under, outermost first.
+    pub fn new(policy: Policy, import_map: &str, areas: &[(&'static str, &Sources)]) -> Self {
+        let csp = Csp::new(&policy, import_map);
+        let mut placed: Vec<(&'static str, Csp, u64)> = areas
+            .iter()
+            .filter_map(|&(prefix, _)| {
+                let mut outer: Vec<_> = areas.iter().filter(|(other, _)| crate::api::under(other, prefix)).collect();
+                outer.sort_by_key(|(other, _)| other.len());
+                let mut merged = policy.clone();
+                for (_, sources) in outer {
+                    merged.sources.add(sources);
+                }
+                let area = Csp::new(&merged, import_map);
+                // An area that adds nothing the app lacks keeps the app's policy and shell key.
+                if area.without_nonce == csp.without_nonce {
+                    return None;
+                }
+                let mut hasher = std::hash::DefaultHasher::new();
+                std::hash::Hash::hash(area.without_nonce.as_bytes(), &mut hasher);
+                Some((prefix, area, std::hash::Hasher::finish(&hasher) | 1))
+            })
+            .collect();
+        placed.sort_by_key(|(prefix, ..)| std::cmp::Reverse(prefix.len()));
+        Applied { policy, csp, areas: placed, api_csp: HeaderValue::from_static(API_CSP) }
+    }
+
+    /// The CSP of the pages at `path` and what it adds to their shell key: its innermost area's
+    /// that adds to the policy, else the app's (and 0).
+    pub fn csp_for(&self, path: &str) -> (&Csp, u64) {
+        if self.areas.is_empty() {
+            return (&self.csp, 0);
+        }
+        self.areas.iter().find(|(prefix, ..)| crate::api::under(prefix, path)).map_or((&self.csp, 0), |(_, csp, key)| (csp, *key))
     }
 
     /// The 403 for a write another site sent, if this is one. `origins` are the extra origins
@@ -456,9 +592,10 @@ impl Applied {
         Some((StatusCode::FORBIDDEN, "Cross-site request refused.").into_response())
     }
 
-    /// The security headers. `nonce` is the request's slot, or `None` for a response that is
-    /// never a page (an API route, a refused write), which gets a CSP that allows nothing.
-    pub fn headers(&self, res: &mut Response, nonce: Option<&NonceSlot>) {
+    /// The security headers. `page` is the request's nonce slot and the CSP of pages at its
+    /// path, or `None` for a response that is never a page (an API route, a misdirected
+    /// request), which gets a CSP that allows nothing.
+    pub fn headers(&self, res: &mut Response, page: Option<(&NonceSlot, &Csp)>) {
         let headers = res.headers_mut();
         // Room for the headers below and `Cache-Control` (`Vary` from compression is appended to an
         // existing one, or added): the map grows at most once, and not at all when a page reserved
@@ -466,10 +603,10 @@ impl Applied {
         headers.reserve(6 + usize::from(self.hsts) + usize::from(!headers.contains_key(header::VARY)));
         let csp_header =
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
-        let csp = match nonce.map(|slot| slot.taken()) {
+        let csp = match page.map(|(slot, csp)| (slot.taken(), csp)) {
             None => Some(self.api_csp.clone()),
-            Some(None) => Some(self.without_nonce.clone()),
-            Some(Some(nonce)) => HeaderValue::try_from(self.csp_parts.join(&*nonce.0)).ok(),
+            Some((None, csp)) => Some(csp.without_nonce.clone()),
+            Some((Some(nonce), csp)) => HeaderValue::try_from(csp.parts.join(&*nonce.0)).ok(),
         };
         // A response that brings a policy of its own is a relayed page (or a bug): it keeps it.
         if let Some(brought) = csp.and_then(|csp| headers.insert(csp_header, csp)) {
