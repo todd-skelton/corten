@@ -89,6 +89,21 @@ moves it after each client navigation, so the header is right without rendering 
 that writes `href`, `data-nav` or `aria-current` itself beside the spread does not compile, nor
 does `data-nav` written by hand.
 
+Each `req.nav` link is judged alone, so a section and a page under it (Seller Desk at
+`/account/desk`, Money at `/account/desk/money`) are both current on Money's page. A nav whose
+entries nest, or that is read from data, is written whole with `req.nav_of`: of its entries
+that hold the page, only the deepest is current. Its links carry the group they were ranked in
+(`data-nav-group`), so the runtime ranks the same links after a client navigation wherever the
+markup puts them, so render every link it gives back: leave out an entry the user may not see
+before the call. Each entry comes with its item (a label, or the row it was read from), which
+`links()` hands back beside its link. An entry is a route or a `Local` path, written as the
+browser asks for it (a link to another site is a plain link, never current):
+
+```rust,ignore
+let nav = req.nav_of(items.iter().map(|item| (NavTo::section(&item.href), item)));
+html! { <nav>for (link, item) in nav.links() { <a {..link}>{&item.label}</a> }</nav> }
+```
+
 Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`
 (feature `json`) writes a `ToJson` value in `<script type="application/ld+json">` with `<` as
 `\u003c`, so a description that says `</script>` cannot end it. An expression written inside
