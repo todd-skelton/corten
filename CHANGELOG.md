@@ -1826,7 +1826,21 @@ Corten is pre-1.0, so any minor version may change the API.
     "More actions" button. The SKU's copy count shows only after the first copy ("Copies: 2"), and
     `/help` explains each part of the form
     ([#333 Polish: ui-gallery reads as a grid of components rather than a listing screen](https://github.com/todd-skelton/corten/issues/333)).
-67. Two components with one name in different modules (each feature's `SettingsForm`)
+67. card-market in French translated its headings but not its prices, ratings, conditions or
+    card details. Its item page and cards now write a price in US dollars as the reader's locale
+    writes money (`0,79 $US`), a seller's rating with the locale's decimal separator, and the
+    conditions and detail labels the catalog names (`Peu joué`, `Rareté`); a value the catalog
+    does not name is shown as the item API sent it. The page reads these from fields the JSON
+    leaves out (`#[serde(skip)]`: cents, a `Decimal` rating, a `Grade`, a `Detail`), so
+    `/api/items/{id}` still answers the benchmark's shared view model, and in English the page
+    reads as before (`parity.mjs`). The listing sort compares each row's `data-cents`, the
+    cents the server sorts by, where it compared a float that was `NaN` without a price, and
+    keeps rows with the same price in the server's order both ways, so a second click restores it, and the
+    scripts guide says when a `data-` attribute is the right tool rather than a view. The smoke
+    checks a price, a rating and a condition in French
+    ([#323 card-market in French translates its headings but not its prices, ratings or card details](https://github.com/todd-skelton/corten/issues/323),
+    [#329 card-market sorts listings by a data-price string instead of through the rows' views](https://github.com/todd-skelton/corten/issues/329)).
+68. Two components with one name in different modules (each feature's `SettingsForm`)
     with a stylesheet or a script fail to build, at the second one, instead of the app panicking
     when it starts ("both style .settings-form__*", "two scripts named"), and so do two `script!`
     modules with one name: like an id, each class prefix and script name is an exported symbol,

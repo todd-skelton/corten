@@ -1,11 +1,11 @@
-use corten::prelude::*;
+use corten::{i18n::Minor, prelude::*};
 
 use super::{AlertForm, AlertFormView, AlertMessage, Layout, ListingSort, OfferList};
 use crate::{
     items,
     model::{ItemView, Listing, sort_listings},
     routes,
-    text::Msg,
+    text::{self, Msg, USD},
     theme::{Responsive, Space, gap},
 };
 
@@ -81,7 +81,17 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
                 <section class={summary}>
                     match &item.summary {
                         Some(s) => {
-                            <span><strong>{s.lowest.as_deref().unwrap_or("—")}</strong>" "{t.item_lowest()}</span>
+                            <span>
+                                <strong>
+                                    match (s.lowest_cents, &s.lowest) {
+                                        (Some(cents), _) => { {t.money(Minor(cents), USD)} }
+                                        (None, Some(sent)) => { {sent} }
+                                        (None, None) => { "—" },
+                                    }
+                                </strong>
+                                " "
+                                {t.item_lowest()}
+                            </span>
                             <span>{t.item_listing_count(s.count)}</span>
                             <span>{t.item_available(s.quantity)}</span>
                         }
@@ -101,7 +111,7 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
                 <p>{item.description}</p>
                 <dl>
                     for f in &item.fields {
-                        <dt>{f.name}</dt>
+                        <dt>{text::detail(t, f)}</dt>
                         <dd>{f.value}</dd>
                     }
                 </dl>
