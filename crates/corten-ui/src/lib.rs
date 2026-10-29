@@ -10,6 +10,7 @@
 //! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
 //! | [`CopyButton`] | copies an element's text to the clipboard, says so politely, and tells the page ([`Copied`]) | no button; the text is on the page to select |
+//! | [`PrintButton`] | opens the browser's print dialog; the page's print styles say what prints | no button; the browser's Print command prints the page |
 //! | [`RelativeTime`] | a time relative to now ("in 10 hours") that stays current, on one timer for the page | the time as the server wrote it |
 //! | [`CheckboxGroup`] | checkboxes of one name of which one must be checked; the browser says so before sending | the form is sent, and the handler refuses it |
 //! | [`RequiredWhen`] | fields required only for some values of another field, disabled for the rest | the fields are optional, and the handler checks the rule |
@@ -151,6 +152,7 @@ mod combo_box;
 mod copy_button;
 mod menu_button;
 mod number_field;
+mod print_button;
 mod relative_time;
 mod required_when;
 mod tab_group;
@@ -161,6 +163,7 @@ pub use combo_box::{Choice, ComboBox, Picker};
 pub use copy_button::{Copied, CopyButton};
 pub use menu_button::{MenuButton, MenuItem};
 pub use number_field::{Number, NumberField, Step};
+pub use print_button::PrintButton;
 pub use relative_time::RelativeTime;
 pub use required_when::RequiredWhen;
 pub use tab_group::{Tab, TabGroup};
@@ -177,6 +180,7 @@ pub const COMPONENTS: &[Component] = &[
     MenuButton,
     Toaster,
     CopyButton,
+    PrintButton,
     RelativeTime,
     CheckboxGroup,
     RequiredWhen,

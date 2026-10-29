@@ -832,6 +832,15 @@ Corten is pre-1.0, so any minor version may change the API.
     pages that use it. ui-gallery's listing shows both (where it ships, and the lowest offer when it
     takes offers), and its handler refuses what the browser would have stopped
     ([#269 A field required only for one choice of another field needs a script, so the browser cannot check it before the form is sent](https://github.com/todd-skelton/corten/issues/269)).
+119. corten-ui's `PrintButton` opens the browser's print dialog. It is drawn hidden and its script
+    shows it, so without a script there is no button that does nothing, and the browser's Print
+    command still prints the page. Its script is 736 bytes (too small to compress), on the pages
+    that use it. The styles guide's new Printing section covers paper sizes: named `@page` rules
+    in a component's own stylesheet, scoped `@media print` rules, and layout chrome that hides
+    itself. **Breaking:** in a component's stylesheet an `@page` with no name (which sets every
+    page the app prints) does not compile, and a page's name starts with the component's
+    (`@page packing-slip-thermal`), so two components cannot set one page
+    ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
