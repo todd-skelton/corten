@@ -1677,6 +1677,9 @@ Corten is pre-1.0, so any minor version may change the API.
     has `detail` 0 and always steps); a press released off the button, cancelled, or on a button
     disabled at its bound makes no click and is forgotten ([#316 ui-gallery smoke (CI, Chromium): a keyboard
     step on the second number field is lost while the first is held](https://github.com/todd-skelton/corten/issues/316)).
+58. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
+    Under load, a slow read used to add real seconds, and "each second" failed
+    ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
