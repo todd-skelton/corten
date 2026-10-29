@@ -13,7 +13,7 @@
 //! | `GET /news/{id}/read` | `news.rs` | a redirect to a place on another site (`Elsewhere::at`), which a client navigation follows in one request |
 //! | `POST /news/briefing` | `news.rs` | a write that sends the browser back to the form, at the end of a long page (`route.at(Id)`) |
 //! | `GET /alerts?saved=..`, `POST /alerts`, `POST /alerts/remove` | `alerts.rs` | a form checked on the server (`req.invalid`, field errors) and a list of what the browser keeps; a write answers with its receipt, and while reads catch up (`ReadAgain`) the status and list are read again from their route as a patch, or the page asks to be read again however it was reached |
-//! | `POST /sign-in`, `/sign-out` | `account.rs` | set and clear a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
+//! | `POST /sign-in`, `/sign-out` | `account.rs` | start and end a session kept on the server, named by a random token in a cookie; the layout shows the viewer (`Option<Caller<Viewer>>`), and the runtime reloads the document |
 //! | `GET /account` | `account.rs` | an area whose every route takes `Caller<Viewer>` (`caller = Viewer`): anyone else is sent to the watchlist, where the sign-in button is |
 //! | `POST /avatar` | `account.rs` | a form with a file (`Upload`): the picture is read as it arrives, its type from its bytes, and kept; the header and the account page show it; a body over its limit is answered with a message in the form (`UploadError::TooLarge`) |
 //! | `GET /pictures/{id}` | `account.rs` | an uploaded picture as its type (`Media`), at a URL that names its bytes, so every cache keeps it for good (`Public::immutable`) |
@@ -21,7 +21,7 @@
 use corten::prelude::*;
 
 use crate::{
-    account::{self, Pictures, Viewer},
+    account::{self, Pictures, Sessions, Viewer},
     alerts::{self, AlertStore},
     home,
     layout::Layout,
@@ -37,13 +37,14 @@ corten::i18n::messages! {
     pub struct Msg { "en" => "locales/en.json" }
 }
 
-/// What the handlers share: the market, each browser's watchlist and alerts, the pictures people
-/// uploaded and the briefing's readers. A handler takes the part it needs (`State<Market>`).
+/// What the handlers share: the market, each browser's watchlist and alerts, who is signed in, the
+/// pictures people uploaded and the briefing's readers. A handler takes the part it needs (`State<Market>`).
 #[derive(Clone, FromRef)]
 pub struct Shared {
     market: Market,
     lists: Lists,
     alerts: AlertStore,
+    sessions: Sessions,
     pictures: Pictures,
     readers: Readers,
 }
@@ -57,7 +58,14 @@ pub fn app(market: Market) -> App {
 /// The app with an alert store of the caller's: a test's lands its writes at once.
 pub(crate) fn app_with(market: Market, alerts: AlertStore) -> App {
     let trading = market.clone();
-    let shared = Shared { market, lists: Lists::default(), alerts, pictures: Pictures::default(), readers: Readers::default() };
+    let shared = Shared {
+        market,
+        lists: Lists::default(),
+        alerts,
+        sessions: Sessions::default(),
+        pictures: Pictures::default(),
+        readers: Readers::default(),
+    };
     App::new(url::router(shared.clone()))
         .assets(crate::layout::Static)
         .components(&[TOKENS, home::LivePrices])

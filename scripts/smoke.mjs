@@ -1442,10 +1442,15 @@ async function run(browser) {
 
   // A form with a file, read as it arrives in each engine's multipart body: the account page's
   // picture. Its type is read from its bytes, and the answer shows it in the header and on the
-  // page, from a URL every cache keeps. WebKit gets a cookie it sends back over http, as its
-  // sign-in's Secure one is not.
+  // page, from a URL every cache keeps. WebKit does not send its sign-in's Secure cookie back over
+  // http, so it signs in through the API and is given the session's token in a cookie it does.
   const errorsBefore = errors.length;
-  if (!signsIn) await page.context().addCookies([{ name: "viewer", value: "Ada", url: base }]);
+  if (!signsIn) {
+    const signedIn = await page.request.post(`${base}/sign-in`, { headers: { origin: base }, maxRedirects: 0 });
+    const token = /^session=([0-9a-f]{32});/.exec(signedIn.headers()["set-cookie"] ?? "")?.[1] ?? "";
+    check("WebKit signs in through the route", token.length === 32, String(signedIn.status()));
+    await page.context().addCookies([{ name: "session", value: token, url: base }]);
+  }
   await page.goto(`${base}/account`);
   /** Uploads one file with the account page's form and gives the status line's text. @param {{ name: string, mimeType: string, buffer: Buffer }} file */
   const upload = async (file) => {
@@ -1491,8 +1496,7 @@ async function run(browser) {
   // browser, still sending when the answer comes, shows it instead of a network error.
   const over = await upload({ name: "huge.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(3 << 20, 7) });
   check("a body over its limit is answered in the form", over === "The form is over 1 MB.", over);
-  await page.context().clearCookies({ name: "picture" });
-  if (!signsIn) await page.context().clearCookies({ name: "viewer" });
+  if (!signsIn) await page.context().clearCookies({ name: "session" });
 
   // The posts answered 415, and the uploads 422 and 413, on purpose; the browser logs those as
   // failed resources.

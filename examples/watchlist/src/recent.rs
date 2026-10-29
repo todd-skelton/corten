@@ -44,6 +44,13 @@ impl<V> Recent<V> {
         self.get_mut(id).expect("made above")
     }
 
+    /// Forgets `id`'s value, giving it back.
+    pub fn remove(&mut self, id: &str) -> Option<V> {
+        let (when, value) = self.values.remove(id)?;
+        self.used.remove(&when);
+        Some(value)
+    }
+
     /// `id`'s value, not marked used.
     pub fn peek(&self, id: &str) -> Option<&V> {
         self.values.get(id).map(|(_, value)| value)
