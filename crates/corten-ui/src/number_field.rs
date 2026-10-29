@@ -113,7 +113,7 @@ pub fn NumberField<'a>(field: &'a Number<'a>) -> impl Render {
                 tabindex="-1"
                 disabled={f.disabled || at_min}
                 on:pointerdown={js::press(event, target, input, -1)}
-                on:click={js::click(input, -1)}
+                on:click={js::click(event, target, input, -1)}
             >
                 {f.decrease.content}
             </button>
@@ -142,7 +142,7 @@ pub fn NumberField<'a>(field: &'a Number<'a>) -> impl Render {
                 tabindex="-1"
                 disabled={f.disabled || at_max}
                 on:pointerdown={js::press(event, target, input, 1)}
-                on:click={js::click(input, 1)}
+                on:click={js::click(event, target, input, 1)}
             >
                 {f.increase.content}
             </button>
