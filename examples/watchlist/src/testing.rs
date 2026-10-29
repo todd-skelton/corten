@@ -30,7 +30,11 @@ pub(crate) async fn call_on(router: &Router, req: Request<Body>) -> Response {
 pub(crate) async fn sign_in(router: &Router) -> String {
     let res = call_on(router, post("/sign-in", None, None, "")).await;
     let set = res.headers()["set-cookie"].to_str().unwrap();
-    set.split(';').next().unwrap().to_string()
+    // 128 random bits, out of scripts' reach and sent over HTTPS only.
+    let token = set.strip_prefix("session=").and_then(|rest| rest.get(..32)).unwrap();
+    assert!(token.bytes().all(|b| b.is_ascii_hexdigit()), "{set}");
+    assert_eq!(set, format!("session={token}; Path=/; SameSite=Lax; HttpOnly; Secure"));
+    format!("session={token}")
 }
 
 pub(crate) async fn call(req: Request<Body>) -> Response {

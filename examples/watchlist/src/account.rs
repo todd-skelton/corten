@@ -35,12 +35,20 @@ pub mod url {
 }
 
 /// Who is looking, which the layout shows: a name, and the id of their picture if they uploaded one.
-#[derive(Clone, Hash)]
+#[derive(Clone)]
 pub struct Viewer {
     pub name: String,
     pub picture: Option<String>,
     /// The session they are signed in with, which signing out ends.
     session: String,
+}
+
+/// The page's key mixes in who it is for (`Identify`), and the key is written into the page: it
+/// hashes what the layout shows, never the session's token, which stays in its `HttpOnly` cookie.
+impl std::hash::Hash for Viewer {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (&self.name, &self.picture).hash(state);
+    }
 }
 
 /// The session the `session` cookie names, looked up on the server: a cookie no one was given,
@@ -70,8 +78,11 @@ where
 /// and the server keeps who it stands for. So a cookie names a session and nothing else: no one
 /// can write one that signs them in as someone, and signing out ends the session here, not only in
 /// the browser. Sessions live in memory: at most `SESSIONS`, the one used longest ago forgotten
-/// past that, and all of them after a restart (everyone signs in again). A real app keeps them
-/// in its store, with an expiry, and signs people in with a password or a provider, not one click.
+/// past that, and all of them after a restart (everyone signs in again). Anyone can sign in here,
+/// so anyone can sign the others out by signing in thousands of times. A real app keeps sessions
+/// in its store with an idle and an absolute expiry, limits sign-ins per client, signs people in
+/// with a password or a provider, not one click, and over HTTPS names the cookie
+/// `__Host-session` so no other site on the domain can set it.
 #[derive(Clone)]
 pub struct Sessions(Arc<Mutex<Recent<Session>>>);
 
@@ -108,6 +119,8 @@ impl Sessions {
         self.0.lock().expect("sessions").remove(token);
     }
 
+    /// Keeps the picture in the session; one that ended meanwhile (signed out in another tab)
+    /// keeps nothing, and its next page asks to sign in.
     fn set_picture(&self, token: &str, id: &str) {
         if let Some(session) = self.0.lock().expect("sessions").get_mut(token) {
             session.picture = Some(id.to_string());

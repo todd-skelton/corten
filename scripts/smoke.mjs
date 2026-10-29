@@ -1422,6 +1422,7 @@ async function run(browser) {
   if (!signsIn) {
     const signedIn = await page.request.post(`${base}/sign-in`, { headers: { origin: base }, maxRedirects: 0 });
     const token = /^session=([0-9a-f]{32});/.exec(signedIn.headers()["set-cookie"] ?? "")?.[1] ?? "";
+    check("WebKit signs in through the route", token.length === 32, String(signedIn.status()));
     await page.context().addCookies([{ name: "session", value: token, url: base }]);
   }
   await page.goto(`${base}/account`);
