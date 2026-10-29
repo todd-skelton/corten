@@ -165,6 +165,31 @@ async function run(browser) {
   await page.mouse.up();
   // The quantity stepped on the press, so its pointer was held while the weight stepped.
   check("each field keeps its own state", holding > before && own === "0.7", `quantity ${before} -> ${holding}, weight ${own}`);
+  // A press released off its button makes no click, so nothing is left to skip the next key's.
+  const up = await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).boundingBox();
+  await page.mouse.move(up.x + up.width / 2, up.y + up.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(up.x + up.width / 2, up.y - 80);
+  await page.mouse.up();
+  await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
+  const after = await page.locator("#weight").inputValue();
+  check("a press released elsewhere steps once, and the next key steps", after === "0.9", after);
+  // A key's click right after a pointer's, in the same task (before any timer can run): the
+  // pointer's stepped on its press, its click does not step again, and the key's does (#316).
+  const sameTask = await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).evaluate((button) => {
+    const input = /** @type {HTMLInputElement} */ (document.getElementById("weight"));
+    const from = input.value;
+    const at = { bubbles: true, cancelable: true, composed: true, button: 0, pointerId: 7, isPrimary: true };
+    button.dispatchEvent(new PointerEvent("pointerdown", at));
+    button.dispatchEvent(new PointerEvent("pointerup", at));
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    button.click();
+    return `${from} -> ${input.value}`;
+  });
+  check("a key's click right after a pointer's steps once more", sameTask === "0.9 -> 1.1", sameTask);
+  const fewer = page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(0);
+  for (const key of ["Enter", "Space", "Enter", "Space"]) await fewer.press(key);
+  check("Enter and Space on decrease step down", (await page.locator("#weight").inputValue()) === "0.7", await page.locator("#weight").inputValue());
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
     const field = /** @type {Element} */ (document.querySelector("#weight")?.closest("[data-scope=ui-number-field]")?.parentElement);
