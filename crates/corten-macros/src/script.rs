@@ -80,7 +80,8 @@ impl Module {
                 format!("{file}: a script's name is letters, digits, _ and -, since the page names its module by it"),
             );
         }
-        let name = match prefix() {
+        let prefix = prefix();
+        let name = match prefix.clone() {
             Some(prefix) if !plain(&prefix) => {
                 return err(
                     span,
@@ -92,6 +93,15 @@ impl Module {
         };
         let at = |(line, message): (usize, String)| (span, format!("{file}:{line}: {message}"));
         let (handlers, groups, imports, siblings) = parse_all(&source).map_err(at)?;
+        // A library's scripts are served by their prefixed names, so a sibling is imported by its.
+        if let Some(prefix) = &prefix {
+            if let Some(other) = siblings.iter().find(|s| !s.starts_with(&format!("{prefix}."))) {
+                return err(
+                    span,
+                    format!("{file}: imports ./{other}.js, but this crate's scripts are served as {prefix}.{{name}}.js: write ./{prefix}.{other}.js"),
+                );
+            }
+        }
         let keeps = keeps(&source).map_err(at)?;
         Ok(Module { name, file, path: path.display().to_string(), handlers, groups, keeps, imports, siblings })
     }
@@ -484,7 +494,8 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         if trimmed.starts_with("import ") || trimmed.starts_with("import{") {
             let start = i;
             let mut statement = without_comments(trimmed);
-            while !statement.contains(" from ") && !statement.ends_with(';') && i + 1 < lines.len() {
+            // Ends at its `from`, a `;`, or the closing quote of an import with neither.
+            while !statement.contains(" from ") && !statement.ends_with([';', '"', '\'']) && i + 1 < lines.len() {
                 i += 1;
                 statement.push(' ');
                 statement.push_str(&without_comments(lines[i].trim()));
@@ -1023,7 +1034,12 @@ export function toggled(event, sel, c, level, done, cleared, n) {}
 
     #[test]
     fn a_script_of_the_same_directory_is_a_sibling() {
-        let source = "import { loadStripe } from \"./stripe.js\";\nimport \"./theme.js\";\nimport {\n  a,\n} from './stripe.js';\nimport { keep } from \"corten\";\nimport { b } from \"../app.js\";\nimport { c } from \"./sub/x.js\";\nexport function f() {}\n";
-        assert_eq!(parse_all(source).unwrap().3, ["stripe", "theme"]);
+        let source = "import { loadStripe } from \"./stripe.js\";\nimport \"./theme.js\";\nimport {\n  a,\n} from './stripe.js';\nimport { keep } from \"corten\";\nimport { b } from \"../app.js\";\nimport { c } from \"./sub/x.js\";\nimport d, { e } from \"./default.js\";\nimport * as all from \"./all.js\";\nexport function f() {}\n";
+        assert_eq!(parse_all(source).unwrap().3, ["stripe", "theme", "default", "all"]);
+        // Without semicolons, each import ends at its closing quote: nothing after it is lost.
+        let bare = "import \"./theme.js\"\nimport { a } from \"./stripe.js\"\nexport function f() {}\nexport function g() {}\n";
+        let (handlers, _, _, siblings) = parse_all(bare).unwrap();
+        assert_eq!(siblings, ["theme", "stripe"]);
+        assert_eq!(handlers.iter().map(|h| h.name.as_str()).collect::<Vec<_>>(), ["f", "g"]);
     }
 }

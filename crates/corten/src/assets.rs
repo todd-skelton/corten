@@ -958,6 +958,35 @@ mod tests {
         assert_eq!(assets.module("theme").unwrap().0, format!(r#"<script type="module" src="{dir}theme.js"></script>"#));
         let error = Assets::build(None, &[ENTRY], "/assets").err().expect("stripe is not listed");
         assert!(error.to_string().contains("scripts/entry.js imports ./stripe.js"), "{error}");
+        // A plain script of the static directory is served too, so it may be imported.
+        let files = vec![("scripts/stripe.js".to_string(), Bytes::from_static(b"export const a = 1;"))];
+        let assets = Assets::build_with(files, &[ENTRY], &[], "/assets").unwrap();
+        assert!(assets.module("entry").unwrap().0.ends_with("stripe.js\">"));
+        // A module that imports one that uses the typed events has them preloaded too.
+        const SAVED: Component = Component {
+            name: "Saved",
+            script: None,
+            style: None,
+            event: Some(crate::script::EventDef { class: "Saved", name: "saved", fields: &[] }),
+            view: None,
+        };
+        const EMITS: Component = Component {
+            name: "emits",
+            script: Some(crate::Script {
+                name: "emits",
+                file: "emits.js",
+                source: "",
+                handlers: &[],
+                events: &[SAVED],
+                imports: &[],
+            }),
+            style: None,
+            event: None,
+            view: None,
+        };
+        const USES: Component = script("uses", &["emits"]);
+        let assets = Assets::build(None, &[USES, EMITS], "/assets").unwrap();
+        assert!(assets.module("uses").unwrap().1, "the events come with the import");
     }
 
     #[test]
