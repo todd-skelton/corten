@@ -218,6 +218,7 @@ async function run(browser) {
   // CheckboxGroup: no region checked stops the form at the group's first box.
   const lastResult = await page.textContent("#result");
   const sellValid = () => page.evaluate(() => /** @type {HTMLFormElement} */ (document.querySelector('form[action$="/sell"]')).checkValidity());
+  const shipsValid = () => page.evaluate(() => Array.from(document.querySelectorAll('form[action$="/sell"] fieldset input[type="checkbox"]')).every((box) => /** @type {HTMLInputElement} */ (box).checkValidity()));
   const us = page.getByRole("checkbox", { name: "United States" });
   await us.uncheck();
   const shipMessage = await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
@@ -243,12 +244,13 @@ async function run(browser) {
   await page.getByLabel("Pricing").selectOption("fixed");
   check("back to a fixed price, the lowest offer is disabled again", await floor.isDisabled());
   // A reset puts the boxes back as drawn ("United States" checked), and the group is checked again.
+  // Only the group's boxes: the reset also empties the condition, which is drawn with no choice.
   await us.uncheck();
   await page.getByRole("checkbox", { name: "Canada" }).uncheck();
   const unchecked = await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
   await page.evaluate(() => /** @type {HTMLFormElement} */ (document.querySelector('form[action$="/sell"]')).reset());
   await page.waitForTimeout(100);
-  check("a form reset checks the group again", unchecked === "Choose where you ship." && (await us.isChecked()) && (await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) === "" && (await sellValid()));
+  check("a form reset checks the group again", unchecked === "Choose where you ship." && (await us.isChecked()) && (await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) === "" && (await shipsValid()), unchecked);
 
   // TabGroup
   const tab = (name) => page.getByRole("tab", { name });
