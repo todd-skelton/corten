@@ -835,9 +835,12 @@ Corten is pre-1.0, so any minor version may change the API.
 119. A script that imports another script module of its directory (`import { loadStripe } from
      "./stripe.js"`) has it preloaded on the pages that load it, with what that one imports, so the
      browser fetches them together instead of one round trip after the other. The tag is made
-     when the app starts, so a page costs nothing more to render. An import of a module the app
-     does not list is a startup error that names both (it was a 404 in the browser). The scripts
-     guide describes relative imports
+     when the app starts, so a page costs nothing more to render: one import over a 100 ms
+     round trip ran at 245 ms instead of 342 (Chromium, median of 10 cold loads, a local server
+     delaying each answer 100 ms). An import of a module the app does not list is a startup
+     error that names both (it was a 404 in the browser). The preload helps a full page load; a
+     client navigation still fetches a new module's imports after it. The scripts guide describes
+     relative imports
      ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
 
 ### Removed
