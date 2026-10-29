@@ -11,11 +11,15 @@
 //! ```
 //! use corten::prelude::*;
 //!
+//! #[derive(Route)]
+//! #[route("/api/prices/{id}")]
+//! struct PriceUrl<'a> { id: &'a str }
+//!
 //! #[derive(ToJson)]
 //! struct Price { id: String, lowest: &'static str }
 //!
-//! async fn price(Path(id): Path<String>) -> Json<Price> {
-//!     Json(Price { id, lowest: "$0.50" })
+//! async fn price(Params(url): Params<PriceUrl<'_>>) -> Json<Price> {
+//!     Json(Price { id: url.id, lowest: "$0.50" })
 //! }
 //! ```
 //!

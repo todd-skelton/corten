@@ -3,7 +3,7 @@ use crate::answer::ForOne;
 use crate::cache::Cache;
 use crate::security::cookie::SetCookie;
 use crate::view::{html, Render};
-use axum::{body::Body, extract::Path, http::Request, routing::get, Router};
+use axum::{body::Body, http::Request, routing::get, Router};
 use http_body_util::BodyExt;
 use std::time::Duration;
 use tower::ServiceExt;
@@ -1495,6 +1495,128 @@ async fn an_api_at_the_root_makes_the_whole_app_json() {
     assert_eq!((status, &body[..]), (StatusCode::OK, "ok"), "Corten's own routes keep their behavior");
 }
 
+/// Query parameters a route carries as a set (`#[route(query)]`).
+#[derive(Clone, Default, serde::Deserialize, crate::Route)]
+#[route(query)]
+pub struct ParamsPaging {
+    pub page: Option<u32>,
+}
+
+/// Every kind of parameter a route has, which its handler reads back as the link wrote it.
+#[crate::routes]
+mod params_url {
+    #[route("/shops/{shop}/items/{id}", get = params_item)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Item<'a> {
+        pub shop: &'a str,
+        pub id: u32,
+        pub sort_by: Option<&'a str>,
+        pub tags: &'a [&'a str],
+        #[serde(default)]
+        pub mine: bool,
+        #[route(query)]
+        pub paging: super::ParamsPaging,
+        #[route(prefix = "dim.")]
+        pub dims: &'a std::collections::BTreeMap<String, String>,
+    }
+
+    #[route("/files/{*rest}", get = params_file)]
+    pub struct File<'a> {
+        pub rest: std::borrow::Cow<'a, str>,
+    }
+}
+
+/// A value a link prints but nothing reads back: neither `Clone`, `Send` nor `Deserialize`.
+pub struct Shown(std::rc::Rc<str>);
+
+impl std::fmt::Display for Shown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// A route used only for links still needs only `Display` of its fields.
+#[derive(crate::Route)]
+#[route("/shown/{value}")]
+#[serde(deny_unknown_fields)]
+struct LinkOnly<'a> {
+    value: &'a Shown,
+    #[serde(alias = "t")]
+    tab: Option<&'a Shown>,
+}
+
+/// The same fields with no serde key: its hidden owned twin is written, and asks nothing of
+/// `Shown` until a handler reads the route's `Params`.
+#[derive(crate::Route)]
+#[route("/shown-twin/{value}")]
+struct LinkTwin<'a> {
+    value: &'a Shown,
+    tab: Option<&'a Shown>,
+}
+
+async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
+    let (shop, id, sort, tags, mine, page, dims) =
+        (&item.shop, item.id, &item.sort_by, &item.tags, item.mine, item.paging.page, &item.dims);
+    format!("{shop}|{id}|{sort:?}|{tags:?}|{mine}|{page:?}|{dims:?}")
+}
+
+async fn params_file(file: crate::Params<params_url::File<'_>>) -> String {
+    file.rest.clone()
+}
+
+#[tokio::test]
+async fn a_handler_reads_its_routes_parameters_as_the_link_wrote_them() {
+    let router = App::new(params_url::router()).router();
+    let dims = std::collections::BTreeMap::from([
+        ("form".to_string(), "graded".to_string()),
+        ("grade".to_string(), "PSA 8".to_string()),
+    ]);
+    let link = params_url::Item {
+        shop: "a b/c",
+        id: 7,
+        sort_by: Some("price"),
+        tags: &["x", "y&z"],
+        mine: true,
+        paging: ParamsPaging { page: Some(2) },
+        dims: &dims,
+    };
+    assert_eq!(
+        link.href(),
+        "/shops/a%20b%2Fc/items/7?sortBy=price&tags=x&tags=y%26z&mine=true&page=2&dim.form=graded&dim.grade=PSA%208"
+    );
+    let (status, _, body) = call_with(router.clone(), "GET", &link.href(), None, None).await;
+    assert_eq!(
+        (status, &body[..]),
+        (StatusCode::OK, r#"a b/c|7|Some("price")|["x", "y&z"]|true|Some(2)|{"form": "graded", "grade": "PSA 8"}"#)
+    );
+    let empty = std::collections::BTreeMap::new();
+    let plain = params_url::Item {
+        shop: "s",
+        id: 1,
+        sort_by: None,
+        tags: &[],
+        mine: false,
+        paging: ParamsPaging::default(),
+        dims: &empty,
+    };
+    let (status, _, body) = call_with(router.clone(), "GET", "/shops/s/items/1", None, None).await;
+    assert_eq!((status, &body[..]), (StatusCode::OK, "s|1|None|[]|false|None|{}"), "{}", plain.href());
+    let (_, _, body) = call_with(router.clone(), "GET", "/shops/s/items/1?sortBy=&other=1", None, None).await;
+    assert_eq!(body, "s|1|None|[]|false|None|{}", "a blank value is none, and a parameter the route does not have is ignored");
+    for uri in
+        ["/shops/s/items/seven", "/shops/s/items/1?mine=maybe", "/shops/s/items/1?page=x", "/shops/s/items/1?sortBy=a&sortBy=b"]
+    {
+        let (status, _, _) = call_with(router.clone(), "GET", uri, None, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
+    }
+    let shown = Shown("x y".into());
+    assert_eq!(LinkOnly { value: &shown, tab: Some(&shown) }.href(), "/shown/x%20y?tab=x%20y");
+    assert_eq!(LinkTwin { value: &shown, tab: None }.href(), "/shown-twin/x%20y");
+    let file = params_url::File { rest: "docs/a b.txt".into() };
+    let (_, _, body) = call_with(router, "GET", &file.href(), None, None).await;
+    assert_eq!(body, "docs/a b.txt", "{}", file.href());
+}
+
 /// An API's routes in a module of their own, sharing the module's state; its prefix route names
 /// no handler.
 #[crate::routes(api = ModRoot, state = u32)]
@@ -1503,13 +1625,13 @@ mod api_module {
     pub struct ModRoot;
 
     #[route("/v1/items/{id}", get = module_item)]
-    pub struct ModItem<'a> {
-        pub id: &'a str,
+    pub struct ModItem {
+        pub id: u32,
     }
 }
 
-async fn module_item(axum::extract::State(base): axum::extract::State<u32>, Path(id): Path<u32>) -> String {
-    format!("item {}", base + id)
+async fn module_item(axum::extract::State(base): axum::extract::State<u32>, item: crate::Params<api_module::ModItem>) -> String {
+    format!("item {}", base + item.id)
 }
 
 #[tokio::test]
@@ -1524,7 +1646,7 @@ async fn an_api_module_serves_its_routes_and_answers_its_failures_as_json() {
         assert_eq!((got, headers["content-type"].to_str().unwrap()), (status, "application/json"), "{uri}");
         assert!(body.starts_with(r#"{"error":{"status":"#), "{uri}: {body}");
     }
-    assert_eq!(api_module::ModItem { id: "a b" }.to_string(), "/v1/items/a%20b", "the structs still build links");
+    assert_eq!(api_module::ModItem { id: 7 }.to_string(), "/v1/items/7", "the structs still build links");
 }
 
 #[cfg(feature = "json")]
@@ -1561,7 +1683,8 @@ mod checked_api {
 }
 
 #[cfg(feature = "json")]
-async fn checked(Path(n): Path<u32>) -> crate::JsonResult<u32> {
+async fn checked(checked: crate::Params<checked_api::Checked>) -> crate::JsonResult<u32> {
+    let n = checked.n;
     let mut errors = Errors::new();
     if n == 0 {
         errors.add(SignUp::FIELDS.email, "Enter a number above zero.");
@@ -2017,8 +2140,8 @@ mod docs_url {
     }
 }
 
-async fn doc_page(Path(page): Path<String>) -> String {
-    format!("doc {page}")
+async fn doc_page(doc: crate::Params<docs_url::DocPage<'_>>) -> String {
+    format!("doc {}", doc.page)
 }
 
 #[tokio::test]
@@ -2052,8 +2175,8 @@ async fn sign_in(req: Req) -> HtmlResult {
 }
 
 /// The same for everyone: it may read only what cannot tell who is asking.
-async fn catalog(Path(id): Path<u32>) -> Public<String> {
-    Public::new(std::time::Duration::from_secs(60), format!("item {id}"))
+async fn catalog(item: crate::Params<caller_url::Catalog>) -> Public<String> {
+    Public::new(std::time::Duration::from_secs(60), format!("item {}", item.id))
 }
 
 async fn admin_home(req: Req, Caller(staff): Caller<Staff>) -> HtmlResult {
@@ -2065,8 +2188,8 @@ async fn admin_save(Caller(_): Caller<Staff>, crate::Form(_): Fields) -> &'stati
     "saved"
 }
 
-async fn admin_user(Path(id): Path<u32>, Caller(_): Caller<Staff>) -> String {
-    format!("user {id}")
+async fn admin_user(user: crate::Params<admin_url::User>, Caller(_): Caller<Staff>) -> String {
+    format!("user {}", user.id)
 }
 
 fn caller_app() -> Router {
@@ -2096,8 +2219,8 @@ mod audit_url {
     }
 }
 
-async fn user_audit(Path(id): Path<u32>, Caller(_): Caller<Auditor>) -> String {
-    format!("audit {id}")
+async fn user_audit(crate::Params(at): crate::Params<audit_url::UserAudit>, Caller(_): Caller<Auditor>) -> String {
+    format!("audit {}", at.id)
 }
 
 /// Two modules in one area, each holding its handlers to its own caller: a staff member who is
@@ -2318,8 +2441,8 @@ struct Quote {
 }
 
 #[cfg(feature = "json")]
-async fn price(Path(id): Path<u32>, Caller(partner): Caller<Partner>) -> JsonResult<Quote> {
-    Ok(Json(Quote { id, partner: partner.0 }))
+async fn price(price: crate::Params<json_url::Price>, Caller(partner): Caller<Partner>) -> JsonResult<Quote> {
+    Ok(Json(Quote { id: price.id, partner: partner.0 }))
 }
 
 #[cfg(feature = "json")]
@@ -2960,12 +3083,12 @@ mod serves_url {
     #[route("/check", get = serves_check)]
     pub struct Check;
 
-    #[route("/items/{id}", get = serves_check)]
+    #[route("/items/{id}", get = serves_item)]
     pub struct Item {
         pub id: u32,
     }
 
-    #[route("/files/{*rest}", get = serves_check)]
+    #[route("/files/{*rest}", get = serves_files)]
     pub struct Files {
         pub rest: String,
     }
@@ -2973,7 +3096,7 @@ mod serves_url {
     #[route("/cart/add", post = serves_check)]
     pub struct AddToCart;
 
-    #[route("/cart/{id}", get = serves_check)]
+    #[route("/cart/{id}", get = serves_cart_line)]
     pub struct CartLine {
         pub id: u32,
     }
@@ -2988,7 +3111,7 @@ mod serves_url {
 /// Every GET is a page here, but an API, Corten's own paths and its health checks are not.
 #[crate::routes]
 mod serves_catch_url {
-    #[route("/{*page}", get = serves_check)]
+    #[route("/{*page}", get = serves_any)]
     pub struct Page {
         pub page: String,
     }
@@ -3024,12 +3147,12 @@ mod serves_router_url {
     #[route("/check", get = serves_check)]
     pub struct Check;
 
-    #[route("/items/{id}/edit", get = serves_page)]
+    #[route("/items/{id}/edit", get = serves_edit)]
     pub struct Edit {
         pub id: String,
     }
 
-    #[route("/x/{a}/y", post = serves_page)]
+    #[route("/x/{a}/y", post = serves_write)]
     pub struct Write {
         pub a: String,
     }
@@ -3037,7 +3160,7 @@ mod serves_router_url {
     #[route("/shop/cart", get = serves_page)]
     pub struct CartPage;
 
-    #[route("/{*page}", get = serves_page)]
+    #[route("/{*page}", get = serves_router_page)]
     pub struct Page {
         pub page: String,
     }
@@ -3058,6 +3181,35 @@ struct ShopList;
 
 async fn serves_page() -> &'static str {
     "page"
+}
+
+// The routes above with a parameter in their path, each read by a handler that takes its `Params`.
+async fn serves_edit(_: crate::Params<serves_router_url::Edit>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_write(_: crate::Params<serves_router_url::Write>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_router_page(_: crate::Params<serves_router_url::Page>) -> &'static str {
+    serves_page().await
+}
+
+async fn serves_item(_: crate::Params<serves_url::Item>, req: Req, uri: axum::http::Uri) -> String {
+    serves_check(req, uri).await
+}
+
+async fn serves_files(_: crate::Params<serves_url::Files>, req: Req, uri: axum::http::Uri) -> String {
+    serves_check(req, uri).await
+}
+
+async fn serves_cart_line(_: crate::Params<serves_url::CartLine>, req: Req, uri: axum::http::Uri) -> String {
+    serves_check(req, uri).await
+}
+
+async fn serves_any(_: crate::Params<serves_catch_url::Page>, req: Req, uri: axum::http::Uri) -> String {
+    serves_check(req, uri).await
 }
 
 /// `req.serves` says a path is served exactly when a GET to it reaches a page.

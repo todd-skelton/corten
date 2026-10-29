@@ -22,7 +22,7 @@ use crate::{
 #[corten::routes(area = News, state = Shared)]
 pub mod url {
     /// The stories, filtered: a link writes the filter's parameters, which the page reads back
-    /// with the same struct (`NewsQuery`).
+    /// (`Params<url::News>`).
     #[route("/news", get = page)]
     #[derive(Default)]
     pub struct News {
@@ -217,8 +217,8 @@ impl NewsQuery {
     }
 }
 
-async fn page(req: Req, viewer: Option<Caller<Viewer>>, watching: Watching, Query(q): Query<NewsQuery>) -> HtmlResult {
-    news_page(&req, viewer.as_deref(), &watching, &q, &BriefingForm::default(), &Errors::new()).await
+async fn page(req: Req, viewer: Option<Caller<Viewer>>, watching: Watching, Params(at): Params<url::News>) -> HtmlResult {
+    news_page(&req, viewer.as_deref(), &watching, &at.filter, &BriefingForm::default(), &Errors::new()).await
 }
 
 /// The news page, or Load more's next stories as a patch.
@@ -455,8 +455,8 @@ async fn subscribe(
 /// so the runtime is told the address and the browser goes there itself, to the part of the
 /// page the story is about (`Elsewhere::at`: an id that page's markup owns). Linking through
 /// the app keeps a story's address in one place.
-async fn read(req: Req, Path(id): Path<String>) -> HtmlResult {
-    let story = STORIES.iter().find(|s| s.id == id).ok_or_else(corten::Error::not_found)?;
+async fn read(req: Req, Params(at): Params<url::Read<'_>>) -> HtmlResult {
+    let story = STORIES.iter().find(|s| s.id == at.id).ok_or_else(corten::Error::not_found)?;
     req.redirect(&Elsewhere::at(&Uri::from_static(story.url), story.place))
 }
 

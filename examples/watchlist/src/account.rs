@@ -135,8 +135,13 @@ fn picture_type(bytes: &[u8]) -> Option<&'static str> {
 /// A picture by its id. The id names the bytes, so the answer never changes and every cache may
 /// keep it (`Public::immutable`); it reads no cookie, which is why it is not in the `Account`
 /// area, and taking a `Caller` here would not compile.
-pub(crate) async fn picture(State(pictures): State<Pictures>, Path(id): Path<String>) -> Public<corten::Result<Media>> {
-    Public::immutable(pictures.get(&id).map(|picture| Media::new(picture.media_type, picture.bytes)).ok_or_else(Error::not_found))
+pub(crate) async fn picture(
+    State(pictures): State<Pictures>,
+    Params(at): Params<app::url::Picture<'_>>,
+) -> Public<corten::Result<Media>> {
+    Public::immutable(
+        pictures.get(&at.id).map(|picture| Media::new(picture.media_type, picture.bytes)).ok_or_else(Error::not_found),
+    )
 }
 
 #[derive(Deserialize, Fields)]

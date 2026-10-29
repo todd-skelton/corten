@@ -67,8 +67,8 @@ page's form answers with `req.invalid`, which shows the form again. Under an API
 error shape (`Api::errors`), the 422 keeps Corten's shape, since a status and a message have
 no place for the fields; every other failure is written in the API's.
 
-`Form` and `Query` in the prelude are Corten's: they read a body or a query string the way a
-browser sends it, a key once per value.
+`Form` (a form's body, or a `GET` form's query string) and `Params` (a route's own parameters,
+below) read what a browser sends the way it sends it, a key once per value.
 
 | Field type | Reads | A browser sends |
 |---|---|---|
@@ -83,17 +83,38 @@ validation rule (`errors.add(f.ids, ..)` when it is empty), so the user gets a m
 error page. A box outside the `<form>`, in a table row, joins it with `form={ArchiveFormId}`
 (an `Id`); `examples/seller-desk` posts its checked rows that way.
 
-A typed route's list field writes the parameter once per item, so a filter link and the handler
-that reads it agree:
+A route's handler reads its parameters back as the route's `Params`: the struct's fields, owned
+(a `&'a str` is a `String`, a `&'a [T]` a `Vec<T>`), read from the path and the query the way
+the struct writes them. So a link and the handler that reads it cannot disagree about a
+parameter's name or type, and a request whose parameters do not fit is a 400. A typed route's
+list field writes the parameter once per item, and reads every value back:
 
 ```rust,ignore
-#[derive(Route, serde::Deserialize)]
-#[route("/search")]
-struct Search { q: Option<String>, #[serde(default)] condition: Vec<String> }
+#[corten::routes]
+mod url {
+    #[route("/search", get = search)]
+    pub struct Search<'a> { pub q: Option<&'a str>, pub condition: &'a [&'a str] }
+}
 
-// <a href={Search { q: None, condition: vec!["nm".into(), "lp".into()] }}> is /search?condition=nm&condition=lp
-async fn search(req: Req, Query(search): Query<Search>) -> HtmlResult { .. }
+// <a href={url::Search { q: None, condition: &["nm", "lp"] }}> is /search?condition=nm&condition=lp
+async fn search(req: Req, Params(search): Params<url::Search<'_>>) -> HtmlResult {
+    let (q, conditions): (&Option<String>, &Vec<String>) = (&search.q, &search.condition);
+    ..
+}
 ```
+
+A missing parameter is `None` for an `Option`, empty for a list, and a field's
+`#[serde(default)]` for anything else, as a link leaves those out. In a `#[corten::routes]`
+module a route with a parameter in its path holds each of its handlers to taking its own
+`Params`: one that reads the path another way (axum's `Path`), or reads another route's, does
+not compile.
+
+Links write a route's parameters by name with `Display`, so `Params` refuses what would read them
+back differently: a `#[serde(..)]` key on the route struct that links do not follow (`alias`,
+`flatten`, `skip`, `skip_deserializing`, `with`, `deserialize_with`, `borrow` on a
+field; `default`, `deny_unknown_fields`, `from`, `try_from`, `transparent` on the struct), and a
+`#[route(query)]` set that borrows. Such a route still writes links; a handler that takes its `Params` does not
+compile, and the error names the key or the borrowed type.
 
 When several routes carry the same parameters (a list's filters, which its `<corten-live>` rows,
 its bulk preview and its confirm need too), declare them once as a query set and include it:
@@ -107,12 +128,12 @@ struct ItemQuery { search: Option<String>, page: Option<u32>, #[serde(default)] 
 #[derive(Route)] #[route("/items/live")] struct ItemsLive { #[route(query)] filters: ItemQuery }
 
 // ItemsLive { filters: items.filters.clone() } is /items/live?search=..&page=..
-async fn items(req: Req, Query(filters): Query<ItemQuery>) -> HtmlResult { .. }
+async fn items(req: Req, Params(items): Params<Items>) -> HtmlResult { .. } // items.filters
 ```
 
 Each of `ItemQuery`'s fields is written as the route's own parameter, so a route that must carry
 the filters cannot leave one out: a filter added to `ItemQuery` is in every route at once. The
-handler reads `Query<ItemQuery>`, and the filter form names its inputs `ItemQuery::FIELDS`. A
+handler reads it as its route's `Params` field, and the filter form names its inputs `ItemQuery::FIELDS`. A
 `#[route(query)]` field whose type is not a query set does not compile.
 
 A parameter is named as serde reads its field, so `#[serde(rename_all = "camelCase")]` or a
@@ -129,8 +150,7 @@ mark a map field with a prefix, and each entry is written as `prefix` + key = va
 struct Item<'a> { slug: &'a str, #[route(prefix = "dimension.")] dimensions: &'a BTreeMap<String, String> }
 
 // Item { slug: "pika", dimensions: &picked } is /items/pika?dimension.form=graded&dimension.grade=PSA%208
-#[derive(serde::Deserialize)]
-struct ItemQuery { #[serde(flatten)] rest: BTreeMap<String, String> }  // keep the keys that start with the prefix
+async fn item(req: Req, Params(item): Params<Item<'_>>) -> HtmlResult { .. } // item.dimensions: the entries, prefix taken off
 ```
 
 The field is a `BTreeMap`, or a `Vec` or slice of pairs (kept in its order, repeats and all);
@@ -384,9 +404,9 @@ that page's markup owns, so it is text: `Elsewhere::at(&uri, "fee-calculator")` 
 An `axum::http::Uri` alone cannot carry it: it drops a `#fragment` it parses.
 
 ```rust,ignore
-async fn report(req: Req, Path((slug, review)): Path<(String, String)>) -> HtmlResult {
-    // ... record the report ...
-    req.redirect(&url::Account { slug: &slug, reported: Some(&review) }.at(ReviewId(&review)))
+async fn report(req: Req, Params(at): Params<url::Report<'_>>) -> HtmlResult {
+    // ... record the report of at.review on at.slug ...
+    req.redirect(&url::Account { slug: &at.slug, reported: Some(&at.review) }.at(ReviewId(&at.review)))
 }
 ```
 
@@ -430,8 +450,8 @@ since the page's address does not; its handler answers the part with `req.patch_
 page without JavaScript, at the same URL:
 
 ```rust,ignore
-async fn pause(req: Req, Path(id): Path<String>) -> HtmlResult {
-    let receipt = alerts::pause(&id).await?;
+async fn pause(req: Req, Params(at): Params<url::Pause<'_>>) -> HtmlResult {
+    let receipt = alerts::pause(&at.id).await?;
     let from = url::Alerts { after: Some(&receipt) };
     if req.mode != Mode::Action {
         return req.redirect(&from); // without JavaScript, nothing to read here: the page reads it
@@ -441,7 +461,7 @@ async fn pause(req: Req, Path(id): Path<String>) -> HtmlResult {
     req.patch(html! { <AlertList alerts={&alerts} /> {again} })
 }
 
-async fn alerts(req: Req, Query(q): Query<AlertsQuery>) -> HtmlResult {
+async fn alerts(req: Req, Params(at): Params<url::Alerts<'_>>) -> HtmlResult {
     // With patch_or: the list, with `ReadAgain::from` while behind, as the patch; the page otherwise.
 }
 ```
