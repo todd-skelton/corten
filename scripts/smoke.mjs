@@ -4,6 +4,7 @@
 import { chromium, firefox, webkit } from "@playwright/test";
 import http from "node:http";
 import zlib from "node:zlib";
+import { stall } from "./stall.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18480";
 const engines = { chromium, firefox, webkit };
@@ -11,12 +12,15 @@ const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys
 const failures = [];
 let engine = "";
 const skipped = [];
+const seen = stall(5, () => `[${engine}] still loading:\n${pending().join("\n") || "  nothing"}`);
 /** A check this browser cannot make, and why. */
 const skip = (/** @type {string} */ name, /** @type {string} */ why) => {
+  seen(`[${engine}] ${name}`);
   console.log(`skip [${engine}] ${name} (${why})`);
   skipped.push(`[${engine}] ${name}`);
 };
 const check = (name, ok, detail = "") => {
+  seen(`[${engine}] ${name}`);
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };

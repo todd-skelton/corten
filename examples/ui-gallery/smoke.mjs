@@ -2,13 +2,16 @@
 // Firefox and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
 // Usage: node examples/ui-gallery/smoke.mjs [http://localhost:18482] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
+import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18482";
 const engines = { chromium, firefox, webkit };
 const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys(engines);
 const failures = [];
 let engine = "";
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(`[${engine}] ${name}`);
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };

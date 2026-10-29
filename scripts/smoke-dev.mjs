@@ -3,10 +3,13 @@
 // (the watchlist image, run with -e CORTEN_DEV=1 in a container of that name).
 import { chromium } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { stall } from "./stall.mjs";
 
 const [base = "http://localhost:18483", container = "corten-watchlist-dev"] = process.argv.slice(2);
 const failures = [];
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(name);
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(name);
 };
