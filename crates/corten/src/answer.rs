@@ -745,6 +745,12 @@ impl Answer for corten_feed::FeedResponse {
 pub struct Public<A: Shareable> {
     cache: Cache,
     answer: A::ForAll,
+    /// The app's headers ([`Public::header`]): `None` unless it adds one, so an answer without
+    /// them is one word larger and its drop is a null check.
+    // Boxed so an answer without them is one word larger, not three (a `Vec` in place measured
+    // about 20 instructions a request more).
+    #[allow(clippy::box_collection)]
+    headers: Option<Box<Vec<(axum::http::HeaderName, axum::http::HeaderValue)>>>,
 }
 
 impl<A: Shareable> Public<A> {
@@ -770,7 +776,7 @@ impl<A: Shareable> Public<A> {
     /// # let _: Methods = get(home);
     /// ```
     pub fn new<T: ForEveryone<Named = A>>(max_age: Duration, answer: T) -> Self {
-        Public { cache: Cache::public(max_age), answer: answer.for_all() }
+        Public { cache: Cache::public(max_age), answer: answer.for_all(), headers: None }
     }
 
     /// `answer` at a URL that names its content (a hash of its bytes, as Corten's versioned files
@@ -817,7 +823,7 @@ impl<A: Shareable> Public<A> {
     /// # fn main() { let _ = url::router(); }
     /// ```
     pub fn immutable<T: ForEveryone<Named = A> + Immutable>(answer: T) -> Self {
-        Public { cache: Cache::immutable(), answer: answer.for_all() }
+        Public { cache: Cache::immutable(), answer: answer.for_all(), headers: None }
     }
 
     /// After `max_age`, a cache may still serve it for up to `stale` while it fetches a fresh one.
@@ -836,6 +842,163 @@ impl<A: Shareable> Public<A> {
         self.cache = self.cache.shared(shared);
         self
     }
+
+    /// A header of the app's on the answer, named by a type ([`Header`]): a file that stays out
+    /// of search, a download's file name. It is added to the answer's own headers when the answer
+    /// succeeds (or redirects), and Corten compresses the answer as it would without it.
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use corten::{answer::XRobotsTag, axum::http::HeaderValue, prelude::*};
+    ///
+    /// async fn llms() -> Public<String> {
+    ///     let noindex = HeaderValue::from_static("noindex, nofollow");
+    ///     Public::new(Duration::from_secs(3600), "# Example".to_string()).header::<XRobotsTag>(noindex)
+    /// }
+    /// # let _: Methods = get(llms);
+    /// ```
+    ///
+    /// The name is checked when the app builds (`cargo build`, `cargo test`; `cargo check` does
+    /// not evaluate it). A header that would make the answer one visitor's (`set-cookie`), one
+    /// Corten sets itself (`cache-control` and a CDN's `*-cache-control`, `vary`, the encoding
+    /// and length, the security headers, CORS, `corten-*`), one the answer has (`content-type`,
+    /// `location`) or one of the connection's does not compile, and neither does a name that is
+    /// not a lowercase header name:
+    ///
+    /// ```compile_fail,E0080
+    /// use std::time::Duration;
+    /// use corten::{answer::Header, axum::http::HeaderValue, prelude::*};
+    ///
+    /// struct SetCookie;
+    /// impl Header for SetCookie {
+    ///     const NAME: &'static str = "set-cookie";
+    /// }
+    ///
+    /// async fn home() -> Public<&'static str> {
+    ///     Public::new(Duration::from_secs(60), "home").header::<SetCookie>(HeaderValue::from_static("a=b"))
+    /// }
+    /// # let _: Methods = get(home);
+    /// ```
+    pub fn header<H: Header>(mut self, value: axum::http::HeaderValue) -> Self {
+        let name = const {
+            assert!(
+                shared_header(H::NAME),
+                "corten: a Public answer cannot set this header: it would make the answer one visitor's, or Corten or the answer sets it (the type named in `header::<..>` below)"
+            );
+            axum::http::HeaderName::from_static(H::NAME)
+        };
+        self.headers.get_or_insert_default().push((name, value));
+        self
+    }
+}
+
+/// A header a [`Public`] answer may carry ([`Public::header`]), named by a type, so its name is
+/// checked when the app compiles. Corten names the common ones ([`XRobotsTag`], [`Link`],
+/// [`ContentDisposition`], [`ContentLanguage`]); an app names another the same way:
+///
+/// ```
+/// struct ContentLocation;
+/// impl corten::answer::Header for ContentLocation {
+///     const NAME: &'static str = "content-location";
+/// }
+/// ```
+pub trait Header {
+    /// The header's name, in lowercase (`"x-robots-tag"`).
+    const NAME: &'static str;
+}
+
+macro_rules! headers {
+    ($($(#[$doc:meta])* $name:ident = $text:literal;)*) => {
+        $(
+            $(#[$doc])*
+            pub struct $name;
+            impl Header for $name {
+                const NAME: &'static str = $text;
+            }
+        )*
+    };
+}
+
+headers! {
+    /// `X-Robots-Tag`: what search engines may do with the answer (`noindex, nofollow`), for a
+    /// file, where a page would use a `<meta name="robots">`.
+    XRobotsTag = "x-robots-tag";
+    /// `Link`: a related resource (`<https://example.com/item/7>; rel="canonical"`). Added
+    /// twice, it is sent twice.
+    Link = "link";
+    /// `Content-Disposition`: a download and its file name (`attachment; filename="cards.csv"`).
+    ContentDisposition = "content-disposition";
+    /// `Content-Language`: the language the answer is in (`en`).
+    ContentLanguage = "content-language";
+}
+
+/// The headers a [`Public`] answer may not set: one that would make it one visitor's
+/// (`set-cookie`, `clear-site-data`), those Corten sets itself (caching, compression, security),
+/// those the answer itself has (its type, the place a redirect goes, a range), and those that are
+/// the connection's, not the answer's. Names under `corten-` and `access-control-` (an API's
+/// CORS) are Corten's too, and so is any `*cache-control` and `surrogate-control`: a CDN
+/// obeys them over `Cache-Control`, which Corten makes `private` for an answer it must not
+/// share.
+const NOT_SHARED: [&str; 26] = [
+    "set-cookie",
+    "clear-site-data",
+    "cache-control",
+    "surrogate-control",
+    "expires",
+    "age",
+    "date",
+    "vary",
+    "content-type",
+    "content-encoding",
+    "content-length",
+    "content-range",
+    "location",
+    "content-security-policy",
+    "content-security-policy-report-only",
+    "x-content-type-options",
+    "x-frame-options",
+    "referrer-policy",
+    "cross-origin-opener-policy",
+    "strict-transport-security",
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "upgrade",
+    "te",
+    "trailer",
+];
+
+/// Whether `name` starts (`at_end` false) or ends (`true`) with `part`, when the app compiles.
+const fn has(name: &[u8], part: &[u8], at_end: bool) -> bool {
+    if name.len() < part.len() {
+        return false;
+    }
+    let from = if at_end { name.len() - part.len() } else { 0 };
+    let mut i = 0;
+    while i < part.len() {
+        if name[from + i] != part[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// Whether a [`Public`] answer may set the header `name` (lowercase), when the app compiles.
+const fn shared_header(name: &str) -> bool {
+    let name = name.as_bytes();
+    if has(name, b"corten-", false) || has(name, b"access-control-", false) || has(name, b"cache-control", true) {
+        return false;
+    }
+    let mut n = 0;
+    while n < NOT_SHARED.len() {
+        let refused = NOT_SHARED[n].as_bytes();
+        if refused.len() == name.len() && has(name, refused, false) {
+            return false;
+        }
+        n += 1;
+    }
+    true
 }
 
 impl<A: Shareable> IntoResponse for Public<A> {
@@ -843,6 +1006,12 @@ impl<A: Shareable> IntoResponse for Public<A> {
         let mut res = self.answer.into_response();
         if res.status().is_success() || res.status().is_redirection() {
             self.cache.apply(&mut res);
+            if let Some(added) = self.headers {
+                let headers = res.headers_mut();
+                for (name, value) in *added {
+                    headers.append(name, value);
+                }
+            }
         }
         res
     }
@@ -1364,5 +1533,34 @@ where
     #[inline]
     fn call(self, req: Request, state: S) -> Self::Future {
         Marked { inner: self.handler.call(req, state), answer: PhantomData }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_public_answer_takes_the_app_s_headers_and_not_corten_s_or_the_connection_s() {
+        for name in ["x-robots-tag", "link", "content-disposition", "content-language", "etag", "last-modified", "x-cache-tag"] {
+            assert!(super::shared_header(name), "{name}");
+        }
+        for name in [
+            "set-cookie",
+            "cache-control",
+            "cdn-cache-control",
+            "cloudflare-cdn-cache-control",
+            "surrogate-control",
+            "access-control-allow-origin",
+            "corten-mode",
+            "content-type",
+            "location",
+            "content-range",
+            "transfer-encoding",
+            "connection",
+            "te",
+            "age",
+            "clear-site-data",
+        ] {
+            assert!(!super::shared_header(name), "{name}");
+        }
     }
 }
