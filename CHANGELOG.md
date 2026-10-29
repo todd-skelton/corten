@@ -896,6 +896,13 @@ Corten is pre-1.0, so any minor version may change the API.
     Today column uses it. `change`, `percent`, `parse_money` and `relative` join the message keys
     `messages!` refuses at the top level, since they are its methods (`button.change` is fine)
     ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
+126. `Media::attachment(name)` and `Media::inline(name)`: a download names its file on any answer,
+    private ones included (a user's export), where only a `Public` answer could before. The name
+    is written as `filename="cards.csv"` when it is plain ASCII, and otherwise with
+    `filename*=UTF-8''..` (RFC 6266) after a `filename` with `_` for each other character, so a
+    quote, a backslash, a `%` or a line break in a user's file name cannot end the header or
+    add a parameter ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
+    No existing answer changes; naming a file costs one header on that answer.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -935,6 +942,9 @@ Corten is pre-1.0, so any minor version may change the API.
 11. `corten::Query`, and axum's `Path` from the prelude: a route's parameters are its `Params`,
     whether its handler is named in a routes module or added by hand (`Area::route`), and a
     `GET` form's fields its `Form` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
+12. `corten::answer::ContentDisposition`: a download's file name is `Media::attachment` or
+    `Media::inline`, which escape it, and `Public::header` refuses `content-disposition` when
+    the app builds, as it does the answer's other own headers (Added 126).
 
 ### Changed
 
