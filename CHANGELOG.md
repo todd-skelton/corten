@@ -1811,6 +1811,10 @@ Corten is pre-1.0, so any minor version may change the API.
     "More actions" button. The SKU's copy count shows only after the first copy ("Copies: 2"), and
     `/help` explains each part of the form
     ([#333 Polish: ui-gallery reads as a grid of components rather than a listing screen](https://github.com/todd-skelton/corten/issues/333)).
+67. `messages!` with an empty catalog (`{}`, an app that uses `t` only for numbers, money and
+    dates) failed to compile under `#![deny(warnings)]`: its `by_key` had a `match` whose only arm
+    returned, so the line after it was unreachable. A doctest compiles an empty catalog with
+    warnings denied.
 
 ### Documentation
 
@@ -1971,6 +1975,13 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten-target-<folder>`, `corten-msrv-target-<folder>`) instead of one `corten-target` for
     every checkout, where cargo could take one checkout's build for another's and fail to compile
     code that was fine.
+30. The views guide (Text: literals or the catalog) and the design rules say when text is a
+    literal and when it goes through the catalog: an app with one locale writes fixed text as
+    literals and keeps in its catalog only counts, text with arguments and text a script fills;
+    an app with more than one locale writes all of it through the catalog. seller-desk's
+    statement, ui-gallery's activity card and listings-feed's move status, which were the only
+    fixed text those one-locale apps put in their catalogs, are literals now
+    ([#218 Examples write user-facing text two ways: watchlist has a catalog but writes most text as literals](https://github.com/todd-skelton/corten/issues/218)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
