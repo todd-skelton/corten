@@ -3,8 +3,8 @@
 use corten::i18n::RelativeStyle;
 use corten::prelude::*;
 use corten_ui::{
-    Choice, ComboBox, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, RelativeTime, Tab, TabGroup, Toast, Toaster,
-    dialog,
+    Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, RelativeTime, Tab, TabGroup, Toast,
+    Toaster, dialog,
 };
 use std::time::SystemTime;
 
@@ -161,15 +161,19 @@ struct SkuId;
 
 /// The draft's SKU, which a seller copies into their own stock sheet, with a button that copies
 /// it: the SKU is on the page once, and the button shows only where the script can write the
-/// clipboard.
-#[component]
-fn Sku<'a>(sku: &'a str) -> impl Render {
+/// clipboard. The paragraph counts the copies the button reports (`Copied`), as an app counts a
+/// shared link's.
+#[component(js)]
+pub fn Sku<'a>(sku: &'a str) -> impl Render {
+    let copies = refs();
     html! {
-        <p>
+        <p on:Copied={js::counted(event, copies)}>
             "SKU "
             <code id={SkuId}>{sku}</code>
             " "
             <CopyButton text={SkuId} label="Copy" copied="Copied" />
+            " "
+            <output ref={copies} aria-label="Copies">"0"</output>
         </p>
     }
 }

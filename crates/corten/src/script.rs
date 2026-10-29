@@ -229,6 +229,26 @@
 //! # fn main() {}
 //! ```
 //!
+//! A script that imports an event its component's module does not have: the event is served
+//! with the script, so it is the Rust `#[event]` in scope (`stock_grid.js` imports `RowToggled`):
+//!
+//! ```compile_fail,E0425
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn StockGrid() -> impl Render {
+//!     let (row, count) = refs();
+//!     let sel = js::Selection { rows: row, count };
+//!     html! {
+//!         <table>
+//!             <tbody on:click={js::toggle(row.closest(), sel)}><tr ref={row}></tr></tbody>
+//!             <caption><output ref={count}></output></caption>
+//!         </table>
+//!     }
+//! }
+//! # fn main() {}
+//! ```
+//!
 //! A group field on the wrong element (`count` is an `<output>`):
 //!
 //! ```compile_fail
@@ -292,6 +312,9 @@ pub struct Script {
     pub source: &'static str,
     /// The functions it exports, which the markup may call.
     pub handlers: &'static [&'static str],
+    /// The typed events (`#[event]`) it imports from `corten/events` when it runs. They are
+    /// served with it, so an app that lists the script's component has them without listing them.
+    pub events: &'static [crate::Component],
 }
 
 /// A typed DOM event, from [`event`]: its name in the page and its fields, for the class the
