@@ -1720,6 +1720,17 @@ Corten is pre-1.0, so any minor version may change the API.
     hole of the row's view); on a phone the table keeps the name, quantity and price (it stays a
     table, so each cell has its header); and the statement has a total row
     ([#332 Polish: seller-desk does not look like the client-heavy screen it is](https://github.com/todd-skelton/corten/issues/332)).
+60. examples/watchlist signed a visitor in by trusting a `viewer` cookie that held their name, so
+    anyone could set one and be anyone, and signing out only cleared it in that browser. Signing in
+    now starts a session the server keeps, named by a random token in an `HttpOnly` `Secure`
+    cookie; the profile picture is kept in the session, not a cookie of its own; signing out ends
+    the session on the server, and signing in again ends the one the browser had
+    ([#322 watchlist signs a visitor in by trusting a plain viewer cookie, so anyone can set it and act as anyone](https://github.com/todd-skelton/corten/issues/322)).
+61. examples/card-market's item page left the right half of a desktop screen empty: the picture
+    stacked under the title. From 56rem the picture is the left column, beside the title, the
+    tags and the price summary; a phone's one column is unchanged. The page gains two wrapping
+    `<div>`s, 74 bytes of its 11,435
+    ([#330 Polish: card-market's item page leaves the right half empty on desktop](https://github.com/todd-skelton/corten/issues/330)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

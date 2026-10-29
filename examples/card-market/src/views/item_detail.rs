@@ -55,29 +55,40 @@ pub fn ItemDetail<'a>(page: ItemPage<'a>) -> impl Render {
     let summary = (Panel, Summary, gap(Responsive::new(Space::_3).sm(Space::_5)));
     html! {
         <article>
-            <nav class={Crumbs}>for c in &item.categories { <a href={routes::Category { slug: &c.slug }}>{c.name}</a> }</nav>
-            <h1>{item.title}</h1>
-            if let Some(subtitle) = &item.subtitle { <p class={Subtitle}>{subtitle}</p> }
-            <ul class={Chips}>for badge in &item.badges { <li>{badge}</li> }</ul>
-            <div class={Gallery}>
-                for (i, url) in item.images.iter().enumerate() {
-                    <div class={Image} role="img" aria-label={t.item_image(&item.title, i + 1)} data-src={url}></div>
+            // The card, what it is and what it costs: one screen on a desktop, the picture beside
+            // the rest; on a phone one column, in this order.
+            <div class={Top}>
+                <div class={Intro}>
+                    <nav class={Crumbs}>
+                        for c in &item.categories { <a href={routes::Category { slug: &c.slug }}>{c.name}</a> }
+                    </nav>
+                    <h1>{item.title}</h1>
+                    if let Some(subtitle) = &item.subtitle { <p class={Subtitle}>{subtitle}</p> }
+                    <ul class={Chips}>for badge in &item.badges { <li>{badge}</li> }</ul>
+                </div>
+                // An item with no picture has no gallery, and its text takes the width.
+                if !item.images.is_empty() || page.art.is_some() {
+                    <div class={Gallery}>
+                        for (i, url) in item.images.iter().enumerate() {
+                            <div class={Image} role="img" aria-label={t.item_image(&item.title, i + 1)} data-src={url}></div>
+                        }
+                        // The page's main picture: sized, and not deferred.
+                        if let Some(src) = &page.art {
+                            <img class={Art} src={src} width="220" height="308" alt={t.item_art(&item.title)}>
+                        }
+                    </div>
                 }
-                // The page's main picture: sized, and not deferred.
-                if let Some(src) = &page.art {
-                    <img class={Art} src={src} width="220" height="308" alt={t.item_art(&item.title)}>
-                }
-            </div>
-            <section class={summary}>
-                match &item.summary {
-                    Some(s) => {
-                        <span><strong>{s.lowest.as_deref().unwrap_or("—")}</strong>" "{t.item_lowest()}</span>
-                        <span>{t.item_listing_count(s.count)}</span>
-                        <span>{t.item_available(s.quantity)}</span>
+                <section class={summary}>
+                    match &item.summary {
+                        Some(s) => {
+                            <span><strong>{s.lowest.as_deref().unwrap_or("—")}</strong>" "{t.item_lowest()}</span>
+                            <span>{t.item_listing_count(s.count)}</span>
+                            <span>{t.item_available(s.quantity)}</span>
+                        }
+                        None => <span>{t.item_no_listings()}</span>,
                     }
-                    None => <span>{t.item_no_listings()}</span>,
-                }
-            </section>
+                </section>
+            </div>
             <section class={Panel}><ListingSort t={t} listings={&page.listings} /></section>
             <section class={Panel}><OfferList t={t} offers={&item.offers} /></section>
             <section class={Panel}>
