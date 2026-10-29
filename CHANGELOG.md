@@ -855,6 +855,22 @@ Corten is pre-1.0, so any minor version may change the API.
     after a client navigation wherever the markup puts them; a `req.nav` link is still judged
     alone. `corten.js` grows 80 bytes gzip
     ([#341 A nav built from data, or whose current entry is the deepest that holds the page, keeps the first page's aria-current after a client navigation](https://github.com/todd-skelton/corten/issues/341)).
+122. `ReadAgain { after }.without_javascript()` asks only a browser without JavaScript to read the
+    page again: for a page whose changing part a `<corten-live>` relays while a job runs, which
+    with JavaScript keeps itself fresh, and which reading whole would only make open its stream
+    again. It writes the `<noscript>` refresh without the mark the runtime reads; the runtime
+    is unchanged
+    ([#319 A page relayed by <corten-live> cannot ask a browser without JavaScript to read it again](https://github.com/todd-skelton/corten/issues/319)).
+123. A script that imports another script module of its directory (`import { loadStripe } from
+     "./stripe.js"`) has it preloaded on the pages that load it, with what that one imports, so the
+     browser fetches them together instead of one round trip after the other. The tag is made
+     when the app starts, so a page costs nothing more to render: one import over a 100 ms
+     round trip ran at 245 ms instead of 342 (Chromium, median of 10 cold loads, a local server
+     delaying each answer 100 ms). An import of a module the app does not list is a startup
+     error that names both (it was a 404 in the browser). The preload helps a full page load; a
+     client navigation still fetches a new module's imports after it. The scripts guide describes
+     relative imports
+     ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1680,7 +1696,37 @@ Corten is pre-1.0, so any minor version may change the API.
 58. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
     Under load, a slow read used to add real seconds, and "each second" failed
     ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
-59. A nav link a patch put on the page kept the `aria-current` the server wrote, judged against
+59. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
+    headers show they sort and which way (`aria-sort`); the rows scroll inside the grid under a
+    header that stays, with the item count above them (an archive's answer replaces it, and while
+    the filter is on it says how many rows it shows of how many, kept true as an archive removes
+    rows); a row at quantity 0 is marked sold out, kept current by the live levels (a `sold_out`
+    hole of the row's view); on a phone the table keeps the name, quantity and price (it stays a
+    table, so each cell has its header); and the statement has a total row
+    ([#332 Polish: seller-desk does not look like the client-heavy screen it is](https://github.com/todd-skelton/corten/issues/332)).
+60. examples/watchlist signed a visitor in by trusting a `viewer` cookie that held their name, so
+    anyone could set one and be anyone, and signing out only cleared it in that browser. Signing in
+    now starts a session the server keeps, named by a random token in an `HttpOnly` `Secure`
+    cookie; the profile picture is kept in the session, not a cookie of its own; signing out ends
+    the session on the server, and signing in again ends the one the browser had
+    ([#322 watchlist signs a visitor in by trusting a plain viewer cookie, so anyone can set it and act as anyone](https://github.com/todd-skelton/corten/issues/322)).
+61. examples/card-market's item page left the right half of a desktop screen empty: the picture
+    stacked under the title. From 56rem the picture is the left column, beside the title, the
+    tags and the price summary; a phone's one column is unchanged. The page gains two wrapping
+    `<div>`s, 74 bytes of its 11,435
+    ([#330 Polish: card-market's item page leaves the right half empty on desktop](https://github.com/todd-skelton/corten/issues/330)).
+62. CI's Firefox stalled now and then in the watchlist smoke ("still loading: nothing"), at a
+    different step each time, and once lost a page's script context in the ui-gallery Copy check.
+    The likely cause is Playwright 1.60's Firefox driver, which could lose the commit of a new
+    page's first navigation to a document sent with `Cross-Origin-Opener-Policy: same-origin`, as
+    Corten's pages are by default ([microsoft/playwright#42731 Firefox page.goto never resolves on the first navigation to a page with COOP same-origin](https://github.com/microsoft/playwright/issues/42731),
+    fixed in its Firefox build 1551); the race did not reproduce locally. The tooling is on
+    Playwright 1.64.1 (Firefox build 1555), and CI's browser image follows it; Firefox still
+    applies COOP. Its WebKit 27.2 logs a CSP refusal for the style it sets inside every `<select>`
+    (WebKit bug 327212); in that WebKit the smokes set that line aside and report every other CSP
+    violation from the page's `securitypolicyviolation` events instead (`scripts/browser-bugs.mjs`)
+    ([#350 CI's Firefox stalls after the early form check, closing a page whose route is still registered](https://github.com/todd-skelton/corten/issues/350)).
+63. A nav link a patch put on the page kept the `aria-current` the server wrote, judged against
     the request that made the patch (a form's action, a `ReadAgain`'s `data-from`) rather than
     the page. The runtime now marks nav links after a patch that puts one on the page or removes
     one, as after a navigation; a patch without one (a ticker's) only looks through the elements it

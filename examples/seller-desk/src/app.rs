@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     text::{Msg, USD},
-    views::{self, Line, PriceCell, RowId, StatementTable, StatusLine},
+    views::{self, ItemCount, Line, PriceCell, RowId, StatementTable, StatusLine},
 };
 
 /// An item a seller lists.
@@ -314,12 +314,14 @@ pub struct ArchiveInput {
 
 async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveInput>) -> HtmlResult {
     // Checked and recorded under one lock, so two copies of a submit cannot both apply.
-    let done = {
+    // The count left is taken under the same locks, so of two archives the one counted later
+    // is the one that archived later.
+    let (done, left) = {
         let mut archived = desk.archived.lock().expect("archived");
-        match archived.get(input.submit.as_str()) {
+        let mut items = desk.items.lock().expect("items");
+        let done = match archived.get(input.submit.as_str()) {
             Some(done) => done.clone(),
             None => {
-                let mut items = desk.items.lock().expect("items");
                 let mut done = Vec::new();
                 for item in items.iter_mut().filter(|i| input.ids.contains(&i.id) && !i.archived) {
                     item.archived = true;
@@ -328,11 +330,14 @@ async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveIn
                 archived.insert(input.submit.as_str().to_string(), done.clone());
                 done
             }
-        }
+        };
+        (done, items.iter().filter(|i| !i.archived).count())
     };
+    let t = req.t();
     // A view renders only when it is sent, so the redirect does not format the status.
     let removed = html! {
         for id in &done { {Remove(RowId(id))} }
+        <ItemCount t={t} count={left} />
         <StatusLine text={&format!("Archived {} item{}.", done.len(), if done.len() == 1 { "" } else { "s" })} />
     };
     req.patch_or(removed, || async { req.redirect(&url::Home) }).await
@@ -514,14 +519,15 @@ mod tests {
         assert!(html.contains("/scripts/inventory_grid.js\">") && html.contains("/scripts/price_cell.js\">"), "{html}");
         let sel = "{body:@body,all:@all,count:@count,bar:@bar}";
         assert!(
-            html.contains(&format!(r#"data-on="click:inventory_grid.toggle($e,^select,{sel})""#)),
+            html.contains(&format!(r#" click:inventory_grid.toggle($e,^select,{sel})">"#))
+                && html.matches("inventory_grid.toggle(").count() == 1,
             "one handler for every row: {html}"
         );
         assert!(html.contains(r#"<tr data-key="i00003" id="row-i00003"><td><input data-ref="select""#), "{html}");
         assert!(html.contains(r#"data-on="connect:inventory_grid.live(@body,"#), "{html}");
-        let unsent = r#"{note:@note,one:%[&quot;&quot;,&quot;count&quot;,&quot; price not saved&quot;],other:%[&quot;&quot;,&quot;count&quot;,&quot; prices not saved&quot;]}"#;
+        let unsent = r#"{note:@note,one:%[&quot;&quot;,&quot;count&quot;,&quot; price not saved&quot;],other:%[&quot;&quot;,&quot;count&quot;,&quot; prices not saved&quot;],number:"#;
         assert!(
-            html.contains(&format!("inventory_grid.priceEdited($e,@body,{unsent})")),
+            html.contains(&format!("inventory_grid.priceEdited($e,@body,{unsent}")),
             "a cell's typed event reaches the grid, with the catalog's words for the note: {html}"
         );
         assert!(
@@ -580,10 +586,24 @@ mod tests {
         let (status, headers, html) = send_full(&desk, Request::get("/statement").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(headers["cache-control"], "no-store");
-        assert!(html.contains("<td>Hollow Crown</td><td>3</td><td>$"), "the stock value in the locale's money format: {html}");
-        let (_, headers, _) = send_full(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(
+            html.contains(r#"<th scope="row">Hollow Crown</th><td>3</td><td>$"#),
+            "the stock value in the locale's money format: {html}"
+        );
+        assert!(html.contains(r#"<tfoot><tr><th scope="row">Total</th><td>10</td><td>$"#), "a total of every set: {html}");
+        let (_, headers, home) = send_full(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(home.contains(r#"<p id="item-count""#) && home.contains(">10 items</p>"), "the grid's count: {home}");
         let timing = headers["server-timing"].to_str().unwrap();
         assert!(timing.starts_with("app;dur="), "{timing}");
+    }
+
+    #[test]
+    fn a_row_at_quantity_zero_is_marked_sold_out() {
+        let desk = Desk::new(2);
+        let items = desk.items.lock().unwrap().clone();
+        let html = |qty| views::desk(&[Line { item: &items[0], qty }], Msg::default()).to_html();
+        assert!(html(0).contains("data-sold-out"), "{}", html(0));
+        assert!(!html(3).contains("data-sold-out"), "{}", html(3));
     }
 
     /// Server cost of the desk at a realistic size: `cargo test -p seller-desk --release -- --ignored --nocapture`.
