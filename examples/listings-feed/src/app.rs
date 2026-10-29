@@ -199,10 +199,10 @@ async fn move_market(
 ) -> HtmlResult {
     let roll = market.writes.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ listing::now();
     let written = write_market(&pool, &market, &at.seller, 5, roll, Some(input.submit.as_str())).await.map_err(unavailable)?;
-    let t: Msg = req.t();
-    req.patch_or(html! { <MoveStatus text={t.listings_moved()} /> }, || async {
-        req.redirect(&url::Seller { seller: &at.seller, after: written.seq })
-    })
+    req.patch_or(
+        html! { <MoveStatus text="Market lows moved. The rows change when the feed brings the change, on every instance." /> },
+        || async { req.redirect(&url::Seller { seller: &at.seller, after: written.seq }) },
+    )
     .await
 }
 

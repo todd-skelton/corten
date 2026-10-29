@@ -209,7 +209,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             arms.extend(q("_ => __A0,", &[pieces_for(default)]));
             q("match self.0 __A0", &[stream([TokenTree::Group(Group::new(Delimiter::Brace, arms))])])
         };
-        key_arms.extend(q("__A0 => __A1,", &[string(key).into(), pieces]));
+        key_arms.extend(q("__A0 => ::core::option::Option::Some(__A1),", &[string(key).into(), pieces]));
         let body_for = |locale: &Locale| -> TokenStream {
             let parts = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1;
             if args.is_empty() {
@@ -388,8 +388,11 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             key: &str,
             args: &'__corten_a __CortenArgs,
         ) -> ::core::option::Option<::corten::i18n::Found<'__corten_a, __CortenArgs>> {
-            let pieces: &'static [::corten::i18n::__private::Piece] = match key { __A1 _ => return ::core::option::Option::None };
-            ::corten::i18n::Found::new(pieces, args)
+            // An expression, not a `return` in the match: a catalog with no messages has only the
+            // last arm, and code after a match whose every arm returns would be unreachable.
+            let pieces: ::core::option::Option<&'static [::corten::i18n::__private::Piece]> =
+                match key { __A1 _ => ::core::option::Option::None };
+            ::corten::i18n::Found::new(pieces?, args)
         }",
         &[vis.clone(), key_arms],
     ));
