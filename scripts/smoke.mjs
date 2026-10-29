@@ -1663,10 +1663,10 @@ async function run(browser) {
   );
   const plainSent = forms.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/watch", { timeout: 5000 }).catch(() => null);
   await forms.click("#patch-plain button");
-  const plain = await plainSent;
-  const plainBody = plain?.postData() ?? "";
-  const plainType = plain?.headers()["content-type"] ?? "";
-  const plainBy = plain?.headers()["corten"] ?? "the browser";
+  const plainRequest = await plainSent;
+  const plainBody = plainRequest?.postData() ?? "";
+  const plainType = plainRequest?.headers()["content-type"] ?? "";
+  const plainBy = plainRequest?.headers()["corten"] ?? "the browser";
   check("a text/plain data-patch form sends text/plain", plainBody === "id=ACME\r\nn=a b&c\r\n" && plainType === "text/plain" && plainBy === "action", `${JSON.stringify(plainBody)} ${plainType} by ${plainBy}`);
   if (engine !== "webkit" && (await forms.evaluate(() => "navigation" in window))) {
     // A submit input outside its form (form=), and a form sent with no button.
