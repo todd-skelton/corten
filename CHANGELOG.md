@@ -1709,7 +1709,9 @@ Corten is pre-1.0, so any minor version may change the API.
     Playwright 1.60's Firefox driver could lose the commit of a new page's first navigation to a
     document sent with `Cross-Origin-Opener-Policy: same-origin`, which every Corten page is
     (microsoft/playwright#42731, fixed in its Firefox build 1551). The tooling is on Playwright
-    1.64.1 (Firefox build 1555), and CI's browser image follows it; Firefox still applies COOP
+    1.64.1 (Firefox build 1555), and CI's browser image follows it; Firefox still applies COOP.
+    Its WebKit 27.2 logs a CSP refusal for the style it sets inside every `<select>` (WebKit bug
+    327212); the smokes set that one line aside in WebKit 27 only (`scripts/browser-bugs.mjs`)
     ([#350 CI's Firefox stalls after the early form check, closing a page whose route is still registered](https://github.com/todd-skelton/corten/issues/350)).
 ### Documentation
 

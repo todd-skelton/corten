@@ -5,6 +5,7 @@ import { chromium, firefox, webkit } from "@playwright/test";
 import http from "node:http";
 import zlib from "node:zlib";
 import { stall } from "./stall.mjs";
+import { browserBug } from "./browser-bugs.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18480";
 const engines = { chromium, firefox, webkit };
@@ -134,13 +135,15 @@ process.exit(failures.length ? 1 : 0);
 
 /** @param {import("@playwright/test").Browser} browser */
 async function run(browser) {
+  // A console error the browser logs for its own bug (scripts/browser-bugs.mjs) is not the page's.
+  const bug = browserBug(browser);
   const page = await browser.newPage();
   const errors = [];
   // Firefox logs an open stream that a full page load cuts (data-reload, an error page, a section
   // stylesheet that failed), and the stream the status check drops on purpose, as an error, in one
   // of two wordings.
   const cut = /was interrupted while the page was loading|can.t establish a connection to the server at \S+\/live\/(trades|flaky)/;
-  page.on("console", (m) => m.type() === "error" && !cut.test(m.text()) && errors.push(m.text()));
+  page.on("console", (m) => m.type() === "error" && !bug(m.text()) && !cut.test(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
   // Every EventSource the page opens, to see which are still open.
   await page.addInitScript(() => {
@@ -679,7 +682,7 @@ async function run(browser) {
   {
     const away = await browser.newPage();
     const awayErrors = [];
-    away.on("console", (m) => m.type() === "error" && awayErrors.push(m.text()));
+    away.on("console", (m) => m.type() === "error" && !bug(m.text()) && awayErrors.push(m.text()));
     await away.route("https://news.example.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Elsewhere</title>" }));
     let asked = 0;
     away.on("request", (r) => new URL(r.url()).pathname === "/news/acme-outlook/read" && asked++);
