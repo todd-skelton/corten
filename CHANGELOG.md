@@ -1710,7 +1710,12 @@ Corten is pre-1.0, so any minor version may change the API.
     cookie; the profile picture is kept in the session, not a cookie of its own; signing out ends
     the session on the server, and signing in again ends the one the browser had
     ([#322 watchlist signs a visitor in by trusting a plain viewer cookie, so anyone can set it and act as anyone](https://github.com/todd-skelton/corten/issues/322)).
-61. CI's Firefox stalled now and then in the watchlist smoke ("still loading: nothing"), at a
+61. examples/card-market's item page left the right half of a desktop screen empty: the picture
+    stacked under the title. From 56rem the picture is the left column, beside the title, the
+    tags and the price summary; a phone's one column is unchanged. The page gains two wrapping
+    `<div>`s, 74 bytes of its 11,435
+    ([#330 Polish: card-market's item page leaves the right half empty on desktop](https://github.com/todd-skelton/corten/issues/330)).
+62. CI's Firefox stalled now and then in the watchlist smoke ("still loading: nothing"), at a
     different step each time, and once lost a page's script context in the ui-gallery Copy check.
     The likely cause is Playwright 1.60's Firefox driver, which could lose the commit of a new
     page's first navigation to a document sent with `Cross-Origin-Opener-Policy: same-origin`, as
