@@ -1,6 +1,6 @@
 use corten::prelude::*;
 
-use crate::{model::AlertInput, routes, text::Msg};
+use crate::{items, model::AlertInput, text::Msg};
 
 /// The price-alert form's values and errors. The item page shows the form; a submit that fails
 /// validation patches it on its own. Field names come from `AlertInput::FIELDS`.
@@ -27,7 +27,7 @@ pub fn AlertForm<'a>(t: Msg, form: AlertFormView<'a>) -> impl Patch {
     let e = form.errors.within(AlertFormId);
     html! {
         <div class={Form} id={AlertFormId}>
-            <form method="post" action={routes::Item { id: form.id }} data-patch>
+            <form method="post" action={items::Item { id: form.id }} data-patch>
                 {form.errors.form_message()}
                 <input type="hidden" name={f.title} value={form.title}>
                 <label>

@@ -4,8 +4,8 @@
 //! cached by CDNs (`Public`), an item as JSON for other services and the price-alert
 //! action as an MCP tool for agents, both mounted as JSON-only routes (`App::api`). Partners'
 //! services set alerts with an API key (`Caller<Partner>`), and writes are limited per client
-//! address by a middleware of the app's (`WriteLimit`, `ClientIp`; `PROXIES` behind a load
-//! balancer).
+//! address by a middleware on the routes that take them, the item pages' area and the partner
+//! API (`WriteLimit`, `ClientIp`; `PROXIES` behind a load balancer).
 use std::{
     collections::HashMap,
     net::IpAddr,
@@ -17,8 +17,8 @@ use corten::{
     ClientIp, Error, ForAll, HtmlResponse,
     agent::{ToolError, Tools},
     axum::{
-        extract::{FromRequestParts, Request},
-        http::{HeaderMap, HeaderValue, Method, StatusCode, header, request::Parts},
+        extract::Request,
+        http::{HeaderMap, Method, StatusCode, request::Parts},
         response::{IntoResponse, Response},
     },
     i18n::Minor,
@@ -31,7 +31,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    api, mcp,
+    api, items, mcp,
     model::{AlertInput, ItemView, alert_set, check_alert},
     routes,
     source::Source,
@@ -40,7 +40,7 @@ use crate::{
 };
 
 /// The app, assembled: routes plus the error page, catalogs and PWA settings. Corten adds the rest.
-pub fn app(source: Source) -> App<WriteLimit> {
+pub fn app(source: Source) -> App {
     let writes = match std::env::var("WRITES_PER_MINUTE") {
         Ok(n) => n.trim().parse().ok().filter(|&n| n > 0).expect("WRITES_PER_MINUTE is a whole number above zero"),
         Err(_) => WRITES_PER_MINUTE,
@@ -57,10 +57,10 @@ struct Keys<'a> {
 }
 
 /// The app with the keys and the writes a minute given, for tests.
-fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
+fn app_with(source: Source, keys: Keys, writes: u32) -> App {
     let Keys { partners, agents } = keys;
     let tokens: Arc<[String]> = agents.split(',').map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).collect();
-    let limit = WriteLimit::new(writes, partners.clone());
+    let limit = WriteLimit::new(Counts::new(writes, partners.clone()));
     let manifest = Manifest::new("Card Market", "Cards")
         .description("Buy and sell trading cards")
         .theme_color("#14213d")
@@ -75,8 +75,9 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
     let policy = if std::env::var_os("HTTPS").is_some() { Policy::new().hsts() } else { Policy::new() };
     let ready = source.clone();
     App::new(routes::router(source.clone()))
+        .area(|area| items::area(area, source.clone()).middleware(limit.clone()))
         .assets(crate::views::Static)
-        .api(|routes| api::api(routes, ApiState { source, partners }))
+        .api(|routes| api::api(routes, ApiState { source, partners }).middleware(limit.for_partners()))
         .api(|routes| {
             let routes = mcp::api(routes).route::<mcp::Mcp>(tools).errors(rpc_failure);
             origins.split(',').filter(|o| !o.is_empty()).fold(routes, |routes, origin| routes.allow_origin(origin))
@@ -93,7 +94,6 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
             let source = ready.clone();
             async move { source.reachable().await }
         })
-        .middleware(limit)
 }
 
 /// What the JSON routes share: the items, and the partners that may set alerts.
@@ -154,16 +154,37 @@ const PARTNER_WRITES_PER_MINUTE: u32 = 600;
 /// limits at its edge (a CDN or load balancer) as well.
 const ADDRESSES: usize = 100_000;
 
-/// About `limit` writes a minute from one client: a form's post, or an alert with a key no
-/// partner has. A client is its address (`ClientIp`: behind a load balancer, the one it
-/// forwards, with `PROXIES` set), an IPv6 one by its /64, the block one host is given. A
-/// partner's alerts are counted by the partner instead, whatever address its servers send from
-/// (`PARTNER_WRITES_PER_MINUTE`). The count starts again each minute, so a burst across the
-/// turn of a minute can reach twice the limit. A write past it is a 429 with `Retry-After`: the
-/// error page for a browser, JSON for a partner. Reads pass straight through, so a page a CDN
-/// keeps stays public; agents (`/mcp`, all POST, reads included) answer to their token instead;
-/// and a request whose address cannot be known (a test without one) is not counted.
+/// About `limit` writes a minute from one client, on the routes it is given to (the item pages'
+/// area and the partner API): a form's post, or an alert with a key no partner has. A client is
+/// its address (`ClientIp`: behind a load balancer, the one it forwards, with `PROXIES` set), an
+/// IPv6 one by its /64, the block one host is given. On the partner API
+/// (`for_partners`) a partner's alerts are counted by the partner instead, whatever address its
+/// servers send from (`PARTNER_WRITES_PER_MINUTE`). Both share one count. A write past it is
+/// refused with `Refused::too_many`: a 429 with `Retry-After`, the error page for a browser and
+/// JSON for a partner. Reads pass straight through, so a page a CDN keeps stays public; agents
+/// (`/mcp`) answer to their token and are not given it; and a request whose address cannot be
+/// known (a test without one) is not counted.
+#[derive(Clone)]
 pub struct WriteLimit {
+    counts: Arc<Counts>,
+    /// Whether a partner's key counts the write as the partner's (on the partner API).
+    partners: bool,
+}
+
+impl WriteLimit {
+    fn new(counts: Counts) -> Self {
+        WriteLimit { counts: Arc::new(counts), partners: false }
+    }
+
+    /// The same count, where a partner's write is the partner's.
+    fn for_partners(&self) -> Self {
+        WriteLimit { counts: self.counts.clone(), partners: true }
+    }
+}
+
+/// The writes of every client this minute. The count starts again each minute, so a burst across
+/// the turn of a minute can reach twice the limit.
+pub struct Counts {
     limit: u32,
     partners: Partners,
     /// Clients counted at most in a minute ([`ADDRESSES`]).
@@ -194,10 +215,10 @@ impl Client {
     }
 }
 
-impl WriteLimit {
+impl Counts {
     fn new(limit: u32, partners: Partners) -> Self {
         let minute = Mutex::new(Minute { started: Instant::now(), writes: HashMap::new() });
-        WriteLimit { limit, partners, clients: ADDRESSES, minute }
+        Counts { limit, partners, clients: ADDRESSES, minute }
     }
 
     /// Counts a write from `client`: `None` when it may go ahead, else the seconds until it may.
@@ -228,26 +249,19 @@ impl WriteLimit {
 }
 
 impl Middleware for WriteLimit {
-    async fn call(&self, req: Request, next: impl Next) -> Response {
-        if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) || req.uri().path() == mcp::Mcp::PATH {
+    async fn call(&self, mut req: Request, next: impl Next) -> Response {
+        if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
             return next.run(req).await;
         }
-        let (mut parts, body) = req.into_parts();
-        let partner = (parts.uri.path() == api::AlertsJson::PATH).then(|| self.partners.named(&parts.headers)).flatten();
+        let partner = if self.partners { self.counts.partners.named(req.headers()).cloned() } else { None };
         let client = match partner {
-            Some(name) => Some(Client::Partner(name.clone())),
-            None => Option::<ClientIp>::from_request_parts(&mut parts, &())
-                .await
-                .ok()
-                .flatten()
-                .map(|ClientIp(ip)| Client::address(ip)),
+            Some(name) => Some(Client::Partner(name)),
+            None => ClientIp::of(&mut req).map(|ClientIp(ip)| Client::address(ip)),
         };
-        if let Some(wait) = client.and_then(|client| self.count(client, Instant::now())) {
-            let mut res = Error::status(StatusCode::TOO_MANY_REQUESTS).into_response();
-            res.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from(wait));
-            return res;
+        if let Some(wait) = client.and_then(|client| self.counts.count(client, Instant::now())) {
+            return Refused::too_many(Duration::from_secs(wait)).into_response();
         }
-        next.run(Request::from_parts(parts, body)).await
+        next.run(req).await
     }
 }
 
@@ -260,7 +274,7 @@ pub(crate) async fn robots() -> Public<seo::File> {
 }
 
 pub(crate) async fn sitemap() -> Public<seo::File> {
-    let urls: Vec<String> = (1..=50).map(|n| format!("{SITE}{}", routes::Item { id: &format!("item_{n}") })).collect();
+    let urls: Vec<String> = (1..=50).map(|n| format!("{SITE}{}", items::Item { id: &format!("item_{n}") })).collect();
     seo::sitemap(urls.iter().map(|loc| SitemapUrl { loc, lastmod: None }))
 }
 
@@ -337,10 +351,10 @@ pub(crate) async fn category(
 
 /// The item's old address, moved for good.
 pub(crate) async fn old_item(req: Req, Params(old): Params<routes::OldItem<'_>>) -> HtmlResult {
-    req.moved(&routes::Item { id: &old.id })
+    req.moved(&items::Item { id: &old.id })
 }
 
-pub(crate) async fn show(req: Req, State(source): State<Source>, Params(at): Params<routes::Item<'_>>) -> HtmlResult {
+pub(crate) async fn show(req: Req, State(source): State<Source>, Params(at): Params<items::Item<'_>>) -> HtmlResult {
     let item = source.item(&at.id).await?.ok_or_else(Error::not_found)?;
     req.page(ItemPage::new(req.t(), &item, String::new()).document(&req))
 }
@@ -367,7 +381,7 @@ pub(crate) async fn alert_json(
 pub(crate) async fn create_alert(
     req: Req,
     State(source): State<Source>,
-    Params(at): Params<routes::Item<'_>>,
+    Params(at): Params<items::Item<'_>>,
     Form(form): Form<AlertInput>,
 ) -> HtmlResult {
     let (t, id) = (req.t(), at.id);
@@ -1146,7 +1160,7 @@ mod tests {
         for _ in 0..3 {
             assert_eq!(one.clone().oneshot(write()).await.unwrap().status(), StatusCode::NOT_FOUND, "past the address's 1");
         }
-        let limit = WriteLimit::new(1, Partners::parse("dev=dev-key"));
+        let limit = Counts::new(1, Partners::parse("dev=dev-key"));
         let now = Instant::now();
         for _ in 0..PARTNER_WRITES_PER_MINUTE {
             assert_eq!(limit.count(Client::Partner("dev".into()), now), None);
@@ -1170,7 +1184,7 @@ mod tests {
 
     #[test]
     fn a_new_minute_starts_the_count_again() {
-        let limit = WriteLimit::new(2, Partners::parse(""));
+        let limit = Counts::new(2, Partners::parse(""));
         let start = Instant::now();
         let ip = || address("198.51.100.1");
         assert_eq!((limit.count(ip(), start), limit.count(ip(), start)), (None, None));
@@ -1181,7 +1195,7 @@ mod tests {
 
     #[test]
     fn past_the_cap_a_new_client_waits_for_the_next_minute_and_counted_ones_do_not() {
-        let limit = WriteLimit { clients: 2, ..WriteLimit::new(5, Partners::parse("")) };
+        let limit = Counts { clients: 2, ..Counts::new(5, Partners::parse("")) };
         let (start, ip) = (Instant::now(), |n: u8| Client::address(IpAddr::from([198, 51, 100, n])));
         assert_eq!((limit.count(ip(1), start), limit.count(ip(2), start)), (None, None));
         assert_eq!(limit.count(ip(3), start + Duration::from_secs(20)), Some(40), "a third client waits");
@@ -1192,7 +1206,7 @@ mod tests {
 
     #[test]
     fn an_ipv6_client_is_counted_by_its_64() {
-        let limit = WriteLimit::new(1, Partners::parse(""));
+        let limit = Counts::new(1, Partners::parse(""));
         let now = Instant::now();
         assert_eq!(limit.count(address("2001:db8:1:2::1"), now), None);
         assert!(limit.count(address("2001:db8:1:2:ffff::9"), now).is_some(), "the same /64 is the same client");

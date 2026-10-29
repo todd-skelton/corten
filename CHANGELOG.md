@@ -871,7 +871,23 @@ Corten is pre-1.0, so any minor version may change the API.
      client navigation still fetches a new module's imports after it. The scripts guide describes
      relative imports
      ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
-124. `t.change(ratio, digits)` and `t.js().change(digits)`: a ratio as a change (a price's move
+124. Middleware for part of the app: `Area::middleware` and `Api::middleware` run after the
+     app's middleware for each request at the area's or API's prefix (an outer area's before an
+     inner one's, then an API's under it, each in the order given), so a rate limit picks its
+     routes by where they are, never by a path the middleware compares. A middleware refuses with
+     a `Refused` (`Refused::too_many(wait).into_response()`), answered in the request's mode as a
+     `Caller`'s refusal is, `Retry-After` included, and the default error page says "Too many
+     requests" for a 429. It reads the client's address with `ClientIp::of(&mut req)` without
+     splitting the request. card-market's write limit is now on its item pages' area and its
+     partner API, with no path checks
+     ([#327 Middleware is app-wide only, so card-market's write limit picks its routes by comparing paths and builds its 429 by hand](https://github.com/todd-skelton/corten/issues/327)).
+     Measured per request (callgrind, release profile, 5 runs): an app whose areas and APIs have
+     none runs 19,976 to 19,988 instructions against main's 19,696, all of it in glibc's
+     allocator: the allocations are the same (count and sizes, DHAT) and Corten's own code is
+     within 18 (13,971 against 13,953). A request in an area with a pass-through middleware runs
+     21,374 to 21,511 against 20,497 to 20,646 with none (one boxed future), and one outside it
+     19,909 to 19,913.
+125. `t.change(ratio, digits)` and `t.js().change(digits)`: a ratio as a change (a price's move
     today), with exactly `digits` fraction digits and a sign on a gain as on a loss, none on what
     rounds to zero (`+0.60%`, `-0.30%`, `0.00%`; `+0,60 %` in fr, `+%0,60` in tr), as Intl's
     `signDisplay: "exceptZero"` writes it, so a column of them lines up. Each locale's data gains
