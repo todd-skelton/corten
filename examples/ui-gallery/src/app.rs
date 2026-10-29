@@ -118,7 +118,8 @@ async fn home(req: Req, Params(q): Params<url::Home<'_>>) -> HtmlResult {
 
 #[derive(Deserialize, Fields)]
 pub struct SellForm {
-    pub qty: f64,
+    /// A count: a fraction does not read, and the browser's `step` stops one before it is sent.
+    pub qty: u32,
     /// Money as the reader typed it, read by `t.parse_money`: a refused entry is shown back as is.
     pub price: String,
     pub weight: f64,

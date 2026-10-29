@@ -1766,9 +1766,10 @@ Corten is pre-1.0, so any minor version may change the API.
 27. `corten_ui::NumberField` says it is for counts and measures (a quantity, a weight), not
     money, and the UI guide says a price is a text input with `inputmode="decimal"` read by
     `t.parse_money`: a number input takes only the browser's decimal syntax, and its value is an
-    `f64`. ui-gallery's price and lowest offer are such inputs now, read as money, and its second
-    number field is the shipping weight
-    ([#286 corten-ui's NumberField cannot show back a refused entry or take a price in the reader's locale](https://github.com/todd-skelton/corten/issues/286)).
+    `f64`. ui-gallery's price and lowest offer are such inputs now, read as money and written
+    with `t.money`, its quantity is a `u32`, and its second number field is the shipping weight
+    ([#286 corten-ui's NumberField cannot show back a refused entry or take a price in the reader's locale](https://github.com/todd-skelton/corten/issues/286),
+    [#325 ui-gallery reads the listing's quantity and price as f64 and writes money with format!](https://github.com/todd-skelton/corten/issues/325)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
