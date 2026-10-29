@@ -130,13 +130,16 @@ impl Detail {
 /// else (more than two decimals, a sign, an exponent) is `None`, and the page shows the text.
 pub fn cents(amount: &str) -> Option<u64> {
     let (whole, frac) = amount.split_once('.').unwrap_or((amount, ""));
-    if whole.is_empty() || frac.len() > 2 || !whole.bytes().chain(frac.bytes()).all(|b| b.is_ascii_digit()) {
+    if whole.is_empty() || frac.len() > 2 {
         return None;
     }
-    let mut cents = whole.parse::<u64>().ok()?.checked_mul(100)?;
-    if !frac.is_empty() {
-        let part: u64 = frac.parse().ok()?;
-        cents = cents.checked_add(if frac.len() == 1 { part * 10 } else { part })?;
+    // The digits, then zeros to two places: "4.5" is 4, 5, 0.
+    let mut cents: u64 = 0;
+    for b in whole.bytes().chain(frac.bytes()).chain(std::iter::repeat_n(b'0', 2 - frac.len())) {
+        if !b.is_ascii_digit() {
+            return None;
+        }
+        cents = cents.checked_mul(10)?.checked_add(u64::from(b - b'0'))?;
     }
     Some(cents)
 }
