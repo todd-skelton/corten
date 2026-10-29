@@ -777,6 +777,14 @@ Corten is pre-1.0, so any minor version may change the API.
     beside the script so it adds a request but no round trip (276 bytes, 176 with brotli, in
     ui-gallery)
     ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
+114. A time relative to now: `t.relative(at, now, RelativeStyle)` writes "in 10 hours" or "3 hr.
+    ago" in the request's locale (each locale's plural forms and words from CLDR, checked against
+    Intl), and `corten_ui::RelativeTime` keeps it current in the browser on one timer for the
+    page, so a live stream no longer redraws every second or resends its part each minute to move
+    a countdown. Each locale an app lists adds about 2.3 KB of pointers and 0.4 to 3 KB of text;
+    the script is 1.8 KB brotli (5.3 KB as written; component scripts are not minified), on pages
+    that use it
+    ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
