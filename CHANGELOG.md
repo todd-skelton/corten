@@ -1626,7 +1626,11 @@ Corten is pre-1.0, so any minor version may change the API.
     connection went idle at, so it failed under load when the clock's thread lagged. It now checks
     what the clock promises, and expiry itself is unchanged
     ([#279 watch test: an idle connection can expire early when the clock's thread lags, and the test fails under load](https://github.com/todd-skelton/corten/issues/279)).
-
+53. A patch that took the focused element away (a row removed, or the last row of a list drawn
+    again without it) left focus on the body, so a keyboard or screen reader user was sent to the
+    top of the document. Focus now goes to the nearest element around it that is still on the
+    page, focusable only for the move; so does focus on an element patched into one that cannot
+    take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
