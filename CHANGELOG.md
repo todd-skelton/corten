@@ -1871,7 +1871,7 @@ Corten is pre-1.0, so any minor version may change the API.
     with `t.money`, its quantity is a `u32`, and its second number field is the shipping weight
     ([#286 corten-ui's NumberField cannot show back a refused entry or take a price in the reader's locale](https://github.com/todd-skelton/corten/issues/286),
     [#325 ui-gallery reads the listing's quantity and price as f64 and writes money with format!](https://github.com/todd-skelton/corten/issues/325)).
-61. examples/watchlist's header wrapped to two rows on a phone, and its alerts page used the left
+62. examples/watchlist's header wrapped to two rows on a phone, and its alerts page used the left
     half of a desktop screen. The header is one row at 390 px: the viewer's name (and picture) is
     the link to their account, where the Account link was, and a visitor has a shorter "Sign in"
     button in its place. The alerts form and list sit side by side from 48rem
