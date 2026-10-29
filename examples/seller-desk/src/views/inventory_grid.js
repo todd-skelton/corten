@@ -6,7 +6,7 @@
 // grid keeps only the last clicked row, for shift-click ranges.
 import { keep, subscribe } from "corten";
 import { InventoryRow, rows } from "corten/views";
-/** @import { Message } from "corten" */
+/** @import { Message, NumberFormat } from "corten" */
 /** @import { Holds } from "corten/views" */
 /** @import { PriceEdited } from "corten/events" */
 
@@ -24,21 +24,24 @@ import { InventoryRow, rows } from "corten/views";
 
 /**
  * The note that counts prices typed and not saved, and its text in the page's locale: one
- * message per plural form. The markup builds it once, `js::Unsent { note, one, other }`.
+ * message per plural form, and its numbers in the page's format. The markup builds it once,
+ * `js::Unsent { note, one, other, number }`.
  * @typedef {object} Unsent
  * @property {HTMLOutputElement} note
  * @property {Message<"count">} one
  * @property {Message<"count">} other
+ * @property {NumberFormat} number
  */
 
 /**
  * What the filter updates: the note for no match, and how many rows it shows of how many there
- * are, in the catalog's words (the item count steps aside while it shows). The markup builds it
- * once, `js::Found { empty, shown, text }`.
+ * are, in the catalog's words and the page's number format (the item count steps aside while it
+ * shows). The markup builds it once, `js::Found { empty, shown, text, number }`.
  * @typedef {object} Found
  * @property {HTMLParagraphElement} empty
  * @property {HTMLOutputElement} shown
  * @property {Message<"shown" | "total">} text
+ * @property {NumberFormat} number
  */
 
 /**
@@ -168,7 +171,7 @@ export function recount(body, found, signal) {
 /** @param {Found} found @param {number} shown @param {number} total @param {boolean} filtering */
 function showFound(found, shown, total, filtering) {
   found.empty.hidden = shown > 0;
-  found.shown.value = filtering ? found.text({ shown, total }) : "";
+  found.shown.value = filtering ? found.text({ shown: found.number(shown), total: found.number(total) }) : "";
   found.shown.hidden = !filtering;
 }
 
@@ -261,10 +264,10 @@ export function priceSent(event, body, note) {
 }
 
 /** @param {Set<HTMLTableRowElement>} unsent @param {Unsent} note */
-function showUnsent(unsent, { note, one, other }) {
+function showUnsent(unsent, { note, one, other, number }) {
   // An archived row has left the page, and its edit with it.
   for (const el of unsent) if (!el.isConnected) unsent.delete(el);
-  note.value = (unsent.size === 1 ? one : other)({ count: unsent.size });
+  note.value = (unsent.size === 1 ? one : other)({ count: number(unsent.size) });
   note.hidden = unsent.size === 0;
 }
 

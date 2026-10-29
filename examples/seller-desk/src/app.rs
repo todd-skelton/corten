@@ -525,9 +525,9 @@ mod tests {
         );
         assert!(html.contains(r#"<tr data-key="i00003" id="row-i00003"><td><input data-ref="select""#), "{html}");
         assert!(html.contains(r#"data-on="connect:inventory_grid.live(@body,"#), "{html}");
-        let unsent = r#"{note:@note,one:%[&quot;&quot;,&quot;count&quot;,&quot; price not saved&quot;],other:%[&quot;&quot;,&quot;count&quot;,&quot; prices not saved&quot;]}"#;
+        let unsent = r#"{note:@note,one:%[&quot;&quot;,&quot;count&quot;,&quot; price not saved&quot;],other:%[&quot;&quot;,&quot;count&quot;,&quot; prices not saved&quot;],number:"#;
         assert!(
-            html.contains(&format!("inventory_grid.priceEdited($e,@body,{unsent})")),
+            html.contains(&format!("inventory_grid.priceEdited($e,@body,{unsent}")),
             "a cell's typed event reaches the grid, with the catalog's words for the note: {html}"
         );
         assert!(

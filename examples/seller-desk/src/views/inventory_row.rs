@@ -38,7 +38,12 @@ pub fn InventoryRow<'a>(
                     aria-label={name}
                 >
             </td>
-            <td>{name}</td>
+            <td>
+                <span>{name}</span>
+                // The set and the condition again, shown on a phone only, where their columns
+                // step out.
+                <small><span>{set}</span>" · "<span>{condition}</span></small>
+            </td>
             <td>{set}</td>
             <td>{condition}</td>
             <td>{qty}</td>

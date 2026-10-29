@@ -30,9 +30,9 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
     // What the selection handlers update, built once and passed as one argument.
     let sel = js::Selection { body, all, count, bar };
     // The unsaved-prices note and its text, one message per plural form.
-    let unsent = js::Unsent { note, one: t.js().grid_unsent_one(), other: t.js().grid_unsent_other() };
+    let unsent = js::Unsent { note, one: t.js().grid_unsent_one(), other: t.js().grid_unsent_other(), number: t.js().number() };
     // How many rows the filter shows of how many there are, in place of the item count.
-    let found = js::Found { empty, shown, text: t.js().grid_shown() };
+    let found = js::Found { empty, shown, text: t.js().grid_shown(), number: t.js().number() };
     html! {
         <section
             class={Grid}

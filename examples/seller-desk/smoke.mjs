@@ -89,7 +89,7 @@ try {
   const shownText = () => page.$eval("#item-count", (p) => p.previousElementSibling?.textContent ?? "");
   check(
     "the filter says how many it shows of how many, in the item count's place",
-    (await shownText()) === `${visible} of ${nav.rows} shown` && (await page.isHidden("#item-count")),
+    (await shownText()) === `${visible.toLocaleString("en")} of ${nav.rows.toLocaleString("en")} shown` && (await page.isHidden("#item-count")),
     await shownText(),
   );
   await page.click("thead input[type=checkbox]");
@@ -97,13 +97,14 @@ try {
   await page.click("[role=group] button:nth-of-type(2)");
   await page.fill("input[type=search]", "");
   check("with the filter cleared the item count is back", (await page.isVisible("#item-count")) && (await shownText()) === "");
+  check("on a desktop the set and condition are their own columns, not repeated under the name", await page.isHidden("tbody tr td:nth-child(2) small"));
 
   await time("sort by price (moves every row)", () => /** @type {HTMLButtonElement} */ (document.querySelectorAll("thead button")[3]).click());
   const prices = await page.$$eval("tbody tr", (rows) => rows.slice(0, 5).map((r) => Number(/** @type {HTMLInputElement} */ (r.cells[5].querySelector("input")).value)));
   check("sort orders rows by price", prices.every((p, i) => i === 0 || prices[i - 1] <= p), prices.join(" "));
   await time("sort again (descending)", () => /** @type {HTMLButtonElement} */ (document.querySelectorAll("thead button")[3]).click());
   await page.click("thead button >> nth=0");
-  const names = await page.$$eval("tbody tr", (rows) => rows.slice(0, 30).map((r) => r.cells[1].textContent ?? ""));
+  const names = await page.$$eval("tbody tr", (rows) => rows.slice(0, 30).map((r) => r.cells[1].firstElementChild?.textContent ?? ""));
   check("sort orders rows by name, read from the row's field", names.every((n, i) => i === 0 || names[i - 1].localeCompare(n, "en") <= 0), names.slice(0, 5).join(", "));
   await page.click("tbody tr:first-child input[type=checkbox]");
   check("handlers still run on rows after they moved", (await count()) === "1");
@@ -224,7 +225,11 @@ try {
   check("confirming archives the rows", (await page.textContent("#desk-status")) === "Archived 2 items.", await page.textContent("#desk-status"));
   const left = await page.$$eval(ids.map((id) => `#${id}`).join(","), (rows) => rows.length);
   check("the patch removed the archived rows and the selection is clear", left === 0 && (await count()) === "0", `${left} left`);
-  check("the filter's count follows the archive", (await shownText()) === `${filtered - 2} of ${nav.rows - 2} shown`, await shownText());
+  check(
+    "the filter's count follows the archive",
+    (await shownText()) === `${(filtered - 2).toLocaleString("en")} of ${(nav.rows - 2).toLocaleString("en")} shown`,
+    await shownText(),
+  );
   await page.fill("input[type=search]", "");
   check(
     "the archive's answer counts the items left",
@@ -263,14 +268,16 @@ try {
     const parts = [...(document.querySelector(sel)?.querySelectorAll("input, button, p") ?? [])].map((el) => el.getBoundingClientRect());
     const inside = parts.every((r) => r.width > 0 && r.left >= box.left && r.right <= box.right);
     const headers = [...document.querySelectorAll("thead th")].filter((th) => getComputedStyle(th).display !== "none").length;
+    const under = document.querySelector("tbody tr:not([hidden]) td:nth-child(2) small");
+    const subline = under !== null && getComputedStyle(under).display !== "none" && /\S \u00b7 \S/.test(under.textContent ?? "");
     const cells = [...(document.querySelector("tbody tr")?.children ?? [])].filter((td) => getComputedStyle(td).display !== "none").length;
-    return { inside, sideways: scroll.scrollWidth > scroll.clientWidth, headers, cells, parts: parts.length };
+    return { inside, sideways: scroll.scrollWidth > scroll.clientWidth, headers, cells, parts: parts.length, subline };
   }, phoneCell);
   await page.fill(`${phoneCell} input`, "12.34");
   const editing = await fits();
   check(
-    "on a phone the edited price and its Save button fit, every cell under its header",
-    editing.inside && !editing.sideways && editing.headers === 4 && editing.cells === 4 && editing.parts >= 2,
+    "on a phone the edited price and its Save button fit, every cell under its header, the set and condition under the name",
+    editing.inside && !editing.sideways && editing.headers === 4 && editing.cells === 4 && editing.parts >= 2 && editing.subline,
     JSON.stringify(editing),
   );
   await page.fill(`${phoneCell} input`, "abc");
