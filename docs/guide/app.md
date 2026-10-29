@@ -420,8 +420,10 @@ let app = App::new(Routes::new())
 Like an area's deadline and policy, its middleware covers every request at its prefix or under
 it: its routes, its nested areas' (the outer area's middleware runs first) and an unknown URL
 there. Given again, a middleware runs after what was given before. Each one a request meets costs
-one boxed future on top of what it does, and a request outside every area and API pays a few
-instructions (measured in the CHANGELOG). card-market limits writes this way.
+one boxed future on top of what it does (about 900 instructions for one that only passes the
+request on). In an app where no area or API has any, a request runs exactly as before; where some
+do, a request outside them pays the lookup of its path (about 200 instructions). card-market
+limits writes this way.
 
 A tower layer still goes around the whole app (`.layer(l)`), outside every stage, for what must
 see the raw request first: a cap on body size.

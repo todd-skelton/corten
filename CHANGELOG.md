@@ -880,10 +880,12 @@ Corten is pre-1.0, so any minor version may change the API.
     `ClientIp::of(&mut req)` without splitting the request. card-market's write limit is now on
     its item pages' area and its partner API, with no path checks
     ([#327 Middleware is app-wide only, so card-market's write limit picks its routes by comparing paths and builds its 429 by hand](https://github.com/todd-skelton/corten/issues/327)).
-    An app whose areas and APIs have none runs the same request as before: its allocations are
-    unchanged (count and sizes, DHAT) and Corten's own instructions per request are within 18
-    (callgrind, 13,953 against 13,971 outside libc's allocator); an area's pass-through middleware
-    costs about 860 to 1,000 instructions per request in it (one boxed future).
+    Measured per request (callgrind, release profile): an app whose areas and APIs have none runs
+    the same request as before, with the same allocations (count and sizes, DHAT) and Corten's own
+    instructions within 18 of main's (13,971 against 13,953, outside libc's allocator); where an
+    area has some, a request outside it pays the lookup of its path (19,913 against 19,706), and
+    one in it pays one boxed future per middleware (a pass-through one: 21,374 to 21,511 against
+    20,510).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
