@@ -3883,7 +3883,8 @@ async fn finished_work_releases_what_it_holds_when_the_handler_is_dropped() {
             }),
         ))
     };
-    let app = App::new(routes).deadline(Some(Duration::from_millis(200))).shutdown_grace(Duration::from_secs(2));
+    // Long enough that only `/late` meets it on a loaded machine.
+    let app = App::new(routes).deadline(Some(Duration::from_secs(1))).shutdown_grace(Duration::from_secs(2));
     let listeners = crate::app::bind(Some("127.0.0.1"), 0).await.unwrap();
     let addr = listeners[0].local_addr().unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
@@ -3934,4 +3935,22 @@ async fn finished_work_releases_what_it_holds_when_the_handler_is_dropped() {
     assert!(done.iter().any(|(name, _)| *name == "gone"), "serve returned before the work it had to finish: {done:?}");
     assert!(done.contains(&("kept", crate::Abort::Shutdown)), "{done:?}");
     assert!(kept.await.unwrap().ends_with("done"), "the client that stayed got its answer");
+}
+
+/// A panic in work a handler finishes is the handler's: the request answers 500 and the server
+/// goes on.
+#[tokio::test]
+async fn a_panic_in_finished_work_is_the_handlers() {
+    let router = App::new(Routes::from(Router::new().route(
+        "/",
+        get(|signal: crate::Signal| async move {
+            signal.finish(|_signal| async move { panic!("the release failed") }).await;
+            "never"
+        }),
+    )))
+    .router();
+    let (status, _, _) = call(router.clone(), "GET", None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let (status, _, _) = call(router, "GET", None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the server goes on after it");
 }

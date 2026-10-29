@@ -12,6 +12,7 @@ that thing ends.
 | a client navigation | the Navigation API's `event.signal` | another navigation starts |
 | a request on the server | `req.signal()`, or `signal: corten::Signal` as an extractor | the response was sent (`Abort::Responded`), the client left (`Disconnected`), or the deadline passed (`Deadline`) |
 | a task of the app's ([`App::task`](app.md#tasks)) | its argument | shutdown began (`Abort::Shutdown`); `serve` then waits for it up to `App::shutdown_grace` |
+| work a handler finishes ([`Signal::finish`](#work-that-must-finish)) | its argument | the request's signal aborted (the client left, the deadline passed), or shutdown began |
 
 On the server, work the handler awaits needs no signal to stop: Rust drops the handler's future
 when the client leaves or the deadline passes. The signal is for what a drop cannot reach: spawned
@@ -71,8 +72,14 @@ async fn check(signal: Signal, State(gate): State<Gate>, Params(at): Params<url:
 }
 ```
 
-`serve` waits for this work at shutdown, after the app's tasks and within the same
-`App::shutdown_grace`, so a deploy does not cut a release off either; past the grace it is left
-to end with the process, and logged. The work takes what it uses by value (it is `Send +
+At shutdown the work's signal aborts with `Abort::Shutdown`, and `serve` waits for it, so a deploy
+does not cut a release off either. While its client is still there the handler awaits the work,
+and `serve` waits for that request as for any other, up to its deadline (with `deadline(None)`,
+for as long as it takes): a slow step that ignores the signal holds shutdown that long. Once the
+handler is gone, `serve` waits for the work after the app's tasks, within the same
+`App::shutdown_grace`; past it the work is left to end with the process, and logged. A panic in
+the work is the handler's while the handler awaits it, and is logged once it is gone. An app that
+serves its router another way (`axum::serve`) runs the work to its end, but it is not told of
+shutdown or waited for. The work takes what it uses by value (it is `Send +
 'static`). Keep only what must finish in it: the rest of the handler is still dropped when the
 client leaves, which is what stops it.

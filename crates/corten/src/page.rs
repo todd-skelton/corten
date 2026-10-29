@@ -573,8 +573,6 @@ impl Asked {
 /// Everything a request needs from the app: the error page, where scripts live.
 pub(crate) struct Shared {
     pub error_page: Box<ErrorPage>,
-    /// The app's work that handlers finish ([`crate::Signal::finish`]).
-    pub finishing: Arc<crate::task::Finishing>,
     pub assets: Option<Arc<Assets>>,
     pub scripts_dir: String,
     /// The import map's JSON: the runtime, the app's typed events and views.
@@ -611,6 +609,8 @@ pub(crate) struct Shared {
     pub pages: Box<[(&'static str, bool)]>,
     /// Paths no page is at: Corten's own and the APIs'.
     pub not_pages: crate::app::NotPages,
+    /// The app's work that handlers finish ([`crate::Signal::finish`]).
+    pub finishing: Arc<crate::task::Finishing>,
 }
 
 impl Shared {

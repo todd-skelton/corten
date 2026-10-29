@@ -50,16 +50,16 @@ pub enum Abort {
     /// The whole response was sent (for a stream, its last event). Work started for the request
     /// ends with it, so a spawned task cannot outlive the request by accident; work meant to
     /// outlive it is a task of the app's ([`crate::App::task`]), which has a signal of its own.
-    /// Work the handler must finish ([`Signal::finish`]) has its own signal, which this one does
-    /// not abort once the handler has its answer.
+    /// Work the handler must finish ([`Signal::finish`]) has a signal of its own, which this reason
+    /// reaches only if the handler stops awaiting the work (a timeout around it) and answers first.
     Responded,
     /// The client went away before the response was sent: it closed the connection, cancelled the
     /// fetch, or left a stream.
     Disconnected,
     /// The handler ran past the app's deadline ([`crate::App::deadline`]) and the client got 503.
     Deadline,
-    /// The app is shutting down: the reason a task's signal aborts ([`crate::App::task`]); a
-    /// request's never does.
+    /// The app is shutting down: the reason a task's signal aborts ([`crate::App::task`]), and the
+    /// signal of work a handler finishes ([`Signal::finish`]); a request's never does.
     Shutdown,
 }
 
@@ -132,8 +132,8 @@ impl Signal {
     /// claimed (a lease, a lock in another service, a reservation) is released when the client
     /// leaves or the deadline passes, which a drop cannot do. `work` gets a signal of its own that
     /// aborts when this one does (the client left, the deadline passed) or shutdown begins, so it
-    /// can stop a slow step early and still run what follows it; at shutdown `serve` waits for
-    /// it within [`crate::App::shutdown_grace`], after the app's tasks.
+    /// can stop a slow step early and still run what follows it; [`crate::serve`] waits for it at
+    /// shutdown (below).
     ///
     /// ```
     /// use corten::{prelude::*, Signal};
@@ -163,8 +163,14 @@ impl Signal {
     /// ```
     ///
     /// The work runs on a task of its own, so it is `Send + 'static`: it takes what it uses by
-    /// value. A panic in it is the handler's. Keep it to the claim, the work and the release: the
-    /// grace bounds it at shutdown, so a step that ignores the signal can still be cut off there.
+    /// value. A panic in it is the handler's while the handler awaits it, and is logged once the
+    /// handler is gone. Keep it to the claim, the work and the release, and let each slow step end
+    /// on the signal: while its client is still there, the handler awaits the work, and shutdown
+    /// waits for the handler up to the [deadline](crate::App::deadline) (none with
+    /// `deadline(None)`); once the handler is gone, shutdown waits for the work up to
+    /// [`crate::App::shutdown_grace`] and then leaves it to end with the process. Served another
+    /// way than [`crate::serve`] (the router passed to `axum::serve`), the work still runs to its
+    /// end and sees the client leave and the deadline, but is not told of shutdown or waited for.
     pub async fn finish<F, Fut, T>(&self, work: F) -> T
     where
         F: FnOnce(Signal) -> Fut,
@@ -176,6 +182,9 @@ impl Signal {
         let own = Signal::default();
         let run = work(own.clone());
         let (request, shutdown) = (self.clone(), finishing.map(|f| f.signal().clone()));
+        // Held while the handler awaits the work: a panic after it is gone is logged here.
+        let awaiting = std::sync::Arc::new(());
+        let handler = std::sync::Arc::downgrade(&awaiting);
         let task = tokio::spawn(async move {
             let _counted = counted;
             // Passes on the request's abort, or shutdown's, then waits for `run` to end.
@@ -190,13 +199,30 @@ impl Signal {
                 own.abort(reason);
                 std::future::pending::<std::convert::Infallible>().await
             };
-            tokio::select! {
-                biased;
-                out = run => out,
-                never = forward => match never {},
-            }
+            let mut done = std::pin::pin!(async {
+                tokio::select! {
+                    biased;
+                    out = run => out,
+                    never = forward => match never {},
+                }
+            });
+            std::future::poll_fn(|cx| {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| std::future::Future::poll(done.as_mut(), cx))) {
+                    Ok(polled) => polled,
+                    Err(panic) => {
+                        if handler.upgrade().is_none() {
+                            let message = crate::task::panic_message(&*panic);
+                            tracing::error!("corten: Signal::finish work whose handler is gone panicked: {message}");
+                        }
+                        std::panic::resume_unwind(panic)
+                    }
+                }
+            })
+            .await
         });
-        match task.await {
+        let out = task.await;
+        drop(awaiting);
+        match out {
             Ok(out) => out,
             Err(error) => match error.try_into_panic() {
                 Ok(panic) => std::panic::resume_unwind(panic),

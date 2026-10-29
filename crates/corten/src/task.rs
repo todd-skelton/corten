@@ -28,8 +28,8 @@ pub(crate) struct Running {
 impl Running {
     /// Starts every task; one that panics is logged with its name and ends there (restarting it
     /// is the app's choice).
-    pub(crate) fn start(tasks: Vec<Task>) -> Self {
-        let signal = Signal::default();
+    /// `signal` is the app's, which work its handlers finish shares ([`Finishing::signal`]).
+    pub(crate) fn start(tasks: Vec<Task>, signal: Signal) -> Self {
         let tasks = tasks
             .into_iter()
             .map(|task| {
@@ -40,7 +40,7 @@ impl Running {
         Running { signal, tasks }
     }
 
-    /// Tells every task to stop ([`Abort::Shutdown`]).
+    /// Tells every task, and the work handlers finish, to stop ([`Abort::Shutdown`]).
     pub(crate) fn stop(&self) {
         self.signal.abort(Abort::Shutdown);
     }
@@ -62,7 +62,8 @@ impl Running {
 }
 
 /// Work handlers finish whether or not they are dropped ([`Signal::finish`]): told to stop when
-/// shutdown begins, and waited for after the app's tasks, within the same grace.
+/// shutdown begins, by the signal the app's tasks share, and waited for after them, within the
+/// same grace.
 #[derive(Default)]
 pub(crate) struct Finishing {
     stop: Signal,
@@ -80,13 +81,10 @@ impl Finishing {
         Counted(self.clone())
     }
 
-    /// Aborts with [`Abort::Shutdown`] when shutdown begins.
+    /// Aborts with [`Abort::Shutdown`] when shutdown begins: the app's tasks get it too
+    /// ([`Running::start`]).
     pub(crate) fn signal(&self) -> &Signal {
         &self.stop
-    }
-
-    pub(crate) fn stop(&self) {
-        self.stop.abort(Abort::Shutdown);
     }
 
     /// Waits until no work is running, or `until`; work still running then is left to end with
@@ -132,14 +130,19 @@ impl Future for Logged {
         match std::panic::catch_unwind(AssertUnwindSafe(|| self.run.as_mut().poll(cx))) {
             Ok(polled) => polled,
             Err(panic) => {
-                let message = panic
-                    .downcast_ref::<&str>()
-                    .copied()
-                    .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
-                    .unwrap_or("a panic with no message");
+                let message = panic_message(&*panic);
                 tracing::error!("corten: task {name:?} panicked: {message}");
                 Poll::Ready(())
             }
         }
     }
+}
+
+/// What a panic says, for the log.
+pub(crate) fn panic_message(panic: &(dyn std::any::Any + Send)) -> &str {
+    panic
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("a panic with no message")
 }
