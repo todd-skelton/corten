@@ -2,12 +2,12 @@
 //! and styled as a design system would.
 use corten::prelude::*;
 use corten_ui::{
-    Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, Tab, TabGroup, Toast, Toaster,
-    dialog,
+    CheckboxGroup, Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, RequiredWhen, Tab,
+    TabGroup, Toast, Toaster, dialog,
 };
 
 use crate::{
-    app::{RenameForm, SellForm, url},
+    app::{NO_REGION, OFFERS, RenameForm, SellForm, url},
     field::Field,
 };
 
@@ -63,6 +63,24 @@ pub fn Gallery<'a>(tab: usize, result: &'a str, toast: Option<&'a str>, sale: bo
                         <NumberField field={&price} />
                     </Field>
                     <Field id="condition" label="Condition"><ComboBox field={&condition} /></Field>
+                    <CheckboxGroup legend="Ships to" missing={NO_REGION}>
+                        for (value, label) in REGIONS {
+                            <label><input type="checkbox" name={f.ships} value={value} checked={value == "us"}>{label}</label>
+                        }
+                    </CheckboxGroup>
+                    <Field id="pricing" label="Pricing">
+                        <select id="pricing" name={f.pricing}>
+                            <option value="fixed">"Fixed price"</option>
+                            <option value={OFFERS}>"Accept offers"</option>
+                        </select>
+                    </Field>
+                    <RequiredWhen control={f.pricing} values={&[OFFERS]}>
+                        <div class={Floor}>
+                            <Field id="floor" label="Lowest offer">
+                                <input id="floor" type="number" name={f.floor} min="0" step="0.01">
+                            </Field>
+                        </div>
+                    </RequiredWhen>
                     <button class={Primary}>"List for sale"</button>
                 </form>
                 <OrderResult text={result} />
@@ -149,6 +167,9 @@ pub fn Sku<'a>(sku: &'a str) -> impl Render {
         </p>
     }
 }
+
+/// The regions a seller can ship to: value and label.
+const REGIONS: [(&str, &str); 3] = [("us", "United States"), ("ca", "Canada"), ("eu", "European Union")];
 
 /// The `sale` query value that opens the last sale's sheet.
 pub const LAST_SALE: &str = "last";

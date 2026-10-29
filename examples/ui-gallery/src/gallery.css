@@ -6,6 +6,12 @@
 .card h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .wide { grid-column: 1 / -1; }
 .order { display: flex; flex-wrap: wrap; align-items: end; gap: 0 20px; }
+/* The regions (CheckboxGroup) and the lowest offer (RequiredWhen) are fieldsets. The lowest offer
+   is hidden for a fixed price by the select's own state, so it is right before the script runs
+   and without it; the script only makes it required or disabled. */
+.order fieldset { display: flex; flex-wrap: wrap; align-items: end; gap: 0 12px; margin: 0; padding: 0; border: 0; }
+.order:has(option[value="fixed"]:checked) .floor { display: none; }
+.order legend { float: left; margin-inline-end: 4px; font-weight: 500; }
 .primary { margin-block: 12px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .buttons form { margin: 0; }

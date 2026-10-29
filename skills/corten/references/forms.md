@@ -103,7 +103,8 @@ struct ArchiveInput {
 
 Never join values into one field with commas in a script; give each box the name. A box outside
 the form joins it with `form={ArchiveFormId}` (a `#[derive(Id)]` type). A required list is a
-validation message (`errors.add(f.ids, ..)` when empty), not a missing field. A blank field is
+validation message (`errors.add(f.ids, ..)` when empty), not a missing field; wrap the boxes in
+`corten_ui::CheckboxGroup` (`missing=".."`) so the browser says so before sending. A blank field is
 `None` for an `Option`. A typed route's `Vec` field writes `?condition=nm&condition=lp`, which
 `Query` reads back.
 
@@ -164,4 +165,6 @@ let price = match check(t, &form) {
 ```
 
 Keep the HTML attributes (`required`, `type="email"`, `inputmode`) too: the browser checks them
-first, and the server check is the one that counts.
+first, and the server check is the one that counts. A field required only for some values of
+another goes in `corten_ui::RequiredWhen` (`control={f.kind} values={&["partial"]}`), never a
+script of the app's, and the handler checks the same rule.

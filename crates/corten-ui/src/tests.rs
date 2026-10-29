@@ -22,7 +22,17 @@ fn every_component_has_its_script_and_no_css() {
     let names: Vec<_> = COMPONENTS.iter().map(|c| c.script.expect("a script").name).collect();
     assert_eq!(
         names,
-        ["ui.number_field", "ui.combo_box", "ui.tab_group", "ui.menu_button", "ui.toaster", "ui.copy_button", "ui.dialog"]
+        [
+            "ui.number_field",
+            "ui.combo_box",
+            "ui.tab_group",
+            "ui.menu_button",
+            "ui.toaster",
+            "ui.copy_button",
+            "ui.checkbox_group",
+            "ui.required_when",
+            "ui.dialog"
+        ]
     );
     for c in COMPONENTS {
         let script = c.script.unwrap();

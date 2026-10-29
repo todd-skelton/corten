@@ -368,6 +368,7 @@ name = "corten-ui"
 version = "0.1.0"
 dependencies = [
  "corten",
+ "serde",
 ]
 
 [[package]]

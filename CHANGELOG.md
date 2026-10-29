@@ -777,6 +777,25 @@ Corten is pre-1.0, so any minor version may change the API.
     beside the script so it adds a request but no round trip (276 bytes, 176 with brotli, in
     ui-gallery)
     ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
+114. `corten_ui::CheckboxGroup`: checkboxes of one name of which at least one must be checked
+    (`<CheckboxGroup legend=".." missing="Choose where you ship.">`). While none is, its script
+    keeps the first enabled box invalid with the app's message, so the browser stops the submit and says so
+    at the group, as for a required text field; HTML's `required` on a checkbox means that one box.
+    Without the script the form is sent and the handler refuses it, as before. 914 bytes, 379
+    with brotli, on the pages that use it
+    ([#272 A group of checkboxes cannot require one to be checked without a script, so a form that needs a choice is sent with none](https://github.com/todd-skelton/corten/issues/272)).
+115. `corten_ui::RequiredWhen`: fields required only for some values of another field (a refund
+    amount for a partial refund), `<RequiredWhen control={f.kind} values={&["partial"]}>`. The
+    control is a `FieldName`, so a misspelled one does not compile, and its values are a
+    `string[]` parameter, which a handler call now checks and fills from a slice, an array or a
+    `Vec` of strings in every build (before, only as an unchecked JSON value with feature `json`). While the control has one of
+    the values every field in the set is `required`; for any other the set is disabled, so it is
+    neither checked nor sent; an app hides it with `:has` on the control, which holds before the
+    script runs. Without the script the
+    fields are optional and the handler checks the rule. 1,906 bytes, 678 with brotli, on the
+    pages that use it. ui-gallery's listing shows both (where it ships, and the lowest offer when it
+    takes offers), and its handler refuses what the browser would have stopped
+    ([#269 A field required only for one choice of another field needs a script, so the browser cannot check it before the form is sent](https://github.com/todd-skelton/corten/issues/269)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

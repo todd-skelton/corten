@@ -54,6 +54,26 @@ fn Priced(t: Msg) -> impl Render {
     html! { <output ref={out} on:connect={shared::priced(out, t.js().number(), t.js().money(USD), when)}></output> }
 }
 
+/// A `string[]` parameter takes a slice, an array or a `Vec` of strings, with no feature.
+#[component]
+fn Named<'a>(list: &'a [&'a str]) -> impl Render {
+    let out = refs();
+    let owned = vec![String::from("a\"b<")];
+    html! { <p ref={out} on:connect={shared::named(out, list)} on:click={shared::named(out, &owned)} on:input={shared::named(out, ["x", "y"])}></p> }
+}
+
+#[test]
+fn a_list_of_strings_is_a_json_array() {
+    let html = Named { list: &["above", "below"] }.to_html();
+    assert_eq!(
+        html,
+        concat!(
+            r#"<p data-scope="named" data-ref="out" data-on="connect:shared.named(@out,[&quot;above&quot;,&quot;below&quot;]) "#,
+            r#"click:shared.named(@out,[&quot;a\&quot;b&lt;&quot;]) input:shared.named(@out,[&quot;x&quot;,&quot;y&quot;])"></p>"#
+        )
+    );
+}
+
 #[test]
 fn a_script_gets_the_pages_formats() {
     let en = Priced { t: Msg::for_locale("en") }.to_html();
