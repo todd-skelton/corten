@@ -61,6 +61,10 @@ so `cursor` refuses it (a panic in debug builds; in release the fragment goes wi
 
 ### Connection
 
+A browser without JavaScript gets no stream: a page whose part is relayed while a job runs asks
+it alone to reload, with `ReadAgain { after }.without_javascript()` in its head
+([read again](requests-and-forms.md)).
+
 `<corten-live>` shows its connection on itself, so a page can say a part is stale with CSS alone:
 `status` is `connecting`, `live` once the stream is open, `reconnecting` while the browser
 retries after a drop, `closed` when it gave up (the server answered with no stream: an error, a
