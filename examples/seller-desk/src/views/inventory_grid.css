@@ -3,17 +3,32 @@
 .toolbar input[type="search"] { width: 20rem; max-width: 100%; }
 .toolbar [role="group"] { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: 8px; background: var(--tint); }
 .toolbar > output { color: var(--danger); font-weight: 500; }
-/* On a phone the table scrolls sideways in its box; the toolbar wraps above it. */
-.scroll { overflow-x: auto; border-radius: 10px; }
-.scroll .table { min-width: 40rem; }
-.table { border: 1px solid var(--line); border-radius: 10px; border-collapse: separate; border-spacing: 0; }
+/* The item count, at the toolbar's end. */
+.toolbar > p { margin: 0 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* The rows scroll inside their box, under a header that stays. */
+.scroll { overflow: auto; max-height: min(70vh, 44rem); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.table { border-collapse: separate; border-spacing: 0; }
+.table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: inset 0 -1px var(--line); border-bottom: 0; }
 .table tbody tr:last-child td { border-bottom: 0; }
 .table tbody tr:hover { background: var(--bg); }
 .table th:first-child, .table td:first-child { width: 44px; }
 .table th:nth-child(5), .table td:nth-child(5), .table th:nth-child(6), .table td:nth-child(6) { text-align: end; font-variant-numeric: tabular-nums; }
-.table th button { padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
-.table th button:hover { color: var(--ink); }
-.table th[aria-sort="ascending"] button::after { content: " \2191"; }
-.table th[aria-sort="descending"] button::after { content: " \2193"; }
+/* A sortable header is a button: it says so on hover and focus, and shows the sort it applies. */
+.table th button { white-space: nowrap; padding: 2px 4px; margin: -2px -4px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.table th button:hover { color: var(--ink); background: var(--bg); }
+.table th button::after { content: " \2195"; opacity: 0.45; }
+.table th[aria-sort] button { color: var(--ink); }
+.table th[aria-sort="ascending"] button::after { content: " \2191"; opacity: 1; }
+.table th[aria-sort="descending"] button::after { content: " \2193"; opacity: 1; }
 .table tr[data-selected] { background: var(--tint); }
+/* Sold out: the row fades, and its quantity is marked. */
+.table tr[data-sold-out] td:not(:first-child, :last-child) { color: var(--muted); }
+.table tr[data-sold-out] td:nth-child(5) { color: var(--danger); font-weight: 600; }
 .empty { color: var(--muted); text-align: center; padding: 24px; }
+/* On a phone: the name, the quantity and the price, what a seller acts on; the filter still
+   searches the set. */
+@media (max-width: 40rem) {
+  .table th:is(:nth-child(3), :nth-child(4)), .table td:is(:nth-child(3), :nth-child(4)) { display: none; }
+  .table :is(th, td) { padding-inline: 6px; }
+  .toolbar input[type="search"] { width: 100%; }
+}

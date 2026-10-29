@@ -46,7 +46,9 @@ export function live(body, feed, signal) {
   /** @param {Level} level */
   const show = (level) => {
     const row = list.get(level.id);
-    if (row) row.qty = level.qty;
+    if (!row) return;
+    row.qty = level.qty;
+    row.sold_out = level.qty === 0;
   };
   subscribe(
     feed,

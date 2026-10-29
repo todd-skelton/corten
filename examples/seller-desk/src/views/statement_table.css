@@ -1,1 +1,2 @@
 .table th:nth-child(n + 2), .table td:nth-child(n + 2) { text-align: end; font-variant-numeric: tabular-nums; }
+.table tfoot :is(th, td) { border-top: 2px solid var(--line); border-bottom: 0; font-weight: 600; color: var(--ink); font-size: inherit; text-transform: none; letter-spacing: normal; }

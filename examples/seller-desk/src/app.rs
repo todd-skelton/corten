@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     text::{Msg, USD},
-    views::{self, Line, PriceCell, RowId, StatementTable, StatusLine},
+    views::{self, ItemCount, Line, PriceCell, RowId, StatementTable, StatusLine},
 };
 
 /// An item a seller lists.
@@ -320,9 +320,11 @@ async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveIn
             }
         }
     };
+    let (t, left) = (req.t(), desk.items.lock().expect("items").iter().filter(|i| !i.archived).count());
     // A view renders only when it is sent, so the redirect does not format the status.
     let removed = html! {
         for id in &done { {Remove(RowId(id))} }
+        <ItemCount t={t} count={left} />
         <StatusLine text={&format!("Archived {} item{}.", done.len(), if done.len() == 1 { "" } else { "s" })} />
     };
     req.patch_or(removed, || async { req.redirect(&url::Home) }).await
@@ -565,7 +567,9 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(headers["cache-control"], "no-store");
         assert!(html.contains("<td>Hollow Crown</td><td>3</td><td>$"), "the stock value in the locale's money format: {html}");
-        let (_, headers, _) = send_full(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(html.contains(r#"<tfoot><tr><th scope="row">Total</th><td>10</td><td>$"#), "a total of every set: {html}");
+        let (_, headers, home) = send_full(&desk, Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(home.contains(r#"<p id="item-count">10 items</p>"#), "the grid's count: {home}");
         let timing = headers["server-timing"].to_str().unwrap();
         assert!(timing.starts_with("app;dur="), "{timing}");
     }

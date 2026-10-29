@@ -204,11 +204,18 @@ try {
   await page.click("tbody tr:nth-child(2) input[type=checkbox]");
   await page.click("[role=group] button:nth-of-type(1)");
   check("Archive opens the dialog", await page.isVisible("dialog[open]"));
+  const itemCount = () => page.textContent("#item-count");
+  const countBefore = await itemCount();
   await page.click("dialog button[value=confirm]");
   await page.waitForFunction(() => /Archived/.test(document.getElementById("desk-status")?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
   check("confirming archives the rows", (await page.textContent("#desk-status")) === "Archived 2 items.", await page.textContent("#desk-status"));
   const left = await page.$$eval(ids.map((id) => `#${id}`).join(","), (rows) => rows.length);
   check("the patch removed the archived rows and the selection is clear", left === 0 && (await count()) === "0", `${left} left`);
+  check(
+    "the archive's answer counts the items left",
+    countBefore === `${nav.rows.toLocaleString("en")} items` && (await itemCount()) === `${(nav.rows - 2).toLocaleString("en")} items`,
+    `${countBefore} -> ${await itemCount()}`,
+  );
   await page.click("tbody tr:nth-child(1) input[type=checkbox]");
   check("the rows that moved up still select", (await count()) === "1");
   await page.click("[role=group] button:nth-of-type(2)");
@@ -221,6 +228,9 @@ try {
     .waitForFunction((was) => [...document.querySelectorAll("tbody tr > td:nth-child(5)")].map((c) => c.textContent).join() !== was, first, { timeout: 10_000 })
     .then(() => true, () => false);
   check("live levels update stock cells", changed);
+  // A row at 0 is marked sold out, and only such a row, as the levels change.
+  const soldOutMarked = await page.$$eval("tbody tr", (rows) => rows.every((r) => (r.querySelector("td:nth-child(5)")?.textContent === "0") === r.hasAttribute("data-sold-out")));
+  check("a row is marked sold out exactly while its quantity is 0", soldOutMarked);
 
   // Memory with the page settled.
   const heap = await page.evaluate(() => {

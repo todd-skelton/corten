@@ -1,6 +1,6 @@
 use corten::prelude::*;
 
-use super::{BulkBar, ConfirmDialog, InventoryRow, Line, PriceEdited};
+use super::{BulkBar, ConfirmDialog, InventoryRow, ItemCount, Line, PriceEdited};
 use crate::{
     app::{ArchiveInput, url},
     text::{Msg, USD},
@@ -47,6 +47,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
                 >
                 <BulkBar count={count} bar={bar} archive={ArchiveDialogId} on:clear={js::clear(sel)} />
                 <output ref={note} hidden></output>
+                <ItemCount t={t} count={lines.len()} />
             </div>
             <div class={Scroll}>
                 <table class={Table}>
@@ -77,6 +78,7 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
                                 set={&line.item.set}
                                 condition={line.item.condition}
                                 qty={line.qty}
+                                sold_out={line.qty == 0}
                                 price_cents={line.item.price_cents}
                                 selected={false}
                                 select={select}

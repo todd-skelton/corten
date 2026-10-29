@@ -1640,6 +1640,13 @@ Corten is pre-1.0, so any minor version may change the API.
     top of the document. Focus now goes to the nearest element around it that is still on the
     page, focusable only for the move; so does focus on an element patched into one that cannot
     take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
+54. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
+    headers show they sort and which way (`aria-sort`); the rows scroll inside the grid under a
+    header that stays, with the item count above them (an archive's answer replaces it); a row at
+    quantity 0 is marked sold out, kept current by the live levels (a `sold_out` hole of the
+    row's view); on a phone the grid shows the name, quantity and price; and the statement has a
+    total row
+    ([#332 Polish: seller-desk does not look like the client-heavy screen it is](https://github.com/todd-skelton/corten/issues/332)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
