@@ -848,7 +848,14 @@ Corten is pre-1.0, so any minor version may change the API.
     `same-origin`, and a page under another opener policy has its own shell key, so a client
     navigation into or out of the area loads the document in full
     ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
-121. A script that imports another script module of its directory (`import { loadStripe } from
+121. `req.nav_of([(NavTo::section(&url::Desk), "Seller Desk"), (NavTo::page(&url::Money), "Money"), ..])`
+    writes a whole nav's links, each with its item, and marks only the deepest entry that holds the page, for a nav whose entries nest or
+    come from data (an entry is a route or a `Local`, whose path is written as the browser asks
+    for it). Its links name their group (`data-nav-group`), and the runtime ranks the same links
+    after a client navigation wherever the markup puts them; a `req.nav` link is still judged
+    alone. `corten.js` grows 80 bytes gzip
+    ([#341 A nav built from data, or whose current entry is the deepest that holds the page, keeps the first page's aria-current after a client navigation](https://github.com/todd-skelton/corten/issues/341)).
+122. A script that imports another script module of its directory (`import { loadStripe } from
      "./stripe.js"`) has it preloaded on the pages that load it, with what that one imports, so the
      browser fetches them together instead of one round trip after the other. The tag is made
      when the app starts, so a page costs nothing more to render: one import over a 100 ms
@@ -1680,6 +1687,9 @@ Corten is pre-1.0, so any minor version may change the API.
     has `detail` 0 and always steps); a press released off the button, cancelled, or on a button
     disabled at its bound makes no click and is forgotten ([#316 ui-gallery smoke (CI, Chromium): a keyboard
     step on the second number field is lost while the first is held](https://github.com/todd-skelton/corten/issues/316)).
+58. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
+    Under load, a slow read used to add real seconds, and "each second" failed
+    ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
