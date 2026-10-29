@@ -747,6 +747,9 @@ pub struct Public<A: Shareable> {
     answer: A::ForAll,
     /// The app's headers ([`Public::header`]): `None` unless it adds one, so an answer without
     /// them is one word larger and its drop is a null check.
+    // Boxed so an answer without them is one word larger, not three (a `Vec` in place measured
+    // about 20 instructions a request more).
+    #[allow(clippy::box_collection)]
     headers: Option<Box<Vec<(axum::http::HeaderName, axum::http::HeaderValue)>>>,
 }
 
