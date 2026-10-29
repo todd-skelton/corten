@@ -111,9 +111,9 @@ not compile.
 
 Links write a route's parameters by name with `Display`, so `Params` refuses what would read them
 back differently: a `#[serde(..)]` key on the route struct that links do not follow (`alias`,
-`flatten`, `skip`, `with`, `deserialize_with`, `borrow` on a field; `default`,
-`deny_unknown_fields`, `from`, `try_from`, `transparent` on the struct), and a `#[route(query)]`
-set that borrows. Such a route still writes links; a handler that takes its `Params` does not
+`flatten`, `skip`, `skip_deserializing`, `with`, `deserialize_with`, `borrow` on a
+field; `default`, `deny_unknown_fields`, `from`, `try_from`, `transparent` on the struct), and a
+`#[route(query)]` set that borrows. Such a route still writes links; a handler that takes its `Params` does not
 compile, and the error names the key or the borrowed type.
 
 When several routes carry the same parameters (a list's filters, which its `<corten-live>` rows,

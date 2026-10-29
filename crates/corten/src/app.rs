@@ -189,7 +189,7 @@ impl<P: Prefix> Area<P> {
     ///         pub id: &'a str,
     ///     }
     /// }
-    /// # async fn pay() -> &'static str { "pay" }
+    /// # async fn pay(_: Params<url::Pay<'_>>) -> &'static str { "pay" }
     ///
     /// fn app(routes: Routes) -> App {
     ///     App::new(routes).area(|area| {
