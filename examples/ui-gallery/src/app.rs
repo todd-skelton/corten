@@ -314,7 +314,10 @@ mod tests {
         let form = || Request::post("/sell").header("content-type", "application/x-www-form-urlencoded");
         const LISTED: &str = "qty=2&price=12.50&weight=0.5&condition=lp&ships=us&ships=eu&pricing=fixed&floor=";
         let patch = send(form().header("corten", "action").body(Body::from(LISTED)).unwrap()).await;
-        assert_eq!(patch, r#"<p id="result" role="status">Listed 2 Lightly Played Ashen Drake at $12.50 each, 0.5 oz to ship.</p>"#);
+        assert_eq!(
+            patch,
+            r#"<p id="result" role="status">Listed 2 Lightly Played Ashen Drake at $12.50 each, 0.5 oz to ship.</p>"#
+        );
         let page = send(form().body(Body::from(LISTED)).unwrap()).await;
         assert!(page.contains("<html") && page.contains("Listed 2 Lightly Played Ashen Drake"));
     }
