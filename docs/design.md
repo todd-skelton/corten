@@ -177,7 +177,9 @@ framework's shape, and what it does not do yet.
     WebSocket (`Upgrade`) and another server's answer passed on (`Relay`) are such routes too.
 12. A request goes through fixed stages in one order (`corten::middleware`); the app's own
     steps are a `Middleware` tuple at one place in it, resolved at compile time, not hooks at
-    several.
+    several. An area's or an API's own steps (`Area::middleware`, `Api::middleware`) run right
+    after the app's, for the requests at its prefix; they are boxed, since which run depends on
+    the path, and an app with none pays nothing for them.
 13. A connection switches protocols (a WebSocket, a relayed tunnel) only over HTTP/1.1 served by
     `corten::serve`; HTTP/2's extended `CONNECT` is not supported. Corten reads the handshake
     and hands over the bytes: frames, message limits, buffering and per-message checks are the

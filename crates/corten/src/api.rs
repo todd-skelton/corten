@@ -60,6 +60,7 @@ pub struct Api<P> {
     pub(crate) origins: Vec<String>,
     deadline: Option<Option<std::time::Duration>>,
     errors: Option<ErrorShape>,
+    middleware: Vec<std::sync::Arc<dyn crate::middleware::Erased>>,
     types: PhantomData<fn() -> P>,
 }
 
@@ -72,7 +73,14 @@ type WriteError = dyn Fn(StatusCode, &str) -> Vec<u8> + Send + Sync;
 
 impl<P: Prefix> Api<P> {
     pub(crate) fn new() -> Self {
-        Api { routes: Router::new(), origins: Vec::new(), deadline: None, errors: None, types: PhantomData }
+        Api {
+            routes: Router::new(),
+            origins: Vec::new(),
+            deadline: None,
+            errors: None,
+            middleware: Vec::new(),
+            types: PhantomData,
+        }
     }
 
     /// A route of the API added by hand, at `R::PATH`, for one a routes module cannot name: an
@@ -104,6 +112,16 @@ impl<P: Prefix> Api<P> {
             )
         };
         self.routes = self.routes.route(R::PATH, methods.0);
+        self
+    }
+
+    /// A step of the API's own in each request under its prefix (a partner's rate limit, a usage
+    /// count), after the app's middleware ([`crate::App::middleware`]) and before the handler:
+    /// `.middleware(PartnerLimit::new(600))`, or a tuple run in order. Given again, it runs after
+    /// what was given before. A request anywhere else never meets it. It refuses with a
+    /// [`crate::Refused`], which is JSON here like every failure; see [`crate::middleware`].
+    pub fn middleware<M: crate::Middleware>(mut self, middleware: M) -> Self {
+        self.middleware.push(std::sync::Arc::new(middleware));
         self
     }
 
@@ -191,11 +209,19 @@ pub(crate) struct Mount {
     pub deadline: Option<Option<std::time::Duration>>,
     /// How its failures are written, when it says ([`Api::errors`]).
     pub errors: Option<ErrorShape>,
+    /// Its own middleware ([`Api::middleware`]), in the order it runs.
+    pub middleware: crate::middleware::Stack,
 }
 
 impl Mount {
     pub fn new<P>(prefix: String, api: &Api<P>) -> Self {
-        Mount { prefix, origins: api.origins.clone(), deadline: api.deadline, errors: api.errors.clone() }
+        Mount {
+            prefix,
+            origins: api.origins.clone(),
+            deadline: api.deadline,
+            errors: api.errors.clone(),
+            middleware: api.middleware.iter().cloned().collect(),
+        }
     }
 
     pub fn contains(&self, path: &str) -> bool {

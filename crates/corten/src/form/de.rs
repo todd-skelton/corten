@@ -50,7 +50,7 @@ pub(crate) fn from_pairs<T: de::DeserializeOwned>(mut pairs: Vec<Pair<'_>>) -> R
 }
 
 /// A query string's pairs sorted by key (the values of one key in the order sent), for
-/// [`field`], [`all`] and [`prefixed`]: what `Url` reads a route's query parameters from.
+/// [`field`] and [`prefixed`]: what `Params` reads a route's query parameters from.
 pub fn sorted_pairs(query: &str) -> Vec<Pair<'_>> {
     let mut pairs: Vec<Pair<'_>> = form_urlencoded::parse(query.as_bytes()).collect();
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
@@ -68,11 +68,6 @@ pub fn field<T: de::DeserializeOwned>(pairs: &[Pair<'_>], key: &str, default: Op
         ([], None) => T::deserialize(Missing(key)),
         (values, _) => T::deserialize(Values(values)).map_err(|e| FormError(format!("{key}: {e}"))),
     }
-}
-
-/// A `#[route(query)]` field: the parameters it holds, read from all of the query.
-pub fn all<T: de::DeserializeOwned>(pairs: &[Pair<'_>]) -> Result<T, FormError> {
-    T::deserialize(Form(pairs))
 }
 
 /// A `#[route(prefix = "dim.")]` field's parameters: each whose key starts with `prefix`, the

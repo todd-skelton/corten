@@ -77,6 +77,7 @@ pub struct Area<P> {
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
     sources: crate::security::Sources,
+    middleware: Vec<Arc<dyn crate::middleware::Erased>>,
     types: PhantomData<fn() -> P>,
 }
 
@@ -170,6 +171,19 @@ impl<P: Prefix> Area<P> {
         self
     }
 
+    /// A step of the area's own in each request at its prefix or under it (a write limit, an
+    /// audit log): its routes, its nested areas' and an unknown URL there, as with its
+    /// [`deadline`](Area::deadline) and [`policy`](Area::policy). It runs after the app's
+    /// middleware ([`App::middleware`]) and before the handler: `.middleware(WriteLimit::new(20))`,
+    /// or a tuple run in order. Given again, it runs after what was given before; an outer area's
+    /// runs before an inner one's. A request anywhere else never meets it. It refuses with a
+    /// [`crate::Refused`], answered as a [`crate::Caller`]'s refusal is; see
+    /// [`crate::middleware`].
+    pub fn middleware<M: Middleware>(mut self, middleware: M) -> Self {
+        self.middleware.push(Arc::new(middleware));
+        self
+    }
+
     /// What the area's pages add to the app's [`Policy`] (its Content-Security-Policy, and a looser
     /// `Cross-Origin-Opener-Policy`): a payment provider's scripts and frames on the payment pages,
     /// style attributes on the pages that draw sizes from data, and not on every other page. Only adding is possible, so a page in the
@@ -231,6 +245,7 @@ struct Placed {
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
     sources: crate::security::Sources,
+    middleware: Vec<Arc<dyn crate::middleware::Erased>>,
 }
 
 /// An app: its routes, plus everything around them that every production app needs, on by
@@ -400,6 +415,7 @@ impl<M: Middleware> App<M> {
             components: Vec::new(),
             deadline: None,
             sources: crate::security::Sources::default(),
+            middleware: Vec::new(),
             types: PhantomData,
         });
         self.areas.push(Placed {
@@ -409,6 +425,7 @@ impl<M: Middleware> App<M> {
             components: area.components,
             deadline: area.deadline,
             sources: area.sources,
+            middleware: area.middleware,
         });
         self
     }
@@ -824,23 +841,56 @@ impl<M: Middleware> App<M> {
         let mut area_deadlines: Vec<(&'static str, Option<Duration>)> =
             self.areas.iter().filter_map(|area| Some((area.prefix, area.deadline?))).collect();
         area_deadlines.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
+        // Each area's middleware with every enclosing area's, the outermost first; the innermost
+        // area first, so the first under a path decides. Empty unless an area has some.
+        let mut area_middleware: Vec<(&'static str, crate::middleware::Stack)> = self
+            .areas
+            .iter()
+            .filter_map(|area| {
+                let mut around: Vec<&Placed> = self
+                    .areas
+                    .iter()
+                    .filter(|other| !other.middleware.is_empty() && crate::api::under(other.prefix, area.prefix))
+                    .collect();
+                around.sort_by_key(|other| other.prefix.len());
+                let stack: crate::middleware::Stack =
+                    around.into_iter().flat_map(|other| other.middleware.iter().cloned()).collect();
+                (!stack.is_empty()).then_some((area.prefix, stack))
+            })
+            .collect();
+        area_middleware.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
+        // An API under an area's prefix meets the area's middleware (and its enclosing areas')
+        // before its own, as a nested area would.
+        for mount in &mut mounts {
+            if let Some((_, around)) = area_middleware.iter().find(|(prefix, _)| crate::api::under(prefix, &mount.prefix)) {
+                mount.middleware = around.iter().chain(mount.middleware.iter()).cloned().collect();
+            }
+        }
         owned.extend(self.areas.into_iter().map(|area| area.routes));
-        let layer = Arc::new(Layer {
-            shared: Arc::new(shared),
-            deadline: self.deadline,
-            area_deadlines,
-            policy,
-            mounts,
-            own,
-            middleware: self.middleware,
-        });
         // The app's own routes are merged last: when two routers both have axum's default
         // fallback, a merge keeps the one merged in, and the app's answers unknown URLs.
         let mut router = Router::new();
         for routes in owned {
             router = router.merge(routes);
         }
-        let mut router = router.merge(routes).layer(Wrap(layer));
+        let router = router.merge(routes);
+        // An app whose areas and APIs have no middleware of their own runs the app's alone.
+        let plain = area_middleware.is_empty() && mounts.iter().all(|mount| mount.middleware.is_empty());
+        macro_rules! wrap {
+            ($steps:expr) => {
+                router.layer(Wrap(Arc::new(Layer {
+                    shared: Arc::new(shared),
+                    deadline: self.deadline,
+                    area_deadlines,
+                    policy,
+                    mounts,
+                    own,
+                    steps: $steps,
+                })))
+            };
+        }
+        let mut router =
+            if plain { wrap!(Plain(self.middleware)) } else { wrap!(Scoped { app: self.middleware, areas: area_middleware }) };
         for wrap in self.layers {
             router = wrap(router);
         }
@@ -1177,34 +1227,34 @@ impl NotPages {
 
 /// Puts [`Layer`] around each route. A tower layer of its own rather than axum's `from_fn`, which
 /// boxes the rest of the stack again for every request (`Next`) on top of the future.
-struct Wrap<M>(Arc<Layer<M>>);
+struct Wrap<S>(Arc<Layer<S>>);
 
-impl<M> Clone for Wrap<M> {
+impl<S> Clone for Wrap<S> {
     fn clone(&self) -> Self {
         Wrap(self.0.clone())
     }
 }
 
-impl<M: Middleware> tower_layer::Layer<Route> for Wrap<M> {
-    type Service = Wrapped<M>;
+impl<S: Steps> tower_layer::Layer<Route> for Wrap<S> {
+    type Service = Wrapped<S>;
 
-    fn layer(&self, route: Route) -> Wrapped<M> {
+    fn layer(&self, route: Route) -> Wrapped<S> {
         Wrapped { layer: self.0.clone(), route }
     }
 }
 
-struct Wrapped<M> {
-    layer: Arc<Layer<M>>,
+struct Wrapped<S> {
+    layer: Arc<Layer<S>>,
     route: Route,
 }
 
-impl<M> Clone for Wrapped<M> {
+impl<S> Clone for Wrapped<S> {
     fn clone(&self) -> Self {
         Wrapped { layer: self.layer.clone(), route: self.route.clone() }
     }
 }
 
-impl<M: Middleware> tower_service::Service<Request> for Wrapped<M> {
+impl<S: Steps> tower_service::Service<Request> for Wrapped<S> {
     type Response = Response;
     type Error = Infallible;
     type Future = Pin<Box<dyn Future<Output = Result<Response, Infallible>> + Send>>;
@@ -1221,40 +1271,79 @@ impl<M: Middleware> tower_service::Service<Request> for Wrapped<M> {
 }
 
 /// The rest of the request under the deadline and the panic catch: the app's middleware, then the
-/// route and its handler.
-pub(crate) struct Next<'a, M> {
-    middleware: &'a M,
+/// area's or API's, then the route and its handler.
+pub(crate) struct Next<'a, S: Steps> {
+    steps: &'a S,
+    scope: S::Scope<'a>,
     route: Route,
 }
 
-impl<'a, M: Middleware> Next<'a, M> {
+impl<'a, S: Steps> Next<'a, S> {
     // Not an `async fn`: a layer of its own would move the request once more.
     #[inline]
     pub(crate) fn run(self, req: Request) -> impl Future<Output = Response> + Send + 'a {
-        self.middleware.call(req, Handle(self.route))
+        self.steps.run(req, self.route, self.scope)
     }
 }
 
-/// The route, as the last step after the app's middleware.
-struct Handle(Route);
+/// The middleware a request goes through: the app's, and an area's or API's where one has its
+/// own. Chosen when the router is built, so in an app whose areas and APIs have none a request's
+/// future is the app's middleware around the route, as if areas could have none.
+pub(crate) trait Steps: Send + Sync + 'static {
+    /// What a request carries to [`Steps::run`]: nothing, or the middleware of its area or API.
+    type Scope<'a>: Send;
 
-impl crate::middleware::Next for Handle {
+    fn scope<'a>(&'a self, mount: Option<&'a Mount>, own: bool, path: &str) -> Self::Scope<'a>;
+
+    fn run<'a>(&'a self, req: Request, route: Route, scope: Self::Scope<'a>) -> impl Future<Output = Response> + Send + 'a;
+}
+
+/// The app's middleware alone: no area or API has any.
+struct Plain<M>(M);
+
+impl<M: Middleware> Steps for Plain<M> {
+    type Scope<'a> = ();
+
     #[inline]
-    fn run(self, req: Request) -> impl Future<Output = Response> + Send {
-        // The route's own future, not an async block around it, which would move the request
-        // once more.
-        let mut route = self.0;
-        futures_util::FutureExt::map(tower_service::Service::call(&mut route, req), |res: Result<Response, Infallible>| match res
-        {
-            Ok(res) => res,
-            Err(never) => match never {},
-        })
+    fn scope<'a>(&'a self, _: Option<&'a Mount>, _: bool, _: &str) {}
+
+    #[inline]
+    fn run<'a>(&'a self, req: Request, route: Route, (): ()) -> impl Future<Output = Response> + Send + 'a {
+        self.0.call(req, crate::middleware::Handle(route))
+    }
+}
+
+/// The app's middleware, then the request's area's or API's.
+struct Scoped<M> {
+    app: M,
+    /// [`Area::middleware`], with each area's enclosing areas', innermost prefix first.
+    areas: Vec<(&'static str, crate::middleware::Stack)>,
+}
+
+impl<M: Middleware> Steps for Scoped<M> {
+    type Scope<'a> = &'a [Arc<dyn crate::middleware::Erased>];
+
+    fn scope<'a>(&'a self, mount: Option<&'a Mount>, own: bool, path: &str) -> Self::Scope<'a> {
+        match mount {
+            Some(mount) => &mount.middleware,
+            None if own => &[],
+            None => self.areas.iter().find(|(prefix, _)| crate::api::under(prefix, path)).map_or(&[], |(_, stack)| stack),
+        }
+    }
+
+    #[inline]
+    fn run<'a>(&'a self, req: Request, route: Route, stack: Self::Scope<'a>) -> impl Future<Output = Response> + Send + 'a {
+        use futures_util::future::Either;
+        match stack {
+            [] => Either::Left(self.app.call(req, crate::middleware::Handle(route))),
+            stack => Either::Right(self.app.call(req, crate::middleware::Rest { stack, route })),
+        }
     }
 }
 
 /// Everything `App` puts around a request, as one middleware: one boxed future per request,
 /// where separate security, compression and error layers cost one each.
-struct Layer<M> {
+struct Layer<S> {
     shared: Arc<Shared>,
     deadline: Option<Duration>,
     /// [`Area::deadline`]s, innermost prefix first; empty unless an area set one.
@@ -1262,10 +1351,11 @@ struct Layer<M> {
     policy: Applied,
     mounts: Vec<Mount>,
     own: Own,
-    middleware: M,
+    /// The app's middleware, and the areas' and APIs' where some have their own.
+    steps: S,
 }
 
-impl<M: Middleware> Layer<M> {
+impl<S: Steps> Layer<S> {
     async fn handle(&self, req: Request, route: Route) -> Response {
         #[cfg(feature = "compress")]
         let coding = crate::compress::negotiate(req.headers());
@@ -1298,6 +1388,8 @@ impl<M: Middleware> Layer<M> {
                 self.area_deadlines.iter().find(|(prefix, _)| crate::api::under(prefix, path)).map_or(self.deadline, |(_, d)| *d)
             }
         };
+        // The middleware of the area or API the request is in, where one has some.
+        let scope = self.steps.scope(mount, own, path);
         if let Some(mount) = mount {
             if let Some(mut res) = mount.preflight(req.method(), req.headers()) {
                 self.policy.headers(&mut res, None);
@@ -1326,7 +1418,7 @@ impl<M: Middleware> Layer<M> {
         let cors = mount.and_then(|mount| mount.allowed_origin(req.headers()));
         let credentials = cache::credentials(req.headers());
         let path = self.shared.dev.then(|| req.uri().path().to_string());
-        let (mut res, caller, mode) = self.run(req, route, mount, deadline).await;
+        let (mut res, caller, mode) = self.run(req, route, mount, deadline, scope).await;
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
         self.policy.headers(&mut res, nonce.as_ref().map(|nonce| (nonce, csp)));
         let seen = Seen {
@@ -1357,18 +1449,19 @@ impl<M: Middleware> Layer<M> {
     }
 
     /// The response, whether anything read who is asking, and the request's mode.
-    async fn run(
-        &self,
+    async fn run<'a>(
+        &'a self,
         mut req: Request,
         route: Route,
         api: Option<&Mount>,
         deadline: Option<Duration>,
+        scope: S::Scope<'a>,
     ) -> (Response, bool, Mode) {
         // Dropped with this future if the client leaves first; then the response's.
         let watch = Watch(Signal::for_app(self.shared.clone()));
         req.extensions_mut().insert(watch.0.clone());
         let mode = page::mode_of(req.headers());
-        let next = Next { middleware: &self.middleware, route };
+        let next = Next { steps: &self.steps, scope, route };
         let res = page::render_errors(&self.shared, req, next, deadline, &watch.0, api, mode).await;
         let personal = watch.0.is_personal();
         (signal::follow(res, watch), personal, mode)

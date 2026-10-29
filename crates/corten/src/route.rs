@@ -653,7 +653,9 @@ impl<R: Route + ?Sized, I: crate::view::Id> fmt::Display for At<'_, R, I> {
 /// assert_eq!(ItemsLive { filters, since: Some(7) }.href(), "/items/live?search=red%20%26%20blue&page=2&since=7");
 /// assert_eq!(Items { filters: ItemQuery::default() }.href(), "/items");
 ///
-/// // A route's handler reads the same struct back, as the field of its `Params<Items>`.
+/// // A route's handler reads them back as the field of its `Params<Items>`, each by its key as
+/// // the route reads its own, which needs no `Deserialize`. The filter form that posts the same
+/// // names (`Fields`) is read by serde:
 /// let read: ItemQuery = corten::form::from_bytes(b"search=red%20%26%20blue&page=2").unwrap();
 /// assert_eq!((read.search.as_deref(), read.page), (Some("red & blue"), Some(2)));
 /// ```
@@ -668,6 +670,11 @@ impl<R: Route + ?Sized, I: crate::view::Id> fmt::Display for At<'_, R, I> {
 /// struct Items { #[route(query)] search: Option<String> }
 /// ```
 pub trait QueryParams {
+    /// The names it writes, which a route that includes it checks against its own when it
+    /// compiles. Written by the derive.
+    #[doc(hidden)]
+    const __KEYS: &'static [__private::Key];
+
     /// Writes each parameter as `?key=value` or `&key=value` (`&amp;` with `html`), `first`
     /// saying which. Implemented by `#[derive(Route)] #[route(query)]`.
     fn write_params(&self, first: &mut bool, html: bool, out: &mut String);
@@ -1221,8 +1228,8 @@ impl fmt::Write for Encode<'_> {
 /// is a `String`, a `&'a [T]` a `Vec<T>`, any other `&'a T` a `T`), filled the way a link writes them:
 /// a path parameter from its segment, percent-decoded; a query parameter by the name serde reads
 /// (`None`, or empty for a list, when the query leaves it out; a field with `#[serde(default)]`
-/// its default); a `#[route(query)]` field from the whole query; a `#[route(prefix = "dim.")]`
-/// field from each parameter with the prefix, taken off. A request whose parameters do not
+/// its default); a `#[route(query)]` field's set each of its fields the same way; a
+/// `#[route(prefix = "dim.")]` field from each parameter with the prefix, taken off. A request whose parameters do not
 /// fit is a `400 Bad Request`.
 ///
 /// So the link and the handler cannot disagree about a parameter's name or type, and a handler
@@ -1290,9 +1297,10 @@ impl fmt::Write for Encode<'_> {
 /// ```
 ///
 /// A field `Params` has no owned form for (a borrowed `#[route(query)]` set) or a `#[serde(..)]`
-/// key it does not follow (`alias`, `with`, `flatten`, `skip`, a container `default`, ...) leaves
-/// the route's links as they are, and a handler that takes its `Params` does not compile, rather
-/// than read the parameters differently from how serde would:
+/// key it does not follow (`alias`, `with`, `flatten`, `skip`, a container `default`, ...),
+/// on the route or on a query set it includes, leaves the route's links as they are, and a handler that
+/// takes its `Params` does not compile, rather than read the parameters differently from how
+/// links write them:
 ///
 /// ```compile_fail,E0277
 /// use corten::prelude::*;
@@ -1309,6 +1317,49 @@ impl fmt::Write for Encode<'_> {
 ///
 /// async fn show(item: Params<url::Item<'_>>) -> String {
 ///     item.id.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// pub struct Filters { #[serde(alias = "query")] pub q: Option<String> }
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> { pub id: &'a str, #[route(query)] pub filters: super::Filters }
+/// }
+///
+/// async fn show(item: Params<url::Item<'_>>) -> String {
+///     item.id.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A set's container `#[serde(default)]` is refused the same way: a link of a set whose default
+/// has `sort: Some("name")` writes no `sort` for `None`, which the default would read back as
+/// `Some("name")`. A field's own `#[serde(default)]` is followed.
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// #[serde(default)]
+/// pub struct Paging { pub limit: Option<String> }
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/orders", get = list)]
+///     pub struct Orders { #[route(query)] pub paging: super::Paging }
+/// }
+///
+/// async fn list(orders: Params<url::Orders>) -> String {
+///     orders.paging.limit.clone().unwrap_or_default()
 /// }
 /// # fn main() {}
 /// ```
@@ -1348,9 +1399,50 @@ impl fmt::Write for Encode<'_> {
 /// ```
 ///
 /// A link writes `Some("")` as `?tab=`, which reads back as `None` (a blank form field is no
-/// value); a key a route's field and its `#[route(query)]` set both write is sent twice, which
-/// `Params` refuses (a 400); and a `#[route(prefix = ..)]` map keeps the last value of a key sent
-/// twice, as a `BTreeMap` does.
+/// value); and a `#[route(prefix = ..)]` map keeps the last value of a key sent twice, as a
+/// `BTreeMap` does. A name that a route's field and its `#[route(query)]` set both write, or a
+/// set's prefix that one of the route's names starts with, does not compile:
+///
+/// ```compile_fail,E0080
+/// use std::collections::BTreeMap;
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// pub struct Filters { #[route(prefix = "f")] pub facets: BTreeMap<String, String> }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// pub struct Items { pub from: Option<u32>, #[route(query)] pub filters: Filters }
+/// ```
+///
+/// ```compile_fail,E0080
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// pub struct Paging { pub page: Option<u32> }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// pub struct Items { pub page: Option<u32>, #[route(query)] pub paging: Paging }
+/// ```
+///
+/// ```compile_fail,E0080
+/// use corten::prelude::*;
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// pub struct Paging { pub page: Option<u32> }
+///
+/// #[derive(Default, Route)]
+/// #[route(query)]
+/// pub struct Filters { pub page: Option<u32>, #[route(query)] pub paging: Paging }
+///
+/// #[derive(Route)]
+/// #[route("/items")]
+/// pub struct Items { #[route(query)] pub filters: Filters }
+/// ```
 pub struct Params<R: FromUrl + ?Sized>(pub R::Params);
 
 impl<R: FromUrl + ?Sized> std::ops::Deref for Params<R> {
@@ -1624,8 +1716,8 @@ pub mod __private {
     }
     methods!(get, post, put, delete, patch, head, options, trace);
 
-    pub use crate::form::de::sorted_pairs;
-    use crate::form::{de::Pair, FormError};
+    pub use crate::form::de::{sorted_pairs, Pair};
+    use crate::form::FormError;
 
     /// `T`, named with a lifetime of the `FromUrl` impl, so a bound on it (that a field reads
     /// back) is checked where `Params` is used, not where the route is declared: a link needs
@@ -1659,18 +1751,98 @@ pub mod __private {
         pub struct transparent;
     }
 
-    /// Never implemented: a route with a serde key `Params` does not follow has no `Params`.
+    /// Never implemented: a route or query set with a serde key `Params` does not follow has no
+    /// `Params`.
     #[diagnostic::on_unimplemented(
         message = "`Params` reads a route's parameters by the names its links write, and does not follow this #[serde(..)] key: `{Self}`",
-        note = "remove the key from the route struct; a #[route(query)] set's own serde keys are read by serde"
+        note = "remove the key from the route struct, or from the #[route(query)] set that has it"
     )]
     pub trait Followed {}
 
-    /// A query parameter read by serde: by its key, or a `#[route(query)]` field from them all.
+    /// A query parameter's name as a route or set writes it: a key, a `#[route(prefix)]` family,
+    /// or a `#[route(query)]` set's own.
+    pub enum Key {
+        Name(&'static str),
+        Prefix(&'static str),
+        Set(&'static [Key]),
+    }
+
+    const fn count(keys: &[Key]) -> usize {
+        let (mut n, mut i) = (0, 0);
+        while i < keys.len() {
+            n += match &keys[i] {
+                Key::Set(inner) => count(inner),
+                _ => 1,
+            };
+            i += 1;
+        }
+        n
+    }
+
+    /// The `n`th name, sets flattened: `(is a prefix, text)`.
+    const fn nth(keys: &[Key], mut n: usize) -> Option<(bool, &'static str)> {
+        let mut i = 0;
+        while i < keys.len() {
+            match &keys[i] {
+                Key::Set(inner) => {
+                    let c = count(inner);
+                    if n < c {
+                        return nth(inner, n);
+                    }
+                    n -= c;
+                }
+                Key::Name(name) if n == 0 => return Some((false, *name)),
+                Key::Prefix(prefix) if n == 0 => return Some((true, *prefix)),
+                _ => n -= 1,
+            }
+            i += 1;
+        }
+        None
+    }
+
+    const fn starts_with(text: &str, prefix: &str) -> bool {
+        let (text, prefix) = (text.as_bytes(), prefix.as_bytes());
+        if prefix.len() > text.len() {
+            return false;
+        }
+        let mut i = 0;
+        while i < prefix.len() {
+            if text[i] != prefix[i] {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+
+    /// Fails to compile a route whose parameters, its own and its sets', could be read back as
+    /// each other's: two with one name, or a prefix another's name starts with.
+    pub const fn check_keys(keys: &[Key]) {
+        let total = count(keys);
+        let mut a = 0;
+        while a < total {
+            let mut b = a + 1;
+            while b < total {
+                let (Some((a_prefix, a_text)), Some((b_prefix, b_text))) = (nth(keys, a), nth(keys, b)) else { unreachable!() };
+                let clash = match (a_prefix, b_prefix) {
+                    (false, false) => starts_with(a_text, b_text) && a_text.len() == b_text.len(),
+                    (true, false) => starts_with(b_text, a_text),
+                    (false, true) => starts_with(a_text, b_text),
+                    (true, true) => starts_with(a_text, b_text) || starts_with(b_text, a_text),
+                };
+                if clash {
+                    panic!("two of this route's query parameters, its own or its #[route(query)] sets', have one name, or a #[route(prefix)] starts another's name, so a parameter read back could be either's");
+                }
+                b += 1;
+            }
+            a += 1;
+        }
+    }
+
+    /// A query parameter read by serde, by its key.
     pub trait Deserialized {
         type T;
         fn field(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> Self::T>) -> Result<Self::T, FormError>;
-        fn all(pairs: &[Pair<'_>]) -> Result<Self::T, FormError>;
     }
 
     impl<T: serde::de::DeserializeOwned> Deserialized for Later<'_, T> {
@@ -1680,11 +1852,18 @@ pub mod __private {
         fn field(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> T>) -> Result<T, FormError> {
             crate::form::de::field(pairs, key, default)
         }
+    }
 
-        #[inline]
-        fn all(pairs: &[Pair<'_>]) -> Result<T, FormError> {
-            crate::form::de::all(pairs)
-        }
+    /// A `#[route(query)]` set read back for `Params`: each of its fields by the key its links
+    /// write, as a route reads its own (a prefix field by its prefix, a set inside it as a set).
+    /// `'c` names the `FromUrl` impl's lifetime, so a field that cannot be read is an error where
+    /// `Params` is used, not where the set is declared.
+    #[diagnostic::on_unimplemented(
+        message = "`Params` cannot read this #[route(query)] set back: `{Self}`",
+        note = "a set Params reads is `#[derive(Route)] #[route(query)]` with no lifetime parameters: its fields own their values (String, not &'a str)"
+    )]
+    pub trait ReadQuery<'c>: Sized {
+        fn read_query(pairs: &[Pair<'_>]) -> Result<Self, FormError>;
     }
 
     /// A `#[route(prefix = "dim.")]` field: a `BTreeMap` or a `Vec` of pairs.

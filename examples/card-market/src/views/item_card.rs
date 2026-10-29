@@ -1,6 +1,6 @@
 use corten::prelude::*;
 
-use crate::{model::ItemView, routes, text::Msg};
+use crate::{items, model::ItemView, text::Msg};
 
 /// An item in a list (the home page, a category): its picture, its name, its set and the lowest
 /// price, as one link to its page. The picture is a versioned static file, sized so the grid does
@@ -9,7 +9,7 @@ use crate::{model::ItemView, routes, text::Msg};
 #[component(css)]
 pub fn ItemCard<'a>(req: &'a Req, t: Msg, item: &'a ItemView, eager: bool) -> impl Render {
     html! {
-        <a class={Card} href={routes::Item { id: &item.id }}>
+        <a class={Card} href={items::Item { id: &item.id }}>
             if let Some(art) = item.art {
                 <img class={Art} src={req.asset(art)} width="250" height="350" alt="" loading={(!eager).then_some("lazy")}>
             }

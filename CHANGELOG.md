@@ -871,6 +871,22 @@ Corten is pre-1.0, so any minor version may change the API.
      client navigation still fetches a new module's imports after it. The scripts guide describes
      relative imports
      ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
+124. Middleware for part of the app: `Area::middleware` and `Api::middleware` run after the
+     app's middleware for each request at the area's or API's prefix (an outer area's before an
+     inner one's, then an API's under it, each in the order given), so a rate limit picks its
+     routes by where they are, never by a path the middleware compares. A middleware refuses with
+     a `Refused` (`Refused::too_many(wait).into_response()`), answered in the request's mode as a
+     `Caller`'s refusal is, `Retry-After` included, and the default error page says "Too many
+     requests" for a 429. It reads the client's address with `ClientIp::of(&mut req)` without
+     splitting the request. card-market's write limit is now on its item pages' area and its
+     partner API, with no path checks
+     ([#327 Middleware is app-wide only, so card-market's write limit picks its routes by comparing paths and builds its 429 by hand](https://github.com/todd-skelton/corten/issues/327)).
+     Measured per request (callgrind, release profile, 5 runs): an app whose areas and APIs have
+     none runs 19,976 to 19,988 instructions against main's 19,696, all of it in glibc's
+     allocator: the allocations are the same (count and sizes, DHAT) and Corten's own code is
+     within 18 (13,971 against 13,953). A request in an area with a pass-through middleware runs
+     21,374 to 21,511 against 20,497 to 20,646 with none (one boxed future), and one outside it
+     19,909 to 19,913.
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1743,6 +1759,19 @@ Corten is pre-1.0, so any minor version may change the API.
     the page. The runtime now marks nav links after a patch that puts one on the page or removes
     one, as after a navigation; a patch without one (a ticker's) only looks through the elements it
     put. `corten.js` grows 65 bytes gzip ([#347 A nav link a patch puts on the page keeps the mark the server judged against the form's action, not the page](https://github.com/todd-skelton/corten/issues/347)).
+64. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
+    back empty: `Params` read a set with serde's derive, which knows nothing of the prefix. A set
+    is now read field by field the way a route reads its own, so a list it leaves out is empty
+    (it was a 400 without `#[serde(default)]`), a field's own `#[serde(default)]` fills what the
+    query leaves out, and a set needs no `Deserialize`. **Breaking:** a set's serde keys that a
+    route's reader does not follow (`alias`, `flatten`, `deny_unknown_fields`, the struct's own
+    `default`, ...) make `Params` of a route that includes it not compile, naming the key, as they
+    do on the route (a struct's `default` would read a link's `None` back as the default's
+    value); and a route whose own query names and its sets' could be read back as each other's
+    (one name written twice, which was a 400, or a prefix another name starts with) does not
+    compile. Reading a route with a four-parameter set costs 4,107 instructions, up from 3,669,
+    the same as those parameters on the route itself (callgrind, release build)
+    ([#310 A #[route(prefix)] field inside a #[route(query)] set is written into links but Params reads it back empty](https://github.com/todd-skelton/corten/issues/310)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
