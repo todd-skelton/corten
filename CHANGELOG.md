@@ -1941,6 +1941,10 @@ Corten is pre-1.0, so any minor version may change the API.
     client receives (`render_cost`, `bytes.mjs`), from alternated release runs reported with their
     median and range; Tooling lists valgrind and `perf`. AGENTS.md, the README's values and the
     pull request template point to it rather than naming `nanoseconds per request`.
+29. The checks in `CONTRIBUTING.md` build into volumes named after the checkout's folder
+    (`corten-target-<folder>`, `corten-msrv-target-<folder>`) instead of one `corten-target` for
+    every checkout, where cargo could take one checkout's build for another's and fail to compile
+    code that was fine.
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
