@@ -1434,6 +1434,10 @@ Corten is pre-1.0, so any minor version may change the API.
     and the currency's code is compared as a number and written only where the locale writes a
     currency by its code. The text is the same; a test checks that no symbol template has a code
     to place.
+79. examples/card-market answers a category nothing is in (a slug from an old link) with
+    `X-Robots-Tag: noindex` (`Public::header`), so search engines do not list an empty page; a
+    category with cards is unchanged
+    ([#335 Some framework features appear in no example: Area::policy, Public::header, Req::signal, Refused::too_many](https://github.com/todd-skelton/corten/issues/335)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
