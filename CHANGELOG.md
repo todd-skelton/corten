@@ -1660,6 +1660,9 @@ Corten is pre-1.0, so any minor version may change the API.
     stops itself after five minutes with no check finished, printing the last check it finished and,
     for the runtime's smoke, the requests still loading ([#317 CI: the browser job can hang for an
     hour in the watchlist smoke, and has no timeout](https://github.com/todd-skelton/corten/issues/317)).
+    The early form's page, which stalled Firefox the same way, also lets go of its route before
+    its context closes
+    ([#350 CI's Firefox stalls after the early form check, closing a page whose route is still registered](https://github.com/todd-skelton/corten/issues/350)).
 55. The ui-gallery smoke failed now and then in WebKit with "due to access control checks" for
     `/?sale=last`: WebKit logs a fetch the runtime cancelled (the next navigation replaced it)
     that way. A request the page cancelled no longer counts as a console error; a real CORS

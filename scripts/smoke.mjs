@@ -1607,11 +1607,16 @@ async function run(browser) {
     navigated,
     navigated ? JSON.stringify(loaded) : `${JSON.stringify(loaded)}; ${trail.join(", ")}`,
   );
-  await early.close();
+  // CI's Firefox once stopped here for five minutes (#350), as it did closing the other site's
+  // page (#317): the route is let go before the context closes, and each step is named.
+  seen(`[${engine}] (step) closing the early form's page`);
+  await early.unrouteAll({ behavior: "ignoreErrors" });
+  await early.context().close();
 
   // A navigating form goes the way its submit button says, as without the runtime (#190):
   // Chromium's NavigateEvent.formData follows the form's own method, not the button's.
   // Not in WebKit with the Navigation API: Playwright loses its page there (see the probe above).
+  seen(`[${engine}] (step) opening the page of navigating forms`);
   const forms = await browser.newPage();
   await forms.goto(`${base}/news`);
   if (engine !== "webkit" && (await forms.evaluate(() => "navigation" in window))) {
