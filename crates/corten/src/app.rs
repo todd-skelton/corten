@@ -76,6 +76,7 @@ pub struct Area<P> {
     pages: Vec<(&'static str, bool)>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
+    sources: crate::security::Sources,
     types: PhantomData<fn() -> P>,
 }
 
@@ -168,6 +169,58 @@ impl<P: Prefix> Area<P> {
         self.deadline = Some(deadline.into());
         self
     }
+
+    /// What the area's pages add to the app's [`Policy`] (its Content-Security-Policy): a payment
+    /// provider's scripts and frames on the payment pages, style attributes on the pages that draw
+    /// sizes from data, and not on every other page. Only adding is possible, so a page in the
+    /// area never allows less than the app; nested areas add up, outermost first.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// #[corten::routes(area = Payments)]
+    /// mod url {
+    ///     #[route("/pay")]
+    ///     pub struct Payments;
+    ///
+    ///     #[route("/pay/{id}", get = pay)]
+    ///     pub struct Pay<'a> {
+    ///         pub id: &'a str,
+    ///     }
+    /// }
+    /// # async fn pay() -> &'static str { "pay" }
+    ///
+    /// fn app(routes: Routes) -> App {
+    ///     App::new(routes).area(|area| {
+    ///         url::area(area).policy(|p| {
+    ///             p.script_src("https://js.stripe.com").frame_src("https://js.stripe.com").connect_src("https://api.stripe.com")
+    ///         })
+    ///     })
+    /// }
+    /// # let _ = app(Routes::new()).router();
+    /// ```
+    ///
+    /// Each area's header is built once, at startup. A document keeps the policy it loaded with,
+    /// so a client navigation into or out of such an area loads the page in full (its shell key
+    /// differs); a patch from the area's routes is applied under the policy of the page it lands
+    /// on, and a page that answers a form from a page under another policy reloads that page. A
+    /// request finds its area's policy once, by path, and only when some area adds a source the
+    /// app's policy lacks. A policy for one route is an area of one page.
+    ///
+    /// What is the whole app's (the names it answers to, HSTS, other sites' writes) is not an
+    /// area's to change:
+    ///
+    /// ```compile_fail,E0599
+    /// # use corten::prelude::*;
+    /// # #[derive(Route)]
+    /// # #[route("/pay")]
+    /// # struct Pay;
+    /// let app = App::new(Routes::new()).area::<Pay>(|area| area.policy(|p| p.allow_origin("https://other.example")));
+    /// ```
+    pub fn policy(mut self, add: impl FnOnce(crate::security::Sources) -> crate::security::Sources) -> Self {
+        self.sources = add(std::mem::take(&mut self.sources));
+        self
+    }
 }
 
 /// An [`Area`] given to [`App::area`], without its type.
@@ -177,6 +230,7 @@ struct Placed {
     pages: Vec<(&'static str, bool)>,
     components: Vec<crate::Component>,
     deadline: Option<Option<Duration>>,
+    sources: crate::security::Sources,
 }
 
 /// An app: its routes, plus everything around them that every production app needs, on by
@@ -340,14 +394,21 @@ impl<M: Middleware> App<M> {
         };
         let prefix = P::PREFIX;
         assert!(!self.areas.iter().any(|placed| placed.prefix == prefix), "corten: the area {prefix:?} is given twice");
-        let area =
-            build(Area { routes: Router::new(), pages: Vec::new(), components: Vec::new(), deadline: None, types: PhantomData });
+        let area = build(Area {
+            routes: Router::new(),
+            pages: Vec::new(),
+            components: Vec::new(),
+            deadline: None,
+            sources: crate::security::Sources::default(),
+            types: PhantomData,
+        });
         self.areas.push(Placed {
             prefix,
             routes: area.routes,
             pages: area.pages,
             components: area.components,
             deadline: area.deadline,
+            sources: area.sources,
         });
         self
     }
@@ -744,7 +805,9 @@ impl<M: Middleware> App<M> {
         let policy = proxies_from_env(hosts_from_env(self.policy));
         shared.proxies = policy.proxies().to_vec();
         shared.allowed_origins = policy.allowed_origins().to_vec();
-        let policy = Applied::new(policy, &shared.import_map);
+        let area_sources: Vec<_> =
+            self.areas.iter().filter(|area| !area.sources.is_empty()).map(|area| (area.prefix, &area.sources)).collect();
+        let policy = Applied::new(policy, &shared.import_map, &area_sources);
 
         // The routes of the APIs and areas: each is under its prefix, which the compiler checked.
         let mut owned = Vec::with_capacity(self.apis.len() + self.areas.len());
@@ -1225,6 +1288,8 @@ impl<M: Middleware> Layer<M> {
         let path = req.uri().path();
         let own = self.own.contains(path);
         let mount = if own { None } else { self.mounts.iter().find(|mount| mount.contains(path)) };
+        // The CSP of pages here, and the deadline: an area's when it sets one.
+        let (csp, shell) = if own || mount.is_some() { (&self.policy.csp, 0) } else { self.policy.csp_for(path) };
         let deadline = match mount {
             Some(mount) => mount.deadline.unwrap_or(self.deadline),
             None if own || self.area_deadlines.is_empty() => self.deadline,
@@ -1240,7 +1305,7 @@ impl<M: Middleware> Layer<M> {
             }
         }
         // A page's nonce is made only if its HTML asks for one; an API route never has one.
-        let nonce = mount.is_none().then(NonceSlot::default);
+        let nonce = mount.is_none().then(|| NonceSlot::new(shell));
         if let Some(nonce) = &nonce {
             req.extensions_mut().insert(nonce.clone());
         }
@@ -1253,7 +1318,7 @@ impl<M: Middleware> Layer<M> {
                     None => refused,
                 },
             };
-            self.policy.headers(&mut refused, nonce.as_ref());
+            self.policy.headers(&mut refused, nonce.as_ref().map(|nonce| (nonce, csp)));
             refused.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
             return refused;
         }
@@ -1262,7 +1327,7 @@ impl<M: Middleware> Layer<M> {
         let path = self.shared.dev.then(|| req.uri().path().to_string());
         let (mut res, caller, mode) = self.run(req, route, mount, deadline).await;
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
-        self.policy.headers(&mut res, nonce.as_ref());
+        self.policy.headers(&mut res, nonce.as_ref().map(|nonce| (nonce, csp)));
         let seen = Seen {
             credentials,
             caller,

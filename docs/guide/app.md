@@ -19,7 +19,7 @@ your routes. Each default can be replaced in one line.
 | Error pages | every [`Failure`](#error-pages) in a plain document, in the request's mode (page, swap or JSON), sent with `X-Robots-Tag: noindex`; the error is logged, and shown only under `corten dev` | `.error_page(page, state)`: `async fn(Failure, Req, ..extractors) -> HtmlResult`, in the app's layout and for who is asking; `corten new` writes one that names each case |
 | JSON-only routes | none | `.api(api::api)` for a `#[corten::routes(api = ApiRoot)]` module: every failure under the prefix is JSON, unknown URLs included, with no document ([below](#json-only-routes)) |
 | WebSockets and relays | none | a handler takes `Upgrade` and returns its `websocket(..)` or `switch(..)`; `Relay` passes another server's answer on as it came ([below](#websockets-and-relays)) |
-| Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the layout or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods; forms go to this origin only | `.policy(Policy::new()...)`: another origin for scripts, styles, images, `fetch`, frames, fonts, or `.form_action("https://pay.example")` for a form (or a form's redirect) that hands the user to another site |
+| Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the layout or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods; forms go to this origin only | `.policy(Policy::new()...)`: another origin for scripts, styles, images, `fetch`, frames, fonts, or `.form_action("https://pay.example")` for a form (or a form's redirect) that hands the user to another site; one part of the app's pages only: `Area::policy` ([below](#a-policy-for-part-of-the-app)) |
 | Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Public<HtmlResult>` (or `Public<JsonResult<T>>`) for an answer that is the same for everyone |
 | Static files | component scripts and the components' stylesheets (one file, plus one per area that lists components and one per set of areas that list the same components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(Static)`: `static/`, compiled into the program by `corten::assets::embed!` (a constant per file, `req.asset(Static::STYLE_CSS)`) and served the same way ([below](#static-files)); `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
 | Middleware of your own | none | `.middleware((RequestId, RateLimit))`: steps of the app's own, at one place in Corten's order ([below](#your-own-middleware)) |
@@ -888,6 +888,32 @@ How the common cases look:
 | Private everywhere (an internal tool) | `caller = Staff` on the app's routes module, and the sign-in route (and any webhook) in a module without it |
 | An API only some callers may use | handlers that take `Caller<Partner>` and return `JsonResult<T>` |
 | Only the author edits, members see their organization's records | the handler, which loads the record |
+| A payment provider's scripts and frames, or style attributes, on some pages | an area with `.policy(..)` ([below](#a-policy-for-part-of-the-app)) |
+
+### A policy for part of the app
+
+What only some pages need is allowed on those pages only: an area adds to the app's policy for
+the pages at its prefix and under it. A payment page that embeds a provider's fields, for example,
+or the pages that draw sizes from data with `style` attributes:
+
+```rust,ignore
+App::new(url::router())
+    .area(|area| payments::url::area(area).policy(|p| {
+        p.script_src("https://js.stripe.com").frame_src("https://js.stripe.com").connect_src("https://api.stripe.com")
+    }))
+    .area(|area| dashboard::url::area(area).policy(|p| p.allow_style_attributes()))
+```
+
+An area only adds (the closure gets `Sources`, which has no way to remove one), so no page allows
+less than the app; nested areas add up, outermost first. Each area's header is built once at
+startup, and a request looks up its area by path only when some area sets a policy. A document
+keeps the policy it loaded with, so a client navigation into or out of such an area loads the page
+in full (the page's shell key includes the area's policy); a patch is applied under the policy of
+the page it lands on. A `data-patch` form on a page in such an area whose route, elsewhere,
+answers with a whole page (not a patch) gets that page under the other policy, so the runtime
+loads the current page again rather than swap it in: answer such a form with a patch or a redirect.
+An area that adds only sources the app already has keeps the app's policy and shell key. A policy for a single route is an area of one page. An `App::api` keeps its
+own `default-src 'none'`.
 
 ## Error pages
 
