@@ -1216,6 +1216,11 @@ Corten is pre-1.0, so any minor version may change the API.
     price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
     dialog, the last sale, and its SKU with a copy button
     ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
+71. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+    method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
+    tools' own errors have, and a partner's write without a known key is told to send a valid
+    one in `X-Api-Key` (`Refused::message`)
+    ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1611,6 +1616,17 @@ Corten is pre-1.0, so any minor version may change the API.
     the environment it reads, and which file holds each piece. The main README lists the examples
     in the order to read them, watchlist first
     ([#230 No example has a README that says how to run it and where each feature is](https://github.com/todd-skelton/corten/issues/230)).
+24. Work on a schedule is a task with tokio's intervals: `App::task`'s documentation and the
+    guide (app.md, "On a schedule") show a job hourly at :15 and one every five minutes in one
+    loop, so they never overlap, keeping each job's last run for a status page, run on a paused
+    tokio clock in a doctest; the guide says what is left to the app (the monotonic clock's jumps,
+    the next run's time, local wall times). The guide's task example and the watchlist's market
+    task now use `MissedTickBehavior::Skip` (an overrun is followed by one late run; tokio's
+    default, `Burst`, runs once for each missed mark, back to back) and poll the signal first
+    (`biased`), so no run starts once shutdown has begun. Corten adds no scheduler. Corten's own
+    tests build tokio with `test-util` for the paused clock: each tokio clock read in them checks
+    one flag more; apps are not affected
+    ([#278 An app cannot run a job on a schedule (hourly at :15, every 5 minutes, daily at 03:30), so each writes the clock, the missed-mark skip and the no-overlap rule itself](https://github.com/todd-skelton/corten/issues/278)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
