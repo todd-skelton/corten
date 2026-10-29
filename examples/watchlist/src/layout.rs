@@ -8,6 +8,11 @@ use crate::{
     theme::*,
 };
 
+corten::assets::embed! {
+    /// The files in `static/`, compiled into the program: `Static::STYLE_CSS` is `static/style.css`.
+    pub struct Static = "static";
+}
+
 /// The document around every page: its title, its own `head` tags, who is looking and the page.
 /// Client navigation swaps the title, the tags and the page only; signing in changes the viewer,
 /// which makes the runtime load the next page in full.
@@ -27,8 +32,8 @@ pub fn Layout<'a>(
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={req.asset("style.css")}>
-                <link rel="icon" type="image/svg+xml" href={req.asset("favicon.svg")}>
+                <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
+                <link rel="icon" type="image/svg+xml" href={req.asset(Static::FAVICON_SVG)}>
                 <title>{title}" | Watchlist"</title>
                 {head}
                 <Corten />

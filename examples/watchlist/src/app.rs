@@ -59,6 +59,7 @@ pub(crate) fn app_with(market: Market, alerts: AlertStore) -> App {
     let trading = market.clone();
     let shared = Shared { market, lists: Lists::default(), alerts, pictures: Pictures::default(), readers: Readers::default() };
     App::new(url::router(shared.clone()))
+        .assets(crate::layout::Static)
         .components(&[TOKENS, home::LivePrices])
         .area(|area| news::url::area(area, shared.clone()).components(news::COMPONENTS))
         .area(|area| account::url::area(area, shared.clone()))

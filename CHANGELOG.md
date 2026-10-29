@@ -846,7 +846,10 @@ Corten is pre-1.0, so any minor version may change the API.
    own `#[corten::routes(api = ..)]` module, with its handler.
 9. `Req::current`: `req.nav(&route)` writes the whole nav link, and `req.is_current` answers
    the question elsewhere.
-10. `corten::Query`, and axum's `Path` from the prelude: a route's parameters are its `Params`,
+10. `STATIC_DIR`, the default `static/` read from the working directory, `App::assets(dir)`,
+    `Req::has_asset`, and `Assets::load`, `Assets::build` and `Assets::url` from the public API:
+    static files are compiled in (Changed 73).
+11. `corten::Query`, and axum's `Path` from the prelude: a route's parameters are its `Params`,
     whether its handler is named in a routes module or added by hand (`Area::route`), and a
     `GET` form's fields its `Form` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
 
@@ -1286,7 +1289,25 @@ Corten is pre-1.0, so any minor version may change the API.
     `on:Copied={..}` listens for the name the event's `#[event]` gave it: a library's carries its
     prefix (`ui-copied`), which `html!` had dropped, so no listener heard a library's event
     ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
-73. The trait a `#[route(query)]` set implements is `corten::route::QueryParams` (it was
+73. **Breaking:** static files are compiled into the program. `corten::assets::embed!(pub struct
+    Static = "static")` makes a constant per file (`Static::STYLE_CSS`, `Static::ICONS_192_PNG`)
+    and `App::assets(Static)` serves them; `req.asset(Static::STYLE_CSS)` is its versioned URL,
+    written without an allocation, and a misspelled or removed file does not compile. A name from
+    data is `req.find_asset(name)`, an `Option`, replacing `has_asset`. The binary is the whole
+    deploy: the Dockerfiles no longer copy `static/`, and an app no longer writes a lookup next to
+    `current_exe()`. A file name a URL cannot carry (a space, `#`, `?`, `%`), two files with
+    one constant, or a directory that is not there is a compile error; dotfiles are left out. A file
+    added with no change to the code is in the program from the next build that compiles the crate
+    (the Dockerfiles touch every source first). Under `corten dev` the app reads the directory from
+    disk, and `corten dev` restarts it without compiling when only those files were edited or
+    added (a removed file builds, and a failed build is tried again at the next change). A
+    release binary holds no path from the build machine. The PWA's
+    icons and worker script are still paths checked at startup. Measured on card-market (release,
+    callgrind, three runs each): startup 1,470,715-1,485,822 instructions to 1,381,406-1,387,180,
+    the item page 81,556-81,740 to 77,294-77,524 per request (`req.asset` no longer looks a string
+    up and allocates the URL), and the binary 6,729,592 to 6,752,216 bytes (+22,624, the files)
+    ([#268 Static files are a directory found at run time, so a built program cannot be deployed by itself and each app writes its own lookup](https://github.com/todd-skelton/corten/issues/268)).
+74. The trait a `#[route(query)]` set implements is `corten::route::QueryParams` (it was
     `route::Params`), so `Params` is the extractor. The examples read their routes' parameters
     as `Params` (16 handlers); ui-gallery's `HomeQuery` and listings-feed's `MarketQuery` are
     gone, the parameters declared once on the route (`MarketWrite` gains `n`), and watchlist's

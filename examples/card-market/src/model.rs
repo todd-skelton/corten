@@ -1,9 +1,12 @@
 //! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts,
 //! except the alert's price, read as the reader's locale writes money (`t.parse_money`) where
 //! the bench apps read a float.
-use corten::{Errors, Fields, FromJson, ToJson, i18n::Minor};
+use corten::{Errors, Fields, FromJson, ToJson, assets::Asset, i18n::Minor};
 
-use crate::text::{Msg, USD};
+use crate::{
+    text::{Msg, USD},
+    views::Static,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -70,7 +73,7 @@ pub struct ItemView {
     /// The store's own picture of the card (`static/cards/`): the demo catalog's, for a card the
     /// responses give no pictures of (`Source::demo`).
     #[serde(skip)]
-    pub art: Option<&'static str>,
+    pub art: Option<Asset>,
     pub summary: Option<Summary>,
     pub listings: Vec<Listing>,
     pub offers: Vec<Offer>,
@@ -79,21 +82,21 @@ pub struct ItemView {
 }
 
 /// The store's own art for the cards of its demo catalog, a file in `static/cards/` (each one's
-/// name is here, so a missing file is a test's failure, not a page's).
-pub fn art(id: &str) -> Option<&'static str> {
+/// constant is here, so a missing file does not compile).
+pub fn art(id: &str) -> Option<Asset> {
     Some(match id {
-        "item_1" => "cards/item_1.svg",
-        "item_2" => "cards/item_2.svg",
-        "item_3" => "cards/item_3.svg",
-        "item_4" => "cards/item_4.svg",
-        "item_5" => "cards/item_5.svg",
-        "item_6" => "cards/item_6.svg",
-        "item_7" => "cards/item_7.svg",
-        "item_8" => "cards/item_8.svg",
-        "item_9" => "cards/item_9.svg",
-        "item_10" => "cards/item_10.svg",
-        "item_11" => "cards/item_11.svg",
-        "item_12" => "cards/item_12.svg",
+        "item_1" => Static::CARDS_ITEM_1_SVG,
+        "item_2" => Static::CARDS_ITEM_2_SVG,
+        "item_3" => Static::CARDS_ITEM_3_SVG,
+        "item_4" => Static::CARDS_ITEM_4_SVG,
+        "item_5" => Static::CARDS_ITEM_5_SVG,
+        "item_6" => Static::CARDS_ITEM_6_SVG,
+        "item_7" => Static::CARDS_ITEM_7_SVG,
+        "item_8" => Static::CARDS_ITEM_8_SVG,
+        "item_9" => Static::CARDS_ITEM_9_SVG,
+        "item_10" => Static::CARDS_ITEM_10_SVG,
+        "item_11" => Static::CARDS_ITEM_11_SVG,
+        "item_12" => Static::CARDS_ITEM_12_SVG,
         _ => return None,
     })
 }
@@ -333,18 +336,18 @@ pub use api::ApiItem;
 mod tests {
     use super::*;
 
-    /// Every card of the demo catalog has its art, and every art file is one the app serves.
+    /// Every card of the demo catalog has its art, a picture of it.
     #[test]
     fn each_demo_card_has_art_the_app_serves() {
         let demo: std::collections::HashMap<String, serde_json::Value> =
             serde_json::from_str(include_str!("../fixtures/demo.json")).unwrap();
         for id in demo.keys() {
             let art = art(id).unwrap_or_else(|| panic!("{id} has no art"));
-            let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(art);
+            let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(art.path());
             let svg = std::fs::read_to_string(&file).unwrap_or_else(|_| panic!("{} is missing", file.display()));
-            assert!(svg.starts_with("<svg") && svg.contains(r#"viewBox="0 0 250 350""#), "{art}: a card, 5 by 7");
+            assert!(svg.starts_with("<svg") && svg.contains(r#"viewBox="0 0 250 350""#), "{art:?}: a card, 5 by 7");
             let title = demo[id]["title"].as_str().unwrap();
-            assert!(title.split(' ').all(|word| svg.contains(word)), "{art} names {title}");
+            assert!(title.split(' ').all(|word| svg.contains(word)), "{art:?} names {title}");
         }
     }
 

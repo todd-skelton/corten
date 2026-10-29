@@ -5,6 +5,11 @@ use std::sync::Arc;
 
 use crate::{model::ItemView, routes, source::Shelf, text::Msg, theme};
 
+corten::assets::embed! {
+    /// The files in `static/`, compiled into the program: `Static::STYLE_CSS` is `static/style.css`.
+    pub struct Static = "static";
+}
+
 mod alert;
 mod item_card;
 mod item_detail;
@@ -76,12 +81,12 @@ pub fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) 
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={req.asset("style.css")}>
-                <link rel="icon" type="image/svg+xml" href={req.asset("favicon.svg")}>
+                <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
+                <link rel="icon" type="image/svg+xml" href={req.asset(Static::FAVICON_SVG)}>
                 <title>{title}" | Card Market"</title>
                 {head}
                 <Corten />
-                <script type="module" src={req.asset("app.js")}></script>
+                <script type="module" src={req.asset(Static::APP_JS)}></script>
             </head>
             <body>
                 <SiteHeader />
