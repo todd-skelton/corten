@@ -30,6 +30,9 @@ const check = (what, got, expected) => {
 };
 for (const [tag, kind, input, expected] of rows("cases.tsv")) {
   const [what, style, offset] = kind.split(" ");
+  // A relative time is not a script's format: RelativeTime has the browser's Intl write it, and
+  // locale-data.mjs checked the server's data against Intl.
+  if (what === "relative") continue;
   if (what === "number") {
     const format = formatter(specs.get(`${tag} number`));
     check(`${tag} number ${input}`, format(input), expected);

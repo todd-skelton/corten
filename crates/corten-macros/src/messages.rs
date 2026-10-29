@@ -354,6 +354,17 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             time: ::corten::i18n::TimeStyle,
         ) -> ::corten::i18n::When {
             ::corten::i18n::When::date_time(self.__corten_locale(), at.into(), date, time)
+        }
+        /// `at` relative to `now` in this locale, in the largest unit it has a whole one of:
+        /// `in 10 hours` (en, `Long`) for 10 h 35 min ahead, `3 min. ago` (`Short`).
+        /// `corten_ui::RelativeTime` keeps it current in the browser.
+        #[inline] __A2 fn relative(
+            self,
+            at: impl ::core::convert::Into<::std::time::SystemTime>,
+            now: impl ::core::convert::Into<::std::time::SystemTime>,
+            style: ::corten::i18n::RelativeStyle,
+        ) -> ::corten::i18n::Relative {
+            ::corten::i18n::Relative::new(self.__corten_locale(), at.into(), now.into(), style)
         }",
         &[data, TokenTree::Literal(proc_macro::Literal::usize_unsuffixed(count)).into(), vis.clone()],
     ));
