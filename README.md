@@ -413,10 +413,19 @@ API reference: `cargo doc --open -p corten`. Building an app with an AI agent? T
 | [`corten-cluster`](crates/corten-cluster) | one feed across instances: Postgres outbox, NATS JetStream |
 | [`corten-protocol`](crates/corten-protocol) | the feed wire format and a client replica, for native and agent clients |
 
-Examples: [watchlist](examples/watchlist) (a stock watchlist with live prices, market news and price alerts, styled utility-first),
-[card-market](examples/card-market) (a card store with every production module),
-[seller-desk](examples/seller-desk) (a client-heavy inventory screen), [ui-gallery](examples/ui-gallery)
-(`corten-ui` styled by a small design system), and [listings-feed](examples/listings-feed) (a seller's listings as one feed served by several instances, a page that follows it, and the failover benchmark).
+Examples, in the order to read them. Each has a README that says how to run it and where each piece
+is:
+
+1. [watchlist](examples/watchlist): start here. A stock watchlist with live prices, market news,
+   price alerts and an account, styled utility-first; each route shows one piece of Corten.
+2. [card-market](examples/card-market): a card store with every production module on (security,
+   PWA, i18n, caching, JSON routes for partners and agents). Read it before you deploy.
+3. [seller-desk](examples/seller-desk): a client-heavy inventory screen, for when a screen does more
+   in the browser than forms and links.
+4. [ui-gallery](examples/ui-gallery): a seller's draft listing built from every `corten-ui`
+   component, styled by a small design system.
+5. [listings-feed](examples/listings-feed): a seller's listings as one feed served by several
+   instances, a page that follows it, and the failover benchmark.
 
 ## Contributing
 

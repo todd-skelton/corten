@@ -788,7 +788,7 @@ Corten is pre-1.0, so any minor version may change the API.
    the question elsewhere.
 10. `STATIC_DIR`, the default `static/` read from the working directory, `App::assets(dir)`,
     `Req::has_asset`, and `Assets::load`, `Assets::build` and `Assets::url` from the public API:
-    static files are compiled in (Changed 70).
+    static files are compiled in (Changed 72).
 
 ### Changed
 
@@ -1207,7 +1207,16 @@ Corten is pre-1.0, so any minor version may change the API.
     plus its 377-byte picture (brotli); the home page is 1,356 bytes larger (105 with brotli) plus
     the pictures that load.
     ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
-70. **Breaking:** static files are compiled into the program. `corten::assets::embed!(pub struct
+70. examples/ui-gallery is one screen: a seller's draft listing for a card, with its quantity,
+    price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
+    dialog, the last sale, and its SKU with a copy button
+    ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
+71. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+    method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
+    tools' own errors have, and a partner's write without a known key is told to send a valid
+    one in `X-Api-Key` (`Refused::message`)
+    ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
+72. **Breaking:** static files are compiled into the program. `corten::assets::embed!(pub struct
     Static = "static")` makes a constant per file (`Static::STYLE_CSS`, `Static::ICONS_192_PNG`)
     and `App::assets(Static)` serves them; `req.asset(Static::STYLE_CSS)` is its versioned URL,
     written without an allocation, and a misspelled or removed file does not compile. A name from
@@ -1493,6 +1502,10 @@ Corten is pre-1.0, so any minor version may change the API.
     The watchlist's alerts page reads its status line and list so. The runtime grows by 273 B
     (72 B brotli)
     ([#276 A page cannot ask for one of its parts to be read again, so a page holding a third-party frame needs a script to start the read](https://github.com/todd-skelton/corten/issues/276)).
+49. examples/ui-gallery's live regions stay in the page while they are empty: the toaster's root,
+    the form's result and the menu's result were `display: none` until a message came, so the
+    message was often not announced. The toast's box is drawn only while there is a message, and
+    its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1610,6 +1623,21 @@ Corten is pre-1.0, so any minor version may change the API.
     its item page's tables and price summary fit a phone, its alert form keeps less room under
     it, and its demo cards name their rarity twice (the chips and the details) instead of four
     times: the subtitle is the set and number, and no tag repeats a field or a chip.
+23. Each example has a README: what the app is, how to run it (`corten dev` and Docker) with
+    the environment it reads, and which file holds each piece. The main README lists the examples
+    in the order to read them, watchlist first
+    ([#230 No example has a README that says how to run it and where each feature is](https://github.com/todd-skelton/corten/issues/230)).
+24. Work on a schedule is a task with tokio's intervals: `App::task`'s documentation and the
+    guide (app.md, "On a schedule") show a job hourly at :15 and one every five minutes in one
+    loop, so they never overlap, keeping each job's last run for a status page, run on a paused
+    tokio clock in a doctest; the guide says what is left to the app (the monotonic clock's jumps,
+    the next run's time, local wall times). The guide's task example and the watchlist's market
+    task now use `MissedTickBehavior::Skip` (an overrun is followed by one late run; tokio's
+    default, `Burst`, runs once for each missed mark, back to back) and poll the signal first
+    (`biased`), so no run starts once shutdown has begun. Corten adds no scheduler. Corten's own
+    tests build tokio with `test-util` for the paused clock: each tokio clock read in them checks
+    one flag more; apps are not affected
+    ([#278 An app cannot run a job on a schedule (hourly at :15, every 5 minutes, daily at 03:30), so each writes the clock, the missed-mark skip and the no-overlap rule itself](https://github.com/todd-skelton/corten/issues/278)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

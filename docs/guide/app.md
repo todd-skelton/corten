@@ -24,7 +24,7 @@ your routes. Each default can be replaced in one line.
 | Static files | component scripts and the components' stylesheets (one file, plus one per area that lists components and one per set of areas that list the same components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(Static)`: `static/`, compiled into the program by `corten::assets::embed!` (a constant per file, `req.asset(Static::STYLE_CSS)`) and served the same way ([below](#static-files)); `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
 | Middleware of your own | none | `.middleware((RequestId, RateLimit))`: steps of the app's own, at one place in Corten's order ([below](#your-own-middleware)) |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
-| Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)) |
+| Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)); on a schedule, with tokio's intervals ([below](#on-a-schedule)) |
 | Connections | a request's head (its line and headers) must arrive within 30 seconds of the connection opening or its last answer, or the connection is closed; no limit on how many are open | `.header_timeout(d)` (`None` behind a proxy that buffers heads), `.max_connections(n)`: past it, connections wait to be accepted |
 | Shutdown | Ctrl-C and `SIGTERM` (on Windows Ctrl-C, Ctrl-Break, the console closing and system shutdown), or the app's `corten::shutdown()`, tell the tasks, end live streams, close the listeners, let requests in progress finish, then wait for the tasks (5 seconds) | `.shutdown_grace(d)`, under the platform's own bound (`docker stop`: 10 seconds) |
 | Logs | errors, startup and shutdown to stderr (feature `log`) | set your own `tracing` subscriber first |
@@ -134,10 +134,12 @@ process, a periodic flush) is a task of the app's, an async function of a `Signa
 ```rust,ignore
 async fn refresh(quotas: Quotas, signal: Signal) {
     let mut every = tokio::time::interval(Duration::from_secs(120));
+    every.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
         tokio::select! {
-            _ = every.tick() => quotas.refresh().await, // finishes its journal write
+            biased;
             _ = signal.aborted() => return,
+            _ = every.tick() => quotas.refresh().await, // finishes its journal write
         }
     }
 }
@@ -153,21 +155,69 @@ tasks have finished, waiting for the tasks up to `App::shutdown_grace` (5 second
 A task still running then is ended and logged by name, so a stuck one cannot hold the process,
 and so is one that panics; whether to restart it is the app's choice.
 
-The app begins the same shutdown itself with `corten::shutdown()`: from a route a supervisor
-calls (it answers, say, 202, and that answer is sent before its connection closes), or from a task
-that decides the app is done. It is the way to stop a process that has no signal to send it, such
-as a service on Windows started without a console, where ending the process skips every step
-above. A second call, or a signal after it, changes nothing. Guard such a route as any other write
-(`Caller<Supervisor>`).
+Two lines in the loop matter. `biased` polls the signal first, so no run starts once shutdown has
+begun (`select!` otherwise picks among ready branches at random); one in progress has until
+`App::shutdown_grace` to finish. With `MissedTickBehavior::Skip` a run that took longer than the
+interval is followed by one late run, and then the interval's marks again: tokio's default,
+`Burst`, runs once for each mark missed, back to back.
 
-It is process-wide and stays set: every `serve` in the process stops, one started after the call
-included, as a signal would stop them. In a test binary that means a route calling it stops the
-other tests' servers too, so test such a route with the call behind something the test replaces
-(a function in the app's state, say).
+### On a schedule
 
-`/health/ready` does not turn 503 during shutdown: the listeners close when it begins, so a load
-balancer's next check is refused, which it treats the same way. A platform that needs time to
-stop sending first waits before it sends `SIGTERM` (a Kubernetes `preStop` sleep).
+A job at a mark on the clock (hourly at :15) is an interval that starts there; jobs that must not
+overlap (they share a lock) are branches of one task's loop, which runs one at a time, and the
+loop keeps what each did for the app's status page:
+
+```rust,ignore
+const HOUR: Duration = Duration::from_secs(3600);
+
+/// The next time the clock (UTC) is `past` a multiple of `period` (`past` under `period`).
+fn next_mark(past: Duration, period: Duration) -> Instant {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let into = (now + period - past).as_nanos() % period.as_nanos();
+    Instant::now() + period - Duration::from_nanos(into as u64)
+}
+
+async fn models(models: Models, status: Status, signal: Signal) {
+    let mut hourly = interval_at(next_mark(Duration::from_secs(15 * 60), HOUR), HOUR);
+    let mut recheck = interval(Duration::from_secs(5 * 60)); // the first tick is at once
+    hourly.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    recheck.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    loop {
+        let job = tokio::select! {
+            biased;
+            _ = signal.aborted() => return,
+            _ = hourly.tick() => Job::Refresh,
+            _ = recheck.tick() => Job::Recheck,
+        };
+        let (started, clock) = (SystemTime::now(), Instant::now());
+        let outcome = match job {
+            Job::Refresh => models.refresh().await,
+            Job::Recheck => models.recheck().await,
+        };
+        let ran = Ran { started, took: clock.elapsed(), outcome };
+        status.lock().expect("never poisoned").insert(job, ran);
+    }
+}
+```
+
+`App::task`'s documentation has it whole, run on a paused tokio clock (`start_paused`): three
+hours in which each refresh is an hour after the last, at :15, and a refresh that overruns the
+recheck's marks is followed by one recheck, not one for each; a test of an app's own schedule does
+the same. Daily at 03:30 UTC is `next_mark(HOUR * 7 / 2, 24 * HOUR)`. Jobs in separate tasks that
+must not overlap share a `tokio::sync::Mutex`.
+
+Limits, which are the app's to handle:
+
+1. The interval keeps time on the monotonic clock, which a change of the wall clock does not move
+   and some systems stop while asleep (a laptop): after such a jump its marks are off the clock's
+   until the interval is made again from `next_mark` (when a tick comes a period late, say).
+2. The next run's time, for a status page, is worked out the same way; tokio's interval does not
+   say.
+3. UTC marks are the same local marks only in zones a whole number of hours from UTC. A wall time in
+   a zone with daylight saving time (daily at 03:30 where the server is) takes a time-zone library
+   (jiff, chrono-tz).
+
+Corten has no scheduler of its own: a task and tokio's intervals are the one way.
 
 ## Your own listeners
 
@@ -536,7 +586,8 @@ Under the prefix:
 3. The deadline, the request signal, compression and the same-origin check on writes are the
    same as for pages; `Api::deadline` gives these routes a deadline of their own.
 4. `Api::errors(|status, message| ..)` writes those failures in another shape, for an API that
-   speaks another protocol's errors (an Anthropic- or OpenAI-compatible gateway): it returns a
+   speaks another protocol's errors (an Anthropic- or OpenAI-compatible gateway, or an MCP
+   endpoint's JSON-RPC errors, as `examples/card-market`'s `/mcp` answers them): it returns a
    `ToJson` value, so a key check in `Identify` and the API's unknown URLs, wrong methods,
    deadline and refusals all answer as its clients parse them. A `421` for a host the app does
    not answer is not the API's (no route ran), and a URL outside the prefix is the pages' 404.

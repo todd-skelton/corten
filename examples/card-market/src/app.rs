@@ -78,7 +78,7 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
         .assets(crate::views::Static)
         .api(|routes| api::api(routes, ApiState { source, partners }))
         .api(|routes| {
-            let routes = mcp::api(routes).route::<mcp::Mcp>(tools);
+            let routes = mcp::api(routes).route::<mcp::Mcp>(tools).errors(rpc_failure);
             origins.split(',').filter(|o| !o.is_empty()).fold(routes, |routes, origin| routes.allow_origin(origin))
         })
         .error_page(views::error_page, ())
@@ -135,7 +135,7 @@ impl Identify<ApiState> for Partner {
     async fn identify(parts: &Parts, state: &ApiState) -> Result<Self, Refused> {
         match state.partners.named(&parts.headers) {
             Some(name) => Ok(Partner { name: name.clone() }),
-            None => Err(Refused::unauthorized()),
+            None => Err(Refused::unauthorized().message("Send a valid partner API key in X-Api-Key.")),
         }
     }
 }
@@ -425,6 +425,29 @@ pub(crate) struct AlertSet {
     /// The partner the alert was set for, when a partner set it; agents do not have one.
     #[serde(skip_serializing_if = "Option::is_none")]
     partner: Option<Arc<str>>,
+}
+
+/// A failure Corten writes itself on `/mcp` (a wrong method, a cross-site post, the deadline),
+/// as the JSON-RPC error an MCP client reads, the shape the tools' own errors have (their 401
+/// passes through as the tools wrote it). Which request failed is not known there, so its id is
+/// `null`.
+#[derive(ToJson)]
+struct RpcFailure {
+    jsonrpc: &'static str,
+    id: (),
+    error: RpcError,
+}
+
+#[derive(ToJson)]
+struct RpcError {
+    code: i32,
+    message: String,
+}
+
+fn rpc_failure(status: StatusCode, message: &str) -> RpcFailure {
+    // JSON-RPC's own codes: a request the server does not take, or the server's failure.
+    let code = if status.is_server_error() { -32603 } else { -32600 };
+    RpcFailure { jsonrpc: "2.0", id: (), error: RpcError { code, message: message.to_string() } }
 }
 
 /// The same read and write the page offers, as MCP tools. Agents authenticate with a bearer
@@ -930,7 +953,11 @@ mod tests {
             res["result"]["structuredContent"]["message"],
             "Alert set: we will email a@b.c when Pika <Promo> & \"Friends\" drops below $1.00."
         );
-        assert_eq!(send(call(Some("wrong"), alert)).await.0, StatusCode::UNAUTHORIZED);
+        // The tools' own refusal keeps its request's id: `Api::errors` leaves a JSON body as it is.
+        let (status, headers, body) = send(call(Some("wrong"), alert)).await;
+        assert_eq!((status, &headers["www-authenticate"]), (StatusCode::UNAUTHORIZED, &"Bearer".parse().unwrap()));
+        let res: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!((res["id"].clone(), res["error"]["code"].clone()), (json!(1), json!(-32001)), "{body}");
         let bad = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "alerts.create", "arguments": { "id": "item_9", "email": "nope", "target_price": "1" } } });
         let res: serde_json::Value = serde_json::from_str(&send(call(Some("dev-token"), bad)).await.2).unwrap();
         assert_eq!(res["result"]["isError"], true);
@@ -971,7 +998,10 @@ mod tests {
     async fn the_mcp_endpoint_is_json_only() {
         let (status, headers, body) = send(Request::get("/mcp").header("accept", "*/*").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
-        assert_eq!(body, r#"{"error":{"status":405,"message":"Method Not Allowed"}}"#, "not the HTML error page");
+        assert_eq!(
+            body, r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Method Not Allowed"}}"#,
+            "JSON-RPC, as an MCP client reads it, not the HTML error page"
+        );
         assert_eq!(headers["content-security-policy"], "default-src 'none'; frame-ancestors 'none'");
         let cross = Request::post("/mcp")
             .header("origin", "https://agent.example")
@@ -982,8 +1012,13 @@ mod tests {
         let (status, _, body) = send(cross).await;
         assert_eq!(
             (status, &body[..]),
-            (StatusCode::FORBIDDEN, r#"{"error":{"status":403,"message":"Cross-site request refused."}}"#)
+            (
+                StatusCode::FORBIDDEN,
+                r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Cross-site request refused."}}"#
+            )
         );
+        let deadline = super::rpc_failure(StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable");
+        assert_eq!(deadline.error.code, -32603, "the deadline's 503 is the server's failure");
     }
 
     /// A partner's JSON write, with the key `key`.
@@ -1002,7 +1037,7 @@ mod tests {
             let (status, _, body) = send(partner(key, alert)).await;
             assert_eq!(
                 (status, body.as_str()),
-                (StatusCode::UNAUTHORIZED, r#"{"error":{"status":401,"message":"Unauthorized"}}"#)
+                (StatusCode::UNAUTHORIZED, r#"{"error":{"status":401,"message":"Send a valid partner API key in X-Api-Key."}}"#)
             );
         }
         let (status, headers, body) = send(partner(Some("dev-key"), alert)).await;
