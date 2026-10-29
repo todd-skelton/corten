@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime};
 
 use corten_ui::Toast;
 
-use crate::gallery::{CARD, CONDITIONS, Gallery, LAST_SALE, MenuResult, OrderResult, RenameDialog, TABS, Times};
+use crate::gallery::{CARD, Condition, Gallery, MarketTab, MenuResult, OrderResult, Pricing, Region, RenameDialog, Sale, Times};
 
 corten::i18n::messages! {
     /// The gallery's text: one locale, for the relative times.
@@ -35,9 +35,9 @@ corten::assets::embed! {
 #[corten::routes]
 pub mod url {
     #[route("/", get = home)]
-    pub struct Home<'a> {
-        pub tab: Option<&'a str>,
-        pub sale: Option<&'a str>,
+    pub struct Home {
+        pub tab: Option<crate::gallery::MarketTab>,
+        pub sale: Option<crate::gallery::Sale>,
     }
 
     #[route("/sell", post = sell)]
@@ -100,16 +100,14 @@ fn gallery(req: &Req, gallery: Gallery<'_>) -> HtmlResult {
 
 const TITLE: &str = "Sell Ashen Drake | corten-ui";
 
-async fn home(req: Req, Params(q): Params<url::Home<'_>>) -> HtmlResult {
-    let tab = TABS.iter().position(|t| q.tab.as_deref() == Some(*t)).unwrap_or(0);
-    let sale = q.sale.as_deref() == Some(LAST_SALE);
+async fn home(req: Req, Params(q): Params<url::Home>) -> HtmlResult {
     gallery(
         &req,
         Gallery {
-            tab,
+            tab: q.tab.unwrap_or(MarketTab::Listings),
             result: "",
             toast: None,
-            sale,
+            sale: q.sale == Some(Sale::Last),
             times: times(&req),
             rename: RenameDialog { name: "", errors: &Errors::new() },
         },
@@ -123,12 +121,13 @@ pub struct SellForm {
     /// Money as the reader typed it, read by `t.parse_money`: a refused entry is shown back as is.
     pub price: String,
     pub weight: f64,
-    pub condition: String,
+    /// One of the combo box's options: a word outside them is refused, as a malformed number is.
+    pub condition: Condition,
     /// The regions the seller ships to: at least one (`CheckboxGroup`).
     #[serde(default)]
-    pub ships: Vec<String>,
-    /// `fixed`, or `offers` with the lowest offer the seller accepts (`RequiredWhen`).
-    pub pricing: String,
+    pub ships: Vec<Region>,
+    /// A fixed price, or offers with the lowest offer the seller accepts (`RequiredWhen`).
+    pub pricing: Pricing,
     /// Money too, empty unless the listing takes offers.
     #[serde(default)]
     pub floor: String,
@@ -136,9 +135,6 @@ pub struct SellForm {
 
 /// The listing's currency.
 pub const USD: Currency = Currency::new("USD");
-
-/// The pricing that takes offers, and needs the lowest one.
-pub const OFFERS: &str = "offers";
 
 /// What a listing that ships nowhere is told, by the browser and by the handler.
 pub const NO_REGION: &str = "Choose where you ship.";
@@ -156,7 +152,7 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
     if form.ships.is_empty() {
         errors.add(f.ships, NO_REGION);
     }
-    if form.pricing == OFFERS && t.parse_money(&form.floor, USD).is_none() {
+    if form.pricing == Pricing::Offers && t.parse_money(&form.floor, USD).is_none() {
         errors.add(f.floor, "Enter the lowest offer you accept.");
     }
     if let Some((_, message)) = errors.iter().next() {
@@ -164,7 +160,7 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
             gallery(
                 &req,
                 Gallery {
-                    tab: 0,
+                    tab: MarketTab::Listings,
                     result: message,
                     toast: None,
                     sale: false,
@@ -175,7 +171,7 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
         };
         return req.invalid(&errors, OrderResult { text: message }, page).await;
     }
-    let condition = CONDITIONS.iter().find(|c| c.value == form.condition).map_or("ungraded", |c| c.label);
+    let condition = form.condition.label();
     // Some here: a price that does not read is refused above.
     let price = price.map(|cents| t.money(cents, USD).to_string()).unwrap_or_default();
     let text = format!("Listed {} {condition} {CARD} at {price} each, {:.1} oz to ship.", form.qty, form.weight);
@@ -183,7 +179,7 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
         gallery(
             &req,
             Gallery {
-                tab: 0,
+                tab: MarketTab::Listings,
                 result: &text,
                 toast: None,
                 sale: false,
@@ -202,7 +198,7 @@ async fn save(req: Req) -> HtmlResult {
         gallery(
             &req,
             Gallery {
-                tab: 0,
+                tab: MarketTab::Listings,
                 result: "",
                 toast: Some(SAVED),
                 sale: false,
@@ -232,7 +228,7 @@ async fn rename(req: Req, Form(form): Form<RenameForm>) -> HtmlResult {
         gallery(
             &req,
             Gallery {
-                tab: 0,
+                tab: MarketTab::Listings,
                 result: "",
                 toast: None,
                 sale: false,
@@ -259,8 +255,21 @@ async fn menu_action(req: Req, text: &'static str) -> HtmlResult {
 async fn help(req: Req) -> HtmlResult {
     req.page(html! {
         <Layout req={&req} title="Help | corten-ui">
-            <h1>"Help"</h1>
-            <p><a href={url::Home { tab: None, sale: None }}>"Back"</a></p>
+            <h1>"Listing a card"</h1>
+            <p>"A draft is yours until you list it. Each part of the form:"</p>
+            <dl>
+                <dt>"Price and lowest offer"</dt>
+                <dd>
+                    "In dollars and cents, as you would write them: 12.50 or $1,299.50. Take offers and buyers can offer less, down to the lowest you set."
+                </dd>
+                <dt>"Condition"</dt>
+                <dd>"Grade the copy you are selling, from Near Mint (as it left the pack) to Damaged. Type to find one."</dd>
+                <dt>"Ships to"</dt>
+                <dd>"Choose at least one region. Shipping is worked out from the weight you enter."</dd>
+                <dt>"Archive and Watch"</dt>
+                <dd>"Archiving puts the draft away without listing it. Watching tells you when this card's market low moves."</dd>
+            </dl>
+            <p><a href={url::Home { tab: None, sale: None }}>"Back to the draft"</a></p>
         </Layout>
     })
 }
@@ -307,7 +316,7 @@ mod tests {
         // A library's event carries its prefix; the listener names the event by its type, so the
         // two cannot drift apart.
         let page = send(Request::get("/").body(Body::empty()).unwrap()).await;
-        assert!(page.contains(r#"data-on="ui-copied:sku.counted($e,@copies)""#), "{page}");
+        assert!(page.contains(r#"data-on="ui-copied:sku.counted($e,@copied,@copies)""#), "{page}");
     }
 
     #[tokio::test]
@@ -348,6 +357,31 @@ mod tests {
         }
         let res = post("qty=1&price=%241%2C299.50&weight=1&condition=lp&ships=ca&pricing=offers&floor=5").await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    /// The choices are enums: a word the page does not offer (a forged post) is refused before the
+    /// handler runs, as a malformed number is.
+    #[tokio::test]
+    async fn a_word_the_page_does_not_offer_is_refused() {
+        for body in [
+            "qty=1&price=1&weight=1&condition=mint&ships=us&pricing=fixed&floor=",
+            "qty=1&price=1&weight=1&condition=lp&ships=mars&pricing=fixed&floor=",
+            "qty=1&price=1&weight=1&condition=lp&ships=us&pricing=auction&floor=",
+        ] {
+            let res = app()
+                .router()
+                .oneshot(
+                    Request::post("/sell")
+                        .header("content-type", "application/x-www-form-urlencoded")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        }
+        let tab = app().router().oneshot(Request::get("/?tab=bids").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(tab.status(), StatusCode::BAD_REQUEST, "a tab the page does not have");
     }
 
     #[tokio::test]

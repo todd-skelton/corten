@@ -6,31 +6,104 @@ use corten_ui::{
     CheckboxGroup, Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, PrintButton,
     RelativeTime, RequiredWhen, Tab, TabGroup, Toast, Toaster, dialog,
 };
+use serde::Deserialize;
 use std::time::SystemTime;
 
 use crate::{
-    app::{EXPIRES_IN, LISTED_AGO, Msg, NO_REGION, OFFERS, RenameForm, SellForm, url},
+    app::{EXPIRES_IN, LISTED_AGO, Msg, NO_REGION, RenameForm, SellForm, url},
     field::Field,
 };
 
 /// The card the draft sells.
 pub const CARD: &str = "Ashen Drake";
 
-/// A card's condition, as card shops grade it.
-pub const CONDITIONS: [Choice; 5] = [
-    Choice { value: "nm", label: "Near Mint" },
-    Choice { value: "lp", label: "Lightly Played" },
-    Choice { value: "mp", label: "Moderately Played" },
-    Choice { value: "hp", label: "Heavily Played" },
-    Choice { value: "dmg", label: "Damaged" },
-];
+/// A card's condition, as card shops grade it: the form's `condition` field reads the word each
+/// option posts (`UrlValue` writes what serde reads).
+#[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
+pub enum Condition {
+    #[serde(rename = "nm")]
+    NearMint,
+    #[serde(rename = "lp")]
+    LightlyPlayed,
+    #[serde(rename = "mp")]
+    ModeratelyPlayed,
+    #[serde(rename = "hp")]
+    HeavilyPlayed,
+    #[serde(rename = "dmg")]
+    Damaged,
+}
 
-/// The tabs, in order, by the `tab` query value that selects each.
-pub const TABS: [&str; 3] = ["listings", "offers", "sales"];
+impl Condition {
+    /// Every condition, best first.
+    pub const ALL: [Condition; 5] = [
+        Condition::NearMint,
+        Condition::LightlyPlayed,
+        Condition::ModeratelyPlayed,
+        Condition::HeavilyPlayed,
+        Condition::Damaged,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Condition::NearMint => "Near Mint",
+            Condition::LightlyPlayed => "Lightly Played",
+            Condition::ModeratelyPlayed => "Moderately Played",
+            Condition::HeavilyPlayed => "Heavily Played",
+            Condition::Damaged => "Damaged",
+        }
+    }
+}
+
+/// The combo box's options: each condition with its label.
+const CONDITIONS: [Choice<Condition>; 5] = {
+    let mut out = [Choice { value: Condition::NearMint, label: "" }; 5];
+    let mut i = 0;
+    while i < 5 {
+        out[i] = Choice { value: Condition::ALL[i], label: Condition::ALL[i].label() };
+        i += 1;
+    }
+    out
+};
+
+/// How the listing is priced: a fixed price, or offers down to a lowest one.
+#[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Pricing {
+    Fixed,
+    Offers,
+}
+
+/// Where a seller ships.
+#[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Region {
+    Us,
+    Ca,
+    Eu,
+}
+
+/// The regions, each with its label, in the order the form lists them.
+const REGIONS: [(Region, &str); 3] = [(Region::Us, "United States"), (Region::Ca, "Canada"), (Region::Eu, "European Union")];
+
+/// The market's tabs, by the `tab` query value that selects each; the first is the default.
+#[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketTab {
+    Listings,
+    Offers,
+    Sales,
+}
+
+/// The `sale` query value that opens the last sale's sheet.
+#[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Sale {
+    Last,
+}
 
 #[component(css)]
 pub fn Gallery<'a>(
-    tab: usize,
+    tab: MarketTab,
     result: &'a str,
     toast: Option<&'a str>,
     sale: bool,
@@ -57,6 +130,7 @@ pub fn Gallery<'a>(
         MenuItem { label: "Archive", link: &url::Archive, post: true },
         MenuItem { label: "Watch", link: &url::Watch, post: true },
     ];
+    let at = |tab| url::Home { tab, sale: None };
     html! {
         <div class={Intro}>
             <h1>"Sell "{CARD}</h1>
@@ -65,30 +139,37 @@ pub fn Gallery<'a>(
             </p>
         </div>
         <div class={Grid}>
-            <section class={(Card, Wide)}>
+            <section class={Card}>
                 <h2>"List for sale"</h2>
                 <form class={Order} method="post" action={url::Sell} data-patch>
-                    <Field id="qty" label="Quantity"><NumberField field={&qty} /></Field>
-                    <Field id="price" label="Price (USD)">
-                        <input id="price" name={f.price} inputmode="decimal" value="12.50" required>
-                    </Field>
-                    <Field id="weight" label="Shipping weight">
-                        <span class={Unit}>"oz"</span>
-                        <NumberField field={&weight} />
-                    </Field>
+                    <div class={Row}>
+                        <Field id="qty" label="Quantity"><NumberField field={&qty} /></Field>
+                        <Field id="price" label="Price (USD)">
+                            <input id="price" name={f.price} inputmode="decimal" value="12.50" required>
+                        </Field>
+                        <Field id="weight" label="Shipping weight">
+                            <span class={Unit}>"oz"</span>
+                            <NumberField field={&weight} />
+                        </Field>
+                    </div>
                     <Field id="condition" label="Condition"><ComboBox field={&condition} /></Field>
-                    <CheckboxGroup legend="Ships to" missing={NO_REGION}>
-                        for (value, label) in REGIONS {
-                            <label><input type="checkbox" name={f.ships} value={value} checked={value == "us"}>{label}</label>
-                        }
-                    </CheckboxGroup>
-                    <Field id="pricing" label="Pricing">
-                        <select id="pricing" name={f.pricing}>
-                            <option value="fixed">"Fixed price"</option>
-                            <option value={OFFERS}>"Accept offers"</option>
-                        </select>
-                    </Field>
-                    <RequiredWhen control={f.pricing} values={&[OFFERS]}>
+                    <div class={Choices}>
+                        <CheckboxGroup legend="Ships to" missing={NO_REGION}>
+                            for (region, label) in REGIONS {
+                                <label>
+                                    <input type="checkbox" name={f.ships} value={region} checked={region == Region::Us}>{label}
+                                </label>
+                            }
+                        </CheckboxGroup>
+                    </div>
+                    <div class={Choices}>
+                        <fieldset>
+                            <legend>"Pricing"</legend>
+                            <label><input type="radio" name={f.pricing} value={Pricing::Fixed} checked>"Fixed price"</label>
+                            <label><input type="radio" name={f.pricing} value={Pricing::Offers}>"Accept offers"</label>
+                        </fieldset>
+                    </div>
+                    <RequiredWhen control={f.pricing} values={&[Pricing::Offers]}>
                         <div class={Floor}>
                             <Field id="floor" label="Lowest offer">
                                 <input id="floor" name={f.floor} inputmode="decimal">
@@ -99,49 +180,48 @@ pub fn Gallery<'a>(
                 </form>
                 <OrderResult text={result} />
             </section>
-            // Built in the markup, so the panels' views live until the group has rendered them.
-            <section class={(Card, Book)}>
-                <h2>"Market"</h2>
-                <TabGroup
-                    id="book"
-                    label="Market"
-                    selected={tab}
-                    tabs={&[
-                        Tab { label: "Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&url::Home { tab: None, sale: None }) },
-                        Tab { label: "Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&url::Home { tab: Some(TABS[1]), sale: None }) },
-                        Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&url::Home { tab: Some(TABS[2]), sale: None }) },
-                    ]}
-                />
-            </section>
-            <section class={(Card, Actions)}>
-                <h2>"Manage"</h2>
-                <MenuButton id="actions" label="Actions" items={&items} />
-                <MenuResult text="" />
-            </section>
-            <section class={Card}>
-                <h2>"Relative time"</h2>
-                <p>
-                    {t.offer_listed()}" "
-                    <RelativeTime when={t.relative(now - LISTED_AGO, now, RelativeStyle::Short)} />
-                </p>
-                <p>
-                    {t.offer_expires()}" "
-                    <RelativeTime when={t.relative(now + EXPIRES_IN, now, RelativeStyle::Long)} />
-                </p>
-            </section>
-            <section class={Card}>
-                <h2>"Draft"</h2>
-                <div class={Buttons}>
-                    <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
-                    <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
-                    <a href={url::Home { tab: None, sale: Some(LAST_SALE) }}>"Last sale"</a>
-                </div>
-            </section>
-            <section class={Card}>
-                <h2>"Stock"</h2>
-                <Sku sku="ASH-DRAKE-NM" />
-                <PrintButton label="Print label" />
-            </section>
+            <div class={Side}>
+                // Built in the markup, so the panels' views live until the group has rendered them.
+                <section class={(Card, Book)}>
+                    <h2>"Market"</h2>
+                    <TabGroup
+                        id="book"
+                        label="Market"
+                        selected={tab as usize}
+                        tabs={&[
+                            Tab { label: "Listings", panel: &html! { <p>"Three listings from $11.80."</p> }, link: Some(&at(None)) },
+                            Tab { label: "Offers", panel: &html! { <p>"Two offers, the best at $10.00."</p> }, link: Some(&at(Some(MarketTab::Offers))) },
+                            Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&at(Some(MarketTab::Sales))) },
+                        ]}
+                    />
+                </section>
+                <section class={Card}>
+                    <h2>"Activity"</h2>
+                    <p>
+                        {t.offer_listed()}" "
+                        <RelativeTime when={t.relative(now - LISTED_AGO, now, RelativeStyle::Short)} />
+                    </p>
+                    <p>
+                        {t.offer_expires()}" "
+                        <RelativeTime when={t.relative(now + EXPIRES_IN, now, RelativeStyle::Long)} />
+                    </p>
+                </section>
+                <section class={(Card, Actions)}>
+                    <h2>"Draft"</h2>
+                    <div class={Buttons}>
+                        <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
+                        <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
+                        <MenuButton id="actions" label="More actions" items={&items} />
+                    </div>
+                    <MenuResult text="" />
+                    <a href={url::Home { tab: None, sale: Some(Sale::Last) }}>"Last sale"</a>
+                </section>
+                <section class={Card}>
+                    <h2>"Stock"</h2>
+                    <Sku sku="ASH-DRAKE-NM" />
+                    <PrintButton label="Print label" />
+                </section>
+            </div>
         </div>
         {rename}
         if sale {
@@ -185,27 +265,21 @@ struct SkuId;
 /// The draft's SKU, which a seller copies into their own stock sheet, with a button that copies
 /// it: the SKU is on the page once, and the button shows only where the script can write the
 /// clipboard. The paragraph counts the copies the button reports (`Copied`), as an app counts a
-/// shared link's.
+/// shared link's, and shows the count from the first.
 #[component(js)]
 pub fn Sku<'a>(sku: &'a str) -> impl Render {
-    let copies = refs();
+    let (copied, copies) = refs();
     html! {
-        <p on:Copied={js::counted(event, copies)}>
+        <p on:Copied={js::counted(event, copied, copies)}>
             "SKU "
             <code id={SkuId}>{sku}</code>
             " "
             <CopyButton text={SkuId} label="Copy" copied="Copied" />
             " "
-            <output ref={copies} aria-label="Copies">"0"</output>
+            <span ref={copied} hidden>"Copies: "<output ref={copies} aria-label="Copies">"0"</output></span>
         </p>
     }
 }
-
-/// The regions a seller can ship to: value and label.
-const REGIONS: [(&str, &str); 3] = [("us", "United States"), ("ca", "Canada"), ("eu", "European Union")];
-
-/// The `sale` query value that opens the last sale's sheet.
-pub const LAST_SALE: &str = "last";
 
 /// The last sale, beside the gallery: the address opens it (`/?sale=last`), and the link back to
 /// the gallery closes it, clicked or by Escape (`dialog::modalClosedBy`), so a reload shows what

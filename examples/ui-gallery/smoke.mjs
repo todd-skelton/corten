@@ -262,7 +262,7 @@ async function run(browser) {
   const floor = page.getByLabel("Lowest offer");
   const floorRequired = () => floor.evaluate((i) => /** @type {HTMLInputElement} */ (i).required);
   check("for a fixed price the lowest offer is disabled and not required", (await floor.isDisabled()) && !(await floorRequired()));
-  await page.getByLabel("Pricing").selectOption("offers");
+  await page.getByLabel("Accept offers").check();
   check("accepting offers makes the lowest offer required", (await floor.isEnabled()) && (await floorRequired()));
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForTimeout(300);
@@ -272,7 +272,7 @@ async function run(browser) {
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed 2"), null, { timeout: 5000 }).catch(() => {});
   check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.50 each, 0.7 oz to ship.", await page.textContent("#result"));
-  await page.getByLabel("Pricing").selectOption("fixed");
+  await page.getByLabel("Fixed price").check();
   check("back to a fixed price, the lowest offer is disabled again", await floor.isDisabled());
   // A reset puts the boxes back as drawn ("United States" checked), and the group is checked again.
   // Only the group's boxes: the reset also empties the condition, which is drawn with no choice.
@@ -300,7 +300,7 @@ async function run(browser) {
 
   // MenuButton
   // The popover's toggle event comes a task after it opens or closes: wait for what it sets.
-  const trigger = page.getByRole("button", { name: "Actions" });
+  const trigger = page.getByRole("button", { name: "More actions" });
   const expanded = (/** @type {string} */ value) =>
     page.waitForFunction((v) => document.querySelector("#actions-button")?.getAttribute("aria-expanded") === v, value);
   await trigger.click();
@@ -320,7 +320,7 @@ async function run(browser) {
   check("typing a letter moves to the item", (await page.evaluate(() => document.activeElement?.textContent)) === "Watch");
   await page.keyboard.press("Escape");
   await expanded("false");
-  check("Escape closes and returns focus", (await trigger.getAttribute("aria-expanded")) === "false" && (await page.evaluate(() => document.activeElement?.textContent)) === "Actions");
+  check("Escape closes and returns focus", (await trigger.getAttribute("aria-expanded")) === "false" && (await page.evaluate(() => document.activeElement?.textContent)) === "More actions");
   await page.keyboard.press("ArrowUp");
   await expanded("true");
   check("Arrow Up on the button opens at the last item", (await page.evaluate(() => document.activeElement?.textContent)) === "Watch");
@@ -629,7 +629,7 @@ async function run(browser) {
   await plain.getByRole("tab", { name: "Offers" }).click();
   await plain.waitForURL("**/?tab=offers");
   check("no script: a tab is a link to its page", (await plain.getByRole("tabpanel").textContent()) === "Two offers, the best at $10.00.");
-  await plain.getByRole("button", { name: "Actions" }).click();
+  await plain.getByRole("button", { name: "More actions" }).click();
   check("no script: the menu opens (popover)", await plain.getByRole("menuitem", { name: "Help" }).isVisible());
   await plain.goto(`${base}/`);
   await Promise.all([plain.waitForURL("**/save"), plain.getByRole("button", { name: "Save draft" }).click()]);

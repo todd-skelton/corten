@@ -1,19 +1,31 @@
-/* The page: an introduction, then a card per component. */
+/* The page: an introduction, then the listing form beside a column of the draft's other cards
+   (one column on a phone), so cards of different heights leave no holes. */
 .intro { margin-block-end: 24px; }
 .intro p { margin: 4px 0 0; color: var(--muted); }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 16px; align-items: start; }
+.grid { display: grid; gap: 16px; align-items: start; }
+@media (min-width: 52rem) { .grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+.side { display: grid; gap: 16px; }
 .card { display: grid; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
 .card h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.wide { grid-column: 1 / -1; }
-.order { display: flex; flex-wrap: wrap; align-items: end; gap: 0 20px; }
-/* The regions (CheckboxGroup) and the lowest offer (RequiredWhen) are fieldsets. The lowest offer
-   is hidden for a fixed price by the select's own state, so it is right before the script runs
-   and without it; the script only makes it required or disabled. */
-.order fieldset { display: flex; flex-wrap: wrap; align-items: end; gap: 0 12px; margin: 0; padding: 0; border: 0; }
-.order:has(option[value="fixed"]:checked) .floor { display: none; }
-.order legend { float: left; margin-inline-end: 4px; font-weight: 500; }
-.primary { margin-block: 12px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.card p { margin: 0; }
+/* A card's own button (Print label) is as wide as its label, as the others are. */
+.card > button { justify-self: start; }
+.order { display: grid; }
+.row { display: flex; flex-wrap: wrap; align-items: end; gap: 0 20px; }
+/* The regions (CheckboxGroup), the pricing and the lowest offer (RequiredWhen) are fieldsets. The
+   lowest offer is hidden for a fixed price by the radio's own state, so it is right before the
+   script runs and without it; the script only makes it required or disabled. */
+.order fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.order:has(input[value="fixed"]:checked) .floor { display: none; }
+/* A choice is a row of options under a label, styled as the fields above it are. */
+.choices { margin-block: 12px; }
+.choices fieldset { display: flex; flex-wrap: wrap; gap: 8px; }
+.choices legend { float: left; width: 100%; margin-block-end: 6px; padding: 0; font-size: 13px; font-weight: 500; color: var(--muted); }
+.choices label { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.choices label:has(:checked) { border-color: var(--accent); background: var(--tint); }
+.choices input { margin: 0; accent-color: var(--accent); }
+.primary { justify-self: start; margin-block: 12px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .buttons form { margin: 0; }
 
 /* The adornment sits between the price's decrease button and its input: the number field's
@@ -35,7 +47,7 @@
 .actions [role="menu"] form { margin: 0; }
 .actions [role="menuitem"] { display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: start; text-decoration: none; cursor: pointer; }
 .actions [role="menuitem"]:focus { outline: none; background: var(--tint); color: var(--accent); }
-.actions > div { justify-self: start; }
+.actions > a { justify-self: start; }
 
 /* The toaster's root is fixed in the corner and never hidden: its live region must be in the page
    before a message arrives, or the message is often not announced. It is the toast's box only
