@@ -210,6 +210,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_paragraph_listens_for_the_event_the_copy_button_dispatches() {
+        // A library's event carries its prefix; the listener names the event by its type, so the
+        // two cannot drift apart.
+        let page = send(Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(page.contains(r#"data-on="ui-copied:order_number.counted($e,@copies)""#), "{page}");
+    }
+
+    #[tokio::test]
     async fn the_form_answers_with_a_patch_or_the_page() {
         let form = || Request::post("/order").header("content-type", "application/x-www-form-urlencoded");
         let patch = send(form().header("corten", "action").body(Body::from("qty=2&price=12.50&color=sand")).unwrap()).await;

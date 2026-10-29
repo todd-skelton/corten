@@ -1354,17 +1354,19 @@ impl Gen {
                     let mut binds = TokenStream::new();
                     for attr in attrs {
                         let Attr::On(event, span, expr) = attr else { continue };
+                        // A typed event's name is the one its `#[event]` gave it (a library's carries its
+                        // prefix: `ui-copied`), so it is read from the type rather than derived here.
                         let (printed, ty) = if event.starts_with(|c: char| c.is_ascii_uppercase()) {
                             let ty: TokenStream = TokenTree::Ident(Ident::new(event, *span)).into();
                             self.checks.extend(q("::corten::script::__private::is_event::<__A0>();", std::slice::from_ref(&ty)));
-                            (crate::names::kebab(event), ty)
+                            (q("<__A0 as ::corten::script::DomEvent>::NAME", std::slice::from_ref(&ty)), ty)
                         } else {
                             let ty: TokenStream =
                                 format!("::corten::script::ev::{}", crate::dom::event(event)).parse().expect("a path parses");
-                            (event.clone(), ty)
+                            (literal(event), ty)
                         };
                         let expr = keywords(expr.clone(), &ty, &target);
-                        binds.extend(q("(__A0, &(__A1) as &dyn ::corten::script::Bind),", &[literal(&printed), expr]));
+                        binds.extend(q("(__A0, &(__A1) as &dyn ::corten::script::Bind),", &[printed, expr]));
                     }
                     self.code(q("::corten::script::__private::data_on(__OUT, &[__A0]);", &[binds]));
                 }
