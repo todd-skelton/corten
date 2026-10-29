@@ -45,7 +45,7 @@ pub mod url {
 }
 
 /// The app's components, then corten-ui's.
-pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery];
+pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery, crate::gallery::Sku];
 
 pub fn app() -> App {
     App::new(url::router()).components(COMPONENTS).components(corten_ui::COMPONENTS)
@@ -207,6 +207,14 @@ mod tests {
             page.contains(r#"id="book-tab-1" href="/?tab=offers" aria-controls="book-panel-1" aria-selected="true""#),
             "{page}"
         );
+    }
+
+    #[tokio::test]
+    async fn the_paragraph_listens_for_the_event_the_copy_button_dispatches() {
+        // A library's event carries its prefix; the listener names the event by its type, so the
+        // two cannot drift apart.
+        let page = send(Request::get("/").body(Body::empty()).unwrap()).await;
+        assert!(page.contains(r#"data-on="ui-copied:sku.counted($e,@copies)""#), "{page}");
     }
 
     #[tokio::test]

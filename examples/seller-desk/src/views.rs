@@ -21,7 +21,7 @@ pub use price_cell::{PriceCell, PriceEdited};
 pub use statement_table::StatementTable;
 
 /// What the app lists in `App::components`: the scripts, the stylesheets and the row's view.
-pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell, PriceEdited, StatementTable];
+pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell, StatementTable];
 
 /// An item and its stock level, as a row shows them.
 pub struct Line<'a> {

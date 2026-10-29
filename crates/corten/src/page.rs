@@ -811,17 +811,23 @@ impl Req {
         // Each module's tag was made when the assets loaded.
         if let Some(assets) = &self.shared.assets {
             let mut preloaded = false;
+            let mut events = false;
             for name in modules {
-                let Some(tag) = assets.module_tag(name) else {
+                let Some((tag, imports_events)) = assets.module(name) else {
                     tracing::error!("corten: {}", unserved_module(name));
                     continue;
                 };
                 out.push_str(tag);
                 preloaded = true;
+                events |= imports_events;
             }
             // A handler module may import the views (corten/views): fetched with it, not after it.
             if let Some(views) = assets.views_tag().filter(|_| preloaded) {
                 out.push_str(views);
+            }
+            // And one that imports the typed events (corten/events) has them fetched with it.
+            if let Some(tag) = assets.events_tag().filter(|_| events) {
+                out.push_str(tag);
             }
         }
     }

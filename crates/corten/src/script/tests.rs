@@ -324,6 +324,42 @@ async fn a_page_loads_its_handler_modules_as_module_scripts_with_the_views_they_
     assert!(!body.contains("modulepreload") && !body.contains(r#"src="/assets/"#), "{body}");
 }
 
+/// A script that imports a typed event brings it: the app lists the script alone, and a page
+/// whose handlers are in it maps `corten/events` and fetches it with the script, not after it.
+#[tokio::test]
+async fn a_script_brings_the_events_it_imports_and_its_page_fetches_them_with_it() {
+    use axum::{body::Body, http::Request, routing::get, Router};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let get_page = |app: Router| async move {
+        let res = app.oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+        String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+    };
+    let grid = Router::new().route(
+        "/",
+        get(|req: crate::Req| async move { crate::tests::TestPage::test_page(&req, "Stock", StockGrid { rows: &[("a", 1)] }) }),
+    );
+    let body = get_page(crate::App::new(Routes::from(grid)).components(&[js::COMPONENT]).router()).await;
+    let events = body.split_once(r#""corten/events":""#).expect("the import map maps corten/events").1.split_once('"').unwrap().0;
+    assert!(events.ends_with("/events.js"), "{body}");
+    assert!(body.contains(&format!(r#"<link rel="modulepreload" href="{events}">"#)), "{body}");
+    let app = crate::App::new(Routes::new()).components(&[js::COMPONENT]).router();
+    let res = app.oneshot(Request::get(events).body(Body::empty()).unwrap()).await.unwrap();
+    let source = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(source.contains("export const RowToggled = event(\"row-toggled\");"), "{source}");
+    // A page whose handlers are in a script that imports no event does not fetch them.
+    let lines =
+        Router::new().route(
+            "/",
+            get(|req: crate::Req| async move {
+                crate::tests::TestPage::test_page(&req, "Cart", LineItem { name: "Lamp", quantity: 2 })
+            }),
+        );
+    let body = get_page(crate::App::new(Routes::from(lines)).components(&[LineItem, js::COMPONENT]).router()).await;
+    assert!(body.contains("/scripts/line_item.js") && !body.contains("events.js\">"), "{body}");
+}
+
 /// The formatter a format argument needs is a module of its own: a page whose handlers take a
 /// format loads it with theirs, and a page whose handlers take none does not.
 #[tokio::test]
