@@ -3153,6 +3153,60 @@ async fn an_app_says_whether_it_serves_a_return_address() {
     }
 }
 
+/// A `Public` answer with a header of the app's keeps it, and is compressed and shared as one
+/// without it; a failure does not get it.
+#[tokio::test]
+async fn a_public_answer_takes_a_header_and_is_still_compressed() {
+    use crate::answer::{Link, XRobotsTag};
+    use axum::http::HeaderValue;
+    let text = "# Example\n".repeat(400);
+    let body = text.clone();
+    let router = App::new(Routes::from(
+        Router::new()
+            .route(
+                "/llms.txt",
+                get(move || async move {
+                    Public::new(Duration::from_secs(60), body)
+                        .header::<XRobotsTag>(HeaderValue::from_static("noindex, nofollow"))
+                        .header::<Link>(HeaderValue::from_static("</a>; rel=\"a\""))
+                        .header::<Link>(HeaderValue::from_static("</b>; rel=\"b\""))
+                }),
+            )
+            .route(
+                "/gone",
+                get(|| async {
+                    Public::new(Duration::from_secs(60), crate::Result::<String>::Err(crate::Error::not_found()))
+                        .header::<Link>(HeaderValue::from_static("</gone>; rel=\"gone\""))
+                }),
+            )
+            .route(
+                "/old",
+                get(|req: Req| async move {
+                    Public::new(Duration::from_secs(60), req.moved(&serves_url::Check))
+                        .header::<Link>(HeaderValue::from_static("</check>; rel=\"canonical\""))
+                }),
+            ),
+    ))
+    .router();
+    let req = Request::get("/llms.txt").header("accept-encoding", "zstd, br, gzip").body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let headers = res.headers();
+    assert_eq!(headers["x-robots-tag"], "noindex, nofollow");
+    assert_eq!(headers.get_all("link").iter().count(), 2, "{headers:?}");
+    #[cfg(feature = "compress")]
+    assert_eq!(headers["content-encoding"], "zstd", "{headers:?}");
+    assert_eq!(headers["cache-control"], "public, max-age=60", "{headers:?}");
+    // An error is the error page, without the answer's headers.
+    let res = router.clone().oneshot(Request::get("/gone").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert!(res.headers().get("link").is_none(), "{:?}", res.headers());
+    // A redirect keeps them.
+    let res = router.oneshot(Request::get("/old").body(Body::empty()).unwrap()).await.unwrap();
+    assert!(res.status().is_redirection(), "{}", res.status());
+    assert_eq!(res.headers()["link"], "</check>; rel=\"canonical\"");
+}
+
 #[crate::routes]
 mod policy_url {
     #[route("/", get = policy_page)]

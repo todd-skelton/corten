@@ -785,6 +785,18 @@ Corten is pre-1.0, so any minor version may change the API.
     the script is 1.8 KB brotli (5.3 KB as written; component scripts are not minified), on pages
     that use it
     ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
+115. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
+    `Json`, `Media`, a page), named by a type (`corten::answer::Header`; Corten names
+    `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
+    and shared as it would be without it. Before, a shared file that had to stay out of search was
+    a `Relay`, never compressed (Chase Sets' developer manifest: 161,815 bytes against 19,737 with
+    brotli), or an answer type of the app's own. `set-cookie`, the headers Corten sets itself
+    (caching, a CDN's `*-cache-control`, CORS, security), those the answer has (`content-type`,
+    `location`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
+    18,404-18,417 to 18,434-18,459 for a public text answer (callgrind, in process, 1,000
+    requests, three runs each); the headers are held behind an `Option<Box<..>>`, since a `Vec`
+    in place cost about 50 (18,450-18,467)
+    ([#287 A Public answer that is not a page cannot take a header of the app's, so a noindex file is an uncompressed Relay or the app's own answer type](https://github.com/todd-skelton/corten/issues/287)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
