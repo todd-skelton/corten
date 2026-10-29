@@ -1620,11 +1620,12 @@ async function run(browser) {
   });
   check("a data-patch form in a dialog closes it and sends nothing", dialog === "nothing sent" && closed, `${dialog} closed=${closed}`);
   // A handler that cancels the submit stops a data-patch form, as it stops any form (#199). It
-  // listens on the document after the runtime loaded, where the page's on:submit handlers listen.
+  // listens on the document after the runtime loaded, where the page's on:submit handlers listen
+  // (by the form's id attribute: its control named id shadows form.id).
   const canceled = await firstSent(
     '<form id="patch-cancel" method="post" action="/watch" data-patch><input type="hidden" name="id" value="ACME"><button>Go</button></form>',
     async () => {
-      await forms.evaluate(() => document.addEventListener("submit", (event) => /** @type {Element} */ (event.target).id === "patch-cancel" && event.preventDefault()));
+      await forms.evaluate(() => document.addEventListener("submit", (event) => /** @type {Element} */ (event.target).getAttribute("id") === "patch-cancel" && event.preventDefault()));
       await forms.click("#patch-cancel button");
     },
     1500,
