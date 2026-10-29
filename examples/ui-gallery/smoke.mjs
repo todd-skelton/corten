@@ -155,6 +155,19 @@ async function run(browser) {
   await page.mouse.up();
   // The quantity stepped on the press, so its pointer was held while the price stepped.
   check("each field keeps its own state", holding > before && own === "12.52", `quantity ${before} -> ${holding}, price ${own}`);
+  // A press released off its button makes no click, so nothing is left to skip the next key's.
+  const up = await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).boundingBox();
+  await page.mouse.move(up.x + up.width / 2, up.y + up.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(up.x + up.width / 2, up.y - 80);
+  await page.mouse.up();
+  await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
+  const after = await page.locator("#price").inputValue();
+  check("a press released elsewhere steps once, and the next key steps", after === "12.54", after);
+  const fewer = page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(0);
+  await fewer.press("Enter");
+  await fewer.press("Space");
+  check("Enter and Space on decrease step down", (await page.locator("#price").inputValue()) === "12.52", await page.locator("#price").inputValue());
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
     const field = /** @type {Element} */ (document.querySelector("#price")?.closest("[data-scope=ui-number-field]")?.parentElement);

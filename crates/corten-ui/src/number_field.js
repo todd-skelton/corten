@@ -10,8 +10,8 @@ import { keep } from "corten";
 const HOLD = 400;
 const REPEAT = 60;
 
-/** The field's press and hold. */
-const held = () => keep(() => ({ timer: 0, pointer: false }));
+/** The field's press and hold, and the button a pointer is pressing. */
+const held = () => keep(() => ({ timer: 0, pressed: /** @type {Element | null} */ (null) }));
 
 /**
  * When the field joins the page: the buttons match the value, and a hold ends wherever the
@@ -22,10 +22,12 @@ const held = () => keep(() => ({ timer: 0, pointer: false }));
 export function connect(decrease, input, increase, signal) {
   sync(decrease, input, increase);
   const s = held();
-  const release = () => {
+  /** @param {Event} event */
+  const release = (event) => {
     clearTimeout(s.timer);
-    // The click that follows this pointerup runs first, and must not step again.
-    setTimeout(() => (s.pointer = false));
+    // Released on the button it pressed, a click follows, the press's own (`click` takes it);
+    // released anywhere else, cancelled or the window left, none does.
+    if (event.type !== "pointerup" || !s.pressed?.contains(/** @type {Node} */ (event.target))) s.pressed = null;
   };
   for (const type of ["pointerup", "pointercancel", "blur"]) addEventListener(type, release, { signal });
   signal.addEventListener("abort", () => clearTimeout(s.timer));
@@ -40,7 +42,7 @@ export function press(event, button, input, by) {
   // Keeps focus where it was (usually the input) and selects no text.
   event.preventDefault();
   const s = held();
-  s.pointer = true;
+  s.pressed = button;
   /** @param {number} delay */
   const tick = (delay) => {
     if (step(input, by)) s.timer = setTimeout(() => tick(REPEAT), delay);
@@ -50,11 +52,14 @@ export function press(event, button, input, by) {
 }
 
 /**
- * Enter or Space on a button; a pointer press has stepped already.
- * @param {HTMLInputElement} input @param {number} by
+ * Enter or Space on a button, or an assistive technology's click; the click that ends a pointer's
+ * press has stepped already, on the press. A key's click has `detail` 0, so it always steps.
+ * @param {MouseEvent} event @param {HTMLButtonElement} button @param {HTMLInputElement} input @param {number} by
  */
-export function click(input, by) {
-  if (!held().pointer) step(input, by);
+export function click(event, button, input, by) {
+  const s = held();
+  if (s.pressed === button && event.detail > 0) s.pressed = null;
+  else step(input, by);
 }
 
 /** @param {KeyboardEvent} event @param {HTMLInputElement} input */
