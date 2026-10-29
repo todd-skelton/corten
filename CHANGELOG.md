@@ -1715,6 +1715,17 @@ Corten is pre-1.0, so any minor version may change the API.
     tags and the price summary; a phone's one column is unchanged. The page gains two wrapping
     `<div>`s, 74 bytes of its 11,435
     ([#330 Polish: card-market's item page leaves the right half empty on desktop](https://github.com/todd-skelton/corten/issues/330)).
+62. CI's Firefox stalled now and then in the watchlist smoke ("still loading: nothing"), at a
+    different step each time, and once lost a page's script context in the ui-gallery Copy check.
+    The likely cause is Playwright 1.60's Firefox driver, which could lose the commit of a new
+    page's first navigation to a document sent with `Cross-Origin-Opener-Policy: same-origin`, as
+    Corten's pages are by default ([microsoft/playwright#42731 Firefox page.goto never resolves on the first navigation to a page with COOP same-origin](https://github.com/microsoft/playwright/issues/42731),
+    fixed in its Firefox build 1551); the race did not reproduce locally. The tooling is on
+    Playwright 1.64.1 (Firefox build 1555), and CI's browser image follows it; Firefox still
+    applies COOP. Its WebKit 27.2 logs a CSP refusal for the style it sets inside every `<select>`
+    (WebKit bug 327212); in that WebKit the smokes set that line aside and report every other CSP
+    violation from the page's `securitypolicyviolation` events instead (`scripts/browser-bugs.mjs`)
+    ([#350 CI's Firefox stalls after the early form check, closing a page whose route is still registered](https://github.com/todd-skelton/corten/issues/350)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
