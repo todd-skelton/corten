@@ -94,21 +94,32 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             &[TokenTree::Ident(ident.clone()).into(), TokenTree::Literal(Literal::string(&word)).into()],
         ));
     }
-    let mut out = q("#[automatically_derived] impl", &[]);
-    out.extend(item.impl_generics.clone());
-    out.extend(q("::core::fmt::Display for", &[]));
-    out.extend([TokenTree::Ident(item.name.clone())]);
-    out.extend(item.type_generics.clone());
-    out.extend(item.where_clause.clone());
-    out.extend([TokenTree::Group(Group::new(
-        Delimiter::Brace,
-        q(
+    // The word as `AsRef<str>` (where a list of words is taken: a script's `string[]`, a
+    // `RequiredWhen`'s values) and as `Display` (a URL, markup).
+    let mut out = TokenStream::new();
+    for (header, body) in [
+        (
+            "::core::convert::AsRef<::core::primitive::str> for",
+            "#[inline]
+            fn as_ref(&self) -> &::core::primitive::str {
+                match *self { __A0 }
+            }",
+        ),
+        (
+            "::core::fmt::Display for",
             "#[inline]
             fn fmt(&self, __f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                __f.write_str(match *self { __A0 })
+                __f.write_str(::core::convert::AsRef::<::core::primitive::str>::as_ref(self))
             }",
-            &[arms],
         ),
-    ))]);
+    ] {
+        out.extend(q("#[automatically_derived] impl", &[]));
+        out.extend(item.impl_generics.clone());
+        out.extend(q(header, &[]));
+        out.extend([TokenTree::Ident(item.name.clone())]);
+        out.extend(item.type_generics.clone());
+        out.extend(item.where_clause.clone());
+        out.extend([TokenTree::Group(Group::new(Delimiter::Brace, q(body, &[arms.clone()])))]);
+    }
     Ok(out)
 }

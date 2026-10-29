@@ -1,10 +1,15 @@
 use corten::{prelude::*, view::Attrs};
 
-/// One option of a [`ComboBox`].
+/// One option of a [`ComboBox`]: a value of the type the form's field reads, and its label.
+///
+/// The value is written as the text its `AsRef<str>` gives, so an enum deriving `UrlValue` and
+/// `Deserialize` offers the words serde reads back: the field is `condition: Condition`, the
+/// options are `Choice { value: Condition::NearMint, label: "Near Mint" }`, and a form with a word
+/// outside the enum is refused (422) as one with a value of the wrong kind is.
 #[derive(Clone, Copy)]
-pub struct Choice<'a> {
-    /// What the form sends.
-    pub value: &'a str,
+pub struct Choice<'a, V> {
+    /// What the form sends: the text its `AsRef<str>` gives.
+    pub value: V,
     /// What the user reads and types to find it.
     pub label: &'a str,
 }
@@ -12,23 +17,41 @@ pub struct Choice<'a> {
 /// A combobox's field and options. Start from [`Picker::new`] and set what differs:
 ///
 /// ```ignore
-/// let color = Picker { value: Some(&item.color), required: true, ..Picker::new("color", f.color, t.choose_color(), t.no_match(), &colors) };
+/// let color = Picker { value: Some(item.color), required: true, ..Picker::new("color", f.color, t.choose_color(), t.no_match(), &COLORS) };
 /// html! { <ComboBox field={&color} /> }
 /// ```
-pub struct Picker<'a> {
+///
+/// The selected value and the options are the same type, so a value of another field's type
+/// does not compile:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+/// use corten_ui::{Choice, Picker};
+///
+/// #[derive(Clone, Copy, PartialEq, UrlValue)]
+/// enum Color { Salt, Sand }
+/// #[derive(Clone, Copy, PartialEq, UrlValue)]
+/// enum Size { Small }
+/// #[derive(Fields)]
+/// struct Order { color: String }
+///
+/// let colors = [Choice { value: Color::Salt, label: "Salt" }, Choice { value: Color::Sand, label: "Sand" }];
+/// let field = Picker { value: Some(Size::Small), ..Picker::new("color", Order::FIELDS.color, "Choose", "None", &colors) };
+/// ```
+pub struct Picker<'a, V> {
     /// The `id` the app's `<label for>` points at. It names the `<select>` until the script
     /// runs and the text input after, so the label always labels the control that shows.
     pub id: &'a str,
     /// The form field's name, on the `<select>`: `Input::FIELDS.color`.
     pub name: FieldName,
     /// The selected option's value.
-    pub value: Option<&'a str>,
+    pub value: Option<V>,
     /// Shown when nothing is selected: the select's empty first option and the input's
     /// placeholder.
     pub placeholder: &'a str,
     /// Shown when no option matches what was typed: "No matches".
     pub empty: &'a str,
-    pub options: &'a [Choice<'a>],
+    pub options: &'a [Choice<'a, V>],
     pub required: bool,
     pub disabled: bool,
     /// More attributes for both controls, such as `errors.within(form).aria(field)`.
@@ -37,9 +60,9 @@ pub struct Picker<'a> {
 
 static NO_ATTRS: [(&str, bool); 0] = [];
 
-impl<'a> Picker<'a> {
+impl<'a, V> Picker<'a, V> {
     /// A field with nothing selected, optional and enabled.
-    pub fn new(id: &'a str, name: FieldName, placeholder: &'a str, empty: &'a str, options: &'a [Choice<'a>]) -> Self {
+    pub fn new(id: &'a str, name: FieldName, placeholder: &'a str, empty: &'a str, options: &'a [Choice<'a, V>]) -> Self {
         Picker { id, name, value: None, placeholder, empty, options, required: false, disabled: false, attrs: &NO_ATTRS }
     }
 }
@@ -64,18 +87,22 @@ impl<'a> Picker<'a> {
 /// use corten::prelude::*;
 /// use corten_ui::{Choice, ComboBox, Picker};
 ///
-/// #[derive(Fields)]
-/// struct Order { color: String }
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// #[serde(rename_all = "snake_case")]
+/// enum Color { Salt, Sand }
 ///
-/// let colors = [Choice { value: "salt", label: "Salt & Pepper" }, Choice { value: "sand", label: "Desert Sand" }];
-/// let field = Picker { value: Some("sand"), ..Picker::new("color", Order::FIELDS.color, "Choose a color", "No matches", &colors) };
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Order { color: Color }
+///
+/// const COLORS: [Choice<Color>; 2] = [Choice { value: Color::Salt, label: "Salt & Pepper" }, Choice { value: Color::Sand, label: "Desert Sand" }];
+/// let field = Picker { value: Some(Color::Sand), ..Picker::new("color", Order::FIELDS.color, "Choose a color", "No matches", &COLORS) };
 /// let html = ComboBox { field: &field }.to_html();
 /// assert!(html.contains(r#"<select data-ref="select" id="color" name="color""#));
 /// assert!(html.contains(r#"<option value="sand" selected>Desert Sand</option>"#));
 /// assert!(html.contains(r#"role="combobox""#) && html.contains(r#"value="Desert Sand""#));
 /// ```
 #[component(js)]
-pub fn ComboBox<'a>(field: &'a Picker<'a>) -> impl Render {
+pub fn ComboBox<'a, V: Copy + PartialEq + AsRef<str>>(field: &'a Picker<'a, V>) -> impl Render {
     let f = field;
     let (select, input, popup, list, empty) = refs();
     let shown = f.value.and_then(|v| f.options.iter().find(|o| o.value == v)).map(|o| o.label);
@@ -92,7 +119,7 @@ pub fn ComboBox<'a>(field: &'a Picker<'a>) -> impl Render {
             >
                 <option value="">{f.placeholder}</option>
                 for o in f.options {
-                    <option value={o.value} selected={f.value == Some(o.value)}>{o.label}</option>
+                    <option value={o.value.as_ref()} selected={f.value == Some(o.value)}>{o.label}</option>
                 }
             </select>
             <input

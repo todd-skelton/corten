@@ -1416,6 +1416,16 @@ Corten is pre-1.0, so any minor version may change the API.
     keep their names. `examples/listings-feed/smoke.mjs` checks the page in a browser against
     Postgres and NATS, in CI too
     ([#334 listings-feed is a benchmark harness listed as an example](https://github.com/todd-skelton/corten/issues/334)).
+77. **Breaking:** `corten_ui::Choice` and `Picker` carry the type the form field reads:
+    `Choice<'a, V> { value: V, label }` and `Picker { value: Option<V>, .. }`, the value written as
+    the text its `AsRef<str>` gives. With a `#[derive(UrlValue, Deserialize)]` enum
+    (`Choice { value: Condition::NearMint, label: "Near Mint" }` for `condition: Condition`) the
+    words the combo box offers are the words the handler reads, a selected value of another type
+    does not compile, and a form with any other word is refused (422). `#[derive(UrlValue)]` also
+    derives `AsRef<str>`, and `RequiredWhen` takes `values` of any `AsRef<str>`
+    (`values={&[Pricing::Offers]}`). ui-gallery reads its condition, pricing, regions, tab and
+    sale sheet as enums, where it compared strings
+    ([#324 corten-ui choices are strings, so nothing ties a Picker or ComboBox value to the field that reads it](https://github.com/todd-skelton/corten/issues/324)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1786,6 +1796,14 @@ Corten is pre-1.0, so any minor version may change the API.
     the link to their account, where the Account link was, and a visitor has a shorter "Sign in"
     button in its place. The alerts form and list sit side by side from 48rem
     ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
+66. examples/ui-gallery read as a grid of components rather than one listing screen. The
+    listing form sits beside one column of the draft's other cards (Market, Activity, Draft,
+    Stock), so cards of different heights leave no holes. Its "Ships to" boxes and its pricing,
+    now radios, are styled as the fields above them. The "Manage" card's menu is the Draft card's
+    "More actions" button. The SKU's copy count shows only after the first copy ("Copies: 2"), and
+    `/help` explains each part of the form
+    ([#333 Polish: ui-gallery reads as a grid of components rather than a listing screen](https://github.com/todd-skelton/corten/issues/333)).
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
