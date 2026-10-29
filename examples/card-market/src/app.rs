@@ -77,7 +77,7 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
     App::new(routes::router(source.clone()))
         .api(|routes| api::api(routes, ApiState { source, partners }))
         .api(|routes| {
-            let routes = mcp::api(routes).route::<mcp::Mcp>(tools);
+            let routes = mcp::api(routes).route::<mcp::Mcp>(tools).errors(rpc_failure);
             origins.split(',').filter(|o| !o.is_empty()).fold(routes, |routes, origin| routes.allow_origin(origin))
         })
         .error_page(views::error_page, ())
@@ -134,7 +134,7 @@ impl Identify<ApiState> for Partner {
     async fn identify(parts: &Parts, state: &ApiState) -> Result<Self, Refused> {
         match state.partners.named(&parts.headers) {
             Some(name) => Ok(Partner { name: name.clone() }),
-            None => Err(Refused::unauthorized()),
+            None => Err(Refused::unauthorized().message("Send a valid partner API key in X-Api-Key.")),
         }
     }
 }
@@ -272,10 +272,11 @@ fn shared(page: corten::Result<HtmlResponse<ForAll>>) -> Public<HtmlResult> {
 
 pub(crate) async fn home(req: Req, State(source): State<Source>) -> Public<HtmlResult> {
     let t: Msg = req.t();
+    let req = &req;
     shared(req.page(html! {
-        <Layout req={&req} title={t.home_title()} head="">
+        <Layout req={req} title={t.home_title()} head="">
             <h1>{t.home_title()}</h1>
-            <ItemList t={t} shelf={source.shelf()} />
+            <ItemList req={req} t={t} shelf={source.shelf()} />
         </Layout>
     }))
 }
@@ -324,7 +325,8 @@ pub(crate) async fn category(req: Req, State(source): State<Source>, Path(slug):
     let crumbs = Breadcrumbs::new([(t.home_title().to_string(), routes::Home.to_string()), (title.clone(), here)]);
     let head = JsonLd { value: &crumbs };
     let (title, items) = (title.as_str(), items.as_slice());
-    let page = req.page(html! { <Layout req={&req} title={title} head={head}>{views::category(t, title, items)}</Layout> });
+    let req = &req;
+    let page = req.page(html! { <Layout req={req} title={title} head={head}>{views::category(req, t, title, items)}</Layout> });
     shared(page).shared(Duration::from_secs(3600))
 }
 
@@ -422,6 +424,29 @@ pub(crate) struct AlertSet {
     /// The partner the alert was set for, when a partner set it; agents do not have one.
     #[serde(skip_serializing_if = "Option::is_none")]
     partner: Option<Arc<str>>,
+}
+
+/// A failure Corten writes itself on `/mcp` (a wrong method, a cross-site post, the deadline),
+/// as the JSON-RPC error an MCP client reads, the shape the tools' own errors have (their 401
+/// passes through as the tools wrote it). Which request failed is not known there, so its id is
+/// `null`.
+#[derive(ToJson)]
+struct RpcFailure {
+    jsonrpc: &'static str,
+    id: (),
+    error: RpcError,
+}
+
+#[derive(ToJson)]
+struct RpcError {
+    code: i32,
+    message: String,
+}
+
+fn rpc_failure(status: StatusCode, message: &str) -> RpcFailure {
+    // JSON-RPC's own codes: a request the server does not take, or the server's failure.
+    let code = if status.is_server_error() { -32603 } else { -32600 };
+    RpcFailure { jsonrpc: "2.0", id: (), error: RpcError { code, message: message.to_string() } }
 }
 
 /// The same read and write the page offers, as MCP tools. Agents authenticate with a bearer
@@ -868,8 +893,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_demo_catalog_lists_its_cards_on_the_home_and_category_pages() {
-        let source = Source::fixture(include_str!("../fixtures/demo.json")).unwrap();
-        let app = super::app(source).router();
+        let app = super::app(Source::demo()).router();
         let get = |uri: &'static str| app.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap());
         let body = |res: corten::axum::response::Response| async move {
             String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
@@ -877,6 +901,19 @@ mod tests {
         let home = body(get("/").await.unwrap()).await;
         assert!(home.contains("<strong>Ashen Drake</strong>") && home.contains("From $42.50"), "{home}");
         assert!(home.find(r#"href="/items/item_2""#).unwrap() < home.find(r#"href="/items/item_10""#).unwrap(), "in id order");
+        assert!(
+            home.contains(r#"/cards/item_1.svg" width="250" height="350" alt="">"#)
+                && home.contains(r#"/cards/item_6.svg" width="250" height="350" alt="" loading="lazy">"#),
+            "each card shows its art, sized, and past the first row loaded near the screen: {home}"
+        );
+        let item = body(get("/items/item_1").await.unwrap()).await;
+        assert!(item.contains(r#"/cards/item_1.svg" width="220" height="308" alt="Ashen Drake card art">"#), "{item}");
+        let json = body(get("/api/items/item_1").await.unwrap()).await;
+        assert!(!json.contains(r#""art""#) && !json.contains("cards/"), "the JSON is the API's, without the store's art: {json}");
+        // The same responses from another source are another store's cards: no art.
+        let other = super::app(Source::fixture(include_str!("../fixtures/demo.json")).unwrap()).router();
+        let res = other.oneshot(Request::get("/items/item_1").body(Body::empty()).unwrap()).await.unwrap();
+        assert!(!body(res).await.contains("cards/"), "art is the demo catalog's alone");
         let category = body(get("/categories/tidebreak").await.unwrap()).await;
         assert!(category.contains("<h1>Tidebreak</h1>") && category.contains("Salt Oracle"), "{category}");
         assert!(!category.contains("Ashen Drake"), "only the category's cards");
@@ -915,7 +952,11 @@ mod tests {
             res["result"]["structuredContent"]["message"],
             "Alert set: we will email a@b.c when Pika <Promo> & \"Friends\" drops below $1.00."
         );
-        assert_eq!(send(call(Some("wrong"), alert)).await.0, StatusCode::UNAUTHORIZED);
+        // The tools' own refusal keeps its request's id: `Api::errors` leaves a JSON body as it is.
+        let (status, headers, body) = send(call(Some("wrong"), alert)).await;
+        assert_eq!((status, &headers["www-authenticate"]), (StatusCode::UNAUTHORIZED, &"Bearer".parse().unwrap()));
+        let res: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!((res["id"].clone(), res["error"]["code"].clone()), (json!(1), json!(-32001)), "{body}");
         let bad = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "alerts.create", "arguments": { "id": "item_9", "email": "nope", "target_price": "1" } } });
         let res: serde_json::Value = serde_json::from_str(&send(call(Some("dev-token"), bad)).await.2).unwrap();
         assert_eq!(res["result"]["isError"], true);
@@ -956,7 +997,10 @@ mod tests {
     async fn the_mcp_endpoint_is_json_only() {
         let (status, headers, body) = send(Request::get("/mcp").header("accept", "*/*").body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
-        assert_eq!(body, r#"{"error":{"status":405,"message":"Method Not Allowed"}}"#, "not the HTML error page");
+        assert_eq!(
+            body, r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Method Not Allowed"}}"#,
+            "JSON-RPC, as an MCP client reads it, not the HTML error page"
+        );
         assert_eq!(headers["content-security-policy"], "default-src 'none'; frame-ancestors 'none'");
         let cross = Request::post("/mcp")
             .header("origin", "https://agent.example")
@@ -967,8 +1011,13 @@ mod tests {
         let (status, _, body) = send(cross).await;
         assert_eq!(
             (status, &body[..]),
-            (StatusCode::FORBIDDEN, r#"{"error":{"status":403,"message":"Cross-site request refused."}}"#)
+            (
+                StatusCode::FORBIDDEN,
+                r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Cross-site request refused."}}"#
+            )
         );
+        let deadline = super::rpc_failure(StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable");
+        assert_eq!(deadline.error.code, -32603, "the deadline's 503 is the server's failure");
     }
 
     /// A partner's JSON write, with the key `key`.
@@ -987,7 +1036,7 @@ mod tests {
             let (status, _, body) = send(partner(key, alert)).await;
             assert_eq!(
                 (status, body.as_str()),
-                (StatusCode::UNAUTHORIZED, r#"{"error":{"status":401,"message":"Unauthorized"}}"#)
+                (StatusCode::UNAUTHORIZED, r#"{"error":{"status":401,"message":"Send a valid partner API key in X-Api-Key."}}"#)
             );
         }
         let (status, headers, body) = send(partner(Some("dev-key"), alert)).await;
