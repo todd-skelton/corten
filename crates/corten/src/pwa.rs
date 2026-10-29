@@ -2,15 +2,17 @@
 //!
 //! ```ignore
 //! App::new(routes).pwa(
-//!     Pwa::new(Manifest::new("Card Market", "Cards").icon("icons/192.png", "192x192").icon("icons/512.png", "512x512"))
+//!     Pwa::new(Manifest::new("Card Market", "Cards").icon(Static::ICONS_192_PNG, "192x192").icon(Static::ICONS_512_PNG, "512x512"))
 //!         .network_only("/api/"),
 //! )
 //! ```
 //!
 //! [`crate::App::pwa`] serves the manifest and the worker, links the manifest in every page,
 //! registers the worker (not under `corten dev`), caches the static files, and answers
-//! `/offline` with a plain offline page unless the app routes it. Relative icon and script paths
-//! are files in the static directory.
+//! `/offline` with a plain offline page unless the app routes it. Icons and the app's worker
+//! script are files of the static directory, named by the constants
+//! [`crate::assets::embed!`] makes, so a misspelled or removed file does not compile; an icon
+//! served from another site is a `Uri`, as every URL outside the app is.
 //!
 //! What the worker does, and why:
 //!
@@ -36,13 +38,16 @@
 use std::sync::Arc;
 
 use axum::{
-    http::{header, HeaderValue},
+    http::{header, HeaderValue, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 
-use crate::{assets::Assets, html::json_string};
+use crate::{
+    assets::{Asset, Assets},
+    html::json_string,
+};
 
 /// Where the service worker is served. It must be at the root to control every page.
 pub const WORKER_PATH: &str = "/service-worker.js";
@@ -60,7 +65,59 @@ pub struct Manifest {
     display: &'static str,
     theme_color: Option<String>,
     background_color: Option<String>,
-    icons: Vec<(String, String, String, Option<&'static str>)>,
+    icons: Vec<(Src, String, &'static str, Option<&'static str>)>,
+}
+
+/// Where an icon is: a file of the static directory (`Static::ICONS_192_PNG`), or a `Uri` for one
+/// another site serves (`Uri::from_static("https://cdn.example.com/192.png")`), written as is.
+#[derive(Clone, Debug)]
+pub struct IconSrc(Src);
+
+impl From<Asset> for IconSrc {
+    fn from(file: Asset) -> Self {
+        IconSrc(Src::File(file))
+    }
+}
+
+impl From<Uri> for IconSrc {
+    fn from(url: Uri) -> Self {
+        IconSrc(Src::Url(url.to_string()))
+    }
+}
+
+/// A file of the static directory, until the app's directory gives its versioned URL, or a URL.
+#[derive(Clone, Debug)]
+enum Src {
+    File(Asset),
+    Url(String),
+}
+
+impl Src {
+    /// Its URL: a file not yet resolved is written `/{path}`.
+    fn url(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            Src::File(file) => format!("/{}", file.path()).into(),
+            Src::Url(url) => url.as_str().into(),
+        }
+    }
+
+    /// A file's versioned URL in `assets`. A file the app's directory does not serve (no
+    /// `App::assets`, or another app's directory) is a startup panic in every build, since no
+    /// browser could load it; it runs once, when the app starts.
+    fn resolve(&mut self, assets: Option<&Assets>) {
+        if let Src::File(file) = self {
+            let served = assets.filter(|a| a.owner == Some(file.owner()) && a.contains(file.path()));
+            let assets = served.unwrap_or_else(|| {
+                panic!(
+                    "corten: the PWA names {:?} of {}, and the app's static directory is {} (App::assets)",
+                    file.path(),
+                    file.owner(),
+                    assets.and_then(|a| a.owner).unwrap_or("none")
+                )
+            });
+            *self = Src::Url(assets.asset(*file).to_string());
+        }
+    }
 }
 
 impl Manifest {
@@ -98,16 +155,32 @@ impl Manifest {
         self
     }
 
-    /// An icon: `("icons/192.png", "192x192")`, a file in the static directory (or an absolute
-    /// URL). The type comes from the extension. Add 192 and 512 at least.
-    pub fn icon(mut self, src: &str, sizes: &str) -> Self {
-        self.icons.push((src.into(), sizes.into(), image_type(src).into(), None));
-        self
+    /// An icon: `(Static::ICONS_192_PNG, "192x192")`, a file of the static directory by the
+    /// constant [`crate::assets::embed!`] made for it, or a `Uri` for one another site serves.
+    /// The type comes from the extension. Add 192 and 512 at least.
+    ///
+    /// A path is not an icon, so a misspelled file cannot reach the manifest:
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::pwa::Manifest;
+    /// let _ = Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192");
+    /// ```
+    pub fn icon(self, src: impl Into<IconSrc>, sizes: &str) -> Self {
+        self.with_icon(src.into(), sizes, None)
     }
 
     /// An icon with `"purpose": "maskable"` (the platform crops it to its own shape).
-    pub fn maskable_icon(mut self, src: &str, sizes: &str) -> Self {
-        self.icons.push((src.into(), sizes.into(), image_type(src).into(), Some("maskable")));
+    pub fn maskable_icon(self, src: impl Into<IconSrc>, sizes: &str) -> Self {
+        self.with_icon(src.into(), sizes, Some("maskable"))
+    }
+
+    fn with_icon(mut self, IconSrc(src): IconSrc, sizes: &str, purpose: Option<&'static str>) -> Self {
+        let mime = match &src {
+            Src::File(file) => image_type(file.path()),
+            // The path's extension, without a query (`a.webp?v=2`).
+            Src::Url(url) => image_type(url.parse::<Uri>().as_ref().map_or(url.as_str(), Uri::path)),
+        };
+        self.icons.push((src, sizes.into(), mime, purpose));
         self
     }
 
@@ -132,7 +205,12 @@ impl Manifest {
             if i > 0 {
                 out.push(',');
             }
-            out.push_str(&format!(r#"{{"src":{},"sizes":{},"type":{}"#, json_string(src), json_string(sizes), json_string(mime)));
+            out.push_str(&format!(
+                r#"{{"src":{},"sizes":{},"type":{}"#,
+                json_string(&src.url()),
+                json_string(sizes),
+                json_string(mime)
+            ));
             if let Some(purpose) = purpose {
                 out.push_str(&format!(r#","purpose":"{purpose}""#));
             }
@@ -152,7 +230,7 @@ pub struct Pwa {
     network_only: Vec<String>,
     cached_prefixes: Vec<String>,
     version: String,
-    imports: Vec<String>,
+    imports: Vec<Src>,
 }
 
 impl Pwa {
@@ -190,12 +268,18 @@ impl Pwa {
         self
     }
 
-    /// A same-origin script the worker loads first with `importScripts`, for the app's own worker
-    /// code (a `push` handler, say): a file in the static directory (`"sw-push.js"`), whose
-    /// versioned URL changes the worker when the file changes, or an absolute path.
-    pub fn import_script(mut self, url: &str) -> Self {
-        assert!(!url.starts_with("//") && !url.contains("://"), "a worker script must be same-origin: {url}");
-        self.imports.push(url.into());
+    /// A script the worker loads first with `importScripts`, for the app's own worker code (a
+    /// `push` handler, say): a file of the static directory by its constant
+    /// (`Static::SW_PUSH_JS`), whose versioned URL changes the worker when the file changes. A
+    /// file of the app's own directory is same-origin, as a worker script must be; a path is not
+    /// one:
+    ///
+    /// ```compile_fail,E0308
+    /// use corten::pwa::{Manifest, Pwa};
+    /// let _ = Pwa::new(Manifest::new("Shop", "Shop")).import_script("sw-push.js");
+    /// ```
+    pub fn import_script(mut self, file: Asset) -> Self {
+        self.imports.push(Src::File(file));
         self
     }
 
@@ -209,23 +293,15 @@ impl Pwa {
         &self.offline
     }
 
-    /// Relative icon and script paths become versioned static file URLs, and the static files are
-    /// cached (see [`Pwa::assets`]). Panics when a named file is missing, so a typo fails at
-    /// startup.
+    /// The icons and scripts named by their static files get those files' versioned URLs, and the
+    /// static files are cached (see [`Pwa::assets`]). Panics when it names a file the app's static
+    /// directory does not serve (none given, or another app's).
     pub fn resolve(mut self, assets: Option<&Assets>) -> Self {
-        let resolve = |path: &mut String| {
-            if path.starts_with('/') || path.contains("://") {
-                return;
-            }
-            let assets = assets.unwrap_or_else(|| panic!("corten: the PWA names {path:?} but there is no static directory"));
-            assert!(assets.contains(path), "corten: the PWA names {path:?}, which is not in the static directory");
-            *path = assets.url(path);
-        };
         for icon in &mut self.manifest.icons {
-            resolve(&mut icon.0);
+            icon.0.resolve(assets);
         }
         for import in &mut self.imports {
-            resolve(import);
+            import.resolve(assets);
         }
         match assets {
             Some(assets) if self.version.is_empty() => self.assets(assets),
@@ -250,11 +326,11 @@ impl Pwa {
     /// The service worker source.
     pub fn worker_js(&self) -> String {
         let list = |items: &[String]| format!("[{}]", items.iter().map(|s| json_string(s)).collect::<Vec<_>>().join(","));
+        let imports: Vec<String> = self.imports.iter().map(|src| src.url().into_owned()).collect();
         let mut precache = self.precache.clone();
         precache.push(crate::runtime_path().to_string());
         let cache = format!("corten-{}-{}", self.version, crate::runtime_version());
-        let imports =
-            if self.imports.is_empty() { String::new() } else { format!("importScripts(...{});\n", list(&self.imports)) };
+        let imports = if imports.is_empty() { String::new() } else { format!("importScripts(...{});\n", list(&imports)) };
         WORKER_TEMPLATE
             .replace("__IMPORTS__", &imports)
             .replace("__CACHE__", &json_string(&cache))
@@ -369,20 +445,62 @@ self.addEventListener("fetch", (event) => {
 mod tests {
     use super::*;
 
+    const ICON: Asset = Asset::__embedded("shop::Static", "icons/192.png");
+    const PUSH: Asset = Asset::__embedded("shop::Static", "sw-push.js");
+
+    fn assets() -> Assets {
+        let files = ["icons/192.png", "sw-push.js"].map(|f| (f.to_string(), axum::body::Bytes::from_static(b"x"))).to_vec();
+        let mut assets = Assets::build_with(files, &[], &[], "/assets").unwrap();
+        assets.owner = Some("shop::Static");
+        assets
+    }
+
     #[test]
     fn manifest_is_json_with_icons() {
         let m = Manifest::new("Card \"Market\"", "CM")
             .theme_color("#111")
-            .icon("/i/192.png", "192x192")
-            .maskable_icon("/i/512.png", "512x512");
+            .icon(Uri::from_static("/i/192.png"), "192x192")
+            .maskable_icon(Uri::from_static("https://cdn.example.com/512.webp?v=2"), "512x512");
         assert_eq!(
             m.to_json(),
             concat!(
                 r##"{"name":"Card \"Market\"","short_name":"CM","start_url":"/","scope":"/","display":"standalone","theme_color":"#111","##,
                 r#""icons":[{"src":"/i/192.png","sizes":"192x192","type":"image/png"},"#,
-                r#"{"src":"/i/512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}"#
+                r#"{"src":"https://cdn.example.com/512.webp?v=2","sizes":"512x512","type":"image/webp","purpose":"maskable"}]}"#
             )
         );
+    }
+
+    #[test]
+    fn a_static_file_is_its_versioned_url() {
+        let assets = assets();
+        let pwa = Pwa::new(Manifest::new("A", "A").icon(ICON, "192x192")).import_script(PUSH).resolve(Some(&assets));
+        let icon = format!(r#""icons":[{{"src":"{}icons/192.png","sizes":"192x192","type":"image/png"}}]"#, assets.prefix());
+        assert!(pwa.manifest.to_json().contains(&icon), "{}", pwa.manifest.to_json());
+        assert!(pwa.worker_js().contains(&format!("importScripts(...[\"{}sw-push.js\"]);", assets.prefix())));
+    }
+
+    #[test]
+    #[should_panic(expected = "the app's static directory is none")]
+    fn a_static_file_needs_the_apps_directory() {
+        let _ = Pwa::new(Manifest::new("A", "A").icon(ICON, "192x192")).resolve(None);
+    }
+
+    /// An app that lists components but was not given its directory has assets of no owner: the
+    /// icon would 404, in a release build too.
+    #[test]
+    #[should_panic(expected = "the app's static directory is none")]
+    fn a_static_file_of_no_directory_panics_in_every_build() {
+        let mut assets = assets();
+        assets.owner = None;
+        let _ = Pwa::new(Manifest::new("A", "A").icon(ICON, "192x192")).resolve(Some(&assets));
+    }
+
+    #[test]
+    #[should_panic(expected = "of admin::Static, and the app's static directory is shop::Static")]
+    fn another_apps_file_panics_in_every_build() {
+        let other = Asset::__embedded("admin::Static", "icons/192.png");
+        let _ = Pwa::new(Manifest::new("A", "A").icon(other, "192x192")).resolve(Some(&assets()));
     }
 
     #[test]
@@ -397,13 +515,5 @@ mod tests {
         assert!(!js.contains("__"), "every placeholder is filled");
         assert!(!js.contains("importScripts"));
         assert_ne!(js, pwa.clone().version("v2").worker_js());
-        let js = pwa.import_script("/assets/v1/sw-push.js").worker_js();
-        assert!(js.contains("importScripts(...[\"/assets/v1/sw-push.js\"]);\nconst CACHE"));
-    }
-
-    #[test]
-    #[should_panic(expected = "same-origin")]
-    fn worker_scripts_are_same_origin() {
-        let _ = Pwa::new(Manifest::new("A", "A")).import_script("https://cdn.example.com/x.js");
     }
 }

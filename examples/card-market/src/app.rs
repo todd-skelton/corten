@@ -65,9 +65,9 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
         .description("Buy and sell trading cards")
         .theme_color("#14213d")
         .background_color("#ffffff")
-        .icon("icons/192.png", "192x192")
-        .icon("icons/512.png", "512x512")
-        .maskable_icon("icons/512.png", "512x512");
+        .icon(views::Static::ICONS_192_PNG, "192x192")
+        .icon(views::Static::ICONS_512_PNG, "512x512")
+        .maskable_icon(views::Static::ICONS_512_PNG, "512x512");
     // Agents in a browser on another site (AGENT_ORIGINS, comma separated) may call the tools.
     let origins = std::env::var("AGENT_ORIGINS").unwrap_or_default();
     let tools = tools(source.clone(), tokens).route();
@@ -84,7 +84,7 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
         .error_page(views::error_page, ())
         .messages::<Msg>()
         .components(views::COMPONENTS)
-        .pwa(Pwa::new(manifest).import_script("sw-push.js").network_only(mcp::Mcp::PATH))
+        .pwa(Pwa::new(manifest).import_script(views::Static::SW_PUSH_JS).network_only(mcp::Mcp::PATH))
         .policy(policy)
         // An item page waits on the item API: past 10 seconds the visitor gets the 503 page.
         .deadline(Duration::from_secs(10))

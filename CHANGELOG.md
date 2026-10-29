@@ -1320,8 +1320,8 @@ Corten is pre-1.0, so any minor version may change the API.
     (the Dockerfiles touch every source first). Under `corten dev` the app reads the directory from
     disk, and `corten dev` restarts it without compiling when only those files were edited or
     added (a removed file builds, and a failed build is tried again at the next change). A
-    release binary holds no path from the build machine. The PWA's
-    icons and worker script are still paths checked at startup. Measured on card-market (release,
+    release binary holds no path from the build machine. The PWA names its files the same way
+    (75). Measured on card-market (release,
     callgrind, three runs each): startup 1,470,715-1,485,822 instructions to 1,381,406-1,387,180,
     the item page 81,556-81,740 to 77,294-77,524 per request (`req.asset` no longer looks a string
     up and allocates the URL), and the binary 6,729,592 to 6,752,216 bytes (+22,624, the files)
@@ -1331,6 +1331,16 @@ Corten is pre-1.0, so any minor version may change the API.
     as `Params` (16 handlers); ui-gallery's `HomeQuery` and listings-feed's `MarketQuery` are
     gone, the parameters declared once on the route (`MarketWrite` gains `n`), and watchlist's
     `Alerts` no longer derives `Deserialize` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
+75. **Breaking:** the PWA names its files by the constants `embed!` makes, so a misspelled or
+    removed icon or worker script does not compile (it was a startup panic):
+    `Manifest::icon(Static::ICONS_192_PNG, "192x192")`, `maskable_icon` the same, and
+    `Pwa::import_script(Static::SW_PUSH_JS)`. An icon another site serves is a `Uri`
+    (`Uri::from_static("https://cdn.example.com/192.png")`), its type read from the path without
+    the query. The worker script is always a file of the static directory, so it is same-origin by
+    its type; a path (`import_script("/abs/sw.js")`) is no longer taken. A file the app's static
+    directory does not serve (none given, or another app's) is still a startup panic, now in
+    release builds too
+    ([#297 The PWA names its icons and worker script by path, so a misspelled file is a startup panic, not a compile error](https://github.com/todd-skelton/corten/issues/297)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1612,7 +1622,16 @@ Corten is pre-1.0, so any minor version may change the API.
     `[object File]`), line breaks are CRLF, a `text/plain` form is sent as text, not urlencoded,
     and neither content type names a charset. A file chosen again while the first is on its way is a
     new submit unless it is the same file (name, size and time), not a double click ([#200 A data-patch form's urlencoded body differs from the browser's: a file is [object File], line breaks are not CRLF, and text/plain is sent urlencoded](https://github.com/todd-skelton/corten/issues/200)). With 50, `corten.js` grows 201 bytes gzip.
-52. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
+52. The idle-connection test measured the timeout from its own call, not from the clock's tick the
+    connection went idle at, so it failed under load when the clock's thread lagged. It now checks
+    what the clock promises, and expiry itself is unchanged
+    ([#279 watch test: an idle connection can expire early when the clock's thread lags, and the test fails under load](https://github.com/todd-skelton/corten/issues/279)).
+53. A patch that took the focused element away (a row removed, or the last row of a list drawn
+    again without it) left focus on the body, so a keyboard or screen reader user was sent to the
+    top of the document. Focus now goes to the nearest element around it that is still on the
+    page, focusable only for the move; so does focus on an element patched into one that cannot
+    take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
+54. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
     back empty: `Params` read a set with serde's derive, which knows nothing of the prefix. A set
     is now read field by field the way a route reads its own, so a list it leaves out is empty
     (it was a 400 without `#[serde(default)]`), the set's own `#[serde(default)]` fills what the
