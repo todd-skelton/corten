@@ -6,7 +6,10 @@ use corten::prelude::*;
 /// [styles guide](https://github.com/todd-skelton/corten/blob/main/docs/guide/styles.md#printing)).
 ///
 /// The button is drawn `hidden` and its script (`print_button.js`) shows it: without a script
-/// it could do nothing, and the browser's own Print command still prints the page.
+/// it could do nothing, and the browser's own Print command still prints the page. It prints
+/// with the page unless the page hides it: put it in one of the page's elements that its print
+/// rules hide. A frame sandboxed without `allow-modals` still shows it, and a click there opens
+/// nothing.
 ///
 /// Parts: the `button`.
 ///

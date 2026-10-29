@@ -76,25 +76,28 @@ the rest of the app keeps the protection.
 ## Printing
 
 A page prints with its components' own print rules. An `@media print` block is scoped like any
-other, each rule starting at one of the file's classes, and an `@page` rule is copied as written,
-so a named page gives the paper size to the elements that ask for it:
+other, each rule starting at one of the file's classes. A named `@page` gives the paper size to
+the elements that ask for it with `page`:
 
 ```css
-/* src/views/packing_slip.css */
-@page slip-thermal { size: 4in 6in; margin: 0.15in; }
-@page slip-letter { size: letter; margin: 0.5in; }
+/* src/views/packing_slip.css: PackingSlip, so its classes are packing-slip__* */
+@page packing-slip-thermal { size: 4in 6in; margin: 0.15in; }
+@page packing-slip-letter { size: letter; margin: 0.5in; }
 .slip { break-after: page; }
-.slip.thermal { page: slip-thermal; }
-.slip.letter { page: slip-letter; }
+.thermal .slip { page: packing-slip-thermal; }
+.letter .slip { page: packing-slip-letter; }
 @media print { .actions { display: none; } }
 ```
 
-A page's name belongs to the app, not the component (an at-rule is not scoped), so name it after
-the component. An unnamed `@page` applies to everything the app prints, so it goes in
-`static/style.css`, with resets for the elements no component owns (`main`'s margins). A
-component's stylesheet cannot reach the layout's header or navigation, so each layout component
-hides itself with its own `@media print` rule. corten-ui's `PrintButton` opens the print dialog;
-without a script, the browser's Print command prints the same page.
+The format the user chose puts one class on the list, so one job prints at one paper size. A
+page's name is the whole app's, so a component's starts with the component's own (`@page
+packing-slip-thermal`), and an `@page` with no name, which sets every page the app prints, does
+not compile in a component's stylesheet: it goes in `static/style.css`, with resets for the
+elements no component owns (`main`'s margins). `page` applies to boxes in normal block flow, so
+an element that picks a page is not a flex or grid item. A component's stylesheet cannot reach the
+layout's header or navigation, so each layout component hides itself with its own `@media print`
+rule. corten-ui's `PrintButton` opens the print dialog (wrap it in one of your component's
+elements to hide it in print); without a script, the browser's Print command prints the same page.
 
 ## Utility-first
 

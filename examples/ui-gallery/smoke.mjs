@@ -598,5 +598,6 @@ async function run(browser) {
   check("no script: its link closes it", (await plainSheet.count()) === 0);
   await plain.goto(`${base}/`);
   check("no script: the SKU is on the page and the copy button is not", (await plain.locator("code", { hasText: "ASH-DRAKE-NM" }).isVisible()) && (await plain.locator("[data-scope=ui-copy-button]").isHidden()));
-  check("no script: the print button is not shown", await plain.locator("button", { hasText: "Print label" }).isHidden());
+  const plainPrint = plain.locator("button", { hasText: "Print label" });
+  check("no script: the print button is on the page, hidden", (await plainPrint.count()) === 1 && (await plainPrint.isHidden()));
 }
