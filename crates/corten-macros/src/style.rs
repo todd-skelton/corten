@@ -163,10 +163,9 @@ impl Scoper<'_> {
             ));
         }
         if !name.starts_with(&own) {
-            return Err(self.error(
-                at,
-                format!("a page's name is the whole app's: start it with this component's, @page {own}{name}"),
-            ));
+            return Err(
+                self.error(at, format!("a page's name is the whole app's: start it with this component's, @page {own}{name}"))
+            );
         }
         Ok(())
     }
