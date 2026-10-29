@@ -480,23 +480,108 @@ impl<M: Middleware> App<M> {
     /// name, and so is one that panics; restarting a task is the app's choice. [`App::router`]
     /// starts none, so a test of the app does not run them.
     ///
-    /// ```no_run
-    /// use corten::{prelude::*, Signal};
-    /// use std::time::Duration;
+    /// Work on a schedule is a task with tokio's intervals. Two jobs in one task's loop never
+    /// overlap. With `MissedTickBehavior::Skip` a run that overran a mark is followed by one late
+    /// run, and then the marks again (tokio's default, `Burst`, runs once for each mark missed,
+    /// back to back). `biased` puts the signal first, so no run starts once shutdown has begun; one
+    /// in progress has until [`App::shutdown_grace`]. A mark on the clock (:15 past the hour,
+    /// UTC) is where the interval starts, and the loop keeps what each job did for a status page:
     ///
-    /// async fn refresh(signal: Signal) {
-    ///     let mut every = tokio::time::interval(Duration::from_secs(120));
+    /// ```
+    /// use corten::{prelude::*, Signal};
+    /// use std::{
+    ///     collections::BTreeMap,
+    ///     sync::{Arc, Mutex},
+    ///     time::{Duration, SystemTime, UNIX_EPOCH},
+    /// };
+    /// use tokio::time::{interval, interval_at, Instant, MissedTickBehavior};
+    /// # #[derive(Clone)]
+    /// # struct Models { runs: Arc<Mutex<Vec<(Job, Duration)>>>, start: Instant }
+    /// # impl Models {
+    /// #     fn ran(&self, job: Job) { self.runs.lock().unwrap().push((job, self.start.elapsed())) }
+    /// #     async fn refresh(&self) -> Result<(), String> {
+    /// #         self.ran(Job::Refresh);
+    /// #         tokio::time::sleep(Duration::from_secs(11 * 60)).await;
+    /// #         Err("the provider answered 503".into())
+    /// #     }
+    /// #     async fn recheck(&self) -> Result<(), String> { self.ran(Job::Recheck); Ok(()) }
+    /// # }
+    ///
+    /// const HOUR: Duration = Duration::from_secs(3600);
+    ///
+    /// /// The next time the clock (UTC) is `past` a multiple of `period` (`past` under `period`).
+    /// fn next_mark(past: Duration, period: Duration) -> Instant {
+    ///     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    ///     let into = (now + period - past).as_nanos() % period.as_nanos();
+    ///     Instant::now() + period - Duration::from_nanos(into as u64)
+    /// }
+    ///
+    /// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    /// enum Job { Refresh, Recheck }
+    ///
+    /// /// A job's last run, for the app's status page.
+    /// struct Ran { started: SystemTime, took: Duration, outcome: Result<(), String> }
+    ///
+    /// type Status = Arc<Mutex<BTreeMap<Job, Ran>>>;
+    ///
+    /// /// The models' refresh hourly at :15 and their recheck every five minutes, one at a time.
+    /// async fn models(models: Models, status: Status, signal: Signal) {
+    ///     let mut hourly = interval_at(next_mark(Duration::from_secs(15 * 60), HOUR), HOUR);
+    ///     let mut recheck = interval(Duration::from_secs(5 * 60)); // the first tick is at once
+    ///     hourly.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    ///     recheck.set_missed_tick_behavior(MissedTickBehavior::Skip);
     ///     loop {
-    ///         tokio::select! {
-    ///             _ = every.tick() => { /* read, then write the journal */ }
+    ///         let job = tokio::select! {
+    ///             biased;
     ///             _ = signal.aborted() => return,
-    ///         }
+    ///             _ = hourly.tick() => Job::Refresh,
+    ///             _ = recheck.tick() => Job::Recheck,
+    ///         };
+    ///         let (started, clock) = (SystemTime::now(), Instant::now());
+    ///         let outcome = match job {
+    ///             Job::Refresh => models.refresh().await,
+    ///             Job::Recheck => models.recheck().await,
+    ///         };
+    ///         let ran = Ran { started, took: clock.elapsed(), outcome };
+    ///         status.lock().expect("never poisoned").insert(job, ran);
     ///     }
     /// }
-    /// # async fn main_() -> std::io::Result<()> {
-    /// corten::serve(App::new(Routes::new()).task("refresh", refresh)).await
-    /// # }
+    ///
+    /// fn app(shared: Models, status: Status) -> App {
+    ///     App::new(Routes::new()).task("models", move |signal| models(shared, status, signal))
+    /// }
+    /// # // Three hours on a paused clock, with a refresh that takes 11 minutes.
+    /// # tokio::runtime::Builder::new_current_thread().enable_time().start_paused(true).build().unwrap().block_on(async {
+    /// #     let _ = app; // the app's own is served; this runs the loop alone, with a signal that never aborts
+    /// #     let shared = Models { runs: Default::default(), start: Instant::now() };
+    /// #     let status = Status::default();
+    /// #     let wall = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    /// #     let _ = tokio::time::timeout(3 * HOUR, models(shared.clone(), status.clone(), Signal::default())).await;
+    /// #     let runs = shared.runs.lock().unwrap().clone();
+    /// #     let refreshes: Vec<_> = runs.iter().filter(|r| r.0 == Job::Refresh).map(|r| r.1).collect();
+    /// #     assert_eq!(refreshes.len(), 3, "{runs:?}");
+    /// #     assert!(refreshes.windows(2).all(|w| w[1] - w[0] == HOUR), "{refreshes:?}");
+    /// #     let at = (wall + refreshes[0]).as_secs() % 3600;
+    /// #     assert!((899..=901).contains(&at), "the first refresh ran {at} s past the hour");
+    /// #     // One at a time, and an overrun runs the recheck once, not once per missed mark.
+    /// #     assert!(runs.windows(2).all(|w| w[1].1 > w[0].1), "{runs:?}");
+    /// #     for r in &refreshes {
+    /// #         assert!(!runs.iter().any(|(_, at)| at > r && *at < *r + Duration::from_secs(11 * 60)), "{runs:?}");
+    /// #     }
+    /// #     let status = status.lock().unwrap();
+    /// #     let refresh = &status[&Job::Refresh];
+    /// #     assert!(refresh.took == Duration::from_secs(11 * 60) && refresh.outcome.is_err() && refresh.started <= SystemTime::now());
+    /// #     assert_eq!(status[&Job::Recheck].outcome, Ok(()));
+    /// # });
     /// ```
+    ///
+    /// The interval keeps time on the monotonic clock, which a change of the wall clock does not
+    /// move and which some systems stop while asleep: after such a jump its marks are off the
+    /// clock's until the interval is made again from `next_mark` (when a tick comes a period
+    /// late, say). The next run's time, for the status page, is the app's to work out the same way.
+    /// Daily at 03:30 UTC is `next_mark(HOUR * 7 / 2, 24 * HOUR)`; at 03:30 in a zone with
+    /// daylight saving time takes a time-zone library, which is the app's. Jobs in separate tasks
+    /// that must not overlap share a `tokio::sync::Mutex`.
     pub fn task<F, Fut>(mut self, name: &'static str, task: F) -> Self
     where
         F: FnOnce(Signal) -> Fut + Send + 'static,

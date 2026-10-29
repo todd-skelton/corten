@@ -1,5 +1,5 @@
 // @ts-check
-// OrderNumber (gallery.rs): counts the copies its CopyButton reports, as an app counts a shared
+// Sku (gallery.rs): counts the copies its CopyButton reports, as an app counts a shared
 // link's. Only a write the browser made is reported.
 
 /** @typedef {import("corten/events").Copied} Copied */
