@@ -2,13 +2,16 @@
 // Firefox and WebKit (Playwright's builds: `npx playwright install chromium firefox webkit`).
 // Usage: node examples/ui-gallery/smoke.mjs [http://localhost:18482] [chromium|firefox|webkit ...]
 import { chromium, firefox, webkit } from "@playwright/test";
+import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18482";
 const engines = { chromium, firefox, webkit };
 const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys(engines);
 const failures = [];
 let engine = "";
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(`[${engine}] ${name}`);
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };
@@ -77,6 +80,13 @@ async function run(browser) {
   const page = await (await browser.newContext()).newPage();
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  // Requests the page cancelled itself (the runtime's fetch of a page the next navigation
+  // replaced). WebKit can log one as "/localhost:18482/?sale=last due to access control checks"
+  // (the URL without its scheme), which is not an error the page made (#301); a real CORS
+  // refusal fails with another reason and is still counted.
+  /** @type {Set<string>} */
+  const cancelled = new Set();
+  page.on("requestfailed", (r) => /cancel/i.test(r.failure()?.errorText ?? "") && cancelled.add(r.url()));
   page.on("pageerror", (e) => errors.push(e.message));
   /** @type {string[]} */
   const failed = [];
@@ -566,7 +576,10 @@ async function run(browser) {
   await lacking.context().close();
 
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
-  const unexpected = errors.filter((e) => !/status of 422/.test(e));
+  const unexpected = errors.filter((e) => {
+    const refused = /(\S+) due to access control checks/.exec(e)?.[1];
+    return !/status of 422/.test(e) && !(refused && [...cancelled].some((url) => url.slice(url.indexOf("//") + 1) === refused));
+  });
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
   // Without JavaScript

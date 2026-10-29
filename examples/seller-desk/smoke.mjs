@@ -1,11 +1,14 @@
 // Browser smoke test and timings for the seller desk.
 // Usage: node examples/seller-desk/smoke.mjs http://localhost:18484
 import { chromium } from "@playwright/test";
+import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2];
 if (!base) throw new Error("usage: node examples/seller-desk/smoke.mjs <base url>");
 const failures = [];
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(name);
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(name);
 };

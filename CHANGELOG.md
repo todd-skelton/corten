@@ -1640,7 +1640,18 @@ Corten is pre-1.0, so any minor version may change the API.
     top of the document. Focus now goes to the nearest element around it that is still on the
     page, focusable only for the move; so does focus on an element patched into one that cannot
     take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
-54. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
+54. CI's browser job could hang for an hour or more when a Playwright call never returned (Firefox,
+    after the watchlist smoke closed another site's page), holding the runner with no report of
+    where. The job now has a 30 minute limit (a passing one takes 11 to 14), and every browser smoke
+    stops itself after five minutes with no check finished, printing the last check it finished and,
+    for the runtime's smoke, the requests still loading ([#317 CI: the browser job can hang for an
+    hour in the watchlist smoke, and has no timeout](https://github.com/todd-skelton/corten/issues/317)).
+55. The ui-gallery smoke failed now and then in WebKit with "due to access control checks" for
+    `/?sale=last`: WebKit logs a fetch the runtime cancelled (the next navigation replaced it)
+    that way. A request the page cancelled no longer counts as a console error; a real CORS
+    refusal fails with another reason and still does
+    ([#301 ui-gallery smoke: WebKit logged a console error for /?sale=last, due to access control checks (CI, once)](https://github.com/todd-skelton/corten/issues/301)).
+56. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
     headers show they sort and which way (`aria-sort`); the rows scroll inside the grid under a
     header that stays, with the item count above them (an archive's answer replaces it); a row at
     quantity 0 is marked sold out, kept current by the live levels (a `sold_out` hole of the
