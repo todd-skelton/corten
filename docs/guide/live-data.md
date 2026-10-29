@@ -132,10 +132,12 @@ The row type goes from the feed to the script, checked at each step. `Feed<Stock
 `FeedResponse<Stock>`; the route says `rows = Stock`, and a handler that answers with other rows
 (or a feed's route that names none) does not compile. The markup passes the route,
 `js::watch(.., url::Stocks, signal)`, to a parameter the script declares as `FeedUrl<Stock>`
-(from `corten`), which takes only a route whose rows are `Stock`, by the name the generated
-declarations give the type. `subscribe()` takes the row type from it, so `snapshot` and `patch`
-are typed without a `@param` of their own, and a `Stock` handler given a `Level` feed fails
-`tsc`:
+(from `corten`). `Stock` there is the Rust type of that name in the component's module (bring it
+in with `use`; `FeedUrl<import("../types/app").Stock>` reads the same), so the parameter takes
+only a route whose rows are that type. A `FeedUrl` Corten cannot read (`FeedUrl<Stock[]>`) is an
+error, not an unchecked string. `subscribe()` takes the row type from it, so `snapshot` and
+`patch` are typed without a `@param` of their own, and a `Stock` handler given a `Level` feed
+fails `tsc`:
 
 ```js
 /** @import { FeedUrl } from "corten" */

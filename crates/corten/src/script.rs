@@ -147,7 +147,8 @@
 //!
 //! A feed's URL carries the feed's rows to the script. The route names them (`rows = Level`),
 //! its handler answers with them (`FeedResponse<Level>`), and the handler parameter that takes the
-//! route is a `FeedUrl<Level>` (from `corten`), from which `subscribe()` takes the row type:
+//! route is a `FeedUrl<Level>` (from `corten`; `Level` is the Rust type of that name in the
+//! component's module), from which `subscribe()` takes the row type:
 //!
 //! ```
 //! # #[cfg(feature = "feed")]
@@ -258,6 +259,37 @@
 //! fn LevelFeed() -> impl Render {
 //!     let body = refs();
 //!     html! { <table><tbody ref={body} on:connect={js::follow(body, url::Home, signal)}></tbody></table> }
+//! }
+//! # fn main() { let _ = url::router; }
+//! ```
+//!
+//! A feed of another type with the same name (`stock::Level`, where the component's `Level` is
+//! this module's):
+//!
+//! ```compile_fail
+//! use corten::{feed::{Feed, FeedResponse, Row}, prelude::*};
+//!
+//! #[derive(Clone, serde::Serialize)]
+//! pub struct Level { id: String, qty: u32 }
+//! impl Row for Level { fn id(&self) -> &str { &self.id } }
+//! mod stock {
+//!     #[derive(Clone, serde::Serialize)]
+//!     pub struct Level { pub id: String, pub name: String }
+//!     impl corten::feed::Row for Level { fn id(&self) -> &str { &self.id } }
+//! }
+//!
+//! #[corten::routes(state = Feed<stock::Level>)]
+//! pub mod url {
+//!     #[route("/feed/levels", get = levels, rows = stock::Level)]
+//!     pub struct Levels;
+//! }
+//!
+//! async fn levels(State(feed): State<Feed<stock::Level>>) -> FeedResponse<stock::Level> { feed.snapshot() }
+//!
+//! #[component(js)]
+//! fn LevelFeed() -> impl Render {
+//!     let body = refs();
+//!     html! { <table><tbody ref={body} on:connect={js::follow(body, url::Levels, signal)}></tbody></table> }
 //! }
 //! # fn main() { let _ = url::router; }
 //! ```
@@ -1099,10 +1131,10 @@ pub mod ev {
 pub mod ts {
     /// `string`: `&str`, `String`, a typed route (its URL).
     pub enum String {}
-    /// `FeedUrl<Level>` (from `corten`): the URL of a feed of `Level` rows ([`super::view_id`] of
-    /// the name), a route whose `#[route(..)]` says `rows = Level`. `subscribe()` reads the row
-    /// type from it.
-    pub enum FeedUrl<const ROWS: u64> {}
+    /// `FeedUrl<Level>` (from `corten`): the URL of a feed of `Level` rows, a route whose
+    /// `#[route(..)]` says `rows = Level`. `Level` is the type of that name in the component's
+    /// module. `subscribe()` reads the row type from it.
+    pub struct FeedUrl<Row>(std::marker::PhantomData<Row>);
     /// `number`.
     pub enum Number {}
     /// `boolean`.
@@ -1708,7 +1740,7 @@ pub mod __private {
     }
 
     /// A feed's route, for a parameter that names its rows: written as its URL, as a `string` is.
-    impl<R: crate::Route + crate::route::__private::FeedRows<ROWS>, const ROWS: u64> Arg<ts::FeedUrl<ROWS>> for R {
+    impl<R: crate::Route + crate::route::__private::FeedRows<T>, T> Arg<ts::FeedUrl<T>> for R {
         fn write_arg(&self, ctx: &Ctx, out: &mut String) {
             <R as Arg<ts::String>>::write_arg(self, ctx, out)
         }

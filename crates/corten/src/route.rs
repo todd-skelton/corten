@@ -1732,14 +1732,14 @@ pub mod __private {
     pub trait RowsAre<D> {}
     impl<T> RowsAre<T> for T {}
 
-    /// A route whose `get` serves a feed of rows named `ROWS` (`rows = Level`, by
-    /// [`crate::script::view_id`] of the name): what a script's `FeedUrl<Level>` parameter takes.
+    /// A route whose `get` serves a feed of `Row`s (`rows = Level`): what a script's
+    /// `FeedUrl<Level>` parameter takes.
     #[diagnostic::on_unimplemented(
-        message = "{Self} is not the URL of a feed of the rows the handler's FeedUrl<..> names",
-        label = "the handler's JSDoc says FeedUrl<..> of other rows, or this route names none",
+        message = "{Self} is not the URL of a feed of {Row} rows",
+        label = "the handler's JSDoc says FeedUrl<{Row}>, and this route names other rows or none",
         note = "a feed's route names its rows, #[route(\"/feed/levels\", get = levels, rows = Level)], and the script's parameter names the same type, @param {{FeedUrl<Level>}} feed"
     )]
-    pub trait FeedRows<const ROWS: u64> {}
+    pub trait FeedRows<Row> {}
 
     pub use crate::form::de::{sorted_pairs, Pair};
     use crate::form::FormError;

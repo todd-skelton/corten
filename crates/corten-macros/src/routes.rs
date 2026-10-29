@@ -195,8 +195,23 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
             &[TokenTree::Ident(module.clone()).into(), TokenTree::Ident(route.name.clone()).into(), methods],
         ));
     }
+    // A feed's route says what its rows are, where its handlers are named (and the rows' type
+    // with them), for a script's `FeedUrl<Level>` parameter.
+    let mut feeds = TokenStream::new();
+    for route in &routed {
+        if let (Some(rows), Some(args)) = (&route.rows, &route.args) {
+            let ty: TokenStream = format!("{module}::{}{args}", route.name).parse().expect("a route's type parses");
+            feeds.extend(q(
+                "#[automatically_derived]
+                impl ::corten::route::__private::FeedRows<__A1> for __A0 {}",
+                &[ty, rows.clone()],
+            ));
+        }
+    }
     if let Some((kind, prefix)) = within {
-        return Ok(expand_within(kind, tokens, body, items, &module, calls, prefix, state));
+        let mut out = expand_within(kind, tokens, body, items, &module, calls, prefix, state);
+        out.extend(feeds);
+        return Ok(out);
     }
     let router = match &state {
         None => q(
@@ -248,6 +263,7 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         }",
         &[TokenTree::Ident(module.clone()).into(), calls, state],
     ));
+    out.extend(feeds);
     Ok(out)
 }
 
@@ -464,24 +480,14 @@ fn scan(body: TokenStream, prefix: Option<&str>, area: bool) -> Result<(TokenStr
                                 format!("rows name what {name}'s get serves: #[route(\"{path}\", get = .., rows = ..)]"),
                             );
                         }
-                        let Some(args) = &args else {
+                        if args.is_none() {
                             return err(
                                 at,
                                 format!(
                                     "{name} has a type parameter, so it cannot name its rows: give its fields concrete types"
                                 ),
                             );
-                        };
-                        // A script's `FeedUrl<Level>` takes the route by the rows' name, as the
-                        // generated declarations name the type.
-                        let last = rows.clone().into_iter().last().map(|t| t.to_string()).unwrap_or_default();
-                        let id = crate::script::view_id(&last);
-                        let ty: TokenStream = format!("{name}{args}").parse().expect("a route's type parses");
-                        prefix_impl.extend(q(
-                            "#[automatically_derived]
-                            impl ::corten::route::__private::FeedRows<__A0> for __A1 {}",
-                            &[TokenTree::Literal(proc_macro::Literal::u64_suffixed(id)).into(), ty],
-                        ));
+                        }
                     }
                     routed.push(Routed { name: name.clone(), path, span, handlers: serves.handlers, args, rows: serves.rows });
                 }

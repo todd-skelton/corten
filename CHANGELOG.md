@@ -1442,7 +1442,8 @@ Corten is pre-1.0, so any minor version may change the API.
     (`Feed<Level>::snapshot` answers `FeedResponse<Level>`), a feed's route names its rows
     (`#[route("/feed/levels", get = levels, rows = Level)]`, checked against what its `get`
     answers, through the new `Answer::Rows`), and a handler parameter declared
-    `@param {FeedUrl<Level>} feed` (from `corten`) takes only a route whose rows are `Level`.
+    `@param {FeedUrl<Level>} feed` (from `corten`) takes only a route whose rows are the Rust
+    type `Level` in the component's module; a `FeedUrl` it cannot read is a compile error.
     `subscribe()` takes a `FeedUrl<Row>` and its row type from it, so a script's `snapshot` and
     `patch` are typed with no `@param` of their own, a `Stock` handler given a `Level` feed
     fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
