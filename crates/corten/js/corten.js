@@ -400,7 +400,9 @@ function listen(type) {
     for (const node of event.composedPath()) {
       if (!(node instanceof Element)) continue;
       if (node.hasAttribute("data-on")) for (const b of bindings(node)) if (b.type === type) run(node, b, event);
-      if (event.cancelBubble) return;
+      // A handler that stops a submit's propagation keeps it from the page's outer handlers, not
+      // from the runtime: a data-patch form is still sent as a patch.
+      if (event.cancelBubble) return type === "submit" && patchSubmit(event);
     }
   });
   document.addEventListener(
@@ -1471,9 +1473,26 @@ function named(el, name) {
  */
 const submits = new Map();
 
-document.addEventListener("submit", async (event) => {
+/**
+ * A form's entries as the browser sends them in a body that is not multipart, or in a GET's
+ * query: a file is its name, and every line break in a name or value is CRLF.
+ * @param {FormData} data
+ * @returns {[string, string][]}
+ */
+const sentEntries = (data) => {
+  const crlf = (/** @type {string} */ text) => text.replace(/\r\n?|\n/g, "\r\n");
+  return Array.from(data, ([name, value]) => [crlf(name), crlf(typeof value === "string" ? value : value.name)]);
+};
+
+// On the window, so it runs after every other handler of the submit (an `on:submit` listens on
+// the document, and calls it itself when one stops the submit's propagation): one that cancels
+// it stops the form, as it would without the runtime.
+addEventListener("submit", patchSubmit);
+
+/** Sends a `data-patch` form's submit as a patch, unless a handler cancelled it. @param {Event} event */
+async function patchSubmit(event) {
   const form = event.target;
-  if (!(form instanceof HTMLFormElement) || !formCall(form, "hasAttribute", "data-patch")) return;
+  if (event.defaultPrevented || !(form instanceof HTMLFormElement) || !formCall(form, "hasAttribute", "data-patch")) return;
   const submitter = /** @type {SubmitEvent} */ (event).submitter;
   const sends = sendsAs(form, submitter);
   // A dialog's form closes the dialog and sends nothing: the browser's to do.
@@ -1482,9 +1501,11 @@ document.addEventListener("submit", async (event) => {
   const data = new FormData(form, submitter);
   const method = sends.method.toUpperCase();
   const url = new URL(sends.action);
-  const fields = new URLSearchParams(/** @type {any} */ (data));
+  const entries = sentEntries(data);
+  const fields = new URLSearchParams(entries);
   const sent = sentState(form);
-  const key = `${method} ${url.href} ${fields}`;
+  // A file by its size and time too: another file of the same name is a new submit.
+  const key = `${method} ${url.href} ${fields} ${Array.from(data.values(), (v) => (typeof v === "string" ? "" : `${v.size}/${v.lastModified}`))}`;
   const previous = submits.get(form);
   if (previous?.key === key) return;
   previous?.controller.abort();
@@ -1494,7 +1515,13 @@ document.addEventListener("submit", async (event) => {
   /** @type {RequestInit} */
   const init = { method, headers: { corten: "action" }, signal };
   if (method === "GET") url.search = fields.toString();
-  else init.body = sends.enctype === "multipart/form-data" ? data : fields;
+  else if (sends.enctype === "multipart/form-data") init.body = data;
+  else {
+    // The browser's content types, which name no charset (fetch adds one to a URLSearchParams).
+    const plain = sends.enctype === "text/plain";
+    init.body = plain ? entries.map(([name, value]) => `${name}=${value}\r\n`).join("") : fields.toString();
+    init.headers = { corten: "action", "content-type": plain ? "text/plain" : "application/x-www-form-urlencoded" };
+  }
   formCall(form, "setAttribute", "aria-busy", "true");
   // A write can change any page, so nothing fetched before it is reused.
   if (method !== "GET") {
@@ -1538,7 +1565,7 @@ document.addEventListener("submit", async (event) => {
       formCall(form, "removeAttribute", "aria-busy");
     }
   }
-});
+}
 
 /**
  * Sets a `<corten-live>`'s `status` and says so with a bubbling `corten-status` event, which a

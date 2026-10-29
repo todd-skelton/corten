@@ -358,7 +358,14 @@ decides how the form goes, as without the runtime: a POST button in a GET form (
 Apply) is the browser's own post, and a GET button in a POST form is swapped in like any GET.
 A `data-patch` form reads its button the same way: an unknown `formmethod` (`put`) is a GET, an
 empty `formaction` is the page's own address, a `formenctype` of `multipart/form-data` sends
-multipart, and a `dialog` method closes its dialog without sending anything. Its answer always
+multipart, and a `dialog` method closes its dialog without sending anything. Its body is the one
+the browser would send: a file field is the file's name unless the form is multipart, line
+breaks are CRLF, and `text/plain` is `name=value` lines ending in CRLF, nothing escaped, with
+`content-type: text/plain`. An `on:submit` handler that calls `event.preventDefault()` while the
+event is dispatched (a `confirm()`, a check of its own) stops it, as it stops any form; one that
+waits for something first (a `<dialog>` that asks) cannot, so it cancels first and sends the form
+again itself (`form.requestSubmit()`). One that stops the submit's propagation keeps it from the
+page's outer handlers, and the runtime still sends it. Its answer always
 patches the page it was sent from: a `target` or `formtarget` on it is not followed.
 
 ```rust,ignore
