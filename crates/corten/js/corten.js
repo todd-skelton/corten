@@ -400,7 +400,9 @@ function listen(type) {
     for (const node of event.composedPath()) {
       if (!(node instanceof Element)) continue;
       if (node.hasAttribute("data-on")) for (const b of bindings(node)) if (b.type === type) run(node, b, event);
-      if (event.cancelBubble) return;
+      // A handler that stops a submit's propagation keeps it from the page's outer handlers, not
+      // from the runtime: a data-patch form is still sent as a patch.
+      if (event.cancelBubble) return type === "submit" && patchSubmit(event);
     }
   });
   document.addEventListener(
@@ -1443,9 +1445,12 @@ const sentEntries = (data) => {
 };
 
 // On the window, so it runs after every other handler of the submit (an `on:submit` listens on
-// the document): one that cancels it stops the form, as it would without the runtime. One that
-// stops its propagation keeps it from the runtime, and the browser sends it.
-addEventListener("submit", async (event) => {
+// the document, and calls it itself when one stops the submit's propagation): one that cancels
+// it stops the form, as it would without the runtime.
+addEventListener("submit", patchSubmit);
+
+/** Sends a `data-patch` form's submit as a patch, unless a handler cancelled it. @param {Event} event */
+async function patchSubmit(event) {
   const form = event.target;
   if (event.defaultPrevented || !(form instanceof HTMLFormElement) || !formCall(form, "hasAttribute", "data-patch")) return;
   const submitter = /** @type {SubmitEvent} */ (event).submitter;
@@ -1459,7 +1464,8 @@ addEventListener("submit", async (event) => {
   const entries = sentEntries(data);
   const fields = new URLSearchParams(entries);
   const sent = sentState(form);
-  const key = `${method} ${url.href} ${fields}`;
+  // A file by its size and time too: another file of the same name is a new submit.
+  const key = `${method} ${url.href} ${fields} ${Array.from(data.values(), (v) => (typeof v === "string" ? "" : `${v.size}/${v.lastModified}`))}`;
   const previous = submits.get(form);
   if (previous?.key === key) return;
   previous?.controller.abort();
@@ -1470,10 +1476,12 @@ addEventListener("submit", async (event) => {
   const init = { method, headers: { corten: "action" }, signal };
   if (method === "GET") url.search = fields.toString();
   else if (sends.enctype === "multipart/form-data") init.body = data;
-  else if (sends.enctype === "text/plain") {
-    init.body = entries.map(([name, value]) => `${name}=${value}\r\n`).join("");
-    init.headers = { corten: "action", "content-type": "text/plain" };
-  } else init.body = fields;
+  else {
+    // The browser's content types, which name no charset (fetch adds one to a URLSearchParams).
+    const plain = sends.enctype === "text/plain";
+    init.body = plain ? entries.map(([name, value]) => `${name}=${value}\r\n`).join("") : fields.toString();
+    init.headers = { corten: "action", "content-type": plain ? "text/plain" : "application/x-www-form-urlencoded" };
+  }
   formCall(form, "setAttribute", "aria-busy", "true");
   // A write can change any page, so nothing fetched before it is reused.
   if (method !== "GET") {
@@ -1517,7 +1525,7 @@ addEventListener("submit", async (event) => {
       formCall(form, "removeAttribute", "aria-busy");
     }
   }
-});
+}
 
 /**
  * Sets a `<corten-live>`'s `status` and says so with a bubbling `corten-status` event, which a

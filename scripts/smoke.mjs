@@ -1630,6 +1630,21 @@ async function run(browser) {
     1500,
   );
   check("a data-patch form whose submit a handler cancels sends nothing", canceled === "nothing sent", canceled);
+  // An on:submit handler that only stops its propagation still gets the runtime's patch: it keeps
+  // the submit from the page's outer handlers, not from the runtime. The handler's module is
+  // served here, as one of the app's would be.
+  await forms.route("**/scripts/stop-submit.js", (route) =>
+    route.fulfill({ contentType: "text/javascript", body: "export function stop(event) { event.stopPropagation(); }" }),
+  );
+  const stopped = await firstSent(
+    '<form id="patch-stop" method="post" action="/watch" data-patch data-on="submit:stop-submit.stop($e)"><input type="hidden" name="id" value="ACME"><button>Go</button></form>',
+    async () => {
+      // The module loads when the form joins the page; the handler runs from then on.
+      await forms.waitForTimeout(500);
+      await forms.click("#patch-stop button");
+    },
+  );
+  check("a data-patch form whose on:submit stops its propagation is still a patch", stopped === "POST /watch id=ACME (runtime)", stopped);
   // A data-patch form's body is the browser's (#200): a file is its name, a line break is CRLF.
   const encoded = await firstSent(
     '<form id="patch-encoded" method="post" action="/watch" data-patch><textarea name="note">a\nb</textarea><input type="file" name="doc"><button>Go</button></form>',
@@ -1651,7 +1666,8 @@ async function run(browser) {
   const plain = await plainSent;
   const plainBody = plain?.postData() ?? "";
   const plainType = plain?.headers()["content-type"] ?? "";
-  check("a text/plain data-patch form sends text/plain", plainBody === "id=ACME\r\nn=a b&c\r\n" && plainType === "text/plain", `${JSON.stringify(plainBody)} ${plainType}`);
+  const plainBy = plain?.headers()["corten"] ?? "the browser";
+  check("a text/plain data-patch form sends text/plain", plainBody === "id=ACME\r\nn=a b&c\r\n" && plainType === "text/plain" && plainBy === "action", `${JSON.stringify(plainBody)} ${plainType} by ${plainBy}`);
   if (engine !== "webkit" && (await forms.evaluate(() => "navigation" in window))) {
     // A submit input outside its form (form=), and a form sent with no button.
     const outside = await firstSent(
