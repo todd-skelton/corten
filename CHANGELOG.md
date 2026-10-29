@@ -841,7 +841,14 @@ Corten is pre-1.0, so any minor version may change the API.
     page the app prints) does not compile, and a page's name starts with the component's
     (`@page packing-slip-thermal`), so two components cannot set one page
     ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
-120. `req.nav_of([(NavTo::section(&url::Desk), "Seller Desk"), (NavTo::page(&url::Money), "Money"), ..])`
+120. An area can loosen `Cross-Origin-Opener-Policy` for its pages only: `Sources::allow_popups()`
+    (`same-origin-allow-popups`) and `Sources::allow_cross_origin_opener()` (`unsafe-none`, which
+    Stripe's Connect embedded components need for their sign-in popup), and
+    `Policy::allow_cross_origin_opener()` for the whole app. The rest of the app keeps
+    `same-origin`, and a page under another opener policy has its own shell key, so a client
+    navigation into or out of the area loads the document in full
+    ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
+121. `req.nav_of([(NavTo::section(&url::Desk), "Seller Desk"), (NavTo::page(&url::Money), "Money"), ..])`
     writes a whole nav's links, each with its item, and marks only the deepest entry that holds the page, for a nav whose entries nest or
     come from data (an entry is a route or a `Local`, whose path is written as the browser asks
     for it). Its links name their group (`data-nav-group`), and the runtime ranks the same links
@@ -1653,6 +1660,23 @@ Corten is pre-1.0, so any minor version may change the API.
     stops itself after five minutes with no check finished, printing the last check it finished and,
     for the runtime's smoke, the requests still loading ([#317 CI: the browser job can hang for an
     hour in the watchlist smoke, and has no timeout](https://github.com/todd-skelton/corten/issues/317)).
+55. The ui-gallery smoke failed now and then in WebKit with "due to access control checks" for
+    `/?sale=last`: WebKit logs a fetch the runtime cancelled (the next navigation replaced it)
+    that way. A request the page cancelled no longer counts as a console error; a real CORS
+    refusal fails with another reason and still does
+    ([#301 ui-gallery smoke: WebKit logged a console error for /?sale=last, due to access control checks (CI, once)](https://github.com/todd-skelton/corten/issues/301)).
+56. examples/seller-desk started its sales simulation with `tokio::spawn` in `main`, so it ran on
+    through shutdown and outside the app. It is the app's `task` now, started once the server
+    listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
+    runs one late tick instead of every missed one back to back
+    ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
+57. corten-ui's `NumberField` could drop a step asked for with Enter or Space on a button: a
+    pointer press set a flag that skipped the next click, and cleared it in a timer after the
+    release, so a key that came before that timer ran (on a busy page) did nothing. The field now
+    records the button each pointer pressed and skips only that press's own click (a key's click
+    has `detail` 0 and always steps); a press released off the button, cancelled, or on a button
+    disabled at its bound makes no click and is forgotten ([#316 ui-gallery smoke (CI, Chromium): a keyboard
+    step on the second number field is lost while the first is held](https://github.com/todd-skelton/corten/issues/316)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

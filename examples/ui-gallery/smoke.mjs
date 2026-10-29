@@ -80,6 +80,13 @@ async function run(browser) {
   const page = await (await browser.newContext()).newPage();
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  // Requests the page cancelled itself (the runtime's fetch of a page the next navigation
+  // replaced). WebKit can log one as "/localhost:18482/?sale=last due to access control checks"
+  // (the URL without its scheme), which is not an error the page made (#301); a real CORS
+  // refusal fails with another reason and is still counted.
+  /** @type {Set<string>} */
+  const cancelled = new Set();
+  page.on("requestfailed", (r) => /cancel/i.test(r.failure()?.errorText ?? "") && cancelled.add(r.url()));
   page.on("pageerror", (e) => errors.push(e.message));
   /** @type {string[]} */
   const failed = [];
@@ -158,6 +165,31 @@ async function run(browser) {
   await page.mouse.up();
   // The quantity stepped on the press, so its pointer was held while the weight stepped.
   check("each field keeps its own state", holding > before && own === "0.7", `quantity ${before} -> ${holding}, weight ${own}`);
+  // A press released off its button makes no click, so nothing is left to skip the next key's.
+  const up = await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).boundingBox();
+  await page.mouse.move(up.x + up.width / 2, up.y + up.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(up.x + up.width / 2, up.y - 80);
+  await page.mouse.up();
+  await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).press("Enter");
+  const after = await page.locator("#weight").inputValue();
+  check("a press released elsewhere steps once, and the next key steps", after === "0.9", after);
+  // A key's click right after a pointer's, in the same task (before any timer can run): the
+  // pointer's stepped on its press, its click does not step again, and the key's does (#316).
+  const sameTask = await page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(1).evaluate((button) => {
+    const input = /** @type {HTMLInputElement} */ (document.getElementById("weight"));
+    const from = input.value;
+    const at = { bubbles: true, cancelable: true, composed: true, button: 0, pointerId: 7, isPrimary: true };
+    button.dispatchEvent(new PointerEvent("pointerdown", at));
+    button.dispatchEvent(new PointerEvent("pointerup", at));
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    button.click();
+    return `${from} -> ${input.value}`;
+  });
+  check("a key's click right after a pointer's steps once more", sameTask === "0.9 -> 1.1", sameTask);
+  const fewer = page.locator("[data-scope=ui-number-field]").nth(1).locator("button").nth(0);
+  for (const key of ["Enter", "Space", "Enter", "Space"]) await fewer.press(key);
+  check("Enter and Space on decrease step down", (await page.locator("#weight").inputValue()) === "0.7", await page.locator("#weight").inputValue());
   const layout = await page.evaluate(() => {
     // The number field's root is a div; the wrapper that lays out its parts and the adornment holds it.
     const field = /** @type {Element} */ (document.querySelector("#weight")?.closest("[data-scope=ui-number-field]")?.parentElement);
@@ -569,7 +601,10 @@ async function run(browser) {
   await lacking.context().close();
 
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
-  const unexpected = errors.filter((e) => !/status of 422/.test(e));
+  const unexpected = errors.filter((e) => {
+    const refused = /(\S+) due to access control checks/.exec(e)?.[1];
+    return !/status of 422/.test(e) && !(refused && [...cancelled].some((url) => url.slice(url.indexOf("//") + 1) === refused));
+  });
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
   // Without JavaScript
