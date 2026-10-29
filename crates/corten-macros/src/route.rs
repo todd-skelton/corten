@@ -172,14 +172,46 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
     if fields.is_empty() || !only_lifetimes(&item.impl_generics) {
         return Ok(TokenStream::new());
     }
+    // A field that borrows another way (a borrowed query set, `&'a mut T`) has no owned form: its
+    // route still builds links, and `Params` of it does not compile, naming the field's type.
     let mut types = Vec::new();
+    let mut borrowed = Vec::new();
     for field in fields {
         match owned(&field.ty) {
             Some(ty) => types.push(ty),
-            None => return Ok(TokenStream::new()),
+            None => borrowed.push(field),
         }
     }
-    let twin = Ident::new(&format!("__{}Params", item.name), item.name.span());
+    let unfollowed = unfollowed_serde(&item.attrs, fields)?;
+    if !borrowed.is_empty() || unfollowed.is_some() {
+        let mut bounds = TokenStream::new();
+        for field in borrowed {
+            let ty: TokenStream = field.ty.iter().cloned().collect();
+            bounds.extend(q("::corten::route::__private::Later<'__corten, __A0>: ::corten::route::__private::Owned,", &[ty]));
+        }
+        if let Some(key) = unfollowed {
+            let key = Ident::new(&key, Span::call_site());
+            bounds.extend(q("::corten::route::__private::Later<'__corten, ::corten::route::__private::serde_key::__A0>: ::corten::route::__private::Followed,", &[TokenTree::Ident(key).into()]));
+        }
+        return Ok(q(
+            "#[automatically_derived]
+            impl __A0 ::corten::route::FromUrl for __A1 __A2 __A3 {
+                type Params = ::core::convert::Infallible;
+                type Path = ();
+                fn __read(_: (), _: &str) -> ::core::result::Result<Self::Params, ::corten::form::FormError> {
+                    ::core::unreachable!()
+                }
+            }",
+            &[
+                with_lifetime(&item.impl_generics),
+                TokenTree::Ident(item.name.clone()).into(),
+                item.type_generics.clone(),
+                with_bounds(&item.where_clause, bounds),
+            ],
+        ));
+    }
+    let name = item.name.to_string();
+    let twin = Ident::new(&format!("__{}Params", name.strip_prefix("r#").unwrap_or(&name)), item.name.span());
     let mut body = TokenStream::new();
     for (field, ty) in fields.iter().zip(&types) {
         body.extend(field.vis.iter().cloned());
@@ -254,23 +286,8 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
     } else {
         q("let _ = __query;", &[])
     };
-    // `impl<'__corten, 'a> FromUrl for Item<'a> where ..`.
-    let mut generics: Vec<TokenTree> = item.impl_generics.clone().into_iter().collect();
-    let lifetime = q("'__corten", &[]);
-    if generics.is_empty() {
-        generics = q("<__A0>", &[lifetime]).into_iter().collect();
-    } else {
-        generics.splice(1..1, q("__A0,", &[lifetime]));
-    }
-    let mut where_clause = item.where_clause.clone();
-    if !bounds.is_empty() {
-        if where_clause.is_empty() {
-            where_clause.extend(q("where", &[]));
-        } else if !matches!(where_clause.clone().into_iter().last(), Some(TokenTree::Punct(p)) if p.as_char() == ',') {
-            where_clause.extend(q(",", &[]));
-        }
-        where_clause.extend(bounds);
-    }
+    let generics = with_lifetime(&item.impl_generics);
+    let where_clause = with_bounds(&item.where_clause, bounds);
     out.extend(q(
         "#[automatically_derived]
         impl __A5 ::corten::route::FromUrl for __A6 __A7 __A8 {
@@ -289,13 +306,39 @@ fn from_url(item: &Item, fields: &[Field], segments: &[Segment]) -> Result<Token
             path_pattern,
             pairs,
             reads,
-            generics.into_iter().collect(),
+            generics,
             TokenTree::Ident(item.name.clone()).into(),
             item.type_generics.clone(),
             where_clause,
         ],
     ));
     Ok(out)
+}
+
+/// The struct's own where-clause with `bounds` added.
+fn with_bounds(where_clause: &TokenStream, bounds: TokenStream) -> TokenStream {
+    let mut out = where_clause.clone();
+    if bounds.is_empty() {
+        return out;
+    }
+    if out.is_empty() {
+        out.extend(q("where", &[]));
+    } else if !matches!(out.clone().into_iter().last(), Some(TokenTree::Punct(p)) if p.as_char() == ',') {
+        out.extend(q(",", &[]));
+    }
+    out.extend(bounds);
+    out
+}
+
+/// `impl<'__corten, 'a>`: the impl's generics with the lifetime its deferred bounds name.
+fn with_lifetime(generics: &TokenStream) -> TokenStream {
+    let mut tokens: Vec<TokenTree> = generics.clone().into_iter().collect();
+    let lifetime = q("'__corten", &[]);
+    if tokens.is_empty() {
+        return q("<__A0>", &[lifetime]);
+    }
+    tokens.splice(1..1, q("__A0,", &[lifetime]));
+    tokens.into_iter().collect()
 }
 
 /// `<'a, 'b>` or nothing: generics a route's owned twin can leave out.
@@ -309,9 +352,9 @@ fn only_lifetimes(generics: &TokenStream) -> bool {
     inner.split(|t| is_punct(Some(t), ',')).all(|param| param.is_empty() || is_punct(param.first(), '\''))
 }
 
-/// A field's type with each reference owned: `&'a str` is `String`, `&'a [T]` `Vec<T>`, any
-/// other `&'a T` `<T as ToOwned>::Owned`. `None` for a type that borrows another way
-/// (`Cow<'a, str>`).
+/// A field's type with each borrow owned: `&'a str` and `Cow<'a, str>` are `String`, `&'a [T]`
+/// and `Cow<'a, [T]>` `Vec<T>`, any other `&'a T` is `T` (read, not cloned) and `Cow<'a, T>` its
+/// owned form. `None` for a type that borrows another way (`&'a mut T`, `ItemQuery<'a>`).
 fn owned(ty: &[TokenTree]) -> Option<TokenStream> {
     let mut out = TokenStream::new();
     let mut i = 0;
@@ -338,7 +381,7 @@ fn owned(ty: &[TokenTree]) -> Option<TokenStream> {
                 let referent = &ty[start..end];
                 if referent
                     .iter()
-                    .any(|t| matches!(t, TokenTree::Ident(id) if id.to_string() == "dyn" || id.to_string() == "impl"))
+                    .any(|t| matches!(t, TokenTree::Ident(id) if ["dyn", "impl", "mut"].contains(&id.to_string().as_str())))
                 {
                     return None;
                 }
@@ -348,9 +391,51 @@ fn owned(ty: &[TokenTree]) -> Option<TokenStream> {
                         let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                         q("::std::vec::Vec<__A0>", &[owned(&inner)?])
                     }
-                    _ => q("<__A0 as ::std::borrow::ToOwned>::Owned", &[owned(referent)?]),
+                    _ => owned(referent)?,
                 });
                 i = end;
+            }
+            // `Cow<'a, X>`, by any path ending in `Cow`.
+            TokenTree::Ident(id) if id.to_string() == "Cow" && is_punct(ty.get(i + 1), '<') && is_punct(ty.get(i + 2), '\'') => {
+                if !is_punct(ty.get(i + 4), ',') {
+                    return None;
+                }
+                let start = i + 5;
+                let mut end = start;
+                let mut depth = 0;
+                while let Some(token) = ty.get(end) {
+                    if let TokenTree::Punct(p) = token {
+                        match p.as_char() {
+                            '<' => depth += 1,
+                            '>' if depth == 0 => break,
+                            '>' => depth -= 1,
+                            _ => {}
+                        }
+                    }
+                    end += 1;
+                }
+                // The path before `Cow` (`std::borrow::`) names nothing once it is owned.
+                let mut kept: Vec<TokenTree> = out.into_iter().collect();
+                let mut after_colon = false;
+                loop {
+                    match kept.last() {
+                        Some(TokenTree::Punct(p)) if p.as_char() == ':' => after_colon = true,
+                        Some(TokenTree::Ident(_)) if after_colon => after_colon = false,
+                        _ => break,
+                    }
+                    kept.pop();
+                }
+                out = kept.into_iter().collect();
+                let referent = &ty[start..end];
+                out.extend(match referent {
+                    [TokenTree::Ident(id)] if id.to_string() == "str" => q("::std::string::String", &[]),
+                    [TokenTree::Group(g)] if g.delimiter() == Delimiter::Bracket => {
+                        let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                        q("::std::vec::Vec<__A0>", &[owned(&inner)?])
+                    }
+                    _ => q("<__A0 as ::std::borrow::ToOwned>::Owned", &[owned(referent)?]),
+                });
+                i = end + 1;
             }
             TokenTree::Punct(p) if p.as_char() == '\'' => return None,
             TokenTree::Group(g) => {
@@ -367,6 +452,31 @@ fn owned(ty: &[TokenTree]) -> Option<TokenStream> {
         }
     }
     Some(out)
+}
+
+/// The first serde key a route's reader does not follow: `Params` reads the parameters itself,
+/// by the names links write, so a key that would change how serde reads one makes `Params` of the
+/// route not compile, rather than read differently.
+fn unfollowed_serde(attrs: &[Group], fields: &[Field]) -> Result<Option<String>, Error> {
+    const FIELD: &[&str] = &["alias", "deserialize_with", "with", "flatten", "skip", "skip_deserializing", "borrow"];
+    const CONTAINER: &[&str] = &["default", "deny_unknown_fields", "from", "try_from", "transparent"];
+    for attr in attrs {
+        for (key, _) in crate::serde_args(attr).map_err(|m| (attr.span(), m))? {
+            if CONTAINER.contains(&key.as_str()) {
+                return Ok(Some(key));
+            }
+        }
+    }
+    for field in fields {
+        for attr in &field.attrs {
+            for (key, _) in crate::serde_args(attr).map_err(|m| (attr.span(), m))? {
+                if FIELD.contains(&key.as_str()) {
+                    return Ok(Some(key));
+                }
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// `#[serde(default)]` (`Some(None)`) or `#[serde(default = "path")]` (`Some(Some(path))`).

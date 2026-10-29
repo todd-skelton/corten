@@ -88,7 +88,7 @@ Corten is pre-1.0, so any minor version may change the API.
     the binary. `CONTRIBUTING.md` (Releasing) has the steps, including the first release.
 19. `.github/workflows/ci.yml` runs the checks in `CONTRIBUTING.md` on every pull request and
     push to `main`, plus `cargo publish --workspace --dry-run` and a build on Rust 1.88.
-20. List fields. `corten::Form` and `corten::Query` (in the prelude, replacing axum's) read a key
+20. List fields. `corten::Form` and a route's `Params` (Added 112) read a key
     sent several times into a `Vec` field, a checkbox's `on` into a `bool`, and a blank field into
     `None`; a scalar sent twice is a 422 (400 for a query) naming the field. `#[derive(Fields)]`
     rejects a `bool` or `Vec` field without `#[serde(default)]`, since a browser sends nothing for
@@ -261,9 +261,9 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#33 A page cannot tell whether a <corten-live> element is connected](https://github.com/todd-skelton/corten/issues/33)).
 38. Query sets: `#[derive(Route)] #[route(query)] struct ItemQuery { .. }` declares parameters that
     several routes carry, and `#[route(query)] filters: ItemQuery` on a route's field writes each of
-    them as the route's own parameter (`corten::route::Params`). A list's filters are declared once
+    them as the route's own parameter (`corten::route::QueryParams`). A list's filters are declared once
     for its page, its live rows and its bulk routes, so a route cannot drop one, and making one
-    route's URL from another's copies one value. Handlers read `Query<ItemQuery>`. A
+    route's URL from another's copies one value. Handlers read it as their route's `Params` field. A
     `#[route(query)]` field of another type does not compile. Asked for by the Chase Sets pilot,
     whose 10 item filters were repeated on 5 routes by a `macro_rules!`
     ([#32 A route cannot share a set of query parameters with another route](https://github.com/todd-skelton/corten/issues/32)).
@@ -523,7 +523,7 @@ Corten is pre-1.0, so any minor version may change the API.
     word serde reads for it (its `#[serde(rename_all)]` and `#[serde(rename)]`), so an enum in a
     route's query or path needs no hand-written `Display` kept in step with serde. A variant with
     fields, one serde does not read, or a serde attribute it does not follow is a compile error; a
-    test reads every word back through `Query`'s reader under each of serde's eight rules.
+    test reads every word back through the query reader under each of serde's eight rules.
     `#[serde(..)]` values passed in by a `macro_rules!` are read by `ToJson` and `FromJson` too
     ([#129 A query value must be Display while it is read with serde, so an enum in an address spells its words twice](https://github.com/todd-skelton/corten/issues/129)).
 78. `Area::deadline(..)` and `Api::deadline(..)`: routes slower than pages (an upstream that
@@ -754,16 +754,21 @@ Corten is pre-1.0, so any minor version may change the API.
     Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
     ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
 112. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
-     It has the struct's fields, owned (a `&'a str` is a `String`, a `&'a [T]` a `Vec<T>`), read
+     It has the struct's fields, owned (a `&'a str` or `Cow<'a, str>` is a `String`, a `&'a [T]` a
+     `Vec<T>`, any other `&'a T` a `T`; a link's field still needs only `Display`), read
      the way a link writes them: a path parameter percent-decoded, a query parameter by the name
      serde reads (`rename`, `rename_all`; `None`, empty or the field's `#[serde(default)]` when the
      link leaves it out), a `#[route(query)]` set from the whole query, a `#[route(prefix = ..)]`
-     map from its prefixed keys. A request whose parameters do not fit is a 400. In a
+     map from its prefixed keys. A request whose parameters do not fit is a 400
+     (`ParamsRejection`). A route with a serde key links do not follow (`alias`, `flatten`,
+     `skip`, `with`, `default` on the struct and the like) or a borrowed `#[route(query)]` set
+     still writes links, but taking its `Params` does not compile. In a
      `#[corten::routes]` module, a handler of a route with a parameter in its path that does not
      take its own `Params` (one that reads the path with axum's `Path`, or another route's
-     `Params`) does not compile (`compile_fail` doctests). On the request path it costs
-     MEASURE_PAGE instructions on the item page and MEASURE_JSON on its JSON (callgrind, release,
-     the benchmark fixture) ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
+     `Params`) does not compile (`compile_fail` doctests). On the request path it costs what
+     `Path<String>` did: the item page 82,041 to 81,975 instructions per request (the mean of three
+     runs on main, which spread over 425, and two here) and its JSON 57,687 to 57,680 (callgrind,
+     release, the benchmark fixture) ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -798,8 +803,8 @@ Corten is pre-1.0, so any minor version may change the API.
 9. `Req::current`: `req.nav(&route)` writes the whole nav link, and `req.is_current` answers
    the question elsewhere.
 10. `corten::Query`, and axum's `Path` from the prelude: a route's parameters are its `Params`,
-    and a `GET` form's fields its `Form`. Import `corten::axum::extract::Path` for a route built
-    by hand outside a routes module ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
+    whether its handler is named in a routes module or added by hand (`Area::route`), and a
+    `GET` form's fields its `Form` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
 
 ### Changed
 
@@ -1524,7 +1529,7 @@ Corten is pre-1.0, so any minor version may change the API.
    A new table gives what a request costs: pages per CPU-second (Corten 25,124, ASP.NET Core
    4,285), CPU for 300 pages a second (4.1% against 17%) and pages a second per MiB (1,110 against
    50).
-7. `Form` and `Query` in the prelude are `corten::Form` and `corten::Query` (Added 20). Against
+7. `Form` in the prelude is `corten::Form` (Added 20), and a route's parameters its `Params`. Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
    dependency of `corten`; it was already in axum's tree.

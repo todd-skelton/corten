@@ -1522,8 +1522,36 @@ mod params_url {
 
     #[route("/files/{*rest}", get = params_file)]
     pub struct File<'a> {
-        pub rest: &'a str,
+        pub rest: std::borrow::Cow<'a, str>,
     }
+}
+
+/// A value a link prints but nothing reads back: neither `Clone`, `Send` nor `Deserialize`.
+pub struct Shown(std::rc::Rc<str>);
+
+impl std::fmt::Display for Shown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// A route used only for links still needs only `Display` of its fields.
+#[derive(crate::Route)]
+#[route("/shown/{value}")]
+#[serde(deny_unknown_fields)]
+struct LinkOnly<'a> {
+    value: &'a Shown,
+    #[serde(alias = "t")]
+    tab: Option<&'a Shown>,
+}
+
+/// The same fields with no serde key: its hidden owned twin is written, and asks nothing of
+/// `Shown` until a handler reads the route's `Params`.
+#[derive(crate::Route)]
+#[route("/shown-twin/{value}")]
+struct LinkTwin<'a> {
+    value: &'a Shown,
+    tab: Option<&'a Shown>,
 }
 
 async fn params_item(item: crate::Params<params_url::Item<'_>>) -> String {
@@ -1581,7 +1609,10 @@ async fn a_handler_reads_its_routes_parameters_as_the_link_wrote_them() {
         let (status, _, _) = call_with(router.clone(), "GET", uri, None, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
     }
-    let file = params_url::File { rest: "docs/a b.txt" };
+    let shown = Shown("x y".into());
+    assert_eq!(LinkOnly { value: &shown, tab: Some(&shown) }.href(), "/shown/x%20y?tab=x%20y");
+    assert_eq!(LinkTwin { value: &shown, tab: None }.href(), "/shown-twin/x%20y");
+    let file = params_url::File { rest: "docs/a b.txt".into() };
     let (_, _, body) = call_with(router, "GET", &file.href(), None, None).await;
     assert_eq!(body, "docs/a b.txt", "{}", file.href());
 }

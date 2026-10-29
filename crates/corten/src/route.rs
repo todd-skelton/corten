@@ -659,16 +659,12 @@ pub trait QueryParams {
 /// let link = Item { slug: "pika", dimensions: &dimensions };
 /// assert_eq!(link.href(), "/items/pika?dimension.form=graded&dimension.grade=PSA%208");
 ///
-/// // The handler reads them back with the other parameters, and keeps the prefixed ones.
-/// #[derive(serde::Deserialize)]
-/// struct ItemQuery {
-///     #[serde(flatten)]
-///     rest: BTreeMap<String, String>,
+///
+/// // Its handler reads them back with the other parameters, the prefix taken off:
+/// async fn item(Params(item): Params<Item<'_>>) -> String {
+///     format!("{} {:?}", item.slug, item.dimensions) // dimensions: BTreeMap<String, String>
 /// }
-/// let read: ItemQuery = corten::form::from_bytes(b"dimension.form=graded&dimension.grade=PSA%208").unwrap();
-/// let read: BTreeMap<String, String> =
-///     read.rest.into_iter().filter_map(|(k, v)| Some((k.strip_prefix("dimension.")?.to_string(), v))).collect();
-/// assert_eq!(read, dimensions);
+/// # let _ = item;
 /// ```
 ///
 /// A prefix another parameter's name starts with would read that parameter as one of the family,
@@ -1184,8 +1180,8 @@ impl fmt::Write for Encode<'_> {
 }
 
 /// A route's parameters, read from the request: what a handler of a route with parameters
-/// takes, `Params<url::Item<'_>>`. It has the route's fields, owned (a `&'a str` is a `String`, a
-/// `&'a [T]` a `Vec<T>`, any other `&'a T` its owned form), filled the way a link writes them:
+/// takes, `Params<url::Item<'_>>`. It has the route's fields, owned (a `&'a str` or `Cow<'a, str>`
+/// is a `String`, a `&'a [T]` a `Vec<T>`, any other `&'a T` a `T`), filled the way a link writes them:
 /// a path parameter from its segment, percent-decoded; a query parameter by the name serde reads
 /// (`None`, or empty for a list, when the query leaves it out; a field with `#[serde(default)]`
 /// its default); a `#[route(query)]` field from the whole query; a `#[route(prefix = "dim.")]`
@@ -1255,6 +1251,69 @@ impl fmt::Write for Encode<'_> {
 /// }
 /// # fn main() {}
 /// ```
+///
+/// A field `Params` has no owned form for (a borrowed `#[route(query)]` set) or a `#[serde(..)]`
+/// key it does not follow (`alias`, `with`, `flatten`, `skip`, a container `default`, ...) leaves
+/// the route's links as they are, and a handler that takes its `Params` does not compile, rather
+/// than read the parameters differently from how serde would:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct Filters<'a> { pub q: Option<&'a str> }
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> { pub id: &'a str, #[route(query)] pub filters: super::Filters<'a> }
+/// }
+///
+/// async fn show(item: Params<url::Item<'_>>) -> String {
+///     item.id.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> { pub id: &'a str, #[serde(alias = "t")] pub tab: Option<&'a str> }
+/// }
+///
+/// async fn show(item: Params<url::Item<'_>>) -> String {
+///     item.id.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A route with a type parameter cannot be named for the check, so in a routes module one with a
+/// parameter in its path does not compile, with a message that says so (it never could be routed:
+/// the module names each route without arguments):
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<T: std::fmt::Display> { pub id: T }
+/// }
+///
+/// async fn show() -> &'static str {
+///     "item"
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A link writes `Some("")` as `?tab=`, which reads back as `None` (a blank form field is no
+/// value); a key a route's field and its `#[route(query)]` set both write is sent twice, which
+/// `Params` refuses (a 400); and a `#[route(prefix = ..)]` map keeps the last value of a key sent
+/// twice, as a `BTreeMap` does.
 pub struct Params<R: FromUrl + ?Sized>(pub R::Params);
 
 impl<R: FromUrl + ?Sized> std::ops::Deref for Params<R> {
@@ -1274,16 +1333,40 @@ impl<R: FromUrl + ?Sized> std::ops::DerefMut for Params<R> {
 impl<R: FromUrl + ?Sized, S: Send + Sync> axum::extract::FromRequestParts<S> for Params<R>
 where
     R::Path: __private::ReadPath,
+    R::Params: Send,
 {
-    type Rejection = axum::response::Response;
+    type Rejection = ParamsRejection;
 
-    async fn from_request_parts(parts: &mut axum::http::request::Parts, _: &S) -> Result<Self, Self::Rejection> {
-        use axum::response::IntoResponse as _;
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, _: &S) -> Result<Self, ParamsRejection> {
         let path = <R::Path as __private::ReadPath>::read(parts).await?;
-        R::__read(path, parts.uri.query().unwrap_or_default()).map(Params).map_err(|error| {
-            let status = axum::http::StatusCode::BAD_REQUEST;
-            crate::form::FormRejection::invalid(status, "Failed to deserialize query string", error).into_response()
-        })
+        R::__read(path, parts.uri.query().unwrap_or_default()).map(Params).map_err(ParamsRejection::query)
+    }
+}
+
+/// Why [`Params`] refused a request: a path or query parameter that does not fit its field, a
+/// 400 in plain text, as axum's rejections are. Boxed, so a request that fits moves nothing large.
+#[derive(Debug)]
+pub struct ParamsRejection(Box<axum::response::Response>);
+
+impl ParamsRejection {
+    #[cold]
+    fn query(error: crate::form::FormError) -> Self {
+        use axum::response::IntoResponse as _;
+        let status = axum::http::StatusCode::BAD_REQUEST;
+        let rejection = crate::form::FormRejection::invalid(status, "Failed to deserialize query string", error);
+        ParamsRejection(Box::new(rejection.into_response()))
+    }
+
+    #[cold]
+    fn path(rejection: axum::extract::rejection::PathRejection) -> Self {
+        use axum::response::IntoResponse as _;
+        ParamsRejection(Box::new(rejection.into_response()))
+    }
+}
+
+impl axum::response::IntoResponse for ParamsRejection {
+    fn into_response(self) -> axum::response::Response {
+        *self.0
     }
 }
 
@@ -1296,7 +1379,7 @@ where
 )]
 pub trait FromUrl {
     /// The route's fields, owned.
-    type Params: Send + 'static;
+    type Params;
     /// Its path parameters, in the order the path names them ([`__private::ReadPath`]).
     type Path;
     /// The fields, from the path's parameters and the query string.
@@ -1510,7 +1593,41 @@ pub mod __private {
     /// `T`, named with a lifetime of the `FromUrl` impl, so a bound on it (that a field reads
     /// back) is checked where `Params` is used, not where the route is declared: a link needs
     /// only `Display`.
-    pub struct Later<'a, T: ?Sized>(std::marker::PhantomData<&'a T>);
+    pub struct Later<'a, T: ?Sized>(std::marker::PhantomData<Mark<'a, T>>);
+
+    /// Names `'a` and `T` without requiring `T: 'a` (`T` may borrow for another lifetime).
+    type Mark<'a, T> = fn(&'a ()) -> *const T;
+
+    /// A field `Params` has no owned form for: a borrowed query set (`ItemQuery<'a>`), `&'a mut T`.
+    #[diagnostic::on_unimplemented(
+        message = "`Params` cannot read a route field borrowed this way: `{Self}`",
+        note = "a field Params reads back is owned, a reference (&'a str, &'a [T], &'a T) or a Cow<'a, T>: make a #[route(query)] set an owned struct"
+    )]
+    pub trait Owned {}
+
+    /// A `#[serde(..)]` key on a route that `Params` does not follow, by name.
+    #[allow(non_camel_case_types)]
+    pub mod serde_key {
+        pub struct alias;
+        pub struct deserialize_with;
+        pub struct with;
+        pub struct flatten;
+        pub struct skip;
+        pub struct skip_deserializing;
+        pub struct borrow;
+        pub struct default;
+        pub struct deny_unknown_fields;
+        pub struct from;
+        pub struct try_from;
+        pub struct transparent;
+    }
+
+    /// Never implemented: a route with a serde key `Params` does not follow has no `Params`.
+    #[diagnostic::on_unimplemented(
+        message = "`Params` reads a route's parameters by the names its links write, and does not follow this #[serde(..)] key: `{Self}`",
+        note = "remove the key from the route struct; a #[route(query)] set's own serde keys are read by serde"
+    )]
+    pub trait Followed {}
 
     /// A query parameter read by serde: by its key, or a `#[route(query)]` field from them all.
     pub trait Deserialized {
@@ -1565,14 +1682,14 @@ pub mod __private {
     pub trait ReadPath: Sized + Send {
         fn read(
             parts: &mut axum::http::request::Parts,
-        ) -> impl std::future::Future<Output = Result<Self, axum::response::Response>> + Send;
+        ) -> impl std::future::Future<Output = Result<Self, super::ParamsRejection>> + Send;
     }
 
     impl ReadPath for () {
         #[inline]
         fn read(
             _: &mut axum::http::request::Parts,
-        ) -> impl std::future::Future<Output = Result<Self, axum::response::Response>> + Send {
+        ) -> impl std::future::Future<Output = Result<Self, super::ParamsRejection>> + Send {
             std::future::ready(Ok(()))
         }
     }
@@ -1582,11 +1699,11 @@ pub mod __private {
 
     impl<T: serde::de::DeserializeOwned + Send> ReadPath for InPath<T> {
         #[inline]
-        async fn read(parts: &mut axum::http::request::Parts) -> Result<Self, axum::response::Response> {
-            use axum::{extract::FromRequestParts as _, response::IntoResponse as _};
+        async fn read(parts: &mut axum::http::request::Parts) -> Result<Self, super::ParamsRejection> {
+            use axum::extract::FromRequestParts as _;
             match axum::extract::Path::<T>::from_request_parts(parts, &()).await {
                 Ok(axum::extract::Path(value)) => Ok(InPath(value)),
-                Err(rejection) => Err(rejection.into_response()),
+                Err(rejection) => Err(super::ParamsRejection::path(rejection)),
             }
         }
     }

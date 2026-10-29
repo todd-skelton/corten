@@ -146,6 +146,12 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
                     &[TokenTree::Ident(module.clone()).into(), TokenTree::Ident(route.name.clone()).into(), args],
                 )
             }
+            None if route.path.contains('{') => {
+                return err(
+                    route.span,
+                    format!("{} has a type parameter, so its handlers cannot be held to taking its Params: give its fields concrete types", route.name),
+                );
+            }
             _ => q("()", &[]),
         };
         let mut methods = TokenStream::new();
