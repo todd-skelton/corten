@@ -1201,6 +1201,28 @@ Corten is pre-1.0, so any minor version may change the API.
     ticker closes the socket as too big (1009), a client's close is answered, a send the client
     does not take within 10 seconds ends the socket, and shutdown still closes it with a goodbye
     ([#222 watchlist's WebSocket route is an echo, which a stock app would not have](https://github.com/todd-skelton/corten/issues/222)).
+68. seller-desk sells card-market's cards: its rows are the three sets' 540 cards, card-market's
+    eleven singles first at the cheapest Near Mint price card-market lists them for (a test
+    reads its fixture), the rest priced by rarity. Most start in Near Mint and some played; past
+    540 rows each card comes again in its next condition at that condition's share of the price.
+    A seller keeps a few copies of a dear card and many of a common, and restocks to that.
+    Names are cards' names (no `#1`, `#2`), and the sets are card-market's three
+    ([#224 seller-desk and card-market give the same card different prices](https://github.com/todd-skelton/corten/issues/224)).
+69. card-market shows card art: a generated SVG for each card of its demo catalog in
+    `static/cards/`, served at a versioned URL every cache keeps (and the PWA's worker with
+    them, cached the first time each loads). The home and category grids show it sized (`width`,
+    `height`), past the first row loaded near the screen (`loading="lazy"`), with `alt=""` since
+    the link names the card; the item page shows it first, not deferred, with its text. Only the
+    built-in demo catalog has art (another source's `item_3` is another card), so the
+    benchmark's item page and the item JSON are unchanged. Measured with the demo
+    catalog (release build, over HTTP): Ashen Drake's page is 126 bytes larger (42 with brotli)
+    plus its 377-byte picture (brotli); the home page is 1,356 bytes larger (105 with brotli) plus
+    the pictures that load.
+    ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
+70. examples/ui-gallery is one screen: a seller's draft listing for a card, with its quantity,
+    price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
+    dialog, the last sale, and its SKU with a copy button
+    ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1471,6 +1493,10 @@ Corten is pre-1.0, so any minor version may change the API.
     The watchlist's alerts page reads its status line and list so. The runtime grows by 273 B
     (72 B brotli)
     ([#276 A page cannot ask for one of its parts to be read again, so a page holding a third-party frame needs a script to start the read](https://github.com/todd-skelton/corten/issues/276)).
+49. examples/ui-gallery's live regions stay in the page while they are empty: the toaster's root,
+    the form's result and the menu's result were `display: none` until a message came, so the
+    message was often not announced. The toast's box is drawn only while there is a message, and
+    its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1588,6 +1614,10 @@ Corten is pre-1.0, so any minor version may change the API.
     its item page's tables and price summary fit a phone, its alert form keeps less room under
     it, and its demo cards name their rarity twice (the chips and the details) instead of four
     times: the subtitle is the set and number, and no tag repeats a field or a chip.
+23. Each example has a README: what the app is, how to run it (`corten dev` and Docker) with
+    the environment it reads, and which file holds each piece. The main README lists the examples
+    in the order to read them, watchlist first
+    ([#230 No example has a README that says how to run it and where each feature is](https://github.com/todd-skelton/corten/issues/230)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

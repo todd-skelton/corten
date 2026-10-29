@@ -67,11 +67,35 @@ pub struct ItemView {
     pub categories: Vec<Category>,
     pub fields: Vec<Field>,
     pub images: Vec<String>,
+    /// The store's own picture of the card (`static/cards/`): the demo catalog's, for a card the
+    /// responses give no pictures of (`Source::demo`).
+    #[serde(skip)]
+    pub art: Option<&'static str>,
     pub summary: Option<Summary>,
     pub listings: Vec<Listing>,
     pub offers: Vec<Offer>,
     pub contents: Vec<ContentLine>,
     pub included_in: Vec<ContentLine>,
+}
+
+/// The store's own art for the cards of its demo catalog, a file in `static/cards/` (each one's
+/// name is here, so a missing file is a test's failure, not a page's).
+pub fn art(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "item_1" => "cards/item_1.svg",
+        "item_2" => "cards/item_2.svg",
+        "item_3" => "cards/item_3.svg",
+        "item_4" => "cards/item_4.svg",
+        "item_5" => "cards/item_5.svg",
+        "item_6" => "cards/item_6.svg",
+        "item_7" => "cards/item_7.svg",
+        "item_8" => "cards/item_8.svg",
+        "item_9" => "cards/item_9.svg",
+        "item_10" => "cards/item_10.svg",
+        "item_11" => "cards/item_11.svg",
+        "item_12" => "cards/item_12.svg",
+        _ => return None,
+    })
 }
 
 /// The listings by price, borrowed: sorting a page's rows copies no strings.
@@ -273,6 +297,7 @@ mod api {
                     },
                 }),
                 images: a.image_urls.unwrap_or_default().into_iter().take(2).map(text).collect(),
+                art: None,
                 summary: a.market_summary.map(|s| Summary {
                     lowest: money(&s.lowest_price_amount, &s.lowest_price_currency_code),
                     count: int(&s.active_listing_count),
@@ -307,6 +332,21 @@ pub use api::ApiItem;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every card of the demo catalog has its art, and every art file is one the app serves.
+    #[test]
+    fn each_demo_card_has_art_the_app_serves() {
+        let demo: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_str(include_str!("../fixtures/demo.json")).unwrap();
+        for id in demo.keys() {
+            let art = art(id).unwrap_or_else(|| panic!("{id} has no art"));
+            let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(art);
+            let svg = std::fs::read_to_string(&file).unwrap_or_else(|_| panic!("{} is missing", file.display()));
+            assert!(svg.starts_with("<svg") && svg.contains(r#"viewBox="0 0 250 350""#), "{art}: a card, 5 by 7");
+            let title = demo[id]["title"].as_str().unwrap();
+            assert!(title.split(' ').all(|word| svg.contains(word)), "{art} names {title}");
+        }
+    }
 
     /// The typed parse keeps the page's rules: null text is empty, counts may come as strings,
     /// money needs both an amount and a code, missing names fall back, two images at most, and a
@@ -361,6 +401,7 @@ mod tests {
             [Field { name: "f1".into(), value: "3".into() }, Field { name: "Set".into(), value: "Base".into() }]
         );
         assert_eq!(view.images, ["1.png", "2.png"]);
+        assert_eq!(view.art, None, "the API's pictures, not the store's art");
         assert_eq!(view.summary, Some(Summary { lowest: Some("1.5 EUR".into()), count: 4, quantity: 9 }));
         let (l1, l2) = (&view.listings[0], &view.listings[1]);
         assert_eq!((l1.seller.as_str(), l1.reviews, l1.price.as_str(), l1.price_value), ("Seller", 12, "$2.50", 2.5));
