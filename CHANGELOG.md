@@ -1651,6 +1651,11 @@ Corten is pre-1.0, so any minor version may change the API.
     that way. A request the page cancelled no longer counts as a console error; a real CORS
     refusal fails with another reason and still does
     ([#301 ui-gallery smoke: WebKit logged a console error for /?sale=last, due to access control checks (CI, once)](https://github.com/todd-skelton/corten/issues/301)).
+56. examples/seller-desk started its sales simulation with `tokio::spawn` in `main`, so it ran on
+    through shutdown and outside the app. It is the app's `task` now, started once the server
+    listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
+    runs one late tick instead of every missed one back to back
+    ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
