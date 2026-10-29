@@ -1052,16 +1052,30 @@ async function run(browser) {
 
   // Swaps only: these links live in the shell, which a full page load replaces.
   if (swaps) {
-    // data-nav="section": current on its page and every page under it.
-    await page.evaluate(() => document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>'));
-    await page.click('header a[href="/"]:not(#section-link)');
+    // data-nav="section": current on its page and every page under it. In one <nav>, only the
+    // deepest link that holds the page is current (Req::nav_of): there "News" wins over a
+    // section at "/", which a nav of its own still marks.
+    await page.evaluate(() => {
+      document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>');
+      document.querySelector("header")?.insertAdjacentHTML("beforeend", '<nav><a id="alone-link" href="/" data-nav="section">All</a></nav>');
+    });
+    await page.click('header a[href="/"]:not(#section-link, #alone-link)');
     await page.waitForFunction(() => document.title === "Stocks | Watchlist");
     await page.click('header a[href="/news"]');
     await page.waitForFunction(() => document.title === "News | Watchlist");
     check(
       'data-nav="section" marks the link on pages under it',
-      (await page.getAttribute("#section-link", "aria-current")) === "page" && (await page.getAttribute('header a[href="/"]:not(#section-link)', "aria-current")) === null,
+      (await page.getAttribute("#alone-link", "aria-current")) === "page" && (await page.getAttribute('header a[href="/"]:not(#section-link, #alone-link)', "aria-current")) === null,
     );
+    check(
+      "in one nav only the deepest link that holds the page is current",
+      (await page.getAttribute("#section-link", "aria-current")) === null && (await page.getAttribute('header a[href="/news"]', "aria-current")) === "page",
+      String(await page.getAttribute("#section-link", "aria-current")),
+    );
+    await page.evaluate(() => {
+      document.getElementById("section-link")?.remove();
+      document.getElementById("alone-link")?.closest("nav")?.remove();
+    });
 
     // data-no-prefetch: hovering does not fetch; an ordinary link does (the control).
     await page.evaluate(() =>

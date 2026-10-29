@@ -110,6 +110,117 @@ impl<R: crate::Route> crate::view::Attrs for Nav<'_, R> {
     }
 }
 
+/// What a nav entry can link to: a typed route, or a [`crate::Local`] path read from data. Not a
+/// URL written as text, nor another site's (`Elsewhere`, a `Uri`): that is never this page.
+pub trait NavTarget: nav_target::Sealed {
+    /// Writes the URL, not escaped.
+    #[doc(hidden)]
+    fn write_url(&self, out: &mut String);
+}
+
+mod nav_target {
+    pub trait Sealed {}
+    impl<R: crate::Route + ?Sized> Sealed for R {}
+    impl Sealed for crate::Local {}
+}
+
+impl<R: crate::Route + ?Sized> NavTarget for R {
+    fn write_url(&self, out: &mut String) {
+        self.write_href(out, false);
+    }
+}
+
+impl NavTarget for crate::Local {
+    fn write_url(&self, out: &mut String) {
+        crate::route::Href::with_href(self, |href| out.push_str(href));
+    }
+}
+
+/// One entry of a nav, for [`Req::nav_of`]: a page (current on its own URL) or a section
+/// (current on its own URL and any under it).
+pub struct NavTo<'a> {
+    to: &'a dyn NavTarget,
+    section: bool,
+}
+
+impl<'a> NavTo<'a> {
+    pub fn page(to: &'a (impl NavTarget + 'a)) -> Self {
+        NavTo { to, section: false }
+    }
+
+    pub fn section(to: &'a (impl NavTarget + 'a)) -> Self {
+        NavTo { to, section: true }
+    }
+}
+
+/// A nav's links, from [`Req::nav_of`], with the deepest entry that holds the page marked
+/// current. Each URL is written once, at the call.
+pub struct NavLinks {
+    /// The URLs one after another, not escaped.
+    urls: String,
+    /// Where each entry's URL ends, whether it is a section, and how deep it is when it holds the
+    /// page.
+    entries: Vec<(usize, bool, Option<usize>)>,
+    /// The deepest of them: the entries that deep are current.
+    deepest: Option<usize>,
+}
+
+impl NavLinks {
+    /// The links' attributes, in the entries' order: `<a {..link}>`.
+    pub fn links(&self) -> impl Iterator<Item = NavLink<'_>> {
+        let mut start = 0;
+        self.entries.iter().map(move |&(end, section, depth)| {
+            let url = &self.urls[start..end];
+            start = end;
+            NavLink { url, section, current: depth.is_some() && depth == self.deepest }
+        })
+    }
+}
+
+/// One link of a [`NavLinks`]: `href`, `data-nav` and, when current, `aria-current="page"`.
+pub struct NavLink<'a> {
+    url: &'a str,
+    section: bool,
+    current: bool,
+}
+
+impl crate::view::__private::Writes for NavLink<'_> {
+    const WRITES: &'static [&'static str] = &["href", "data-nav", "aria-current"];
+}
+
+impl crate::view::Attrs for NavLink<'_> {
+    fn render_attrs(&self, out: &mut String) {
+        out.push_str(r#" href=""#);
+        crate::view::escape_into(self.url, out);
+        out.push('"');
+        out.push_str(if self.section { r#" data-nav="section""# } else { " data-nav" });
+        if self.current {
+            out.push_str(r#" aria-current="page""#);
+        }
+    }
+}
+
+/// How deep an entry is, by its path without the query, fragment or trailing `/`, when it holds
+/// `path`; the runtime's rule for the links of one `<nav>` (`markCurrent` in `corten.js`).
+fn holds(path: &str, url: &str, section: bool) -> Option<usize> {
+    is_current(path, url, section).then(|| url.split(['?', '#']).next().unwrap_or(url).trim_end_matches('/').len())
+}
+
+/// [`Req::nav_of`] at `path`.
+pub(crate) fn nav_links<'a>(path: &str, entries: impl IntoIterator<Item = NavTo<'a>>) -> NavLinks {
+    let mut urls = String::new();
+    let entries: Vec<_> = entries
+        .into_iter()
+        .map(|entry| {
+            let start = urls.len();
+            entry.to.write_url(&mut urls);
+            (urls.len(), entry.section, holds(path, &urls[start..], entry.section))
+        })
+        .collect();
+    let deepest = entries.iter().filter_map(|entry| entry.2).max();
+    NavLinks { urls, entries, deepest }
+}
+
 #[cfg(test)]
 pub(crate) fn is_current_for_tests(path: &str, href: &str, section: bool) -> bool {
     is_current(path, href, section)
@@ -684,6 +795,40 @@ impl Req {
     /// (`data-nav="section"`), as a nav's "News" stays current on a story's page.
     pub fn nav_section<'a, R: crate::Route>(&'a self, to: &'a R) -> Nav<'a, R> {
         Nav { path: self.uri.path(), to, section: true }
+    }
+
+    /// A whole nav's links, for a nav whose entries nest (a section and a page under it) or come
+    /// from data: of the entries that hold this page, only the deepest is current, as the runtime
+    /// judges each `<nav>` after a client navigation. Seller Desk (`/account/desk`, a section)
+    /// is current on `/account/desk/repricing`, and only Money (`/account/desk/money`) on its own
+    /// page. An entry is a typed route or a [`crate::Local`] read from data.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    /// use corten::{NavTo, Local};
+    ///
+    /// #[derive(Route)]
+    /// #[route("/account/desk")]
+    /// struct Desk;
+    /// #[derive(Route)]
+    /// #[route("/account/desk/money")]
+    /// struct Money;
+    ///
+    /// fn nav(req: &Req, help: &Local) -> String {
+    ///     let nav = req.nav_of([NavTo::section(&Desk), NavTo::page(&Money), NavTo::page(help)]);
+    ///     let labels = ["Seller Desk", "Money", "Help"];
+    ///     html! { <nav>for (link, label) in nav.links().zip(labels) { <a {..link}>{label}</a> }</nav> }.to_html()
+    /// }
+    /// let _: fn(&Req, &Local) -> String = nav;
+    /// ```
+    ///
+    /// A URL written as text is not an entry:
+    ///
+    /// ```compile_fail,E0277
+    /// let _ = corten::NavTo::page(&"/account/desk");
+    /// ```
+    pub fn nav_of<'a>(&self, entries: impl IntoIterator<Item = NavTo<'a>>) -> NavLinks {
+        nav_links(self.uri.path(), entries)
     }
 
     /// This request's CSP nonce, for the layout's own inline scripts. Empty without a policy.

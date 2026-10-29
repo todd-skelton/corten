@@ -1112,17 +1112,30 @@ async function stylesOf(content) {
 
 /**
  * Sets `aria-current="page"` on `<a data-nav>` links to this page (`data-nav="section"`: to this
- * page or any page under it) and removes it from the rest. The shell is not re-rendered by
+ * page or any page under it), only the deepest such link in each `<nav>`, and removes it from the
+ * rest. The shell is not re-rendered by
  * client navigation, so its menu would otherwise keep pointing at the first page.
  */
 function markCurrent() {
   const here = location.pathname;
+  /** How deep each link that holds the page is (its path's length). @type {[Element, Element, number][]} */
+  const links = [];
+  /** The deepest of them in each `<nav>` (a link outside one is its own). @type {Map<Element, number>} */
+  const deepest = new Map();
   for (const link of Array.from(document.querySelectorAll("a[href][data-nav]"))) {
     const path = new URL(/** @type {HTMLAnchorElement} */ (link).href).pathname;
     const base = path.replace(/\/+$/, "");
-    const current = here === path || (link.getAttribute("data-nav") === "section" && here.startsWith(`${base}/`));
-    if (current) link.setAttribute("aria-current", "page");
-    else link.removeAttribute("aria-current");
+    const holds = here === path || (link.getAttribute("data-nav") === "section" && here.startsWith(`${base}/`));
+    const nav = link.closest("nav") ?? link;
+    const depth = holds ? base.length : -1;
+    links.push([link, nav, depth]);
+    deepest.set(nav, Math.max(deepest.get(nav) ?? -1, depth));
+  }
+  // In each nav, of the links that hold the page, only the deepest is current (Req::nav_of).
+  for (const [link, nav, depth] of links) {
+    if (depth >= 0 && depth === deepest.get(nav)) {
+      if (link.getAttribute("aria-current") !== "page") link.setAttribute("aria-current", "page");
+    } else if (link.hasAttribute("aria-current")) link.removeAttribute("aria-current");
   }
 }
 

@@ -891,6 +891,54 @@ fn a_nav_link_writes_its_route_once_and_says_when_it_is_the_page() {
     );
 }
 
+/// A whole nav's links: of the entries that hold the page, only the deepest is current, as the
+/// runtime judges a `<nav>` after a client navigation (#341).
+#[test]
+fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
+    use crate::{
+        page::{nav_links, NavTo},
+        view::Attrs,
+        Local,
+    };
+    #[derive(crate::Route)]
+    #[route("/")]
+    struct Home;
+    #[derive(crate::Route)]
+    #[route("/account/desk")]
+    struct Desk;
+    #[derive(crate::Route)]
+    #[route("/account/desk/money")]
+    struct Money;
+    let help = Local::parse("/help?topic=a&b").unwrap();
+    let marked = |path: &str| {
+        let nav = nav_links(path, [NavTo::page(&Home), NavTo::section(&Desk), NavTo::section(&Money), NavTo::page(&help)]);
+        nav.links()
+            .map(|link| {
+                let mut out = String::new();
+                link.render_attrs(&mut out);
+                out
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        marked("/account/desk/repricing"),
+        [
+            r#" href="/" data-nav"#,
+            r#" href="/account/desk" data-nav="section" aria-current="page""#,
+            r#" href="/account/desk/money" data-nav="section""#,
+            r#" href="/help?topic=a&amp;b" data-nav"#,
+        ]
+    );
+    let money = marked("/account/desk/money/payouts");
+    assert!(!money[1].contains("aria-current") && money[2].ends_with(r#" aria-current="page""#), "{money:?}");
+    assert!(marked("/")
+        .iter()
+        .filter(|link| link.contains("aria-current"))
+        .eq([&r#" href="/" data-nav aria-current="page""#.to_string()]));
+    assert!(marked("/help").last().unwrap().ends_with(r#" aria-current="page""#), "an entry from data takes part");
+    assert!(marked("/elsewhere").iter().all(|link| !link.contains("aria-current")));
+}
+
 #[test]
 fn current_links_match_the_page_or_its_section() {
     use crate::page::is_current_for_tests as is_current;
