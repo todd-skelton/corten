@@ -10,8 +10,8 @@ import { keep } from "corten";
 const HOLD = 400;
 const REPEAT = 60;
 
-/** The field's press and hold, and the button a pointer is pressing. */
-const held = () => keep(() => ({ timer: 0, pressed: /** @type {Element | null} */ (null) }));
+/** The field's press and hold, and the button each pointer is pressing, by pointer id. */
+const held = () => keep(() => ({ timer: 0, pressed: /** @type {Map<number, HTMLButtonElement>} */ (new Map()) }));
 
 /**
  * When the field joins the page: the buttons match the value, and a hold ends wherever the
@@ -25,9 +25,13 @@ export function connect(decrease, input, increase, signal) {
   /** @param {Event} event */
   const release = (event) => {
     clearTimeout(s.timer);
+    if (!(event instanceof PointerEvent)) return s.pressed.clear(); // the window lost focus
     // Released on the button it pressed, a click follows, the press's own (`click` takes it);
-    // released anywhere else, cancelled or the window left, none does.
-    if (event.type !== "pointerup" || !s.pressed?.contains(/** @type {Node} */ (event.target))) s.pressed = null;
+    // released anywhere else, cancelled, or on a button now disabled (at a bound), none does.
+    const button = s.pressed.get(event.pointerId);
+    if (event.type !== "pointerup" || !button || button.disabled || !button.contains(/** @type {Node} */ (event.target))) {
+      s.pressed.delete(event.pointerId);
+    }
   };
   for (const type of ["pointerup", "pointercancel", "blur"]) addEventListener(type, release, { signal });
   signal.addEventListener("abort", () => clearTimeout(s.timer));
@@ -42,7 +46,7 @@ export function press(event, button, input, by) {
   // Keeps focus where it was (usually the input) and selects no text.
   event.preventDefault();
   const s = held();
-  s.pressed = button;
+  s.pressed.set(event.pointerId, button);
   /** @param {number} delay */
   const tick = (delay) => {
     if (step(input, by)) s.timer = setTimeout(() => tick(REPEAT), delay);
@@ -57,9 +61,10 @@ export function press(event, button, input, by) {
  * @param {MouseEvent} event @param {HTMLButtonElement} button @param {HTMLInputElement} input @param {number} by
  */
 export function click(event, button, input, by) {
-  const s = held();
-  if (s.pressed === button && event.detail > 0) s.pressed = null;
-  else step(input, by);
+  const { pressed } = held();
+  const pointer = event.detail > 0 ? [...pressed].find(([, pressing]) => pressing === button)?.[0] : undefined;
+  if (pointer === undefined) step(input, by);
+  else pressed.delete(pointer);
 }
 
 /** @param {KeyboardEvent} event @param {HTMLInputElement} input */
