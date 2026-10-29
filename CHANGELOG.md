@@ -1426,6 +1426,14 @@ Corten is pre-1.0, so any minor version may change the API.
     (`values={&[Pricing::Offers]}`). ui-gallery reads its condition, pricing, regions, tab and
     sale sheet as enums, where it compared strings
     ([#324 corten-ui choices are strings, so nothing ties a Picker or ComboBox value to the field that reads it](https://github.com/todd-skelton/corten/issues/324)).
+78. `t.money`, `t.number`, `t.percent` and `t.change` write a value in about 40% fewer
+    instructions: 574 for an amount or a rating in `en` where they took 949, 602 in `fr` where
+    they took 1,003 (callgrind, release build, 30 amounts in US dollars and 20 two-place ratings
+    per round). A page writes into its `String` without a `dyn Write` call per piece, the digits
+    are made in `u64` (a `u128` division is a library call), the template is searched as bytes,
+    and the currency's code is compared as a number and written only where the locale writes a
+    currency by its code. The text is the same; a test checks that no symbol template has a code
+    to place.
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
