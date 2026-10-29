@@ -1634,6 +1634,12 @@ Corten is pre-1.0, so any minor version may change the API.
     tests build tokio with `test-util` for the paused clock: each tokio clock read in them checks
     one flag more; apps are not affected
     ([#278 An app cannot run a job on a schedule (hourly at :15, every 5 minutes, daily at 03:30), so each writes the clock, the missed-mark skip and the no-overlap rule itself](https://github.com/todd-skelton/corten/issues/278)).
+25. The app guide (Areas) and the skill say how a page in an area that another permission opens
+    (an order's review form under `/account/purchases`) is declared: a second routes module in the
+    same area with its own `caller`, passed in one call,
+    `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
+    permission from the path. A test holds two modules' callers apart in one area
+    ([#273 A page under an area cannot take its own caller, so a nested form that needs another permission checks it by path or by hand](https://github.com/todd-skelton/corten/issues/273)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -242,7 +242,11 @@ of its routes are route types: a route outside the prefix, or a prefix with a pa
 not build. A page that shows something either way (a layout's "Sign in") takes
 `Option<Caller<Viewer>>`. Reads and writes at one URL are separate handlers (`get = show,
 post = save`), so each takes what it needs. A private app puts `caller = Staff` on its routes
-module and the sign-in route in a module without it. A check that needs the record (only its
+module and the sign-in route in a module without it. A route in an area that another caller may
+use (a review form under `/account/purchases/{id}` that needs another permission) is a second
+module in the same area with that caller, `#[corten::routes(area = super::orders::Purchases,
+caller = Reviewer)]`, passed in one call, `.area(|area| reviews::area(orders::area(area)))`;
+never pick the permission from the path in `identify`. A check that needs the record (only its
 author may edit it) stays in the handler as `Error::status(StatusCode::FORBIDDEN)`. Signing in
 sets the session cookie on the answer, `Ok(req.redirect(&next)?.with_cookie(SetCookie::new("session",
 &token)))` (`SetCookie::remove("session")` signs out); never append a `Set-Cookie` header by hand.
