@@ -88,7 +88,7 @@ Corten is pre-1.0, so any minor version may change the API.
     the binary. `CONTRIBUTING.md` (Releasing) has the steps, including the first release.
 19. `.github/workflows/ci.yml` runs the checks in `CONTRIBUTING.md` on every pull request and
     push to `main`, plus `cargo publish --workspace --dry-run` and a build on Rust 1.88.
-20. List fields. `corten::Form` and a route's `Params` (Added 112) read a key
+20. List fields. `corten::Form` and a route's `Params` (Added 113) read a key
     sent several times into a `Vec` field, a checkbox's `on` into a `bool`, and a blank field into
     `None`; a scalar sent twice is a 422 (400 for a query) naming the field. `#[derive(Fields)]`
     rejects a `bool` or `Vec` field without `#[serde(default)]`, since a browser sends nothing for
@@ -753,7 +753,22 @@ Corten is pre-1.0, so any minor version may change the API.
     connection with one request, client included (callgrind, in process, three runs each).
     Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
     ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
-112. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
+112. `Area::policy(|p| p.script_src(..).frame_src(..))`: an area's pages add to the app's
+    Content-Security-Policy, so a payment provider's scripts and frames, or style attributes for
+    sizes drawn from data, are allowed on the pages that need them and not on every other page.
+    It only adds (`security::Sources`), nested areas add up, and each area's header is built
+    once at startup. A client navigation into or out of such an area loads the page in full, since
+    a document keeps the policy it loaded with; an area that adds only what the app has keeps the
+    app's. A request finds its area's policy once, by path, and only when some area adds to the
+    policy. Per request (callgrind, in process, 1,000 requests, median of three runs, range in
+    parentheses), a page outside the area went from 19,695 (18,936-19,698) to 19,095
+    (19,095-19,407) with no area policy and 19,122 (19,020-19,728) with one, and a page in the
+    area from 19,792 (19,786-20,696) to 20,042 (20,018-20,042), and 20,511 (20,083-20,733) under
+    its policy. The same build moves by up to 760 between runs, so only the last, about 500 to
+    700 more for a page under an area's policy, may be more than noise
+    ([#275 A policy is the whole app's, so the origins one page's payment SDK needs are allowed on every page](https://github.com/todd-skelton/corten/issues/275),
+    [#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
+113. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
      It has the struct's fields, owned (a `&'a str` or `Cow<'a, str>` is a `String`, a `&'a [T]` a
      `Vec<T>`, any other `&'a T` a `T`; a link's field still needs only `Display`), read
      the way a link writes them: a path parameter percent-decoded, a query parameter by the name
@@ -1227,7 +1242,12 @@ Corten is pre-1.0, so any minor version may change the API.
     price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
     dialog, the last sale, and its SKU with a copy button
     ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
-71. The trait a `#[route(query)]` set implements is `corten::route::QueryParams` (it was
+71. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+    method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
+    tools' own errors have, and a partner's write without a known key is told to send a valid
+    one in `X-Api-Key` (`Refused::message`)
+    ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
+72. The trait a `#[route(query)]` set implements is `corten::route::QueryParams` (it was
     `route::Params`), so `Params` is the extractor. The examples read their routes' parameters
     as `Params` (16 handlers); ui-gallery's `HomeQuery` and listings-feed's `MarketQuery` are
     gone, the parameters declared once on the route (`MarketWrite` gains `n`), and watchlist's
