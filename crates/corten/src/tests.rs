@@ -3541,3 +3541,55 @@ async fn an_area_adds_to_the_policy_of_its_pages_only() {
         .router();
     assert_eq!(csp_and_shell(&same, "/pay/card").await, (StatusCode::OK, home, home_shell));
 }
+
+/// An area relaxes the opener policy on its pages only (Stripe's Connect embedded components
+/// sign in through a popup that needs `unsafe-none`), and a page under another one has another
+/// shell key, since a document keeps the opener policy it loaded with.
+#[tokio::test]
+async fn an_area_relaxes_the_opener_policy_of_its_pages_only() {
+    async fn opener(router: &Router, path: &str) -> (StatusCode, String, String) {
+        let res = router.clone().oneshot(Request::get(path).body(Body::empty()).unwrap()).await.unwrap();
+        let opener = res.headers()["cross-origin-opener-policy"].to_str().unwrap().to_string();
+        let (status, _, shell) = csp_and_shell(router, path).await;
+        (status, opener, shell)
+    }
+    let router =
+        App::new(policy_url::router()).area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener())).router();
+    let (_, home, home_shell) = opener(&router, "/").await;
+    assert_eq!(home, "same-origin");
+    let (_, card, card_shell) = opener(&router, "/pay/card").await;
+    assert_eq!(card, "unsafe-none");
+    assert_ne!(home_shell, card_shell, "a navigation into the area loads the document in full");
+    assert_eq!(csp_and_shell(&router, "/").await.1, csp_and_shell(&router, "/pay/card").await.1, "the CSP is the app's");
+    // An unknown URL in the area is answered under its policy, as its pages are.
+    assert_eq!(opener(&router, "/pay/nothing").await.1, "unsafe-none");
+    // Only relaxing: an area's allow_popups under an app that allows any opener changes nothing,
+    // and one the app already has keeps the app's shell key.
+    let open = App::new(policy_url::router())
+        .policy(crate::security::Policy::new().allow_cross_origin_opener())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))
+        .router();
+    let (_, open_home, open_shell) = opener(&open, "/").await;
+    assert_eq!(
+        (open_home.as_str(), opener(&open, "/pay/card").await),
+        ("unsafe-none", (StatusCode::OK, "unsafe-none".into(), open_shell))
+    );
+    // Nested areas add up: one inside an area that loosens it keeps the looser value, and a
+    // write another site sent there is refused under it too.
+    let nested = App::new(policy_url::router())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener()))
+        .area(|area| charts_url::area(area).policy(|p| p.allow_popups().script_src("https://js.stripe.com")))
+        .router();
+    assert_eq!(opener(&nested, "/pay/charts/week").await.1, "unsafe-none");
+    let cross = Request::post("/pay/charts/week").header("sec-fetch-site", "cross-site").body(Body::empty()).unwrap();
+    let refused = nested.clone().oneshot(cross).await.unwrap();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    assert_eq!(refused.headers()["cross-origin-opener-policy"], "unsafe-none");
+    let popups = App::new(policy_url::router())
+        .policy(crate::security::Policy::new().allow_popups())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))
+        .router();
+    let (_, popups_home, popups_shell) = opener(&popups, "/").await;
+    assert_eq!(popups_home, "same-origin-allow-popups");
+    assert_eq!(opener(&popups, "/pay/card").await.2, popups_shell);
+}

@@ -170,9 +170,9 @@ impl<P: Prefix> Area<P> {
         self
     }
 
-    /// What the area's pages add to the app's [`Policy`] (its Content-Security-Policy): a payment
-    /// provider's scripts and frames on the payment pages, style attributes on the pages that draw
-    /// sizes from data, and not on every other page. Only adding is possible, so a page in the
+    /// What the area's pages add to the app's [`Policy`] (its Content-Security-Policy, and a looser
+    /// `Cross-Origin-Opener-Policy`): a payment provider's scripts and frames on the payment pages,
+    /// style attributes on the pages that draw sizes from data, and not on every other page. Only adding is possible, so a page in the
     /// area never allows less than the app; nested areas add up, outermost first.
     ///
     /// ```
@@ -204,8 +204,8 @@ impl<P: Prefix> Area<P> {
     /// so a client navigation into or out of such an area loads the page in full (its shell key
     /// differs); a patch from the area's routes is applied under the policy of the page it lands
     /// on, and a page that answers a form from a page under another policy reloads that page. A
-    /// request finds its area's policy once, by path, and only when some area adds a source the
-    /// app's policy lacks. A policy for one route is an area of one page.
+    /// request finds its area's policy once, by path, and only when some area adds something the
+    /// app's policy lacks (a source, or a looser `Cross-Origin-Opener-Policy`). A policy for one route is an area of one page.
     ///
     /// What is the whole app's (the names it answers to, HSTS, other sites' writes) is not an
     /// area's to change:

@@ -105,7 +105,6 @@ pub struct Policy {
     hsts: bool,
     allowed_origins: Vec<String>,
     report_only: bool,
-    popups: bool,
     /// The names the app answers to besides `localhost` and IP addresses; `None`: any.
     hosts: Option<Vec<String>>,
     /// The proxies whose `X-Forwarded-For` [`crate::ClientIp`] follows.
@@ -126,7 +125,6 @@ impl Policy {
             hsts: false,
             allowed_origins: Vec::new(),
             report_only: false,
-            popups: false,
             hosts: Some(Vec::new()),
             proxies: Vec::new(),
         }
@@ -200,9 +198,23 @@ impl Policy {
 
     /// Lets popups this site opens keep `window.opener` (`Cross-Origin-Opener-Policy:
     /// same-origin-allow-popups`), for sign-in or payment flows that report back from a popup.
-    /// Without it the policy is `same-origin`.
+    /// Without it the policy is `same-origin`. One part of the app only: [`Sources::allow_popups`].
     pub fn allow_popups(mut self) -> Self {
-        self.popups = true;
+        self.sources = self.sources.allow_popups();
+        self
+    }
+
+    /// Sends `Cross-Origin-Opener-Policy: unsafe-none` (the browser's default): another site's
+    /// window this page opens, or that opened it, can still reach it. This is for an embed whose
+    /// sign-in runs in a popup on the provider's origin that talks back to the page, such as
+    /// Stripe's Connect embedded components, which `same-origin` and `same-origin-allow-popups`
+    /// break. It gives up the page's isolation from other sites' windows: one that opened it, or
+    /// that it opens, keeps a reference to it (it can navigate it, `postMessage` it, see when it
+    /// closes and count its frames, which cross-site leak attacks use to learn about a signed-in
+    /// user), and the browser may run them in one process. Allow it on the pages that embed such
+    /// a thing only ([`Sources::allow_cross_origin_opener`] in their area), not the whole app.
+    pub fn allow_cross_origin_opener(mut self) -> Self {
+        self.sources = self.sources.allow_cross_origin_opener();
         self
     }
 
@@ -343,7 +355,7 @@ impl Policy {
     }
 }
 
-/// What a part of the app adds to its [`Policy`]'s CSP for its pages, given to
+/// What a part of the app adds to its [`Policy`] for its pages, given to
 /// [`crate::Area::policy`]: `.policy(|p| p.script_src("https://js.stripe.com"))`. Each source is
 /// one the [`Policy`] method of the same name adds for every page; only adding is possible, so
 /// an area never allows less than the app.
@@ -357,6 +369,26 @@ pub struct Sources {
     font: Vec<String>,
     form_action: Vec<String>,
     style_attributes: bool,
+    opener: Opener,
+}
+
+/// `Cross-Origin-Opener-Policy`, from the most isolated: an area only moves it down the list.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+enum Opener {
+    #[default]
+    SameOrigin,
+    AllowPopups,
+    Unsafe,
+}
+
+impl Opener {
+    fn header(self) -> HeaderValue {
+        HeaderValue::from_static(match self {
+            Opener::SameOrigin => "same-origin",
+            Opener::AllowPopups => "same-origin-allow-popups",
+            Opener::Unsafe => "unsafe-none",
+        })
+    }
 }
 
 impl Sources {
@@ -408,9 +440,24 @@ impl Sources {
         self
     }
 
+    /// Lets popups these pages open keep `window.opener` ([`Policy::allow_popups`]).
+    pub fn allow_popups(mut self) -> Self {
+        self.opener = self.opener.max(Opener::AllowPopups);
+        self
+    }
+
+    /// `Cross-Origin-Opener-Policy: unsafe-none` on these pages, for an embed whose sign-in
+    /// popup talks back to them ([`Policy::allow_cross_origin_opener`]).
+    pub fn allow_cross_origin_opener(mut self) -> Self {
+        self.opener = Opener::Unsafe;
+        self
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
-        let Sources { script, style, img, connect, frame, font, form_action, style_attributes } = self;
-        [script, style, img, connect, frame, font, form_action].iter().all(|list| list.is_empty()) && !style_attributes
+        let Sources { script, style, img, connect, frame, font, form_action, style_attributes, opener } = self;
+        [script, style, img, connect, frame, font, form_action].iter().all(|list| list.is_empty())
+            && !style_attributes
+            && *opener == Opener::SameOrigin
     }
 
     /// Adds `more`'s sources, each once.
@@ -432,6 +479,7 @@ impl Sources {
             }
         }
         self.style_attributes |= more.style_attributes;
+        self.opener = self.opener.max(more.opener);
     }
 }
 
@@ -513,25 +561,26 @@ pub(crate) struct Applied {
     policy: Policy,
     /// The app's pages' CSP.
     pub csp: Csp,
-    /// The CSP of the pages of each area whose policy adds a source the app's lacks, innermost
-    /// prefix first, with what it adds to a page's shell key: a client navigation between pages
-    /// with different policies loads the document in full, since a document keeps the CSP it
-    /// loaded with.
+    /// The CSP and opener policy of the pages of each area whose policy adds something the app's
+    /// lacks, innermost prefix first, with what it adds to a page's shell key: a client navigation
+    /// between pages with different policies loads the document in full, since a document keeps
+    /// the policies it loaded with.
     areas: Vec<(&'static str, Csp, u64)>,
     api_csp: HeaderValue,
 }
 
-/// One CSP for pages, split around the nonce once, at startup.
+/// One CSP for pages, split around the nonce once, at startup, and the opener policy sent with it.
 pub(crate) struct Csp {
     parts: Vec<String>,
     without_nonce: HeaderValue,
+    opener: HeaderValue,
 }
 
 impl Csp {
     fn new(policy: &Policy, import_map: &str) -> Self {
         let parts = policy.csp_with(Some("\0"), import_map).split('\0').map(str::to_string).collect();
         let without_nonce = HeaderValue::try_from(policy.csp_with(None, import_map)).expect("CSP sources are checked tokens");
-        Csp { parts, without_nonce }
+        Csp { parts, without_nonce, opener: policy.sources.opener.header() }
     }
 }
 
@@ -562,11 +611,12 @@ impl Applied {
                 }
                 let area = Csp::new(&merged, import_map);
                 // An area that adds nothing the app lacks keeps the app's policy and shell key.
-                if area.without_nonce == csp.without_nonce {
+                if area.without_nonce == csp.without_nonce && area.opener == csp.opener {
                     return None;
                 }
                 let mut hasher = std::hash::DefaultHasher::new();
                 std::hash::Hash::hash(area.without_nonce.as_bytes(), &mut hasher);
+                std::hash::Hash::hash(area.opener.as_bytes(), &mut hasher);
                 Some((prefix, area, std::hash::Hasher::finish(&hasher) | 1))
             })
             .collect();
@@ -594,7 +644,7 @@ impl Applied {
 
     /// The security headers. `page` is the request's nonce slot and the CSP of pages at its
     /// path, or `None` for a response that is never a page (an API route, a misdirected
-    /// request), which gets a CSP that allows nothing.
+    /// request), which gets a CSP that allows nothing and the app's opener policy.
     pub fn headers(&self, res: &mut Response, page: Option<(&NonceSlot, &Csp)>) {
         let headers = res.headers_mut();
         // Room for the headers below and `Cache-Control` (`Vary` from compression is appended to an
@@ -603,6 +653,7 @@ impl Applied {
         headers.reserve(6 + usize::from(self.hsts) + usize::from(!headers.contains_key(header::VARY)));
         let csp_header =
             if self.report_only { header::CONTENT_SECURITY_POLICY_REPORT_ONLY } else { header::CONTENT_SECURITY_POLICY };
+        let opener = page.map_or(&self.csp.opener, |(_, csp)| &csp.opener).clone();
         let csp = match page.map(|(slot, csp)| (slot.taken(), csp)) {
             None => Some(self.api_csp.clone()),
             Some((None, csp)) => Some(csp.without_nonce.clone()),
@@ -616,8 +667,7 @@ impl Applied {
         headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
         headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("strict-origin-when-cross-origin"));
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
-        let opener = if self.popups { "same-origin-allow-popups" } else { "same-origin" };
-        headers.insert(HeaderName::from_static("cross-origin-opener-policy"), HeaderValue::from_static(opener));
+        headers.insert(HeaderName::from_static("cross-origin-opener-policy"), opener);
         if self.hsts {
             headers.insert(header::STRICT_TRANSPORT_SECURITY, HeaderValue::from_static("max-age=31536000; includeSubDomains"));
         }
