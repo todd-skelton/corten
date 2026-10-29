@@ -1289,6 +1289,59 @@ async function run(browser) {
     page.off("request", onSaved);
     await page.unroute("**/alerts?saved=*", wholeOnly);
 
+    // A page whose part a <corten-live> relays keeps itself fresh: its head's ReadAgain is for a
+    // browser without JavaScript, and it is not read whole on top of the stream (the home page,
+    // given the head's tag). Once its stream gives up (closed) it is read whole after all.
+    {
+      const home = `${base}/`;
+      const asks = async (/** @type {import("@playwright/test").Route} */ route) => {
+        const res = await route.fetch({ headers: { ...route.request().headers(), "accept-encoding": "identity" } });
+        const headers = res.headers();
+        delete headers["content-encoding"];
+        delete headers["content-length"];
+        const tag = '<noscript data-corten-read-again="1"><meta http-equiv="refresh" content="1"></noscript>';
+        await route.fulfill({ status: res.status(), headers, body: (await res.text()).replace("</head>", `${tag}</head>`) });
+      };
+      /** @type {string[]} */
+      const homeReads = [];
+      const onHome = (/** @type {import("@playwright/test").Request} */ r) => r.method() === "GET" && r.url() === home && homeReads.push(r.url());
+      await page.route(home, asks);
+      await page.goto(home);
+      await page.waitForSelector('main corten-live[status="live"]', { timeout: 5000 }).catch(() => {});
+      page.on("request", onHome);
+      await page.waitForTimeout(2500);
+      check(
+        "a page a <corten-live> relays is not read whole while its stream runs",
+        homeReads.length === 0 && (await openStreams("/live/trades")) === 1,
+        `${homeReads.length} page reads, ${await openStreams("/live/trades")} open stream(s)`,
+      );
+      // Answered with no stream (204), which closes it without a console error.
+      const refuse = (/** @type {import("@playwright/test").Route} */ route) => route.fulfill({ status: 204, body: "" });
+      await page.route("**/live/trades*", refuse);
+      // The stream is opened again, and refused: the browser does not retry it.
+      await page.evaluate(() => {
+        const live = document.querySelector("main corten-live");
+        live?.replaceWith(/** @type {Element} */ (live.cloneNode(true)));
+      });
+      await page.waitForFunction(() => document.querySelector("main corten-live")?.getAttribute("status") === "closed", null, { timeout: 5000 }).catch(() => {});
+      const closed = homeReads.length;
+      await page.waitForRequest((r) => r.url() === home, { timeout: 5000 }).catch(() => {});
+      check("once its stream gives up, it is read whole again", closed === 0 && homeReads.length > 0, `${closed} reads before, ${homeReads.length} after`);
+      page.off("request", onHome);
+      // The stream is let through again, and the page read in is left only once it is live, so
+      // no read or feed of it is cut by the next navigation.
+      await page.unroute("**/live/trades*", refuse);
+      await page
+        .waitForFunction(
+          () => document.querySelector("main corten-live")?.getAttribute("status") === "live" && document.querySelector('[data-scope=live-prices][data-status="live"]') !== null,
+          null,
+          { timeout: 10000 },
+        )
+        .catch(() => {});
+      await page.unroute(home, asks);
+      await page.goto(`${base}/news`);
+    }
+
     // A data-patch write answered in place while its read catches up (ReadAgain::from): the
     // status line is patched, then read again from its route (`corten: action`) until the write
     // is in, with no navigation; the button keeps focus, and a navigation away stops the reads.

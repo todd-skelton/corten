@@ -1290,13 +1290,15 @@ const READ_AGAIN = Symbol("corten.readAgain");
  * `ReadAgain`), reads the page again after that many seconds, once the tab is visible:
  * the same URL, in place of this history entry, keeping scroll and focus. A navigation away (or
  * a page that no longer asks) stops it. A page that also asks for parts of it to be read again
- * ({@link readPartsAgain}) is not read whole: its head's tag is for a browser without JavaScript.
+ * ({@link readPartsAgain}), or relays them with a `<corten-live>`, is not read whole: its head's
+ * tag is for a browser without JavaScript. When such a stream gives up (`closed`), the page is
+ * read whole again after all (`relayed` false), as it is without a script.
  */
-function readAgainLater() {
+function readAgainLater(relayed = document.querySelector("main corten-live") !== null) {
   const page = ++readAgainPage;
   const tag = document.head.querySelector("noscript[data-corten-read-again]");
   const seconds = Number(tag?.getAttribute("data-corten-read-again"));
-  if (!(seconds > 0) || document.querySelector(`main ${PART_AGAIN}`)) return;
+  if (!(seconds > 0) || relayed || document.querySelector(`main ${PART_AGAIN}`)) return;
   const url = location.href;
   readLater(
     seconds,
@@ -1606,7 +1608,9 @@ customElements.define(
       source.addEventListener("error", () => {
         if (this.getAttribute("status") === "ended") return;
         if (this.getAttribute("status") === "live") this.setAttribute("stale-since", new Date().toISOString());
-        liveStatus(this, source.readyState === EventSource.CLOSED ? "closed" : "reconnecting");
+        const closed = source.readyState === EventSource.CLOSED;
+        liveStatus(this, closed ? "closed" : "reconnecting");
+        if (closed && this.closest("main")) readAgainLater(false);
       });
       source.addEventListener("patch", (event) => {
         const html = /** @type {MessageEvent} */ (event).data;
