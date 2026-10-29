@@ -356,8 +356,8 @@ async fn statement(req: Req, State(desk): State<Desk>) -> NoStore<HtmlResult> {
     let t: Msg = req.t();
     let sets: Vec<(&str, usize, u64)> = sets.iter().map(|(name, (items, cents))| (name.as_str(), *items, *cents)).collect();
     NoStore(req.page(html! {
-        <views::Layout req={&req} title={t.statement_title()}>
-            <h1>{t.statement_title()}</h1>
+        <views::Layout req={&req} title="Statement">
+            <h1>"Statement"</h1>
             <StatementTable t={t} sets={&sets} />
         </views::Layout>
     }))

@@ -129,6 +129,17 @@
 //! let joined = Msg::default().date_time(std::time::SystemTime::now(), MonthStyle::Long, TimeStyle::Short);
 //! ```
 //!
+//! An app with one locale may keep no fixed text in its catalog (the views guide, Text), and
+//! use it only for `t`'s formats. An empty catalog compiles with warnings denied:
+//!
+//! ```
+//! #![deny(warnings)]
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/empty.json" } }
+//! let t = Msg::default();
+//! assert_eq!(t.number(1234).to_string(), "1,234");
+//! assert!(t.by_key("anything", &[("n", 1)]).is_none());
+//! ```
+//!
 //! Nor does a locale with no data, or its language's:
 //!
 //! ```compile_fail

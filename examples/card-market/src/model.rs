@@ -1,7 +1,14 @@
 //! Copied from leptos/src/model.rs: same view model and rules as react-router/app/view-model.ts,
-//! except the alert's price, read as the reader's locale writes money (`t.parse_money`) where
-//! the bench apps read a float.
-use corten::{Errors, Fields, FromJson, ToJson, assets::Asset, i18n::Minor};
+//! so `/api/items/{id}` answers the JSON every benchmark app answers. Two differences, both for
+//! the reader's locale: the alert's price is read as the locale writes money (`t.parse_money`)
+//! where the bench apps read a float, and the page writes prices, ratings, conditions and the
+//! details' labels in the locale from fields the JSON leaves out (`#[serde(skip)]`): a price in
+//! cents, a rating as a `Decimal`, a `Grade` and a `Detail` for the values the catalog names.
+use corten::{
+    Errors, Fields, FromJson, ToJson,
+    assets::Asset,
+    i18n::{Decimal, Minor},
+};
 
 use crate::{
     text::{Msg, USD},
@@ -20,6 +27,9 @@ pub struct Category {
 pub struct Field {
     pub name: String,
     pub value: String,
+    /// The label the catalog has for this field, by its id; else the page shows `name`.
+    #[serde(skip)]
+    pub detail: Option<Detail>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
@@ -27,6 +37,9 @@ pub struct Summary {
     pub lowest: Option<String>,
     pub count: i64,
     pub quantity: i64,
+    /// `lowest` in cents, for the page to write as the reader's locale writes money.
+    #[serde(skip)]
+    pub lowest_cents: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
@@ -40,6 +53,14 @@ pub struct Listing {
     pub quantity: i64,
     pub price: String,
     pub price_value: f64,
+    /// `price` in cents (`None`: no price in US dollars), `rating` as a number, and the condition
+    /// when the catalog names it: what the page writes in the reader's locale.
+    #[serde(skip)]
+    pub cents: Option<u64>,
+    #[serde(skip)]
+    pub stars: Option<Decimal>,
+    #[serde(skip)]
+    pub grade: Option<Grade>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
@@ -49,6 +70,79 @@ pub struct Offer {
     pub condition: String,
     pub quantity: i64,
     pub price: String,
+    /// As a listing's.
+    #[serde(skip)]
+    pub cents: Option<u64>,
+    #[serde(skip)]
+    pub grade: Option<Grade>,
+}
+
+/// A card's condition, as the item API writes the ones the catalog translates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Grade {
+    NearMint,
+    LightlyPlayed,
+    ModeratelyPlayed,
+    HeavilyPlayed,
+    Damaged,
+    Sealed,
+}
+
+impl Grade {
+    /// The grade the API's text names; any other text (`"Near Mint, English"`) is shown as sent.
+    pub fn of(text: &str) -> Option<Grade> {
+        Some(match text {
+            "Near Mint" => Grade::NearMint,
+            "Lightly Played" => Grade::LightlyPlayed,
+            "Moderately Played" => Grade::ModeratelyPlayed,
+            "Heavily Played" => Grade::HeavilyPlayed,
+            "Damaged" => Grade::Damaged,
+            "Sealed" => Grade::Sealed,
+            _ => return None,
+        })
+    }
+}
+
+/// A detail of a card whose label the catalog has, by the API's field id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Detail {
+    Set,
+    Number,
+    Rarity,
+    Finish,
+    Packs,
+}
+
+impl Detail {
+    pub fn of(field_id: &str) -> Option<Detail> {
+        Some(match field_id {
+            "set" => Detail::Set,
+            "number" => Detail::Number,
+            "rarity" => Detail::Rarity,
+            "finish" => Detail::Finish,
+            "packs" => Detail::Packs,
+            _ => return None,
+        })
+    }
+}
+
+/// Dollars and cents as the item API writes them (`"42.50"`, `"3"`, `"0.5"`), in cents; anything
+/// else (more than two decimals, a sign, an exponent, or more cents than a row can carry to the
+/// browser's sort, [`NO_PRICE`] or over) is `None`, and the page shows the text.
+pub fn cents(amount: &str) -> Option<u64> {
+    let (whole, frac) = amount.split_once('.').unwrap_or((amount, ""));
+    if whole.is_empty() || frac.len() > 2 {
+        return None;
+    }
+    // The digits, then zeros to two places: "4.5" is 4, 5, 0.
+    let mut cents: u64 = 0;
+    for b in whole.bytes().chain(frac.bytes()).chain(std::iter::repeat_n(b'0', 2 - frac.len())) {
+        if !b.is_ascii_digit() {
+            return None;
+        }
+        cents = cents.checked_mul(10)?.checked_add(u64::from(b - b'0'))?;
+    }
+    Some(cents).filter(|&c| c < NO_PRICE)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
@@ -101,12 +195,24 @@ pub fn art(id: &str) -> Option<Asset> {
     })
 }
 
-/// The listings by price, borrowed: sorting a page's rows copies no strings.
+/// The cents a listing sorts by: its price, or after every price when it has none
+/// (`listing_sort.js` reads the same number from the row's view).
+pub fn sort_cents(listing: &Listing) -> u64 {
+    listing.cents.unwrap_or(NO_PRICE)
+}
+
+/// What a listing without a price sorts as: the largest integer a JavaScript number holds
+/// exactly, so the row's view carries it as is.
+pub const NO_PRICE: u64 = (1 << 53) - 1;
+
+/// The listings by price, borrowed: sorting a page's rows copies no strings. Listings with the
+/// same price keep the item's order either way, as the browser's sort keeps them.
 pub fn sort_listings(listings: &[Listing], descending: bool) -> Vec<&Listing> {
     let mut sorted: Vec<&Listing> = listings.iter().collect();
-    sorted.sort_by(|a, b| a.price_value.partial_cmp(&b.price_value).unwrap_or(std::cmp::Ordering::Equal));
     if descending {
-        sorted.reverse();
+        sorted.sort_by_key(|l| std::cmp::Reverse(sort_cents(l)));
+    } else {
+        sorted.sort_by_key(|l| sort_cents(l));
     }
     sorted
 }
@@ -269,6 +375,13 @@ mod api {
         let (Some(amount), Some(code)) = (scalar(amount), scalar(code)) else { return None };
         Some(if code == "USD" { format!("${amount}") } else { format!("{amount} {code}") })
     }
+    /// An amount in US dollars, in cents: what the page writes in the reader's locale.
+    fn usd_cents(amount: &Value, code: &Value) -> Option<u64> {
+        if code.as_str() != Some("USD") {
+            return None;
+        }
+        super::cents(&scalar(amount)?)
+    }
     fn line(line_id: Value, item_id: Value, item: Option<ApiLineItem>, quantity: Value) -> ContentLine {
         let item_id = text(item_id);
         ContentLine {
@@ -293,6 +406,7 @@ mod api {
                 tags: each(a.tags, text),
                 categories: each(a.categories, |c| Category { name: text(c.name), slug: text(c.slug) }),
                 fields: each(a.field_values, |f| Field {
+                    detail: f.field_id.as_str().and_then(Detail::of),
                     name: if f.field_name.is_null() { text(f.field_id) } else { text(f.field_name) },
                     value: match f.value {
                         Value::String(s) => s,
@@ -303,11 +417,15 @@ mod api {
                 art: None,
                 summary: a.market_summary.map(|s| Summary {
                     lowest: money(&s.lowest_price_amount, &s.lowest_price_currency_code),
+                    lowest_cents: usd_cents(&s.lowest_price_amount, &s.lowest_price_currency_code),
                     count: int(&s.active_listing_count),
                     quantity: int(&s.total_visible_quantity),
                 }),
                 listings: each(a.market_listings, |l| Listing {
                     price: money(&l.price_amount, &l.price_currency_code).unwrap_or_default(),
+                    cents: usd_cents(&l.price_amount, &l.price_currency_code),
+                    stars: l.seller_average_rating.as_str().and_then(Decimal::parse),
+                    grade: l.product_summary.as_str().and_then(Grade::of),
                     price_value: scalar(&l.price_amount).and_then(|p| p.parse().ok()).unwrap_or(f64::NAN),
                     reviews: int(&l.seller_review_count),
                     quantity: int(&l.visible_quantity),
@@ -319,6 +437,8 @@ mod api {
                 }),
                 offers: each(a.offer_demand_matches, |o| Offer {
                     price: money(&o.price_amount, &o.price_currency_code).unwrap_or_default(),
+                    cents: usd_cents(&o.price_amount, &o.price_currency_code),
+                    grade: o.product_summary.as_str().and_then(Grade::of),
                     quantity: int(&o.quantity_requested),
                     id: text(o.offer_id),
                     buyer: opt_text(o.buyer_display_name).unwrap_or_else(|| "Buyer".into()),
@@ -349,6 +469,45 @@ mod tests {
             let title = demo[id]["title"].as_str().unwrap();
             assert!(title.split(' ').all(|word| svg.contains(word)), "{art:?} names {title}");
         }
+    }
+
+    #[test]
+    fn the_page_reads_cents_grades_and_details_the_catalog_names() {
+        for (text, cents) in [("42.50", Some(4250)), ("3", Some(300)), ("0.5", Some(50)), ("1234.05", Some(123_405))] {
+            assert_eq!(super::cents(text), cents, "{text}");
+        }
+        assert_eq!(super::cents("90071992547409.90"), Some(NO_PRICE - 1), "the most a row's view carries exactly");
+        for text in ["", ".5", "1.234", "-1.00", "1e3", "1,000.00", " 1.00", "90071992547409.91", "99999999999999999999"] {
+            assert_eq!(super::cents(text), None, "{text:?} is shown as sent");
+        }
+        assert_eq!(Grade::of("Lightly Played"), Some(Grade::LightlyPlayed));
+        assert_eq!(Grade::of("Near Mint, English"), None);
+        assert_eq!(Detail::of("rarity"), Some(Detail::Rarity));
+        assert_eq!(Detail::of("field_1"), None);
+    }
+
+    /// Listings with the same price, and those without one, keep the item's order in both
+    /// directions, as the browser's stable sort keeps them; no price sorts after every price.
+    #[test]
+    fn listings_sort_by_cents_and_ties_keep_the_items_order() {
+        let at = |id: &str, cents: Option<u64>| Listing {
+            id: id.into(),
+            seller: String::new(),
+            rating: None,
+            reviews: 0,
+            condition: String::new(),
+            ships_from: String::new(),
+            quantity: 1,
+            price: String::new(),
+            price_value: 0.0,
+            cents,
+            stars: None,
+            grade: None,
+        };
+        let listings = [at("a", Some(500)), at("b", None), at("c", Some(100)), at("d", Some(500)), at("e", None)];
+        let ids = |sorted: Vec<&Listing>| sorted.iter().map(|l| l.id.as_str()).collect::<Vec<_>>().join("");
+        assert_eq!(ids(sort_listings(&listings, false)), "cadbe");
+        assert_eq!(ids(sort_listings(&listings, true)), "beadc");
     }
 
     /// The typed parse keeps the page's rules: null text is empty, counts may come as strings,
@@ -401,11 +560,14 @@ mod tests {
         assert_eq!(view.categories, [Category { name: "Cards".into(), slug: "cards".into() }]);
         assert_eq!(
             view.fields,
-            [Field { name: "f1".into(), value: "3".into() }, Field { name: "Set".into(), value: "Base".into() }]
+            [
+                Field { name: "f1".into(), value: "3".into(), detail: None },
+                Field { name: "Set".into(), value: "Base".into(), detail: None }
+            ]
         );
         assert_eq!(view.images, ["1.png", "2.png"]);
         assert_eq!(view.art, None, "the API's pictures, not the store's art");
-        assert_eq!(view.summary, Some(Summary { lowest: Some("1.5 EUR".into()), count: 4, quantity: 9 }));
+        assert_eq!(view.summary, Some(Summary { lowest: Some("1.5 EUR".into()), count: 4, quantity: 9, lowest_cents: None }));
         let (l1, l2) = (&view.listings[0], &view.listings[1]);
         assert_eq!((l1.seller.as_str(), l1.reviews, l1.price.as_str(), l1.price_value), ("Seller", 12, "$2.50", 2.5));
         assert_eq!(
@@ -413,9 +575,19 @@ mod tests {
             (Some("4.9"), "NM", "US", 0)
         );
         assert!(l2.price.is_empty() && l2.price_value.is_nan());
+        assert_eq!((l1.cents, l1.stars, l1.grade), (Some(250), None, None));
+        assert_eq!((l2.cents, l2.stars, l2.grade), (None, Decimal::parse("4.9"), None), "NM is not a grade the catalog names");
         assert_eq!(
             view.offers,
-            [Offer { id: "o1".into(), buyer: "Buyer".into(), condition: String::new(), quantity: 2, price: String::new() }]
+            [Offer {
+                id: "o1".into(),
+                buyer: "Buyer".into(),
+                condition: String::new(),
+                quantity: 2,
+                price: String::new(),
+                cents: None,
+                grade: None
+            }]
         );
         assert_eq!(view.contents, [line("c1", "item_2", "Pack", 3), line("c2", "item_3", "item_3", 1)]);
         assert_eq!(view.included_in, [line("i1", "item_4", "item_4", 1)]);
