@@ -1757,7 +1757,20 @@ Corten is pre-1.0, so any minor version may change the API.
     the page. The runtime now marks nav links after a patch that puts one on the page or removes
     one, as after a navigation; a patch without one (a ticker's) only looks through the elements it
     put. `corten.js` grows 65 bytes gzip ([#347 A nav link a patch puts on the page keeps the mark the server judged against the form's action, not the page](https://github.com/todd-skelton/corten/issues/347)).
-64. examples/watchlist's header wrapped to two rows on a phone, and its alerts page used the left
+64. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
+    back empty: `Params` read a set with serde's derive, which knows nothing of the prefix. A set
+    is now read field by field the way a route reads its own, so a list it leaves out is empty
+    (it was a 400 without `#[serde(default)]`), a field's own `#[serde(default)]` fills what the
+    query leaves out, and a set needs no `Deserialize`. **Breaking:** a set's serde keys that a
+    route's reader does not follow (`alias`, `flatten`, `deny_unknown_fields`, the struct's own
+    `default`, ...) make `Params` of a route that includes it not compile, naming the key, as they
+    do on the route (a struct's `default` would read a link's `None` back as the default's
+    value); and a route whose own query names and its sets' could be read back as each other's
+    (one name written twice, which was a 400, or a prefix another name starts with) does not
+    compile. Reading a route with a four-parameter set costs 4,107 instructions, up from 3,669,
+    the same as those parameters on the route itself (callgrind, release build)
+    ([#310 A #[route(prefix)] field inside a #[route(query)] set is written into links but Params reads it back empty](https://github.com/todd-skelton/corten/issues/310)).
+65. examples/watchlist's header wrapped to two rows on a phone, and its alerts page used the left
     half of a desktop screen. The header is one row at 390 px: the viewer's name (and picture) is
     the link to their account, where the Account link was, and a visitor has a shorter "Sign in"
     button in its place. The alerts form and list sit side by side from 48rem
