@@ -1605,6 +1605,11 @@ Corten is pre-1.0, so any minor version may change the API.
     the form's result and the menu's result were `display: none` until a message came, so the
     message was often not announced. The toast's box is drawn only while there is a message, and
     its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
+50. The idle-connection test measured the timeout from its own call, not from the clock's tick the
+    connection went idle at, so it failed under load when the clock's thread lagged. It now checks
+    what the clock promises, and expiry itself is unchanged
+    ([#279 watch test: an idle connection can expire early when the clock's thread lags, and the test fails under load](https://github.com/todd-skelton/corten/issues/279)).
+
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
