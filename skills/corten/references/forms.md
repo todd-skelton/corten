@@ -85,7 +85,8 @@ the client's word) and return `corten::Media::new("image/png", bytes)`. At a URL
 bytes (a hash), return `Public::immutable(answer)` so every cache keeps it for a year; its handler
 cannot read who is asking. A download names its file with `.attachment("cards.csv")` (or
 `.inline(..)` to show it), which escapes the name; never set `Content-Disposition` yourself.
-Never build the response by hand.
+Link to it with `download` (`data-reload` for an `inline` file), so the runtime does not fetch
+it on hover and again on click. Never build the response by hand.
 
 ## Checkboxes and lists
 

@@ -347,9 +347,12 @@ profile picture (`examples/watchlist/src/account.rs`) does both.
 A file the user downloads names itself on its `Media`: `.attachment("shipments-2026-10-29.csv")`
 to save it, `.inline("packing-slips.pdf")` to show it where the browser can and save it under
 that name. It stays private unless the handler says `Public`, so a user's export is not cached
-for anyone else. Corten writes the name so it reads back exactly, any characters included
-(`filename*=UTF-8''..`, RFC 6266), and a quote or line break in a name taken from user data
-cannot change the header.
+for anyone else. Corten writes a name that is not plain ASCII as `filename*=UTF-8''..` (RFC 6266),
+which browsers read, and a quote or line break in a name taken from user data cannot change the
+header. The browser still cleans the name it saves (a `/`, a `:`, a control character), and an
+empty name lets it name the file from the URL. Link to a download with `download`
+(`<a href={export} download>`), or `data-reload` for a file the browser shows: without one, the
+runtime fetches the link on hover and again on click, running the handler twice.
 
 ```rust,ignore
 async fn export(caller: Caller<Viewer>) -> corten::Result<Media> {

@@ -691,13 +691,18 @@ impl Media {
     /// # let _: Methods = get(export);
     /// ```
     ///
-    /// The name is written so every browser reads it back exactly: a plain ASCII name as
-    /// `filename="cards.csv"`, any other with `filename*=UTF-8''..` (RFC 6266) after a
-    /// `filename` with each other character as `_`, for a client that does not read `filename*`. A quote, a
-    /// backslash, a `%` or a control character never reaches the header unencoded, so a name
-    /// that comes from user data cannot end the header or add a parameter; the browser still
-    /// cleans the name it saves (a `/` or a control character) as it does any. The last of
-    /// `attachment` and [`Media::inline`] given is the one sent.
+    /// A plain ASCII name is written `filename="cards.csv"`, and any other with
+    /// `filename*=UTF-8''..` (RFC 6266), which browsers read, after a `filename` with `_` for
+    /// each other character, for a client that does not. A quote, a backslash, a `%`, a `?`
+    /// (`=?..?=` is decoded as RFC 2047 by some browsers) or a control character never reaches
+    /// the header unencoded, so a name from user data cannot end the header or add a parameter.
+    /// The browser still cleans the name it saves (a `/`, a `:`, a control character) as it does
+    /// any. An empty name sends no `filename`, and the browser names the file from the URL. The
+    /// last of `attachment` and [`Media::inline`] given is the one sent.
+    ///
+    /// A link to it takes `download` (`<a href={export} download>`), or `data-reload` for an
+    /// `inline` file the browser shows: either keeps the runtime from fetching it on hover and on
+    /// click, which would run its handler twice.
     ///
     /// It is the one way to name a download, so a [`Public`] answer cannot set the header itself:
     ///
@@ -736,10 +741,14 @@ impl Media {
 
 /// `{kind}; filename="{name}"`, and `; filename*=UTF-8''{name}` when the name is not plain
 /// ASCII: each character outside it is `_` in `filename`, and each byte outside RFC 8187's
-/// `attr-char` is %-encoded in `filename*`. A `%` is not plain either, since some clients
-/// decode it in `filename` (RFC 6266, appendix D).
+/// `attr-char` is %-encoded in `filename*`. A `%` and a `?` are not plain either, since some
+/// clients decode `%XX` and RFC 2047's `=?..?=` in `filename` (RFC 6266, appendix D). An empty
+/// name is `{kind}` alone.
 fn disposition(kind: &str, name: &str) -> String {
-    let plain = |c: char| matches!(c, ' '..='~') && !matches!(c, '"' | '\\' | '%');
+    if name.is_empty() {
+        return kind.to_string();
+    }
+    let plain = |c: char| matches!(c, ' '..='~') && !matches!(c, '"' | '\\' | '%' | '?');
     let mut out = String::with_capacity(kind.len() + name.len() + 13);
     out.push_str(kind);
     out.push_str("; filename=\"");
@@ -1625,7 +1634,7 @@ mod tests {
         use super::disposition;
         assert_eq!(disposition("attachment", "shipments-2026-10-29.csv"), r#"attachment; filename="shipments-2026-10-29.csv""#);
         assert_eq!(disposition("inline", "packing slips.pdf"), r#"inline; filename="packing slips.pdf""#);
-        assert_eq!(disposition("attachment", ""), r#"attachment; filename="""#);
+        assert_eq!(disposition("attachment", ""), "attachment", "the browser names it from the URL");
         // Not ASCII: a fallback, then the exact name, each byte of its UTF-8 encoded.
         assert_eq!(
             disposition("attachment", "Pokémon ✓.csv"),
@@ -1638,6 +1647,11 @@ mod tests {
         );
         // Some clients decode % in `filename`, so a name with one has the exact form too.
         assert_eq!(disposition("attachment", "100%.txt"), r#"attachment; filename="100_.txt"; filename*=UTF-8''100%25.txt"#);
+        // Some decode RFC 2047 in `filename`, which would swap the name for another.
+        assert_eq!(
+            disposition("attachment", "=?UTF-8?B?ZXZpbC5leGU=?=.csv"),
+            r#"attachment; filename="=_UTF-8_B_ZXZpbC5leGU=_=.csv"; filename*=UTF-8''%3D%3FUTF-8%3FB%3FZXZpbC5leGU%3D%3F%3D.csv"#
+        );
         for name in ["", "a\u{0}b", "\u{7f}", "日本語.pdf", "tab\there"] {
             let value = disposition("inline", name);
             assert!(value.bytes().all(|b| (0x20..0x7f).contains(&b)), "{value}");

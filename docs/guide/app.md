@@ -539,8 +539,9 @@ something read still does. Its handler is held to the same rule as any `Public` 
 (`/me/picture`) takes `Public::new` with a lifetime.
 
 A header of the app's goes on a public answer with `Public::header`, named by a type: a file
-that must stay out of search (`llms.txt`, a manifest), a canonical link. A download's file name
-is the answer's own, `Media::attachment(name)` (see [Requests and forms](requests-and-forms.md)).
+that must stay out of search (`llms.txt`, a manifest), a canonical link. A download's file
+name is the answer's own, `Media::attachment(name)`
+(see [Requests and forms](requests-and-forms.md)).
 
 ```rust,ignore
 use corten::answer::XRobotsTag;

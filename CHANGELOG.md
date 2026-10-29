@@ -787,12 +787,12 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
 115. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
     `Json`, `Media`, a page), named by a type (`corten::answer::Header`; Corten names
-    `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
+    `XRobotsTag`, `Link` and `ContentLanguage`). The answer is compressed
     and shared as it would be without it. Before, a shared file that had to stay out of search was
     a `Relay`, never compressed (Chase Sets' developer manifest: 161,815 bytes against 19,737 with
     brotli), or an answer type of the app's own. `set-cookie`, the headers Corten sets itself
     (caching, a CDN's `*-cache-control`, CORS, security), those the answer has (`content-type`,
-    `location`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
+    `location`, `content-disposition`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
     18,404-18,417 to 18,434-18,459 for a public text answer (callgrind, in process, 1,000
     requests, three runs each); the headers are held behind an `Option<Box<..>>`, since a `Vec`
     in place cost about 50 (18,450-18,467)
@@ -900,8 +900,12 @@ Corten is pre-1.0, so any minor version may change the API.
     private ones included (a user's export), where only a `Public` answer could before. The name
     is written as `filename="cards.csv"` when it is plain ASCII, and otherwise with
     `filename*=UTF-8''..` (RFC 6266) after a `filename` with `_` for each other character, so a
-    quote, a backslash, a `%` or a line break in a user's file name cannot end the header or
-    add a parameter ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
+    quote, a backslash, a `%`, a `?` or a line break in a user's file name cannot end the header,
+    add a parameter or be decoded as another name. It is the one way to name a download:
+    `Public::header` refuses `content-disposition` when the app builds (Added 115). The guide
+    says to link to one with `download` (or `data-reload` for a file the browser shows), so the
+    runtime does not fetch it on hover and again on click
+    ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
     No existing answer changes; naming a file costs one header on that answer.
 
 ### Removed
@@ -942,9 +946,6 @@ Corten is pre-1.0, so any minor version may change the API.
 11. `corten::Query`, and axum's `Path` from the prelude: a route's parameters are its `Params`,
     whether its handler is named in a routes module or added by hand (`Area::route`), and a
     `GET` form's fields its `Form` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
-12. `corten::answer::ContentDisposition`: a download's file name is `Media::attachment` or
-    `Media::inline`, which escape it, and `Public::header` refuses `content-disposition` when
-    the app builds, as it does the answer's other own headers (Added 126).
 
 ### Changed
 
