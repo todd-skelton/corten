@@ -67,7 +67,14 @@ fn decimals(step: f64) -> usize {
     text.split_once('.').map_or(0, |(_, fraction)| fraction.len())
 }
 
-/// A number input between a decrease and an increase button.
+/// A number input between a decrease and an increase button, for a count: a quantity, seats,
+/// nights.
+///
+/// Not for money. A `type="number"` input takes only the browser's own decimal syntax, so
+/// `$1,299.99` or a French `1 299,99` never reaches the server, and its value is a float. A
+/// price is a text input with `inputmode="decimal"`, read by `t.parse_money(&input.price, USD)`
+/// into `Minor` units, which reads what every locale writes and shows a refused entry back as
+/// the text the user typed.
 ///
 /// The input is a native `<input type="number">`, so without the script it still steps with the
 /// arrow keys, and the browser checks `min`, `max`, `step` and `required` when the form is

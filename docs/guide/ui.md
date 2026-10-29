@@ -8,7 +8,7 @@ no CSS.
 
 | Component | Without JavaScript | The script adds |
 |---|---|---|
-| `NumberField` | a native `<input type="number">` (arrow keys, `min`, `max`, `step`, `required`) | step buttons with press and hold, Page Up and Down, Home and End, the step's decimals |
+| `NumberField` | a native `<input type="number">` (arrow keys, `min`, `max`, `step`, `required`), for a count (a quantity, seats); a price is a text input instead (below) | step buttons with press and hold, Page Up and Down, Home and End, the step's decimals |
 | `ComboBox` | a native `<select>`, which keeps the value | a text input that filters a listbox (ARIA 1.2 combobox), validation reported on the input |
 | `TabGroup` | tabs that are typed links to the page with that tab selected | roving focus, arrow keys, switching in place with the address following |
 | `MenuButton` | a popover menu of links and form actions (`popovertarget`) | arrow keys, Home and End, typeahead, focus in and back, `aria-expanded`, the button as the menu's CSS anchor |
@@ -19,6 +19,12 @@ no CSS.
 let qty = Number { value: Some(1.0), min: Some(1.0), ..Number::new("qty", f.qty, t.fewer(), t.more()) };
 html! { <div class={Field}><label for="qty">{t.quantity()}</label><NumberField field={&qty} /></div> }
 ```
+
+`NumberField` is for counts. An amount of money is not one: a number input takes only the
+browser's own decimal syntax (`$1,299.99` and a French `1 299,99` never reach the server) and
+holds a float. A price is `<input inputmode="decimal">` holding the text the form sent, so a
+refused entry is shown back as typed, read with `t.parse_money(&input.price, USD)` into `Minor`
+units ([Views](views.md)).
 
 A design system wraps each one and styles its parts by role and state, which are what assistive
 technology announces, so the styles cannot drift from it: `.field [role="option"][aria-selected="true"]`,
