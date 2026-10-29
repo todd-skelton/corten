@@ -86,17 +86,25 @@ try {
   const visible = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).length);
   const inSet = await page.$$eval("tbody tr", (rows) => rows.filter((r) => r.cells[2].textContent === "Tidebreak").length);
   check("filter hides rows that do not match", visible === inSet && visible > 0, `${visible} of ${inSet}`);
+  const shownText = () => page.$eval("#item-count", (p) => p.previousElementSibling?.textContent ?? "");
+  check(
+    "the filter says how many it shows of how many, in the item count's place",
+    (await shownText()) === `${visible.toLocaleString("en")} of ${nav.rows.toLocaleString("en")} shown` && (await page.isHidden("#item-count")),
+    await shownText(),
+  );
   await page.click("thead input[type=checkbox]");
   check("select all with a filter selects only the visible rows", (await count()) === String(visible), await count());
   await page.click("[role=group] button:nth-of-type(2)");
   await page.fill("input[type=search]", "");
+  check("with the filter cleared the item count is back", (await page.isVisible("#item-count")) && (await shownText()) === "");
+  check("on a desktop the set and condition are their own columns, not repeated under the name", await page.isHidden("tbody tr td:nth-child(2) small"));
 
   await time("sort by price (moves every row)", () => /** @type {HTMLButtonElement} */ (document.querySelectorAll("thead button")[3]).click());
   const prices = await page.$$eval("tbody tr", (rows) => rows.slice(0, 5).map((r) => Number(/** @type {HTMLInputElement} */ (r.cells[5].querySelector("input")).value)));
   check("sort orders rows by price", prices.every((p, i) => i === 0 || prices[i - 1] <= p), prices.join(" "));
   await time("sort again (descending)", () => /** @type {HTMLButtonElement} */ (document.querySelectorAll("thead button")[3]).click());
   await page.click("thead button >> nth=0");
-  const names = await page.$$eval("tbody tr", (rows) => rows.slice(0, 30).map((r) => r.cells[1].textContent ?? ""));
+  const names = await page.$$eval("tbody tr", (rows) => rows.slice(0, 30).map((r) => r.cells[1].firstElementChild?.textContent ?? ""));
   check("sort orders rows by name, read from the row's field", names.every((n, i) => i === 0 || names[i - 1].localeCompare(n, "en") <= 0), names.slice(0, 5).join(", "));
   await page.click("tbody tr:first-child input[type=checkbox]");
   check("handlers still run on rows after they moved", (await count()) === "1");
@@ -201,17 +209,33 @@ try {
   await page.click(`${cell} button`);
   await page.waitForFunction((sel) => document.querySelector(sel)?.getAttribute("aria-invalid") === null, `${cell} input`, { timeout: 5000 }).catch(() => {});
 
-  // Archive two rows through the confirm dialog, which the bulk bar's button opens with commandfor.
-  const ids = await page.$$eval("tbody tr", (rows) => rows.slice(0, 2).map((r) => r.id));
-  await page.click("tbody tr:nth-child(1) input[type=checkbox]");
-  await page.click("tbody tr:nth-child(2) input[type=checkbox]");
+  // Archive two rows through the confirm dialog, which the bulk bar's button opens with commandfor,
+  // with the filter on: its count follows the rows the patch removes.
+  await page.fill("input[type=search]", "tidebreak");
+  const filtered = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).length);
+  const ids = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).slice(0, 2).map((r) => r.id));
+  await page.click(`#${ids[0]} input[type=checkbox]`);
+  await page.click(`#${ids[1]} input[type=checkbox]`);
   await page.click("[role=group] button:nth-of-type(1)");
   check("Archive opens the dialog", await page.isVisible("dialog[open]"));
+  const itemCount = () => page.textContent("#item-count");
+  const countBefore = await itemCount();
   await page.click("dialog button[value=confirm]");
   await page.waitForFunction(() => /Archived/.test(document.getElementById("desk-status")?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
   check("confirming archives the rows", (await page.textContent("#desk-status")) === "Archived 2 items.", await page.textContent("#desk-status"));
   const left = await page.$$eval(ids.map((id) => `#${id}`).join(","), (rows) => rows.length);
   check("the patch removed the archived rows and the selection is clear", left === 0 && (await count()) === "0", `${left} left`);
+  check(
+    "the filter's count follows the archive",
+    (await shownText()) === `${(filtered - 2).toLocaleString("en")} of ${(nav.rows - 2).toLocaleString("en")} shown`,
+    await shownText(),
+  );
+  await page.fill("input[type=search]", "");
+  check(
+    "the archive's answer counts the items left",
+    countBefore === `${nav.rows.toLocaleString("en")} items` && (await itemCount()) === `${(nav.rows - 2).toLocaleString("en")} items`,
+    `${countBefore} -> ${await itemCount()}`,
+  );
   await page.click("tbody tr:nth-child(1) input[type=checkbox]");
   check("the rows that moved up still select", (await count()) === "1");
   await page.click("[role=group] button:nth-of-type(2)");
@@ -224,6 +248,43 @@ try {
     .waitForFunction((was) => [...document.querySelectorAll("tbody tr > td:nth-child(5)")].map((c) => c.textContent).join() !== was, first, { timeout: 10_000 })
     .then(() => true, () => false);
   check("live levels update stock cells", changed);
+  // A row at 0 is marked sold out, and only such a row: the live levels sell rows out and restock
+  // them, so wait for a row whose mark the script changed, then compare every row.
+  const marked = () => page.$$eval("tbody tr[data-sold-out]", (rows) => rows.map((r) => r.id).sort().join());
+  const marksBefore = await marked();
+  const flipped = await page
+    .waitForFunction((was) => [...document.querySelectorAll("tbody tr[data-sold-out]")].map((r) => r.id).sort().join() !== was, marksBefore, { timeout: 15_000 })
+    .then(() => true, () => false);
+  const soldOutMarked = await page.$$eval("tbody tr", (rows) => rows.every((r) => (r.querySelector("td:nth-child(5)")?.textContent === "0") === r.hasAttribute("data-sold-out")));
+  check("a row is marked sold out exactly while its quantity is 0, as the levels change", flipped && soldOutMarked && marksBefore !== "", `${flipped} ${soldOutMarked} ${marksBefore.split(",").length} marked before`);
+
+  // On a phone the table keeps the name, quantity and price, and a price being edited (its Save
+  // button, then its error) fits without the grid scrolling sideways.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phoneCell = "tbody tr:not([hidden]) td:last-child";
+  const fits = () => page.evaluate((sel) => {
+    const scroll = /** @type {HTMLElement} */ (document.querySelector("tbody")?.closest("table")?.parentElement);
+    const box = scroll.getBoundingClientRect();
+    const parts = [...(document.querySelector(sel)?.querySelectorAll("input, button, p") ?? [])].map((el) => el.getBoundingClientRect());
+    const inside = parts.every((r) => r.width > 0 && r.left >= box.left && r.right <= box.right);
+    const headers = [...document.querySelectorAll("thead th")].filter((th) => getComputedStyle(th).display !== "none").length;
+    const under = document.querySelector("tbody tr:not([hidden]) td:nth-child(2) small");
+    const subline = under !== null && getComputedStyle(under).display !== "none" && /\S \u00b7 \S/.test(under.textContent ?? "");
+    const cells = [...(document.querySelector("tbody tr")?.children ?? [])].filter((td) => getComputedStyle(td).display !== "none").length;
+    return { inside, sideways: scroll.scrollWidth > scroll.clientWidth, headers, cells, parts: parts.length, subline };
+  }, phoneCell);
+  await page.fill(`${phoneCell} input`, "12.34");
+  const editing = await fits();
+  check(
+    "on a phone the edited price and its Save button fit, every cell under its header, the set and condition under the name",
+    editing.inside && !editing.sideways && editing.headers === 4 && editing.cells === 4 && editing.parts >= 2 && editing.subline,
+    JSON.stringify(editing),
+  );
+  await page.fill(`${phoneCell} input`, "abc");
+  await page.click(`${phoneCell} button`);
+  await page.waitForSelector(`${phoneCell} p`, { timeout: 5000 }).catch(() => {});
+  const refused = await fits();
+  check("on a phone a refused price's error fits too", refused.inside && !refused.sideways && refused.parts >= 3, JSON.stringify(refused));
 
   // Memory with the page settled.
   const heap = await page.evaluate(() => {

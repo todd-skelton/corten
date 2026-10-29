@@ -891,6 +891,86 @@ fn a_nav_link_writes_its_route_once_and_says_when_it_is_the_page() {
     );
 }
 
+/// A whole nav's links: of the entries that hold the page, only the deepest is current, as the
+/// runtime judges a `<nav>` after a client navigation (#341).
+#[test]
+fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
+    use crate::{
+        page::{nav_links, NavTo},
+        view::Attrs,
+        Local,
+    };
+    #[derive(crate::Route)]
+    #[route("/")]
+    struct Home;
+    #[derive(crate::Route)]
+    #[route("/account/desk")]
+    struct Desk;
+    #[derive(crate::Route)]
+    #[route("/account/desk/money")]
+    struct Money;
+    let help = Local::parse("/help?topic=a&b").unwrap();
+    let written = |nav: crate::page::NavLinks<()>| {
+        nav.links()
+            .map(|(link, ())| {
+                let mut out = String::new();
+                link.render_attrs(&mut out);
+                out
+            })
+            .collect::<Vec<_>>()
+    };
+    let group = |links: &[String]| {
+        let groups: Vec<_> =
+            links.iter().map(|link| link.split(r#" data-nav-group=""#).nth(1).unwrap()[..8].to_string()).collect();
+        assert!(groups.iter().all(|g| *g == groups[0] && g.bytes().all(|b| b.is_ascii_hexdigit())), "{groups:?}");
+        groups[0].clone()
+    };
+    let marked = |path: &str| {
+        let links = written(nav_links(
+            path,
+            [NavTo::page(&Home), NavTo::section(&Desk), NavTo::section(&Money), NavTo::page(&help)].map(|e| (e, ())),
+        ));
+        let g = format!(r#" data-nav-group="{}""#, group(&links));
+        links.into_iter().map(|link| link.replace(&g, "")).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        marked("/account/desk/repricing"),
+        [
+            r#" href="/" data-nav"#,
+            r#" href="/account/desk" data-nav="section" aria-current="page""#,
+            r#" href="/account/desk/money" data-nav="section""#,
+            r#" href="/help?topic=a&amp;b" data-nav"#,
+        ]
+    );
+    let money = marked("/account/desk/money/payouts");
+    assert!(!money[1].contains("aria-current") && money[2].ends_with(r#" aria-current="page""#), "{money:?}");
+    assert!(marked("/")
+        .iter()
+        .filter(|link| link.contains("aria-current"))
+        .eq([&r#" href="/" data-nav aria-current="page""#.to_string()]));
+    assert!(marked("/help").last().unwrap().ends_with(r#" aria-current="page""#), "an entry from data takes part");
+    assert!(marked("/elsewhere").iter().all(|link| !link.contains("aria-current")));
+
+    // The group names the entries: the same nav twice is one group, another nav is another.
+    let of = |path: &str, entries: [NavTo; 2]| written(nav_links(path, entries.map(|e| (e, ()))));
+    let desk = of("/", [NavTo::section(&Desk), NavTo::page(&Money)]);
+    assert_eq!(group(&desk), group(&of("/account", [NavTo::section(&Desk), NavTo::page(&Money)])));
+    assert_ne!(group(&desk), group(&of("/", [NavTo::page(&Desk), NavTo::page(&Money)])));
+    assert_ne!(group(&desk), group(&of("/", [NavTo::section(&Money), NavTo::page(&Desk)])));
+
+    // Each link comes with its entry's item.
+    let labels: Vec<_> =
+        nav_links("/", [(NavTo::page(&Home), "Home"), (NavTo::section(&Desk), "Desk")]).links().map(|(_, l)| *l).collect();
+    assert_eq!(labels, ["Home", "Desk"]);
+
+    // A path from data is written as the browser asks for it, so the server compares what it is
+    // sent: `"` and `|` are percent-encoded in the path (not in the query).
+    let odd = Local::parse(r#"/a"b|c?q="|""#).unwrap();
+    let links = written(nav_links("/a%22b%7Cc", [(NavTo::page(&odd), ())]));
+    assert!(links[0].starts_with(r#" href="/a%22b%7Cc?q=&quot;|&quot;" data-nav data-nav-group=""#), "{links:?}");
+    assert!(links[0].ends_with(r#" aria-current="page""#), "{links:?}");
+}
+
 #[test]
 fn current_links_match_the_page_or_its_section() {
     use crate::page::is_current_for_tests as is_current;
@@ -972,6 +1052,31 @@ async fn a_page_that_reads_again_says_so_in_its_head_on_every_surface() {
         "in <head>, where the browser reads it without JavaScript: {document}"
     );
     assert!(!headers.contains_key("refresh"), "not the header, which outlives the runtime's navigations");
+    let (_, _, swap) = call(app(routes, None), "GET", Some("nav")).await;
+    assert!(swap.starts_with(&format!("<title>Saving</title>{tag}<p>")), "a navigation's head tags: {swap}");
+}
+
+/// `ReadAgain::without_javascript` in the head (#319): the same refresh, without the mark the
+/// runtime reads, on a full load and in a navigation's head tags.
+#[tokio::test]
+async fn a_page_that_reads_again_only_without_javascript_has_no_mark_in_its_head() {
+    use std::time::Duration;
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            req.page::<ForOne>(Shell {
+                req: &req,
+                title: "Saving",
+                head: ReadAgain { after: Duration::from_secs(2) }.without_javascript(),
+                children: html! { <p>"Saving"</p> },
+            })
+        }),
+    );
+    let tag = r#"<noscript data-corten-head><meta http-equiv="refresh" content="2"></noscript>"#;
+    let (_, headers, document) = call(app(routes.clone(), None), "GET", None).await;
+    assert!(document.contains(&format!("<title>Saving</title>{tag}")), "{document}");
+    assert!(!document.contains("data-corten-read-again"), "the runtime finds nothing to read again: {document}");
+    assert!(!headers.contains_key("refresh"));
     let (_, _, swap) = call(app(routes, None), "GET", Some("nav")).await;
     assert!(swap.starts_with(&format!("<title>Saving</title>{tag}<p>")), "a navigation's head tags: {swap}");
 }

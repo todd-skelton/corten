@@ -848,7 +848,30 @@ Corten is pre-1.0, so any minor version may change the API.
     `same-origin`, and a page under another opener policy has its own shell key, so a client
     navigation into or out of the area loads the document in full
     ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
-121. Middleware for part of the app: `Area::middleware` and `Api::middleware` run after the
+121. `req.nav_of([(NavTo::section(&url::Desk), "Seller Desk"), (NavTo::page(&url::Money), "Money"), ..])`
+    writes a whole nav's links, each with its item, and marks only the deepest entry that holds the page, for a nav whose entries nest or
+    come from data (an entry is a route or a `Local`, whose path is written as the browser asks
+    for it). Its links name their group (`data-nav-group`), and the runtime ranks the same links
+    after a client navigation wherever the markup puts them; a `req.nav` link is still judged
+    alone. `corten.js` grows 80 bytes gzip
+    ([#341 A nav built from data, or whose current entry is the deepest that holds the page, keeps the first page's aria-current after a client navigation](https://github.com/todd-skelton/corten/issues/341)).
+122. `ReadAgain { after }.without_javascript()` asks only a browser without JavaScript to read the
+    page again: for a page whose changing part a `<corten-live>` relays while a job runs, which
+    with JavaScript keeps itself fresh, and which reading whole would only make open its stream
+    again. It writes the `<noscript>` refresh without the mark the runtime reads; the runtime
+    is unchanged
+    ([#319 A page relayed by <corten-live> cannot ask a browser without JavaScript to read it again](https://github.com/todd-skelton/corten/issues/319)).
+123. A script that imports another script module of its directory (`import { loadStripe } from
+     "./stripe.js"`) has it preloaded on the pages that load it, with what that one imports, so the
+     browser fetches them together instead of one round trip after the other. The tag is made
+     when the app starts, so a page costs nothing more to render: one import over a 100 ms
+     round trip ran at 245 ms instead of 342 (Chromium, median of 10 cold loads, a local server
+     delaying each answer 100 ms). An import of a module the app does not list is a startup
+     error that names both (it was a 404 in the browser). The preload helps a full page load; a
+     client navigation still fetches a new module's imports after it. The scripts guide describes
+     relative imports
+     ([#307 A script's relative import of another script module is not preloaded, so the page waits a round trip for it, and the guide does not describe it](https://github.com/todd-skelton/corten/issues/307)).
+124. Middleware for part of the app: `Area::middleware` and `Api::middleware` run after the
     app's middleware for each request under the area's or API's prefix (an outer area's before an
     inner one's, each in the order given), so a route is in a rate limit or not by where it is
     declared, never by a path the middleware compares. A middleware refuses with a `Refused`
@@ -1676,6 +1699,24 @@ Corten is pre-1.0, so any minor version may change the API.
     listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
     runs one late tick instead of every missed one back to back
     ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
+57. corten-ui's `NumberField` could drop a step asked for with Enter or Space on a button: a
+    pointer press set a flag that skipped the next click, and cleared it in a timer after the
+    release, so a key that came before that timer ran (on a busy page) did nothing. The field now
+    records the button each pointer pressed and skips only that press's own click (a key's click
+    has `detail` 0 and always steps); a press released off the button, cancelled, or on a button
+    disabled at its bound makes no click and is forgotten ([#316 ui-gallery smoke (CI, Chromium): a keyboard
+    step on the second number field is lost while the first is held](https://github.com/todd-skelton/corten/issues/316)).
+58. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
+    Under load, a slow read used to add real seconds, and "each second" failed
+    ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
+59. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
+    headers show they sort and which way (`aria-sort`); the rows scroll inside the grid under a
+    header that stays, with the item count above them (an archive's answer replaces it, and while
+    the filter is on it says how many rows it shows of how many, kept true as an archive removes
+    rows); a row at quantity 0 is marked sold out, kept current by the live levels (a `sold_out`
+    hole of the row's view); on a phone the table keeps the name, quantity and price (it stays a
+    table, so each cell has its header); and the statement has a total row
+    ([#332 Polish: seller-desk does not look like the client-heavy screen it is](https://github.com/todd-skelton/corten/issues/332)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

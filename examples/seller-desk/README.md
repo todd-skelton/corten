@@ -32,10 +32,10 @@ The routes and what each shows are in the table at the top of [`src/app.rs`](src
 | Piece | File |
 |---|---|
 | The routes, the stock, the archive (once per submit key), the `Server-Timing` middleware | [`src/app.rs`](src/app.rs) |
-| The layout and the status line | [`src/views.rs`](src/views.rs) |
-| The grid: selection, ranges, filter, sort, live levels; a row; the bulk bar | [`src/views/inventory_grid.rs`](src/views/inventory_grid.rs), [`src/views/inventory_grid.js`](src/views/inventory_grid.js), [`src/views/inventory_row.rs`](src/views/inventory_row.rs), [`src/views/bulk_bar.rs`](src/views/bulk_bar.rs) |
+| The layout, the status line and the item count | [`src/views.rs`](src/views.rs) |
+| The grid: selection, ranges, filter, sort, live levels and sold-out rows, a header that stays as the rows scroll; a row; the bulk bar | [`src/views/inventory_grid.rs`](src/views/inventory_grid.rs), [`src/views/inventory_grid.js`](src/views/inventory_grid.js), [`src/views/inventory_row.rs`](src/views/inventory_row.rs), [`src/views/bulk_bar.rs`](src/views/bulk_bar.rs) |
 | A price cell edited in place | [`src/views/price_cell.rs`](src/views/price_cell.rs), [`src/views/price_cell.js`](src/views/price_cell.js) |
 | The confirm dialog (the platform's `<dialog>`, no script) | [`src/views/confirm_dialog.rs`](src/views/confirm_dialog.rs) |
-| The statement | [`src/views/statement_table.rs`](src/views/statement_table.rs) |
+| The statement, with its total | [`src/views/statement_table.rs`](src/views/statement_table.rs) |
 
 Its browser test, which also times the grid: [`smoke.mjs`](smoke.mjs).
