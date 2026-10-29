@@ -1663,7 +1663,14 @@ Corten is pre-1.0, so any minor version may change the API.
     listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
     runs one late tick instead of every missed one back to back
     ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
-57. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
+57. corten-ui's `NumberField` could drop a step asked for with Enter or Space on a button: a
+    pointer press set a flag that skipped the next click, and cleared it in a timer after the
+    release, so a key that came before that timer ran (on a busy page) did nothing. The field now
+    records the button each pointer pressed and skips only that press's own click (a key's click
+    has `detail` 0 and always steps); a press released off the button, cancelled, or on a button
+    disabled at its bound makes no click and is forgotten ([#316 ui-gallery smoke (CI, Chromium): a keyboard
+    step on the second number field is lost while the first is held](https://github.com/todd-skelton/corten/issues/316)).
+58. A `#[route(prefix = ..)]` field in a `#[route(query)]` set was written into links but read
     back empty: `Params` read a set with serde's derive, which knows nothing of the prefix. A set
     is now read field by field the way a route reads its own, so a list it leaves out is empty
     (it was a 400 without `#[serde(default)]`), the set's own `#[serde(default)]` fills what the

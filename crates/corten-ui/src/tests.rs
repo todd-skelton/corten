@@ -103,7 +103,7 @@ fn tabs_without_links_are_buttons_and_hide_the_other_panels() {
 fn a_number_field_disables_the_button_at_each_bound() {
     let at_max = Number { value: Some(5.0), min: Some(0.0), max: Some(5.0), ..Number::new("n", Form::FIELDS.n, "Less", "More") };
     let html = NumberField { field: &at_max }.to_html();
-    assert!(html.contains(r#"aria-label="Less" tabindex="-1" data-on="pointerdown:ui.number_field.press($e,$t,@input,-1) click:ui.number_field.click(@input,-1)">"#), "{html}");
+    assert!(html.contains(r#"aria-label="Less" tabindex="-1" data-on="pointerdown:ui.number_field.press($e,$t,@input,-1) click:ui.number_field.click($e,$t,@input,-1)">"#), "{html}");
     assert!(
         html.contains(r#"aria-label="More" tabindex="-1" disabled data-on="pointerdown:ui.number_field.press($e,$t,@input,1)"#),
         "{html}"
