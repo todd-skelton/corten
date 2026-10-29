@@ -358,9 +358,13 @@ pub fn keeps(source: &str) -> Result<bool, (usize, String)> {
 
 /// The handlers of a script, every top-level `export function` with its JSDoc, and its groups.
 /// Errors carry the 1-based line.
+#[cfg(test)]
 pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, String)> {
     parse_all(source).map(|(handlers, groups, _)| (handlers, groups))
 }
+
+/// A script's handlers, groups and the classes it imports from `corten/events` when it runs.
+type Parsed = (Vec<Handler>, Vec<ArgGroup>, Vec<String>);
 
 /// A line of an import without its comments (`// ..` to the end, `/* .. */`), which may sit
 /// between the names.
@@ -388,7 +392,7 @@ fn without_comments(line: &str) -> String {
 }
 
 /// [`parse`], and the classes the script imports from `corten/events` when it runs.
-fn parse_all(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>, Vec<String>), (usize, String)> {
+fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
     let lines: Vec<&str> = source.lines().collect();
     // Raw JSDoc types first: a typedef may come after the handler that uses it.
     /// An export: its name, its parameters' names and JSDoc types, its description.
