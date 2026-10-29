@@ -1024,6 +1024,18 @@ async function run(browser) {
     (html) => document.querySelector("main")?.insertAdjacentHTML("beforeend", `<form id="upload" method="post" action="/upload-test" enctype="multipart/form-data" data-patch>${html}<button>Send</button></form>`),
     part(""),
   );
+  // A nav link a patch puts on the page is marked against the page, not the request that made
+  // the patch (#347): the server marked "elsewhere" (the form's action) and not this page.
+  await page.evaluate(() => document.querySelector("main")?.insertAdjacentHTML("beforeend", '<div id="nav-part"></div>'));
+  const patchedMarks = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    const here = location.pathname;
+    await patch(`<div id="nav-part"><a id="patched-here" href="${here}" data-nav>Here</a><a id="patched-there" href="/elsewhere" data-nav aria-current="page">There</a></div>`);
+    const marks = ["patched-here", "patched-there"].map((id) => document.getElementById(id)?.getAttribute("aria-current") ?? "-").join(" ");
+    document.getElementById("nav-part")?.remove();
+    return marks;
+  });
+  check("a nav link a patch puts on the page is marked against the page", patchedMarks === "page -", patchedMarks);
   const errorsBeforeUpload = errors.length;
   let uploadStatus = 422;
   await page.route("**/upload-test", (route) =>

@@ -713,6 +713,9 @@ async function apply(html, signal, sent, took) {
       put.push(el);
     }
   }
+  // The server marked a nav link in the patch against the request that made it (a form's action),
+  // not this page: mark it as a navigation would. Only then, so a ticker's patches cost nothing.
+  if (put.some((el) => el.matches(NAV) || el.querySelector(NAV))) markCurrent();
   if (again) readPatchAgain(again, put);
 }
 
@@ -1110,14 +1113,18 @@ async function stylesOf(content) {
   return (await Promise.all(loads)).every(Boolean);
 }
 
+/** A nav link the runtime keeps `aria-current` on (`Req::nav`). */
+const NAV = "a[href][data-nav]";
+
 /**
  * Sets `aria-current="page"` on `<a data-nav>` links to this page (`data-nav="section"`: to this
- * page or any page under it) and removes it from the rest. The shell is not re-rendered by
- * client navigation, so its menu would otherwise keep pointing at the first page.
+ * page or any page under it) and removes it from the rest, after a navigation and after a patch
+ * that puts one on the page. The shell is not re-rendered by client navigation, so its menu would
+ * otherwise keep pointing at the first page.
  */
 function markCurrent() {
   const here = location.pathname;
-  for (const link of Array.from(document.querySelectorAll("a[href][data-nav]"))) {
+  for (const link of Array.from(document.querySelectorAll(NAV))) {
     const path = new URL(/** @type {HTMLAnchorElement} */ (link).href).pathname;
     const base = path.replace(/\/+$/, "");
     const current = here === path || (link.getAttribute("data-nav") === "section" && here.startsWith(`${base}/`));

@@ -85,7 +85,9 @@ second layout.
 A nav link is written from one mention of its route, `<a {..req.nav(&url::News)}>"News"</a>`:
 `href`, `data-nav` and `aria-current="page"` when it is the page (`req.nav_section` for a link
 that stays current on the pages under it). The full load renders `aria-current`, and the runtime
-moves it after each client navigation, so the header is right without rendering again. A tag
+moves it after each client navigation, so the header is right without rendering again. It does
+the same after a patch that puts a nav link on the page, which the server marked against the
+request that made the patch (a form's action), not the page. A tag
 that writes `href`, `data-nav` or `aria-current` itself beside the spread does not compile, nor
 does `data-nav` written by hand.
 
