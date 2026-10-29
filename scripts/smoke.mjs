@@ -1034,10 +1034,23 @@ async function run(browser) {
     // Appended (`Append`) as well as replaced.
     await patch(`<template id="nav-part" data-append><a id="appended-here" href="${here}" data-nav>Here</a></template>`);
     const marks = ["patched-here", "patched-there", "appended-here"].map((id) => document.getElementById(id)?.getAttribute("aria-current") ?? "-").join(" ");
+    // A group (Req::nav_of) whose deepest link a patch removes: the section at "/" takes the mark.
+    await patch(
+      `<div id="nav-part"><a id="group-root" href="/" data-nav="section" data-nav-group="p">All</a><span id="group-deep"><a href="${here}" data-nav data-nav-group="p">Here</a></span></div>`,
+    );
+    const root = () => document.getElementById("group-root")?.getAttribute("aria-current") ?? "-";
+    const before = root();
+    await patch('<template id="group-deep" data-remove></template>');
+    const after = root();
     document.getElementById("nav-part")?.remove();
-    return marks;
+    return { marks, root: `${before} -> ${after}`, here };
   });
-  check("a nav link a patch puts on the page is marked against the page", patchedMarks === "page - page", patchedMarks);
+  check("a nav link a patch puts on the page is marked against the page", patchedMarks.marks === "page - page", patchedMarks.marks);
+  check(
+    "a patch that removes a group's current link marks the next deepest",
+    patchedMarks.root === (patchedMarks.here === "/" ? "page -> page" : "- -> page"),
+    `${patchedMarks.root} on ${patchedMarks.here}`,
+  );
   const errorsBeforeUpload = errors.length;
   let uploadStatus = 422;
   await page.route("**/upload-test", (route) =>
@@ -1070,16 +1083,35 @@ async function run(browser) {
 
   // Swaps only: these links live in the shell, which a full page load replaces.
   if (swaps) {
-    // data-nav="section": current on its page and every page under it.
-    await page.evaluate(() => document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>'));
-    await page.click('header a[href="/"]:not(#section-link)');
+    // data-nav="section": current on its page and every page under it. Of the links of one
+    // data-nav-group (Req::nav_of), only the deepest that holds the page is current, wherever
+    // they are: group "a" is split between a <nav> and an <aside>; group "b" is another nav.
+    await page.evaluate(() => {
+      document.querySelector("header nav")?.insertAdjacentHTML("beforeend", '<a id="section-link" href="/" data-nav="section">All</a>');
+      document.querySelector("header")?.insertAdjacentHTML(
+        "beforeend",
+        '<nav><a id="group-all" href="/" data-nav="section" data-nav-group="a">All</a></nav>' +
+          '<aside><a id="group-news" href="/news" data-nav data-nav-group="a">News</a></aside>' +
+          '<nav><a id="other-all" href="/" data-nav="section" data-nav-group="b">All</a></nav>',
+      );
+    });
+    await page.click('header a[href="/"]:not(#section-link, #group-all, #other-all)');
     await page.waitForFunction(() => document.title === "Stocks | Watchlist");
-    await page.click('header a[href="/news"]');
+    await page.click('header nav a[href="/news"]');
     await page.waitForFunction(() => document.title === "News | Watchlist");
+    const marks = await page.evaluate(() =>
+      ["section-link", "group-all", "group-news", "other-all"].map((id) => document.getElementById(id)?.getAttribute("aria-current") ?? "-").join(" "),
+    );
     check(
       'data-nav="section" marks the link on pages under it',
-      (await page.getAttribute("#section-link", "aria-current")) === "page" && (await page.getAttribute('header a[href="/"]:not(#section-link)', "aria-current")) === null,
+      marks.startsWith("page ") && (await page.getAttribute('header a[href="/"]:not(#section-link, #group-all, #other-all)', "aria-current")) === null,
+      marks,
     );
+    check("in one data-nav-group only the deepest link that holds the page is current", marks === "page - page page", marks);
+    await page.evaluate(() => {
+      document.getElementById("section-link")?.remove();
+      for (const id of ["group-all", "group-news", "other-all"]) document.getElementById(id)?.parentElement?.remove();
+    });
 
     // data-no-prefetch: hovering does not fetch; an ordinary link does (the control).
     await page.evaluate(() =>
