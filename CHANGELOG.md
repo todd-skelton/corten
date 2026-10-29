@@ -1320,8 +1320,8 @@ Corten is pre-1.0, so any minor version may change the API.
     (the Dockerfiles touch every source first). Under `corten dev` the app reads the directory from
     disk, and `corten dev` restarts it without compiling when only those files were edited or
     added (a removed file builds, and a failed build is tried again at the next change). A
-    release binary holds no path from the build machine. The PWA's
-    icons and worker script are still paths checked at startup. Measured on card-market (release,
+    release binary holds no path from the build machine. The PWA names its files the same way
+    (75). Measured on card-market (release,
     callgrind, three runs each): startup 1,470,715-1,485,822 instructions to 1,381,406-1,387,180,
     the item page 81,556-81,740 to 77,294-77,524 per request (`req.asset` no longer looks a string
     up and allocates the URL), and the binary 6,729,592 to 6,752,216 bytes (+22,624, the files)
@@ -1331,6 +1331,16 @@ Corten is pre-1.0, so any minor version may change the API.
     as `Params` (16 handlers); ui-gallery's `HomeQuery` and listings-feed's `MarketQuery` are
     gone, the parameters declared once on the route (`MarketWrite` gains `n`), and watchlist's
     `Alerts` no longer derives `Deserialize` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
+75. **Breaking:** the PWA names its files by the constants `embed!` makes, so a misspelled or
+    removed icon or worker script does not compile (it was a startup panic):
+    `Manifest::icon(Static::ICONS_192_PNG, "192x192")`, `maskable_icon` the same, and
+    `Pwa::import_script(Static::SW_PUSH_JS)`. An icon another site serves is a `Uri`
+    (`Uri::from_static("https://cdn.example.com/192.png")`), its type read from the path without
+    the query. The worker script is always a file of the static directory, so it is same-origin by
+    its type; a path (`import_script("/abs/sw.js")`) is no longer taken. A file the app's static
+    directory does not serve (none given, or another app's) is still a startup panic, now in
+    release builds too
+    ([#297 The PWA names its icons and worker script by path, so a misspelled file is a startup panic, not a compile error](https://github.com/todd-skelton/corten/issues/297)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1605,6 +1615,13 @@ Corten is pre-1.0, so any minor version may change the API.
     the form's result and the menu's result were `display: none` until a message came, so the
     message was often not announced. The toast's box is drawn only while there is a message, and
     its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
+50. A `data-patch` form whose submit an `on:submit` handler cancelled was sent anyway: the runtime
+    sent it before the page's handlers ran. A handler that stops the submit's propagation still
+    gets the patch ([#199 A data-patch form still sends when an on:submit handler cancels the submit event](https://github.com/todd-skelton/corten/issues/199)).
+51. A `data-patch` form's body is the browser's: a file field is the file's name (it was
+    `[object File]`), line breaks are CRLF, a `text/plain` form is sent as text, not urlencoded,
+    and neither content type names a charset. A file chosen again while the first is on its way is a
+    new submit unless it is the same file (name, size and time), not a double click ([#200 A data-patch form's urlencoded body differs from the browser's: a file is [object File], line breaks are not CRLF, and text/plain is sent urlencoded](https://github.com/todd-skelton/corten/issues/200)). With 50, `corten.js` grows 201 bytes gzip.
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1743,7 +1760,10 @@ Corten is pre-1.0, so any minor version may change the API.
     `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
     permission from the path. A test holds two modules' callers apart in one area
     ([#273 A page under an area cannot take its own caller, so a nested form that needs another permission checks it by path or by hand](https://github.com/todd-skelton/corten/issues/273)).
-26. `corten_ui::NumberField` says it is for counts and measures (a quantity, a weight), not
+26. CONTRIBUTING's check 2 unpacks sources into a throwaway `--tmpfs`, so its publish dry run builds
+    against Corten's crates as they are now, not a copy an earlier run left in the shared volume
+    ([#300 Check 2's publish dry run builds corten-ui against a stale corten unpacked in the shared registry volume](https://github.com/todd-skelton/corten/issues/300)).
+27. `corten_ui::NumberField` says it is for counts and measures (a quantity, a weight), not
     money, and the UI guide says a price is a text input with `inputmode="decimal"` read by
     `t.parse_money`: a number input takes only the browser's decimal syntax, and its value is an
     `f64`. ui-gallery's price and lowest offer are such inputs now, read as money, and its second
