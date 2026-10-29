@@ -753,7 +753,22 @@ Corten is pre-1.0, so any minor version may change the API.
     connection with one request, client included (callgrind, in process, three runs each).
     Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
     ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
-112. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
+112. `Area::policy(|p| p.script_src(..).frame_src(..))`: an area's pages add to the app's
+    Content-Security-Policy, so a payment provider's scripts and frames, or style attributes for
+    sizes drawn from data, are allowed on the pages that need them and not on every other page.
+    It only adds (`security::Sources`), nested areas add up, and each area's header is built
+    once at startup. A client navigation into or out of such an area loads the page in full, since
+    a document keeps the policy it loaded with; an area that adds only what the app has keeps the
+    app's. A request finds its area's policy once, by path, and only when some area adds to the
+    policy. Per request (callgrind, in process, 1,000 requests, median of three runs, range in
+    parentheses), a page outside the area went from 19,695 (18,936-19,698) to 19,095
+    (19,095-19,407) with no area policy and 19,122 (19,020-19,728) with one, and a page in the
+    area from 19,792 (19,786-20,696) to 20,042 (20,018-20,042), and 20,511 (20,083-20,733) under
+    its policy. The same build moves by up to 760 between runs, so only the last, about 500 to
+    700 more for a page under an area's policy, may be more than noise
+    ([#275 A policy is the whole app's, so the origins one page's payment SDK needs are allowed on every page](https://github.com/todd-skelton/corten/issues/275),
+    [#139 A size or position drawn from data needs style attributes, and allowing them opens style-src-attr 'unsafe-inline' for the whole app](https://github.com/todd-skelton/corten/issues/139)).
+113. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
     `Json`, `Media`, a page), named by a type (`corten::answer::Header`; Corten names
     `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
     and shared as it would be without it. Before, a shared file that had to stay out of search was
