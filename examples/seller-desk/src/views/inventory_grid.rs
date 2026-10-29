@@ -26,11 +26,13 @@ pub struct ArchiveDialogId;
 /// the script writes a row's holes through `rows(body, InventoryRow)`.
 #[component(css, js)]
 pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
-    let (body, select, all, count, bar, form, empty, note) = refs();
+    let (body, select, all, count, bar, form, empty, note, shown) = refs();
     // What the selection handlers update, built once and passed as one argument.
     let sel = js::Selection { body, all, count, bar };
     // The unsaved-prices note and its text, one message per plural form.
     let unsent = js::Unsent { note, one: t.js().grid_unsent_one(), other: t.js().grid_unsent_other() };
+    // How many rows the filter shows, beside the count of every item.
+    let found = js::Found { empty, shown, text: t.js().grid_shown() };
     html! {
         <section
             class={Grid}
@@ -43,11 +45,14 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
                     type="search"
                     placeholder="Filter by name or set"
                     aria-label="Filter"
-                    on:input={js::filter(target, empty, sel)}
+                    on:input={js::filter(target, found, sel)}
                 >
                 <BulkBar count={count} bar={bar} archive={ArchiveDialogId} on:clear={js::clear(sel)} />
                 <output ref={note} hidden></output>
-                <ItemCount t={t} count={lines.len()} />
+                <span class={Counts}>
+                    <output ref={shown} hidden></output>
+                    <ItemCount t={t} count={lines.len()} />
+                </span>
             </div>
             <div class={Scroll}>
                 <table class={Table}>

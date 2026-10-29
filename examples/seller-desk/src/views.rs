@@ -15,6 +15,7 @@ mod bulk_bar;
 mod confirm_dialog;
 mod inventory_grid;
 mod inventory_row;
+mod item_count;
 mod price_cell;
 mod statement_table;
 
@@ -22,11 +23,12 @@ pub use bulk_bar::BulkBar;
 pub use confirm_dialog::ConfirmDialog;
 pub use inventory_grid::{ArchiveFormId, InventoryGrid};
 pub use inventory_row::{InventoryRow, RowId};
+pub use item_count::ItemCount;
 pub use price_cell::{PriceCell, PriceEdited};
 pub use statement_table::StatementTable;
 
 /// What the app lists in `App::components`: the scripts, the stylesheets and the row's view.
-pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, PriceCell, StatementTable];
+pub const COMPONENTS: &[Component] = &[InventoryGrid, InventoryRow, ItemCount, PriceCell, StatementTable];
 
 /// An item and its stock level, as a row shows them.
 pub struct Line<'a> {
@@ -67,21 +69,6 @@ pub fn desk<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render + 'a {
         <h1>"Inventory"</h1>
         <StatusLine text="" />
         <InventoryGrid lines={lines} t={t} />
-    }
-}
-
-/// The item count's id: archiving patches it.
-#[derive(Id)]
-pub struct ItemCountId;
-
-/// How many items the grid holds, above it. The server writes it, and an archive's answer
-/// replaces it, so it counts what the server kept.
-#[component]
-pub fn ItemCount(t: Msg, count: usize) -> impl Patch {
-    html! {
-        <p id={ItemCountId}>
-            if count == 1 { {t.grid_items_one(t.number(count))} } else { {t.grid_items_other(t.number(count))} }
-        </p>
     }
 }
 

@@ -32,6 +32,15 @@ import { InventoryRow, rows } from "corten/views";
  */
 
 /**
+ * What the filter updates: the note for no match, and how many rows it shows, in the catalog's
+ * words. The markup builds it once, `js::Found { empty, shown, text }`.
+ * @typedef {object} Found
+ * @property {HTMLParagraphElement} empty
+ * @property {HTMLOutputElement} shown
+ * @property {Message<"count">} text
+ */
+
+/**
  * What the grid keeps between events: the last clicked row, for shift-click ranges, and the rows
  * whose price was typed and not saved. One object, since a component has one state.
  */
@@ -119,8 +128,8 @@ function shownCents(row) {
   return Number.isFinite(cents) ? cents : Infinity;
 }
 
-/** @param {HTMLInputElement} input @param {HTMLParagraphElement} empty @param {Selection} sel */
-export function filter(input, empty, sel) {
+/** @param {HTMLInputElement} input @param {Found} found @param {Selection} sel */
+export function filter(input, found, sel) {
   const query = input.value.trim().toLocaleLowerCase();
   let shown = 0;
   for (const row of rows(sel.body, InventoryRow)) {
@@ -129,7 +138,9 @@ export function filter(input, empty, sel) {
     row.el.hidden = query !== "" && !text.includes(query);
     if (!row.el.hidden) shown += 1;
   }
-  empty.hidden = shown > 0;
+  found.empty.hidden = shown > 0;
+  found.shown.value = found.text({ count: shown });
+  found.shown.hidden = query === "";
   tally(sel);
 }
 

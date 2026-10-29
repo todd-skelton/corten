@@ -20,7 +20,7 @@ pub fn StatementTable<'a>(t: Msg, sets: &'a [(&'a str, usize, u64)]) -> impl Ren
             <tbody>
                 for (name, items, cents) in sets {
                     <tr>
-                        <td>{*name}</td>
+                        <th scope="row">{*name}</th>
                         <td>{t.number(*items)}</td>
                         <td>{t.money(Minor(*cents), USD)}</td>
                     </tr>

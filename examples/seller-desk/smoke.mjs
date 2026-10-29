@@ -86,6 +86,8 @@ try {
   const visible = await page.$$eval("tbody tr", (rows) => rows.filter((r) => !r.hidden).length);
   const inSet = await page.$$eval("tbody tr", (rows) => rows.filter((r) => r.cells[2].textContent === "Tidebreak").length);
   check("filter hides rows that do not match", visible === inSet && visible > 0, `${visible} of ${inSet}`);
+  const shownText = await page.$eval("#item-count", (p) => p.previousElementSibling?.textContent ?? "");
+  check("the filter says how many it shows beside the count", shownText === `${visible} shown of`, shownText);
   await page.click("thead input[type=checkbox]");
   check("select all with a filter selects only the visible rows", (await count()) === String(visible), await count());
   await page.click("[role=group] button:nth-of-type(2)");
@@ -231,9 +233,15 @@ try {
     .waitForFunction((was) => [...document.querySelectorAll("tbody tr > td:nth-child(5)")].map((c) => c.textContent).join() !== was, first, { timeout: 10_000 })
     .then(() => true, () => false);
   check("live levels update stock cells", changed);
-  // A row at 0 is marked sold out, and only such a row, as the levels change.
+  // A row at 0 is marked sold out, and only such a row: the live levels sell rows out and restock
+  // them, so wait for a row whose mark the script changed, then compare every row.
+  const marked = () => page.$$eval("tbody tr[data-sold-out]", (rows) => rows.map((r) => r.id).sort().join());
+  const marksBefore = await marked();
+  const flipped = await page
+    .waitForFunction((was) => [...document.querySelectorAll("tbody tr[data-sold-out]")].map((r) => r.id).sort().join() !== was, marksBefore, { timeout: 15_000 })
+    .then(() => true, () => false);
   const soldOutMarked = await page.$$eval("tbody tr", (rows) => rows.every((r) => (r.querySelector("td:nth-child(5)")?.textContent === "0") === r.hasAttribute("data-sold-out")));
-  check("a row is marked sold out exactly while its quantity is 0", soldOutMarked);
+  check("a row is marked sold out exactly while its quantity is 0, as the levels change", flipped && soldOutMarked && marksBefore !== "", `${flipped} ${soldOutMarked} ${marksBefore.split(",").length} marked before`);
 
   // Memory with the page settled.
   const heap = await page.evaluate(() => {
