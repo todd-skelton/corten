@@ -4,7 +4,6 @@ use std::{
     convert::Infallible,
     future::Future,
     marker::PhantomData,
-    path::PathBuf,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -192,9 +191,10 @@ struct Placed {
 /// - error pages for failed requests, unknown URLs and handlers that panic, in the request's mode
 ///   ([`App::error_page`], the app's own in its layout), with the error shown under `corten dev`,
 ///   and JSON for a JSON route ([`crate::JsonResult`]);
-/// - the files in `static/` (or `STATIC_DIR`), the scripts of the app's components and its
-///   components' stylesheets joined into one file ([`App::components`]), at content-versioned,
-///   immutable URLs, each script preloaded on the pages whose handlers use it;
+/// - the scripts of the app's components and its components' stylesheets joined into one file
+///   ([`App::components`]), at content-versioned, immutable URLs, each script preloaded on the
+///   pages whose handlers use it, and the same for the static files the app compiles in
+///   ([`App::assets`]);
 /// - `/health/live` and `/health/ready`, the runtime at a versioned URL;
 /// - compression of pages and static files (feature `compress`);
 /// - under `corten dev` (`CORTEN_DEV=1`): open pages reload when the server restarts.
@@ -215,7 +215,8 @@ pub struct App<M = ()> {
     pages: Vec<(&'static str, bool)>,
     error_page: Option<Box<page::ErrorPage>>,
     policy: Policy,
-    static_dir: Option<PathBuf>,
+    /// The static directory `embed!` compiled in (`App::assets`): where it was read, and its files.
+    static_files: Option<StaticFiles>,
     pwa: Option<Pwa>,
     ready: Option<ReadyFn>,
     locales: Option<&'static [&'static str]>,
@@ -254,7 +255,7 @@ impl App {
             pages: routes.1,
             error_page: None,
             policy: Policy::new(),
-            static_dir: None,
+            static_files: None,
             pwa: None,
             ready: None,
             locales: None,
@@ -286,7 +287,7 @@ impl App {
             pages: self.pages,
             error_page: self.error_page,
             policy: self.policy,
-            static_dir: self.static_dir,
+            static_files: self.static_files,
             pwa: self.pwa,
             ready: self.ready,
             locales: self.locales,
@@ -457,9 +458,12 @@ impl<M: Middleware> App<M> {
         self
     }
 
-    /// The static directory (default `STATIC_DIR`, else `static` in the working directory).
-    pub fn assets(mut self, dir: impl Into<PathBuf>) -> Self {
-        self.static_dir = Some(dir.into());
+    /// The static directory, compiled into the program by [`crate::assets::embed!`]:
+    /// `corten::assets::embed!(pub struct Static = "static");` and `.assets(Static)`. Pages name a
+    /// file by its constant, `req.asset(Static::STYLE_CSS)`. Under `corten dev` the directory is
+    /// read where the macro read it, so a file added since the build is served.
+    pub fn assets<E: crate::assets::Embed>(mut self, _files: E) -> Self {
+        self.static_files = Some(StaticFiles { dir: E::DIR, owner: E::OWNER, files: crate::assets::embedded::<E> });
         self
     }
 
@@ -577,7 +581,7 @@ impl<M: Middleware> App<M> {
             .filter(|area| !area.components.is_empty())
             .map(|area| (area.prefix, area.components.as_slice()))
             .collect();
-        let assets = load_assets(self.static_dir, &self.components, &sections).map(Arc::new);
+        let assets = load_assets(self.static_files, dev, &self.components, &sections).map(Arc::new);
         let mut head = String::new();
         if let Some(href) = assets.as_ref().and_then(|a| a.stylesheet()) {
             head.push_str(&format!(r#"<link rel="stylesheet" href="{href}">"#));
@@ -1240,21 +1244,66 @@ fn hosts_from_env(mut policy: Policy) -> Policy {
 }
 
 fn load_assets(
-    dir: Option<PathBuf>,
+    files: Option<StaticFiles>,
+    dev: bool,
     components: &[crate::Component],
     sections: &[(&str, &[crate::Component])],
 ) -> Option<Assets> {
-    let explicit = dir.is_some() || std::env::var_os("STATIC_DIR").is_some();
-    let dir = dir.or_else(|| std::env::var_os("STATIC_DIR").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("static"));
-    if !dir.is_dir() {
-        assert!(!explicit, "corten: the static directory {} does not exist", dir.display());
-        if components.is_empty() && sections.is_empty() {
-            return None;
-        }
+    if files.is_none() && components.is_empty() && sections.is_empty() {
+        return None;
     }
-    let found = dir.is_dir().then_some(dir.as_path());
-    match Assets::build_with(found, components, sections, "/assets") {
-        Ok(assets) => Some(assets),
-        Err(error) => panic!("corten: could not load the static files in {} and the components: {error}", dir.display()),
+    let owner = files.map(|f| f.owner);
+    let files = match files {
+        // Under `corten dev` (run in the crate's root), the directory as it is now, and `corten
+        // dev` is told where it is, so a change to it alone restarts the app without a build.
+        Some(StaticFiles { dir, .. }) if dev && std::path::Path::new(dir).is_dir() => {
+            if let (Some(list), Ok(here)) = (std::env::var_os("CORTEN_DEV_ASSETS"), std::env::current_dir()) {
+                let _ = std::fs::write(list, here.join(dir).to_string_lossy().as_bytes());
+            }
+            crate::assets::read_dir(std::path::Path::new(dir))
+                .unwrap_or_else(|error| panic!("corten: could not read the static files in {dir}: {error}"))
+        }
+        Some(StaticFiles { files, .. }) => files(),
+        None => Vec::new(),
+    };
+    match Assets::build_with(files, components, sections, "/assets") {
+        Ok(mut assets) => {
+            assets.owner = owner;
+            Some(assets)
+        }
+        Err(error) => panic!("corten: could not serve the static files and the components: {error}"),
+    }
+}
+
+/// The static directory `App::assets` was given.
+#[derive(Clone, Copy)]
+struct StaticFiles {
+    /// Where `embed!` read it, from the crate's root.
+    dir: &'static str,
+    /// The `embed!` struct, which its files name.
+    owner: &'static str,
+    /// Its files, as compiled in.
+    files: fn() -> Vec<(String, axum::body::Bytes)>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{load_assets, StaticFiles};
+
+    fn none() -> Vec<(String, axum::body::Bytes)> {
+        Vec::new()
+    }
+
+    #[test]
+    fn dev_reads_the_static_directory_from_disk_and_a_release_the_files_compiled_in() {
+        // Tests run in the crate's root, as `corten dev` runs the app.
+        let files = StaticFiles { dir: "src/assets/fixture", owner: "tests::Static", files: none };
+        let dev = load_assets(Some(files), true, &[], &[]).expect("assets");
+        assert!(dev.contains("style.css") && dev.contains("icons/192.png"));
+        assert_eq!(dev.owner, Some("tests::Static"));
+        let release = load_assets(Some(files), false, &[], &[]).expect("assets");
+        assert!(!release.contains("style.css"), "compiled in: nothing here");
+        let elsewhere = StaticFiles { dir: "src/assets/not-here", ..files };
+        assert!(!load_assets(Some(elsewhere), true, &[], &[]).expect("assets").contains("style.css"));
     }
 }

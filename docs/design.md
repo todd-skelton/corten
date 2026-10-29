@@ -37,11 +37,17 @@ framework's shape, and what it does not do yet.
    (`tokio::join!`) and rendering in microseconds, the most it saves is the slowest source's
    wait. A part that is slow and optional is a `<corten-live>` whose stream sends it when it is
    ready and ends.
-8. **Static file names are checked when the layout renders, not when it compiles.** The static
-   directory is chosen at run time (`App::assets`, `STATIC_DIR`), so a compile-time check would
-   look in the wrong place for some apps, and an app names only a few files, all in its layout.
-   `req.asset("style.css")` panics on a missing file in debug builds, so `corten dev` and the
-   page test `corten new` writes find a typo on the first render.
+8. **Static files are compiled into the program, a constant per file.** `embed!(pub struct
+   Static = "static")` includes the directory when the crate compiles, so the binary is the
+   whole deploy (no directory beside it to find or keep in step), and a page names a file by its
+   constant, `req.asset(Static::STYLE_CSS)`: a typo or a removed file does not compile. A name
+   that comes from data (an uploaded picture's) is `req.find_asset(name)`, an `Option`. The
+   cost is that a file added with no change to the code is seen at the next build that compiles
+   the crate, since a macro cannot ask cargo to watch a directory; `corten dev` reads the
+   directory where the macro read it, so it serves the new file at once and restarts without a
+   build when only those files changed, and the release Dockerfiles touch every source before
+   building, so the crate compiles with every file. The PWA's icons and worker script are still
+   named by path and checked at startup.
 
 9. **Work happens where it is fastest for the user.** The server renders the first page, so it
    arrives finished, and answers what only it can: a write, and data the page does not have. What
@@ -99,7 +105,8 @@ framework's shape, and what it does not do yet.
    with one way to give each; reorganize it when it does not, rather than add a second way.
 8. A mistake the compiler can see is a compile error, with a `compile_fail` doctest: a type, a
    trait bound, or a `const` assertion over a route's `PATH`. One it cannot see (two settings
-   that clash, a file missing from `static/`, a `var(--x)` no stylesheet on its pages declares)
+   that clash, a `var(--x)` no stylesheet on its pages declares, a PWA icon the static directory
+   lacks)
    fails at startup, and only what depends on the
    request is checked per request. A check that moves earlier also leaves the request path.
 9. A layout's props are what most pages set: the title and the page's own head tags. A page that

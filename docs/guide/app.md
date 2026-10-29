@@ -21,7 +21,7 @@ your routes. Each default can be replaced in one line.
 | WebSockets and relays | none | a handler takes `Upgrade` and returns its `websocket(..)` or `switch(..)`; `Relay` passes another server's answer on as it came ([below](#websockets-and-relays)) |
 | Security | a CSP that allows Corten's inline tag (the import map) by hash (a nonce only when the layout or a handler asks for one), nosniff, referrer, frame and opener headers, a same-origin check on unsafe methods; forms go to this origin only | `.policy(Policy::new()...)`: another origin for scripts, styles, images, `fetch`, frames, fonts, or `.form_action("https://pay.example")` for a form (or a form's redirect) that hands the user to another site |
 | Caching | static files and the runtime cached forever; everything rendered `private, no-cache` ([below](#caching)) | return `Public<HtmlResult>` (or `Public<JsonResult<T>>`) for an answer that is the same for everyone |
-| Static files | `static/` (or `STATIC_DIR`), component scripts and the components' stylesheets (one file, plus one per area that lists components and one per set of areas that list the same components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(dir)`, `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
+| Static files | component scripts and the components' stylesheets (one file, plus one per area that lists components and one per set of areas that list the same components) at content-hashed, immutable URLs; each script loaded by the pages whose handlers use it | `.assets(Static)`: `static/`, compiled into the program by `corten::assets::embed!` (a constant per file, `req.asset(Static::STYLE_CSS)`) and served the same way ([below](#static-files)); `.components(&[..])`, `Area::components(&[..])` ([styles](styles.md#areas)) |
 | Middleware of your own | none | `.middleware((RequestId, RateLimit))`: steps of the app's own, at one place in Corten's order ([below](#your-own-middleware)) |
 | Health | `/health/live`, `/health/ready` (always ready) | `.ready(\|\| async { db_ok().await })` |
 | Work that lives as long as the app | none | `.task("refresh", refresh)`: started by `serve`, told when shutdown begins ([below](#tasks)) |
@@ -337,6 +337,34 @@ A tower layer still goes around the whole app (`.layer(l)`), outside every stage
 see the raw request first: a cap on body size, a limit per address.
 There is no layer for one route: what a route needs is in its handler's arguments (an
 extractor) and its return type.
+
+## Static files
+
+The app's `static/` directory is compiled into the program, so the binary is the whole deploy:
+nothing beside it to copy, find at run time or keep in step with the build. `embed!` reads the
+directory when the crate compiles and gives each file a constant (`icons/192.png` is
+`ICONS_192_PNG`), and a page names a file by it:
+
+```rust,ignore
+corten::assets::embed!(pub struct Static = "static"); // from the crate's root
+
+App::new(url::router()).assets(Static)
+// in the layout:
+<link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
+```
+
+A misspelled or removed file does not compile. A name that comes from data (a stored picture's
+path) is `req.find_asset(name)`, `None` when the directory has no such file. Files are hashed
+when the app starts, and each is served from memory at a URL with that version.
+
+An edited file rebuilds the crate. A file added to the directory with no change to the code is in
+the program from the next build that compiles the crate (a macro cannot ask cargo to watch a
+directory); the Dockerfiles `corten new` writes touch every source before building, so a release
+build has every file. `corten dev` reads the directory where `embed!` read it, so it serves a
+new file at once, and a change to those files alone restarts the app without compiling it. File
+names are URLs, so they are letters, digits and `- _ . ~ @ + , = !`; another character is a
+compile error. A program with two apps gives
+each its own `embed!`. Dotfiles are left out.
 
 ## Caching
 

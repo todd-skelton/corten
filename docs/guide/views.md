@@ -30,6 +30,10 @@ app's to change; Corten adds nothing around it.
 ```rust
 use corten::prelude::*;
 
+# corten::assets::embed! { pub struct Static = "src/assets/fixture"; }
+// The files in `static/`, compiled into the program (`App::assets(Static)`):
+// corten::assets::embed! { pub struct Static = "static"; }
+
 #[component]
 fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> impl Document {
     html! {
@@ -37,7 +41,7 @@ fn Layout(req: &Req, title: &str, head: impl Render, children: impl Render) -> i
         <html lang={req.lang()}>
             <head>
                 <meta charset="utf-8">
-                <link rel="stylesheet" href={req.asset("style.css")}>
+                <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
                 <title>{title}" | Shop"</title>
                 {head}
                 <Corten />

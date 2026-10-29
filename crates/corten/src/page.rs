@@ -602,26 +602,21 @@ impl Req {
         Ok(HtmlResponse::new(self.finish(html_response(status, out, swap.then_some(PAGE_HEADER)), key)))
     }
 
-    /// The versioned URL of a static file: `req.asset("style.css")`. A missing file is a bug: it
-    /// panics in debug builds, and in release the error is logged and the page still renders
-    /// (with a link that 404s) rather than failing every request.
-    pub fn asset(&self, path: &str) -> String {
+    /// The versioned URL of a static file, named by the constant [`crate::assets::embed!`] made
+    /// for it: `req.asset(Static::STYLE_CSS)`. It is written where it is used, with nothing
+    /// allocated. A file of a directory the app was not given (`App::assets`) panics in debug
+    /// builds; in release the page still renders, with a link that 404s.
+    pub fn asset(&self, file: crate::assets::Asset) -> crate::assets::AssetUrl<'_> {
         match &self.shared.assets {
-            Some(assets) => assets.url(path),
-            None => {
-                let message = format!("corten: no static directory is loaded, so there is no {path:?}; see App::assets");
-                if cfg!(debug_assertions) {
-                    panic!("{message}");
-                }
-                tracing::error!("{message}");
-                format!("/{path}")
-            }
+            Some(assets) => assets.asset(file),
+            None => no_assets(file.path()),
         }
     }
 
-    /// True when the static directory has `path`.
-    pub fn has_asset(&self, path: &str) -> bool {
-        self.shared.assets.as_ref().is_some_and(|a| a.contains(path))
+    /// The versioned URL of the static file at `path`, a name that comes from data (an item's
+    /// picture, `cards/item_1.svg`), or `None` when the directory has no such file.
+    pub fn find_asset<'a>(&'a self, path: &'a str) -> Option<crate::assets::AssetUrl<'a>> {
+        self.shared.assets.as_ref()?.find(path)
     }
 
     /// True when `href` (a typed route) is the current page, or with `section` any page under
@@ -1165,6 +1160,17 @@ pub(crate) async fn render_errors<M: crate::middleware::Middleware>(
     };
     let failure = if shared.dev { failure } else { failure.without_detail() };
     carried(kept, error_page(shared, asked, failure).await)
+}
+
+/// [`Req::asset`] with no static directory: a bug, which panics in debug builds.
+#[cold]
+fn no_assets(path: &'static str) -> crate::assets::AssetUrl<'static> {
+    let message = format!("corten: no static directory is loaded, so there is no {path:?}; see App::assets");
+    if cfg!(debug_assertions) {
+        panic!("{message}");
+    }
+    tracing::error!("{message}");
+    crate::assets::AssetUrl::unserved(path)
 }
 
 /// `res` with the headers of the failed response it replaces, `kept`, except the ones that

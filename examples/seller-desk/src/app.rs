@@ -199,7 +199,7 @@ impl Desk {
 }
 
 pub fn app(desk: Desk) -> App<ServerTiming> {
-    App::new(url::router(desk)).components(views::COMPONENTS).messages::<Msg>().middleware(ServerTiming)
+    App::new(url::router(desk)).assets(views::Static).components(views::COMPONENTS).messages::<Msg>().middleware(ServerTiming)
 }
 
 /// Tells the browser's developer tools how long the server took to answer (`Server-Timing`): the

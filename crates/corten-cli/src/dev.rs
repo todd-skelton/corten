@@ -6,6 +6,10 @@
 //! copy, so the next build can replace the original while it runs (Windows locks running
 //! executables). The app gets `CORTEN_DEV=1`: Corten then serves `/corten/dev`, and every open
 //! page reloads when it reconnects to a server that started later.
+//!
+//! The app's static files are compiled in (`embed!`), but under `corten dev` the app reads them
+//! from disk and writes where (`CORTEN_DEV_ASSETS` names the file), so a change to those files
+//! alone restarts the last build instead of compiling again.
 
 use std::{
     collections::BTreeMap,
@@ -30,36 +34,38 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut server: Option<Child> = None;
     let mut roots = vec![root.clone()];
     let mut seen = snapshot(&roots);
+    let dev_dir = root.join("target").join("corten-dev");
+    let assets_list = dev_dir.join("static-dirs");
+    // The copy last started, and whether the change since needs no build.
+    let mut running: Option<PathBuf> = None;
+    let mut restart_only = false;
     loop {
-        let built = build(&root);
-        // A dependency added or removed since the last build changes what is watched. Files of a
-        // newly watched package count from now, so the change that triggered this build is not
-        // seen twice.
-        if let Some(packages) = local_packages(&root) {
-            let next = watch_roots(&root, packages);
-            for added in next.iter().filter(|r| !roots.contains(r)) {
-                walk(added, &mut seen);
-            }
-            roots = next;
-        }
-        match built {
-            Ok(binary) => {
-                if let Some(mut old) = server.take() {
-                    let _ = old.kill();
-                    let _ = old.wait();
+        if let (true, Some(copy)) = (restart_only, &running) {
+            stop(&mut server);
+            server = Some(start(copy, &port, &root, &assets_list)?);
+        } else {
+            let built = build(&root);
+            // A dependency added or removed since the last build changes what is watched. Files of a
+            // newly watched package count from now, so the change that triggered this build is not
+            // seen twice.
+            if let Some(packages) = local_packages(&root) {
+                let next = watch_roots(&root, packages);
+                for added in next.iter().filter(|r| !roots.contains(r)) {
+                    walk(added, &mut seen);
                 }
-                let copy = root.join("target").join("corten-dev").join(binary.file_name().unwrap_or_default());
-                std::fs::create_dir_all(copy.parent().expect("has a parent")).map_err(|e| e.to_string())?;
-                std::fs::copy(&binary, &copy).map_err(|e| format!("copy {}: {e}", binary.display()))?;
-                let child = Command::new(&copy)
-                    .env("CORTEN_DEV", "1")
-                    .env("PORT", &port)
-                    .current_dir(&root)
-                    .spawn()
-                    .map_err(|e| format!("could not start {}: {e}", copy.display()))?;
-                server = Some(child);
+                roots = next;
             }
-            Err(message) => eprintln!("corten: {message}; the last good build keeps running"),
+            match built {
+                Ok(binary) => {
+                    stop(&mut server);
+                    let copy = dev_dir.join(binary.file_name().unwrap_or_default());
+                    std::fs::create_dir_all(&dev_dir).map_err(|e| e.to_string())?;
+                    std::fs::copy(&binary, &copy).map_err(|e| format!("copy {}: {e}", binary.display()))?;
+                    server = Some(start(&copy, &port, &root, &assets_list)?);
+                    running = Some(copy);
+                }
+                Err(message) => eprintln!("corten: {message}; the last good build keeps running"),
+            }
         }
         // Wait for a change, settling for a moment so a save of several files is one rebuild.
         loop {
@@ -73,12 +79,55 @@ pub fn run(args: &[String]) -> Result<(), String> {
             let now = snapshot(&roots);
             if now != seen {
                 std::thread::sleep(Duration::from_millis(150));
-                seen = snapshot(&roots);
-                eprintln!("corten: change detected, rebuilding");
+                let now = snapshot(&roots);
+                let dirs = std::fs::read_to_string(&assets_list).unwrap_or_default();
+                restart_only = only_under(&seen, &now, &dirs.lines().map(PathBuf::from).collect::<Vec<_>>());
+                seen = now;
+                eprintln!(
+                    "corten: change detected, {}",
+                    if restart_only { "restarting (static files only)" } else { "rebuilding" }
+                );
                 break;
             }
         }
     }
+}
+
+/// Starts the app's copy in dev mode; it writes its static directory to `assets_list`.
+fn start(copy: &Path, port: &str, root: &Path, assets_list: &Path) -> Result<Child, String> {
+    let _ = std::fs::remove_file(assets_list);
+    Command::new(copy)
+        .env("CORTEN_DEV", "1")
+        .env("CORTEN_DEV_ASSETS", assets_list)
+        .env("PORT", port)
+        .current_dir(root)
+        .spawn()
+        .map_err(|e| format!("could not start {}: {e}", copy.display()))
+}
+
+fn stop(server: &mut Option<Child>) {
+    if let Some(mut old) = server.take() {
+        let _ = old.kill();
+        let _ = old.wait();
+    }
+}
+
+/// True when something changed between `before` and `after` and every changed file is under one
+/// of `dirs`: the app reads those itself in dev, so a restart serves them.
+fn only_under(before: &BTreeMap<PathBuf, SystemTime>, after: &BTreeMap<PathBuf, SystemTime>, dirs: &[PathBuf]) -> bool {
+    let changed = after
+        .iter()
+        .filter(|(path, time)| before.get(*path) != Some(*time))
+        .map(|(path, _)| path)
+        .chain(before.keys().filter(|path| !after.contains_key(*path)));
+    let mut any = false;
+    for path in changed {
+        if !dirs.iter().any(|dir| path.starts_with(dir)) {
+            return false;
+        }
+        any = true;
+    }
+    any
 }
 
 /// `cargo build`, with diagnostics shown as usual; the path of the package's binary.
@@ -247,6 +296,26 @@ mod tests {
         );
         let dirs = package_dirs(metadata);
         assert_eq!(dirs, [PathBuf::from("/work/shop/app"), PathBuf::from("/work/shop/my platform"), PathBuf::from("/work/old")]);
+    }
+
+    #[test]
+    fn a_change_to_static_files_alone_needs_no_build() {
+        let t = |s| SystemTime::UNIX_EPOCH + Duration::from_secs(s);
+        let file = |p: &str| PathBuf::from(p);
+        let before = BTreeMap::from([(file("/app/static/style.css"), t(1)), (file("/app/src/main.rs"), t(1))]);
+        let dirs = [PathBuf::from("/app/static")];
+        let mut styled = before.clone();
+        styled.insert(file("/app/static/style.css"), t(2));
+        styled.insert(file("/app/static/new.svg"), t(2));
+        assert!(only_under(&before, &styled, &dirs));
+        let mut coded = styled.clone();
+        coded.insert(file("/app/src/main.rs"), t(2));
+        assert!(!only_under(&before, &coded, &dirs), "a source change builds");
+        assert!(!only_under(&before, &styled, &[]), "an app that did not say where its files are builds");
+        assert!(!only_under(&before, &before, &dirs), "nothing changed");
+        let mut removed = before.clone();
+        removed.remove(&file("/app/static/style.css"));
+        assert!(only_under(&before, &removed, &dirs));
     }
 
     #[test]

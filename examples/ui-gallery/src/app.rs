@@ -16,6 +16,11 @@ use corten_ui::Toast;
 
 use crate::gallery::{COLORS, Gallery, LAST_SALE, MenuResult, OrderResult, RenameDialog, TABS};
 
+corten::assets::embed! {
+    /// The files in `static/`, compiled into the program: `Static::STYLE_CSS` is `static/style.css`.
+    pub struct Static = "static";
+}
+
 /// Every URL the gallery serves and links to, with the handlers that serve it.
 #[corten::routes]
 pub mod url {
@@ -48,7 +53,7 @@ pub mod url {
 pub const COMPONENTS: &[Component] = &[crate::field::Field, Gallery];
 
 pub fn app() -> App {
-    App::new(url::router()).components(COMPONENTS).components(corten_ui::COMPONENTS)
+    App::new(url::router()).assets(Static).components(COMPONENTS).components(corten_ui::COMPONENTS)
 }
 
 /// The document around every page.
@@ -60,8 +65,8 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <link rel="stylesheet" href={req.asset("style.css")}>
-                <link rel="icon" type="image/svg+xml" href={req.asset("favicon.svg")}>
+                <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
+                <link rel="icon" type="image/svg+xml" href={req.asset(Static::FAVICON_SVG)}>
                 <title>{title}</title>
                 <Corten />
             </head>

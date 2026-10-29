@@ -786,6 +786,9 @@ Corten is pre-1.0, so any minor version may change the API.
    own `#[corten::routes(api = ..)]` module, with its handler.
 9. `Req::current`: `req.nav(&route)` writes the whole nav link, and `req.is_current` answers
    the question elsewhere.
+10. `STATIC_DIR`, the default `static/` read from the working directory, `App::assets(dir)`,
+    `Req::has_asset`, and `Assets::load`, `Assets::build` and `Assets::url` from the public API:
+    static files are compiled in (Changed 70).
 
 ### Changed
 
@@ -1204,6 +1207,22 @@ Corten is pre-1.0, so any minor version may change the API.
     plus its 377-byte picture (brotli); the home page is 1,356 bytes larger (105 with brotli) plus
     the pictures that load.
     ([#223 card-market sells trading cards with no card images](https://github.com/todd-skelton/corten/issues/223)).
+70. **Breaking:** static files are compiled into the program. `corten::assets::embed!(pub struct
+    Static = "static")` makes a constant per file (`Static::STYLE_CSS`, `Static::ICONS_192_PNG`)
+    and `App::assets(Static)` serves them; `req.asset(Static::STYLE_CSS)` is its versioned URL,
+    written without an allocation, and a misspelled or removed file does not compile. A name from
+    data is `req.find_asset(name)`, an `Option`, replacing `has_asset`. The binary is the whole
+    deploy: the Dockerfiles no longer copy `static/`, and an app no longer writes a lookup next to
+    `current_exe()`. A file name a URL cannot carry (a space, `#`, `?`, `%`), two files with
+    one constant, or a directory that is not there is a compile error; dotfiles are left out. A file
+    added with no change to the code is in the program from the next build that compiles the crate
+    (the Dockerfiles touch every source first). Under `corten dev` the app reads the directory from
+    disk, and `corten dev` restarts it without compiling when only those files changed. The PWA's
+    icons and worker script are still paths checked at startup. Measured on card-market (release,
+    callgrind, three runs each): startup 1,470,715-1,485,822 instructions to 1,381,406-1,387,180,
+    the item page 81,556-81,740 to 77,294-77,524 per request (`req.asset` no longer looks a string
+    up and allocates the URL), and the binary 6,729,592 to 6,752,216 bytes (+22,624, the files)
+    ([#268 Static files are a directory found at run time, so a built program cannot be deployed by itself and each app writes its own lookup](https://github.com/todd-skelton/corten/issues/268)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

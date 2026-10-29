@@ -75,6 +75,7 @@ fn app_with(source: Source, keys: Keys, writes: u32) -> App<WriteLimit> {
     let policy = if std::env::var_os("HTTPS").is_some() { Policy::new().hsts() } else { Policy::new() };
     let ready = source.clone();
     App::new(routes::router(source.clone()))
+        .assets(crate::views::Static)
         .api(|routes| api::api(routes, ApiState { source, partners }))
         .api(|routes| {
             let routes = mcp::api(routes).route::<mcp::Mcp>(tools);
