@@ -23,12 +23,16 @@ struct Routed {
     /// The struct's arguments when it is named here (`<'_>`, or nothing); `None` when it has a
     /// type parameter, which the module cannot name.
     args: Option<String>,
+    /// The rows its `get` serves when that is a feed (`rows = Level`), as written.
+    rows: Option<TokenStream>,
 }
 
 /// What a struct's `#[route(..)]` says beyond its path.
 #[derive(Default)]
 struct Serves {
     handlers: Vec<(Ident, TokenStream)>,
+    /// `rows = Level`: the rows of the feed its `get` serves.
+    rows: Option<TokenStream>,
 }
 
 /// What `#[corten::routes(..)]` says: what the handlers share (`state = Db`), the area the
@@ -157,10 +161,15 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
         let mut methods = TokenStream::new();
         for (i, (method, handler)) in route.handlers.iter().enumerate() {
             let at = handler.clone().into_iter().last().map_or(method.span(), |t| t.span());
+            // The rows the route names are its `get`'s; every other handler serves no feed.
+            let rows = match &route.rows {
+                Some(rows) if method.to_string() == "get" => rows.clone(),
+                _ => q("::corten::answer::NotAFeed", &[]),
+            };
             let call = respan(
                 q(
-                    "::corten::route::__private::__A0::<_, _, __A1, __A2, _, __A3, _>",
-                    &[TokenTree::Ident(method.clone()).into(), state_ty.clone(), required.clone(), params.clone()],
+                    "::corten::route::__private::__A0::<_, _, __A1, __A2, _, __A3, _, __A4>",
+                    &[TokenTree::Ident(method.clone()).into(), state_ty.clone(), required.clone(), params.clone(), rows.clone()],
                 ),
                 at,
             );
@@ -435,7 +444,7 @@ fn scan(body: TokenStream, prefix: Option<&str>, area: bool) -> Result<(TokenStr
                                 TokenTree::Literal(proc_macro::Literal::string(&path)).into(),
                             ],
                         ));
-                        routed.push(Routed { name: name.clone(), path, span, handlers: Vec::new(), args: None });
+                        routed.push(Routed { name: name.clone(), path, span, handlers: Vec::new(), args: None, rows: None });
                         start = None;
                         derives = None;
                         route_at = None;
@@ -447,7 +456,34 @@ fn scan(body: TokenStream, prefix: Option<&str>, area: bool) -> Result<(TokenStr
                     let derive: Vec<TokenTree> = q("#[derive(::corten::Route)]", &[]).into_iter().collect();
                     out.splice(at..at, derive);
                     let args = lifetime_args(tokens.get(i + 2..).unwrap_or_default());
-                    routed.push(Routed { name: name.clone(), path, span, handlers: serves.handlers, args });
+                    if let Some(rows) = &serves.rows {
+                        let at = rows.clone().into_iter().last().map_or(span, |t| t.span());
+                        if !serves.handlers.iter().any(|(m, _)| m.to_string() == "get") {
+                            return err(
+                                at,
+                                format!("rows name what {name}'s get serves: #[route(\"{path}\", get = .., rows = ..)]"),
+                            );
+                        }
+                        let Some(args) = &args else {
+                            return err(
+                                at,
+                                format!(
+                                    "{name} has a type parameter, so it cannot name its rows: give its fields concrete types"
+                                ),
+                            );
+                        };
+                        // A script's `FeedUrl<Level>` takes the route by the rows' name, as the
+                        // generated declarations name the type.
+                        let last = rows.clone().into_iter().last().map(|t| t.to_string()).unwrap_or_default();
+                        let id = crate::script::view_id(&last);
+                        let ty: TokenStream = format!("{name}{args}").parse().expect("a route's type parses");
+                        prefix_impl.extend(q(
+                            "#[automatically_derived]
+                            impl ::corten::route::__private::FeedRows<__A0> for __A1 {}",
+                            &[TokenTree::Literal(proc_macro::Literal::u64_suffixed(id)).into(), ty],
+                        ));
+                    }
+                    routed.push(Routed { name: name.clone(), path, span, handlers: serves.handlers, args, rows: serves.rows });
                 }
             }
             _ => {}
@@ -489,6 +525,16 @@ fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Err
         rest = after;
         match part {
             [] => {}
+            [TokenTree::Ident(key), TokenTree::Punct(eq), rows @ ..] if eq.as_char() == '=' && key.to_string() == "rows" => {
+                if serves.rows.is_some() {
+                    return err(key.span(), "rows is named twice");
+                }
+                if rows.is_empty() || !is_path(rows) {
+                    let span = rows.first().map_or(key.span(), TokenTree::span);
+                    return err(span, "rows name the feed's row type: rows = Level (a path, as FeedResponse<Level> names it)");
+                }
+                serves.rows = Some(stream(rows.iter().cloned()));
+            }
             [TokenTree::Ident(method), TokenTree::Punct(eq), handler @ ..] if eq.as_char() == '=' => {
                 let key = method.to_string();
                 if !METHODS.contains(&key.as_str()) {

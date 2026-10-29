@@ -732,6 +732,12 @@ fn param_type(ty: &str) -> Param {
             _ => Param::Any,
         };
     }
+    // `FeedUrl<Level>` (corten): the URL of a feed of `Level` rows, a route with `rows = Level`.
+    if let Some(inner) = ty.strip_prefix("FeedUrl<").and_then(|t| t.strip_suffix('>')) {
+        let rows = inner.trim();
+        let plain = !rows.is_empty() && rows.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+        return if plain { Param::Checked(format!("ts::FeedUrl<{}u64>", view_id(rows))) } else { Param::Any };
+    }
     // `Message<"count">` (corten): a message of the app's catalog with exactly these arguments.
     if let Some(inner) = ty.strip_prefix("Message<").and_then(|t| t.strip_suffix('>')) {
         return match message_names(inner) {

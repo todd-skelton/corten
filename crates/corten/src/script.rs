@@ -145,7 +145,122 @@
 //! # }
 //! ```
 //!
+//! A feed's URL carries the feed's rows to the script. The route names them (`rows = Level`),
+//! its handler answers with them (`FeedResponse<Level>`), and the handler parameter that takes the
+//! route is a `FeedUrl<Level>` (from `corten`), from which `subscribe()` takes the row type:
+//!
+//! ```
+//! # #[cfg(feature = "feed")]
+//! # mod app {
+//! use corten::{feed::{Feed, FeedResponse, Row}, prelude::*};
+//!
+//! #[derive(Clone, serde::Serialize)]
+//! pub struct Level { id: String, qty: u32 }
+//! impl Row for Level { fn id(&self) -> &str { &self.id } }
+//!
+//! #[corten::routes(state = Feed<Level>)]
+//! pub mod url {
+//!     #[route("/feed/levels", get = levels, rows = Level)]
+//!     pub struct Levels;
+//! }
+//!
+//! async fn levels(State(feed): State<Feed<Level>>) -> FeedResponse<Level> {
+//!     feed.snapshot()
+//! }
+//!
+//! // level_feed.js: @param {FeedUrl<Level>} feed
+//! #[component(js)]
+//! pub fn LevelFeed() -> impl Render {
+//!     let body = refs();
+//!     html! { <table><tbody ref={body} on:connect={js::follow(body, url::Levels, signal)}></tbody></table> }
+//! }
+//! # }
+//! # fn main() {
+//! # use corten::prelude::*;
+//! # #[cfg(feature = "feed")]
+//! assert!(app::LevelFeed {}.to_html().contains("level_feed.follow(@body,&quot;/feed/levels&quot;,$s)"));
+//! # }
+//! ```
+//!
 //! What does not compile:
+//!
+//! A feed whose route does not name its rows:
+//!
+//! ```compile_fail
+//! use corten::{feed::{Feed, FeedResponse, Row}, prelude::*};
+//!
+//! #[derive(Clone, serde::Serialize)]
+//! pub struct Level { id: String }
+//! impl Row for Level { fn id(&self) -> &str { &self.id } }
+//! #[derive(Clone, serde::Serialize)]
+//! pub struct Stock { id: String }
+//! impl Row for Stock { fn id(&self) -> &str { &self.id } }
+//!
+//! #[corten::routes(state = Feed<Level>)]
+//! pub mod url {
+//!     #[route("/feed/levels", get = levels)]
+//!     pub struct Levels;
+//! }
+//!
+//! async fn levels(State(feed): State<Feed<Level>>) -> FeedResponse<Level> { feed.snapshot() }
+//!
+//! # fn main() { let _ = url::router; }
+//! ```
+//!
+//! A handler that answers with other rows than its route names:
+//!
+//! ```compile_fail
+//! use corten::{feed::{Feed, FeedResponse, Row}, prelude::*};
+//!
+//! #[derive(Clone, serde::Serialize)]
+//! pub struct Level { id: String }
+//! impl Row for Level { fn id(&self) -> &str { &self.id } }
+//! #[derive(Clone, serde::Serialize)]
+//! pub struct Stock { id: String }
+//! impl Row for Stock { fn id(&self) -> &str { &self.id } }
+//!
+//! #[corten::routes(state = Feed<Level>)]
+//! pub mod url {
+//!     #[route("/feed/levels", get = levels, rows = Stock)]
+//!     pub struct Levels;
+//! }
+//!
+//! async fn levels(State(feed): State<Feed<Level>>) -> FeedResponse<Level> { feed.snapshot() }
+//!
+//! # fn main() { let _ = url::router; }
+//! ```
+//!
+//! A route passed for a `FeedUrl<Level>` that is not a feed of `Level` rows (`url::Home` serves a
+//! page):
+//!
+//! ```compile_fail
+//! use corten::{feed::{Feed, FeedResponse, Row}, prelude::*};
+//!
+//! #[derive(Clone, serde::Serialize)]
+//! pub struct Level { id: String }
+//! impl Row for Level { fn id(&self) -> &str { &self.id } }
+//! #[derive(Clone, serde::Serialize)]
+//! pub struct Stock { id: String }
+//! impl Row for Stock { fn id(&self) -> &str { &self.id } }
+//!
+//! #[corten::routes(state = Feed<Level>)]
+//! pub mod url {
+//!     #[route("/", get = home)]
+//!     pub struct Home;
+//!     #[route("/feed/levels", get = levels, rows = Level)]
+//!     pub struct Levels;
+//! }
+//!
+//! async fn levels(State(feed): State<Feed<Level>>) -> FeedResponse<Level> { feed.snapshot() }
+//! async fn home() -> &'static str { "home" }
+//!
+//! #[component(js)]
+//! fn LevelFeed() -> impl Render {
+//!     let body = refs();
+//!     html! { <table><tbody ref={body} on:connect={js::follow(body, url::Home, signal)}></tbody></table> }
+//! }
+//! # fn main() { let _ = url::router; }
+//! ```
 //!
 //! A ref on an element the handler does not take (`enable` takes a `<button>`):
 //!
@@ -984,6 +1099,10 @@ pub mod ev {
 pub mod ts {
     /// `string`: `&str`, `String`, a typed route (its URL).
     pub enum String {}
+    /// `FeedUrl<Level>` (from `corten`): the URL of a feed of `Level` rows ([`super::view_id`] of
+    /// the name), a route whose `#[route(..)]` says `rows = Level`. `subscribe()` reads the row
+    /// type from it.
+    pub enum FeedUrl<const ROWS: u64> {}
     /// `number`.
     pub enum Number {}
     /// `boolean`.
@@ -1585,6 +1704,13 @@ pub mod __private {
             let mut url = String::new();
             self.write_href(&mut url, false);
             json_str(&url, out)
+        }
+    }
+
+    /// A feed's route, for a parameter that names its rows: written as its URL, as a `string` is.
+    impl<R: crate::Route + crate::route::__private::FeedRows<ROWS>, const ROWS: u64> Arg<ts::FeedUrl<ROWS>> for R {
+        fn write_arg(&self, ctx: &Ctx, out: &mut String) {
+            <R as Arg<ts::String>>::write_arg(self, ctx, out)
         }
     }
 

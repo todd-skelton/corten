@@ -245,19 +245,19 @@ pub mod url {
     #[route("/statement", get = statement)]
     pub struct Statement;
 
-    #[route("/feed/levels", get = levels)]
+    #[route("/feed/levels", get = levels, rows = Level)]
     pub struct Levels;
 
-    #[route("/feed/levels/live", get = levels_live)]
+    #[route("/feed/levels/live", get = levels_live, rows = Level)]
     pub struct LevelsLive;
 }
 
 /// The stock levels feed: a snapshot, then live changes from a cursor.
-async fn levels(State(desk): State<Desk>) -> FeedResponse {
+async fn levels(State(desk): State<Desk>) -> FeedResponse<Level> {
     desk.levels.snapshot()
 }
 
-async fn levels_live(State(desk): State<Desk>, since: Since) -> FeedResponse {
+async fn levels_live(State(desk): State<Desk>, since: Since) -> FeedResponse<Level> {
     desk.levels.live(since)
 }
 

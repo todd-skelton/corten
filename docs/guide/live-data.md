@@ -114,17 +114,40 @@ gzip get streams as they are, since deflate repeats a fragment poorly.
 
 For scripts that keep state (a table of live prices, a grid), a `corten::feed::Feed<Row>`
 (feature `feed`) holds keyed rows and serves a snapshot plus ordered patches; an `on:connect`
-handler calls `subscribe(url, { snapshot, patch, status }, { signal })`.
+handler calls `subscribe(feed, { snapshot, patch, status }, { signal })`.
 
 ```rust,ignore
 let stocks = Feed::new(rows);
-// in the routes module: #[route("/feed/stocks", get = stocks)] and #[route("/feed/stocks/live", get = stocks_live)]
-async fn stocks(State(m): State<Market>) -> FeedResponse { m.stocks.snapshot() }
-async fn stocks_live(State(m): State<Market>, since: Since) -> FeedResponse { m.stocks.live(since) }
+// in the routes module: each feed route names its rows
+//   #[route("/feed/stocks", get = stocks, rows = Stock)] pub struct Stocks;
+//   #[route("/feed/stocks/live", get = stocks_live, rows = Stock)] pub struct StocksLive;
+async fn stocks(State(m): State<Market>) -> FeedResponse<Stock> { m.stocks.snapshot() }
+async fn stocks_live(State(m): State<Market>, since: Since) -> FeedResponse<Stock> { m.stocks.live(since) }
 
 // a write: one numbered patch with the final value of every row it touched
 market.stocks.write(|tx| if let Some(s) = tx.get_mut("s1") { s.set_price(13_250) });
 ```
+
+The row type goes from the feed to the script, checked at each step. `Feed<Stock>` answers
+`FeedResponse<Stock>`; the route says `rows = Stock`, and a handler that answers with other rows
+(or a feed's route that names none) does not compile. The markup passes the route,
+`js::watch(.., url::Stocks, signal)`, to a parameter the script declares as `FeedUrl<Stock>`
+(from `corten`), which takes only a route whose rows are `Stock`, by the name the generated
+declarations give the type. `subscribe()` takes the row type from it, so `snapshot` and `patch`
+are typed without a `@param` of their own, and a `Stock` handler given a `Level` feed fails
+`tsc`:
+
+```js
+/** @import { FeedUrl } from "corten" */
+/** @typedef {import("../types/app").Stock} Stock */
+
+/** @param {FeedUrl<Stock>} feed @param {AbortSignal} signal */
+export function watch(feed, signal) {
+  subscribe(feed, { snapshot: (rows) => rows.forEach(paint), patch: () => {} }, { signal });
+}
+```
+
+A plain `string` is not a `FeedUrl`, so a script cannot follow a feed whose rows it guessed.
 
 Feed guarantees: every `write` is one numbered patch carrying the final value of each row it
 touched, encoded once and sent as the same bytes to every subscriber. A snapshot is serialized

@@ -1438,6 +1438,16 @@ Corten is pre-1.0, so any minor version may change the API.
     `X-Robots-Tag: noindex` (`Public::header`), so search engines do not list an empty page; a
     category with cards is unchanged
     ([#335 Some framework features appear in no example: Area::policy, Public::header, Req::signal, Refused::too_many](https://github.com/todd-skelton/corten/issues/335)).
+80. A feed's row type reaches the script that follows it. `FeedResponse` is `FeedResponse<Row>`
+    (`Feed<Level>::snapshot` answers `FeedResponse<Level>`), a feed's route names its rows
+    (`#[route("/feed/levels", get = levels, rows = Level)]`, checked against what its `get`
+    answers, through the new `Answer::Rows`), and a handler parameter declared
+    `@param {FeedUrl<Level>} feed` (from `corten`) takes only a route whose rows are `Level`.
+    `subscribe()` takes a `FeedUrl<Row>` and its row type from it, so a script's `snapshot` and
+    `patch` are typed with no `@param` of their own, a `Stock` handler given a `Level` feed
+    fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
+    or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
+    ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
