@@ -14,8 +14,8 @@ pub struct Number<'a> {
     pub value: Option<f64>,
     pub min: Option<f64>,
     pub max: Option<f64>,
-    /// The amount a button or arrow key adds; it also sets the decimals shown (`0.01` shows
-    /// `12.50`). Page Up and Page Down add ten steps.
+    /// The amount a button or arrow key adds; it also sets the decimals shown (`0.1` shows
+    /// `0.5` as `0.5`, `0.25` shows it as `0.50`). Page Up and Page Down add ten steps.
     pub step: f64,
     pub required: bool,
     pub disabled: bool,
@@ -67,7 +67,13 @@ fn decimals(step: f64) -> usize {
     text.split_once('.').map_or(0, |(_, fraction)| fraction.len())
 }
 
-/// A number input between a decrease and an increase button.
+/// A number input between a decrease and an increase button, for a count or a measure: a
+/// quantity, seats, nights, a weight.
+///
+/// Not for money. A `type="number"` input takes only the browser's own decimal syntax, so
+/// `$1,299.99` or a French `1 299,99` never reaches the server, and `Number::value` is an
+/// `f64`. A price is a text input with `inputmode="decimal"`, which shows a refused entry back as
+/// typed, read by `t.parse_money(&input.price, USD)` into `Minor` units in the page's locale.
 ///
 /// The input is a native `<input type="number">`, so without the script it still steps with the
 /// arrow keys, and the browser checks `min`, `max`, `step` and `required` when the form is
