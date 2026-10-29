@@ -50,7 +50,7 @@ let app = App::new(url::router())
     .components(&[TOKENS, OfferList])              // components with scripts or styles
     .area(|area| admin::area(area).components(&[SalesChart]))
     .messages::<Msg>()                             // the locales req.lang() follows
-    .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")));
+    .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon(Static::ICONS_192_PNG, "192x192")));
 corten::serve(app).await
 ```
 
@@ -403,7 +403,9 @@ App::new(url::router()).assets(Static)
 <link rel="stylesheet" href={req.asset(Static::STYLE_CSS)}>
 ```
 
-A misspelled or removed file does not compile. A name that comes from data (a stored picture's
+A misspelled or removed file does not compile. The PWA names its files the same way:
+`Manifest::icon(Static::ICONS_192_PNG, "192x192")` and `Pwa::import_script(Static::SW_PUSH_JS)`;
+an icon served from elsewhere (a CDN) is `pwa::Url("https://..")`, written as is. A name that comes from data (a stored picture's
 path) is `req.find_asset(name)`, `None` when the directory has no such file. Files are hashed
 when the app starts, and each is served from memory at a URL with that version.
 

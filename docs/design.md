@@ -47,8 +47,8 @@ framework's shape, and what it does not do yet.
    directory where the macro read it, so it serves the new file at once and restarts without a
    build when only those files changed (a removed file builds, so a page that names it does not
    compile), and the release Dockerfiles touch every source before
-   building, so the crate compiles with every file. The PWA's icons and worker script are still
-   named by path and checked at startup.
+   building, so the crate compiles with every file. The PWA's icons and worker script are
+   named by their constants too; an icon served from elsewhere is a `pwa::Url`, written as is.
 
 9. **Work happens where it is fastest for the user.** The server renders the first page, so it
    arrives finished, and answers what only it can: a write, and data the page does not have. What
@@ -108,8 +108,8 @@ framework's shape, and what it does not do yet.
    with one way to give each; reorganize it when it does not, rather than add a second way.
 8. A mistake the compiler can see is a compile error, with a `compile_fail` doctest: a type, a
    trait bound, or a `const` assertion over a route's `PATH`. One it cannot see (two settings
-   that clash, a `var(--x)` no stylesheet on its pages declares, a PWA icon the static directory
-   lacks)
+   that clash, a `var(--x)` no stylesheet on its pages declares, a PWA that names a static file in
+   an app given no static directory)
    fails at startup, and only what depends on the
    request is checked per request. A check that moves earlier also leaves the request path.
 9. A layout's props are what most pages set: the title and the page's own head tags. A page that

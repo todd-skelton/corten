@@ -1312,6 +1312,13 @@ Corten is pre-1.0, so any minor version may change the API.
     as `Params` (16 handlers); ui-gallery's `HomeQuery` and listings-feed's `MarketQuery` are
     gone, the parameters declared once on the route (`MarketWrite` gains `n`), and watchlist's
     `Alerts` no longer derives `Deserialize` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
+75. **Breaking:** the PWA names its files by the constants `embed!` makes, so a misspelled or
+    removed icon or worker script does not compile (it was a startup panic):
+    `Manifest::icon(Static::ICONS_192_PNG, "192x192")`, `maskable_icon` the same, and
+    `Pwa::import_script(Static::SW_PUSH_JS)`. An icon served from elsewhere is
+    `pwa::Url("https://cdn.example.com/192.png")`, written as is. The worker script is always a
+    file of the static directory, so it is same-origin by its type
+    ([#297 The PWA names its icons and worker script by path, so a misspelled file is a startup panic, not a compile error](https://github.com/todd-skelton/corten/issues/297)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
