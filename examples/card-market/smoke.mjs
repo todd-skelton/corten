@@ -1,10 +1,13 @@
 // Browser smoke test of the production pieces, against the card-market example (API or fixture mode).
 // Usage: node examples/card-market/smoke.mjs [http://localhost:18410]
 import { chromium } from "@playwright/test";
+import { stall } from "../../scripts/stall.mjs";
 
 const base = process.argv[2] ?? "http://localhost:18410";
 const failures = [];
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(name);
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(name);
 };
