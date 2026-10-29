@@ -753,6 +753,17 @@ Corten is pre-1.0, so any minor version may change the API.
     connection with one request, client included (callgrind, in process, three runs each).
     Keep-alive requests cost what they did: 13,827-13,850 to 13,837-13,838
     ([#263 An app serving HTTPS copies the guide's TLS listener, and its handshakes are outside max_connections and header_timeout](https://github.com/todd-skelton/corten/issues/263)).
+112. `Params<R>`: a route's handler reads the route's own parameters back, `Params<url::Item<'_>>`.
+     It has the struct's fields, owned (a `&'a str` is a `String`, a `&'a [T]` a `Vec<T>`), read
+     the way a link writes them: a path parameter percent-decoded, a query parameter by the name
+     serde reads (`rename`, `rename_all`; `None`, empty or the field's `#[serde(default)]` when the
+     link leaves it out), a `#[route(query)]` set from the whole query, a `#[route(prefix = ..)]`
+     map from its prefixed keys. A request whose parameters do not fit is a 400. In a
+     `#[corten::routes]` module, a handler of a route with a parameter in its path that does not
+     take its own `Params` (one that reads the path with axum's `Path`, or another route's
+     `Params`) does not compile (`compile_fail` doctests). On the request path it costs
+     MEASURE_PAGE instructions on the item page and MEASURE_JSON on its JSON (callgrind, release,
+     the benchmark fixture) ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -786,6 +797,9 @@ Corten is pre-1.0, so any minor version may change the API.
    own `#[corten::routes(api = ..)]` module, with its handler.
 9. `Req::current`: `req.nav(&route)` writes the whole nav link, and `req.is_current` answers
    the question elsewhere.
+10. `corten::Query`, and axum's `Path` from the prelude: a route's parameters are its `Params`,
+    and a `GET` form's fields its `Form`. Import `corten::axum::extract::Path` for a route built
+    by hand outside a routes module ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
 
 ### Changed
 
@@ -1208,6 +1222,11 @@ Corten is pre-1.0, so any minor version may change the API.
     price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
     dialog, the last sale, and its SKU with a copy button
     ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
+71. The trait a `#[route(query)]` set implements is `corten::route::QueryParams` (it was
+    `route::Params`), so `Params` is the extractor. The examples read their routes' parameters
+    as `Params` (16 handlers); ui-gallery's `HomeQuery` and listings-feed's `MarketQuery` are
+    gone, the parameters declared once on the route (`MarketWrite` gains `n`), and watchlist's
+    `Alerts` no longer derives `Deserialize` ([#207 A handler reads its path parameters with Path<String>, so nothing checks them against the route struct that declares them](https://github.com/todd-skelton/corten/issues/207)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
