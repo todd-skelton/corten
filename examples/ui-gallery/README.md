@@ -1,7 +1,8 @@
 # ui-gallery
 
 A seller's draft listing for one card, built from every [`corten-ui`](../../crates/corten-ui)
-component: a number field for the quantity and the price, a combobox for the condition, the card's
+component: a number field for the quantity and the price, a combobox for the condition, the regions it
+ships to (at least one), the lowest offer it takes (required only when it takes offers), the card's
 market in tabs, a menu button, a toast when the draft is saved, a dialog the server draws open
 when it refuses a name, a dialog the address opens, and a button that copies the SKU. Read it when
 you need a widget the browser has no element for.
