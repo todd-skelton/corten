@@ -572,7 +572,10 @@ async function run(browser) {
   await lacking.context().close();
 
   // The refused renames are 422s, which Chromium and WebKit log; nothing else may be.
-  const unexpected = errors.filter((e) => !/status of 422/.test(e) && !(/due to access control checks/.test(e) && [...cancelled].some((url) => e.includes(url.slice(url.indexOf("//") + 1)))));
+  const unexpected = errors.filter((e) => {
+    const refused = /(\S+) due to access control checks/.exec(e)?.[1];
+    return !/status of 422/.test(e) && !(refused && [...cancelled].some((url) => url.slice(url.indexOf("//") + 1) === refused));
+  });
   check("no console errors", unexpected.length === 0, unexpected.join(" | "));
 
   // Without JavaScript
