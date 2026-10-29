@@ -48,7 +48,7 @@ framework's shape, and what it does not do yet.
    build when only those files changed (a removed file builds, so a page that names it does not
    compile), and the release Dockerfiles touch every source before
    building, so the crate compiles with every file. The PWA's icons and worker script are
-   named by their constants too; an icon served from elsewhere is a `pwa::Url`, written as is.
+   named by their constants too; an icon another site serves is a `Uri`.
 
 9. **Work happens where it is fastest for the user.** The server renders the first page, so it
    arrives finished, and answers what only it can: a write, and data the page does not have. What

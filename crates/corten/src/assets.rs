@@ -111,6 +111,11 @@ impl Asset {
     pub const fn path(self) -> &'static str {
         self.path
     }
+
+    /// The `embed!` struct it is a file of (`shop::Static`).
+    pub(crate) const fn owner(self) -> &'static str {
+        self.owner
+    }
 }
 
 /// A static file's versioned URL, written where it is used: `/assets/{version}/style.css`.

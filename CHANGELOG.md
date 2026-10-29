@@ -1301,8 +1301,8 @@ Corten is pre-1.0, so any minor version may change the API.
     (the Dockerfiles touch every source first). Under `corten dev` the app reads the directory from
     disk, and `corten dev` restarts it without compiling when only those files were edited or
     added (a removed file builds, and a failed build is tried again at the next change). A
-    release binary holds no path from the build machine. The PWA's
-    icons and worker script are still paths checked at startup. Measured on card-market (release,
+    release binary holds no path from the build machine. The PWA names its files the same way
+    (75). Measured on card-market (release,
     callgrind, three runs each): startup 1,470,715-1,485,822 instructions to 1,381,406-1,387,180,
     the item page 81,556-81,740 to 77,294-77,524 per request (`req.asset` no longer looks a string
     up and allocates the URL), and the binary 6,729,592 to 6,752,216 bytes (+22,624, the files)
@@ -1315,9 +1315,12 @@ Corten is pre-1.0, so any minor version may change the API.
 75. **Breaking:** the PWA names its files by the constants `embed!` makes, so a misspelled or
     removed icon or worker script does not compile (it was a startup panic):
     `Manifest::icon(Static::ICONS_192_PNG, "192x192")`, `maskable_icon` the same, and
-    `Pwa::import_script(Static::SW_PUSH_JS)`. An icon served from elsewhere is
-    `pwa::Url("https://cdn.example.com/192.png")`, written as is. The worker script is always a
-    file of the static directory, so it is same-origin by its type
+    `Pwa::import_script(Static::SW_PUSH_JS)`. An icon another site serves is a `Uri`
+    (`Uri::from_static("https://cdn.example.com/192.png")`), its type read from the path without
+    the query. The worker script is always a file of the static directory, so it is same-origin by
+    its type; a path (`import_script("/abs/sw.js")`) is no longer taken. A file the app's static
+    directory does not serve (none given, or another app's) is still a startup panic, now in
+    release builds too
     ([#297 The PWA names its icons and worker script by path, so a misspelled file is a startup panic, not a compile error](https://github.com/todd-skelton/corten/issues/297)).
 
 ### Fixed

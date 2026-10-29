@@ -405,8 +405,9 @@ App::new(url::router()).assets(Static)
 
 A misspelled or removed file does not compile. The PWA names its files the same way:
 `Manifest::icon(Static::ICONS_192_PNG, "192x192")` and `Pwa::import_script(Static::SW_PUSH_JS)`;
-an icon served from elsewhere (a CDN) is `pwa::Url("https://..")`, written as is. A name that comes from data (a stored picture's
-path) is `req.find_asset(name)`, `None` when the directory has no such file. Files are hashed
+an icon another site serves is a `Uri`, as every URL outside the app is. A name that comes from
+data (a stored picture's path) is `req.find_asset(name)`, `None` when the directory has no such
+file. Files are hashed
 when the app starts, and each is served from memory at a URL with that version.
 
 An edited file rebuilds the crate. A file added to the directory with no change to the code is in

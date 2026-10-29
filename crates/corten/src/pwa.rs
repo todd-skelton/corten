@@ -12,7 +12,7 @@
 //! `/offline` with a plain offline page unless the app routes it. Icons and the app's worker
 //! script are files of the static directory, named by the constants
 //! [`crate::assets::embed!`] makes, so a misspelled or removed file does not compile; an icon
-//! served from elsewhere is a [`Url`].
+//! served from another site is a `Uri`, as every URL outside the app is.
 //!
 //! What the worker does, and why:
 //!
@@ -38,7 +38,7 @@
 use std::sync::Arc;
 
 use axum::{
-    http::{header, HeaderValue},
+    http::{header, HeaderValue, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -68,13 +68,8 @@ pub struct Manifest {
     icons: Vec<(Src, String, &'static str, Option<&'static str>)>,
 }
 
-/// An icon served from outside the static directory, as written: an absolute URL (a CDN) or a
-/// path one of the app's routes answers (`"/brand/icon.png"`). Nothing checks it, so prefer a file
-/// of the static directory, which the compiler does.
-#[derive(Clone, Copy, Debug)]
-pub struct Url<'a>(pub &'a str);
-
-/// Where an icon is: a file of the static directory (`Static::ICONS_192_PNG`) or a [`Url`].
+/// Where an icon is: a file of the static directory (`Static::ICONS_192_PNG`), or a `Uri` for one
+/// another site serves (`Uri::from_static("https://cdn.example.com/192.png")`), written as is.
 #[derive(Clone, Debug)]
 pub struct IconSrc(Src);
 
@@ -84,9 +79,9 @@ impl From<Asset> for IconSrc {
     }
 }
 
-impl From<Url<'_>> for IconSrc {
-    fn from(url: Url<'_>) -> Self {
-        IconSrc(Src::Url(url.0.into()))
+impl From<Uri> for IconSrc {
+    fn from(url: Uri) -> Self {
+        IconSrc(Src::Url(url.to_string()))
     }
 }
 
@@ -106,12 +101,19 @@ impl Src {
         }
     }
 
-    /// A file's versioned URL in `assets`. The app names a file but has no static directory to
-    /// serve it (no `App::assets`): a startup panic, since no page could load it.
+    /// A file's versioned URL in `assets`. A file the app's directory does not serve (no
+    /// `App::assets`, or another app's directory) is a startup panic in every build, since no
+    /// browser could load it; it runs once, when the app starts.
     fn resolve(&mut self, assets: Option<&Assets>) {
         if let Src::File(file) = self {
-            let assets = assets.unwrap_or_else(|| {
-                panic!("corten: the PWA names {:?}, and the app has no static directory (App::assets)", file.path())
+            let served = assets.filter(|a| a.owner == Some(file.owner()) && a.contains(file.path()));
+            let assets = served.unwrap_or_else(|| {
+                panic!(
+                    "corten: the PWA names {:?} of {}, and the app's static directory is {} (App::assets)",
+                    file.path(),
+                    file.owner(),
+                    assets.and_then(|a| a.owner).unwrap_or("none")
+                )
             });
             *self = Src::Url(assets.asset(*file).to_string());
         }
@@ -154,12 +156,12 @@ impl Manifest {
     }
 
     /// An icon: `(Static::ICONS_192_PNG, "192x192")`, a file of the static directory by the
-    /// constant [`crate::assets::embed!`] made for it, or a [`Url`] for one served elsewhere. The
-    /// type comes from the extension. Add 192 and 512 at least.
+    /// constant [`crate::assets::embed!`] made for it, or a `Uri` for one another site serves.
+    /// The type comes from the extension. Add 192 and 512 at least.
     ///
     /// A path is not an icon, so a misspelled file cannot reach the manifest:
     ///
-    /// ```compile_fail
+    /// ```compile_fail,E0277
     /// use corten::pwa::Manifest;
     /// let _ = Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192");
     /// ```
@@ -173,7 +175,11 @@ impl Manifest {
     }
 
     fn with_icon(mut self, IconSrc(src): IconSrc, sizes: &str, purpose: Option<&'static str>) -> Self {
-        let mime = image_type(&src.url());
+        let mime = match &src {
+            Src::File(file) => image_type(file.path()),
+            // The path's extension, without a query (`a.webp?v=2`).
+            Src::Url(url) => image_type(url.parse::<Uri>().as_ref().map_or(url.as_str(), Uri::path)),
+        };
         self.icons.push((src, sizes.into(), mime, purpose));
         self
     }
@@ -264,7 +270,14 @@ impl Pwa {
 
     /// A script the worker loads first with `importScripts`, for the app's own worker code (a
     /// `push` handler, say): a file of the static directory by its constant
-    /// (`Static::SW_PUSH_JS`), whose versioned URL changes the worker when the file changes.
+    /// (`Static::SW_PUSH_JS`), whose versioned URL changes the worker when the file changes. A
+    /// file of the app's own directory is same-origin, as a worker script must be; a path is not
+    /// one:
+    ///
+    /// ```compile_fail,E0308
+    /// use corten::pwa::{Manifest, Pwa};
+    /// let _ = Pwa::new(Manifest::new("Shop", "Shop")).import_script("sw-push.js");
+    /// ```
     pub fn import_script(mut self, file: Asset) -> Self {
         self.imports.push(Src::File(file));
         self
@@ -281,8 +294,8 @@ impl Pwa {
     }
 
     /// The icons and scripts named by their static files get those files' versioned URLs, and the
-    /// static files are cached (see [`Pwa::assets`]). Panics when it names a file and the app has
-    /// no static directory.
+    /// static files are cached (see [`Pwa::assets`]). Panics when it names a file the app's static
+    /// directory does not serve (none given, or another app's).
     pub fn resolve(mut self, assets: Option<&Assets>) -> Self {
         for icon in &mut self.manifest.icons {
             icon.0.resolve(assets);
@@ -446,14 +459,14 @@ mod tests {
     fn manifest_is_json_with_icons() {
         let m = Manifest::new("Card \"Market\"", "CM")
             .theme_color("#111")
-            .icon(Url("/i/192.png"), "192x192")
-            .maskable_icon(Url("https://cdn.example.com/512.webp"), "512x512");
+            .icon(Uri::from_static("/i/192.png"), "192x192")
+            .maskable_icon(Uri::from_static("https://cdn.example.com/512.webp?v=2"), "512x512");
         assert_eq!(
             m.to_json(),
             concat!(
                 r##"{"name":"Card \"Market\"","short_name":"CM","start_url":"/","scope":"/","display":"standalone","theme_color":"#111","##,
                 r#""icons":[{"src":"/i/192.png","sizes":"192x192","type":"image/png"},"#,
-                r#"{"src":"https://cdn.example.com/512.webp","sizes":"512x512","type":"image/webp","purpose":"maskable"}]}"#
+                r#"{"src":"https://cdn.example.com/512.webp?v=2","sizes":"512x512","type":"image/webp","purpose":"maskable"}]}"#
             )
         );
     }
@@ -468,9 +481,26 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "the app has no static directory")]
+    #[should_panic(expected = "the app's static directory is none")]
     fn a_static_file_needs_the_apps_directory() {
         let _ = Pwa::new(Manifest::new("A", "A").icon(ICON, "192x192")).resolve(None);
+    }
+
+    /// An app that lists components but was not given its directory has assets of no owner: the
+    /// icon would 404, in a release build too.
+    #[test]
+    #[should_panic(expected = "the app's static directory is none")]
+    fn a_static_file_of_no_directory_panics_in_every_build() {
+        let mut assets = assets();
+        assets.owner = None;
+        let _ = Pwa::new(Manifest::new("A", "A").icon(ICON, "192x192")).resolve(Some(&assets));
+    }
+
+    #[test]
+    #[should_panic(expected = "of admin::Static, and the app's static directory is shop::Static")]
+    fn another_apps_file_panics_in_every_build() {
+        let other = Asset::__embedded("admin::Static", "icons/192.png");
+        let _ = Pwa::new(Manifest::new("A", "A").icon(other, "192x192")).resolve(Some(&assets()));
     }
 
     #[test]
