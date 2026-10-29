@@ -976,6 +976,31 @@ async fn a_page_that_reads_again_says_so_in_its_head_on_every_surface() {
     assert!(swap.starts_with(&format!("<title>Saving</title>{tag}<p>")), "a navigation's head tags: {swap}");
 }
 
+/// `ReadAgain::without_javascript` in the head (#319): the same refresh, without the mark the
+/// runtime reads, on a full load and in a navigation's head tags.
+#[tokio::test]
+async fn a_page_that_reads_again_only_without_javascript_has_no_mark_in_its_head() {
+    use std::time::Duration;
+    let routes = Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            req.page::<ForOne>(Shell {
+                req: &req,
+                title: "Saving",
+                head: ReadAgain { after: Duration::from_secs(2) }.without_javascript(),
+                children: html! { <p>"Saving"</p> },
+            })
+        }),
+    );
+    let tag = r#"<noscript data-corten-head><meta http-equiv="refresh" content="2"></noscript>"#;
+    let (_, headers, document) = call(app(routes.clone(), None), "GET", None).await;
+    assert!(document.contains(&format!("<title>Saving</title>{tag}")), "{document}");
+    assert!(!document.contains("data-corten-read-again"), "the runtime finds nothing to read again: {document}");
+    assert!(!headers.contains_key("refresh"));
+    let (_, _, swap) = call(app(routes, None), "GET", Some("nav")).await;
+    assert!(swap.starts_with(&format!("<title>Saving</title>{tag}<p>")), "a navigation's head tags: {swap}");
+}
+
 #[test]
 fn read_again_is_whole_seconds_and_works_without_javascript() {
     use std::time::Duration;

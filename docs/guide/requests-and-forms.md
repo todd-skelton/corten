@@ -521,8 +521,11 @@ stream again. While the job the stream follows runs, it asks a browser without J
 let again = job.running.then_some(ReadAgain { after: Duration::from_secs(2) }.without_javascript());
 ```
 
-The runtime does not read the page whole for it, so it decides nothing from the page's other
-streams: a ticker beside a form that waits for a write keeps plain `ReadAgain`.
+With JavaScript the `<corten-live>` alone keeps the page fresh, so its stream should send the
+job's last state before it ends: when a stream ends, the element stays as its last fragment drew
+it, and nothing reads the page again. Only a stream that follows the job counts: a page whose
+`<corten-live>` relays something else (a price ticker) while it waits for a write keeps plain
+`ReadAgain`.
 
 Do not send a `Refresh` header: Chromium, Firefox and WebKit keep a full load's `Refresh` after
 the runtime has navigated away, and then load the first URL again. Debug builds answer 500 to a
