@@ -1640,6 +1640,12 @@ Corten is pre-1.0, so any minor version may change the API.
     top of the document. Focus now goes to the nearest element around it that is still on the
     page, focusable only for the move; so does focus on an element patched into one that cannot
     take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
+54. examples/watchlist signed a visitor in by trusting a `viewer` cookie that held their name, so
+    anyone could set one and be anyone, and signing out only cleared it in that browser. Signing in
+    now starts a session the server keeps, named by a random token in an `HttpOnly` `Secure`
+    cookie; the profile picture is kept in the session, not a cookie of its own; signing out ends
+    the session on the server, and signing in again ends the one the browser had
+    ([#322 watchlist signs a visitor in by trusting a plain viewer cookie, so anyone can set it and act as anyone](https://github.com/todd-skelton/corten/issues/322)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

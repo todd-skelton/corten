@@ -26,6 +26,13 @@ pub(crate) async fn call_on(router: &Router, req: Request<Body>) -> Response {
     router.clone().oneshot(req).await.unwrap()
 }
 
+/// Signs in on `router` and gives the cookie that carries the new session (`session=...`).
+pub(crate) async fn sign_in(router: &Router) -> String {
+    let res = call_on(router, post("/sign-in", None, None, "")).await;
+    let set = res.headers()["set-cookie"].to_str().unwrap();
+    set.split(';').next().unwrap().to_string()
+}
+
 pub(crate) async fn call(req: Request<Body>) -> Response {
     call_on(&router(), req).await
 }
