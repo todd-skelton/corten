@@ -131,7 +131,7 @@ library. Measured against a production marketplace app:
 | Need | Owner | Why |
 |---|---|---|
 | Pages, patches, handlers, feeds across instances, CSP and CSRF, assets, head tags, PWA, catalog, sitemap, health, shutdown, agent tools | Framework | Built and tested earlier. |
-| Layout data on client navigation | Framework: page key (from the `Caller` a handler read), `data-nav` | Client navigation swaps only `<main>`, so only the framework can know the layout went stale. It reloads when the caller or deploy changes and keeps `aria-current` right. |
+| Layout data on client navigation | Framework: page key (from the `Caller` a handler read), `data-nav` and `data-nav-group` | Client navigation swaps only `<main>`, so only the framework can know the layout went stale. It reloads when the caller or deploy changes and keeps `aria-current` right. |
 | Which nav items show for which roles | App | Roles and permissions are the app's model; the layout component decides. |
 | Which routes need sign-in or a permission | Framework: `Caller<T>` and `Identify`, `caller = T` on a routes module; the decision is the app's | The answer has to come out right in each request mode (a redirect, `corten-location`, a JSON 401, the error page) and before the handler reads the body, and a route that forgets it should not compile, which only the framework can check. Who passes is the app's model, in its `Identify`. |
 | Return addresses (`?next=`) | Framework: `Local`, `Req::serves` | A check that a path stays on the site has to know how browsers read `//`, `/\` and dot segments, and whether the app has a page there has to match the route the router picks, which only the framework holds. Where to send a user without one is the app's. |

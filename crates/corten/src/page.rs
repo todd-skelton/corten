@@ -132,7 +132,7 @@ impl<R: crate::Route + ?Sized> NavTarget for R {
 }
 
 impl NavTarget for crate::Local {
-    /// The path with the characters a browser percent-encodes in one (`"<>``{}^|`) encoded, so the
+    /// The path with the characters a browser percent-encodes in one (`` "<>`{}^| ``) encoded, so the
     /// link, the request it makes and the runtime's `pathname` are the same text in every engine
     /// (Firefox and WebKit keep `|`, Chromium encodes it).
     fn write_url(&self, out: &mut String) {
@@ -173,30 +173,33 @@ impl<'a> NavTo<'a> {
     }
 }
 
-/// A nav's links, from [`Req::nav_of`], with the deepest entries that hold the page marked
-/// current. Each URL is written once, at the call.
-pub struct NavLinks {
+/// A nav's links, from [`Req::nav_of`], each with its item, with the deepest entries that hold
+/// the page marked current. Each URL is written once, at the call.
+pub struct NavLinks<T> {
     /// The URLs one after another, not escaped.
     urls: String,
-    /// Where each entry's URL ends, whether it is a section, and how deep it is when it holds the
-    /// page.
-    entries: Vec<(usize, bool, Option<usize>)>,
+    /// Where each entry's URL ends, whether it is a section, how deep it is when it holds the
+    /// page, and its item.
+    entries: Vec<(usize, bool, Option<usize>, T)>,
     /// The deepest of them: the entries that deep are current.
     deepest: Option<usize>,
-    /// The group the runtime ranks these links in (`data-nav-group`): a hash of the entries,
-    /// so a patch's nav cannot join another of the page's, and two equal navs agree anyway.
+    /// The group the runtime ranks these links in (`data-nav-group`): 32 bits of a hash of the
+    /// entries, so a patch's nav does not join another of the page's, and two equal navs agree
+    /// anyway. Navs made to collide only mark the wrong link after a navigation.
     group: [u8; 8],
 }
 
-impl NavLinks {
-    /// The links' attributes, in the entries' order: `<a {..link}>`.
-    pub fn links(&self) -> impl Iterator<Item = NavLink<'_>> {
+impl<T> NavLinks<T> {
+    /// Each link's attributes with its item, in the entries' order:
+    /// `for (link, item) in nav.links() { <a {..link}>{&item.label}</a> }`. Render every one: the
+    /// runtime ranks the links in the page, the server ranked them all.
+    pub fn links(&self) -> impl Iterator<Item = (NavLink<'_>, &T)> {
         let mut start = 0;
         let group = std::str::from_utf8(&self.group).expect("hex digits");
-        self.entries.iter().map(move |&(end, section, depth)| {
-            let url = &self.urls[start..end];
-            start = end;
-            NavLink { url, section, current: depth.is_some() && depth == self.deepest, group }
+        self.entries.iter().map(move |(end, section, depth, item)| {
+            let url = &self.urls[start..*end];
+            start = *end;
+            (NavLink { url, section: *section, current: depth.is_some() && *depth == self.deepest, group }, item)
         })
     }
 }
@@ -236,14 +239,14 @@ fn holds(path: &str, url: &str, section: bool) -> Option<usize> {
 }
 
 /// [`Req::nav_of`] at `path`.
-pub(crate) fn nav_links<'a>(path: &str, entries: impl IntoIterator<Item = NavTo<'a>>) -> NavLinks {
+pub(crate) fn nav_links<'a, T>(path: &str, entries: impl IntoIterator<Item = (NavTo<'a>, T)>) -> NavLinks<T> {
     let mut urls = String::new();
     let entries: Vec<_> = entries
         .into_iter()
-        .map(|entry| {
+        .map(|(entry, item)| {
             let start = urls.len();
             entry.to.write_url(&mut urls);
-            (urls.len(), entry.section, holds(path, &urls[start..], entry.section))
+            (urls.len(), entry.section, holds(path, &urls[start..], entry.section), item)
         })
         .collect();
     let deepest = entries.iter().filter_map(|entry| entry.2).max();
@@ -838,9 +841,12 @@ impl Req {
     /// from data: of the entries that hold this page, only the deepest is current. Seller Desk
     /// (`/account/desk`, a section) is current on `/account/desk/repricing`, and only Money
     /// (`/account/desk/money`) on its own page. An entry is a typed route or a [`crate::Local`]
-    /// read from data. The links name their group (`data-nav-group`), so the runtime ranks the
-    /// same links after a client navigation wherever the markup puts them; a link of
-    /// [`Req::nav`] or [`Req::nav_section`] is still judged alone.
+    /// read from data, each with its item (a label, or the row it came from), which
+    /// [`NavLinks::links`] hands back with its link. The links name their group (`data-nav-group`),
+    /// so the runtime ranks the same links after a client navigation wherever the markup puts
+    /// them; a link of [`Req::nav`] or [`Req::nav_section`] is still judged alone. Leave out an
+    /// entry the user may not see before the call, not in the markup: the runtime ranks only the
+    /// links in the page.
     ///
     /// ```
     /// use corten::prelude::*;
@@ -854,9 +860,12 @@ impl Req {
     /// struct Money;
     ///
     /// fn nav(req: &Req, help: &Local) -> String {
-    ///     let nav = req.nav_of([NavTo::section(&Desk), NavTo::page(&Money), NavTo::page(help)]);
-    ///     let labels = ["Seller Desk", "Money", "Help"];
-    ///     html! { <nav>for (link, label) in nav.links().zip(labels) { <a {..link}>{label}</a> }</nav> }.to_html()
+    ///     let nav = req.nav_of([
+    ///         (NavTo::section(&Desk), "Seller Desk"),
+    ///         (NavTo::page(&Money), "Money"),
+    ///         (NavTo::page(help), "Help"),
+    ///     ]);
+    ///     html! { <nav>for (link, label) in nav.links() { <a {..link}>{*label}</a> }</nav> }.to_html()
     /// }
     /// let _: fn(&Req, &Local) -> String = nav;
     /// ```
@@ -874,7 +883,7 @@ impl Req {
     ///
     /// let link = html! { <a data-nav-group="a">"News"</a> };
     /// ```
-    pub fn nav_of<'a>(&self, entries: impl IntoIterator<Item = NavTo<'a>>) -> NavLinks {
+    pub fn nav_of<'a, T>(&self, entries: impl IntoIterator<Item = (NavTo<'a>, T)>) -> NavLinks<T> {
         nav_links(self.uri.path(), entries)
     }
 

@@ -910,9 +910,9 @@ fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
     #[route("/account/desk/money")]
     struct Money;
     let help = Local::parse("/help?topic=a&b").unwrap();
-    let written = |nav: crate::page::NavLinks| {
+    let written = |nav: crate::page::NavLinks<()>| {
         nav.links()
-            .map(|link| {
+            .map(|(link, ())| {
                 let mut out = String::new();
                 link.render_attrs(&mut out);
                 out
@@ -926,8 +926,10 @@ fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
         groups[0].clone()
     };
     let marked = |path: &str| {
-        let links =
-            written(nav_links(path, [NavTo::page(&Home), NavTo::section(&Desk), NavTo::section(&Money), NavTo::page(&help)]));
+        let links = written(nav_links(
+            path,
+            [NavTo::page(&Home), NavTo::section(&Desk), NavTo::section(&Money), NavTo::page(&help)].map(|e| (e, ())),
+        ));
         let g = format!(r#" data-nav-group="{}""#, group(&links));
         links.into_iter().map(|link| link.replace(&g, "")).collect::<Vec<_>>()
     };
@@ -950,15 +952,21 @@ fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
     assert!(marked("/elsewhere").iter().all(|link| !link.contains("aria-current")));
 
     // The group names the entries: the same nav twice is one group, another nav is another.
-    let desk = written(nav_links("/", [NavTo::section(&Desk), NavTo::page(&Money)]));
-    assert_eq!(group(&desk), group(&written(nav_links("/account", [NavTo::section(&Desk), NavTo::page(&Money)]))));
-    assert_ne!(group(&desk), group(&written(nav_links("/", [NavTo::page(&Desk), NavTo::page(&Money)]))));
-    assert_ne!(group(&desk), group(&written(nav_links("/", [NavTo::section(&Money), NavTo::page(&Desk)]))));
+    let of = |path: &str, entries: [NavTo; 2]| written(nav_links(path, entries.map(|e| (e, ()))));
+    let desk = of("/", [NavTo::section(&Desk), NavTo::page(&Money)]);
+    assert_eq!(group(&desk), group(&of("/account", [NavTo::section(&Desk), NavTo::page(&Money)])));
+    assert_ne!(group(&desk), group(&of("/", [NavTo::page(&Desk), NavTo::page(&Money)])));
+    assert_ne!(group(&desk), group(&of("/", [NavTo::section(&Money), NavTo::page(&Desk)])));
+
+    // Each link comes with its entry's item.
+    let labels: Vec<_> =
+        nav_links("/", [(NavTo::page(&Home), "Home"), (NavTo::section(&Desk), "Desk")]).links().map(|(_, l)| *l).collect();
+    assert_eq!(labels, ["Home", "Desk"]);
 
     // A path from data is written as the browser asks for it, so the server compares what it is
     // sent: `"` and `|` are percent-encoded in the path (not in the query).
     let odd = Local::parse(r#"/a"b|c?q="|""#).unwrap();
-    let links = written(nav_links("/a%22b%7Cc", [NavTo::page(&odd)]));
+    let links = written(nav_links("/a%22b%7Cc", [(NavTo::page(&odd), ())]));
     assert!(links[0].starts_with(r#" href="/a%22b%7Cc?q=&quot;|&quot;" data-nav data-nav-group=""#), "{links:?}");
     assert!(links[0].ends_with(r#" aria-current="page""#), "{links:?}");
 }

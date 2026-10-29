@@ -94,12 +94,14 @@ Each `req.nav` link is judged alone, so a section and a page under it (Seller De
 entries nest, or that is read from data, is written whole with `req.nav_of`: of its entries
 that hold the page, only the deepest is current. Its links carry the group they were ranked in
 (`data-nav-group`), so the runtime ranks the same links after a client navigation wherever the
-markup puts them. An entry is a route or a `Local` path, written as the browser asks for it (a
-link to another site is a plain link, never current):
+markup puts them, so render every link it gives back: leave out an entry the user may not see
+before the call. Each entry comes with its item (a label, or the row it was read from), which
+`links()` hands back beside its link. An entry is a route or a `Local` path, written as the
+browser asks for it (a link to another site is a plain link, never current):
 
 ```rust,ignore
-let nav = req.nav_of(items.iter().map(|item| NavTo::section(&item.href)));
-html! { <nav>for (link, item) in nav.links().zip(&items) { <a {..link}>{&item.label}</a> }</nav> }
+let nav = req.nav_of(items.iter().map(|item| (NavTo::section(&item.href), item)));
+html! { <nav>for (link, item) in nav.links() { <a {..link}>{&item.label}</a> }</nav> }
 ```
 
 Structured data for search engines is a head tag too: `head={JsonLd { value: &product }}`
