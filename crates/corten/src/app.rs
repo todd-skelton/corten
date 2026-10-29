@@ -260,7 +260,7 @@ struct Placed {
 ///     .error_page(views::error_page, db.clone())     // failed requests, in the app's layout
 ///     .middleware((RequestId, RateLimit))            // the app's own steps, in this order
 ///     .area(|area| admin::area(area).components(&[SalesChart]))
-///     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon("icons/192.png", "192x192")))
+///     .pwa(Pwa::new(Manifest::new("Shop", "Shop").icon(Static::ICONS_192_PNG, "192x192")))
 /// ```
 pub struct App<M = ()> {
     routes: Router,

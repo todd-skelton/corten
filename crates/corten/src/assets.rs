@@ -111,6 +111,11 @@ impl Asset {
     pub const fn path(self) -> &'static str {
         self.path
     }
+
+    /// The `embed!` struct it is a file of (`shop::Static`).
+    pub(crate) const fn owner(self) -> &'static str {
+        self.owner
+    }
 }
 
 /// A static file's versioned URL, written where it is used: `/assets/{version}/style.css`.
@@ -538,15 +543,10 @@ impl Assets {
         self.files.contains_key(path).then_some(AssetUrl { prefix: &self.prefix, path })
     }
 
-    /// The URL for `path` (relative to the directory, like `style.css`). A typo is a bug, so a
-    /// missing file panics in debug builds and is logged in release.
+    /// The URL for `path` (relative to the directory, like `style.css`), which must be there.
+    #[cfg(test)]
     pub(crate) fn url(&self, path: &str) -> String {
-        if !self.files.contains_key(path) {
-            if cfg!(debug_assertions) {
-                panic!("corten: no static file {path:?}");
-            }
-            tracing::error!("corten: no static file {path:?}");
-        }
+        assert!(self.files.contains_key(path), "no static file {path:?}");
         format!("{}{path}", self.prefix)
     }
 
