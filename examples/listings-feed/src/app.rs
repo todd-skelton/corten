@@ -31,7 +31,6 @@ use corten::{
     prelude::*,
 };
 use corten_cluster::{Begin, Cluster, Source};
-use serde::Deserialize;
 use sqlx::{PgConnection, PgPool, types::Json as Jsonb};
 
 use crate::{
@@ -118,10 +117,11 @@ pub mod api {
     #[route("/api")]
     pub struct ApiRoot;
 
-    /// `n` listings get a new market low (`?n=5`), committed as one patch.
+    /// `n` listings get a new market low (`?n=5`, 1 to 100), committed as one patch.
     #[route("/api/feeds/{seller}/market", post = market)]
     pub struct MarketWrite<'a> {
         pub seller: &'a str,
+        pub n: Option<usize>,
     }
 
     #[route("/api/feeds/{seller}/seq", get = committed_seq)]
@@ -148,28 +148,26 @@ impl Middleware for InstanceHeader {
 
 /// The seller's page. A seller with no feed is the 404 page, rather than a page whose script asks
 /// for a feed that is not there; Postgres out of reach is the 503 page.
-async fn page(req: Req, State(cluster): State<Cluster<Listings>>, Path(seller): Path<String>) -> HtmlResult {
-    cluster.feed(&seller).await.map_err(unavailable)?.ok_or_else(Error::not_found)?;
-    req.page(feed_monitor::page(&seller))
+async fn page(req: Req, State(cluster): State<Cluster<Listings>>, Params(at): Params<url::Seller<'_>>) -> HtmlResult {
+    cluster.feed(&at.seller).await.map_err(unavailable)?.ok_or_else(Error::not_found)?;
+    req.page(feed_monitor::page(&at.seller))
 }
 
 /// The seller's listings: every row and the cursor to follow from. Any instance answers; an
 /// unknown seller is a 404 and Postgres out of reach a 503, both as JSON.
-async fn snapshot(State(cluster): State<Cluster<Listings>>, Path(seller): Path<String>) -> corten::Result<FeedResponse> {
-    cluster.snapshot(&seller).await
+async fn snapshot(
+    State(cluster): State<Cluster<Listings>>,
+    Params(at): Params<url::Listings<'_>>,
+) -> corten::Result<FeedResponse> {
+    cluster.snapshot(&at.seller).await
 }
 
 async fn live(
     State(cluster): State<Cluster<Listings>>,
-    Path(seller): Path<String>,
+    Params(at): Params<url::ListingsLive<'_>>,
     since: Since,
 ) -> corten::Result<FeedResponse> {
-    cluster.live(&seller, since).await
-}
-
-#[derive(Deserialize)]
-struct MarketQuery {
-    n: Option<usize>,
+    cluster.live(&at.seller, since).await
 }
 
 /// What a market write answers: the patch's sequence and when it committed, Unix ms. `replayed`
@@ -186,14 +184,13 @@ struct Written {
 async fn market(
     State(pool): State<PgPool>,
     State(market): State<Market>,
-    Path(seller): Path<String>,
-    Query(q): Query<MarketQuery>,
+    Params(at): Params<api::MarketWrite<'_>>,
     headers: HeaderMap,
 ) -> JsonResult<Written> {
     let key = headers.get("idempotency-key").and_then(|v| v.to_str().ok());
     let roll = market.writes.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ listing::now();
-    let n = q.n.unwrap_or(5).clamp(1, 100);
-    Ok(Json(write_market(&pool, &market, &seller, n, roll, key).await.map_err(unavailable)?))
+    let n = at.n.unwrap_or(5).clamp(1, 100);
+    Ok(Json(write_market(&pool, &market, &at.seller, n, roll, key).await.map_err(unavailable)?))
 }
 
 async fn write_market(
@@ -240,7 +237,8 @@ async fn write_market(
 }
 
 /// The sequence committed in Postgres: the benchmark's source of truth for lost patches.
-async fn committed_seq(State(pool): State<PgPool>, Path(seller): Path<String>) -> JsonResult<u64> {
+async fn committed_seq(State(pool): State<PgPool>, Params(at): Params<api::Seq<'_>>) -> JsonResult<u64> {
+    let seller = at.seller;
     let seq = corten_cluster::seq(&pool, &seller).await.map_err(unavailable)?;
     Ok(Json(seq.ok_or_else(|| Error::new(format!("no seller {seller}")).with_status(StatusCode::NOT_FOUND))?))
 }

@@ -220,9 +220,9 @@ mod url {
 
 async fn feed_snapshot(
     corten::prelude::State(cluster): corten::prelude::State<Cluster<Items>>,
-    corten::prelude::Path(key): corten::prelude::Path<String>,
+    corten::Params(feed): corten::Params<url::FeedUrl<'_>>,
 ) -> corten::Result<FeedResponse> {
-    cluster.snapshot(&key).await
+    cluster.snapshot(&feed.key).await
 }
 
 #[tokio::test(flavor = "multi_thread")]

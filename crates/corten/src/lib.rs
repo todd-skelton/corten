@@ -237,7 +237,7 @@ pub use corten_macros::Fields;
 /// assert_eq!(<Arc<fn() -> u8>>::from_ref(&calls)(), 7);
 /// ```
 pub use corten_macros::FromRef;
-pub use form::{Errors, FieldName, Files, Form, Query, SubmitKey, Upload, UploadError};
+pub use form::{Errors, FieldName, Files, Form, SubmitKey, Upload, UploadError};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};
@@ -245,7 +245,7 @@ pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
 pub use page::{Corten, ErrorPageFn, Failure, Mode, Nav, ReadAgain, ReadAgainFrom, Req, MODE_HEADER};
-pub use route::{routes, Elsewhere, Href, Local, Methods, Prefix, Route, Routes, UrlValue};
+pub use route::{routes, Elsewhere, Href, Local, Methods, Params, ParamsRejection, Prefix, Route, Routes, UrlValue};
 pub use script::{event, Handler, Ref, Script};
 pub use signal::{Abort, Signal};
 pub use style::Style;
@@ -273,7 +273,7 @@ pub struct Component {
 /// What most files need: `use corten::prelude::*;`.
 pub mod prelude {
     pub use crate::{
-        axum::extract::{Path, State},
+        axum::extract::State,
         component, html,
         i18n::Messages as _,
         raw,
@@ -281,7 +281,7 @@ pub mod prelude {
         script::{el, refs, Handler, Ref},
         view::Id,
         Api, App, Area, Caller, Corten, Document, Errors, Failure, FieldName, Fields, Files, Form, FromRef, HtmlResult, Identify,
-        Methods, Middleware, Mode, Next, NoStore, Patch, Public, Query, ReadAgain, Refused, Render, Req, Route, Routes,
+        Methods, Middleware, Mode, Next, NoStore, Params, Patch, Public, ReadAgain, Refused, Render, Req, Route, Routes,
         SubmitKey, Upload, UploadError, UrlValue,
     };
     #[cfg(feature = "json")]

@@ -11,6 +11,8 @@ use crate::{
 pub struct Item {
     /// The inside of each `#[...]`.
     pub attrs: Vec<Group>,
+    /// Its visibility, as written (`pub`, `pub(crate)`, or nothing).
+    pub vis: TokenStream,
     pub is_enum: bool,
     pub name: Ident,
     /// The impl's generics (without defaults) and the type's arguments; empty when none.
@@ -31,6 +33,7 @@ pub fn parse(input: TokenStream, derive: &str) -> Result<Item, Error> {
 pub fn parse_item(input: TokenStream, derive: &str, tuple_ok: bool) -> Result<Item, Error> {
     let tokens: Vec<TokenTree> = input.into_iter().collect();
     let mut attrs = Vec::new();
+    let mut vis = TokenStream::new();
     let mut i = 0;
     let is_enum = loop {
         match tokens.get(i) {
@@ -45,7 +48,10 @@ pub fn parse_item(input: TokenStream, derive: &str, tuple_ok: bool) -> Result<It
             Some(TokenTree::Ident(id)) if id.to_string() == "union" => {
                 return err(id.span(), format!("{derive} cannot be derived for a union"))
             }
-            Some(_) => i += 1,
+            Some(token) => {
+                vis.extend([token.clone()]);
+                i += 1;
+            }
             None => return err(Span::call_site(), format!("{derive}: expected a struct or an enum")),
         }
     };
@@ -102,7 +108,7 @@ pub fn parse_item(input: TokenStream, derive: &str, tuple_ok: bool) -> Result<It
         }
         i += 1;
     }
-    Ok(Item { attrs, is_enum, name, impl_generics, type_generics, where_clause, body, tuple })
+    Ok(Item { attrs, vis, is_enum, name, impl_generics, type_generics, where_clause, body, tuple })
 }
 
 impl Item {
@@ -153,6 +159,10 @@ pub struct Field {
     pub attrs: Vec<Group>,
     /// Its name in a URL's query: `name`, or the name serde reads it by (`Route` sets it).
     pub key: String,
+    /// Its type, as written.
+    pub ty: Vec<TokenTree>,
+    /// Its visibility, as written (`pub`, `pub(crate)`, or nothing).
+    pub vis: Vec<TokenTree>,
 }
 
 pub fn named_fields(body: &Group) -> Result<Vec<Field>, Error> {
@@ -160,6 +170,7 @@ pub fn named_fields(body: &Group) -> Result<Vec<Field>, Error> {
     for field in split(body.stream(), ',') {
         let mut j = 0;
         let mut attrs = Vec::new();
+        let mut vis = Vec::new();
         loop {
             match field.get(j) {
                 Some(TokenTree::Punct(p)) if p.as_char() == '#' => {
@@ -169,15 +180,18 @@ pub fn named_fields(body: &Group) -> Result<Vec<Field>, Error> {
                     j += 2;
                 }
                 Some(TokenTree::Ident(id)) if id.to_string() == "pub" => {
+                    vis.push(field[j].clone());
                     j += 1;
                     if matches!(field.get(j), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis) {
+                        vis.push(field[j].clone());
                         j += 1;
                     }
                 }
                 Some(TokenTree::Ident(id)) if is_punct(field.get(j + 1), ':') => {
                     let text = id.to_string();
                     let name = text.strip_prefix("r#").unwrap_or(&text).to_string();
-                    fields.push(Field { key: name.clone(), name, ident: id.clone(), attrs });
+                    let ty = field.get(j + 2..).map(<[TokenTree]>::to_vec).unwrap_or_default();
+                    fields.push(Field { key: name.clone(), name, ident: id.clone(), attrs, ty, vis });
                     break;
                 }
                 Some(other) => return err(other.span(), "expected a named field"),

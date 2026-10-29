@@ -316,8 +316,12 @@ impl Breadcrumbs {
 
 /// A category changes less often than the home page: a CDN keeps it for an hour, while a browser
 /// still checks again after a minute.
-pub(crate) async fn category(req: Req, State(source): State<Source>, Path(slug): Path<String>) -> Public<HtmlResult> {
-    let t: Msg = req.t();
+pub(crate) async fn category(
+    req: Req,
+    State(source): State<Source>,
+    Params(at): Params<routes::Category<'_>>,
+) -> Public<HtmlResult> {
+    let (t, slug): (Msg, _) = (req.t(), at.slug);
     let items = source.in_category(&slug);
     // The category's own name, when an item is in it; else its slug, as "Category {slug}".
     let name = items.iter().flat_map(|item| &item.categories).find(|c| c.slug == slug).map(|c| c.name.clone());
@@ -332,18 +336,18 @@ pub(crate) async fn category(req: Req, State(source): State<Source>, Path(slug):
 }
 
 /// The item's old address, moved for good.
-pub(crate) async fn old_item(req: Req, Path(id): Path<String>) -> HtmlResult {
-    req.moved(&routes::Item { id: &id })
+pub(crate) async fn old_item(req: Req, Params(old): Params<routes::OldItem<'_>>) -> HtmlResult {
+    req.moved(&routes::Item { id: &old.id })
 }
 
-pub(crate) async fn show(req: Req, State(source): State<Source>, Path(id): Path<String>) -> HtmlResult {
-    let item = source.item(&id).await?.ok_or_else(Error::not_found)?;
+pub(crate) async fn show(req: Req, State(source): State<Source>, Params(at): Params<routes::Item<'_>>) -> HtmlResult {
+    let item = source.item(&at.id).await?.ok_or_else(Error::not_found)?;
     req.page(ItemPage::new(req.t(), &item, String::new()).document(&req))
 }
 
 /// The cached item, serialized where it is.
-pub(crate) async fn item_json(State(source): State<Source>, Path(id): Path<String>) -> JsonResult<Arc<ItemView>> {
-    Ok(Json(source.item(&id).await?.ok_or_else(Error::not_found)?))
+pub(crate) async fn item_json(State(source): State<Source>, Params(at): Params<api::ItemJson<'_>>) -> JsonResult<Arc<ItemView>> {
+    Ok(Json(source.item(&at.id).await?.ok_or_else(Error::not_found)?))
 }
 
 /// A partner's alert for one of its users: the form's rules, as JSON. A field the rules refuse
@@ -363,10 +367,10 @@ pub(crate) async fn alert_json(
 pub(crate) async fn create_alert(
     req: Req,
     State(source): State<Source>,
-    Path(id): Path<String>,
+    Params(at): Params<routes::Item<'_>>,
     Form(form): Form<AlertInput>,
 ) -> HtmlResult {
-    let t = req.t();
+    let (t, id) = (req.t(), at.id);
     // An alert on an item that does not exist is a 404, whatever its fields say.
     let item = source.item(&id).await?.ok_or_else(Error::not_found)?;
     let price = match check_alert(t, &form.email, &form.target_price).and_then(|price| listed(t, &item, price)) {

@@ -14,15 +14,15 @@
 //! Fields named in the path fill it, percent-encoded (`{*rest}` keeps its slashes); every other
 //! field is a query parameter, left out when it is `None`; a list (`Vec` or a slice) is the
 //! parameter once per item, `?condition=nm&condition=lp`, and left out when empty (what
-//! [`crate::Query`] reads back into a `Vec`); a map marked `#[route(prefix = "dim.")]` is a parameter
+//! [`Params`] reads back into a `Vec`); a map marked `#[route(prefix = "dim.")]` is a parameter
 //! per entry, `?dim.form=graded` ([`Pairs`]). Field types only need `Display`, so a
 //! link borrows (`&str`) and copies nothing. The derive checks the path when it compiles: a
 //! parameter without a field, a parameter that is not a whole segment, or a character that would
 //! need escaping is an error. Renaming the route's path changes every link with it.
 //!
-//! Handlers read parameters with axum's `Path` and Corten's [`crate::Query`]; a route struct with owned
-//! fields that also derives `Deserialize` can be the extractor's type. A route struct says where a
-//! link goes; that a handler is registered at `PATH` is the router's job (and its tests').
+//! A route's handler reads the same parameters back as [`Params`]: the struct's fields, owned, so a
+//! link and its handler cannot disagree about a parameter. A route struct says where a link goes;
+//! that a handler is registered at `PATH` is the router's job (and its tests').
 //!
 //! A query parameter is named as serde reads the field: `#[serde(rename_all = "camelCase")]` on the
 //! struct and `#[serde(rename = "..")]` on a field rename it in links too, so addresses that
@@ -177,11 +177,11 @@ pub use corten_macros::UrlValue;
 /// async fn home() -> &'static str {
 ///     "home"
 /// }
-/// async fn item(Path(id): Path<String>) -> String {
-///     id
+/// async fn item(item: Params<url::Item<'_>>) -> String {
+///     item.id.clone()
 /// }
-/// async fn save(Path(id): Path<String>) -> String {
-///     format!("saved {id}")
+/// async fn save(item: Params<url::Item<'_>>) -> String {
+///     format!("saved {}", item.id)
 /// }
 ///
 /// let app = App::new(url::router());
@@ -210,8 +210,8 @@ pub use corten_macros::UrlValue;
 ///     }
 /// }
 ///
-/// async fn item(Path(id): Path<String>) -> String {
-///     format!("item {id}")
+/// async fn item(item: Params<api::Item<'_>>) -> String {
+///     format!("item {}", item.id)
 /// }
 ///
 /// let app = App::new(Routes::new()).api(api::api);
@@ -380,8 +380,8 @@ pub use corten_macros::UrlValue;
 /// async fn dashboard(_: Caller<Staff>) -> &'static str {
 ///     "admin"
 /// }
-/// async fn user(_: Caller<Staff>, Path(id): Path<String>) -> String {
-///     id
+/// async fn user(_: Caller<Staff>, user: Params<admin::User<'_>>) -> String {
+///     user.id.clone()
 /// }
 ///
 /// let app = App::new(Routes::new()).area(admin::area);
@@ -630,7 +630,8 @@ impl<R: Route + ?Sized, I: crate::view::Id> fmt::Display for At<'_, R, I> {
 /// preview and its confirm need too. Declared once with `#[derive(Route)] #[route(query)]`, and
 /// included in a route with `#[route(query)]` on a field, which writes each of them as the route's
 /// own parameters. A route that must carry them cannot leave one out, and making one route's URL
-/// from another's copies one value. Handlers read them as `Query<ItemQuery>`.
+/// from another's copies one value. A route's handler reads them back with the route's other
+/// parameters, [`Params`].
 ///
 /// ```
 /// use corten::prelude::*;
@@ -652,7 +653,7 @@ impl<R: Route + ?Sized, I: crate::view::Id> fmt::Display for At<'_, R, I> {
 /// assert_eq!(ItemsLive { filters, since: Some(7) }.href(), "/items/live?search=red%20%26%20blue&page=2&since=7");
 /// assert_eq!(Items { filters: ItemQuery::default() }.href(), "/items");
 ///
-/// // The handler reads the same struct back: `Query(filters): Query<ItemQuery>`.
+/// // A route's handler reads the same struct back, as the field of its `Params<Items>`.
 /// let read: ItemQuery = corten::form::from_bytes(b"search=red%20%26%20blue&page=2").unwrap();
 /// assert_eq!((read.search.as_deref(), read.page), (Some("red & blue"), Some(2)));
 /// ```
@@ -666,7 +667,7 @@ impl<R: Route + ?Sized, I: crate::view::Id> fmt::Display for At<'_, R, I> {
 /// #[route("/items")]
 /// struct Items { #[route(query)] search: Option<String> }
 /// ```
-pub trait Params {
+pub trait QueryParams {
     /// Writes each parameter as `?key=value` or `&key=value` (`&amp;` with `html`), `first`
     /// saying which. Implemented by `#[derive(Route)] #[route(query)]`.
     fn write_params(&self, first: &mut bool, html: bool, out: &mut String);
@@ -695,16 +696,12 @@ pub trait Params {
 /// let link = Item { slug: "pika", dimensions: &dimensions };
 /// assert_eq!(link.href(), "/items/pika?dimension.form=graded&dimension.grade=PSA%208");
 ///
-/// // The handler reads them back with the other parameters, and keeps the prefixed ones.
-/// #[derive(serde::Deserialize)]
-/// struct ItemQuery {
-///     #[serde(flatten)]
-///     rest: BTreeMap<String, String>,
+///
+/// // Its handler reads them back with the other parameters, the prefix taken off:
+/// async fn item(Params(item): Params<Item<'_>>) -> String {
+///     format!("{} {:?}", item.slug, item.dimensions) // dimensions: BTreeMap<String, String>
 /// }
-/// let read: ItemQuery = corten::form::from_bytes(b"dimension.form=graded&dimension.grade=PSA%208").unwrap();
-/// let read: BTreeMap<String, String> =
-///     read.rest.into_iter().filter_map(|(k, v)| Some((k.strip_prefix("dimension.")?.to_string(), v))).collect();
-/// assert_eq!(read, dimensions);
+/// # let _ = item;
 /// ```
 ///
 /// A prefix another parameter's name starts with would read that parameter as one of the family,
@@ -1219,6 +1216,213 @@ impl fmt::Write for Encode<'_> {
     }
 }
 
+/// A route's parameters, read from the request: what a handler of a route with parameters
+/// takes, `Params<url::Item<'_>>`. It has the route's fields, owned (a `&'a str` or `Cow<'a, str>`
+/// is a `String`, a `&'a [T]` a `Vec<T>`, any other `&'a T` a `T`), filled the way a link writes them:
+/// a path parameter from its segment, percent-decoded; a query parameter by the name serde reads
+/// (`None`, or empty for a list, when the query leaves it out; a field with `#[serde(default)]`
+/// its default); a `#[route(query)]` field from the whole query; a `#[route(prefix = "dim.")]`
+/// field from each parameter with the prefix, taken off. A request whose parameters do not
+/// fit is a `400 Bad Request`.
+///
+/// So the link and the handler cannot disagree about a parameter's name or type, and a handler
+/// of a route with a parameter in its path must take the route's `Params`: in a
+/// `#[corten::routes]` module, one that reads another route's, or none, does not compile.
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> {
+///         pub id: &'a str,
+///         pub tab: Option<&'a str>,
+///     }
+/// }
+///
+/// async fn show(item: Params<url::Item<'_>>) -> String {
+///     format!("{} on {}", item.id, item.tab.as_deref().unwrap_or("details"))
+/// }
+///
+/// let app = App::new(url::router());
+/// # let _ = app;
+/// assert_eq!(url::Item { id: "a/b", tab: Some("offers") }.href(), "/items/a%2Fb?tab=offers");
+/// ```
+///
+/// A handler that reads its parameters some other way, or another route's, does not compile:
+///
+/// ```compile_fail,E0277
+/// use corten::{axum::extract::Path, prelude::*};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> { pub id: &'a str }
+/// }
+///
+/// async fn show(Path(id): Path<String>) -> String {
+///     id
+/// }
+/// # fn main() {}
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> { pub id: &'a str }
+///
+///     #[route("/sellers/{seller}", get = seller)]
+///     pub struct Seller<'a> { pub seller: &'a str }
+/// }
+///
+/// async fn show(item: Params<url::Seller<'_>>) -> String {
+///     item.seller.clone()
+/// }
+///
+/// async fn seller(seller: Params<url::Seller<'_>>) -> String {
+///     seller.seller.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A field `Params` has no owned form for (a borrowed `#[route(query)]` set) or a `#[serde(..)]`
+/// key it does not follow (`alias`, `with`, `flatten`, `skip`, a container `default`, ...) leaves
+/// the route's links as they are, and a handler that takes its `Params` does not compile, rather
+/// than read the parameters differently from how serde would:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[derive(Route)]
+/// #[route(query)]
+/// pub struct Filters<'a> { pub q: Option<&'a str> }
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> { pub id: &'a str, #[route(query)] pub filters: super::Filters<'a> }
+/// }
+///
+/// async fn show(item: Params<url::Item<'_>>) -> String {
+///     item.id.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<'a> { pub id: &'a str, #[serde(alias = "t")] pub tab: Option<&'a str> }
+/// }
+///
+/// async fn show(item: Params<url::Item<'_>>) -> String {
+///     item.id.clone()
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A route with a type parameter cannot be named for the check, so in a routes module one with a
+/// parameter in its path does not compile, with a message that says so (it never could be routed:
+/// the module names each route without arguments):
+///
+/// ```compile_fail
+/// use corten::prelude::*;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/items/{id}", get = show)]
+///     pub struct Item<T: std::fmt::Display> { pub id: T }
+/// }
+///
+/// async fn show() -> &'static str {
+///     "item"
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A link writes `Some("")` as `?tab=`, which reads back as `None` (a blank form field is no
+/// value); a key a route's field and its `#[route(query)]` set both write is sent twice, which
+/// `Params` refuses (a 400); and a `#[route(prefix = ..)]` map keeps the last value of a key sent
+/// twice, as a `BTreeMap` does.
+pub struct Params<R: FromUrl + ?Sized>(pub R::Params);
+
+impl<R: FromUrl + ?Sized> std::ops::Deref for Params<R> {
+    type Target = R::Params;
+
+    fn deref(&self) -> &R::Params {
+        &self.0
+    }
+}
+
+impl<R: FromUrl + ?Sized> std::ops::DerefMut for Params<R> {
+    fn deref_mut(&mut self) -> &mut R::Params {
+        &mut self.0
+    }
+}
+
+impl<R: FromUrl + ?Sized, S: Send + Sync> axum::extract::FromRequestParts<S> for Params<R>
+where
+    R::Path: __private::ReadPath,
+    R::Params: Send,
+{
+    type Rejection = ParamsRejection;
+
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, _: &S) -> Result<Self, ParamsRejection> {
+        let path = <R::Path as __private::ReadPath>::read(parts).await?;
+        R::__read(path, parts.uri.query().unwrap_or_default()).map(Params).map_err(ParamsRejection::query)
+    }
+}
+
+/// Why [`Params`] refused a request: a path or query parameter that does not fit its field, a
+/// 400 in plain text, as axum's rejections are. Boxed, so a request that fits moves nothing large.
+#[derive(Debug)]
+pub struct ParamsRejection(Box<axum::response::Response>);
+
+impl ParamsRejection {
+    #[cold]
+    fn query(error: crate::form::FormError) -> Self {
+        use axum::response::IntoResponse as _;
+        let status = axum::http::StatusCode::BAD_REQUEST;
+        let rejection = crate::form::FormRejection::invalid(status, "Failed to deserialize query string", error);
+        ParamsRejection(Box::new(rejection.into_response()))
+    }
+
+    #[cold]
+    fn path(rejection: axum::extract::rejection::PathRejection) -> Self {
+        use axum::response::IntoResponse as _;
+        ParamsRejection(Box::new(rejection.into_response()))
+    }
+}
+
+impl axum::response::IntoResponse for ParamsRejection {
+    fn into_response(self) -> axum::response::Response {
+        *self.0
+    }
+}
+
+/// A route whose parameters a handler reads back, as [`Params`]. Implemented by
+/// `#[derive(Route)]` for a struct with fields. Not a public API.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` has no parameters for `Params` to read",
+    note = "Params<R> reads the parameters of a #[derive(Route)] struct with fields, each owned or a reference (&'a str, &'a [T], &'a T)"
+)]
+pub trait FromUrl {
+    /// The route's fields, owned.
+    type Params;
+    /// Its path parameters, in the order the path names them ([`__private::ReadPath`]).
+    type Path;
+    /// The fields, from the path's parameters and the query string.
+    fn __read(path: Self::Path, query: &str) -> Result<Self::Params, crate::form::FormError>;
+}
+
 /// A route's handlers, one per method: `get(show)`, `get(show).post(save)`. What
 /// [`crate::Area::route`] and [`crate::Api::route`] take, and what `#[corten::routes]` builds for
 /// each route it names. Each handler is checked when the crate compiles, as a routes module checks
@@ -1393,13 +1597,14 @@ pub mod __private {
     // `#[corten::routes]` names each handler through one of these, so a handler that cannot serve
     // the route is an error that says why, at the handler's name in `#[route(..)]`: its arguments
     // a request cannot fill, a result that is not an `Answer`, an input a `Public` answer may not
-    // read, or a module's `caller = ..` it does not take. `R` is that caller (`()` for none).
+    // read, a module's `caller = ..` it does not take (`R`, `()` for none), or the route's own
+    // `Params` when its path has a parameter (`P`, `()` for none).
     // `super::get` and the others are the same check without a caller.
     macro_rules! methods {
         ($($method:ident),*) => {
             $(
                 #[inline]
-                pub fn $method<H, T, S, R, I>(handler: H) -> Methods<S>
+                pub fn $method<H, T, S, R, I, P, J>(handler: H) -> Methods<S>
                 where
                     H: RouteHandler<T, S> + crate::answer::Signature<T>,
                     <H as RouteHandler<T, S>>::Handler: Handler<T, S>,
@@ -1407,7 +1612,7 @@ pub mod __private {
                     <H as crate::answer::Signature<T>>::Out: crate::answer::Answer + 'static,
                     <<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs:
                         crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
-                    <H as crate::answer::Signature<T>>::Args: crate::answer::Holds<R, I>,
+                    <H as crate::answer::Signature<T>>::Args: crate::answer::Holds<R, I> + crate::answer::Holds<P, J>,
                     T: 'static,
                     S: Clone + Send + Sync + 'static,
                 {
@@ -1418,6 +1623,127 @@ pub mod __private {
         };
     }
     methods!(get, post, put, delete, patch, head, options, trace);
+
+    pub use crate::form::de::sorted_pairs;
+    use crate::form::{de::Pair, FormError};
+
+    /// `T`, named with a lifetime of the `FromUrl` impl, so a bound on it (that a field reads
+    /// back) is checked where `Params` is used, not where the route is declared: a link needs
+    /// only `Display`.
+    pub struct Later<'a, T: ?Sized>(std::marker::PhantomData<Mark<'a, T>>);
+
+    /// Names `'a` and `T` without requiring `T: 'a` (`T` may borrow for another lifetime).
+    type Mark<'a, T> = fn(&'a ()) -> *const T;
+
+    /// A field `Params` has no owned form for: a borrowed query set (`ItemQuery<'a>`), `&'a mut T`.
+    #[diagnostic::on_unimplemented(
+        message = "`Params` cannot read a route field borrowed this way: `{Self}`",
+        note = "a field Params reads back is owned, a reference (&'a str, &'a [T], &'a T) or a Cow<'a, T>: make a #[route(query)] set an owned struct"
+    )]
+    pub trait Owned {}
+
+    /// A `#[serde(..)]` key on a route that `Params` does not follow, by name.
+    #[allow(non_camel_case_types)]
+    pub mod serde_key {
+        pub struct alias;
+        pub struct deserialize_with;
+        pub struct with;
+        pub struct flatten;
+        pub struct skip;
+        pub struct skip_deserializing;
+        pub struct borrow;
+        pub struct default;
+        pub struct deny_unknown_fields;
+        pub struct from;
+        pub struct try_from;
+        pub struct transparent;
+    }
+
+    /// Never implemented: a route with a serde key `Params` does not follow has no `Params`.
+    #[diagnostic::on_unimplemented(
+        message = "`Params` reads a route's parameters by the names its links write, and does not follow this #[serde(..)] key: `{Self}`",
+        note = "remove the key from the route struct; a #[route(query)] set's own serde keys are read by serde"
+    )]
+    pub trait Followed {}
+
+    /// A query parameter read by serde: by its key, or a `#[route(query)]` field from them all.
+    pub trait Deserialized {
+        type T;
+        fn field(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> Self::T>) -> Result<Self::T, FormError>;
+        fn all(pairs: &[Pair<'_>]) -> Result<Self::T, FormError>;
+    }
+
+    impl<T: serde::de::DeserializeOwned> Deserialized for Later<'_, T> {
+        type T = T;
+
+        #[inline]
+        fn field(pairs: &[Pair<'_>], key: &str, default: Option<fn() -> T>) -> Result<T, FormError> {
+            crate::form::de::field(pairs, key, default)
+        }
+
+        #[inline]
+        fn all(pairs: &[Pair<'_>]) -> Result<T, FormError> {
+            crate::form::de::all(pairs)
+        }
+    }
+
+    /// A `#[route(prefix = "dim.")]` field: a `BTreeMap` or a `Vec` of pairs.
+    pub trait Prefixed {
+        type T;
+        fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError>;
+    }
+
+    impl<K: serde::de::DeserializeOwned + Ord, V: serde::de::DeserializeOwned> Prefixed
+        for Later<'_, std::collections::BTreeMap<K, V>>
+    {
+        type T = std::collections::BTreeMap<K, V>;
+
+        fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError> {
+            crate::form::de::prefixed(pairs, prefix)
+                .map(|(k, v)| Ok((crate::form::de::one(k)?, crate::form::de::one(v)?)))
+                .collect()
+        }
+    }
+
+    impl<K: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned> Prefixed for Later<'_, Vec<(K, V)>> {
+        type T = Vec<(K, V)>;
+
+        fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError> {
+            crate::form::de::prefixed(pairs, prefix)
+                .map(|(k, v)| Ok((crate::form::de::one(k)?, crate::form::de::one(v)?)))
+                .collect()
+        }
+    }
+
+    /// A route's path parameters, read for [`super::Params`]: `()` when its path has none.
+    pub trait ReadPath: Sized + Send {
+        fn read(
+            parts: &mut axum::http::request::Parts,
+        ) -> impl std::future::Future<Output = Result<Self, super::ParamsRejection>> + Send;
+    }
+
+    impl ReadPath for () {
+        #[inline]
+        fn read(
+            _: &mut axum::http::request::Parts,
+        ) -> impl std::future::Future<Output = Result<Self, super::ParamsRejection>> + Send {
+            std::future::ready(Ok(()))
+        }
+    }
+
+    /// The path's parameters as a tuple, in the order the path names them.
+    pub struct InPath<T>(pub T);
+
+    impl<T: serde::de::DeserializeOwned + Send> ReadPath for InPath<T> {
+        #[inline]
+        async fn read(parts: &mut axum::http::request::Parts) -> Result<Self, super::ParamsRejection> {
+            use axum::extract::FromRequestParts as _;
+            match axum::extract::Path::<T>::from_request_parts(parts, &()).await {
+                Ok(axum::extract::Path(value)) => Ok(InPath(value)),
+                Err(rejection) => Err(super::ParamsRejection::path(rejection)),
+            }
+        }
+    }
 
     /// The handler with its answer in its type, so a JSON route's failures are marked as JSON.
     #[inline]
@@ -1433,7 +1759,7 @@ pub mod __private {
     #[diagnostic::on_unimplemented(
         message = "`{Self}` cannot serve this route",
         label = "not a handler for these routes",
-        note = "a handler is an async fn whose arguments are extractors (Req, Path, Query, Form, ..), with a State<T> only for the module's #[corten::routes(state = T)], and whose result is a response"
+        note = "a handler is an async fn whose arguments are extractors (Req, Params, Form, ..), with a State<T> only for the module's #[corten::routes(state = T)], and whose result is a response"
     )]
     pub trait RouteHandler<T, S> {
         type Handler: Handler<T, S>;
@@ -1655,7 +1981,7 @@ mod tests {
     }
 
     /// Each word `UrlValue` writes is the one serde reads back as the same variant, under every
-    /// rule, through the reader `Query` uses.
+    /// rule, through the reader `Params` uses.
     #[test]
     fn url_values_are_the_words_serde_reads() {
         fn round_trip<E: std::fmt::Display + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug + Copy>(

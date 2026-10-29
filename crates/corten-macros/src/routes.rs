@@ -20,6 +20,9 @@ struct Routed {
     span: Span,
     /// Each method with the path of its handler, as written.
     handlers: Vec<(Ident, TokenStream)>,
+    /// The struct's arguments when it is named here (`<'_>`, or nothing); `None` when it has a
+    /// type parameter, which the module cannot name.
+    args: Option<String>,
 }
 
 /// What a struct's `#[route(..)]` says beyond its path.
@@ -134,13 +137,30 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     };
     let mut calls = TokenStream::new();
     for route in routed.iter().filter(|r| !r.handlers.is_empty()) {
+        // A route with a parameter in its path: each handler takes its `Params`.
+        let params = match &route.args {
+            Some(args) if route.path.contains('{') => {
+                let args: TokenStream = args.parse().expect("lifetime arguments parse");
+                q(
+                    "::corten::route::Params<__A0::__A1 __A2>",
+                    &[TokenTree::Ident(module.clone()).into(), TokenTree::Ident(route.name.clone()).into(), args],
+                )
+            }
+            None if route.path.contains('{') => {
+                return err(
+                    route.span,
+                    format!("{} has a type parameter, so its handlers cannot be held to taking its Params: give its fields concrete types", route.name),
+                );
+            }
+            _ => q("()", &[]),
+        };
         let mut methods = TokenStream::new();
         for (i, (method, handler)) in route.handlers.iter().enumerate() {
             let at = handler.clone().into_iter().last().map_or(method.span(), |t| t.span());
             let call = respan(
                 q(
-                    "::corten::route::__private::__A0::<_, _, __A1, __A2, _>",
-                    &[TokenTree::Ident(method.clone()).into(), state_ty.clone(), required.clone()],
+                    "::corten::route::__private::__A0::<_, _, __A1, __A2, _, __A3, _>",
+                    &[TokenTree::Ident(method.clone()).into(), state_ty.clone(), required.clone(), params.clone()],
                 ),
                 at,
             );
@@ -415,7 +435,7 @@ fn scan(body: TokenStream, prefix: Option<&str>, area: bool) -> Result<(TokenStr
                                 TokenTree::Literal(proc_macro::Literal::string(&path)).into(),
                             ],
                         ));
-                        routed.push(Routed { name: name.clone(), path, span, handlers: Vec::new() });
+                        routed.push(Routed { name: name.clone(), path, span, handlers: Vec::new(), args: None });
                         start = None;
                         derives = None;
                         route_at = None;
@@ -426,7 +446,8 @@ fn scan(body: TokenStream, prefix: Option<&str>, area: bool) -> Result<(TokenStr
                     let at = start.unwrap_or(out.len());
                     let derive: Vec<TokenTree> = q("#[derive(::corten::Route)]", &[]).into_iter().collect();
                     out.splice(at..at, derive);
-                    routed.push(Routed { name: name.clone(), path, span, handlers: serves.handlers });
+                    let args = lifetime_args(tokens.get(i + 2..).unwrap_or_default());
+                    routed.push(Routed { name: name.clone(), path, span, handlers: serves.handlers, args });
                 }
             }
             _ => {}
@@ -499,6 +520,43 @@ fn is_path(tokens: &[TokenTree]) -> bool {
         TokenTree::Punct(p) => p.as_char() == ':',
         _ => false,
     }) && matches!(tokens.last(), Some(TokenTree::Ident(_)))
+}
+
+/// A struct's generics, written as arguments that name it in a function body: `<'_, '_>` for its
+/// lifetimes, nothing when it has none, and `None` when it has a type parameter.
+fn lifetime_args(after_name: &[TokenTree]) -> Option<String> {
+    if !matches!(after_name.first(), Some(TokenTree::Punct(p)) if p.as_char() == '<') {
+        return Some(String::new());
+    }
+    let mut depth = 0;
+    let mut params = vec![Vec::new()];
+    for token in after_name {
+        if let TokenTree::Punct(p) = token {
+            match p.as_char() {
+                '<' => {
+                    depth += 1;
+                    if depth == 1 {
+                        continue;
+                    }
+                }
+                '>' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                ',' if depth == 1 => {
+                    params.push(Vec::new());
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        params.last_mut().expect("one at least").push(token.clone());
+    }
+    params.retain(|p| !p.is_empty());
+    let lifetimes = params.iter().all(|p| matches!(p.first(), Some(TokenTree::Punct(q)) if q.as_char() == '\''));
+    lifetimes.then(|| format!("<{}>", vec!["'_"; params.len()].join(", ")))
 }
 
 /// `#[derive(.., Route, ..)]`, by any path ending in `Route`.
