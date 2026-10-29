@@ -315,6 +315,9 @@ pub struct Script {
     /// The typed events (`#[event]`) it imports from `corten/events` when it runs. They are
     /// served with it, so an app that lists the script's component has them without listing them.
     pub events: &'static [crate::Component],
+    /// The script modules of its directory it imports (`import { load } from "./stripe.js"` is
+    /// `"stripe"`): a page that loads it preloads them, and the app must list them.
+    pub imports: &'static [&'static str],
 }
 
 /// A typed DOM event, from [`event`]: its name in the page and its fields, for the class the

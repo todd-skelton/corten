@@ -541,13 +541,19 @@ async function run(browser) {
   const timedErrors = [];
   timed.on("pageerror", (e) => timedErrors.push(String(e)));
   timed.on("console", (m) => m.type() === "error" && timedErrors.push(m.text()));
+  // Paused before the page loads, so only runFor moves its time: a slow read under load adds no
+  // seconds, and the pause cannot land in the page's past.
   await timed.clock.install();
+  await timed.clock.pauseAt(Date.now() + 1_000);
   await timed.goto(`${base}/`);
   const listed = timed.locator("time").first();
   const expires = timed.locator("time").nth(1);
   check("the server writes a time behind now", (await listed.textContent()) === "3 hr. ago", await listed.textContent());
   check("and one ahead, with its instant", (await expires.textContent()) === "in 1 minute" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{3})?Z$/.test((await expires.getAttribute("datetime")) ?? ""), await expires.textContent());
-  await timed.clock.runFor(31_000);
+  // To 58.5 seconds before the expiry, measured on the page, whatever the server's and the page's
+  // clocks differ by.
+  const until = Date.parse((await expires.getAttribute("datetime")) ?? "") - (await timed.evaluate(() => Date.now()));
+  await timed.clock.runFor(Math.max(0, until - 58_500));
   const seconds = async () => Number(/^in (5\d) seconds$/.exec((await expires.textContent()) ?? "")?.[1]);
   const first = await seconds();
   check("under a minute ahead, it counts seconds", first > 50, await expires.textContent());

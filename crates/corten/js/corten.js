@@ -1112,17 +1112,29 @@ async function stylesOf(content) {
 
 /**
  * Sets `aria-current="page"` on `<a data-nav>` links to this page (`data-nav="section"`: to this
- * page or any page under it) and removes it from the rest. The shell is not re-rendered by
- * client navigation, so its menu would otherwise keep pointing at the first page.
+ * page or any page under it) and removes it from the rest. Of the links of one `data-nav-group`
+ * (`Req::nav_of`), only the deepest that holds the page is current. The shell is not re-rendered
+ * by client navigation, so its menu would otherwise keep pointing at the first page.
  */
 function markCurrent() {
   const here = location.pathname;
+  /** Each link, its group (itself when it has none) and how deep it is when it holds the page. @type {[Element, Element | string, number][]} */
+  const links = [];
+  /** The deepest link that holds the page in each group. @type {Map<Element | string, number>} */
+  const deepest = new Map();
   for (const link of Array.from(document.querySelectorAll("a[href][data-nav]"))) {
     const path = new URL(/** @type {HTMLAnchorElement} */ (link).href).pathname;
     const base = path.replace(/\/+$/, "");
-    const current = here === path || (link.getAttribute("data-nav") === "section" && here.startsWith(`${base}/`));
-    if (current) link.setAttribute("aria-current", "page");
-    else link.removeAttribute("aria-current");
+    const holds = here === path || (link.getAttribute("data-nav") === "section" && here.startsWith(`${base}/`));
+    const group = link.getAttribute("data-nav-group") ?? link;
+    const depth = holds ? base.length : -1;
+    links.push([link, group, depth]);
+    deepest.set(group, Math.max(deepest.get(group) ?? -1, depth));
+  }
+  for (const [link, group, depth] of links) {
+    if (depth >= 0 && depth === deepest.get(group)) {
+      if (link.getAttribute("aria-current") !== "page") link.setAttribute("aria-current", "page");
+    } else if (link.hasAttribute("aria-current")) link.removeAttribute("aria-current");
   }
 }
 
