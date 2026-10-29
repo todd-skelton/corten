@@ -1605,6 +1605,13 @@ Corten is pre-1.0, so any minor version may change the API.
     the form's result and the menu's result were `display: none` until a message came, so the
     message was often not announced. The toast's box is drawn only while there is a message, and
     its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
+50. A `data-patch` form whose submit an `on:submit` handler cancelled was sent anyway: the runtime
+    sent it before the page's handlers ran. A handler that stops the submit's propagation still
+    gets the patch ([#199 A data-patch form still sends when an on:submit handler cancels the submit event](https://github.com/todd-skelton/corten/issues/199)).
+51. A `data-patch` form's body is the browser's: a file field is the file's name (it was
+    `[object File]`), line breaks are CRLF, a `text/plain` form is sent as text, not urlencoded,
+    and neither content type names a charset. A file chosen again while the first is on its way is a
+    new submit unless it is the same file (name, size and time), not a double click ([#200 A data-patch form's urlencoded body differs from the browser's: a file is [object File], line breaks are not CRLF, and text/plain is sent urlencoded](https://github.com/todd-skelton/corten/issues/200)). With 50, `corten.js` grows 201 bytes gzip.
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,
@@ -1743,6 +1750,9 @@ Corten is pre-1.0, so any minor version may change the API.
     `.area(|area| reviews::area(orders::area(area)))`, rather than an `identify` that picks the
     permission from the path. A test holds two modules' callers apart in one area
     ([#273 A page under an area cannot take its own caller, so a nested form that needs another permission checks it by path or by hand](https://github.com/todd-skelton/corten/issues/273)).
+26. CONTRIBUTING's check 2 unpacks sources into a throwaway `--tmpfs`, so its publish dry run builds
+    against Corten's crates as they are now, not a copy an earlier run left in the shared volume
+    ([#300 Check 2's publish dry run builds corten-ui against a stale corten unpacked in the shared registry volume](https://github.com/todd-skelton/corten/issues/300)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
