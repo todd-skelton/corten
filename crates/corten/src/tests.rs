@@ -3146,6 +3146,7 @@ async fn a_public_answer_takes_a_header_and_is_still_compressed() {
     let headers = res.headers();
     assert_eq!(headers["x-robots-tag"], "noindex, nofollow");
     assert_eq!(headers.get_all("link").iter().count(), 2, "{headers:?}");
+    #[cfg(feature = "compress")]
     assert_eq!(headers["content-encoding"], "zstd", "{headers:?}");
     assert_eq!(headers["cache-control"], "public, max-age=60", "{headers:?}");
     // An error is the error page, without the answer's headers.
