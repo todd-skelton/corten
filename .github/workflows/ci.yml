@@ -46,6 +46,8 @@ jobs:
 
   browser:
     runs-on: ubuntu-24.04
+    # A passing run takes 11 to 14 minutes; a hung one would hold the runner for six hours (#317).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
