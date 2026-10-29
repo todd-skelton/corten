@@ -728,7 +728,9 @@ async function run(browser) {
   // The formatter is a module of its own: the news page's handlers take no format, so it is not loaded.
   const formatLoaded = () => page.evaluate(() => performance.getEntriesByType("resource").some((e) => e.name.includes("/corten-format.js")));
   check("a page whose handlers take no format does not load the format module", !(await formatLoaded()));
-  await page.click('header a[href="/account"]');
+  // A visitor's header has no account link (the sign-in button is in its place), so the page gets one.
+  await page.evaluate(() => document.querySelector("main")?.insertAdjacentHTML("afterbegin", '<a id="to-account" href="/account">Account</a>'));
+  await page.click("#to-account");
   await page.waitForFunction(() => document.title === "Stocks | Watchlist", null, { timeout: 5000 }).catch(() => {});
   check(
     "a guarded page sends someone signed out to sign in",
@@ -750,8 +752,8 @@ async function run(browser) {
   if (signsIn) {
     await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 2));
     await page.click("header form[data-patch] button");
-    await page.waitForFunction(() => document.querySelector("header")?.textContent?.includes("Signed in as Ada"), null, { timeout: 5000 }).catch(() => {});
-    check("signing in shows the viewer in the shell", ((await page.textContent("header")) ?? "").includes("Signed in as Ada"));
+    await page.waitForFunction(() => document.querySelector("#viewer-badge")?.textContent?.trim() === "Ada", null, { timeout: 5000 }).catch(() => {});
+    check("signing in shows the viewer in the shell", ((await page.textContent("#viewer-badge")) ?? "").trim() === "Ada");
     check("a new shell context loads the whole document", await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined));
     await page.click('header a[href="/account"]');
     await page.waitForFunction(() => document.title === "Account | Watchlist", null, { timeout: 5000 }).catch(() => {});

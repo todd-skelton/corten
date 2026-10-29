@@ -323,6 +323,13 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         #[inline] __A2 fn percent(self, ratio: impl ::corten::i18n::Number, digits: u8) -> ::corten::i18n::Formatted {
             ::corten::i18n::Formatted::percent(self.__corten_locale(), ratio.to_decimal(), digits)
         }
+        /// A ratio as a change in this locale (a price's move today): a percentage with exactly
+        /// `digits` fraction digits (rounded half away from zero) and a sign, none when it rounds
+        /// to zero, so a column of them lines up: `t.change(Decimal::new(6, 3), 2)` is `+0.60%` in
+        /// en, `+0,60 %` in fr and `+%0,60` in tr.
+        #[inline] __A2 fn change(self, ratio: impl ::corten::i18n::Number, digits: u8) -> ::corten::i18n::Formatted {
+            ::corten::i18n::Formatted::change(self.__corten_locale(), ratio.to_decimal(), digits)
+        }
         /// An amount of money in this locale: `t.money(Minor(123450), USD)` is `$1,234.50` in en and
         /// `1 234,50 $US` in fr.
         #[inline] __A2 fn money(self, amount: impl ::corten::i18n::Amount, currency: ::corten::i18n::Currency) -> ::corten::i18n::Formatted {
@@ -390,6 +397,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             #[inline] __A1 fn number(self) -> ::corten::i18n::NumberFormat { ::corten::i18n::NumberFormat::new(self.__corten_locale()) }
             /// This locale's percentage format, for a handler whose JSDoc takes a PercentFormat: it writes format(ratio) as t.percent(ratio, digits) does.
             #[inline] __A1 fn percent(self, digits: u8) -> ::corten::i18n::PercentFormat { ::corten::i18n::PercentFormat::new(self.__corten_locale(), digits) }
+            /// This locale's change format, for a handler whose JSDoc takes a PercentFormat: it writes format(ratio) as t.change(ratio, digits) does.
+            #[inline] __A1 fn change(self, digits: u8) -> ::corten::i18n::PercentFormat { ::corten::i18n::PercentFormat::change(self.__corten_locale(), digits) }
             /// An amount's format in `currency`, for a handler whose JSDoc takes a MoneyFormat: it writes format(minor) as t.money(Minor(minor), currency) does.
             #[inline] __A1 fn money(self, currency: ::corten::i18n::Currency) -> ::corten::i18n::MoneyFormat { ::corten::i18n::MoneyFormat::new(self.__corten_locale(), currency) }
             /// A date's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.date(at, style) does.

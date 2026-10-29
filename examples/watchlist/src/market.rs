@@ -101,7 +101,7 @@ pub async fn simulate(market: Market, signal: Signal) {
 
 /// A feed row. `price` and `change` are the display text, for clients with no formatting of their
 /// own (a native screen, an agent); the page's script writes `price_cents` and `change_bp` with
-/// the page's formats (`t.js().money(USD)`, `t.js().percent(2)`), which write what the server
+/// the page's formats (`t.js().money(USD)`, `t.js().change(2)`), which write what the server
 /// does.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, ToJson)]
 pub struct Stock {
@@ -141,10 +141,10 @@ impl Stock {
         self.change_bp = ((scaled + half) / open) as i32;
         let t = Msg::default();
         self.price = t.money(Minor(cents), USD).to_string();
-        self.change = t.percent(self.ratio(), 2).to_string();
+        self.change = t.change(self.ratio(), 2).to_string();
     }
 
-    /// The change since the open as a ratio: `t.percent(stock.ratio(), 2)` is `1.23%`.
+    /// The change since the open as a ratio: `t.change(stock.ratio(), 2)` is `+1.23%`.
     pub fn ratio(&self) -> Decimal {
         Decimal::new(i128::from(self.change_bp), 4)
     }
@@ -177,7 +177,7 @@ mod tests {
         // 35 basis points of $129.99 is 45 cents.
         assert_eq!(
             (acme.price_cents, acme.change_bp, acme.price.as_str(), acme.change.as_str(), acme.trend()),
-            (13_044, 35, "$130.44", "0.35%", "up")
+            (13_044, 35, "$130.44", "+0.35%", "up")
         );
         assert_eq!(market.trades.borrow().clone(), (1, "Last trade: Acme Corp at $130.44.".to_string()));
         // The sixth trade is Sunreach Solar's, down 30 basis points: 5 cents of $19.62.
