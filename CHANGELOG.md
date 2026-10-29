@@ -1586,6 +1586,10 @@ Corten is pre-1.0, so any minor version may change the API.
     the form's result and the menu's result were `display: none` until a message came, so the
     message was often not announced. The toast's box is drawn only while there is a message, and
     its text is the box's color (it was the page's muted grey, under 4.5:1 contrast on the dark box).
+50. A patch that took the focused element away (a row removed, or the last row of a list drawn
+    again without it) left focus on the body, so a keyboard or screen reader user was sent to the
+    top of the document. Focus now goes to the nearest element around it that is still on the
+    page, focusable only for the move. `corten.js` grows 147 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

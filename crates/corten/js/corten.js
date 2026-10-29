@@ -671,7 +671,7 @@ function modulesOf(node) {
  * imported first, so its handlers run from the first event. The server's markup wins, except for
  * what the user is doing: a field they edited keeps their text, a dialog, `<details>` or popover
  * they opened stays open (a modal dialog modal) unless the server changed it, and focus stays where
- * it was.
+ * it was, or near it when the patch takes its element away ({@link focusNear}).
  * @param {string} html
  * @param {AbortSignal} [signal] Nothing changes once it aborts.
  */
@@ -695,7 +695,13 @@ async function apply(html, signal, sent, took) {
     const id = idOf(el);
     const target = id ? document.getElementById(id) : null;
     if (el.hasAttribute("data-corten-read-again")) again = el;
-    else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) target?.remove();
+    else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) {
+      // Focus in it goes to the nearest element around it that can take focus.
+      const around = [];
+      if (target?.contains(document.activeElement)) for (let up = target.parentElement; up; up = up.parentElement) around.push(up);
+      target?.remove();
+      focusNear(around);
+    }
     else if (!target) console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
     else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-append")) {
       put.push(...Array.from(el.content.children));
@@ -931,7 +937,8 @@ function replaceKeeping(root, fresh, sent, took) {
   serve(fresh);
   const reopen = opened(root, fresh);
   const focused = document.activeElement;
-  const next = focused !== document.body && focused && root.contains(focused) ? counterpart(root, fresh, focused) : null;
+  const inside = focused && focused !== document.body && root.contains(focused);
+  const next = inside ? counterpart(root, fresh, focused) : null;
   /** File inputs of `fresh` and the files to give them once they are in the page. @type {[any, FileList | null][]} */
   const files = [];
   for (const f of [root, ...Array.from(root.querySelectorAll("input, textarea, select"))]) {
@@ -959,6 +966,33 @@ function replaceKeeping(root, fresh, sent, took) {
       const { selectionStart, selectionEnd, selectionDirection } = /** @type {HTMLInputElement} */ (focused);
       if (selectionStart !== null) /** @type {HTMLInputElement} */ (next).setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? undefined);
     } catch {}
+  }
+  // The focused element went with the patch (or its counterpart cannot take focus): the
+  // counterpart of its nearest ancestor that has one, up to the patched element itself.
+  if (inside && document.activeElement === document.body) {
+    const around = [];
+    for (let el = focused.parentElement; el; el = el === root ? null : el.parentElement) around.push(counterpart(root, fresh, el));
+    focusNear(around);
+  }
+}
+
+/**
+ * Focuses the first of `candidates` on the page that can take it, made focusable for the move
+ * (`tabindex="-1"`, removed once focus leaves it), so a keyboard or screen reader user whose
+ * element a patch took away stays where they were rather than at the top of the document.
+ * @param {(Element | null | undefined)[]} candidates
+ */
+function focusNear(candidates) {
+  for (const el of candidates) {
+    if (!(el instanceof HTMLElement) || !el.isConnected || el === document.body) continue;
+    const made = !el.hasAttribute("tabindex");
+    if (made) el.setAttribute("tabindex", "-1");
+    el.focus({ preventScroll: true });
+    if (document.activeElement === el) {
+      if (made) el.addEventListener("blur", () => el.removeAttribute("tabindex"), { once: true });
+      return;
+    }
+    if (made) el.removeAttribute("tabindex");
   }
 }
 

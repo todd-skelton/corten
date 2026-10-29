@@ -939,6 +939,33 @@ async function run(browser) {
   check("a patch keeps focus on an element without an id or name (by its place)", buttonFocus);
   await page.evaluate(() => document.querySelector("#kept")?.remove());
 
+  // A patch that takes the focused element away leaves focus near it, not on the body (#267): the
+  // counterpart of its nearest ancestor that has one, focusable for the move only.
+  await page.evaluate(() =>
+    document
+      .querySelector("main")
+      ?.insertAdjacentHTML("beforeend", '<section id="rows-gone"><ul><li id="row-a"><button>Remove A</button></li><li id="row-b"><button>Remove B</button></li></ul></section><ul id="list-gone"><li id="item-a"><button>Remove</button></li></ul>'),
+  );
+  await page.focus("#row-b button");
+  const lostRow = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    await patch('<section id="rows-gone"><ul><li id="row-a"><button>Remove A</button></li></ul></section>');
+    const at = document.activeElement;
+    const list = document.querySelector("#rows-gone ul");
+    const was = at?.getAttribute("tabindex");
+    /** @type {HTMLElement} */ (document.querySelector("#row-a button")).focus();
+    return { onList: at === list, was, after: list?.getAttribute("tabindex") ?? null };
+  });
+  check("a patch that replaces the focused row leaves focus on its list, focusable only until it leaves", lostRow.onList && lostRow.was === "-1" && lostRow.after === null, JSON.stringify(lostRow));
+  await page.focus("#item-a button");
+  const lostItem = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    await patch('<template id="item-a" data-remove></template>');
+    return document.activeElement?.id;
+  });
+  check("a patch that removes the focused element leaves focus on its parent", lostItem === "list-gone", lostItem);
+  await page.evaluate(() => ["#rows-gone", "#list-gone"].forEach((s) => document.querySelector(s)?.remove()));
+
   // A form with a control named id (`form.id` is that control): its patch still finds it, and in
   // a patched block an edited field inside it keeps the user's text.
   await page.evaluate(() =>
