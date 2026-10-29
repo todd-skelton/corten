@@ -570,6 +570,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_item_with_no_picture_has_no_gallery_and_its_text_takes_the_width() {
+        let (status, _, html) = send(Request::get("/items/item_10").body(Body::empty()).unwrap()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(html.contains(r#"<div class="item-detail__top"><div class="item-detail__intro">"#), "{html}");
+        assert!(!html.contains("item-detail__gallery") && !html.contains("item-detail__art"), "no empty gallery: {html}");
+        // One with art has one, beside the text (`the_demo_catalog_lists_its_cards...`).
+        let demo = super::app(Source::demo()).router();
+        let res = demo.oneshot(Request::get("/items/item_1").body(Body::empty()).unwrap()).await.unwrap();
+        let item = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(item.contains(r#"<div class="item-detail__gallery"><img class="item-detail__art""#), "{item}");
+    }
+
+    #[tokio::test]
     async fn the_home_page_is_shared_by_caches_and_item_pages_are_not() {
         let get = |uri: &str, header: Option<(&str, &str)>| {
             let mut req = Request::get(uri);

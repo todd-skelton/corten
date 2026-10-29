@@ -841,6 +841,13 @@ Corten is pre-1.0, so any minor version may change the API.
     page the app prints) does not compile, and a page's name starts with the component's
     (`@page packing-slip-thermal`), so two components cannot set one page
     ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
+120. An area can loosen `Cross-Origin-Opener-Policy` for its pages only: `Sources::allow_popups()`
+    (`same-origin-allow-popups`) and `Sources::allow_cross_origin_opener()` (`unsafe-none`, which
+    Stripe's Connect embedded components need for their sign-in popup), and
+    `Policy::allow_cross_origin_opener()` for the whole app. The rest of the app keeps
+    `same-origin`, and a page under another opener policy has its own shell key, so a client
+    navigation into or out of the area loads the document in full
+    ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1651,7 +1658,12 @@ Corten is pre-1.0, so any minor version may change the API.
     that way. A request the page cancelled no longer counts as a console error; a real CORS
     refusal fails with another reason and still does
     ([#301 ui-gallery smoke: WebKit logged a console error for /?sale=last, due to access control checks (CI, once)](https://github.com/todd-skelton/corten/issues/301)).
-56. examples/card-market's item page left the right half of a desktop screen empty: the picture
+56. examples/seller-desk started its sales simulation with `tokio::spawn` in `main`, so it ran on
+    through shutdown and outside the app. It is the app's `task` now, started once the server
+    listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
+    runs one late tick instead of every missed one back to back
+    ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
+57. examples/card-market's item page left the right half of a desktop screen empty: the picture
     stacked under the title. From 56rem the picture is the left column, beside the title, the
     tags and the price summary; a phone's one column is unchanged. The page gains two wrapping
     `<div>`s, 74 bytes of its 11,435

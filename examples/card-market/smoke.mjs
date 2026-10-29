@@ -55,20 +55,28 @@ try {
     return {
       accent: getComputedStyle(root).getPropertyValue("--color-accent").trim(),
       price: css("[data-scope=listing-sort] tbody td:last-child").fontVariantNumeric,
-      summary: css("article > div > section").columnGap,
       themes: [light, dark],
     };
   });
   check("design tokens are custom properties", styles.accent === "#6b3fd4", styles.accent);
   check("a component's scoped stylesheet applies", styles.price === "tabular-nums", styles.price);
-  check("a responsive utility applies at this width", /^\d+px$/.test(styles.summary), styles.summary);
   // The item page's top: on a desktop the picture beside the title and the price; on a phone one
-  // column, title, picture, price.
+  // column, title, picture, price. The price's row is spaced by a responsive utility: the
+  // --space-5 token on a desktop, --space-3 on a phone.
   const top = () =>
     page.evaluate(() => {
       const box = (/** @type {string} */ s) => /** @type {Element} */ (document.querySelector(s)).getBoundingClientRect();
       const [title, gallery, price] = [box("article h1"), box("article > div > div:nth-child(2)"), box("article > div > section")];
-      return { beside: gallery.right <= title.left && gallery.right <= price.left && price.top < gallery.bottom, stacked: title.bottom <= gallery.top && gallery.bottom <= price.top };
+      const probe = document.body.appendChild(document.createElement("div"));
+      const token = (/** @type {string} */ name) => ((probe.style.columnGap = `var(${name})`), getComputedStyle(probe).columnGap);
+      const space = { 3: token("--space-3"), 5: token("--space-5") };
+      probe.remove();
+      return {
+        beside: gallery.right <= title.left && gallery.right <= price.left && price.top < gallery.bottom,
+        stacked: title.bottom <= gallery.top && gallery.bottom <= price.top,
+        gap: getComputedStyle(/** @type {Element} */ (document.querySelector("article > div > section"))).columnGap,
+        space,
+      };
     });
   await page.setViewportSize({ width: 1280, height: 720 });
   const wide = await top();
@@ -76,6 +84,11 @@ try {
   const phone = await top();
   await page.setViewportSize({ width: 1280, height: 720 });
   check("the item's picture sits beside its title and price on a desktop, above the price on a phone", wide.beside && phone.stacked, JSON.stringify({ wide, phone }));
+  check(
+    "a responsive utility spaces the price's row by the width's token",
+    wide.space[5] !== wide.space[3] && wide.gap === wide.space[5] && phone.gap === phone.space[3],
+    JSON.stringify({ wide: [wide.gap, wide.space], phone: [phone.gap, phone.space] }),
+  );
   check("a theme overrides tokens", styles.themes[0] === "#1d1b26" && styles.themes[1] === "#ecebf2", styles.themes.join(" "));
 
   const firstPrice = () => page.textContent("[data-scope=listing-sort] tbody tr:first-child td:last-child");
