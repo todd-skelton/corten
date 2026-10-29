@@ -1772,9 +1772,7 @@ pub mod __private {
         while a < total {
             let mut b = a + 1;
             while b < total {
-                let (Some((a_prefix, a_text)), Some((b_prefix, b_text))) = (nth(keys, a), nth(keys, b)) else {
-                    unreachable!()
-                };
+                let (Some((a_prefix, a_text)), Some((b_prefix, b_text))) = (nth(keys, a), nth(keys, b)) else { unreachable!() };
                 let clash = match (a_prefix, b_prefix) {
                     (false, false) => starts_with(a_text, b_text) && a_text.len() == b_text.len(),
                     (true, false) => starts_with(b_text, a_text),
