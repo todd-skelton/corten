@@ -1,0 +1,28 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 8045    267.316859/s
+    checks_succeeded...: 100.00% 8045 out of 8045
+    checks_failed......: 0.00%   0 out of 8045
+
+    ✓ status 200
+
+    HTTP
+    http_req_duration..............: avg=119.39ms p(50)=113.11ms p(95)=157.18ms p(99)=182.9ms  max=1.13s
+      { expected_response:true }...: avg=119.39ms p(50)=113.11ms p(95)=157.18ms p(99)=182.9ms  max=1.13s
+    http_req_failed................: 0.00%  0 out of 8045
+    http_reqs......................: 8045   267.316859/s
+
+    EXECUTION
+    iteration_duration.............: avg=119.52ms p(50)=113.21ms p(95)=157.3ms  p(99)=183.04ms max=1.13s
+    iterations.....................: 8045   267.316859/s
+    vus............................: 32     min=32        max=32
+    vus_max........................: 32     min=32        max=32
+
+    NETWORK
+    data_received..................: 148 MB 4.9 MB/s
+    data_sent......................: 945 kB 31 kB/s
+
+
+

@@ -3,10 +3,13 @@
 // (the watchlist image, run with -e CORTEN_DEV=1 in a container of that name).
 import { chromium } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { stall } from "./stall.mjs";
 
 const [base = "http://localhost:18483", container = "corten-watchlist-dev"] = process.argv.slice(2);
 const failures = [];
+const seen = stall(5);
 const check = (name, ok, detail = "") => {
+  seen(name);
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(name);
 };
@@ -21,7 +24,8 @@ try {
   await page.evaluate(() => ((/** @type {any} */ (window)).__marker = 1));
   await page.waitForTimeout(300);
   check("the page stays while the server runs", await page.evaluate(() => (/** @type {any} */ (window)).__marker === 1));
-  execFileSync("docker", ["restart", "-t", "1", container], { stdio: "ignore" });
+  // Bounded: a blocking call holds the event loop, so the stall watchdog could not stop it.
+  execFileSync("docker", ["restart", "-t", "1", container], { stdio: "ignore", timeout: 60_000 });
   await page.waitForFunction((b) => document.querySelector('meta[name="corten-dev"]')?.getAttribute("content") !== b, boot, { timeout: 20000 }).catch(() => {});
   const after = await page.getAttribute('meta[name="corten-dev"]', "content").catch(() => null);
   check("the open page reloads when the server restarts", !!after && after !== boot && (await page.evaluate(() => (/** @type {any} */ (window)).__marker === undefined)));

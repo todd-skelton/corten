@@ -9,7 +9,7 @@
 //! | `POST /save` | saving the draft, answered with a toast |
 //! | `POST /rename` | the rename dialog's form: refused, the dialog drawn open; else back to the draft |
 //! | `GET /help` | the menu's link |
-use corten::{Component, prelude::*};
+use corten::{Component, i18n::Currency, prelude::*};
 use serde::Deserialize;
 use std::time::{Duration, SystemTime};
 
@@ -118,16 +118,24 @@ async fn home(req: Req, Params(q): Params<url::Home<'_>>) -> HtmlResult {
 
 #[derive(Deserialize, Fields)]
 pub struct SellForm {
-    pub qty: f64,
-    pub price: f64,
+    /// A count: a fraction does not read, and the browser's `step` stops one before it is sent.
+    pub qty: u32,
+    /// Money as the reader typed it, read by `t.parse_money`: a refused entry is shown back as is.
+    pub price: String,
+    pub weight: f64,
     pub condition: String,
     /// The regions the seller ships to: at least one (`CheckboxGroup`).
     #[serde(default)]
     pub ships: Vec<String>,
     /// `fixed`, or `offers` with the lowest offer the seller accepts (`RequiredWhen`).
     pub pricing: String,
-    pub floor: Option<f64>,
+    /// Money too, empty unless the listing takes offers.
+    #[serde(default)]
+    pub floor: String,
 }
+
+/// The listing's currency.
+pub const USD: Currency = Currency::new("USD");
 
 /// The pricing that takes offers, and needs the lowest one.
 pub const OFFERS: &str = "offers";
@@ -139,11 +147,16 @@ pub const NO_REGION: &str = "Choose where you ship.";
 /// both before sending when its script runs, and this is the check without it.
 async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
     let f = SellForm::FIELDS;
+    let t: Msg = req.t();
     let mut errors = Errors::new();
+    let price = t.parse_money(&form.price, USD);
+    if price.is_none() {
+        errors.add(f.price, "Enter a price, such as 12.50.");
+    }
     if form.ships.is_empty() {
         errors.add(f.ships, NO_REGION);
     }
-    if form.pricing == OFFERS && form.floor.is_none() {
+    if form.pricing == OFFERS && t.parse_money(&form.floor, USD).is_none() {
         errors.add(f.floor, "Enter the lowest offer you accept.");
     }
     if let Some((_, message)) = errors.iter().next() {
@@ -163,7 +176,9 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
         return req.invalid(&errors, OrderResult { text: message }, page).await;
     }
     let condition = CONDITIONS.iter().find(|c| c.value == form.condition).map_or("ungraded", |c| c.label);
-    let text = format!("Listed {} {condition} {CARD} at ${:.2} each.", form.qty, form.price);
+    // Some here: a price that does not read is refused above.
+    let price = price.map(|cents| t.money(cents, USD).to_string()).unwrap_or_default();
+    let text = format!("Listed {} {condition} {CARD} at {price} each, {:.1} oz to ship.", form.qty, form.weight);
     let page = || async {
         gallery(
             &req,
@@ -298,9 +313,12 @@ mod tests {
     #[tokio::test]
     async fn the_form_answers_with_a_patch_or_the_page() {
         let form = || Request::post("/sell").header("content-type", "application/x-www-form-urlencoded");
-        const LISTED: &str = "qty=2&price=12.50&condition=lp&ships=us&ships=eu&pricing=fixed&floor=";
+        const LISTED: &str = "qty=2&price=12.50&weight=0.5&condition=lp&ships=us&ships=eu&pricing=fixed&floor=";
         let patch = send(form().header("corten", "action").body(Body::from(LISTED)).unwrap()).await;
-        assert_eq!(patch, r#"<p id="result" role="status">Listed 2 Lightly Played Ashen Drake at $12.50 each.</p>"#);
+        assert_eq!(
+            patch,
+            r#"<p id="result" role="status">Listed 2 Lightly Played Ashen Drake at $12.50 each, 0.5 oz to ship.</p>"#
+        );
         let page = send(form().body(Body::from(LISTED)).unwrap()).await;
         assert!(page.contains("<html") && page.contains("Listed 2 Lightly Played Ashen Drake"));
     }
@@ -319,15 +337,16 @@ mod tests {
             )
         };
         for (body, message) in [
-            ("qty=1&price=1&condition=lp&pricing=fixed&floor=", "Choose where you ship."),
-            ("qty=1&price=1&condition=lp&ships=ca&pricing=offers&floor=", "Enter the lowest offer you accept."),
+            ("qty=1&price=1&weight=1&condition=lp&pricing=fixed&floor=", "Choose where you ship."),
+            ("qty=1&price=1&weight=1&condition=lp&ships=ca&pricing=offers&floor=", "Enter the lowest offer you accept."),
+            ("qty=1&price=1.2.3&weight=1&condition=lp&ships=ca&pricing=fixed&floor=", "Enter a price, such as 12.50."),
         ] {
             let res = post(body).await.unwrap();
             assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{body}");
             let text = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
             assert_eq!(text, format!(r#"<p id="result" role="status">{message}</p>"#));
         }
-        let res = post("qty=1&price=1&condition=lp&ships=ca&pricing=offers&floor=5").await.unwrap();
+        let res = post("qty=1&price=%241%2C299.50&weight=1&condition=lp&ships=ca&pricing=offers&floor=5").await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
     }
 
