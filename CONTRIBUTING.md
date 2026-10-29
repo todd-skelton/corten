@@ -20,7 +20,7 @@ crates/
 examples/watchlist/  A stock watchlist: live prices, news, alerts; scripts/smoke.mjs tests the runtime against it
 examples/card-market/ A trading-card store (home, categories, item pages) with every production module on; smoke.mjs tests it
 examples/seller-desk/ A seller's inventory desk: a client-heavy screen built with handlers
-examples/listings-feed/ A seller's listings feed on corten-cluster, a page that follows it, and the failover benchmark
+examples/listings-feed/ A seller's listings kept live by a feed on corten-cluster, served by several instances, and the failover benchmark
 examples/ui-gallery/ corten-ui styled by a small design system; smoke.mjs tests it in a browser
 docs/              Guides (docs/guide), design decisions and limits, surfaces (architecture.md)
 skills/corten/     The agent skill for building apps on Corten

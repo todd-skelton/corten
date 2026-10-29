@@ -3,7 +3,8 @@
 //!
 //! | Route | Piece |
 //! |---|---|
-//! | `GET /sellers/{seller}` | a page whose script follows the seller's feed (`subscribe`) and shows what arrived: kill the instance it streams from and it resumes on the other with no change missed; an unknown seller is the 404 page |
+//! | `GET /sellers/{seller}` | the seller's listings, rendered from this instance's feed and kept current by a script that follows it (`subscribe`), with what arrived: kill the instance it streams from and it resumes on the other with no change missed; an unknown seller is the 404 page |
+//! | `POST /sellers/{seller}/market` | the page's form: five market lows move, committed as `/api/feeds/{seller}/market` commits; the rows change when the feed brings it |
 //! | `GET /feeds/{seller}`, `/feeds/{seller}/live` | the seller's listings as a feed (`corten-cluster`): any instance answers, and a client resumes on any of them with the same cursor |
 //! | `POST /api/feeds/{seller}/market` | a write committed with an outbox row in one transaction, at most once per `Idempotency-Key` |
 //! | `GET /api/feeds/{seller}/seq` | the sequence Postgres committed, what every client must reach |
@@ -33,9 +34,14 @@ use corten::{
 use corten_cluster::{Begin, Cluster, Source};
 use sqlx::{PgConnection, PgPool, types::Json as Jsonb};
 
+use serde::Deserialize;
+
 use crate::{
-    feed_monitor::{self, FeedMonitor},
     listing::{self, Listing},
+    listing_row::ListingRow,
+    listing_table::{Line, ListingTable, SHOWN},
+    page::{self, MoveStatus},
+    text::Msg,
 };
 
 /// The app's rows: `listings`, keyed by seller (the feed key).
@@ -79,7 +85,9 @@ pub fn app(shared: Shared) -> App<InstanceHeader> {
     let pool = shared.pool.clone();
     App::new(url::router(shared.clone()))
         .api(|routes| api::api(routes, shared))
-        .components(&[FeedMonitor])
+        .assets(page::Static)
+        .components(&[ListingTable, ListingRow])
+        .messages::<Msg>()
         // Not ready while Postgres is out of reach, or busy past a second: a load balancer that
         // checks it sends this instance no traffic until then.
         .ready(move || {
@@ -97,6 +105,11 @@ pub fn app(shared: Shared) -> App<InstanceHeader> {
 pub mod url {
     #[route("/sellers/{seller}", get = page)]
     pub struct Seller<'a> {
+        pub seller: &'a str,
+    }
+
+    #[route("/sellers/{seller}/market", post = move_market)]
+    pub struct Move<'a> {
         pub seller: &'a str,
     }
 
@@ -146,11 +159,46 @@ impl Middleware for InstanceHeader {
     }
 }
 
-/// The seller's page. A seller with no feed is the 404 page, rather than a page whose script asks
-/// for a feed that is not there; Postgres out of reach is the 503 page.
-async fn page(req: Req, State(cluster): State<Cluster<Listings>>, Params(at): Params<url::Seller<'_>>) -> HtmlResult {
-    cluster.feed(&at.seller).await.map_err(unavailable)?.ok_or_else(Error::not_found)?;
-    req.page(feed_monitor::page(&at.seller))
+/// The seller's page, its first listings rendered from this instance's copy of the feed. A seller
+/// with no feed is the 404 page, rather than a page whose script asks for a feed that is not
+/// there; Postgres out of reach is the 503 page.
+async fn page(
+    req: Req,
+    State(cluster): State<Cluster<Listings>>,
+    State(instance): State<Instance>,
+    Params(at): Params<url::Seller<'_>>,
+) -> HtmlResult {
+    let feed = cluster.feed(&at.seller).await.map_err(unavailable)?.ok_or_else(Error::not_found)?;
+    let (shown, total): (Vec<Listing>, usize) = feed.read(|rows| (rows.values().take(SHOWN).cloned().collect(), rows.len()));
+    let t = req.t();
+    let lines: Vec<Line> = shown.iter().map(|listing| Line::new(t, listing)).collect();
+    req.page(page::page(&req, &at.seller, &instance.name, &lines, total, t))
+}
+
+#[derive(Deserialize, Fields)]
+pub struct MoveInput {
+    /// This submit, so one sent again (its answer lost on the way) commits once: it is the
+    /// write's idempotency key.
+    pub submit: SubmitKey,
+}
+
+/// The page's form: five market lows move, in one transaction with the feed's outbox row. The
+/// answer only says so; the rows change when the feed brings the change, as they do for a write
+/// any other instance or client made. Without JavaScript, the page again.
+async fn move_market(
+    req: Req,
+    State(pool): State<PgPool>,
+    State(market): State<Market>,
+    Params(at): Params<url::Move<'_>>,
+    Form(input): Form<MoveInput>,
+) -> HtmlResult {
+    let roll = market.writes.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ listing::now();
+    write_market(&pool, &market, &at.seller, 5, roll, Some(input.submit.as_str())).await.map_err(unavailable)?;
+    let t: Msg = req.t();
+    req.patch_or(html! { <MoveStatus text={t.listings_moved()} /> }, || async {
+        req.redirect(&url::Seller { seller: &at.seller })
+    })
+    .await
 }
 
 /// The seller's listings: every row and the cursor to follow from. Any instance answers; an
@@ -264,4 +312,47 @@ async fn stats(State(cluster): State<Cluster<Listings>>, State(instance): State<
 /// A database or JetStream failure: a 503, its cause in the log.
 fn unavailable(e: corten_cluster::Error) -> Error {
     Error::new(e).with_status(StatusCode::SERVICE_UNAVAILABLE)
+}
+
+#[cfg(test)]
+mod tests {
+    use corten::prelude::*;
+
+    use crate::{
+        listing::{self, Listing},
+        listing_table::{Line, ListingTable},
+        text::Msg,
+    };
+
+    /// The listing type the table's script reads (`types/app.d.ts`), and its row's view.
+    #[test]
+    fn script_types_match_the_server() {
+        corten::types::Types::new()
+            .add::<Listing>()
+            .components(&[ListingTable, crate::listing_row::ListingRow])
+            .sync(concat!(env!("CARGO_MANIFEST_DIR"), "/types/app.d.ts"));
+    }
+
+    /// Each listing is a row keyed by its id, its prices in the page's money format, marked when
+    /// its price is over the market low; the counts are the whole seller's.
+    #[test]
+    fn the_table_draws_each_listing_and_the_feed_follows_them() {
+        let t = Msg::default();
+        let mut listings = listing::generate(3, 1);
+        listings[0].price_cents = 12_345;
+        listings[0].market_cents = 10_000;
+        listings[1].status = "paused".into();
+        let lines: Vec<Line> = listings.iter().map(|l| Line::new(t, l)).collect();
+        let html = html! { <ListingTable seller="s1" lines={&lines} total={5_000} t={t} /> }.to_html();
+        assert_eq!(html.matches("<tr data-key=").count(), 3, "{html}");
+        assert!(
+            html.contains(r#"<tr data-key="lst_000001" data-above>"#) && html.contains("$123.45") && html.contains("$100.00"),
+            "{html}"
+        );
+        assert!(html.contains(r#"<tr data-key="lst_000002" data-paused"#), "{html}");
+        assert!(html.contains("3 of 5,000 listings"), "{html}");
+        let listings = html.split(r#"<output name="listings""#).nth(1).and_then(|rest| rest.split("</output>").next());
+        assert!(listings.is_some_and(|el| el.ends_with(">5000")), "the seller's whole count: {html}");
+        assert!(html.contains("listing_table.follow("), "one subscription for the counts and the rows: {html}");
+    }
 }
