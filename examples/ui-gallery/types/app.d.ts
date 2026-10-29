@@ -3,7 +3,7 @@
 
 /** The app's typed events (#[event]), dispatched by scripts and listened for with on:Name. */
 declare module "corten/events" {
-  /** The `copied` event, from #[event] Copied. */
+  /** The `ui-copied` event, from #[event] Copied. */
   export class Copied extends Event {
     constructor(init?: {});
   }

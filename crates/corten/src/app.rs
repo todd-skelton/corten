@@ -389,8 +389,8 @@ impl<M: Middleware> App<M> {
     ///
     /// Scripts are served with the static files and preloaded on the pages whose handlers use them;
     /// the stylesheets are one file, `components.css`, linked from every document's `<head>`.
-    /// A component listed twice counts once. The typed events (`#[event]`) a script imports are
-    /// served with it.
+    /// A component listed twice counts once. The typed events (`#[event]`) a component's script
+    /// imports are served with it; an event only a file in the static directory imports is listed.
     pub fn components(mut self, components: &[crate::Component]) -> Self {
         self.components.extend_from_slice(components);
         self

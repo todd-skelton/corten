@@ -1,7 +1,7 @@
 use corten::{prelude::*, view::Id};
 
-/// The event a [`CopyButton`] dispatches once it has written the clipboard (`copied` in the
-/// page). It bubbles from the button, so an ancestor hears the copies of the buttons inside it,
+/// The event a [`CopyButton`] dispatches once it has written the clipboard (`ui-copied` in the
+/// page, under this crate's prefix). It bubbles from the button, so an ancestor hears the copies of the buttons inside it,
 /// and it carries nothing: the text may be a secret, and the element that heard it knows what it
 /// holds. A denied write, or nothing to copy, dispatches nothing.
 #[corten::script::event]

@@ -102,12 +102,19 @@ impl Module {
             names.extend(q(",", &[]));
         }
         let mut events = TokenStream::new();
+        // Each import is an `#[event]`, not another component's constant.
+        let mut checks = TokenStream::new();
         for class in &self.imports {
             events.extend(format!("{at}{class},").parse::<TokenStream>().expect("a path parses"));
+            checks.extend(
+                format!("const _: fn() = ::corten::script::__private::is_event::<{at}{class}>;")
+                    .parse::<TokenStream>()
+                    .expect("a path parses"),
+            );
         }
         q(
-            "::corten::script::Script { name: __A0, file: __A1, source: ::core::include_str!(__A2), handlers: &[__A3], events: &[__A4] }",
-            &[literal(&self.name), literal(&self.file), literal(&self.path), names, events],
+            "{ __A5 ::corten::script::Script { name: __A0, file: __A1, source: ::core::include_str!(__A2), handlers: &[__A3], events: &[__A4] } }",
+            &[literal(&self.name), literal(&self.file), literal(&self.path), names, events, checks],
         )
     }
 
@@ -355,6 +362,31 @@ pub fn parse(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>), (usize, Stri
     parse_all(source).map(|(handlers, groups, _)| (handlers, groups))
 }
 
+/// A line of an import without its comments (`// ..` to the end, `/* .. */`), which may sit
+/// between the names.
+fn without_comments(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find('/') {
+        match rest[at + 1..].chars().next() {
+            Some('/') => {
+                out.push_str(&rest[..at]);
+                return out.trim_end().to_string();
+            }
+            Some('*') => {
+                out.push_str(&rest[..at]);
+                rest = rest[at + 2..].split_once("*/").map_or("", |(_, after)| after);
+            }
+            _ => {
+                out.push_str(&rest[..=at]);
+                rest = &rest[at + 1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out.trim_end().to_string()
+}
+
 /// [`parse`], and the classes the script imports from `corten/events` when it runs.
 fn parse_all(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>, Vec<String>), (usize, String)> {
     let lines: Vec<&str> = source.lines().collect();
@@ -382,6 +414,15 @@ fn parse_all(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>, Vec<String>),
     while i < lines.len() {
         let line = lines[i];
         let trimmed = line.trim();
+        // A plain comment: an import in it is not one.
+        if trimmed.starts_with("/*") && !trimmed.starts_with("/**") {
+            while !lines[i].contains("*/") && i + 1 < lines.len() {
+                i += 1;
+            }
+            doc = None;
+            i += 1;
+            continue;
+        }
         if trimmed.starts_with("/**") {
             let mut block = String::new();
             let start = i;
@@ -416,11 +457,11 @@ fn parse_all(source: &str) -> Result<(Vec<Handler>, Vec<ArgGroup>, Vec<String>),
         }
         if trimmed.starts_with("import ") || trimmed.starts_with("import{") {
             let start = i;
-            let mut statement = trimmed.to_string();
+            let mut statement = without_comments(trimmed);
             while !statement.contains(" from ") && !statement.ends_with(';') && i + 1 < lines.len() {
                 i += 1;
                 statement.push(' ');
-                statement.push_str(lines[i].trim());
+                statement.push_str(&without_comments(lines[i].trim()));
             }
             if statement.contains("\"corten/events\"") || statement.contains("'corten/events'") {
                 let names = statement.split_once('{').and_then(|(_, rest)| rest.split_once('}')).map(|(names, _)| names);
@@ -942,5 +983,8 @@ export function toggled(event, sel, c, level, done, cleared, n) {}
         // Served with the script: the classes it imports when it runs, not a JSDoc type's.
         let (_, _, imports) = parse_all(source).unwrap();
         assert_eq!(imports, ["RowToggled", "Saved"]);
+        // Comments between the names, and an import in a comment, are not imports.
+        let commented = "/* import { Old } from \"corten/events\"; */\nimport {\n  Added, // the row's\n  /* kept */ Removed,\n} from \"corten/events\";\nexport function f() {}\n";
+        assert_eq!(parse_all(commented).unwrap().2, ["Added", "Removed"]);
     }
 }

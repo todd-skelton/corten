@@ -195,6 +195,15 @@ impl Assets {
                 }
             }
             if let Some(event) = component.event {
+                if let Some(other) =
+                    seen.iter().filter_map(|(c, _)| c.event).find(|e| e.class == event.class || e.name == event.name)
+                {
+                    return Err(clash(format!(
+                        "two events are {} ({:?}): `corten/events` has one class and the page one event of a name, so rename one",
+                        if other.class == event.class { event.class } else { event.name },
+                        [other.class, event.class]
+                    )));
+                }
                 if events.is_empty() {
                     events.push_str(EVENT_CLASS);
                 }
@@ -738,6 +747,13 @@ mod tests {
         assert!(module(&carried).contains("export const RowToggled = event(\"row-toggled\");"), "{}", module(&carried));
         let both = Assets::build(None, &[GRID, TOGGLED], "/assets").unwrap();
         assert_eq!(module(&both), module(&carried));
+        // Another event of the same class (an app's own, beside a library's) is an error, not merged.
+        const OTHER: Component = Component {
+            event: Some(crate::script::EventDef { class: "RowToggled", name: "ui-row-toggled", fields: &[] }),
+            ..TOGGLED
+        };
+        let error = Assets::build(None, &[GRID, OTHER], "/assets").err().expect("two RowToggled");
+        assert!(error.to_string().contains("two events are RowToggled"), "{error}");
     }
 
     #[test]
