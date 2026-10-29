@@ -175,7 +175,7 @@ try {
   // localhost), so an agent's page there may call it.
   const wrongMethod = await fetch(`${base}/mcp`);
   const wrongBody = await wrongMethod.json().catch(() => null);
-  check("an API route answers a failure as JSON to any client", wrongMethod.status === 405 && wrongBody?.error?.status === 405, `${wrongMethod.status} ${wrongMethod.headers.get("content-type")}`);
+  check("the MCP endpoint answers a failure as a JSON-RPC error to any client (Api::errors)", wrongMethod.status === 405 && wrongBody?.jsonrpc === "2.0" && wrongBody?.error?.code === -32600, `${wrongMethod.status} ${wrongMethod.headers.get("content-type")}`);
   check("an API route has its own CSP", wrongMethod.headers.get("content-security-policy") === "default-src 'none'; frame-ancestors 'none'");
   const baseUrl = new URL(base);
   const otherOrigin = `${baseUrl.protocol}//${baseUrl.hostname === "localhost" ? "127.0.0.1" : "localhost"}:${baseUrl.port}`;
@@ -235,7 +235,8 @@ try {
   const alertFrom = (/** @type {Record<string, string>} */ headers, body = { id: "item_5", email: "ada@example.com", target_price: "1.00" }) =>
     fetch(`${base}/api/alerts`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
   const anonymous = await alertFrom({});
-  check("a partner write without an API key is a JSON 401", anonymous.status === 401 && (await anonymous.json())?.error?.status === 401, String(anonymous.status));
+  const anonymousBody = await anonymous.json().catch(() => null);
+  check("a partner write without an API key is a JSON 401 that says what to send", anonymous.status === 401 && anonymousBody?.error?.message === "Send a valid partner API key in X-Api-Key.", JSON.stringify(anonymousBody));
   const keyed = await alertFrom({ "x-api-key": "dev-key" });
   const keyedBody = await keyed.json().catch(() => null);
   check("with its key the partner's alert is set", keyed.status === 200 && keyedBody?.partner === "dev" && /^Alert set: /.test(keyedBody?.message ?? ""), JSON.stringify(keyedBody));

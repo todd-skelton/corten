@@ -1208,6 +1208,11 @@ Corten is pre-1.0, so any minor version may change the API.
     price and condition, the card's market in tabs, a menu of actions, a saved toast, a rename
     dialog, the last sale, and its SKU with a copy button
     ([#225 corten-ui is used only by ui-gallery, and the gallery's content does not fit together](https://github.com/todd-skelton/corten/issues/225)).
+71. examples/card-market's MCP endpoint answers the failures Corten writes itself (a wrong
+    method, a cross-site post, the deadline) as JSON-RPC errors (`Api::errors`), the shape its
+    tools' own errors have, and a partner's write without a known key is told to send a valid
+    one in `X-Api-Key` (`Refused::message`)
+    ([#231 Six public APIs appear in no example](https://github.com/todd-skelton/corten/issues/231)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
