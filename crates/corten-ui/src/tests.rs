@@ -29,6 +29,7 @@ fn every_component_has_its_script_and_no_css() {
             "ui.menu_button",
             "ui.toaster",
             "ui.copy_button",
+            "ui.relative_time",
             "ui.checkbox_group",
             "ui.required_when",
             "ui.dialog"

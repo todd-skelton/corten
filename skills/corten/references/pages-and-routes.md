@@ -110,7 +110,10 @@ Numbers, money and dates come from `t` too, never `format!` or a `"%"` of your o
 USD)` or `t.money(Decimal::parse(&api.amount)?, USD)` (`const USD: Currency = Currency::new("USD")`;
 never a float), `t.date(at, DateStyle::Medium)` (or `MonthStyle::Long` for `March 2026`), `t.time(at, TimeStyle::Short)` and
 `t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;
-`corten::i18n::parse_timestamp` reads an API's RFC 3339 text). Each is a message argument too
+`corten::i18n::parse_timestamp` reads an API's RFC 3339 text). A time relative to now ("in 10
+hours") is `t.relative(at, now, RelativeStyle::Long)` inside `corten_ui::RelativeTime`, which
+keeps it current in the browser; never redraw a live part on a timer to move one. Each is a message
+argument too
 (`corten::i18n::Arg`: text, an integer, or these; a float does not compile, so it goes through
 `t.number`). Money a form posts is read with `t.parse_money(&input.price, USD)`
 (`Option<Minor<u64>>`, in the reader's locale), never `parse::<f64>()` or a parser of your own. A

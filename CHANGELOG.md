@@ -777,14 +777,34 @@ Corten is pre-1.0, so any minor version may change the API.
     beside the script so it adds a request but no round trip (276 bytes, 176 with brotli, in
     ui-gallery)
     ([#294 CopyButton tells the app nothing when it has copied, so a copy that is counted keeps its own copy script](https://github.com/todd-skelton/corten/issues/294)).
-114. `corten_ui::CheckboxGroup`: checkboxes of one name of which at least one must be checked
+114. A time relative to now: `t.relative(at, now, RelativeStyle)` writes "in 10 hours" or "3 hr.
+    ago" in the request's locale (each locale's plural forms and words from CLDR, checked against
+    Intl), and `corten_ui::RelativeTime` keeps it current in the browser on one timer for the
+    page, so a live stream no longer redraws every second or resends its part each minute to move
+    a countdown. Each locale an app lists adds about 2.3 KB of pointers and 0.4 to 3 KB of text;
+    the script is 1.8 KB brotli (5.3 KB as written; component scripts are not minified), on pages
+    that use it
+    ([#202 A page cannot show a time relative to now that stays current, so a live stream redraws every second and resends the whole part each minute to move a countdown](https://github.com/todd-skelton/corten/issues/202)).
+115. `Public::header::<XRobotsTag>(value)`: a header of the app's on any public answer (text,
+    `Json`, `Media`, a page), named by a type (`corten::answer::Header`; Corten names
+    `XRobotsTag`, `Link`, `ContentDisposition` and `ContentLanguage`). The answer is compressed
+    and shared as it would be without it. Before, a shared file that had to stay out of search was
+    a `Relay`, never compressed (Chase Sets' developer manifest: 161,815 bytes against 19,737 with
+    brotli), or an answer type of the app's own. `set-cookie`, the headers Corten sets itself
+    (caching, a CDN's `*-cache-control`, CORS, security), those the answer has (`content-type`,
+    `location`) and the connection's do not compile. A public answer that adds none costs about 30 instructions more per request,
+    18,404-18,417 to 18,434-18,459 for a public text answer (callgrind, in process, 1,000
+    requests, three runs each); the headers are held behind an `Option<Box<..>>`, since a `Vec`
+    in place cost about 50 (18,450-18,467)
+    ([#287 A Public answer that is not a page cannot take a header of the app's, so a noindex file is an uncompressed Relay or the app's own answer type](https://github.com/todd-skelton/corten/issues/287)).
+116. `corten_ui::CheckboxGroup`: checkboxes of one name of which at least one must be checked
     (`<CheckboxGroup legend=".." missing="Choose where you ship.">`). While none is, its script
     keeps the first enabled box invalid with the app's message, so the browser stops the submit and says so
     at the group, as for a required text field; HTML's `required` on a checkbox means that one box.
     Without the script the form is sent and the handler refuses it, as before. 914 bytes, 379
     with brotli, on the pages that use it
     ([#272 A group of checkboxes cannot require one to be checked without a script, so a form that needs a choice is sent with none](https://github.com/todd-skelton/corten/issues/272)).
-115. `corten_ui::RequiredWhen`: fields required only for some values of another field (a refund
+117. `corten_ui::RequiredWhen`: fields required only for some values of another field (a refund
     amount for a partial refund), `<RequiredWhen control={f.kind} values={&["partial"]}>`. The
     control is a `FieldName`, so a misspelled one does not compile, and its values are a
     `string[]` parameter, which a handler call now checks and fills from a slice, an array or a
