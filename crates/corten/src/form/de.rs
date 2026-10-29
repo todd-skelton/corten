@@ -113,7 +113,17 @@ impl<'de> Deserializer<'de> for Form<'_, '_> {
     type Error = FormError;
 
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
-        visitor.visit_map(Groups { rest: self.0, key: "", values: &[] })
+        visitor.visit_map(Groups::new(self.0, 0, None))
+    }
+
+    /// A struct's fields, and its groups and rows (`address.street`, `domains[key].max`).
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        _: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, FormError> {
+        visitor.visit_map(Groups::new(self.0, 0, Some(fields)))
     }
 
     fn deserialize_newtype_struct<V: Visitor<'de>>(self, _: &'static str, visitor: V) -> Result<V::Value, FormError> {
@@ -126,36 +136,195 @@ impl<'de> Deserializer<'de> for Form<'_, '_> {
 
     serde::forward_to_deserialize_any! {
         bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf option
-        unit_struct seq tuple tuple_struct map struct enum identifier ignored_any
+        unit_struct seq tuple tuple_struct map enum identifier ignored_any
     }
 }
 
-/// The form's keys, each with every value sent for it.
+/// The form's keys (or a group's, each past `skip` bytes of its prefix), each with every value
+/// sent for it. Reading a struct (`fields`), a key that is not one of its fields but starts with
+/// one and `.` or `[` is that field's group or rows, with every key that shares the prefix.
 struct Groups<'a, 'b> {
     rest: &'b [Pair<'a>],
-    key: &'b str,
+    skip: usize,
+    fields: Option<&'static [&'static str]>,
     values: &'b [Pair<'a>],
+    /// The current key's group (`.`) or rows (`[`), and its prefix's length.
+    nested: Option<(u8, usize)>,
+}
+
+impl<'a, 'b> Groups<'a, 'b> {
+    fn new(rest: &'b [Pair<'a>], skip: usize, fields: Option<&'static [&'static str]>) -> Self {
+        Groups { rest, skip, fields, values: &[], nested: None }
+    }
 }
 
 impl<'de> MapAccess<'de> for Groups<'_, '_> {
     type Error = FormError;
 
     fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, FormError> {
-        let Some((key, _)) = self.rest.first() else { return Ok(None) };
-        let count = self.rest.iter().take_while(|(k, _)| k == key).count();
+        let Some((first, _)) = self.rest.first() else { return Ok(None) };
+        let local = &first[self.skip..];
+        let split = self.fields.and_then(|fields| {
+            let at = local.find(['.', '['])?;
+            let head = &local[..at];
+            (!fields.iter().any(|f| *f == local) && fields.iter().any(|f| *f == head)).then_some(at)
+        });
+        let (count, key) = match split {
+            None => {
+                self.nested = None;
+                (self.rest.iter().take_while(|(k, _)| k == first).count(), local)
+            }
+            Some(at) => {
+                let prefix = &first[..self.skip + at + 1];
+                self.nested = Some((local.as_bytes()[at], prefix.len()));
+                (self.rest.iter().take_while(|(k, _)| k.starts_with(prefix)).count(), &local[..at])
+            }
+        };
         let (values, rest) = self.rest.split_at(count);
-        (self.key, self.values, self.rest) = (key.as_ref(), values, rest);
-        let key: StrDeserializer<'_, FormError> = self.key.into_deserializer();
+        (self.values, self.rest) = (values, rest);
+        let key: StrDeserializer<'_, FormError> = key.into_deserializer();
         seed.deserialize(key).map(Some)
     }
 
     fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, FormError> {
-        seed.deserialize(Values(self.values)).map_err(|e| FormError(format!("{}: {e}", self.key)))
+        let full = self.values.first().map_or("", |(k, _)| k.as_ref());
+        match self.nested {
+            None => seed.deserialize(Values(self.values)).map_err(|e| FormError(format!("{full}: {e}"))),
+            Some((sep, skip)) => {
+                let nested = Nested { pairs: self.values, skip, rows: sep == b'[', path: &full[..skip - 1] };
+                seed.deserialize(nested)
+            }
+        }
     }
 
     fn size_hint(&self) -> Option<usize> {
         None
     }
+}
+
+/// A group's fields (`address.street`, `rows` false) or rows' (`domains[key].max`): the keys
+/// that start with `path` and its separator, `skip` bytes long.
+struct Nested<'a, 'b> {
+    pairs: &'b [Pair<'a>],
+    skip: usize,
+    rows: bool,
+    path: &'b str,
+}
+
+impl Nested<'_, '_> {
+    /// serde's "missing field" names the field alone: the group's path goes in front.
+    fn at(&self, error: FormError) -> FormError {
+        if error.0.starts_with("missing field") {
+            FormError(format!("{}: {}", self.path, error.0))
+        } else {
+            error
+        }
+    }
+}
+
+impl<'de> Deserializer<'de> for Nested<'_, '_> {
+    type Error = FormError;
+
+    fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+        let result = if self.rows {
+            visitor.visit_map(Rows { rest: self.pairs, skip: self.skip, values: &[], row: 0 })
+        } else {
+            visitor.visit_map(Groups::new(self.pairs, self.skip, None))
+        };
+        result.map_err(|e| self.at(e))
+    }
+
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        _: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, FormError> {
+        if self.rows {
+            return Err(FormError(format!("{}: rows are a map from each row's key to its fields", self.path)));
+        }
+        visitor.visit_map(Groups::new(self.pairs, self.skip, Some(fields))).map_err(|e| self.at(e))
+    }
+
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+        visitor.visit_some(self)
+    }
+
+    fn deserialize_newtype_struct<V: Visitor<'de>>(self, _: &'static str, visitor: V) -> Result<V::Value, FormError> {
+        visitor.visit_newtype_struct(self)
+    }
+
+    fn deserialize_ignored_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, FormError> {
+        visitor.visit_unit()
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
+        unit unit_struct seq tuple tuple_struct map enum identifier
+    }
+}
+
+/// Rows' keys, each with the fields of its row: `domains[key].max` past `domains[`.
+struct Rows<'a, 'b> {
+    rest: &'b [Pair<'a>],
+    skip: usize,
+    values: &'b [Pair<'a>],
+    /// The length of the current row's prefix, `domains[key].`.
+    row: usize,
+}
+
+impl<'de> MapAccess<'de> for Rows<'_, '_> {
+    type Error = FormError;
+
+    fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, FormError> {
+        let Some((first, _)) = self.rest.first() else { return Ok(None) };
+        let local = &first[self.skip..];
+        let close = local
+            .find(']')
+            .filter(|close| local.as_bytes().get(close + 1) == Some(&b'.'))
+            .ok_or_else(|| FormError(format!("{first}: a row's field is named rows[key].field")))?;
+        self.row = self.skip + close + 2;
+        let prefix = &first[..self.row];
+        let count = self.rest.iter().take_while(|(k, _)| k.starts_with(prefix)).count();
+        let (values, rest) = self.rest.split_at(count);
+        (self.values, self.rest) = (values, rest);
+        let key =
+            decode_key(&local[..close]).ok_or_else(|| FormError(format!("{first}: the row's key is not %-encoded UTF-8")))?;
+        let pair: Pair<'_> = (Cow::Borrowed(""), key);
+        seed.deserialize(Values(std::slice::from_ref(&pair)))
+            .map(Some)
+            .map_err(|e| FormError(format!("{}: key: {e}", &prefix[..prefix.len() - 1])))
+    }
+
+    fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, FormError> {
+        let full = self.values.first().map_or("", |(k, _)| k.as_ref());
+        seed.deserialize(Nested { pairs: self.values, skip: self.row, rows: false, path: &full[..self.row - 1] })
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        None
+    }
+}
+
+/// A row's key as `FieldName` writes it, its `%XX` decoded.
+fn decode_key(text: &str) -> Option<Cow<'_, str>> {
+    if !text.contains('%') {
+        return Some(Cow::Borrowed(text));
+    }
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok().map(Cow::Owned)
 }
 
 /// The values of one key: a list for a sequence, else exactly one.

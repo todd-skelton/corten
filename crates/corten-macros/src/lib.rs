@@ -130,7 +130,7 @@ pub fn __all_locales(_: TokenStream) -> TokenStream {
 /// `corten::form::FieldName` `"email"`, with serde's `rename` and `rename_all` applied. Templates
 /// print them for `name=` and handlers pass them to `Errors`, so a renamed or misspelled field is a
 /// compile error.
-#[proc_macro_derive(Fields, attributes(serde))]
+#[proc_macro_derive(Fields, attributes(serde, fields))]
 pub fn derive_fields(input: TokenStream) -> TokenStream {
     match fields(input) {
         Ok(code) => code.parse().expect("generated code parses"),
@@ -203,11 +203,16 @@ fn fields(input: TokenStream) -> Result<String, String> {
         let mut skip = false;
         let mut default = container_default;
         let mut ident = None;
+        let mut kind = Kind::Plain;
+        let mut ty: Vec<TokenTree> = Vec::new();
         let mut j = 0;
         while j < field.len() {
             match &field[j] {
                 TokenTree::Punct(p) if p.as_char() == '#' => {
                     if let Some(TokenTree::Group(group)) = field.get(j + 1) {
+                        if let Some(found) = fields_kind(group)? {
+                            kind = found;
+                        }
                         for (key, value) in serde_args(group)? {
                             match key.as_str() {
                                 "rename" => {
@@ -220,7 +225,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
                                 "default" => default = true,
                                 "flatten" => {
                                     return Err(
-                                        "Fields: #[serde(flatten)] is not supported; list the fields in the form struct".into()
+                                        "Fields: #[serde(flatten)] is not supported; a group of fields another struct defines is #[fields(group)], posted as group.field".into()
                                     )
                                 }
                                 _ => {}
@@ -238,6 +243,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
                 TokenTree::Ident(id) => {
                     ident = Some(id.to_string());
                     // After the name and its `:`, the type.
+                    ty = field.get(j + 2..).unwrap_or_default().to_vec();
                     let ty = field.get(j + 2..).unwrap_or_default();
                     if matches!(
                         ty.iter()
@@ -251,7 +257,12 @@ fn fields(input: TokenStream) -> Result<String, String> {
                     ) {
                         files.push(id.to_string());
                     }
-                    if !default {
+                    if kind == Kind::Rows && !default {
+                        return Err(format!(
+                            "Fields: `{id}` is rows, and a form with none sends nothing for it; add #[serde(default)] so the form reads it as empty"
+                        ));
+                    }
+                    if !default && kind == Kind::Plain {
                         if let Some(what) = left_out_when_empty(field.get(j + 2..).unwrap_or_default()) {
                             return Err(format!(
                                 "Fields: `{id}` is {what}; add #[serde(default)] so the form reads it as {}",
@@ -274,20 +285,115 @@ fn fields(input: TokenStream) -> Result<String, String> {
             (None, Some(rule)) => apply_rule(&bare, rule)?,
             (None, None) => bare.clone(),
         };
-        names.push((ident, wire));
+        let shape = match kind {
+            Kind::Plain => Shape::Plain,
+            Kind::Group => Shape::Group(nested_type(&ident, &ty, "group")?),
+            Kind::Rows => {
+                let (key, row) = map_types(&ident, &ty)?;
+                Shape::Rows(key, row)
+            }
+        };
+        names.push((ident, wire, shape));
     }
     let fields_type = format!("{name}Fields");
-    let mut out = format!(
-        "/// Form field names of [`{name}`], from `#[derive(Fields)]`.\n#[derive(Clone, Copy, Debug)]\n#[allow(dead_code)]\n{visibility} struct {fields_type} {{\n"
+    // One struct of names per place the struct can be: the form's top, a group, a row, a group in
+    // a row. Each field's name is a `FieldName` of that place, so a form's own field is a name alone.
+    let places: [(&str, &str, &str, &str); 4] = [
+        ("", "", "::corten::form::Root", "FIELDS"),
+        ("Group", "", "::corten::form::Group", "group"),
+        ("Row", "<'k>", "::corten::form::Row<'k>", "row"),
+        ("RowGroup", "<'k>", "::corten::form::RowGroup<'k>", "row_group"),
+    ];
+    let mut out = String::new();
+    let mut shape = String::from("let shape = 0u8;");
+    for (ident, _, kind) in &names {
+        match kind {
+            Shape::Plain => {}
+            Shape::Group(ty) => {
+                shape += &format!(
+                    " if <{ty} as ::corten::form::Fields>::SHAPE != 0 {{ ::core::panic!({:?}) }} let shape = if shape < 1 {{ 1 }} else {{ shape }};",
+                    format!("corten: `{ident}` is a group, and a group's fields are plain: its type has a group or rows of its own")
+                );
+            }
+            Shape::Rows(_, row) => {
+                shape += &format!(
+                    " if <{row} as ::corten::form::Fields>::SHAPE > 1 {{ ::core::panic!({:?}) }} let shape = 2;",
+                    format!("corten: `{ident}` is rows, and a row's fields are plain fields and groups, not rows")
+                );
+            }
+        }
+    }
+    for (suffix, lifetime, place, _) in places {
+        let ty = format!("{name}{suffix}Fields");
+        out += &format!(
+            "/// Form field names of [`{name}`], from `#[derive(Fields)]`.\n#[derive(Clone, Copy, Debug)]\n#[allow(dead_code)]\n{}{visibility} struct {ty}{lifetime} {{\n",
+            if suffix.is_empty() { "" } else { "#[doc(hidden)]\n" }
+        );
+        for (ident, _, kind) in &names {
+            let field_ty = match (kind, suffix) {
+                (Shape::Plain, _) => format!("::corten::form::FieldName<{place}>"),
+                (Shape::Group(g), "") => format!("<{g} as ::corten::form::Fields>::InGroup"),
+                (Shape::Group(g), "Row") => format!("<{g} as ::corten::form::Fields>::InRowGroup<'k>"),
+                // A group in a group or in a row's group: its names exist, but taking them is refused.
+                (Shape::Group(_), _) => "::corten::form::Refused".to_string(),
+                (Shape::Rows(k, r), "") => format!("::corten::form::Rows<{k}, {r}>"),
+                (Shape::Rows(..), _) => "::corten::form::Refused".to_string(),
+            };
+            out += &format!("    pub {ident}: {field_ty},\n");
+        }
+        if !lifetime.is_empty() {
+            out += "    #[doc(hidden)]\n    pub __k: ::core::marker::PhantomData<&'k ()>,\n";
+        }
+        out += "}\n";
+    }
+    let build = |suffix: &str, at: &str| {
+        let mut fields = String::new();
+        for (ident, wire, kind) in &names {
+            let value = match (kind, suffix) {
+                (Shape::Plain, "") => format!("::corten::form::FieldName::__new({wire:?})"),
+                (Shape::Plain, _) => format!("::corten::form::FieldName::__at({at}, {wire:?})"),
+                (Shape::Group(g), "") => format!("<{g}>::__in_group(::corten::form::__private::group({wire:?}))"),
+                (Shape::Group(g), "Row") => {
+                    format!("<{g}>::__in_row_group(::corten::form::__private::row_group({at}, {wire:?}))")
+                }
+                (Shape::Group(_), _) | (Shape::Rows(..), "Group" | "Row" | "RowGroup") => "::corten::form::Refused".to_string(),
+                (Shape::Rows(..), _) => format!("::corten::form::Rows::__new({wire:?})"),
+            };
+            fields += &format!("{ident}: {value}, ");
+        }
+        fields
+    };
+    let root_fields = build("", "");
+    let group_fields = build("Group", "at");
+    let row_fields = build("Row", "at");
+    let row_group_fields = build("RowGroup", "at");
+    out += &format!(
+        "#[allow(dead_code)]\nimpl {impl_generics} {name} {type_generics} {where_clause} {{
+    /// Each field's name as the form posts it.
+    pub const FIELDS: {fields_type} = {{ let _ = <Self as ::corten::form::Fields>::SHAPE; {fields_type} {{ {root_fields} }} }};
+    #[doc(hidden)]
+    pub const fn __in_group(at: ::corten::form::Group) -> {name}GroupFields {{
+        {name}GroupFields {{ {group_fields} }}
+    }}
+    #[doc(hidden)]
+    pub const fn __in_row_group(at: ::corten::form::RowGroup<'_>) -> {name}RowGroupFields<'_> {{
+        {name}RowGroupFields {{ {row_group_fields} __k: ::core::marker::PhantomData }}
+    }}
+}}
+impl {impl_generics} ::corten::form::Fields for {name} {type_generics} {where_clause} {{
+    type Names = {fields_type};
+    type InGroup = {name}GroupFields;
+    type InRow<'k> = {name}RowFields<'k>;
+    type InRowGroup<'k> = {name}RowGroupFields<'k>;
+    const SHAPE: u8 = {{ {shape} shape }};
+    fn in_row<'k>(rows: &'static str, key: &'k (dyn ::corten::form::RowKey + ::core::marker::Sync)) -> {name}RowFields<'k> {{
+        let _ = <Self as ::corten::form::Fields>::SHAPE;
+        let at = ::corten::form::__private::row(rows, key);
+        {name}RowFields {{ {row_fields} __k: ::core::marker::PhantomData }}
+    }}
+}}
+"
     );
-    for (ident, _) in &names {
-        out += &format!("    pub {ident}: ::corten::form::FieldName,\n");
-    }
-    out += &format!("}}\n#[allow(dead_code)]\nimpl {impl_generics} {name} {type_generics} {where_clause} {{\n    /// Each field's name as the form posts it.\n    pub const FIELDS: {fields_type} = {fields_type} {{\n");
-    for (ident, wire) in &names {
-        out += &format!("        {ident}: ::corten::form::FieldName::__new({wire:?}),\n");
-    }
-    out += "    };\n}\n";
     if !files.is_empty() {
         let read: Vec<String> = files.iter().map(|f| format!("&self.{f}")).collect();
         out += &format!(
@@ -313,6 +419,81 @@ fn left_out_when_empty(ty: &[TokenTree]) -> Option<&'static str> {
 }
 
 /// Splits a brace group's tokens at top-level commas. Commas inside `<..>` belong to a type.
+/// What `#[fields(..)]` makes a field of a `Fields` struct.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Plain,
+    /// `#[fields(group)]`: a struct of fields, named `field.name`.
+    Group,
+    /// `#[fields(rows)]`: a map from a key to a struct of fields, named `field[key].name`.
+    Rows,
+}
+
+/// A field's names: one, a group's (its type), or rows' (the key's type and the row's).
+enum Shape {
+    Plain,
+    Group(String),
+    Rows(String, String),
+}
+
+/// `#[fields(group)]` or `#[fields(rows)]`; `None` for another attribute.
+fn fields_kind(attribute: &Group) -> Result<Option<Kind>, String> {
+    let tokens: Vec<TokenTree> = attribute.stream().into_iter().collect();
+    match (tokens.first(), tokens.get(1)) {
+        (Some(TokenTree::Ident(path)), Some(TokenTree::Group(args))) if path.to_string() == "fields" => {
+            match args.stream().to_string().trim() {
+                "group" => Ok(Some(Kind::Group)),
+                "rows" => Ok(Some(Kind::Rows)),
+                other => Err(format!("Fields: #[fields({other})] is not one; a field is #[fields(group)] or #[fields(rows)]")),
+            }
+        }
+        (Some(TokenTree::Ident(path)), _) if path.to_string() == "fields" => {
+            Err("Fields: write #[fields(group)] or #[fields(rows)]".into())
+        }
+        _ => Ok(None),
+    }
+}
+
+/// A group's or a row's type, as written: one that does not borrow, since its names outlive the
+/// form.
+fn nested_type(field: &str, ty: &[TokenTree], what: &str) -> Result<String, String> {
+    if ty.iter().any(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == '\'')) {
+        return Err(format!("Fields: `{field}` is a {what}, and a {what}'s type cannot borrow (`'a`); give it owned fields"));
+    }
+    let text: String = ty.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(" ");
+    if text.is_empty() {
+        return Err(format!("Fields: `{field}` has no type"));
+    }
+    Ok(text)
+}
+
+/// The key and row types of a rows field: `BTreeMap<Domain, DomainLimits>`.
+fn map_types(field: &str, ty: &[TokenTree]) -> Result<(String, String), String> {
+    let usage =
+        format!("Fields: `{field}` is rows, a map from each row's key to its fields, like BTreeMap<Domain, DomainLimits>");
+    let open = ty.iter().position(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == '<')).ok_or(usage.clone())?;
+    let mut args = vec![Vec::new()];
+    let mut depth = 0i32;
+    for t in &ty[open + 1..] {
+        match t {
+            TokenTree::Punct(p) if p.as_char() == '<' => depth += 1,
+            TokenTree::Punct(p) if p.as_char() == '>' && depth == 0 => break,
+            TokenTree::Punct(p) if p.as_char() == '>' => depth -= 1,
+            TokenTree::Punct(p) if p.as_char() == ',' && depth == 0 => {
+                args.push(Vec::new());
+                continue;
+            }
+            _ => {}
+        }
+        args.last_mut().expect("never empty").push(t.clone());
+    }
+    args.retain(|a| !a.is_empty());
+    match args.as_slice() {
+        [key, row] => Ok((nested_type(field, key, "row key")?, nested_type(field, row, "row")?)),
+        _ => Err(usage),
+    }
+}
+
 fn split_fields(stream: TokenStream) -> Vec<Vec<TokenTree>> {
     let mut fields = vec![Vec::new()];
     let mut depth = 0i32;

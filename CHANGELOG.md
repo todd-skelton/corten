@@ -896,6 +896,19 @@ Corten is pre-1.0, so any minor version may change the API.
     Today column uses it. `change`, `percent`, `parse_money` and `relative` join the message keys
     `messages!` refuses at the top level, since they are its methods (`button.change` is fine)
     ([#331 Polish: watchlist's phone header wraps, and the Today column changes its decimals](https://github.com/todd-skelton/corten/issues/331)).
+126. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
+    form, its fields posted as `ship_to.street` (`f.ship_to.street`), so a field group is defined
+    once and a form can hold two of one type. `#[fields(rows)] #[serde(default)] domains:
+    BTreeMap<Domain, DomainLimits>` is one group per row, each field named by the row's key,
+    `f.domains.at(&Domain::SellerPortal).max_concurrent`, posted as
+    `domains[seller-portal].max_concurrent`: the key, not the row's place, joins a row's values,
+    so a row left out shifts nothing and an unchecked checkbox is `false` in its own row, and an
+    error on one row's field marks that input only, with its own message id. `at` takes only the
+    map's key type (a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, by its word); a key's other characters
+    are %-encoded. A group of groups, rows in a group or a row, and rows without a default do not
+    compile. `Form` and `corten::form::from_bytes` read both with Corten's own form reader; a
+    plain form costs what it did (below)
+    ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1426,6 +1439,17 @@ Corten is pre-1.0, so any minor version may change the API.
     (`values={&[Pricing::Offers]}`). ui-gallery reads its condition, pricing, regions, tab and
     sale sheet as enums, where it compared strings
     ([#324 corten-ui choices are strings, so nothing ties a Picker or ComboBox value to the field that reads it](https://github.com/todd-skelton/corten/issues/324)).
+78. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
+    name alone (`FieldName`, with `as_str`), and a group's or a row's field is a
+    `FieldName<Group>`, `FieldName<Row<'k>>` or `FieldName<RowGroup<'k>>`, written, not stored:
+    compare it with text with `==` (`f.ship_to.street == "ship_to.street"`) and write it with
+    `Display` or in markup. `Errors::iter` yields a `Named` for each name.
+    `#[derive(Fields)]` also makes `{Name}GroupFields`, `{Name}RowFields<'k>` and
+    `{Name}RowGroupFields<'k>` and implements `corten::form::Fields`.
+    `#[serde(flatten)]` stays refused, and its message now points to `#[fields(group)]`: a
+    flattened group cannot be told from another of its type, and serde reads a flattened field's
+    value only as text
+    ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

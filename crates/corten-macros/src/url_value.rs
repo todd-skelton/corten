@@ -95,7 +95,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         ));
     }
     // The word as `AsRef<str>` (where a list of words is taken: a script's `string[]`, a
-    // `RequiredWhen`'s values) and as `Display` (a URL, markup).
+    // `RequiredWhen`'s values), as `Display` (a URL, markup) and as a form row's key.
     let mut out = TokenStream::new();
     for (header, body) in [
         (
@@ -103,6 +103,13 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             "#[inline]
             fn as_ref(&self) -> &::core::primitive::str {
                 match *self { __A0 }
+            }",
+        ),
+        (
+            "::corten::form::RowKey for",
+            "#[inline]
+            fn key_text(&self) -> ::std::borrow::Cow<'_, ::core::primitive::str> {
+                ::std::borrow::Cow::Borrowed(::core::convert::AsRef::<::core::primitive::str>::as_ref(self))
             }",
         ),
         (

@@ -99,6 +99,110 @@
 //! let mut errors = corten::Errors::new();
 //! errors.add("email", "Enter an email address.");
 //! ```
+//!
+//! A group of fields is a `Fields` struct put in a form with `#[fields(group)]`, named under its
+//! field (`ship_to.street`), and rows are a map from each row's key to one
+//! (`#[fields(rows)]`), named under the key (`lines[7].qty`), so the key puts each value in its
+//! row and each row's field has its own error:
+//!
+//! ```
+//! use std::collections::BTreeMap;
+//! use corten::prelude::*;
+//!
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Address { street: String }
+//!
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Line { qty: u32, #[serde(default)] gift: bool }
+//!
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Order {
+//!     #[fields(group)]
+//!     ship_to: Address,
+//!     #[fields(rows)]
+//!     #[serde(default)]
+//!     lines: BTreeMap<u32, Line>,
+//! }
+//!
+//! let f = Order::FIELDS;
+//! assert_eq!(f.ship_to.street.to_string(), "ship_to.street");
+//! assert_eq!(f.lines.at(&7).qty.to_string(), "lines[7].qty");
+//!
+//! let order: Order = corten::form::from_bytes(b"lines%5B9%5D.qty=1&ship_to.street=Elm&lines%5B7%5D.qty=2&lines%5B7%5D.gift=on").unwrap();
+//! assert_eq!((order.ship_to.street.as_str(), order.lines[&7].qty, order.lines[&7].gift, order.lines[&9].gift), ("Elm", 2, true, false));
+//!
+//! let mut errors = Errors::new();
+//! errors.add(f.lines.at(&9).qty, "At least 2.");
+//! assert!(errors.has(f.lines.at(&9).qty) && !errors.has(f.lines.at(&7).qty));
+//! ```
+//!
+//! A row is named by the map's key type only:
+//!
+//! ```compile_fail
+//! # use std::collections::BTreeMap;
+//! # use corten::prelude::*;
+//! # #[derive(serde::Deserialize, Fields)]
+//! # struct Line { qty: u32 }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Order {
+//!     #[fields(rows)]
+//!     #[serde(default)]
+//!     lines: BTreeMap<u32, Line>,
+//! }
+//! let _ = Order::FIELDS.lines.at(&"7").qty;
+//! ```
+//!
+//! and a row's field is reached through its row:
+//!
+//! ```compile_fail
+//! # use std::collections::BTreeMap;
+//! # use corten::prelude::*;
+//! # #[derive(serde::Deserialize, Fields)]
+//! # struct Line { qty: u32 }
+//! # #[derive(serde::Deserialize, Fields)]
+//! # struct Order { #[fields(rows)] #[serde(default)] lines: BTreeMap<u32, Line> }
+//! let mut errors = Errors::new();
+//! errors.add(Order::FIELDS.lines.qty, "At least 1.");
+//! ```
+//!
+//! A form with none sends nothing for rows, so they need `#[serde(default)]`:
+//!
+//! ```compile_fail
+//! # use std::collections::BTreeMap;
+//! # #[derive(serde::Deserialize, corten::Fields)]
+//! # struct Line { qty: u32 }
+//! #[derive(serde::Deserialize, corten::Fields)]
+//! struct Order {
+//!     #[fields(rows)]
+//!     lines: BTreeMap<u32, Line>,
+//! }
+//! ```
+//!
+//! A group's fields are plain, so a group of a type with groups or rows does not compile, and a
+//! row holds plain fields and groups, not rows:
+//!
+//! ```compile_fail,E0080
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Street { line: String }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Address { #[fields(group)] street: Street }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Order { #[fields(group)] ship_to: Address }
+//! let _ = Order::FIELDS;
+//! ```
+//!
+//! ```compile_fail,E0080
+//! # use std::collections::BTreeMap;
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Part { qty: u32 }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Line { #[fields(rows)] #[serde(default)] parts: BTreeMap<u32, Part> }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Order { #[fields(rows)] #[serde(default)] lines: BTreeMap<u32, Line> }
+//! let _ = Order::FIELDS;
+//! ```
 
 use std::fmt;
 
@@ -204,39 +308,418 @@ deref!(Form);
 /// The name a form field posts under, from `#[derive(Fields)]`: `Input::FIELDS.email`. Markup
 /// prints it (`name={f.email}`) and [`Errors`] is keyed by it, so renaming or misspelling a field
 /// of the form struct is a compile error in both.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct FieldName(&'static str);
+///
+/// `P` is where the field is: the form itself ([`Root`], the default), a group
+/// (`f.ship_to.street`, posted `ship_to.street`) or a row of [`Rows`]
+/// (`f.domains.at(&Domain::SellerPortal).max_concurrent`, posted
+/// `domains[seller-portal].max_concurrent`). A form's own field is its name alone, so it costs
+/// what a `&'static str` does.
+#[derive(Clone, Copy)]
+pub struct FieldName<P = Root> {
+    at: P,
+    name: &'static str,
+}
 
-impl FieldName {
+impl FieldName<Root> {
     /// Used by the code `#[derive(Fields)]` generates.
     #[doc(hidden)]
     pub const fn __new(name: &'static str) -> Self {
-        FieldName(name)
+        FieldName { at: Root, name }
     }
 
-    /// The name as posted: `"email"`.
+    /// The name as posted: `"email"`. A field of a group or a row is written, not stored: print
+    /// it, or compare it with text (`f.ship_to.street == "ship_to.street"`).
     pub const fn as_str(self) -> &'static str {
-        self.0
+        self.name
     }
 }
 
-impl fmt::Display for FieldName {
+impl<P: Place> FieldName<P> {
+    /// Used by the code `#[derive(Fields)]` generates.
+    #[doc(hidden)]
+    pub const fn __at(at: P, name: &'static str) -> Self {
+        FieldName { at, name }
+    }
+}
+
+/// Whether this name is the field `text` names, as a form posts it: `f.email == "email"`.
+impl<P: Place> PartialEq<str> for FieldName<P> {
+    fn eq(&self, text: &str) -> bool {
+        self.at.is_text(self.name, text)
+    }
+}
+
+impl<P: Place> PartialEq<&str> for FieldName<P> {
+    fn eq(&self, text: &&str) -> bool {
+        self.at.is_text(self.name, text)
+    }
+}
+
+impl<P: Place> PartialEq for FieldName<P> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.at == other.at
+    }
+}
+
+impl<P: Place> Eq for FieldName<P> {}
+
+impl<P: Place> std::hash::Hash for FieldName<P> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.at.hash(state);
+        self.name.hash(state);
+    }
+}
+
+impl<P: Place> fmt::Debug for FieldName<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.0)
+        write!(f, "FieldName({self})")
     }
 }
 
-impl Render for FieldName {
+impl<P: Place> fmt::Display for FieldName<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.at.display(self.name, f)
+    }
+}
+
+impl<P: Place> Render for FieldName<P> {
     #[inline]
     fn render(&self, out: &mut String) {
-        escape_into(self.0, out)
+        self.at.render(self.name, out)
     }
 }
 
-impl AttrValue for FieldName {
+impl<P: Place> AttrValue for FieldName<P> {
     #[inline]
     fn write_attr(&self, name: &str, out: &mut String) {
         quoted(name, self, out)
+    }
+}
+
+/// Where a form struct's fields are, written in front of each field's name: implemented by
+/// [`Root`], [`Group`], [`Row`] and [`RowGroup`]. Sealed.
+pub trait Place: Copy + PartialEq + std::hash::Hash + private::Sealed {
+    /// The name `name` here, escaped for HTML.
+    #[doc(hidden)]
+    fn render(&self, name: &'static str, out: &mut String) {
+        let mut text = String::new();
+        self.write(name, &mut text);
+        escape_into(&text, out)
+    }
+    /// The name `name` here as posted, a row's key %-encoded.
+    #[doc(hidden)]
+    fn write(&self, name: &'static str, out: &mut String);
+    #[doc(hidden)]
+    fn display(&self, name: &'static str, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut text = String::new();
+        self.write(name, &mut text);
+        f.write_str(&text)
+    }
+    #[doc(hidden)]
+    fn is_text(&self, name: &'static str, text: &str) -> bool {
+        let mut own = String::with_capacity(text.len());
+        self.write(name, &mut own);
+        own == text
+    }
+    /// What an [`Errors`] keeps of it.
+    #[doc(hidden)]
+    fn kept(&self) -> At;
+    /// Whether an [`Errors`] kept it as `at`.
+    #[doc(hidden)]
+    fn is_kept(&self, at: &At) -> bool {
+        self.kept() == *at
+    }
+}
+
+mod private {
+    pub trait Sealed {}
+    impl Sealed for super::Root {}
+    impl Sealed for super::Group {}
+    impl Sealed for super::Row<'_> {}
+    impl Sealed for super::RowGroup<'_> {}
+}
+
+/// A form's own fields: `email`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub struct Root;
+
+impl Place for Root {
+    #[inline]
+    fn render(&self, name: &'static str, out: &mut String) {
+        escape_into(name, out)
+    }
+    fn write(&self, name: &'static str, out: &mut String) {
+        out.push_str(name)
+    }
+    fn display(&self, name: &'static str, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(name)
+    }
+    #[inline]
+    fn is_text(&self, name: &'static str, text: &str) -> bool {
+        name == text
+    }
+    fn kept(&self) -> At {
+        At::Root
+    }
+    #[inline]
+    fn is_kept(&self, at: &At) -> bool {
+        matches!(at, At::Root)
+    }
+}
+
+/// A group's fields (`#[fields(group)]`): `ship_to.street`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Group(&'static str);
+
+impl Place for Group {
+    fn write(&self, name: &'static str, out: &mut String) {
+        out.push_str(self.0);
+        out.push('.');
+        out.push_str(name);
+    }
+    fn kept(&self) -> At {
+        At::Group(self.0)
+    }
+    fn is_kept(&self, at: &At) -> bool {
+        *at == At::Group(self.0)
+    }
+}
+
+/// A row's fields (`#[fields(rows)]`): `domains[seller-portal].max_concurrent`. `'k` borrows the key.
+#[derive(Clone, Copy)]
+pub struct Row<'k> {
+    rows: &'static str,
+    key: &'k (dyn RowKey + Sync),
+}
+
+impl PartialEq for Row<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rows == other.rows && self.key.key_text() == other.key.key_text()
+    }
+}
+
+impl std::hash::Hash for Row<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.rows, self.key.key_text()).hash(state)
+    }
+}
+
+impl Place for Row<'_> {
+    fn write(&self, name: &'static str, out: &mut String) {
+        write_row(self.rows, &self.key.key_text(), out);
+        out.push_str(name);
+    }
+    fn kept(&self) -> At {
+        At::Row(self.rows, self.key.key_text().into(), "")
+    }
+    fn is_kept(&self, at: &At) -> bool {
+        matches!(at, At::Row(rows, key, "") if *rows == self.rows && **key == *self.key.key_text())
+    }
+}
+
+/// A group's fields in a row: `shipments[7].address.street`.
+#[derive(Clone, Copy)]
+pub struct RowGroup<'k> {
+    row: Row<'k>,
+    group: &'static str,
+}
+
+impl PartialEq for RowGroup<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.row == other.row && self.group == other.group
+    }
+}
+
+impl std::hash::Hash for RowGroup<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.row.hash(state);
+        self.group.hash(state);
+    }
+}
+
+impl Place for RowGroup<'_> {
+    fn write(&self, name: &'static str, out: &mut String) {
+        write_row(self.row.rows, &self.row.key.key_text(), out);
+        out.push_str(self.group);
+        out.push('.');
+        out.push_str(name);
+    }
+    fn kept(&self) -> At {
+        At::Row(self.row.rows, self.row.key.key_text().into(), self.group)
+    }
+    fn is_kept(&self, at: &At) -> bool {
+        matches!(at, At::Row(rows, key, group) if *rows == self.row.rows && *group == self.group && **key == *self.row.key.key_text())
+    }
+}
+
+/// `rows[key].`, the key %-encoded.
+fn write_row(rows: &str, key: &str, out: &mut String) {
+    out.push_str(rows);
+    out.push('[');
+    encode_key(key, out);
+    out.push_str("].");
+}
+
+/// Where a field an [`Errors`] keeps is, its row's key copied.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum At {
+    Root,
+    Group(&'static str),
+    /// The rows' field, the key and a group in the row (`""` for none).
+    Row(&'static str, Box<str>, &'static str),
+}
+
+impl At {
+    fn write(&self, name: &'static str, out: &mut String) {
+        match self {
+            At::Root => out.push_str(name),
+            At::Group(group) => Group(group).write(name, out),
+            At::Row(rows, key, group) => {
+                write_row(rows, key, out);
+                if !group.is_empty() {
+                    out.push_str(group);
+                    out.push('.');
+                }
+                out.push_str(name);
+            }
+        }
+    }
+}
+
+/// A row key's characters other than ASCII letters, digits, `-` and `_` as `%XX` (each byte of
+/// their UTF-8), so a key cannot end its brackets or put a space in a message's id.
+fn encode_key(key: &str, out: &mut String) {
+    for b in key.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' {
+            out.push(char::from(b));
+        } else {
+            out.push('%');
+            out.push(char::from(b"0123456789ABCDEF"[usize::from(b >> 4)]));
+            out.push(char::from(b"0123456789ABCDEF"[usize::from(b & 15)]));
+        }
+    }
+}
+
+/// A key of a [`Rows`] field, written in its fields' names as the form reads it back: text, an
+/// integer, or a `#[derive(UrlValue)]` enum (its word). A newtype key implements it as the value
+/// it wraps, and must read back from that text.
+pub trait RowKey {
+    /// The key as text, as the form's field reads it back.
+    fn key_text(&self) -> std::borrow::Cow<'_, str>;
+}
+
+impl RowKey for String {
+    fn key_text(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(self)
+    }
+}
+
+impl RowKey for Box<str> {
+    fn key_text(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(self)
+    }
+}
+
+impl RowKey for &str {
+    fn key_text(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(self)
+    }
+}
+
+macro_rules! integer_keys {
+    ($($t:ty),*) => {$(
+        impl RowKey for $t {
+            fn key_text(&self) -> std::borrow::Cow<'_, str> {
+                std::borrow::Cow::Owned(self.to_string())
+            }
+        }
+    )*};
+}
+integer_keys!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
+
+/// A form struct's field names, from `#[derive(Fields)]`; what lets a struct be a group
+/// (`#[fields(group)]`) or a row (`#[fields(rows)]`) of another.
+pub trait Fields {
+    /// Its names at the form's top.
+    type Names: Copy + fmt::Debug;
+    /// Its names as a group, `ship_to.street`.
+    #[doc(hidden)]
+    type InGroup: Copy + fmt::Debug;
+    /// Its names in a row, `lines[7].qty`.
+    #[doc(hidden)]
+    type InRow<'k>: Copy + fmt::Debug;
+    /// Its names as a group in a row, `lines[7].address.street`.
+    #[doc(hidden)]
+    type InRowGroup<'k>: Copy + fmt::Debug;
+    /// 0 when it has no group and no rows, 1 when it has groups and no rows, 2 with rows.
+    #[doc(hidden)]
+    const SHAPE: u8;
+    #[doc(hidden)]
+    fn in_row<'k>(rows: &'static str, key: &'k (dyn RowKey + Sync)) -> Self::InRow<'k>;
+}
+
+/// What a group's or a row's names hold where another group or rows would be: nothing, since a
+/// group holds plain fields and a row plain fields and groups (refused when the app builds).
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug)]
+pub struct Refused;
+
+/// Used by the code `#[derive(Fields)]` generates.
+#[doc(hidden)]
+pub mod __private {
+    use super::*;
+
+    pub const fn group(name: &'static str) -> Group {
+        Group(name)
+    }
+
+    pub const fn row<'k>(rows: &'static str, key: &'k (dyn RowKey + Sync)) -> Row<'k> {
+        Row { rows, key }
+    }
+
+    pub const fn row_group<'k>(row: Row<'k>, group: &'static str) -> RowGroup<'k> {
+        RowGroup { row, group }
+    }
+}
+
+/// A form field that is a map from a key to a group of fields, one per row (`#[fields(rows)]`
+/// on `BTreeMap<K, V>`): a row's field is named by its key, `f.domains.at(&key).max_concurrent`,
+/// so each row's values are read into its own entry and each row's field has its own error.
+pub struct Rows<K, V> {
+    name: &'static str,
+    row: std::marker::PhantomData<fn() -> (K, V)>,
+}
+
+impl<K, V> Clone for Rows<K, V> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<K, V> Copy for Rows<K, V> {}
+
+impl<K, V> fmt::Debug for Rows<K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Rows({})", self.name)
+    }
+}
+
+impl<K, V: Fields> Rows<K, V> {
+    /// Used by the code `#[derive(Fields)]` generates.
+    #[doc(hidden)]
+    pub const fn __new(name: &'static str) -> Self {
+        Rows { name, row: std::marker::PhantomData }
+    }
+
+    /// The names of the row whose key is `key`: `f.domains.at(&Domain::SellerPortal).max_concurrent`
+    /// is `domains[seller-portal].max_concurrent`. It takes the map's key type (or what it
+    /// borrows as), so a key of another type does not compile.
+    pub fn at<'k, Q: RowKey + Sync>(&self, key: &'k Q) -> V::InRow<'k>
+    where
+        K: std::borrow::Borrow<Q>,
+    {
+        V::in_row(self.name, key)
     }
 }
 
@@ -244,8 +727,59 @@ impl AttrValue for FieldName {
 /// keeps its first message, and so does the form.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Errors {
-    fields: Vec<(FieldName, String)>,
+    fields: Vec<(Kept, String)>,
     form: Option<String>,
+}
+
+/// A [`FieldName`] an [`Errors`] keeps: where it is (its row's key copied) and its name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Kept {
+    at: At,
+    name: &'static str,
+}
+
+impl Kept {
+    fn new<P: Place>(field: FieldName<P>) -> Self {
+        Kept { at: field.at.kept(), name: field.name }
+    }
+
+    /// Whether this is `field`: for a form's own field, a comparison of two names.
+    #[inline]
+    fn is<P: Place>(&self, field: &FieldName<P>) -> bool {
+        self.name == field.name && field.at.is_kept(&self.at)
+    }
+}
+
+/// A field's name as [`Errors::iter`] gives it: printed (`Display`) or compared with text.
+#[derive(Clone, Copy, Debug)]
+pub struct Named<'e>(&'e Kept);
+
+impl fmt::Display for Named<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl PartialEq<str> for Named<'_> {
+    fn eq(&self, text: &str) -> bool {
+        let mut own = String::with_capacity(text.len());
+        self.0.at.write(self.0.name, &mut own);
+        own == text
+    }
+}
+
+impl<P: Place> PartialEq<FieldName<P>> for Named<'_> {
+    fn eq(&self, field: &FieldName<P>) -> bool {
+        self.0.is(field)
+    }
+}
+
+impl fmt::Display for Kept {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut out = String::new();
+        self.at.write(self.name, &mut out);
+        f.write_str(&out)
+    }
 }
 
 impl Errors {
@@ -254,9 +788,9 @@ impl Errors {
     }
 
     /// Records `message` for `field`, unless the field already has one.
-    pub fn add(&mut self, field: FieldName, message: impl Into<String>) {
+    pub fn add<P: Place>(&mut self, field: FieldName<P>, message: impl Into<String>) {
         if !self.has(field) {
-            self.fields.push((field, message.into()));
+            self.fields.push((Kept::new(field), message.into()));
         }
     }
 
@@ -267,12 +801,12 @@ impl Errors {
         self.form.get_or_insert_with(|| message.into());
     }
 
-    pub fn get(&self, field: FieldName) -> Option<&str> {
-        self.fields.iter().find(|(f, _)| *f == field).map(|(_, m)| m.as_str())
+    pub fn get<P: Place>(&self, field: FieldName<P>) -> Option<&str> {
+        self.fields.iter().find(|(f, _)| f.is(&field)).map(|(_, m)| m.as_str())
     }
 
-    pub fn has(&self, field: FieldName) -> bool {
-        self.fields.iter().any(|(f, _)| *f == field)
+    pub fn has<P: Place>(&self, field: FieldName<P>) -> bool {
+        self.fields.iter().any(|(f, _)| f.is(&field))
     }
 
     /// The message about the whole form, from [`Errors::add_form`].
@@ -291,8 +825,8 @@ impl Errors {
     }
 
     /// The fields' messages, in the order they were added.
-    pub fn iter(&self) -> impl Iterator<Item = (FieldName, &str)> {
-        self.fields.iter().map(|(f, m)| (*f, m.as_str()))
+    pub fn iter(&self) -> impl Iterator<Item = (Named<'_>, &str)> {
+        self.fields.iter().map(|(f, m)| (Named(f), m.as_str()))
     }
 
     /// `Ok(value)` when nothing was added, otherwise the errors.
@@ -330,34 +864,34 @@ impl<I: Id> Within<'_, I> {
     /// else nothing: `<input name={f.email} {..e.aria(f.email)}>`. A field with a hint of its own
     /// gives it here, `{..e.aria(f.email).hint(&EmailHintId)}`, and is described by the hint and
     /// then the error; a tag that writes `aria-describedby` itself as well does not compile.
-    pub fn aria(&self, field: FieldName) -> Aria<'_, I> {
+    pub fn aria<P: Place>(&self, field: FieldName<P>) -> Aria<'_, I, P> {
         Aria { form: &self.form, field, invalid: self.errors.has(field), hint: None }
     }
 
     /// `<p class="field-error" id="{form}-{field}-error">message</p>` when `field` has an error,
     /// else nothing: the element [`Within::aria`] points at.
-    pub fn message(&self, field: FieldName) -> FieldMessage<'_, I> {
+    pub fn message<P: Place>(&self, field: FieldName<P>) -> FieldMessage<'_, I, P> {
         FieldMessage { form: &self.form, field, message: self.errors.get(field) }
     }
 }
 
 /// `{form}-{field}-error`, escaped for an attribute.
-fn message_id(form: &impl Id, field: FieldName, out: &mut String) {
+fn message_id<P: Place>(form: &impl Id, field: FieldName<P>, out: &mut String) {
     form.write_id(out);
     out.push('-');
-    escape_into(field.0, out);
+    field.render(out);
     out.push_str("-error");
 }
 
 /// The ARIA attributes of a form field, from [`Within::aria`].
-pub struct Aria<'a, I> {
+pub struct Aria<'a, I, P = Root> {
     form: &'a I,
-    field: FieldName,
+    field: FieldName<P>,
     invalid: bool,
     hint: Option<&'a dyn WriteId>,
 }
 
-impl<'a, I> Aria<'a, I> {
+impl<'a, I, P> Aria<'a, I, P> {
     /// The field's hint, the element with the id `hint` (a `#[derive(Id)]`), which describes it
     /// always, ahead of its error: `aria-describedby="{hint} {form}-{field}-error"`.
     pub fn hint<H: Id>(self, hint: &'a H) -> Self {
@@ -376,11 +910,11 @@ impl<T: Id + ?Sized> WriteId for T {
     }
 }
 
-impl<I> crate::view::__private::Writes for Aria<'_, I> {
+impl<I, P> crate::view::__private::Writes for Aria<'_, I, P> {
     const WRITES: &'static [&'static str] = &["aria-invalid", "aria-describedby"];
 }
 
-impl<I: Id> Attrs for Aria<'_, I> {
+impl<I: Id, P: Place> Attrs for Aria<'_, I, P> {
     fn render_attrs(&self, out: &mut String) {
         if self.invalid {
             out.push_str(r#" aria-invalid="true""#);
@@ -402,13 +936,13 @@ impl<I: Id> Attrs for Aria<'_, I> {
 }
 
 /// A field's error message, from [`Within::message`].
-pub struct FieldMessage<'a, I> {
+pub struct FieldMessage<'a, I, P = Root> {
     form: &'a I,
-    field: FieldName,
+    field: FieldName<P>,
     message: Option<&'a str>,
 }
 
-impl<I: Id> Render for FieldMessage<'_, I> {
+impl<I: Id, P: Place> Render for FieldMessage<'_, I, P> {
     fn render(&self, out: &mut String) {
         if let Some(message) = self.message {
             out.push_str(r#"<p class="field-error" id=""#);
@@ -529,7 +1063,7 @@ pub struct SubmitField {
 impl Render for SubmitField {
     fn render(&self, out: &mut String) {
         out.push_str(r#"<input type="hidden" name=""#);
-        escape_into(self.name.as_str(), out);
+        self.name.render(out);
         out.push_str(r#"" data-submit value=""#);
         out.push_str(std::str::from_utf8(&self.key).expect("hex is ASCII"));
         out.push_str(r#"">"#);
@@ -574,7 +1108,7 @@ impl serde::Serialize for Errors {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
         for (field, message) in &self.fields {
-            map.serialize_entry(field.0, message)?;
+            map.serialize_entry(&field.to_string(), message)?;
         }
         map.end()
     }
@@ -618,9 +1152,9 @@ impl Errors {
 mod tests {
     use super::*;
 
-    const EMAIL: FieldName = FieldName("email");
-    const PRICE: FieldName = FieldName("price");
-    const NAME: FieldName = FieldName("name");
+    const EMAIL: FieldName = FieldName::__new("email");
+    const PRICE: FieldName = FieldName::__new("price");
+    const NAME: FieldName = FieldName::__new("name");
 
     #[derive(crate::view::Id)]
     struct RowId<'a>(&'a str);
@@ -748,8 +1282,8 @@ mod tests {
     #[test]
     fn serializes_as_an_object() {
         let mut e = Errors::new();
-        e.add(FieldName("b"), "2");
-        e.add(FieldName("a"), "1");
+        e.add(FieldName::__new("b"), "2");
+        e.add(FieldName::__new("a"), "1");
         assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"b":"2","a":"1"}"#);
     }
 }

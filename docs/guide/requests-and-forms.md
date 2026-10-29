@@ -187,6 +187,45 @@ and then the message. A browser keeps only an attribute's first value, so a star
 The runtime focuses the first invalid field (unless the user has moved on to another part of the
 page while waiting).
 
+A group of fields several forms share (an address) is a `Fields` struct of its own, put in a form
+with `#[fields(group)]`. Its fields post under the field's name, `ship_to.street`, so a form can
+hold two of one type (where it ships from and to), each read into its own value as its own type (a
+number stays a number). A component draws the group once for every form that has one, given its
+names: `<AddressInputs f={f.ship_to} />`, where `f: AddressGroupFields` (the
+names of an `Address` put in a form as a group).
+
+Rows of the same fields (one per API domain, a line of an intake, a shipment) are a map from each
+row's key to a `Fields` struct, `#[fields(rows)] #[serde(default)] domains: BTreeMap<Domain,
+DomainLimits>`. A row's field is named by its key, `f.domains.at(&row.domain).max_concurrent`,
+posted as `domains[seller-portal].max_concurrent`, so it is the key, not the row's place in the
+form, that puts each value in its row: a row the browser leaves out (its inputs disabled) leaves
+the others where they are, and an unchecked checkbox is `false` in its own row. `at` takes only
+the map's key type. An error on one row's field marks that input only, with its own message id
+(`limits-domains[seller-portal].max_concurrent-error`):
+
+```rust,ignore
+#[derive(Deserialize, Fields)]
+struct DomainLimits { max_concurrent: u32, #[serde(default)] adaptive: bool }
+
+#[derive(Deserialize, Fields)]
+struct Limits { #[fields(rows)] #[serde(default)] domains: BTreeMap<Domain, DomainLimits> }
+
+let f = Limits::FIELDS;
+html! {
+    for row in rows {
+        let max = f.domains.at(&row.domain).max_concurrent;
+        <input name={max} value={row.max_concurrent} {..e.aria(max)}> {e.message(max)}
+    }
+}
+errors.add(f.domains.at(&Domain::SellerPortal).max_concurrent, "At least 1.");
+```
+
+A key is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, whose key is the word
+serde reads (`seller-portal`), so it reads back as the same variant. Its characters other than letters, digits, `-` and `_` are %-encoded in the name, so any text is
+a key. A row holds plain fields and groups. A group of groups, rows in a group and rows in a row
+do not compile, and neither does `#[serde(flatten)]`: a group is named under its field so two of
+one type cannot clash.
+
 A refusal no single field explains (a rule across fields, or a service the handler wrote to
 saying no: "The policy was retired meanwhile.") is the form's own message:
 `errors.add_form(text)`, shown with `{errors.form_message()}` at the top of the form, a

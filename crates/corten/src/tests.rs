@@ -1257,6 +1257,134 @@ pub(crate) struct Shipping {
     r#type: std::collections::HashMap<String, fn(u8) -> u8>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, crate::UrlValue)]
+#[serde(rename_all = "kebab-case")]
+enum Domain {
+    SellerPortal,
+    Catalog,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, Fields)]
+struct Address {
+    street: String,
+    zip: Option<u32>,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, Fields)]
+struct DomainLimits {
+    max_concurrent: u32,
+    #[serde(default)]
+    adaptive: bool,
+    #[fields(group)]
+    contact: Address,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, Fields)]
+struct Limits {
+    name: String,
+    #[fields(group)]
+    ship_from: Address,
+    #[fields(group)]
+    ship_to: Address,
+    #[fields(rows)]
+    #[serde(default)]
+    domains: std::collections::BTreeMap<Domain, DomainLimits>,
+}
+
+#[derive(crate::view::Id)]
+struct LimitsFormId;
+
+/// A group's fields are named under it and a row's under its key, so two groups of one type
+/// and every row read into their own values, and each row's field has its own message.
+#[test]
+fn groups_and_rows_name_each_field_and_read_back_by_key() {
+    let f = Limits::FIELDS;
+    assert_eq!(f.name.to_string(), "name");
+    assert_eq!(f.ship_to.street.to_string(), "ship_to.street");
+    let portal = f.domains.at(&Domain::SellerPortal);
+    assert_eq!(portal.max_concurrent.to_string(), "domains[seller-portal].max_concurrent");
+    assert_eq!(portal.contact.zip.to_string(), "domains[seller-portal].contact.zip");
+    let keyed = Limits2::FIELDS.lines.at(&"a b]\"c".to_string()).qty.to_string();
+    assert_eq!(keyed, "lines[a%20b%5D%22c].qty");
+
+    // Out of order, a row with its checkbox unchecked, the catalog row's zip blank.
+    let body = "domains%5Bcatalog%5D.max_concurrent=4&ship_to.street=2+Elm&name=Main\
+        &domains%5Bseller-portal%5D.adaptive=on&domains%5Bseller-portal%5D.contact.street=1+Oak\
+        &ship_from.street=9+Ash&domains%5Bcatalog%5D.contact.street=3+Pine&ship_from.zip=55401\
+        &domains%5Bseller-portal%5D.max_concurrent=2&domains%5Bcatalog%5D.contact.zip=&ship_to.zip=";
+    let form: Limits = crate::form::from_bytes(body.as_bytes()).expect("reads");
+    assert_eq!(form.name, "Main");
+    assert_eq!(form.ship_from, Address { street: "9 Ash".into(), zip: Some(55401) });
+    assert_eq!(form.ship_to, Address { street: "2 Elm".into(), zip: None });
+    assert_eq!(
+        form.domains[&Domain::SellerPortal],
+        DomainLimits { max_concurrent: 2, adaptive: true, contact: Address { street: "1 Oak".into(), zip: None } }
+    );
+    assert_eq!(
+        form.domains[&Domain::Catalog],
+        DomainLimits { max_concurrent: 4, adaptive: false, contact: Address { street: "3 Pine".into(), zip: None } }
+    );
+    let keyed: Limits2 = crate::form::from_bytes(b"lines%5Ba%2520b%255D%2522c%5D.qty=3").expect("reads");
+    assert_eq!(keyed.lines["a b]\"c"].qty, 3);
+
+    // A row left out reads no row; nothing shifts.
+    let one: Limits = crate::form::from_bytes(
+        b"name=x&ship_from.street=a&ship_to.street=b&domains%5Bcatalog%5D.max_concurrent=1&domains%5Bcatalog%5D.contact.street=c",
+    )
+    .expect("reads");
+    assert_eq!(one.domains.keys().collect::<Vec<_>>(), [&Domain::Catalog]);
+
+    // Mistakes name the field as posted.
+    let err = |body: &str| crate::form::from_bytes::<Limits>(body.as_bytes()).unwrap_err().to_string();
+    let base = "name=x&ship_from.street=a&ship_to.street=b";
+    assert_eq!(err("name=x&ship_to.street=b"), "missing field `ship_from`");
+    assert_eq!(err("name=x&ship_from.zip=1&ship_to.street=b"), "ship_from: missing field `street`");
+    assert!(
+        err(&format!("{base}&domains%5Bcatalog%5D.max_concurrent=x&domains%5Bcatalog%5D.contact.street=c"))
+            .starts_with("domains[catalog].max_concurrent: invalid"),
+        "{}",
+        err(&format!("{base}&domains%5Bcatalog%5D.max_concurrent=x&domains%5Bcatalog%5D.contact.street=c"))
+    );
+    assert!(
+        err(&format!("{base}&domains%5Bnope%5D.max_concurrent=1")).starts_with("domains[nope]: key: unknown variant `nope`"),
+        "{}",
+        err(&format!("{base}&domains%5Bnope%5D.max_concurrent=1"))
+    );
+
+    // An error on one row marks that row's input only, with its own message id.
+    let mut errors = Errors::new();
+    errors.add(f.domains.at(&Domain::SellerPortal).max_concurrent, "At least 1.");
+    errors.add(f.domains.at(&Domain::SellerPortal).max_concurrent, "dropped: the field has one");
+    errors.add(f.domains.at(&Domain::Catalog).max_concurrent, "At most 8.");
+    let e = &errors.within(LimitsFormId);
+    let row = |d: Domain| {
+        let field = f.domains.at(&d).max_concurrent;
+        html! { <input name={field} {..e.aria(field)}>{e.message(field)} }.to_html()
+    };
+    assert_eq!(
+        row(Domain::SellerPortal),
+        r#"<input name="domains[seller-portal].max_concurrent" aria-invalid="true" aria-describedby="limits-form-domains[seller-portal].max_concurrent-error"><p class="field-error" id="limits-form-domains[seller-portal].max_concurrent-error">At least 1.</p>"#
+    );
+    assert!(row(Domain::Catalog).contains("At most 8."));
+    assert!(!errors.has(f.domains.at(&Domain::SellerPortal).contact.street));
+    assert_eq!(
+        errors.to_string(),
+        "domains[seller-portal].max_concurrent: At least 1.; domains[catalog].max_concurrent: At most 8."
+    );
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Line {
+    qty: u32,
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Limits2 {
+    #[fields(rows)]
+    #[serde(default)]
+    lines: std::collections::BTreeMap<String, Line>,
+}
+
 #[test]
 fn field_names_follow_serde_and_reach_markup() {
     assert_eq!((SignUp::FIELDS.email.as_str(), SignUp::FIELDS.password.as_str()), ("email", "pw"));
