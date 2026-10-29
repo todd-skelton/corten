@@ -3458,7 +3458,8 @@ async fn an_area_relaxes_the_opener_policy_of_its_pages_only() {
         let (status, _, shell) = csp_and_shell(router, path).await;
         (status, opener, shell)
     }
-    let router = App::new(policy_url::router()).area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener())).router();
+    let router =
+        App::new(policy_url::router()).area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener())).router();
     let (_, home, home_shell) = opener(&router, "/").await;
     assert_eq!(home, "same-origin");
     let (_, card, card_shell) = opener(&router, "/pay/card").await;
@@ -3474,7 +3475,10 @@ async fn an_area_relaxes_the_opener_policy_of_its_pages_only() {
         .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))
         .router();
     let (_, open_home, open_shell) = opener(&open, "/").await;
-    assert_eq!((open_home.as_str(), opener(&open, "/pay/card").await), ("unsafe-none", (StatusCode::OK, "unsafe-none".into(), open_shell)));
+    assert_eq!(
+        (open_home.as_str(), opener(&open, "/pay/card").await),
+        ("unsafe-none", (StatusCode::OK, "unsafe-none".into(), open_shell))
+    );
     let popups = App::new(policy_url::router())
         .policy(crate::security::Policy::new().allow_popups())
         .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))
