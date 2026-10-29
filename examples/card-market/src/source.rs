@@ -37,18 +37,33 @@ impl Source {
         }
         match std::env::var("API_BASE") {
             Ok(base) => Ok(Source::Api { client: reqwest::Client::new(), base: base.into() }),
-            Err(_) => Self::fixture(include_str!("../fixtures/demo.json")),
+            Err(_) => Ok(Self::demo()),
         }
+    }
+
+    /// The demo catalog built into the app, with the store's own art for each of its cards
+    /// (`model::art`). Only here: another source's `item_3` is another card.
+    pub fn demo() -> Self {
+        Self::load(include_str!("../fixtures/demo.json"), crate::model::art).expect("the demo catalog parses")
     }
 
     /// `{"item_1": <API response>, ...}`, converted one item at a time so the parsed responses for
     /// the whole file never sit in memory at once. Same typed parse as the API path.
     pub fn fixture(json: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::load(json, |_| None)
+    }
+
+    /// A catalog from `json`, with `art` for each item the responses give no pictures of.
+    fn load(json: &str, art: fn(&str) -> Option<&'static str>) -> Result<Self, Box<dyn std::error::Error>> {
         let raw: HashMap<String, &serde_json::value::RawValue> = serde_json::from_str(json)?;
         let mut items = HashMap::with_capacity(raw.len());
         for (id, value) in raw {
             let item: ApiItem = corten::json::from_str(value.get())?;
-            items.insert(id, Arc::new(ItemView::from(item)));
+            let mut view = ItemView::from(item);
+            if view.images.is_empty() {
+                view.art = art(&view.id);
+            }
+            items.insert(id, Arc::new(view));
         }
         let mut order: Vec<_> = items.iter().collect();
         order.sort_by(|(a, _), (b, _)| (a.len(), a).cmp(&(b.len(), b)));
