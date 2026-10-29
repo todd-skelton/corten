@@ -81,6 +81,9 @@ impl Scoper<'_> {
                 self.i += 1;
                 let inner = if let Some(rule) = text.strip_prefix('@') {
                     let name = rule.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-')).next().unwrap_or("");
+                    if name == "page" && ctx != Ctx::Raw {
+                        self.check_page(rule["page".len()..].trim(), start)?;
+                    }
                     match (ctx, name) {
                         (Ctx::Raw, _) => Ctx::Raw,
                         (_, "media" | "supports" | "container" | "layer" | "scope" | "starting-style") => ctx,
@@ -145,6 +148,26 @@ impl Scoper<'_> {
             self.out.push_str(value);
             self.out.push(';');
         }
+    }
+
+    /// A page's name is the whole app's (`page: name` in any stylesheet picks it), so a component
+    /// names its own after itself, and one with no name, which sets every page the app prints,
+    /// belongs in the app's stylesheet.
+    fn check_page(&self, prelude: &str, at: usize) -> Result<(), String> {
+        let name = prelude.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_')).next().unwrap_or("");
+        let own = format!("{}-", self.prefix);
+        if name.is_empty() {
+            return Err(self.error(
+                at,
+                format!("an @page with no name sets every page the app prints: name it, @page {own}slip, or put it in the app's stylesheet"),
+            ));
+        }
+        if !name.starts_with(&own) {
+            return Err(
+                self.error(at, format!("a page's name is the whole app's: start it with this component's, @page {own}{name}"))
+            );
+        }
+        Ok(())
     }
 
     fn skip_space(&mut self) {
@@ -660,6 +683,19 @@ mod tests {
         assert!(scope("h2 { margin: 0 }", "x").unwrap_err().contains("`h2` styles elements this component does not own"));
         assert!(scope(".a, h2 { margin: 0 }", "x").unwrap_err().contains("line 1"));
         assert!(scope("@media print { body { margin: 0 } }", "x").is_err(), "at-rules do not unscope");
+        let print = scope(
+            "@page x-slip { size: 4in 6in; margin: 0 }\n.slip { page: x-slip }\n@media print { .bar { display: none } }",
+            "x",
+        );
+        assert_eq!(
+            print.map(|s| s.css),
+            Ok("@page x-slip{size:4in 6in;margin:0}.x__slip{page:x-slip}@media print{.x__bar{display:none}}".to_string()),
+            "a page named after the component; print rules are scoped"
+        );
+        assert!(scope("@page { margin: 0 }", "x").unwrap_err().contains("with no name"));
+        assert!(scope("@page :first { margin: 0 }", "x").unwrap_err().contains("with no name"));
+        assert!(scope("@page slip { margin: 0 }", "x").unwrap_err().contains("@page x-slip"));
+        assert!(scope("@page x-slip:first { margin: 0 }", "x").is_ok());
         assert!(scope("\n\n@import \"x.css\";", "x").unwrap_err().starts_with("line 3: @import"));
         assert!(scope(".a { color: red", "x").unwrap_err().contains("never closed"));
         assert!(scope(".a__b { color: red }", "x").is_err());

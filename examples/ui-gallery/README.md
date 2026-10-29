@@ -5,7 +5,8 @@ component: number fields for the quantity and the shipping weight (the price is 
 as money), a combobox for the condition, the regions it
 ships to (at least one), the lowest offer it takes (required only when it takes offers), the card's
 market in tabs, a menu button, a toast when the draft is saved, a dialog the server draws open
-when it refuses a name, a dialog the address opens, and a button that copies the SKU. Read it when
+when it refuses a name, a dialog the address opens, a button that copies the SKU, and one that
+prints the page. Read it when
 you need a widget the browser has no element for.
 
 ## Run it

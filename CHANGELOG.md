@@ -832,6 +832,15 @@ Corten is pre-1.0, so any minor version may change the API.
     pages that use it. ui-gallery's listing shows both (where it ships, and the lowest offer when it
     takes offers), and its handler refuses what the browser would have stopped
     ([#269 A field required only for one choice of another field needs a script, so the browser cannot check it before the form is sent](https://github.com/todd-skelton/corten/issues/269)).
+119. corten-ui's `PrintButton` opens the browser's print dialog. It is drawn hidden and its script
+    shows it, so without a script there is no button that does nothing, and the browser's Print
+    command still prints the page. Its script is 736 bytes (too small to compress), on the pages
+    that use it. The styles guide's new Printing section covers paper sizes: named `@page` rules
+    in a component's own stylesheet, scoped `@media print` rules, and layout chrome that hides
+    itself. **Breaking:** in a component's stylesheet an `@page` with no name (which sets every
+    page the app prints) does not compile, and a page's name starts with the component's
+    (`@page packing-slip-thermal`), so two components cannot set one page
+    ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1622,6 +1631,15 @@ Corten is pre-1.0, so any minor version may change the API.
     `[object File]`), line breaks are CRLF, a `text/plain` form is sent as text, not urlencoded,
     and neither content type names a charset. A file chosen again while the first is on its way is a
     new submit unless it is the same file (name, size and time), not a double click ([#200 A data-patch form's urlencoded body differs from the browser's: a file is [object File], line breaks are not CRLF, and text/plain is sent urlencoded](https://github.com/todd-skelton/corten/issues/200)). With 50, `corten.js` grows 201 bytes gzip.
+52. The idle-connection test measured the timeout from its own call, not from the clock's tick the
+    connection went idle at, so it failed under load when the clock's thread lagged. It now checks
+    what the clock promises, and expiry itself is unchanged
+    ([#279 watch test: an idle connection can expire early when the clock's thread lags, and the test fails under load](https://github.com/todd-skelton/corten/issues/279)).
+53. A patch that took the focused element away (a row removed, or the last row of a list drawn
+    again without it) left focus on the body, so a keyboard or screen reader user was sent to the
+    top of the document. Focus now goes to the nearest element around it that is still on the
+    page, focusable only for the move; so does focus on an element patched into one that cannot
+    take it (a button now disabled). `corten.js` grows 158 bytes gzip ([#267 A patch that removes the focused element drops focus to the body](https://github.com/todd-skelton/corten/issues/267)).
 ### Documentation
 
 1. The README is now an overview: highlights, quick start, one compiled example, values,

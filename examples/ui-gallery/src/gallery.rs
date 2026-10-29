@@ -3,8 +3,8 @@
 use corten::i18n::RelativeStyle;
 use corten::prelude::*;
 use corten_ui::{
-    CheckboxGroup, Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, RelativeTime,
-    RequiredWhen, Tab, TabGroup, Toast, Toaster, dialog,
+    CheckboxGroup, Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, PrintButton,
+    RelativeTime, RequiredWhen, Tab, TabGroup, Toast, Toaster, dialog,
 };
 use std::time::SystemTime;
 
@@ -140,6 +140,7 @@ pub fn Gallery<'a>(
             <section class={Card}>
                 <h2>"Stock"</h2>
                 <Sku sku="ASH-DRAKE-NM" />
+                <PrintButton label="Print label" />
             </section>
         </div>
         {rename}

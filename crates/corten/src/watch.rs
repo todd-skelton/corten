@@ -267,12 +267,16 @@ mod tests {
         watch.idle(first);
         assert!(!watch.expired(), "a busy connection does not expire, nor go idle on an earlier answer");
         watch.idle(second);
+        // Idle from the clock's last tick, which a starved clock thread makes older than now: the
+        // promise is a timeout from that time, to within a tick, not from this call.
+        let idle_at = watch.since.load(Relaxed);
         let started = Instant::now();
         while !watch.expired() {
             assert!(started.elapsed() < Duration::from_secs(2), "an idle connection expires");
             std::thread::sleep(Duration::from_millis(5));
         }
-        assert!(started.elapsed() >= Duration::from_millis(25), "{:?}", started.elapsed());
+        let expired_at = clock.base.elapsed().as_millis() as u64;
+        assert!(expired_at >= idle_at + 40, "idle at {idle_at} ms, expired by {expired_at} ms");
         watch.busy();
         assert!(!watch.expired(), "a head that arrives as it expires is read");
     }
