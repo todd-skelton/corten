@@ -28,9 +28,9 @@ there decides. A change is reviewed against them before it is done (below).
    Styles are a CSS file per component (`#[component(css)]`, scoped at compile time, `class={Name}`)
    and tokens from `tokens!`; never write one of a component's classes as a string, and keep
    inline `style=` out (the CSP blocks it).
-   A compile-time guarantee gets a `compile_fail` doctest next to the feature. A change to what `html!` generates needs the item page's
-   `render_cost` test before and after (`CORTEN_FIXTURE=bench/fullstack/fixtures/items.json`,
-   release build) so rendering does not get slower unnoticed.
+   A compile-time guarantee gets a `compile_fail` doctest next to the feature. A change to what
+   `html!` generates measures the item page's `render_cost` before and after (below), so
+   rendering does not get slower unnoticed.
 4. The `corten` command: `crates/corten-cli`, standard library only. `template/` is the app
    `corten new` writes; it must pass `corten check` with rustfmt's default settings.
    `corten fmt` lays out `html!` bodies and only ever changes whitespace (it compares tokens
@@ -59,12 +59,16 @@ there decides. A change is reviewed against them before it is done (below).
 
 1. Run every command in [CONTRIBUTING.md](CONTRIBUTING.md#checks), each separately, and remove
    the containers afterwards. All must pass.
-2. Update the guide that describes a changed behavior, and add a line to `CHANGELOG.md` under
+2. Measure a change to rendering, the runtime or the request path with the number that can see
+   it: instructions per request (callgrind) for work done in process, time as well for memory,
+   time for waiting and concurrency, bytes for what the client receives.
+   [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) (item 2) says which fits and how to report it.
+3. Update the guide that describes a changed behavior, and add a line to `CHANGELOG.md` under
    Unreleased.
-3. Have the change reviewed as [CONTRIBUTING.md](CONTRIBUTING.md#review) describes: start a new
+4. Have the change reviewed as [CONTRIBUTING.md](CONTRIBUTING.md#review) describes: start a new
    agent that did not write it, and give it the diff, `README.md` (Values), `docs/design.md` and
    CONTRIBUTING.md (Review), not your reasoning or summary. Fix each finding or say why it
    stands, and review again after a fix that changes behavior.
-4. Report the checks, the measurements, and each finding with what you did about it, in the
+5. Report the checks, the measurements, and each finding with what you did about it, in the
    pull request description and to whoever asked for the change. A pull request merges only
    after its review.

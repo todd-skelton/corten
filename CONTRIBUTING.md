@@ -110,8 +110,28 @@ The failover benchmark is `node examples/listings-feed/bench/run.mjs`; see its h
    doctest for a compile-time guarantee, an `@ts-expect-error` line in
    `scripts/typecheck-fixture.js` for a typing guarantee, and a browser smoke check for anything
    the runtime does.
-2. A change to rendering, the runtime or the request path says what it measured before and after
-   (`render_cost`, bytes shipped, nanoseconds per request).
+2. A change to rendering, the runtime or the request path is measured before and after, with
+   the number that can see the change:
+   1. Work done in process (rendering, routing, serialization, middleware, a handler's own
+      code): instructions per request under callgrind (`valgrind --tool=callgrind`), with the
+      request sent through the router in process by `oneshot`. For rendering, run the item
+      page's `render_cost` test (`examples/card-market`,
+      `CORTEN_FIXTURE=bench/fullstack/fixtures/items.json`) under it. A count barely moves with
+      other load on the machine, so it shows a difference of a few percent that times on a
+      laptop or Docker Desktop hide.
+   2. Memory (allocation, buffer sizes, copies, data layout): the count and `render_cost`'s
+      times, because a count does not see cache misses or memory stalls, and the same count
+      can take longer.
+   3. Waiting and concurrency (I/O, locks, channels, timers, feeds, streaming, startup): time,
+      because a count does not see waiting or how well work overlaps. `bench/fullstack/ab.mjs`
+      runs the two builds' images on one CPU for latency and throughput under load, and
+      `bench/fullstack/cold-start.mjs` times cold start.
+   4. What the client receives: bytes shipped (the document, patches, the minified runtime,
+      assets), raw and compressed.
+
+   Measure release builds and alternate runs of the two. Give the tool, the number of runs and
+   their median and range; when one build's runs vary more than the two builds differ, say so
+   instead of reporting a difference.
 3. Update the guide in `docs/guide/` that describes the behavior, and add a line to
    `CHANGELOG.md` under Unreleased.
 4. Commit messages say what changed and why, in plain sentences.
