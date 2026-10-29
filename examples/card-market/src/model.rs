@@ -127,7 +127,8 @@ impl Detail {
 }
 
 /// Dollars and cents as the item API writes them (`"42.50"`, `"3"`, `"0.5"`), in cents; anything
-/// else (more than two decimals, a sign, an exponent) is `None`, and the page shows the text.
+/// else (more than two decimals, a sign, an exponent, or more cents than a row can carry to the
+/// browser's sort, [`NO_PRICE`] or over) is `None`, and the page shows the text.
 pub fn cents(amount: &str) -> Option<u64> {
     let (whole, frac) = amount.split_once('.').unwrap_or((amount, ""));
     if whole.is_empty() || frac.len() > 2 {
@@ -141,7 +142,7 @@ pub fn cents(amount: &str) -> Option<u64> {
         }
         cents = cents.checked_mul(10)?.checked_add(u64::from(b - b'0'))?;
     }
-    Some(cents)
+    Some(cents).filter(|&c| c < NO_PRICE)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToJson)]
@@ -204,12 +205,14 @@ pub fn sort_cents(listing: &Listing) -> u64 {
 /// exactly, so the row's view carries it as is.
 pub const NO_PRICE: u64 = (1 << 53) - 1;
 
-/// The listings by price, borrowed: sorting a page's rows copies no strings.
+/// The listings by price, borrowed: sorting a page's rows copies no strings. Listings with the
+/// same price keep the item's order either way, as the browser's sort keeps them.
 pub fn sort_listings(listings: &[Listing], descending: bool) -> Vec<&Listing> {
     let mut sorted: Vec<&Listing> = listings.iter().collect();
-    sorted.sort_by_key(|l| sort_cents(l));
     if descending {
-        sorted.reverse();
+        sorted.sort_by_key(|l| std::cmp::Reverse(sort_cents(l)));
+    } else {
+        sorted.sort_by_key(|l| sort_cents(l));
     }
     sorted
 }
@@ -468,15 +471,13 @@ mod tests {
         }
     }
 
-    /// The typed parse keeps the page's rules: null text is empty, counts may come as strings,
-    /// money needs both an amount and a code, missing names fall back, two images at most, and a
-    /// content line without its item's title shows the item id.
     #[test]
     fn the_page_reads_cents_grades_and_details_the_catalog_names() {
         for (text, cents) in [("42.50", Some(4250)), ("3", Some(300)), ("0.5", Some(50)), ("1234.05", Some(123_405))] {
             assert_eq!(super::cents(text), cents, "{text}");
         }
-        for text in ["", ".5", "1.234", "-1.00", "1e3", "1,000.00", " 1.00"] {
+        assert_eq!(super::cents("90071992547409.90"), Some(NO_PRICE - 1), "the most a row's view carries exactly");
+        for text in ["", ".5", "1.234", "-1.00", "1e3", "1,000.00", " 1.00", "90071992547409.91", "99999999999999999999"] {
             assert_eq!(super::cents(text), None, "{text:?} is shown as sent");
         }
         assert_eq!(Grade::of("Lightly Played"), Some(Grade::LightlyPlayed));
@@ -485,6 +486,33 @@ mod tests {
         assert_eq!(Detail::of("field_1"), None);
     }
 
+    /// Listings with the same price, and those without one, keep the item's order in both
+    /// directions, as the browser's stable sort keeps them; no price sorts after every price.
+    #[test]
+    fn listings_sort_by_cents_and_ties_keep_the_items_order() {
+        let at = |id: &str, cents: Option<u64>| Listing {
+            id: id.into(),
+            seller: String::new(),
+            rating: None,
+            reviews: 0,
+            condition: String::new(),
+            ships_from: String::new(),
+            quantity: 1,
+            price: String::new(),
+            price_value: 0.0,
+            cents,
+            stars: None,
+            grade: None,
+        };
+        let listings = [at("a", Some(500)), at("b", None), at("c", Some(100)), at("d", Some(500)), at("e", None)];
+        let ids = |sorted: Vec<&Listing>| sorted.iter().map(|l| l.id.as_str()).collect::<Vec<_>>().join("");
+        assert_eq!(ids(sort_listings(&listings, false)), "cadbe");
+        assert_eq!(ids(sort_listings(&listings, true)), "beadc");
+    }
+
+    /// The typed parse keeps the page's rules: null text is empty, counts may come as strings,
+    /// money needs both an amount and a code, missing names fall back, two images at most, and a
+    /// content line without its item's title shows the item id.
     #[test]
     fn api_item_reads_the_fields_the_page_uses() {
         let body = serde_json::json!({

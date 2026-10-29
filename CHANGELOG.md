@@ -1811,7 +1811,8 @@ Corten is pre-1.0, so any minor version may change the API.
     leaves out (`#[serde(skip)]`: cents, a `Decimal` rating, a `Grade`, a `Detail`), so
     `/api/items/{id}` still answers the benchmark's shared view model, and in English the page
     reads as before (`parity.mjs`). The listing sort compares each row's `data-cents`, the
-    cents the server sorts by, where it compared a float that was `NaN` without a price, and the
+    cents the server sorts by, where it compared a float that was `NaN` without a price, and
+    keeps rows with the same price in the server's order both ways, so a second click restores it, and the
     scripts guide says when a `data-` attribute is the right tool rather than a view. The smoke
     checks a price, a rating and a condition in French
     ([#323 card-market in French translates its headings but not its prices, ratings or card details](https://github.com/todd-skelton/corten/issues/323),

@@ -92,12 +92,17 @@ try {
   check("a theme overrides tokens", styles.themes[0] === "#1d1b26" && styles.themes[1] === "#ecebf2", styles.themes.join(" "));
 
   const firstPrice = () => page.textContent("[data-scope=listing-sort] tbody tr:first-child td:last-child");
+  const rowOrder = () => page.$$eval("[data-scope=listing-sort] tbody tr", (rows) => rows.map((r) => r.textContent).join("|"));
   const sort = "[data-scope=listing-sort] > button";
   const before = await firstPrice();
+  const order = await rowOrder();
   await page.click(sort);
   check("a click runs the listing sort handler", (await firstPrice()) !== before && (await page.innerText(sort)) === "Price: high to low");
   await page.click(sort);
-  check("a second click restores the server's order", (await firstPrice()) === before && (await page.innerText(sort)) === "Price: low to high");
+  check(
+    "a second click restores the server's order, rows with the same price included",
+    (await firstPrice()) === before && (await rowOrder()) === order && (await page.innerText(sort)) === "Price: low to high",
+  );
   const more = await page.$("[data-scope=offer-list] button");
   if (more) {
     const rows = await page.$$eval("[data-scope=offer-list] tbody tr", (r) => r.length);
