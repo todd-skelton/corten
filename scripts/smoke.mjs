@@ -957,6 +957,31 @@ async function run(browser) {
     return { onList: at === list, was, after: list?.getAttribute("tabindex") ?? null };
   });
   check("a patch that replaces the focused row leaves focus on its list, focusable only until it leaves", lostRow.onList && lostRow.was === "-1" && lostRow.after === null, JSON.stringify(lostRow));
+  // The same patch again (a live stream, a read again) keeps focus there, not one level up each time.
+  await page.evaluate(() => /** @type {HTMLElement} */ (document.querySelector("#rows-gone ul")).focus());
+  const again = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    // The list is focused (made focusable for the move above, as the runtime would).
+    const list = /** @type {HTMLElement} */ (document.querySelector("#rows-gone ul"));
+    list.tabIndex = -1;
+    list.focus();
+    const html = '<section id="rows-gone"><ul><li id="row-a"><button>Remove A</button></li></ul></section>';
+    await patch(html);
+    await patch(html);
+    return document.activeElement === document.querySelector("#rows-gone ul");
+  });
+  check("the same patch twice leaves focus on the list", again);
+  // The patched element had focus and its replacement cannot take it: the element around it.
+  await page.evaluate(() => document.querySelector("main")?.insertAdjacentHTML("beforeend", '<div id="follow-around"><button id="follow">Follow</button></div>'));
+  await page.focus("#follow");
+  const disabled = await page.evaluate(async () => {
+    const { patch } = await import("corten");
+    await patch('<button id="follow" disabled>Following</button>');
+    const at = document.activeElement?.id;
+    document.querySelector("#follow-around")?.remove();
+    return at;
+  });
+  check("a focused element patched into one that cannot take focus leaves focus around it", disabled === "follow-around", disabled);
   await page.focus("#item-a button");
   const lostItem = await page.evaluate(async () => {
     const { patch } = await import("corten");

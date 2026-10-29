@@ -215,10 +215,14 @@ no store); `corten_cluster::begin` takes it as its idempotency key. A field that
 A patch replaces markup but not the user's work: a field typed into after the form was sent (or,
 in a `<corten-live>` patch, any field the user changed) keeps its value, and focus and the caret
 stay on the matching element. When the patch takes the focused element away (a row removed with
-its Remove button, the last row of a list drawn again without it), focus goes to the nearest
-element around it that is still there, made focusable for the move (`tabindex="-1"`, removed once
-focus leaves it), so a keyboard or screen reader user stays in the part of the page they were in
-rather than at the top of the document. A file input keeps the files the user chose, which markup cannot
+its Remove button, the last row of a list drawn again without it) or its new markup cannot take
+focus (a button now disabled), focus goes to the nearest element around it that is still there,
+made focusable for the move (`tabindex="-1"`, removed once focus moves to another element), so a
+keyboard or screen reader user stays in the part of the page they were in rather than at the top
+of the document. A list is announced as a list; give a `<section>` or `<div>` that may take focus
+this way an accessible name (`aria-labelledby` its heading), and say what happened in a status
+message. A row with an id is found by it, so focus lands on its list, not on another row; Tab
+then goes on from the start of the list. A file input keeps the files the user chose, which markup cannot
 give back, so a refusal can redraw the input with `aria-invalid` and its message and the files
 are still there to send again; only a successful answer to the form that sent them takes them
 (found by first file name, so files chosen again under the same name while it was on its way go

@@ -697,10 +697,9 @@ async function apply(html, signal, sent, took) {
     if (el.hasAttribute("data-corten-read-again")) again = el;
     else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-remove")) {
       // Focus in it goes to the nearest element around it that can take focus.
-      const around = [];
-      if (target?.contains(document.activeElement)) for (let up = target.parentElement; up; up = up.parentElement) around.push(up);
+      const up = target?.contains(document.activeElement) && target.parentElement;
       target?.remove();
-      focusNear(around);
+      if (up) focusNear(up);
     }
     else if (!target) console.error(`corten: patch element <${el.localName}> needs an id that exists on the page`, el);
     else if (el instanceof HTMLTemplateElement && el.hasAttribute("data-append")) {
@@ -967,32 +966,39 @@ function replaceKeeping(root, fresh, sent, took) {
       if (selectionStart !== null) /** @type {HTMLInputElement} */ (next).setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? undefined);
     } catch {}
   }
-  // The focused element went with the patch (or its counterpart cannot take focus): the
-  // counterpart of its nearest ancestor that has one, up to the patched element itself.
-  if (inside && document.activeElement === document.body) {
-    const around = [];
-    for (let el = focused.parentElement; el; el = el === root ? null : el.parentElement) around.push(counterpart(root, fresh, el));
-    focusNear(around);
-  }
+  // The focused element went with the patch, or its counterpart cannot take focus.
+  if (inside && document.activeElement === document.body) focusNear(focused, root, fresh);
 }
 
 /**
- * Focuses the first of `candidates` on the page that can take it, made focusable for the move
- * (`tabindex="-1"`, removed once focus leaves it), so a keyboard or screen reader user whose
- * element a patch took away stays where they were rather than at the top of the document.
- * @param {(Element | null | undefined)[]} candidates
+ * Focuses `el`, or else the nearest element around it that can take focus, so a keyboard or
+ * screen reader user whose element a patch took away stays where they were rather than at the
+ * top of the document. With `fresh`, `el` is in `root`, which `fresh` replaced: each element up
+ * to `root` stands for its counterpart in `fresh`, then the walk goes on from `fresh`'s parent.
+ * One that is not focusable is made so for the move (`tabindex="-1"`), until focus leaves it
+ * for another element (not for another window, which leaves it focused).
+ * @param {Element | null | undefined} el @param {Element} [root] @param {Element} [fresh]
  */
-function focusNear(candidates) {
-  for (const el of candidates) {
-    if (!(el instanceof HTMLElement) || !el.isConnected || el === document.body) continue;
-    const made = !el.hasAttribute("tabindex");
-    if (made) el.setAttribute("tabindex", "-1");
-    el.focus({ preventScroll: true });
-    if (document.activeElement === el) {
-      if (made) el.addEventListener("blur", () => el.removeAttribute("tabindex"), { once: true });
-      return;
+function focusNear(el, root, fresh) {
+  while (el && el !== document.body) {
+    const to = fresh ? counterpart(/** @type {Element} */ (root), fresh, el) : el;
+    if (to instanceof HTMLElement) {
+      const made = !to.hasAttribute("tabindex");
+      if (made) to.tabIndex = -1;
+      to.focus({ preventScroll: true });
+      if (document.activeElement === to) {
+        if (made) {
+          const off = () => document.activeElement !== to && (to.removeAttribute("tabindex"), to.removeEventListener("blur", off));
+          to.addEventListener("blur", off);
+        }
+        return;
+      }
+      if (made) to.removeAttribute("tabindex");
     }
-    if (made) el.removeAttribute("tabindex");
+    if (fresh && el === root) {
+      el = fresh.parentElement;
+      fresh = undefined;
+    } else el = el.parentElement;
   }
 }
 
