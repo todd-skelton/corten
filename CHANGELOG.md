@@ -855,7 +855,13 @@ Corten is pre-1.0, so any minor version may change the API.
     after a client navigation wherever the markup puts them; a `req.nav` link is still judged
     alone. `corten.js` grows 80 bytes gzip
     ([#341 A nav built from data, or whose current entry is the deepest that holds the page, keeps the first page's aria-current after a client navigation](https://github.com/todd-skelton/corten/issues/341)).
-122. A script that imports another script module of its directory (`import { loadStripe } from
+122. `ReadAgain { after }.without_javascript()` asks only a browser without JavaScript to read the
+    page again: for a page whose changing part a `<corten-live>` relays while a job runs, which
+    with JavaScript keeps itself fresh, and which reading whole would only make open its stream
+    again. It writes the `<noscript>` refresh without the mark the runtime reads; the runtime
+    is unchanged
+    ([#319 A page relayed by <corten-live> cannot ask a browser without JavaScript to read it again](https://github.com/todd-skelton/corten/issues/319)).
+123. A script that imports another script module of its directory (`import { loadStripe } from
      "./stripe.js"`) has it preloaded on the pages that load it, with what that one imports, so the
      browser fetches them together instead of one round trip after the other. The tag is made
      when the app starts, so a page costs nothing more to render: one import over a 100 ms
