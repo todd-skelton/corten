@@ -110,10 +110,13 @@ use std::fmt;
 /// Derives [`Route`](trait@Route) for a struct: `#[derive(Route)] #[route("/items/{id}")]`.
 pub use corten_macros::Route;
 
-/// Derives `Display` for an enum of unit variants as the words serde reads for them, so a route
-/// field of that type (a tab, a sort, a filter, what a redirect says happened) writes the word its
-/// handler reads back, and the words are written once, in `#[serde(rename_all)]` and
-/// `#[serde(rename)]`:
+/// Derives `Display` and `AsRef<str>` for an enum of unit variants as the words serde reads for
+/// them, so a route field of that type (a tab, a sort, a filter, what a redirect says happened)
+/// writes the word its handler reads back, and the words are written once, in
+/// `#[serde(rename_all)]` and `#[serde(rename)]`. A form field of that type works the same way:
+/// an `<option value={Condition::NearMint}>` (or corten-ui's `Choice`) posts the word its
+/// handler's `condition: Condition` reads, and a form with any other word is refused (422), as one
+/// with a value of the wrong kind is.
 ///
 /// ```
 /// use corten::prelude::*;
@@ -128,6 +131,7 @@ pub use corten_macros::Route;
 ///
 /// assert_eq!(Orders { tab: Some(Tab::AwaitingLabel) }.href(), "/orders?tab=awaiting-label");
 /// assert_eq!(Orders { tab: Some(Tab::Shipped) }.href(), "/orders?tab=done");
+/// assert_eq!(Tab::Open.as_ref(), "open");
 /// ```
 ///
 /// A variant with fields is not one word, and one serde does not read would make a link its

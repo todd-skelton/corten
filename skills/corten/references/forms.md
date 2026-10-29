@@ -166,5 +166,8 @@ let price = match check(t, &form) {
 
 Keep the HTML attributes (`required`, `type="email"`, `inputmode`) too: the browser checks them
 first, and the server check is the one that counts. A field required only for some values of
-another goes in `corten_ui::RequiredWhen` (`control={f.kind} values={&["partial"]}`), never a
-script of the app's, and the handler checks the same rule.
+another goes in `corten_ui::RequiredWhen` (`control={f.kind} values={&[Kind::Partial]}`), never a
+script of the app's, and the handler checks the same rule. A field with a fixed set of values
+(a select, radios, a `corten_ui::ComboBox`) is a `#[derive(UrlValue, Deserialize)]` enum in the form
+struct, and the markup writes its variants (`value={Kind::Partial}`, `Choice { value: Kind::Partial, .. }`),
+not their words as strings.

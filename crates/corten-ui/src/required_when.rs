@@ -6,7 +6,8 @@ use corten::{form::FieldName, prelude::*};
 ///
 /// A `<fieldset>` around the app's fields (`children`). Its script (`required_when.js`) watches
 /// the form's `control` field (named by its `FieldName`: a select, radios, a checkbox, also one
-/// joined to the form with `form=`) and, while its value is one of `values`, makes every field in
+/// joined to the form with `form=`) and, while its value is one of `values` (the words of the
+/// field's `UrlValue` enum, or any `AsRef<str>`), makes every field in
 /// the set `required` (checkboxes aside: `required` on a box means it must be checked); for any
 /// other value it disables the set, so the browser neither checks nor sends what does not apply.
 /// To hide the set while it does not apply, the app's stylesheet uses `:has` on the control
@@ -24,19 +25,23 @@ use corten::{form::FieldName, prelude::*};
 /// use corten::prelude::*;
 /// use corten_ui::RequiredWhen;
 ///
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// #[serde(rename_all = "snake_case")]
+/// enum Kind { Full, Partial }
+///
 /// #[derive(serde::Deserialize, Fields)]
 /// struct Refund {
-///     kind: String,
+///     kind: Kind,
 ///     amount: Option<f64>,
 /// }
 ///
 /// let f = Refund::FIELDS;
 /// let html = html! {
 ///     <select name={f.kind}>
-///         <option value="full">"Full refund"</option>
-///         <option value="partial">"Partial refund"</option>
+///         <option value={Kind::Full}>"Full refund"</option>
+///         <option value={Kind::Partial}>"Partial refund"</option>
 ///     </select>
-///     <RequiredWhen control={f.kind} values={&["partial"]}>
+///     <RequiredWhen control={f.kind} values={&[Kind::Partial]}>
 ///         <label>"Amount " <input type="number" name={f.amount} step="0.01"></label>
 ///     </RequiredWhen>
 /// }
@@ -53,7 +58,7 @@ use corten::{form::FieldName, prelude::*};
 /// let html = html! { <RequiredWhen control="kind" values={&["partial"]}>"Amount"</RequiredWhen> };
 /// ```
 #[component(js)]
-pub fn RequiredWhen<'a, C: Render>(control: FieldName, values: &'a [&'a str], children: C) -> impl Render {
+pub fn RequiredWhen<'a, V: AsRef<str>, C: Render>(control: FieldName, values: &'a [V], children: C) -> impl Render {
     html! {
         <fieldset on:connect={js::connect(target, control.as_str(), values, signal)}>
             {children}

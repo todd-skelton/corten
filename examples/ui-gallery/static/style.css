@@ -33,3 +33,7 @@ dialog input { padding: 7px 10px; border: 1px solid var(--line); border-radius: 
 dialog input[aria-invalid="true"] { border-color: var(--danger); }
 dialog form:not([method="dialog"]) button { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .field-error { margin: 0; color: var(--danger); font-size: 13px; }
+/* Help: a term and its explanation, at a reading width. */
+main > p, main > dl { max-width: 40rem; }
+dt { margin-block-start: 16px; font-weight: 600; }
+dd { margin: 4px 0 0; color: var(--muted); }
