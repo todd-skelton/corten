@@ -433,6 +433,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_page_key_is_the_same_for_every_session_of_the_same_viewer() {
+        // The key is written into the page, so it must not be worked out from the session's token:
+        // two sessions of Ada, with no picture, get the same key.
+        let router = router();
+        let shell = |page: String| page.split(r#"<meta name="corten-shell" content=""#).nth(1).map(|rest| rest[..16].to_string());
+        let first = sign_in(&router).await;
+        let ada = shell(text(call_on(&router, get_with("/", &first)).await).await).unwrap();
+        let second = sign_in(&router).await;
+        assert_ne!(first, second);
+        let again = shell(text(call_on(&router, get_with("/", &second)).await).await).unwrap();
+        assert_eq!(ada, again);
+        let visitor = shell(text(call_on(&router, get("/")).await).await).unwrap();
+        assert_ne!(ada, visitor, "the key does follow who is signed in");
+    }
+
+    #[tokio::test]
     async fn a_cookie_no_one_was_given_signs_no_one_in() {
         let router = router();
         sign_in(&router).await;
