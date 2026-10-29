@@ -841,6 +841,20 @@ Corten is pre-1.0, so any minor version may change the API.
     page the app prints) does not compile, and a page's name starts with the component's
     (`@page packing-slip-thermal`), so two components cannot set one page
     ([#311 corten-ui has no Print button, and the guide does not say how a page prints at its paper size](https://github.com/todd-skelton/corten/issues/311)).
+120. An area can loosen `Cross-Origin-Opener-Policy` for its pages only: `Sources::allow_popups()`
+    (`same-origin-allow-popups`) and `Sources::allow_cross_origin_opener()` (`unsafe-none`, which
+    Stripe's Connect embedded components need for their sign-in popup), and
+    `Policy::allow_cross_origin_opener()` for the whole app. The rest of the app keeps
+    `same-origin`, and a page under another opener policy has its own shell key, so a client
+    navigation into or out of the area loads the document in full
+    ([#318 An area cannot relax Cross-Origin-Opener-Policy, so a page that embeds Stripe Connect breaks its sign-in](https://github.com/todd-skelton/corten/issues/318)).
+121. `req.nav_of([(NavTo::section(&url::Desk), "Seller Desk"), (NavTo::page(&url::Money), "Money"), ..])`
+    writes a whole nav's links, each with its item, and marks only the deepest entry that holds the page, for a nav whose entries nest or
+    come from data (an entry is a route or a `Local`, whose path is written as the browser asks
+    for it). Its links name their group (`data-nav-group`), and the runtime ranks the same links
+    after a client navigation wherever the markup puts them; a `req.nav` link is still judged
+    alone. `corten.js` grows 80 bytes gzip
+    ([#341 A nav built from data, or whose current entry is the deepest that holds the page, keeps the first page's aria-current after a client navigation](https://github.com/todd-skelton/corten/issues/341)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1656,7 +1670,17 @@ Corten is pre-1.0, so any minor version may change the API.
     listens and stopped by its `Signal` at shutdown, as watchlist's market is; after a stall it
     runs one late tick instead of every missed one back to back
     ([#328 seller-desk starts its sales simulation with tokio::spawn, so it does not stop at shutdown](https://github.com/todd-skelton/corten/issues/328)).
-57. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
+57. corten-ui's `NumberField` could drop a step asked for with Enter or Space on a button: a
+    pointer press set a flag that skipped the next click, and cleared it in a timer after the
+    release, so a key that came before that timer ran (on a busy page) did nothing. The field now
+    records the button each pointer pressed and skips only that press's own click (a key's click
+    has `detail` 0 and always steps); a press released off the button, cancelled, or on a button
+    disabled at its bound makes no click and is forgotten ([#316 ui-gallery smoke (CI, Chromium): a keyboard
+    step on the second number field is lost while the first is held](https://github.com/todd-skelton/corten/issues/316)).
+58. ui-gallery's RelativeTime smoke pauses its fake clock, so only the test moves the page's time.
+    Under load, a slow read used to add real seconds, and "each second" failed
+    ([#314 ui-gallery smoke: RelativeTime's each-second check fails under load because the fake clock still runs in real time](https://github.com/todd-skelton/corten/issues/314)).
+59. examples/seller-desk looked like a static table. Price cells look like fields; the sortable
     headers show they sort and which way (`aria-sort`); the rows scroll inside the grid under a
     header that stays, with the item count above them (an archive's answer replaces it, and while
     the filter is on it says how many rows it shows of how many, kept true as an archive removes

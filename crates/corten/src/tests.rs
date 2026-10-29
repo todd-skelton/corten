@@ -891,6 +891,86 @@ fn a_nav_link_writes_its_route_once_and_says_when_it_is_the_page() {
     );
 }
 
+/// A whole nav's links: of the entries that hold the page, only the deepest is current, as the
+/// runtime judges a `<nav>` after a client navigation (#341).
+#[test]
+fn a_nav_marks_the_deepest_entry_that_holds_the_page() {
+    use crate::{
+        page::{nav_links, NavTo},
+        view::Attrs,
+        Local,
+    };
+    #[derive(crate::Route)]
+    #[route("/")]
+    struct Home;
+    #[derive(crate::Route)]
+    #[route("/account/desk")]
+    struct Desk;
+    #[derive(crate::Route)]
+    #[route("/account/desk/money")]
+    struct Money;
+    let help = Local::parse("/help?topic=a&b").unwrap();
+    let written = |nav: crate::page::NavLinks<()>| {
+        nav.links()
+            .map(|(link, ())| {
+                let mut out = String::new();
+                link.render_attrs(&mut out);
+                out
+            })
+            .collect::<Vec<_>>()
+    };
+    let group = |links: &[String]| {
+        let groups: Vec<_> =
+            links.iter().map(|link| link.split(r#" data-nav-group=""#).nth(1).unwrap()[..8].to_string()).collect();
+        assert!(groups.iter().all(|g| *g == groups[0] && g.bytes().all(|b| b.is_ascii_hexdigit())), "{groups:?}");
+        groups[0].clone()
+    };
+    let marked = |path: &str| {
+        let links = written(nav_links(
+            path,
+            [NavTo::page(&Home), NavTo::section(&Desk), NavTo::section(&Money), NavTo::page(&help)].map(|e| (e, ())),
+        ));
+        let g = format!(r#" data-nav-group="{}""#, group(&links));
+        links.into_iter().map(|link| link.replace(&g, "")).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        marked("/account/desk/repricing"),
+        [
+            r#" href="/" data-nav"#,
+            r#" href="/account/desk" data-nav="section" aria-current="page""#,
+            r#" href="/account/desk/money" data-nav="section""#,
+            r#" href="/help?topic=a&amp;b" data-nav"#,
+        ]
+    );
+    let money = marked("/account/desk/money/payouts");
+    assert!(!money[1].contains("aria-current") && money[2].ends_with(r#" aria-current="page""#), "{money:?}");
+    assert!(marked("/")
+        .iter()
+        .filter(|link| link.contains("aria-current"))
+        .eq([&r#" href="/" data-nav aria-current="page""#.to_string()]));
+    assert!(marked("/help").last().unwrap().ends_with(r#" aria-current="page""#), "an entry from data takes part");
+    assert!(marked("/elsewhere").iter().all(|link| !link.contains("aria-current")));
+
+    // The group names the entries: the same nav twice is one group, another nav is another.
+    let of = |path: &str, entries: [NavTo; 2]| written(nav_links(path, entries.map(|e| (e, ()))));
+    let desk = of("/", [NavTo::section(&Desk), NavTo::page(&Money)]);
+    assert_eq!(group(&desk), group(&of("/account", [NavTo::section(&Desk), NavTo::page(&Money)])));
+    assert_ne!(group(&desk), group(&of("/", [NavTo::page(&Desk), NavTo::page(&Money)])));
+    assert_ne!(group(&desk), group(&of("/", [NavTo::section(&Money), NavTo::page(&Desk)])));
+
+    // Each link comes with its entry's item.
+    let labels: Vec<_> =
+        nav_links("/", [(NavTo::page(&Home), "Home"), (NavTo::section(&Desk), "Desk")]).links().map(|(_, l)| *l).collect();
+    assert_eq!(labels, ["Home", "Desk"]);
+
+    // A path from data is written as the browser asks for it, so the server compares what it is
+    // sent: `"` and `|` are percent-encoded in the path (not in the query).
+    let odd = Local::parse(r#"/a"b|c?q="|""#).unwrap();
+    let links = written(nav_links("/a%22b%7Cc", [(NavTo::page(&odd), ())]));
+    assert!(links[0].starts_with(r#" href="/a%22b%7Cc?q=&quot;|&quot;" data-nav data-nav-group=""#), "{links:?}");
+    assert!(links[0].ends_with(r#" aria-current="page""#), "{links:?}");
+}
+
 #[test]
 fn current_links_match_the_page_or_its_section() {
     use crate::page::is_current_for_tests as is_current;
@@ -3445,4 +3525,56 @@ async fn an_area_adds_to_the_policy_of_its_pages_only() {
         .area(|area| pay_url::area(area).policy(|p| p.img_src("https://img.example")))
         .router();
     assert_eq!(csp_and_shell(&same, "/pay/card").await, (StatusCode::OK, home, home_shell));
+}
+
+/// An area relaxes the opener policy on its pages only (Stripe's Connect embedded components
+/// sign in through a popup that needs `unsafe-none`), and a page under another one has another
+/// shell key, since a document keeps the opener policy it loaded with.
+#[tokio::test]
+async fn an_area_relaxes_the_opener_policy_of_its_pages_only() {
+    async fn opener(router: &Router, path: &str) -> (StatusCode, String, String) {
+        let res = router.clone().oneshot(Request::get(path).body(Body::empty()).unwrap()).await.unwrap();
+        let opener = res.headers()["cross-origin-opener-policy"].to_str().unwrap().to_string();
+        let (status, _, shell) = csp_and_shell(router, path).await;
+        (status, opener, shell)
+    }
+    let router =
+        App::new(policy_url::router()).area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener())).router();
+    let (_, home, home_shell) = opener(&router, "/").await;
+    assert_eq!(home, "same-origin");
+    let (_, card, card_shell) = opener(&router, "/pay/card").await;
+    assert_eq!(card, "unsafe-none");
+    assert_ne!(home_shell, card_shell, "a navigation into the area loads the document in full");
+    assert_eq!(csp_and_shell(&router, "/").await.1, csp_and_shell(&router, "/pay/card").await.1, "the CSP is the app's");
+    // An unknown URL in the area is answered under its policy, as its pages are.
+    assert_eq!(opener(&router, "/pay/nothing").await.1, "unsafe-none");
+    // Only relaxing: an area's allow_popups under an app that allows any opener changes nothing,
+    // and one the app already has keeps the app's shell key.
+    let open = App::new(policy_url::router())
+        .policy(crate::security::Policy::new().allow_cross_origin_opener())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))
+        .router();
+    let (_, open_home, open_shell) = opener(&open, "/").await;
+    assert_eq!(
+        (open_home.as_str(), opener(&open, "/pay/card").await),
+        ("unsafe-none", (StatusCode::OK, "unsafe-none".into(), open_shell))
+    );
+    // Nested areas add up: one inside an area that loosens it keeps the looser value, and a
+    // write another site sent there is refused under it too.
+    let nested = App::new(policy_url::router())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_cross_origin_opener()))
+        .area(|area| charts_url::area(area).policy(|p| p.allow_popups().script_src("https://js.stripe.com")))
+        .router();
+    assert_eq!(opener(&nested, "/pay/charts/week").await.1, "unsafe-none");
+    let cross = Request::post("/pay/charts/week").header("sec-fetch-site", "cross-site").body(Body::empty()).unwrap();
+    let refused = nested.clone().oneshot(cross).await.unwrap();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    assert_eq!(refused.headers()["cross-origin-opener-policy"], "unsafe-none");
+    let popups = App::new(policy_url::router())
+        .policy(crate::security::Policy::new().allow_popups())
+        .area(|area| pay_url::area(area).policy(|p| p.allow_popups()))
+        .router();
+    let (_, popups_home, popups_shell) = opener(&popups, "/").await;
+    assert_eq!(popups_home, "same-origin-allow-popups");
+    assert_eq!(opener(&popups, "/pay/card").await.2, popups_shell);
 }
