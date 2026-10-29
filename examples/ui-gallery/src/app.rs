@@ -157,6 +157,7 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
                     toast: None,
                     sale: false,
                     rename: RenameDialog { name: "", errors: &Errors::new() },
+                    times: times(&req),
                 },
             )
         };
