@@ -312,9 +312,9 @@ fn query_reads(
 ) -> Result<(), Error> {
     for &(field, ty) in fields {
         let ident: TokenStream = TokenTree::Ident(field.ident.clone()).into();
-        let later = q("::corten::route::__private::Later<'__corten, __A0>", &[ty.clone()]);
+        let later = q("::corten::route::__private::Later<'__corten, __A0>", std::slice::from_ref(ty));
         if field.attrs.iter().any(is_route_query) {
-            bounds.extend(q("__A0: ::corten::route::__private::ReadQuery<'__corten>,", &[ty.clone()]));
+            bounds.extend(q("__A0: ::corten::route::__private::ReadQuery<'__corten>,", std::slice::from_ref(ty)));
             reads.extend(q(
                 "__A0: <__A1 as ::corten::route::__private::ReadQuery<'__corten>>::read_query(&__pairs)?,",
                 &[ident, ty.clone()],
