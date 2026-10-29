@@ -213,7 +213,7 @@ async function run(browser) {
   await qty.fill("3");
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed"));
-  check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.50 each.", await page.textContent("#result"));
+  check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.50 each, 0.7 oz to ship.", await page.textContent("#result"));
 
   // CheckboxGroup: no region checked stops the form at the group's first box.
   const lastResult = await page.textContent("#result");
@@ -240,7 +240,7 @@ async function run(browser) {
   await qty.fill("2");
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForFunction(() => document.querySelector("#result")?.textContent?.startsWith("Listed 2"), null, { timeout: 5000 }).catch(() => {});
-  check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.50 each.", await page.textContent("#result"));
+  check("with a lowest offer the listing is sent", (await page.textContent("#result")) === "Listed 2 Near Mint Ashen Drake at $12.50 each, 0.7 oz to ship.", await page.textContent("#result"));
   await page.getByLabel("Pricing").selectOption("fixed");
   check("back to a fixed price, the lowest offer is disabled again", await floor.isDisabled());
   // A reset puts the boxes back as drawn ("United States" checked), and the group is checked again.
@@ -560,7 +560,7 @@ async function run(browser) {
   await plain.locator("[data-scope=ui-combo-box] select").selectOption("lp");
   // The post loads a new page; waitForLoadState alone can return for the page it left.
   await Promise.all([plain.waitForURL("**/sell"), plain.getByRole("button", { name: "List for sale" }).click()]);
-  check("no script: the form posts the page", (await plain.textContent("#result")) === "Listed 1 Lightly Played Ashen Drake at $12.50 each.", await plain.textContent("#result"));
+  check("no script: the form posts the page", (await plain.textContent("#result")) === "Listed 1 Lightly Played Ashen Drake at $12.50 each, 0.5 oz to ship.", await plain.textContent("#result"));
   const plainFloor = plain.getByLabel("Lowest offer");
   check("no script: the lowest offer is enabled and optional (the handler checks it)", (await plainFloor.isEnabled()) && !(await plainFloor.evaluate((i) => /** @type {HTMLInputElement} */ (i).required)));
   await plain.getByRole("tab", { name: "Offers" }).click();

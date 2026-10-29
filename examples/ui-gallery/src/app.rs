@@ -177,7 +177,7 @@ async fn sell(req: Req, Form(form): Form<SellForm>) -> HtmlResult {
     let condition = CONDITIONS.iter().find(|c| c.value == form.condition).map_or("ungraded", |c| c.label);
     // Some here: a price that does not read is refused above.
     let price = price.map(|cents| t.money(cents, USD).to_string()).unwrap_or_default();
-    let text = format!("Listed {} {condition} {CARD} at {price} each.", form.qty);
+    let text = format!("Listed {} {condition} {CARD} at {price} each, {:.1} oz to ship.", form.qty, form.weight);
     let page = || async {
         gallery(
             &req,
@@ -314,7 +314,7 @@ mod tests {
         let form = || Request::post("/sell").header("content-type", "application/x-www-form-urlencoded");
         const LISTED: &str = "qty=2&price=12.50&weight=0.5&condition=lp&ships=us&ships=eu&pricing=fixed&floor=";
         let patch = send(form().header("corten", "action").body(Body::from(LISTED)).unwrap()).await;
-        assert_eq!(patch, r#"<p id="result" role="status">Listed 2 Lightly Played Ashen Drake at $12.50 each.</p>"#);
+        assert_eq!(patch, r#"<p id="result" role="status">Listed 2 Lightly Played Ashen Drake at $12.50 each, 0.5 oz to ship.</p>"#);
         let page = send(form().body(Body::from(LISTED)).unwrap()).await;
         assert!(page.contains("<html") && page.contains("Listed 2 Lightly Played Ashen Drake"));
     }
