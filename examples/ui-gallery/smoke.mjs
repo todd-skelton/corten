@@ -216,14 +216,14 @@ async function run(browser) {
   check("the form sends the components' values", (await page.textContent("#result")) === "Listed 3 Near Mint Ashen Drake at $12.52 each.", await page.textContent("#result"));
 
   // CheckboxGroup: no region checked stops the form at the group's first box.
-  const listed = await page.textContent("#result");
+  const lastResult = await page.textContent("#result");
   const sellValid = () => page.evaluate(() => /** @type {HTMLFormElement} */ (document.querySelector('form[action$="/sell"]')).checkValidity());
   const us = page.getByRole("checkbox", { name: "United States" });
   await us.uncheck();
   const shipMessage = await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage);
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForTimeout(300);
-  check("a group with no box checked stops the form at its first box, with the app's message", shipMessage === "Choose where you ship." && !(await sellValid()) && (await page.textContent("#result")) === listed, shipMessage);
+  check("a group with no box checked stops the form at its first box, with the app's message", shipMessage === "Choose where you ship." && !(await sellValid()) && (await page.textContent("#result")) === lastResult, shipMessage);
   await page.getByRole("checkbox", { name: "Canada" }).check();
   check("one box checked, the group is valid", (await us.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) === "");
   // RequiredWhen: the lowest offer applies only to offers.
@@ -234,7 +234,7 @@ async function run(browser) {
   check("accepting offers makes the lowest offer required", (await floor.isEnabled()) && (await floorRequired()));
   await page.getByRole("button", { name: "List for sale" }).click();
   await page.waitForTimeout(300);
-  check("an empty lowest offer stops the form", (await floor.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) !== "" && (await page.textContent("#result")) === listed);
+  check("an empty lowest offer stops the form", (await floor.evaluate((i) => /** @type {HTMLInputElement} */ (i).validationMessage)) !== "" && (await page.textContent("#result")) === lastResult);
   await floor.fill("5");
   await qty.fill("2");
   await page.getByRole("button", { name: "List for sale" }).click();

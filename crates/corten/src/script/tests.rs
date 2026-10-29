@@ -59,7 +59,14 @@ fn Priced(t: Msg) -> impl Render {
 fn Named<'a>(list: &'a [&'a str]) -> impl Render {
     let out = refs();
     let owned = vec![String::from("a\"b<")];
-    html! { <p ref={out} on:connect={shared::named(out, list)} on:click={shared::named(out, &owned)} on:input={shared::named(out, ["x", "y"])}></p> }
+    html! {
+        <p
+            ref={out}
+            on:connect={shared::named(out, list)}
+            on:click={shared::named(out, &owned)}
+            on:input={shared::named(out, ["x", "y"])}
+        ></p>
+    }
 }
 
 #[test]
