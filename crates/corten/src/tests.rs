@@ -1524,6 +1524,53 @@ pub struct SetRoute {
     pub set: SetProbe,
 }
 
+/// A set's own `#[serde(default)]`: a parameter the query leaves out is the default's.
+#[derive(Debug, PartialEq, crate::Route)]
+#[route(query)]
+#[serde(default)]
+pub struct DefaultedSet {
+    pub page: u32,
+    pub size: u32,
+    #[route(prefix = "f.")]
+    pub facets: std::collections::BTreeMap<String, String>,
+}
+
+impl Default for DefaultedSet {
+    fn default() -> Self {
+        DefaultedSet { page: 1, size: 20, facets: Default::default() }
+    }
+}
+
+/// A set with a type parameter.
+#[derive(Debug, PartialEq, crate::Route)]
+#[route(query)]
+pub struct PickSet<T: std::fmt::Display> {
+    pub pick: Option<T>,
+}
+
+#[derive(crate::Route)]
+#[route("/defaulted")]
+pub struct DefaultedRoute {
+    #[route(query)]
+    pub set: DefaultedSet,
+    #[route(query)]
+    pub pick: PickSet<u32>,
+}
+
+/// A set only links use: its field needs only `Display`.
+#[derive(crate::Route)]
+#[route(query)]
+pub struct ShownSet {
+    pub tab: Option<Shown>,
+}
+
+#[derive(crate::Route)]
+#[route("/shown-set")]
+struct ShownSetLink {
+    #[route(query)]
+    set: ShownSet,
+}
+
 #[test]
 fn a_query_set_reads_back_what_its_links_write() {
     use crate::route::FromUrl;
@@ -1542,6 +1589,12 @@ fn a_query_set_reads_back_what_its_links_write() {
     for query in ["page=x", "sortBy=a&sortBy=b"] {
         assert!(<SetRoute as FromUrl>::__read((), query).is_err(), "{query}");
     }
+    let read = <DefaultedRoute as FromUrl>::__read((), "size=5&f.kind=graded&pick=7").unwrap();
+    let facets = std::collections::BTreeMap::from([("kind".to_string(), "graded".to_string())]);
+    assert_eq!((&read.set, &read.pick), (&DefaultedSet { page: 1, size: 5, facets }, &PickSet { pick: Some(7) }));
+    assert_eq!(<DefaultedRoute as FromUrl>::__read((), "").unwrap().set, DefaultedSet::default());
+    let link = ShownSetLink { set: ShownSet { tab: Some(Shown("a b".into())) } };
+    assert_eq!(link.href(), "/shown-set?tab=a%20b");
 }
 
 /// Every kind of parameter a route has, which its handler reads back as the link wrote it.

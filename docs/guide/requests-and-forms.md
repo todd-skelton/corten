@@ -116,7 +116,8 @@ Links write a route's parameters by name with `Display`, so `Params` refuses wha
 back differently: a `#[serde(..)]` key on the route struct that links do not follow (`alias`,
 `flatten`, `skip`, `skip_deserializing`, `with`, `deserialize_with`, `borrow` on a
 field; `default`, `deny_unknown_fields`, `from`, `try_from`, `transparent` on the struct), on the
-route or on a `#[route(query)]` set it includes, and a set that borrows. Such a route still writes
+route or on a `#[route(query)]` set it includes (a set's own `default` is followed: a parameter
+the query leaves out is the default's), and a set that borrows. Such a route still writes
 links; a handler that takes its `Params` does not compile, and the error names the key or the
 borrowed type.
 
@@ -138,9 +139,11 @@ async fn items(req: Req, Params(items): Params<Items>) -> HtmlResult { .. } // i
 Each of `ItemQuery`'s fields is written as the route's own parameter, so a route that must carry
 the filters cannot leave one out: a filter added to `ItemQuery` is in every route at once. The
 handler reads it as its route's `Params` field, each of the set's fields by its key as the route
-reads its own (a list, a prefix field and a set inside the set included), and the filter form
-names its inputs `ItemQuery::FIELDS`. A `#[route(query)]` field whose type is not a query set does
-not compile.
+reads its own (a list, a prefix field and a set inside the set included; the set needs no
+`Deserialize` for it), and the filter form names its inputs `ItemQuery::FIELDS`. A
+`#[route(query)]` field whose type is not a query set does not compile, and neither does a route
+whose own parameters and its sets' could be read back as each other's: one name written twice, or
+a prefix another name starts with.
 
 A parameter is named as serde reads its field, so `#[serde(rename_all = "camelCase")]` or a
 field's `#[serde(rename = "priceMin")]` renames it in links as well: addresses that are already
