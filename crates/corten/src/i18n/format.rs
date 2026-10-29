@@ -131,9 +131,16 @@ impl Decimal {
     /// The ASCII digits before and after the point (at least one before).
     fn digits<'a>(&self, buf: &'a mut [u8; 40]) -> (&'a [u8], &'a [u8]) {
         let mut end = buf.len();
-        let mut n = self.mantissa;
         let scale = usize::from(self.scale);
-        // At least one digit before the point.
+        // At least one digit before the point. In u64 while the value fits, which every amount
+        // a page shows does: a u128 division is a library call, a u64 one a multiplication.
+        let mut wide = self.mantissa;
+        while wide > u128::from(u64::MAX) {
+            end -= 1;
+            buf[end] = b'0' + (wide % 10) as u8;
+            wide /= 10;
+        }
+        let mut n = wide as u64;
         while n > 0 || buf.len() - end <= scale {
             end -= 1;
             buf[end] = b'0' + (n % 10) as u8;
@@ -257,6 +264,11 @@ impl Currency {
         Some(Currency([b[0].to_ascii_uppercase(), b[1].to_ascii_uppercase(), b[2].to_ascii_uppercase()]))
     }
 
+    /// The code as a number that sorts as the code does, for the tables' binary searches.
+    fn key(&self) -> u32 {
+        u32::from_be_bytes([0, self.0[0], self.0[1], self.0[2]])
+    }
+
     /// `"USD"`.
     pub fn code(&self) -> &str {
         std::str::from_utf8(&self.0).unwrap_or("XXX")
@@ -264,7 +276,17 @@ impl Currency {
 
     /// The fraction digits an amount is shown with: 2, 0 for JPY, 3 for KWD (as Intl shows them).
     pub fn digits(&self) -> u8 {
-        DISPLAY_DIGITS.binary_search_by(|(code, _)| code.as_bytes().cmp(&self.0[..])).map_or(2, |i| DISPLAY_DIGITS[i].1)
+        let key = self.key();
+        DISPLAY_DIGITS.binary_search_by(|(code, _)| code_key(code).cmp(&key)).map_or(2, |i| DISPLAY_DIGITS[i].1)
+    }
+}
+
+/// A three-letter code in a table as [`Currency::key`] numbers it; the tables hold only such codes
+/// (the generator writes them), and anything shorter sorts first.
+fn code_key(code: &str) -> u32 {
+    match *code.as_bytes() {
+        [a, b, c] => u32::from_be_bytes([0, a, b, c]),
+        _ => 0,
     }
 }
 
@@ -533,12 +555,12 @@ impl Formatted {
         Formatted { data, value: ratio.change(digits), kind: Kind::Change }
     }
 
-    fn write(&self, out: &mut dyn Write) -> fmt::Result {
+    fn write<W: Write + ?Sized>(&self, out: &mut W) -> fmt::Result {
         let data = self.data;
         let negative = usize::from(self.value.negative);
         let currency = match self.kind {
-            Kind::Number => return self.write_in(data.number[negative], &data.plain, "", out),
-            Kind::Percent => return self.write_in(data.percent[negative], &data.percent_separators, "", out),
+            Kind::Number => return self.write_in(data.number[negative], &data.plain, None, out),
+            Kind::Percent => return self.write_in(data.percent[negative], &data.percent_separators, None, out),
             // As Intl's `signDisplay: "exceptZero"`: no sign on what rounds to zero, either way.
             Kind::Change => {
                 let template = match (self.value.mantissa, self.value.negative) {
@@ -546,33 +568,36 @@ impl Formatted {
                     (_, true) => data.percent[1],
                     (_, false) => data.percent[2],
                 };
-                return self.write_in(template, &data.percent_separators, "", out);
+                return self.write_in(template, &data.percent_separators, None, out);
             }
             Kind::Money(currency) => currency,
         };
-        let code = currency.code();
-        let template = match data.currencies.binary_search_by(|(c, ..)| (*c).cmp(code)) {
-            Ok(i) if negative == 1 => data.currencies[i].2,
-            Ok(i) => data.currencies[i].1,
+        let key = currency.key();
+        match data.currencies.binary_search_by(|(c, ..)| code_key(c).cmp(&key)) {
+            // The symbol is in the template: no locale's has a code to place (a test checks).
+            Ok(i) => {
+                let template = if negative == 1 { data.currencies[i].2 } else { data.currencies[i].1 };
+                self.write_in(template, &data.money_separators, None, out)
+            }
             // The locale writes this currency by its code.
-            Err(_) => data.money[negative],
-        };
-        self.write_in(template, &data.money_separators, code, out)
+            Err(_) => self.write_in(data.money[negative], &data.money_separators, Some(currency.code()), out),
+        }
     }
 
-    /// `template` with the digits at `\u{1}` and `code` at `\u{2}`.
-    fn write_in(&self, template: &str, separators: &__private::Separators, code: &str, out: &mut dyn Write) -> fmt::Result {
-        let mut start = 0;
-        for (i, c) in template.char_indices() {
-            if c != '\u{1}' && c != '\u{2}' {
-                continue;
-            }
-            out.write_str(&template[start..i])?;
-            start = i + 1;
-            if c == '\u{2}' {
-                out.write_str(code)?;
-                continue;
-            }
+    /// `template` with the digits at `\u{1}` and `code` at `\u{2}`, for a template that writes a
+    /// currency by its code. Both are single bytes no other character's UTF-8 contains, so the
+    /// template is searched as bytes.
+    fn write_in<W: Write + ?Sized>(
+        &self,
+        template: &str,
+        separators: &__private::Separators,
+        code: Option<&str>,
+        out: &mut W,
+    ) -> fmt::Result {
+        let mut rest = template;
+        while let Some(at) = rest.as_bytes().iter().position(|&b| b == 1) {
+            write_text(&rest[..at], code, out)?;
+            rest = &rest[at + 1..];
             let mut buf = [0u8; 40];
             let (int, frac) = self.value.digits(&mut buf);
             write_grouped(self.data, separators, int, out)?;
@@ -581,8 +606,20 @@ impl Formatted {
                 write_digits(self.data, frac, out)?;
             }
         }
-        out.write_str(&template[start..])
+        write_text(rest, code, out)
     }
+}
+
+/// A template's text, with `code` at each `\u{2}` when there is one.
+fn write_text<W: Write + ?Sized>(text: &str, code: Option<&str>, out: &mut W) -> fmt::Result {
+    let Some(code) = code else { return out.write_str(text) };
+    let mut rest = text;
+    while let Some(at) = rest.as_bytes().iter().position(|&b| b == 2) {
+        out.write_str(&rest[..at])?;
+        out.write_str(code)?;
+        rest = &rest[at + 1..];
+    }
+    out.write_str(rest)
 }
 
 /// Money as a person types it in `data`'s locale, read back into the currency's minor units:
@@ -772,12 +809,16 @@ fn digit(data: &__private::LocaleData, c: char) -> Option<u32> {
 }
 
 /// ASCII digits in the locale's digits.
-fn write_digits(data: &__private::LocaleData, digits: &[u8], out: &mut dyn Write) -> fmt::Result {
+/// Each is written as a character, which for a `String` is a push: no text to check.
+fn write_digits<W: Write + ?Sized>(data: &__private::LocaleData, digits: &[u8], out: &mut W) -> fmt::Result {
     if data.zero == '0' {
-        return out.write_str(std::str::from_utf8(digits).unwrap_or(""));
+        for &d in digits {
+            out.write_char(char::from(d))?;
+        }
+        return Ok(());
     }
     let zero = data.zero as u32;
-    for d in digits {
+    for &d in digits {
         out.write_char(char::from_u32(zero + u32::from(d - b'0')).unwrap_or('?'))?;
     }
     Ok(())
@@ -785,7 +826,12 @@ fn write_digits(data: &__private::LocaleData, digits: &[u8], out: &mut dyn Write
 
 /// Integer digits with the locale's group separator: a primary group, then secondary ones
 /// (12,34,567 in en-IN), and none under the minimum (1234 in es).
-fn write_grouped(data: &__private::LocaleData, s: &__private::Separators, int: &[u8], out: &mut dyn Write) -> fmt::Result {
+fn write_grouped<W: Write + ?Sized>(
+    data: &__private::LocaleData,
+    s: &__private::Separators,
+    int: &[u8],
+    out: &mut W,
+) -> fmt::Result {
     let [primary, secondary, min] = s.grouping.map(usize::from);
     if int.len() < primary + min {
         return write_digits(data, int, out);
