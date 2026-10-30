@@ -2,7 +2,7 @@
 //! corten (a git revision or a release) in its `Cargo.lock`, and a command from another one
 //! formats and checks the way that one did, so `check`, `fmt` and `dev` say so first.
 
-use std::path::Path;
+use std::{io::Write, path::Path};
 
 /// The commit this command was built from, when known (`build.rs`).
 pub const REV: &str = env!("CORTEN_CLI_REV");
@@ -49,9 +49,9 @@ pub fn mismatch(locked: &Locked, version: &str, rev: &str) -> Option<String> {
     let short = |sha: &str| sha.get(..8).unwrap_or(sha).to_string();
     match locked {
         Locked::Git { url, sha } if !rev.is_empty() && !sha.starts_with(rev) && !rev.starts_with(sha.as_str()) => Some(format!(
-            "this corten command was built from corten {}, and the app builds against {}, so fmt and check may not do what that one does. Install the matching command:\n  cargo install --git {url} --rev {} corten-cli --locked",
+            // The whole commit: cargo finds a short one only among the branches and tags it fetches.
+            "this corten command was built from corten {}, and the app builds against {}, so fmt and check may not do what that one does. Install the matching command:\n  cargo install --git {url} --rev {sha} corten-cli --locked",
             short(rev),
-            short(sha),
             short(sha)
         )),
         Locked::Release(release) if release != version => Some(format!(
@@ -70,7 +70,8 @@ pub fn warn(root: &Path) {
         return;
     }
     if let Some(note) = locked.first().and_then(|l| mismatch(l, env!("CARGO_PKG_VERSION"), REV)) {
-        eprintln!("corten: note: {note}\n");
+        // A note: a closed stderr fails nothing.
+        let _ = writeln!(std::io::stderr(), "corten: note: {note}\n");
     }
 }
 
@@ -115,7 +116,7 @@ source = "git+https://github.com/todd-skelton/corten?rev=8680dd62#8680dd620abceb
         let note = mismatch(pinned, "0.1.0", "dd028b94ad0f63d687ef65b157117fa53caab41c").expect("another commit");
         assert!(note.contains("built from corten dd028b94, and the app builds against 8680dd62"), "{note}");
         assert!(
-            note.ends_with("cargo install --git https://github.com/todd-skelton/corten --rev 8680dd62 corten-cli --locked"),
+            note.ends_with("cargo install --git https://github.com/todd-skelton/corten --rev 8680dd620abceb65da75017a21456aa28977b832 corten-cli --locked"),
             "{note}"
         );
         // Built where the commit is not known: nothing to compare.

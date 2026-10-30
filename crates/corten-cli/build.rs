@@ -32,7 +32,8 @@ fn git_head(dir: &Path) -> Option<String> {
     // A worktree's `.git` is a file naming its own directory, which names the shared one.
     let git = if dot_git.is_file() {
         let text = fs::read_to_string(&dot_git).ok()?;
-        PathBuf::from(text.strip_prefix("gitdir:")?.trim())
+        // A relative one (a submodule, `git worktree add --relative-paths`) is from the file's directory.
+        dot_git.parent()?.join(text.strip_prefix("gitdir:")?.trim())
     } else {
         dot_git
     };
@@ -47,10 +48,17 @@ fn git_head(dir: &Path) -> Option<String> {
     let Some(name) = head.strip_prefix("ref:").map(str::trim) else {
         return is_sha(head).then(|| head.to_string());
     };
+    // The directory the branch's loose ref is in, which is watched whether the ref is loose or
+    // packed: a commit on a packed branch writes a new loose ref there, and a `git pack-refs`
+    // removes one, and neither changes `HEAD` or `packed-refs`.
     for base in [&git, &common] {
         let loose = base.join(name);
-        if let Ok(sha) = fs::read_to_string(&loose) {
-            println!("cargo:rerun-if-changed={}", loose.display());
+        if let Some(dir) = loose.parent().filter(|dir| dir.is_dir()) {
+            println!("cargo:rerun-if-changed={}", dir.display());
+        }
+    }
+    for base in [&git, &common] {
+        if let Ok(sha) = fs::read_to_string(base.join(name)) {
             let sha = sha.trim();
             return is_sha(sha).then(|| sha.to_string());
         }
