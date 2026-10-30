@@ -957,7 +957,8 @@ Corten is pre-1.0, so any minor version may change the API.
     for a difference between two amounts, the same on the server and in scripts. It uses the
     locale data already shipped: a gain is the loss's template with the plus sign in place of the
     minus, which `scripts/locale-data.mjs` checks against Intl for every locale and currency
-    (`docs/guide/views.md`, `docs/guide/scripts.md`). `t.money` itself is unchanged: about 934
+    (`docs/guide/views.md`, `docs/guide/scripts.md`). `examples/watchlist` shows today's move in money
+    beside the percent, written by the server and kept current by its script. `t.money` itself is unchanged: about 934
     instructions per amount before and after under callgrind (three runs each of 1,200 less 200
     formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
     minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)

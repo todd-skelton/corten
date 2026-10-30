@@ -61,5 +61,14 @@ check("a change of -1e-7", change(-1e-7), "0.00%");
 check("a change of 0.00006", change(6e-5), "+0.01%");
 check("a percentage of 1e21", formatter(specs.get("en percent 0"))(1e21), "100,000,000,000,000,000,000,000%");
 check("a change with more digits than fit", formatter({ ...specs.get("en change 2"), p: 40 })("0.006"), `+0.${"6".padEnd(37, "0")}%`);
+// A signed amount a script works out in minor units: what rounds to zero has no sign either way,
+// as the server's cases with more digits than the currency shows (`-0.004 USD`) say.
+const signed = formatter(specs.get("en signed_money USD"));
+check("a signed amount of -0.4 cents", signed(-0.4), "$0.00");
+check("a signed amount of -0", signed(-0), "$0.00");
+check("a signed amount of 0.4 cents", signed(0.4), "$0.00");
+check("a signed amount of -0.6 cents", signed(-0.6), "-$0.01");
+check("a signed amount of 320 cents", signed(320), "+$3.20");
+check("a signed amount in fr", formatter(specs.get("fr signed_money EUR"))(320), "+3,20\u00a0€");
 console.log(`format: ${checked - failed} of ${checked} cases write what the server writes`);
 process.exit(failed || checked < 9000 ? 1 : 0);
