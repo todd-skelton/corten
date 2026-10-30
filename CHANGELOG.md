@@ -1600,7 +1600,7 @@ Corten is pre-1.0, so any minor version may change the API.
     a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
-86. Breaking: a script's set of names written as string literals (`@param {"name" | "price"} by`,
+87. Breaking: a script's set of names written as string literals (`@param {"name" | "price"} by`,
     also with `null`, optional, through a `@typedef`, or as a group's field) no longer compiles,
     and neither does a generated declaration inside another type (`import("../types/app").Tab[]`,
     `.. | null`, a typedef of plain values holding one): each took any value at the call. A
