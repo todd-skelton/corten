@@ -1,9 +1,11 @@
 {
   "item": {
     "listings": "Listings",
-    "listing_count": "{count} listings",
+    "listing_count_one": "{count} listing",
+    "listing_count_other": "{count} listings",
     "image": "{title} image {n}"
   },
+  "selected": "{count} selected",
   "brace": "{{literal}} & more",
   "attention": {
     "detail": "{provider} · {type} · confidence {match}",

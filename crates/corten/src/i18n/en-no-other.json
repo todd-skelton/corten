@@ -1,0 +1,13 @@
+{
+  "item": {
+    "listings": "Listings",
+    "listing_count_one": "{count} listing",
+    "image": "{title} image {n}"
+  },
+  "selected": "{count} selected",
+  "brace": "{{literal}} & more",
+  "attention": {
+    "detail": "{provider} · {type} · confidence {match}",
+    "updated": "Updated {updatedAt} by {itemTitle}"
+  }
+}
