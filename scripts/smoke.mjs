@@ -315,6 +315,34 @@ async function run(browser) {
     if (!resumed) await page.waitForTimeout(150);
   }
   check("resuming shows the latest prices and changes", resumed && (await page.getAttribute(`${live} button`, "aria-pressed")) === "false", `${await shown()} vs ${await latest()}`);
+  // on:document:keydown={js::pauseKey(..)}: a component's handler for a key pressed anywhere on
+  // the page, while the component is on it. "p" pauses whatever has focus, and again resumes.
+  await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+  await page.keyboard.press("p");
+  const pressedByKey = await page.getAttribute(`${live} button`, "aria-pressed");
+  await page.keyboard.press("p");
+  check(
+    "a key pressed anywhere on the page runs a component's handler for it, once",
+    pressedByKey === "true" && (await page.getAttribute(`${live} button`, "aria-pressed")) === "false",
+    String(pressedByKey),
+  );
+  // An element with a page-wide handler stops getting events when it leaves the page.
+  const leaves = await page.evaluate(async () => {
+    const host = document.createElement("div");
+    host.hidden = true;
+    host.innerHTML = '<div data-scope="live-prices"><button data-on="document.keydown:live_prices.pauseKey($e,$t,#price,#change)"></button></div>';
+    document.body.append(host);
+    await new Promise((resolve) => setTimeout(resolve));
+    const button = /** @type {HTMLButtonElement} */ (host.querySelector("button"));
+    const press = () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "p", bubbles: true, cancelable: true }));
+    press();
+    const on = button.getAttribute("aria-pressed");
+    host.remove();
+    await new Promise((resolve) => setTimeout(resolve));
+    press();
+    return `${on},${button.getAttribute("aria-pressed")}`;
+  });
+  check("a page-wide handler ends when its element leaves the page", leaves === "true,true", leaves);
   // A change's text is a percent whose sign is its trend's.
   const changes = await page.$$eval('[data-ref="change"]', (cells) => cells.map((c) => [c.textContent ?? "", c.getAttribute("data-trend")]));
   check(

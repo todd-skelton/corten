@@ -53,6 +53,7 @@ export function showAll(rows, rest, button) {
 | `event`, `target`, `signal`, `scope` | the event (`MouseEvent` for a click), the element with the `on:`, an `AbortSignal` that aborts when it leaves the page, the component's root element |
 | a Rust value: `&str`, a number, `bool`, a typed route, a slice, array or `Vec` of strings for `string[]`, any `ToJson` (feature `json`) | the JSON value (an integer past 2^53 stops debug builds, since a JavaScript number cannot hold it exactly: pass a 64-bit id as a string) |
 | `on:connect={..}` | runs when the element joins the page (first load, navigation, patch, a script's insert); on the first load it runs before the page's `load`, and a navigation it starts then (a link it clicks, a form it submits) is a full page load, not a swap |
+| `on:document:keydown={..}` | runs for that event anywhere on the page while the element is on it ([below](#events-anywhere-on-the-page)) |
 
 **What the compiler checks.** `#[component(js)]` reads the script when the crate compiles and
 gives the component a module `js` with one Rust function per export, its parameters typed by
@@ -270,6 +271,36 @@ no `import()` to wait for. Markup the runtime inserts (a navigation, a patch, a 
 waits for the modules its handlers name, and modules named inside a `<template>` load with the
 page. On the first page, an event that arrives before its module is in gets the browser's
 default and no handler, as without JavaScript. `on:connect` waits for its module instead.
+
+## Events anywhere on the page
+
+A screen's shortcuts act wherever focus is: on the page's background after a click, after a
+navigation, on a button. `on:keydown` hears only the keys pressed inside its element, so a
+component takes them with `on:document:keydown={..}`, for as long as it is on the page. Its
+handler runs after the handlers on the event's path (unless one stopped it), as a listener on
+the document would. Its arguments are read for each event, so refs are the component's current
+elements, `target` is the element with the `on:`, and `event` is typed by the event's name
+(`KeyboardEvent`). Nothing removes it: it ends when its element leaves the page. watchlist's
+prices pause on `p`:
+
+```rust,ignore
+<button ref={pause} aria-keyshortcuts="p" on:click={js::pause(target, price, change)}
+    on:document:keydown={js::pauseKey(event, target, price, change)}>
+```
+
+```js
+/** @param {KeyboardEvent} event @param {HTMLButtonElement} button ... */
+export function pauseKey(event, button, prices, changes) {
+  if (event.key !== "p" || event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey || typing(event.target)) return;
+  event.preventDefault();
+  pause(button, prices, changes);
+}
+```
+
+Which keys count as typing (a field, an open dialog) is the screen's choice, so the runtime
+skips none: a shortcut checks it, as `typing` does there. Prefer this to
+`document.addEventListener` in an `on:connect` handler, whose arguments are read once, when the
+element joins, so refs a patch later replaces are stale.
 
 ## Text a script computes
 

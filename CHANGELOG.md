@@ -907,6 +907,16 @@ Corten is pre-1.0, so any minor version may change the API.
     runtime does not fetch it on hover and again on click
     ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
     No existing answer changes; naming a file costs one header on that answer.
+127. `on:document:keydown={js::shortcut(event, ..)}`: a component's handler for an event anywhere
+    on the page while the component is on it, so a screen's shortcuts work wherever focus is
+    (the page's background, a button) without `document.addEventListener`. It runs after the
+    handlers on the event's path, its arguments are read for each event and typed by the event
+    (`KeyboardEvent`), and it ends when its element leaves the page. `on:document:connect` and a
+    typed event do not compile. watchlist pauses its prices on `p`
+    ([#365 A component cannot take keys on the whole page, so work-screen shortcuts call document.addEventListener outside the handler model](https://github.com/todd-skelton/corten/issues/365)).
+    A page without one runs one more loop over an empty set per bubbling event it listens for.
+    The minified runtime grows by 255 bytes (25,133 to 25,388), 72 gzipped (9,165 to 9,237)
+    and 45 with brotli (8,287 to 8,332).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
