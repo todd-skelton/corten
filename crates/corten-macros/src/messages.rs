@@ -89,11 +89,23 @@ pub enum Part {
     Arg(String),
 }
 
+/// CLDR's plural categories, in the order of a locale's plural table (`LocaleData::plurals`).
+const CATEGORIES: [&str; 6] = ["zero", "one", "two", "few", "many", "other"];
+const OTHER: usize = 5;
+
+/// A catalog entry: a message, or a plural message's form per category (`cards_one`,
+/// `cards_other`), `other` always there.
+#[derive(Debug, PartialEq)]
+enum Message {
+    Plain(Vec<Part>),
+    Plural([Option<Vec<Part>>; 6]),
+}
+
 struct Locale {
     tag: String,
     span: Span,
     file: String,
-    messages: Vec<(String, Vec<Part>)>,
+    messages: Vec<(String, Message)>,
     /// Its number, currency and date data, as the tokens of a `LocaleData`.
     data: &'static str,
 }
@@ -145,15 +157,17 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         let value = json::parse(&text).map_err(|e| (path.span(), format!("{path_text}: {e}")))?;
         let mut flat = Vec::new();
         flatten("", value, &mut flat).map_err(|e| (path.span(), format!("{path_text}: {e}")))?;
-        let mut messages = Vec::with_capacity(flat.len());
+        let mut parsed = Vec::with_capacity(flat.len());
         for (key, message) in flat {
             let parts = parse_message(&message).map_err(|e| (path.span(), format!("{path_text}: {key:?}: {e}")))?;
-            messages.push((key, parts));
+            parsed.push((key, parts));
         }
+        let messages = group(parsed).map_err(|e| (path.span(), format!("{path_text}: {e}")))?;
         if locales.iter().any(|l: &Locale| l.tag == tag_text) {
             return err(tag.span(), format!("{tag_text:?} is listed twice"));
         }
         let data = locale_data(&tag_text).map_err(|e| (tag.span(), e))?;
+        check_forms(&tag_text, data, &messages).map_err(|e| (path.span(), format!("{path_text}: {e}")))?;
         locales.push(Locale { tag: tag_text, span: path.span(), file: file.display().to_string(), messages, data });
         j += 4;
         if is_punct(entries.get(j), ',') {
@@ -175,28 +189,25 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     let mut key_arms = TokenStream::new();
     let mut seen = BTreeSet::new();
     let default = &locales[0];
-    for (key, parts) in &default.messages {
+    for (key, message) in &default.messages {
         let method = method_name(key).map_err(|e| (default.span, e))?;
         if !seen.insert(method.clone()) {
             return err(default.span, format!("two keys become the method {method}; rename one of them"));
         }
+        let parts = match message {
+            Message::Plain(parts) => parts,
+            Message::Plural(_) => {
+                let (method, js_method, key_arm) = plural(&locales, key, &method, &vis);
+                methods.extend(method);
+                js_methods.extend(js_method);
+                key_arms.extend(key_arm);
+                continue;
+            }
+        };
         let args = arg_names(parts);
         let doc = format!(" {}: {}", default.tag, display(parts));
-        let pieces_for = |locale: &Locale| -> TokenStream {
-            let parts = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1;
-            let mut list = TokenStream::new();
-            for part in parts {
-                list.extend(match part {
-                    Part::Text(text) => q(
-                        "::corten::i18n::__private::Piece::Text(__A0, __A1),",
-                        &[string(text).into(), string(&escape(text)).into()],
-                    ),
-                    Part::Arg(name) => q("::corten::i18n::__private::Piece::Arg(__A0),", &[string(name).into()]),
-                });
-            }
-            q("&[__A0]", &[list])
-        };
-        let pieces = if locales.len() == 1 {
+        let pieces_for = |locale: &Locale| -> TokenStream { pieces(plain_of(locale, key)) };
+        let found = if locales.len() == 1 {
             pieces_for(default)
         } else {
             let mut arms = TokenStream::new();
@@ -209,22 +220,13 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             arms.extend(q("_ => __A0,", &[pieces_for(default)]));
             q("match self.0 __A0", &[stream([TokenTree::Group(Group::new(Delimiter::Brace, arms))])])
         };
-        key_arms.extend(q("__A0 => ::core::option::Option::Some(__A1),", &[string(key).into(), pieces]));
+        key_arms.extend(q("__A0 => ::core::option::Option::Some(__A1),", &[string(key).into(), found]));
         let body_for = |locale: &Locale| -> TokenStream {
-            let parts = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1;
+            let parts = plain_of(locale, key);
             if args.is_empty() {
                 return stream([string(&plain_text(parts))]);
             }
-            let mut body = TokenStream::new();
-            for part in parts {
-                match part {
-                    Part::Text(text) => {
-                        body.extend(q("__corten_sink.text(__A0, __A1);", &[string(text).into(), string(&escape(text)).into()]))
-                    }
-                    Part::Arg(arg) => body.extend(q("__corten_sink.arg(&__A0);", &[arg_ident(arg).into()])),
-                }
-            }
-            stream([TokenTree::Group(Group::new(Delimiter::Brace, body))])
+            writes(parts)
         };
         let mut by_locale = if locales.len() == 1 {
             body_for(default)
@@ -241,7 +243,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         };
         if !args.is_empty() {
             let wire_for = |locale: &Locale| -> TokenStream {
-                let parts = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1;
+                let parts = plain_of(locale, key);
                 stream([string(&wire(parts))])
             };
             let by_locale = if locales.len() == 1 {
@@ -460,6 +462,140 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     Ok(out)
 }
 
+fn brace(tokens: TokenStream) -> TokenStream {
+    stream([TokenTree::Group(Group::new(Delimiter::Brace, tokens))])
+}
+
+fn index(n: usize) -> TokenStream {
+    TokenTree::Literal(proc_macro::Literal::u8_unsuffixed(n as u8)).into()
+}
+
+/// `each` of every locale, chosen by the messages value's locale.
+fn by_locale(locales: &[Locale], each: &dyn Fn(&Locale) -> TokenStream) -> TokenStream {
+    if locales.len() == 1 {
+        return each(&locales[0]);
+    }
+    let mut arms = TokenStream::new();
+    for (n, locale) in locales.iter().enumerate().skip(1) {
+        arms.extend(q("__A0 => __A1,", &[index(n), each(locale)]));
+    }
+    arms.extend(q("_ => __A0,", &[each(&locales[0])]));
+    q("match self.0 __A0", &[brace(arms)])
+}
+
+/// `each` of a plural message's forms in `locale`, chosen by `__corten_form`, its category.
+fn by_form(locale: &Locale, key: &str, each: &dyn Fn(&[Part]) -> TokenStream) -> TokenStream {
+    let Message::Plural(forms) = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1 else {
+        unreachable!("checked: a key is plural in every locale or in none")
+    };
+    let mut arms = TokenStream::new();
+    for (c, form) in forms.iter().enumerate().take(OTHER) {
+        if let Some(parts) = form {
+            arms.extend(q("__A0 => __A1,", &[index(c), each(parts)]));
+        }
+    }
+    arms.extend(q("_ => __A0,", &[each(forms[OTHER].as_deref().expect("checked"))]));
+    q("match __corten_form __A0", &[brace(arms)])
+}
+
+/// A message's runs for `by_key`: `&[Piece::Text(..), Piece::Arg(..)]`.
+fn pieces(parts: &[Part]) -> TokenStream {
+    let mut list = TokenStream::new();
+    for part in parts {
+        list.extend(match part {
+            Part::Text(text) => {
+                q("::corten::i18n::__private::Piece::Text(__A0, __A1),", &[string(text).into(), string(&escape(text)).into()])
+            }
+            Part::Arg(name) => q("::corten::i18n::__private::Piece::Arg(__A0),", &[string(name).into()]),
+        });
+    }
+    q("&[__A0]", &[list])
+}
+
+/// A block that writes a message's runs to `__corten_sink`.
+fn writes(parts: &[Part]) -> TokenStream {
+    let mut body = TokenStream::new();
+    for part in parts {
+        match part {
+            Part::Text(text) => {
+                body.extend(q("__corten_sink.text(__A0, __A1);", &[string(text).into(), string(&escape(text)).into()]))
+            }
+            Part::Arg(arg) => body.extend(q("__corten_sink.arg(&__A0);", &[arg_ident(arg).into()])),
+        }
+    }
+    brace(body)
+}
+
+/// A plural message's method (`t.cards(count)`), its script's (`t.js().cards()`) and its
+/// `by_key` arm. The form is the count's plural category in the locale, by the table
+/// `t.relative` uses, and `{count}` is written as `t.number(count)` writes it.
+fn plural(locales: &[Locale], key: &str, method: &str, vis: &TokenStream) -> (TokenStream, TokenStream, TokenStream) {
+    let default = &locales[0];
+    let Message::Plural(forms) = &default.messages.iter().find(|(k, _)| k == key).expect("a default key").1 else {
+        unreachable!("a plural message")
+    };
+    let shown: Vec<String> = forms.iter().flatten().map(|parts| display(parts)).collect();
+    let args = args_of(&default.messages.iter().find(|(k, _)| k == key).expect("a default key").1);
+    let mut params = q("count: impl ::corten::i18n::Count,", &[]);
+    for arg in &args[1..] {
+        params.extend(q("__A0: impl ::corten::i18n::Arg,", &[arg_ident(arg).into()]));
+    }
+    let body = by_locale(locales, &|locale| by_form(locale, key, &writes));
+    let doc = format!(" {}: {} (by the count's plural category).", default.tag, shown.join(" | "));
+    let method_tokens = q(
+        "#[doc = __A0] #[inline] __A1 fn __A2(self, __A3) -> ::corten::i18n::Text<impl Fn(&mut ::corten::i18n::Sink<'_>)> {
+            ::corten::i18n::Text::new(move |__corten_sink: &mut ::corten::i18n::Sink<'_>| {
+                let __corten_data = self.__corten_locale();
+                let __corten_form = ::corten::i18n::__private::plural(__corten_data, ::corten::i18n::Count::magnitude(&count));
+                let count = ::corten::i18n::Formatted::number(__corten_data, ::corten::i18n::Number::to_decimal(&count));
+                let _ = &count;
+                __A4
+            })
+        }",
+        &[string(&doc).into(), vis.clone(), ident(method).into(), params, body],
+    );
+    let wires = by_locale(locales, &|locale| {
+        let Message::Plural(forms) = &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1 else {
+            unreachable!("checked")
+        };
+        let mut list = TokenStream::new();
+        for form in forms {
+            list.extend(q("__A0,", &[string(&form.as_deref().map(wire_json).unwrap_or_default()).into()]));
+        }
+        q("[__A0]", &[list])
+    });
+    let names: Vec<&str> = args.iter().map(String::as_str).collect();
+    let quoted: Vec<String> = names.iter().map(|n| format!("\"{n}\"")).collect();
+    let js_doc = format!(
+        " {}: {}, for a handler whose JSDoc takes Message<{}>: the script picks the form by count, as the server does.",
+        default.tag,
+        shown.join(" | "),
+        quoted.join(" | ")
+    );
+    let js_method = q(
+        "#[doc = __A0] #[inline] __A1 fn __A2(self) -> ::corten::i18n::Template<__A3> {
+            ::corten::i18n::Template::plural(self.__corten_locale(), __A4)
+        }",
+        &[
+            string(&js_doc).into(),
+            vis.clone(),
+            ident(method).into(),
+            TokenTree::Literal(proc_macro::Literal::u64_suffixed(crate::script::message_id(&names))).into(),
+            wires,
+        ],
+    );
+    let found = by_locale(locales, &|locale| by_form(locale, key, &pieces));
+    let key_arm = q(
+        "__A0 => {
+            let __corten_form = ::corten::i18n::__private::plural(self.__corten_locale(), ::corten::i18n::__private::count(args)?);
+            let __corten_pieces: &'static [::corten::i18n::__private::Piece] = __A1;
+            ::core::option::Option::Some(__corten_pieces)
+        }",
+        &[string(key).into(), found],
+    );
+    (method_tokens, js_method, key_arm)
+}
+
 /// The number, currency and date data for `tag`: its own, its alias's, or (without either) that
 /// of the tag without its last subtag (`fr-LU` has `fr`'s).
 fn locale_data(tag: &str) -> Result<&'static str, String> {
@@ -552,6 +688,117 @@ fn flatten(prefix: &str, value: Value, out: &mut Vec<(String, String)>) -> Resul
     }
 }
 
+/// The forms of a plural message become one entry: `cards_one` and `cards_other` are the
+/// plural message `cards` (the suffixes i18next uses). Its `_other` is required, since it is the
+/// form for a count no other category takes.
+fn group(flat: Vec<(String, Vec<Part>)>) -> Result<Vec<(String, Message)>, String> {
+    let mut out: Vec<(String, Message)> = Vec::new();
+    for (key, parts) in flat {
+        let form = CATEGORIES.iter().position(|c| {
+            key.strip_suffix(c)
+                .and_then(|k| k.strip_suffix('_'))
+                .is_some_and(|base| !base.is_empty() && !base.ends_with(['.', '_', '-']))
+        });
+        let Some(form) = form else {
+            if out.iter().any(|(k, _)| *k == key) {
+                return Err(format!("{key:?} is a message and the plural message {key:?} ({key}_other, ...); rename one"));
+            }
+            out.push((key, Message::Plain(parts)));
+            continue;
+        };
+        let base = &key[..key.len() - CATEGORIES[form].len() - 1];
+        match out.iter_mut().find(|(k, _)| k == base) {
+            Some((_, Message::Plural(forms))) => forms[form] = Some(parts),
+            Some((_, Message::Plain(_))) => {
+                return Err(format!("{base:?} is a message and the plural message {base:?} ({key}, ...); rename one"))
+            }
+            None => {
+                let mut forms: [Option<Vec<Part>>; 6] = Default::default();
+                forms[form] = Some(parts);
+                out.push((base.to_string(), Message::Plural(forms)));
+            }
+        }
+    }
+    if let Some((key, _)) = out.iter().find(|(_, m)| matches!(m, Message::Plural(forms) if forms[OTHER].is_none())) {
+        return Err(format!(
+            "the plural message {key:?} has no {key}_other, the form for any count no other form takes (a key that only \
+             ends like a plural form needs another name)"
+        ));
+    }
+    Ok(out)
+}
+
+/// The plural categories a locale's whole numbers fall in, each with the smallest number that
+/// does, read from its `LocaleData` (`plurals: [..], millions: ..`).
+fn categories(data: &str) -> Result<[Option<u64>; 6], String> {
+    let bad = || "corten: bad locale data (plurals)".to_string();
+    let table = data.split_once("plurals: [").and_then(|(_, rest)| rest.split_once(']')).ok_or_else(bad)?.0;
+    let millions = data.split_once("millions: ").and_then(|(_, rest)| rest.split_once(',')).ok_or_else(bad)?.0;
+    let mut first = [None; 6];
+    for (n, category) in table.split(", ").map(str::parse::<usize>).chain([millions.trim().parse()]).enumerate() {
+        let category = category.map_err(|_| bad())?;
+        let n = if n == 200 { 1_000_000 } else { n as u64 };
+        let slot = first.get_mut(category).ok_or_else(bad)?;
+        slot.get_or_insert(n);
+    }
+    Ok(first)
+}
+
+/// A plural message in `tag` has a form for each category its whole numbers fall in, and
+/// `_other`, and no other: a form no count reaches is text nobody reads.
+fn check_forms(tag: &str, data: &str, messages: &[(String, Message)]) -> Result<(), String> {
+    let used = categories(data)?;
+    for (key, message) in messages {
+        let Message::Plural(forms) = message else { continue };
+        for (c, form) in forms.iter().enumerate() {
+            match (form, used[c]) {
+                (None, Some(n)) => {
+                    return Err(format!(
+                        "the plural message {key:?} has no {key}_{}, which {tag} uses for {n} (CLDR's plural rules)",
+                        CATEGORIES[c]
+                    ))
+                }
+                (Some(_), None) if c != OTHER => {
+                    let zero = if c == 0 { "; a text for no items is a message of its own, chosen in the view" } else { "" };
+                    return Err(format!(
+                        "{key}_{} is a form {tag} never uses: no whole number is in its {} category{zero}",
+                        CATEGORIES[c], CATEGORIES[c]
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A message's arguments, in order: a plural message's `count` first, then the others as its
+/// forms use them, `_other`'s first.
+fn args_of(message: &Message) -> Vec<String> {
+    match message {
+        Message::Plain(parts) => arg_names(parts),
+        Message::Plural(forms) => {
+            let mut names = vec!["count".to_string()];
+            for parts in forms[OTHER].iter().chain(forms[..OTHER].iter().flatten()) {
+                for name in arg_names(parts) {
+                    if !names.contains(&name) {
+                        names.push(name);
+                    }
+                }
+            }
+            names
+        }
+    }
+}
+
+/// The message `key` of `locale`, which `check` found to be a plain one there as in the default.
+fn plain_of<'a>(locale: &'a Locale, key: &str) -> &'a [Part] {
+    match &locale.messages.iter().find(|(k, _)| k == key).expect("checked").1 {
+        Message::Plain(parts) => parts,
+        Message::Plural(_) => unreachable!("checked: a key is plural in every locale or in none"),
+    }
+}
+
 /// `{name}` is an argument, `{{` and `}}` are braces, any other brace is an error.
 pub fn parse_message(message: &str) -> Result<Vec<Part>, String> {
     let mut parts = Vec::new();
@@ -613,6 +860,11 @@ pub fn parse_message(message: &str) -> Result<Vec<Part>, String> {
 /// A message as a handler argument, as it goes in `data-on` (HTML-escaped): text and argument
 /// names alternating, text first and last: %["","count"," selected"].
 fn wire(parts: &[Part]) -> String {
+    format!("%{}", wire_json(parts))
+}
+
+/// A message's text and argument names alternating, as an HTML-escaped JSON array.
+fn wire_json(parts: &[Part]) -> String {
     let mut pieces = vec![String::new()];
     for part in parts {
         match part {
@@ -623,7 +875,7 @@ fn wire(parts: &[Part]) -> String {
             }
         }
     }
-    let mut json = String::from("%[");
+    let mut json = String::from("[");
     for (i, piece) in pieces.iter().enumerate() {
         if i > 0 {
             json.push(',');
@@ -688,15 +940,20 @@ pub fn method_name(key: &str) -> Result<String, String> {
 fn check(locales: &[Locale]) -> Result<(), Error> {
     let default = &locales[0];
     for locale in &locales[1..] {
-        for (key, parts) in &default.messages {
+        for (key, message) in &default.messages {
             let Some((_, theirs)) = locale.messages.iter().find(|(k, _)| k == key) else {
                 return err(
                     locale.span,
                     format!("the {:?} catalog has no {key:?}, which the {:?} catalog has", locale.tag, default.tag),
                 );
             };
-            let ours: BTreeSet<String> = arg_names(parts).into_iter().collect();
-            let other: BTreeSet<String> = arg_names(theirs).into_iter().collect();
+            let plural = |m: &Message| matches!(m, Message::Plural(_));
+            if plural(message) != plural(theirs) {
+                let (is, isnt) = if plural(message) { (&default.tag, &locale.tag) } else { (&locale.tag, &default.tag) };
+                return err(locale.span, format!("{key:?} is a plural message ({key}_other, ...) in {is:?} but not in {isnt:?}"));
+            }
+            let ours: BTreeSet<String> = args_of(message).into_iter().collect();
+            let other: BTreeSet<String> = args_of(theirs).into_iter().collect();
             if ours != other {
                 return err(
                     locale.span,
@@ -760,6 +1017,66 @@ mod tests {
             wire(&parse_message("\"{a}{b}\" & <\u{2028}>").unwrap()),
             r#"%[&quot;\&quot;&quot;,&quot;a&quot;,&quot;&quot;,&quot;b&quot;,&quot;\&quot; &amp; &lt;\u2028&gt;&quot;]"#
         );
+    }
+
+    fn parts(key: &str) -> (String, Vec<Part>) {
+        (key.to_string(), parse_message("{count} x").unwrap())
+    }
+
+    #[test]
+    fn the_forms_of_a_plural_message_are_one_entry() {
+        let grouped = group(vec![parts("grid.cards_one"), parts("title"), parts("grid.cards_other")]).unwrap();
+        assert_eq!(
+            grouped.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(),
+            ["grid.cards", "title"],
+            "in the place of its first form"
+        );
+        let Message::Plural(forms) = &grouped[0].1 else { panic!("plural") };
+        assert!(forms[1].is_some() && forms[OTHER].is_some() && forms[0].is_none());
+        let no_other = group(vec![parts("step_one")]).unwrap_err();
+        assert!(no_other.contains("has no step_other"), "{no_other}");
+        let both = group(vec![parts("cards"), parts("cards_other")]).unwrap_err();
+        assert!(both.contains("is a message and the plural message"), "{both}");
+        let both = group(vec![parts("cards_other"), parts("cards")]).unwrap_err();
+        assert!(both.contains("is a message and the plural message"), "{both}");
+        // A bare suffix, or one after a dot or another underscore, is a key of its own.
+        let plain = group(vec![parts("other"), parts("nav.one"), parts("a__other"), parts("x-_one")]).unwrap();
+        assert!(plain.iter().all(|(_, m)| matches!(m, Message::Plain(_))), "{plain:?}");
+    }
+
+    #[test]
+    fn a_plural_message_has_exactly_the_forms_its_language_uses() {
+        let data = |tag| locale_data(tag).unwrap();
+        let first = |tag| categories(data(tag)).unwrap();
+        assert_eq!(first("en"), [None, Some(1), None, None, None, Some(0)]);
+        assert_eq!(first("fr"), [None, Some(0), None, None, Some(1_000_000), Some(2)]);
+        assert_eq!(first("pl"), [None, Some(1), None, Some(2), Some(0), None], "pl's whole numbers are never other");
+        assert_eq!(first("ja"), [None, None, None, None, None, Some(0)]);
+        let entry = |forms: &[usize]| {
+            let mut all: [Option<Vec<Part>>; 6] = Default::default();
+            for &c in forms {
+                all[c] = Some(Vec::new());
+            }
+            vec![("cards".to_string(), Message::Plural(all))]
+        };
+        assert!(check_forms("en", data("en"), &entry(&[1, OTHER])).is_ok());
+        assert!(check_forms("fr", data("fr"), &entry(&[1, 4, OTHER])).is_ok());
+        assert!(check_forms("ja", data("ja"), &entry(&[OTHER])).is_ok());
+        assert!(check_forms("pl", data("pl"), &entry(&[1, 3, 4, OTHER])).is_ok(), "other is always allowed");
+        let missing = check_forms("fr", data("fr"), &entry(&[1, OTHER])).unwrap_err();
+        assert!(missing.contains("has no cards_many, which fr uses for 1000000"), "{missing}");
+        let extra = check_forms("en", data("en"), &entry(&[0, 1, OTHER])).unwrap_err();
+        assert!(extra.contains("cards_zero is a form en never uses") && extra.contains("a message of its own"), "{extra}");
+        let extra = check_forms("ja", data("ja"), &entry(&[1, OTHER])).unwrap_err();
+        assert!(extra.contains("cards_one is a form ja never uses"), "{extra}");
+    }
+
+    #[test]
+    fn a_plural_message_takes_count_first() {
+        let mut forms: [Option<Vec<Part>>; 6] = Default::default();
+        forms[1] = Some(parse_message("a card from {seller}").unwrap());
+        forms[OTHER] = Some(parse_message("{count} cards from {seller} in {set}").unwrap());
+        assert_eq!(args_of(&Message::Plural(forms)), ["count", "seller", "set"]);
     }
 
     #[test]

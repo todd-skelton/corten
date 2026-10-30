@@ -1,8 +1,10 @@
 {
   "item": {
     "lowest": "lowest",
-    "listing_count": "{count} listings",
-    "available": "{count} available",
+    "listing_count_one": "{count} listing",
+    "listing_count_other": "{count} listings",
+    "available_one": "{count} available",
+    "available_other": "{count} available",
     "no_listings": "No listings yet",
     "listings": "Listings",
     "sort_asc": "Price: low to high",
