@@ -940,8 +940,8 @@ Corten is pre-1.0, so any minor version may change the API.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
 130. A feed's `snapshot` handler gets the feed's generation as a third argument,
-    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
+    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted
+    feed's `seq` from its own (`docs/guide/live-data.md`).
 131. `examples/deck-builder`: a rich client-side screen. A player builds a 40-card deck from a
     collection of 240 by Add, Add selected, drag and drop or the keyboard (Space to pick up, the
     arrows, Space to drop, Escape to put back, each said aloud), with the count, the cost curve and
@@ -952,7 +952,15 @@ Corten is pre-1.0, so any minor version may change the API.
     changes or take the other tab's deck, and a save that could not be sent, or whose answer was lost, is sent again with its submit key.
     Without JavaScript the same page posts the deck, and the filter and sort are links and a GET
     form ([#336 No example shows a rich client-side screen: a deck builder](https://github.com/todd-skelton/corten/issues/336)).
-132. `t.signed_money(amount, currency)` and `t.js().signed_money(currency)`: an amount with its
+132. A navigation marks the link or GET form that started it `aria-busy="true"` for as long as it
+    marks `<main>`, as a `data-patch` form already was, so a page shows which control is working
+    with CSS alone (`docs/guide/requests-and-forms.md`). Both marks now last until the new page is
+    swapped in (`<main>`'s ended when the answer's headers came) and stay through a redirect;
+    when another navigation replaces one, the first one's marks go at once and the newer one's stay
+    ([#422 A navigation marks only main as busy, not the link or GET form that started it, so a page cannot show which action is on its way without a script](https://github.com/todd-skelton/corten/issues/422)).
+    The minified runtime grows by 374 bytes (25,510 to 25,884), 124 gzipped (9,278 to 9,402) and
+    115 with brotli (8,381 to 8,496).
+133. `t.signed_money(amount, currency)` and `t.js().signed_money(currency)`: an amount with its
     sign, as Intl's `signDisplay: "exceptZero"` writes it (`+$3.20`, `-$1.23`, `$0.00`, `+3,20 $US`),
     for a difference between two amounts, the same on the server and in scripts. It uses the
     locale data already shipped: a gain is the loss's template with the plus sign in place of the
@@ -1935,6 +1943,11 @@ Corten is pre-1.0, so any minor version may change the API.
     of the same form aborted no longer renews the key the newer one was sent with. The minified
     runtime grows by 97 bytes (25,413 to 25,510), 29 gzipped (9,249 to 9,278) and 33 with brotli
     (8,348 to 8,381).
+71. `rows()` takes a `#[component(view)]` without a key, as the scripts guide always said it could:
+    it gives a `RowList` (`at`, `of`, `indexOf`, `remove`, `swap`, `clear`, iteration), without
+    `get`, `push` or `replace`, which need a key. A view no longer needs a key only to satisfy
+    `tsc`. `scripts/typecheck-fixture.js` checks both
+    ([#418 rows() takes only a view with a key, so a keyless #[component(view)] a script only reads fails tsc (TS2769), though the guide presents key as optional](https://github.com/todd-skelton/corten/issues/418)).
 
 ### Documentation
 
@@ -2114,6 +2127,22 @@ Corten is pre-1.0, so any minor version may change the API.
     the alternative needs a second async step before full-page renders, with its own rules for a
     failed lookup, caching and the page key
     ([#209 Every page handler extracts the viewer only to pass it to the layout](https://github.com/todd-skelton/corten/issues/209)).
+33. `design.md` (Limits 14), `docs/architecture.md`, `docs/guide/app.md` and
+    `docs/guide/live-data.md` say that HTTP/2 or HTTP/3 to browsers comes from the proxy or CDN in
+    front of `corten::serve`, and that an app with live streams needs it: over HTTP/1.1 a browser's
+    six connections to a host run out
+    ([#400 architecture.md relies on HTTP/2 to share connections, but Corten serves only HTTP/1.1 and no guide says HTTP/2 must come from a proxy](https://github.com/todd-skelton/corten/issues/400)).
+34. `docs/architecture.md` lists number, money and date formatting as the framework's (`t` on
+    CLDR data, and `t.js()` in scripts), not as removed
+    ([#401 architecture.md says number, money and date formatting was removed from the framework, but t.money, t.number and t.date_time are built in](https://github.com/todd-skelton/corten/issues/401)).
+35. `design.md` Choices 11 to 14 say why a request's mode is a `corten` header and not `Accept` or
+    `Sec-Fetch-*`, why the runtime prefetches links itself and not with Speculation Rules, why
+    component CSS is scoped by prefix and not `@scope`, and why a feed patch is keyed `upsert` and
+    `remove` and not JSON Patch or Merge Patch, each with what would let Corten move
+    ([#396 The request mode is a corten header of our own, and no doc says why not Accept or Sec-Fetch-*](https://github.com/todd-skelton/corten/issues/396),
+    [#397 The runtime prefetches links its own way, and no doc says why not the Speculation Rules API](https://github.com/todd-skelton/corten/issues/397),
+    [#398 Component CSS is scoped by prefixing classes, and design.md does not say why not native @scope](https://github.com/todd-skelton/corten/issues/398),
+    [#399 A feed patch is an upsert/remove format of our own, and no doc says why not JSON Patch (RFC 6902) or Merge Patch (RFC 7396)](https://github.com/todd-skelton/corten/issues/399)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -504,7 +504,7 @@ component that takes such a ref as a prop names its type
 | `{label}`, the only child of an element | `label`: reads and writes that element's text |
 | `data-selected={selected}`, an attribute's whole value | `selected`: the attribute (a `bool` adds or removes it) |
 | `value={qty}` or `checked={on}` on an `<input>` | `qty`, `on`: what the input shows now (the user's edit), and its default |
-| `key={id}` on the root | `Row.key(el)` and `Row.keyOf(data)`, what `rows()` keys by; when `id` is also used outside holes (a child's prop, an element id), only `Row.key(el)`: the server makes the rows, and `rows()` has no `push` or `replace` |
+| `key={id}` on the root | `Row.key(el)` and `Row.keyOf(data)`, what `rows()` keys by; when `id` is also used outside holes (a child's prop, an element id), only `Row.key(el)`: the server makes the rows, and `rows()` has no `push` or `replace`. Without a key, `rows()` has no `get` either: rows a script reads, removes or reorders need none |
 | a parameter used any other way (`"Label: "{label}`, inside a loop, in a `class`), or a `Ref` | nothing: a script could not write it alone |
 
 Holes are found when the crate compiles, on elements whose place is fixed (no loop, condition,
