@@ -199,11 +199,13 @@ static site (a static site generator is simpler).
    can see it: instructions per request, time, or bytes shipped
    ([CONTRIBUTING.md](CONTRIBUTING.md#pull-requests)). We say no to features that cost
    every user to help a few, like view transitions on every swap.
-2. **The platform first.** Use what the browser and HTTP already provide: custom elements,
-   `FormData`, `AbortSignal`, the Navigation API, popover, server-sent events, native validation.
-   Build only what the platform lacks, and remove it once the platform catches up. One idea
-   should work the same everywhere, so cancellation is `AbortSignal` in the browser and on the
-   server.
+2. **Standards first, extended rather than replaced.** Use what the browser, HTTP and the web's
+   other standards already provide: custom elements, `FormData`, `AbortSignal`, the Navigation
+   API, popover, server-sent events, native validation, Problem Details, CLDR. Where Corten needs
+   more, it builds on the standard (a custom element, an `Event` subclass, a `data-` attribute)
+   rather than adding a concept of its own. Build only what the platform lacks, and remove it
+   once the platform catches up. One idea should work the same everywhere, so cancellation is
+   `AbortSignal` in the browser and on the server.
 3. **HTML that works on its own.** Every page's first render comes from the server, and links and
    forms work without JavaScript. Scripts make a page faster and richer but never hold it up. A
    feature only a browser can provide (drag and drop, a canvas) needs JavaScript, and the page
@@ -235,7 +237,9 @@ static site (a static site generator is simpler).
 
 When two values conflict, this order decides:
 
-1. Correctness and reliability.
+1. Correctness and reliability. Following a standard where one fits is part of being correct:
+   a header or format of Corten's own in its place needs a recorded reason
+   ([design rule 10](docs/design.md#rules)), and typing wraps a standard rather than replacing it.
 2. Performance at the user's end.
 3. Compile-time safety and one way to do things: a mistake the compiler can catch is a compile
    error, not a startup panic or a per-request check ([design rules](docs/design.md#rules)).

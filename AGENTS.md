@@ -7,7 +7,9 @@ reason that a smaller change cannot meet.
 ## Values
 
 Every change follows the values in `README.md` (Values), and when two conflict, the order given
-there decides. A change is reviewed against them before it is done (below).
+there decides. A change is reviewed against them before it is done (below). A header, wire
+format or file format of Corten's own where a standard exists needs a Choice in
+`docs/design.md` saying why (Rules, 10).
 
 ## Where things go
 
