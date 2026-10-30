@@ -163,7 +163,7 @@ mod tab_group;
 mod toaster;
 
 pub use checkbox_group::CheckboxGroup;
-pub use choice_group::{ChoiceGroup, ChoiceOption, ShownFor};
+pub use choice_group::{ChoiceGroup, ChoiceOption, Chosen, ShownFor};
 pub use combo_box::{Choice, ComboBox, Picker};
 pub use copy_button::{Copied, CopyButton};
 pub use menu_button::MenuButton;

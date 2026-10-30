@@ -327,6 +327,11 @@ async function run(browser) {
   check("Arrow Right moves and chooses", (await page.evaluate(() => document.activeElement?.textContent)) === "Month" && (await showing()) === "Average $11.95 this month.|Sold 14 this month." && page.url() === `${base}/`);
   await page.keyboard.press("ArrowUp");
   check("Arrow Up moves back", (await period("Week").getAttribute("aria-checked")) === "true");
+  await page.goto(`${base}/?tab=sales`);
+  await period("Week").click();
+  check("choosing keeps another control's key in the address", new URL(page.url()).search === "?tab=sales&period=week", page.url());
+  await tab("Offers").click();
+  check("and a tab keeps the choice", new URL(page.url()).search === "?tab=offers&period=week", page.url());
   await page.goto(`${base}/?period=week`);
   check("the address draws the choice on a load", (await period("Week").getAttribute("aria-checked")) === "true" && (await showing()) === "Average $12.10 this week.|Sold 3 this week.", await showing());
   await page.goto(`${base}/`);

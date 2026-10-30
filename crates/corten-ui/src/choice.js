@@ -16,15 +16,27 @@ const parts = new Map();
  */
 const chosen = new Map();
 
+/** How many groups of each id are on the page: a patch connects the new one before the old ends. */
+const groups = new Map();
+
 /**
- * Without this script every option is reachable with Tab (links work on their own); with it,
- * only the chosen one is, and the arrow keys move between them. The group's choice is forgotten
- * when it leaves the page, so the next page's server choice holds.
- * @param {HTMLElement[]} radios @param {string} group @param {AbortSignal} signal
+ * Without this script every option is reachable with Tab (links work on their own); with it, only
+ * the chosen one is (the first when none is), and the arrow keys move between them. A group that
+ * joins the page holds the choice the server drew, and its choice is forgotten when the last group
+ * of its id leaves, so the next page's server choice holds.
+ * @param {HTMLElement[]} radios @param {string} group @param {string[]} values @param {AbortSignal} signal
  */
-export function connect(radios, group, signal) {
-  for (const radio of radios) radio.tabIndex = radio.getAttribute("aria-checked") === "true" ? 0 : -1;
-  signal.addEventListener("abort", () => chosen.delete(group));
+export function connect(radios, group, values, signal) {
+  const at = radios.findIndex((radio) => radio.getAttribute("aria-checked") === "true");
+  radios.forEach((radio, i) => (radio.tabIndex = i === Math.max(at, 0) ? 0 : -1));
+  groups.set(group, (groups.get(group) ?? 0) + 1);
+  if (at >= 0) show(group, values[at]);
+  signal.addEventListener("abort", () => {
+    const left = groups.get(group) - 1;
+    if (left > 0) return groups.set(group, left);
+    groups.delete(group);
+    chosen.delete(group);
+  });
 }
 
 /** @param {MouseEvent} event @param {HTMLElement} radio @param {HTMLElement[]} radios @param {string} group @param {string[]} values */
@@ -62,9 +74,41 @@ function select(at, radios, group, values) {
     radio.tabIndex = i === at ? 0 : -1;
   });
   const radio = radios[at];
-  if (radio instanceof HTMLAnchorElement && radio.href !== location.href) history.replaceState(history.state, "", radio.href);
-  chosen.set(group, values[at]);
-  for (const { part, values: shown } of parts.get(group) ?? []) part.hidden = !shown.includes(values[at]);
+  if (radio instanceof HTMLAnchorElement) {
+    const to = address(radio, radios);
+    if (to !== location.href) history.replaceState(history.state, "", to);
+  }
+  show(group, values[at]);
+}
+
+/**
+ * The address with `radio` chosen: its link's, for a link to another page; on this page, the
+ * current address with only the query keys the options' links differ in taken from it, so another
+ * control's keys (a tab, a page) stay as they are.
+ * @param {HTMLAnchorElement} radio @param {HTMLElement[]} radios @returns {string}
+ */
+function address(radio, radios) {
+  const to = new URL(radio.href);
+  const now = new URL(location.href);
+  if (to.origin !== now.origin || to.pathname !== now.pathname) return to.href;
+  const links = radios.filter((r) => r instanceof HTMLAnchorElement).map((r) => new URL(/** @type {HTMLAnchorElement} */ (r).href).searchParams);
+  const keys = new Set(links.flatMap((q) => [...q.keys()]));
+  for (const key of keys) {
+    const each = links.map((q) => q.getAll(key).join("\u0000"));
+    if (each.every((v) => v === each[0])) continue;
+    now.searchParams.delete(key);
+    for (const value of to.searchParams.getAll(key)) now.searchParams.append(key, value);
+  }
+  return now.href;
+}
+
+/**
+ * Remembers `value` as the group's choice and shows or hides every part of the group for it.
+ * @param {string} group @param {string} value
+ */
+function show(group, value) {
+  chosen.set(group, value);
+  for (const { part, values: shown } of parts.get(group) ?? []) part.hidden = !shown.includes(value);
 }
 
 /**

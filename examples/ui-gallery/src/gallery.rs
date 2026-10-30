@@ -3,8 +3,8 @@
 use corten::i18n::RelativeStyle;
 use corten::prelude::*;
 use corten_ui::{
-    CheckboxGroup, Choice, ChoiceGroup, ChoiceOption, ComboBox, Copied, CopyButton, MenuButton, Number, NumberField, Picker,
-    PrintButton, RelativeTime, RequiredWhen, ShownFor, Tab, TabGroup, Toast, Toaster, dialog,
+    CheckboxGroup, Choice, ChoiceGroup, ChoiceOption, Chosen, ComboBox, Copied, CopyButton, MenuButton, Number, NumberField,
+    Picker, PrintButton, RelativeTime, RequiredWhen, ShownFor, Tab, TabGroup, Toast, Toaster, dialog,
 };
 use serde::Deserialize;
 use std::time::SystemTime;
@@ -152,8 +152,15 @@ pub fn Gallery<'a>(
         required: true,
         ..Picker::new("condition", f.condition, "Choose a condition", "No matching condition", &CONDITIONS)
     };
-    let at = |tab| url::Home { tab, sale: None, period: None };
-    let (week, month) = (url::Home { period: Some(Period::Week), ..at(None) }, at(None));
+    // Each control's links keep the other's choice: a tab's link the period, a period's the tab.
+    let shown_tab = Some(tab).filter(|t| *t != MarketTab::Listings);
+    let shown_period = Some(period).filter(|p| *p != Period::Month);
+    let at = move |tab| url::Home { tab, sale: None, period: shown_period };
+    let (week, month) = (
+        url::Home { tab: shown_tab, sale: None, period: Some(Period::Week) },
+        url::Home { tab: shown_tab, sale: None, period: None },
+    );
+    let period = Chosen { id: PeriodId, value: period };
     html! {
         <div class={Intro}>
             <h1>"Sell "{CARD}</h1>
@@ -217,26 +224,25 @@ pub fn Gallery<'a>(
                             Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&at(Some(MarketTab::Sales))) },
                         ]}
                     />
-                    <ShownFor group={PeriodId} values={&[Period::Week]} selected={period}>
+                    <ShownFor choice={&period} values={&[Period::Week]}>
                         <p>"Average $12.10 this week."</p>
                     </ShownFor>
-                    <ShownFor group={PeriodId} values={&[Period::Month]} selected={period}>
+                    <ShownFor choice={&period} values={&[Period::Month]}>
                         <p>"Average $11.95 this month."</p>
                     </ShownFor>
                 </section>
                 <section class={(Card, Periods)}>
                     <h2>"Sales"</h2>
                     <ChoiceGroup
-                        id={PeriodId}
+                        choice={&period}
                         label="Sales period"
-                        selected={period}
                         options={&[
                             ChoiceOption { value: Period::Week, label: "Week", link: Some(&week) },
                             ChoiceOption { value: Period::Month, label: "Month", link: Some(&month) },
                         ]}
                     />
-                    <ShownFor group={PeriodId} values={&[Period::Week]} selected={period}><p>"Sold 3 this week."</p></ShownFor>
-                    <ShownFor group={PeriodId} values={&[Period::Month]} selected={period}><p>"Sold 14 this month."</p></ShownFor>
+                    <ShownFor choice={&period} values={&[Period::Week]}><p>"Sold 3 this week."</p></ShownFor>
+                    <ShownFor choice={&period} values={&[Period::Month]}><p>"Sold 14 this month."</p></ShownFor>
                 </section>
                 <section class={Card}>
                     <h2>"Activity"</h2>

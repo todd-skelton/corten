@@ -1071,14 +1071,15 @@ Corten is pre-1.0, so any minor version may change the API.
     per locale (from Node's Intl, checked against it, and in the cases the browser's `format.js` is
     checked with); no other format changes
     ([#473 t.date has no month-and-day style without the year (Intl { month: 'short', day: 'numeric' }), so chart labels hand-build month names](https://github.com/todd-skelton/corten/issues/473)).
-145. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group, named by its
-    `#[derive(Id)]` id) whose value shows and hides parts anywhere on the page, the figures and,
-    below a chart, the list worded from them. The server checks `selected` and draws every part
-    for another value `hidden`; without JavaScript each option is a typed link to the page with that
-    choice; with it, the arrow keys and Space choose in place, the address follows, and every part
-    of the group, also one a patch adds later, follows the choice. A part's group is an id type,
-    not text, and its values are the type of the choice it is given, so a group written as text or a
-    word of another enum does not compile; no stylesheet repeats the server's values
+145. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group) whose value shows and
+    hides parts anywhere on the page, the figures and, below a chart, the list worded from them.
+    Both take a `Chosen { id, value }`, the choice's `#[derive(Id)]` id and the value the handler
+    read, so a part's values are the choice's type (another enum's word does not compile) and its
+    group cannot be text. The server checks the value and draws every part for another `hidden`;
+    without JavaScript each option is a typed link to the page with that choice; with it, the arrow
+    keys and Space choose in place, the address follows in the keys the options differ in (another
+    control's, a tab's, stay), and every part, also one a patch adds later, follows the choice. No
+    stylesheet repeats the server's values
     ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
 
 ### Removed
