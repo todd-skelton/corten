@@ -31,8 +31,24 @@ mod url {
     }
 }
 
+/// An API's old version, relayed whole.
+#[corten::routes(api = OldRoot)]
+mod old {
+    #[route("/v1")]
+    pub struct OldRoot;
+
+    #[route("/v1/{*rest}", any = relay)]
+    pub struct OldV1<'a> {
+        pub rest: &'a str,
+    }
+}
+
 async fn call(method: &str, path: &str) -> (StatusCode, String) {
-    let router = App::new(url::router()).router();
+    call_app(App::new(url::router()), method, path).await
+}
+
+async fn call_app(app: App, method: &str, path: &str) -> (StatusCode, String) {
+    let router = app.router();
     let req = axum::http::Request::builder().method(method).uri(path).body(Body::empty()).unwrap();
     let res = router.oneshot(req).await.unwrap();
     let status = res.status();
@@ -47,4 +63,14 @@ async fn any_method_reaches_the_relay_and_the_apps_own_routes_stay_its_own() {
     }
     assert_eq!(call("GET", "/").await, (StatusCode::OK, "home".to_string()));
     assert_eq!(call("POST", "/").await.0, StatusCode::METHOD_NOT_ALLOWED, "a route without any = keeps its methods");
+}
+
+#[tokio::test]
+async fn head_reaches_the_relay_and_an_api_relays_every_method_too() {
+    let (status, body) = call("HEAD", "/inventory/7").await;
+    assert_eq!((status, body.as_str()), (StatusCode::OK, ""), "HEAD is relayed, and answered without a body");
+    for method in ["GET", "POST", "DELETE", "OPTIONS", "PROPFIND"] {
+        let api = App::new(Routes::new()).api(old::api);
+        assert_eq!(call_app(api, method, "/v1/stock/7").await, (StatusCode::OK, format!("{method} /v1/stock/7")), "{method}");
+    }
 }

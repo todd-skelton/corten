@@ -10,8 +10,8 @@ use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, Tok
 
 use crate::tokens::{err, q, stream, Error};
 
-/// The methods a route can name a handler for: axum's `routing` functions.
-/// The methods a route names a handler for; `any` is every method, and the route's only handler.
+/// The methods a route names a handler for (axum's `routing` functions); `any` is every method,
+/// and the route's only handler.
 const METHODS: &[&str] = &["get", "post", "put", "delete", "patch", "head", "options", "trace", "any"];
 
 /// A route the module routes: its struct's name, path and handlers.
