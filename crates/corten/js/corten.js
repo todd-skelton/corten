@@ -1296,6 +1296,12 @@ async function visit(url, signal, redirected, again, place, source) {
   const mine = {};
   const busy = again ? [] : [document.querySelector("main"), source];
   for (const el of busy) if (el) busyBy.set(el, mine), formCall(el, "setAttribute", "aria-busy", "true");
+  // Cleared when the visit ends, or at once when it is abandoned: a prefetched answer it awaits
+  // is not cancelled with it.
+  const idle = () => {
+    for (const el of busy) if (el && busyBy.get(el) === mine) formCall(el, "removeAttribute", "aria-busy");
+  };
+  signal.addEventListener("abort", idle);
   try {
     /** @type {Response} */
     let res;
@@ -1343,7 +1349,8 @@ async function visit(url, signal, redirected, again, place, source) {
     }
     await swapPage(html, signal, again || place !== undefined);
   } finally {
-    for (const el of busy) if (el && busyBy.get(el) === mine) formCall(el, "removeAttribute", "aria-busy");
+    signal.removeEventListener("abort", idle);
+    idle();
   }
 }
 

@@ -29,7 +29,7 @@ never stale.
 While a request is on its way, the runtime marks what waits for it with `aria-busy="true"`: a
 `data-patch` form until its answer comes, and for a navigation `<main>` and the link or GET form
 that started it (through a redirect too), until the new page is swapped in. A navigation that
-another replaces leaves the marks to the newer one. Showing which control is working is then CSS
+another replaces drops its marks at once, and leaves any the newer one made. Showing which control is working is then CSS
 alone, in the component's stylesheet:
 
 ```css

@@ -948,8 +948,8 @@ Corten is pre-1.0, so any minor version may change the API.
     swapped in (`<main>`'s ended when the answer's headers came), stay through a redirect, and
     are not cleared by a navigation another replaced
     ([#422 A navigation marks only main as busy, not the link or GET form that started it, so a page cannot show which action is on its way without a script](https://github.com/todd-skelton/corten/issues/422)).
-    The minified runtime grows by 295 bytes (25,510 to 25,805), 102 gzipped (9,278 to 9,380) and
-    92 with brotli (8,381 to 8,473).
+    The minified runtime grows by 374 bytes (25,510 to 25,884), 124 gzipped (9,278 to 9,402) and
+    115 with brotli (8,381 to 8,496).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

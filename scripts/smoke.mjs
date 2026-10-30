@@ -798,22 +798,45 @@ async function run(browser) {
           .querySelector("main")
           ?.insertAdjacentHTML(
             "beforeend",
-            '<form method="get" action="/news"><input type="hidden" name="setAttribute" value="1"><input type="hidden" name="removeAttribute" value="1"><button id="clobbered">Go</button></form>',
+            '<form id="clobbered" method="get" action="/news"><input type="hidden" name="setAttribute" value="1"><input type="hidden" name="removeAttribute" value="1"><button>Go</button></form>',
           ),
       );
-      await more.click("#clobbered");
-      const clobbered = await more
-        .waitForFunction(() => location.pathname === "/news" && document.title === "News | Watchlist" && !document.querySelector("[aria-busy]"), undefined, { timeout: 5000 })
-        .then(
-          () => true,
-          () => false,
-        );
-      check("a GET form with a control named setAttribute navigates and is not left busy", clobbered);
+      const clobberedErrors = [];
+      const onError = (/** @type {Error} */ e) => clobberedErrors.push(e.message);
+      more.on("pageerror", onError);
+      await watchBusy(more, "#clobbered");
+      await more.click("#clobbered button");
+      const clobbered = await busyEnded(more);
+      more.off("pageerror", onError);
+      check(
+        "a GET form with a control named setAttribute navigates and is not left busy",
+        clobbered.with && clobbered.then?.path === "/news" && clobberedErrors.length === 0,
+        JSON.stringify({ ...clobbered, errors: clobberedErrors }),
+      );
+      // A link whose prefetched answer is held is clicked, then another navigation replaces its
+      // own: the link is not left busy waiting for the answer no one will use.
+      let letPrefetch = () => {};
+      const prefetchHeld = new Promise((resolve) => (letPrefetch = () => resolve(undefined)));
+      await more.route(home, async (route) => {
+        await prefetchHeld;
+        await route.continue().catch(() => {});
+      });
+      const prefetching = more.waitForRequest((r) => new URL(r.url()).pathname === "/" && r.headers().corten === "nav");
+      await more.hover('header a[href="/"]');
+      await prefetching;
+      await more.click('header a[href="/"]');
+      await more.waitForSelector('header a[href="/"][aria-busy=true]');
+      await more.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("main input[name=sector][value=energy]")).click());
+      await more.waitForFunction(() => location.search === "?sector=energy" && document.querySelectorAll("#stories > li").length === 3 && !document.querySelector("main[aria-busy]"));
+      check("a link whose navigation another replaced is not left busy", !(await more.$('header a[href="/"][aria-busy]')));
+      letPrefetch();
+      await more.unroute(home);
     } else {
       skip("the GET form that starts a navigation is busy with main until its page is in", noSwaps);
       skip("a sector's box lists only its stories", noSwaps);
       skip("the link that starts a navigation is busy with main until its page is in", noSwaps);
       skip("a GET form with a control named setAttribute navigates and is not left busy", noSwaps);
+      skip("a link whose navigation another replaced is not left busy", noSwaps);
     }
     await more.close();
   }
