@@ -38,8 +38,9 @@ These are what the framework is built around. Code that breaks them fights the f
    `signal.finish(|signal| async move { .. })`, which runs to its end even if the handler is dropped.
 7. **Text lives in views or the view model**, never in scripts. A value every surface
    shows (a formatted price) is a field the server fills.
-8. **Prefer the platform.** Use `<dialog>`, `popover`, `<details>`, form validation attributes
-   and CSS before writing a handler.
+8. **Prefer the platform and its standards.** Use `<dialog>`, `popover`, `<details>`, form
+   validation attributes and CSS before writing a handler, and a standard format where one
+   exists (Problem Details for a JSON failure) before one of the app's own.
 
 ## Decision table
 

@@ -1596,6 +1596,12 @@ Corten is pre-1.0, so any minor version may change the API.
     item
     ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
 
+86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
+    one fits is part of correctness in the conflict order: a header, wire format or file format
+    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
+    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
+    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
+
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when
