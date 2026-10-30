@@ -1048,6 +1048,67 @@ async fn a_stale_submit_answers_409_with_the_form_message_in_each_mode() {
     }
 }
 
+/// A refusal whose form needs a read, drawn per mode: `reads` counts the form side's reads and
+/// `pages` the page side's runs.
+fn lazily_refused_routes(
+    reads: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    pages: std::sync::Arc<std::sync::atomic::AtomicU32>,
+) -> Router {
+    Router::new().route(
+        "/",
+        get(move |req: Req| async move {
+            let mut errors = Errors::new();
+            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            let page = || async {
+                pages.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                req.test_page("Sheet", html! { <p>"page with the refusal"</p> })
+            };
+            // Written in the call, as an app does: the closure's type comes from `invalid_with`.
+            let shown = &errors;
+            req.invalid_with(
+                &errors,
+                |form| async {
+                    reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    form.draw(html! { <form id={SignUpId}>{shown.form_message()}"read now"</form> })
+                },
+                page,
+            )
+            .await
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_refusal_whose_form_needs_a_read_reads_only_for_the_patch() {
+    use std::sync::atomic::Ordering::Relaxed;
+    use std::sync::{atomic::AtomicU32, Arc};
+    let (reads, pages) = (Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0)));
+    let routes = || lazily_refused_routes(reads.clone(), pages.clone());
+    let (status, headers, body) = call(app(routes(), None), "GET", Some("action")).await;
+    assert_eq!((status, &headers["corten-patch"]), (StatusCode::CONFLICT, &"1".parse().unwrap()));
+    assert!(
+        body.starts_with(r#"<form id="sign-up">"#) && body.contains("Someone saved first.") && body.ends_with("read now</form>"),
+        "{body}"
+    );
+    assert_eq!((reads.load(Relaxed), pages.load(Relaxed)), (1, 0), "an action draws only the patch");
+
+    let (status, _, body) = call(app(routes(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("<p>page with the refusal</p>"), "no JavaScript: the whole page");
+    assert_eq!((reads.load(Relaxed), pages.load(Relaxed)), (1, 1), "the page reads nothing for the patch");
+
+    let (status, _, _) = call(app(routes(), None), "GET", Some("nav")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!((reads.load(Relaxed), pages.load(Relaxed)), (1, 2), "a navigation gets the page");
+
+    #[cfg(feature = "json")]
+    {
+        let (status, _, body) = call_with(app(routes(), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert!(body.contains(r#""status":409"#), "{body}");
+        assert_eq!((reads.load(Relaxed), pages.load(Relaxed)), (1, 2), "a data client runs neither side");
+    }
+}
 #[tokio::test]
 async fn invalid_input_answers_422_in_each_mode() {
     let (status, headers, body) = call(app(invalid_routes(), None), "GET", Some("action")).await;

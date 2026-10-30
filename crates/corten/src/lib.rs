@@ -247,8 +247,8 @@ pub use middleware::{Middleware, Next};
 #[cfg(feature = "json")]
 pub use page::JsonLd;
 pub use page::{
-    Corten, ErrorPageFn, Failure, Mode, Nav, NavLink, NavLinks, NavTarget, NavTo, ReadAgain, ReadAgainFrom,
-    ReadAgainWithoutJavaScript, Req, MODE_HEADER,
+    Corten, DrawnPatch, ErrorPageFn, Failure, FormPatch, Mode, Nav, NavLink, NavLinks, NavTarget, NavTo, ReadAgain,
+    ReadAgainFrom, ReadAgainWithoutJavaScript, Req, MODE_HEADER,
 };
 pub use route::{routes, Elsewhere, Href, Local, Methods, Params, ParamsRejection, Prefix, Route, Routes, UrlValue};
 pub use script::{event, Handler, Ref, Script};

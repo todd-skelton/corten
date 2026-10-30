@@ -154,6 +154,10 @@ af	date 14	2026-03-22T15:04:05.000Z	Mrt. 2026
 af	date 14	1999-12-31T00:30:09.000Z	Des. 1999
 af	date 15	2026-03-22T15:04:05.000Z	Maart 2026
 af	date 15	1999-12-31T00:30:09.000Z	Desember 1999
+af	date 16	2026-03-22T15:04:05.000Z	22 Mrt.
+af	date 16	1999-12-31T00:30:09.000Z	31 Des.
+af	date 17	2026-03-22T15:04:05.000Z	22 Maart
+af	date 17	1999-12-31T00:30:09.000Z	31 Desember
 af	relative 0	0	0 sekondes gelede
 af	relative 0	-1	1 sekonde gelede
 af	relative 0	1	oor 1 sekonde
@@ -351,6 +355,10 @@ am	date 14	2026-03-22T15:04:05.000Z	ማርች 2026
 am	date 14	1999-12-31T00:30:09.000Z	ዲሴም 1999
 am	date 15	2026-03-22T15:04:05.000Z	ማርች 2026
 am	date 15	1999-12-31T00:30:09.000Z	ዲሴምበር 1999
+am	date 16	2026-03-22T15:04:05.000Z	ማርች 22
+am	date 16	1999-12-31T00:30:09.000Z	ዲሴም 31
+am	date 17	2026-03-22T15:04:05.000Z	ማርች 22
+am	date 17	1999-12-31T00:30:09.000Z	ዲሴምበር 31
 am	relative 0	0	ከ0 ሰከንድ በፊት
 am	relative 0	-1	ከ1 ሰከንድ በፊት
 am	relative 0	1	በ1 ሰከንድ ውስጥ
@@ -548,6 +556,10 @@ ar	date 14	2026-03-22T15:04:05.000Z	مارس 2026
 ar	date 14	1999-12-31T00:30:09.000Z	ديسمبر 1999
 ar	date 15	2026-03-22T15:04:05.000Z	مارس 2026
 ar	date 15	1999-12-31T00:30:09.000Z	ديسمبر 1999
+ar	date 16	2026-03-22T15:04:05.000Z	22 مارس
+ar	date 16	1999-12-31T00:30:09.000Z	31 ديسمبر
+ar	date 17	2026-03-22T15:04:05.000Z	22 مارس
+ar	date 17	1999-12-31T00:30:09.000Z	31 ديسمبر
 ar	relative 0	0	قبل 0 ثانية
 ar	relative 0	-1	قبل ثانية واحدة
 ar	relative 0	1	خلال ثانية واحدة
@@ -745,6 +757,10 @@ as	date 14	2026-03-22T15:04:05.000Z	মাৰ্চ ২০২৬
 as	date 14	1999-12-31T00:30:09.000Z	ডিচে ১৯৯৯
 as	date 15	2026-03-22T15:04:05.000Z	মাৰ্চ ২০২৬
 as	date 15	1999-12-31T00:30:09.000Z	ডিচেম্বৰ ১৯৯৯
+as	date 16	2026-03-22T15:04:05.000Z	২২ মাৰ্চ
+as	date 16	1999-12-31T00:30:09.000Z	৩১ ডিচে
+as	date 17	2026-03-22T15:04:05.000Z	২২ মাৰ্চ
+as	date 17	1999-12-31T00:30:09.000Z	৩১ ডিচেম্বৰ
 as	relative 0	0	০ ছেকেণ্ড পূৰ্বে
 as	relative 0	-1	১ ছেকেণ্ড পূৰ্বে
 as	relative 0	1	১ ছেকেণ্ডত
@@ -942,6 +958,10 @@ az	date 14	2026-03-22T15:04:05.000Z	mar 2026
 az	date 14	1999-12-31T00:30:09.000Z	dek 1999
 az	date 15	2026-03-22T15:04:05.000Z	mart 2026
 az	date 15	1999-12-31T00:30:09.000Z	dekabr 1999
+az	date 16	2026-03-22T15:04:05.000Z	22 mar
+az	date 16	1999-12-31T00:30:09.000Z	31 dek
+az	date 17	2026-03-22T15:04:05.000Z	22 mart
+az	date 17	1999-12-31T00:30:09.000Z	31 dekabr
 az	relative 0	0	0 saniyə öncə
 az	relative 0	-1	1 saniyə öncə
 az	relative 0	1	1 saniyə ərzində
@@ -1139,6 +1159,10 @@ be	date 14	2026-03-22T15:04:05.000Z	сак 2026
 be	date 14	1999-12-31T00:30:09.000Z	сне 1999
 be	date 15	2026-03-22T15:04:05.000Z	сакавік 2026
 be	date 15	1999-12-31T00:30:09.000Z	снежань 1999
+be	date 16	2026-03-22T15:04:05.000Z	22 сак
+be	date 16	1999-12-31T00:30:09.000Z	31 сне
+be	date 17	2026-03-22T15:04:05.000Z	22 сакавіка
+be	date 17	1999-12-31T00:30:09.000Z	31 снежня
 be	relative 0	0	0 секунд таму
 be	relative 0	-1	1 секунду таму
 be	relative 0	1	праз 1 секунду
@@ -1336,6 +1360,10 @@ bg	date 14	2026-03-22T15:04:05.000Z	03.2026 г.
 bg	date 14	1999-12-31T00:30:09.000Z	12.1999 г.
 bg	date 15	2026-03-22T15:04:05.000Z	март 2026 г.
 bg	date 15	1999-12-31T00:30:09.000Z	декември 1999 г.
+bg	date 16	2026-03-22T15:04:05.000Z	22.03
+bg	date 16	1999-12-31T00:30:09.000Z	31.12
+bg	date 17	2026-03-22T15:04:05.000Z	22 март
+bg	date 17	1999-12-31T00:30:09.000Z	31 декември
 bg	relative 0	0	преди 0 секунди
 bg	relative 0	-1	преди 1 секунда
 bg	relative 0	1	след 1 секунда
@@ -1533,6 +1561,10 @@ bn	date 14	2026-03-22T15:04:05.000Z	মার্চ ২০২৬
 bn	date 14	1999-12-31T00:30:09.000Z	ডিসে ১৯৯৯
 bn	date 15	2026-03-22T15:04:05.000Z	মার্চ ২০২৬
 bn	date 15	1999-12-31T00:30:09.000Z	ডিসেম্বর ১৯৯৯
+bn	date 16	2026-03-22T15:04:05.000Z	২২ মার্চ
+bn	date 16	1999-12-31T00:30:09.000Z	৩১ ডিসে
+bn	date 17	2026-03-22T15:04:05.000Z	২২ মার্চ
+bn	date 17	1999-12-31T00:30:09.000Z	৩১ ডিসেম্বর
 bn	relative 0	0	০ সেকেন্ড আগে
 bn	relative 0	-1	১ সেকেন্ড আগে
 bn	relative 0	1	১ সেকেন্ডে
@@ -1730,6 +1762,10 @@ bs	date 14	2026-03-22T15:04:05.000Z	mar 2026.
 bs	date 14	1999-12-31T00:30:09.000Z	dec 1999.
 bs	date 15	2026-03-22T15:04:05.000Z	mart 2026.
 bs	date 15	1999-12-31T00:30:09.000Z	decembar 1999.
+bs	date 16	2026-03-22T15:04:05.000Z	22. mar
+bs	date 16	1999-12-31T00:30:09.000Z	31. dec
+bs	date 17	2026-03-22T15:04:05.000Z	22. mart
+bs	date 17	1999-12-31T00:30:09.000Z	31. decembar
 bs	relative 0	0	prije 0 sekundi
 bs	relative 0	-1	prije 1 sekundu
 bs	relative 0	1	za 1 sekundu
@@ -1927,6 +1963,10 @@ ca	date 14	2026-03-22T15:04:05.000Z	març del 2026
 ca	date 14	1999-12-31T00:30:09.000Z	des. del 1999
 ca	date 15	2026-03-22T15:04:05.000Z	març del 2026
 ca	date 15	1999-12-31T00:30:09.000Z	desembre del 1999
+ca	date 16	2026-03-22T15:04:05.000Z	22 de març
+ca	date 16	1999-12-31T00:30:09.000Z	31 de des.
+ca	date 17	2026-03-22T15:04:05.000Z	22 de març
+ca	date 17	1999-12-31T00:30:09.000Z	31 de desembre
 ca	relative 0	0	fa 0 segons
 ca	relative 0	-1	fa 1 segon
 ca	relative 0	1	d’aquí a 1 segon
@@ -2124,6 +2164,10 @@ cs	date 14	2026-03-22T15:04:05.000Z	březen 2026
 cs	date 14	1999-12-31T00:30:09.000Z	prosinec 1999
 cs	date 15	2026-03-22T15:04:05.000Z	březen 2026
 cs	date 15	1999-12-31T00:30:09.000Z	prosinec 1999
+cs	date 16	2026-03-22T15:04:05.000Z	22. 3.
+cs	date 16	1999-12-31T00:30:09.000Z	31. 12.
+cs	date 17	2026-03-22T15:04:05.000Z	22. března
+cs	date 17	1999-12-31T00:30:09.000Z	31. prosince
 cs	relative 0	0	před 0 sekundami
 cs	relative 0	-1	před 1 sekundou
 cs	relative 0	1	za 1 sekundu
@@ -2321,6 +2365,10 @@ cy	date 14	2026-03-22T15:04:05.000Z	Maw 2026
 cy	date 14	1999-12-31T00:30:09.000Z	Rhag 1999
 cy	date 15	2026-03-22T15:04:05.000Z	Mawrth 2026
 cy	date 15	1999-12-31T00:30:09.000Z	Rhagfyr 1999
+cy	date 16	2026-03-22T15:04:05.000Z	22 Maw
+cy	date 16	1999-12-31T00:30:09.000Z	31 Rhag
+cy	date 17	2026-03-22T15:04:05.000Z	Mawrth 22
+cy	date 17	1999-12-31T00:30:09.000Z	Rhagfyr 31
 cy	relative 0	0	0 eiliad yn ôl
 cy	relative 0	-1	1 eiliad yn ôl
 cy	relative 0	1	ymhen 1 eiliad
@@ -2518,6 +2566,10 @@ da	date 14	2026-03-22T15:04:05.000Z	mar. 2026
 da	date 14	1999-12-31T00:30:09.000Z	dec. 1999
 da	date 15	2026-03-22T15:04:05.000Z	marts 2026
 da	date 15	1999-12-31T00:30:09.000Z	december 1999
+da	date 16	2026-03-22T15:04:05.000Z	22. mar.
+da	date 16	1999-12-31T00:30:09.000Z	31. dec.
+da	date 17	2026-03-22T15:04:05.000Z	22. marts
+da	date 17	1999-12-31T00:30:09.000Z	31. december
 da	relative 0	0	for 0 sekunder siden
 da	relative 0	-1	for 1 sekund siden
 da	relative 0	1	om 1 sekund
@@ -2715,6 +2767,10 @@ de	date 14	2026-03-22T15:04:05.000Z	März 2026
 de	date 14	1999-12-31T00:30:09.000Z	Dez. 1999
 de	date 15	2026-03-22T15:04:05.000Z	März 2026
 de	date 15	1999-12-31T00:30:09.000Z	Dezember 1999
+de	date 16	2026-03-22T15:04:05.000Z	22. März
+de	date 16	1999-12-31T00:30:09.000Z	31. Dez.
+de	date 17	2026-03-22T15:04:05.000Z	22. März
+de	date 17	1999-12-31T00:30:09.000Z	31. Dezember
 de	relative 0	0	vor 0 Sekunden
 de	relative 0	-1	vor 1 Sekunde
 de	relative 0	1	in 1 Sekunde
@@ -2912,6 +2968,10 @@ el	date 14	2026-03-22T15:04:05.000Z	Μαρ 2026
 el	date 14	1999-12-31T00:30:09.000Z	Δεκ 1999
 el	date 15	2026-03-22T15:04:05.000Z	Μάρτιος 2026
 el	date 15	1999-12-31T00:30:09.000Z	Δεκέμβριος 1999
+el	date 16	2026-03-22T15:04:05.000Z	22 Μαρ
+el	date 16	1999-12-31T00:30:09.000Z	31 Δεκ
+el	date 17	2026-03-22T15:04:05.000Z	22 Μαρτίου
+el	date 17	1999-12-31T00:30:09.000Z	31 Δεκεμβρίου
 el	relative 0	0	πριν από 0 δευτερόλεπτα
 el	relative 0	-1	πριν από 1 δευτερόλεπτο
 el	relative 0	1	σε 1 δευτερόλεπτο
@@ -3109,6 +3169,10 @@ en	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en	date 15	2026-03-22T15:04:05.000Z	March 2026
 en	date 15	1999-12-31T00:30:09.000Z	December 1999
+en	date 16	2026-03-22T15:04:05.000Z	Mar 22
+en	date 16	1999-12-31T00:30:09.000Z	Dec 31
+en	date 17	2026-03-22T15:04:05.000Z	March 22
+en	date 17	1999-12-31T00:30:09.000Z	December 31
 en	relative 0	0	0 seconds ago
 en	relative 0	-1	1 second ago
 en	relative 0	1	in 1 second
@@ -3306,6 +3370,10 @@ es	date 14	2026-03-22T15:04:05.000Z	mar 2026
 es	date 14	1999-12-31T00:30:09.000Z	dic 1999
 es	date 15	2026-03-22T15:04:05.000Z	marzo de 2026
 es	date 15	1999-12-31T00:30:09.000Z	diciembre de 1999
+es	date 16	2026-03-22T15:04:05.000Z	22 mar
+es	date 16	1999-12-31T00:30:09.000Z	31 dic
+es	date 17	2026-03-22T15:04:05.000Z	22 de marzo
+es	date 17	1999-12-31T00:30:09.000Z	31 de diciembre
 es	relative 0	0	hace 0 segundos
 es	relative 0	-1	hace 1 segundo
 es	relative 0	1	dentro de 1 segundo
@@ -3503,6 +3571,10 @@ et	date 14	2026-03-22T15:04:05.000Z	märts 2026
 et	date 14	1999-12-31T00:30:09.000Z	dets 1999
 et	date 15	2026-03-22T15:04:05.000Z	märts 2026
 et	date 15	1999-12-31T00:30:09.000Z	detsember 1999
+et	date 16	2026-03-22T15:04:05.000Z	22. märts
+et	date 16	1999-12-31T00:30:09.000Z	31. dets
+et	date 17	2026-03-22T15:04:05.000Z	22. märts
+et	date 17	1999-12-31T00:30:09.000Z	31. detsember
 et	relative 0	0	0 sekundi eest
 et	relative 0	-1	1 sekundi eest
 et	relative 0	1	1 sekundi pärast
@@ -3700,6 +3772,10 @@ eu	date 14	2026-03-22T15:04:05.000Z	2026 mar.
 eu	date 14	1999-12-31T00:30:09.000Z	1999 abe.
 eu	date 15	2026-03-22T15:04:05.000Z	2026(e)ko martxoa
 eu	date 15	1999-12-31T00:30:09.000Z	1999(e)ko abendua
+eu	date 16	2026-03-22T15:04:05.000Z	mar. 22(a)
+eu	date 16	1999-12-31T00:30:09.000Z	abe. 31(a)
+eu	date 17	2026-03-22T15:04:05.000Z	martxoaren 22(a)
+eu	date 17	1999-12-31T00:30:09.000Z	abenduaren 31(a)
 eu	relative 0	0	duela 0 segundo
 eu	relative 0	-1	duela 1 segundo
 eu	relative 0	1	1 segundo barru
@@ -3897,6 +3973,10 @@ fa	date 14	2026-03-22T15:04:05.000Z	مارس ۲۰۲۶
 fa	date 14	1999-12-31T00:30:09.000Z	دسامبر ۱۹۹۹
 fa	date 15	2026-03-22T15:04:05.000Z	مارس ۲۰۲۶
 fa	date 15	1999-12-31T00:30:09.000Z	دسامبر ۱۹۹۹
+fa	date 16	2026-03-22T15:04:05.000Z	۲۲ مارس
+fa	date 16	1999-12-31T00:30:09.000Z	۳۱ دسامبر
+fa	date 17	2026-03-22T15:04:05.000Z	۲۲ مارس
+fa	date 17	1999-12-31T00:30:09.000Z	۳۱ دسامبر
 fa	relative 0	0	۰ ثانیه پیش
 fa	relative 0	-1	۱ ثانیه پیش
 fa	relative 0	1	۱ ثانیه بعد
@@ -4094,6 +4174,10 @@ fi	date 14	2026-03-22T15:04:05.000Z	maalis 2026
 fi	date 14	1999-12-31T00:30:09.000Z	joulu 1999
 fi	date 15	2026-03-22T15:04:05.000Z	maaliskuu 2026
 fi	date 15	1999-12-31T00:30:09.000Z	joulukuu 1999
+fi	date 16	2026-03-22T15:04:05.000Z	22.3.
+fi	date 16	1999-12-31T00:30:09.000Z	31.12.
+fi	date 17	2026-03-22T15:04:05.000Z	22. maaliskuuta
+fi	date 17	1999-12-31T00:30:09.000Z	31. joulukuuta
 fi	relative 0	0	0 sekuntia sitten
 fi	relative 0	-1	1 sekunti sitten
 fi	relative 0	1	1 sekunnin päästä
@@ -4291,6 +4375,10 @@ fil	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 fil	date 14	1999-12-31T00:30:09.000Z	Dis 1999
 fil	date 15	2026-03-22T15:04:05.000Z	Marso 2026
 fil	date 15	1999-12-31T00:30:09.000Z	Disyembre 1999
+fil	date 16	2026-03-22T15:04:05.000Z	Mar 22
+fil	date 16	1999-12-31T00:30:09.000Z	Dis 31
+fil	date 17	2026-03-22T15:04:05.000Z	Marso 22
+fil	date 17	1999-12-31T00:30:09.000Z	Disyembre 31
 fil	relative 0	0	0 segundo ang nakalipas
 fil	relative 0	-1	1 segundo ang nakalipas
 fil	relative 0	1	sa 1 segundo
@@ -4488,6 +4576,10 @@ fr	date 14	2026-03-22T15:04:05.000Z	mars 2026
 fr	date 14	1999-12-31T00:30:09.000Z	déc. 1999
 fr	date 15	2026-03-22T15:04:05.000Z	mars 2026
 fr	date 15	1999-12-31T00:30:09.000Z	décembre 1999
+fr	date 16	2026-03-22T15:04:05.000Z	22 mars
+fr	date 16	1999-12-31T00:30:09.000Z	31 déc.
+fr	date 17	2026-03-22T15:04:05.000Z	22 mars
+fr	date 17	1999-12-31T00:30:09.000Z	31 décembre
 fr	relative 0	0	il y a 0 seconde
 fr	relative 0	-1	il y a 1 seconde
 fr	relative 0	1	dans 1 seconde
@@ -4685,6 +4777,10 @@ ga	date 14	2026-03-22T15:04:05.000Z	Márta 2026
 ga	date 14	1999-12-31T00:30:09.000Z	Noll 1999
 ga	date 15	2026-03-22T15:04:05.000Z	Márta 2026
 ga	date 15	1999-12-31T00:30:09.000Z	Nollaig 1999
+ga	date 16	2026-03-22T15:04:05.000Z	22 Márta
+ga	date 16	1999-12-31T00:30:09.000Z	31 Noll
+ga	date 17	2026-03-22T15:04:05.000Z	22 Márta
+ga	date 17	1999-12-31T00:30:09.000Z	31 Nollaig
 ga	relative 0	0	0 soicind ó shin
 ga	relative 0	-1	1 soicind ó shin
 ga	relative 0	1	i gceann 1 soicind
@@ -4882,6 +4978,10 @@ gl	date 14	2026-03-22T15:04:05.000Z	mar. de 2026
 gl	date 14	1999-12-31T00:30:09.000Z	dec. de 1999
 gl	date 15	2026-03-22T15:04:05.000Z	marzo de 2026
 gl	date 15	1999-12-31T00:30:09.000Z	decembro de 1999
+gl	date 16	2026-03-22T15:04:05.000Z	22 de mar.
+gl	date 16	1999-12-31T00:30:09.000Z	31 de dec.
+gl	date 17	2026-03-22T15:04:05.000Z	22 de marzo
+gl	date 17	1999-12-31T00:30:09.000Z	31 de decembro
 gl	relative 0	0	hai 0 segundos
 gl	relative 0	-1	hai 1 segundo
 gl	relative 0	1	en 1 segundo
@@ -5079,6 +5179,10 @@ gu	date 14	2026-03-22T15:04:05.000Z	માર્ચ 2026
 gu	date 14	1999-12-31T00:30:09.000Z	ડિસે 1999
 gu	date 15	2026-03-22T15:04:05.000Z	માર્ચ 2026
 gu	date 15	1999-12-31T00:30:09.000Z	ડિસેમ્બર 1999
+gu	date 16	2026-03-22T15:04:05.000Z	22 માર્ચ
+gu	date 16	1999-12-31T00:30:09.000Z	31 ડિસે
+gu	date 17	2026-03-22T15:04:05.000Z	22 માર્ચ
+gu	date 17	1999-12-31T00:30:09.000Z	31 ડિસેમ્બર
 gu	relative 0	0	0 સેકંડ પહેલાં
 gu	relative 0	-1	1 સેકંડ પહેલાં
 gu	relative 0	1	1 સેકંડમાં
@@ -5276,6 +5380,10 @@ he	date 14	2026-03-22T15:04:05.000Z	מרץ 2026
 he	date 14	1999-12-31T00:30:09.000Z	דצמ׳ 1999
 he	date 15	2026-03-22T15:04:05.000Z	מרץ 2026
 he	date 15	1999-12-31T00:30:09.000Z	דצמבר 1999
+he	date 16	2026-03-22T15:04:05.000Z	22 במרץ
+he	date 16	1999-12-31T00:30:09.000Z	31 בדצמ׳
+he	date 17	2026-03-22T15:04:05.000Z	22 במרץ
+he	date 17	1999-12-31T00:30:09.000Z	31 בדצמבר
 he	relative 0	0	לפני 0 שניות
 he	relative 0	-1	לפני שנייה
 he	relative 0	1	בעוד שנייה (1)
@@ -5473,6 +5581,10 @@ hi	date 14	2026-03-22T15:04:05.000Z	मार्च 2026
 hi	date 14	1999-12-31T00:30:09.000Z	दिस॰ 1999
 hi	date 15	2026-03-22T15:04:05.000Z	मार्च 2026
 hi	date 15	1999-12-31T00:30:09.000Z	दिसंबर 1999
+hi	date 16	2026-03-22T15:04:05.000Z	22 मार्च
+hi	date 16	1999-12-31T00:30:09.000Z	31 दिस॰
+hi	date 17	2026-03-22T15:04:05.000Z	22 मार्च
+hi	date 17	1999-12-31T00:30:09.000Z	31 दिसंबर
 hi	relative 0	0	0 सेकंड पहले
 hi	relative 0	-1	1 सेकंड पहले
 hi	relative 0	1	1 सेकंड में
@@ -5670,6 +5782,10 @@ hr	date 14	2026-03-22T15:04:05.000Z	ožu 2026.
 hr	date 14	1999-12-31T00:30:09.000Z	pro 1999.
 hr	date 15	2026-03-22T15:04:05.000Z	ožujak 2026.
 hr	date 15	1999-12-31T00:30:09.000Z	prosinac 1999.
+hr	date 16	2026-03-22T15:04:05.000Z	22. ožu
+hr	date 16	1999-12-31T00:30:09.000Z	31. pro
+hr	date 17	2026-03-22T15:04:05.000Z	22. ožujka
+hr	date 17	1999-12-31T00:30:09.000Z	31. prosinca
 hr	relative 0	0	prije 0 sekundi
 hr	relative 0	-1	prije 1 sekundu
 hr	relative 0	1	za 1 sekundu
@@ -5867,6 +5983,10 @@ hu	date 14	2026-03-22T15:04:05.000Z	2026. márc.
 hu	date 14	1999-12-31T00:30:09.000Z	1999. dec.
 hu	date 15	2026-03-22T15:04:05.000Z	2026. március
 hu	date 15	1999-12-31T00:30:09.000Z	1999. december
+hu	date 16	2026-03-22T15:04:05.000Z	márc. 22.
+hu	date 16	1999-12-31T00:30:09.000Z	dec. 31.
+hu	date 17	2026-03-22T15:04:05.000Z	március 22.
+hu	date 17	1999-12-31T00:30:09.000Z	december 31.
 hu	relative 0	0	0 másodperccel ezelőtt
 hu	relative 0	-1	1 másodperccel ezelőtt
 hu	relative 0	1	1 másodperc múlva
@@ -6064,6 +6184,10 @@ hy	date 14	2026-03-22T15:04:05.000Z	2026 թ. մրտ
 hy	date 14	1999-12-31T00:30:09.000Z	1999 թ. դեկ
 hy	date 15	2026-03-22T15:04:05.000Z	2026 թ․ մարտ
 hy	date 15	1999-12-31T00:30:09.000Z	1999 թ․ դեկտեմբեր
+hy	date 16	2026-03-22T15:04:05.000Z	22 մրտ
+hy	date 16	1999-12-31T00:30:09.000Z	31 դեկ
+hy	date 17	2026-03-22T15:04:05.000Z	մարտի 22
+hy	date 17	1999-12-31T00:30:09.000Z	դեկտեմբերի 31
 hy	relative 0	0	0 վայրկյան առաջ
 hy	relative 0	-1	1 վայրկյան առաջ
 hy	relative 0	1	1 վայրկյանից
@@ -6261,6 +6385,10 @@ id	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 id	date 14	1999-12-31T00:30:09.000Z	Des 1999
 id	date 15	2026-03-22T15:04:05.000Z	Maret 2026
 id	date 15	1999-12-31T00:30:09.000Z	Desember 1999
+id	date 16	2026-03-22T15:04:05.000Z	22 Mar
+id	date 16	1999-12-31T00:30:09.000Z	31 Des
+id	date 17	2026-03-22T15:04:05.000Z	22 Maret
+id	date 17	1999-12-31T00:30:09.000Z	31 Desember
 id	relative 0	0	0 detik yang lalu
 id	relative 0	-1	1 detik yang lalu
 id	relative 0	1	dalam 1 detik
@@ -6458,6 +6586,10 @@ is	date 14	2026-03-22T15:04:05.000Z	mar. 2026
 is	date 14	1999-12-31T00:30:09.000Z	des. 1999
 is	date 15	2026-03-22T15:04:05.000Z	mars 2026
 is	date 15	1999-12-31T00:30:09.000Z	desember 1999
+is	date 16	2026-03-22T15:04:05.000Z	22. mar.
+is	date 16	1999-12-31T00:30:09.000Z	31. des.
+is	date 17	2026-03-22T15:04:05.000Z	22. mars
+is	date 17	1999-12-31T00:30:09.000Z	31. desember
 is	relative 0	0	fyrir 0 sekúndum
 is	relative 0	-1	fyrir 1 sekúndu
 is	relative 0	1	eftir 1 sekúndu
@@ -6655,6 +6787,10 @@ it	date 14	2026-03-22T15:04:05.000Z	mar 2026
 it	date 14	1999-12-31T00:30:09.000Z	dic 1999
 it	date 15	2026-03-22T15:04:05.000Z	marzo 2026
 it	date 15	1999-12-31T00:30:09.000Z	dicembre 1999
+it	date 16	2026-03-22T15:04:05.000Z	22 mar
+it	date 16	1999-12-31T00:30:09.000Z	31 dic
+it	date 17	2026-03-22T15:04:05.000Z	22 marzo
+it	date 17	1999-12-31T00:30:09.000Z	31 dicembre
 it	relative 0	0	0 secondi fa
 it	relative 0	-1	1 secondo fa
 it	relative 0	1	tra 1 secondo
@@ -6852,6 +6988,10 @@ ja	date 14	2026-03-22T15:04:05.000Z	2026年3月
 ja	date 14	1999-12-31T00:30:09.000Z	1999年12月
 ja	date 15	2026-03-22T15:04:05.000Z	2026年3月
 ja	date 15	1999-12-31T00:30:09.000Z	1999年12月
+ja	date 16	2026-03-22T15:04:05.000Z	3月22日
+ja	date 16	1999-12-31T00:30:09.000Z	12月31日
+ja	date 17	2026-03-22T15:04:05.000Z	3月22日
+ja	date 17	1999-12-31T00:30:09.000Z	12月31日
 ja	relative 0	0	0 秒前
 ja	relative 0	-1	1 秒前
 ja	relative 0	1	1 秒後
@@ -7049,6 +7189,10 @@ ka	date 14	2026-03-22T15:04:05.000Z	მარ. 2026
 ka	date 14	1999-12-31T00:30:09.000Z	დეკ. 1999
 ka	date 15	2026-03-22T15:04:05.000Z	მარტი, 2026
 ka	date 15	1999-12-31T00:30:09.000Z	დეკემბერი, 1999
+ka	date 16	2026-03-22T15:04:05.000Z	22 მარ
+ka	date 16	1999-12-31T00:30:09.000Z	31 დეკ
+ka	date 17	2026-03-22T15:04:05.000Z	22 მარტი
+ka	date 17	1999-12-31T00:30:09.000Z	31 დეკემბერი
 ka	relative 0	0	0 წამის წინ
 ka	relative 0	-1	1 წამის წინ
 ka	relative 0	1	1 წამში
@@ -7246,6 +7390,10 @@ kk	date 14	2026-03-22T15:04:05.000Z	2026 ж. нау.
 kk	date 14	1999-12-31T00:30:09.000Z	1999 ж. жел.
 kk	date 15	2026-03-22T15:04:05.000Z	2026 ж. наурыз
 kk	date 15	1999-12-31T00:30:09.000Z	1999 ж. желтоқсан
+kk	date 16	2026-03-22T15:04:05.000Z	22 нау.
+kk	date 16	1999-12-31T00:30:09.000Z	31 жел.
+kk	date 17	2026-03-22T15:04:05.000Z	22 наурыз
+kk	date 17	1999-12-31T00:30:09.000Z	31 желтоқсан
 kk	relative 0	0	0 секунд бұрын
 kk	relative 0	-1	1 секунд бұрын
 kk	relative 0	1	1 секундтан кейін
@@ -7443,6 +7591,10 @@ km	date 14	2026-03-22T15:04:05.000Z	មីនា 2026
 km	date 14	1999-12-31T00:30:09.000Z	ធ្នូ 1999
 km	date 15	2026-03-22T15:04:05.000Z	មីនា 2026
 km	date 15	1999-12-31T00:30:09.000Z	ធ្នូ 1999
+km	date 16	2026-03-22T15:04:05.000Z	22 មីនា
+km	date 16	1999-12-31T00:30:09.000Z	31 ធ្នូ
+km	date 17	2026-03-22T15:04:05.000Z	22 មីនា
+km	date 17	1999-12-31T00:30:09.000Z	31 ធ្នូ
 km	relative 0	0	0 វិនាទី​មុន
 km	relative 0	-1	1 វិនាទី​មុន
 km	relative 0	1	1 វិនាទីទៀត
@@ -7640,6 +7792,10 @@ kn	date 14	2026-03-22T15:04:05.000Z	ಮಾರ್ಚ್ 2026
 kn	date 14	1999-12-31T00:30:09.000Z	ಡಿಸೆಂ 1999
 kn	date 15	2026-03-22T15:04:05.000Z	ಮಾರ್ಚ್ 2026
 kn	date 15	1999-12-31T00:30:09.000Z	ಡಿಸೆಂಬರ್ 1999
+kn	date 16	2026-03-22T15:04:05.000Z	22 ಮಾರ್ಚ್
+kn	date 16	1999-12-31T00:30:09.000Z	31 ಡಿಸೆಂ
+kn	date 17	2026-03-22T15:04:05.000Z	22 ಮಾರ್ಚ್
+kn	date 17	1999-12-31T00:30:09.000Z	31 ಡಿಸೆಂಬರ್
 kn	relative 0	0	0 ಸೆಕೆಂಡ್ ಹಿಂದೆ
 kn	relative 0	-1	1 ಸೆಕೆಂಡ್ ಹಿಂದೆ
 kn	relative 0	1	1 ಸೆಕೆಂಡ್‌ನಲ್ಲಿ
@@ -7837,6 +7993,10 @@ ko	date 14	2026-03-22T15:04:05.000Z	2026년 3월
 ko	date 14	1999-12-31T00:30:09.000Z	1999년 12월
 ko	date 15	2026-03-22T15:04:05.000Z	2026년 3월
 ko	date 15	1999-12-31T00:30:09.000Z	1999년 12월
+ko	date 16	2026-03-22T15:04:05.000Z	3월 22일
+ko	date 16	1999-12-31T00:30:09.000Z	12월 31일
+ko	date 17	2026-03-22T15:04:05.000Z	3월 22일
+ko	date 17	1999-12-31T00:30:09.000Z	12월 31일
 ko	relative 0	0	0초 전
 ko	relative 0	-1	1초 전
 ko	relative 0	1	1초 후
@@ -8034,6 +8194,10 @@ ky	date 14	2026-03-22T15:04:05.000Z	2026-ж. мар.
 ky	date 14	1999-12-31T00:30:09.000Z	1999-ж. дек.
 ky	date 15	2026-03-22T15:04:05.000Z	2026-ж., март
 ky	date 15	1999-12-31T00:30:09.000Z	1999-ж., декабрь
+ky	date 16	2026-03-22T15:04:05.000Z	22-мар.
+ky	date 16	1999-12-31T00:30:09.000Z	31-дек.
+ky	date 17	2026-03-22T15:04:05.000Z	22-март
+ky	date 17	1999-12-31T00:30:09.000Z	31-декабрь
 ky	relative 0	0	0 секунд мурун
 ky	relative 0	-1	1 секунд мурун
 ky	relative 0	1	1 секунддан кийин
@@ -8231,6 +8395,10 @@ lo	date 14	2026-03-22T15:04:05.000Z	ມ.ນ. 2026
 lo	date 14	1999-12-31T00:30:09.000Z	ທ.ວ. 1999
 lo	date 15	2026-03-22T15:04:05.000Z	ມີນາ 2026
 lo	date 15	1999-12-31T00:30:09.000Z	ທັນວາ 1999
+lo	date 16	2026-03-22T15:04:05.000Z	22 ມ.ນ.
+lo	date 16	1999-12-31T00:30:09.000Z	31 ທ.ວ.
+lo	date 17	2026-03-22T15:04:05.000Z	22 ມີນາ
+lo	date 17	1999-12-31T00:30:09.000Z	31 ທັນວາ
 lo	relative 0	0	0 ວິນາທີກ່ອນ
 lo	relative 0	-1	1 ວິນາທີກ່ອນ
 lo	relative 0	1	ໃນອີກ 1 ວິນາທີ
@@ -8428,6 +8596,10 @@ lt	date 14	2026-03-22T15:04:05.000Z	2026-03
 lt	date 14	1999-12-31T00:30:09.000Z	1999-12
 lt	date 15	2026-03-22T15:04:05.000Z	2026 m. kovas
 lt	date 15	1999-12-31T00:30:09.000Z	1999 m. gruodis
+lt	date 16	2026-03-22T15:04:05.000Z	03-22
+lt	date 16	1999-12-31T00:30:09.000Z	12-31
+lt	date 17	2026-03-22T15:04:05.000Z	kovo 22 d.
+lt	date 17	1999-12-31T00:30:09.000Z	gruodžio 31 d.
 lt	relative 0	0	prieš 0 sekundžių
 lt	relative 0	-1	prieš 1 sekundę
 lt	relative 0	1	po 1 sekundės
@@ -8625,6 +8797,10 @@ lv	date 14	2026-03-22T15:04:05.000Z	2026. g. marts
 lv	date 14	1999-12-31T00:30:09.000Z	1999. g. dec.
 lv	date 15	2026-03-22T15:04:05.000Z	2026. g. marts
 lv	date 15	1999-12-31T00:30:09.000Z	1999. g. decembris
+lv	date 16	2026-03-22T15:04:05.000Z	22. marts
+lv	date 16	1999-12-31T00:30:09.000Z	31. dec.
+lv	date 17	2026-03-22T15:04:05.000Z	22. marts
+lv	date 17	1999-12-31T00:30:09.000Z	31. decembris
 lv	relative 0	0	pirms 0 sekundēm
 lv	relative 0	-1	pirms 1 sekundes
 lv	relative 0	1	pēc 1 sekundes
@@ -8822,6 +8998,10 @@ mk	date 14	2026-03-22T15:04:05.000Z	мар. 2026 г.
 mk	date 14	1999-12-31T00:30:09.000Z	дек. 1999 г.
 mk	date 15	2026-03-22T15:04:05.000Z	март 2026 г.
 mk	date 15	1999-12-31T00:30:09.000Z	декември 1999 г.
+mk	date 16	2026-03-22T15:04:05.000Z	22 мар.
+mk	date 16	1999-12-31T00:30:09.000Z	31 дек.
+mk	date 17	2026-03-22T15:04:05.000Z	22 март
+mk	date 17	1999-12-31T00:30:09.000Z	31 декември
 mk	relative 0	0	пред 0 секунди
 mk	relative 0	-1	пред 1 секунда
 mk	relative 0	1	за 1 секунда
@@ -9019,6 +9199,10 @@ ml	date 14	2026-03-22T15:04:05.000Z	2026 മാർ
 ml	date 14	1999-12-31T00:30:09.000Z	1999 ഡിസം
 ml	date 15	2026-03-22T15:04:05.000Z	2026 മാർച്ച്
 ml	date 15	1999-12-31T00:30:09.000Z	1999 ഡിസംബർ
+ml	date 16	2026-03-22T15:04:05.000Z	മാർ 22
+ml	date 16	1999-12-31T00:30:09.000Z	ഡിസം 31
+ml	date 17	2026-03-22T15:04:05.000Z	മാർച്ച് 22
+ml	date 17	1999-12-31T00:30:09.000Z	ഡിസംബർ 31
 ml	relative 0	0	0 സെക്കൻഡ് മുമ്പ്
 ml	relative 0	-1	1 സെക്കൻഡ് മുമ്പ്
 ml	relative 0	1	1 സെക്കൻഡിൽ
@@ -9216,6 +9400,10 @@ mn	date 14	2026-03-22T15:04:05.000Z	2026 оны 3-р сар
 mn	date 14	1999-12-31T00:30:09.000Z	1999 оны 12-р сар
 mn	date 15	2026-03-22T15:04:05.000Z	2026 оны гуравдугаар сар
 mn	date 15	1999-12-31T00:30:09.000Z	1999 оны арван хоёрдугаар сар
+mn	date 16	2026-03-22T15:04:05.000Z	3-р сарын 22
+mn	date 16	1999-12-31T00:30:09.000Z	12-р сарын 31
+mn	date 17	2026-03-22T15:04:05.000Z	гуравдугаар сарын 22
+mn	date 17	1999-12-31T00:30:09.000Z	арван хоёрдугаар сарын 31
 mn	relative 0	0	0 секундын өмнө
 mn	relative 0	-1	1 секундын өмнө
 mn	relative 0	1	1 секундын дараа
@@ -9413,6 +9601,10 @@ mr	date 14	2026-03-22T15:04:05.000Z	मार्च २०२६
 mr	date 14	1999-12-31T00:30:09.000Z	डिसें १९९९
 mr	date 15	2026-03-22T15:04:05.000Z	मार्च २०२६
 mr	date 15	1999-12-31T00:30:09.000Z	डिसेंबर १९९९
+mr	date 16	2026-03-22T15:04:05.000Z	२२ मार्च
+mr	date 16	1999-12-31T00:30:09.000Z	३१ डिसें
+mr	date 17	2026-03-22T15:04:05.000Z	२२ मार्च
+mr	date 17	1999-12-31T00:30:09.000Z	३१ डिसेंबर
 mr	relative 0	0	० सेकंदांपूर्वी
 mr	relative 0	-1	१ सेकंदापूर्वी
 mr	relative 0	1	१ सेकंदामध्ये
@@ -9610,6 +9802,10 @@ ms	date 14	2026-03-22T15:04:05.000Z	Mac 2026
 ms	date 14	1999-12-31T00:30:09.000Z	Dis 1999
 ms	date 15	2026-03-22T15:04:05.000Z	Mac 2026
 ms	date 15	1999-12-31T00:30:09.000Z	Disember 1999
+ms	date 16	2026-03-22T15:04:05.000Z	22 Mac
+ms	date 16	1999-12-31T00:30:09.000Z	31 Dis
+ms	date 17	2026-03-22T15:04:05.000Z	22 Mac
+ms	date 17	1999-12-31T00:30:09.000Z	31 Disember
 ms	relative 0	0	0 saat lalu
 ms	relative 0	-1	1 saat lalu
 ms	relative 0	1	dalam 1 saat
@@ -9807,6 +10003,10 @@ my	date 14	2026-03-22T15:04:05.000Z	၂၀၂၆ မတ်
 my	date 14	1999-12-31T00:30:09.000Z	၁၉၉၉ ဒီ
 my	date 15	2026-03-22T15:04:05.000Z	၂၀၂၆ မတ်
 my	date 15	1999-12-31T00:30:09.000Z	၁၉၉၉ ဒီဇင်ဘာ
+my	date 16	2026-03-22T15:04:05.000Z	မတ် ၂၂
+my	date 16	1999-12-31T00:30:09.000Z	ဒီ ၃၁
+my	date 17	2026-03-22T15:04:05.000Z	မတ် ၂၂
+my	date 17	1999-12-31T00:30:09.000Z	ဒီဇင်ဘာ ၃၁
 my	relative 0	0	ပြီးခဲ့သည့် ၀ စက္ကန့်
 my	relative 0	-1	ပြီးခဲ့သည့် ၁ စက္ကန့်
 my	relative 0	1	၁ စက္ကန့်အတွင်း
@@ -10004,6 +10204,10 @@ nb	date 14	2026-03-22T15:04:05.000Z	mars 2026
 nb	date 14	1999-12-31T00:30:09.000Z	des. 1999
 nb	date 15	2026-03-22T15:04:05.000Z	mars 2026
 nb	date 15	1999-12-31T00:30:09.000Z	desember 1999
+nb	date 16	2026-03-22T15:04:05.000Z	22. mars
+nb	date 16	1999-12-31T00:30:09.000Z	31. des.
+nb	date 17	2026-03-22T15:04:05.000Z	22. mars
+nb	date 17	1999-12-31T00:30:09.000Z	31. desember
 nb	relative 0	0	for 0 sekunder siden
 nb	relative 0	-1	for 1 sekund siden
 nb	relative 0	1	om 1 sekund
@@ -10201,6 +10405,10 @@ ne	date 14	2026-03-22T15:04:05.000Z	२०२६ मार्च
 ne	date 14	1999-12-31T00:30:09.000Z	१९९९ डिसेम्बर
 ne	date 15	2026-03-22T15:04:05.000Z	२०२६ मार्च
 ne	date 15	1999-12-31T00:30:09.000Z	१९९९ डिसेम्बर
+ne	date 16	2026-03-22T15:04:05.000Z	मार्च २२
+ne	date 16	1999-12-31T00:30:09.000Z	डिसेम्बर ३१
+ne	date 17	2026-03-22T15:04:05.000Z	मार्च २२
+ne	date 17	1999-12-31T00:30:09.000Z	डिसेम्बर ३१
 ne	relative 0	0	० सेकेन्ड पहिले
 ne	relative 0	-1	१ सेकेन्ड पहिले
 ne	relative 0	1	१ सेकेन्डमा
@@ -10398,6 +10606,10 @@ nl	date 14	2026-03-22T15:04:05.000Z	mrt 2026
 nl	date 14	1999-12-31T00:30:09.000Z	dec 1999
 nl	date 15	2026-03-22T15:04:05.000Z	maart 2026
 nl	date 15	1999-12-31T00:30:09.000Z	december 1999
+nl	date 16	2026-03-22T15:04:05.000Z	22 mrt
+nl	date 16	1999-12-31T00:30:09.000Z	31 dec
+nl	date 17	2026-03-22T15:04:05.000Z	22 maart
+nl	date 17	1999-12-31T00:30:09.000Z	31 december
 nl	relative 0	0	0 seconden geleden
 nl	relative 0	-1	1 seconde geleden
 nl	relative 0	1	over 1 seconde
@@ -10595,6 +10807,10 @@ or	date 14	2026-03-22T15:04:05.000Z	ମାର୍ଚ୍ଚ 2026
 or	date 14	1999-12-31T00:30:09.000Z	ଡିସେମ୍ବର 1999
 or	date 15	2026-03-22T15:04:05.000Z	ମାର୍ଚ୍ଚ 2026
 or	date 15	1999-12-31T00:30:09.000Z	ଡିସେମ୍ବର 1999
+or	date 16	2026-03-22T15:04:05.000Z	ମାର୍ଚ୍ଚ 22
+or	date 16	1999-12-31T00:30:09.000Z	ଡିସେମ୍ବର 31
+or	date 17	2026-03-22T15:04:05.000Z	ମାର୍ଚ୍ଚ 22
+or	date 17	1999-12-31T00:30:09.000Z	ଡିସେମ୍ବର 31
 or	relative 0	0	0 ସେକେଣ୍ଡ ପୂର୍ବେ
 or	relative 0	-1	1 ସେକେଣ୍ଡ ପୂର୍ବେ
 or	relative 0	1	1 ସେକେଣ୍ଡରେ
@@ -10792,6 +11008,10 @@ pa	date 14	2026-03-22T15:04:05.000Z	ਮਾਰਚ 2026
 pa	date 14	1999-12-31T00:30:09.000Z	ਦਸੰ 1999
 pa	date 15	2026-03-22T15:04:05.000Z	ਮਾਰਚ 2026
 pa	date 15	1999-12-31T00:30:09.000Z	ਦਸੰਬਰ 1999
+pa	date 16	2026-03-22T15:04:05.000Z	22 ਮਾਰਚ
+pa	date 16	1999-12-31T00:30:09.000Z	31 ਦਸੰ
+pa	date 17	2026-03-22T15:04:05.000Z	ਮਾਰਚ 22
+pa	date 17	1999-12-31T00:30:09.000Z	ਦਸੰਬਰ 31
 pa	relative 0	0	0 ਸਕਿੰਟ ਪਹਿਲਾਂ
 pa	relative 0	-1	1 ਸਕਿੰਟ ਪਹਿਲਾਂ
 pa	relative 0	1	1 ਸਕਿੰਟ ਵਿੱਚ
@@ -10989,6 +11209,10 @@ pl	date 14	2026-03-22T15:04:05.000Z	mar 2026
 pl	date 14	1999-12-31T00:30:09.000Z	gru 1999
 pl	date 15	2026-03-22T15:04:05.000Z	marzec 2026
 pl	date 15	1999-12-31T00:30:09.000Z	grudzień 1999
+pl	date 16	2026-03-22T15:04:05.000Z	22 mar
+pl	date 16	1999-12-31T00:30:09.000Z	31 gru
+pl	date 17	2026-03-22T15:04:05.000Z	22 marca
+pl	date 17	1999-12-31T00:30:09.000Z	31 grudnia
 pl	relative 0	0	0 sekund temu
 pl	relative 0	-1	1 sekundę temu
 pl	relative 0	1	za 1 sekundę
@@ -11186,6 +11410,10 @@ ps	date 14	2026-03-22T15:04:05.000Z	۲۰۲۶ مارچ
 ps	date 14	1999-12-31T00:30:09.000Z	۱۹۹۹ دسمبر
 ps	date 15	2026-03-22T15:04:05.000Z	۲۰۲۶ مارچ
 ps	date 15	1999-12-31T00:30:09.000Z	۱۹۹۹ دسمبر
+ps	date 16	2026-03-22T15:04:05.000Z	مارچ ۲۲
+ps	date 16	1999-12-31T00:30:09.000Z	دسمبر ۳۱
+ps	date 17	2026-03-22T15:04:05.000Z	مارچ ۲۲
+ps	date 17	1999-12-31T00:30:09.000Z	دسمبر ۳۱
 ps	relative 0	0	۰ ثانيې مخکې
 ps	relative 0	-1	۱ ثانيه مخکې
 ps	relative 0	1	په ۱ ثانيه کې
@@ -11383,6 +11611,10 @@ pt	date 14	2026-03-22T15:04:05.000Z	mar. de 2026
 pt	date 14	1999-12-31T00:30:09.000Z	dez. de 1999
 pt	date 15	2026-03-22T15:04:05.000Z	março de 2026
 pt	date 15	1999-12-31T00:30:09.000Z	dezembro de 1999
+pt	date 16	2026-03-22T15:04:05.000Z	22 de mar.
+pt	date 16	1999-12-31T00:30:09.000Z	31 de dez.
+pt	date 17	2026-03-22T15:04:05.000Z	22 de março
+pt	date 17	1999-12-31T00:30:09.000Z	31 de dezembro
 pt	relative 0	0	há 0 segundo
 pt	relative 0	-1	há 1 segundo
 pt	relative 0	1	em 1 segundo
@@ -11580,6 +11812,10 @@ ro	date 14	2026-03-22T15:04:05.000Z	mar. 2026
 ro	date 14	1999-12-31T00:30:09.000Z	dec. 1999
 ro	date 15	2026-03-22T15:04:05.000Z	martie 2026
 ro	date 15	1999-12-31T00:30:09.000Z	decembrie 1999
+ro	date 16	2026-03-22T15:04:05.000Z	22 mar.
+ro	date 16	1999-12-31T00:30:09.000Z	31 dec.
+ro	date 17	2026-03-22T15:04:05.000Z	22 martie
+ro	date 17	1999-12-31T00:30:09.000Z	31 decembrie
 ro	relative 0	0	acum 0 secunde
 ro	relative 0	-1	acum 1 secundă
 ro	relative 0	1	peste 1 secundă
@@ -11777,6 +12013,10 @@ ru	date 14	2026-03-22T15:04:05.000Z	март 2026 г.
 ru	date 14	1999-12-31T00:30:09.000Z	дек. 1999 г.
 ru	date 15	2026-03-22T15:04:05.000Z	март 2026 г.
 ru	date 15	1999-12-31T00:30:09.000Z	декабрь 1999 г.
+ru	date 16	2026-03-22T15:04:05.000Z	22 мар.
+ru	date 16	1999-12-31T00:30:09.000Z	31 дек.
+ru	date 17	2026-03-22T15:04:05.000Z	22 марта
+ru	date 17	1999-12-31T00:30:09.000Z	31 декабря
 ru	relative 0	0	0 секунд назад
 ru	relative 0	-1	1 секунду назад
 ru	relative 0	1	через 1 секунду
@@ -11974,6 +12214,10 @@ si	date 14	2026-03-22T15:04:05.000Z	2026 මැදින්
 si	date 14	1999-12-31T00:30:09.000Z	1999 උඳුවප්
 si	date 15	2026-03-22T15:04:05.000Z	2026 මැදින්
 si	date 15	1999-12-31T00:30:09.000Z	1999 උඳුවප්
+si	date 16	2026-03-22T15:04:05.000Z	මැදින් 22
+si	date 16	1999-12-31T00:30:09.000Z	උඳුවප් 31
+si	date 17	2026-03-22T15:04:05.000Z	මැදින් 22
+si	date 17	1999-12-31T00:30:09.000Z	උඳුවප් 31
 si	relative 0	0	තත්පර 0කට පෙර
 si	relative 0	-1	තත්පර 1කට පෙර
 si	relative 0	1	තත්පර 1කින්
@@ -12171,6 +12415,10 @@ sk	date 14	2026-03-22T15:04:05.000Z	3/2026
 sk	date 14	1999-12-31T00:30:09.000Z	12/1999
 sk	date 15	2026-03-22T15:04:05.000Z	marec 2026
 sk	date 15	1999-12-31T00:30:09.000Z	december 1999
+sk	date 16	2026-03-22T15:04:05.000Z	22. 3.
+sk	date 16	1999-12-31T00:30:09.000Z	31. 12.
+sk	date 17	2026-03-22T15:04:05.000Z	22. marca
+sk	date 17	1999-12-31T00:30:09.000Z	31. decembra
 sk	relative 0	0	pred 0 sekundami
 sk	relative 0	-1	pred 1 sekundou
 sk	relative 0	1	o 1 sekundu
@@ -12368,6 +12616,10 @@ sl	date 14	2026-03-22T15:04:05.000Z	mar. 2026
 sl	date 14	1999-12-31T00:30:09.000Z	dec. 1999
 sl	date 15	2026-03-22T15:04:05.000Z	marec 2026
 sl	date 15	1999-12-31T00:30:09.000Z	december 1999
+sl	date 16	2026-03-22T15:04:05.000Z	22. mar.
+sl	date 16	1999-12-31T00:30:09.000Z	31. dec.
+sl	date 17	2026-03-22T15:04:05.000Z	22. marec
+sl	date 17	1999-12-31T00:30:09.000Z	31. december
 sl	relative 0	0	pred 0 sekundami
 sl	relative 0	-1	pred 1 sekundo
 sl	relative 0	1	čez 1 sekundo
@@ -12565,6 +12817,10 @@ sq	date 14	2026-03-22T15:04:05.000Z	mar 2026
 sq	date 14	1999-12-31T00:30:09.000Z	dhj 1999
 sq	date 15	2026-03-22T15:04:05.000Z	mars 2026
 sq	date 15	1999-12-31T00:30:09.000Z	dhjetor 1999
+sq	date 16	2026-03-22T15:04:05.000Z	22 mar
+sq	date 16	1999-12-31T00:30:09.000Z	31 dhj
+sq	date 17	2026-03-22T15:04:05.000Z	22 mars
+sq	date 17	1999-12-31T00:30:09.000Z	31 dhjetor
 sq	relative 0	0	0 sekonda më parë
 sq	relative 0	-1	1 sekondë më parë
 sq	relative 0	1	pas 1 sekonde
@@ -12762,6 +13018,10 @@ sr	date 14	2026-03-22T15:04:05.000Z	мар 2026.
 sr	date 14	1999-12-31T00:30:09.000Z	дец 1999.
 sr	date 15	2026-03-22T15:04:05.000Z	март 2026.
 sr	date 15	1999-12-31T00:30:09.000Z	децембар 1999.
+sr	date 16	2026-03-22T15:04:05.000Z	22. мар
+sr	date 16	1999-12-31T00:30:09.000Z	31. дец
+sr	date 17	2026-03-22T15:04:05.000Z	22. март
+sr	date 17	1999-12-31T00:30:09.000Z	31. децембар
 sr	relative 0	0	пре 0 секунди
 sr	relative 0	-1	пре 1 секунде
 sr	relative 0	1	за 1 секунду
@@ -12959,6 +13219,10 @@ sv	date 14	2026-03-22T15:04:05.000Z	mars 2026
 sv	date 14	1999-12-31T00:30:09.000Z	dec. 1999
 sv	date 15	2026-03-22T15:04:05.000Z	mars 2026
 sv	date 15	1999-12-31T00:30:09.000Z	december 1999
+sv	date 16	2026-03-22T15:04:05.000Z	22 mars
+sv	date 16	1999-12-31T00:30:09.000Z	31 dec.
+sv	date 17	2026-03-22T15:04:05.000Z	22 mars
+sv	date 17	1999-12-31T00:30:09.000Z	31 december
 sv	relative 0	0	för 0 sekunder sedan
 sv	relative 0	-1	för 1 sekund sedan
 sv	relative 0	1	om 1 sekund
@@ -13156,6 +13420,10 @@ sw	date 14	2026-03-22T15:04:05.000Z	Mac 2026
 sw	date 14	1999-12-31T00:30:09.000Z	Des 1999
 sw	date 15	2026-03-22T15:04:05.000Z	Machi 2026
 sw	date 15	1999-12-31T00:30:09.000Z	Desemba 1999
+sw	date 16	2026-03-22T15:04:05.000Z	22 Mac
+sw	date 16	1999-12-31T00:30:09.000Z	31 Des
+sw	date 17	2026-03-22T15:04:05.000Z	22 Machi
+sw	date 17	1999-12-31T00:30:09.000Z	31 Desemba
 sw	relative 0	0	Sekunde 0 zilizopita
 sw	relative 0	-1	Sekunde 1 iliyopita
 sw	relative 0	1	baada ya sekunde 1
@@ -13353,6 +13621,10 @@ ta	date 14	2026-03-22T15:04:05.000Z	மார். 2026
 ta	date 14	1999-12-31T00:30:09.000Z	டிச. 1999
 ta	date 15	2026-03-22T15:04:05.000Z	மார்ச் 2026
 ta	date 15	1999-12-31T00:30:09.000Z	டிசம்பர் 1999
+ta	date 16	2026-03-22T15:04:05.000Z	மார். 22
+ta	date 16	1999-12-31T00:30:09.000Z	டிச. 31
+ta	date 17	2026-03-22T15:04:05.000Z	22 மார்ச்
+ta	date 17	1999-12-31T00:30:09.000Z	31 டிசம்பர்
 ta	relative 0	0	0 விநாடிகளுக்கு முன்
 ta	relative 0	-1	1 விநாடிக்கு முன்
 ta	relative 0	1	1 விநாடியில்
@@ -13550,6 +13822,10 @@ te	date 14	2026-03-22T15:04:05.000Z	మార్చి 2026
 te	date 14	1999-12-31T00:30:09.000Z	డిసెం 1999
 te	date 15	2026-03-22T15:04:05.000Z	మార్చి 2026
 te	date 15	1999-12-31T00:30:09.000Z	డిసెంబర్ 1999
+te	date 16	2026-03-22T15:04:05.000Z	22 మార్చి
+te	date 16	1999-12-31T00:30:09.000Z	31 డిసెం
+te	date 17	2026-03-22T15:04:05.000Z	22 మార్చి
+te	date 17	1999-12-31T00:30:09.000Z	31 డిసెంబర్
 te	relative 0	0	0 సెకన్ల క్రితం
 te	relative 0	-1	1 సెకను క్రితం
 te	relative 0	1	1 సెకనులో
@@ -13747,6 +14023,10 @@ th	date 14	2026-03-22T15:04:05.000Z	มี.ค. 2026
 th	date 14	1999-12-31T00:30:09.000Z	ธ.ค. 1999
 th	date 15	2026-03-22T15:04:05.000Z	มีนาคม 2026
 th	date 15	1999-12-31T00:30:09.000Z	ธันวาคม 1999
+th	date 16	2026-03-22T15:04:05.000Z	22 มี.ค.
+th	date 16	1999-12-31T00:30:09.000Z	31 ธ.ค.
+th	date 17	2026-03-22T15:04:05.000Z	22 มีนาคม
+th	date 17	1999-12-31T00:30:09.000Z	31 ธันวาคม
 th	relative 0	0	0 วินาทีที่ผ่านมา
 th	relative 0	-1	1 วินาทีที่ผ่านมา
 th	relative 0	1	ในอีก 1 วินาที
@@ -13944,6 +14224,10 @@ tr	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 tr	date 14	1999-12-31T00:30:09.000Z	Ara 1999
 tr	date 15	2026-03-22T15:04:05.000Z	Mart 2026
 tr	date 15	1999-12-31T00:30:09.000Z	Aralık 1999
+tr	date 16	2026-03-22T15:04:05.000Z	22 Mar
+tr	date 16	1999-12-31T00:30:09.000Z	31 Ara
+tr	date 17	2026-03-22T15:04:05.000Z	22 Mart
+tr	date 17	1999-12-31T00:30:09.000Z	31 Aralık
 tr	relative 0	0	0 saniye önce
 tr	relative 0	-1	1 saniye önce
 tr	relative 0	1	1 saniye sonra
@@ -14141,6 +14425,10 @@ uk	date 14	2026-03-22T15:04:05.000Z	бер. 2026 р.
 uk	date 14	1999-12-31T00:30:09.000Z	груд. 1999 р.
 uk	date 15	2026-03-22T15:04:05.000Z	березень 2026 р.
 uk	date 15	1999-12-31T00:30:09.000Z	грудень 1999 р.
+uk	date 16	2026-03-22T15:04:05.000Z	22 бер.
+uk	date 16	1999-12-31T00:30:09.000Z	31 груд.
+uk	date 17	2026-03-22T15:04:05.000Z	22 березня
+uk	date 17	1999-12-31T00:30:09.000Z	31 грудня
 uk	relative 0	0	0 секунд тому
 uk	relative 0	-1	1 секунду тому
 uk	relative 0	1	через 1 секунду
@@ -14338,6 +14626,10 @@ ur	date 14	2026-03-22T15:04:05.000Z	مارچ 2026
 ur	date 14	1999-12-31T00:30:09.000Z	دسمبر 1999
 ur	date 15	2026-03-22T15:04:05.000Z	مارچ 2026
 ur	date 15	1999-12-31T00:30:09.000Z	دسمبر 1999
+ur	date 16	2026-03-22T15:04:05.000Z	22 مارچ
+ur	date 16	1999-12-31T00:30:09.000Z	31 دسمبر
+ur	date 17	2026-03-22T15:04:05.000Z	22 مارچ
+ur	date 17	1999-12-31T00:30:09.000Z	31 دسمبر
 ur	relative 0	0	0 سیکنڈ پہلے
 ur	relative 0	-1	1 سیکنڈ پہلے
 ur	relative 0	1	1 سیکنڈ میں
@@ -14535,6 +14827,10 @@ uz	date 14	2026-03-22T15:04:05.000Z	mar, 2026
 uz	date 14	1999-12-31T00:30:09.000Z	dek, 1999
 uz	date 15	2026-03-22T15:04:05.000Z	mart, 2026
 uz	date 15	1999-12-31T00:30:09.000Z	dekabr, 1999
+uz	date 16	2026-03-22T15:04:05.000Z	22-mar
+uz	date 16	1999-12-31T00:30:09.000Z	31-dek
+uz	date 17	2026-03-22T15:04:05.000Z	22-mart
+uz	date 17	1999-12-31T00:30:09.000Z	31-dekabr
 uz	relative 0	0	0 soniya oldin
 uz	relative 0	-1	1 soniya oldin
 uz	relative 0	1	1 soniyadan keyin
@@ -14732,6 +15028,10 @@ vi	date 14	2026-03-22T15:04:05.000Z	thg 3 2026
 vi	date 14	1999-12-31T00:30:09.000Z	thg 12 1999
 vi	date 15	2026-03-22T15:04:05.000Z	tháng 3 năm 2026
 vi	date 15	1999-12-31T00:30:09.000Z	tháng 12 năm 1999
+vi	date 16	2026-03-22T15:04:05.000Z	22 thg 3
+vi	date 16	1999-12-31T00:30:09.000Z	31 thg 12
+vi	date 17	2026-03-22T15:04:05.000Z	22 tháng 3
+vi	date 17	1999-12-31T00:30:09.000Z	31 tháng 12
 vi	relative 0	0	0 giây trước
 vi	relative 0	-1	1 giây trước
 vi	relative 0	1	sau 1 giây nữa
@@ -14929,6 +15229,10 @@ zh	date 14	2026-03-22T15:04:05.000Z	2026年3月
 zh	date 14	1999-12-31T00:30:09.000Z	1999年12月
 zh	date 15	2026-03-22T15:04:05.000Z	2026年3月
 zh	date 15	1999-12-31T00:30:09.000Z	1999年12月
+zh	date 16	2026-03-22T15:04:05.000Z	3月22日
+zh	date 16	1999-12-31T00:30:09.000Z	12月31日
+zh	date 17	2026-03-22T15:04:05.000Z	3月22日
+zh	date 17	1999-12-31T00:30:09.000Z	12月31日
 zh	relative 0	0	0秒钟前
 zh	relative 0	-1	1秒钟前
 zh	relative 0	1	1秒钟后
@@ -15126,6 +15430,10 @@ zu	date 14	2026-03-22T15:04:05.000Z	Mas 2026
 zu	date 14	1999-12-31T00:30:09.000Z	Dis 1999
 zu	date 15	2026-03-22T15:04:05.000Z	Mashi 2026
 zu	date 15	1999-12-31T00:30:09.000Z	Disemba 1999
+zu	date 16	2026-03-22T15:04:05.000Z	Mas 22
+zu	date 16	1999-12-31T00:30:09.000Z	Dis 31
+zu	date 17	2026-03-22T15:04:05.000Z	Mashi 22
+zu	date 17	1999-12-31T00:30:09.000Z	Disemba 31
 zu	relative 0	0	0 isekhondi eledlule
 zu	relative 0	-1	1 isekhondi eledlule
 zu	relative 0	1	kusekhondi elingu-1 elizayo
@@ -15323,6 +15631,10 @@ en-GB	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en-GB	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en-GB	date 15	2026-03-22T15:04:05.000Z	March 2026
 en-GB	date 15	1999-12-31T00:30:09.000Z	December 1999
+en-GB	date 16	2026-03-22T15:04:05.000Z	22 Mar
+en-GB	date 16	1999-12-31T00:30:09.000Z	31 Dec
+en-GB	date 17	2026-03-22T15:04:05.000Z	22 March
+en-GB	date 17	1999-12-31T00:30:09.000Z	31 December
 en-GB	relative 0	0	0 seconds ago
 en-GB	relative 0	-1	1 second ago
 en-GB	relative 0	1	in 1 second
@@ -15520,6 +15832,10 @@ en-AU	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en-AU	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en-AU	date 15	2026-03-22T15:04:05.000Z	March 2026
 en-AU	date 15	1999-12-31T00:30:09.000Z	December 1999
+en-AU	date 16	2026-03-22T15:04:05.000Z	22 Mar
+en-AU	date 16	1999-12-31T00:30:09.000Z	31 Dec
+en-AU	date 17	2026-03-22T15:04:05.000Z	22 March
+en-AU	date 17	1999-12-31T00:30:09.000Z	31 December
 en-AU	relative 0	0	0 seconds ago
 en-AU	relative 0	-1	1 second ago
 en-AU	relative 0	1	in 1 second
@@ -15717,6 +16033,10 @@ en-CA	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en-CA	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en-CA	date 15	2026-03-22T15:04:05.000Z	March 2026
 en-CA	date 15	1999-12-31T00:30:09.000Z	December 1999
+en-CA	date 16	2026-03-22T15:04:05.000Z	Mar 22
+en-CA	date 16	1999-12-31T00:30:09.000Z	Dec 31
+en-CA	date 17	2026-03-22T15:04:05.000Z	March 22
+en-CA	date 17	1999-12-31T00:30:09.000Z	December 31
 en-CA	relative 0	0	0 seconds ago
 en-CA	relative 0	-1	1 second ago
 en-CA	relative 0	1	in 1 second
@@ -15914,6 +16234,10 @@ en-IN	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en-IN	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en-IN	date 15	2026-03-22T15:04:05.000Z	March 2026
 en-IN	date 15	1999-12-31T00:30:09.000Z	December 1999
+en-IN	date 16	2026-03-22T15:04:05.000Z	22 Mar
+en-IN	date 16	1999-12-31T00:30:09.000Z	31 Dec
+en-IN	date 17	2026-03-22T15:04:05.000Z	22 March
+en-IN	date 17	1999-12-31T00:30:09.000Z	31 December
 en-IN	relative 0	0	0 seconds ago
 en-IN	relative 0	-1	1 second ago
 en-IN	relative 0	1	in 1 second
@@ -16111,6 +16435,10 @@ en-IE	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en-IE	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en-IE	date 15	2026-03-22T15:04:05.000Z	March 2026
 en-IE	date 15	1999-12-31T00:30:09.000Z	December 1999
+en-IE	date 16	2026-03-22T15:04:05.000Z	22 Mar
+en-IE	date 16	1999-12-31T00:30:09.000Z	31 Dec
+en-IE	date 17	2026-03-22T15:04:05.000Z	22 March
+en-IE	date 17	1999-12-31T00:30:09.000Z	31 December
 en-IE	relative 0	0	0 seconds ago
 en-IE	relative 0	-1	1 second ago
 en-IE	relative 0	1	in 1 second
@@ -16308,6 +16636,10 @@ en-NZ	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en-NZ	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en-NZ	date 15	2026-03-22T15:04:05.000Z	March 2026
 en-NZ	date 15	1999-12-31T00:30:09.000Z	December 1999
+en-NZ	date 16	2026-03-22T15:04:05.000Z	22 Mar
+en-NZ	date 16	1999-12-31T00:30:09.000Z	31 Dec
+en-NZ	date 17	2026-03-22T15:04:05.000Z	22 March
+en-NZ	date 17	1999-12-31T00:30:09.000Z	31 December
 en-NZ	relative 0	0	0 seconds ago
 en-NZ	relative 0	-1	1 second ago
 en-NZ	relative 0	1	in 1 second
@@ -16505,6 +16837,10 @@ en-ZA	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en-ZA	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en-ZA	date 15	2026-03-22T15:04:05.000Z	March 2026
 en-ZA	date 15	1999-12-31T00:30:09.000Z	December 1999
+en-ZA	date 16	2026-03-22T15:04:05.000Z	22 Mar
+en-ZA	date 16	1999-12-31T00:30:09.000Z	31 Dec
+en-ZA	date 17	2026-03-22T15:04:05.000Z	22 March
+en-ZA	date 17	1999-12-31T00:30:09.000Z	31 December
 en-ZA	relative 0	0	0 seconds ago
 en-ZA	relative 0	-1	1 second ago
 en-ZA	relative 0	1	in 1 second
@@ -16702,6 +17038,10 @@ en-SG	date 14	2026-03-22T15:04:05.000Z	Mar 2026
 en-SG	date 14	1999-12-31T00:30:09.000Z	Dec 1999
 en-SG	date 15	2026-03-22T15:04:05.000Z	March 2026
 en-SG	date 15	1999-12-31T00:30:09.000Z	December 1999
+en-SG	date 16	2026-03-22T15:04:05.000Z	22 Mar
+en-SG	date 16	1999-12-31T00:30:09.000Z	31 Dec
+en-SG	date 17	2026-03-22T15:04:05.000Z	22 March
+en-SG	date 17	1999-12-31T00:30:09.000Z	31 December
 en-SG	relative 0	0	0 seconds ago
 en-SG	relative 0	-1	1 second ago
 en-SG	relative 0	1	in 1 second
@@ -16899,6 +17239,10 @@ es-MX	date 14	2026-03-22T15:04:05.000Z	mar 2026
 es-MX	date 14	1999-12-31T00:30:09.000Z	dic 1999
 es-MX	date 15	2026-03-22T15:04:05.000Z	marzo de 2026
 es-MX	date 15	1999-12-31T00:30:09.000Z	diciembre de 1999
+es-MX	date 16	2026-03-22T15:04:05.000Z	22 mar
+es-MX	date 16	1999-12-31T00:30:09.000Z	31 dic
+es-MX	date 17	2026-03-22T15:04:05.000Z	22 de marzo
+es-MX	date 17	1999-12-31T00:30:09.000Z	31 de diciembre
 es-MX	relative 0	0	hace 0 segundos
 es-MX	relative 0	-1	hace 1 segundo
 es-MX	relative 0	1	dentro de 1 segundo
@@ -17096,6 +17440,10 @@ es-419	date 14	2026-03-22T15:04:05.000Z	mar 2026
 es-419	date 14	1999-12-31T00:30:09.000Z	dic 1999
 es-419	date 15	2026-03-22T15:04:05.000Z	marzo de 2026
 es-419	date 15	1999-12-31T00:30:09.000Z	diciembre de 1999
+es-419	date 16	2026-03-22T15:04:05.000Z	22 mar
+es-419	date 16	1999-12-31T00:30:09.000Z	31 dic
+es-419	date 17	2026-03-22T15:04:05.000Z	22 de marzo
+es-419	date 17	1999-12-31T00:30:09.000Z	31 de diciembre
 es-419	relative 0	0	hace 0 segundos
 es-419	relative 0	-1	hace 1 segundo
 es-419	relative 0	1	dentro de 1 segundo
@@ -17293,6 +17641,10 @@ es-AR	date 14	2026-03-22T15:04:05.000Z	mar 2026
 es-AR	date 14	1999-12-31T00:30:09.000Z	dic 1999
 es-AR	date 15	2026-03-22T15:04:05.000Z	marzo de 2026
 es-AR	date 15	1999-12-31T00:30:09.000Z	diciembre de 1999
+es-AR	date 16	2026-03-22T15:04:05.000Z	22 mar
+es-AR	date 16	1999-12-31T00:30:09.000Z	31 dic
+es-AR	date 17	2026-03-22T15:04:05.000Z	22 de marzo
+es-AR	date 17	1999-12-31T00:30:09.000Z	31 de diciembre
 es-AR	relative 0	0	hace 0 segundos
 es-AR	relative 0	-1	hace 1 segundo
 es-AR	relative 0	1	dentro de 1 segundo
@@ -17490,6 +17842,10 @@ es-CO	date 14	2026-03-22T15:04:05.000Z	mar de 2026
 es-CO	date 14	1999-12-31T00:30:09.000Z	dic de 1999
 es-CO	date 15	2026-03-22T15:04:05.000Z	marzo de 2026
 es-CO	date 15	1999-12-31T00:30:09.000Z	diciembre de 1999
+es-CO	date 16	2026-03-22T15:04:05.000Z	22 de mar
+es-CO	date 16	1999-12-31T00:30:09.000Z	31 de dic
+es-CO	date 17	2026-03-22T15:04:05.000Z	22 de marzo
+es-CO	date 17	1999-12-31T00:30:09.000Z	31 de diciembre
 es-CO	relative 0	0	hace 0 segundos
 es-CO	relative 0	-1	hace 1 segundo
 es-CO	relative 0	1	dentro de 1 segundo
@@ -17687,6 +18043,10 @@ es-CL	date 14	2026-03-22T15:04:05.000Z	mar 2026
 es-CL	date 14	1999-12-31T00:30:09.000Z	dic 1999
 es-CL	date 15	2026-03-22T15:04:05.000Z	marzo de 2026
 es-CL	date 15	1999-12-31T00:30:09.000Z	diciembre de 1999
+es-CL	date 16	2026-03-22T15:04:05.000Z	22 mar
+es-CL	date 16	1999-12-31T00:30:09.000Z	31 dic
+es-CL	date 17	2026-03-22T15:04:05.000Z	22 de marzo
+es-CL	date 17	1999-12-31T00:30:09.000Z	31 de diciembre
 es-CL	relative 0	0	hace 0 segundos
 es-CL	relative 0	-1	hace 1 segundo
 es-CL	relative 0	1	dentro de 1 segundo
@@ -17884,6 +18244,10 @@ es-US	date 14	2026-03-22T15:04:05.000Z	mar 2026
 es-US	date 14	1999-12-31T00:30:09.000Z	dic 1999
 es-US	date 15	2026-03-22T15:04:05.000Z	marzo de 2026
 es-US	date 15	1999-12-31T00:30:09.000Z	diciembre de 1999
+es-US	date 16	2026-03-22T15:04:05.000Z	22 mar
+es-US	date 16	1999-12-31T00:30:09.000Z	31 dic
+es-US	date 17	2026-03-22T15:04:05.000Z	22 de marzo
+es-US	date 17	1999-12-31T00:30:09.000Z	31 de diciembre
 es-US	relative 0	0	hace 0 segundos
 es-US	relative 0	-1	hace 1 segundo
 es-US	relative 0	1	dentro de 1 segundo
@@ -18081,6 +18445,10 @@ fr-CA	date 14	2026-03-22T15:04:05.000Z	mars 2026
 fr-CA	date 14	1999-12-31T00:30:09.000Z	déc. 1999
 fr-CA	date 15	2026-03-22T15:04:05.000Z	mars 2026
 fr-CA	date 15	1999-12-31T00:30:09.000Z	décembre 1999
+fr-CA	date 16	2026-03-22T15:04:05.000Z	22 mars
+fr-CA	date 16	1999-12-31T00:30:09.000Z	31 déc.
+fr-CA	date 17	2026-03-22T15:04:05.000Z	22 mars
+fr-CA	date 17	1999-12-31T00:30:09.000Z	31 décembre
 fr-CA	relative 0	0	il y a 0 seconde
 fr-CA	relative 0	-1	il y a 1 seconde
 fr-CA	relative 0	1	dans 1 seconde
@@ -18278,6 +18646,10 @@ fr-CH	date 14	2026-03-22T15:04:05.000Z	mars 2026
 fr-CH	date 14	1999-12-31T00:30:09.000Z	déc. 1999
 fr-CH	date 15	2026-03-22T15:04:05.000Z	mars 2026
 fr-CH	date 15	1999-12-31T00:30:09.000Z	décembre 1999
+fr-CH	date 16	2026-03-22T15:04:05.000Z	22 mars
+fr-CH	date 16	1999-12-31T00:30:09.000Z	31 déc.
+fr-CH	date 17	2026-03-22T15:04:05.000Z	22 mars
+fr-CH	date 17	1999-12-31T00:30:09.000Z	31 décembre
 fr-CH	relative 0	0	il y a 0 seconde
 fr-CH	relative 0	-1	il y a 1 seconde
 fr-CH	relative 0	1	dans 1 seconde
@@ -18475,6 +18847,10 @@ fr-BE	date 14	2026-03-22T15:04:05.000Z	mars 2026
 fr-BE	date 14	1999-12-31T00:30:09.000Z	déc. 1999
 fr-BE	date 15	2026-03-22T15:04:05.000Z	mars 2026
 fr-BE	date 15	1999-12-31T00:30:09.000Z	décembre 1999
+fr-BE	date 16	2026-03-22T15:04:05.000Z	22 mars
+fr-BE	date 16	1999-12-31T00:30:09.000Z	31 déc.
+fr-BE	date 17	2026-03-22T15:04:05.000Z	22 mars
+fr-BE	date 17	1999-12-31T00:30:09.000Z	31 décembre
 fr-BE	relative 0	0	il y a 0 seconde
 fr-BE	relative 0	-1	il y a 1 seconde
 fr-BE	relative 0	1	dans 1 seconde
@@ -18672,6 +19048,10 @@ de-AT	date 14	2026-03-22T15:04:05.000Z	März 2026
 de-AT	date 14	1999-12-31T00:30:09.000Z	Dez. 1999
 de-AT	date 15	2026-03-22T15:04:05.000Z	März 2026
 de-AT	date 15	1999-12-31T00:30:09.000Z	Dezember 1999
+de-AT	date 16	2026-03-22T15:04:05.000Z	22. März
+de-AT	date 16	1999-12-31T00:30:09.000Z	31. Dez.
+de-AT	date 17	2026-03-22T15:04:05.000Z	22. März
+de-AT	date 17	1999-12-31T00:30:09.000Z	31. Dezember
 de-AT	relative 0	0	vor 0 Sekunden
 de-AT	relative 0	-1	vor 1 Sekunde
 de-AT	relative 0	1	in 1 Sekunde
@@ -18869,6 +19249,10 @@ de-CH	date 14	2026-03-22T15:04:05.000Z	März 2026
 de-CH	date 14	1999-12-31T00:30:09.000Z	Dez. 1999
 de-CH	date 15	2026-03-22T15:04:05.000Z	März 2026
 de-CH	date 15	1999-12-31T00:30:09.000Z	Dezember 1999
+de-CH	date 16	2026-03-22T15:04:05.000Z	22. März
+de-CH	date 16	1999-12-31T00:30:09.000Z	31. Dez.
+de-CH	date 17	2026-03-22T15:04:05.000Z	22. März
+de-CH	date 17	1999-12-31T00:30:09.000Z	31. Dezember
 de-CH	relative 0	0	vor 0 Sekunden
 de-CH	relative 0	-1	vor 1 Sekunde
 de-CH	relative 0	1	in 1 Sekunde
@@ -19066,6 +19450,10 @@ it-CH	date 14	2026-03-22T15:04:05.000Z	mar 2026
 it-CH	date 14	1999-12-31T00:30:09.000Z	dic 1999
 it-CH	date 15	2026-03-22T15:04:05.000Z	marzo 2026
 it-CH	date 15	1999-12-31T00:30:09.000Z	dicembre 1999
+it-CH	date 16	2026-03-22T15:04:05.000Z	22 mar
+it-CH	date 16	1999-12-31T00:30:09.000Z	31 dic
+it-CH	date 17	2026-03-22T15:04:05.000Z	22 marzo
+it-CH	date 17	1999-12-31T00:30:09.000Z	31 dicembre
 it-CH	relative 0	0	0 secondi fa
 it-CH	relative 0	-1	1 secondo fa
 it-CH	relative 0	1	tra 1 secondo
@@ -19263,6 +19651,10 @@ nl-BE	date 14	2026-03-22T15:04:05.000Z	mrt 2026
 nl-BE	date 14	1999-12-31T00:30:09.000Z	dec 1999
 nl-BE	date 15	2026-03-22T15:04:05.000Z	maart 2026
 nl-BE	date 15	1999-12-31T00:30:09.000Z	december 1999
+nl-BE	date 16	2026-03-22T15:04:05.000Z	22 mrt
+nl-BE	date 16	1999-12-31T00:30:09.000Z	31 dec
+nl-BE	date 17	2026-03-22T15:04:05.000Z	22 maart
+nl-BE	date 17	1999-12-31T00:30:09.000Z	31 december
 nl-BE	relative 0	0	0 seconden geleden
 nl-BE	relative 0	-1	1 seconde geleden
 nl-BE	relative 0	1	over 1 seconde
@@ -19460,6 +19852,10 @@ pt-PT	date 14	2026-03-22T15:04:05.000Z	03/2026
 pt-PT	date 14	1999-12-31T00:30:09.000Z	12/1999
 pt-PT	date 15	2026-03-22T15:04:05.000Z	março de 2026
 pt-PT	date 15	1999-12-31T00:30:09.000Z	dezembro de 1999
+pt-PT	date 16	2026-03-22T15:04:05.000Z	22/03
+pt-PT	date 16	1999-12-31T00:30:09.000Z	31/12
+pt-PT	date 17	2026-03-22T15:04:05.000Z	22 de março
+pt-PT	date 17	1999-12-31T00:30:09.000Z	31 de dezembro
 pt-PT	relative 0	0	há 0 segundos
 pt-PT	relative 0	-1	há 1 segundo
 pt-PT	relative 0	1	dentro de 1 segundo
@@ -19657,6 +20053,10 @@ zh-Hant	date 14	2026-03-22T15:04:05.000Z	2026年3月
 zh-Hant	date 14	1999-12-31T00:30:09.000Z	1999年12月
 zh-Hant	date 15	2026-03-22T15:04:05.000Z	2026年3月
 zh-Hant	date 15	1999-12-31T00:30:09.000Z	1999年12月
+zh-Hant	date 16	2026-03-22T15:04:05.000Z	3月22日
+zh-Hant	date 16	1999-12-31T00:30:09.000Z	12月31日
+zh-Hant	date 17	2026-03-22T15:04:05.000Z	3月22日
+zh-Hant	date 17	1999-12-31T00:30:09.000Z	12月31日
 zh-Hant	relative 0	0	0 秒前
 zh-Hant	relative 0	-1	1 秒前
 zh-Hant	relative 0	1	1 秒後
@@ -19854,6 +20254,10 @@ zh-TW	date 14	2026-03-22T15:04:05.000Z	2026年3月
 zh-TW	date 14	1999-12-31T00:30:09.000Z	1999年12月
 zh-TW	date 15	2026-03-22T15:04:05.000Z	2026年3月
 zh-TW	date 15	1999-12-31T00:30:09.000Z	1999年12月
+zh-TW	date 16	2026-03-22T15:04:05.000Z	3月22日
+zh-TW	date 16	1999-12-31T00:30:09.000Z	12月31日
+zh-TW	date 17	2026-03-22T15:04:05.000Z	3月22日
+zh-TW	date 17	1999-12-31T00:30:09.000Z	12月31日
 zh-TW	relative 0	0	0 秒前
 zh-TW	relative 0	-1	1 秒前
 zh-TW	relative 0	1	1 秒後
@@ -20051,6 +20455,10 @@ zh-HK	date 14	2026-03-22T15:04:05.000Z	2026年3月
 zh-HK	date 14	1999-12-31T00:30:09.000Z	1999年12月
 zh-HK	date 15	2026-03-22T15:04:05.000Z	2026年3月
 zh-HK	date 15	1999-12-31T00:30:09.000Z	1999年12月
+zh-HK	date 16	2026-03-22T15:04:05.000Z	3月22日
+zh-HK	date 16	1999-12-31T00:30:09.000Z	12月31日
+zh-HK	date 17	2026-03-22T15:04:05.000Z	3月22日
+zh-HK	date 17	1999-12-31T00:30:09.000Z	12月31日
 zh-HK	relative 0	0	0 秒前
 zh-HK	relative 0	-1	1 秒前
 zh-HK	relative 0	1	1 秒後
@@ -20248,6 +20656,10 @@ sr-Latn	date 14	2026-03-22T15:04:05.000Z	mar 2026.
 sr-Latn	date 14	1999-12-31T00:30:09.000Z	dec 1999.
 sr-Latn	date 15	2026-03-22T15:04:05.000Z	mart 2026.
 sr-Latn	date 15	1999-12-31T00:30:09.000Z	decembar 1999.
+sr-Latn	date 16	2026-03-22T15:04:05.000Z	22. mar
+sr-Latn	date 16	1999-12-31T00:30:09.000Z	31. dec
+sr-Latn	date 17	2026-03-22T15:04:05.000Z	22. mart
+sr-Latn	date 17	1999-12-31T00:30:09.000Z	31. decembar
 sr-Latn	relative 0	0	pre 0 sekundi
 sr-Latn	relative 0	-1	pre 1 sekunde
 sr-Latn	relative 0	1	za 1 sekundu
@@ -20445,6 +20857,10 @@ ar-EG	date 14	2026-03-22T15:04:05.000Z	مارس ٢٠٢٦
 ar-EG	date 14	1999-12-31T00:30:09.000Z	ديسمبر ١٩٩٩
 ar-EG	date 15	2026-03-22T15:04:05.000Z	مارس ٢٠٢٦
 ar-EG	date 15	1999-12-31T00:30:09.000Z	ديسمبر ١٩٩٩
+ar-EG	date 16	2026-03-22T15:04:05.000Z	٢٢ مارس
+ar-EG	date 16	1999-12-31T00:30:09.000Z	٣١ ديسمبر
+ar-EG	date 17	2026-03-22T15:04:05.000Z	٢٢ مارس
+ar-EG	date 17	1999-12-31T00:30:09.000Z	٣١ ديسمبر
 ar-EG	relative 0	0	قبل ٠ ثانية
 ar-EG	relative 0	-1	قبل ثانية واحدة
 ar-EG	relative 0	1	خلال ثانية واحدة
@@ -20642,6 +21058,10 @@ ar-SA	date 14	2026-03-22T15:04:05.000Z	مارس ٢٠٢٦
 ar-SA	date 14	1999-12-31T00:30:09.000Z	ديسمبر ١٩٩٩
 ar-SA	date 15	2026-03-22T15:04:05.000Z	مارس ٢٠٢٦
 ar-SA	date 15	1999-12-31T00:30:09.000Z	ديسمبر ١٩٩٩
+ar-SA	date 16	2026-03-22T15:04:05.000Z	٢٢ مارس
+ar-SA	date 16	1999-12-31T00:30:09.000Z	٣١ ديسمبر
+ar-SA	date 17	2026-03-22T15:04:05.000Z	٢٢ مارس
+ar-SA	date 17	1999-12-31T00:30:09.000Z	٣١ ديسمبر
 ar-SA	relative 0	0	قبل ٠ ثانية
 ar-SA	relative 0	-1	قبل ثانية واحدة
 ar-SA	relative 0	1	خلال ثانية واحدة
@@ -20839,6 +21259,10 @@ ar-MA	date 14	2026-03-22T15:04:05.000Z	مارس 2026
 ar-MA	date 14	1999-12-31T00:30:09.000Z	دجنبر 1999
 ar-MA	date 15	2026-03-22T15:04:05.000Z	مارس 2026
 ar-MA	date 15	1999-12-31T00:30:09.000Z	دجنبر 1999
+ar-MA	date 16	2026-03-22T15:04:05.000Z	22 مارس
+ar-MA	date 16	1999-12-31T00:30:09.000Z	31 دجنبر
+ar-MA	date 17	2026-03-22T15:04:05.000Z	22 مارس
+ar-MA	date 17	1999-12-31T00:30:09.000Z	31 دجنبر
 ar-MA	relative 0	0	قبل 0 ثانية
 ar-MA	relative 0	-1	قبل ثانية واحدة
 ar-MA	relative 0	1	خلال ثانية واحدة
@@ -21036,6 +21460,10 @@ ms-SG	date 14	2026-03-22T15:04:05.000Z	Mac 2026
 ms-SG	date 14	1999-12-31T00:30:09.000Z	Dis 1999
 ms-SG	date 15	2026-03-22T15:04:05.000Z	Mac 2026
 ms-SG	date 15	1999-12-31T00:30:09.000Z	Disember 1999
+ms-SG	date 16	2026-03-22T15:04:05.000Z	22 Mac
+ms-SG	date 16	1999-12-31T00:30:09.000Z	31 Dis
+ms-SG	date 17	2026-03-22T15:04:05.000Z	22 Mac
+ms-SG	date 17	1999-12-31T00:30:09.000Z	31 Disember
 ms-SG	relative 0	0	0 saat lalu
 ms-SG	relative 0	-1	1 saat lalu
 ms-SG	relative 0	1	dalam 1 saat
@@ -21233,6 +21661,10 @@ sv-FI	date 14	2026-03-22T15:04:05.000Z	mars 2026
 sv-FI	date 14	1999-12-31T00:30:09.000Z	dec. 1999
 sv-FI	date 15	2026-03-22T15:04:05.000Z	mars 2026
 sv-FI	date 15	1999-12-31T00:30:09.000Z	december 1999
+sv-FI	date 16	2026-03-22T15:04:05.000Z	22 mars
+sv-FI	date 16	1999-12-31T00:30:09.000Z	31 dec.
+sv-FI	date 17	2026-03-22T15:04:05.000Z	22 mars
+sv-FI	date 17	1999-12-31T00:30:09.000Z	31 december
 sv-FI	relative 0	0	för 0 sekunder sedan
 sv-FI	relative 0	-1	för 1 sekund sedan
 sv-FI	relative 0	1	om 1 sekund
