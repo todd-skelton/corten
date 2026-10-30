@@ -939,6 +939,9 @@ Corten is pre-1.0, so any minor version may change the API.
     A page without one checks one empty set per bubbling event it listens for.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
+130. A feed's `snapshot` handler gets the feed's generation as a third argument,
+    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
+    reset feed's `seq` from its own (`docs/guide/live-data.md`).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1895,6 +1898,10 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
     `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
     ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
+70. A `data-patch` form's `SubmitKey` is renewed once the whole answer has arrived, not when its
+    headers do: an answer whose body was cut off on the way dispatches `corten:error` with status
+    0 and keeps the key, so the retry is the same submission and a committed write does not apply
+    twice.
 
 ### Documentation
 

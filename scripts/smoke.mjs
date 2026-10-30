@@ -458,6 +458,36 @@ async function run(browser) {
   );
   await page.evaluate(() => document.querySelector("#keyed")?.remove());
 
+  // So is one whose answer's body is cut off on the way: its headers came, but the write it answers
+  // may be the one a retry must not repeat. A server of the smoke's own sends the headers and part
+  // of the body, then drops the connection (a route cannot stream a body to fail midway).
+  const cutServer = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "corten-patch": "1", "content-length": "500" });
+      res.write('<p id="watch-message">', () => res.socket?.destroy());
+    });
+  });
+  await new Promise((resolve) => cutServer.listen(0, "127.0.0.1", () => resolve(undefined)));
+  const cutPort = /** @type {import("node:net").AddressInfo} */ (cutServer.address()).port;
+  await page.route("**/watch-cut", (route) => route.continue({ url: `http://127.0.0.1:${cutPort}/watch-cut` }));
+  await page.evaluate((zero) =>
+    document.querySelector("main")?.insertAdjacentHTML(
+      "beforeend",
+      `<form id="cut" method="post" action="/watch-cut" data-patch><input type="hidden" name="submit" data-submit value="${zero}"><button>Watch</button></form>`,
+    ), zero);
+  const cutLogged = errors.length;
+  const cutFailed = page.evaluate(() => new Promise((resolve) => document.addEventListener("corten:error", (e) => resolve(/** @type {CustomEvent} */ (e).detail.status), { once: true })));
+  await page.click("#cut button");
+  const cutStatus = await cutFailed;
+  const cutKey = await page.inputValue("#cut [name=submit]");
+  check("a submit key is kept when the answer's body is cut off", cutStatus === 0 && cutKey === zero, `status ${cutStatus}, key ${cutKey}`);
+  await page.unroute("**/watch-cut");
+  await page.evaluate(() => document.querySelector("#cut")?.remove());
+  cutServer.close();
+  // The browser logs the answer it could not read.
+  errors.splice(cutLogged, errors.length, ...errors.slice(cutLogged).filter((e) => !/Failed to load resource|ERR_|NetworkError|network connection was lost/i.test(e)));
+
   // A submit button's formaction and formmethod win over the form's, as in a plain post.
   await page.evaluate(() =>
     document.querySelector("main")?.insertAdjacentHTML(

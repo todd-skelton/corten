@@ -154,6 +154,14 @@ export function watch(feed, signal) {
 
 A plain `string` is not a `FeedUrl`, so a script cannot follow a feed whose rows it guessed.
 
+`snapshot` also gets the write's `seq` and the feed's generation, `epoch` (`Feed::generation`).
+A script that uses the feed's `seq` as a version (the deck builder sends it with a save, so a save
+built on an older deck is refused) compares the pair: `seq` only counts writes within one
+generation, and after a restart (a `Feed::new` feed) or a `reset` to another log the new `seq`
+may be lower, equal or higher than one the page holds without being the same deck. Render the
+generation next to the version, and treat a snapshot from another generation as news whatever its
+`seq`.
+
 Feed guarantees: every `write` is one numbered patch carrying the final value of each row it
 touched, encoded once and sent as the same bytes to every subscriber. A snapshot is serialized
 once per change too: its body is kept (in memory, the size of the JSON) until the next write,
