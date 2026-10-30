@@ -490,7 +490,9 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             if let Some((name, ty)) = tag_type(&block, "@typedef") {
                 match ty.strip_prefix("import(\"corten/events\").") {
                     Some(class) => events.push((name, class.trim().to_string())),
-                    None if generated_name(&ty).is_some() || literal_union(&ty) => aliases.push((name, ty)),
+                    // A name for another type (a generated declaration, a set of names, or another
+                    // typedef): parameters typed by it are typed by what it names.
+                    None if generated_name(&ty).is_some() || names_union(&ty) || alias_name(&ty) => aliases.push((name, ty)),
                     None => typedefs.push(Typedef {
                         name,
                         ty,
@@ -595,14 +597,27 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
     // has (an element, an event, a signal) or a catalog message; one of plain values stays a
     // JSON value.
     let event_of = |ty: &str| events.iter().find(|(local, _)| local == ty).map(|(_, class)| class.clone());
-    let alias_of = |ty: &str| aliases.iter().find(|(local, _)| local == ty).map(|(_, aliased)| aliased.clone());
-    let plain_type = |ty: &str| match param_type(ty) {
-        Param::Any => match (event_of(ty.trim()), alias_of(ty.trim())) {
-            (Some(class), _) => Param::Event(class),
-            (None, Some(aliased)) => param_type(&aliased),
-            (None, None) => Param::Any,
-        },
-        other => other,
+    // What a type names once every typedef of a typedef is followed (at most one step per alias,
+    // so a cycle ends).
+    let resolve = |ty: &str| {
+        let mut ty = ty.trim().to_string();
+        for _ in 0..=aliases.len() {
+            match aliases.iter().find(|(local, _)| *local == ty) {
+                Some((_, aliased)) => ty = aliased.trim().to_string(),
+                None => break,
+            }
+        }
+        ty
+    };
+    let plain_type = |ty: &str| {
+        let ty = resolve(ty);
+        match param_type(&ty) {
+            Param::Any => event_of(&ty).map_or(Param::Any, Param::Event),
+            other => other,
+        }
+    };
+    let union_error = |what: &str, ty: &str| {
+        format!("{what}: a value that is one of several names ({ty}) is a Rust enum the markup passes: derive ToJson and JsonSchema on it, add it with Types::add, and type it with its generated declaration, import(\"../types/app\").Name")
     };
     let mut groups = Vec::new();
     for Typedef { name, ty, mut props, doc, line } in typedefs {
@@ -610,6 +625,9 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             props = fields;
         } else if !matches!(ty.as_str(), "object" | "Object") {
             continue;
+        }
+        if let Some((field, ty)) = props.iter().find(|(_, t)| names_union(&resolve(t))) {
+            return Err((line, union_error(&format!("{name}: {field}"), ty)));
         }
         let fields: Vec<(String, Param)> = props.iter().map(|(n, t)| (n.clone(), plain_type(t))).collect();
         if let Some((_, Param::Unreadable(why))) = fields.iter().find(|(_, p)| matches!(p, Param::Unreadable(_))) {
@@ -635,13 +653,11 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             // A name from a fixed set, passed by the markup, is a Rust enum whose declaration
             // `corten::types` generates: the call is then checked, and a renamed variant fails to
             // build. A string literal union would take any value.
-            if literal_union(&alias_of(&ty).unwrap_or_else(|| ty.clone())) {
-                return Err((
-                    line,
-                    format!("{name}: {param}: a parameter that is one of several names ({ty}) is a Rust enum the markup passes: derive ToJson and JsonSchema on it, add it with Types::add, and type the parameter with its generated declaration, @param {{import(\"../types/app\").Name}} {param}"),
-                ));
+            let named = resolve(&ty);
+            if names_union(&named) {
+                return Err((line, union_error(&format!("{name}: {param}"), &ty)));
             }
-            let resolved = if groups.iter().any(|g| g.name == ty) { Param::Group(ty) } else { plain_type(&ty) };
+            let resolved = if groups.iter().any(|g| g.name == named) { Param::Group(named) } else { plain_type(&ty) };
             if let Param::Unreadable(why) = resolved {
                 return Err((line, format!("{name}: {param}: {why}")));
             }
@@ -682,17 +698,64 @@ fn generated_name(ty: &str) -> Option<String> {
     let name = name.trim();
     let plain = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-    (path.ends_with("types/app") && plain).then(|| name.to_string())
+    (generated_path(path) && plain).then(|| name.to_string())
 }
 
-/// True for a union of string literals, `"name" | "set"` (or one literal).
-fn literal_union(ty: &str) -> bool {
-    let ty = ty.trim().trim_start_matches('(').trim_end_matches(')');
-    !ty.is_empty()
-        && ty.split('|').map(str::trim).all(|part| {
-            part.len() >= 2
-                && ((part.starts_with('"') && part.ends_with('"')) || (part.starts_with('\'') && part.ends_with('\'')))
-        })
+/// The path of the declarations `corten::types` writes: `types/app` as whole segments.
+fn generated_path(path: &str) -> bool {
+    path == "types/app" || path.ends_with("/types/app")
+}
+
+/// True for a type that names a generated declaration inside another (`Tab[]`, `Tab | null`, an
+/// optional `Tab=`, `Page<Tab>`): the call could not be checked against it, so it is refused
+/// rather than taking any value.
+fn mentions_generated(ty: &str) -> bool {
+    ty.match_indices("import(").any(|(at, _)| {
+        let rest = &ty[at + "import(".len()..];
+        let path = rest.split(')').next().unwrap_or("").trim().trim_matches(['"', '\'']);
+        let path = path.strip_suffix(".js").or_else(|| path.strip_suffix(".d.ts")).unwrap_or(path);
+        generated_path(path)
+    })
+}
+
+/// A plain name another typedef gives (`@typedef {Tab} Shown`), not `object`, which starts one.
+fn alias_name(ty: &str) -> bool {
+    let ty = ty.trim();
+    !matches!(ty, "object" | "Object")
+        && ty.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+        && ty.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+/// True for a set of names, `"name" | "set"` (or one), also with `null` or `undefined` among
+/// them or optional (`=`). A `|` inside a literal is part of it.
+fn names_union(ty: &str) -> bool {
+    let ty = ty.trim().trim_end_matches('=').trim();
+    let ty = ty.trim_start_matches('(').trim_end_matches(')');
+    let mut parts = Vec::new();
+    let (mut start, mut quote) = (0, None);
+    for (i, c) in ty.char_indices() {
+        match (c, quote) {
+            ('"' | '\'', None) => quote = Some(c),
+            (c, Some(q)) if c == q => quote = None,
+            ('|', None) => {
+                parts.push(&ty[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&ty[start..]);
+    let mut names = 0;
+    for part in parts.iter().map(|p| p.trim()) {
+        let literal = part.len() >= 2
+            && ((part.starts_with('"') && part.ends_with('"')) || (part.starts_with('\'') && part.ends_with('\'')));
+        match part {
+            "null" | "undefined" => {}
+            _ if literal => names += 1,
+            _ => return false,
+        }
+    }
+    names > 0
 }
 
 /// `{ rows: HTMLTableRowElement[], all: HTMLInputElement }` as (name, type) pairs.
@@ -813,6 +876,11 @@ fn param_type(ty: &str) -> Param {
     // of that name.
     if let Some(name) = generated_name(ty) {
         return Param::Generated(name);
+    }
+    if mentions_generated(ty) {
+        return Param::Unreadable(format!(
+            "{ty}: a generated declaration types a value alone, import(\"../types/app\").Name, so the call can be checked against its Rust type; for a list, an optional value or a generic, declare a Rust type for the whole value (derive ToJson and JsonSchema, add it with Types::add) and use its declaration"
+        ));
     }
     // `Message<"count">` (corten): a message of the app's catalog with exactly these arguments.
     if let Some(inner) = ty.strip_prefix("Message<").and_then(|t| t.strip_suffix('>')) {
@@ -1041,9 +1109,29 @@ function helper() {}
             ("/** @param {\"name\" | \"price\"} by */\nexport function f(by) {}", "a union"),
             ("/** @param {'grid'} by */\nexport function f(by) {}", "one literal"),
             ("/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {Mode} by */\nexport function f(by) {}", "a typedef of one"),
+            ("/** @param {\"a\" | \"b\" | null} by */\nexport function f(by) {}", "with null"),
+            ("/** @param {\"a\" | \"b\"=} by */\nexport function f(by) {}", "optional"),
+            ("/** @param {\"a|b\"} by */\nexport function f(by) {}", "a literal with a bar"),
+            ("/** @typedef {\"a\" | \"b\"} Mode */\n/** @typedef {Mode} Shown */\n/** @param {Shown} by */\nexport function f(by) {}", "a typedef of a typedef"),
+            ("/** @typedef {{ el: HTMLElement, mode: \"a\" | \"b\" }} Sel */\n/** @param {Sel} s */\nexport function f(s) {}", "a group's field"),
         ] {
             let err = parse(source).unwrap_err();
             assert!(err.1.contains("is a Rust enum the markup passes"), "{what}: {}", err.1);
+        }
+        let (deep, _) = parse(
+            "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {Tab} Shown */\n/** @param {Shown} a @param {import(\"./mytypes/app\").Tab} b */\nexport function f(a, b) {}",
+        )
+        .unwrap();
+        assert_eq!(deep[0].params[0].1, Param::Generated("Tab".into()), "through a typedef of a typedef");
+        assert_eq!(deep[0].params[1].1, Param::Any, "types/app as whole segments only");
+        for ty in [
+            "import(\"../types/app\").Tab | null",
+            "import(\"../types/app\").Tab[]",
+            "import(\"../types/app\").Tab=",
+            "import(\"../types/app\").Page<Row>",
+        ] {
+            let err = parse(&format!("/** @param {{{ty}}} a */\nexport function f(a) {{}}")).unwrap_err();
+            assert!(err.1.contains("types a value alone"), "{ty}: {}", err.1);
         }
         let (fine, _) = parse("/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {string} s */\nexport function f(s) {}").unwrap();
         assert_eq!(fine[0].params[0].1, Param::Checked("ts::String".into()), "a typedef no handler takes is the script's");

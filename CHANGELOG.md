@@ -1478,6 +1478,12 @@ Corten is pre-1.0, so any minor version may change the API.
     fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
     or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
     ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
+81. Breaking: a script's set of names written as string literals (`@param {"name" | "price"} by`,
+    also with `null`, optional, through a `@typedef`, or as a group's field) no longer compiles,
+    and neither does a generated declaration inside another type (`import("../types/app").Tab[]`,
+    `.. | null`): each took any value at the call. Make the set a Rust enum with a generated
+    declaration and type the value with it, alone
+    ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
