@@ -1895,10 +1895,10 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
     `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
     ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
-70. A view written as a prop's whole value inside another view (`action={&html! { .. }}`) borrows
-    what it uses instead of owning it, so the rest of the markup can read the same local; it was a
-    `move` closure and a second read was E0382. A view that is one component still owns its props'
-    views, so it can be returned
+70. A view lent to a prop inside another view (`action={&html! { .. }}`) borrows what it uses
+    instead of owning it, so the rest of the markup can read the same local; it was a `move`
+    closure and a second read was E0382. A view given by value, and the view at the top of an
+    `html!`, still own what they use
     ([#414 A view in a prop (action={&html! {..}}) takes ownership of the locals it uses, so a local also read elsewhere in the page fails with E0382](https://github.com/todd-skelton/corten/issues/414)).
 
 ### Documentation

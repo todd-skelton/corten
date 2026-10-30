@@ -145,12 +145,17 @@ With the `let` outside the `html!`, the view would borrow a local of a function 
 returned (E0515). `let`s and a layout component are a document, like the layout alone, and `let`s and a patch
 component are a patch.
 
-A view written as a prop's whole value (`action={&html! { .. }}`, `view={html! { .. }}`) is built
-and rendered inside the view around it, so it borrows what it uses instead of owning it: a step
-bar's action and the panel below it read the same `name`, without `let name = name.as_ref();`
-first. The props of a view that is one component are evaluated where the view is written, so a
-view there still owns what it uses and can be returned with it. A view inside a closure of its
-own (`.map(|row| html! { .. })`) also owns what it uses.
+A view lent to a prop inside another view (`action={&html! { .. }}`) is built and rendered inside
+the view around it, so it borrows what it uses instead of owning it: a step bar's action and the
+panel below it read the same `name`, without `let name = name.as_ref();` first. A view given by
+value (`view={html! { .. }}`) still owns what it uses, since the component may keep it, and so
+does one inside a closure of its own (`.map(|row| html! { .. })`) and one lent to a prop of the
+component a whole `html!` is, whose props are evaluated where the `html!` is written.
+
+The view a handler gives `req.page(..)` owns what it uses too, like any view at the top of an
+`html!`, so it can be returned from a function. A local the markup reads that something made
+before the markup also borrows is passed to it as a reference: `let found = found.as_ref();`
+before the `html!` (E0505 otherwise).
 
 ## Typed links and messages
 

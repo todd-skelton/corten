@@ -168,29 +168,37 @@ fn Slot<C: Render>(view: C) -> impl Render {
     html! { <b>{view}</b> }
 }
 
-/// A view written as a prop borrows what it uses, so the rest of the page reads the same local
-/// (#414), as a view in a view in a prop does, and one given by value (`view={html! { .. }}`).
+/// A view lent to a prop borrows what it uses, so the rest of the page reads the same local
+/// (#414), as a view lent inside it does.
 #[test]
-fn a_view_in_a_prop_borrows_what_it_uses() {
+fn a_view_lent_to_a_prop_borrows_what_it_uses() {
     let name = Some(String::from("Ship"));
     let view = html! {
         <Panel title="Steps" owned={String::new()}>
             <Bar action={&html! { if let Some(n) = &name { <span>{n}</span> } }} />
-            <Slot view={html! { <Bar action={&html! { {name.as_deref().unwrap_or("")} }} /> {&name} }} />
+            <Bar
+                action={&corten::html! { <Bar action={&html! { {name.as_deref().unwrap_or("")} }} /> {name.as_deref().unwrap_or("")} }}
+            />
             if let Some(n) = &name { <p>{n}</p> }
         </Panel>
     };
     assert_eq!(
         view.to_html(),
-        r#"<section data-owned=""><h2>Steps</h2><div><span>Ship</span></div><b><div>Ship</div>Ship</b><p>Ship</p></section>"#
+        r#"<section data-owned=""><h2>Steps</h2><div><span>Ship</span></div><div><div>Ship</div>Ship</div><p>Ship</p></section>"#
     );
     // Within an element too, at the top of a view that is not one component.
     let name = String::from("Ship");
-    let view = html! { <main><Bar action={&html! { {&name} }} />{&name}</main> };
+    let view = html! {
+        <main>
+            <Bar action={&html! { {&name} }} />
+            {&name}
+        </main>
+    };
     assert_eq!(view.to_html(), "<main><div>Ship</div>Ship</main>");
 }
 
-/// A view returned from a function still owns what it uses, its props' views included.
+/// A view returned from a function still owns what it uses, and so does a view given to a prop by
+/// value, which the component may keep.
 fn shipped(name: String) -> impl Render {
     html! { <Slot view={html! { <i>{&name}</i> }} /> }
 }

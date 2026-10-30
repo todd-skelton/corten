@@ -213,8 +213,9 @@ find their cells without reading attributes:
 // on:connect={js::live(qty, url::Levels, signal)}, live(cells, feed, signal) with cells.get(level.id)
 ```
 
-**Values the markup owns.** `html!` owns what it captures, so a value borrowed from one of them
-is computed inside the markup, with `let`:
+**Values the markup owns.** `html!` owns what it captures (a view lent to a prop,
+`action={&html! { .. }}`, borrows from the view around it instead), so a value borrowed from one
+of them is computed inside the markup, with `let`:
 
 ```rust,ignore
 let saved = cents.map(money);

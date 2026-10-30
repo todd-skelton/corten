@@ -142,11 +142,11 @@ fn inside_marker(input: TokenStream) -> (bool, TokenStream) {
     (false, input)
 }
 
-/// A prop whose whole value is a view (`action={&html! { .. }}`, `html! { .. }`, or the macro by
-/// its path), marked to borrow what it uses: it is built and rendered inside the enclosing view's
-/// closure, which already owns or borrows those locals, so the same local can be read again in the
-/// rest of the markup. Any other value is left as written: a view inside a closure of its own
-/// (`.map(|row| html! { .. })`) may outlive what it would borrow.
+/// A prop whose whole value is a view lent to it (`action={&html! { .. }}`, or `corten::html!`),
+/// marked to borrow what it uses: it is built and rendered inside the enclosing view's closure,
+/// which already owns or borrows those locals, so the same local can be read again in the rest of
+/// the markup. Any other value is left as written: a view given by value may be kept, and one
+/// inside a closure of its own (`.map(|row| html! { .. })`) may outlive what it would borrow.
 fn borrowing(value: &TokenStream) -> TokenStream {
     let tokens: Vec<TokenTree> = value.clone().into_iter().collect();
     // A `{..}` value arrives in parentheses.
@@ -160,14 +160,25 @@ fn borrowing(value: &TokenStream) -> TokenStream {
     let [path @ .., TokenTree::Ident(name), TokenTree::Punct(bang), TokenTree::Group(body)] = tokens.as_slice() else {
         return value.clone();
     };
-    // `&`s in front, then a path: `a & html! {..}` is not a reference to a view.
+    // Lent (`&html!`): a reference to the view cannot outlive the render, so borrowing loses
+    // nothing, where a view given by value may be kept (a prop that needs `'static`). And this
+    // macro, by its name or its path in `corten`, not another crate's `html!`.
     let refs = path.iter().take_while(|t| is_punct(Some(t), '&')).count();
-    let path_only = path[refs..].iter().all(|t| match t {
-        TokenTree::Ident(_) => true,
-        TokenTree::Punct(p) => p.as_char() == ':',
+    let segments: Vec<String> = path[refs..].iter().filter(|t| !is_punct(Some(t), ':')).map(ToString::to_string).collect();
+    let colons = path[refs..].iter().filter(|t| is_punct(Some(t), ':')).count();
+    let ours = match segments.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        [] => colons == 0,
+        ["corten"] | ["corten", "view"] => colons == 2 * segments.len() || colons == 2 * segments.len() + 2,
         _ => false,
-    });
-    if name.to_string() != "html" || bang.as_char() != '!' || !path_only || body.delimiter() == Delimiter::None {
+    };
+    let idents_only = path[refs..].iter().all(|t| matches!(t, TokenTree::Ident(_) | TokenTree::Punct(_)));
+    if refs == 0
+        || !ours
+        || !idents_only
+        || name.to_string() != "html"
+        || bang.as_char() != '!'
+        || body.delimiter() == Delimiter::None
+    {
         return value.clone();
     }
     let mut inner = q("@ __in ;", &[]);
