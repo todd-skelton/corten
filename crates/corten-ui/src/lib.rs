@@ -43,9 +43,9 @@
 //! that opens each one its anchor; the design system places it with CSS anchor positioning,
 //! which the browser keeps in place on scroll and resize without script:
 //! `inset: auto; position-area: block-end span-inline-end; position-try-fallbacks: flip-block;
-//! min-width: anchor-size(width)`. Two rules the design system keeps:
-//! the app's base CSS has `[hidden] { display: none !important }` (parts are hidden with the
-//! `hidden` attribute, which a role's `display` would otherwise override), and a popup's
+//! min-width: anchor-size(width)`. Parts are hidden with the `hidden` attribute, and Corten's
+//! component stylesheet keeps them hidden over a role's `display` (it starts with
+//! `[hidden] { display: none !important }`). One rule the design system keeps: a popup's
 //! `display` is set under `:popover-open` only, or it shows while closed.
 //!
 //! **Text.** Every label comes from the app, in the page's language; there is no English default

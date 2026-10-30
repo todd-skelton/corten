@@ -162,6 +162,12 @@ impl crate::view::AttrValue for AssetUrl<'_> {
 /// The file the components' stylesheets are joined into.
 pub const STYLESHEET: &str = "components.css";
 
+/// The rule `components.css` starts with: an element with `hidden` is not drawn, whatever
+/// `display` a component's rule gives it (a class's `display: grid` otherwise wins over the
+/// browser's own `[hidden]` rule, and parts are shown and hidden with the attribute).
+/// `hidden="until-found"` keeps the browser's behavior, so find-in-page still reveals it.
+pub(crate) const HIDDEN_RULE: &str = "[hidden]:where(:not([hidden=until-found])){display:none!important}\n";
+
 /// The module of the app's typed events, `corten/events`.
 pub const EVENTS: &str = "events.js";
 
@@ -416,11 +422,14 @@ impl Assets {
         let styles: Vec<(&str, crate::Style)> = seen.iter().filter_map(|(c, _)| Some((c.name, c.style?))).collect();
         undeclared_properties(&sheets, &sources, &styles, sections)?;
         let css = sheets.iter().position(|(s, _, _)| s.is_empty()).map(|i| sheets.remove(i).1).unwrap_or_default();
+        // Every page that draws a component's rule has the hidden rule: in `components.css`, or,
+        // when only areas have stylesheets, in each of theirs.
+        let hidden_in_sections = if css.is_empty() { HIDDEN_RULE } else { "" };
         if !css.is_empty() {
             if sources.iter().any(|(u, _)| u == STYLESHEET) {
                 return Err(clash(format!("the static directory has a {STYLESHEET}, the name of the components' stylesheet")));
             }
-            sources.push((STYLESHEET.to_string(), css.into_bytes().into()));
+            sources.push((STYLESHEET.to_string(), format!("{HIDDEN_RULE}{css}").into_bytes().into()));
         }
         // In the order the sections are listed, each section's own file before the files it shares.
         sheets.sort_by_key(|(at, _, _)| (at[0], at.len()));
@@ -431,7 +440,7 @@ impl Assets {
             if sources.iter().any(|(u, _)| *u == file) {
                 return Err(clash(format!("the static directory has a {file}, the name of a section's stylesheet")));
             }
-            sources.push((file.clone(), css.into_bytes().into()));
+            sources.push((file.clone(), format!("{hidden_in_sections}{css}").into_bytes().into()));
             section_files.push(Section { prefixes, href: file, components });
         }
         sources.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1073,7 +1082,11 @@ mod tests {
         let res = app.oneshot(axum::http::Request::get(url).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(res.headers()["content-type"], "text/css; charset=utf-8");
         let body = http_body_util::BodyExt::collect(res.into_body()).await.unwrap().to_bytes();
-        assert_eq!(&body[..], b":root{--x:1}\n.card__a{color:red}", "listed twice, joined once");
+        assert_eq!(
+            &body[..],
+            format!("{HIDDEN_RULE}:root{{--x:1}}\n.card__a{{color:red}}").as_bytes(),
+            "listed twice, joined once"
+        );
         let other = Assets::build(None, &[tokens, styled("Card", "card", ".card__a{color:blue}")], "/assets").unwrap();
         assert_ne!(
             other.version(),
@@ -1144,8 +1157,21 @@ mod tests {
                 http_body_util::BodyExt::collect(res.into_body()).await.unwrap().to_bytes()
             }
         };
-        assert_eq!(&body(assets.url(STYLESHEET)).await[..], b":root{--x:1}\n.card__a{color:red}", "not the sections' rules");
+        assert_eq!(
+            &body(assets.url(STYLESHEET)).await[..],
+            format!("{HIDDEN_RULE}:root{{--x:1}}\n.card__a{{color:red}}").as_bytes(),
+            "not the sections' rules"
+        );
         assert_eq!(&body(assets.url("sections/admin.css")).await[..], b".chart__a{}", "listed twice, joined once");
+        let only_areas = Arc::new(Assets::build_with(Vec::new(), &[SCRIPT], &[("/admin", &[chart])], "/assets").unwrap());
+        assert!(only_areas.stylesheet().is_none(), "no components.css without a stylesheet in it");
+        let res = only_areas
+            .routes()
+            .oneshot(Request::get(only_areas.url("sections/admin.css")).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let only = http_body_util::BodyExt::collect(res.into_body()).await.unwrap().to_bytes();
+        assert_eq!(&only[..], format!("{HIDDEN_RULE}.chart__a{{}}").as_bytes(), "an area's file has the hidden rule then");
         assert_ne!(
             assets.version(),
             Assets::build_with(Vec::new(), &[tokens, card], &[("/admin", &[table])], "/assets").unwrap().version(),
@@ -1194,7 +1220,11 @@ mod tests {
             .routes::<()>()
             .oneshot(Request::get(assets.url("sections/search+categories.css")).body(Body::empty()).unwrap());
         let body = http_body_util::BodyExt::collect(res.await.unwrap().into_body()).await.unwrap().to_bytes();
-        assert_eq!(&body[..], b".search_page__a{}\n.facet__a{}", "each once, in the order listed");
+        assert_eq!(
+            &body[..],
+            format!("{HIDDEN_RULE}.search_page__a{{}}\n.facet__a{{}}").as_bytes(),
+            "each once, in the order listed, after the hidden rule (no components.css has it)"
+        );
     }
 
     #[test]

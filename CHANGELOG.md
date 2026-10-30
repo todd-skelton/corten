@@ -1914,6 +1914,13 @@ Corten is pre-1.0, so any minor version may change the API.
     of the same form aborted no longer renews the key the newer one was sent with. The minified
     runtime grows by 97 bytes (25,413 to 25,510), 29 gzipped (9,249 to 9,278) and 33 with brotli
     (8,348 to 8,381).
+71. An element with the `hidden` attribute stays hidden when a component's class gives it a
+    `display`: `components.css` (or, when only areas have stylesheets, each area's file) starts with
+    `[hidden]:where(:not([hidden=until-found])){display:none!important}`, so neither an app nor a
+    design system for corten-ui has to know to add it. The rule adds 67 bytes to the stylesheet,
+    before compression ([#423 The [hidden] { display: none !important } rule corten-ui requires is
+    not in the template and nothing checks it, so a component's display silently shows hidden
+    parts](https://github.com/todd-skelton/corten/issues/423)).
 
 ### Documentation
 
