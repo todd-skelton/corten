@@ -1855,6 +1855,14 @@ Corten is pre-1.0, so any minor version may change the API.
     numbers, money, dates and relative times) failed to compile under `#![deny(warnings)]`: its `by_key` had a `match` whose only arm
     returned, so the line after it was unreachable. A doctest compiles an empty catalog with
     warnings denied.
+69. Two components with one name in different modules (each feature's `SettingsForm`)
+    with a stylesheet or a script fail to build, at the second one, instead of the app panicking
+    when it starts ("both style .settings-form__*", "two scripts named"), and so do two `script!`
+    modules with one name: like an id, each class prefix and script name is an exported symbol,
+    and the symbols now say what clashed
+    (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
+    `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
+    ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
 
 ### Documentation
 

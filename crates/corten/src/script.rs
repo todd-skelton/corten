@@ -145,6 +145,30 @@
 //! # }
 //! ```
 //!
+//! A script is served by its name (`scripts/cart_line.js`), so two components with one name in
+//! different modules fail to build, at link, rather than the app when it starts; the error names
+//! the symbol `corten__two_scripts_are__cart_line`:
+//!
+//! ```compile_fail
+//! mod orders {
+//!     use corten::prelude::*;
+//!     #[component(js)]
+//!     pub fn CartLine() -> impl Render {
+//!         html! { <li></li> }
+//!     }
+//! }
+//! mod returns {
+//!     use corten::prelude::*;
+//!     #[component(js)]
+//!     pub fn CartLine() -> impl Render {
+//!         html! { <li></li> }
+//!     }
+//! }
+//! fn main() {
+//!     let _ = (orders::CartLine, returns::CartLine);
+//! }
+//! ```
+//!
 //! A feed's URL carries the feed's rows to the script. The route names them (`rows = Level`),
 //! its handler answers with them (`FeedResponse<Level>`), and the handler parameter that takes the
 //! route is a `FeedUrl<Level>` (from `corten`; `Level` is the Rust type of that name in the

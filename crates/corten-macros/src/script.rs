@@ -884,13 +884,15 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             ),
         );
     }
-    let items = q(
+    let mut items = q(
         "#[doc = \" The module, for `App::components`.\"] pub const COMPONENT: ::corten::Component = ::corten::Component {
             name: __A0, script: ::core::option::Option::Some(__A1), style: ::core::option::Option::None, event: ::core::option::Option::None,
             view: ::core::option::Option::None,
         };",
         &[literal(&module.name), module.literal("super::")],
     );
+    // Served at `scripts/{name}.js`, as a component's script is: two with one name fail to build.
+    items.extend(crate::id::one_per_program("two_scripts_are", &module.name, true));
     Ok(module.module(vis, name.clone(), q("::core::option::Option::Some(&COMPONENT)", &[]), None, items))
 }
 
