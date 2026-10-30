@@ -907,7 +907,17 @@ Corten is pre-1.0, so any minor version may change the API.
     runtime does not fetch it on hover and again on click
     ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
     No existing answer changes; naming a file costs one header on that answer.
-127. `on:document:keydown={js::shortcut(event, ..)}`: a component's handler for an event anywhere
+127. `Signal::finish(|signal| async move { .. })`: work a handler must finish (claim, call,
+    release) runs to its end even if the handler is dropped, with a signal of its own that aborts
+    when the request's does or shutdown begins, so a slow step stops early and the release after
+    it still runs; `serve` waits for it at shutdown within `App::shutdown_grace`. The cancellation
+    guide no longer says awaited work needs no thought: a drop cannot run async cleanup
+    ([#372 A handler dropped when its client leaves cannot release what it holds, and the guide says work it awaits needs no signal](https://github.com/todd-skelton/corten/issues/372)).
+    A request that does not call it runs no new code: the app's `Shared` gains one pointer, last,
+    read only by `finish`. A plain GET through the router took 16,673 to 17,022 instructions
+    before and 16,864 to 16,866 after (callgrind, release build, 5 runs each); the before runs
+    vary more than the two differ.
+128. `on:document:keydown={js::shortcut(event, ..)}`: a component's handler for an event anywhere
     on the page while the component is on it, so a screen's shortcuts work wherever focus is
     (the page's background, a button) without `document.addEventListener`. It runs after the
     handlers on the event's path, each as its own listener on the document (one stopping the
@@ -2043,6 +2053,18 @@ Corten is pre-1.0, so any minor version may change the API.
     statement, ui-gallery's activity card and listings-feed's move status, which were the only
     fixed text those one-locale apps put in their catalogs, are literals now
     ([#218 Examples write user-facing text two ways: watchlist has a catalog but writes most text as literals](https://github.com/todd-skelton/corten/issues/218)).
+31. Every prop is written where a component is used, an empty one too (`head=""`). The views guide
+    says why: stable Rust cannot leave a field to a default, and filling a left-out `impl Render`
+    prop would fix its type. It also shows how several answers share one component's props, with
+    a function for the common value and `..` for the rest. A `compile_fail` doctest on
+    `#[component]` covers a left-out prop. ui-gallery's five answers build their `Gallery` that
+    way, where each wrote all six props
+    ([#210 A component prop cannot be left out, so pages pass head="" and other empty values](https://github.com/todd-skelton/corten/issues/210)).
+32. The views guide says how a layout gets who is signed in: as a prop from the `Caller` its
+    handler took, not by reading the request. Rendering is synchronous and `Identify` is async, so
+    the alternative needs a second async step before full-page renders, with its own rules for a
+    failed lookup, caching and the page key
+    ([#209 Every page handler extracts the viewer only to pass it to the layout](https://github.com/todd-skelton/corten/issues/209)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
