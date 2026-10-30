@@ -1902,7 +1902,9 @@ Corten is pre-1.0, so any minor version may change the API.
     page, or one the runtime does not draw), not when its headers do: an answer whose body was cut
     off on the way dispatches `corten:error` with status 0 and keeps the key, so the retry is the
     same submission and a committed write does not apply twice. An older submit that a newer one
-    of the same form aborted no longer renews the key the newer one was sent with.
+    of the same form aborted no longer renews the key the newer one was sent with. The minified
+    runtime grows by 97 bytes (25,413 to 25,510), 29 gzipped (9,249 to 9,278) and 33 with brotli
+    (8,348 to 8,381).
 
 ### Documentation
 
