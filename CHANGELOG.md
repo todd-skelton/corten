@@ -1006,7 +1006,33 @@ Corten is pre-1.0, so any minor version may change the API.
     instead when it refuses (a download posted at a stale revision), each `.into()` the answer,
     private like any page and `Public` with a page made for everyone
     ([#415 A handler that answers a file cannot answer a page or a redirect when the file is refused](https://github.com/todd-skelton/corten/issues/415)).
-139. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
+139. `#[route("/{*rest}", any = relay)]`: one handler for every method of a route, those the app
+    never names included (`OPTIONS`, `PROPFIND`), for an app moved onto Corten a slice at a time
+    that relays the rest to its old server, which then answers them instead of Corten's 405. It is
+    the route's only handler (naming another method beside it does not compile). A route with a
+    parameter still holds its handler to taking its `Params`: one relay for several catch-alls is
+    generic over the route (`async fn relay<R: FromUrl>(_: Params<R>, req: Request)`), and the
+    compiler picks the route at each name, so no wrapper per route with a parameter is needed
+    (a route without one has no `Params` and takes a handler without them). A path the app
+    routes itself keeps only the methods it names. Routes without `any` route and cost as
+    before
+    ([#360 A catch-all route's handler must take that route's Params, so one relay cannot serve several routes or every method](https://github.com/todd-skelton/corten/issues/360)).
+140. Plural messages: `"cards_one"` and `"cards_other"` (the suffixes i18next uses) are one
+    message, `t.cards(count)`, which picks the form by the count's CLDR plural category in the
+    locale and writes the count as `t.number` does; `t.js().cards()` picks it in the browser the
+    same way (`format.js`, checked against Intl for every locale). A catalog without a form its
+    language uses (French's `_many`), with one it never uses (English `_zero`), or without
+    `_other` does not compile. Breaking: a key ending in `_zero`, `_one`, `_two`, `_few`,
+    `_many` or `_other` is a plural form, so `t.cards_one(..)` and `t.cards_other(..)` become
+    `t.cards(count)`. Measured: `corten-format` grows from 2,535 to 3,008 bytes (1,260 to 1,475
+    gzipped); a `t.js()` plural sends the locale's plural table with its forms (seller-desk's
+    grid, which sends one to two handlers, is 502 bytes more per page; its whole page 474 bytes
+    raw, 37 gzipped, 15 brotli); seller-desk's `render_cost` under callgrind is 2,026,886,533 instructions
+    on main and 2,029,845,444 here (median of 3, +0.15%), and a plural `ItemCount` 1,648.5 per
+    render against 1,636.5; the examples' `count == 1` choices are gone and card-market's French no longer
+    writes "1 annonces"
+    ([#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393)).
+141. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
     form, its fields posted as `ship_to.street` (`f.ship_to.street`), so a field group is defined
     once and a form can hold two of one type. `#[fields(rows)] #[serde(default)] domains:
     BTreeMap<Domain, DomainLimits>` is one group per row, each field named by the row's key,
@@ -2116,17 +2142,17 @@ Corten is pre-1.0, so any minor version may change the API.
 5. New agent skill in `skills/corten/`: rules, a decision table and recipes for common tasks. The
    `corten new` template's `AGENTS.md` points to it.
 6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
-   from round r6 (2026-10-27, one c-8 droplet, Xeon Platinum 8280, faster than r5's 8168, the tree
-   at `cf8ac0f`); `bench/live` is still r3 (Xeon Platinum 8280). Corten serves 23,416 item pages
-   and 27,625 JSON responses a second from memory at 64 users (r5: 21,735 and 25,200), and 3,615
-   item-API pages against ASP.NET Core's 1,171 (r5: 3,240 and 998). A page costs 95,038 user
-   instructions and the JSON 69,444 (r5: 103,877 and 69,291). The unchanged apps rose by a median
-   of 14-27% on the faster CPU, more than Corten's 8-12%, and Corten's item-API JSON held (3,753;
-   r5 3,787). Nuxt and Django passed the in-memory page test; Next.js and Laravel failed as
-   before. The item page loads 9.6 KB of JavaScript (gzip; r5 7.3 KB).
-   A new table gives what a request costs: pages per CPU-second (Corten 25,124, ASP.NET Core
-   4,285), CPU for 300 pages a second (4.1% against 17%) and pages a second per MiB (1,110 against
-   50).
+   from round r8 (2026-10-30, one c-8 droplet, Xeon Platinum 8168, the tree at `2976f15`); its
+   instruction counts are r7's (2026-10-28, Xeon Platinum 8280, `a9b1163`), since r8's droplet
+   locked up at the counting step; `bench/live` is still r3 (Xeon Platinum 8280). r7's results are kept without a
+   browser pass. Corten serves 15,747 item pages and 24,652 JSON responses a second from memory at
+   64 users (r7: 18,758 and 24,976), and 3,616 item-API pages against ASP.NET Core's 1,065 (r7:
+   3,540 and 1,157). Its page from memory fell 16.1% while the other apps moved by a median of
+   -2.0%, after a 19.9% fall from r6 to r7. A page costs 95,949 user instructions and the JSON
+   69,572 in r7. A page from memory costs 63 µs of CPU (15,890 per CPU-second; ASP.NET Core 4,184),
+   300 pages a second take 4.7% of a core (ASP.NET Core 25%), and each MiB serves 960 pages a
+   second (ASP.NET Core 48). Next.js and Laravel failed as before. The item page loads 10.2 KB of
+   JavaScript (gzip; r7 9.3 KB).
 7. `Form` in the prelude is `corten::Form` (Added 20), and a route's parameters its `Params`. Against
    axum's: a blank field is `None` for an `Option` (axum gave `Some("")`, or an error for a
    number), and a `bool` accepts `on` (a checked checkbox), which axum refused. `serde` (without its derive) is now always a
