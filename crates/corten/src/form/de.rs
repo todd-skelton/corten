@@ -49,8 +49,9 @@ impl de::Error for FormError {
 
     #[cold]
     fn unknown_variant(variant: &str, expected: &'static [&'static str]) -> Self {
-        let words = expected.iter().map(|w| format!("`{w}`")).collect::<Vec<_>>().join(", ");
-        FormError { message: format!("unknown variant `{variant}`, expected one of {words}"), unknown_word: true }
+        // serde's own wording, marked so a query parameter can read the word as missing.
+        let message = <de::value::Error as de::Error>::unknown_variant(variant, expected).to_string();
+        FormError { message, unknown_word: true }
     }
 }
 
@@ -123,6 +124,22 @@ impl<'de> Deserializer<'de> for Absent {
 pub fn prefixed<'b>(pairs: &'b [Pair<'_>], prefix: &'b str) -> impl Iterator<Item = (&'b str, &'b str)> {
     let start = pairs.partition_point(|(k, _)| k.as_ref() < prefix);
     pairs[start..].iter().map_while(move |(k, v)| Some((k.strip_prefix(prefix)?, v.as_ref())))
+}
+
+/// One entry of a `#[route(prefix = "dim.")]` field, its key and its value each read as a form
+/// field's value is. An entry whose key or value is a word the app does not have (a dimension
+/// renamed since the address was written) is left out, as a missing key would be; any other
+/// error names the parameter.
+pub fn entry<K: de::DeserializeOwned, V: de::DeserializeOwned>(
+    prefix: &str,
+    key: &str,
+    value: &str,
+) -> Result<Option<(K, V)>, FormError> {
+    match one(key).and_then(|k| Ok((k, one(value)?))) {
+        Ok(pair) => Ok(Some(pair)),
+        Err(e) if e.unknown_word => Ok(None),
+        Err(e) => Err(FormError::new(format!("{prefix}{key}: {e}"))),
+    }
 }
 
 /// One text read into `T` as a form field's value is.
@@ -661,7 +678,9 @@ impl<'de> SeqAccess<'de> for List<'_, '_> {
 
     fn next_element_seed<T: DeserializeSeed<'de>>(&mut self, seed: T) -> Result<Option<T::Value>, FormError> {
         match self.0.next() {
-            Some(pair) => seed.deserialize(Values(std::slice::from_ref(pair))).map(Some),
+            // A list holding a word the app does not have is refused, not read as missing: the
+            // word is one of several the address chose, not the whole parameter.
+            Some(pair) => seed.deserialize(Values(std::slice::from_ref(pair))).map(Some).map_err(|e| FormError::new(e.message)),
             None => Ok(None),
         }
     }
@@ -705,11 +724,13 @@ mod tests {
         assert_eq!(field::<Option<Sort>>(&pairs, "sort", None).unwrap(), None, "an Option: unset");
         assert_eq!(field::<Sort>(&pairs, "sort", Some(|| Sort::New)).unwrap(), Sort::New, "a default: the default");
         let required = field::<Sort>(&pairs, "sort", None).unwrap_err().to_string();
-        assert!(required.starts_with("sort: unknown variant `due_now`, expected one of `price`, `new`"), "{required}");
+        assert!(required.starts_with("sort: unknown variant `due_now`, expected `price` or `new`"), "{required}");
         assert_eq!(field::<Option<Sort>>(&sorted_pairs("sort=new"), "sort", None).unwrap(), Some(Sort::New));
         // Only a word: a number that does not parse is still refused, and so is a list with one.
         assert!(field::<Option<u32>>(&sorted_pairs("page=two"), "page", None).is_err());
         assert!(field::<Vec<Sort>>(&sorted_pairs("sort=new&sort=old"), "sort", Some(Vec::new)).is_err());
+        assert!(field::<Vec<Sort>>(&sorted_pairs("sort=old"), "sort", Some(Vec::new)).is_err(), "a list with only one");
+        assert!(field::<Option<Vec<Sort>>>(&sorted_pairs("sort=old"), "sort", None).is_err());
         // A form's body is read as sent: an unknown word in a post is refused.
         #[derive(Debug, Deserialize)]
         struct Filter {

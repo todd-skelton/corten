@@ -2153,7 +2153,8 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#383 An if or match inside a for in html! fails with E0382 (use of moved value), and a patch's E0277 does not name the part that is not a patch](https://github.com/todd-skelton/corten/issues/383)).
 79. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
     edited by hand) reads as missing, `None` or the field's `#[serde(default)]`, so `Params` shows
-    the page with its filter, sort or tab at its default where it answered 400 with serde's text. A
+    the page with its filter, sort or tab at its default where it answered 400 with serde's text, and
+    a `#[route(prefix = ..)]` entry holding one is left out of the map. A
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
     and a form's body are still refused. Links write what they did
     ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
