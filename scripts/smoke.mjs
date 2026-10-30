@@ -347,7 +347,7 @@ async function run(browser) {
   check("a page-wide handler does not run once its element has left the page", leaves === "true,true", leaves);
   // A change's text is the move in money since the open, signed (t.js().signed_money(USD), as the
   // server's t.signed_money), then a percent whose sign is its trend's.
-  const changes = await page.$eval('[data-ref="change"]', (cells) => cells.map((c) => [c.textContent ?? "", c.getAttribute("data-trend")]));
+  const changes = await page.$$eval('[data-ref="change"]', (cells) => cells.map((c) => [c.textContent ?? "", c.getAttribute("data-trend")]));
   check(
     "today's move in money is signed: a plus sign up, a minus down, none when flat",
     changes.length > 0 &&
