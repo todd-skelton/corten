@@ -104,14 +104,29 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     let (mut items, routed) = scan(body.stream(), prefix_name.as_deref(), area)?;
     // Handlers are named from where the module is declared, so one a `use` inside it brings in is
     // not found there: say so at the `use`, not as "cannot find value" at each handler.
-    let imported = used_names(body.stream());
+    // Only a private `use` the module itself never names is meant for a handler: one the module
+    // uses (a field's type, a `pub use`, a `#[cfg(test)]` import) is its own business. A handler
+    // written inside the module is the same mistake.
+    let (imported, defined) = used_names(body.stream());
+    let named = names_outside_routes(body.stream());
     for (_, handler) in routed.iter().flat_map(|r| &r.handlers) {
         let Some(TokenTree::Ident(first)) = handler.clone().into_iter().next() else { continue };
-        if let Some(name) = imported.iter().find(|i| i.to_string() == first.to_string()) {
+        let first = first.to_string();
+        if let Some(name) = imported.iter().find(|i| i.to_string() == first && named.iter().filter(|n| **n == first).count() == 1)
+        {
             return err(
                 name.span(),
                 format!(
                     "{first} is brought in inside the module, but a #[corten::routes] module names its handlers from where it is declared: move this use above mod {module}"
+                ),
+            );
+        }
+        if let Some(name) = defined.iter().find(|i| i.to_string() == first && named.iter().filter(|n| **n == first).count() == 1)
+        {
+            return err(
+                name.span(),
+                format!(
+                    "{first} is written inside the module, but a #[corten::routes] module names its handlers from where it is declared: move it above mod {module}"
                 ),
             );
         }
@@ -354,24 +369,65 @@ fn expand_within(
     out
 }
 
-/// The names the module's own `use` items bring in (`use super::page::{show, edit as change};`
-/// brings in `show` and `change`), each with the span to point at.
-fn used_names(body: TokenStream) -> Vec<Ident> {
+/// The names the module's own private `use` items without attributes bring in (`use
+/// super::page::{show, edit as change};` brings in `show` and `change`), and the functions it
+/// declares, each with the span to point at.
+fn used_names(body: TokenStream) -> (Vec<Ident>, Vec<Ident>) {
     let tokens: Vec<TokenTree> = body.into_iter().collect();
-    let mut names = Vec::new();
+    let (mut names, mut fns) = (Vec::new(), Vec::new());
     let mut i = 0;
+    // Whether the current item has an attribute or a visibility, which keeps its `use` out.
+    let mut marked = false;
     while i < tokens.len() {
-        if matches!(&tokens[i], TokenTree::Ident(id) if id.to_string() == "use") {
-            let end = tokens[i..]
-                .iter()
-                .position(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ';'))
-                .map_or(tokens.len(), |at| i + at);
-            use_tree(&tokens[i + 1..end], &mut names);
-            i = end;
+        match &tokens[i] {
+            TokenTree::Punct(p) if p.as_char() == '#' => marked = true,
+            TokenTree::Ident(id) if id.to_string() == "pub" => marked = true,
+            TokenTree::Ident(id) if id.to_string() == "use" => {
+                let end = tokens[i..]
+                    .iter()
+                    .position(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ';'))
+                    .map_or(tokens.len(), |at| i + at);
+                if !marked {
+                    use_tree(&tokens[i + 1..end], &mut names);
+                }
+                i = end;
+                marked = false;
+            }
+            TokenTree::Ident(id) if id.to_string() == "fn" => {
+                if let Some(TokenTree::Ident(name)) = tokens.get(i + 1) {
+                    fns.push(name.clone());
+                }
+                marked = false;
+            }
+            TokenTree::Punct(p) if p.as_char() == ';' => marked = false,
+            TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => marked = false,
+            _ => {}
         }
         i += 1;
     }
-    names
+    (names, fns)
+}
+
+/// Every identifier in the module, at any depth, but inside `#[route(..)]`: a name the module
+/// uses is there more than once (its `use` and the use).
+fn names_outside_routes(body: TokenStream) -> Vec<String> {
+    let mut out = Vec::new();
+    let tokens: Vec<TokenTree> = body.into_iter().collect();
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            TokenTree::Ident(id) => out.push(id.to_string()),
+            TokenTree::Group(g) => {
+                let route = g.delimiter() == Delimiter::Bracket
+                    && matches!(tokens.get(i.wrapping_sub(1)), Some(TokenTree::Punct(p)) if p.as_char() == '#')
+                    && matches!(g.stream().into_iter().next(), Some(TokenTree::Ident(id)) if id.to_string() == "route");
+                if !route {
+                    out.extend(names_outside_routes(g.stream()));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 /// The names one use tree brings in: its last segment, the name after `as`, or each of a
