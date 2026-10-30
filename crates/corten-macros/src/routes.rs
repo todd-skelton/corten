@@ -645,6 +645,8 @@ fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Err
         return err(lit.span(), "a route's path is a string: #[route(\"/items/{id}\", get = show)]");
     };
     let mut serves = Serves::default();
+    // `prefetch = false`, kept for `#[derive(Route)]`, which reads it.
+    let mut keep: Vec<TokenTree> = Vec::new();
     let mut rest = &args[1..];
     while let Some(first) = rest.first() {
         if !matches!(first, TokenTree::Punct(p) if p.as_char() == ',') {
@@ -656,6 +658,10 @@ fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Err
         rest = after;
         match part {
             [] => {}
+            [TokenTree::Ident(key), TokenTree::Punct(eq), ..] if eq.as_char() == '=' && key.to_string() == "prefetch" => {
+                keep.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
+                keep.extend(part.iter().cloned());
+            }
             [TokenTree::Ident(key), TokenTree::Punct(eq), rows @ ..] if eq.as_char() == '=' && key.to_string() == "rows" => {
                 if serves.rows.is_some() {
                     return err(key.span(), "rows is named twice");
@@ -683,7 +689,7 @@ fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Err
             _ => return err(part[0].span(), "expected a handler: get = show"),
         }
     }
-    let mut cut_args = Group::new(Delimiter::Parenthesis, stream([TokenTree::Literal(lit.clone())]));
+    let mut cut_args = Group::new(Delimiter::Parenthesis, stream(std::iter::once(TokenTree::Literal(lit.clone())).chain(keep)));
     cut_args.set_span(attr.span());
     let mut cut = Group::new(Delimiter::Bracket, stream([TokenTree::Ident(name.clone()), TokenTree::Group(cut_args)]));
     cut.set_span(attr.span());

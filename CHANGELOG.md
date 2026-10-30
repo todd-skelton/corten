@@ -971,8 +971,6 @@ Corten is pre-1.0, so any minor version may change the API.
     formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
     minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
     ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
-    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
 134. `#[derive(Href)]` on an enum whose variants each hold a route (an app's screens) makes it a
     link, `href={screen}`, and a component several pages draw takes where its links and forms go
     as `&dyn Href`, so each page passes its own typed route instead of a `String`; a unit variant
@@ -992,6 +990,8 @@ Corten is pre-1.0, so any minor version may change the API.
     of one the answer brought, costs a plain GET about 75 instructions (20,351-20,358 to
     20,427-20,432 under callgrind, 3 runs, about 0.4%)
     ([#390 A page or a relayed answer cannot choose a stricter Referrer-Policy: Corten replaces it on every answer](https://github.com/todd-skelton/corten/issues/390)).
+136. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 75 bytes (25,884 to 25,959), 16 gzipped (9,402 to 9,418), 2 with brotli (8,496 to 8,498). RENDER
+    ([#421 Hover prefetch starts a costly GET page's work; the data-no-prefetch opt-out is undocumented, per link, and a discarded prefetch never aborts](https://github.com/todd-skelton/corten/issues/421)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

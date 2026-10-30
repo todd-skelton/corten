@@ -20,6 +20,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     let Some(body) = &item.body else { return err(item.name.span(), "Href: expected the enum's variants") };
     let mut arms = TokenStream::new();
     let mut texts = TokenStream::new();
+    let mut prefetches = TokenStream::new();
     for tokens in split(body.stream(), ',') {
         let mut j = 0;
         while is_punct(tokens.get(j), '#') {
@@ -52,6 +53,10 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             "Self::__A0(__corten_to) => ::corten::route::Href::as_text(__corten_to),",
             &[TokenTree::Ident(ident.clone()).into()],
         ));
+        prefetches.extend(q(
+            "Self::__A0(__corten_to) => ::corten::route::Href::prefetch(__corten_to),",
+            &[TokenTree::Ident(ident.clone()).into()],
+        ));
     }
     let mut out = item.impl_block(
         "::corten::route::Href",
@@ -61,8 +66,11 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             }
             fn as_text(&self) -> ::core::option::Option<&str> {
                 match self { __A1 }
+            }
+            fn prefetch(&self) -> bool {
+                match self { __A2 }
             }",
-            &[arms, texts],
+            &[arms, texts, prefetches],
         ),
     );
     out.extend(item.impl_block(
@@ -73,6 +81,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
                 out.push_str(\"=\\\"\");
                 ::corten::route::Href::write_link(self, out, true);
                 out.push('\"');
+                ::corten::route::no_prefetch(name, ::corten::route::Href::prefetch(self), out);
             }",
             &[],
         ),
