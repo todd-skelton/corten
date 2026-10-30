@@ -1981,6 +1981,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `get`, `push` or `replace`, which need a key. A view no longer needs a key only to satisfy
     `tsc`. `scripts/typecheck-fixture.js` checks both
     ([#418 rows() takes only a view with a key, so a keyless #[component(view)] a script only reads fails tsc (TS2769), though the guide presents key as optional](https://github.com/todd-skelton/corten/issues/418)).
+72. A view lent to a prop inside another view (`action={&html! { .. }}`) borrows what it uses
+    instead of owning it, so the rest of the markup can read the same local; it was a `move`
+    closure and a second read was E0382. A view given by value, and the view at the top of an
+    `html!`, still own what they use
+    ([#414 A view in a prop (action={&html! {..}}) takes ownership of the locals it uses, so a local also read elsewhere in the page fails with E0382](https://github.com/todd-skelton/corten/issues/414)).
 
 ### Documentation
 
