@@ -52,14 +52,27 @@ impl Condition {
             Condition::Damaged => "Damaged",
         }
     }
+
+    /// The short grade a seller types for it.
+    pub const fn grades(self) -> &'static [&'static str] {
+        match self {
+            Condition::NearMint => &["NM"],
+            Condition::LightlyPlayed => &["LP"],
+            Condition::ModeratelyPlayed => &["MP"],
+            Condition::HeavilyPlayed => &["HP"],
+            Condition::Damaged => &["DMG"],
+        }
+    }
 }
 
-/// The combo box's options: each condition with its label.
+/// The combo box's options: each condition with its label, found by the grade shops write too
+/// (typing `mp` puts Moderately Played first).
 const CONDITIONS: [Choice<Condition>; 5] = {
-    let mut out = [Choice { value: Condition::NearMint, label: "" }; 5];
+    let mut out = [Choice::new(Condition::NearMint, ""); 5];
     let mut i = 0;
     while i < 5 {
-        out[i] = Choice { value: Condition::ALL[i], label: Condition::ALL[i].label() };
+        let c = Condition::ALL[i];
+        out[i] = Choice { terms: c.grades(), ..Choice::new(c, c.label()) };
         i += 1;
     }
     out

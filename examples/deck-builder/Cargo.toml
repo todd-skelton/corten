@@ -1,0 +1,17 @@
+[package]
+name = "deck-builder"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "A deck builder: a client-heavy screen (a collection grid with filter, sort and selection, drag and keyboard moves into a deck, a cost curve, undo and redo, autosave that rolls back a refused change and notices another tab's edit), working without JavaScript as forms."
+
+[dependencies]
+corten = { path = "../../crates/corten", features = ["feed", "types"] }
+corten-ui = { path = "../../crates/corten-ui" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+schemars = "1.2"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
