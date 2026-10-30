@@ -150,8 +150,9 @@
 //! ```
 //!
 //! A script is served by its name (`scripts/cart_line.js`), so two components with one name in
-//! different modules fail to build, at link, rather than the app when it starts; the error names
-//! the symbol `corten__two_scripts_are__cart_line`:
+//! different modules of one crate fail to compile, rather than the app when it starts; the error
+//! names the symbol `corten__two_scripts_are__cart_line`. In two crates, the linker refuses the
+//! pair when the program uses code next to both, and otherwise the app refuses it when it starts:
 //!
 //! ```compile_fail
 //! mod orders {
@@ -726,9 +727,10 @@ pub struct Field {
 /// # }
 /// ```
 ///
-/// `corten/views` exports one class of a name, so two views of one name in different modules
-/// fail to build, at link, rather than the app when it starts; the error names the symbol
-/// `corten__two_views_are__Row`:
+/// `corten/views` exports one class of a name, so two views of one name in different modules of
+/// one crate fail to compile, rather than the app when it starts; the error names the symbol
+/// `corten__two_views_are__Row`. In two crates, the linker refuses the pair when the program uses
+/// code next to both, and otherwise the app refuses it when it starts:
 ///
 /// ```compile_fail
 /// mod orders {

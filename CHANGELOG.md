@@ -1969,8 +1969,10 @@ Corten is pre-1.0, so any minor version may change the API.
     `get`, `push` or `replace`, which need a key. A view no longer needs a key only to satisfy
     `tsc`. `scripts/typecheck-fixture.js` checks both
     ([#418 rows() takes only a view with a key, so a keyless #[component(view)] a script only reads fails tsc (TS2769), though the guide presents key as optional](https://github.com/todd-skelton/corten/issues/418)).
-72. Two `#[component(view)]`s or two `#[event]` types with one name fail to build, at link, as two
-    components with one name do, rather than the app when it starts
+72. Two `#[component(view)]`s or two `#[event]` types with one name in one crate fail to compile,
+    as two components with one name do, rather than the app when it starts (across crates, the
+    linker refuses the pair when the program uses code next to both, and the start-time check
+    catches the rest)
     (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and
     `corten__two_events_named__row_toggled` for the event's name in the page)
     ([#371 Two features' #[event] types or views with the same name still fail only when the server starts](https://github.com/todd-skelton/corten/issues/371)).
