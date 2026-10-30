@@ -1588,7 +1588,7 @@ Corten is pre-1.0, so any minor version may change the API.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
 
-84. Values 2 is "Standards first, extended rather than replaced", and following a standard where
+86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
     one fits is part of correctness in the conflict order: a header, wire format or file format
     of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
     (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
