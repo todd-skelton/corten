@@ -1601,7 +1601,7 @@ Corten is pre-1.0, so any minor version may change the API.
     a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
-86. `ReadAgain::from` takes the route by value as well as by reference (a borrowed route is a
+87. `ReadAgain::from` takes the route by value as well as by reference (a borrowed route is a
     `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
     of the page and the patch builds the read in its body instead of failing with E0515 or E0597
     ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).

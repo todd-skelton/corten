@@ -196,6 +196,23 @@
 //! }
 //! ```
 //!
+//! and so do two classes whose events have one name, `UrlChanged` and `URLChanged` (both
+//! `url-changed` on the page, `corten__two_events_named__url_changed`):
+//!
+//! ```compile_fail
+//! #[corten::script::event]
+//! pub struct UrlChanged {
+//!     pub to: String,
+//! }
+//! #[corten::script::event]
+//! pub struct URLChanged {
+//!     pub to: String,
+//! }
+//! fn main() {
+//!     let _ = (UrlChanged { to: String::new() }, URLChanged { to: String::new() });
+//! }
+//! ```
+//!
 //! A feed's URL carries the feed's rows to the script. The route names them (`rows = Level`),
 //! its handler answers with them (`FeedResponse<Level>`), and the handler parameter that takes the
 //! route is a `FeedUrl<Level>` (from `corten`; `Level` is the Rust type of that name in the

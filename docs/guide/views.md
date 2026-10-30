@@ -193,7 +193,7 @@ req.patch(html! { {Remove(OfferId(&sold.id))} })                             // 
 | `#[derive(UrlValue)]` | the enum has a variant with fields, a variant serde does not read (`skip_deserializing`), or a serde attribute that changes its words in a way it does not follow |
 | `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol, `corten__two_ids_are__offer`); the struct holds more than one key |
 | `#[component(css)]`, `#[component(js)]` | two components in one program have the same name, so they would style one `.name__*` or serve one `scripts/name.js` (each is a linker symbol, `corten__two_components_style__offer_list`, `corten__two_scripts_are__offer_list`) |
-| `#[component(view)]`, `#[event]` | two views or two typed events in one program have the same name, since `corten/views` and `corten/events` export one class of a name and the page dispatches one event of a name (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and `corten__two_events_named__row_toggled` for two classes with one event name, `UrlChanged` and `URLChanged`) |
+| `#[component(view)]`, `#[event]` | two views or two typed events in one program have the same name, since `corten/views` and `corten/events` export one class of a name and the page dispatches one event of a name (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and `corten__two_events_named__url_changed` for two classes with one event name, `UrlChanged` and `URLChanged`) |
 
 An id is the type's name without `Id`, in kebab case (`OfferId` is `offer-`, then the key; a
 unit struct, `StatusId`, is just `status`). Use one for every element a patch replaces or
@@ -211,7 +211,9 @@ identical declarations of one component (a module declared in both `lib.rs` and 
 macro that writes one component in several modules) fail too, so declare each once. A library's
 ids and scripts (a crate with a script prefix, which their names in the page carry) also carry
 its version, so two versions of one library in a program still link; its classes do not carry
-the prefix (`.card__*`), so a library's `Card` with a stylesheet and the app's clash.
+the prefix (`.card__*`), so a library's `Card` with a stylesheet and the app's clash, and nor do
+its views and typed events (one name each in `corten/views` and `corten/events`), so two versions
+of a library with them (corten-ui's `Copied`) do not link.
 
 Routes write their URL straight into the page (path parameters percent-encoded, `None` query
 parameters left out). A query field is anything `Display`; an enum in an address (a tab, a sort,
