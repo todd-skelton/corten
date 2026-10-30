@@ -1873,11 +1873,14 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
     `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
     ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
-70. An `if` or `match` inside a `for` in `html!` compiles: it failed with "use of moved value"
-    on the whole `html!`, since the marker that says whether each part is a patch was moved on
-    the loop's first pass. A patch can now redraw rows known from data in one loop, with a
-    branch per row. The markers are zero-sized, so the rendered page is unchanged; the "not a
-    patch" note now also says a component in a loop or branch must be declared `-> impl Patch`
+70. A `for`, `if` or `match` inside a `for` in `html!` compiles, in a patch and in any view: it
+    failed with "use of moved value" on the whole `html!`, since the marker that says whether each
+    part is a patch was moved on the loop's first pass. A patch can now redraw rows known from data
+    in one loop, with a branch per row. A view refused as a patch now names the kind of part that
+    is not one (`ComponentOrExpressionNotAPatch`: a component declared `-> impl Render`;
+    `IdNotADeriveIdType`; `TextOrElementWithoutId`) and the note says how to read the parts'
+    order. The markers are zero-sized and the macro's output is otherwise the same, so rendering
+    is unchanged
     ([#383 An if or match inside a for in html! fails with E0382 (use of moved value), and a patch's E0277 does not name the part that is not a patch](https://github.com/todd-skelton/corten/issues/383)).
 
 ### Documentation
