@@ -2,7 +2,7 @@ use corten::prelude::*;
 
 use super::{BulkBar, ConfirmDialog, InventoryRow, ItemCount, Line, PriceEdited};
 use crate::{
-    app::{ArchiveInput, url},
+    app::{ArchiveInput, Level, url},
     text::{Msg, USD},
 };
 

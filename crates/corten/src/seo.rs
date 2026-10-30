@@ -53,6 +53,7 @@ impl IntoResponse for File {
 impl Answer for File {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+    type Rows = crate::answer::NotAFeed;
 }
 
 impl crate::answer::Shareable for File {
