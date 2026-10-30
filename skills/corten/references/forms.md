@@ -194,6 +194,11 @@ let price = match check(t, &form) {
 };
 ```
 
+When the form itself needs a read (the record as it is now), use
+`req.invalid_with(&errors, |form| async { let r = read().await?; form.draw(View { r: &r }) }, page)`,
+never a branch on `req.mode`: each side runs only for its mode, and JSON clients (feature `json`)
+still get Problem Details.
+
 Keep the HTML attributes (`required`, `type="email"`, `inputmode`) too: the browser checks them
 first, and the server check is the one that counts. A field required only for some values of
 another goes in `corten_ui::RequiredWhen` (`control={f.kind} values={&[Kind::Partial]}`), never a

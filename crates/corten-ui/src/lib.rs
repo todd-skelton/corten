@@ -7,7 +7,7 @@
 //! | [`NumberField`] | a number input with decrease and increase buttons, press and hold | a native number input |
 //! | [`ComboBox`] | type to filter a list, pick one; the value is a native `<select>` | the `<select>` |
 //! | [`TabGroup`] | tabs with arrow keys; tabs can be links, and the address follows | links to each tab's page |
-//! | [`MenuButton`] | a button that opens a menu of links and form actions, arrow keys and typeahead | the menu opens (popover); items work |
+//! | [`MenuButton`] | a button that opens a menu of the app's own items (links, form posts, dialog commands), arrow keys and typeahead | the menu opens (popover); items work |
 //! | [`Toaster`] | a live region an action's patch puts a message in; gone after a while, kept while read | the message is in the page the post answers with |
 //! | [`CopyButton`] | copies an element's text to the clipboard, says so politely, and tells the page ([`Copied`]) | no button; the text is on the page to select |
 //! | [`PrintButton`] | opens the browser's print dialog; the page's print styles say what prints | no button; the browser's Print command prints the page |
@@ -54,14 +54,14 @@
 //! except the `−` and `+` of [`NumberField`]'s buttons, which a design system replaces with
 //! icons.
 //!
-//! **Links** are typed routes (`&dyn corten::Href`): a menu item or tab cannot point at a URL the app does
-//! not route.
+//! **Links** are typed routes (`&dyn corten::Href`): a tab cannot point at a URL the app does not
+//! route.
 //!
 //! ```compile_fail
 //! use corten::prelude::*;
-//! use corten_ui::MenuItem;
+//! use corten_ui::Tab;
 //!
-//! let item = MenuItem { label: "Orders", link: &"/orders", post: false };
+//! let tab = Tab { label: "Orders", panel: &"", link: Some(&"/orders") };
 //! ```
 //!
 //! **Dialogs the server draws open.** A form in a `<dialog>` that the server refuses comes back
@@ -163,7 +163,7 @@ mod toaster;
 pub use checkbox_group::CheckboxGroup;
 pub use combo_box::{Choice, ComboBox, Picker};
 pub use copy_button::{Copied, CopyButton};
-pub use menu_button::{MenuButton, MenuItem};
+pub use menu_button::MenuButton;
 pub use number_field::{Number, NumberField, Step};
 pub use print_button::PrintButton;
 pub use relative_time::RelativeTime;
