@@ -686,6 +686,32 @@ impl<T: Id, V: Render> Render for Append<T, V> {
 /// assert_eq!(send(Counted { n: 3 }), r#"<p id="status" role="status">3</p>"#);
 /// ```
 ///
+/// A loop over rows known from data is written where the rest of the patch is, with its
+/// `let`s and branches:
+///
+/// ```
+/// use corten::{prelude::*, view::Patch};
+/// #[derive(Id)]
+/// struct FieldId(u32);
+/// #[component]
+/// fn Field<'a>(sku: u32, label: &'a str) -> impl Patch {
+///     html! { <label id={FieldId(sku)}>{label}</label> }
+/// }
+/// fn send(view: impl Patch) -> String { view.to_html() }
+/// let taken = [(4, 2), (9, 0)];
+/// let redrawn = html! {
+///     for (sku, count) in taken {
+///         let label = format!("SKU {sku}");
+///         if count == 0 {
+///             <Field sku={sku} label={&label} />
+///         } else {
+///             <Field sku={sku} label="left" />
+///         }
+///     }
+/// };
+/// assert_eq!(send(redrawn), r#"<label id="field-4">left</label><label id="field-9">SKU 9</label>"#);
+/// ```
+///
 /// ```compile_fail,E0277
 /// use corten::prelude::*;
 /// #[component]
@@ -1266,15 +1292,19 @@ pub mod __private {
     // The shape of a view from `html!`, returned by its closure: one per top-level part, `Yes`
     // when the part is a patch and `No` when it is not, a `for`, `if` or `match` body's as an
     // `Option` (it may not run), in nested pairs that end in `End`. A view is a patch when all
-    // of its shape is. Each is a zero-sized type, so working it out costs nothing at run time.
+    // of its shape is. Each is a zero-sized type, so working it out costs nothing at run time,
+    // and `Copy`, so a block's shape is read on every pass of a `for` around it.
+    #[derive(Clone, Copy)]
     pub struct Yes;
+    #[derive(Clone, Copy)]
     pub struct No;
+    #[derive(Clone, Copy)]
     pub struct End;
 
     #[diagnostic::on_unimplemented(
         message = "this view is not a patch: one of its top-level parts is not an element with a #[derive(Id)] id",
         label = "a patch replaces elements by id",
-        note = "give each top-level element an id={{..}} with a #[derive(Id)] type; text, and an id written as text, cannot be a patch's top level"
+        note = "give each top-level element an id={{..}} with a #[derive(Id)] type, and declare each component at the top level (in a for, if or match too) -> impl Patch; text, and an id written as text, cannot be a patch's top level"
     )]
     pub trait PatchShape {}
     impl PatchShape for Yes {}

@@ -257,6 +257,19 @@ pub fn Status(text: &str) -> impl Patch {
 }
 ```
 
+Rows known only from data (the fields of the items a write touched) are a `for` among the
+patch's parts, with its `let`s and branches, as in a page:
+
+```rust,ignore
+req.patch(html! {
+    <QueueTotals queue={&queue} />
+    for sku in &taken {
+        let label = label_of(sku);
+        <QuantityField label={&label} quantity={0} />
+    }
+})
+```
+
 A component that says `-> impl Render` is not a patch, so one that is drawn by the page and sent
 by an action says `-> impl Patch`, as a layout says `-> impl Document`. A `corten::live`
 fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
