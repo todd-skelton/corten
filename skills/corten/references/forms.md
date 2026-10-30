@@ -146,7 +146,10 @@ browser keeps only the first, and `html!` refuses it).
 A refusal that belongs to no field (a cross-field rule, or the backend saying no) is
 `errors.add_form(text)`, shown once at the top of the form with `{form.errors.form_message()}`.
 Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
-clients and agents only see what is in `Errors`.
+clients and agents only see what is in `Errors`. A refusal for a stale state (another save came
+first, a step out of order) is `errors.refuse(Refusal::Conflict, text)`, a 409 from
+`req.invalid`; never set a status on the response by hand. Make such a form `data-patch`.
+A field helper several forms share takes `e: &corten::Within<'_, I>`.
 
 A write that must apply once (an order, a payment) takes a `submit: SubmitKey` field, drawn with
 `{SubmitKey::field(f.submit)}`; the app stores the key with the write and answers a repeat with the

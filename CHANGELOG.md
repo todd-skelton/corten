@@ -990,6 +990,18 @@ Corten is pre-1.0, so any minor version may change the API.
     of one the answer brought, costs a plain GET about 75 instructions (20,351-20,358 to
     20,427-20,432 under callgrind, 3 runs, about 0.4%)
     ([#390 A page or a relayed answer cannot choose a stricter Referrer-Policy: Corten replaces it on every answer](https://github.com/todd-skelton/corten/issues/390)).
+136. `corten::Within` is exported beside `Errors`, so a field helper several forms share takes the
+    form's scoped errors without reaching into `corten::form` ([#451 form::Within is not re-exported
+    beside Errors, so a field helper shared by several forms must find
+    corten::form::Within](https://github.com/todd-skelton/corten/issues/451)).
+137. A submit refused for the state it was made against, not its input (a stale revision, a step
+    already taken), is `errors.refuse(Refusal::Conflict, message)`: `req.invalid` answers it with
+    409 (or 410 for `Refusal::Gone`) in every mode, the form drawn again with what the user typed
+    and the message at its top, and data clients get the same status in the Problem Details
+    document. `Refusal` is a closed set of 4xx refusals, so a 2xx or a 5xx does not compile ([#438 A
+    post refused for a reason that is not a field (a stale revision, a step out of order) has no
+    answer, so each screen draws its page and sets a 409 on the raw
+    response](https://github.com/todd-skelton/corten/issues/438)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

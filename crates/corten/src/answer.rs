@@ -493,7 +493,8 @@ impl Answer for JsonResponse {
 }
 
 /// A JSON handler's error: an [`Error`] (`?` on any error, as in a page handler) or the
-/// input's field errors, `?` on [`crate::Errors`], answered as the 422 with `fields`. Only a
+/// input's field errors, `?` on [`crate::Errors`], answered as the 422 with `fields` (409 or 410
+/// for [`crate::Errors::refuse`]). Only a
 /// JSON handler takes field errors this way: a page shows its form again with
 /// [`crate::Req::invalid`], so `?` on `Errors` there does not compile:
 ///
@@ -518,7 +519,7 @@ impl Answer for JsonResponse {
 pub enum JsonError {
     /// Any failure, answered as every failure of a JSON route is.
     Error(Error),
-    /// The input's field errors: 422, `{"title","status","detail","fields":{..}}`.
+    /// The input's field errors: 422 (or the refusal's status), `{"title","status","detail","fields":{..}}`.
     Fields(crate::Errors),
 }
 
