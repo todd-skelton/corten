@@ -193,16 +193,20 @@ req.patch(html! { {Remove(OfferId(&sold.id))} })                             // 
 | `#[derive(UrlValue)]` | the enum has a variant with fields, a variant serde does not read (`skip_deserializing`), or a serde attribute that changes its words in a way it does not follow |
 | `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol, `corten__two_ids_are__offer`); the struct holds more than one key |
 | `#[component(css)]`, `#[component(js)]` | two components in one program have the same name, so they would style one `.name__*` or serve one `scripts/name.js` (each is a linker symbol, `corten__two_components_style__offer_list`, `corten__two_scripts_are__offer_list`) |
+| `#[component(view)]`, `#[event]` | two views or two typed events in one program have the same name, since `corten/views` and `corten/events` export one class of a name and the page dispatches one event of a name (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and `corten__two_events_named__row_toggled` for two classes with one event name, `UrlChanged` and `URLChanged`) |
 
 An id is the type's name without `Id`, in kebab case (`OfferId` is `offer-`, then the key; a
 unit struct, `StatusId`, is just `status`). Use one for every element a patch replaces or
 removes, and for `for`, `popovertarget` or `commandfor` across components. Its name is a linker
 symbol, and so is the class prefix of a component with a stylesheet and the name of one with a
 script: names are global to the app, so two features that each write a `SettingsForm` (or a
-`SettingsFormId`) fail to build, at the second one, rather than the app when it starts. Name
-them by feature (`ShippingSettingsForm`). `cargo check` does not link, so it does not see this;
-`cargo build` and `cargo test` (and `corten check`) do, and so does a `script!` module, served
-by its name as a component's script is. The check is the declaration's, not the page's: two
+`SettingsFormId`) in one crate fail to compile, at the second one, rather than the app when it
+starts. Name them by feature (`ShippingSettingsForm`). `cargo check` stops before code is generated,
+so it does not see this. Across crates (a feature's library and
+the app), the linker refuses the pair only when the program uses code next to both, since it
+loads only the object files it needs; the app's own check at start (`App::router`, which every
+test builds) catches the rest, so `cargo test` and `corten check` see it either way. The same
+holds for a `script!` module, served by its name as a component's script is. The check is the declaration's, not the page's: two
 identical declarations of one component (a module declared in both `lib.rs` and `main.rs`, a
 macro that writes one component in several modules) fail too, so declare each once. A library's
 ids and scripts (a crate with a script prefix, which their names in the page carry) also carry
