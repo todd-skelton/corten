@@ -140,6 +140,7 @@ fn compressible(content_type: &str) -> bool {
         || matches!(
             essence,
             "application/json"
+                | "application/problem+json"
                 | "application/javascript"
                 | "application/manifest+json"
                 | "application/xml"

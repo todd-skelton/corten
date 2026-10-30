@@ -68,6 +68,48 @@ framework's shape, and what it does not do yet.
    costs a navigation nothing: on the item page a full document got about 7% faster than with
    the shell and a navigation stayed within noise (`render_cost` medians of alternating runs,
    same bytes).
+11. **A request says what it is with a `corten` header, not `Accept` or `Sec-Fetch-*`.** A
+   navigation and an action both answer HTML, so no registered media type tells them apart, and
+   `Accept` already chooses the format: `application/json` asks for a page's data
+   (`Mode::Data`). Carrying the mode there too would need a media type parameter of Corten's own
+   (`text/html;corten=nav`), as private as a header but mixed into the format choice that data
+   clients, caches and proxies read as content negotiation. `Sec-Fetch-Mode` and `Sec-Fetch-Dest`
+   tell a navigation from a `fetch` but not a navigation from an action, a script cannot set
+   them, and data clients do not send them. With a header of its own, its absence is the safe
+   answer: a browser request without it (and not asking for JSON) gets the whole document, as a
+   browser without JavaScript needs. The mode would move to a standard header that says "part of
+   a page" and that a script may set.
+12. **The runtime prefetches links itself, not with Speculation Rules or `rel="prefetch"`.** A
+   navigation the runtime makes asks with `corten: nav` and gets the title, head tags and
+   `<main>`, a fraction of the document. A Speculation Rules prefetch fetches the whole document
+   into a cache the browser uses only for a document navigation, not for the runtime's `fetch`. A
+   `rel="prefetch"` response goes into the HTTP cache, but it is the document, sent without
+   `corten: nav`, and answers vary on that header (`Vary: corten, accept`), so the runtime's
+   request does not match it. Either would download more and still leave the runtime's
+   navigation to fetch again. Speculation Rules would fit where the browser navigates anyway (full
+   page loads, browsers without the Navigation API), and the runtime would drop its own once a
+   prefetch can be asked with the runtime's headers and answer its `fetch`.
+13. **Component CSS is scoped by prefixing its classes, not with `@scope`.** A prefixed class
+   (`.offer-list__row`) matches nothing an app's global stylesheet or another component wrote, so
+   a component looks the same on every page; with `@scope`, the class stays `.row` and any
+   global `.row` rule still applies to it. A donut limit at nested components would also need every
+   component's root marked (`data-scope` marks only those with refs, kept state or a handler
+   taking `scope`), and a scoped selector competes on specificity and proximity where a prefixed
+   class is one class. The typed class constants do not depend on the prefix. The macro would
+   emit `@scope` when it gives the same isolation from global rules, at the same specificity.
+14. **A feed patch is keyed `upsert` and `remove` of whole rows, not JSON Patch or Merge Patch.**
+   A feed is a set of rows by id, and each write replaces rows or removes them. JSON Patch
+   (RFC 6902) could say the same over an object keyed by id (`add` at `/<id>` replaces a row,
+   `remove` removes it), but only as a subset: a client given JSON Patch is expected to take any
+   path, `test`, `move` and `copy`, and ids would need JSON Pointer escaping (`~0`, `~1`), so a
+   subscriber either carries a whole JSON Patch engine for two operations or rejects valid JSON
+   Patch. Merge Patch (RFC 7396) merges a value into the old one field by field, so a row cannot
+   be replaced whole, and its `null` means "delete", so a field cannot be null. Keyed whole rows
+   are one encoding every subscriber applies the same way, in one pass, and `corten-protocol`
+   holds it so native and agent clients do not write their own diffing
+   ([architecture](architecture.md#rules-that-keep-surfaces-from-drifting), Rules 5). A feed would
+   move to JSON Patch if subscribers needed to apply it with a stock JSON Patch library: each
+   change as `add` or `remove` at `/<id>`, with the same sequence numbers and resume.
 
 ## Rules
 
@@ -191,4 +233,7 @@ framework's shape, and what it does not do yet.
     begins and is not waited for.
 14. Connections are HTTP/1.1. A request's head must arrive within `App::header_timeout` (30
     seconds), which also closes an idle keep-alive connection; how many may be open is
-    `App::max_connections`, unbounded unless set.
+    `App::max_connections`, unbounded unless set. HTTP/2 and HTTP/3 to browsers come from a proxy
+    or CDN in front of `corten::serve`. An app with live streams needs one: over HTTP/1.1 a
+    browser opens about six connections to a host, each open stream holds one, and requests queue
+    behind them once a page with a few `<corten-live>` elements or feeds is open in a few tabs.

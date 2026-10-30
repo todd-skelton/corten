@@ -1,0 +1,14 @@
+{
+  "grid": {
+    "cards_one": "{count} card",
+    "cards_other": "{count} cards",
+    "shown": "{shown} of {total} shown"
+  },
+  "move": {
+    "several": "{count} cards",
+    "lifted": "Picked up {what}.",
+    "added": "{what} added to the deck.",
+    "removed": "{what} taken out of the deck.",
+    "put_back": "{what} put back."
+  }
+}

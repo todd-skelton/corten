@@ -173,7 +173,8 @@ value (the MCP endpoint) is added with `Api::route`: `mcp::api(routes).route::<m
 (faster than `axum::Json`; keep the prelude's unless a crate hands you axum's). The response type
 derives `ToJson` next to `Serialize` (`#[derive(Serialize, ToJson)] struct Price ..`); it reads the
 same `#[serde(...)]` attributes, and one it cannot write as serde does is a compile error.
-Every failure under the prefix is `{"error":{"status","message"}}` whatever the client accepts;
+Every failure under the prefix is an RFC 9457 Problem Details document (`application/problem+json`,
+`{"title","status","detail"}`) whatever the client accepts;
 a 4xx message is sent, so write it for the client. Validation is `Errors` as the error. There
 is no document; a handler that needs to know who calls takes a `Caller` (an API key's partner
 type), and a refusal is a JSON 401 or 403. An API that must answer in another protocol's error

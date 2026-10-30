@@ -339,6 +339,12 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         #[inline] __A2 fn money(self, amount: impl ::corten::i18n::Amount, currency: ::corten::i18n::Currency) -> ::corten::i18n::Formatted {
             ::corten::i18n::Formatted::money(self.__corten_locale(), &amount, currency)
         }
+        /// An amount of money with its sign in this locale (a difference between two amounts): a
+        /// plus sign on a gain and none on what rounds to zero, as Intl's `signDisplay` `exceptZero` writes it:
+        /// `t.signed_money(Minor(320), USD)` is `+$3.20` in en and `+3,20 $US` in fr.
+        #[inline] __A2 fn signed_money(self, amount: impl ::corten::i18n::Amount, currency: ::corten::i18n::Currency) -> ::corten::i18n::Formatted {
+            ::corten::i18n::Formatted::signed_money(self.__corten_locale(), &amount, currency)
+        }
         /// Money as a person types it in this locale, in the currency's minor units: what
         /// `money` writes, read back: `$1,299.50` is `Some(Minor(129950))` in USD in en, and `12,50`
         /// is `Some(Minor(1250))` in fr. With or without
@@ -408,6 +414,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             #[inline] __A1 fn change(self, digits: u8) -> ::corten::i18n::PercentFormat { ::corten::i18n::PercentFormat::change(self.__corten_locale(), digits) }
             /// An amount's format in `currency`, for a handler whose JSDoc takes a MoneyFormat: it writes format(minor) as t.money(Minor(minor), currency) does.
             #[inline] __A1 fn money(self, currency: ::corten::i18n::Currency) -> ::corten::i18n::MoneyFormat { ::corten::i18n::MoneyFormat::new(self.__corten_locale(), currency) }
+            /// A signed amount's format in `currency`, for a handler whose JSDoc takes a MoneyFormat: it writes format(minor) as t.signed_money(Minor(minor), currency) does.
+            #[inline] __A1 fn signed_money(self, currency: ::corten::i18n::Currency) -> ::corten::i18n::MoneyFormat { ::corten::i18n::MoneyFormat::signed(self.__corten_locale(), currency) }
             /// A date's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.date(at, style) does.
             #[inline] __A1 fn date(self, style: impl ::corten::i18n::DateOnly) -> ::corten::i18n::DateFormat { ::corten::i18n::DateFormat::date(self.__corten_locale(), style) }
             /// A time's format, for a handler whose JSDoc takes a DateFormat: it writes format(at) as t.time(at, style) does.
