@@ -150,8 +150,9 @@
 //! ```
 //!
 //! A script is served by its name (`scripts/cart_line.js`), so two components with one name in
-//! different modules fail to build, at link, rather than the app when it starts; the error names
-//! the symbol `corten__two_scripts_are__cart_line`:
+//! different modules of one crate fail to compile, rather than the app when it starts; the error
+//! names the symbol `corten__two_scripts_are__cart_line`. In two crates, the linker refuses the
+//! pair when the program uses code next to both, and otherwise the app refuses it when it starts:
 //!
 //! ```compile_fail
 //! mod orders {
@@ -170,6 +171,45 @@
 //! }
 //! fn main() {
 //!     let _ = (orders::CartLine, returns::CartLine);
+//! }
+//! ```
+//!
+//! The same holds for a typed event (`#[event]`): `corten/events` exports one class of a name and
+//! the page dispatches one event of a name, so two `RowToggled`s fail to build
+//! (`corten__two_events_are__RowToggled`):
+//!
+//! ```compile_fail
+//! mod orders {
+//!     #[corten::script::event]
+//!     pub struct RowToggled {
+//!         pub id: String,
+//!     }
+//! }
+//! mod returns {
+//!     #[corten::script::event]
+//!     pub struct RowToggled {
+//!         pub id: u32,
+//!     }
+//! }
+//! fn main() {
+//!     let _ = (orders::RowToggled, returns::RowToggled);
+//! }
+//! ```
+//!
+//! and so do two classes whose events have one name, `UrlChanged` and `URLChanged` (both
+//! `url-changed` on the page, `corten__two_events_named__url_changed`):
+//!
+//! ```compile_fail
+//! #[corten::script::event]
+//! pub struct UrlChanged {
+//!     pub to: String,
+//! }
+//! #[corten::script::event]
+//! pub struct URLChanged {
+//!     pub to: String,
+//! }
+//! fn main() {
+//!     let _ = (UrlChanged { to: String::new() }, URLChanged { to: String::new() });
 //! }
 //! ```
 //!
@@ -702,6 +742,31 @@ pub struct Field {
 /// let view = Line.view.expect("a view");
 /// assert!(view.js.contains("static key(el)") && !view.js.contains("keyOf"), "{}", view.js);
 /// # }
+/// ```
+///
+/// `corten/views` exports one class of a name, so two views of one name in different modules of
+/// one crate fail to compile, rather than the app when it starts; the error names the symbol
+/// `corten__two_views_are__Row`. In two crates, the linker refuses the pair when the program uses
+/// code next to both, and otherwise the app refuses it when it starts:
+///
+/// ```compile_fail
+/// mod orders {
+///     use corten::prelude::*;
+///     #[component(view)]
+///     pub fn Row(id: u32) -> impl Render {
+///         html! { <tr><td>{id}</td></tr> }
+///     }
+/// }
+/// mod returns {
+///     use corten::prelude::*;
+///     #[component(view)]
+///     pub fn Row(id: u32) -> impl Render {
+///         html! { <tr><td>{id}</td></tr> }
+///     }
+/// }
+/// fn main() {
+///     let _ = (orders::Row, returns::Row);
+/// }
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct ViewDef {

@@ -16,4 +16,5 @@
 .control [role="option"][aria-selected="true"] { font-weight: 600; }
 .control [role="option"][data-highlighted] { background: var(--tint); color: var(--accent); }
 .control [role="option"][aria-disabled="true"] { opacity: 0.5; cursor: default; }
-.control [role="status"] { margin: 0; padding: 4px 8px; color: var(--muted); }
+/* A display on a part the component hides: components.css keeps [hidden] hidden over it. */
+.control [role="status"] { display: flex; gap: 4px; margin: 0; padding: 4px 8px; color: var(--muted); }
