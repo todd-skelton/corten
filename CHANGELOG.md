@@ -940,8 +940,37 @@ Corten is pre-1.0, so any minor version may change the API.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
 130. A feed's `snapshot` handler gets the feed's generation as a third argument,
-    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
+    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted
+    feed's `seq` from its own (`docs/guide/live-data.md`).
+131. `examples/deck-builder`: a rich client-side screen. A player builds a 40-card deck from a
+    collection of 240 by Add, Add selected, drag and drop or the keyboard (Space to pick up, the
+    arrows, Space to drop, Escape to put back, each said aloud), with the count, the cost curve and
+    the kinds drawn at once, undo and redo (buttons, Ctrl+Z and Ctrl+Shift+Z through
+    `on:document:keydown`), and filter and sort in the page. Every change is saved as it is made,
+    one save at a time, with the deck's version (its feed's generation and number): a save the rules refuse is rolled back with the
+    reason, a stale one (another tab saved first, which its feed shows) lets the player keep both
+    changes or take the other tab's deck, and a save that could not be sent, or whose answer was lost, is sent again with its submit key.
+    Without JavaScript the same page posts the deck, and the filter and sort are links and a GET
+    form ([#336 No example shows a rich client-side screen: a deck builder](https://github.com/todd-skelton/corten/issues/336)).
+132. A navigation marks the link or GET form that started it `aria-busy="true"` for as long as it
+    marks `<main>`, as a `data-patch` form already was, so a page shows which control is working
+    with CSS alone (`docs/guide/requests-and-forms.md`). Both marks now last until the new page is
+    swapped in (`<main>`'s ended when the answer's headers came) and stay through a redirect;
+    when another navigation replaces one, the first one's marks go at once and the newer one's stay
+    ([#422 A navigation marks only main as busy, not the link or GET form that started it, so a page cannot show which action is on its way without a script](https://github.com/todd-skelton/corten/issues/422)).
+    The minified runtime grows by 374 bytes (25,510 to 25,884), 124 gzipped (9,278 to 9,402) and
+    115 with brotli (8,381 to 8,496).
+133. `t.signed_money(amount, currency)` and `t.js().signed_money(currency)`: an amount with its
+    sign, as Intl's `signDisplay: "exceptZero"` writes it (`+$3.20`, `-$1.23`, `$0.00`, `+3,20 $US`),
+    for a difference between two amounts, the same on the server and in scripts. It uses the
+    locale data already shipped: a gain is the loss's template with the plus sign in place of the
+    minus, which `scripts/locale-data.mjs` checks against Intl for every locale and currency
+    (`docs/guide/views.md`, `docs/guide/scripts.md`). `examples/watchlist` shows today's move in money
+    beside the percent, written by the server and kept current by its script. `t.money` itself is unchanged: about 934
+    instructions per amount before and after under callgrind (three runs each of 1,200 less 200
+    formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
+    minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
+    ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1504,6 +1533,27 @@ Corten is pre-1.0, so any minor version may change the API.
     `corten check` runs it in place of its own `cargo fmt --check`. Given paths, or outside a
     package, `corten fmt` still lays out only the markup
     ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
+82. corten-ui's `Choice` writes its value as its `Display`, as a route writes a field, in place of
+    its `AsRef<str>`, so a row picked by its numeric id is a `Choice<i32>` and the form's field is
+    `line: i32` (as for a route's field, `Display` must write what the field's `Deserialize` reads) ([#376 corten-ui choices must be AsRef<str>, so a row picked by its numeric id cannot use the typed picker](https://github.com/todd-skelton/corten/issues/376)).
+    A choice also has `terms`, other words that find it without being shown (a card number, a
+    SKU, a grade), and `ComboBox` lists the matches ranked: a label or term typed whole, then one
+    that starts with the text, then one that holds it, each kind in the options' order. A choice
+    is built with `Choice::new(value, label)` and its terms set with
+    `Choice { terms: &["NM"], ..Choice::new(..) }`. examples/ui-gallery finds a condition by its
+    grade (`mp`) ([#420 corten-ui ComboBox matches only a substring of the label, so a picker cannot search other terms (a card number) or rank the matches](https://github.com/todd-skelton/corten/issues/420)).
+83. **Breaking for JSON clients.** Every JSON failure (under `App::api`, a `JsonResult<T>` route, a
+    data client) is an RFC 9457 Problem Details document sent as `application/problem+json`, in
+    place of Corten's own `{"error":{"status","message"}}` as `application/json`:
+    `{"title":"Not Found","status":404,"detail":"No item 7."}`. `title` is the status's reason,
+    `detail` the message a client may be told (left out when it would repeat the title, as for
+    every 5xx outside `corten dev`), and `type` is left out, which means `about:blank`.
+    Validation errors keep `fields` and `form`, now as extension members beside `detail`. A client
+    reads `detail` where it read `error.message`, `status` where it read `error.status`, and
+    `fields` where it read `error.fields`. `Api::errors` still writes another protocol's shape,
+    sent as `application/json`. Gateways, API tools and clients read the failures without
+    knowing Corten (`docs/guide/app.md`, `docs/guide/requests-and-forms.md`)
+    ([#392 JSON failures use a shape of our own, {"error":{"status","message"}}, instead of RFC 9457 Problem Details (application/problem+json)](https://github.com/todd-skelton/corten/issues/392)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1914,7 +1964,12 @@ Corten is pre-1.0, so any minor version may change the API.
     of the same form aborted no longer renews the key the newer one was sent with. The minified
     runtime grows by 97 bytes (25,413 to 25,510), 29 gzipped (9,249 to 9,278) and 33 with brotli
     (8,348 to 8,381).
-71. A view lent to a prop inside another view (`action={&html! { .. }}`) borrows what it uses
+71. `rows()` takes a `#[component(view)]` without a key, as the scripts guide always said it could:
+    it gives a `RowList` (`at`, `of`, `indexOf`, `remove`, `swap`, `clear`, iteration), without
+    `get`, `push` or `replace`, which need a key. A view no longer needs a key only to satisfy
+    `tsc`. `scripts/typecheck-fixture.js` checks both
+    ([#418 rows() takes only a view with a key, so a keyless #[component(view)] a script only reads fails tsc (TS2769), though the guide presents key as optional](https://github.com/todd-skelton/corten/issues/418)).
+72. A view lent to a prop inside another view (`action={&html! { .. }}`) borrows what it uses
     instead of owning it, so the rest of the markup can read the same local; it was a `move`
     closure and a second read was E0382. A view given by value, and the view at the top of an
     `html!`, still own what they use
@@ -2098,6 +2153,31 @@ Corten is pre-1.0, so any minor version may change the API.
     the alternative needs a second async step before full-page renders, with its own rules for a
     failed lookup, caching and the page key
     ([#209 Every page handler extracts the viewer only to pass it to the layout](https://github.com/todd-skelton/corten/issues/209)).
+33. `design.md` (Limits 14), `docs/architecture.md`, `docs/guide/app.md` and
+    `docs/guide/live-data.md` say that HTTP/2 or HTTP/3 to browsers comes from the proxy or CDN in
+    front of `corten::serve`, and that an app with live streams needs it: over HTTP/1.1 a browser's
+    six connections to a host run out
+    ([#400 architecture.md relies on HTTP/2 to share connections, but Corten serves only HTTP/1.1 and no guide says HTTP/2 must come from a proxy](https://github.com/todd-skelton/corten/issues/400)).
+34. `docs/architecture.md` lists number, money and date formatting as the framework's (`t` on
+    CLDR data, and `t.js()` in scripts), not as removed
+    ([#401 architecture.md says number, money and date formatting was removed from the framework, but t.money, t.number and t.date_time are built in](https://github.com/todd-skelton/corten/issues/401)).
+35. `design.md` Choices 11 to 14 say why a request's mode is a `corten` header and not `Accept` or
+    `Sec-Fetch-*`, why the runtime prefetches links itself and not with Speculation Rules, why
+    component CSS is scoped by prefix and not `@scope`, and why a feed patch is keyed `upsert` and
+    `remove` and not JSON Patch or Merge Patch, each with what would let Corten move
+    ([#396 The request mode is a corten header of our own, and no doc says why not Accept or Sec-Fetch-*](https://github.com/todd-skelton/corten/issues/396),
+    [#397 The runtime prefetches links its own way, and no doc says why not the Speculation Rules API](https://github.com/todd-skelton/corten/issues/397),
+    [#398 Component CSS is scoped by prefixing classes, and design.md does not say why not native @scope](https://github.com/todd-skelton/corten/issues/398),
+    [#399 A feed patch is an upsert/remove format of our own, and no doc says why not JSON Patch (RFC 6902) or Merge Patch (RFC 7396)](https://github.com/todd-skelton/corten/issues/399)).
+36. The requests guide documents `corten:error` (when a `data-patch` submit has no answer to draw,
+    with `detail.status`, 0 for none or a cut-off body), and the scripts guide the one way a script
+    learns what the server decided on a submit that did draw: the patch's element runs
+    `on:connect` with the handler's values and dispatches a typed event, as
+    `examples/deck-builder`'s `SaveNote` does. No second, status-only event is added
+    ([#432 A script that submits a data-patch form cannot learn the answer's outcome, so the deck builder carries it in an on:connect element](https://github.com/todd-skelton/corten/issues/432)).
+37. The requests guide says why the submit key is a form field and not the `Idempotency-Key`
+    header: a browser without JavaScript cannot set one, and the header is still an IETF draft
+    ([#395 An action takes its idempotency key only as a SubmitKey form field, not the Idempotency-Key header data clients send](https://github.com/todd-skelton/corten/issues/395)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

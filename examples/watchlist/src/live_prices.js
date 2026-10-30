@@ -11,7 +11,7 @@ import { keep, subscribe } from "corten";
 
 /**
  * The cells a stock's values go in, by ticker, and the formats they are written with.
- * @typedef {{ money: MoneyFormat, percent: PercentFormat }} Formats
+ * @typedef {{ money: MoneyFormat, moved: MoneyFormat, percent: PercentFormat }} Formats
  * @typedef {{ prices: Map<string, HTMLTableCellElement>, changes: Map<string, HTMLTableCellElement> }} Cells
  */
 
@@ -22,12 +22,13 @@ const held = () =>
 /**
  * @param {HTMLElement} root @param {HTMLButtonElement} pause
  * @param {Map<string, HTMLTableCellElement>} prices @param {Map<string, HTMLTableCellElement>} changes
- * @param {MoneyFormat} money @param {PercentFormat} percent @param {FeedUrl<Stock>} feed @param {AbortSignal} signal
+ * @param {MoneyFormat} money @param {MoneyFormat} moved today's move in money, signed (`t.js().signed_money(USD)`)
+ * @param {PercentFormat} percent @param {FeedUrl<Stock>} feed @param {AbortSignal} signal
  * @param {HTMLParagraphElement} updates @param {Message<"count">} updated the count's text, in the page's locale
  */
-export function watch(root, pause, prices, changes, money, percent, feed, signal, updates, updated) {
+export function watch(root, pause, prices, changes, money, moved, percent, feed, signal, updates, updated) {
   const s = held();
-  const formats = (s.formats = { money, percent });
+  const formats = (s.formats = { money, moved, percent });
   /** @type {Cells} */
   const cells = { prices, changes };
   pause.hidden = false;
@@ -94,8 +95,9 @@ function paint(cells, formats, stock) {
   if (price && price.textContent !== text) price.textContent = text;
   const change = cells.changes.get(stock.id);
   if (!change) return;
-  // The ratio as text (a decimal), so it is written exactly: 35 basis points is "0.0035".
-  const ratio = formats.percent(String(stock.change_bp / 10000));
-  if (change.textContent !== ratio) change.textContent = ratio;
+  // The move in money since the open, then the ratio as text (a decimal), so it is written
+  // exactly: 35 basis points is "0.0035".
+  const today = `${formats.moved(stock.price_cents - stock.open_cents)} ${formats.percent(String(stock.change_bp / 10000))}`;
+  if (change.textContent !== today) change.textContent = today;
   change.dataset.trend = stock.change_bp > 0 ? "up" : stock.change_bp < 0 ? "down" : "flat";
 }
