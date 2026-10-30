@@ -107,7 +107,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
             } else {
                 gen.nodes(&nodes, false);
                 let mut body = gen.finish();
-                body.extend(q("::corten::view::__private::No", &[]));
+                body.extend(q("::corten::view::__private::TextOrElementWithoutId", &[]));
                 body
             };
             q(
