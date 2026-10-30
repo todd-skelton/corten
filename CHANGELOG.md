@@ -1554,6 +1554,13 @@ Corten is pre-1.0, so any minor version may change the API.
     sent as `application/json`. Gateways, API tools and clients read the failures without
     knowing Corten (`docs/guide/app.md`, `docs/guide/requests-and-forms.md`)
     ([#392 JSON failures use a shape of our own, {"error":{"status","message"}}, instead of RFC 9457 Problem Details (application/problem+json)](https://github.com/todd-skelton/corten/issues/392)).
+84. corten-ui's `Choice` takes its terms with `.terms(..)`, from a slice of anything that is
+    text: constant `&str`s as before, or the `String`s a row computed, borrowed where they are
+    (`Choice::new(c.id, &c.label).terms(&c.terms)`), so terms made per row need no second
+    `Vec<Vec<&str>>` kept in step with the options. `Choice` and `Picker` take the term type as
+    a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
+    `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
+    ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
