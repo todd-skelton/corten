@@ -189,6 +189,7 @@ req.patch(html! { {Remove(OfferId(&sold.id))} })                             // 
 |---|---|
 | `#[derive(Route)]` | the path names a parameter the struct lacks, a parameter is not a whole segment, a link leaves a field out |
 | `messages!` | a locale lacks a key or has an extra one, a message takes different arguments in another locale, a call names a missing key or leaves out an argument, or passes one that is not text, an integer or a value `t` formats (a float goes through `t.number`) |
+| `#[derive(Href)]` | a variant holds no link or more than one (a unit variant has no URL) |
 | `#[derive(UrlValue)]` | the enum has a variant with fields, a variant serde does not read (`skip_deserializing`), or a serde attribute that changes its words in a way it does not follow |
 | `#[derive(Id)]` | `Remove` is given text instead of an id type; two ids in one program have the same name (each is a linker symbol, `corten__two_ids_are__offer`); the struct holds more than one key |
 | `#[component(css)]`, `#[component(js)]` | two components in one program have the same name, so they would style one `.name__*` or serve one `scripts/name.js` (each is a linker symbol, `corten__two_components_style__offer_list`, `corten__two_scripts_are__offer_list`) |
@@ -212,7 +213,20 @@ Routes write their URL straight into the page (path parameters percent-encoded, 
 parameters left out). A query field is anything `Display`; an enum in an address (a tab, a sort,
 what a redirect says happened) derives `UrlValue` beside `Deserialize`, which writes each
 variant as the word serde reads (`#[serde(rename_all = "kebab-case")]`: `AwaitingLabel` is
-`awaiting-label`), so the link and the handler cannot disagree. Messages are split into text and arguments when the crate compiles: one
+`awaiting-label`), so the link and the handler cannot disagree.
+
+A component several pages draw (a filter and sortable table that two screens share) takes where
+its links and forms go from the page, typed: a prop `action: &'a dyn Href` takes any route (or a
+place on a page, `route.at(Id)`), written straight into `action={action}` with no `String`. A
+value that is one of several routes (an app's screens, the links a shared list makes, one per
+column) is an enum whose variants each hold one, `#[derive(Href)] enum Screen<'a> {
+Inventory(url::Inventory), PullSheet(url::PullSheet<'a>) }`, written as `href={screen}`, and the
+page passes a function that builds it, `link: &'a dyn Fn(SortBy) -> SheetLink<'a>`. A unit
+variant does not compile (it has no URL), and neither does text where a `&dyn Href` goes. A
+part of each row the page decides (a detail one screen shows) is a function the same way,
+`detail: &'a dyn Fn(&Item) -> Box<dyn Render + 'a>`, drawn as `{detail(item)}`.
+
+Messages are split into text and arguments when the crate compiles: one
 without arguments is a `&'static str`, one with arguments writes its pieces into the page,
 escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
 

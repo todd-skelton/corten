@@ -973,7 +973,16 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
     `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
     reset feed's `seq` from its own (`docs/guide/live-data.md`).
-134. `Sources::referrer(Referrer::NoReferrer)` (also `StrictOrigin`, `SameOrigin`) makes an area's
+134. `#[derive(Href)]` on an enum whose variants each hold a route (an app's screens) makes it a
+    link, `href={screen}`, and a component several pages draw takes where its links and forms go
+    as `&dyn Href`, so each page passes its own typed route instead of a `String`; a unit variant
+    and text where a `&dyn Href` goes do not compile. A `Local` or `Uri` written this way is
+    escaped for the attribute. The views guide says how a shared list takes its links and a
+    per-row part. A redirect costs what it did: a redirect to a `Local` measured 19,241-19,260
+    instructions before and 19,084-19,228 after, one to a route 18,110-18,277 and 18,258-18,316
+    (callgrind, 3 runs each)
+    ([#361 A value that is one of several routes (an enum of screens) implements Href but cannot be written as href={..}](https://github.com/todd-skelton/corten/issues/361), [#391 A component several pages render cannot take a route as a prop (Href is not dyn-compatible), so a shared list's form action and column links are Strings](https://github.com/todd-skelton/corten/issues/391)).
+135. `Sources::referrer(Referrer::NoReferrer)` (also `StrictOrigin`, `SameOrigin`) makes an area's
     `Referrer-Policy` stricter, so a page whose address carries a secret (a consent token, a reset
     link) does not send it with the requests it makes; `Policy::referrer` does it for the app. There
     is no looser value; nested areas send the least any of them allows, and a changed policy gives
@@ -1566,6 +1575,11 @@ Corten is pre-1.0, so any minor version may change the API.
     sent as `application/json`. Gateways, API tools and clients read the failures without
     knowing Corten (`docs/guide/app.md`, `docs/guide/requests-and-forms.md`)
     ([#392 JSON failures use a shape of our own, {"error":{"status","message"}}, instead of RFC 9457 Problem Details (application/problem+json)](https://github.com/todd-skelton/corten/issues/392)).
+84. Breaking: `Href` is implemented with `write_link(&self, out, html)` instead of `with_href`, so
+    it can be a `dyn Href`; `with_href` is still there to call. An app's own `impl Href` becomes
+    `#[derive(Href)]` on its enum, or `write_link`. `corten_ui::Link` is gone: `MenuItem` and
+    `Tab` take their link as `&dyn Href`, the one link trait
+    ([#391 A component several pages render cannot take a route as a prop (Href is not dyn-compatible), so a shared list's form action and column links are Strings](https://github.com/todd-skelton/corten/issues/391)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
