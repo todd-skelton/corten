@@ -673,6 +673,25 @@ mod tests {
     }
 
     #[test]
+    fn a_field_sent_only_under_its_name_is_refused_unless_it_is_an_option() {
+        // An image button named `notify` sends `notify.x` and `notify.y`; a PHP-style list
+        // sends `ids[0]`. Neither is the field, so a default would read what was not sent.
+        let err = |body: &[u8]| from_bytes::<Bulk>(body).unwrap_err().to_string();
+        assert!(
+            err(b"sort=new&notify.x=3&notify.y=4").starts_with("notify: sent only as notify. or notify["),
+            "{}",
+            err(b"sort=new&notify.x=3")
+        );
+        assert!(err(b"sort=new&ids%5B0%5D=a").starts_with("ids: sent only as"), "{}", err(b"sort=new&ids%5B0%5D=a"));
+        // An `Option` is `None`, and a key under a name the struct does not have is ignored.
+        let form: Bulk = from_bytes(b"sort=new&max.x=1&page.x=2&page.y=3").expect("reads");
+        assert_eq!(form.max, None);
+        // The field sent as itself beside such keys reads as itself.
+        let form: Bulk = from_bytes(b"sort=new&notify=on&notify.x=3").expect("reads");
+        assert!(form.notify);
+    }
+
+    #[test]
     fn mistakes_name_the_field() {
         let err = |body: &[u8]| from_bytes::<Bulk>(body).unwrap_err().to_string();
         assert_eq!(err(b"sort=new&sort=price"), "sort: sent 2 times; a field that takes several values is a Vec");

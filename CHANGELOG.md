@@ -1614,11 +1614,12 @@ Corten is pre-1.0, so any minor version may change the API.
     flattened group cannot be told from another of its type, and serde reads a flattened field's
     value only as text
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366)).
-87. A key under a plain field's name, `go.x` with no `go` sent (an image button), reads as the
-    field's group: a field that is not an `Option` is refused with a message that says it was
-    sent only that way, where a `#[serde(default)] go: bool` read `false` though the button was
-    pressed. An `Option` reads as `None`, and a key under a name the form does not have is
-    ignored as before
+87. A key under a field's name sent without the field itself (`go.x` from an image button, `ids[0]`
+    from a PHP-style list) is read as that field's group or rows, in any struct `Form` reads: a
+    field that is not an `Option` is refused (422) with a message that says it was sent only that
+    way, where it was ignored and a `#[serde(default)] go: bool` read `false` though the button was
+    pressed, or a defaulted `Vec` read empty though values were sent. An `Option` reads as `None`,
+    and a key under a name the struct does not have is ignored as before
     ([#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
 ### Fixed
