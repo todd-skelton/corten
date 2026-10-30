@@ -19,9 +19,9 @@ use corten::prelude::*;
 /// Parts: a `div` around `button[aria-haspopup=menu]` (`[aria-expanded=true]` when open);
 /// `[role=menu]`, the popover, whose anchor is the button (place it with `position-area`);
 /// `[role=menuitem]` (or `menuitemcheckbox`, `menuitemradio`), the app's items. An item's text is
-/// what typing a letter matches, so an icon item has visually hidden text. A `disabled` button is
-/// passed over by the keys; `aria-disabled="true"` keeps one reachable. Closing a dialog an item
-/// opened returns focus to the button.
+/// what typing a letter matches, so an icon item has visually hidden text. A `disabled` or `hidden`
+/// item is passed over by the keys; `aria-disabled="true"` keeps one reachable. Closing a dialog
+/// an item opened (`commandfor`) returns focus to the button.
 ///
 /// ```
 /// use corten::prelude::*;
@@ -81,7 +81,7 @@ pub fn MenuButton<'a, L: Render, C: Render>(id: &'a str, label: L, children: C) 
                 role="menu"
                 aria-labelledby={(id, "-button")}
                 on:keydown={js::step(event, menu)}
-                on:click={js::used(event, menu)}
+                on:click={js::used(event, trigger, menu)}
                 on:beforetoggle={js::closing(event, menu)}
                 on:toggle={js::toggled(event, trigger, menu)}
             >

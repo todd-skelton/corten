@@ -156,7 +156,10 @@ fn a_menu_button_holds_the_apps_items() {
         html.starts_with(r#"<div data-scope="ui-menu-button" data-on="connect:ui.menu_button.connect(@trigger,@menu)">"#),
         "{html}"
     );
-    assert!(html.contains(r#"data-on="keydown:ui.menu_button.step($e,@menu) click:ui.menu_button.used($e,@menu)"#), "{html}");
+    assert!(
+        html.contains(r#"data-on="keydown:ui.menu_button.step($e,@menu) click:ui.menu_button.used($e,@trigger,@menu)"#),
+        "{html}"
+    );
     assert!(
         html.contains(r#"<form method="post" action="/out"><button role="menuitem">Out</button></form></div></div>"#),
         "{html}"

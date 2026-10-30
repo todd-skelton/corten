@@ -26,7 +26,7 @@ const itemsOf = (menu) => /** @type {HTMLElement[]} */ ([...menu.querySelectorAl
  * passed over (one that stays focusable while disabled says `aria-disabled="true"` instead).
  * @param {HTMLDivElement} menu
  */
-const reachable = (menu) => itemsOf(menu).filter((item) => !item.matches(":disabled"));
+const reachable = (menu) => itemsOf(menu).filter((item) => !item.matches(":disabled") && !item.closest("[hidden]"));
 
 /** Without this script Tab reaches each item; with it, the arrow keys do. @param {HTMLDivElement} menu */
 function outOfTabOrder(menu) {
@@ -74,19 +74,6 @@ export function toggled(event, trigger, menu) {
   const now = document.activeElement;
   if (s.focused && (!now || now === document.body || menu.contains(now))) trigger.focus();
   s.focused = false;
-  // An item opened a dialog: closing it gives focus back to the item, now hidden in the closed
-  // menu, so some browsers leave it on the page's body. The button takes it then.
-  const dialog = now?.closest("dialog[open]");
-  if (dialog && !dialog.contains(trigger)) {
-    dialog.addEventListener(
-      "close",
-      () => {
-        const at = document.activeElement;
-        if (!at || at === document.body || menu.contains(at)) trigger.focus();
-      },
-      { once: true },
-    );
-  }
 }
 
 /** @param {KeyboardEvent} event @param {HTMLDivElement} menu */
@@ -108,12 +95,26 @@ export function step(event, menu) {
 
 /**
  * A click on an item closes the menu, after the click: a link still navigates, a form still
- * submits and a command still opens its dialog.
- * @param {MouseEvent} event @param {HTMLDivElement} menu
+ * submits and a command still opens its dialog. Closing a dialog an item opened gives focus back
+ * to the item, which is hidden in the closed menu, so the button takes it instead (WebKit fires
+ * `close` with focus still in the dialog and then leaves it on the body).
+ * @param {MouseEvent} event @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu
  */
-export function used(event, menu) {
+export function used(event, trigger, menu) {
   const item = event.target instanceof Element && event.target.closest(ITEM);
   if (!item || !menu.contains(item)) return;
+  const target = item.getAttribute("commandfor");
+  const dialog = target && document.getElementById(target);
+  if (dialog instanceof HTMLDialogElement && !dialog.contains(trigger)) {
+    dialog.addEventListener(
+      "close",
+      () => {
+        const at = document.activeElement;
+        if (!at || at === document.body || menu.contains(at) || dialog.contains(at)) trigger.focus();
+      },
+      { once: true },
+    );
+  }
   queueMicrotask(() => menu.matches(":popover-open") && menu.hidePopover());
 }
 
