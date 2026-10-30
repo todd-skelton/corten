@@ -1,0 +1,6 @@
+.sign-in { display: grid; gap: 12px; max-width: 24rem; margin: 24px auto; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.sign-in h1, .sign-in p { margin: 0; }
+.sign-in p { color: var(--muted); }
+.sign-in label { display: grid; gap: 6px; font-weight: 600; }
+.sign-in details { color: var(--muted); }
+.sign-in details label { margin-top: 8px; color: var(--ink); }

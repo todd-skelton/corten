@@ -1,0 +1,10 @@
+.box { display: grid; gap: 8px; }
+.box p { margin: 0; }
+.price { font-size: 40px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.lead { justify-self: start; padding: 4px 10px; border-radius: 999px; background: var(--tint); color: var(--accent); font-weight: 600; }
+.bids { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.bids li { display: grid; grid-template-columns: 1fr auto 7rem; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.bids li:first-child { font-weight: 600; }
+.bids time { color: var(--muted); text-align: end; }
+.amount { font-variant-numeric: tabular-nums; }

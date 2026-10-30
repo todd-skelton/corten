@@ -1,0 +1,4 @@
+.bid { display: grid; gap: 10px; }
+.bid label { display: grid; gap: 6px; font-weight: 600; }
+.bid input { font-size: 20px; padding: 10px 12px; }
+.bid button { padding: 10px 14px; font-size: 16px; }

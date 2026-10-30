@@ -52,6 +52,10 @@
 //! - Other arguments are values, sent as JSON: strings, numbers, booleans, typed routes (their
 //!   URL), and with feature `json` anything `ToJson`.
 //! - `on:connect` runs when the element joins the page (its `signal` aborts when it leaves).
+//! - `on:document:keydown` runs for that event anywhere on the page while the element is on it,
+//!   after the handlers on the event's path (unless one stopped it), as a listener on the
+//!   document would: a screen's shortcuts, whatever has focus. `target` is still the element with
+//!   the `on:`, and `event` is typed by the event's name.
 //! - A handler is a value: a component takes one as a prop (`on_remove: Handler`) and puts it on
 //!   an element (`on:click={on_remove}`); the parent sets it with `on:remove={js::submit(form)}`.
 //! - [`script!`] declares a module shared by several components, and [`event`] a typed DOM
@@ -372,6 +376,81 @@
 //! fn CartLine<'a>(name: &'a str, quantity: u32) -> impl Render {
 //!     html! { <li><button data-on="click:cart_line.enable(@save)"></button></li> }
 //! }
+//! ```
+//!
+//! A handler for an event anywhere on the page is typed by that event, as on the element
+//! (`shortcut` takes a `KeyboardEvent`):
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     html! { <li on:document:keydown={js::shortcut(event, target)}></li> }
+//! }
+//! # fn main() {
+//! assert!(CartLine {}.to_html().contains(r#"data-on="document.keydown:cart_line.shortcut($e,$t)""#));
+//! # }
+//! ```
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     html! { <li on:document:click={js::shortcut(event, target)}></li> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! `on:document:` takes an event of the browser's that bubbles to the document: not `connect`
+//! (the element's own), not `focus` (`focusin` is the one that bubbles), and not a typed event
+//! (heard on an element it bubbles through):
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     let save = refs();
+//!     html! { <li on:document:connect={js::enable(save)}><button ref={save}></button></li> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     let save = refs();
+//!     html! { <li on:document:focus={js::enable(save)}><button ref={save}></button></li> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     let save = refs();
+//!     html! { <li on:document:RowToggled={js::enable(save)}><button ref={save}></button></li> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! The same markup with an event that bubbles compiles, so each one above fails for its event:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     let save = refs();
+//!     html! { <li on:document:focusin={js::enable(save)}><button ref={save}></button></li> }
+//! }
+//! # fn main() {}
 //! ```
 //!
 //! A typed event's handler on another event (`toggled` takes a `RowToggled`, a click is a
