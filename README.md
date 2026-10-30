@@ -424,13 +424,17 @@ is:
    PWA, i18n, caching, JSON routes for partners and agents). Read it before you deploy.
 3. [seller-desk](examples/seller-desk): a client-heavy inventory screen, for when a screen does more
    in the browser than forms and links.
-4. [auction-room](examples/auction-room): a live card auction where signed-in people bid on the
+4. [deck-builder](examples/deck-builder): a deck builder, the rich client screen: drag and drop
+   and keyboard moves, undo and redo, a chart drawn in the browser, and autosave that rolls back a
+   change the server refuses and notices another tab's edit. Read it when a screen keeps state in
+   the browser and saves it as the user works.
+5. [auction-room](examples/auction-room): a live card auction where signed-in people bid on the
    same lots at once, with bids in SQLite, a notice only the outbid bidder sees, a per-bidder rate
    limit and a house that only it may enter. Read it when several people act on shared data in
    real time.
-5. [ui-gallery](examples/ui-gallery): a seller's draft listing built from every `corten-ui`
+6. [ui-gallery](examples/ui-gallery): a seller's draft listing built from every `corten-ui`
    component, styled by a small design system.
-6. [listings-feed](examples/listings-feed): a seller's listings table kept live by one feed that
+7. [listings-feed](examples/listings-feed): a seller's listings table kept live by one feed that
    several instances serve (Postgres and NATS through `corten-cluster`), for when one instance is
    not enough; its failover benchmark kills instances while browsers follow.
 
