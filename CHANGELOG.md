@@ -1522,6 +1522,18 @@ Corten is pre-1.0, so any minor version may change the API.
     `corten check` runs it in place of its own `cargo fmt --check`. Given paths, or outside a
     package, `corten fmt` still lays out only the markup
     ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
+82. **Breaking for JSON clients.** Every JSON failure (under `App::api`, a `JsonResult<T>` route, a
+    data client) is an RFC 9457 Problem Details document sent as `application/problem+json`, in
+    place of Corten's own `{"error":{"status","message"}}` as `application/json`:
+    `{"title":"Not Found","status":404,"detail":"No item 7."}`. `title` is the status's reason,
+    `detail` the message a client may be told (left out when it would repeat the title, as for
+    every 5xx outside `corten dev`), and `type` is left out, which means `about:blank`.
+    Validation errors keep `fields` and `form`, now as extension members beside `detail`. A client
+    reads `detail` where it read `error.message`, `status` where it read `error.status`, and
+    `fields` where it read `error.fields`. `Api::errors` still writes another protocol's shape,
+    sent as `application/json`. Gateways, API tools and clients read the failures without
+    knowing Corten (`docs/guide/app.md`, `docs/guide/requests-and-forms.md`)
+    ([#392 JSON failures use a shape of our own, {"error":{"status","message"}}, instead of RFC 9457 Problem Details (application/problem+json)](https://github.com/todd-skelton/corten/issues/392)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
