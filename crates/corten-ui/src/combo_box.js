@@ -179,6 +179,8 @@ function open(parts, typed) {
     el.hidden = r < 0;
     if (r >= 0) ranked[r].push(el);
   });
+  // The highlight belongs to the old list: clear it before the list it indexes is replaced.
+  highlight(parts, -1);
   parts.shown = ranked.flat();
   // The list reads in the order the arrow keys move, so a reorder moves the elements, and only
   // when the order changed.

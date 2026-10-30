@@ -224,6 +224,8 @@ async function run(browser) {
   check("matches are ranked: a label or term that starts with the text first", ranked.join() === "Damaged,Lightly Played,Moderately Played,Heavily Played", ranked.join());
   const best = await color.getAttribute("aria-activedescendant");
   check("the best match is highlighted", best !== null && (await page.locator(`#${best}`).textContent()) === "Damaged");
+  const marked = await page.locator("[data-scope=ui-combo-box] [data-highlighted]").count();
+  check("only it is highlighted after the list was reordered", marked === 1, String(marked));
   await color.fill("");
   const all = await visible();
   check("an emptied query lists the options in their own order again", all.join() === "Near Mint,Lightly Played,Moderately Played,Heavily Played,Damaged", all.join());

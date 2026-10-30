@@ -6,10 +6,13 @@ use corten::{
 /// One option of a [`ComboBox`]: a value of the type the form's field reads, its label, and
 /// other words that find it.
 ///
-/// The value is written as its `Display`, as a route writes a field, so the field reads it back
-/// as the same type: an `i32` row id posts `42` to `line: i32`, and an enum deriving `UrlValue`
-/// and `Deserialize` posts the word serde reads (`Choice::new(Condition::NearMint, "Near Mint")`
-/// for `condition: Condition`). A form with a value outside the field's type is refused (422).
+/// The value is written as its `Display`, as a route writes a field, and with the same contract:
+/// what `Display` writes is what the field's `Deserialize` reads back. Numbers, text, a `Uuid` and
+/// an enum deriving `UrlValue` keep it (`UrlValue` writes the word serde reads), so an `i32` row
+/// id posts `42` to `line: i32` and `Choice::new(Condition::NearMint, "Near Mint")` posts `nm` to
+/// `condition: Condition`. A type of the app's own whose `Display` writes something else (`$1`
+/// for a field that reads `1`) has every pick refused (422), as a form with a value outside the
+/// field's type is.
 ///
 /// `terms` are matched as the label is, without being shown: a card number, a SKU, an
 /// abbreviation. Typing a term whole puts its option first:
@@ -23,7 +26,8 @@ pub struct Choice<'a, V> {
     pub value: V,
     /// What the user reads and types to find it.
     pub label: &'a str,
-    /// Other words that find it, each matched as the label is.
+    /// Other words that find it, each matched as the label is. A term is one line: it is written
+    /// in one attribute, a line each, so a line break in a term splits it in two.
     pub terms: &'a [&'a str],
 }
 

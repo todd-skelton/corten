@@ -1524,7 +1524,7 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
 82. corten-ui's `Choice` writes its value as its `Display`, as a route writes a field, in place of
     its `AsRef<str>`, so a row picked by its numeric id is a `Choice<i32>` and the form's field is
-    `line: i32` ([#376 corten-ui choices must be AsRef<str>, so a row picked by its numeric id cannot use the typed picker](https://github.com/todd-skelton/corten/issues/376)).
+    `line: i32` (as for a route's field, `Display` must write what the field's `Deserialize` reads) ([#376 corten-ui choices must be AsRef<str>, so a row picked by its numeric id cannot use the typed picker](https://github.com/todd-skelton/corten/issues/376)).
     A choice also has `terms`, other words that find it without being shown (a card number, a
     SKU, a grade), and `ComboBox` lists the matches ranked: a label or term typed whole, then one
     that starts with the text, then one that holds it, each kind in the options' order. A choice
