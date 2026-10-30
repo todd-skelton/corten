@@ -6,7 +6,8 @@
 //! (a webhook, an OAuth callback, a call between services, a public API) has only programs for
 //! clients, most of which send `Accept: */*` or nothing. So under an API prefix:
 //!
-//! - Every failure is one JSON shape, `{"error":{"status":404,"message":"Not Found"}}`: a
+//! - Every failure is one JSON shape, a Problem Details document (RFC 9457,
+//!   `application/problem+json`), `{"title":"Not Found","status":404,"detail":"No item 7."}`: a
 //!   handler's [`crate::Error`], an extractor's rejection (a body that does not parse), an
 //!   unknown URL, a wrong method, the deadline. A 4xx message is shown, a 5xx message only under
 //!   `corten dev`; the response's other headers (`Allow`, `WWW-Authenticate`) are kept. A failure
@@ -136,16 +137,17 @@ impl<P: Prefix> Api<P> {
         self
     }
 
-    /// The JSON every failure Corten answers under the prefix is written as, in place of
-    /// `{"error":{"status","message"}}`, for an API that speaks another protocol's error shape:
+    /// The JSON every failure Corten answers under the prefix is written as, in place of the
+    /// Problem Details document (sent as `application/json` then), for an API that speaks another
+    /// protocol's error shape:
     /// an unknown URL (404), a wrong method (405, with `Allow`), a cross-site write (403), the
     /// deadline (503), a request an extractor rejects, a `Caller` that refuses (401 or 403, with
     /// `WWW-Authenticate`) and a handler's `Error`. `message` is what the client may be told: a
     /// 4xx's message, a 5xx's reason (and its message under `corten dev`). A failure with a JSON
     /// body of the handler's own, and a [`crate::Relay`]'s, pass through as they are, and so
     /// does the 422 of the input's field errors (`?` on `Errors` in a `JsonResult` handler,
-    /// `req.invalid`), which keeps Corten's shape: a status and a message have no place for its
-    /// `fields`.
+    /// `req.invalid`), which stays a Problem Details document with its `fields` and `form`
+    /// members: a status and a message have no place for them.
     ///
     /// ```
     /// use corten::{axum::http::StatusCode, prelude::*};
@@ -333,9 +335,28 @@ pub(crate) const fn plain_prefix(prefix: &str, root: bool) -> bool {
     true
 }
 
-/// The JSON body of every failure: `{"error":{"status":404,"message":"Not Found"}}`.
-pub(crate) fn error_body(status: StatusCode, message: &str) -> String {
-    format!(r#"{{"error":{{"status":{},"message":{}}}}}"#, status.as_u16(), json_string(message))
+/// The body of every JSON failure, a Problem Details document (RFC 9457):
+/// `{"title":"Not Found","status":404,"detail":"No item 7."}`. `type` is left out, which means
+/// `about:blank` (the status says what went wrong), and `detail` is left out when the message is
+/// only the status's reason. `members` adds extension members, each starting with a comma.
+pub(crate) fn problem(status: StatusCode, message: &str, members: &str) -> String {
+    let mut out = String::with_capacity(64 + message.len() + members.len());
+    out.push('{');
+    let reason = status.canonical_reason();
+    if let Some(title) = reason {
+        out.push_str(r#""title":"#);
+        out.push_str(&json_string(title));
+        out.push(',');
+    }
+    out.push_str(r#""status":"#);
+    out.push_str(status.as_str());
+    if reason != Some(message) && !message.is_empty() {
+        out.push_str(r#","detail":"#);
+        out.push_str(&json_string(message));
+    }
+    out.push_str(members);
+    out.push('}');
+    out
 }
 
 /// What a JSON client is told: the detail for a 4xx (and for anything under `corten dev`), the
@@ -377,15 +398,19 @@ pub(crate) async fn json_failure(res: Response, dev: bool, shape: Option<&ErrorS
     let shown = shown(status, detail.as_deref(), dev);
     let body = match shape {
         Some(ErrorShape(write)) => write(status, shown),
-        None => error_body(status, shown).into_bytes(),
+        // Only a detail the client may see: a hidden 5xx's message is not replaced by a stand-in.
+        None => problem(status, detail.as_deref().filter(|_| dev || !status.is_server_error()).unwrap_or(""), "").into_bytes(),
     };
-    parts.headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(JSON));
+    parts.headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(if shape.is_some() { JSON } else { PROBLEM }));
     parts.headers.remove(header::CONTENT_LENGTH);
     parts.headers.remove(HeaderName::from_static("corten-page"));
     Response::from_parts(parts, Body::from(body))
 }
 
 pub(crate) const JSON: &str = "application/json";
+
+/// The media type of a Problem Details document (RFC 9457).
+pub(crate) const PROBLEM: &str = "application/problem+json";
 
 pub(crate) fn is_plain_text(headers: &HeaderMap) -> bool {
     headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("text/plain"))
@@ -449,8 +474,20 @@ mod tests {
         assert_eq!(shown(StatusCode::INTERNAL_SERVER_ERROR, Some("db password"), false), "Internal Server Error");
         assert_eq!(shown(StatusCode::INTERNAL_SERVER_ERROR, Some("db down"), true), "db down");
         assert_eq!(
-            error_body(StatusCode::BAD_REQUEST, "a \"b\" <c>"),
-            r#"{"error":{"status":400,"message":"a \"b\" \u003cc>"}}"#
+            problem(StatusCode::BAD_REQUEST, "a \"b\" <c>", ""),
+            r#"{"title":"Bad Request","status":400,"detail":"a \"b\" \u003cc>"}"#
         );
+        assert_eq!(
+            problem(StatusCode::TOO_MANY_REQUESTS, "Too Many Requests", ""),
+            r#"{"title":"Too Many Requests","status":429}"#,
+            "a message that is only the reason is not repeated as the detail"
+        );
+        let unnamed = StatusCode::from_u16(499).unwrap();
+        assert_eq!(
+            problem(unnamed, "Gone fishing", r#","x":1"#),
+            r#"{"status":499,"detail":"Gone fishing","x":1}"#,
+            "no reason, no title"
+        );
+        assert_eq!(problem(StatusCode::from_u16(599).unwrap(), "", ""), r#"{"status":599}"#, "nothing to tell, no detail");
     }
 }

@@ -444,7 +444,8 @@ impl<M: Middleware> App<M> {
     /// prefix is `"/"` or a path as [`App::area`] takes; API prefixes that overlap are a startup
     /// error.
     ///
-    /// Under the prefix every failure is JSON, `{"error":{"status","message"}}`, whatever the
+    /// Under the prefix every failure is an RFC 9457 Problem Details document
+    /// (`application/problem+json`, `{"title","status","detail"}`), whatever the
     /// client accepts, and an unknown URL or a wrong method there is a JSON 404 or 405. There is no
     /// shell and no nonce; the deadline, the request signal,
     /// compression and the same-origin check on writes stay. See [`crate::api`]. `"/"` makes the
