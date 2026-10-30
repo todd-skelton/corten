@@ -83,13 +83,53 @@ answers what only it can, and the browser does the rest.
 |---|---|---|
 | to sort, filter, select or page through rows it already has | a handler, and a `#[component(view)]` for many rows | no request |
 | to show, hide or expand what it already has | `<details>`, `popover`, `<dialog>`, or a handler with a `<template>` | the platform does it |
-| a value computed from what is on the page (a total, a preview) | a handler | no request |
+| a value computed from what is on the page (a total, a preview) | a handler | no request ([when the server draws it too](#a-value-both-sides-compute)) |
 | to save, buy, sign in or change anything | a form the server answers, `data-patch` | the server decides what a write does |
 | data it does not have (the next results, a search across everything) | a link, or a `GET` form | only the server has it |
 | data that changes on the server | a [feed](live-data.md) or `<corten-live>` | sent when it changes |
 
 A handler that makes a server action instant keeps the action: rows a handler filters as the
 user types sit in a `GET` form that filters them on the server without JavaScript.
+
+### A value both sides compute
+
+A value a handler computes that the server also draws (a refund the first draw shows, and the
+answer without JavaScript) is written twice, once in Rust and once in the script, and the
+compiler checks neither against the other. When a round trip per change is fast enough, draw it
+on the server only (a `GET` form, or a `data-patch` part) and there is one copy. When it must
+answer on every keystroke, keep the two small: the arithmetic in one pure function on each side,
+the JavaScript one in a `script!` module that imports nothing (`refund.js`, which the
+component's script imports as `./refund.js`), and one table of cases a test runs through both.
+`corten check` runs the tests, so a change to one side that misses the other fails it; Corten
+checks its own formats against the server's the same way (`scripts/format.mjs`). The test runs
+`node`, so it needs Node on the `PATH` of every machine that runs `cargo test` (CI included).
+
+```rust,ignore
+/// Paid and received, then the refund and what the seller nets, in cents.
+const CASES: &[[i64; 4]] = &[[1000, 750, 250, 750], [1000, 1200, 0, 1000], [7, 3, 4, 3]];
+
+#[test]
+fn the_script_refunds_what_the_server_does() {
+    for [paid, received, refund, net] in CASES {
+        assert_eq!(super::refund(*paid, *received), Refund { refund: *refund, net: *net });
+    }
+    // The same cases through the script's export (the test runs in the crate's directory).
+    let cases = CASES.iter().map(|[paid, received, ..]| format!("[{paid},{received}]")).collect::<Vec<_>>().join(",");
+    let script = format!(
+        "import {{ refundOf }} from './src/matrix/refund.js';
+         for (const [paid, received] of [{cases}]) {{ const r = refundOf(paid, received); console.log(r.refund, r.net); }}"
+    );
+    let out = std::process::Command::new("node").args(["--input-type=module", "-e", &script]).output().expect("node runs");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let lines: Vec<String> = String::from_utf8(out.stdout).unwrap().lines().map(str::to_string).collect();
+    let expected: Vec<String> = CASES.iter().map(|[.., refund, net]| format!("{refund} {net}")).collect();
+    assert_eq!(lines, expected);
+}
+```
+
+Keep money in integer minor units on both sides, and round with the same rule: `Math.round` and
+`f64::round` differ on a negative half (`-2.5` is `-2` in JavaScript and `-3` in Rust). Writing the
+result is the formats' job, which already agree ([below](#numbers-money-and-dates-a-script-writes)).
 
 ## Components and their roots
 
