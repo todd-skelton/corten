@@ -1,0 +1,7 @@
+.back { margin: 0 0 12px; }
+.back a { color: var(--muted); }
+.columns { display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr); align-items: start; }
+@media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
+.panel { display: grid; gap: 12px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.panel h1, .panel p { margin: 0; }
+.meta { color: var(--muted); }

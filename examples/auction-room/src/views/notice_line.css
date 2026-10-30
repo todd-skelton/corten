@@ -1,0 +1,3 @@
+.notice { margin: 0; padding: 10px 24px; background: var(--tint); border-bottom: 1px solid var(--line); text-align: center; }
+.notice:empty { display: none; }
+.notice a { color: inherit; font-weight: 600; }
