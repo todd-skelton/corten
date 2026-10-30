@@ -411,8 +411,8 @@
       "from": "corten-ui"
     },
     {
-      "name": "a message for the handler to fill in",
-      "attr": "connect:shared.say(@out,%[\"\",\"count\",\" listings\"])",
+      "name": "a plural message for the handler to fill in, with its locale's number format and plural table",
+      "attr": "connect:shared.say(@out,%{\"z\":\"0\",\"s\":[\".\",\",\",3,3,1],\"t\":[\"\\u0001\",\"-\\u0001\"],\"c\":\"515555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555\",\"m\":[null,[\"\",\"count\",\" listing\"],null,null,null,[\"\",\"count\",\" listings\"]]})",
       "parsed": [
         {
           "type": "connect",
@@ -425,12 +425,38 @@
               "name": "out"
             },
             {
-              "kind": "%",
-              "parts": [
-                "",
-                "count",
-                " listings"
-              ]
+              "kind": "f",
+              "spec": {
+                "z": "0",
+                "s": [
+                  ".",
+                  ",",
+                  3,
+                  3,
+                  1
+                ],
+                "t": [
+                  "\u0001",
+                  "-\u0001"
+                ],
+                "c": "515555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555",
+                "m": [
+                  null,
+                  [
+                    "",
+                    "count",
+                    " listing"
+                  ],
+                  null,
+                  null,
+                  null,
+                  [
+                    "",
+                    "count",
+                    " listings"
+                  ]
+                ]
+              }
             }
           ],
           "home": null
@@ -438,8 +464,8 @@
       ]
     },
     {
-      "name": "a message in another locale",
-      "attr": "connect:shared.say(@out,%[\"\",\"count\",\" annonces\"])",
+      "name": "a plural message in another locale, with a form for a million (many)",
+      "attr": "connect:shared.say(@out,%{\"z\":\"0\",\"s\":[\",\",\" \",3,3,1],\"t\":[\"\\u0001\",\"-\\u0001\"],\"c\":\"115555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555554\",\"m\":[null,[\"\",\"count\",\" annonce\"],null,null,[\"\",\"count\",\" d’annonces\"],[\"\",\"count\",\" annonces\"]]})",
       "parsed": [
         {
           "type": "connect",
@@ -452,12 +478,42 @@
               "name": "out"
             },
             {
-              "kind": "%",
-              "parts": [
-                "",
-                "count",
-                " annonces"
-              ]
+              "kind": "f",
+              "spec": {
+                "z": "0",
+                "s": [
+                  ",",
+                  " ",
+                  3,
+                  3,
+                  1
+                ],
+                "t": [
+                  "\u0001",
+                  "-\u0001"
+                ],
+                "c": "115555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555554",
+                "m": [
+                  null,
+                  [
+                    "",
+                    "count",
+                    " annonce"
+                  ],
+                  null,
+                  null,
+                  [
+                    "",
+                    "count",
+                    " d’annonces"
+                  ],
+                  [
+                    "",
+                    "count",
+                    " annonces"
+                  ]
+                ]
+              }
             }
           ],
           "home": null
@@ -489,7 +545,7 @@
     },
     {
       "name": "a group with a message",
-      "attr": "connect:shared.tally(@out,{entity:\"Levels\",label:%[\"\",\"count\",\" listings\"]})",
+      "attr": "connect:shared.tally(@out,{entity:\"Levels\",label:%[\"\",\"count\",\" selected\"]})",
       "parsed": [
         {
           "type": "connect",
@@ -518,7 +574,7 @@
                     "parts": [
                       "",
                       "count",
-                      " listings"
+                      " selected"
                     ]
                   }
                 ]
@@ -531,7 +587,7 @@
     },
     {
       "name": "a group with a message in another locale",
-      "attr": "connect:shared.tally(@out,{entity:\"Levels\",label:%[\"\",\"count\",\" annonces\"]})",
+      "attr": "connect:shared.tally(@out,{entity:\"Levels\",label:%[\"\",\"count\",\" sélectionnées\"]})",
       "parsed": [
         {
           "type": "connect",
@@ -560,7 +616,7 @@
                     "parts": [
                       "",
                       "count",
-                      " annonces"
+                      " sélectionnées"
                     ]
                   }
                 ]

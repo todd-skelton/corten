@@ -1,9 +1,11 @@
 {
   "item": {
     "listings": "Angebote",
-    "listing_count": "{total} Angebote",
-    "image": "{title} Bild {n}"
+    "listing_count_one": "{count} Angebot",
+    "listing_count_other": "{count} Angebote",
+    "image": "{title} Bild {nr}"
   },
+  "selected": "{count} ausgewählt",
   "brace": "{{Wort}} & mehr",
   "attention": {
     "detail": "{provider} · {type} · Konfidenz {match}",

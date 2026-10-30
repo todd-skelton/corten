@@ -269,9 +269,14 @@ async function run(browser) {
   const before = await prices();
   await page.waitForFunction((b) => JSON.stringify([...document.querySelectorAll('[data-ref="price"]')].map((c) => c.textContent)) !== b, JSON.stringify(before), { timeout: 4000 }).catch(() => {});
   check("live patches update prices", JSON.stringify(await prices()) !== JSON.stringify(before), `${before.join(", ")} -> ${(await prices()).join(", ")}`);
-  // Text a script computes, from the catalog: on:connect={js::watch(.., updates, t.js().prices_updates())}.
+  // Text a script computes, from the catalog: on:connect={js::watch(.., updates, t.js().prices_updates())},
+  // a plural message whose form the browser picks by the count (1 price update, 2 price updates).
   const counted = await page.textContent(`${live} [data-ref="updates"]`);
-  check("a script fills in a message of the page's locale", /^Price updates: [1-9]\d*$/.test(counted ?? ""), String(counted));
+  check(
+    "a script fills in a plural message of the page's locale, in the count's form",
+    /^(1 price update|([2-9]|[1-9][\d,]+) price updates)$/.test(counted ?? ""),
+    String(counted),
+  );
 
   // A handler with per-component state (keep()): on:click={js::pause(target, price, change)}.
   check("the script reveals its controls", await page.isVisible(`${live} button`));

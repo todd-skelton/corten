@@ -1,9 +1,12 @@
 {
   "item": {
     "listings": "Annonces",
-    "listing_count": "{count} annonces",
+    "listing_count_one": "{count} annonce",
+    "listing_count_many": "{count} d’annonces",
+    "listing_count_other": "{count} annonces",
     "image": "Image {n} de {title}"
   },
+  "selected": "{count} sélectionnées",
   "brace": "{{littéral}} & plus",
   "attention": {
     "detail": "{provider} · {type} · confiance {match}",

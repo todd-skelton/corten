@@ -1,8 +1,12 @@
 {
   "item": {
     "lowest": "le plus bas",
-    "listing_count": "{count} annonces",
-    "available": "{count} disponibles",
+    "listing_count_one": "{count} annonce",
+    "listing_count_many": "{count} d’annonces",
+    "listing_count_other": "{count} annonces",
+    "available_one": "{count} disponible",
+    "available_many": "{count} disponibles",
+    "available_other": "{count} disponibles",
     "no_listings": "Aucune annonce pour l'instant",
     "listings": "Annonces",
     "sort_asc": "Prix croissant",
