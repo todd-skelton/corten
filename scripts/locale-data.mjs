@@ -354,6 +354,29 @@ function formatMoney(d, text, code) {
   return t.replace("\u0001", body(d, d.ofMoney, int, frac));
 }
 
+/** The locale's minus and plus signs: where its percentage's loss and gain templates differ. */
+function signs(d) {
+  const [loss, gain] = [d.percent[1], d.percent[2]];
+  let start = 0;
+  while (loss[start] === gain[start]) start++;
+  let end = 0;
+  while (end < loss.length - start && loss[loss.length - 1 - end] === gain[gain.length - 1 - end]) end++;
+  return [loss.slice(start, loss.length - end), gain.slice(start, gain.length - end)];
+}
+
+/** An amount with its sign, as Intl's `signDisplay: "exceptZero"`: a gain is the loss's template with
+ * the plus sign in place of the minus, and what rounds to zero has none. */
+function formatSignedMoney(d, text, code) {
+  const digits = displayDigits[code] ?? 2;
+  const [negative, int, frac] = round(text, digits);
+  const own = d.symbols.find(([c]) => c === code);
+  const [plain, loss] = own ? [own[1], own[2]] : [d.money[0].replace("\u0002", code), d.money[1].replace("\u0002", code)];
+  const [minus, plus] = signs(d);
+  if (loss.split(minus).length !== 2) throw new Error(`${d.tag} ${code}: the loss template has its minus sign other than once`);
+  const t = /^0*$/.test(int + frac) ? plain : negative ? loss : loss.replace(minus, plus);
+  return t.replace("\u0001", body(d, d.ofMoney, int, frac));
+}
+
 function civil(date, offset) {
   const t = new Date(date.getTime() + offset * 1000);
   return { y: t.getUTCFullYear(), mo: t.getUTCMonth() + 1, d: t.getUTCDate(), wd: t.getUTCDay(), h: t.getUTCHours(), mi: t.getUTCMinutes(), s: t.getUTCSeconds() };
@@ -411,6 +434,9 @@ const AMOUNTS = ["1234.5", "-5", "0", "21.505", "-0.004", "1234567.125", "0.995"
 // The ones the Rust test formats again (this script checks every currency).
 const CASE_CURRENCIES = ["USD", "EUR", "JPY", "CHF", "KWD", "INR", "BRL", "CAD"];
 const CASE_AMOUNTS = ["1234.5", "-5", "21.505", "-0.004", "1234567.125"];
+// An amount with its sign: gains, losses, and ones that round to zero either way.
+const SIGNED_AMOUNTS = [...AMOUNTS, "0.004", "-0.005", "3.2", "-1.23"];
+const CASE_SIGNED = ["3.2", "-1.23", "0", "-0.004", "1234567.125"];
 const INSTANTS = [
   SAMPLE,
   at(1999, 12, 31, 0, 30, 9),
@@ -459,6 +485,11 @@ for (const tag of [...LANGUAGES, ...REGIONS]) {
       const intl = new Intl.NumberFormat(tag, { style: "currency", currency: code }).format(amount);
       expect(tag, "money", `${amount} ${code}`, formatMoney(d, amount, code), intl);
       if (CASE_CURRENCIES.includes(code) && CASE_AMOUNTS.includes(amount)) forCases.push(["money", `${amount} ${code}`, intl]);
+    }
+    for (const amount of CURRENCIES.includes(code) ? SIGNED_AMOUNTS : ["1234.5", "-5", "0"]) {
+      const intl = new Intl.NumberFormat(tag, { style: "currency", currency: code, signDisplay: "exceptZero" }).format(amount);
+      expect(tag, "signed_money", `${amount} ${code}`, formatSignedMoney(d, amount, code), intl);
+      if (CASE_CURRENCIES.includes(code) && CASE_SIGNED.includes(amount)) forCases.push(["signed_money", `${amount} ${code}`, intl]);
     }
   }
   BAGS.forEach((bag, style) => {
