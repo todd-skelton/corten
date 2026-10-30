@@ -1,6 +1,5 @@
 /* Element defaults and the shell. The builder's rules are next to it (src/views/deck_builder.css). */
 *, *::before, *::after { box-sizing: border-box; }
-[hidden] { display: none !important; }
 :root {
   color-scheme: light dark;
   --ink: light-dark(#1c1a24, #ebe9f2);

@@ -971,19 +971,54 @@ Corten is pre-1.0, so any minor version may change the API.
     formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
     minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
     ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
-    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
-134. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
+134. `#[derive(Href)]` on an enum whose variants each hold a route (an app's screens) makes it a
+    link, `href={screen}`, and a component several pages draw takes where its links and forms go
+    as `&dyn Href`, so each page passes its own typed route instead of a `String`; a unit variant
+    and text where a `&dyn Href` goes do not compile. A `Local` or `Uri` written this way is
+    escaped for the attribute. The views guide says how a shared list takes its links and a
+    per-row part. A redirect costs what it did: a redirect to a `Local` measured 19,241-19,260
+    instructions before and 19,084-19,228 after, one to a route 18,110-18,277 and 18,258-18,316
+    (callgrind, 3 runs each)
+    ([#361 A value that is one of several routes (an enum of screens) implements Href but cannot be written as href={..}](https://github.com/todd-skelton/corten/issues/361), [#391 A component several pages render cannot take a route as a prop (Href is not dyn-compatible), so a shared list's form action and column links are Strings](https://github.com/todd-skelton/corten/issues/391)).
+135. `Sources::referrer(Referrer::NoReferrer)` (also `StrictOrigin`, `SameOrigin`) makes an area's
+    `Referrer-Policy` stricter, so a page whose address carries a secret (a consent token, a reset
+    link) does not send it with the requests it makes; `Policy::referrer` does it for the app. There
+    is no looser value; nested areas send the least any of them allows, and a changed policy gives
+    the area its own shell key, and an `App::api` under the area sends it too. An answer that brings
+    a policy of its own (a relayed redirect) sends the least of its and the area's, its lines read
+    as the browser reads them. Choosing the header per answer, and reading every line
+    of one the answer brought, costs a plain GET about 75 instructions (20,351-20,358 to
+    20,427-20,432 under callgrind, 3 runs, about 0.4%)
+    ([#390 A page or a relayed answer cannot choose a stricter Referrer-Policy: Corten replaces it on every answer](https://github.com/todd-skelton/corten/issues/390)).
+136. `corten::Within` is exported beside `Errors`, so a field helper several forms share takes the
+    form's scoped errors without reaching into `corten::form` ([#451 form::Within is not re-exported
+    beside Errors, so a field helper shared by several forms must find
+    corten::form::Within](https://github.com/todd-skelton/corten/issues/451)).
+137. A submit refused for the state it was made against, not its input (a stale revision, a step
+    already taken), is `errors.refuse(Refusal::Conflict, message)`: `req.invalid` answers it with
+    409 (or 410 for `Refusal::Gone`) in every mode, the form drawn again with what the user typed
+    and the message at its top, and data clients get the same status in the Problem Details
+    document. `Refusal` is a closed set of 4xx refusals, so a 2xx or a 5xx does not compile ([#438 A
+    post refused for a reason that is not a field (a stale revision, a step out of order) has no
+    answer, so each screen draws its page and sets a 409 on the raw
+    response](https://github.com/todd-skelton/corten/issues/438)).
+138. `PageOr<Media>` and `PageOr<Relay>`: a route that sends a file answers the page, or a redirect,
+    instead when it refuses (a download posted at a stale revision), each `.into()` the answer,
+    private like any page and `Public` with a page made for everyone
+    ([#415 A handler that answers a file cannot answer a page or a redirect when the file is refused](https://github.com/todd-skelton/corten/issues/415)).
+139. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
     form, its fields posted as `ship_to.street` (`f.ship_to.street`), so a field group is defined
     once and a form can hold two of one type. `#[fields(rows)] #[serde(default)] domains:
     BTreeMap<Domain, DomainLimits>` is one group per row, each field named by the row's key,
     `f.domains.at(&Domain::SellerPortal).max_concurrent`, posted as
-    `domains[seller-portal].max_concurrent`: the key, not the row's place, joins a row's values,
-    so a row left out shifts nothing and an unchecked checkbox is `false` in its own row, and an
-    error on one row's field marks that input only, with its own message id. `at` takes only the
-    map's key type (a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, by its word); a key's other characters
-    are %-encoded. A group of groups, rows in a group or a row, and rows without a default do not
-    compile. `Form` and `corten::form::from_bytes` read both with Corten's own form reader. `#[fields(map)]
+    `domains[seller-portal].max_concurrent`: the key, not the row's place, joins a row's values, so
+    a row left out shifts nothing and an unchecked checkbox is `false` in its own row, and an error
+    on one row's field marks that input only, with its own message id. `at` takes only the map's key
+    type (a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, by its word); a key's other
+    characters are %-encoded. A group of groups, rows in a group or a row, rows without a default, a
+    group that is an `Option`, and a row key an enum reads by more than its word (`alias`, `other`)
+    do not compile, and neither does a `UrlValue` enum with two variants written as one word. `Form`
+    and `corten::form::from_bytes` read both with Corten's own form reader. `#[fields(map)]
     #[serde(default)] counts: BTreeMap<Sku, u32>` is one plain value per key, `f.counts.at(&sku)`,
     posted as `counts[sku]`, with its own error. Plain forms pay for it: reading a form of three
     plain fields costs 3,332 instructions where it took 3,110, and refusing one whose number does
@@ -1573,7 +1608,28 @@ Corten is pre-1.0, so any minor version may change the API.
     sent as `application/json`. Gateways, API tools and clients read the failures without
     knowing Corten (`docs/guide/app.md`, `docs/guide/requests-and-forms.md`)
     ([#392 JSON failures use a shape of our own, {"error":{"status","message"}}, instead of RFC 9457 Problem Details (application/problem+json)](https://github.com/todd-skelton/corten/issues/392)).
-84. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
+84. Breaking: `Href` is implemented with `write_link(&self, out, html)` instead of `with_href`, so
+    it can be a `dyn Href`; `with_href` is still there to call. An app's own `impl Href` becomes
+    `#[derive(Href)]` on its enum, or `write_link`. `corten_ui::Link` is gone: `MenuItem` and
+    `Tab` take their link as `&dyn Href`, the one link trait
+    ([#391 A component several pages render cannot take a route as a prop (Href is not dyn-compatible), so a shared list's form action and column links are Strings](https://github.com/todd-skelton/corten/issues/391)).
+85. corten-ui's `Choice` takes its terms with `.terms(..)`, from a slice of anything that is
+    text: constant `&str`s as before, or the `String`s a row computed, borrowed where they are
+    (`Choice::new(c.id, &c.label).terms(&c.terms)`), so terms made per row need no second
+    `Vec<Vec<&str>>` kept in step with the options. `Choice` and `Picker` take the term type as
+    a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
+    `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
+    ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
+86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
+    one fits is part of correctness in the conflict order: a header, wire format or file format
+    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
+    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
+    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
+87. `ReadAgain::from` takes the route by value as well as by reference (a borrowed route is a
+    `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
+    of the page and the patch builds the read in its body instead of failing with E0515 or E0597
+    ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
+88. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
     name alone (`FieldName`, with `as_str`), and a group's or a row's field is a
     `FieldName<Group>`, `FieldName<Row<'k>>` or `FieldName<RowGroup<'k>>`, written, not stored:
     compare it with text with `==` (`f.ship_to.street == "ship_to.street"`) and write it with
@@ -1584,6 +1640,13 @@ Corten is pre-1.0, so any minor version may change the API.
     flattened group cannot be told from another of its type, and serde reads a flattened field's
     value only as text
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366)).
+89. A key under a field's name sent without the field itself (`go.x` from an image button, `ids[0]`
+    from a PHP-style list) is read as that field's group or rows, in any struct `Form` reads: a
+    field that is not an `Option` is refused (422) with a message that says it was sent only that
+    way, where it was ignored and a `#[serde(default)] go: bool` read `false` though the button was
+    pressed, or a defaulted `Vec` read empty though values were sent. An `Option` reads as `None`,
+    and a key under a name the struct does not have is ignored as before
+    ([#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1999,6 +2062,41 @@ Corten is pre-1.0, so any minor version may change the API.
     `get`, `push` or `replace`, which need a key. A view no longer needs a key only to satisfy
     `tsc`. `scripts/typecheck-fixture.js` checks both
     ([#418 rows() takes only a view with a key, so a keyless #[component(view)] a script only reads fails tsc (TS2769), though the guide presents key as optional](https://github.com/todd-skelton/corten/issues/418)).
+72. A `use` inside a `#[corten::routes]` module that brings in a handler, and a handler written
+    inside the module, are a compile error there that says handlers are named from where the module
+    is declared, not an unused import and "cannot find value" at each handler. A `use` the module
+    names for itself (a field's type, a `pub use`, a `#[cfg(test)]` import) is left alone
+    ([#359 A handler imported inside a #[corten::routes] module is not found, and the error does not say handlers are named from where the module is declared](https://github.com/todd-skelton/corten/issues/359)).
+73. `corten check` runs the tests before `tsc`, so the test that writes `types/app.d.ts` declares a
+    new view or event before a script's import of it is checked, instead of `tsc` refusing the
+    import with TS2305 and stopping the check. The scripts guide says one component list goes to
+    both `App::components` and the types test
+    ([#386 corten check runs tsc before the test that writes types/app.d.ts, so a script using a new view fails with TS2305 until the tests are run by hand](https://github.com/todd-skelton/corten/issues/386)).
+74. `#[component(css = path::Owner)]` shares a stylesheet from any module of the crate that can see
+    the owner, named by its path, so a screen whose panels are in files of their own has one sheet; it worked only in the
+    owner's module, and the error named a hidden module with `cargo add` advice. An owner that
+    cannot be found is reported at the path written. The owner's module hands its sheet's path to
+    the helper at compile time; nothing changes at run time
+    ([#377 css = Owner works only in the owner's module, so a screen's views in several files cannot share its stylesheet, and the error names a hidden module](https://github.com/todd-skelton/corten/issues/377)).
+75. A view lent to a prop inside another view (`action={&html! { .. }}`) borrows what it uses
+    instead of owning it, so the rest of the markup can read the same local; it was a `move`
+    closure and a second read was E0382. A view given by value, and the view at the top of an
+    `html!`, still own what they use
+    ([#414 A view in a prop (action={&html! {..}}) takes ownership of the locals it uses, so a local also read elsewhere in the page fails with E0382](https://github.com/todd-skelton/corten/issues/414)).
+76. An element with the `hidden` attribute stays hidden when a component's class gives it a
+    `display`: `components.css` (or, when only areas have stylesheets, each area's file) starts with
+    `[hidden]:where(:not([hidden=until-found i])){display:none!important}`, so neither an app nor a
+    design system for corten-ui has to know to add it. The rule adds 69 bytes to the stylesheet,
+    before compression ([#423 The [hidden] { display: none !important } rule corten-ui requires is
+    not in the template and nothing checks it, so a component's display silently shows hidden
+    parts](https://github.com/todd-skelton/corten/issues/423)).
+77. Two `#[component(view)]`s or two `#[event]` types with one name in one crate fail to compile,
+    as two components with one name do, rather than the app when it starts (across crates, the
+    linker refuses the pair when the program uses code next to both, and the start-time check
+    catches the rest)
+    (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and
+    `corten__two_events_named__row_toggled` for the event's name in the page)
+    ([#371 Two features' #[event] types or views with the same name still fail only when the server starts](https://github.com/todd-skelton/corten/issues/371)).
 
 ### Documentation
 

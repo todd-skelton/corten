@@ -86,7 +86,10 @@ bytes (a hash), return `Public::immutable(answer)` so every cache keeps it for a
 cannot read who is asking. A download names its file with `.attachment("cards.csv")` (or
 `.inline(..)` to show it), which escapes the name; never set `Content-Disposition` yourself.
 Link to it with `download` (`data-reload` for an `inline` file), so the runtime does not fetch
-it on hover and again on click. Never build the response by hand.
+it on hover and again on click. Never build the response by hand. A download that may be
+refused returns `corten::Result<PageOr<Media>>` (`PageOr<Relay>` for a relayed file) and
+answers the page with why, or a redirect, with `.into()`; never relay a redirect of the app's own.
+Its form is a plain `method="post"` form: a file answered to a `data-patch` submit is not saved.
 
 ## Checkboxes and lists
 
@@ -119,7 +122,9 @@ A group several forms share (an address) is its own `Fields` struct, put in a fo
 items) are `#[fields(rows)] #[serde(default)] lines: BTreeMap<Key, Line>`, and a row's field is
 `f.lines.at(&key).qty` (posted `lines[key].qty`), in markup and in `errors.add`. Never post
 rows as parallel `Vec` columns: the key joins a row's values and gives each row's field its own
-error. A key type is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum. One plain
+error. A key type is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum without
+`alias` or `other`. A group is never an `Option`; one a form may leave out is `Option` fields
+and `#[serde(default)]`. One plain
 value per key (a count per SKU) is `#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>`,
 a field per key: `f.counts.at(&sku)`, posted `counts[sku]`.
 
@@ -158,7 +163,11 @@ browser keeps only the first, and `html!` refuses it).
 A refusal that belongs to no field (a cross-field rule, or the backend saying no) is
 `errors.add_form(text)`, shown once at the top of the form with `{form.errors.form_message()}`.
 Never attach it to an arbitrary field, and never pass it beside `Errors` in a separate prop: data
-clients and agents only see what is in `Errors`.
+clients and agents only see what is in `Errors`. A refusal for a stale state (another save came
+first, a step out of order) is `errors.refuse(Refusal::Conflict, text)`, a 409 from
+`req.invalid`; never set a status on the response by hand. Make such a form `data-patch`
+(a download is the exception: a plain post whose refusal redirects to the page with the reason).
+A field helper several forms share takes `e: &corten::Within<'_, I>`.
 
 A write that must apply once (an order, a payment) takes a `submit: SubmitKey` field, drawn with
 `{SubmitKey::field(f.submit)}`; the app stores the key with the write and answers a repeat with the

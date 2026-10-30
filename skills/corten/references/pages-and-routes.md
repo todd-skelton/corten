@@ -28,9 +28,10 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
 ```
 
 1. Every route is a struct in the `#[corten::routes]` module that names its handlers,
-   `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile);
+   `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile),
+   named from where the module is declared: put a handler's `use` above `mod url`, never inside it;
    `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
-   `#[corten::routes(state = Db)]` and `url::router(db)`; for several parts, `#[derive(Clone, FromRef)] struct Shared { db: Db, market: Market }` and handlers take `State<Market>` (a hand-written `impl FromRef` only for a part computed from the state, not one that clones a field). Link with the struct. Fields not in the path are query parameters (`pub tab: Option<&'a str>`). A handler reads them back as the route's `Params<url::Item<'_>>` (the fields owned: `at.id` is a `String`); a handler of a route with a path parameter that does not take its own `Params` does not compile, so never read a route's path or query with axum's `Path` or `Query`, or declare a second struct for its query. `Params` refuses (at compile time) a route with a serde key links do not follow (`alias`, `flatten`, `skip`, `with`, a struct-level `default`) and a borrowed `#[route(query)]` set: keep those keys off route structs and make query sets owned. An enum field (`pub tab: Option<Tab>`) derives `UrlValue` with `Deserialize`, never a hand-written `Display`: it writes the words serde reads.
+   `#[corten::routes(state = Db)]` and `url::router(db)`; for several parts, `#[derive(Clone, FromRef)] struct Shared { db: Db, market: Market }` and handlers take `State<Market>` (a hand-written `impl FromRef` only for a part computed from the state, not one that clones a field). Link with the struct; a component several pages draw takes its links as `&'a dyn Href` props, and a value that is one of several routes is a `#[derive(Href)]` enum whose variants each hold one, never a `String` built from a route. Fields not in the path are query parameters (`pub tab: Option<&'a str>`). A handler reads them back as the route's `Params<url::Item<'_>>` (the fields owned: `at.id` is a `String`); a handler of a route with a path parameter that does not take its own `Params` does not compile, so never read a route's path or query with axum's `Path` or `Query`, or declare a second struct for its query. `Params` refuses (at compile time) a route with a serde key links do not follow (`alias`, `flatten`, `skip`, `with`, a struct-level `default`) and a borrowed `#[route(query)]` set: keep those keys off route structs and make query sets owned. An enum field (`pub tab: Option<Tab>`) derives `UrlValue` with `Deserialize`, never a hand-written `Display`: it writes the words serde reads.
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
    answers `req.moved(&url::Item { id })`, a 301. A place on another site's page is
    `corten::Elsewhere::at(&uri, "id")`, never a `Location` header set by hand. An area's routes are a module of their own,
@@ -52,7 +53,7 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
    showing a read that has not caught up with a write yet adds
    `ReadAgain { after: Duration::from_secs(2) }` to its head tags while it is behind (and stops
    after a time limit); the runtime reads it again in place however it was reached. A
-   `data-patch` answer in the same state puts `{ReadAgain { after }.from(&route)}` in the patch,
+   `data-patch` answer in the same state puts `{ReadAgain { after }.from(route)}` in the patch,
    where `route` carries the write's receipt and its handler answers `req.patch_or(..)` (the part,
    or the page without JavaScript); never redirect only to show "saving". Never a `Refresh` header. Structured data is `JsonLd { value: &product }` among the head tags, never
    `raw` or an expression inside `<script>` (that does not compile).
@@ -256,6 +257,10 @@ sets the session cookie on the answer, `Ok(req.redirect(&next)?.with_cookie(SetC
 &token)))` (`SetCookie::remove("session")` signs out); never append a `Set-Cookie` header by hand.
 A token from another service goes through `SetCookie::try_new`, so a value a cookie cannot carry is
 an error the handler answers (a 502), not a panic.
+A page whose address carries a secret (a consent token, a reset or invitation link) gets an area
+with `.policy(|p| p.referrer(Referrer::NoReferrer))` (`corten::security::Referrer`), so the
+address is not sent with its requests; never set `Referrer-Policy` or `<meta name="referrer">`
+by hand.
 
 ## Data from another service
 

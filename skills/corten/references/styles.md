@@ -27,7 +27,11 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
    string does not compile. An unused class is a warning, which is an error under
    `corten check` (clippy runs with `-D warnings`).
 3. Variants are a Rust `match` from an enum to class constants.
-4. A helper in the same module that shares the file: `#[component(css = OfferList)]`.
+4. A helper that shares the file: `#[component(css = OfferList)]` in the owner's module,
+   `#[component(css = super::offers::OfferList)]` from another (one stylesheet for a screen whose
+   panels are in several files). Classes are in scope only in components; never write a plain
+   `fn` that returns one of them (`Ok` would be `Result::Ok` there), and never `use` the
+   hidden `__corten_css_*` module.
 5. Design tokens: `corten::style::tokens!("tokens.json")` gives custom properties, themes
    (`[data-theme="dark"]`) and typed scales. Put `TOKENS` first in `App::components`.
    A `var(--x)` without a fallback that no stylesheet on the same pages declares fails at

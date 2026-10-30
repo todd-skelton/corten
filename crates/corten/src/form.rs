@@ -189,6 +189,20 @@
 //! }
 //! ```
 //!
+//! A map's value may be an `Option`, so a count left blank reads as `None`:
+//!
+//! ```
+//! # use std::collections::BTreeMap;
+//! #[derive(serde::Deserialize, corten::Fields)]
+//! struct Counts {
+//!     #[fields(map)]
+//!     #[serde(default)]
+//!     counts: BTreeMap<u32, Option<u32>>,
+//! }
+//! let read: Counts = corten::form::from_bytes(b"counts%5B4%5D=2&counts%5B9%5D=").unwrap();
+//! assert_eq!(read.counts, BTreeMap::from([(4, Some(2)), (9, None)]));
+//! ```
+//!
 //! A field is `#[fields(group)]`, `#[fields(rows)]` or `#[fields(map)]`, and a name in the form
 //! has no `.`, `[` or `]` of its own (they name a group's or a row's fields):
 //!
@@ -248,8 +262,9 @@
 //! let _ = Order::FIELDS;
 //! ```
 //!
-//! A group whose fields a form can all leave out (checkboxes, `Option`s) needs a default of its
-//! own, or a form that sends none of them is refused:
+//! A group whose fields a form can all leave out (checkboxes, `Option`s, file inputs, which are
+//! never among the text fields) needs a default of its own, or a form that sends none of them is
+//! refused:
 //!
 //! ```compile_fail,E0080
 //! # use corten::prelude::*;
@@ -258,6 +273,15 @@
 //! #[derive(serde::Deserialize, Fields)]
 //! struct Account { name: String, #[fields(group)] notices: Notices }
 //! let _ = Account::FIELDS;
+//! ```
+//!
+//! ```compile_fail,E0080
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Proof { scan: Files }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Claim { title: String, #[fields(group)] proof: Proof }
+//! let _ = Claim::FIELDS;
 //! ```
 //!
 //! ```
@@ -269,6 +293,17 @@
 //! let _ = Account::FIELDS;
 //! let read: Account = corten::form::from_bytes(b"name=Ada").unwrap();
 //! assert_eq!(read.notices, Notices::default());
+//! ```
+//!
+//! A group is never an `Option`: a form sends a group's fields one by one, so it is a group of
+//! `Option`s with a default, as above.
+//!
+//! ```compile_fail
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Address { street: Option<String> }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Order { #[fields(group)] #[serde(default)] ship_to: Option<Address> }
 //! ```
 
 use std::fmt;
@@ -716,7 +751,37 @@ fn encode_key(key: &str, out: &mut String) {
 
 /// A key of a [`Rows`] field, written in its fields' names as the form reads it back: text, an
 /// integer, or a `#[derive(UrlValue)]` enum (its word). A newtype key implements it as the value
-/// it wraps (`self.0.key_text(buf)`), and must read back from that text.
+/// it wraps (`self.0.key_text(buf)`), and its `Deserialize` must read it back from that text and
+/// from no other (not case-insensitively, say), or one row could be reached by two keys.
+///
+/// An enum with a variant serde reads by more than its word (`#[serde(alias)]`, `#[serde(other)]`)
+/// is no row's key: two keys the form tells apart would be one row on the server, so naming its
+/// row does not compile:
+///
+/// ```compile_fail,E0277
+/// use std::collections::BTreeMap;
+/// use corten::prelude::*;
+///
+/// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, UrlValue, serde::Deserialize)]
+/// #[serde(rename_all = "kebab-case")]
+/// enum Condition { #[serde(alias = "nm")] NearMint, Played }
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Price { cents: u32 }
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Prices {
+///     #[fields(rows)]
+///     #[serde(default)]
+///     by_condition: BTreeMap<Condition, Price>,
+/// }
+/// let _ = Prices::FIELDS.by_condition.at(&Condition::NearMint).cents;
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "{Self} is not a row's key",
+    label = "names a row by a {Self}",
+    note = "a row's key is text, an integer, a newtype of one, or a #[derive(UrlValue)] enum whose every variant serde reads by its word alone (no alias, no other)"
+)]
 pub trait RowKey {
     /// The key as text, as the form's field reads it back: its own text, or written into `buf`
     /// when it has none stored (an integer), so naming a row allocates nothing.
@@ -926,6 +991,7 @@ pub struct Errors {
     /// with many rows finds a row's message without reading every other row's.
     /// Made with the first row's message, so a form without rows builds and drops no map.
     rows: Option<Box<RowIndex>>,
+    refusal: Refusal,
 }
 
 /// [`Errors`]' messages of rows: by the rows' field, then the row's key, where each is in the list.
@@ -988,6 +1054,34 @@ impl fmt::Display for Kept {
     }
 }
 
+/// Why a submit was refused, which [`Req::invalid`](crate::Req::invalid) answers with its status.
+/// A closed set: a refusal is the client's to fix, so it is a 4xx, and a 2xx or a 5xx (or any
+/// `StatusCode`) does not compile.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Refusal {
+    /// 422: the input breaks a rule ([`Errors::add`], [`Errors::add_form`]).
+    #[default]
+    Invalid,
+    /// 409: the submit was made against a state that has moved on (a stale revision, a step
+    /// already taken or out of order). Sending the same input again would be refused again; the
+    /// user needs the current state first.
+    Conflict,
+    /// 410: what the submit acts on is gone (deleted meanwhile).
+    Gone,
+}
+
+impl Refusal {
+    /// The status the refusal is answered with.
+    pub fn status(self) -> axum::http::StatusCode {
+        use axum::http::StatusCode;
+        match self {
+            Refusal::Invalid => StatusCode::UNPROCESSABLE_ENTITY,
+            Refusal::Conflict => StatusCode::CONFLICT,
+            Refusal::Gone => StatusCode::GONE,
+        }
+    }
+}
+
 impl Errors {
     pub fn new() -> Self {
         Self::default()
@@ -1032,6 +1126,37 @@ impl Errors {
         self.form.get_or_insert_with(|| message.into());
     }
 
+    /// Refuses the submit for the state it was made against, not its input: the form's message
+    /// (in place of one [`Errors::add_form`] recorded, so the status and the message agree),
+    /// answered with the refusal's status (409 for
+    /// [`Refusal::Conflict`]) by [`Req::invalid`](crate::Req::invalid) in every mode. The form
+    /// is drawn again with what the user typed and the message at its top.
+    ///
+    /// ```
+    /// use corten::{Errors, Refusal};
+    ///
+    /// let mut errors = Errors::new();
+    /// errors.refuse(Refusal::Conflict, "Someone saved this sheet first. Reload to see their changes.");
+    /// assert_eq!(errors.refusal().status().as_u16(), 409);
+    /// assert_eq!(errors.form(), Some("Someone saved this sheet first. Reload to see their changes."));
+    /// ```
+    ///
+    /// A status that is not a refusal does not compile:
+    ///
+    /// ```compile_fail,E0308
+    /// let mut errors = corten::Errors::new();
+    /// errors.refuse(200, "Saved.");
+    /// ```
+    pub fn refuse(&mut self, why: Refusal, message: impl Into<String>) {
+        self.refusal = why;
+        self.form = Some(message.into());
+    }
+
+    /// Why the submit was refused: [`Refusal::Invalid`] unless [`Errors::refuse`] said otherwise.
+    pub fn refusal(&self) -> Refusal {
+        self.refusal
+    }
+
     pub fn get<P: Place>(&self, field: FieldName<P>) -> Option<&str> {
         self.find(&field).map(|i| self.fields[i].1.as_str())
     }
@@ -1072,7 +1197,10 @@ impl Errors {
     /// The fields' marks and messages in the form whose id is `form`: the `#[derive(Id)]` of the
     /// element a refused submit replaces (the form, or the block around it). Each message's id is
     /// `{form}-{field}-error`, so two forms on a page with a field of the same name (a price in
-    /// every row) do not share one, and each field is described by its own message.
+    /// every row) do not share one, and each field is described by its own message. A field
+    /// several forms share is a helper that takes the form's errors, `e: &corten::Within<'_, I>`.
+    #[doc(alias = "aria")]
+    #[doc(alias = "message")]
     pub fn within<I: Id>(&self, form: I) -> Within<'_, I> {
         Within { errors: self, form }
     }
@@ -1348,8 +1476,9 @@ impl serde::Serialize for Errors {
     }
 }
 
-/// 422 Unprocessable Content with the Problem Details document (RFC 9457) every JSON failure
-/// has, plus the fields as an extension member:
+/// 422 Unprocessable Content (or the status of [`Errors::refuse`]'s refusal, 409 for a stale
+/// state) with the Problem Details document (RFC 9457) every JSON failure has, plus the fields
+/// as an extension member:
 /// `{"title":"Unprocessable Entity","status":422,"detail":"email: Enter an email address.","fields":{"email":"Enter an email address."}}`.
 /// A message about the whole form comes first in `detail` and is `form` too:
 /// `{"title":"Unprocessable Entity","status":422,"detail":"Sold out.","form":"Sold out.","fields":{}}`.
@@ -1366,10 +1495,10 @@ impl axum::response::IntoResponse for Errors {
 impl Errors {
     pub(crate) fn response(&self) -> axum::response::Response {
         use axum::{
-            http::{header, HeaderValue, StatusCode},
+            http::{header, HeaderValue},
             response::IntoResponse,
         };
-        let status = StatusCode::UNPROCESSABLE_ENTITY;
+        let status = self.refusal.status();
         let mut members = String::new();
         if let Some(form) = &self.form {
             members.push_str(r#","form":"#);
@@ -1396,6 +1525,18 @@ mod tests {
 
     #[derive(crate::view::Id)]
     struct SignupId;
+
+    #[test]
+    fn a_refusal_replaces_the_form_message_so_status_and_message_agree() {
+        let mut e = Errors::new();
+        e.add_form("Pick a date after today.");
+        e.refuse(Refusal::Conflict, "Someone saved first.");
+        assert_eq!((e.refusal(), e.form()), (Refusal::Conflict, Some("Someone saved first.")));
+        e.refuse(Refusal::Gone, "The sheet was deleted.");
+        assert_eq!((e.refusal().status().as_u16(), e.form()), (410, Some("The sheet was deleted.")));
+        e.add_form("later");
+        assert_eq!(e.form(), Some("The sheet was deleted."), "add_form keeps the first, as before");
+    }
 
     #[test]
     fn a_field_keeps_its_first_message_and_order_is_kept() {

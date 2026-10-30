@@ -30,7 +30,7 @@ pub fn OfferList<'a>(offers: &'a [Offer], selected: Option<&'a str>) -> impl Ren
 | `.card` in `Card`'s own stylesheet | `class={Card}` in its markup is the class, `card__card`: name the root class after the component |
 | `class={(Row, cond.then_some(Selected), extra)}` | joined when the page renders; `None` adds nothing, an empty list leaves the attribute out |
 | a class nothing uses | `warning: constant Hot is never used` (an error under `-D warnings`) |
-| `#[component(css = OfferList)]` | a helper in the same module shares the stylesheet, and its uses count |
+| `#[component(css = OfferList)]`, `css = super::offers::OfferList` | a helper component shares the owner's stylesheet from any module of the crate that can see the owner, named by its path (not through a `use`) (a screen's panels in files of their own), and its uses count; classes are in scope only in a component, so a plain `fn` that picks a class is a helper component or a `match` in the markup |
 | `tokens!("tokens.json")` | custom properties (`--space-4`), theme overrides (`[data-theme="dark"]`, `[data-density="compact"]`), enums (`Space::_4.var()`) and typed utilities, a function per value (`gap_2()` prints `gap-2`, `mx_auto()` `mx-auto`) and per utility for a value chosen as the page renders or per breakpoint: `gap(Responsive::new(Space::_2).md(Space::_4))` prints `gap-2 md:gap-4` |
 | `App::components(&[TOKENS, OfferList, ...])` | one `components.css` in the listed order, linked from `<head>` and precached by the PWA; a component rendered but not listed is an error under `corten dev` |
 | `var(--color-accent)` in a component's stylesheet | a startup error unless a stylesheet on the same pages declares it (the token file, a listed component's, a `.css` file in the static directory, or for an area's component one linked from its area), naming the file and the property; `var(--x, fallback)` is not checked |
@@ -67,8 +67,14 @@ which may be another crate's. A property a script sets (`el.style.setProperty`) 
 
 `static/style.css` holds what belongs to no component: element defaults, fonts and the layout.
 Link it before `<Corten />` in the layout, which links the components' stylesheet, so component
-rules win ties. Inline `style=` stays blocked by the
-CSP; one-off values come from the token utilities instead. Pages that must draw a size from data
+rules win ties. The components' stylesheet starts with `[hidden] { display: none !important }`:
+a part hidden with the attribute (`hidden={..}` in markup, `el.hidden = true` from a script)
+stays hidden even when one of its classes gives it `display: grid`, which would otherwise win
+over the browser's own rule. `hidden="until-found"` is left to the browser, so find-in-page can
+still reveal it. When only areas have stylesheets, each area's file starts with the rule. An
+app with no component stylesheet has neither file, so if its `static/style.css` gives a hidden
+element a `display` (styling corten-ui's parts there, say), it adds the rule itself. Inline
+`style=` stays blocked by the CSP; one-off values come from the token utilities instead. Pages that must draw a size from data
 (a meter's fill, marks on a timeline) are an area that allows style attributes,
 `.policy(|p| p.allow_style_attributes())` ([app guide](app.md#a-policy-for-part-of-the-app)), so
 the rest of the app keeps the protection.

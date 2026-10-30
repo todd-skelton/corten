@@ -7,7 +7,9 @@ reason that a smaller change cannot meet.
 ## Values
 
 Every change follows the values in `README.md` (Values), and when two conflict, the order given
-there decides. A change is reviewed against them before it is done (below).
+there decides. A change is reviewed against them before it is done (below). A header, wire
+format or file format of Corten's own where a standard exists needs a Choice in
+`docs/design.md` saying why (Rules, 10).
 
 ## Where things go
 
@@ -49,7 +51,7 @@ there decides. A change is reviewed against them before it is done (below).
    rewritten by the `script_types_match_the_server` test); a typing guarantee gets an
    `@ts-expect-error` line in `scripts/typecheck-fixture.js` or a `compile_fail` doctest.
 8. Widgets the browser lacks go in `crates/corten-ui`: headless `#[component(js)]`s (no CSS; parts are
-   styled by role and ARIA state), labels from the app, links as typed routes (`Link`), working as
+   styled by role and ARIA state), labels from the app, links as typed routes (`&dyn Href`), working as
    plain HTML before the script loads. Add one only when an app needs it and the platform has no
    element for it; remove it when the platform does. Each is tested in a browser by
    `examples/ui-gallery/smoke.mjs`.

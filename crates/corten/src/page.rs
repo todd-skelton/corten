@@ -98,7 +98,7 @@ impl<R: crate::Route> crate::view::Attrs for Nav<'_, R> {
         // escaped is compared as its unescaped URL.
         let written = &out[start..];
         let current = if written.split(['?', '#']).next().unwrap_or(written).contains('&') {
-            crate::route::Href::with_href(self.to, |href| is_current(self.path, href, self.section))
+            is_current(self.path, &crate::route::link(self.to), self.section)
         } else {
             is_current(self.path, written, self.section)
         };
@@ -136,7 +136,8 @@ impl NavTarget for crate::Local {
     /// link, the request it makes and the runtime's `pathname` are the same text in every engine
     /// (Firefox and WebKit keep `|`, Chromium encodes it).
     fn write_url(&self, out: &mut String) {
-        crate::route::Href::with_href(self, |href| {
+        let href = self.as_str();
+        {
             let end = href.find(['?', '#']).unwrap_or(href.len());
             for c in href[..end].chars() {
                 match c {
@@ -150,7 +151,7 @@ impl NavTarget for crate::Local {
                 }
             }
             out.push_str(&href[end..]);
-        });
+        }
     }
 }
 
@@ -784,7 +785,10 @@ impl Req {
     /// it: the rule the runtime applies to `<a data-nav>` (`data-nav="section"`) after each
     /// navigation.
     pub fn is_current(&self, href: &(impl crate::route::Href + ?Sized), section: bool) -> bool {
-        href.with_href(|href| is_current(self.uri.path(), href, section))
+        match href.as_text() {
+            Some(text) => is_current(self.uri.path(), text, section),
+            None => is_current(self.uri.path(), &crate::route::link(href), section),
+        }
     }
 
     /// A nav link to `to`, from one mention of the route: `<a {..req.nav(&url::About)}>"About"</a>`
@@ -1133,15 +1137,21 @@ impl Req {
         }
     }
 
-    /// Answers a submit whose input failed validation, with 422 Unprocessable Content:
+    /// Answers a refused submit: its input failed validation (422 Unprocessable Content), or it
+    /// was made against a state that has moved on ([`Errors::refuse`](crate::Errors::refuse), 409
+    /// for a stale revision), with the status of [`Errors::refusal`](crate::Errors::refusal):
     ///
     /// - [`Mode::Action`]: `form`, the form re-rendered with the errors, as a patch. The runtime
     ///   then moves focus to the first field marked `aria-invalid="true"`.
     /// - [`Mode::Data`] (feature `json`): the Problem Details document with the fields,
     ///   `{"title": "Unprocessable Entity", "status": 422, "detail": "email: ...", "fields": {"email": "..."}}`.
     /// - Otherwise (no JavaScript): `page()`, usually `req.page(..)` for the whole page with the
-    ///   form showing the errors; a success status becomes 422. It is only called here, so an
-    ///   action never loads data for a page it does not send.
+    ///   form showing the errors; a success status becomes the refusal's. It is only called here,
+    ///   so an action never loads data for a page it does not send. Draw the page, never redirect:
+    ///   a redirect drops the message and what the user typed.
+    ///
+    /// The runtime moves focus to the first invalid field only for a 422; a refusal's message is a
+    /// `role="alert"` that is announced where it lands.
     pub async fn invalid<For, F, Fut>(
         &self,
         errors: &crate::Errors,
@@ -1152,13 +1162,12 @@ impl Req {
         F: FnOnce() -> Fut,
         Fut: Future<Output = crate::Result<HtmlResponse<For>>>,
     {
-        let status = StatusCode::UNPROCESSABLE_ENTITY;
+        let status = errors.refusal().status();
         match self.mode {
             Mode::Action => self.patch_with_status(status, form),
             #[cfg(feature = "json")]
             Mode::Data => Ok(HtmlResponse::new(errors.response())),
             _ => {
-                let _ = errors;
                 let mut res = page().await?;
                 if res.status().is_success() {
                     *res.status_mut() = status;
@@ -1174,7 +1183,7 @@ impl Req {
     /// `axum::http::Uri` to leave the app. Works with and without
     /// JavaScript.
     pub fn redirect<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
-        let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
+        let value = crate::route::header_value(to).map_err(Error::new)?;
         Ok(HtmlResponse::new(redirect(self.mode, value)))
     }
 
@@ -1224,7 +1233,7 @@ impl Req {
     /// [`Req::redirect`]. Parameters the old URL had are the route's to carry
     /// (`#[route(prefix = ..)]` for ones named by data), so only the ones it knows move with it.
     pub fn moved<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
-        let value = to.with_href(|href| HeaderValue::try_from(href)).map_err(Error::new)?;
+        let value = crate::route::header_value(to).map_err(Error::new)?;
         if self.mode == Mode::Action || (self.mode == Mode::Navigation && (has_fragment(&value) || elsewhere(&value))) {
             return Ok(HtmlResponse::new(redirect(self.mode, value)));
         }
@@ -1616,6 +1625,25 @@ impl ReadAgain {
     /// );
     /// ```
     ///
+    /// It takes the route by value too, so a component that is part of the page and the patch
+    /// builds the read in its body and returns it:
+    ///
+    /// ```
+    /// # use std::time::Duration;
+    /// # use corten::prelude::*;
+    /// # #[derive(Route)]
+    /// # #[route("/alerts")]
+    /// # struct Alerts<'a> { after: Option<&'a str> }
+    /// #[derive(Id)]
+    /// struct ListId;
+    ///
+    /// fn list(after: &str, saving: bool) -> impl Patch + '_ {
+    ///     let again = saving.then(|| ReadAgain { after: Duration::from_secs(2) }.from(Alerts { after: Some(after) }));
+    ///     html! { <ul id={ListId}></ul> {again} }
+    /// }
+    /// assert!(list("r7", true).to_html().ends_with(r#"data-from="/alerts?after=r7"></template>"#));
+    /// ```
+    ///
     /// A URL written as text does not compile:
     ///
     /// ```compile_fail,E0277
@@ -1624,7 +1652,7 @@ impl ReadAgain {
     ///
     /// let _ = ReadAgain { after: Duration::from_secs(2) }.from("/alerts?after=r7");
     /// ```
-    pub fn from<R: crate::route::Route + ?Sized>(self, route: &R) -> ReadAgainFrom<'_, R> {
+    pub fn from<R: crate::route::Route>(self, route: R) -> ReadAgainFrom<R> {
         ReadAgainFrom { again: self, route }
     }
 
@@ -1672,12 +1700,12 @@ impl Render for ReadAgain {
 
 /// A patch's or a page's request to be read again from a route, made by [`ReadAgain::from`]:
 /// `<template data-corten-read-again="2" data-from="/alerts?after=r7">`.
-pub struct ReadAgainFrom<'a, R: ?Sized> {
+pub struct ReadAgainFrom<R> {
     again: ReadAgain,
-    route: &'a R,
+    route: R,
 }
 
-impl<R: crate::route::Route + ?Sized> Render for ReadAgainFrom<'_, R> {
+impl<R: crate::route::Route> Render for ReadAgainFrom<R> {
     fn render(&self, out: &mut String) {
         use std::fmt::Write;
         let _ = write!(out, r#"<template data-corten-read-again="{}" data-from=""#, self.again.seconds());
@@ -1686,8 +1714,8 @@ impl<R: crate::route::Route + ?Sized> Render for ReadAgainFrom<'_, R> {
     }
 }
 
-impl<R: crate::route::Route + ?Sized> crate::view::__private::PatchSealed for ReadAgainFrom<'_, R> {}
-impl<R: crate::route::Route + ?Sized> crate::view::Patch for ReadAgainFrom<'_, R> {}
+impl<R: crate::route::Route> crate::view::__private::PatchSealed for ReadAgainFrom<R> {}
+impl<R: crate::route::Route> crate::view::Patch for ReadAgainFrom<R> {}
 
 /// Structured data for search engines (a product, its breadcrumbs), as
 /// `<script type="application/ld+json">`, among a page's head tags:

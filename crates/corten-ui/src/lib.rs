@@ -43,16 +43,18 @@
 //! that opens each one its anchor; the design system places it with CSS anchor positioning,
 //! which the browser keeps in place on scroll and resize without script:
 //! `inset: auto; position-area: block-end span-inline-end; position-try-fallbacks: flip-block;
-//! min-width: anchor-size(width)`. Two rules the design system keeps:
-//! the app's base CSS has `[hidden] { display: none !important }` (parts are hidden with the
-//! `hidden` attribute, which a role's `display` would otherwise override), and a popup's
+//! min-width: anchor-size(width)`. Parts are hidden with the `hidden` attribute, and Corten's
+//! component stylesheet keeps them hidden over a role's `display` (it starts with
+//! `[hidden] { display: none !important }`, `hidden="until-found"` aside; a design system styled
+//! only from the app's `static/style.css`, with no component stylesheet, adds that rule there).
+//! One rule the design system keeps: a popup's
 //! `display` is set under `:popover-open` only, or it shows while closed.
 //!
 //! **Text.** Every label comes from the app, in the page's language; there is no English default
 //! except the `−` and `+` of [`NumberField`]'s buttons, which a design system replaces with
 //! icons.
 //!
-//! **Links** are typed routes ([`Link`]): a menu item or tab cannot point at a URL the app does
+//! **Links** are typed routes (`&dyn corten::Href`): a menu item or tab cannot point at a URL the app does
 //! not route.
 //!
 //! ```compile_fail
@@ -145,7 +147,7 @@
 //! }
 //! ```
 
-use corten::{script::script, view::AttrValue, Component, Route};
+use corten::{script::script, Component};
 
 mod checkbox_group;
 mod combo_box;
@@ -186,31 +188,6 @@ pub const COMPONENTS: &[Component] = &[
     RequiredWhen,
     dialog::COMPONENT,
 ];
-
-/// A typed route a component links to (`#[derive(Route)]`), as a trait object so a list of
-/// items can hold different routes. A string is not a `Link`.
-pub trait Link {
-    /// Writes the URL, escaped for an attribute.
-    fn write_link(&self, out: &mut String);
-}
-
-impl<R: Route> Link for R {
-    fn write_link(&self, out: &mut String) {
-        self.write_href(out, true)
-    }
-}
-
-/// A [`Link`] as an attribute value: `href={Url(item.link)}`.
-pub(crate) struct Url<'a>(pub &'a dyn Link);
-
-impl AttrValue for Url<'_> {
-    fn write_attr(&self, name: &str, out: &mut String) {
-        out.push_str(name);
-        out.push_str("=\"");
-        self.0.write_link(out);
-        out.push('"');
-    }
-}
 
 /// `"true"` or `"false"`, for ARIA states, which are text.
 pub(crate) fn state(on: bool) -> &'static str {

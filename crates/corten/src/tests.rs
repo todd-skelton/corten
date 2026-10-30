@@ -35,6 +35,8 @@ paths! {
     ApiRates = "/api/rates",
     ApiSignUp = "/api/sign-up",
     ApiItems = "/api/items",
+    PayApi = "/pay/api",
+    PayApiGo = "/pay/api/go",
     Items = "/items",
     Admin = "/admin",
     AdminSlow = "/admin/slow",
@@ -1006,6 +1008,44 @@ fn invalid_routes() -> Router {
             req.invalid(&errors, alert_form(&errors), page).await
         }),
     )
+}
+
+fn sheet_form(errors: &Errors) -> impl crate::Patch + '_ {
+    html! { <form id={SignUpId}>{errors.form_message()}</form> }
+}
+
+fn refused_routes() -> Router {
+    Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            let mut errors = Errors::new();
+            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            let page = || async { req.test_page("Sheet", html! { <p>"page with the refusal"</p> }) };
+            req.invalid(&errors, sheet_form(&errors), page).await
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_stale_submit_answers_409_with_the_form_message_in_each_mode() {
+    let (status, headers, body) = call(app(refused_routes(), None), "GET", Some("action")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(headers["corten-patch"], "1");
+    assert_eq!(body, r#"<form id="sign-up"><p class="form-error" role="alert">Someone saved first.</p></form>"#);
+
+    let (status, _, body) = call(app(refused_routes(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("<p>page with the refusal</p>") && body.contains("<html"), "no JavaScript: the whole page");
+
+    #[cfg(feature = "json")]
+    {
+        let (status, _, body) = call_with(app(refused_routes(), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            body,
+            r#"{"title":"Conflict","status":409,"detail":"Someone saved first.","form":"Someone saved first.","fields":{}}"#
+        );
+    }
 }
 
 #[tokio::test]
@@ -4180,4 +4220,136 @@ async fn a_panic_in_finished_work_is_the_handlers() {
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     let (status, _, _) = call(router, "GET", None).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "the server goes on after it");
+}
+
+#[crate::routes]
+mod referrer_url {
+    #[route("/relayed/{policy}", get = relayed)]
+    pub struct Relayed<'a> {
+        pub policy: &'a str,
+    }
+}
+
+/// An answer that brings a policy of its own, as a relayed service's does.
+async fn relayed(Params(at): Params<referrer_url::Relayed<'_>>) -> crate::Result<crate::Relay> {
+    let mut headers = axum::http::HeaderMap::new();
+    // `|` between lines of their own.
+    for line in at.policy.split('|') {
+        headers.append(header::REFERRER_POLICY, axum::http::HeaderValue::from_str(line).unwrap());
+    }
+    headers.insert(header::LOCATION, axum::http::HeaderValue::from_static("https://elsewhere.example/cb?code=1"));
+    Ok(crate::Relay::new(StatusCode::FOUND, headers, Body::empty()))
+}
+
+/// An area or the app makes `Referrer-Policy` stricter, never looser; an area that changes it has
+/// its own shell key (a document keeps the policy it loaded with); and an answer that brings a
+/// stricter one keeps it, while a looser one is replaced.
+#[tokio::test]
+async fn an_area_or_an_answer_makes_the_referrer_policy_stricter_only() {
+    use crate::security::{Policy, Referrer};
+    async fn referrer(router: &Router, path: &str) -> String {
+        let res = router.clone().oneshot(Request::get(path).body(Body::empty()).unwrap()).await.unwrap();
+        res.headers()[header::REFERRER_POLICY].to_str().unwrap().to_string()
+    }
+    let router =
+        App::new(policy_url::router()).area(|area| pay_url::area(area).policy(|p| p.referrer(Referrer::NoReferrer))).router();
+    assert_eq!(referrer(&router, "/").await, "strict-origin-when-cross-origin");
+    assert_eq!(referrer(&router, "/pay/card").await, "no-referrer");
+    assert_eq!(referrer(&router, "/pay/nothing").await, "no-referrer", "an unknown URL in the area too");
+    assert_ne!(csp_and_shell(&router, "/").await.2, csp_and_shell(&router, "/pay/card").await.2);
+    // An API inside the area keeps its own CSP and sends the area's referrer policy, an unknown URL
+    // in it too.
+    let api = App::new(policy_url::router())
+        .area(|area| pay_url::area(area).policy(|p| p.referrer(Referrer::NoReferrer)))
+        .api::<PayApi>(|api| api.route::<PayApiGo>(crate::Methods::reads(get(|| async { "go" }))))
+        .router();
+    assert_eq!(referrer(&api, "/pay/api/go").await, "no-referrer");
+    assert_eq!(referrer(&api, "/pay/api/nope").await, "no-referrer");
+    assert_eq!(referrer(&api, "/").await, "strict-origin-when-cross-origin");
+    // Two that each send less somewhere send the least of both: strict-origin to this site and
+    // nothing to others has no name, so it is nothing.
+    let nested = App::new(policy_url::router())
+        .policy(Policy::new().referrer(Referrer::StrictOrigin))
+        .area(|area| pay_url::area(area).policy(|p| p.referrer(Referrer::SameOrigin)))
+        .router();
+    assert_eq!(referrer(&nested, "/").await, "strict-origin");
+    assert_eq!(referrer(&nested, "/pay/card").await, "no-referrer");
+    // Two policies that both send nothing are one: the area keeps the app's shell key.
+    let nothing = App::new(policy_url::router())
+        .policy(Policy::new().referrer(Referrer::StrictOrigin).referrer(Referrer::SameOrigin))
+        .area(|area| pay_url::area(area).policy(|p| p.referrer(Referrer::NoReferrer)))
+        .router();
+    assert_eq!(referrer(&nothing, "/").await, "no-referrer");
+    assert_eq!(csp_and_shell(&nothing, "/").await.2, csp_and_shell(&nothing, "/pay/card").await.2);
+    // The same value the app has is no change, and keeps the app's shell key.
+    let same = App::new(policy_url::router())
+        .policy(Policy::new().referrer(Referrer::SameOrigin))
+        .area(|area| pay_url::area(area).policy(|p| p.referrer(Referrer::SameOrigin)))
+        .router();
+    assert_eq!(csp_and_shell(&same, "/").await.2, csp_and_shell(&same, "/pay/card").await.2);
+    // An answer's own policy is kept when it is stricter, and the stricter of both otherwise.
+    let relay = App::new(referrer_url::router()).router();
+    for (brought, sent) in [
+        ("no-referrer", "no-referrer"),
+        ("same-origin", "same-origin"),
+        ("unsafe-url", "strict-origin-when-cross-origin"),
+        ("x-unknown", "strict-origin-when-cross-origin"),
+        // `origin` sends only the origin to this site too.
+        ("origin", "strict-origin"),
+        ("unsafe-url, strict-origin", "strict-origin"),
+        // The browser skips a token it does not know and uses the last one it does.
+        ("no-referrer, x-future-policy", "no-referrer"),
+        // Several lines are one list.
+        ("unsafe-url|no-referrer", "no-referrer"),
+        ("same-origin|unsafe-url", "strict-origin-when-cross-origin"),
+    ] {
+        let path = referrer_url::Relayed { policy: brought }.href();
+        assert_eq!(referrer(&relay, &path).await, sent, "{brought}");
+    }
+    let strict = App::new(referrer_url::router()).policy(Policy::new().referrer(Referrer::StrictOrigin)).router();
+    let path = referrer_url::Relayed { policy: "same-origin" }.href();
+    assert_eq!(referrer(&strict, &path).await, "no-referrer", "the least of the app's and the answer's");
+}
+
+#[crate::routes]
+mod page_or_url {
+    #[route("/runs/{id}", get = page_or_run)]
+    pub struct Run<'a> {
+        pub id: &'a str,
+        pub said: Option<&'a str>,
+    }
+
+    #[route("/runs/{id}/download", post = page_or_download)]
+    pub struct Download<'a> {
+        pub id: &'a str,
+    }
+}
+
+async fn page_or_run(_: Params<page_or_url::Run<'_>>) -> &'static str {
+    "run"
+}
+
+/// The file for run 7, the run's page saying why for any other.
+async fn page_or_download(req: Req, Params(at): Params<page_or_url::Download<'_>>) -> crate::Result<crate::PageOr<crate::Media>> {
+    if at.id != "7" {
+        return Ok(req.redirect(&page_or_url::Run { id: &at.id, said: Some("stale") })?.into());
+    }
+    Ok(crate::Media::new("text/csv", "sku,qty\n").into())
+}
+
+/// A route that sends a file answers a redirect or a page instead when it refuses, as a page is:
+/// private, with the app's headers.
+#[tokio::test]
+async fn a_file_route_answers_a_page_when_it_refuses() {
+    let router = App::new(page_or_url::router()).router();
+    let (status, headers, body) = call_with(router.clone(), "POST", "/runs/7/download", None, None).await;
+    assert_eq!(
+        (status, headers[header::CONTENT_TYPE].to_str().unwrap(), body.as_str()),
+        (StatusCode::OK, "text/csv", "sku,qty\n")
+    );
+    let (status, headers, _) = call_with(router, "POST", "/runs/8/download", None, None).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/runs/8?said=stale");
+    assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache");
+    assert!(headers.contains_key(header::CONTENT_SECURITY_POLICY));
 }

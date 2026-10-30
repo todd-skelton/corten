@@ -210,8 +210,10 @@ number stays a number). A component draws the group once for every form that has
 names: `<AddressInputs f={f.ship_to} />`, where `f: AddressGroupFields` (the
 names of an `Address` put in a form as a group; in a row it is `AddressRowGroupFields<'k>`, so a
 group drawn both at a form's top and in its rows takes a component for each). A group whose
-fields a form can all leave out (checkboxes, `Option`s) needs `#[serde(default)]` on the group's
+fields a form can all leave out (checkboxes, `Option`s, file inputs) needs `#[serde(default)]` on the group's
 field as well, or it does not compile: a form that sends none of them would otherwise be refused.
+A group is never an `Option` (that does not compile either): a form sends a group's fields one by
+one, so a group the form may leave out is a group of `Option`s with `#[serde(default)]`.
 Keys under a field's name (`go.x`, `go.y`) are its group's, so a plain field sent only that way (an
 image button `name={f.go}` sends `go.x` and `go.y`, never `go`) is refused with a message that
 says so, unless it is an `Option`, which reads as `None`.
@@ -248,8 +250,9 @@ A key is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, whose ke
 serde reads (`seller-portal`), so it reads back as the same variant. Its characters other than letters, digits, `-` and `_` are %-encoded in the name, so any text is
 a key, and a key sent any other way (`%61` for `a`) is refused, so one key cannot reach a row two
 ways. An integer key is read only as it writes itself: `07`, `+7` and `-0` are refused, for the
-same reason. A `#[serde(alias)]` on a key enum's variant is read as that variant, so give a key
-type no aliases: two rows sent under one key leave the later one.
+same reason. An enum with a variant serde reads by more than its word (`#[serde(alias)]`,
+`#[serde(other)]`) is not a `RowKey`, so naming its row does not compile: two keys the form tells
+apart would be one row on the server.
 
 One plain value per key (a count per SKU) is a map without a row struct:
 `#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>`. Each key's value is a field of its
@@ -265,6 +268,16 @@ saying no: "The policy was retired meanwhile.") is the form's own message:
 `errors.add_form(text)`, shown with `{errors.form_message()}` at the top of the form, a
 `role="alert"` paragraph that is announced when the patch arrives. JSON clients get it first in
 `message` and as `form`; an agent tool gets it first in its error.
+
+A submit refused for the state it was made against rather than its input (a stale revision, a
+step already taken or out of order, a record deleted meanwhile) is
+`errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
+message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
+drawn again with what the user typed, the page without JavaScript, the Problem Details document
+for a data client. A post that can be refused is a `data-patch` form: a plain post's refusal
+draws the whole page and leaves the address at the action's URL, whose GET may not exist. The
+one exception is a download, which must be a plain post ([below](#files)): its refusal redirects
+to the page that says why.
 
 A write that must not apply twice (an order, a payment, a message sent) carries a `SubmitKey`.
 A 502 or a dropped connection can hide a write that committed, and the user, the browser or the
@@ -449,6 +462,26 @@ async fn export(caller: Caller<Viewer>) -> corten::Result<Media> {
 }
 ```
 
+A download the handler may refuse (posted from a page, at the revision the page showed, when the
+run has moved on) answers `PageOr<Media>` (or `PageOr<Relay>` for another service's file): the
+file, or the page saying why, or a redirect to it, each `.into()` it. The user stays on the page
+with the reason instead of an error page, and the page is private like any other. The form is a
+plain `method="post"` form, not `data-patch`: the runtime draws a patch or a page, and a file
+answered to a `data-patch` submit is not saved (it dispatches `corten:error`). Inside `Public`,
+name the variant (`.map(PageOr::Page)`), since `.into()` cannot infer the type there. This is the
+one refusal that redirects: a plain post's page drawn at the action's URL would leave the user
+there, so a stale download answers a redirect to its page with the reason, where a `data-patch`
+form's refusal is a 409 drawn in place.
+
+```rust,ignore
+async fn download(req: Req, at: Params<url::Download<'_>>, Form(form): Form<At>) -> corten::Result<PageOr<Media>> {
+    match claim(&at.id, form.revision).await {
+        Ok(csv) => Ok(Media::new("text/csv", csv).attachment("run.csv").into()),
+        Err(Stale) => Ok(req.redirect(&url::Run { id: &at.id, said: Some(Said::Stale) })?.into()),
+    }
+}
+```
+
 A browser cannot be given its files back by markup. A patch keeps the files chosen in the input
 it replaces until a successful answer, so the user can send them again. Without JavaScript the
 page asks for them again. A body that is not multipart is a 415, and one that breaks the format
@@ -570,8 +603,10 @@ Without JavaScript the browser reloads the page (`<meta http-equiv="refresh">` i
 
 A `data-patch` form's answer can be in the same state: the write is in, but the read that
 draws the part it replaces is behind. Rather than wait for the read, or redirect to a page only
-to show "saving", the patch says where to read it again: `ReadAgain { after }.from(&route)`, a
-patch instruction like `Remove` and `Append`. After the delay the runtime fetches the route as a
+to show "saving", the patch says where to read it again: `ReadAgain { after }.from(route)`, a
+patch instruction like `Remove` and `Append`. It takes the route by value (a borrowed one works where the route outlives the patch, as in a
+handler), so a component that is both part of the page and the patch builds it in its body and
+returns it. After the delay the runtime fetches the route as a
 GET `data-patch` form would (`corten: action`) and applies the patch it answers, which asks again
 while it is still behind. The route's URL carries what the read waits for (the write's receipt),
 since the page's address does not; its handler answers the part with `req.patch_or`, and so the

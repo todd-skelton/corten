@@ -46,6 +46,10 @@ pub const PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26
 pub enum ToolError {
     /// The arguments are wrong; the message goes back to the agent so it can correct them.
     Invalid(String),
+    /// The arguments are fine, but what they act on has moved on (a stale revision, a record
+    /// deleted meanwhile: [`Errors::refuse`](crate::Errors::refuse)); the message goes back to the
+    /// agent so it reads the current state before trying again.
+    Refused(String),
     /// No valid credentials: the response is HTTP 401 so the client can authenticate.
     Unauthorized,
     /// Authenticated but not allowed; the message goes back to the agent.
@@ -61,10 +65,14 @@ impl ToolError {
     }
 }
 
-/// Validation errors go back to the agent as one message per field, so it can correct them.
+/// Validation errors go back to the agent as one message per field, so it can correct them; a
+/// refusal for a state that moved on ([`Errors::refuse`](crate::Errors::refuse)) as that.
 impl From<crate::Errors> for ToolError {
     fn from(errors: crate::Errors) -> Self {
-        ToolError::Invalid(errors.to_string())
+        match errors.refusal() {
+            crate::Refusal::Invalid => ToolError::Invalid(errors.to_string()),
+            crate::Refusal::Conflict | crate::Refusal::Gone => ToolError::Refused(errors.to_string()),
+        }
     }
 }
 
@@ -290,6 +298,7 @@ impl<A: Send + 'static> Tools<A> {
             }
             Err(ToolError::Unauthorized) => Err(CallError::Unauthorized),
             Err(ToolError::Invalid(message)) => Ok(failed(format!("invalid arguments: {message}"))),
+            Err(ToolError::Refused(message)) => Ok(failed(format!("refused, read the current state first: {message}"))),
             Err(ToolError::Forbidden(message)) => Ok(failed(format!("not allowed: {message}"))),
             Err(ToolError::Internal(error)) => {
                 tracing::error!(tool = name, %error, "corten: agent tool failed");
