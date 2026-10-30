@@ -30,7 +30,10 @@ The CLI is a convenience over cargo, not a build system: an app is an ordinary c
 they compare it with the one the app's `Cargo.lock` pins (a release, or a git revision): when they
 differ, a note before the command's output names both and the `cargo install` line for the
 matching command (`--rev` for a pinned revision). `corten --version` prints the commit the command
-was built from. A path dependency (a checkout of corten) is not compared.
+was built from. While a pin is being bumped (`Cargo.toml` asks for another revision than the
+lock was written for, until cargo resolves it), the note compares the command with the revision
+`Cargo.toml` asks for, and says nothing for a new tag or branch. A path dependency (a checkout of
+corten) is not compared.
 
 ## What `corten new` writes
 
