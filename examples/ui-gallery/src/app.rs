@@ -345,8 +345,10 @@ mod tests {
                 .unwrap();
             assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{body}");
         }
+        // An address with a tab the page does not have (an old link, a renamed tab) reads as no tab:
+        // the page opens on its first, where a posted word it does not offer is refused above.
         let tab = app().router().oneshot(Request::get("/?tab=bids").body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(tab.status(), StatusCode::BAD_REQUEST, "a tab the page does not have");
+        assert_eq!(tab.status(), StatusCode::OK, "a tab the page does not have");
     }
 
     #[tokio::test]

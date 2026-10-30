@@ -479,6 +479,69 @@ pub trait Route {
     /// The path as axum matches it: `"/items/{id}"`.
     const PATH: &'static str;
 
+    /// Whether the runtime may fetch the page ahead of a click (on a hover): `false` for a route
+    /// declared `#[route("/..", prefetch = false)]`, a page costly to draw, so a link to it
+    /// (`href={..}`, a nav's `{..req.nav(..)}` and `req.nav_of`) is written with `data-no-prefetch`
+    /// and only a click starts its work.
+    ///
+    /// ```
+    /// use corten::{prelude::*, Href};
+    ///
+    /// #[derive(Route)]
+    /// #[route("/reports/suggested", prefetch = false)]
+    /// struct Suggested;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/reports")]
+    /// struct Reports;
+    ///
+    /// let links = html! { <a href={Suggested}>"Suggested"</a><a href={Reports}>"Reports"</a> };
+    /// assert_eq!(links.to_html(), r#"<a href="/reports/suggested" data-no-prefetch>Suggested</a><a href="/reports">Reports</a>"#);
+    /// // As a prop too, where the link is any route.
+    /// let to: &dyn Href = &Suggested;
+    /// assert_eq!(html! { <a href={to}>"Suggested"</a> }.to_html(), r#"<a href="/reports/suggested" data-no-prefetch>Suggested</a>"#);
+    /// // A form's action is never prefetched, so it carries nothing.
+    /// assert_eq!(html! { <form action={Suggested}></form> }.to_html(), r#"<form action="/reports/suggested"></form>"#);
+    /// ```
+    ///
+    /// In a routes module it goes after the handlers:
+    ///
+    /// ```
+    /// use corten::{prelude::*, route::Route};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/reports/suggested", get = suggested, prefetch = false)]
+    ///     pub struct Suggested;
+    /// }
+    ///
+    /// async fn suggested() -> &'static str {
+    ///     "42 seconds of pricing"
+    /// }
+    ///
+    /// fn main() {
+    ///     assert!(!url::Suggested::PREFETCH);
+    ///     let _ = App::new(url::router());
+    /// }
+    /// ```
+    ///
+    /// The value is `false` or nothing:
+    ///
+    /// ```compile_fail
+    /// #[derive(corten::Route)]
+    /// #[route("/reports", prefetch = no)]
+    /// struct Reports;
+    /// ```
+    ///
+    /// and the default is not written out, so there is one way to say it:
+    ///
+    /// ```compile_fail
+    /// #[derive(corten::Route)]
+    /// #[route("/reports", prefetch = true)]
+    /// struct Reports;
+    /// ```
+    const PREFETCH: bool = true;
+
     /// Writes the URL. With `html`, query separators are written as `&amp;`.
     fn write_href(&self, out: &mut String, html: bool);
 
@@ -625,6 +688,10 @@ impl<R: Route + ?Sized, I: crate::view::Id> Href for At<'_, R, I> {
     fn write_link(&self, out: &mut String, html: bool) {
         self.write_href(out, html)
     }
+
+    fn prefetch(&self) -> bool {
+        R::PREFETCH
+    }
 }
 
 impl<R: Route + ?Sized, I: crate::view::Id> crate::view::Render for At<'_, R, I> {
@@ -639,6 +706,7 @@ impl<R: Route + ?Sized, I: crate::view::Id> crate::view::AttrValue for At<'_, R,
         out.push_str("=\"");
         self.write_href(out, true);
         out.push('"');
+        no_prefetch(name, R::PREFETCH, out);
     }
 }
 
@@ -867,6 +935,36 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 /// # fn main() {}
 /// ```
 ///
+/// Where one enum of every page's route would join code that should stay apart (a shared
+/// component whose pages live in separate feature modules), its prop is a function that returns a
+/// boxed link, and `href={..}` takes the box as it is:
+///
+/// ```
+/// use corten::{prelude::*, Href};
+///
+/// #[derive(Route)] #[route("/pull-sheet")] struct PullSheet<'a> { sort: Option<&'a str> }
+///
+/// #[component]
+/// fn SortLinks<'a>(link: &'a dyn Fn(&'static str) -> Box<dyn Href + 'a>) -> impl Render {
+///     html! { <a href={link("price")}>"Price"</a> <a href={&link("name")}>"Name"</a> }
+/// }
+///
+/// let link = |sort| Box::new(PullSheet { sort: Some(sort) }) as Box<dyn Href>;
+/// assert_eq!(
+///     SortLinks { link: &link }.to_html(),
+///     r#"<a href="/pull-sheet?sort=price">Price</a><a href="/pull-sheet?sort=name">Name</a>"#
+/// );
+/// ```
+///
+/// A value that is neither text nor a link is an error about the attribute:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+///
+/// struct Sort;
+/// let _ = html! { <a href={Sort}>"Price"</a> };
+/// ```
+///
 /// Text is not a link, so a `&str` is not a `&dyn Href`:
 ///
 /// ```compile_fail,E0277
@@ -900,6 +998,21 @@ pub trait Href {
     fn as_text(&self) -> Option<&str> {
         None
     }
+
+    /// Whether the runtime may fetch the page ahead of a click: a route's [`Route::PREFETCH`].
+    fn prefetch(&self) -> bool {
+        true
+    }
+}
+
+/// After `href="..."`, the opt-out a link to a page not to prefetch carries. Only for `href`: a
+/// form's `action` is never prefetched.
+#[doc(hidden)]
+#[inline]
+pub fn no_prefetch(name: &str, prefetch: bool, out: &mut String) {
+    if !prefetch && name == " href" {
+        out.push_str(" data-no-prefetch");
+    }
 }
 
 /// The URL of any [`Href`] as a header value: `Location` for a redirect.
@@ -930,6 +1043,7 @@ macro_rules! dyn_href {
                 out.push_str("=\"");
                 self.write_link(out, true);
                 out.push('"');
+                no_prefetch(name, self.prefetch(), out);
             }
         }
 
@@ -942,6 +1056,10 @@ macro_rules! dyn_href {
             fn as_text(&self) -> Option<&str> {
                 (**self).as_text()
             }
+
+            fn prefetch(&self) -> bool {
+                (**self).prefetch()
+            }
         }
 
         impl Href for Box<$ty> {
@@ -951,6 +1069,18 @@ macro_rules! dyn_href {
 
             fn as_text(&self) -> Option<&str> {
                 (**self).as_text()
+            }
+
+            fn prefetch(&self) -> bool {
+                (**self).prefetch()
+            }
+        }
+
+        /// A boxed link (one a shared component's function prop returns) is written as the
+        /// link it holds: `href={(paging.link)(by)}`.
+        impl crate::view::AttrValue for Box<$ty> {
+            fn write_attr(&self, name: &str, out: &mut String) {
+                (**self).write_attr(name, out)
             }
         }
     )*};
@@ -1352,6 +1482,10 @@ impl<R: Route + ?Sized> Href for R {
     fn write_link(&self, out: &mut String, html: bool) {
         self.write_href(out, html)
     }
+
+    fn prefetch(&self) -> bool {
+        R::PREFETCH
+    }
 }
 
 /// For each byte, `SEGMENT` when it is written as it is in a path segment or query value
@@ -1426,8 +1560,9 @@ impl fmt::Write for Encode<'_> {
 /// a path parameter from its segment, percent-decoded; a query parameter by the name serde reads
 /// (`None`, or empty for a list, when the query leaves it out; a field with `#[serde(default)]`
 /// its default); a `#[route(query)]` field's set each of its fields the same way; a
-/// `#[route(prefix = "dim.")]` field from each parameter with the prefix, taken off. A request whose parameters do not
-/// fit is a `400 Bad Request`.
+/// `#[route(prefix = "dim.")]` field from each parameter with the prefix, taken off. A word an
+/// enum does not have (an old bookmark) reads as missing, and a prefixed entry holding one is
+/// left out; a request whose parameters otherwise do not fit is a `400 Bad Request`.
 ///
 /// So the link and the handler cannot disagree about a parameter's name or type, and a handler
 /// of a route with a parameter in its path must take the route's `Params`: in a
@@ -2198,7 +2333,7 @@ pub mod __private {
 
         fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError> {
             crate::form::de::prefixed(pairs, prefix)
-                .map(|(k, v)| Ok((crate::form::de::one(k)?, crate::form::de::one(v)?)))
+                .filter_map(|(k, v)| crate::form::de::entry(prefix, k, v).transpose())
                 .collect()
         }
     }
@@ -2208,7 +2343,7 @@ pub mod __private {
 
         fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError> {
             crate::form::de::prefixed(pairs, prefix)
-                .map(|(k, v)| Ok((crate::form::de::one(k)?, crate::form::de::one(v)?)))
+                .filter_map(|(k, v)| crate::form::de::entry(prefix, k, v).transpose())
                 .collect()
         }
     }

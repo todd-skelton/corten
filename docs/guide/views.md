@@ -90,6 +90,15 @@ layout to a page in another loads it in full, with no `data-reload`. A prop that
 layout around `<main>` (a promo bar on some pages only) is not seen by a navigation: make that a
 second layout.
 
+The runtime fetches a same-origin link's page after the pointer rests on it for 65 ms (or a
+touch starts), so the click shows it at once; it keeps the 8 newest for 10 seconds and aborts
+the request of one it drops, so the server sees the client go. A page that is costly to draw (a
+report that takes seconds) says so on its route, `#[route("/reports/suggested", get = suggested,
+prefetch = false)]`: every `href={..}` to it, a route held as `&dyn Href` included, is written
+with `data-no-prefetch`, and only a click starts its work. `data-no-prefetch` by hand on a link
+or an element around links does the same for links that are not routes, and `data-reload` loads
+the page in full instead of a client navigation (and is never prefetched).
+
 Who is signed in reaches the layout the same way as everything else, as a prop the handler
 passes: `viewer={viewer.as_deref()}` from the `Option<Caller<Viewer>>` it took. A layout does not
 read the request itself. Rendering is synchronous and `Identify` is not (a session store, a
@@ -228,7 +237,10 @@ value that is one of several routes (an app's screens, the links a shared list m
 column) is an enum whose variants each hold one, `#[derive(Href)] enum Screen<'a> {
 Inventory(url::Inventory), PullSheet(url::PullSheet<'a>) }`, written as `href={screen}`, and the
 page passes a function that builds it, `link: &'a dyn Fn(SortBy) -> SheetLink<'a>`. A unit
-variant does not compile (it has no URL), and neither does text where a `&dyn Href` goes. A
+variant does not compile (it has no URL), and neither does text where a `&dyn Href` goes. When
+one enum of every page's route would tie together modules that should stay apart (the pages that
+draw a shared list live in separate features), the function returns a boxed link instead,
+`link: &'a dyn Fn(SortBy) -> Box<dyn Href + 'a>`, and `href={link(by)}` takes the box as it is. A
 part of each row the page decides (a detail one screen shows) is a function the same way,
 `detail: &'a dyn Fn(&Item) -> Box<dyn Render + 'a>`, drawn as `{detail(item)}`.
 
