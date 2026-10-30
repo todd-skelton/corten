@@ -1039,7 +1039,26 @@ Corten is pre-1.0, so any minor version may change the API.
     from (`corten --version` prints it), read from `.git` or a published package's
     `.cargo_vcs_info.json`, standard library only. A path dependency is not compared
     ([#458 The corten CLI does not notice it is older than the corten the app pins, so fmt and check silently use old behavior](https://github.com/todd-skelton/corten/issues/458)).
-142. `DayStyle` for `t.date` and `t.js().date`: the month and day without the year, `Short` (`Mar
+142. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
+    form, its fields posted as `ship_to.street` (`f.ship_to.street`), so a field group is defined
+    once and a form can hold two of one type. `#[fields(rows)] #[serde(default)] domains:
+    BTreeMap<Domain, DomainLimits>` is one group per row, each field named by the row's key,
+    `f.domains.at(&Domain::SellerPortal).max_concurrent`, posted as
+    `domains[seller-portal].max_concurrent`: the key, not the row's place, joins a row's values, so
+    a row left out shifts nothing and an unchecked checkbox is `false` in its own row, and an error
+    on one row's field marks that input only, with its own message id. `at` takes only the map's key
+    type (a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, by its word); a key's other
+    characters are %-encoded. A group of groups, rows in a group or a row, rows without a default, a
+    group that is an `Option`, and a row key an enum reads by more than its word (`alias`, `other`)
+    do not compile, and neither does a `UrlValue` enum with two variants written as one word. `Form`
+    and `corten::form::from_bytes` read both with Corten's own form reader. `#[fields(map)]
+    #[serde(default)] counts: BTreeMap<Sku, u32>` is one plain value per key, `f.counts.at(&sku)`,
+    posted as `counts[sku]`, with its own error. Plain forms pay for it: reading a form of three
+    plain fields costs 3,332 instructions where it took 3,110, and refusing one whose number does
+    not parse 5,401 where it took 5,176 (callgrind, release build, 3 runs each); a row's error is
+    found by its key, so many rows' errors do not cost each other
+    ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
+143. `DayStyle` for `t.date` and `t.js().date`: the month and day without the year, `Short` (`Mar
     2`) and `Long` (`March 2`), written as Intl writes `{ month, day }` in each locale's order and
     words (`2 mars`, `2. März`), for a chart's axis, a week's row or a timeline whose year the page
     says once; like `MonthStyle`, `t.date_time` does not take it. The locale data gains two patterns
@@ -1662,6 +1681,25 @@ Corten is pre-1.0, so any minor version may change the API.
     the page drops it. A GET submit still replaces an older one. The minified runtime grows by 656
     bytes (25,884 to 26,540), 247 gzipped (9,402 to 9,649) and 219 with brotli (8,496 to 8,715)
     ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
+89. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
+    name alone (`FieldName`, with `as_str`), and a group's or a row's field is a
+    `FieldName<Group>`, `FieldName<Row<'k>>` or `FieldName<RowGroup<'k>>`, written, not stored:
+    compare it with text with `==` (`f.ship_to.street == "ship_to.street"`) and write it with
+    `Display` or in markup. `Errors::iter` yields a `Named` for each name.
+    `#[derive(Fields)]` also makes `{Name}GroupFields`, `{Name}RowFields<'k>` and
+    `{Name}RowGroupFields<'k>` and implements `corten::form::Fields`.
+    `#[serde(flatten)]` stays refused, and its message now points to `#[fields(group)]`: a
+    flattened group cannot be told from another of its type, and serde reads a flattened field's
+    value only as text
+    ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366)).
+90. A key under a field's name sent without the field itself (`go.x` from an image button, `ids[0]`
+    from a PHP-style list) is read as that field's group or rows wherever a form is read (`Form`, a
+    `GET` form's query, `Upload::fields`, `form::from_bytes`): a field that is not an `Option` is
+    refused (422) with a message that says it was sent only that way, where it was ignored and a
+    `#[serde(default)] go: bool` read `false` though the button was pressed, or a defaulted `Vec`
+    read empty though values were sent. An `Option` reads as `None`, and a key under a name the
+    struct does not have is ignored as before
+    ([#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -2324,6 +2362,18 @@ Corten is pre-1.0, so any minor version may change the API.
 37. The requests guide says why the submit key is a form field and not the `Idempotency-Key`
     header: a browser without JavaScript cannot set one, and the header is still an IETF draft
     ([#395 An action takes its idempotency key only as a SubmitKey form field, not the Idempotency-Key header data clients send](https://github.com/todd-skelton/corten/issues/395)).
+38. The live-data guide follows a job another process runs (a worker writing to a shared database):
+    one `App::task` reading into a `watch` channel for `live_watch` when many pages follow it, or a
+    `corten::live` loop that sends only when the version moved, ends after the settled state and
+    gives up after a few failed reads. No `live_poll` helper is added: the interval, what to read
+    less often and when the job is done are the app's, and a helper would take a closure for each
+    ([#388 A live part that follows a job in another process writes its own poll loop, version cursor and end](https://github.com/todd-skelton/corten/issues/388)).
+39. The scripts guide says a value a handler computes that the server also draws is a second copy,
+    and how to keep the two in agreement: draw it on the server only when a round trip is fast
+    enough, or keep the arithmetic in a `script!` module that imports nothing and run one table of
+    cases through both in a test, which `corten check` runs. Corten does not compile Rust to the
+    script or add a runner of its own: a test already does it
+    ([#444 A value a script computes as the user types is also drawn by the server, so its arithmetic is written twice (Rust and JS) with nothing checking they agree](https://github.com/todd-skelton/corten/issues/444)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
