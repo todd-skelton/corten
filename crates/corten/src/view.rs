@@ -80,6 +80,21 @@ pub use corten_macros::html;
 /// Parameters that are `Copy` (references, numbers, `bool`) arrive with their declared type;
 /// others arrive by reference. The function body runs when the component renders.
 ///
+/// Every prop is written where the component is used, even an empty one (`head=""`, an
+/// `Option` as `None`), so the markup says what the component gets. A prop left out does not
+/// compile:
+///
+/// ```compile_fail,E0063
+/// use corten::prelude::*;
+///
+/// #[component]
+/// fn Panel<'a>(title: &'a str, children: impl Render) -> impl Render {
+///     html! { <section><h2>{title}</h2>{children}</section> }
+/// }
+///
+/// let _ = html! { <Panel>"Sold out"</Panel> };
+/// ```
+///
 /// `#[component(css)]` gives the component the stylesheet named after it, next to it
 /// (`panel.css`), and `#[component(css = Panel)]` shares another component's; see
 /// [`crate::style`].
