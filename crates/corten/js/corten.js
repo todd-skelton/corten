@@ -1575,8 +1575,9 @@ addEventListener("pagehide", () => (left += 1));
  * whose old answer is worth nothing). It does not abort a write: the server may have applied it,
  * and its answer is the page's next state. The newer submit waits (`next`; several become the
  * latest) and is sent once the write's answer is drawn, with the form's values as they are then,
- * so a version or a count the answer wrote goes out with it. An answer the runtime does not draw,
- * a 5xx, a redirect, a reload or no answer at all drops it. A navigation aborts them all, so a
+ * so a version or a count the answer wrote goes out with it. Only after a 2xx or a 422: a refusal
+ * of the form's state (409, 410), a 5xx, an answer the runtime does not draw, a redirect, a reload
+ * or no answer at all drops it. A navigation aborts them all, so a
  * late reply never patches a page it was not meant for.
  * @type {Map<HTMLFormElement, { key: string, controller: AbortController, write: boolean, next?: HTMLElement | null }>}
  */
@@ -1683,9 +1684,11 @@ async function send(form, submitter, sends) {
       await (res.headers.has("corten-patch") ? apply(body, signal, sent, res.ok) : swapPage(body, signal));
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
-      // A 5xx page may hide a write that was applied or not, and the waiting submit would go under
-      // the same key: the user sends it again, once they see where things are.
-      if (res.status >= 500) pending.next = undefined;
+      // Sent after an answer that took the write (2xx) or refused only its input (422). Not after a
+      // refusal of the state it was made against (a 409 or 410, "someone saved first"): the user
+      // reads it first, or the waiting submit would overwrite what they have not seen. Nor after a
+      // 5xx, which may hide a write that was applied or not, under the same key.
+      if (!res.ok && res.status !== 422) pending.next = undefined;
     } else {
       // An answer the runtime does not draw is whole once its body has arrived too.
       await res.arrayBuffer();

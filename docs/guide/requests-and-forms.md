@@ -242,9 +242,11 @@ The same key is sent for as long as the submission has no answer: a page reloade
 posts it again, and the runtime sends a `data-patch` form again with it after a network error, a
 5xx, an abort (a navigation) or an answer whose body was cut off on the way. Once a whole answer
 arrives, any status below 500, the runtime gives the form a new key, so the next submit is a new
-one; a page or patch the server draws has a new key anyway. A form changed and sent again before the first had an
-answer is the same submission: the app answers it with what it did the first time, and the user
-sees that and can send the change. The key is the app's to store, next to the write (Corten keeps
+one; a page or patch the server draws has a new key anyway. A form sent again before the first had an answer (a
+browser without JavaScript, a data client) is the same submission: the app answers it with what
+it did the first time, and the user sees that and can send the change. A `data-patch` form's
+change made while its write is out waits for the answer instead, and goes under the new key
+(below). The key is the app's to store, next to the write (Corten keeps
 no store); `corten_cluster::begin` takes it as its idempotency key. A field that is not a UUID v4
 (in either case; it is kept lowercase) is a 422 that names it. Make the field
 `Option<SubmitKey>` when data clients post the same form without one.
@@ -260,7 +262,7 @@ while it is pending sends nothing (a double click). A newer submit of a read (a 
 filter) aborts the older one, whose answer is worth nothing now. While a write is pending, any
 newer submit of the form waits instead: the server may already have applied the write, and its
 answer is the page's next state. Once the runtime has drawn the write's answer (a patch or a
-page, below 500), it sends the latest of the submits that waited, from the form as it is then,
+page) and it took the write (2xx) or refused only its input (422), it sends the latest of the submits that waited, from the form as it is then,
 so the version or count the answer wrote goes out with it, under the form's new key. Its
 `on:submit` handlers ran at the press and do not run again, and the browser does not check the
 form's constraints again (the server checks what it gets). Several presses while the write is
@@ -268,9 +270,10 @@ out are one submit of where the form ended. A form the answer replaced is found 
 give a form that a patch redraws, or that sits in an element a patch redraws, one: a form that
 left the page without an id is not sent, since its values are the ones from before the answer.
 The waiting submit is dropped, and the user sends it again, when the write gets no answer (the
-network failed, or the browser is leaving the page) or one the runtime does not draw (a 409
-without a patch, a proxy's 502), which `corten:error` reports, or a 5xx, after which the server
-may or may not have applied the write; when the answer sends the browser elsewhere (a redirect,
+network failed, or the browser is leaving the page) or one the runtime does not draw (a proxy's
+502), which `corten:error` reports; when the write is refused for the state it was made against
+(`Errors::refuse`, a 409 or 410), which the user reads before anything else goes; or a 5xx,
+after which the server may or may not have applied the write; when the answer sends the browser elsewhere (a redirect,
 a reload), or removed the form or the pressed button; and a navigation aborts everything, so a
 late answer never patches a page it was not meant for. A screen whose every press is a step of
 its own (a count's + and -, each a delta the server adds) keeps its own ordered queue in its

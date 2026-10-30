@@ -1612,14 +1612,15 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
 88. A `data-patch` form's newer submit no longer aborts a pending write (any method but GET): the
     server may have applied it, and its answer, the page's next state, was dropped. A submit made
-    while a write is pending waits, and once the runtime has drawn the write's answer it is sent
-    from the form as it is then (the one the answer put in its place, found by id), so a version or
-    count the answer wrote goes with it, under the form's new key, without its `on:submit` handlers
-    or the browser's constraint checks running a second time. Several presses while the write is out
-    send one submit of where the form ended; a write that gets no answer, one the runtime does not
-    draw (`corten:error`), a 5xx, a redirect, a reload, a navigation, or a form that left the page
-    drops it. A GET submit still replaces an older one. The minified runtime grows by 648 bytes
-    (25,884 to 26,532), 246 gzipped (9,402 to 9,648) and 216 with brotli (8,496 to 8,712)
+    while a write is pending waits, and once the runtime has drawn the write's answer and it took
+    the write (2xx) or refused only its input (422), it is sent from the form as it is then (the one
+    the answer put in its place, found by id), so a version or count the answer wrote goes with it,
+    under the form's new key, without its `on:submit` handlers or the browser's constraint checks
+    running a second time. Several presses while the write is out send one submit of where the form
+    ended; a refusal of the form's state (409, 410), a 5xx, a write that gets no answer, one the
+    runtime does not draw (`corten:error`), a redirect, a reload, a navigation, or a form that left
+    the page drops it. A GET submit still replaces an older one. The minified runtime grows by 656
+    bytes (25,884 to 26,540), 247 gzipped (9,402 to 9,649) and 219 with brotli (8,496 to 8,715)
     ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
 
 ### Fixed

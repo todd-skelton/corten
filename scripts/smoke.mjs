@@ -683,10 +683,12 @@ async function run(browser) {
     );
     await page.click("#queue-box button");
     await page.fill("#queue-box [name=n]", "2");
+    // Still out when the second press lands, so the check is of the queue and not of two sends.
+    const busy = await page.getAttribute("#queue-box form", "aria-busy");
     await page.click("#queue-box button");
     const status = await error;
     await page.waitForTimeout(700);
-    return { sent: queueSent.join(), status };
+    return { sent: queueSent.join(), status, busy };
   };
   const queueLogged = errors.length;
   const patchHeaders = { "corten-patch": "1" };
@@ -714,6 +716,16 @@ async function run(browser) {
     `${failedPatch.sent}; ${await page.textContent("#queue-out")}`,
   );
 
+  // A refusal of the state the write was made against (Errors::refuse, 409) is drawn and drops
+  // the waiting submit: the user reads it before anything else goes.
+  queueAnswer = { status: 409, headers: patchHeaders, body: '<p id="queue-out">stale</p>' };
+  const stale = await queueCase(queueForm("post"));
+  check(
+    "a submit that waited is not sent after a 409 refusal, which is drawn",
+    stale.sent === "POST 1" && (await page.textContent("#queue-out")) === "stale",
+    `${stale.sent}; ${await page.textContent("#queue-out")}`,
+  );
+
   // An answer that removes the form drops it.
   queueAnswer = { status: 200, headers: patchHeaders, body: '<template id="queue" data-remove></template>' };
   const removed = await queueCase(queueForm("post"));
@@ -731,12 +743,12 @@ async function run(browser) {
   const [firstKey, secondKey] = keyed.sent.split(",").map((s) => s.split(" ")[2]);
   check(
     "a submit that waited goes out after the write's answer, under the key the answer renewed",
-    keyed.sent.startsWith("POST 1 ") && keyed.sent.includes(",POST 2 ") && firstKey === zero && /^[0-9a-f-]{36}$/.test(secondKey ?? "") && secondKey !== zero,
+    keyed.busy === "true" && keyed.sent.startsWith("POST 1 ") && keyed.sent.includes(",POST 2 ") && firstKey === zero && /^[0-9a-f-]{36}$/.test(secondKey ?? "") && secondKey !== zero,
     keyed.sent,
   );
   await page.unroute("**/queue*");
   await page.evaluate(() => document.getElementById("queue-box")?.remove());
-  // The browser logs the 503 and the 500 the smoke answered; nothing else is expected.
+  // The browser logs the 503, 500 and 409 the smoke answered; nothing else is expected.
   errors.splice(queueLogged, errors.length, ...errors.slice(queueLogged).filter((e) => !/Failed to load resource/.test(e)));
 
   const current = () => page.$$eval("a[data-nav][aria-current=page]", (links) => links.map((l) => l.getAttribute("href")).join());

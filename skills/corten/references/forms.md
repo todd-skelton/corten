@@ -160,8 +160,9 @@ A write that must apply once (an order, a payment) takes a `submit: SubmitKey` f
 first outcome. The runtime keeps the key until the submit has an answer below 500, then renews it.
 
 A press while the form's write is pending waits for its answer, then goes out from the form as
-the answer left it (found by its `id`: give a form a patch redraws one). An answer the runtime
-does not draw, a 5xx, a redirect or no answer drops it, and the user sends it again. Steps that
+the answer left it (found by its `id`: give a form a patch redraws one), after a 2xx or a 422.
+A refusal (409, 410), a 5xx, an answer the runtime does not draw, a redirect or no answer drops
+it, and the user sends it again. Steps that
 each count (a count's + and -) keep their own ordered queue in the component's script.
 
 The handler answers a failed check with `req.invalid`. It replies 422 with the form as a patch for
