@@ -917,6 +917,28 @@ Corten is pre-1.0, so any minor version may change the API.
     read only by `finish`. A plain GET through the router took 16,673 to 17,022 instructions
     before and 16,864 to 16,866 after (callgrind, release build, 5 runs each); the before runs
     vary more than the two differ.
+128. `examples/auction-room`: a live card auction. Signed-in people bid on the same lots at once;
+    bids are kept in SQLite and checked in one transaction (refused below the price and the step,
+    or after the end, and written once per submit key), every page watching a lot sees it change,
+    and the outbid bidder alone is told, on every page they have open. Its `Identify`s refuse with
+    `sign_in`, `forbidden` (a bidder at the house's desk, the house bidding) and `unavailable`
+    (the store is down); its bid and sign-in limits are areas' middleware refusing with
+    `too_many`; it works without JavaScript; and its smoke has two bidders in two browsers bidding
+    against each other
+    ([#337 No example shows several signed-in users in real time with stored data: a live auction room](https://github.com/todd-skelton/corten/issues/337)).
+129. `on:document:keydown={js::shortcut(event, ..)}`: a component's handler for an event anywhere
+    on the page while the component is on it, so a screen's shortcuts work wherever focus is
+    (the page's background, a button) without `document.addEventListener`. It runs after the
+    handlers on the event's path, each as its own listener on the document (one stopping the
+    event does not keep it from another's), its arguments are read for each event and typed by
+    the event (`KeyboardEvent`), and it ends when its element leaves the page. An event that
+    does not bubble to the document (`focus`, `mouseenter`), `connect` and a typed event do not
+    compile, so a page-wide handler that would never run is a build error. watchlist pauses its
+    prices on `p`
+    ([#365 A component cannot take keys on the whole page, so work-screen shortcuts call document.addEventListener outside the handler model](https://github.com/todd-skelton/corten/issues/365)).
+    A page without one checks one empty set per bubbling event it listens for.
+    The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
+    and 61 with brotli (8,287 to 8,348).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1477,8 +1499,8 @@ Corten is pre-1.0, so any minor version may change the API.
     goes with it, under the key the form has then, without its `on:submit` handlers running a
     second time. Several presses while the write is out send one submit of where the form ended;
     a redirect, a reload or a navigation drops it. A GET submit still replaces an older one. The
-    minified runtime grows by 516 bytes (25,133 to 25,649), 201 gzipped (9,165 to 9,366) and 165
-    with brotli (8,287 to 8,452)
+    minified runtime grows by 613 bytes (25,413 to 26,026), 236 gzipped (9,249 to 9,485) and 218
+    with brotli (8,348 to 8,566)
     ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
 
 ### Fixed

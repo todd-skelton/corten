@@ -386,15 +386,24 @@ function run(el, binding, event) {
 /** Event types with a listener on the document. */
 const listening = new Set();
 
+/** Elements with a handler for events anywhere on the page (`on:document:keydown`). @type {Set<Element>} */
+const onPage = new Set();
+
+/** The `data-on` type of a handler for `type` anywhere on the page. */
+const PAGE = "document.";
+
 /**
  * Listens for `type` on the document, once: an event that bubbles runs the handlers of every
- * element on its path, innermost first, until one stops it; one that does not (`focus`,
- * `mouseenter`) reaches the document only by capture and runs its target's handlers.
+ * element on its path, innermost first, until one stops it, and then those of the elements on
+ * the page with a handler for it anywhere (`on:document:keydown`), each as a listener of its own
+ * on the document would; one that does not (`focus`, `mouseenter`) reaches the document only by
+ * capture and runs its target's handlers.
  * @param {string} type
  */
 function listen(type) {
   if (type === "connect" || listening.has(type)) return;
   listening.add(type);
+  const anywhere = PAGE + type;
   document.addEventListener(type, (event) => {
     if (!event.bubbles) return;
     for (const node of event.composedPath()) {
@@ -404,6 +413,15 @@ function listen(type) {
       // from the runtime: a data-patch form is still sent as a patch.
       if (event.cancelBubble) return type === "submit" && patchSubmit(event);
     }
+    // Each element's page-wide handlers are a listener of their own on the document: stopping the
+    // event does not keep it from another's, and an element that joins during the event waits
+    // for the next one. A submit one of them stopped is still sent as a patch.
+    if (!onPage.size) return;
+    for (const el of [...onPage]) {
+      if (!el.isConnected) continue;
+      for (const b of bindings(el)) if (b.type === anywhere) run(el, b, event);
+    }
+    if (event.cancelBubble && type === "submit") patchSubmit(event);
   });
   document.addEventListener(
     type,
@@ -448,7 +466,10 @@ function scan(root, names, inside = false) {
     for (const b of bindings(el)) {
       loadFor(b);
       if (b.type === "connect") connects = true;
-      else listen(b.type);
+      else if (b.type.startsWith(PAGE)) {
+        onPage.add(el);
+        listen(b.type.slice(PAGE.length));
+      } else listen(b.type);
     }
     if (connects && !connected.has(el)) {
       connected.add(el);
@@ -492,6 +513,7 @@ function sweep() {
     life.abort();
   }
   for (const el of connected) if (!el.isConnected) connected.delete(el);
+  for (const el of onPage) if (!el.isConnected) onPage.delete(el);
 }
 
 /**
@@ -521,7 +543,7 @@ function observed(records) {
   // Wiring is the same however often it runs, so a parent scanned whole may hold rows wired before.
   for (const parent of wide) if (parent.isConnected) scan(parent, names, true);
   for (const name of names) refChanges.set(name, (refChanges.get(name) ?? 0) + 1);
-  if (removed && (lives.size || connected.size)) sweep();
+  if (removed && (lives.size || connected.size || onPage.size)) sweep();
 }
 
 const observer = new MutationObserver(observed);
