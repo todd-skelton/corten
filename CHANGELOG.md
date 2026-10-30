@@ -1058,6 +1058,12 @@ Corten is pre-1.0, so any minor version may change the API.
     not parse 5,401 where it took 5,176 (callgrind, release build, 3 runs each); a row's error is
     found by its key, so many rows' errors do not cost each other
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
+143. `Req::invalid_with(&errors, form, page)`: a refusal whose form needs a read of its own reads it
+    only for the patch, through a `FormPatch` that draws a patch and nothing else (a page there does
+    not compile), and the page side only for a browser without JavaScript; a data client gets the
+    Problem Details document with neither, as from `invalid` (feature `json`). An app no longer branches on
+    `req.mode` for such a refusal and loses the JSON answer
+    ([#468 req.invalid takes the refused form's patch already drawn, so a patch that needs a read is read for the no-JavaScript page too](https://github.com/todd-skelton/corten/issues/468)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
