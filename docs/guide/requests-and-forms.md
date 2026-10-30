@@ -19,7 +19,8 @@ One handler serves every mode, and `req.mode` says which. A `data-patch` form's 
 both of its rows with `req.patch_or(view, || async { req.page(..) }).await`: the patch with
 JavaScript, and otherwise the page (or a redirect), whose closure runs only then, so the patch
 never loads what only the page shows. A patch that needs data of its own, which the page does not,
-or a status or headers of its own, checks `req.mode == Mode::Action` itself. A route with no screen goes under
+or a status or headers of its own, checks `req.mode == Mode::Action` itself; a refusal whose
+form needs a read is `req.invalid_with` (below). A route with no screen goes under
 [`App::api`](app.md#json-only-routes) instead, where every answer is JSON. The layout around `<main>` renders on full
 loads only ([the document](views.md#the-document)); every page carries a key hashed from the
 caller its handler read (if any), the deploy and its layout, and when a navigation answers with a different key
@@ -62,6 +63,24 @@ if let Err(errors) = check(&input) {
     // or the whole page for a browser without JavaScript (only then is `page` called).
     return req.invalid(&errors, AlertForm { input: &input, errors: &errors }, page).await;
 }
+```
+
+A refusal whose form needs a read of its own (the batch as it is now, for "someone moved it
+on") is `req.invalid_with`: the form side runs only for the patch, the page side only for the
+page, and a data client gets the Problem Details document with neither read. The form side gets
+a `FormPatch`, which draws a patch and nothing else, so it cannot answer a page by mistake:
+
+```rust,ignore
+return req
+    .invalid_with(
+        &errors,
+        |form| async {
+            let batch = store.batch(id).await?;
+            form.draw(BatchPanel { batch: &batch, errors: &errors })
+        },
+        || page(&req, &store, id, &errors),
+    )
+    .await;
 ```
 
 A JSON handler has no form to show again: it `?`s the same check, next to the `?` of a load

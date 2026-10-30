@@ -1048,6 +1048,49 @@ async fn a_stale_submit_answers_409_with_the_form_message_in_each_mode() {
     }
 }
 
+/// A refusal whose form needs a read, drawn per mode: `reads` counts the form side's reads.
+fn lazily_refused_routes(reads: std::sync::Arc<std::sync::atomic::AtomicU32>) -> Router {
+    Router::new().route(
+        "/",
+        get(move |req: Req| async move {
+            let mut errors = Errors::new();
+            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            let page = || async { req.test_page("Sheet", html! { <p>"page with the refusal"</p> }) };
+            let form = |form: crate::FormPatch| async move {
+                reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let read = Errors::new();
+                form.draw(html! { <form id={SignUpId}>{read.form_message()}"read now"</form> })
+            };
+            req.invalid_with(&errors, form, page).await
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_refusal_whose_form_needs_a_read_reads_only_for_the_patch() {
+    use std::sync::{atomic::AtomicU32, Arc};
+    let reads = Arc::new(AtomicU32::new(0));
+    let (status, headers, body) = call(app(lazily_refused_routes(reads.clone()), None), "GET", Some("action")).await;
+    assert_eq!(
+        (status, &headers["corten-patch"], body.as_str()),
+        (StatusCode::CONFLICT, &"1".parse().unwrap(), r#"<form id="sign-up">read now</form>"#)
+    );
+    assert_eq!(reads.load(std::sync::atomic::Ordering::Relaxed), 1);
+
+    let (status, _, body) = call(app(lazily_refused_routes(reads.clone()), None), "GET", None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("<p>page with the refusal</p>"), "no JavaScript: the whole page");
+    assert_eq!(reads.load(std::sync::atomic::Ordering::Relaxed), 1, "the page reads nothing for the patch");
+
+    #[cfg(feature = "json")]
+    {
+        let (status, _, body) =
+            call_with(app(lazily_refused_routes(reads.clone()), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert!(body.contains(r#""status":409"#), "{body}");
+        assert_eq!(reads.load(std::sync::atomic::Ordering::Relaxed), 1, "a data client reads nothing for the patch");
+    }
+}
 #[tokio::test]
 async fn invalid_input_answers_422_in_each_mode() {
     let (status, headers, body) = call(app(invalid_routes(), None), "GET", Some("action")).await;

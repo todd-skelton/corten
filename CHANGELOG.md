@@ -1017,6 +1017,12 @@ Corten is pre-1.0, so any minor version may change the API.
     routes itself keeps only the methods it names. Routes without `any` route and cost as
     before
     ([#360 A catch-all route's handler must take that route's Params, so one relay cannot serve several routes or every method](https://github.com/todd-skelton/corten/issues/360)).
+140. `Req::invalid_with(&errors, form, page)`: a refusal whose form needs a read of its own reads it
+    only for the patch, through a `FormPatch` that draws a patch and nothing else (a page there does
+    not compile), and the page side only for a browser without JavaScript; a data client gets the
+    Problem Details document with neither, as from `invalid`. An app no longer branches on
+    `req.mode` for such a refusal and loses the JSON answer
+    ([#468 req.invalid takes the refused form's patch already drawn, so a patch that needs a read is read for the no-JavaScript page too](https://github.com/todd-skelton/corten/issues/468)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
