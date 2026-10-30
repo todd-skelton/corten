@@ -1006,7 +1006,33 @@ Corten is pre-1.0, so any minor version may change the API.
     instead when it refuses (a download posted at a stale revision), each `.into()` the answer,
     private like any page and `Public` with a page made for everyone
     ([#415 A handler that answers a file cannot answer a page or a redirect when the file is refused](https://github.com/todd-skelton/corten/issues/415)).
-139. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 75 bytes (25,884 to 25,959), 16 gzipped (9,402 to 9,418), 2 with brotli (8,496 to 8,498). RENDER
+139. `#[route("/{*rest}", any = relay)]`: one handler for every method of a route, those the app
+    never names included (`OPTIONS`, `PROPFIND`), for an app moved onto Corten a slice at a time
+    that relays the rest to its old server, which then answers them instead of Corten's 405. It is
+    the route's only handler (naming another method beside it does not compile). A route with a
+    parameter still holds its handler to taking its `Params`: one relay for several catch-alls is
+    generic over the route (`async fn relay<R: FromUrl>(_: Params<R>, req: Request)`), and the
+    compiler picks the route at each name, so no wrapper per route with a parameter is needed
+    (a route without one has no `Params` and takes a handler without them). A path the app
+    routes itself keeps only the methods it names. Routes without `any` route and cost as
+    before
+    ([#360 A catch-all route's handler must take that route's Params, so one relay cannot serve several routes or every method](https://github.com/todd-skelton/corten/issues/360)).
+140. Plural messages: `"cards_one"` and `"cards_other"` (the suffixes i18next uses) are one
+    message, `t.cards(count)`, which picks the form by the count's CLDR plural category in the
+    locale and writes the count as `t.number` does; `t.js().cards()` picks it in the browser the
+    same way (`format.js`, checked against Intl for every locale). A catalog without a form its
+    language uses (French's `_many`), with one it never uses (English `_zero`), or without
+    `_other` does not compile. Breaking: a key ending in `_zero`, `_one`, `_two`, `_few`,
+    `_many` or `_other` is a plural form, so `t.cards_one(..)` and `t.cards_other(..)` become
+    `t.cards(count)`. Measured: `corten-format` grows from 2,535 to 3,008 bytes (1,260 to 1,475
+    gzipped); a `t.js()` plural sends the locale's plural table with its forms (seller-desk's
+    grid, which sends one to two handlers, is 502 bytes more per page; its whole page 474 bytes
+    raw, 37 gzipped, 15 brotli); seller-desk's `render_cost` under callgrind is 2,026,886,533 instructions
+    on main and 2,029,845,444 here (median of 3, +0.15%), and a plural `ItemCount` 1,648.5 per
+    render against 1,636.5; the examples' `count == 1` choices are gone and card-market's French no longer
+    writes "1 annonces"
+    ([#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393)).
+141. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 75 bytes (25,884 to 25,959), 16 gzipped (9,402 to 9,418), 2 with brotli (8,496 to 8,498). RENDER
     ([#421 Hover prefetch starts a costly GET page's work; the data-no-prefetch opt-out is undocumented, per link, and a discarded prefetch never aborts](https://github.com/todd-skelton/corten/issues/421)).
 
 ### Removed

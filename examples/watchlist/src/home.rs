@@ -328,8 +328,16 @@ mod tests {
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/scripts/live_prices.js\">"), "the script module is preloaded: {body}");
         assert!(
-            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,#change,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;,&quot;+$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;\u0001%&quot;,&quot;-\u0001%&quot;,&quot;+\u0001%&quot;],&quot;p&quot;:2},&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
+            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,#change,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;,&quot;+$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;\u0001%&quot;,&quot;-\u0001%&quot;,&quot;+\u0001%&quot;],&quot;p&quot;:2},&quot;/feed/stocks&quot;,$s,@updates,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;\u0001&quot;,&quot;-\u0001&quot;],&quot;c&quot;:&quot;"#),
             "the script gets the money and change formats and the message it fills in, once: {body}"
+        );
+        // The count's message is plural: both forms and English's table (0 is other, 1 one).
+        let table = format!("51{}", "5".repeat(199));
+        assert!(
+            body.contains(&format!(
+                r#"&quot;c&quot;:&quot;{table}&quot;,&quot;m&quot;:[null,[&quot;&quot;,&quot;count&quot;,&quot; price update&quot;],null,null,null,[&quot;&quot;,&quot;count&quot;,&quot; price updates&quot;]]}})""#
+            )),
+            "the plural message's forms: {body}"
         );
         assert!(
             body.contains(r#"<td data-ref="price" class="live-prices__amount" data-key="ACME">$129.99</td>"#),
