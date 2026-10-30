@@ -47,36 +47,197 @@ pub fn locked(lock: &str) -> Vec<Locked> {
     found
 }
 
-/// What a manifest asks of its `corten` git dependency: `rev=ab31954a`, `tag=..` or `branch=..`
-/// as the lock records it, or empty for the default branch. `None` when it has no `corten` git
-/// dependency. Reads `corten = { git = .., rev = .. }` and a `[dependencies.corten]` table (or
-/// `[workspace.dependencies.corten]`).
-pub fn asked(manifest: &str) -> Option<String> {
-    let mut table = false;
-    let mut keys: Vec<(String, String)> = Vec::new();
-    let pair = |pair: &str| {
-        let (key, value) = pair.split_once('=')?;
-        Some((key.trim().to_string(), value.trim().trim_matches('"').to_string()))
-    };
-    for line in manifest.lines().map(str::trim) {
-        if line.starts_with('[') {
-            table = matches!(
-                line.trim_matches(['[', ']']).trim(),
-                "dependencies.corten" | "workspace.dependencies.corten" | "dev-dependencies.corten"
-            );
-        } else if table {
-            keys.extend(pair(line));
-        } else if let Some(inner) = line.strip_prefix("corten").and_then(|rest| rest.trim_start().strip_prefix('=')) {
-            let inner = inner.trim().strip_prefix('{').and_then(|t| t.strip_suffix('}')).unwrap_or("");
-            keys.extend(inner.split(',').filter_map(pair));
+/// What a manifest asks of its `corten` git dependencies: each one's URL and `rev=..`, `tag=..`
+/// or `branch=..` as the lock records it (empty for the default branch). Empty when it has none
+/// (a release, `workspace = true`, no corten). Reads the shapes cargo takes: an inline table, on
+/// one line or several; a `[dependencies.corten]` table under any dependency kind, the workspace
+/// or a target; dotted keys (`corten.rev = ".."`); a dependency renamed from corten
+/// (`package = "corten"`); either kind of quote; and comments.
+pub fn asked(manifest: &str) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    // The current table's dependency, when the header names one (`[dependencies.corten]`).
+    let mut table: Option<(String, Vec<(String, String)>)> = None;
+    let mut in_deps = false;
+    let mut deps: Vec<(String, Vec<(String, String)>)> = Vec::new();
+    for entry in entries(manifest) {
+        match entry {
+            Entry::Header(path) => {
+                if let Some(t) = table.take() {
+                    deps.push(t);
+                }
+                let kind = |p: &str| matches!(p, "dependencies" | "dev-dependencies" | "build-dependencies");
+                in_deps = path.last().is_some_and(|p| kind(p));
+                if path.len() >= 2 && kind(&path[path.len() - 2]) {
+                    table = Some((path[path.len() - 1].clone(), Vec::new()));
+                }
+            }
+            Entry::Pair(key, value) => {
+                if let Some((_, keys)) = &mut table {
+                    keys.push((key.join("."), value));
+                } else if in_deps && key.len() == 1 {
+                    deps.push((key[0].clone(), inline(&value)));
+                } else if in_deps && key.len() == 2 {
+                    match deps.iter_mut().find(|(name, _)| *name == key[0]) {
+                        Some((_, keys)) => keys.push((key[1].clone(), value)),
+                        None => deps.push((key[0].clone(), vec![(key[1].clone(), value)])),
+                    }
+                }
+            }
         }
     }
-    keys.iter().any(|(k, _)| k == "git").then(|| {
-        ["rev", "tag", "branch"]
-            .iter()
-            .find_map(|kind| keys.iter().find(|(k, _)| k == kind).map(|(k, v)| format!("{k}={v}")))
-            .unwrap_or_default()
-    })
+    deps.extend(table);
+    for (name, keys) in deps {
+        let get = |k: &str| keys.iter().find(|(key, _)| key == k).map(|(_, v)| unquote(v));
+        if get("package").as_deref().unwrap_or(&name) != "corten" {
+            continue;
+        }
+        let Some(url) = get("git") else { continue };
+        let asked = ["rev", "tag", "branch"].iter().find_map(|kind| get(kind).map(|v| format!("{kind}={v}"))).unwrap_or_default();
+        found.push((url, asked));
+    }
+    found
+}
+
+/// A line of a manifest: a table's header, or a key (dotted, as its parts) and its value as written.
+enum Entry {
+    Header(Vec<String>),
+    Pair(Vec<String>, String),
+}
+
+/// The manifest's headers and pairs, without comments; a value that opens a bracket runs to the
+/// line that closes it.
+fn entries(manifest: &str) -> Vec<Entry> {
+    let mut out = Vec::new();
+    let mut lines = manifest.lines().map(uncomment);
+    while let Some(line) = lines.next() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            let inner = line.trim_start_matches('[').trim_end_matches(']');
+            out.push(Entry::Header(dotted(inner)));
+            continue;
+        }
+        let Some((key, value)) = split_pair(line) else { continue };
+        let mut value = value.trim().to_string();
+        while depth(&value) > 0 {
+            let Some(next) = lines.next() else { break };
+            value.push(' ');
+            value.push_str(next.trim());
+        }
+        out.push(Entry::Pair(dotted(key), value));
+    }
+    out
+}
+
+/// `line` up to a `#` outside quotes.
+fn uncomment(line: &str) -> String {
+    let mut quote = None;
+    for (i, c) in line.char_indices() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), _) if c == q => quote = None,
+            (None, '#') => return line[..i].to_string(),
+            _ => {}
+        }
+    }
+    line.to_string()
+}
+
+/// `key = value` at the first `=` outside quotes.
+fn split_pair(text: &str) -> Option<(&str, &str)> {
+    let mut quote = None;
+    for (i, c) in text.char_indices() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), _) if c == q => quote = None,
+            (None, '=') => return Some((&text[..i], &text[i + 1..])),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// How many brackets `value` leaves open, outside quotes.
+fn depth(value: &str) -> i32 {
+    let (mut depth, mut quote) = (0, None);
+    for c in value.chars() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), _) if c == q => quote = None,
+            (None, '{' | '[') => depth += 1,
+            (None, '}' | ']') => depth -= 1,
+            _ => {}
+        }
+    }
+    depth
+}
+
+/// A dotted key or header (`target.'cfg(windows)'.dependencies.corten`) as its parts.
+fn dotted(key: &str) -> Vec<String> {
+    let (mut parts, mut part, mut quote) = (Vec::new(), String::new(), None);
+    for c in key.chars() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), _) if c == q => quote = None,
+            (None, '.') => parts.push(std::mem::take(&mut part).trim().to_string()),
+            _ => part.push(c),
+        }
+    }
+    parts.push(part.trim().to_string());
+    parts
+}
+
+/// The pairs of an inline table, `{ git = "..", rev = ".." }`; nothing for any other value.
+fn inline(value: &str) -> Vec<(String, String)> {
+    let Some(inner) = value.trim().strip_prefix('{').and_then(|v| v.strip_suffix('}')) else { return Vec::new() };
+    let (mut pairs, mut start, mut level, mut quote) = (Vec::new(), 0, 0, None);
+    for (i, c) in inner.char_indices().chain([(inner.len(), ',')]) {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), _) if c == q => quote = None,
+            (None, '{' | '[') => level += 1,
+            (None, '}' | ']') => level -= 1,
+            (None, ',') if level == 0 => {
+                if let Some((key, value)) = split_pair(&inner[start..i]) {
+                    pairs.push((dotted(key).join("."), value.trim().to_string()));
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    pairs
+}
+
+/// A string value without its quotes.
+fn unquote(value: &str) -> String {
+    let value = value.trim();
+    for q in ['"', '\''] {
+        if let Some(inner) = value.strip_prefix(q).and_then(|v| v.strip_suffix(q)) {
+            return inner.to_string();
+        }
+    }
+    value.to_string()
+}
+
+/// A lock's query as cargo writes it, `branch=codex%2Fpin-bump`, decoded.
+fn decoded(query: &str) -> String {
+    let bytes = query.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        match (bytes[i], bytes.get(i + 1).copied().and_then(hex), bytes.get(i + 2).copied().and_then(hex)) {
+            (b'%', Some(hi), Some(lo)) => {
+                out.push((hi * 16 + lo) as u8);
+                i += 3;
+            }
+            (b, _, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// What to tell the user when this command (`version`, built from `rev`) is not the one for
@@ -100,18 +261,18 @@ pub fn mismatch(locked: &Locked, version: &str, rev: &str) -> Option<String> {
     }
 }
 
-/// The lock's git pin as `Cargo.toml` asks for it now: unchanged when they agree; while a pin is
-/// being bumped (the manifest asks for another revision than the lock was written for), that
-/// revision, and `None` for another tag or branch, whose commit is not known until cargo
-/// resolves it.
-pub fn as_asked(locked: Locked, asked: Option<&str>) -> Option<Locked> {
-    match (locked, asked) {
-        (Locked::Git { url, asked: was, .. }, Some(now)) if was != now => {
-            let sha = now.strip_prefix("rev=")?.to_string();
-            Some(Locked::Git { url, sha, asked: now.to_string() })
-        }
-        (locked, _) => Some(locked),
+/// The lock's git pin as `Cargo.toml` asks for it now (`asked`, from [`asked`]): unchanged when
+/// the manifest names nothing or one of its corten dependencies asks for what the lock was
+/// written for; while a pin is being bumped, the commit the manifest asks for (with its URL), and
+/// `None` when that is a tag, a branch or a ref whose commit is not known until cargo resolves it.
+pub fn as_asked(locked: Locked, asked: &[(String, String)]) -> Option<Locked> {
+    let Locked::Git { asked: was, .. } = &locked else { return Some(locked) };
+    if asked.is_empty() || asked.iter().any(|(_, now)| *now == decoded(was)) {
+        return Some(locked);
     }
+    let (url, now) = &asked[0];
+    let sha = now.strip_prefix("rev=").filter(|rev| rev.len() >= 7 && rev.chars().all(|c| c.is_ascii_hexdigit()))?;
+    Some(Locked::Git { url: url.clone(), sha: sha.to_string(), asked: now.clone() })
 }
 
 /// Prints a note when the app in `root` (or the workspace above it) pins another corten.
@@ -124,8 +285,10 @@ pub fn warn(root: &Path) {
         .ancestors()
         .take_while(|dir| dir.starts_with(top))
         .filter_map(|dir| std::fs::read_to_string(dir.join("Cargo.toml")).ok())
-        .find_map(|manifest| asked(&manifest));
-    let locked: Vec<Locked> = locked(&text).into_iter().filter_map(|l| as_asked(l, asked.as_deref())).collect();
+        .map(|manifest| asked(&manifest))
+        .find(|asked| !asked.is_empty())
+        .unwrap_or_default();
+    let locked: Vec<Locked> = locked(&text).into_iter().filter_map(|l| as_asked(l, &asked)).collect();
     if locked.iter().any(|l| mismatch(l, env!("CARGO_PKG_VERSION"), REV).is_none()) {
         return;
     }
@@ -193,33 +356,72 @@ source = "git+https://github.com/todd-skelton/corten?rev=8680dd62#8680dd620abceb
         assert_eq!(mismatch(&release, "0.2.0", ""), None);
     }
 
+    const URL: &str = "https://github.com/todd-skelton/corten";
+
+    fn one(url: &str, asked: &str) -> Vec<(String, String)> {
+        vec![(url.to_string(), asked.to_string())]
+    }
+
     #[test]
-    fn a_manifest_says_what_it_asks_of_corten() {
-        let inline = "[dependencies]\ncorten = { git = \"https://github.com/todd-skelton/corten\", rev = \"ab31954a\", features = [\"json\"] }\ncorten-ui = { git = \"https://github.com/todd-skelton/corten\", rev = \"ab31954a\" }\n";
-        assert_eq!(asked(inline).as_deref(), Some("rev=ab31954a"));
-        let table = "[workspace.dependencies.corten]\ngit = \"https://github.com/todd-skelton/corten\"\ntag = \"v0.2.0\"\n\n[dependencies]\nserde = \"1\"\n";
-        assert_eq!(asked(table).as_deref(), Some("tag=v0.2.0"));
-        assert_eq!(asked("[dependencies]\ncorten = { git = \"https://github.com/todd-skelton/corten\" }\n").as_deref(), Some(""));
-        // A release, a member that takes the workspace's, or no corten: nothing asked here.
-        assert_eq!(asked("[dependencies]\ncorten = \"0.2\"\n"), None);
-        assert_eq!(asked("[dependencies]\ncorten = { workspace = true }\n"), None);
-        assert_eq!(asked("[dependencies]\nserde = { version = \"1\", rev = \"x\" }\n"), None);
+    fn a_manifest_says_what_it_asks_of_corten_in_any_shape_cargo_takes() {
+        let rev = one(URL, "rev=ab31954a");
+        for manifest in [
+            "[dependencies]\ncorten = { git = \"https://github.com/todd-skelton/corten\", rev = \"ab31954a\", features = [\"json\"] }\ncorten-ui = { git = \"https://github.com/todd-skelton/corten\", rev = \"0000000\" }\n",
+            "[dependencies]\ncorten = { git = \"https://github.com/todd-skelton/corten\", rev = \"ab31954a\" } # keep in sync\n",
+            "[dependencies]\ncorten = { git = 'https://github.com/todd-skelton/corten', rev = 'ab31954a' }\n",
+            "[dependencies]\ncorten = {\n  git = \"https://github.com/todd-skelton/corten\", # the repository\n  rev = \"ab31954a\",\n}\n",
+            "[dependencies]\ncorten.git = \"https://github.com/todd-skelton/corten\"\ncorten.rev = \"ab31954a\" # pinned\n",
+            "[target.'cfg(windows)'.dependencies.corten]\ngit = \"https://github.com/todd-skelton/corten\"\nrev = \"ab31954a\"\n",
+            "[dependencies]\nweb = { package = \"corten\", git = \"https://github.com/todd-skelton/corten\", rev = \"ab31954a\" }\n",
+            "[workspace.dependencies.corten]\ngit = \"https://github.com/todd-skelton/corten\"\nrev = \"ab31954a\"\n\n[dependencies]\nserde = \"1\"\n",
+            "[dependencies]\r\ncorten = { git = \"https://github.com/todd-skelton/corten\", rev = \"ab31954a\" }\r\n",
+        ] {
+            assert_eq!(asked(manifest), rev, "{manifest}");
+        }
+        let tag = "[workspace.dependencies.corten]\ngit = \"https://github.com/todd-skelton/corten\"\ntag = \"v0.2.0\"\n";
+        assert_eq!(asked(tag), one(URL, "tag=v0.2.0"));
+        assert_eq!(asked("[dependencies]\ncorten = { git = \"https://github.com/todd-skelton/corten\" }\n"), one(URL, ""));
+        // A release, a member that takes the workspace's, another crate, or a key in a comment.
+        for none in [
+            "[dependencies]\ncorten = \"0.2\"\n",
+            "[dependencies]\ncorten = { workspace = true }\n",
+            "[dependencies]\nserde = { version = \"1\", git = \"x\", rev = \"x\" }\n",
+            "[package]\nname = \"app\" # corten = { git = \"x\" }\n",
+        ] {
+            assert_eq!(asked(none), Vec::<(String, String)>::new(), "{none}");
+        }
     }
 
     #[test]
     fn during_a_pin_bump_the_command_is_compared_with_what_the_manifest_asks_for() {
         let pinned = || locked(LOCK).remove(0);
-        // The manifest asks what the lock was written for: the lock's commit.
-        assert_eq!(as_asked(pinned(), Some("rev=8680dd62")), Some(pinned()));
-        assert_eq!(as_asked(pinned(), None), Some(pinned()));
+        // The manifest asks what the lock was written for (or names nothing): the lock's commit.
+        assert_eq!(as_asked(pinned(), &one(URL, "rev=8680dd62")), Some(pinned()));
+        assert_eq!(as_asked(pinned(), &[]), Some(pinned()));
+        // One of several asks for it (a dev-dependency still at the old pin): still the lock's.
+        let both = [one(URL, "rev=0123abcd"), one(URL, "rev=8680dd62")].concat();
+        assert_eq!(as_asked(pinned(), &both), Some(pinned()));
         // Bumped to ab31954a, the lock not resolved yet: a command built from ab31954a says nothing,
         // and another one is told to install ab31954a, not the commit the app is leaving.
-        let bumped = as_asked(pinned(), Some("rev=ab31954a")).expect("a revision");
+        let bumped = as_asked(pinned(), &one(URL, "rev=ab31954a")).expect("a revision");
         assert_eq!(mismatch(&bumped, "0.1.0", "ab31954a1b2c3d4e5f60718293a4b5c6d7e8f901"), None);
         let note = mismatch(&bumped, "0.1.0", "dd028b94ad0f63d687ef65b157117fa53caab41c").expect("another commit");
-        assert!(note.ends_with("--rev ab31954a corten-cli --locked"), "{note}");
-        // Bumped to a tag or a branch: its commit is not known until cargo resolves it.
-        assert_eq!(as_asked(pinned(), Some("tag=v0.2.0")), None);
-        assert_eq!(as_asked(pinned(), Some("")), None);
+        assert!(note.ends_with(&format!("--git {URL} --rev ab31954a corten-cli --locked")), "{note}");
+        // Moved to a fork: its URL with its commit.
+        let fork = as_asked(pinned(), &one("https://github.com/someone/corten", "rev=ab31954a")).expect("a revision");
+        assert!(mismatch(&fork, "0.1.0", "dd028b94").unwrap().contains("--git https://github.com/someone/corten --rev ab31954a"));
+        // Bumped to a tag, a branch or a ref: its commit is not known until cargo resolves it.
+        for now in ["tag=v0.2.0", "branch=main", "", "rev=refs/pull/476/head"] {
+            assert_eq!(as_asked(pinned(), &one(URL, now)), None, "{now}");
+        }
+    }
+
+    #[test]
+    fn a_lock_written_for_a_branch_with_a_slash_is_the_manifests_branch() {
+        // Cargo writes the query percent-encoded.
+        let lock = "[[package]]\nname = \"corten\"\nversion = \"0.1.0\"\nsource = \"git+https://github.com/todd-skelton/corten?branch=codex%2Fpin-bump#8680dd620abceb65da75017a21456aa28977b832\"\n";
+        let pinned = locked(lock).remove(0);
+        assert_eq!(as_asked(locked(lock).remove(0), &one(URL, "branch=codex/pin-bump")), Some(pinned));
+        assert_eq!(decoded("tag=v0.2%2Bx"), "tag=v0.2+x");
     }
 }
