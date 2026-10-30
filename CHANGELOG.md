@@ -1095,19 +1095,6 @@ Corten is pre-1.0, so any minor version may change the API.
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 146. A route costly to draw says `#[route("/reports/suggested", get = suggested, prefetch = false)]` (`Route::PREFETCH`), and every link to it, `href={..}` with the route or a `&dyn Href` holding it, is written with `data-no-prefetch`, so hovering it starts no work and only a click does; the route says it once instead of each link. The runtime now aborts a prefetch it drops (the 8-newest limit, a stale entry, a form post, a visit left before the prefetched answer is used), so the server sees the client go instead of drawing the page to the end, and the views guide describes prefetch, `data-no-prefetch` and `data-reload`. The minified runtime grows by 83 bytes (26,536 to 26,619), 29 gzipped (9,642 to 9,671), 33 with brotli (8,709 to 8,742). The item page's render runs 0.11% more instructions (median of 3, callgrind, release build: 35,623,327,994 against 35,584,847,328 on its base), the check each link makes of its route's `PREFETCH`.
     ([#421 Hover prefetch starts a costly GET page's work; the data-no-prefetch opt-out is undocumented, per link, and a discarded prefetch never aborts](https://github.com/todd-skelton/corten/issues/421)).
-147. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group) whose value shows and
-    hides parts anywhere on the page, the figures and, below a chart, the list worded from them.
-    Both take a `Chosen { id, value }`, the choice's `#[derive(Id)]` id and the value the handler
-    read, so a part's values are the choice's type (another enum's word does not compile) and its
-    group cannot be text. The server checks the value and draws every part for another `hidden`;
-    without JavaScript each option is a typed link to the page with that choice; with it, the arrow
-    keys and Space choose in place, the address follows in the keys the options differ in (another
-    control's, a tab's, stay), and every part, also one a patch adds later, follows the choice. No
-    stylesheet repeats the server's values. `TabGroup`'s address now follows the same way, in the
-    keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
-    query)
-    ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
-
 147. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
     answer (a carrier, a payment provider, another app), answered by `req.invalid` and
     `req.invalid_with` with 502 in every mode: the form drawn again with the message, the page
@@ -1120,6 +1107,18 @@ Corten is pre-1.0, so any minor version may change the API.
     not as a refusal of a stale state. Still a closed set: no other 5xx, and no `StatusCode`. An
     app's exhaustive `match` on `Refusal` or `ToolError` gains an arm
     ([#480 A post refused because a service it calls failed has no Refusal (502/503), so it cannot use req.invalid_with and a JSON client gets the HTML page](https://github.com/todd-skelton/corten/issues/480)).
+148. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group) whose value shows and
+    hides parts anywhere on the page, the figures and, below a chart, the list worded from them.
+    Both take a `Chosen { id, value }`, the choice's `#[derive(Id)]` id and the value the handler
+    read, so a part's values are the choice's type (another enum's word does not compile) and its
+    group cannot be text. The server checks the value and draws every part for another `hidden`;
+    without JavaScript each option is a typed link to the page with that choice; with it, the arrow
+    keys and Space choose in place, the address follows in the keys the options differ in (another
+    control's, a tab's, stay), and every part, also one a patch adds later, follows the choice. No
+    stylesheet repeats the server's values. `TabGroup`'s address now follows the same way, in the
+    keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
+    query)
+    ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
