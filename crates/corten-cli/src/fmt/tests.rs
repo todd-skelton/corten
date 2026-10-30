@@ -240,3 +240,22 @@ fn a_pattern_with_braces_is_part_of_the_head() {
     let expected = "    html! {\n        if let Shape::Circle { r } = shape {\n            <i>{r}</i>\n        } else if let Shape::Square { side: 1..=5 } = shape {\n            <b>\"small\"</b>\n        } else if a == b {\n            <u>\"dot\"</u>\n        }\n        for Point { x, y } in &points { <p>{x}</p> }\n    }\n";
     assert_eq!(fmt(input, 60), expected);
 }
+
+/// A file with CRLF line endings is laid out and keeps them.
+#[test]
+fn a_crlf_file_keeps_its_line_endings() {
+    let dir = std::env::temp_dir().join(format!("corten-fmt-crlf-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("view.rs");
+    std::fs::write(&file, "fn a() -> impl Render {\r\n    html! {   <p   class={X}>{text}</p>  }\r\n}\r\n").unwrap();
+    let mut warned = std::collections::BTreeSet::new();
+    let wrote = super::markup(std::slice::from_ref(&file), false, &mut warned).unwrap();
+    assert_eq!(wrote.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "fn a() -> impl Render {\r\n    html! { <p class={X}>{text}</p> }\r\n}\r\n"
+    );
+    assert!(super::markup(std::slice::from_ref(&file), true, &mut warned).unwrap().is_empty(), "laid out already");
+    std::fs::remove_file(&file).unwrap();
+    let _ = std::fs::remove_dir(&dir);
+}
