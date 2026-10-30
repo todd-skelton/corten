@@ -3,8 +3,8 @@
 use corten::i18n::RelativeStyle;
 use corten::prelude::*;
 use corten_ui::{
-    CheckboxGroup, Choice, ComboBox, Copied, CopyButton, MenuButton, Number, NumberField, Picker, PrintButton, RelativeTime,
-    RequiredWhen, Tab, TabGroup, Toast, Toaster, dialog,
+    CheckboxGroup, Choice, ChoiceGroup, ChoiceOption, Chosen, ComboBox, Copied, CopyButton, MenuButton, Number, NumberField,
+    Picker, PrintButton, RelativeTime, RequiredWhen, ShownFor, Tab, TabGroup, Toast, Toaster, dialog,
 };
 use serde::Deserialize;
 use std::time::SystemTime;
@@ -107,6 +107,19 @@ pub enum MarketTab {
     Sales,
 }
 
+/// The sales period the figures on the page are for, by the `period` query value; a month by
+/// default.
+#[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Period {
+    Week,
+    Month,
+}
+
+/// The sales period's choice, which the figures in two cards follow.
+#[derive(Id)]
+struct PeriodId;
+
 /// The `sale` query value that opens the last sale's sheet.
 #[derive(Clone, Copy, PartialEq, Debug, UrlValue, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -117,6 +130,7 @@ pub enum Sale {
 #[component(css)]
 pub fn Gallery<'a>(
     tab: MarketTab,
+    period: Period,
     result: &'a str,
     toast: Option<&'a str>,
     sale: bool,
@@ -138,7 +152,15 @@ pub fn Gallery<'a>(
         required: true,
         ..Picker::new("condition", f.condition, "Choose a condition", "No matching condition", &CONDITIONS)
     };
-    let at = |tab| url::Home { tab, sale: None };
+    // Each control's links keep the other's choice: a tab's link the period, a period's the tab.
+    let shown_tab = Some(tab).filter(|t| *t != MarketTab::Listings);
+    let shown_period = Some(period).filter(|p| *p != Period::Month);
+    let at = move |tab| url::Home { tab, sale: None, period: shown_period };
+    let (week, month) = (
+        url::Home { tab: shown_tab, sale: None, period: Some(Period::Week) },
+        url::Home { tab: shown_tab, sale: None, period: None },
+    );
+    let period = Chosen { id: PeriodId, value: period };
     html! {
         <div class={Intro}>
             <h1>"Sell "{CARD}</h1>
@@ -202,6 +224,25 @@ pub fn Gallery<'a>(
                             Tab { label: "Sales", panel: &html! { <p>"Sold 14 times this month."</p> }, link: Some(&at(Some(MarketTab::Sales))) },
                         ]}
                     />
+                    <ShownFor choice={&period} values={&[Period::Week]}>
+                        <p>"Average $12.10 this week."</p>
+                    </ShownFor>
+                    <ShownFor choice={&period} values={&[Period::Month]}>
+                        <p>"Average $11.95 this month."</p>
+                    </ShownFor>
+                </section>
+                <section class={(Card, Periods)}>
+                    <h2>"Sales"</h2>
+                    <ChoiceGroup
+                        choice={&period}
+                        label="Sales period"
+                        options={&[
+                            ChoiceOption { value: Period::Week, label: "Week", link: Some(&week) },
+                            ChoiceOption { value: Period::Month, label: "Month", link: Some(&month) },
+                        ]}
+                    />
+                    <ShownFor choice={&period} values={&[Period::Week]}><p>"Sold 3 this week."</p></ShownFor>
+                    <ShownFor choice={&period} values={&[Period::Month]}><p>"Sold 14 this month."</p></ShownFor>
                 </section>
                 <section class={Card}>
                     <h2>"Activity"</h2>
@@ -228,7 +269,7 @@ pub fn Gallery<'a>(
                         </MenuButton>
                     </div>
                     <MenuResult text="" />
-                    <a href={url::Home { tab: None, sale: Some(Sale::Last) }}>"Last sale"</a>
+                    <a href={url::Home { tab: None, sale: Some(Sale::Last), period: None }}>"Last sale"</a>
                 </section>
                 <section class={Card}>
                     <h2>"Stock"</h2>
@@ -305,7 +346,7 @@ pub fn SaleSheet() -> impl Render {
         <dialog open aria-label="Last sale" on:connect={dialog::modalClosedBy(target, close, signal)}>
             <h2>"Last sale"</h2>
             <p>"A Near Mint copy sold for $12.00 on May 3."</p>
-            <a ref={close} href={url::Home { tab: None, sale: None }}>"Close"</a>
+            <a ref={close} href={url::Home { tab: None, sale: None, period: None }}>"Close"</a>
         </dialog>
     }
 }

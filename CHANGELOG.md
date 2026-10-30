@@ -1117,7 +1117,18 @@ Corten is pre-1.0, so any minor version may change the API.
     written by hand cost about 0.5 µs (release build, 200,000 renders, 3 rounds: it writes the
     route's address again and reads it back); nothing else renders differently
     ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
-
+149. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group) whose value shows and
+    hides parts anywhere on the page, the figures and, below a chart, the list worded from them.
+    Both take a `Chosen { id, value }`, the choice's `#[derive(Id)]` id and the value the handler
+    read, so a part's values are the choice's type (another enum's word does not compile) and its
+    group cannot be text. The server checks the value and draws every part for another `hidden`;
+    without JavaScript each option is a typed link to the page with that choice; with it, the arrow
+    keys and Space choose in place, the address follows in the keys the options differ in (another
+    control's, a tab's, stay), and every part, also one a patch adds later, follows the choice. No
+    stylesheet repeats the server's values. `TabGroup`'s address now follows the same way, in the
+    keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
+    query)
+    ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
