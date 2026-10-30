@@ -35,6 +35,8 @@ paths! {
     ApiRates = "/api/rates",
     ApiSignUp = "/api/sign-up",
     ApiItems = "/api/items",
+    PayApi = "/pay/api",
+    PayApiGo = "/pay/api/go",
     Items = "/items",
     Admin = "/admin",
     AdminSlow = "/admin/slow",
@@ -3966,7 +3968,10 @@ mod referrer_url {
 /// An answer that brings a policy of its own, as a relayed service's does.
 async fn relayed(Params(at): Params<referrer_url::Relayed<'_>>) -> crate::Result<crate::Relay> {
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(header::REFERRER_POLICY, axum::http::HeaderValue::from_str(&at.policy).unwrap());
+    // `|` between lines of their own.
+    for line in at.policy.split('|') {
+        headers.append(header::REFERRER_POLICY, axum::http::HeaderValue::from_str(line).unwrap());
+    }
     headers.insert(header::LOCATION, axum::http::HeaderValue::from_static("https://elsewhere.example/cb?code=1"));
     Ok(crate::Relay::new(StatusCode::FOUND, headers, Body::empty()))
 }
@@ -3987,6 +3992,15 @@ async fn an_area_or_an_answer_makes_the_referrer_policy_stricter_only() {
     assert_eq!(referrer(&router, "/pay/card").await, "no-referrer");
     assert_eq!(referrer(&router, "/pay/nothing").await, "no-referrer", "an unknown URL in the area too");
     assert_ne!(csp_and_shell(&router, "/").await.2, csp_and_shell(&router, "/pay/card").await.2);
+    // An API inside the area keeps its own CSP and sends the area's referrer policy, an unknown URL
+    // in it too.
+    let api = App::new(policy_url::router())
+        .area(|area| pay_url::area(area).policy(|p| p.referrer(Referrer::NoReferrer)))
+        .api::<PayApi>(|api| api.route::<PayApiGo>(crate::Methods::reads(get(|| async { "go" }))))
+        .router();
+    assert_eq!(referrer(&api, "/pay/api/go").await, "no-referrer");
+    assert_eq!(referrer(&api, "/pay/api/nope").await, "no-referrer");
+    assert_eq!(referrer(&api, "/").await, "strict-origin-when-cross-origin");
     // Two that each send less somewhere send the least of both: strict-origin to this site and
     // nothing to others has no name, so it is nothing.
     let nested = App::new(policy_url::router())
@@ -3995,6 +4009,13 @@ async fn an_area_or_an_answer_makes_the_referrer_policy_stricter_only() {
         .router();
     assert_eq!(referrer(&nested, "/").await, "strict-origin");
     assert_eq!(referrer(&nested, "/pay/card").await, "no-referrer");
+    // Two policies that both send nothing are one: the area keeps the app's shell key.
+    let nothing = App::new(policy_url::router())
+        .policy(Policy::new().referrer(Referrer::StrictOrigin).referrer(Referrer::SameOrigin))
+        .area(|area| pay_url::area(area).policy(|p| p.referrer(Referrer::NoReferrer)))
+        .router();
+    assert_eq!(referrer(&nothing, "/").await, "no-referrer");
+    assert_eq!(csp_and_shell(&nothing, "/").await.2, csp_and_shell(&nothing, "/pay/card").await.2);
     // The same value the app has is no change, and keeps the app's shell key.
     let same = App::new(policy_url::router())
         .policy(Policy::new().referrer(Referrer::SameOrigin))
@@ -4007,8 +4028,15 @@ async fn an_area_or_an_answer_makes_the_referrer_policy_stricter_only() {
         ("no-referrer", "no-referrer"),
         ("same-origin", "same-origin"),
         ("unsafe-url", "strict-origin-when-cross-origin"),
-        ("origin", "strict-origin-when-cross-origin"),
+        ("x-unknown", "strict-origin-when-cross-origin"),
+        // `origin` sends only the origin to this site too.
+        ("origin", "strict-origin"),
         ("unsafe-url, strict-origin", "strict-origin"),
+        // The browser skips a token it does not know and uses the last one it does.
+        ("no-referrer, x-future-policy", "no-referrer"),
+        // Several lines are one list.
+        ("unsafe-url|no-referrer", "no-referrer"),
+        ("same-origin|unsafe-url", "strict-origin-when-cross-origin"),
     ] {
         let path = referrer_url::Relayed { policy: brought }.href();
         assert_eq!(referrer(&relay, &path).await, sent, "{brought}");

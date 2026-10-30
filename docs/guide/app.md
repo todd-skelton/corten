@@ -995,7 +995,8 @@ App::new(url::router())
 ```
 
 An area only adds (the closure gets `Sources`, which has no way to remove one), so no page allows
-less than the app; nested areas add up, outermost first. Each area's header is built once at
+less than the app; nested areas add up, outermost first. The referrer policy below is the one
+setting that goes the other way: an area can only make it send less. Each area's header is built once at
 startup, and a request looks up its area by path only when some area sets a policy. A document
 keeps the policy it loaded with, so a client navigation into or out of such an area loads the page
 in full (the page's shell key includes the area's policy); a patch is applied under the policy of
@@ -1030,8 +1031,10 @@ font requests it makes, so its area makes the policy stricter with `referrer(Ref
 `Referrer::NoReferrer` (nothing at all); `Policy::referrer` does it for the whole app. There is no
 looser value, so nothing sends more than the default; nested areas, the app and the area each send
 the least any of them allows, and like a CSP source a changed policy gives the area's pages their
-own shell key. An answer that brings a stricter policy of its own (a relayed service's redirect, a
-handler's response) keeps it; a looser one (`unsafe-url`) is replaced. A `<meta name="referrer">`
+own shell key. An `App::api` under the area sends the area's policy too. An answer that brings a
+policy of its own (a relayed service's redirect, a handler's response) sends the least of its and
+the area's, read as the browser reads it (every line, the last token it knows): `no-referrer` is
+kept, `origin` becomes `strict-origin`, and `unsafe-url` gives the area's. A `<meta name="referrer">`
 in the page applies only from where the parser reaches it, after the layout's own requests, so use
 the area:
 

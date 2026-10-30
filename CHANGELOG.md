@@ -943,9 +943,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `Referrer-Policy` stricter, so a page whose address carries a secret (a consent token, a reset
     link) does not send it with the requests it makes; `Policy::referrer` does it for the app. There
     is no looser value; nested areas send the least any of them allows, and a changed policy gives
-    the area its own shell key. An answer that brings a stricter policy (a relayed redirect) keeps
-    it, and a looser one is replaced. Choosing the header per answer costs a plain GET 12 to 21
-    instructions (20,344 to 20,356-20,365 under callgrind, about 0.1%)
+    the area its own shell key, and an `App::api` under the area sends it too. An answer that brings
+    a policy of its own (a relayed redirect) sends the least of its and the area's, its lines read
+    as the browser reads them. Choosing the header per answer, and reading every line
+    of one the answer brought, costs a plain GET about 75 instructions (20,351-20,358 to
+    20,427-20,432 under callgrind, 3 runs, about 0.4%)
     ([#390 A page or a relayed answer cannot choose a stricter Referrer-Policy: Corten replaces it on every answer](https://github.com/todd-skelton/corten/issues/390)).
 
 ### Removed
