@@ -4,13 +4,15 @@ use corten::prelude::*;
 #[derive(Id)]
 pub struct SaveNoteId;
 
-/// What the server said to the last save, with the deck's version after it. The page's script
-/// reads the outcome; the reader reads the note's text.
+/// What the server said to the last save, with the deck's version after it (and, for a saved one,
+/// which of the page's sends was saved). The page's script reads the outcome; the reader reads the
+/// note's text.
 pub enum Answer {
     /// Nothing yet: the page as loaded.
     None,
     Saved {
         version: u64,
+        draft: u64,
     },
     Refused {
         version: u64,
@@ -35,17 +37,25 @@ impl Answer {
     fn version(&self) -> u64 {
         match self {
             Answer::None => 0,
-            Answer::Saved { version } | Answer::Refused { version, .. } | Answer::Stale { version } => *version,
+            Answer::Saved { version, .. } | Answer::Refused { version, .. } | Answer::Stale { version } => *version,
+        }
+    }
+
+    fn draft(&self) -> u64 {
+        match self {
+            Answer::Saved { draft, .. } => *draft,
+            _ => 0,
         }
     }
 }
 
 /// A save's answer, told to the builder around the note: what became of it (`saved`, `refused`,
-/// `stale`) and the deck's version after it. It bubbles from the note.
+/// `stale`), the deck's version after it, and which send was saved. It bubbles from the note.
 #[corten::script::event]
 pub struct DeckAnswered {
     pub outcome: String,
     pub version: u64,
+    pub draft: u64,
 }
 
 /// What became of the last save, in words, inside the builder's status line. Each save answers
@@ -55,7 +65,7 @@ pub struct DeckAnswered {
 #[component(js)]
 pub fn SaveNote<'a>(answer: &'a Answer) -> impl Patch {
     html! {
-        <span id={SaveNoteId} on:connect={js::answered(target, answer.outcome(), answer.version())}>
+        <span id={SaveNoteId} on:connect={js::answered(target, answer.outcome(), answer.version(), answer.draft())}>
             match answer {
                 Answer::None => {}
                 Answer::Saved { .. } => { "Saved." }

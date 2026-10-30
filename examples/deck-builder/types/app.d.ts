@@ -11,9 +11,10 @@ export interface Slot {
 declare module "corten/events" {
   /** The `deck-answered` event, from #[event] DeckAnswered. */
   export class DeckAnswered extends Event {
-    constructor(init: { outcome: string; version: number });
+    constructor(init: { outcome: string; version: number; draft: number });
     readonly outcome: string;
     readonly version: number;
+    readonly draft: number;
   }
 }
 

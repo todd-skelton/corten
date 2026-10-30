@@ -3,7 +3,7 @@
 // it. The page as first loaded has no answer, and tells nothing.
 import { DeckAnswered } from "corten/events";
 
-/** @param {HTMLSpanElement} note @param {string} outcome @param {number} version */
-export function answered(note, outcome, version) {
-  if (outcome) note.dispatchEvent(new DeckAnswered({ outcome, version }));
+/** @param {HTMLSpanElement} note @param {string} outcome @param {number} version @param {number} draft */
+export function answered(note, outcome, version, draft) {
+  if (outcome) note.dispatchEvent(new DeckAnswered({ outcome, version, draft }));
 }

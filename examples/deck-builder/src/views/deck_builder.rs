@@ -59,7 +59,7 @@ pub fn DeckBuilder<'a>(
 ) -> impl Render {
     let (cards_zone, deck_zone, rows, pick, grip, add, all, picked, shown, none) = refs();
     let (lines_ref, template, lift, copies, form, version_ref, total, bars, tallies, kinds) = refs();
-    let (undo, redo, status, conflict, list, empty, announce) = refs();
+    let (undo, redo, status, conflict, list, empty, announce, draft) = refs();
     let (f, q) = (DeckInput::FIELDS, DeckQuery::FIELDS);
     let number = t.js().number();
     let parts = js::Parts {
@@ -68,6 +68,7 @@ pub fn DeckBuilder<'a>(
         template,
         form,
         version: version_ref,
+        draft,
         total,
         bars,
         tallies,
@@ -102,7 +103,7 @@ pub fn DeckBuilder<'a>(
     }
     let tallest = curve.iter().copied().max().unwrap_or(0).max(4);
     let by_kind = Kind::ALL.map(|kind| (kind, lines.iter().filter(|l| l.card.kind == kind).map(|l| l.count).sum::<u32>()));
-    let text = deck_list(&lines);
+    let text = deck_list(lines);
     html! {
         <div
             class={Builder}
@@ -285,6 +286,7 @@ pub fn DeckBuilder<'a>(
                 <form ref={form} id={DeckFormId} method="post" action={url::Save} data-patch novalidate>
                     <input ref={version_ref} type="hidden" name={f.version} value={version}>
                     {SubmitKey::field(f.submit)}
+                    <input ref={draft} type="hidden" name={f.draft} value="0">
                     <input type="hidden" name={f.q} value={filter}>
                     if let Some(sort) = view.sort { <input type="hidden" name={f.sort} value={sort}> }
                     <ul

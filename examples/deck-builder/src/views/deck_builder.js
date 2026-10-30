@@ -24,6 +24,7 @@ import { CollectionRow, DeckLine, rows } from "corten/views";
  * @property {Holds<DeckLine, HTMLTemplateElement>} template
  * @property {HTMLFormElement} form
  * @property {HTMLInputElement} version
+ * @property {HTMLInputElement} draft
  * @property {HTMLOutputElement} total
  * @property {Map<string, SVGElement>} bars
  * @property {Map<string, HTMLSpanElement>} tallies
@@ -85,8 +86,10 @@ const kept = () =>
     version: 0,
     /** A save is on its way. */
     sending: false,
-    /** Decks sent whose answer never came (a lost connection): one may have been saved. @type {Deck[]} */
-    unanswered: /** @type {Deck[]} */ ([]),
+    /** Sends whose answer never came (a lost connection): one may have been saved. @type {Sent[]} */
+    unanswered: /** @type {Sent[]} */ ([]),
+    /** How many sends this page made: the next one's draft number. */
+    drafts: 0,
     /** Another tab saved first: nothing is sent until the player keeps both or takes theirs. */
     conflict: false,
     /** A save was stale and the feed has not yet brought the deck that made it so. */
@@ -101,6 +104,12 @@ const kept = () =>
   }));
 
 /** @typedef {ReturnType<typeof kept>} State */
+
+/**
+ * A send: the deck it held, its draft number, and the history as it was, which becomes the
+ * saved history if the server saved it.
+ * @typedef {{ deck: Deck, draft: number, history: { undo: Change[], redo: Change[] } }} Sent
+ */
 
 /** Card names in the page's language's order. */
 const names = new Intl.Collator(document.documentElement.lang || undefined);
@@ -137,14 +146,28 @@ export function start(parts, feed, signal) {
     { signal },
   );
   // Back online: a save that could not be sent goes now.
-  addEventListener("online", () => parts.status.dataset.state === "offline" && save(s, parts), { signal });
+  addEventListener(
+    "online",
+    () => {
+      if (parts.status.dataset.state !== "offline") return;
+      say(parts, "");
+      heard(s, parts);
+      save(s, parts);
+    },
+    { signal },
+  );
   // The runtime could not send the form, or the server failed: nothing is lost, the deck stays
   // as shown and is sent again with the next change, the Try again button, or when back online.
+  // An answer below 500 without a note saved nothing (and the runtime gave the form a new key);
+  // without an answer, or with a 5xx, the send may have been saved and stays unanswered.
   parts.form.addEventListener(
     "corten:error",
-    () => {
+    (event) => {
       s.sending = false;
+      const status = /** @type {CustomEvent<{ status: number }>} */ (event).detail.status;
+      if (status > 0 && status < 500) s.unanswered = [];
       say(parts, "offline");
+      heard(s, parts);
     },
     { signal },
   );
@@ -268,71 +291,86 @@ function say(parts, state) {
 }
 
 /**
- * Sends the deck when it differs from the saved one, one save at a time: a change made while one
- * is on its way goes when its answer comes. The form holds the drawn deck; the version says what
- * it was built on.
+ * Sends the deck when it differs from the saved one, or when a send's answer was lost (the server
+ * may have saved it), one save at a time: a change made while one is on its way goes when its
+ * answer comes. The form holds the drawn deck; the version says what it was built on, and the
+ * draft which send this is. Each send is kept with the history as it was, until an answer says
+ * which one the server saved.
  * @param {State} s @param {Parts} parts
  */
 function save(s, parts) {
   if (s.sending || s.conflict || s.waiting) return;
-  if (same(s.drawn, s.base)) return;
+  if (same(s.drawn, s.base) && s.unanswered.length === 0) return;
   s.sending = true;
-  // At most a few kept: each is a deck the server may have saved without saying so.
-  s.unanswered = [...s.unanswered.slice(-3), new Map(s.drawn)];
+  s.drafts += 1;
+  parts.draft.value = String(s.drafts);
+  s.unanswered.push({ deck: new Map(s.drawn), draft: s.drafts, history: { undo: s.undo.slice(), redo: s.redo.slice() } });
   say(parts, "saving");
   parts.form.requestSubmit();
 }
 
 /**
- * The save's answer, from the note it put on the page. Saved: the deck sent is the saved one at
- * the new version, and a change made since goes next. Refused: the page goes back to the saved
- * deck, and its history to what it was then; the note says why. Stale: another tab saved first,
- * which the feed shows (now, or when it arrives).
+ * The save's answer, from the note it put on the page. Saved: the send it names (this one, or,
+ * when this one went with the key of a send whose answer was lost, that one) is the saved deck at
+ * the new version, and what changed since goes next. Refused: the page goes back to the saved deck,
+ * and its history to what it was then; the note says why. Stale: another tab saved first and this
+ * key saved nothing, which the feed shows (now, or when it arrives). Then whatever the feed brought
+ * while the save was on its way is taken.
  * @param {DeckAnswered} event @param {Parts} parts
  */
 export function answered(event, parts) {
   const s = kept();
   s.sending = false;
-  const sent = s.unanswered.at(-1);
+  say(parts, "");
   if (event.outcome === "saved") {
-    if (sent && event.version >= s.version) known(s, parts, sent, event.version);
+    const sent = s.unanswered.find((u) => u.draft === event.draft);
+    if (sent && event.version >= s.version) {
+      known(s, parts, sent.deck, event.version);
+      s.saved = sent.history;
+    }
     s.unanswered = [];
-    s.saved = { undo: s.undo.slice(), redo: s.redo.slice() };
-    say(parts, "");
-    save(s, parts);
   } else if (event.outcome === "refused") {
     s.unanswered = [];
     s.undo = s.saved.undo.slice();
     s.redo = s.saved.redo.slice();
     draw(s, parts, new Map(s.base));
-    say(parts, "");
   } else if (event.outcome === "stale") {
+    s.unanswered = [];
     s.waiting = true;
-    say(parts, "");
-    heard(s, parts);
   }
+  heard(s, parts);
+  save(s, parts);
 }
 
 /**
- * The feed brought the saved deck at a newer version. It is one this page sent (a save whose
- * answer was lost): the page knows it now and sends what is left. Else another tab saved it:
- * with nothing unsaved here the page takes it; with a change of its own, the player chooses.
- * While a save is on its way its answer decides.
+ * The feed brought the saved deck at a newer version, or a save's answer came (whatever the feed
+ * brought meanwhile waited for it). The deck is one this page sent whose answer was lost: the
+ * page knows it now and sends what is left. A send's answer was lost and the deck is not one of
+ * them: the server is asked by sending again (with the same key, which saves nothing twice and
+ * says which deck it saved), unless it cannot be reached. Else another tab saved it: with nothing
+ * unsaved here the page takes it; with a change of its own, the player chooses.
  * @param {State} s @param {Parts} parts
  */
 function heard(s, parts) {
   if (s.theirVersion <= s.version || s.sending) return;
-  s.waiting = false;
-  if (s.unanswered.some((deck) => same(deck, s.theirs))) {
+  const sent = s.unanswered.find((u) => same(u.deck, s.theirs));
+  if (sent) {
+    s.waiting = false;
     known(s, parts, new Map(s.theirs), s.theirVersion);
+    s.saved = sent.history;
     s.unanswered = [];
-    say(parts, "");
     save(s, parts);
-  } else if (same(s.drawn, s.base) && s.unanswered.length === 0) {
+  } else if (s.unanswered.length > 0) {
+    if (parts.status.dataset.state === "offline") return;
+    s.waiting = false;
+    save(s, parts);
+  } else if (same(s.drawn, s.base)) {
+    s.waiting = false;
     known(s, parts, new Map(s.theirs), s.theirVersion);
     draw(s, parts, new Map(s.theirs));
     say(parts, "updated");
   } else {
+    s.waiting = false;
     s.conflict = true;
     parts.conflict.hidden = false;
   }
@@ -340,7 +378,8 @@ function heard(s, parts) {
 
 /**
  * Keeps both: the other tab's deck with this page's changes on top of it (what each did to each
- * card since the deck both started from), then saves that.
+ * card since the deck both started from), then saves that. Every send was answered by now (a
+ * conflict waits for that), so the changes are none the server already has.
  * @param {Parts} parts
  */
 export function merge(parts) {
@@ -381,7 +420,6 @@ function settle(s, parts) {
   known(s, parts, new Map(s.theirs), s.theirVersion);
   s.conflict = false;
   s.waiting = false;
-  s.unanswered = [];
   parts.conflict.hidden = true;
 }
 
@@ -389,6 +427,7 @@ function settle(s, parts) {
 export function retry(parts) {
   const s = kept();
   say(parts, "");
+  heard(s, parts);
   save(s, parts);
 }
 

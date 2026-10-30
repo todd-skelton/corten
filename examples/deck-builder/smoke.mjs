@@ -111,6 +111,7 @@ try {
 
   // Add: shown at once, then saved. The save is held, so the line is checked before any answer.
   let release = () => {};
+  const loaded = Number(await version(page));
   await page.route("**/deck", async (route) => {
     await new Promise((r) => (release = r));
     await route.continue();
@@ -124,7 +125,7 @@ try {
   await answered;
   await page.unroute("**/deck");
   await settled(page);
-  check("the save is answered and the page takes the new version", (await version(page)) === "1", await version(page));
+  check("the save is answered and the page takes the next version", Number(await version(page)) === loaded + 1, `${loaded} then ${await version(page)}`);
   await time(page, "Add (a change drawn and sent)", () => /** @type {HTMLElement} */ (document.querySelector('tbody tr[data-key="undertow-serpent"] td:last-child button')).click());
   await settled(page);
 
@@ -261,7 +262,33 @@ try {
   check("Try again saves it", (await status(page)).note.startsWith("Saved.") && (await deck(page))["pearl-diver"] === 2);
   check("the other tab sees the retried save", await comesToShow(other, "pearl-diver", 2));
 
-  check("the deck list follows the deck", (await page.inputValue("textarea")).split("\n").includes("3 Gravel Sprite"));
+  // The server saves but its answer is lost, and another tab saves before Try again: the change
+  // is in the deck once, with the other tab's.
+  await page.route("**/deck", async (route) => {
+    await route.fetch();
+    await route.abort();
+  });
+  await row(page, "undertow-serpent").locator("button", { hasText: "Add" }).click();
+  await page.waitForFunction(() => /** @type {HTMLElement} */ (document.querySelector("[role=status][data-state]")).dataset.state === "offline");
+  await page.unroute("**/deck");
+  // The other tab has the saved deck from the feed, then saves its own change.
+  await comesToShow(other, "undertow-serpent", 2);
+  await other.locator('tbody tr[data-key="pearl-diver"] td:last-child button').click();
+  await settled(other);
+  // The feed may already have told the page its save was made; else Try again asks the server.
+  if (await page.isVisible("button:has-text('Try again')")) await page.click("button:has-text('Try again')");
+  const once = (await comesToShow(page, "pearl-diver", 3)) && (await comesToShow(page, "undertow-serpent", 2));
+  check("a save whose answer was lost is not made twice", once && (await comesToShow(other, "undertow-serpent", 2)) && !(await page.isVisible("[role=alert]")), JSON.stringify(await deck(page)));
+
+  // After adds, removals, rollbacks and another tab's decks: the list is the lines as shown.
+  const listed = await page.inputValue("textarea");
+  const shownLines = await page.evaluate(() =>
+    Array.from(
+      document.querySelectorAll("ul li[data-key]"),
+      (li) => `${/** @type {HTMLInputElement} */ (li.querySelector("input[type=number]")).value} ${li.querySelector(":scope > span:nth-of-type(2)")?.textContent}`,
+    ).join("\n"),
+  );
+  check("the deck list follows the deck", listed === shownLines && listed.split("\n").includes("3 Pearl Diver"), listed.replaceAll("\n", "; "));
   await time(page, "undo (a change drawn and sent)", () => /** @type {HTMLElement} */ ([...document.querySelectorAll("button")].find((b) => b.textContent === "Undo")).click());
   await settled(page);
   const heap = await page.evaluate(() => {
@@ -280,9 +307,9 @@ try {
   const plain = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
   await plain.goto(base);
   const before = await deck(plain);
-  await plain.locator('tbody tr[data-key="pearl-diver"] td:last-child button').click();
+  await plain.locator('tbody tr[data-key="salt-oracle"] td:last-child button').click();
   await plain.waitForLoadState("load");
-  check("without JavaScript Add posts the deck with the card added", (await deck(plain))["pearl-diver"] === (before["pearl-diver"] ?? 0) + 1);
+  check("without JavaScript Add posts the deck with the card added", (await deck(plain))["salt-oracle"] === (before["salt-oracle"] ?? 0) + 1, JSON.stringify(await deck(plain)));
   await plain.locator('tbody tr[data-key="regent-of-ash"] input[type=checkbox]').check();
   await plain.locator('tbody tr[data-key="crown-of-thorns-and-glass"] input[type=checkbox]').check();
   await plain.click("button:has-text('Add selected')");
