@@ -939,6 +939,9 @@ Corten is pre-1.0, so any minor version may change the API.
     A page without one checks one empty set per bubbling event it listens for.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
+130. A feed's `snapshot` handler gets the feed's generation as a third argument,
+    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
+    reset feed's `seq` from its own (`docs/guide/live-data.md`).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1499,8 +1502,8 @@ Corten is pre-1.0, so any minor version may change the API.
     goes with it, under the key the form has then, without its `on:submit` handlers running a
     second time. Several presses while the write is out send one submit of where the form ended;
     a redirect, a reload or a navigation drops it. A GET submit still replaces an older one. The
-    minified runtime grows by 613 bytes (25,413 to 26,026), 236 gzipped (9,249 to 9,485) and 218
-    with brotli (8,348 to 8,566)
+    minified runtime grows by 613 bytes (25,510 to 26,123), 243 gzipped (9,278 to 9,521) and 214
+    with brotli (8,381 to 8,595)
     ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
 
 ### Fixed
@@ -1905,6 +1908,13 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
     `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
     ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
+70. A `data-patch` form's `SubmitKey` is renewed once the whole answer has arrived (a patch, a
+    page, or one the runtime does not draw), not when its headers do: an answer whose body was cut
+    off on the way dispatches `corten:error` with status 0 and keeps the key, so the retry is the
+    same submission and a committed write does not apply twice. An older submit that a newer one
+    of the same form aborted no longer renews the key the newer one was sent with. The minified
+    runtime grows by 97 bytes (25,413 to 25,510), 29 gzipped (9,249 to 9,278) and 33 with brotli
+    (8,348 to 8,381).
 
 ### Documentation
 
