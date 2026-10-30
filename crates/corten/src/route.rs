@@ -1436,6 +1436,70 @@ impl fmt::Write for Encode<'_> {
 /// assert_eq!(url::Item { id: "a/b", tab: Some("offers") }.href(), "/items/a%2Fb?tab=offers");
 /// ```
 ///
+/// A route names its handler from where the module is declared, so a `use` inside the module
+/// that brings one in does not compile, and the error is at the `use`:
+///
+/// ```compile_fail
+/// mod page {
+///     pub async fn show() -> &'static str {
+///         "hi"
+///     }
+/// }
+///
+/// #[corten::routes]
+/// mod url {
+///     use super::page::{show as home};
+///
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+/// # fn main() {}
+/// ```
+///
+/// and neither does a handler written inside the module:
+///
+/// ```compile_fail
+/// #[corten::routes]
+/// mod url {
+///     async fn home() -> &'static str {
+///         "hi"
+///     }
+///
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A `use` the module needs for itself (a field's type, here a module a handler is also named
+/// through) is left alone:
+///
+/// ```
+/// mod page {
+///     pub async fn show() -> &'static str {
+///         "hi"
+///     }
+///     pub type Tab = u8;
+/// }
+/// use page::show as home;
+///
+/// #[corten::routes]
+/// mod url {
+///     use super::page;
+///
+///     #[route("/", get = home)]
+///     pub struct Home;
+///
+///     #[route("/page", get = page::show)]
+///     pub struct Page {
+///         pub tab: Option<page::Tab>,
+///     }
+/// }
+/// # fn main() {
+/// #     let _ = url::router();
+/// # }
+/// ```
+///
 /// A handler that reads its parameters some other way, or another route's, does not compile:
 ///
 /// ```compile_fail,E0277

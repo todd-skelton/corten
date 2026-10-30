@@ -1995,18 +1995,23 @@ Corten is pre-1.0, so any minor version may change the API.
     `get`, `push` or `replace`, which need a key. A view no longer needs a key only to satisfy
     `tsc`. `scripts/typecheck-fixture.js` checks both
     ([#418 rows() takes only a view with a key, so a keyless #[component(view)] a script only reads fails tsc (TS2769), though the guide presents key as optional](https://github.com/todd-skelton/corten/issues/418)).
-72. `corten check` runs the tests before `tsc`, so the test that writes `types/app.d.ts` declares a
+72. A `use` inside a `#[corten::routes]` module that brings in a handler, and a handler written
+    inside the module, are a compile error there that says handlers are named from where the module
+    is declared, not an unused import and "cannot find value" at each handler. A `use` the module
+    names for itself (a field's type, a `pub use`, a `#[cfg(test)]` import) is left alone
+    ([#359 A handler imported inside a #[corten::routes] module is not found, and the error does not say handlers are named from where the module is declared](https://github.com/todd-skelton/corten/issues/359)).
+73. `corten check` runs the tests before `tsc`, so the test that writes `types/app.d.ts` declares a
     new view or event before a script's import of it is checked, instead of `tsc` refusing the
     import with TS2305 and stopping the check. The scripts guide says one component list goes to
     both `App::components` and the types test
     ([#386 corten check runs tsc before the test that writes types/app.d.ts, so a script using a new view fails with TS2305 until the tests are run by hand](https://github.com/todd-skelton/corten/issues/386)).
-73. `#[component(css = path::Owner)]` shares a stylesheet from any module of the crate that can see
+74. `#[component(css = path::Owner)]` shares a stylesheet from any module of the crate that can see
     the owner, named by its path, so a screen whose panels are in files of their own has one sheet; it worked only in the
     owner's module, and the error named a hidden module with `cargo add` advice. An owner that
     cannot be found is reported at the path written. The owner's module hands its sheet's path to
     the helper at compile time; nothing changes at run time
     ([#377 css = Owner works only in the owner's module, so a screen's views in several files cannot share its stylesheet, and the error names a hidden module](https://github.com/todd-skelton/corten/issues/377)).
-74. A view lent to a prop inside another view (`action={&html! { .. }}`) borrows what it uses
+75. A view lent to a prop inside another view (`action={&html! { .. }}`) borrows what it uses
     instead of owning it, so the rest of the markup can read the same local; it was a `move`
     closure and a second read was E0382. A view given by value, and the view at the top of an
     `html!`, still own what they use

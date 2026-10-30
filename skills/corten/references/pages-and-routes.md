@@ -28,7 +28,8 @@ async fn show(req: Req, Params(at): Params<url::Item<'_>>) -> HtmlResult {
 ```
 
 1. Every route is a struct in the `#[corten::routes]` module that names its handlers,
-   `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile);
+   `#[route("/items/{id}", get = show, post = save)]` (a route without one does not compile),
+   named from where the module is declared: put a handler's `use` above `mod url`, never inside it;
    `App::new(url::router())`. Handlers that share something take it as `State<Db>`, with
    `#[corten::routes(state = Db)]` and `url::router(db)`; for several parts, `#[derive(Clone, FromRef)] struct Shared { db: Db, market: Market }` and handlers take `State<Market>` (a hand-written `impl FromRef` only for a part computed from the state, not one that clones a field). Link with the struct; a component several pages draw takes its links as `&'a dyn Href` props, and a value that is one of several routes is a `#[derive(Href)]` enum whose variants each hold one, never a `String` built from a route. Fields not in the path are query parameters (`pub tab: Option<&'a str>`). A handler reads them back as the route's `Params<url::Item<'_>>` (the fields owned: `at.id` is a `String`); a handler of a route with a path parameter that does not take its own `Params` does not compile, so never read a route's path or query with axum's `Path` or `Query`, or declare a second struct for its query. `Params` refuses (at compile time) a route with a serde key links do not follow (`alias`, `flatten`, `skip`, `with`, a struct-level `default`) and a borrowed `#[route(query)]` set: keep those keys off route structs and make query sets owned. An enum field (`pub tab: Option<Tab>`) derives `UrlValue` with `Deserialize`, never a hand-written `Display`: it writes the words serde reads.
    Redirect with `req.redirect(&url::Item { id })`; a page that moved for good (an old slug)
