@@ -942,7 +942,17 @@ Corten is pre-1.0, so any minor version may change the API.
 130. A feed's `snapshot` handler gets the feed's generation as a third argument,
     `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted
     feed's `seq` from its own (`docs/guide/live-data.md`).
-131. A navigation marks the link or GET form that started it `aria-busy="true"` for as long as it
+131. `examples/deck-builder`: a rich client-side screen. A player builds a 40-card deck from a
+    collection of 240 by Add, Add selected, drag and drop or the keyboard (Space to pick up, the
+    arrows, Space to drop, Escape to put back, each said aloud), with the count, the cost curve and
+    the kinds drawn at once, undo and redo (buttons, Ctrl+Z and Ctrl+Shift+Z through
+    `on:document:keydown`), and filter and sort in the page. Every change is saved as it is made,
+    one save at a time, with the deck's version (its feed's generation and number): a save the rules refuse is rolled back with the
+    reason, a stale one (another tab saved first, which its feed shows) lets the player keep both
+    changes or take the other tab's deck, and a save that could not be sent, or whose answer was lost, is sent again with its submit key.
+    Without JavaScript the same page posts the deck, and the filter and sort are links and a GET
+    form ([#336 No example shows a rich client-side screen: a deck builder](https://github.com/todd-skelton/corten/issues/336)).
+132. A navigation marks the link or GET form that started it `aria-busy="true"` for as long as it
     marks `<main>`, as a `data-patch` form already was, so a page shows which control is working
     with CSS alone (`docs/guide/requests-and-forms.md`). Both marks now last until the new page is
     swapped in (`<main>`'s ended when the answer's headers came) and stay through a redirect;
@@ -1503,6 +1513,15 @@ Corten is pre-1.0, so any minor version may change the API.
     fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
     or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
     ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
+81. `corten fmt` runs `cargo fmt` first, then lays out `html!` across the package, and again
+    until neither changes anything, so the one command fixes what `corten check` reports (a
+    check that failed on rustfmt was not fixed by it). It stops after four rounds and names the
+    files still changing (rustfmt's `hard_tabs` undoes the layout's spaces), runs `cargo fmt` in
+    the package it found from a subdirectory, keeps a CRLF file's line endings, prints each warning
+    once, and refuses a flag it does not know. `corten fmt --check` checks both, and
+    `corten check` runs it in place of its own `cargo fmt --check`. Given paths, or outside a
+    package, `corten fmt` still lays out only the markup
+    ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -2097,6 +2116,22 @@ Corten is pre-1.0, so any minor version may change the API.
     the alternative needs a second async step before full-page renders, with its own rules for a
     failed lookup, caching and the page key
     ([#209 Every page handler extracts the viewer only to pass it to the layout](https://github.com/todd-skelton/corten/issues/209)).
+33. `design.md` (Limits 14), `docs/architecture.md`, `docs/guide/app.md` and
+    `docs/guide/live-data.md` say that HTTP/2 or HTTP/3 to browsers comes from the proxy or CDN in
+    front of `corten::serve`, and that an app with live streams needs it: over HTTP/1.1 a browser's
+    six connections to a host run out
+    ([#400 architecture.md relies on HTTP/2 to share connections, but Corten serves only HTTP/1.1 and no guide says HTTP/2 must come from a proxy](https://github.com/todd-skelton/corten/issues/400)).
+34. `docs/architecture.md` lists number, money and date formatting as the framework's (`t` on
+    CLDR data, and `t.js()` in scripts), not as removed
+    ([#401 architecture.md says number, money and date formatting was removed from the framework, but t.money, t.number and t.date_time are built in](https://github.com/todd-skelton/corten/issues/401)).
+35. `design.md` Choices 11 to 14 say why a request's mode is a `corten` header and not `Accept` or
+    `Sec-Fetch-*`, why the runtime prefetches links itself and not with Speculation Rules, why
+    component CSS is scoped by prefix and not `@scope`, and why a feed patch is keyed `upsert` and
+    `remove` and not JSON Patch or Merge Patch, each with what would let Corten move
+    ([#396 The request mode is a corten header of our own, and no doc says why not Accept or Sec-Fetch-*](https://github.com/todd-skelton/corten/issues/396),
+    [#397 The runtime prefetches links its own way, and no doc says why not the Speculation Rules API](https://github.com/todd-skelton/corten/issues/397),
+    [#398 Component CSS is scoped by prefixing classes, and design.md does not say why not native @scope](https://github.com/todd-skelton/corten/issues/398),
+    [#399 A feed patch is an upsert/remove format of our own, and no doc says why not JSON Patch (RFC 6902) or Merge Patch (RFC 7396)](https://github.com/todd-skelton/corten/issues/399)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

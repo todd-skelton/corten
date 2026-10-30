@@ -401,6 +401,9 @@ Take it first, while the handler runs: a callback the handler sets up (a timer, 
 feed's rows) uses the object it got (`const s = kept();` first). Outside any handler `keep`
 throws; inside one that something else's handler interrupts (an event it dispatches, a
 `focus()`, a popover's `toggle`), the other handler's `keep` is that handler's component's.
+`examples/deck-builder` keeps a whole screen in it: the deck the page shows, the saved deck and its
+version, the undo and redo stacks and the saves still on their way, shared by its handlers and its
+feed's callbacks.
 
 ## Rules
 
@@ -479,7 +482,9 @@ row.label }))`), sort those (text with an `Intl.Collator` for the page's `lang`)
 `body.append(...)` the elements. Give each column its own handler (`sortByName`, `sortByPrice`)
 over a shared function rather than one handler taking the field's name as text: the markup's
 call is checked against the handler's name, while a JSDoc union of strings is any JSON value to
-the Rust compiler. `examples/seller-desk` sorts and filters its grid this way.
+the Rust compiler. `examples/seller-desk` sorts and filters its grid this way, and
+`examples/deck-builder` makes its deck's lines with `replace(items)` after each change, each filled
+from the collection row of the same card.
 Rows a script only puts in another order, and never writes or makes, need no view: the server
 writes the value each sorts by as a `data-` attribute (the number its own sort uses, such as a
 price in cents, never a cell's text), and the script compares those. `examples/card-market`'s
