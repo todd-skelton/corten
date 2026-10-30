@@ -1604,7 +1604,12 @@ Corten is pre-1.0, so any minor version may change the API.
     a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
-86. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
+86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
+    one fits is part of correctness in the conflict order: a header, wire format or file format
+    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
+    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
+    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
+87. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
     name alone (`FieldName`, with `as_str`), and a group's or a row's field is a
     `FieldName<Group>`, `FieldName<Row<'k>>` or `FieldName<RowGroup<'k>>`, written, not stored:
     compare it with text with `==` (`f.ship_to.street == "ship_to.street"`) and write it with
@@ -1615,7 +1620,7 @@ Corten is pre-1.0, so any minor version may change the API.
     flattened group cannot be told from another of its type, and serde reads a flattened field's
     value only as text
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366)).
-87. A key under a field's name sent without the field itself (`go.x` from an image button, `ids[0]`
+88. A key under a field's name sent without the field itself (`go.x` from an image button, `ids[0]`
     from a PHP-style list) is read as that field's group or rows, in any struct `Form` reads: a
     field that is not an `Option` is refused (422) with a message that says it was sent only that
     way, where it was ignored and a `#[serde(default)] go: bool` read `false` though the button was
@@ -1623,11 +1628,6 @@ Corten is pre-1.0, so any minor version may change the API.
     and a key under a name the struct does not have is ignored as before
     ([#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
-86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
-    one fits is part of correctness in the conflict order: a header, wire format or file format
-    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
-    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
-    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
