@@ -580,10 +580,11 @@ impl serde::Serialize for Errors {
     }
 }
 
-/// 422 Unprocessable Content with the JSON error every JSON failure has, plus the fields:
-/// `{"error":{"status":422,"message":"email: Enter an email address.","fields":{"email":"Enter an email address."}}}`.
-/// A message about the whole form comes first in `message` and is `form` too:
-/// `{"error":{"status":422,"message":"Sold out.","form":"Sold out.","fields":{}}}`.
+/// 422 Unprocessable Content with the Problem Details document (RFC 9457) every JSON failure
+/// has, plus the fields as an extension member:
+/// `{"title":"Unprocessable Entity","status":422,"detail":"email: Enter an email address.","fields":{"email":"Enter an email address."}}`.
+/// A message about the whole form comes first in `detail` and is `form` too:
+/// `{"title":"Unprocessable Entity","status":422,"detail":"Sold out.","form":"Sold out.","fields":{}}`.
 /// A JSON handler `?`s it (`check(&input)?` in a `JsonResult<T>` handler, whose error is a
 /// [`crate::JsonError`]); pages use [`crate::Req::invalid`], which answers this way to data clients.
 #[cfg(feature = "json")]
@@ -601,15 +602,15 @@ impl Errors {
             response::IntoResponse,
         };
         let status = StatusCode::UNPROCESSABLE_ENTITY;
-        let error = crate::api::error_body(status, &self.to_string());
-        let fields = serde_json::to_string(&self).expect("strings serialize");
-        let form = match &self.form {
-            Some(form) => format!(r#","form":{}"#, serde_json::to_string(form).expect("strings serialize")),
-            None => String::new(),
-        };
-        // The error object with more members: `..."message":"..."` + `,"form":"..","fields":{...}}}`.
-        let body = format!(r#"{}{form},"fields":{fields}}}}}"#, &error[..error.len() - 2]);
-        let headers = [(header::CONTENT_TYPE, HeaderValue::from_static(crate::api::JSON))];
+        let mut members = String::new();
+        if let Some(form) = &self.form {
+            members.push_str(r#","form":"#);
+            members.push_str(&serde_json::to_string(form).expect("strings serialize"));
+        }
+        members.push_str(r#","fields":"#);
+        members.push_str(&serde_json::to_string(&self).expect("strings serialize"));
+        let body = crate::api::problem(status, &self.to_string(), &members);
+        let headers = [(header::CONTENT_TYPE, HeaderValue::from_static(crate::api::PROBLEM))];
         (status, headers, body).into_response()
     }
 }
@@ -700,13 +701,17 @@ mod tests {
         e.add_form("Sold out.");
         let res = e.response();
         assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(res.headers()["content-type"], "application/problem+json", "RFC 9457's media type");
         let body = res.into_body().collect().await.unwrap().to_bytes();
-        assert_eq!(&body[..], br#"{"error":{"status":422,"message":"Sold out.","form":"Sold out.","fields":{}}}"#);
+        assert_eq!(
+            &body[..],
+            br#"{"title":"Unprocessable Entity","status":422,"detail":"Sold out.","form":"Sold out.","fields":{}}"#
+        );
         e.add(EMAIL, "Enter an email address.");
         let body = e.response().into_body().collect().await.unwrap().to_bytes();
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(value["error"]["fields"]["email"], "Enter an email address.");
-        assert_eq!(value["error"]["form"], "Sold out.");
+        assert_eq!(value["fields"]["email"], "Enter an email address.");
+        assert_eq!(value["form"], "Sold out.");
     }
 
     #[derive(Debug, serde::Deserialize)]

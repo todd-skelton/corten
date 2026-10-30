@@ -5,6 +5,7 @@
 // handler's JSDoc when the crate compiles. What crosses into scripts as JSON or as an event is
 // declared from the Rust types in examples/*/types/app.d.ts.
 import { keep, subscribe } from "corten";
+import { rows } from "corten/views";
 // @ts-expect-error The runtime takes a module's exports from the line Corten appends; it exports no hook for it.
 import { register } from "corten";
 
@@ -84,4 +85,33 @@ export function formatted(out, count, price, when, rate) {
   price("12.50");
   // @ts-expect-error A date's format takes a date, not an object.
   when({ at: 0 });
+}
+
+/** A view without key={..}, as #[component(view)] declares one: `fill` and its holes, no `key`. */
+class Cell {
+  /** @param {Element} el */
+  constructor(el) {
+    this.el = el;
+  }
+  get ladder() {
+    return Number(this.el.getAttribute("data-ladder"));
+  }
+  /** @param {Element} el @param {{ ladder: number }} data */
+  static fill(el, data) {
+    el.setAttribute("data-ladder", String(data.ladder));
+  }
+}
+
+// A script reads, removes and reorders rows of a view without a key; only a key finds or makes one.
+/** @param {import("corten/views").Holds<Cell, HTMLUListElement>} cells */
+export function ladders(cells) {
+  const list = rows(cells, Cell);
+  list.swap(0, 1);
+  // @ts-expect-error get() finds a row by its key: the view has none.
+  list.get("a");
+  // @ts-expect-error replace() keeps rows by their key: the view has none.
+  list.replace([{ ladder: 1 }]);
+  // @ts-expect-error A clone would keep what the view's markup shows outside its holes.
+  list.push([{ ladder: 1 }]);
+  return [...list].map((cell) => cell.ladder);
 }
