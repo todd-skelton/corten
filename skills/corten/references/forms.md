@@ -89,6 +89,7 @@ Link to it with `download` (`data-reload` for an `inline` file), so the runtime 
 it on hover and again on click. Never build the response by hand. A download that may be
 refused returns `corten::Result<PageOr<Media>>` (`PageOr<Relay>` for a relayed file) and
 answers the page with why, or a redirect, with `.into()`; never relay a redirect of the app's own.
+Its form is a plain `method="post"` form: a file answered to a `data-patch` submit is not saved.
 
 ## Checkboxes and lists
 
