@@ -12,9 +12,9 @@
 //! inline siblings on one line stays, and so do blank lines between nodes (at most one). Rust inside
 //! braces is kept as written (continuation lines move with it).
 //!
-//! In markup only whitespace changes: the tokens of every rewritten body are compared with the original's,
-//! and a body that would differ (or that this parser does not understand) is left as it is, with
-//! a warning.
+//! In markup only whitespace changes: the tokens of every rewritten body are compared with the
+//! original's, and a body that would differ (or that this parser does not understand) is left as
+//! it is, with a warning. A file with CRLF line endings keeps them.
 
 use std::path::{Path, PathBuf};
 
@@ -32,33 +32,45 @@ const VOID: &[&str] = &["area", "base", "br", "col", "embed", "hr", "img", "inpu
 /// package, not a file. Outside a package there is only markup to lay out.
 pub fn run(args: &[String]) -> Result<(), String> {
     let check = args.iter().any(|a| a == "--check");
+    if let Some(unknown) = args.iter().find(|a| a.starts_with("--") && *a != "--check") {
+        return Err(format!("corten fmt takes --check and paths, not {unknown}"));
+    }
     let paths: Vec<PathBuf> = args.iter().filter(|a| !a.starts_with("--")).map(PathBuf::from).collect();
+    let mut warned = std::collections::BTreeSet::new();
     if !paths.is_empty() {
-        return markup(&paths, check).map(|_| ());
+        return markup(&paths, check, &mut warned).map(|_| ());
     }
     let Some(root) = package_root() else {
-        return markup(&[PathBuf::from(".")], check).map(|_| ());
+        return markup(&[PathBuf::from(".")], check, &mut warned).map(|_| ());
     };
-    let root = [root];
     if check {
-        rustfmt(true)?;
-        return markup(&root, true).map(|_| ());
+        rustfmt(&root, true)?;
+        return markup(&[root], true, &mut warned).map(|_| ());
     }
     // Laying out a body can change how rustfmt lays out the code around it (a chain it now
     // breaks), which moves the body again: a few rounds settle it.
+    let mut wrote = Vec::new();
     for _ in 0..4 {
-        rustfmt(false)?;
-        if !markup(&root, false)? {
+        rustfmt(&root, false)?;
+        wrote = markup(std::slice::from_ref(&root), false, &mut warned)?;
+        if wrote.is_empty() {
             return Ok(());
         }
     }
-    Err("cargo fmt and the html! layout kept changing each other's output; run corten fmt again and report the file".into())
+    Err(format!(
+        "cargo fmt and the html! layout kept changing {}: the layout indents with spaces, so rustfmt's hard_tabs undoes it",
+        wrote.join(", ")
+    ))
 }
 
-/// `cargo fmt`, or `cargo fmt --check`, in the current directory.
-fn rustfmt(check: bool) -> Result<(), String> {
+/// `cargo fmt`, or `cargo fmt --check`, in the package at `root`.
+fn rustfmt(root: &Path, check: bool) -> Result<(), String> {
     let args: &[&str] = if check { &["fmt", "--check"] } else { &["fmt"] };
-    let status = std::process::Command::new("cargo").args(args).status().map_err(|e| format!("could not run cargo: {e}"))?;
+    let status = std::process::Command::new("cargo")
+        .args(args)
+        .current_dir(root)
+        .status()
+        .map_err(|e| format!("could not run cargo: {e}"))?;
     match (status.success(), check) {
         (true, _) => Ok(()),
         (false, true) => Err("cargo fmt --check failed: above is the Rust code it would change, which corten fmt fixes, or why it could not read it".into()),
@@ -73,27 +85,37 @@ fn package_root() -> Option<PathBuf> {
 }
 
 /// Lays out the markup of the Rust files under `paths`; with `check`, fails naming the files that
-/// need it instead. True when it wrote a file.
-fn markup(paths: &[PathBuf], check: bool) -> Result<bool, String> {
+/// need it instead. Returns the files it wrote. A warning already in `warned` is not printed again.
+fn markup(paths: &[PathBuf], check: bool, warned: &mut std::collections::BTreeSet<String>) -> Result<Vec<String>, String> {
     let mut files = Vec::new();
     for path in paths {
         collect(path, &mut files).map_err(|e| format!("{}: {e}", path.display()))?;
     }
+    let here = std::env::current_dir().ok();
+    // As the user would type it: relative to where corten fmt runs.
+    let shown = |file: &Path| here.as_deref().and_then(|here| file.strip_prefix(here).ok()).unwrap_or(file).display().to_string();
     let mut unformatted = Vec::new();
-    let mut wrote = false;
+    let mut wrote = Vec::new();
     for file in &files {
-        let source = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+        let source = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", shown(file)))?;
         let width = max_width(file);
-        let (formatted, warnings) = format_source(&source, width);
+        // The layout writes `\n`; a CRLF file is laid out as LF and keeps its CRLF.
+        let crlf = source.contains("\r\n");
+        let lf = if crlf { source.replace("\r\n", "\n") } else { source.clone() };
+        let (formatted, warnings) = format_source(&lf, width);
         for warning in warnings {
-            eprintln!("corten fmt: {}:{warning}", file.display());
+            let line = format!("corten fmt: {}:{warning}", shown(file));
+            if warned.insert(line.clone()) {
+                eprintln!("{line}");
+            }
         }
-        if formatted != source {
+        if formatted != lf {
+            let formatted = if crlf { formatted.replace('\n', "\r\n") } else { formatted };
             if check {
-                unformatted.push(file.display().to_string());
+                unformatted.push(shown(file));
             } else {
-                std::fs::write(file, formatted).map_err(|e| format!("{}: {e}", file.display()))?;
-                wrote = true;
+                std::fs::write(file, formatted).map_err(|e| format!("{}: {e}", shown(file)))?;
+                wrote.push(shown(file));
             }
         }
     }
