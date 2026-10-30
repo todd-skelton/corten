@@ -1502,13 +1502,19 @@ function named(el, name) {
   const choice = /^(checkbox|radio)$/.test(el.getAttribute("type") ?? "") ? (value === null ? ":not([value])" : `[value="${CSS.escape(value)}"]`) : "";
   return `${el.localName}[name="${CSS.escape(name)}"]${choice}`;
 }
-/** Set once the runtime reloads the page: a submit that waited is not sent into it. */
+/**
+ * Set while the page is being left (the runtime reloads it, or the browser unloads it for a full
+ * navigation): a submit that waited is not sent into it. A page the back-forward cache restores
+ * is not being left any more.
+ */
 let leaving = false;
 /** Loads the page again from the server. */
 function reload() {
   leaving = true;
   location.reload();
 }
+addEventListener("pagehide", () => (leaving = true));
+addEventListener("pageshow", () => (leaving = false));
 
 /**
  * The pending submit of each `data-patch` form. The latest submit wins, and the same submit again
@@ -1627,7 +1633,11 @@ async function send(form, submitter, sends) {
     if (submits.get(form)?.controller === controller) {
       submits.delete(form);
       formCall(form, "removeAttribute", "aria-busy");
-      if (pending.next !== undefined && !signal.aborted && !leaving) sendAgain(form, pending.next);
+      // In a task of its own: a write the browser cancelled because it is leaving the page (a full
+      // navigation, without the Navigation API) ends before `pagehide`, and a timer never runs in
+      // a page that is gone.
+      const next = pending.next;
+      if (next !== undefined && !signal.aborted) setTimeout(() => leaving || sendAgain(form, next));
     }
   }
 }
