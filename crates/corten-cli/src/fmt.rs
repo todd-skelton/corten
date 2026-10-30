@@ -27,28 +27,60 @@ const INLINE: &[&str] = &[
 const VOID: &[&str] = &["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"];
 
 /// `corten fmt [--check] [path ..]`: `cargo fmt` on the package (rustfmt's own settings and
-/// rules), then the markup, so one command fixes what `corten check` reports. Given paths, only
-/// their markup: `cargo fmt` formats a package, not a file.
+/// rules), then the markup of the whole package, again until neither changes anything, so one
+/// command fixes what `corten check` reports. Given paths, only their markup: `cargo fmt` formats a
+/// package, not a file. Outside a package there is only markup to lay out.
 pub fn run(args: &[String]) -> Result<(), String> {
     let check = args.iter().any(|a| a == "--check");
-    let mut paths: Vec<PathBuf> = args.iter().filter(|a| !a.starts_with("--")).map(PathBuf::from).collect();
-    if paths.is_empty() {
-        // First, since it can move an html! body (its indentation), which the layout then follows.
-        let rustfmt: &[&str] = if check { &["fmt", "--check"] } else { &["fmt"] };
-        crate::cargo(rustfmt).map_err(|_| {
-            if check {
-                "Rust code is not formatted (cargo fmt --check printed where); run corten fmt".to_string()
-            } else {
-                "cargo fmt failed".to_string()
-            }
-        })?;
-        paths.push(PathBuf::from("."));
+    let paths: Vec<PathBuf> = args.iter().filter(|a| !a.starts_with("--")).map(PathBuf::from).collect();
+    if !paths.is_empty() {
+        return markup(&paths, check).map(|_| ());
     }
+    let Some(root) = package_root() else {
+        return markup(&[PathBuf::from(".")], check).map(|_| ());
+    };
+    let root = [root];
+    if check {
+        rustfmt(true)?;
+        return markup(&root, true).map(|_| ());
+    }
+    // Laying out a body can change how rustfmt lays out the code around it (a chain it now
+    // breaks), which moves the body again: a few rounds settle it.
+    for _ in 0..4 {
+        rustfmt(false)?;
+        if !markup(&root, false)? {
+            return Ok(());
+        }
+    }
+    Err("cargo fmt and the html! layout kept changing each other's output; run corten fmt again and report the file".into())
+}
+
+/// `cargo fmt`, or `cargo fmt --check`, in the current directory.
+fn rustfmt(check: bool) -> Result<(), String> {
+    let args: &[&str] = if check { &["fmt", "--check"] } else { &["fmt"] };
+    let status = std::process::Command::new("cargo").args(args).status().map_err(|e| format!("could not run cargo: {e}"))?;
+    match (status.success(), check) {
+        (true, _) => Ok(()),
+        (false, true) => Err("cargo fmt --check failed: above is the Rust code it would change, which corten fmt fixes, or why it could not read it".into()),
+        (false, false) => Err("cargo fmt failed: above is why".into()),
+    }
+}
+
+/// The directory of the nearest `Cargo.toml` at or above the current one.
+fn package_root() -> Option<PathBuf> {
+    let here = std::env::current_dir().ok()?;
+    here.ancestors().find(|dir| dir.join("Cargo.toml").is_file()).map(Path::to_path_buf)
+}
+
+/// Lays out the markup of the Rust files under `paths`; with `check`, fails naming the files that
+/// need it instead. True when it wrote a file.
+fn markup(paths: &[PathBuf], check: bool) -> Result<bool, String> {
     let mut files = Vec::new();
-    for path in &paths {
+    for path in paths {
         collect(path, &mut files).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     let mut unformatted = Vec::new();
+    let mut wrote = false;
     for file in &files {
         let source = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
         let width = max_width(file);
@@ -61,11 +93,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 unformatted.push(file.display().to_string());
             } else {
                 std::fs::write(file, formatted).map_err(|e| format!("{}: {e}", file.display()))?;
+                wrote = true;
             }
         }
     }
     if unformatted.is_empty() {
-        Ok(())
+        Ok(wrote)
     } else {
         Err(format!("html! markup is not formatted in {}; run corten fmt", unformatted.join(", ")))
     }

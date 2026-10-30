@@ -5,7 +5,7 @@
 //!   build keeps the running server), and open pages reload by themselves.
 //! - `corten build` builds the release binary. `corten check` runs format, lint, a type check of
 //!   the app's scripts (with TypeScript's `tsc`, when it is installed) and tests.
-//! - `corten fmt` lays out the markup in `html!`, which rustfmt leaves alone.
+//! - `corten fmt` runs `cargo fmt` and lays out the markup in `html!`, which rustfmt leaves alone.
 
 mod dev;
 mod fmt;
