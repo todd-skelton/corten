@@ -939,6 +939,10 @@ Corten is pre-1.0, so any minor version may change the API.
     A page without one checks one empty set per bubbling event it listens for.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
+130. `PageOr<Media>` and `PageOr<Relay>`: a route that sends a file answers the page, or a redirect,
+    instead when it refuses (a download posted at a stale revision), each `.into()` the answer,
+    private like any page and `Public` with a page made for everyone
+    ([#415 A handler that answers a file cannot answer a page or a redirect when the file is refused](https://github.com/todd-skelton/corten/issues/415)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

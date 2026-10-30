@@ -105,7 +105,7 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 
-pub use answer::{Answer, ForAll, ForOne, HtmlResponse, HtmlResult, LiveResponse, Media, NoStore, Public, Relay};
+pub use answer::{Answer, ForAll, ForOne, HtmlResponse, HtmlResult, LiveResponse, Media, NoStore, PageOr, Public, Relay};
 #[cfg(feature = "json")]
 pub use answer::{JsonError, JsonResponse, JsonResult};
 pub use api::Api;

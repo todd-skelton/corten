@@ -808,6 +808,99 @@ impl Answer for Media {
     type Rows = NotAFeed;
 }
 
+/// A file or a page: what a route that sends a file ([`Media`], a [`Relay`] of another service's)
+/// answers when it may instead send the page with why, or a redirect to it. A download posted
+/// from a page (this run's CSV, at the revision the page showed) is refused when the run moved on,
+/// and the user gets the page again saying so, not an error page. Each is `.into()` the answer.
+///
+/// ```
+/// use corten::{prelude::*, Media, PageOr};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/runs/{id}", get = run)]
+///     pub struct Run<'a> {
+///         pub id: &'a str,
+///         pub said: Option<&'a str>,
+///     }
+///
+///     #[route("/runs/{id}/download", post = download)]
+///     pub struct Download<'a> {
+///         pub id: &'a str,
+///     }
+/// }
+/// # async fn run(_: Params<url::Run<'_>>) -> &'static str { "run" }
+///
+/// async fn download(req: Req, at: Params<url::Download<'_>>) -> corten::Result<PageOr<Media>> {
+///     let current = at.id.as_str() == "7";
+///     if !current {
+///         return Ok(req.redirect(&url::Run { id: &at.id, said: Some("stale") })?.into());
+///     }
+///     Ok(Media::new("text/csv", "sku,qty\n").into())
+/// }
+/// # let _ = App::new(url::router()).router();
+/// ```
+///
+/// It is for the visitor who asked, as a page is; inside [`Public`] the page is one made for
+/// everyone.
+pub enum PageOr<A, For = ForOne> {
+    /// A page, a patch or a redirect, from [`Req`].
+    Page(HtmlResponse<For>),
+    /// The file.
+    Answer(A),
+}
+
+impl<For> From<HtmlResponse<For>> for PageOr<Media, For> {
+    fn from(page: HtmlResponse<For>) -> Self {
+        PageOr::Page(page)
+    }
+}
+
+impl<For> From<HtmlResponse<For>> for PageOr<Relay, For> {
+    fn from(page: HtmlResponse<For>) -> Self {
+        PageOr::Page(page)
+    }
+}
+
+impl<For> From<Media> for PageOr<Media, For> {
+    fn from(media: Media) -> Self {
+        PageOr::Answer(media)
+    }
+}
+
+impl<For> From<Relay> for PageOr<Relay, For> {
+    fn from(relay: Relay) -> Self {
+        PageOr::Answer(relay)
+    }
+}
+
+impl<A: IntoResponse, For> IntoResponse for PageOr<A, For> {
+    fn into_response(self) -> Response {
+        match self {
+            PageOr::Page(page) => page.into_response(),
+            PageOr::Answer(answer) => answer.into_response(),
+        }
+    }
+}
+
+impl<A: Answer> Answer for PageOr<A> {
+    const FORMAT: Format = Format::Html;
+    type Inputs = AnyInputs;
+    type Rows = NotAFeed;
+}
+
+impl<A: ForEveryone<Named = A> + Shareable<ForAll = A>> Shareable for PageOr<A> {
+    type ForAll = PageOr<A, ForAll>;
+}
+
+impl<A: ForEveryone<Named = A> + Shareable<ForAll = A>> ForEveryone for PageOr<A, ForAll> {
+    type Named = PageOr<A>;
+
+    fn for_all(self) -> Self {
+        self
+    }
+}
+
 /// On a [`Relay`]'s response: its failure status and its encoding are the upstream's, passed on
 /// as they are.
 #[derive(Clone, Copy)]
