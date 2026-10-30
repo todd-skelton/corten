@@ -71,6 +71,28 @@
       ]
     },
     {
+      "name": "a handler for an event anywhere on the page",
+      "attr": "document.keydown:shared.key($e,$t)",
+      "parsed": [
+        {
+          "type": "document.keydown",
+          "module": "shared",
+          "name": "key",
+          "args": [
+            {
+              "kind": "$e",
+              "owner": null
+            },
+            {
+              "kind": "$t",
+              "owner": null
+            }
+          ],
+          "home": null
+        }
+      ]
+    },
+    {
       "name": "the element with the handler",
       "attr": "click:row_list.toggle($t,\"x\")",
       "parsed": [

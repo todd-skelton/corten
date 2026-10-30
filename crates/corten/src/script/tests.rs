@@ -491,6 +491,7 @@ fn handlers_write_the_shared_wire_vectors() {
                 <p on:click={shared::log(nasty, -1.5, false)}></p>
                 <p on:click={shared::log("", f64::NAN, true)}></p>
                 <p on:connect={shared::watch(signal, Options { id: "a}", tags: ["x,y", "]"] })}></p>
+                <p on:document:keydown={shared::key(event, target)}></p>
             }
             .to_html()
         }),
