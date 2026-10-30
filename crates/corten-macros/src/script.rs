@@ -999,7 +999,31 @@ fn word_char(c: char) -> bool {
 
 /// Where the quoted text starting at `i` ends (after its closing quote).
 fn quote_end(chars: &[char], i: usize) -> usize {
-    chars[i + 1..].iter().position(|&d| d == chars[i]).map_or(chars.len(), |p| i + 2 + p)
+    let mut j = i + 1;
+    while j < chars.len() {
+        match chars[j] {
+            c if c == chars[i] => return j + 1,
+            // A template literal's `${..}` may hold quotes of its own, backticks included.
+            '$' if chars[i] == '`' && chars.get(j + 1) == Some(&'{') => j = expression_end(chars, j + 2),
+            _ => j += 1,
+        }
+    }
+    chars.len()
+}
+
+/// The index past the `}` that closes a template literal's `${` (its text starting at `j`).
+fn expression_end(chars: &[char], mut j: usize) -> usize {
+    let mut depth = 1;
+    while j < chars.len() {
+        match chars[j] {
+            '"' | '\'' | '`' => j = quote_end(chars, j),
+            '{' => (depth, j) = (depth + 1, j + 1),
+            '}' if depth == 1 => return j + 1,
+            '}' => (depth, j) = (depth - 1, j + 1),
+            _ => j += 1,
+        }
+    }
+    chars.len()
 }
 
 /// What comes before the text at `start`, past spaces and a spread's `...`, and whether it
@@ -1390,13 +1414,58 @@ fn tag_types(jsdoc: &str, tag: &str) -> Vec<(String, String)> {
 /// checks read them.
 fn tidy(ty: &str) -> String {
     let mut out = ty.to_string();
-    for (spaced, plain) in
-        [("import (", "import("), ("import( ", "import("), (" ).", ")."), (") .", ")."), ("Message <", "Message<")]
-    {
-        while out.contains(spaced) {
-            out = out.replace(spaced, plain);
+    // Any run of spaces, tabs or newlines between the parts goes: `import ( "x" ) . Tab`.
+    out = import_calls(&out);
+    for (left, right) in [(")", "."), ("Message", "<")] {
+        out = join(&out, left, right);
+    }
+    out
+}
+
+/// `text` with each `import ( "path" )` written `import("path")`; the path itself is kept as
+/// it is.
+fn import_calls(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("import") {
+        let before = rest[..at].chars().last().or_else(|| out.chars().last());
+        out.push_str(&rest[..at + "import".len()]);
+        rest = &rest[at + "import".len()..];
+        if before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$') {
+            continue;
+        }
+        let Some(open) = rest.trim_start().strip_prefix('(') else { continue };
+        let open = open.trim_start();
+        let Some(quote) = open.chars().next().filter(|c| matches!(c, '"' | '\'' | '`')) else { continue };
+        let Some(len) = open[1..].find(quote) else { continue };
+        let (path, after) = open.split_at(len + 2);
+        let Some(after) = after.trim_start().strip_prefix(')') else { continue };
+        out.push('(');
+        out.push_str(path);
+        out.push(')');
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `text` with the whitespace between `left` (a word starting where no other word goes on)
+/// and a following `right` taken out; an empty `right` takes out any whitespace after `left`.
+fn join(text: &str, left: &str, right: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(left) {
+        let before = rest[..at].chars().last().or_else(|| out.chars().last());
+        let starts_word =
+            !left.starts_with(char::is_alphanumeric) || !before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$');
+        out.push_str(&rest[..at + left.len()]);
+        rest = &rest[at + left.len()..];
+        let after = rest.trim_start();
+        if starts_word && after.len() < rest.len() && after.starts_with(right) {
+            rest = after;
         }
     }
+    out.push_str(rest);
     out
 }
 
@@ -1911,6 +1980,22 @@ export function f(a, b, c, d, e) {}"#;
             handlers[0].params
         );
         assert_eq!(handlers[0].params[2].1, Param::Any);
+        let (handlers, _) = parse(
+            "/** @param {import  (\t\"../types/app\"\n  )  .  Tab} a @param {Message\t <\"count\">} b */\nexport function f(a, b) {}",
+        )
+        .unwrap();
+        assert_eq!(handlers[0].params[0].1, Param::Generated("Tab".into()));
+        assert!(
+            matches!(&handlers[0].params[1].1, Param::Checked(p) if p.starts_with("ts::Message")),
+            "{:?}",
+            handlers[0].params
+        );
+        // A path keeps its own spaces, and a word that ends in `import` is not one.
+        assert_eq!(tidy("import ( \"a b\" ).X | reimport (x)"), "import(\"a b\").X | reimport (x)");
+        // A template typedef with an apostrophe, written into another template's `${..}`.
+        let (handlers, _) =
+            parse("/** @typedef {`it's-${number}`} A */\n/** @param {`${A}`} a */\nexport function f(a) {}").unwrap();
+        assert_eq!(handlers[0].params[0].1, Param::Any);
         // Aliases that refer to each other: what any of them holds is seen in each.
         for (leaf, what) in
             [("\"x\" | \"y\"", "one of several names"), ("import(\"../types/app\").Leaf", "generated declaration")]
