@@ -1585,7 +1585,12 @@ Corten is pre-1.0, so any minor version may change the API.
     a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
-86. A `data-patch` form's newer submit no longer aborts a pending write (any method but GET): the
+86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
+    one fits is part of correctness in the conflict order: a header, wire format or file format
+    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
+    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
+    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
+87. A `data-patch` form's newer submit no longer aborts a pending write (any method but GET): the
     server may have applied it, and its answer, the page's next state, was dropped. A submit made
     while a write is pending waits, and when the write ends it is sent from the form as it is then
     (the one the answer put in its place, found by id), so a version or count the answer wrote
@@ -1597,11 +1602,6 @@ Corten is pre-1.0, so any minor version may change the API.
     with brotli (8,496 to 8,710)
     ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
 
-86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
-    one fits is part of correctness in the conflict order: a header, wire format or file format
-    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
-    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
-    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
