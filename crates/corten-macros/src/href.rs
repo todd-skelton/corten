@@ -32,7 +32,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         if !one || tokens.len() > j + 2 {
             return err(
                 ident.span(),
-                format!("Href: {ident} holds one link, {ident}(url::{ident}), the route it goes to; a unit variant has no URL"),
+                format!("Href: {ident} holds one link and nothing else, {ident}(url::{ident}), the route it goes to (a unit variant has no URL)"),
             );
         }
         arms.extend(q(

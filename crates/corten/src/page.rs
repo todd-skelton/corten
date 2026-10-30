@@ -136,7 +136,7 @@ impl NavTarget for crate::Local {
     /// link, the request it makes and the runtime's `pathname` are the same text in every engine
     /// (Firefox and WebKit keep `|`, Chromium encodes it).
     fn write_url(&self, out: &mut String) {
-        let href = crate::route::link(self);
+        let href = self.as_str();
         {
             let end = href.find(['?', '#']).unwrap_or(href.len());
             for c in href[..end].chars() {

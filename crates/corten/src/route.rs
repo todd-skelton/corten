@@ -809,7 +809,7 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 /// #[derive(Route)] #[route("/pull-sheet/{id}")] struct PullSheet<'a> { id: &'a str, sort: Option<&'a str> }
 ///
 /// #[derive(Href)]
-/// enum Screen<'a> { Inventory(Inventory), PullSheet(PullSheet<'a>) }
+/// enum Screen<'a> { Inventory(Inventory), PullSheet(PullSheet<'a>), Given(&'a dyn Href) }
 ///
 /// #[component]
 /// fn Filter<'a>(action: &'a dyn Href) -> impl Render {
@@ -821,6 +821,8 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 /// let here = PullSheet { id: "7", sort: None };
 /// assert_eq!(Filter { action: &here }.to_html(), r#"<form method="get" action="/pull-sheet/7"><input name="q"></form>"#);
 /// assert_eq!(Screen::Inventory(Inventory).with_href(str::to_owned), "/inventory");
+/// // A prop a component was given goes in one too, and `link` reads any of them.
+/// assert_eq!(corten::route::link(&Screen::Given(&here)), "/pull-sheet/7");
 /// ```
 ///
 /// Each variant holds one link; a unit variant has no URL:
@@ -862,21 +864,40 @@ pub trait Href {
 
 pub use corten_macros::Href;
 
-/// The URL of any [`Href`], not escaped.
-pub(crate) fn link(to: &(impl Href + ?Sized)) -> String {
+/// The URL of any [`Href`], a `dyn Href` included, not escaped: `link(to)` where a `Sized` value
+/// would call [`Href::with_href`].
+pub fn link(to: &(impl Href + ?Sized)) -> String {
     let mut out = String::with_capacity(32);
     to.write_link(&mut out, false);
     out
 }
 
-impl crate::view::AttrValue for dyn Href + '_ {
-    fn write_attr(&self, name: &str, out: &mut String) {
-        out.push_str(name);
-        out.push_str("=\"");
-        self.write_link(out, true);
-        out.push('"');
-    }
+macro_rules! dyn_href {
+    ($($ty:ty),*) => {$(
+        impl crate::view::AttrValue for $ty {
+            fn write_attr(&self, name: &str, out: &mut String) {
+                out.push_str(name);
+                out.push_str("=\"");
+                self.write_link(out, true);
+                out.push('"');
+            }
+        }
+
+        /// A link held by reference (a component's prop), so an enum of links can hold one.
+        impl Href for &$ty {
+            fn write_link(&self, out: &mut String, html: bool) {
+                (**self).write_link(out, html)
+            }
+        }
+
+        impl Href for Box<$ty> {
+            fn write_link(&self, out: &mut String, html: bool) {
+                (**self).write_link(out, html)
+            }
+        }
+    )*};
 }
+dyn_href!(dyn Href + '_, dyn Href + Send + '_, dyn Href + Send + Sync + '_);
 
 /// A path on this site taken from outside the code, a return address above all
 /// (`/sign-in?next=/account/cart`): what [`Local::parse`] accepts can only lead to this site, so
@@ -939,6 +960,13 @@ impl std::fmt::Display for Local {
 impl Href for Local {
     fn write_link(&self, out: &mut String, html: bool) {
         write_text(&self.0, out, html)
+    }
+}
+
+impl Local {
+    /// The whole address, as text.
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
