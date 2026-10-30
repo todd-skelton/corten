@@ -61,9 +61,17 @@ fn main() -> ExitCode {
             .and_then(|()| cargo(&["clippy", "--all-targets", "--", "-D", "warnings"]))
             // The tests first: the one that writes `types/app.d.ts` brings it up to date (and fails,
             // saying so, when it was stale) before `tsc` reads it, so a script that uses a new
-            // view or event is not refused for a declaration the check had not written yet.
-            .and_then(|()| cargo(&["test"]))
-            .and_then(|()| std::env::current_dir().map_err(|e| e.to_string()).and_then(|root| scripts::check(&root))),
+            // view or event is not refused for a declaration the check had not written yet. The
+            // scripts are checked whatever the tests did, so a failing test hides no script error.
+            .and_then(|()| {
+                let tests = cargo(&["test"]);
+                let scripts = std::env::current_dir().map_err(|e| e.to_string()).and_then(|root| scripts::check(&root));
+                match (tests, scripts) {
+                    (Ok(()), scripts) => scripts,
+                    (Err(tests), Ok(())) => Err(tests),
+                    (Err(tests), Err(scripts)) => Err(format!("{tests}, and {scripts}")),
+                }
+            }),
         Some(other) => Err(format!("unknown command {other:?}; run corten help")),
     };
     match result {
