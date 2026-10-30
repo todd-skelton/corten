@@ -49,7 +49,7 @@ fn every_component_has_its_script_and_no_css() {
 #[test]
 fn a_choice_posts_its_value_as_written_in_a_url_and_carries_its_terms() {
     // A row picked by its numeric id: the field reads an i32 back.
-    let lines = [Choice::new(3, "Pokemon"), Choice { terms: &["4", "004/102", "\"<&>"], ..Choice::new(42, "Magic") }];
+    let lines = [Choice::new(3, "Pokemon"), Choice::new(42, "Magic").terms(&["4", "004/102", "\"<&>"])];
     let field = Picker { value: Some(42), ..Picker::new("line", Form::FIELDS.line, "Choose", "None", &lines) };
     let html = ComboBox { field: &field }.to_html();
     assert!(html.contains(r#"<option value="3">Pokemon</option>"#), "no terms, no attribute: {html}");
@@ -58,6 +58,20 @@ fn a_choice_posts_its_value_as_written_in_a_url_and_carries_its_terms() {
         "a line per term, escaped: {html}"
     );
     assert!(html.contains(r#"value="Magic""#), "the input shows the selected label: {html}");
+}
+
+#[test]
+fn terms_computed_per_row_are_borrowed_where_they_are() {
+    struct Card {
+        id: i32,
+        label: String,
+        terms: Vec<String>,
+    }
+    let cards = [Card { id: 4, label: "Charizard".into(), terms: vec!["4/102".into(), "004/102".into()] }];
+    let options: Vec<_> = cards.iter().map(|c| Choice::new(c.id, &c.label).terms(&c.terms)).collect();
+    let field = Picker::new("line", Form::FIELDS.line, "Choose", "None", &options);
+    let html = ComboBox { field: &field }.to_html();
+    assert!(html.contains("<option value=\"4\" data-terms=\"4/102\n004/102\">Charizard</option>"), "{html}");
 }
 
 #[test]
