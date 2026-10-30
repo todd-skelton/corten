@@ -115,12 +115,12 @@ pub mod url {
         pub seller: &'a str,
     }
 
-    #[route("/feeds/{seller}", get = snapshot)]
+    #[route("/feeds/{seller}", get = snapshot, rows = Listing)]
     pub struct Listings<'a> {
         pub seller: &'a str,
     }
 
-    #[route("/feeds/{seller}/live", get = live)]
+    #[route("/feeds/{seller}/live", get = live, rows = Listing)]
     pub struct ListingsLive<'a> {
         pub seller: &'a str,
     }
@@ -211,7 +211,7 @@ async fn move_market(
 async fn snapshot(
     State(cluster): State<Cluster<Listings>>,
     Params(at): Params<url::Listings<'_>>,
-) -> corten::Result<FeedResponse> {
+) -> corten::Result<FeedResponse<Listing>> {
     cluster.snapshot(&at.seller).await
 }
 
@@ -219,7 +219,7 @@ async fn live(
     State(cluster): State<Cluster<Listings>>,
     Params(at): Params<url::ListingsLive<'_>>,
     since: Since,
-) -> corten::Result<FeedResponse> {
+) -> corten::Result<FeedResponse<Listing>> {
     cluster.live(&at.seller, since).await
 }
 

@@ -551,6 +551,15 @@ observer.observe(document.documentElement, { childList: true, subtree: true });
  */
 
 /**
+ * The URL of a feed whose rows are `Row`: what a handler parameter `@param {FeedUrl<Level>} feed`
+ * gets from a route whose `#[route(..)]` says `rows = Level` (Corten checks the route when the
+ * crate compiles), and what `subscribe()` takes. At run time it is the URL, a string; its
+ * `"corten.rows"` is a type only, which no script reads.
+ * @template Row
+ * @typedef {string & { readonly "corten.rows": Row[] }} FeedUrl
+ */
+
+/**
  * @template Row
  * @typedef {object} FeedHandlers
  * @property {(rows: Row[], seq: number) => void} snapshot Every row; replaces what the script had.
@@ -563,10 +572,9 @@ observer.observe(document.documentElement, { childList: true, subtree: true });
  * later write in order. Reconnects resume where they stopped; a gap, an unknown cursor or a client
  * that fell behind loads a new snapshot. It runs until `signal` aborts (in a handler, pass
  * `signal`: the subscription ends when the element leaves the page), or, without one, for the
- * life of the page. `Row` is the feed's row type from the generated declarations; without one,
- * rows are `unknown`.
- * @template [Row=unknown]
- * @param {string} url
+ * life of the page. `Row` comes from `url`, a `FeedUrl<Row>` handler parameter.
+ * @template Row
+ * @param {FeedUrl<Row>} url
  * @param {FeedHandlers<Row>} handlers
  * @param {{ signal?: AbortSignal }} [options]
  * @returns {void}

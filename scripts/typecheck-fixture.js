@@ -9,39 +9,52 @@ import { keep, subscribe } from "corten";
 import { register } from "corten";
 
 /** @typedef {import("../examples/watchlist/types/app").Stock} Stock Generated from the Rust struct. */
+/** @typedef {import("../examples/seller-desk/types/app").Level} Level Generated from the Rust struct. */
+/** @import { FeedUrl } from "corten" */
 
-/** @param {AbortSignal} signal */
-export function connect(signal) {
+/** @param {AbortSignal} signal @param {FeedUrl<Stock>} stocks */
+export function connect(signal, stocks) {
   const s = keep(() => ({ ticks: 0 }));
   s.ticks += 1;
   // @ts-expect-error State has only what its init returns.
   s.tick;
   // @ts-expect-error keep() finds the component itself: it takes no element.
   keep(document.body, () => ({ ticks: 0 }));
-  subscribe("/feed/stocks", { snapshot() {}, patch() {} }, { signal });
+  subscribe(stocks, { snapshot() {}, patch() {} }, { signal });
   // @ts-expect-error subscribe() returns nothing to stop it with; pass a signal.
-  subscribe("/feed/stocks", { snapshot() {}, patch() {} })();
+  subscribe(stocks, { snapshot() {}, patch() {} })();
 }
 
-subscribe("/feed/stocks", {
-  /** @param {Stock[]} rows */
-  snapshot: (rows) => rows.map((row) => row.name),
-  patch: (changes) => {
-    for (const change of changes) {
-      // @ts-expect-error A removal carries no value; the row type flows into patches.
-      change.value.name;
-      if (change.op === "upsert") change.value.price_cents.toFixed();
-    }
-  },
-});
-
-subscribe("/feed/stocks", {
-  snapshot: (rows) => {
-    // @ts-expect-error Without a row type, rows are unknown, not any.
-    rows[0].name;
-  },
-  patch: () => {},
-});
+// The handler's parameter names the feed's rows (the route's rows = Stock, checked when the crate
+// compiles), and subscribe() takes them from it.
+/** @param {FeedUrl<Stock>} stocks @param {FeedUrl<Level>} levels @param {string} url */
+export function follow(stocks, levels, url) {
+  subscribe(stocks, {
+    snapshot: (rows) => rows.map((row) => row.name),
+    patch: (changes) => {
+      for (const change of changes) {
+        // @ts-expect-error A removal carries no value; the row type flows into patches.
+        change.value.name;
+        if (change.op === "upsert") change.value.price_cents.toFixed();
+      }
+    },
+  });
+  subscribe(levels, {
+    /** @param {Level[]} rows */
+    snapshot: (rows) => rows.map((row) => row.qty),
+    patch: () => {},
+  });
+  // @ts-expect-error A Level feed's rows are not Stock rows.
+  subscribe(levels, {
+    /** @param {Stock[]} rows */
+    snapshot: (rows) => rows.map((row) => row.name),
+    patch: () => {},
+  });
+  // @ts-expect-error A plain string names no rows: the URL comes from a FeedUrl<Row> parameter.
+  subscribe(url, { snapshot() {}, patch() {} });
+  // @ts-expect-error Nor does a written one.
+  subscribe("/feed/stocks", { snapshot() {}, patch() {} });
+}
 
 /** @import { Message } from "corten" */
 

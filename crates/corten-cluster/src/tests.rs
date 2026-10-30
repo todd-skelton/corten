@@ -212,7 +212,7 @@ async fn an_unused_feed_is_unloaded_and_loads_again_with_its_replay_log() {
 /// The feed's routes as an app serves them.
 #[corten::routes(state = Cluster<Items>)]
 mod url {
-    #[route("/feeds/{key}", get = feed_snapshot)]
+    #[route("/feeds/{key}", get = feed_snapshot, rows = Item)]
     pub struct FeedUrl<'a> {
         pub key: &'a str,
     }
@@ -221,7 +221,7 @@ mod url {
 async fn feed_snapshot(
     corten::prelude::State(cluster): corten::prelude::State<Cluster<Items>>,
     corten::Params(feed): corten::Params<url::FeedUrl<'_>>,
-) -> corten::Result<FeedResponse> {
+) -> corten::Result<FeedResponse<Item>> {
     cluster.snapshot(&feed.key).await
 }
 

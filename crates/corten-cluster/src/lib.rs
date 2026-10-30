@@ -125,20 +125,20 @@ impl<S: Source> Cluster<S> {
     }
 
     /// `GET {url}`: [`Feed::snapshot`], an answer a Corten route names
-    /// (`async fn listings(..) -> corten::Result<FeedResponse>`). An unknown feed is a 404, and
+    /// (`async fn listings(..) -> corten::Result<FeedResponse<Listing>>`). An unknown feed is a 404, and
     /// Postgres out of reach a 503, answered as JSON as any failure of a feed's route is. An app
     /// that answers those its own way calls [`Cluster::feed`] and the feed's `snapshot` instead.
-    pub async fn snapshot(&self, key: &str) -> corten::Result<FeedResponse> {
+    pub async fn snapshot(&self, key: &str) -> corten::Result<FeedResponse<S::Row>> {
         Ok(self.loaded(key).await?.snapshot())
     }
 
     /// `GET {url}/live`: [`Feed::live`], with the same errors as [`Cluster::snapshot`].
-    pub async fn live(&self, key: &str, since: Since) -> corten::Result<FeedResponse> {
+    pub async fn live(&self, key: &str, since: Since) -> corten::Result<FeedResponse<S::Row>> {
         self.live_with(key, since, ()).await
     }
 
     /// [`Cluster::live`] holding `guard` (a `corten::feed::Permit`) until the stream ends.
-    pub async fn live_with(&self, key: &str, since: Since, guard: impl Send + 'static) -> corten::Result<FeedResponse> {
+    pub async fn live_with(&self, key: &str, since: Since, guard: impl Send + 'static) -> corten::Result<FeedResponse<S::Row>> {
         Ok(self.loaded(key).await?.live_with(since, guard))
     }
 

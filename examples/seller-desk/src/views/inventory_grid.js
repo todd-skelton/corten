@@ -6,7 +6,7 @@
 // grid keeps only the last clicked row, for shift-click ranges.
 import { keep, subscribe } from "corten";
 import { InventoryRow, rows } from "corten/views";
-/** @import { Message, NumberFormat } from "corten" */
+/** @import { FeedUrl, Message, NumberFormat } from "corten" */
 /** @import { Holds } from "corten/views" */
 /** @import { PriceEdited } from "corten/events" */
 
@@ -52,7 +52,7 @@ const kept = () => keep(() => ({ index: -1, unsent: /** @type {Set<HTMLTableRowE
 
 /**
  * Keeps the stock cells current from the levels feed until the grid leaves the page.
- * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {string} feed @param {AbortSignal} signal
+ * @param {Holds<InventoryRow, HTMLTableSectionElement>} body @param {FeedUrl<Level>} feed @param {AbortSignal} signal
  */
 export function live(body, feed, signal) {
   const list = rows(body, InventoryRow);
@@ -66,7 +66,6 @@ export function live(body, feed, signal) {
   subscribe(
     feed,
     {
-      /** @param {Level[]} levels */
       snapshot: (levels) => levels.forEach(show),
       patch: (changes) => {
         for (const change of changes) if (change.op === "upsert") show(change.value);

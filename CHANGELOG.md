@@ -1459,6 +1459,17 @@ Corten is pre-1.0, so any minor version may change the API.
     `X-Robots-Tag: noindex` (`Public::header`), so search engines do not list an empty page; a
     category with cards is unchanged
     ([#335 Some framework features appear in no example: Area::policy, Public::header, Req::signal, Refused::too_many](https://github.com/todd-skelton/corten/issues/335)).
+80. A feed's row type reaches the script that follows it. `FeedResponse` is `FeedResponse<Row>`
+    (`Feed<Level>::snapshot` answers `FeedResponse<Level>`), a feed's route names its rows
+    (`#[route("/feed/levels", get = levels, rows = Level)]`, checked against what its `get`
+    answers, through the new `Answer::Rows`), and a handler parameter declared
+    `@param {FeedUrl<Level>} feed` (from `corten`) takes only a route whose rows are the Rust
+    type `Level` in the component's module; a `FeedUrl` it cannot read is a compile error.
+    `subscribe()` takes a `FeedUrl<Row>` and its row type from it, so a script's `snapshot` and
+    `patch` are typed with no `@param` of their own, a `Stock` handler given a `Level` feed
+    fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
+    or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
+    ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1854,6 +1865,14 @@ Corten is pre-1.0, so any minor version may change the API.
     numbers, money, dates and relative times) failed to compile under `#![deny(warnings)]`: its `by_key` had a `match` whose only arm
     returned, so the line after it was unreachable. A doctest compiles an empty catalog with
     warnings denied.
+69. Two components with one name in different modules (each feature's `SettingsForm`)
+    with a stylesheet or a script fail to build, at the second one, instead of the app panicking
+    when it starts ("both style .settings-form__*", "two scripts named"), and so do two `script!`
+    modules with one name: like an id, each class prefix and script name is an exported symbol,
+    and the symbols now say what clashed
+    (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
+    `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
+    ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
 
 ### Documentation
 
