@@ -224,8 +224,9 @@ find their cells without reading attributes:
 // on:connect={js::live(qty, url::Levels, signal)}, live(cells, feed, signal) with cells.get(level.id)
 ```
 
-**Values the markup owns.** `html!` owns what it captures, so a value borrowed from one of them
-is computed inside the markup, with `let`:
+**Values the markup owns.** `html!` owns what it captures (a view lent to a prop,
+`action={&html! { .. }}`, borrows from the view around it instead), so a value borrowed from one
+of them is computed inside the markup, with `let`:
 
 ```rust,ignore
 let saved = cents.map(money);
@@ -527,6 +528,14 @@ make such a value a string. `corten::types` declares the classes and `rows()` in
 element and at least one hole, or the component does not compile. List the component in
 `App::components`; `rows()` and the classes are served as one module, mapped as
 `corten/views`, and only to apps with views.
+
+A view's class reaches `corten/views` from the component list the types test gives
+`Types::components`, so keep one list per feature (`pub const COMPONENTS: &[Component]`) and give
+it to both `App::components` and the types test. A view has a constant of its own even when it
+shares its owner's stylesheet (`#[component(view, css = Owner)]`), and `corten dev` names a
+rendered component that is not listed. `corten check` runs the tests before `tsc`, so a new view
+is declared before a script's import of it is checked; the types test fails once, saying it
+rewrote `types/app.d.ts`, and the next check passes.
 
 ## Live rows
 
