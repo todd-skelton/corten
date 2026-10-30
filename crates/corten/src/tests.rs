@@ -4073,4 +4073,45 @@ async fn an_area_or_an_answer_makes_the_referrer_policy_stricter_only() {
     let strict = App::new(referrer_url::router()).policy(Policy::new().referrer(Referrer::StrictOrigin)).router();
     let path = referrer_url::Relayed { policy: "same-origin" }.href();
     assert_eq!(referrer(&strict, &path).await, "no-referrer", "the least of the app's and the answer's");
+
+mod page_or_url {
+    #[route("/runs/{id}", get = page_or_run)]
+    pub struct Run<'a> {
+        pub id: &'a str,
+        pub said: Option<&'a str>,
+    }
+
+    #[route("/runs/{id}/download", post = page_or_download)]
+    pub struct Download<'a> {
+        pub id: &'a str,
+    }
+}
+
+async fn page_or_run(_: Params<page_or_url::Run<'_>>) -> &'static str {
+    "run"
+}
+
+/// The file for run 7, the run's page saying why for any other.
+async fn page_or_download(req: Req, Params(at): Params<page_or_url::Download<'_>>) -> crate::Result<crate::PageOr<crate::Media>> {
+    if at.id != "7" {
+        return Ok(req.redirect(&page_or_url::Run { id: &at.id, said: Some("stale") })?.into());
+    }
+    Ok(crate::Media::new("text/csv", "sku,qty\n").into())
+}
+
+/// A route that sends a file answers a redirect or a page instead when it refuses, as a page is:
+/// private, with the app's headers.
+#[tokio::test]
+async fn a_file_route_answers_a_page_when_it_refuses() {
+    let router = App::new(page_or_url::router()).router();
+    let (status, headers, body) = call_with(router.clone(), "POST", "/runs/7/download", None, None).await;
+    assert_eq!(
+        (status, headers[header::CONTENT_TYPE].to_str().unwrap(), body.as_str()),
+        (StatusCode::OK, "text/csv", "sku,qty\n")
+    );
+    let (status, headers, _) = call_with(router, "POST", "/runs/8/download", None, None).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/runs/8?said=stale");
+    assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache");
+    assert!(headers.contains_key(header::CONTENT_SECURITY_POLICY));
 }

@@ -400,6 +400,23 @@ async fn export(caller: Caller<Viewer>) -> corten::Result<Media> {
 }
 ```
 
+A download the handler may refuse (posted from a page, at the revision the page showed, when the
+run has moved on) answers `PageOr<Media>` (or `PageOr<Relay>` for another service's file): the
+file, or the page saying why, or a redirect to it, each `.into()` it. The user stays on the page
+with the reason instead of an error page, and the page is private like any other. The form is a
+plain `method="post"` form, not `data-patch`: the runtime draws a patch or a page, and a file
+answered to a `data-patch` submit is not saved (it dispatches `corten:error`). Inside `Public`,
+name the variant (`.map(PageOr::Page)`), since `.into()` cannot infer the type there.
+
+```rust,ignore
+async fn download(req: Req, at: Params<url::Download<'_>>, Form(form): Form<At>) -> corten::Result<PageOr<Media>> {
+    match claim(&at.id, form.revision).await {
+        Ok(csv) => Ok(Media::new("text/csv", csv).attachment("run.csv").into()),
+        Err(Stale) => Ok(req.redirect(&url::Run { id: &at.id, said: Some(Said::Stale) })?.into()),
+    }
+}
+```
+
 A browser cannot be given its files back by markup. A patch keeps the files chosen in the input
 it replaces until a successful answer, so the user can send them again. Without JavaScript the
 page asks for them again. A body that is not multipart is a 415, and one that breaks the format

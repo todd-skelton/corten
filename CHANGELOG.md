@@ -1002,6 +1002,10 @@ Corten is pre-1.0, so any minor version may change the API.
     post refused for a reason that is not a field (a stale revision, a step out of order) has no
     answer, so each screen draws its page and sets a 409 on the raw
     response](https://github.com/todd-skelton/corten/issues/438)).
+138. `PageOr<Media>` and `PageOr<Relay>`: a route that sends a file answers the page, or a redirect,
+    instead when it refuses (a download posted at a stale revision), each `.into()` the answer,
+    private like any page and `Public` with a page made for everyone
+    ([#415 A handler that answers a file cannot answer a page or a redirect when the file is refused](https://github.com/todd-skelton/corten/issues/415)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
