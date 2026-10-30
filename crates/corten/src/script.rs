@@ -493,6 +493,79 @@
 //! # fn main() {}
 //! ```
 //!
+//! A parameter typed by a declaration `corten::types` generated (`import("../types/app").Tab`)
+//! takes a value of the Rust type of that name in the component's module, so a call cannot pass
+//! another value, and a renamed variant fails to build:
+//!
+#![cfg_attr(feature = "json", doc = "```")]
+#![cfg_attr(not(feature = "json"), doc = "```ignore")]
+//! use corten::prelude::*;
+//!
+//! #[derive(Clone, Copy, ToJson)]
+//! #[serde(rename_all = "kebab-case")]
+//! enum Tab { Details, Offers }
+//!
+//! #[component(js)]
+//! fn TabBar() -> impl Render {
+//!     html! { <nav on:click={js::show(target, Tab::Offers)}></nav> }
+//! }
+//! # fn main() {
+//! assert!(TabBar {}.to_html().contains(r#"tab_bar.show($t,&quot;offers&quot;)"#), "{}", TabBar {}.to_html());
+//! # }
+//! ```
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[derive(Clone, Copy, ToJson)]
+//! enum Tab { Details, Offers }
+//!
+//! #[component(js)]
+//! fn TabBar() -> impl Render {
+//!     html! { <nav on:click={js::show(target, "offers")}></nav> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[derive(Clone, Copy, ToJson)]
+//! enum Tab { Details, Offers }
+//!
+//! #[component(js)]
+//! fn TabBar() -> impl Render {
+//!     html! { <nav on:click={js::show(target, 42)}></nav> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! A call to a handler whose parameter is a string literal union (`@param {"list" | "grid"} mode`)
+//! does not compile: the parameter would take any value. Such a name is a Rust enum with a
+//! generated declaration, as above. The script itself compiles, so an export that only other
+//! scripts import types its parameters as it needs:
+//!
+//! ```compile_fail,E0277
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn ModeSwitch() -> impl Render {
+//!     html! { <nav on:click={js::show(target, "list")}></nav> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! // The same script, its handler not called: it compiles.
+//! #[component(js)]
+//! fn ModeSwitch() -> impl Render {
+//!     html! { <nav></nav> }
+//! }
+//! # fn main() {}
+//! ```
+//!
 //! A typed event's handler on another event (`toggled` takes a `RowToggled`, a click is a
 //! `MouseEvent`):
 //!
@@ -1154,6 +1227,23 @@ pub trait Arg<P> {
     fn write_arg(&self, ctx: &__private::Ctx, out: &mut String);
 }
 
+/// What a handler parameter needs when its JSDoc type is one no call can be checked against (a set
+/// of names written as string literals, a generated declaration inside another type): nothing
+/// has it, so a call does not compile, and the handler's deprecation note says why. The handler
+/// itself compiles, so an export only other scripts import is the script's to type. It is sealed:
+/// nothing outside Corten can implement it either.
+#[diagnostic::on_unimplemented(
+    message = "the script types this handler parameter so that no call can be checked against it",
+    label = "the warning on this handler says why",
+    note = "a set of names is a Rust enum with a generated declaration, import(\"../types/app\").Name; a list or an optional one is a Rust type of its own"
+)]
+pub trait Refused: refused::Sealed {}
+
+mod refused {
+    /// Implemented by nothing, so [`super::Refused`] is not either.
+    pub trait Sealed {}
+}
+
 /// DOM element interfaces, named as in TypeScript's lib.dom.
 #[allow(clippy::upper_case_acronyms)]
 pub mod el {
@@ -1311,6 +1401,9 @@ pub mod ts {
     /// `#[route(..)]` says `rows = Level`. `Level` is the type of that name in the component's
     /// module. `subscribe()` reads the row type from it.
     pub struct FeedUrl<Row>(std::marker::PhantomData<Row>);
+    /// A type `corten::types` generated (`import("../types/app").SortBy`): the Rust type of that
+    /// name in the component's module, so a call passes one of its values and nothing else.
+    pub struct Generated<T>(std::marker::PhantomData<T>);
     /// `number`.
     pub enum Number {}
     /// `boolean`.
@@ -1919,6 +2012,20 @@ pub mod __private {
     impl<R: crate::Route + crate::route::__private::FeedRows<T>, T> Arg<ts::FeedUrl<T>> for R {
         fn write_arg(&self, ctx: &Ctx, out: &mut String) {
             <R as Arg<ts::String>>::write_arg(self, ctx, out)
+        }
+    }
+
+    /// A value of the Rust type a generated declaration was made from, as JSON.
+    #[cfg(feature = "json")]
+    impl<T: crate::json::ToJson> Arg<ts::Generated<T>> for T {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            crate::view::escape_into(&self.to_json(), out);
+        }
+    }
+    #[cfg(feature = "json")]
+    impl<T: crate::json::ToJson> Arg<ts::Generated<T>> for &T {
+        fn write_arg(&self, _: &Ctx, out: &mut String) {
+            crate::view::escape_into(&self.to_json(), out);
         }
     }
 
