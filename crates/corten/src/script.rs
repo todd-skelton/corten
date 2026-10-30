@@ -457,7 +457,8 @@
 //! takes a value of the Rust type of that name in the component's module, so a call cannot pass
 //! another value, and a renamed variant fails to build:
 //!
-//! ```
+#![cfg_attr(feature = "json", doc = "```")]
+#![cfg_attr(not(feature = "json"), doc = "```ignore")]
 //! use corten::prelude::*;
 //!
 //! #[derive(Clone, Copy, ToJson)]
