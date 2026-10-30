@@ -1,6 +1,5 @@
 /* Element defaults and the page's frame. The table's rules are next to it (src/listing_table.css). */
 *, *::before, *::after { box-sizing: border-box; }
-[hidden] { display: none !important; }
 :root {
   color-scheme: light dark;
   --ink: light-dark(#1b1d24, #e8e9ef);
