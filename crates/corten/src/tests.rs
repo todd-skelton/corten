@@ -1385,6 +1385,97 @@ struct Limits2 {
     lines: std::collections::BTreeMap<String, Line>,
 }
 
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Numbered {
+    #[fields(rows)]
+    #[serde(default)]
+    lines: std::collections::BTreeMap<u32, Line>,
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Counts {
+    note: String,
+    #[fields(map)]
+    #[serde(default)]
+    counts: std::collections::BTreeMap<u32, u32>,
+}
+
+/// One plain value per key (a count per SKU) is `map[key]`, read back by key, each with its own
+/// error.
+#[test]
+fn a_map_names_each_keys_value() {
+    let f = Counts::FIELDS;
+    assert_eq!(f.counts.at(&7).to_string(), "counts[7]");
+    let read: Counts = crate::form::from_bytes(b"counts%5B7%5D=3&note=x&counts%5B12%5D=0").expect("reads");
+    assert_eq!(read.counts.into_iter().collect::<Vec<_>>(), [(7, 3), (12, 0)]);
+    let err = crate::form::from_bytes::<Counts>(b"note=x&counts%5B7%5D=many").unwrap_err().to_string();
+    assert!(err.starts_with("counts[7]: invalid value"), "{err}");
+    let none: Counts = crate::form::from_bytes(b"note=x").expect("no keys: an empty map");
+    assert!(none.counts.is_empty() && none.note == "x");
+
+    let mut errors = Errors::new();
+    errors.add(f.counts.at(&7), "Not that many.");
+    let e = errors.within(LimitsFormId);
+    let field = f.counts.at(&7);
+    assert_eq!(
+        html! { <input name={field} {..e.aria(field)}> }.to_html(),
+        r#"<input name="counts[7]" aria-invalid="true" aria-describedby="limits-form-counts[7]-error">"#
+    );
+    assert!(!errors.has(f.counts.at(&12)));
+}
+
+#[derive(Debug, serde::Deserialize, Fields)]
+struct Search {
+    q: String,
+    go: Option<String>,
+}
+
+/// What a client sends is not trusted: a key sent another way than the form writes it is
+/// refused, a plain form's stray `x.y` keys are left alone as before groups, and many rows'
+/// errors cost each row its own lookup.
+#[test]
+fn rows_read_only_their_own_keys_and_scale_with_their_count() {
+    // `a` as `%61`, lowercase hex, a character the form would encode: each refused.
+    for key in ["%2561", "a%252cb", "a.b"] {
+        let body = format!("lines%5B{key}%5D.qty=1");
+        let err = crate::form::from_bytes::<Limits2>(body.as_bytes()).unwrap_err().to_string();
+        assert!(err.contains("the row's key is not"), "{key}: {err}");
+    }
+    let read: Limits2 = crate::form::from_bytes(b"lines%5Ba%252Cb%5D.qty=1").expect("the form's own encoding");
+    assert_eq!(read.lines["a,b"].qty, 1);
+
+    // An image button (`go.x`, `go.y`) and a stray `q.x` beside `q`: read as a plain form was.
+    let search: Search = crate::form::from_bytes(b"q=cards&q.x=1&go.x=3&go.y=4").expect("reads");
+    assert_eq!((search.q.as_str(), search.go), ("cards", None));
+
+    // Integer keys, written without allocating, and each row's errors found by its key.
+    let f = Numbered::FIELDS;
+    assert_eq!(f.lines.at(&7).qty.to_string(), "lines[7].qty");
+    let read: Numbered = crate::form::from_bytes(b"lines%5B7%5D.qty=2&lines%5B12%5D.qty=5").expect("reads");
+    assert_eq!((read.lines[&7].qty, read.lines[&12].qty), (2, 5));
+    let mut errors = Errors::new();
+    for row in 0..20_000u32 {
+        errors.add(f.lines.at(&row).qty, "Too many.");
+        errors.add(f.lines.at(&row).qty, "dropped: the row has one");
+    }
+    assert_eq!(errors.len(), 20_000);
+    assert_eq!(errors.get(f.lines.at(&19_999).qty), Some("Too many."));
+    assert!(!errors.has(f.lines.at(&20_000).qty));
+    assert!(errors.iter().next().is_some_and(|(name, _)| name == "lines[0].qty"));
+
+    // A group in a row: its own message id, and its key in the JSON clients get.
+    let mut errors = Errors::new();
+    let zip = Limits::FIELDS.domains.at(&Domain::SellerPortal).contact.zip;
+    errors.add(zip, "Five digits.");
+    let e = errors.within(LimitsFormId);
+    assert_eq!(
+        html! { {e.message(zip)} }.to_html(),
+        r#"<p class="field-error" id="limits-form-domains[seller-portal].contact.zip-error">Five digits.</p>"#
+    );
+    #[cfg(feature = "json")]
+    assert_eq!(serde_json::to_string(&errors).unwrap(), r#"{"domains[seller-portal].contact.zip":"Five digits."}"#);
+}
+
 #[test]
 fn field_names_follow_serde_and_reach_markup() {
     assert_eq!((SignUp::FIELDS.email.as_str(), SignUp::FIELDS.password.as_str()), ("email", "pw"));

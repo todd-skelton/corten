@@ -192,15 +192,20 @@ with `#[fields(group)]`. Its fields post under the field's name, `ship_to.street
 hold two of one type (where it ships from and to), each read into its own value as its own type (a
 number stays a number). A component draws the group once for every form that has one, given its
 names: `<AddressInputs f={f.ship_to} />`, where `f: AddressGroupFields` (the
-names of an `Address` put in a form as a group).
+names of an `Address` put in a form as a group; in a row it is `AddressRowGroupFields<'k>`, so a
+group drawn both at a form's top and in its rows takes a component for each). A group whose
+fields a form can all leave out (checkboxes, `Option`s) needs `#[serde(default)]` on the group's
+field as well, or it does not compile: a form that sends none of them would otherwise be refused.
 
 Rows of the same fields (one per API domain, a line of an intake, a shipment) are a map from each
 row's key to a `Fields` struct, `#[fields(rows)] #[serde(default)] domains: BTreeMap<Domain,
 DomainLimits>`. A row's field is named by its key, `f.domains.at(&row.domain).max_concurrent`,
 posted as `domains[seller-portal].max_concurrent`, so it is the key, not the row's place in the
 form, that puts each value in its row: a row the browser leaves out (its inputs disabled) leaves
-the others where they are, and an unchecked checkbox is `false` in its own row. `at` takes only
-the map's key type. An error on one row's field marks that input only, with its own message id
+the others where they are, and an unchecked checkbox is `false` in its own row. A row is in the
+map when the form sends any of its fields, so give each row one the browser always sends (a
+value, or a hidden input); a row of checkboxes alone, all unchecked, is not read at all. `at`
+takes only a reference to the map's key type. An error on one row's field marks that input only, with its own message id
 (`limits-domains[seller-portal].max_concurrent-error`):
 
 ```rust,ignore
@@ -222,7 +227,15 @@ errors.add(f.domains.at(&Domain::SellerPortal).max_concurrent, "At least 1.");
 
 A key is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, whose key is the word
 serde reads (`seller-portal`), so it reads back as the same variant. Its characters other than letters, digits, `-` and `_` are %-encoded in the name, so any text is
-a key. A row holds plain fields and groups. A group of groups, rows in a group and rows in a row
+a key, and a key sent any other way (`%61` for `a`) is refused, so one key cannot reach a row two
+ways. An integer key is read as a number, so `7` and `07` are the same row.
+
+One plain value per key (a count per SKU) is a map without a row struct:
+`#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>`. Each key's value is a field of its
+own, `f.counts.at(&sku)`, posted as `counts[sku]`, with its own error, and its keys follow the
+rules above.
+
+A row holds plain fields and groups. A group of groups, rows in a group and rows in a row
 do not compile, and neither does `#[serde(flatten)]`: a group is named under its field so two of
 one type cannot clash.
 

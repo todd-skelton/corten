@@ -917,9 +917,12 @@ Corten is pre-1.0, so any minor version may change the API.
     error on one row's field marks that input only, with its own message id. `at` takes only the
     map's key type (a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, by its word); a key's other characters
     are %-encoded. A group of groups, rows in a group or a row, and rows without a default do not
-    compile. `Form` and `corten::form::from_bytes` read both with Corten's own form reader. A
-    refused form of plain fields costs 1,491 instructions where it took 1,481 (three fields given
-    an error, marked and printed; callgrind, release build)
+    compile. `Form` and `corten::form::from_bytes` read both with Corten's own form reader. `#[fields(map)]
+    #[serde(default)] counts: BTreeMap<Sku, u32>` is one plain value per key, `f.counts.at(&sku)`,
+    posted as `counts[sku]`, with its own error. Plain forms pay for it: a refused form of three
+    plain fields (errors added, marked and printed) costs 3,128 instructions where it took 3,055,
+    and reading one costs 4,343 where it took 4,066 (callgrind, release build); a row's error is
+    found by its key, so many rows' errors do not cost each other
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
 ### Removed

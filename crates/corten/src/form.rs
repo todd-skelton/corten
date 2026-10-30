@@ -203,6 +203,29 @@
 //! struct Order { #[fields(rows)] #[serde(default)] lines: BTreeMap<u32, Line> }
 //! let _ = Order::FIELDS;
 //! ```
+//!
+//! A group whose fields a form can all leave out (checkboxes, `Option`s) needs a default of its
+//! own, or a form that sends none of them is refused:
+//!
+//! ```compile_fail,E0080
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Notices { #[serde(default)] email: bool, #[serde(default)] text: bool }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Account { name: String, #[fields(group)] notices: Notices }
+//! let _ = Account::FIELDS;
+//! ```
+//!
+//! ```
+//! # use corten::prelude::*;
+//! #[derive(serde::Deserialize, Fields, Default, PartialEq, Debug)]
+//! struct Notices { #[serde(default)] email: bool, #[serde(default)] text: bool }
+//! #[derive(serde::Deserialize, Fields)]
+//! struct Account { name: String, #[fields(group)] #[serde(default)] notices: Notices }
+//! let _ = Account::FIELDS;
+//! let read: Account = corten::form::from_bytes(b"name=Ada").unwrap();
+//! assert_eq!(read.notices, Notices::default());
+//! ```
 
 use std::fmt;
 
@@ -429,6 +452,11 @@ pub trait Place: Copy + PartialEq + std::hash::Hash + private::Sealed {
     fn is_kept(&self, at: &At) -> bool {
         self.kept() == *at
     }
+    /// The rows and key of a row's field, which [`Errors`] finds by an index.
+    #[doc(hidden)]
+    fn row(&self) -> Option<(&'static str, &(dyn RowKey + Sync))> {
+        None
+    }
 }
 
 mod private {
@@ -472,6 +500,11 @@ impl Place for Root {
 pub struct Group(&'static str);
 
 impl Place for Group {
+    fn render(&self, name: &'static str, out: &mut String) {
+        escape_into(self.0, out);
+        out.push('.');
+        escape_into(name, out);
+    }
     fn write(&self, name: &'static str, out: &mut String) {
         out.push_str(self.0);
         out.push('.');
@@ -494,26 +527,33 @@ pub struct Row<'k> {
 
 impl PartialEq for Row<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.rows == other.rows && self.key.key_text() == other.key.key_text()
+        let (mut a, mut b) = (KeyBuf::new(), KeyBuf::new());
+        self.rows == other.rows && self.key.key_text(&mut a) == other.key.key_text(&mut b)
     }
 }
 
 impl std::hash::Hash for Row<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (self.rows, self.key.key_text()).hash(state)
+        (self.rows, self.key.key_text(&mut KeyBuf::new())).hash(state)
     }
 }
 
 impl Place for Row<'_> {
+    fn render(&self, name: &'static str, out: &mut String) {
+        render_row(self.rows, self.key, "", name, out)
+    }
     fn write(&self, name: &'static str, out: &mut String) {
-        write_row(self.rows, &self.key.key_text(), out);
-        out.push_str(name);
+        write_row(self.rows, self.key.key_text(&mut KeyBuf::new()), out);
+        write_tail("", name, out);
     }
     fn kept(&self) -> At {
-        At::Row(self.rows, self.key.key_text().into(), "")
+        At::Row(self.rows, self.key.key_text(&mut KeyBuf::new()).into(), "")
     }
     fn is_kept(&self, at: &At) -> bool {
-        matches!(at, At::Row(rows, key, "") if *rows == self.rows && **key == *self.key.key_text())
+        matches!(at, At::Row(rows, key, "") if *rows == self.rows && **key == *self.key.key_text(&mut KeyBuf::new()))
+    }
+    fn row(&self) -> Option<(&'static str, &(dyn RowKey + Sync))> {
+        Some((self.rows, self.key))
     }
 }
 
@@ -538,26 +578,59 @@ impl std::hash::Hash for RowGroup<'_> {
 }
 
 impl Place for RowGroup<'_> {
+    fn render(&self, name: &'static str, out: &mut String) {
+        render_row(self.row.rows, self.row.key, self.group, name, out)
+    }
     fn write(&self, name: &'static str, out: &mut String) {
-        write_row(self.row.rows, &self.row.key.key_text(), out);
-        out.push_str(self.group);
-        out.push('.');
-        out.push_str(name);
+        write_row(self.row.rows, self.row.key.key_text(&mut KeyBuf::new()), out);
+        write_tail(self.group, name, out);
     }
     fn kept(&self) -> At {
-        At::Row(self.row.rows, self.row.key.key_text().into(), self.group)
+        At::Row(self.row.rows, self.row.key.key_text(&mut KeyBuf::new()).into(), self.group)
     }
     fn is_kept(&self, at: &At) -> bool {
-        matches!(at, At::Row(rows, key, group) if *rows == self.row.rows && *group == self.group && **key == *self.row.key.key_text())
+        matches!(at, At::Row(rows, key, group) if *rows == self.row.rows && *group == self.group && **key == *self.row.key.key_text(&mut KeyBuf::new()))
+    }
+    fn row(&self) -> Option<(&'static str, &(dyn RowKey + Sync))> {
+        Some((self.row.rows, self.row.key))
     }
 }
 
-/// `rows[key].`, the key %-encoded.
+/// `rows[key]`, the key %-encoded.
 fn write_row(rows: &str, key: &str, out: &mut String) {
     out.push_str(rows);
     out.push('[');
     encode_key(key, out);
-    out.push_str("].");
+    out.push(']');
+}
+
+/// `.name` after a row, or nothing for a map's value (`#[fields(map)]`, which has no name).
+fn write_tail(group: &str, name: &str, out: &mut String) {
+    if !group.is_empty() {
+        out.push('.');
+        out.push_str(group);
+    }
+    if !name.is_empty() {
+        out.push('.');
+        out.push_str(name);
+    }
+}
+
+/// `rows[key].group.name` for HTML: the names escaped, the key %-encoded (which leaves only
+/// characters HTML takes as they are), with nothing allocated.
+fn render_row(rows: &'static str, key: &(dyn RowKey + Sync), group: &'static str, name: &'static str, out: &mut String) {
+    escape_into(rows, out);
+    out.push('[');
+    encode_key(key.key_text(&mut KeyBuf::new()), out);
+    out.push(']');
+    if !group.is_empty() {
+        out.push('.');
+        escape_into(group, out);
+    }
+    if !name.is_empty() {
+        out.push('.');
+        escape_into(name, out);
+    }
 }
 
 /// Where a field an [`Errors`] keeps is, its row's key copied.
@@ -577,11 +650,7 @@ impl At {
             At::Group(group) => Group(group).write(name, out),
             At::Row(rows, key, group) => {
                 write_row(rows, key, out);
-                if !group.is_empty() {
-                    out.push_str(group);
-                    out.push('.');
-                }
-                out.push_str(name);
+                write_tail(group, name, out);
             }
         }
     }
@@ -603,35 +672,71 @@ fn encode_key(key: &str, out: &mut String) {
 
 /// A key of a [`Rows`] field, written in its fields' names as the form reads it back: text, an
 /// integer, or a `#[derive(UrlValue)]` enum (its word). A newtype key implements it as the value
-/// it wraps, and must read back from that text.
+/// it wraps (`self.0.key_text(buf)`), and must read back from that text.
 pub trait RowKey {
-    /// The key as text, as the form's field reads it back.
-    fn key_text(&self) -> std::borrow::Cow<'_, str>;
+    /// The key as text, as the form's field reads it back: its own text, or written into `buf`
+    /// when it has none stored (an integer), so naming a row allocates nothing.
+    fn key_text<'a>(&'a self, buf: &'a mut KeyBuf) -> &'a str;
+}
+
+/// Room for a [`RowKey`] with no text stored to write it: 40 bytes, the longest `i128`.
+pub struct KeyBuf {
+    bytes: [u8; 40],
+    len: usize,
+}
+
+impl KeyBuf {
+    pub fn new() -> Self {
+        KeyBuf { bytes: [0; 40], len: 0 }
+    }
+
+    /// Writes `value` (at most 40 bytes of it) and gives it back as text.
+    pub fn write(&mut self, value: impl fmt::Display) -> &str {
+        use fmt::Write;
+        self.len = 0;
+        let _ = write!(self, "{value}");
+        std::str::from_utf8(&self.bytes[..self.len]).unwrap_or_default()
+    }
+}
+
+impl Default for KeyBuf {
+    fn default() -> Self {
+        KeyBuf::new()
+    }
+}
+
+impl fmt::Write for KeyBuf {
+    fn write_str(&mut self, text: &str) -> fmt::Result {
+        let end = self.len + text.len();
+        self.bytes.get_mut(self.len..end).ok_or(fmt::Error)?.copy_from_slice(text.as_bytes());
+        self.len = end;
+        Ok(())
+    }
 }
 
 impl RowKey for String {
-    fn key_text(&self) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Borrowed(self)
+    fn key_text<'a>(&'a self, _: &'a mut KeyBuf) -> &'a str {
+        self
     }
 }
 
 impl RowKey for Box<str> {
-    fn key_text(&self) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Borrowed(self)
+    fn key_text<'a>(&'a self, _: &'a mut KeyBuf) -> &'a str {
+        self
     }
 }
 
 impl RowKey for &str {
-    fn key_text(&self) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Borrowed(self)
+    fn key_text<'a>(&'a self, _: &'a mut KeyBuf) -> &'a str {
+        self
     }
 }
 
 macro_rules! integer_keys {
     ($($t:ty),*) => {$(
         impl RowKey for $t {
-            fn key_text(&self) -> std::borrow::Cow<'_, str> {
-                std::borrow::Cow::Owned(self.to_string())
+            fn key_text<'a>(&'a self, buf: &'a mut KeyBuf) -> &'a str {
+                buf.write(self)
             }
         }
     )*};
@@ -655,6 +760,10 @@ pub trait Fields {
     /// 0 when it has no group and no rows, 1 when it has groups and no rows, 2 with rows.
     #[doc(hidden)]
     const SHAPE: u8;
+    /// Whether a form can send none of its fields (each an `Option` or `#[serde(default)]`): such
+    /// a group needs a default of its own.
+    #[doc(hidden)]
+    const LEAVE_OUT: bool;
     #[doc(hidden)]
     fn in_row<'k>(rows: &'static str, key: &'k (dyn RowKey + Sync)) -> Self::InRow<'k>;
 }
@@ -713,13 +822,52 @@ impl<K, V: Fields> Rows<K, V> {
     }
 
     /// The names of the row whose key is `key`: `f.domains.at(&Domain::SellerPortal).max_concurrent`
-    /// is `domains[seller-portal].max_concurrent`. It takes the map's key type (or what it
-    /// borrows as), so a key of another type does not compile.
-    pub fn at<'k, Q: RowKey + Sync>(&self, key: &'k Q) -> V::InRow<'k>
+    /// is `domains[seller-portal].max_concurrent`. It takes a reference to the map's key type
+    /// (`&row.domain`; for a `String` key, `&String`), so a key of another type does not compile.
+    pub fn at<'k>(&self, key: &'k K) -> V::InRow<'k>
     where
-        K: std::borrow::Borrow<Q>,
+        K: RowKey + Sync,
     {
         V::in_row(self.name, key)
+    }
+}
+
+/// A form field that is a map from a key to one plain value (`#[fields(map)]` on
+/// `BTreeMap<K, V>`): each key's value is a field of its own, `f.counts.at(&sku)`, posted as
+/// `counts[sku]`, with its own error.
+pub struct Keyed<K> {
+    name: &'static str,
+    key: std::marker::PhantomData<fn() -> K>,
+}
+
+impl<K> Clone for Keyed<K> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<K> Copy for Keyed<K> {}
+
+impl<K> fmt::Debug for Keyed<K> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Keyed({})", self.name)
+    }
+}
+
+impl<K> Keyed<K> {
+    /// Used by the code `#[derive(Fields)]` generates.
+    #[doc(hidden)]
+    pub const fn __new(name: &'static str) -> Self {
+        Keyed { name, key: std::marker::PhantomData }
+    }
+
+    /// The field of the key `key`: `f.counts.at(&sku)` is `counts[sku]`. It takes a reference to
+    /// the map's key type, so a key of another type does not compile.
+    pub fn at<'k>(&self, key: &'k K) -> FieldName<Row<'k>>
+    where
+        K: RowKey + Sync,
+    {
+        FieldName { at: Row { rows: self.name, key }, name: "" }
     }
 }
 
@@ -729,7 +877,14 @@ impl<K, V: Fields> Rows<K, V> {
 pub struct Errors {
     fields: Vec<(Kept, String)>,
     form: Option<String>,
+    /// Where each row's messages are in `fields`, by the rows' field and the row's key, so a form
+    /// with many rows finds a row's message without reading every other row's.
+    /// Made with the first row's message, so a form without rows builds and drops no map.
+    rows: Option<Box<RowIndex>>,
 }
+
+/// [`Errors`]' messages of rows: by the rows' field, then the row's key, where each is in the list.
+type RowIndex = std::collections::HashMap<&'static str, std::collections::HashMap<Box<str>, Vec<u32>>>;
 
 /// A [`FieldName`] an [`Errors`] keeps: where it is (its row's key copied) and its name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -768,6 +923,12 @@ impl PartialEq<str> for Named<'_> {
     }
 }
 
+impl PartialEq<&str> for Named<'_> {
+    fn eq(&self, text: &&str) -> bool {
+        *self == **text
+    }
+}
+
 impl<P: Place> PartialEq<FieldName<P>> for Named<'_> {
     fn eq(&self, field: &FieldName<P>) -> bool {
         self.0.is(field)
@@ -789,8 +950,33 @@ impl Errors {
 
     /// Records `message` for `field`, unless the field already has one.
     pub fn add<P: Place>(&mut self, field: FieldName<P>, message: impl Into<String>) {
-        if !self.has(field) {
-            self.fields.push((Kept::new(field), message.into()));
+        if self.find(&field).is_some() {
+            return;
+        }
+        if let Some((rows, key)) = field.at.row() {
+            let at = u32::try_from(self.fields.len()).unwrap_or(u32::MAX);
+            let mut buf = KeyBuf::new();
+            let key = key.key_text(&mut buf);
+            let row = self.rows.get_or_insert_with(Box::default).entry(rows).or_default();
+            match row.get_mut(key) {
+                Some(at_key) => at_key.push(at),
+                None => {
+                    row.insert(key.into(), vec![at]);
+                }
+            }
+        }
+        self.fields.push((Kept::new(field), message.into()));
+    }
+
+    /// Where `field`'s message is: a row's by the index, any other by reading the list (as long as
+    /// the form's own fields).
+    fn find<P: Place>(&self, field: &FieldName<P>) -> Option<usize> {
+        match field.at.row() {
+            None => self.fields.iter().position(|(f, _)| f.is(field)),
+            Some((rows, key)) => {
+                let at = self.rows.as_ref()?.get(rows)?.get(key.key_text(&mut KeyBuf::new()))?;
+                at.iter().map(|&i| i as usize).find(|&i| self.fields[i].0.is(field))
+            }
         }
     }
 
@@ -802,11 +988,11 @@ impl Errors {
     }
 
     pub fn get<P: Place>(&self, field: FieldName<P>) -> Option<&str> {
-        self.fields.iter().find(|(f, _)| f.is(&field)).map(|(_, m)| m.as_str())
+        self.find(&field).map(|i| self.fields[i].1.as_str())
     }
 
     pub fn has<P: Place>(&self, field: FieldName<P>) -> bool {
-        self.fields.iter().any(|(f, _)| f.is(&field))
+        self.find(&field).is_some()
     }
 
     /// The message about the whole form, from [`Errors::add_form`].
@@ -1107,8 +1293,11 @@ impl serde::Serialize for Errors {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
+        let mut name = String::new();
         for (field, message) in &self.fields {
-            map.serialize_entry(&field.to_string(), message)?;
+            name.clear();
+            field.at.write(field.name, &mut name);
+            map.serialize_entry(&name, message)?;
         }
         map.end()
     }

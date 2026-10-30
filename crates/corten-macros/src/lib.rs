@@ -196,6 +196,10 @@ fn fields(input: TokenStream) -> Result<String, String> {
         None => Default::default(),
     };
     let mut names = Vec::new();
+    // Whether a form can send none of its fields (each an `Option` or defaulted), and the groups
+    // with no default, which must not be such a struct.
+    let mut leave_out = true;
+    let mut bare_groups = Vec::new();
     // The `Files` fields (file inputs): nothing reads them, so the code below does.
     let mut files = Vec::new();
     for field in split_fields(body.stream()) {
@@ -257,9 +261,10 @@ fn fields(input: TokenStream) -> Result<String, String> {
                     ) {
                         files.push(id.to_string());
                     }
-                    if kind == Kind::Rows && !default {
+                    if matches!(kind, Kind::Rows | Kind::Map) && !default {
                         return Err(format!(
-                            "Fields: `{id}` is rows, and a form with none sends nothing for it; add #[serde(default)] so the form reads it as empty"
+                            "Fields: `{id}` is {}, and a form with none sends nothing for it; add #[serde(default)] so the form reads it as empty",
+                            if kind == Kind::Rows { "rows" } else { "a map" }
                         ));
                     }
                     if !default && kind == Kind::Plain {
@@ -285,13 +290,21 @@ fn fields(input: TokenStream) -> Result<String, String> {
             (None, Some(rule)) => apply_rule(&bare, rule)?,
             (None, None) => bare.clone(),
         };
+        leave_out &= default || is_option(&ty);
         let shape = match kind {
             Kind::Plain => Shape::Plain,
-            Kind::Group => Shape::Group(nested_type(&ident, &ty, "group")?),
+            Kind::Group => {
+                let group = nested_type(&ident, &ty, "group")?;
+                if !default {
+                    bare_groups.push((ident.clone(), group.clone()));
+                }
+                Shape::Group(group)
+            }
             Kind::Rows => {
                 let (key, row) = map_types(&ident, &ty)?;
                 Shape::Rows(key, row)
             }
+            Kind::Map => Shape::Map(map_types(&ident, &ty)?.0),
         };
         names.push((ident, wire, shape));
     }
@@ -321,13 +334,26 @@ fn fields(input: TokenStream) -> Result<String, String> {
                     format!("corten: `{ident}` is rows, and a row's fields are plain fields and groups, not rows")
                 );
             }
+            // Keyed like rows, so only at a form's top.
+            Shape::Map(_) => shape += " let shape = 2;",
         }
+    }
+    for (ident, ty) in &bare_groups {
+        shape += &format!(
+            " if <{ty} as ::corten::form::Fields>::LEAVE_OUT {{ ::core::panic!({:?}) }}",
+            format!("corten: `{ident}` is a group whose fields a form can all leave out (an unchecked checkbox sends nothing), so it can send none of them; add #[serde(default)] so the form reads it as its default")
+        );
     }
     for (suffix, lifetime, place, _) in places {
         let ty = format!("{name}{suffix}Fields");
+        let place_doc = match suffix {
+            "" => "",
+            "Group" => " as a group of another form (`#[fields(group)]`), what a component that draws the group takes",
+            "Row" => " in a row of another form (`#[fields(rows)]`)",
+            _ => " as a group in a row of another form, what a component that draws the group in a row takes",
+        };
         out += &format!(
-            "/// Form field names of [`{name}`], from `#[derive(Fields)]`.\n#[derive(Clone, Copy, Debug)]\n#[allow(dead_code)]\n{}{visibility} struct {ty}{lifetime} {{\n",
-            if suffix.is_empty() { "" } else { "#[doc(hidden)]\n" }
+            "/// Form field names of [`{name}`]{place_doc}, from `#[derive(Fields)]`.\n#[derive(Clone, Copy, Debug)]\n#[allow(dead_code)]\n{visibility} struct {ty}{lifetime} {{\n"
         );
         for (ident, _, kind) in &names {
             let field_ty = match (kind, suffix) {
@@ -337,7 +363,8 @@ fn fields(input: TokenStream) -> Result<String, String> {
                 // A group in a group or in a row's group: its names exist, but taking them is refused.
                 (Shape::Group(_), _) => "::corten::form::Refused".to_string(),
                 (Shape::Rows(k, r), "") => format!("::corten::form::Rows<{k}, {r}>"),
-                (Shape::Rows(..), _) => "::corten::form::Refused".to_string(),
+                (Shape::Map(k), "") => format!("::corten::form::Keyed<{k}>"),
+                (Shape::Rows(..) | Shape::Map(_), _) => "::corten::form::Refused".to_string(),
             };
             out += &format!("    pub {ident}: {field_ty},\n");
         }
@@ -356,8 +383,11 @@ fn fields(input: TokenStream) -> Result<String, String> {
                 (Shape::Group(g), "Row") => {
                     format!("<{g}>::__in_row_group(::corten::form::__private::row_group({at}, {wire:?}))")
                 }
-                (Shape::Group(_), _) | (Shape::Rows(..), "Group" | "Row" | "RowGroup") => "::corten::form::Refused".to_string(),
+                (Shape::Group(_), _) | (Shape::Rows(..) | Shape::Map(_), "Group" | "Row" | "RowGroup") => {
+                    "::corten::form::Refused".to_string()
+                }
                 (Shape::Rows(..), _) => format!("::corten::form::Rows::__new({wire:?})"),
+                (Shape::Map(_), _) => format!("::corten::form::Keyed::__new({wire:?})"),
             };
             fields += &format!("{ident}: {value}, ");
         }
@@ -386,6 +416,7 @@ impl {impl_generics} ::corten::form::Fields for {name} {type_generics} {where_cl
     type InRow<'k> = {name}RowFields<'k>;
     type InRowGroup<'k> = {name}RowGroupFields<'k>;
     const SHAPE: u8 = {{ {shape} shape }};
+    const LEAVE_OUT: bool = {leave_out};
     fn in_row<'k>(rows: &'static str, key: &'k (dyn ::corten::form::RowKey + ::core::marker::Sync)) -> {name}RowFields<'k> {{
         let _ = <Self as ::corten::form::Fields>::SHAPE;
         let at = ::corten::form::__private::row(rows, key);
@@ -402,6 +433,15 @@ impl {impl_generics} ::corten::form::Fields for {name} {type_generics} {where_cl
         );
     }
     Ok(out)
+}
+
+/// Whether a field's type is an `Option`, which a form may leave out.
+fn is_option(ty: &[TokenTree]) -> bool {
+    let name = ty.iter().take_while(|t| !matches!(t, TokenTree::Punct(p) if p.as_char() == '<')).filter_map(|t| match t {
+        TokenTree::Ident(id) => Some(id.to_string()),
+        _ => None,
+    });
+    name.last().as_deref() == Some("Option")
 }
 
 /// What a browser leaves out of the form when it has no value, for a field type that is a
@@ -427,6 +467,8 @@ enum Kind {
     Group,
     /// `#[fields(rows)]`: a map from a key to a struct of fields, named `field[key].name`.
     Rows,
+    /// `#[fields(map)]`: a map from a key to one plain value, named `field[key]`.
+    Map,
 }
 
 /// A field's names: one, a group's (its type), or rows' (the key's type and the row's).
@@ -434,6 +476,8 @@ enum Shape {
     Plain,
     Group(String),
     Rows(String, String),
+    /// `#[fields(map)]`: the key's type.
+    Map(String),
 }
 
 /// `#[fields(group)]` or `#[fields(rows)]`; `None` for another attribute.
@@ -444,11 +488,14 @@ fn fields_kind(attribute: &Group) -> Result<Option<Kind>, String> {
             match args.stream().to_string().trim() {
                 "group" => Ok(Some(Kind::Group)),
                 "rows" => Ok(Some(Kind::Rows)),
-                other => Err(format!("Fields: #[fields({other})] is not one; a field is #[fields(group)] or #[fields(rows)]")),
+                "map" => Ok(Some(Kind::Map)),
+                other => Err(format!(
+                    "Fields: #[fields({other})] is not one; a field is #[fields(group)], #[fields(rows)] or #[fields(map)]"
+                )),
             }
         }
         (Some(TokenTree::Ident(path)), _) if path.to_string() == "fields" => {
-            Err("Fields: write #[fields(group)] or #[fields(rows)]".into())
+            Err("Fields: write #[fields(group)], #[fields(rows)] or #[fields(map)]".into())
         }
         _ => Ok(None),
     }

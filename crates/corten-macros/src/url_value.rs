@@ -108,8 +108,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
         (
             "::corten::form::RowKey for",
             "#[inline]
-            fn key_text(&self) -> ::std::borrow::Cow<'_, ::core::primitive::str> {
-                ::std::borrow::Cow::Borrowed(::core::convert::AsRef::<::core::primitive::str>::as_ref(self))
+            fn key_text<'__a>(&'__a self, _: &'__a mut ::corten::form::KeyBuf) -> &'__a ::core::primitive::str {
+                ::core::convert::AsRef::<::core::primitive::str>::as_ref(self)
             }",
         ),
         (
