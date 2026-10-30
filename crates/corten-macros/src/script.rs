@@ -665,6 +665,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         format!("{what}: a value that is one of several names ({ty}) is a Rust enum the markup passes: derive ToJson and JsonSchema on it, add it with Types::add, and type it with its generated declaration, import(\"../types/app\").Name")
     };
     let mut groups = Vec::new();
+    let mut unions: Vec<(String, (usize, String))> = Vec::new();
     for Typedef { name, ty, mut props, doc, line } in typedefs {
         if let Some(fields) = object_literal(&ty) {
             props = fields;
@@ -683,8 +684,10 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         if !group {
             continue;
         }
+        // A set of names in a group is refused only when a handler takes the group: a typedef the
+        // script keeps for itself (its own state, with an element in it) is the script's to type.
         if let Some((field, ty)) = props.iter().find(|(_, t)| names_union(&expand(t))) {
-            return Err((line, union_error(&format!("{name}: {field}"), ty)));
+            unions.push((name.clone(), (line, union_error(&format!("{name}: {field}"), ty))));
         }
         if let Some((_, Param::Unreadable(why))) = fields.iter().find(|(_, p)| matches!(p, Param::Unreadable(_))) {
             return Err((line, why.clone()));
@@ -710,7 +713,14 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             if names_union(&expand(&ty)) {
                 return Err((line, union_error(&format!("{name}: {param}"), &ty)));
             }
-            let resolved = if groups.iter().any(|g| g.name == named) { Param::Group(named) } else { plain_type(&ty) };
+            let resolved = if groups.iter().any(|g| g.name == named) {
+                if let Some((_, (at, why))) = unions.iter().find(|(group, _)| *group == named) {
+                    return Err((*at, why.clone()));
+                }
+                Param::Group(named)
+            } else {
+                plain_type(&ty)
+            };
             if let Param::Unreadable(why) = resolved {
                 return Err((line, format!("{name}: {param}: {why}")));
             }
@@ -1216,6 +1226,11 @@ function helper() {}
         assert!(parse(mode).unwrap_err().1.contains("is a Rust enum the markup passes"), "an alias of a set, or null");
         let (fine, _) = parse("/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {string} s */\nexport function f(s) {}").unwrap();
         assert_eq!(fine[0].params[0].1, Param::Checked("ts::String".into()), "a typedef no handler takes is the script's");
+        // A script's own state with an element in it is a group only when a handler takes it.
+        let kept = "/** @typedef {{ from: \"a\" | \"b\", back: HTMLButtonElement }} Moving */\n/** @param {HTMLElement} el */\nexport function f(el) {}";
+        parse(kept).unwrap();
+        let taken = format!("{kept}\n/** @param {{Moving}} m */\nexport function g(m) {{}}");
+        assert!(parse(&taken).unwrap_err().1.contains("Moving: from"), "a group a handler takes");
     }
 
     #[test]
