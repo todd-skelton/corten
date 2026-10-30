@@ -953,6 +953,9 @@ mod tests {
         assert!(fr.item_listing_count(1_000_000_000_000_000_000u64).to_string().ends_with(" d’annonces"));
         assert!(fr.item_listing_count(1_000_000_000_000_000_001u64).to_string().ends_with(" annonces"));
         assert!(fr.item_listing_count(-1i64).to_string().ends_with("1 annonce"), "a negative count by its size");
+        assert!(fr.item_listing_count(u128::MAX).to_string().ends_with(" annonces"), "...211455 is other");
+        assert!(fr.item_listing_count(10u128.pow(30)).to_string().ends_with(" d’annonces"), "a multiple of a million");
+        assert!(fr.item_listing_count(i128::MIN).to_string().ends_with(" annonces"), "...105728 is other");
         // by_key takes a whole number of any length (u128, or digits from JSON).
         let huge = |count: &str| fr.by_key("item.listing_count", &[("count", count)]).map(|t| t.to_string());
         assert_eq!(huge("1000000000000000000000000").as_deref(), Some("1000000000000000000000000 d’annonces"));

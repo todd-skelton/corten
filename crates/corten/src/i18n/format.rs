@@ -220,18 +220,32 @@ pub trait Count: Number {
     fn magnitude(&self) -> u64;
 }
 
+/// A count's size as a category reads it: itself, or past `u64::MAX` its last six digits past a
+/// billion (CLDR's integer rules read no further, and a number that large is past every exact one).
+#[inline]
+fn magnitude(n: u128) -> u64 {
+    u64::try_from(n).unwrap_or(1_000_000_000 + (n % 1_000_000) as u64)
+}
+
 macro_rules! count {
     ($($t:ty),*) => {$(
         impl Count for $t {
             #[inline]
+            #[allow(clippy::unnecessary_cast)] // i128 as i128
             fn magnitude(&self) -> u64 {
-                // Every type here fits in an i128, and its magnitude in a u64.
-                (*self as i128).unsigned_abs() as u64
+                magnitude((*self as i128).unsigned_abs())
             }
         }
     )*};
 }
-count!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
+count!(i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, usize);
+
+impl Count for u128 {
+    #[inline]
+    fn magnitude(&self) -> u64 {
+        magnitude(*self)
+    }
+}
 
 impl<T: Count + ?Sized> Count for &T {
     #[inline]
