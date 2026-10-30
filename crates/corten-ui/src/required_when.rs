@@ -1,5 +1,7 @@
 use corten::{form::FieldName, prelude::*};
 
+use crate::ValueOf;
+
 /// Fields required only for some values of another field: a refund amount for a partial refund, a
 /// tracking number when the seller ships, a description for "Other". HTML's `required` is fixed
 /// when the page is drawn, so the platform cannot say this.
@@ -49,6 +51,24 @@ use corten::{form::FieldName, prelude::*};
 /// assert!(html.contains(r#"<fieldset data-on="connect:ui.required_when.connect($t,&quot;kind&quot;,[&quot;partial&quot;],$s)"><label>"#), "{html}");
 /// ```
 ///
+/// The values are the control's own: a word of its enum, text for a text field, or the `value` a
+/// checkbox (a `bool` field) sends, so a word of another field's enum does not compile:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// use corten_ui::RequiredWhen;
+///
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// enum Kind { Full, Partial }
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// enum Ship { Pickup, Post }
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Refund { kind: Kind, ship: Ship }
+///
+/// let html = html! { <RequiredWhen control={Refund::FIELDS.kind} values={&[Ship::Post]}>"Amount"</RequiredWhen> };
+/// ```
+///
 /// The control is a field of the form struct, so a misspelled name does not compile:
 ///
 /// ```compile_fail,E0308
@@ -58,7 +78,11 @@ use corten::{form::FieldName, prelude::*};
 /// let html = html! { <RequiredWhen control="kind" values={&["partial"]}>"Amount"</RequiredWhen> };
 /// ```
 #[component(js)]
-pub fn RequiredWhen<'a, V: AsRef<str>, C: Render>(control: FieldName, values: &'a [V], children: C) -> impl Render {
+pub fn RequiredWhen<'a, F, V: ValueOf<F> + AsRef<str>, C: Render>(
+    control: FieldName<F>,
+    values: &'a [V],
+    children: C,
+) -> impl Render {
     html! {
         <fieldset on:connect={js::connect(target, control.as_str(), values, signal)}>
             {children}

@@ -411,22 +411,67 @@ deref!(Form);
 /// prints it (`name={f.email}`) and [`Errors`] is keyed by it, so renaming or misspelling a field
 /// of the form struct is a compile error in both.
 ///
+/// `T` is the value the field's control sends: the field's type, without an `Option` or a `Vec`
+/// around it (`condition: Option<Condition>` is a `FieldName<Condition>`), so a control that takes
+/// a typed name (a picker of conditions, a submit key) cannot be given another field's. A field
+/// whose type uses the struct's own generics is [`Untyped`].
+///
 /// `P` is where the field is: the form itself ([`Root`], the default), a group
 /// (`f.ship_to.street`, posted `ship_to.street`) or a row of [`Rows`]
 /// (`f.domains.at(&Domain::SellerPortal).max_concurrent`, posted
 /// `domains[seller-portal].max_concurrent`). A form's own field is its name alone, so it costs
 /// what a `&'static str` does.
-#[derive(Clone, Copy)]
-pub struct FieldName<P = Root> {
+///
+/// ```
+/// use corten::prelude::*;
+///
+/// #[derive(Clone, Copy, PartialEq, UrlValue, serde::Deserialize)]
+/// enum Condition { Mint, Played }
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Sell { condition: Option<Condition>, #[serde(default)] tags: Vec<String> }
+///
+/// let condition: FieldName<Condition> = Sell::FIELDS.condition;
+/// let tags: FieldName<String> = Sell::FIELDS.tags;
+/// assert_eq!((condition.as_str(), tags.as_str()), ("condition", "tags"));
+/// assert_eq!(std::mem::size_of_val(&condition), std::mem::size_of::<&str>());
+/// ```
+///
+/// A name of one field's type is not another's:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Sell { price: u32, note: String }
+///
+/// let _: FieldName<u32> = Sell::FIELDS.note;
+/// ```
+pub struct FieldName<T = Untyped, P = Root> {
     at: P,
     name: &'static str,
+    value: std::marker::PhantomData<fn() -> T>,
 }
 
-impl FieldName<Root> {
+/// The value type of a [`FieldName`] that names none: a hand-written name, or a field whose type
+/// uses its struct's generics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Untyped {}
+
+impl<P: Copy, T> Clone for FieldName<T, P> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P: Copy, T> Copy for FieldName<T, P> {}
+
+impl<T> FieldName<T, Root> {
     /// Used by the code `#[derive(Fields)]` generates.
     #[doc(hidden)]
     pub const fn __new(name: &'static str) -> Self {
-        FieldName { at: Root, name }
+        FieldName { at: Root, name, value: std::marker::PhantomData }
     }
 
     /// The name as posted: `"email"`. A field of a group or a row is written, not stored: print
@@ -436,62 +481,69 @@ impl FieldName<Root> {
     }
 }
 
-impl<P: Place> FieldName<P> {
+impl<P: Place, T> FieldName<T, P> {
     /// Used by the code `#[derive(Fields)]` generates.
     #[doc(hidden)]
     pub const fn __at(at: P, name: &'static str) -> Self {
-        FieldName { at, name }
+        FieldName { at, name, value: std::marker::PhantomData }
+    }
+
+    /// The same name without its value type, for a component that keeps names of several types
+    /// in one place (a number field's, which takes any number).
+    #[doc(hidden)]
+    pub const fn __untyped(self) -> FieldName<Untyped, P> {
+        FieldName { at: self.at, name: self.name, value: std::marker::PhantomData }
     }
 }
 
 /// Whether this name is the field `text` names, as a form posts it: `f.email == "email"`.
-impl<P: Place> PartialEq<str> for FieldName<P> {
+impl<P: Place, T> PartialEq<str> for FieldName<T, P> {
     fn eq(&self, text: &str) -> bool {
         self.at.is_text(self.name, text)
     }
 }
 
-impl<P: Place> PartialEq<&str> for FieldName<P> {
+impl<P: Place, T> PartialEq<&str> for FieldName<T, P> {
     fn eq(&self, text: &&str) -> bool {
         self.at.is_text(self.name, text)
     }
 }
 
-impl<P: Place> PartialEq for FieldName<P> {
+impl<P: Place, T> PartialEq for FieldName<T, P> {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.at == other.at
     }
 }
 
-impl<P: Place> Eq for FieldName<P> {}
+impl<P: Place, T> Eq for FieldName<T, P> {}
 
-impl<P: Place> std::hash::Hash for FieldName<P> {
+impl<P: Place, T> std::hash::Hash for FieldName<T, P> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.at.hash(state);
         self.name.hash(state);
     }
 }
 
-impl<P: Place> fmt::Debug for FieldName<P> {
+impl<P: Place, T> fmt::Debug for FieldName<T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "FieldName({self})")
     }
 }
 
-impl<P: Place> fmt::Display for FieldName<P> {
+impl<P: Place, T> fmt::Display for FieldName<T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.at.display(self.name, f)
     }
 }
 
-impl<P: Place> Render for FieldName<P> {
+impl<P: Place, T> Render for FieldName<T, P> {
     #[inline]
     fn render(&self, out: &mut String) {
         self.at.render(self.name, out)
     }
 }
 
-impl<P: Place> AttrValue for FieldName<P> {
+impl<P: Place, T> AttrValue for FieldName<T, P> {
     #[inline]
     fn write_attr(&self, name: &str, out: &mut String) {
         quoted(name, self, out)
@@ -973,11 +1025,11 @@ impl<K> Keyed<K> {
 
     /// The field of the key `key`: `f.counts.at(&sku)` is `counts[sku]`. It takes a reference to
     /// the map's key type, so a key of another type does not compile.
-    pub fn at<'k>(&self, key: &'k K) -> FieldName<Row<'k>>
+    pub fn at<'k>(&self, key: &'k K) -> FieldName<Untyped, Row<'k>>
     where
         K: RowKey + Sync,
     {
-        FieldName { at: Row { rows: self.name, key }, name: "" }
+        FieldName { at: Row { rows: self.name, key }, name: "", value: std::marker::PhantomData }
     }
 }
 
@@ -1005,13 +1057,13 @@ struct Kept {
 }
 
 impl Kept {
-    fn new<P: Place>(field: FieldName<P>) -> Self {
+    fn new<P: Place, T>(field: FieldName<T, P>) -> Self {
         Kept { at: field.at.kept(), name: field.name }
     }
 
     /// Whether this is `field`: for a form's own field, a comparison of two names.
     #[inline]
-    fn is<P: Place>(&self, field: &FieldName<P>) -> bool {
+    fn is<P: Place, T>(&self, field: &FieldName<T, P>) -> bool {
         self.name == field.name && field.at.is_kept(&self.at)
     }
 }
@@ -1040,8 +1092,8 @@ impl PartialEq<&str> for Named<'_> {
     }
 }
 
-impl<P: Place> PartialEq<FieldName<P>> for Named<'_> {
-    fn eq(&self, field: &FieldName<P>) -> bool {
+impl<P: Place, T> PartialEq<FieldName<T, P>> for Named<'_> {
+    fn eq(&self, field: &FieldName<T, P>) -> bool {
         self.0.is(field)
     }
 }
@@ -1088,7 +1140,7 @@ impl Errors {
     }
 
     /// Records `message` for `field`, unless the field already has one.
-    pub fn add<P: Place>(&mut self, field: FieldName<P>, message: impl Into<String>) {
+    pub fn add<P: Place, T>(&mut self, field: FieldName<T, P>, message: impl Into<String>) {
         if self.find(&field).is_some() {
             return;
         }
@@ -1109,7 +1161,7 @@ impl Errors {
 
     /// Where `field`'s message is: a row's by the index, any other by reading the list of messages
     /// (one per field given one, rows' included).
-    fn find<P: Place>(&self, field: &FieldName<P>) -> Option<usize> {
+    fn find<P: Place, T>(&self, field: &FieldName<T, P>) -> Option<usize> {
         match field.at.row() {
             None => self.fields.iter().position(|(f, _)| f.is(field)),
             Some((rows, key)) => {
@@ -1157,11 +1209,11 @@ impl Errors {
         self.refusal
     }
 
-    pub fn get<P: Place>(&self, field: FieldName<P>) -> Option<&str> {
+    pub fn get<P: Place, T>(&self, field: FieldName<T, P>) -> Option<&str> {
         self.find(&field).map(|i| self.fields[i].1.as_str())
     }
 
-    pub fn has<P: Place>(&self, field: FieldName<P>) -> bool {
+    pub fn has<P: Place, T>(&self, field: FieldName<T, P>) -> bool {
         self.find(&field).is_some()
     }
 
@@ -1223,19 +1275,19 @@ impl<I: Id> Within<'_, I> {
     /// else nothing: `<input name={f.email} {..e.aria(f.email)}>`. A field with a hint of its own
     /// gives it here, `{..e.aria(f.email).hint(&EmailHintId)}`, and is described by the hint and
     /// then the error; a tag that writes `aria-describedby` itself as well does not compile.
-    pub fn aria<P: Place>(&self, field: FieldName<P>) -> Aria<'_, I, P> {
-        Aria { form: &self.form, field, invalid: self.errors.has(field), hint: None }
+    pub fn aria<P: Place, T>(&self, field: FieldName<T, P>) -> Aria<'_, I, P> {
+        Aria { form: &self.form, field: field.__untyped(), invalid: self.errors.has(field), hint: None }
     }
 
     /// `<p class="field-error" id="{form}-{field}-error">message</p>` when `field` has an error,
     /// else nothing: the element [`Within::aria`] points at.
-    pub fn message<P: Place>(&self, field: FieldName<P>) -> FieldMessage<'_, I, P> {
-        FieldMessage { form: &self.form, field, message: self.errors.get(field) }
+    pub fn message<P: Place, T>(&self, field: FieldName<T, P>) -> FieldMessage<'_, I, P> {
+        FieldMessage { form: &self.form, field: field.__untyped(), message: self.errors.get(field) }
     }
 }
 
 /// `{form}-{field}-error`, escaped for an attribute.
-fn message_id<P: Place>(form: &impl Id, field: FieldName<P>, out: &mut String) {
+fn message_id<P: Place>(form: &impl Id, field: FieldName<Untyped, P>, out: &mut String) {
     form.write_id(out);
     out.push('-');
     field.render(out);
@@ -1245,7 +1297,7 @@ fn message_id<P: Place>(form: &impl Id, field: FieldName<P>, out: &mut String) {
 /// The ARIA attributes of a form field, from [`Within::aria`].
 pub struct Aria<'a, I, P = Root> {
     form: &'a I,
-    field: FieldName<P>,
+    field: FieldName<Untyped, P>,
     invalid: bool,
     hint: Option<&'a dyn WriteId>,
 }
@@ -1297,7 +1349,7 @@ impl<I: Id, P: Place> Attrs for Aria<'_, I, P> {
 /// A field's error message, from [`Within::message`].
 pub struct FieldMessage<'a, I, P = Root> {
     form: &'a I,
-    field: FieldName<P>,
+    field: FieldName<Untyped, P>,
     message: Option<&'a str>,
 }
 
@@ -1359,13 +1411,24 @@ impl<I: Id, P: Place> Render for FieldMessage<'_, I, P> {
 /// idempotency key.
 ///
 /// [`corten_cluster`]: https://docs.rs/corten-cluster
+///
+/// It takes the name of a `SubmitKey` field, so another field's does not compile:
+///
+/// ```compile_fail,E0308
+/// use corten::prelude::*;
+///
+/// #[derive(serde::Deserialize, Fields)]
+/// struct Alert { email: String, submit: SubmitKey }
+///
+/// let _ = SubmitKey::field(Alert::FIELDS.email);
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SubmitKey(Box<str>);
 
 impl SubmitKey {
     /// The hidden input that carries a new key: `<input type="hidden" name=".." data-submit value="..">`.
-    pub fn field(name: FieldName) -> SubmitField {
-        SubmitField { name, key: uuid_v4(crate::security::random_hex()) }
+    pub fn field(name: FieldName<SubmitKey>) -> SubmitField {
+        SubmitField { name: name.__untyped(), key: uuid_v4(crate::security::random_hex()) }
     }
 
     /// The UUID, lowercase and hyphenated: `3f2504e0-4f89-41d3-9a0c-0305e82c3301`.
@@ -1663,8 +1726,8 @@ mod tests {
     #[test]
     fn serializes_as_an_object() {
         let mut e = Errors::new();
-        e.add(FieldName::__new("b"), "2");
-        e.add(FieldName::__new("a"), "1");
+        e.add(FieldName::<Untyped>::__new("b"), "2");
+        e.add(FieldName::<Untyped>::__new("a"), "1");
         assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"b":"2","a":"1"}"#);
     }
 }

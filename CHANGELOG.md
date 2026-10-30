@@ -1717,6 +1717,16 @@ Corten is pre-1.0, so any minor version may change the API.
     item
     ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
 
+92. Breaking: a form's `FieldName` carries the type its control sends, `FieldName<T = Untyped, P = Root>`
+    (`condition: Option<Condition>` is a `FieldName<Condition>`, an `Option` and a `Vec` taken off),
+    so a control given another field's name does not compile: corten-ui's `Picker::new` takes only a
+    field that reads its choices' type, `Number::new` only a field that reads a number,
+    `RequiredWhen` only values of its control's type (or text for a text field or a checkbox), and
+    `SubmitKey::field` only a `SubmitKey` field. `name={..}`, `Errors` and `Within` take a name of
+    any type as before, and a name is still the size of a `&str`, so nothing renders differently. An
+    app's own helper typed `FieldName` (now `FieldName<Untyped>`) takes a type parameter,
+    `fn hint<T>(f: FieldName<T>)`; a field whose type uses its struct's generics is `Untyped`
+    ([#358 A form's FieldName carries no type, so a Picker<Condition> can name another field](https://github.com/todd-skelton/corten/issues/358)).
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
    now keeps the 8 newest (dropped ones have their bodies cancelled) and fetches nothing when

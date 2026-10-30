@@ -164,7 +164,7 @@ pub use checkbox_group::CheckboxGroup;
 pub use combo_box::{Choice, ComboBox, Picker};
 pub use copy_button::{Copied, CopyButton};
 pub use menu_button::MenuButton;
-pub use number_field::{Number, NumberField, Step};
+pub use number_field::{Number, NumberField, Numeric, Step};
 pub use print_button::PrintButton;
 pub use relative_time::RelativeTime;
 pub use required_when::RequiredWhen;
@@ -188,6 +188,21 @@ pub const COMPONENTS: &[Component] = &[
     RequiredWhen,
     dialog::COMPONENT,
 ];
+
+/// A value a control of a field of type `F` sends: a value of the field's own type (its
+/// `UrlValue` enum, its number), or text for a text field (`String`) or a checkbox's `value` (a
+/// `bool` field, sent as `on` unless the box says otherwise). What [`Picker::new`] and
+/// [`RequiredWhen`] check their values against the field's name with.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a value the field reads (`{F}`)",
+    label = "a value of the field's own type",
+    note = "a field's values are its own type: `Kind::Partial` for `kind: Kind`, `42` for `line: i32`, or text for a text field or a checkbox"
+)]
+pub trait ValueOf<F> {}
+
+impl<V> ValueOf<V> for V {}
+impl ValueOf<String> for &str {}
+impl ValueOf<bool> for &str {}
 
 /// `"true"` or `"false"`, for ARIA states, which are text.
 pub(crate) fn state(on: bool) -> &'static str {

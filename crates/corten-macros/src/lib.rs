@@ -307,7 +307,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
         }
         leave_out &= default || is_files || is_option(&ty);
         let shape = match kind {
-            Kind::Plain => Shape::Plain,
+            Kind::Plain => Shape::Plain(value_type(&ty, &type_generics)),
             Kind::Group => {
                 no_option(&ident, &ty, "group")?;
                 let group = nested_type(&ident, &ty, "group")?;
@@ -337,7 +337,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
     let mut shape = String::from("let shape = 0u8;");
     for (ident, _, kind) in &names {
         match kind {
-            Shape::Plain => {}
+            Shape::Plain(_) => {}
             Shape::Group(ty) => {
                 shape += &format!(
                     " if <{ty} as ::corten::form::Fields>::SHAPE != 0 {{ ::core::panic!({:?}) }} let shape = if shape < 1 {{ 1 }} else {{ shape }};",
@@ -369,11 +369,11 @@ fn fields(input: TokenStream) -> Result<String, String> {
             _ => " as a group in a row of another form, what a component that draws the group in a row takes",
         };
         out += &format!(
-            "/// Form field names of [`{name}`]{place_doc}, from `#[derive(Fields)]`.\n#[derive(Clone, Copy, Debug)]\n#[allow(dead_code)]\n{visibility} struct {ty}{lifetime} {{\n"
+            "/// Form field names of [`{name}`]{place_doc}, from `#[derive(Fields)]`.\n#[derive(Clone, Copy, Debug)]\n#[allow(dead_code, private_interfaces)]\n{visibility} struct {ty}{lifetime} {{\n"
         );
         for (ident, _, kind) in &names {
             let field_ty = match (kind, suffix) {
-                (Shape::Plain, _) => format!("::corten::form::FieldName<{place}>"),
+                (Shape::Plain(value), _) => format!("::corten::form::FieldName<{value}, {place}>"),
                 (Shape::Group(g), "") => format!("<{g} as ::corten::form::Fields>::InGroup"),
                 (Shape::Group(g), "Row") => format!("<{g} as ::corten::form::Fields>::InRowGroup<'k>"),
                 // A group in a group or in a row's group: its names exist, but taking them is refused.
@@ -393,8 +393,8 @@ fn fields(input: TokenStream) -> Result<String, String> {
         let mut fields = String::new();
         for (ident, wire, kind) in &names {
             let value = match (kind, suffix) {
-                (Shape::Plain, "") => format!("::corten::form::FieldName::__new({wire:?})"),
-                (Shape::Plain, _) => format!("::corten::form::FieldName::__at({at}, {wire:?})"),
+                (Shape::Plain(_), "") => format!("::corten::form::FieldName::__new({wire:?})"),
+                (Shape::Plain(_), _) => format!("::corten::form::FieldName::__at({at}, {wire:?})"),
                 (Shape::Group(g), "") => format!("<{g}>::__in_group(::corten::form::__private::group({wire:?}))"),
                 (Shape::Group(g), "Row") => {
                     format!("<{g}>::__in_row_group(::corten::form::__private::row_group({at}, {wire:?}))")
@@ -451,6 +451,44 @@ impl {impl_generics} ::corten::form::Fields for {name} {type_generics} {where_cl
     Ok(out)
 }
 
+/// The value a plain field's control sends, as the type its `FieldName` carries: the field's type
+/// without an `Option` and then a `Vec` around it. A type that uses the struct's generics (or a
+/// lifetime) cannot be named in the names' struct, which has none, so it is `Untyped`.
+fn value_type(ty: &[TokenTree], type_generics: &str) -> String {
+    let mut ty = ty.to_vec();
+    for wrapper in ["Option", "Vec"] {
+        let open = ty.iter().position(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == '<'));
+        let last_name = ty[..open.unwrap_or(ty.len())].iter().rev().find_map(|t| match t {
+            TokenTree::Ident(id) => Some(id.to_string()),
+            _ => None,
+        });
+        let closes = matches!(ty.last(), Some(TokenTree::Punct(p)) if p.as_char() == '>');
+        if let (Some(open), Some(name), true) = (open, last_name, closes) {
+            if name == wrapper {
+                ty = ty[open + 1..ty.len() - 1].to_vec();
+            }
+        }
+    }
+    let generics: Vec<String> =
+        type_generics.split(|c: char| !(c.is_alphanumeric() || c == '_')).filter(|w| !w.is_empty()).map(str::to_string).collect();
+    let uses_generics = |stream: &[TokenTree]| -> bool {
+        fn walk(t: &TokenTree, generics: &[String]) -> bool {
+            match t {
+                TokenTree::Punct(p) => p.as_char() == '\'',
+                TokenTree::Ident(id) => generics.iter().any(|g| *g == id.to_string()) || id.to_string() == "Self",
+                TokenTree::Group(g) => g.stream().into_iter().any(|t| walk(&t, generics)),
+                TokenTree::Literal(_) => false,
+            }
+        }
+        stream.iter().any(|t| walk(t, &generics))
+    };
+    if ty.is_empty() || uses_generics(&ty) {
+        "::corten::form::Untyped".into()
+    } else {
+        ty.into_iter().collect::<TokenStream>().to_string()
+    }
+}
+
 /// Whether a field's type is an `Option`, which a form may leave out.
 fn is_option(ty: &[TokenTree]) -> bool {
     let name = ty.iter().take_while(|t| !matches!(t, TokenTree::Punct(p) if p.as_char() == '<')).filter_map(|t| match t {
@@ -489,7 +527,8 @@ enum Kind {
 
 /// A field's names: one, a group's (its type), or rows' (the key's type and the row's).
 enum Shape {
-    Plain,
+    /// A plain field, and the type of the value its control sends.
+    Plain(String),
     Group(String),
     Rows(String, String),
     /// `#[fields(map)]`: the key's type.

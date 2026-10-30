@@ -33,16 +33,46 @@ pub struct Step<'a> {
     pub content: &'a dyn Render,
 }
 
+/// A number a form field reads, which [`Number::new`] takes the name of. Sealed.
+#[diagnostic::on_unimplemented(
+    message = "a number field's name is a field that reads a number, not `{Self}`",
+    label = "this field does not read a number"
+)]
+pub trait Numeric: sealed::Sealed {}
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+macro_rules! numeric {
+    ($($t:ty),*) => {$(
+        impl Numeric for $t {}
+        impl sealed::Sealed for $t {}
+    )*};
+}
+numeric!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64);
+
 const MINUS: &str = "\u{2212}";
 const PLUS: &str = "+";
 static NO_ATTRS: [(&str, bool); 0] = [];
 
 impl<'a> Number<'a> {
-    /// A field with no value, no bounds, a step of 1 and buttons showing − and +.
-    pub fn new(id: &'a str, name: FieldName, decrease: &'a str, increase: &'a str) -> Self {
+    /// A field with no value, no bounds, a step of 1 and buttons showing − and +, for a field that
+    /// reads a number (`qty: u32`, `weight: Option<f64>`): another field's name does not compile.
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::prelude::*;
+    /// use corten_ui::Number;
+    ///
+    /// #[derive(serde::Deserialize, Fields)]
+    /// struct Order { qty: u32, note: String }
+    ///
+    /// let _ = Number::new("note", Order::FIELDS.note, "Fewer", "More");
+    /// ```
+    pub fn new<T: Numeric>(id: &'a str, name: FieldName<T>, decrease: &'a str, increase: &'a str) -> Self {
         Number {
             id,
-            name,
+            name: name.__untyped(),
             value: None,
             min: None,
             max: None,
