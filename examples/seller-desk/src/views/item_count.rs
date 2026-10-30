@@ -13,7 +13,7 @@ pub struct ItemCountId;
 pub fn ItemCount(t: Msg, count: usize) -> impl Patch {
     html! {
         <p id={ItemCountId} class={Count}>
-            if count == 1 { {t.grid_items_one(t.number(count))} } else { {t.grid_items_other(t.number(count))} }
+            {t.grid_items(count)}
         </p>
     }
 }
