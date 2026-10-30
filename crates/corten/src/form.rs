@@ -250,10 +250,9 @@ pub struct Errors {
 }
 
 /// Why a submit was refused, which [`Req::invalid`](crate::Req::invalid) answers with its status.
-/// A closed set: a refusal is the client's to fix, so it is a 4xx, and a 2xx or a 5xx does not
-/// compile.
+/// A closed set: a refusal is the client's to fix, so it is a 4xx, and a 2xx or a 5xx (or any
+/// `StatusCode`) does not compile.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum Refusal {
     /// 422: the input breaks a rule ([`Errors::add`], [`Errors::add_form`]).
     #[default]
@@ -297,8 +296,9 @@ impl Errors {
         self.form.get_or_insert_with(|| message.into());
     }
 
-    /// Refuses the submit for the state it was made against, not its input: the form's message,
-    /// as [`Errors::add_form`] records it, answered with the refusal's status (409 for
+    /// Refuses the submit for the state it was made against, not its input: the form's message
+    /// (in place of one [`Errors::add_form`] recorded, so the status and the message agree),
+    /// answered with the refusal's status (409 for
     /// [`Refusal::Conflict`]) by [`Req::invalid`](crate::Req::invalid) in every mode. The form
     /// is drawn again with what the user typed and the message at its top.
     ///
@@ -319,7 +319,7 @@ impl Errors {
     /// ```
     pub fn refuse(&mut self, why: Refusal, message: impl Into<String>) {
         self.refusal = why;
-        self.add_form(message);
+        self.form = Some(message.into());
     }
 
     /// Why the submit was refused: [`Refusal::Invalid`] unless [`Errors::refuse`] said otherwise.
@@ -643,8 +643,9 @@ impl serde::Serialize for Errors {
     }
 }
 
-/// 422 Unprocessable Content with the Problem Details document (RFC 9457) every JSON failure
-/// has, plus the fields as an extension member:
+/// 422 Unprocessable Content (or the status of [`Errors::refuse`]'s refusal, 409 for a stale
+/// state) with the Problem Details document (RFC 9457) every JSON failure has, plus the fields
+/// as an extension member:
 /// `{"title":"Unprocessable Entity","status":422,"detail":"email: Enter an email address.","fields":{"email":"Enter an email address."}}`.
 /// A message about the whole form comes first in `detail` and is `form` too:
 /// `{"title":"Unprocessable Entity","status":422,"detail":"Sold out.","form":"Sold out.","fields":{}}`.
@@ -691,6 +692,18 @@ mod tests {
 
     #[derive(crate::view::Id)]
     struct SignupId;
+
+    #[test]
+    fn a_refusal_replaces_the_form_message_so_status_and_message_agree() {
+        let mut e = Errors::new();
+        e.add_form("Pick a date after today.");
+        e.refuse(Refusal::Conflict, "Someone saved first.");
+        assert_eq!((e.refusal(), e.form()), (Refusal::Conflict, Some("Someone saved first.")));
+        e.refuse(Refusal::Gone, "The sheet was deleted.");
+        assert_eq!((e.refusal().status().as_u16(), e.form()), (410, Some("The sheet was deleted.")));
+        e.add_form("later");
+        assert_eq!(e.form(), Some("The sheet was deleted."), "add_form keeps the first, as before");
+    }
 
     #[test]
     fn a_field_keeps_its_first_message_and_order_is_kept() {

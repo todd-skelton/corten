@@ -1,6 +1,6 @@
 use corten::prelude::*;
 
-use crate::{Link, Url};
+use corten::Href;
 
 /// One item of a [`MenuButton`]'s menu.
 pub struct MenuItem<'a, L: Render> {
@@ -10,7 +10,7 @@ pub struct MenuItem<'a, L: Render> {
     /// without) are each a reference, `MenuItem::<&dyn Render> { label: &t.archive(n), .. }`.
     pub label: L,
     /// Where it goes, or with `post`, where it posts.
-    pub link: &'a dyn Link,
+    pub link: &'a dyn Href,
     /// `true`: the item is a form action (`<form method="post" data-patch>`), so it can change
     /// something and the server answers with patches, a page or a redirect. `false`: a link.
     pub post: bool,
@@ -75,11 +75,11 @@ pub fn MenuButton<'a, L: Render, I: Render>(id: &'a str, label: L, items: &'a [M
             >
                 for i in items {
                     if i.post {
-                        <form method="post" action={Url(i.link)} data-patch>
+                        <form method="post" action={i.link} data-patch>
                             <button ref={item as HTMLElement} role="menuitem" on:click={js::used(menu)}>{i.label}</button>
                         </form>
                     } else {
-                        <a ref={item as HTMLElement} role="menuitem" href={Url(i.link)} on:click={js::used(menu)}>{i.label}</a>
+                        <a ref={item as HTMLElement} role="menuitem" href={i.link} on:click={js::used(menu)}>{i.label}</a>
                     }
                 }
             </div>
