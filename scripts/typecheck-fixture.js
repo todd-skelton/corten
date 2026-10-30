@@ -30,7 +30,13 @@ export function connect(signal, stocks) {
 /** @param {FeedUrl<Stock>} stocks @param {FeedUrl<Level>} levels @param {string} url */
 export function follow(stocks, levels, url) {
   subscribe(stocks, {
-    snapshot: (rows) => rows.map((row) => row.name),
+    snapshot: (rows, seq, epoch) => {
+      rows.map((row) => row.name);
+      // The generation is a string: a seq is only comparable within one.
+      // @ts-expect-error
+      epoch.toFixed();
+      return seq.toFixed() + epoch.length;
+    },
     patch: (changes) => {
       for (const change of changes) {
         // @ts-expect-error A removal carries no value; the row type flows into patches.
