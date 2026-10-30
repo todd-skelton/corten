@@ -109,7 +109,7 @@ argument; choose the fallback). Never write a `match` from key strings to method
 Numbers, money and dates come from `t` too, never `format!` or a `"%"` of your own: `t.number(n)`,
 `t.percent(Decimal::new(bps, 4), 2)` (a ratio, at most 2 fraction digits; `t.change(..)` for a move, `+0.60%`), `t.money(Minor(cents),
 USD)` or `t.money(Decimal::parse(&api.amount)?, USD)` (`const USD: Currency = Currency::new("USD")`;
-never a float), `t.date(at, DateStyle::Medium)` (or `MonthStyle::Long` for `March 2026`), `t.time(at, TimeStyle::Short)` and
+never a float), `t.date(at, DateStyle::Medium)` (or `MonthStyle::Long` for `March 2026`, `DayStyle::Short` for `Mar 2`; never a month table of the app's), `t.time(at, TimeStyle::Short)` and
 `t.date_time(at, DateStyle::Medium, TimeStyle::Short)` (UTC unless `.zone(..)`;
 `corten::i18n::parse_timestamp` reads an API's RFC 3339 text). A time relative to now ("in 10
 hours") is `t.relative(at, now, RelativeStyle::Long)` inside `corten_ui::RelativeTime`, which
