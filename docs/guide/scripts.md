@@ -461,6 +461,14 @@ export function select(link, body) {
 }
 ```
 
+A view's class reaches `corten/views` from the component list the types test gives
+`Types::components`, so keep one list per feature (`pub const COMPONENTS: &[Component]`) and give
+it to both `App::components` and the types test. A view has a constant of its own even when it
+shares its owner's stylesheet (`#[component(view, css = Owner)]`), and `corten dev` names a
+rendered component that is not listed. `corten check` runs the tests before `tsc`, so a new view
+is declared before a script's import of it is checked; the types test fails once, saying it
+rewrote `types/app.d.ts`, and the next check passes.
+
 Views are not a second way to handle events: the markup calls handlers with `on:` as everywhere
 else, and a handler that gets the list's parent (and the `<template>`, to make new rows) calls
 `rows(body, Row, template)`:
