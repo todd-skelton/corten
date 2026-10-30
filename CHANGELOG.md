@@ -952,6 +952,16 @@ Corten is pre-1.0, so any minor version may change the API.
     changes or take the other tab's deck, and a save that could not be sent, or whose answer was lost, is sent again with its submit key.
     Without JavaScript the same page posts the deck, and the filter and sort are links and a GET
     form ([#336 No example shows a rich client-side screen: a deck builder](https://github.com/todd-skelton/corten/issues/336)).
+132. `t.signed_money(amount, currency)` and `t.js().signed_money(currency)`: an amount with its
+    sign, as Intl's `signDisplay: "exceptZero"` writes it (`+$3.20`, `-$1.23`, `$0.00`, `+3,20 $US`),
+    for a difference between two amounts, the same on the server and in scripts. It uses the
+    locale data already shipped: a gain is the loss's template with the plus sign in place of the
+    minus, which `scripts/locale-data.mjs` checks against Intl for every locale and currency
+    (`docs/guide/views.md`, `docs/guide/scripts.md`). `t.money` itself is unchanged: about 934
+    instructions per amount before and after under callgrind (three runs each of 1,200 less 200
+    formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
+    minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
+    ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

@@ -42,9 +42,9 @@ for (const [tag, kind, input, expected] of rows("cases.tsv")) {
     const format = formatter(specs.get(`${tag} ${what} ${style}`));
     check(`${tag} ${what} ${style} ${input}`, format(input), expected);
     if (String(Number(input)) === input) check(`${tag} ${what} ${style} ${input} (a number)`, format(Number(input)), expected);
-  } else if (what === "money") {
+  } else if (what === "money" || what === "signed_money") {
     const [amount, code] = input.split(" ");
-    const spec = specs.get(`${tag} money ${code}`);
+    const spec = specs.get(`${tag} ${what} ${code}`);
     const cents = minor(amount, /** @type {number} */ (spec.d));
     if (cents !== null) check(`${tag} money ${input}`, formatter(spec)(cents), expected);
   } else {
