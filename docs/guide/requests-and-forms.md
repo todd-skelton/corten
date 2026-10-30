@@ -231,8 +231,10 @@ be a standard, with a rule for a request that sends both.
 
 When a `data-patch` submit gets no answer the runtime can draw, it dispatches `corten:error` on
 the form (it bubbles), with `detail.status`: the answer's status (a proxy's 502 page), or 0 when
-there was none or its body was cut off (`detail.error` says why). The form keeps what the user
-typed and, below 500, its key, so the page can say so and the user can send it again. A script
+there was none or its body was cut off (`detail.error` says why). A submit abandoned for a newer
+one or a navigation dispatches nothing. The form keeps what the user typed, so the page can say
+what happened and the user can send it again: with the same key after a 5xx or no whole answer,
+and with a new one after a whole answer below 500, as above. A script
 that needs what the server decided on a submit that did draw (saved at version 4, refused,
 stale) gets it from the answer itself; see [Typed events](scripts.md#typed-events).
 
