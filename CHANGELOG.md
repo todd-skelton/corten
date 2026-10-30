@@ -1514,6 +1514,11 @@ Corten is pre-1.0, so any minor version may change the API.
     `corten check` runs it in place of its own `cargo fmt --check`. Given paths, or outside a
     package, `corten fmt` still lays out only the markup
     ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
+82. `ReadAgain::from` takes the route by value as well as by reference (a borrowed route is a
+    `Route`), so a component that is both part of the page and the patch builds the read in its body
+    instead of failing with E0515 or E0597 ([#440 ReadAgain::from borrows its route, so a component
+    that is both part of the page and the patch cannot build the read in its body (E0515,
+    E0597)](https://github.com/todd-skelton/corten/issues/440)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
