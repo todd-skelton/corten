@@ -1595,10 +1595,12 @@ async function patchSubmit(event) {
     // A whole answer below 500 is definitive: the write applied or was refused, and the form gets
     // a new key. A 5xx (a 502 from a proxy can hide a committed write), a network error, an abort
     // or a body cut off on the way keeps the key, so a retry is the same submission.
-    const answered = res.status < 500;
+    // Only the submit still in flight for the form renews its key: a newer one of the same form
+    // (which aborted this one) went with this key, and its answer is still to come.
+    const renew = () => res.status < 500 && submits.get(form)?.controller === controller && renewSubmitKeys(form);
     const location_ = res.headers.get("corten-location");
     if (location_) {
-      if (answered) renewSubmitKeys(form);
+      renew();
       submits.delete(form);
       if (navigation) navigation.navigate(location_, { info: { [LOAD]: true } });
       else {
@@ -1609,17 +1611,20 @@ async function patchSubmit(event) {
         if (same) location.reload();
       }
     } else if (res.headers.has("corten-page") && shellChanged(res)) {
-      if (answered) renewSubmitKeys(form);
+      renew();
       location.reload();
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
       const body = await res.text();
-      if (answered) renewSubmitKeys(form);
+      renew();
       signal.throwIfAborted();
       await (res.headers.has("corten-patch") ? apply(body, signal, sent, res.ok) : swapPage(body, signal));
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
     } else {
-      if (answered) renewSubmitKeys(form);
+      // An answer the runtime does not draw is whole once its body has arrived too.
+      await res.arrayBuffer();
+      signal.throwIfAborted();
+      renew();
       formCall(form, "dispatchEvent", new CustomEvent("corten:error", { bubbles: true, detail: { status: res.status } }));
     }
   } catch (error) {

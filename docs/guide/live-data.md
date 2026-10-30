@@ -159,10 +159,11 @@ page that is open.
 `snapshot` also gets the write's `seq` and the feed's generation, `epoch` (`Feed::generation`).
 A script that uses the feed's `seq` as a version (the deck builder sends it with a save, so a save
 built on an older deck is refused) compares the pair: `seq` only counts writes within one
-generation, and after a restart (a `Feed::new` feed) or a `reset` to another log the new `seq`
-may be lower, equal or higher than one the page holds without being the same deck. Render the
-generation next to the version, and treat a snapshot from another generation as news whatever its
-`seq`.
+generation, and after a restart (a `Feed::new` feed) the new `seq` may be lower, equal or higher
+than one the page holds without being the same deck. Render the generation next to the version,
+and treat a snapshot from another generation as news whatever its `seq`. `reset` keeps the
+generation, so a feed that starts following another log is a new `Feed::follow` with that log's
+generation, not a `reset`.
 
 Feed guarantees: every `write` is one numbered patch carrying the final value of each row it
 touched, encoded once and sent as the same bytes to every subscriber. A snapshot is serialized

@@ -1908,10 +1908,11 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
     `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
     ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
-70. A `data-patch` form's `SubmitKey` is renewed once the whole answer has arrived, not when its
-    headers do: an answer whose body was cut off on the way dispatches `corten:error` with status
-    0 and keeps the key, so the retry is the same submission and a committed write does not apply
-    twice.
+70. A `data-patch` form's `SubmitKey` is renewed once the whole answer has arrived (a patch, a
+    page, or one the runtime does not draw), not when its headers do: an answer whose body was cut
+    off on the way dispatches `corten:error` with status 0 and keeps the key, so the retry is the
+    same submission and a committed write does not apply twice. An older submit that a newer one
+    of the same form aborted no longer renews the key the newer one was sent with.
 
 ### Documentation
 
