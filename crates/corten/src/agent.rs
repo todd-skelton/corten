@@ -361,6 +361,18 @@ mod tests {
     #[derive(serde::Deserialize, JsonSchema)]
     struct Nothing {}
 
+    #[test]
+    fn a_refusal_reaches_an_agent_as_what_it_can_do_about_it() {
+        let refused = |why, text: &str| {
+            let mut errors = crate::Errors::new();
+            errors.refuse(why, text);
+            ToolError::from(errors)
+        };
+        assert!(matches!(refused(crate::Refusal::Conflict, "moved"), ToolError::Refused(m) if m == "moved"));
+        assert!(matches!(refused(crate::Refusal::Gone, "gone"), ToolError::Refused(m) if m == "gone"));
+        assert!(matches!(refused(crate::Refusal::Upstream, "no answer"), ToolError::Upstream(m) if m == "no answer"));
+    }
+
     #[derive(Serialize, JsonSchema)]
     struct Pong {
         pong: bool,

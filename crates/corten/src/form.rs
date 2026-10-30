@@ -1377,6 +1377,28 @@ impl SubmitKey {
         SubmitField { name, key: uuid_v4(crate::security::random_hex()) }
     }
 
+    /// The hidden input that carries this key again, for a form drawn again from the post that
+    /// sent it (refused, or a service it calls failed): a browser without JavaScript sends what the
+    /// page holds, so the redrawn form must hold the key it sent, or a retry after a 502 whose
+    /// write did apply would be a new submission. The runtime keeps the form's key itself.
+    ///
+    /// ```
+    /// use corten::prelude::*;
+    ///
+    /// #[derive(serde::Deserialize, Fields)]
+    /// struct Pay { amount: u32, submit: SubmitKey }
+    ///
+    /// let posted: Pay = corten::form::from_bytes(b"amount=5&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301").unwrap();
+    /// let html = posted.submit.again(Pay::FIELDS.submit).to_html();
+    /// assert_eq!(html, r#"<input type="hidden" name="submit" data-submit value="3f2504e0-4f89-41d3-9a0c-0305e82c3301">"#);
+    /// ```
+    pub fn again(&self, name: FieldName) -> SubmitField {
+        // Read only as a UUID (`Deserialize`), so it is 36 ASCII bytes.
+        let mut key = [0u8; 36];
+        key.copy_from_slice(self.0.as_bytes());
+        SubmitField { name, key }
+    }
+
     /// The UUID, lowercase and hyphenated: `3f2504e0-4f89-41d3-9a0c-0305e82c3301`.
     pub fn as_str(&self) -> &str {
         &self.0
