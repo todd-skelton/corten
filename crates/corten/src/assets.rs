@@ -166,7 +166,7 @@ pub const STYLESHEET: &str = "components.css";
 /// `display` a component's rule gives it (a class's `display: grid` otherwise wins over the
 /// browser's own `[hidden]` rule, and parts are shown and hidden with the attribute).
 /// `hidden="until-found"` keeps the browser's behavior, so find-in-page still reveals it.
-pub(crate) const HIDDEN_RULE: &str = "[hidden]:where(:not([hidden=until-found])){display:none!important}\n";
+pub(crate) const HIDDEN_RULE: &str = "[hidden]:where(:not([hidden=until-found i])){display:none!important}\n";
 
 /// The module of the app's typed events, `corten/events`.
 pub const EVENTS: &str = "events.js";

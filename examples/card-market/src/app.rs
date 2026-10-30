@@ -579,6 +579,7 @@ mod tests {
         assert!(href.starts_with("/assets/"), "{href}");
         let (status, headers, css) = send(Request::get(&href).body(Body::empty()).unwrap()).await;
         assert_eq!((status, &headers["content-type"]), (StatusCode::OK, &"text/css; charset=utf-8".parse().unwrap()));
+        let css = css.split_once('\n').expect("the hidden rule, then the components").1;
         assert!(css.starts_with(":root{--color-ink:#1d1b26;"), "tokens first: {css}");
         assert!(css.contains(r#"[data-theme="dark"]{--color-ink:#ecebf2;"#) && css.contains("@media (min-width:40rem){"));
         assert!(css.contains(".sm\\:direction-row{flex-direction:row}"));
