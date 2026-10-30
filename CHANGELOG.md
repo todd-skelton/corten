@@ -1107,7 +1107,17 @@ Corten is pre-1.0, so any minor version may change the API.
     not as a refusal of a stale state. Still a closed set: no other 5xx, and no `StatusCode`. An
     app's exhaustive `match` on `Refusal` or `ToolError` gains an arm
     ([#480 A post refused because a service it calls failed has no Refusal (502/503), so it cannot use req.invalid_with and a JSON client gets the HTML page](https://github.com/todd-skelton/corten/issues/480)).
-148. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group) whose value shows and
+148. `corten::form::keep_query(&at, html! { controls })`: a GET form's controls, then the
+    rest of a typed route's query as hidden inputs, for a form that changes some of its fields (a
+    GET form sends only its own controls and drops its action's query). Every key of the route's
+    query that no control names (a field, a `#[route(query)]` set's key, a `#[route(prefix)]`
+    entry) is kept, written as the route's links write it, so there is no list of names: a key is
+    neither dropped nor sent twice, and a field the route gains is kept by every such form, where a
+    hand-written list silently dropped it. It costs a form about 3.5 µs where hidden inputs
+    written by hand cost about 0.5 µs (release build, 200,000 renders, 3 rounds: it writes the
+    route's address again and reads it back); nothing else renders differently
+    ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
+149. corten-ui's `ChoiceGroup` and `ShownFor`: one choice (a radio group) whose value shows and
     hides parts anywhere on the page, the figures and, below a chart, the list worded from them.
     Both take a `Chosen { id, value }`, the choice's `#[derive(Id)]` id and the value the handler
     read, so a part's values are the choice's type (another enum's word does not compile) and its

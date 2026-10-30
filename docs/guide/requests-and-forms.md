@@ -601,6 +601,24 @@ patches the page it was sent from: a `target` or `formtarget` on it is not follo
 </form>
 ```
 
+A GET form sends only its own controls, and drops its `action`'s query. On a screen whose address
+holds more than one form changes (the seller and the page, and the research a second form sets),
+each form wraps its controls in `keep_query(&at, html! { .. })`: the controls are drawn, and every
+key of the route's query that none of them names (`name=`, a `#[route(query)]` set's key, a
+`#[route(prefix)]` entry's) becomes a hidden input, in the encoding the route's links use. There
+is no list of names, so a key is neither dropped nor sent twice, and a field added to the route
+later is kept by every such form. Every control the form sends goes inside, a named submit button
+included; the route can be a `&dyn Href` a shared form is given.
+
+```rust,ignore
+<form method="get" action={&at}>
+    {keep_query(&at, html! {
+        <select name={f.grade}>..</select>
+        <button>"Price"</button>
+    })}
+</form>
+```
+
 A list that grows (Load more, the next page of results) answers with only the new rows:
 `view::Append(ResultsId, rows)` adds them at the end of the element with that id, and the rows
 the page has stay as they are. Load more is a GET form with `data-patch`, so without JavaScript

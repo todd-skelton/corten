@@ -498,6 +498,96 @@ impl<P: Place> AttrValue for FieldName<P> {
     }
 }
 
+/// A GET form's controls, and the rest of a typed route's query as hidden inputs: a GET form
+/// sends only its own controls (and drops its `action`'s query), so a form that changes the
+/// research on a screen whose address also holds the seller and the page would lose them.
+/// `controls` is drawn first; every key of the route's query that no control in it names
+/// (`name="grade"`, a set's `sortBy`, a prefixed `dim.color`) is then kept as a hidden input, in
+/// the encoding the route's links use (an `Option` only when set, a list once per item, an enum
+/// by its word). A field added to the route is kept by every such form without a change to it,
+/// and a control's key is never sent twice, so there is no list of names to keep in step.
+///
+/// ```
+/// use corten::prelude::*;
+/// use corten::form::keep_query;
+///
+/// #[derive(Clone, Default, serde::Deserialize, Route, Fields)]
+/// #[route("/slab-pricing")]
+/// struct Choice { cert: Option<String>, seller: Option<String>, #[serde(default)] trail: Vec<String>, grade: Option<u8> }
+///
+/// let at = Choice { cert: Some("a&b".into()), seller: None, trail: vec!["p1".into(), "p2".into()], grade: Some(9) };
+/// let f = Choice::FIELDS;
+/// let form = html! {
+///     <form method="get" action={&at}>
+///         {keep_query(&at, html! { <input name={f.grade} value="10"> <button>"Price"</button> })}
+///     </form>
+/// };
+/// assert_eq!(
+///     form.to_html(),
+///     concat!(
+///         r#"<form method="get" action="/slab-pricing?cert=a%26b&amp;trail=p1&amp;trail=p2&amp;grade=9">"#,
+///         r#"<input name="grade" value="10"><button>Price</button>"#,
+///         r#"<input type="hidden" name="cert" value="a&amp;b">"#,
+///         r#"<input type="hidden" name="trail" value="p1"><input type="hidden" name="trail" value="p2">"#,
+///         r#"</form>"#,
+///     )
+/// );
+/// ```
+///
+/// Every control the form sends goes inside, a named submit button included: one outside it is
+/// not seen, so its key would be sent twice. It takes a link (a typed route, or the `&dyn Href` a
+/// form several pages share is given), so a URL as text does not compile:
+///
+/// ```compile_fail,E0277
+/// use corten::prelude::*;
+/// use corten::form::keep_query;
+///
+/// let _ = html! { <form method="get">{keep_query(&"/slab-pricing?grade=9", html! { <input name="grade"> })}</form> };
+/// ```
+pub fn keep_query<'a, R: crate::Href + ?Sized, C: Render>(route: &'a R, controls: C) -> KeepQuery<'a, R, C> {
+    KeepQuery { route, controls }
+}
+
+/// What [`keep_query`] returns: the controls, then hidden inputs for the route's query keys they
+/// do not name.
+pub struct KeepQuery<'a, R: ?Sized, C> {
+    route: &'a R,
+    controls: C,
+}
+
+impl<R: crate::Href + ?Sized, C: Render> Render for KeepQuery<'_, R, C> {
+    fn render(&self, out: &mut String) {
+        let start = out.len();
+        self.controls.render(out);
+        // The route's own encoding, read back: what its links send is what the form keeps.
+        let mut href = String::new();
+        self.route.write_link(&mut href, false);
+        let query = href.split_once('?').map_or("", |(_, q)| q);
+        let query = query.split_once('#').map_or(query, |(q, _)| q);
+        if query.is_empty() {
+            return;
+        }
+        let mut named = String::new();
+        let mut kept = String::new();
+        for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+            // The names the controls wrote, as they wrote them: escaped, in ` name="..."`.
+            named.clear();
+            named.push_str(" name=\"");
+            escape_into(&key, &mut named);
+            named.push('"');
+            if out[start..].contains(named.as_str()) {
+                continue;
+            }
+            kept.push_str(r#"<input type="hidden""#);
+            kept.push_str(&named);
+            kept.push_str(r#" value=""#);
+            escape_into(&value, &mut kept);
+            kept.push_str(r#"">"#);
+        }
+        out.push_str(&kept);
+    }
+}
+
 /// Where a form struct's fields are, written in front of each field's name: implemented by
 /// [`Root`], [`Group`], [`Row`] and [`RowGroup`]. Sealed.
 pub trait Place: Copy + PartialEq + std::hash::Hash + private::Sealed {
