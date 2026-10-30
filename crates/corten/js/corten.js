@@ -5,8 +5,9 @@
 // What it does, and nothing else:
 // 1. Same-origin navigations: fetch the next page with `corten: nav` and swap it into <main>.
 // 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id (a
-//    `<template id data-remove>` removes its element, `<template id data-append>` adds to it). The latest submit of a form wins; a
-//    navigation abandons pending ones.
+//    `<template id data-remove>` removes its element, `<template id data-append>` adds to it). A newer
+//    submit of a form replaces a pending read and waits for a pending write; a navigation abandons
+//    pending ones.
 // 3. <corten-live src>: apply fragments streamed as server-sent `patch` events, until an `end`.
 // 4. Handlers: `data-on="click:cart_line.confirm($e,@dialog)"` (what `on:click={js::confirm(event, dialog)}`
 //    prints) runs the export `confirm` of `{scripts dir}/cart_line.js` with the event and the
@@ -1555,27 +1556,28 @@ function named(el, name) {
   return `${el.localName}[name="${CSS.escape(name)}"]${choice}`;
 }
 /**
- * Set while the page is being left (the runtime reloads it, or the browser unloads it for a full
- * navigation): a submit that waited is not sent into it. A page the back-forward cache restores
- * is not being left any more.
+ * How many times the page began to be left (the runtime reloads it, or the browser hides it for a
+ * full navigation): a submit that waited for a write is sent only if the count is the one it had
+ * when the write went out. A count, not a flag, so a reload the user cancels (an app's
+ * `beforeunload` prompt) drops only the submits waiting then, not every later one.
  */
-let leaving = false;
+let left = 0;
 /** Loads the page again from the server. */
 function reload() {
-  leaving = true;
+  left += 1;
   location.reload();
 }
-addEventListener("pagehide", () => (leaving = true));
-addEventListener("pageshow", () => (leaving = false));
+addEventListener("pagehide", () => (left += 1));
 
 /**
- * The pending submit of each `data-patch` form. The latest submit wins, and the same submit again
- * while it is pending (a double click) is ignored rather than sent twice. A newer submit aborts a
- * pending read (a GET, whose old answer is worth nothing). It does not abort a write: the server
- * may have applied it, and its answer is the page's next state. The newer submit waits (`next`;
- * several become the latest) and is sent once the write's answer is in, with the form's values as
- * they are then, so a version or a count the answer wrote goes out with it. A navigation aborts
- * them all, so a late reply never patches a page it was not meant for.
+ * The pending submit of each `data-patch` form. The same submit again while it is pending (a
+ * double click) is ignored rather than sent twice. A newer submit aborts a pending read (a GET,
+ * whose old answer is worth nothing). It does not abort a write: the server may have applied it,
+ * and its answer is the page's next state. The newer submit waits (`next`; several become the
+ * latest) and is sent once the write's answer is drawn, with the form's values as they are then,
+ * so a version or a count the answer wrote goes out with it. An answer the runtime does not draw,
+ * a 5xx, a redirect, a reload or no answer at all drops it. A navigation aborts them all, so a
+ * late reply never patches a page it was not meant for.
  * @type {Map<HTMLFormElement, { key: string, controller: AbortController, write: boolean, next?: HTMLElement | null }>}
  */
 const submits = new Map();
@@ -1633,6 +1635,7 @@ async function send(form, submitter, sends) {
   const controller = new AbortController();
   const { signal } = controller;
   const pending = { key, controller, write: method !== "GET", next: /** @type {HTMLElement | null | undefined} */ (undefined) };
+  const leftAt = left;
   submits.set(form, pending);
   /** @type {RequestInit} */
   const init = { method, headers: { corten: "action" }, signal };
@@ -1680,11 +1683,17 @@ async function send(form, submitter, sends) {
       await (res.headers.has("corten-patch") ? apply(body, signal, sent, res.ok) : swapPage(body, signal));
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
+      // A 5xx page may hide a write that was applied or not, and the waiting submit would go under
+      // the same key: the user sends it again, once they see where things are.
+      if (res.status >= 500) pending.next = undefined;
     } else {
       // An answer the runtime does not draw is whole once its body has arrived too.
       await res.arrayBuffer();
       signal.throwIfAborted();
       renew();
+      // The page did not change, so the waiting submit would meet the same answer (a 409 for its
+      // version): the page says so with `corten:error`, and the user sends it again.
+      pending.next = undefined;
       formCall(form, "dispatchEvent", new CustomEvent("corten:error", { bubbles: true, detail: { status: res.status } }));
     }
   } catch (error) {
@@ -1698,23 +1707,25 @@ async function send(form, submitter, sends) {
     if (submits.get(form)?.controller === controller) {
       submits.delete(form);
       formCall(form, "removeAttribute", "aria-busy");
-      // In a task of its own, after the answer is drawn; not into a page the runtime is reloading.
+      // In a task of its own, after the answer is drawn; not into a page being left.
       const next = pending.next;
-      if (next !== undefined && !signal.aborted) setTimeout(() => leaving || sendAgain(form, next));
+      if (next !== undefined && !signal.aborted) setTimeout(() => left === leftAt && sendAgain(form, next));
     }
   }
 }
 
 /**
  * Sends the submit that waited for a write's answer, from the form as it is now, without a
- * second `submit` event (its handlers ran at the press). A form the answer replaced is found by
- * its id; one it removed (its row is gone) sends nothing, and one without an id sends as it was.
+ * second `submit` event (its handlers ran at the press) and without the browser's constraint
+ * validation again (the server checks what it gets). A form the answer replaced is found by its
+ * id; one it removed (its row is gone) sends nothing, and so does one without an id that is no
+ * longer on the page, whose values are the ones from before the answer.
  * The button is the one pressed, or the one the answer put in its place.
  * @param {HTMLFormElement} form @param {HTMLElement | null} submitter
  */
 function sendAgain(form, submitter) {
   const id = idOf(form);
-  const now = formProperty(form, "isConnected") || !id ? form : document.getElementById(id);
+  const now = formProperty(form, "isConnected") ? form : id ? document.getElementById(id) : null;
   if (!(now instanceof HTMLFormElement) || !formCall(now, "hasAttribute", "data-patch")) return;
   const all = /** @type {HTMLElement[]} */ (Array.from(/** @type {HTMLFormControlsCollection} */ (formProperty(now, "elements"))));
   const by =

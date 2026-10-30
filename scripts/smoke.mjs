@@ -484,6 +484,7 @@ async function run(browser) {
   const other = await page.$eval("select[name=id]", (s) =>
     [.../** @type {HTMLSelectElement} */ (s).options].map((o) => o.value).find((v) => v && v !== /** @type {HTMLSelectElement} */ (s).value),
   );
+  check("the form offers another stock to send", other !== undefined);
   if (other) await page.selectOption("select[name=id]", other);
   await page.click("#watch-form button");
   await failedAgain;
@@ -649,6 +650,94 @@ async function run(browser) {
     `${await page.textContent("#watch-message")}; busy: ${busyWhileWriting}; ${writes.join()}; abandoned: ${abandoned.join()}`,
   );
   check("the form is not left busy", (await page.getAttribute("#watch-form", "aria-busy")) === null);
+
+  // The queue's other answers, against a form of the smoke's own whose answers it writes: each
+  // case presses once, changes the field and presses again while the first is out.
+  /** @type {{ status: number, headers?: Record<string, string>, body: string }} */
+  let queueAnswer = { status: 200, body: "" };
+  /** @type {string[]} */
+  let queueSent = [];
+  await page.route("**/queue*", async (route) => {
+    const request = route.request();
+    const fields = request.method() === "GET" ? new URL(request.url()).searchParams : new URLSearchParams(request.postData() ?? "");
+    queueSent.push(`${request.method()} ${fields.get("n")}${fields.has("submit") ? ` ${fields.get("submit")}` : ""}`);
+    const answer = queueAnswer;
+    // The first of two reads answers last, so a read that was not aborted would draw over the newer.
+    const late = request.method() === "GET" && fields.get("n") === "1";
+    await new Promise((resolve) => setTimeout(resolve, late ? 1200 : 400));
+    const body = answer.body.replace("{n}", fields.get("n") ?? "");
+    await route.fulfill({ status: answer.status, headers: { "content-type": "text/html; charset=utf-8", ...answer.headers }, body }).catch(() => {});
+  });
+  /** Puts the form (in a box a patch can redraw), presses, sets n to 2, presses, and waits. @param {string} form */
+  const queueCase = async (form) => {
+    queueSent = [];
+    await page.evaluate((form) => {
+      document.getElementById("queue-box")?.remove();
+      document.querySelector("main")?.insertAdjacentHTML("beforeend", `<div id="queue-box">${form}<p id="queue-out"></p></div>`);
+    }, form);
+    const error = page.evaluate(
+      () => new Promise((resolve) => {
+        document.addEventListener("corten:error", (e) => resolve(/** @type {CustomEvent} */ (e).detail.status), { once: true });
+        setTimeout(() => resolve(null), 2500);
+      }),
+    );
+    await page.click("#queue-box button");
+    await page.fill("#queue-box [name=n]", "2");
+    await page.click("#queue-box button");
+    const status = await error;
+    await page.waitForTimeout(700);
+    return { sent: queueSent.join(), status };
+  };
+  const queueLogged = errors.length;
+  const patchHeaders = { "corten-patch": "1" };
+  const queueForm = (/** @type {string} */ method, /** @type {string} */ extra = "") =>
+    `<form id="queue" method="${method}" action="/queue" data-patch><input name="n" value="1">${extra}<button>Go</button></form>`;
+
+  // A newer GET aborts the older one, whose answer is worth nothing now: the first answers last,
+  // and the page keeps the newer's.
+  queueAnswer = { status: 200, headers: patchHeaders, body: '<p id="queue-out">read {n}</p>' };
+  const read = await queueCase(queueForm("get"));
+  await page.waitForTimeout(800);
+  check("a newer GET submit aborts the older one", read.sent === "GET 1,GET 2" && (await page.textContent("#queue-out")) === "read 2", `${read.sent}; ${await page.textContent("#queue-out")}`);
+
+  // An answer the runtime does not draw (a proxy's 503) drops the submit that waited.
+  queueAnswer = { status: 503, body: "Service Unavailable" };
+  const undrawn = await queueCase(queueForm("post"));
+  check("a submit that waited for an answer the runtime does not draw is not sent", undrawn.sent === "POST 1" && undrawn.status === 503, `${undrawn.sent}; ${undrawn.status}`);
+
+  // A 5xx patch is drawn, but the write may or may not have applied: the waiting submit drops.
+  queueAnswer = { status: 500, headers: patchHeaders, body: '<p id="queue-out">failed</p>' };
+  const failedPatch = await queueCase(queueForm("post"));
+  check(
+    "a submit that waited for a 5xx is not sent, and the 5xx's patch is drawn",
+    failedPatch.sent === "POST 1" && (await page.textContent("#queue-out")) === "failed",
+    `${failedPatch.sent}; ${await page.textContent("#queue-out")}`,
+  );
+
+  // An answer that removes the form drops it.
+  queueAnswer = { status: 200, headers: patchHeaders, body: '<template id="queue" data-remove></template>' };
+  const removed = await queueCase(queueForm("post"));
+  check("a submit that waited is not sent when the answer removes its form", removed.sent === "POST 1" && (await page.$("#queue")) === null, removed.sent);
+
+  // A form without an id that the answer took off the page is not found again: its values are
+  // the ones from before the answer.
+  queueAnswer = { status: 200, headers: patchHeaders, body: '<div id="queue-box"><form method="post" action="/queue" data-patch><input name="n" value="1"><button>Go</button></form></div>' };
+  const noId = await queueCase('<form method="post" action="/queue" data-patch><input name="n" value="1"><button>Go</button></form>');
+  check("a submit that waited is not sent when its form without an id left the page", noId.sent === "POST 1", noId.sent);
+
+  // The submit that waited goes under the form's new key: the write's answer renewed it.
+  queueAnswer = { status: 200, headers: patchHeaders, body: '<p id="queue-out">saved</p>' };
+  const keyed = await queueCase(queueForm("post", `<input type="hidden" name="submit" data-submit value="${zero}">`));
+  const [firstKey, secondKey] = keyed.sent.split(",").map((s) => s.split(" ")[2]);
+  check(
+    "a submit that waited goes out after the write's answer, under the key the answer renewed",
+    keyed.sent.startsWith("POST 1 ") && keyed.sent.includes(",POST 2 ") && firstKey === zero && /^[0-9a-f-]{36}$/.test(secondKey ?? "") && secondKey !== zero,
+    keyed.sent,
+  );
+  await page.unroute("**/queue*");
+  await page.evaluate(() => document.getElementById("queue-box")?.remove());
+  // The browser logs the 503 and the 500 the smoke answered; nothing else is expected.
+  errors.splice(queueLogged, errors.length, ...errors.slice(queueLogged).filter((e) => !/Failed to load resource/.test(e)));
 
   const current = () => page.$$eval("a[data-nav][aria-current=page]", (links) => links.map((l) => l.getAttribute("href")).join());
   check("the shell marks the current link", (await current()) === "/");

@@ -249,19 +249,22 @@ A `data-patch` form has one submit in flight. Pressing the same button again wit
 while it is pending sends nothing (a double click). A newer submit of a read (a GET: a search, a
 filter) aborts the older one, whose answer is worth nothing now. While a write is pending, any
 newer submit of the form waits instead: the server may already have applied the write, and its
-answer is the page's next state. When the write is answered (a 5xx included), the
-runtime sends the latest of the submits that waited, from the form as it is then, so the version
-or count the answer wrote goes out with it, under the key the form has then (a new one after an
-answer). Its `on:submit` handlers ran at the press and do not run again. Several presses while
-the write is out are one submit of where the form ended. A form the answer replaced is found by
-its `id`, so give a form that a patch redraws one; a form without an id is sent as it was. The
-waiting submit is dropped when the write gets no answer (the network failed, or the browser is
-leaving the page), since it would fail the same way and `corten:error` lets the page say so;
-when the answer sends the browser elsewhere (a redirect, a reload), or removed the form or the
-pressed button; and a navigation aborts everything, so a late answer
-never patches a page it was not meant for. A screen whose every press is a step of its own (a
-count's + and -, each a delta the server adds) keeps its own ordered queue in its script: the
-form sends where the user ended up, not each step.
+answer is the page's next state. Once the runtime has drawn the write's answer (a patch or a
+page, below 500), it sends the latest of the submits that waited, from the form as it is then,
+so the version or count the answer wrote goes out with it, under the form's new key. Its
+`on:submit` handlers ran at the press and do not run again, and the browser does not check the
+form's constraints again (the server checks what it gets). Several presses while the write is
+out are one submit of where the form ended. A form the answer replaced is found by its `id`, so
+give a form that a patch redraws, or that sits in an element a patch redraws, one: a form that
+left the page without an id is not sent, since its values are the ones from before the answer.
+The waiting submit is dropped, and the user sends it again, when the write gets no answer (the
+network failed, or the browser is leaving the page) or one the runtime does not draw (a 409
+without a patch, a proxy's 502), which `corten:error` reports, or a 5xx, after which the server
+may or may not have applied the write; when the answer sends the browser elsewhere (a redirect,
+a reload), or removed the form or the pressed button; and a navigation aborts everything, so a
+late answer never patches a page it was not meant for. A screen whose every press is a step of
+its own (a count's + and -, each a delta the server adds) keeps its own ordered queue in its
+script: the form sends where the user ended up, not each step.
 
 When a `data-patch` submit gets no answer the runtime can draw, it dispatches `corten:error` on
 the form (it bubbles), with `detail.status`: the answer's status (a proxy's 502 page), or 0 when
