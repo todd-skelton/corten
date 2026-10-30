@@ -322,9 +322,9 @@ async function run(browser) {
   check("only the chosen option is in the tab order", (await page.$$eval('[role="radio"]', (r) => r.map((x) => /** @type {HTMLElement} */ (x).tabIndex).join())) === "-1,0");
   await period("Week").click();
   check("a click chooses in place, and every part of the group follows", (await period("Week").getAttribute("aria-checked")) === "true" && (await showing()) === "Average $12.10 this week.|Sold 3 this week.", await showing());
-  check("the address follows the choice", page.url().endsWith("?period=week"), page.url());
+  check("the address follows the choice", new URL(page.url()).searchParams.get("period") === "week", page.url());
   await page.keyboard.press("ArrowRight");
-  check("Arrow Right moves and chooses", (await page.evaluate(() => document.activeElement?.textContent)) === "Month" && (await showing()) === "Average $11.95 this month.|Sold 14 this month." && page.url() === `${base}/`);
+  check("Arrow Right moves and chooses", (await page.evaluate(() => document.activeElement?.textContent)) === "Month" && (await showing()) === "Average $11.95 this month.|Sold 14 this month." && !new URL(page.url()).searchParams.has("period"), page.url());
   await page.keyboard.press("ArrowUp");
   check("Arrow Up moves back", (await period("Week").getAttribute("aria-checked")) === "true");
   await page.goto(`${base}/?tab=sales`);

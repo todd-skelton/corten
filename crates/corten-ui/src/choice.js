@@ -91,14 +91,14 @@ function address(radio, radios) {
   const to = new URL(radio.href);
   const now = new URL(location.href);
   if (to.origin !== now.origin || to.pathname !== now.pathname) return to.href;
-  const links = radios.filter((r) => r instanceof HTMLAnchorElement).map((r) => new URL(/** @type {HTMLAnchorElement} */ (r).href).searchParams);
-  const keys = new Set(links.flatMap((q) => [...q.keys()]));
-  for (const key of keys) {
-    const each = links.map((q) => q.getAll(key).join("\u0000"));
-    if (each.every((v) => v === each[0])) continue;
-    now.searchParams.delete(key);
-    for (const value of to.searchParams.getAll(key)) now.searchParams.append(key, value);
+  const links = radios.filter((l) => l instanceof HTMLAnchorElement).map((l) => new URL(/** @type {HTMLAnchorElement} */ (l).href).searchParams);
+  const differ = (/** @type {string} */ key) => new Set(links.map((q) => q.getAll(key).join("\u0000"))).size > 1;
+  // In the link's order, the route's, then any key only the address has.
+  const query = new URLSearchParams();
+  for (const key of new Set([...to.searchParams.keys(), ...now.searchParams.keys()])) {
+    for (const value of (differ(key) ? to.searchParams : now.searchParams).getAll(key)) query.append(key, value);
   }
+  now.search = query.toString();
   return now.href;
 }
 

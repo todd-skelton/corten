@@ -34,7 +34,8 @@ export function step(event, tab, tabs, panels) {
 }
 
 /**
- * Selects `tab`: its panel shows, and a link tab's URL becomes the address.
+ * Selects `tab`: its panel shows, and the address follows a link tab (in the keys the tabs
+ * differ in).
  * @param {HTMLElement} tab @param {HTMLElement[]} tabs @param {HTMLDivElement[]} panels
  */
 function select(tab, tabs, panels) {
@@ -45,5 +46,29 @@ function select(tab, tabs, panels) {
   }
   const panel = tab.getAttribute("aria-controls");
   for (const p of panels) p.hidden = p.id !== panel;
-  if (tab instanceof HTMLAnchorElement && tab.href !== location.href) history.replaceState(history.state, "", tab.href);
+  if (tab instanceof HTMLAnchorElement) {
+    const to = address(tab, tabs);
+    if (to !== location.href) history.replaceState(history.state, "", to);
+  }
+}
+
+/**
+ * The address with `tab` selected: its link's, for a link to another page; on this page, the
+ * current address with only the query keys the tabs' links differ in taken from it, so another
+ * control's keys (a choice, a page) stay as they are.
+ * @param {HTMLAnchorElement} tab @param {HTMLElement[]} tabs @returns {string}
+ */
+function address(tab, tabs) {
+  const to = new URL(tab.href);
+  const now = new URL(location.href);
+  if (to.origin !== now.origin || to.pathname !== now.pathname) return to.href;
+  const links = tabs.filter((l) => l instanceof HTMLAnchorElement).map((l) => new URL(/** @type {HTMLAnchorElement} */ (l).href).searchParams);
+  const differ = (/** @type {string} */ key) => new Set(links.map((q) => q.getAll(key).join("\u0000"))).size > 1;
+  // In the link's order, the route's, then any key only the address has.
+  const query = new URLSearchParams();
+  for (const key of new Set([...to.searchParams.keys(), ...now.searchParams.keys()])) {
+    for (const value of (differ(key) ? to.searchParams : now.searchParams).getAll(key)) query.append(key, value);
+  }
+  now.search = query.toString();
+  return now.href;
 }

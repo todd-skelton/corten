@@ -1079,7 +1079,9 @@ Corten is pre-1.0, so any minor version may change the API.
     without JavaScript each option is a typed link to the page with that choice; with it, the arrow
     keys and Space choose in place, the address follows in the keys the options differ in (another
     control's, a tab's, stay), and every part, also one a patch adds later, follows the choice. No
-    stylesheet repeats the server's values
+    stylesheet repeats the server's values. `TabGroup`'s address now follows the same way, in the
+    keys its tabs differ in, so selecting a tab keeps a choice's key (it took the tab link's whole
+    query)
     ([#474 A client-only choice cannot switch parts in several places of the page: TabGroup switches only its own panels](https://github.com/todd-skelton/corten/issues/474)).
 
 ### Removed
