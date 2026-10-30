@@ -15,6 +15,7 @@ struct Item<'a> {
 struct Form {
     pick: String,
     n: f64,
+    line: i32,
 }
 
 #[test]
@@ -46,8 +47,22 @@ fn every_component_has_its_script_and_no_css() {
 }
 
 #[test]
+fn a_choice_posts_its_value_as_written_in_a_url_and_carries_its_terms() {
+    // A row picked by its numeric id: the field reads an i32 back.
+    let lines = [Choice::new(3, "Pokemon"), Choice { terms: &["4", "004/102", "\"<&>"], ..Choice::new(42, "Magic") }];
+    let field = Picker { value: Some(42), ..Picker::new("line", Form::FIELDS.line, "Choose", "None", &lines) };
+    let html = ComboBox { field: &field }.to_html();
+    assert!(html.contains(r#"<option value="3">Pokemon</option>"#), "no terms, no attribute: {html}");
+    assert!(
+        html.contains("<option value=\"42\" selected data-terms=\"4\n004/102\n&quot;&lt;&amp;&gt;\">Magic</option>"),
+        "a line per term, escaped: {html}"
+    );
+    assert!(html.contains(r#"value="Magic""#), "the input shows the selected label: {html}");
+}
+
+#[test]
 fn the_combo_box_value_is_a_native_select_and_the_input_waits_for_the_script() {
-    let options = [Choice { value: "a", label: "Alpha" }, Choice { value: "b", label: "Beta <b>" }];
+    let options = [Choice::new("a", "Alpha"), Choice::new("b", "Beta <b>")];
     let field = Picker { required: true, ..Picker::new("pick", Form::FIELDS.pick, "Choose", "None", &options) };
     let html = ComboBox { field: &field }.to_html();
     assert!(

@@ -155,7 +155,7 @@ A write that must apply once (an order, a payment) takes a `submit: SubmitKey` f
 first outcome. The runtime keeps the key until the submit has an answer below 500, then renews it.
 
 The handler answers a failed check with `req.invalid`. It replies 422 with the form as a patch for
-the runtime, `{"errors": ...}` for JSON clients, or the whole page for a browser without
+the runtime, a Problem Details document (`application/problem+json`, `{"title","status","detail","fields","form"}`) for JSON clients, or the whole page for a browser without
 JavaScript. The page closure runs only in that last case, so put the expensive loads inside it:
 
 ```rust
