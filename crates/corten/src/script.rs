@@ -173,6 +173,28 @@
 //! }
 //! ```
 //!
+//! The same holds for a typed event (`#[event]`): `corten/events` exports one class of a name and
+//! the page dispatches one event of a name, so two `RowToggled`s fail to build
+//! (`corten__two_events_are__RowToggled`):
+//!
+//! ```compile_fail
+//! mod orders {
+//!     #[corten::script::event]
+//!     pub struct RowToggled {
+//!         pub id: String,
+//!     }
+//! }
+//! mod returns {
+//!     #[corten::script::event]
+//!     pub struct RowToggled {
+//!         pub id: u32,
+//!     }
+//! }
+//! fn main() {
+//!     let _ = (orders::RowToggled, returns::RowToggled);
+//! }
+//! ```
+//!
 //! A feed's URL carries the feed's rows to the script. The route names them (`rows = Level`),
 //! its handler answers with them (`FeedResponse<Level>`), and the handler parameter that takes the
 //! route is a `FeedUrl<Level>` (from `corten`; `Level` is the Rust type of that name in the
@@ -702,6 +724,30 @@ pub struct Field {
 /// let view = Line.view.expect("a view");
 /// assert!(view.js.contains("static key(el)") && !view.js.contains("keyOf"), "{}", view.js);
 /// # }
+/// ```
+///
+/// `corten/views` exports one class of a name, so two views of one name in different modules
+/// fail to build, at link, rather than the app when it starts; the error names the symbol
+/// `corten__two_views_are__Row`:
+///
+/// ```compile_fail
+/// mod orders {
+///     use corten::prelude::*;
+///     #[component(view)]
+///     pub fn Row(id: u32) -> impl Render {
+///         html! { <tr><td>{id}</td></tr> }
+///     }
+/// }
+/// mod returns {
+///     use corten::prelude::*;
+///     #[component(view)]
+///     pub fn Row(id: u32) -> impl Render {
+///         html! { <tr><td>{id}</td></tr> }
+///     }
+/// }
+/// fn main() {
+///     let _ = (orders::Row, returns::Row);
+/// }
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct ViewDef {

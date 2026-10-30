@@ -305,6 +305,11 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         scope.extend(css.scope(&style_owner, &used));
     }
     let has_constant = own_css || script.is_some() || view.is_some();
+    // `corten/views` exports one class of a name, unprefixed, so two views of one name fail to
+    // build, at any version.
+    if view.is_some() {
+        items.extend(crate::id::one_per_program("two_views_are", &name.to_string(), false));
+    }
     if let Some(module) = &script {
         // Two components whose scripts are served at one URL fail to build.
         items.extend(crate::id::one_per_program("two_scripts_are", &module.name, true));
