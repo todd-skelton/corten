@@ -479,6 +479,69 @@ pub trait Route {
     /// The path as axum matches it: `"/items/{id}"`.
     const PATH: &'static str;
 
+    /// Whether the runtime may fetch the page ahead of a click (on a hover): `false` for a route
+    /// declared `#[route("/..", prefetch = false)]`, a page costly to draw, so a link to it
+    /// (`href={..}`, a nav's `{..req.nav(..)}` and `req.nav_of`) is written with `data-no-prefetch`
+    /// and only a click starts its work.
+    ///
+    /// ```
+    /// use corten::{prelude::*, Href};
+    ///
+    /// #[derive(Route)]
+    /// #[route("/reports/suggested", prefetch = false)]
+    /// struct Suggested;
+    ///
+    /// #[derive(Route)]
+    /// #[route("/reports")]
+    /// struct Reports;
+    ///
+    /// let links = html! { <a href={Suggested}>"Suggested"</a><a href={Reports}>"Reports"</a> };
+    /// assert_eq!(links.to_html(), r#"<a href="/reports/suggested" data-no-prefetch>Suggested</a><a href="/reports">Reports</a>"#);
+    /// // As a prop too, where the link is any route.
+    /// let to: &dyn Href = &Suggested;
+    /// assert_eq!(html! { <a href={to}>"Suggested"</a> }.to_html(), r#"<a href="/reports/suggested" data-no-prefetch>Suggested</a>"#);
+    /// // A form's action is never prefetched, so it carries nothing.
+    /// assert_eq!(html! { <form action={Suggested}></form> }.to_html(), r#"<form action="/reports/suggested"></form>"#);
+    /// ```
+    ///
+    /// In a routes module it goes after the handlers:
+    ///
+    /// ```
+    /// use corten::{prelude::*, route::Route};
+    ///
+    /// #[corten::routes]
+    /// mod url {
+    ///     #[route("/reports/suggested", get = suggested, prefetch = false)]
+    ///     pub struct Suggested;
+    /// }
+    ///
+    /// async fn suggested() -> &'static str {
+    ///     "42 seconds of pricing"
+    /// }
+    ///
+    /// fn main() {
+    ///     assert!(!url::Suggested::PREFETCH);
+    ///     let _ = App::new(url::router());
+    /// }
+    /// ```
+    ///
+    /// The value is `false` or nothing:
+    ///
+    /// ```compile_fail
+    /// #[derive(corten::Route)]
+    /// #[route("/reports", prefetch = no)]
+    /// struct Reports;
+    /// ```
+    ///
+    /// and the default is not written out, so there is one way to say it:
+    ///
+    /// ```compile_fail
+    /// #[derive(corten::Route)]
+    /// #[route("/reports", prefetch = true)]
+    /// struct Reports;
+    /// ```
+    const PREFETCH: bool = true;
+
     /// Writes the URL. With `html`, query separators are written as `&amp;`.
     fn write_href(&self, out: &mut String, html: bool);
 
@@ -625,6 +688,10 @@ impl<R: Route + ?Sized, I: crate::view::Id> Href for At<'_, R, I> {
     fn write_link(&self, out: &mut String, html: bool) {
         self.write_href(out, html)
     }
+
+    fn prefetch(&self) -> bool {
+        R::PREFETCH
+    }
 }
 
 impl<R: Route + ?Sized, I: crate::view::Id> crate::view::Render for At<'_, R, I> {
@@ -639,6 +706,7 @@ impl<R: Route + ?Sized, I: crate::view::Id> crate::view::AttrValue for At<'_, R,
         out.push_str("=\"");
         self.write_href(out, true);
         out.push('"');
+        no_prefetch(name, R::PREFETCH, out);
     }
 }
 
@@ -930,6 +998,21 @@ pub trait Href {
     fn as_text(&self) -> Option<&str> {
         None
     }
+
+    /// Whether the runtime may fetch the page ahead of a click: a route's [`Route::PREFETCH`].
+    fn prefetch(&self) -> bool {
+        true
+    }
+}
+
+/// After `href="..."`, the opt-out a link to a page not to prefetch carries. Only for `href`: a
+/// form's `action` is never prefetched.
+#[doc(hidden)]
+#[inline]
+pub fn no_prefetch(name: &str, prefetch: bool, out: &mut String) {
+    if !prefetch && name == " href" {
+        out.push_str(" data-no-prefetch");
+    }
 }
 
 /// The URL of any [`Href`] as a header value: `Location` for a redirect.
@@ -960,6 +1043,7 @@ macro_rules! dyn_href {
                 out.push_str("=\"");
                 self.write_link(out, true);
                 out.push('"');
+                no_prefetch(name, self.prefetch(), out);
             }
         }
 
@@ -972,6 +1056,10 @@ macro_rules! dyn_href {
             fn as_text(&self) -> Option<&str> {
                 (**self).as_text()
             }
+
+            fn prefetch(&self) -> bool {
+                (**self).prefetch()
+            }
         }
 
         impl Href for Box<$ty> {
@@ -981,6 +1069,10 @@ macro_rules! dyn_href {
 
             fn as_text(&self) -> Option<&str> {
                 (**self).as_text()
+            }
+
+            fn prefetch(&self) -> bool {
+                (**self).prefetch()
             }
         }
 
@@ -1389,6 +1481,10 @@ impl Href for Elsewhere<'_> {
 impl<R: Route + ?Sized> Href for R {
     fn write_link(&self, out: &mut String, html: bool) {
         self.write_href(out, html)
+    }
+
+    fn prefetch(&self) -> bool {
+        R::PREFETCH
     }
 }
 

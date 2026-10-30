@@ -85,7 +85,7 @@ pub struct Nav<'a, R> {
 }
 
 impl<R> crate::view::__private::Writes for Nav<'_, R> {
-    const WRITES: &'static [&'static str] = &["href", "data-nav", "aria-current"];
+    const WRITES: &'static [&'static str] = &["href", "data-nav", "aria-current", "data-no-prefetch"];
 }
 
 impl<R: crate::Route> crate::view::Attrs for Nav<'_, R> {
@@ -107,6 +107,7 @@ impl<R: crate::Route> crate::view::Attrs for Nav<'_, R> {
         if current {
             out.push_str(r#" aria-current="page""#);
         }
+        crate::route::no_prefetch(" href", R::PREFETCH, out);
     }
 }
 
@@ -117,6 +118,12 @@ pub trait NavTarget: nav_target::Sealed {
     /// Writes the URL as the browser asks for it, not escaped for HTML.
     #[doc(hidden)]
     fn write_url(&self, out: &mut String);
+
+    /// Whether the runtime may fetch the page ahead of a click: a route's [`crate::Route::PREFETCH`].
+    #[doc(hidden)]
+    fn prefetch(&self) -> bool {
+        true
+    }
 }
 
 mod nav_target {
@@ -128,6 +135,10 @@ mod nav_target {
 impl<R: crate::Route + ?Sized> NavTarget for R {
     fn write_url(&self, out: &mut String) {
         self.write_href(out, false);
+    }
+
+    fn prefetch(&self) -> bool {
+        R::PREFETCH
     }
 }
 
@@ -180,8 +191,8 @@ pub struct NavLinks<T> {
     /// The URLs one after another, not escaped.
     urls: String,
     /// Where each entry's URL ends, whether it is a section, how deep it is when it holds the
-    /// page, and its item.
-    entries: Vec<(usize, bool, Option<usize>, T)>,
+    /// page, its item, and whether the runtime may prefetch it.
+    entries: Vec<(usize, bool, Option<usize>, T, bool)>,
     /// The deepest of them: the entries that deep are current.
     deepest: Option<usize>,
     /// The group the runtime ranks these links in (`data-nav-group`): 32 bits of a hash of the
@@ -197,25 +208,35 @@ impl<T> NavLinks<T> {
     pub fn links(&self) -> impl Iterator<Item = (NavLink<'_>, &T)> {
         let mut start = 0;
         let group = std::str::from_utf8(&self.group).expect("hex digits");
-        self.entries.iter().map(move |(end, section, depth, item)| {
+        self.entries.iter().map(move |(end, section, depth, item, prefetch)| {
             let url = &self.urls[start..*end];
             start = *end;
-            (NavLink { url, section: *section, current: depth.is_some() && *depth == self.deepest, group }, item)
+            (
+                NavLink {
+                    url,
+                    section: *section,
+                    current: depth.is_some() && *depth == self.deepest,
+                    group,
+                    prefetch: *prefetch,
+                },
+                item,
+            )
         })
     }
 }
 
-/// One link of a [`NavLinks`]: `href`, `data-nav`, `data-nav-group` and, when current,
-/// `aria-current="page"`.
+/// One link of a [`NavLinks`]: `href`, `data-nav`, `data-nav-group`, when current
+/// `aria-current="page"`, and `data-no-prefetch` for a route that says `prefetch = false`.
 pub struct NavLink<'a> {
     url: &'a str,
     section: bool,
     current: bool,
     group: &'a str,
+    prefetch: bool,
 }
 
 impl crate::view::__private::Writes for NavLink<'_> {
-    const WRITES: &'static [&'static str] = &["href", "data-nav", "data-nav-group", "aria-current"];
+    const WRITES: &'static [&'static str] = &["href", "data-nav", "data-nav-group", "aria-current", "data-no-prefetch"];
 }
 
 impl crate::view::Attrs for NavLink<'_> {
@@ -230,6 +251,7 @@ impl crate::view::Attrs for NavLink<'_> {
         if self.current {
             out.push_str(r#" aria-current="page""#);
         }
+        crate::route::no_prefetch(" href", self.prefetch, out);
     }
 }
 
@@ -247,7 +269,7 @@ pub(crate) fn nav_links<'a, T>(path: &str, entries: impl IntoIterator<Item = (Na
         .map(|(entry, item)| {
             let start = urls.len();
             entry.to.write_url(&mut urls);
-            (urls.len(), entry.section, holds(path, &urls[start..], entry.section), item)
+            (urls.len(), entry.section, holds(path, &urls[start..], entry.section), item, entry.to.prefetch())
         })
         .collect();
     let deepest = entries.iter().filter_map(|entry| entry.2).max();
