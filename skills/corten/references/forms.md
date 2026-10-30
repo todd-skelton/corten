@@ -119,7 +119,9 @@ A group several forms share (an address) is its own `Fields` struct, put in a fo
 items) are `#[fields(rows)] #[serde(default)] lines: BTreeMap<Key, Line>`, and a row's field is
 `f.lines.at(&key).qty` (posted `lines[key].qty`), in markup and in `errors.add`. Never post
 rows as parallel `Vec` columns: the key joins a row's values and gives each row's field its own
-error. A key type is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum. One plain
+error. A key type is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum without
+`alias` or `other`. A group is never an `Option`; one a form may leave out is `Option` fields
+and `#[serde(default)]`. One plain
 value per key (a count per SKU) is `#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>`,
 a field per key: `f.counts.at(&sku)`, posted `counts[sku]`.
 

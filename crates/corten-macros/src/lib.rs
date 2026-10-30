@@ -13,6 +13,7 @@ mod dom;
 mod event;
 mod from_json;
 mod from_ref;
+mod href;
 mod html;
 mod id;
 mod json;
@@ -46,6 +47,12 @@ pub fn component(args: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(Route, attributes(route, serde))]
 pub fn derive_route(input: TokenStream) -> TokenStream {
     route::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
+}
+
+/// An enum whose variants each hold a link. Documented at `corten::route::Href`.
+#[proc_macro_derive(Href)]
+pub fn derive_href(input: TokenStream) -> TokenStream {
+    href::expand(input).unwrap_or_else(|(span, message)| tokens::compile_error(span, &message))
 }
 
 /// A module of routes and the trait of their handlers. Documented at `corten::route::routes`.

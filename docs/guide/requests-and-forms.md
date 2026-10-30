@@ -212,6 +212,8 @@ names of an `Address` put in a form as a group; in a row it is `AddressRowGroupF
 group drawn both at a form's top and in its rows takes a component for each). A group whose
 fields a form can all leave out (checkboxes, `Option`s, file inputs) needs `#[serde(default)]` on the group's
 field as well, or it does not compile: a form that sends none of them would otherwise be refused.
+A group is never an `Option` (that does not compile either): a form sends a group's fields one by
+one, so a group the form may leave out is a group of `Option`s with `#[serde(default)]`.
 Keys under a field's name (`go.x`, `go.y`) are its group's, so a plain field sent only that way (an
 image button `name={f.go}` sends `go.x` and `go.y`, never `go`) is refused with a message that
 says so, unless it is an `Option`, which reads as `None`.
@@ -248,8 +250,9 @@ A key is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, whose ke
 serde reads (`seller-portal`), so it reads back as the same variant. Its characters other than letters, digits, `-` and `_` are %-encoded in the name, so any text is
 a key, and a key sent any other way (`%61` for `a`) is refused, so one key cannot reach a row two
 ways. An integer key is read only as it writes itself: `07`, `+7` and `-0` are refused, for the
-same reason. A `#[serde(alias)]` on a key enum's variant is read as that variant, so give a key
-type no aliases: two rows sent under one key leave the later one.
+same reason. An enum with a variant serde reads by more than its word (`#[serde(alias)]`,
+`#[serde(other)]`) is not a `RowKey`, so naming its row does not compile: two keys the form tells
+apart would be one row on the server.
 
 One plain value per key (a count per SKU) is a map without a row struct:
 `#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>`. Each key's value is a field of its
