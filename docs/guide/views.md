@@ -231,7 +231,7 @@ An app chooses once, by how many locales it has:
    a literal.
 
 Moving from the first to the second is mechanical: each literal becomes a key. card-market is
-the second kind (English and French); watchlist, seller-desk, ui-gallery and listings-feed are
+the second kind (English and French); watchlist, seller-desk, deck-builder, ui-gallery and listings-feed are
 the first.
 
 A message the page cannot name in its source, because another service answers with its key
@@ -252,6 +252,7 @@ html! {
     <td>{t.number(listing.count)}</td>                                     // 1,234
     <td>{t.percent(Decimal::new(fee_bps, 4), 2)}</td>                      // 2.9%, 2,9 %, %2,9
     <td>{t.change(Decimal::new(stock.change_bp, 4), 2)}</td>               // +0.60%, -0.30%, 0.00%
+    <td>{t.signed_money(Minor(sale.cents - cost.cents), USD)}</td>         // +$3.20, -$1.23, $0.00
     <p>{t.item_pending(t.date_time(at, DateStyle::Medium, TimeStyle::Short))}</p> // Mar 22, 2026, 12:00 PM UTC
     <p>{t.account_member_since(t.date(joined, MonthStyle::Long))}</p>     // Member since March 2025
 }
@@ -262,7 +263,9 @@ html! {
 and without trailing zeros, with the locale's sign where it puts it. `t.change(ratio, digits)` is
 the same ratio as a change (a price's move today, in a column that lines up): exactly `digits`
 fraction digits and a sign on a gain as on a loss (`+0.60%`, `+0,60 %`, `+%0,60`), none on what
-rounds to zero (`0.00%`). `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
+rounds to zero (`0.00%`). `t.signed_money(amount, currency)` writes a difference between two amounts
+the same way, a plus sign on a gain and none on what rounds to zero (`+$3.20`, `+3,20 $US`),
+with the sign where the locale puts it, so a page never builds a sign by hand. `t.money` takes `Minor` units (cents) or a `Decimal` in the major unit, never a float and never
 a bare integer (it could be either, so it does not compile), with the digits the currency is
 shown with (0 for JPY, 3 for KWD). A price a person types into a form is read back the same way:
 `t.parse_money(&input.price, USD)` is `Some(Minor(129950))` for `$1,299.50` in en and for

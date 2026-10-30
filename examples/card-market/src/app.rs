@@ -712,7 +712,7 @@ mod tests {
         let (status, _, body) = send(post(None, Some("application/json"))).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         let body: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(body["error"]["fields"], json!({ "target_price": "Enter a target price above zero." }));
+        assert_eq!(body["fields"], json!({ "target_price": "Enter a target price above zero." }));
 
         let (status, _, body) = send(post(None, None)).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1028,7 +1028,7 @@ mod tests {
         assert_eq!(body, serde_json::to_string(&view).unwrap());
         assert!(body.contains(r#""title":"Pika <Promo> & \"Friends\"""#), "{body}");
         let (status, _, body) = send(Request::get("/api/items/nope").header("accept", "*/*").body(Body::empty()).unwrap()).await;
-        assert_eq!((status, body.as_str()), (StatusCode::NOT_FOUND, r#"{"error":{"status":404,"message":"Not Found"}}"#));
+        assert_eq!((status, body.as_str()), (StatusCode::NOT_FOUND, r#"{"title":"Not Found","status":404}"#));
     }
 
     #[tokio::test]
@@ -1074,7 +1074,10 @@ mod tests {
             let (status, _, body) = send(partner(key, alert)).await;
             assert_eq!(
                 (status, body.as_str()),
-                (StatusCode::UNAUTHORIZED, r#"{"error":{"status":401,"message":"Send a valid partner API key in X-Api-Key."}}"#)
+                (
+                    StatusCode::UNAUTHORIZED,
+                    r#"{"title":"Unauthorized","status":401,"detail":"Send a valid partner API key in X-Api-Key."}"#
+                )
             );
         }
         let (status, headers, body) = send(partner(Some("dev-key"), alert)).await;
@@ -1089,7 +1092,7 @@ mod tests {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(
             body.ends_with(
-                r#""fields":{"email":"Enter a valid email address.","target_price":"Enter a target price above zero."}}}"#
+                r#""fields":{"email":"Enter a valid email address.","target_price":"Enter a target price above zero."}}"#
             ),
             "{body}"
         );
@@ -1136,7 +1139,7 @@ mod tests {
         let guess = one.clone().oneshot(partner(Some("guess"), "{}")).await.unwrap();
         assert_eq!(guess.status(), StatusCode::TOO_MANY_REQUESTS);
         let body = guess.into_body().collect().await.unwrap().to_bytes();
-        assert_eq!(&body[..], br#"{"error":{"status":429,"message":"Too Many Requests"}}"#);
+        assert_eq!(&body[..], br#"{"title":"Too Many Requests","status":429}"#);
         // Reads, preflights and agents still go through; a read keeps its cache headers.
         let home = one.clone().oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(
