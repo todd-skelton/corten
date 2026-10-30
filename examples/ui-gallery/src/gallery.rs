@@ -3,8 +3,8 @@
 use corten::i18n::RelativeStyle;
 use corten::prelude::*;
 use corten_ui::{
-    CheckboxGroup, Choice, ComboBox, Copied, CopyButton, MenuButton, MenuItem, Number, NumberField, Picker, PrintButton,
-    RelativeTime, RequiredWhen, Tab, TabGroup, Toast, Toaster, dialog,
+    CheckboxGroup, Choice, ComboBox, Copied, CopyButton, MenuButton, Number, NumberField, Picker, PrintButton, RelativeTime,
+    RequiredWhen, Tab, TabGroup, Toast, Toaster, dialog,
 };
 use serde::Deserialize;
 use std::time::SystemTime;
@@ -138,11 +138,6 @@ pub fn Gallery<'a>(
         required: true,
         ..Picker::new("condition", f.condition, "Choose a condition", "No matching condition", &CONDITIONS)
     };
-    let items = [
-        MenuItem { label: "Help", link: &url::Help, post: false },
-        MenuItem { label: "Archive", link: &url::Archive, post: true },
-        MenuItem { label: "Watch", link: &url::Watch, post: true },
-    ];
     let at = |tab| url::Home { tab, sale: None };
     html! {
         <div class={Intro}>
@@ -224,7 +219,13 @@ pub fn Gallery<'a>(
                     <div class={Buttons}>
                         <form method="post" action={url::Save} data-patch><button>"Save draft"</button></form>
                         <button type="button" command="show-modal" commandfor={RenameId}>"Rename draft"</button>
-                        <MenuButton id="actions" label="More actions" items={&items} />
+                        <MenuButton id="actions" label="More actions">
+                            <a role="menuitem" href={url::Help}>"Help"</a>
+                            <form method="post" action={url::Archive} data-patch><button role="menuitem">"Archive"</button></form>
+                            <button type="button" role="menuitem" disabled>"Delete"</button>
+                            <button type="button" role="menuitem" command="show-modal" commandfor={RenameId}>"Rename…"</button>
+                            <form method="post" action={url::Watch} data-patch><button role="menuitem">"Watch"</button></form>
+                        </MenuButton>
                     </div>
                     <MenuResult text="" />
                     <a href={url::Home { tab: None, sale: Some(Sale::Last) }}>"Last sale"</a>

@@ -1058,6 +1058,12 @@ Corten is pre-1.0, so any minor version may change the API.
     not parse 5,401 where it took 5,176 (callgrind, release build, 3 runs each); a row's error is
     found by its key, so many rows' errors do not cost each other
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
+143. `Req::invalid_with(&errors, form, page)`: a refusal whose form needs a read of its own reads it
+    only for the patch, through a `FormPatch` that draws a patch and nothing else (a page there does
+    not compile), and the page side only for a browser without JavaScript; a data client gets the
+    Problem Details document with neither, as from `invalid` (feature `json`). An app no longer branches on
+    `req.mode` for such a refusal and loses the JSON answer
+    ([#468 req.invalid takes the refused form's patch already drawn, so a patch that needs a read is read for the no-JavaScript page too](https://github.com/todd-skelton/corten/issues/468)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1693,6 +1699,16 @@ Corten is pre-1.0, so any minor version may change the API.
     read empty though values were sent. An `Option` reads as `None`, and a key under a name the
     struct does not have is ignored as before
     ([#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
+91. Breaking: corten-ui's `MenuButton` takes its items as children, each the app's own element with
+    `role="menuitem"` (a link, with `download` or `target` as it needs; a `<form method="post">`
+    with the fields it sends around a `<button role="menuitem">`; a `<button command="show-modal">`
+    that opens a confirm dialog), and `MenuItem` is gone: it was only a typed link or a field-less
+    post, so a row menu with a download, a post with a field or a confirm dialog was built by hand
+    without the menu's keys and focus. The script finds the items in the menu as it needs them (an
+    item a patch adds counts) and closes the menu on one click listener. `<MenuButton id="m"
+    label="Menu" items={&items} />` becomes `<MenuButton id="m" label="Menu">` with an element per
+    item
+    ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -2151,7 +2167,13 @@ Corten is pre-1.0, so any minor version may change the API.
     `IdNotADeriveIdType`; `TextOrElementWithoutId`), though not its place in the view. The markers are zero-sized and the macro's output is otherwise the same, so rendering
     is unchanged
     ([#383 An if or match inside a for in html! fails with E0382 (use of moved value), and a patch's E0277 does not name the part that is not a patch](https://github.com/todd-skelton/corten/issues/383)).
-79. A `Box<dyn Href>` (a link a shared component's function prop returns, when one enum of every
+79. During a pin bump (`Cargo.toml` moved to another corten revision, `Cargo.lock` not resolved
+    yet), `corten dev`, `fmt` and `check` told the user to install the corten the app was leaving:
+    the note now compares the command with the revision `Cargo.toml` asks for when it is not the one
+    the lock was written for, and says nothing for a tag or branch whose commit the lock does not
+    know yet
+    ([#475 During a pin bump, the CLI version note reads the stale Cargo.lock and tells you to install the older corten](https://github.com/todd-skelton/corten/issues/475)).
+80. A `Box<dyn Href>` (a link a shared component's function prop returns, when one enum of every
     page's route would join separate feature modules) is written as `href={boxed}`, as the `dyn
     Href` it holds; it was an `Href` but not an attribute value. A value that is neither text nor a
     link nor an attribute value is now an error that says so ("this value cannot be written in an
