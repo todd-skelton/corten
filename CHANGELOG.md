@@ -999,8 +999,12 @@ Corten is pre-1.0, so any minor version may change the API.
     language uses (French's `_many`), with one it never uses (English `_zero`), or without
     `_other` does not compile. Breaking: a key ending in `_zero`, `_one`, `_two`, `_few`,
     `_many` or `_other` is a plural form, so `t.cards_one(..)` and `t.cards_other(..)` become
-    `t.cards(count)`. Measured: `corten-format` grows from 2,535 to 2,885 bytes (1,260 to 1,429
-    gzipped); the examples' `count == 1` choices are gone and card-market's French no longer
+    `t.cards(count)`. Measured: `corten-format` grows from 2,535 to 3,008 bytes (1,260 to 1,475
+    gzipped); a `t.js()` plural sends the locale's plural table with its forms (seller-desk's
+    grid, which sends one to two handlers, is 502 bytes more per page; its whole page 474 bytes
+    raw, 37 gzipped, 15 brotli); seller-desk's `render_cost` under callgrind is 2,026,886,533 instructions
+    on main and 2,029,845,444 here (median of 3, +0.15%), and a plural `ItemCount` 1,648.5 per
+    render against 1,636.5; the examples' `count == 1` choices are gone and card-market's French no longer
     writes "1 annonces"
     ([#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393)).
 

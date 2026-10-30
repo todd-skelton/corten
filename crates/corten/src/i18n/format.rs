@@ -1425,9 +1425,13 @@ pub(crate) fn plural_wire(data: &'static __private::LocaleData, forms: &[&str; 6
     wire::open(data, out);
     wire::separators(&data.plain, &data.number, out);
     out.push_str(",&quot;c&quot;:&quot;");
-    for category in data.plurals.iter().chain([&data.millions]) {
-        out.push(char::from(b'0' + category));
+    // The table as digits, written in one piece (it is 201 of them, twice on a page that sends
+    // the message to two handlers).
+    let mut table = [0u8; 201];
+    for (digit, category) in table.iter_mut().zip(data.plurals.iter().chain([&data.millions])) {
+        *digit = b'0' + category;
     }
+    out.push_str(std::str::from_utf8(&table).unwrap_or_default());
     out.push_str("&quot;,&quot;m&quot;:[");
     for (i, form) in forms.iter().enumerate() {
         if i > 0 {

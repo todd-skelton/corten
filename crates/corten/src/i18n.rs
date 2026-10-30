@@ -777,12 +777,20 @@ pub mod __private {
     pub use super::format::parse_money;
 
     /// The `count` argument of a plural message found by its key (`by_key`), without its sign:
-    /// `None` when there is none or it is not a whole number.
+    /// `None` when there is none or it is not a whole number. A whole number too long for a
+    /// `u64` keeps its last six digits past a billion, all that its category reads.
     pub fn count<A: super::Args + ?Sized>(args: &A) -> Option<u64> {
         let mut n = None;
         args.arg("count", &mut |value| {
             let text = value.to_string();
-            n = text.strip_prefix('-').unwrap_or(&text).parse::<u64>().ok();
+            let digits = text.strip_prefix('-').unwrap_or(&text);
+            if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+                n = Some(
+                    digits
+                        .parse::<u64>()
+                        .unwrap_or_else(|_| 1_000_000_000 + digits[digits.len() - 6..].parse::<u64>().unwrap_or_default()),
+                );
+            }
         });
         n
     }
@@ -945,6 +953,15 @@ mod tests {
         assert!(fr.item_listing_count(1_000_000_000_000_000_000u64).to_string().ends_with(" d’annonces"));
         assert!(fr.item_listing_count(1_000_000_000_000_000_001u64).to_string().ends_with(" annonces"));
         assert!(fr.item_listing_count(-1i64).to_string().ends_with("1 annonce"), "a negative count by its size");
+        // by_key takes a whole number of any length (u128, or digits from JSON).
+        let huge = |count: &str| fr.by_key("item.listing_count", &[("count", count)]).map(|t| t.to_string());
+        assert_eq!(huge("1000000000000000000000000").as_deref(), Some("1000000000000000000000000 d’annonces"));
+        assert_eq!(huge("-18446744073709551617").as_deref(), Some("-18446744073709551617 annonces"));
+        assert_eq!(huge("1.5"), None, "not a whole number");
+        assert_eq!(
+            fr.by_key("item.listing_count", &[("count", u128::MAX)]).map(|t| t.to_string().ends_with(" annonces")),
+            Some(true)
+        );
         assert_eq!(fr.item_image("<Pika>", 2).to_string(), "Image 2 de <Pika>", "arguments may be in another order");
         assert_eq!(en.item_image("<Pika>", 2).to_html(), "&lt;Pika&gt; image 2", "escaped in a page");
         assert_eq!(en.brace().to_html(), "{literal} &amp; more", "the message's own text is escaped too");
