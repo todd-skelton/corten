@@ -5,7 +5,7 @@
 //!   build keeps the running server), and open pages reload by themselves.
 //! - `corten build` builds the release binary. `corten check` runs format, lint and
 //!   tests, then a type check of the app's scripts (with TypeScript's `tsc`, when it is installed).
-//! - `corten fmt` lays out the markup in `html!`, which rustfmt leaves alone.
+//! - `corten fmt` runs `cargo fmt` and lays out the markup in `html!`, which rustfmt leaves alone.
 
 mod dev;
 mod fmt;
@@ -26,10 +26,11 @@ Usage:
                    change, and reload open pages. Default port 3000.
   corten build     Build the release binary.
   corten fmt [--check] [path ..]
-                   Lay out the markup inside html! (rustfmt leaves macro bodies alone).
-                   --check reports files that need it instead of writing them.
-  corten check     cargo fmt --check, corten fmt --check, cargo clippy -D warnings, cargo test,
-                   then a type check of the scripts in src/ and static/ (TypeScript's tsc, from
+                   cargo fmt, then lay out the markup inside html! (rustfmt leaves macro
+                   bodies alone), so it fixes what corten check reports. With paths, only
+                   their markup. --check reports what needs it instead of writing it.
+  corten check     corten fmt --check, cargo clippy -D warnings, cargo test, then a type
+                   check of the scripts in src/ and static/ (TypeScript's tsc, from
                    node_modules or the PATH; without it, a note says they were not checked)
                    against the types/app.d.ts the tests wrote. At a workspace root it checks
                    the scripts of each member that uses corten.
@@ -56,8 +57,7 @@ fn main() -> ExitCode {
             );
         }),
         Some("fmt") => fmt::run(&args[1..]),
-        Some("check") => cargo(&["fmt", "--check"])
-            .and_then(|()| fmt::run(&["--check".to_string()]))
+        Some("check") => fmt::run(&["--check".to_string()])
             .and_then(|()| cargo(&["clippy", "--all-targets", "--", "-D", "warnings"]))
             // The tests first: the one that writes `types/app.d.ts` brings it up to date (and fails,
             // saying so, when it was stale) before `tsc` reads it, so a script that uses a new
