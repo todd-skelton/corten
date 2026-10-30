@@ -923,8 +923,10 @@ Corten is pre-1.0, so any minor version may change the API.
     the route's only handler (naming another method beside it does not compile). A route with a
     parameter still holds its handler to taking its `Params`: one relay for several catch-alls is
     generic over the route (`async fn relay<R: FromUrl>(_: Params<R>, req: Request)`), and the
-    compiler picks the route at each name, so no wrapper per route is needed. Routes without
-    `any` route and cost as before
+    compiler picks the route at each name, so no wrapper per route with a parameter is needed
+    (a route without one has no `Params` and takes a handler without them). A path the app
+    routes itself keeps only the methods it names. Routes without `any` route and cost as
+    before
     ([#360 A catch-all route's handler must take that route's Params, so one relay cannot serve several routes or every method](https://github.com/todd-skelton/corten/issues/360)).
 
 ### Removed
