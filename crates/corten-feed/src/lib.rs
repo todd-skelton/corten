@@ -38,6 +38,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     convert::Infallible,
+    marker::PhantomData,
     sync::{Arc, LazyLock, Mutex, MutexGuard},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -295,12 +296,12 @@ impl<T: Row> Feed<T> {
 
     /// `GET {url}`: every row with the epoch and sequence number they are current at. The body is
     /// kept until the next change, so the snapshots between two writes share one serialization.
-    pub fn snapshot(&self) -> FeedResponse {
+    pub fn snapshot(&self) -> FeedResponse<T> {
         // Clone under the lock and serialize outside it, so large snapshots do not block writes.
         let (version, seq, rows) = {
             let state = self.lock();
             if let Some(body) = &state.snapshot.body {
-                return FeedResponse(snapshot_response(body.clone()));
+                return FeedResponse::new(snapshot_response(body.clone()));
             }
             (state.snapshot.version, state.seq, state.rows.values().cloned().collect::<Vec<_>>())
         };
@@ -310,7 +311,7 @@ impl<T: Row> Feed<T> {
         );
         drop(rows);
         self.keep_snapshot(version, &body);
-        FeedResponse(snapshot_response(body))
+        FeedResponse::new(snapshot_response(body))
     }
 
     /// Keeps a snapshot body written from the rows at `version`, unless they changed since.
@@ -322,12 +323,12 @@ impl<T: Row> Feed<T> {
     }
 
     /// `GET {url}/live`: patches after the client's cursor, then new patches as they happen.
-    pub fn live(&self, since: Since) -> FeedResponse {
+    pub fn live(&self, since: Since) -> FeedResponse<T> {
         self.live_with(since, ())
     }
 
     /// [`Feed::live`] that keeps `guard` (a [`Permit`], say) alive until the stream ends.
-    pub fn live_with(&self, since: Since, guard: impl Send + 'static) -> FeedResponse {
+    pub fn live_with(&self, since: Since, guard: impl Send + 'static) -> FeedResponse<T> {
         let state = self.lock();
         let rx = self.inner.tx.subscribe();
         let last = state.seq;
@@ -366,7 +367,7 @@ impl<T: Row> Feed<T> {
             let _held = &guard;
             Ok::<Bytes, Infallible>(chunk)
         });
-        FeedResponse(
+        FeedResponse::new(
             (
                 [
                     (header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream")),
@@ -379,18 +380,23 @@ impl<T: Row> Feed<T> {
     }
 }
 
-/// A feed's snapshot ([`Feed::snapshot`]) or live stream ([`Feed::live`]): a response a route
-/// names by its type, so a handler that returns one says it serves a feed.
-pub struct FeedResponse(Response);
+/// A feed's snapshot ([`Feed::snapshot`]) or live stream ([`Feed::live`]) of `T` rows: a
+/// response a route names by its type, so a handler that returns one says it serves a feed and
+/// which rows (`-> FeedResponse<Level>`).
+pub struct FeedResponse<T>(Response, PhantomData<fn() -> T>);
 
-impl FeedResponse {
+impl<T> FeedResponse<T> {
+    fn new(response: Response) -> Self {
+        FeedResponse(response, PhantomData)
+    }
+
     /// The response's body.
     pub fn into_body(self) -> Body {
         self.0.into_body()
     }
 }
 
-impl IntoResponse for FeedResponse {
+impl<T> IntoResponse for FeedResponse<T> {
     fn into_response(self) -> Response {
         self.0
     }

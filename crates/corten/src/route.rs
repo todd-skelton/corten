@@ -1693,19 +1693,21 @@ pub mod __private {
     // `#[corten::routes]` names each handler through one of these, so a handler that cannot serve
     // the route is an error that says why, at the handler's name in `#[route(..)]`: its arguments
     // a request cannot fill, a result that is not an `Answer`, an input a `Public` answer may not
-    // read, a module's `caller = ..` it does not take (`R`, `()` for none), or the route's own
-    // `Params` when its path has a parameter (`P`, `()` for none).
+    // read, a module's `caller = ..` it does not take (`R`, `()` for none), the route's own
+    // `Params` when its path has a parameter (`P`, `()` for none), or rows other than the ones the
+    // route names (`D`: `rows = Level` on its `get`, `NotAFeed` otherwise).
     // `super::get` and the others are the same check without a caller.
     macro_rules! methods {
         ($($method:ident),*) => {
             $(
                 #[inline]
-                pub fn $method<H, T, S, R, I, P, J>(handler: H) -> Methods<S>
+                pub fn $method<H, T, S, R, I, P, J, D>(handler: H) -> Methods<S>
                 where
                     H: RouteHandler<T, S> + crate::answer::Signature<T>,
                     <H as RouteHandler<T, S>>::Handler: Handler<T, S>,
                     <<H as RouteHandler<T, S>>::Handler as Handler<T, S>>::Future: Unpin,
                     <H as crate::answer::Signature<T>>::Out: crate::answer::Answer + 'static,
+                    <<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Rows: RowsAre<D>,
                     <<H as crate::answer::Signature<T>>::Out as crate::answer::Answer>::Inputs:
                         crate::answer::Accepts<<H as crate::answer::Signature<T>>::Args>,
                     <H as crate::answer::Signature<T>>::Args: crate::answer::Holds<R, I> + crate::answer::Holds<P, J>,
@@ -1719,6 +1721,25 @@ pub mod __private {
         };
     }
     methods!(get, post, put, delete, patch, head, options, trace);
+
+    /// A handler's rows (`Self`, [`crate::answer::Answer::Rows`]) are the ones its route names
+    /// (`D`).
+    #[diagnostic::on_unimplemented(
+        message = "the route's rows are {D}, and this handler answers with rows {Self}",
+        label = "this handler's rows",
+        note = "a route whose get serves a feed names its rows, #[route(\"/feed/levels\", get = levels, rows = Level)] for a handler that returns FeedResponse<Level>; a route that serves no feed (NotAFeed) names none"
+    )]
+    pub trait RowsAre<D> {}
+    impl<T> RowsAre<T> for T {}
+
+    /// A route whose `get` serves a feed of `Row`s (`rows = Level`): what a script's
+    /// `FeedUrl<Level>` parameter takes.
+    #[diagnostic::on_unimplemented(
+        message = "{Self} is not the URL of a feed of {Row} rows",
+        label = "the handler's JSDoc says FeedUrl<{Row}>, and this route names other rows or none",
+        note = "a feed's route names its rows, #[route(\"/feed/levels\", get = levels, rows = Level)], and the script's parameter names the same type, @param {{FeedUrl<Level>}} feed"
+    )]
+    pub trait FeedRows<Row> {}
 
     pub use crate::form::de::{sorted_pairs, Pair};
     use crate::form::FormError;
