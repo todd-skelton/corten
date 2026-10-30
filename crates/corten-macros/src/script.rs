@@ -492,7 +492,11 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
                     Some(class) => events.push((name, class.trim().to_string())),
                     // A name for another type (a generated declaration, a set of names, or another
                     // typedef): parameters typed by it are typed by what it names.
-                    None if generated_name(&ty).is_some() || names_union(&ty) || alias_name(&ty) => aliases.push((name, ty)),
+                    // Any type but an object's (`{ a: T }` or `object` with `@property`s) is one: `Tab | null`
+                    // and `Tab[]` are checked where a parameter names them, as they are written there.
+                    None if object_literal(&ty).is_none() && !matches!(ty.trim(), "object" | "Object") => {
+                        aliases.push((name, ty))
+                    }
                     None => typedefs.push(Typedef {
                         name,
                         ty,
@@ -620,7 +624,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
                 // A set of names in parentheses, so `Mode | null` stays one set and `null`.
                 Some(_) => {
                     let target = resolve(word);
-                    if names_union(&target) {
+                    if names_union(&target) || target.contains('|') {
                         out.push('(');
                         out.push_str(&target);
                         out.push(')');
@@ -684,13 +688,14 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         if !group {
             continue;
         }
-        // A set of names in a group is refused only when a handler takes the group: a typedef the
-        // script keeps for itself (its own state, with an element in it) is the script's to type.
-        if let Some((field, ty)) = props.iter().find(|(_, t)| names_union(&expand(t))) {
+        // A set of names, or a type a call cannot be checked against, in a group is refused only
+        // when a handler takes the group: a typedef the script keeps for itself (its own state,
+        // with an element in it) is the script's to type.
+        if let Some((field, ty)) = props.iter().find(|(_, t)| holds_names_union(&expand(t))) {
             unions.push((name.clone(), (line, union_error(&format!("{name}: {field}"), ty))));
         }
         if let Some((_, Param::Unreadable(why))) = fields.iter().find(|(_, p)| matches!(p, Param::Unreadable(_))) {
-            return Err((line, why.clone()));
+            unions.push((name.clone(), (line, why.clone())));
         }
         for (field, _) in &fields {
             if !field.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
@@ -710,7 +715,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             // `corten::types` generates: the call is then checked, and a renamed variant fails to
             // build. A string literal union would take any value.
             let named = resolve(&ty);
-            if names_union(&expand(&ty)) {
+            if holds_names_union(&expand(&ty)) {
                 return Err((line, union_error(&format!("{name}: {param}"), &ty)));
             }
             let resolved = if groups.iter().any(|g| g.name == named) {
@@ -781,12 +786,45 @@ fn mentions_generated(ty: &str) -> bool {
     })
 }
 
-/// A plain name another typedef gives (`@typedef {Tab} Shown`), not `object`, which starts one.
-fn alias_name(ty: &str) -> bool {
+/// True for a set of names (`names_union`) or a type built of one: a list of them (`Mode[]`,
+/// `Array<Mode>`), or one inside another type's arguments (`Record<Mode, number>`).
+fn holds_names_union(ty: &str) -> bool {
     let ty = ty.trim();
-    !matches!(ty, "object" | "Object")
-        && ty.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
-        && ty.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+    if names_union(ty) {
+        return true;
+    }
+    if let Some(inner) = ty.strip_suffix("[]") {
+        let inner = inner.trim();
+        let inner = inner.strip_prefix('(').and_then(|i| i.strip_suffix(')')).unwrap_or(inner);
+        return holds_names_union(inner);
+    }
+    // A generic's arguments, `Name<A, B>`, split at the top level; a catalog message's are the
+    // names of its arguments, `Message<"count">`, not a value.
+    if let (Some(open), true) = (ty.find('<'), ty.ends_with('>')) {
+        if ty[..open].trim() == "Message" {
+            return false;
+        }
+        let args = &ty[open + 1..ty.len() - 1];
+        let (mut start, mut quote, mut depth) = (0, None, 0i32);
+        for (i, c) in args.char_indices() {
+            match (c, quote) {
+                ('"' | '\'', None) => quote = Some(c),
+                (c, Some(q)) if c == q => quote = None,
+                (_, Some(_)) => {}
+                ('(' | '<' | '[' | '{', None) => depth += 1,
+                (')' | '>' | ']' | '}', None) => depth -= 1,
+                (',', None) if depth == 0 => {
+                    if holds_names_union(&args[start..i]) {
+                        return true;
+                    }
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        return holds_names_union(&args[start..]);
+    }
+    false
 }
 
 /// True for a set of names, `"name" | "set"` (or one), also with `null` or `undefined` among
@@ -1222,6 +1260,23 @@ function helper() {}
         }
         let grouped = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {{ el: HTMLElement, tabs: Tab[] }} Sel */\n/** @param {Sel} s */\nexport function f(s) {}";
         assert!(parse(grouped).unwrap_err().1.contains("types a value alone"), "a group's field");
+        // A group no handler takes is the script's own, whatever it holds.
+        let own = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {{ el: HTMLElement, tabs: Tab[], tab: Tab | null }} Kept */\n/** @param {HTMLElement} el */\nexport function f(el) {}";
+        parse(own).unwrap();
+        // A typedef of a compound type is checked as the type it names.
+        for (typedef, what) in [
+            ("import(\"../types/app\").Tab | null", "types a value alone"),
+            ("import(\"../types/app\").Tab[]", "types a value alone"),
+            ("\"a\" | \"b\" | null", "is a Rust enum the markup passes"),
+        ] {
+            let source = format!("/** @typedef {{{typedef}}} Shown */\n/** @param {{Shown}} a */\nexport function f(a) {{}}");
+            assert!(parse(&source).unwrap_err().1.contains(what), "{typedef}");
+        }
+        // A list or a generic of a set of names is refused as the set is.
+        for ty in ["(\"a\" | \"b\")[]", "Array<\"a\" | \"b\">", "Readonly<Mode>", "Record<Mode, number>"] {
+            let source = format!("/** @typedef {{\"a\" | \"b\"}} Mode */\n/** @param {{{ty}}} a */\nexport function f(a) {{}}");
+            assert!(parse(&source).unwrap_err().1.contains("is a Rust enum the markup passes"), "{ty}");
+        }
         let mode = "/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {Mode | null} m */\nexport function f(m) {}";
         assert!(parse(mode).unwrap_err().1.contains("is a Rust enum the markup passes"), "an alias of a set, or null");
         let (fine, _) = parse("/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {string} s */\nexport function f(s) {}").unwrap();

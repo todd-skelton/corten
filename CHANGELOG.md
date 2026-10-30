@@ -972,14 +972,16 @@ Corten is pre-1.0, so any minor version may change the API.
     minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
     ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
     `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
 134. A handler parameter typed by a declaration `corten::types` generated
     (`@param {import("../types/app").SortBy} by`, or a `@typedef` of it) takes a value of the Rust
     type of that name in the component's module, so `js::sortBy(target, SortBy::Price)` compiles
     and `42` or `"prodcut"` do not: one handler serves every name of a fixed set, and a renamed
     variant fails to build. A string literal union as a handler's parameter
     (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error says to
-    make it a Rust enum with a generated declaration. What the page gets is unchanged
+    make it a Rust enum with a generated declaration, and so does a list or a generic of one
+    (`Mode[]`, `Record<Mode, number>`). A `@typedef` of any type but an object (`Tab | null`,
+    `Tab[]`, `string`) is checked as the type it names where a handler takes it; a typedef the
+    script keeps for itself is not checked. What the page gets is unchanged
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
 ### Removed
