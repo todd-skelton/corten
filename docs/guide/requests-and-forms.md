@@ -513,8 +513,10 @@ Without JavaScript the browser reloads the page (`<meta http-equiv="refresh">` i
 
 A `data-patch` form's answer can be in the same state: the write is in, but the read that
 draws the part it replaces is behind. Rather than wait for the read, or redirect to a page only
-to show "saving", the patch says where to read it again: `ReadAgain { after }.from(&route)`, a
-patch instruction like `Remove` and `Append`. After the delay the runtime fetches the route as a
+to show "saving", the patch says where to read it again: `ReadAgain { after }.from(route)`, a
+patch instruction like `Remove` and `Append`. It takes the route by value (a borrowed one works where the route outlives the patch, as in a
+handler), so a component that is both part of the page and the patch builds it in its body and
+returns it. After the delay the runtime fetches the route as a
 GET `data-patch` form would (`corten: action`) and applies the patch it answers, which asks again
 while it is still behind. The route's URL carries what the read waits for (the write's receipt),
 since the page's address does not; its handler answers the part with `req.patch_or`, and so the

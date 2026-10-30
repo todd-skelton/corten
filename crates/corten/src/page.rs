@@ -1620,6 +1620,25 @@ impl ReadAgain {
     /// );
     /// ```
     ///
+    /// It takes the route by value too, so a component that is part of the page and the patch
+    /// builds the read in its body and returns it:
+    ///
+    /// ```
+    /// # use std::time::Duration;
+    /// # use corten::prelude::*;
+    /// # #[derive(Route)]
+    /// # #[route("/alerts")]
+    /// # struct Alerts<'a> { after: Option<&'a str> }
+    /// #[derive(Id)]
+    /// struct ListId;
+    ///
+    /// fn list(after: &str, saving: bool) -> impl Patch + '_ {
+    ///     let again = saving.then(|| ReadAgain { after: Duration::from_secs(2) }.from(Alerts { after: Some(after) }));
+    ///     html! { <ul id={ListId}></ul> {again} }
+    /// }
+    /// assert!(list("r7", true).to_html().ends_with(r#"data-from="/alerts?after=r7"></template>"#));
+    /// ```
+    ///
     /// A URL written as text does not compile:
     ///
     /// ```compile_fail,E0277
@@ -1628,7 +1647,7 @@ impl ReadAgain {
     ///
     /// let _ = ReadAgain { after: Duration::from_secs(2) }.from("/alerts?after=r7");
     /// ```
-    pub fn from<R: crate::route::Route + ?Sized>(self, route: &R) -> ReadAgainFrom<'_, R> {
+    pub fn from<R: crate::route::Route>(self, route: R) -> ReadAgainFrom<R> {
         ReadAgainFrom { again: self, route }
     }
 
@@ -1676,12 +1695,12 @@ impl Render for ReadAgain {
 
 /// A patch's or a page's request to be read again from a route, made by [`ReadAgain::from`]:
 /// `<template data-corten-read-again="2" data-from="/alerts?after=r7">`.
-pub struct ReadAgainFrom<'a, R: ?Sized> {
+pub struct ReadAgainFrom<R> {
     again: ReadAgain,
-    route: &'a R,
+    route: R,
 }
 
-impl<R: crate::route::Route + ?Sized> Render for ReadAgainFrom<'_, R> {
+impl<R: crate::route::Route> Render for ReadAgainFrom<R> {
     fn render(&self, out: &mut String) {
         use std::fmt::Write;
         let _ = write!(out, r#"<template data-corten-read-again="{}" data-from=""#, self.again.seconds());
@@ -1690,8 +1709,8 @@ impl<R: crate::route::Route + ?Sized> Render for ReadAgainFrom<'_, R> {
     }
 }
 
-impl<R: crate::route::Route + ?Sized> crate::view::__private::PatchSealed for ReadAgainFrom<'_, R> {}
-impl<R: crate::route::Route + ?Sized> crate::view::Patch for ReadAgainFrom<'_, R> {}
+impl<R: crate::route::Route> crate::view::__private::PatchSealed for ReadAgainFrom<R> {}
+impl<R: crate::route::Route> crate::view::Patch for ReadAgainFrom<R> {}
 
 /// Structured data for search engines (a product, its breadcrumbs), as
 /// `<script type="application/ld+json">`, among a page's head tags:
