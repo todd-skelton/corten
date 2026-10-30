@@ -1464,8 +1464,9 @@ impl fmt::Write for Encode<'_> {
 /// a path parameter from its segment, percent-decoded; a query parameter by the name serde reads
 /// (`None`, or empty for a list, when the query leaves it out; a field with `#[serde(default)]`
 /// its default); a `#[route(query)]` field's set each of its fields the same way; a
-/// `#[route(prefix = "dim.")]` field from each parameter with the prefix, taken off. A request whose parameters do not
-/// fit is a `400 Bad Request`.
+/// `#[route(prefix = "dim.")]` field from each parameter with the prefix, taken off. A word an
+/// enum does not have (an old bookmark) reads as missing, and a prefixed entry holding one is
+/// left out; a request whose parameters otherwise do not fit is a `400 Bad Request`.
 ///
 /// So the link and the handler cannot disagree about a parameter's name or type, and a handler
 /// of a route with a parameter in its path must take the route's `Params`: in a
@@ -2236,7 +2237,7 @@ pub mod __private {
 
         fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError> {
             crate::form::de::prefixed(pairs, prefix)
-                .map(|(k, v)| Ok((crate::form::de::one(k)?, crate::form::de::one(v)?)))
+                .filter_map(|(k, v)| crate::form::de::entry(prefix, k, v).transpose())
                 .collect()
         }
     }
@@ -2246,7 +2247,7 @@ pub mod __private {
 
         fn prefixed(pairs: &[Pair<'_>], prefix: &str) -> Result<Self::T, FormError> {
             crate::form::de::prefixed(pairs, prefix)
-                .map(|(k, v)| Ok((crate::form::de::one(k)?, crate::form::de::one(v)?)))
+                .filter_map(|(k, v)| crate::form::de::entry(prefix, k, v).transpose())
                 .collect()
         }
     }

@@ -2188,6 +2188,13 @@ Corten is pre-1.0, so any minor version may change the API.
     item page's `render_cost` (release, callgrind, 3 runs) is 35,567,415,208 instructions against
     35,548,560,642 on main (+0.05%; the page writes no boxed link, so this is layout)
     ([#457 Box<dyn Href> is an Href but not an attribute value, so href={boxed} fails with an error naming a private method](https://github.com/todd-skelton/corten/issues/457)).
+81. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
+    edited by hand) reads as missing, `None` or the field's `#[serde(default)]`, so `Params` shows
+    the page with its filter, sort or tab at its default where it answered 400 with serde's text, and
+    a `#[route(prefix = ..)]` entry holding one is left out of the map. A
+    parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
+    and a form's body are still refused. Links write what they did
+    ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
 
 ### Documentation
 

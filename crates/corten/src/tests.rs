@@ -2157,6 +2157,59 @@ fn a_query_set_reads_back_what_its_links_write() {
     assert_eq!(link.href(), "/shown-set?tab=a%20b");
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, crate::UrlValue)]
+#[serde(rename_all = "snake_case")]
+pub enum Filter {
+    #[default]
+    All,
+    Due,
+}
+
+#[derive(Debug, PartialEq, serde::Deserialize, crate::Route)]
+#[route(query)]
+pub struct FilterSet {
+    pub state: Option<Filter>,
+}
+
+#[derive(crate::Route)]
+#[route("/filtered")]
+pub struct Filtered {
+    pub sort: Option<Filter>,
+    #[serde(default)]
+    pub shown: Filter,
+    #[route(query)]
+    pub set: FilterSet,
+}
+
+#[test]
+fn a_query_word_the_app_no_longer_has_reads_as_missing() {
+    use crate::route::FromUrl;
+    let read = <Filtered as FromUrl>::__read((), "sort=due_now&shown=gone&state=old").unwrap();
+    assert_eq!((read.sort, read.shown, read.set.state), (None, Filter::All, None));
+    let read = <Filtered as FromUrl>::__read((), "sort=due&shown=due&state=due").unwrap();
+    assert_eq!((read.sort, read.shown, read.set.state), (Some(Filter::Due), Filter::Due, Some(Filter::Due)));
+    assert!(<Filtered as FromUrl>::__read((), "sort=due&sort=all").is_err(), "sent twice is still refused");
+}
+
+#[derive(crate::Route)]
+#[route("/faceted")]
+pub struct Faceted {
+    #[route(prefix = "f.")]
+    pub facets: std::collections::BTreeMap<Filter, Filter>,
+    #[route(prefix = "n.")]
+    pub counts: Vec<(Filter, u32)>,
+}
+
+#[test]
+fn a_prefixed_entry_the_app_no_longer_has_is_left_out() {
+    use crate::route::FromUrl;
+    let read = <Faceted as FromUrl>::__read((), "f.due=all&f.gone=due&f.all=gone&n.due=2&n.old=3").unwrap();
+    assert_eq!(read.facets, std::collections::BTreeMap::from([(Filter::Due, Filter::All)]));
+    assert_eq!(read.counts, vec![(Filter::Due, 2)]);
+    let err = <Faceted as FromUrl>::__read((), "n.due=two").err().expect("a value that is not a word is refused");
+    assert!(err.to_string().contains("n.due: "), "the error names the parameter: {err}");
+}
+
 /// Every kind of parameter a route has, which its handler reads back as the link wrote it.
 #[crate::routes]
 mod params_url {
