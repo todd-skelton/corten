@@ -4,7 +4,7 @@
 // snapshot or a change names; a listing the page does not show is counted, not drawn.
 import { subscribe } from "corten";
 import { ListingRow, rows } from "corten/views";
-/** @import { MoneyFormat } from "corten" */
+/** @import { FeedUrl, MoneyFormat } from "corten" */
 /** @import { Holds } from "corten/views" */
 
 /** @typedef {import("../types/app").Listing} Listing Generated from `Listing` in src/listing.rs. */
@@ -27,7 +27,7 @@ const add = (output, by) => {
 /**
  * Follows the feed until the table leaves the page.
  * @param {Shown} shown @param {Holds<ListingRow, HTMLTableSectionElement>} body
- * @param {MoneyFormat} money @param {string} feed @param {AbortSignal} signal
+ * @param {MoneyFormat} money @param {FeedUrl<Listing>} feed @param {AbortSignal} signal
  */
 export function follow(shown, body, money, feed, signal) {
   const list = rows(body, ListingRow);
@@ -44,7 +44,6 @@ export function follow(shown, body, money, feed, signal) {
   subscribe(
     feed,
     {
-      /** @param {Listing[]} listings @param {number} seq */
       snapshot(listings, seq) {
         shown.listings.value = String(listings.length);
         shown.through.value = String(seq);

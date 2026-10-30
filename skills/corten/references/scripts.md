@@ -155,18 +155,24 @@ element (a bubbling event on each change) and reads the attributes; never a `Mut
 ## Live rows (feature `feed`)
 
 ```rust
-// a Feed<Stock> where Stock: Row (has an id). Routes:
-.route(Stocks::PATH, get(|State(m): State<Market>| async move { m.stocks.snapshot() }))
-.route(StocksLive::PATH, get(|State(m): State<Market>, since: Since| async move { m.stocks.live(since) }))
+// a Feed<Stock> where Stock: Row (has an id). In the routes module, each feed route names its rows:
+//   #[route("/feed/stocks", get = stocks, rows = Stock)] pub struct Stocks;
+//   #[route("/feed/stocks/live", get = stocks_live, rows = Stock)] pub struct StocksLive;
+async fn stocks(State(m): State<Market>) -> FeedResponse<Stock> { m.stocks.snapshot() }
+async fn stocks_live(State(m): State<Market>, since: Since) -> FeedResponse<Stock> { m.stocks.live(since) }
 // writes: m.stocks.write(|tx| { let s = tx.get_mut(&id)?; s.set_price(cents); Some(()) });
 
-// the component's root: <div on:connect={js::watch(price, feed, signal)}>
+// the component's root: <div on:connect={js::watch(price, url::Stocks, signal)}>
 ```
 
 ```js
 import { subscribe } from "corten";
+/** @import { FeedUrl } from "corten" */
+/** @typedef {import("../types/app").Stock} Stock */
 
-/** @param {HTMLTableCellElement[]} cells @param {string} feed @param {AbortSignal} signal */
+// FeedUrl<Stock> takes only a route with rows = Stock (checked when the crate compiles);
+// subscribe() takes the row type from it, so rows and changes are Stock without a @param.
+/** @param {HTMLTableCellElement[]} cells @param {FeedUrl<Stock>} feed @param {AbortSignal} signal */
 export function watch(cells, feed, signal) {
   subscribe(feed, {
     snapshot: (rows) => rows.forEach((row) => paint(cells, row)),

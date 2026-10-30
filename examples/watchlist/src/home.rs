@@ -17,11 +17,11 @@ use crate::{
 };
 
 /// The stocks feed: a snapshot, then live changes from a cursor.
-pub(crate) async fn stocks(State(market): State<Market>) -> FeedResponse {
+pub(crate) async fn stocks(State(market): State<Market>) -> FeedResponse<Stock> {
     market.stocks.snapshot()
 }
 
-pub(crate) async fn stocks_live(State(market): State<Market>, since: Since) -> FeedResponse {
+pub(crate) async fn stocks_live(State(market): State<Market>, since: Since) -> FeedResponse<Stock> {
     market.stocks.live(since)
 }
 
