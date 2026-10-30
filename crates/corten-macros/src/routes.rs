@@ -11,7 +11,8 @@ use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, Tok
 use crate::tokens::{err, q, stream, Error};
 
 /// The methods a route can name a handler for: axum's `routing` functions.
-const METHODS: &[&str] = &["get", "post", "put", "delete", "patch", "head", "options", "trace"];
+/// The methods a route names a handler for; `any` is every method, and the route's only handler.
+const METHODS: &[&str] = &["get", "post", "put", "delete", "patch", "head", "options", "trace", "any"];
 
 /// A route the module routes: its struct's name, path and handlers.
 struct Routed {
@@ -548,6 +549,12 @@ fn route_attr(attr: &Group) -> Result<Option<(String, Span, Serves, Group)>, Err
                 }
                 if serves.handlers.iter().any(|(m, _)| m.to_string() == key) {
                     return err(method.span(), format!("{key} is named twice: a route has one handler per method"));
+                }
+                if !serves.handlers.is_empty() && (key == "any" || serves.handlers.iter().any(|(m, _)| m.to_string() == "any")) {
+                    return err(
+                        method.span(),
+                        "any = .. serves every method, so it is the route's only handler: #[route(\"/{*rest}\", any = relay)]",
+                    );
                 }
                 if handler.is_empty() || !is_path(handler) {
                     let span = handler.first().map_or(method.span(), TokenTree::span);

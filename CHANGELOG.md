@@ -917,6 +917,15 @@ Corten is pre-1.0, so any minor version may change the API.
     read only by `finish`. A plain GET through the router took 16,673 to 17,022 instructions
     before and 16,864 to 16,866 after (callgrind, release build, 5 runs each); the before runs
     vary more than the two differ.
+128. `#[route("/{*rest}", any = relay)]`: one handler for every method of a route, those the app
+    never names included (`OPTIONS`, `PROPFIND`), for an app moved onto Corten a slice at a time
+    that relays the rest to its old server, which then answers them instead of Corten's 405. It is
+    the route's only handler (naming another method beside it does not compile). A route with a
+    parameter still holds its handler to taking its `Params`: one relay for several catch-alls is
+    generic over the route (`async fn relay<R: FromUrl>(_: Params<R>, req: Request)`), and the
+    compiler picks the route at each name, so no wrapper per route is needed. Routes without
+    `any` route and cost as before
+    ([#360 A catch-all route's handler must take that route's Params, so one relay cannot serve several routes or every method](https://github.com/todd-skelton/corten/issues/360)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

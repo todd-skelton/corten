@@ -769,6 +769,28 @@ it is, as long as the HTTP client does not decode it (for reqwest, leave its `gz
 `zstd` features off). When the client leaves, the body is dropped, and
 the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
 
+An app moved onto Corten a slice at a time serves its own paths and relays the rest to the
+old server behind a catch-all route. `any = relay` serves every method there, those the app never
+names included (`OPTIONS`, `PROPFIND`), so the upstream answers them, not Corten's 405; it is
+the route's only handler. A route with a parameter holds its handlers to taking its `Params`, so
+a handler cannot ignore what the path says by mistake. One relay for several catch-alls is
+generic over the route, and the compiler picks the route at each name:
+
+```rust,ignore
+async fn relay<R: FromUrl>(_: Params<R>, req: Request) -> corten::Result<Relay> {
+    legacy::forward(req).await // the old server's answer, as Relay::new(status, headers, body)
+}
+
+#[corten::routes]
+pub mod url {
+    #[route("/{*rest}", any = relay)]
+    pub struct Elsewhere<'a> { pub rest: &'a str }
+
+    #[route("/api/{*rest}", any = relay)]
+    pub struct OldApi<'a> { pub rest: &'a str }
+}
+```
+
 ## Who is asking
 
 A handler that needs to know who is asking takes a `Caller<T>`, where `T` says how one is
