@@ -1468,12 +1468,35 @@ pub mod __private {
         }
     }
 
+    // Tried when the value is no `AttrValue`: text written with `Display`. It matches any value,
+    // so one that is neither is an error about attributes (`AttrText`), not a private method.
     pub trait AttrViaDisplay {
-        fn __attr(&self, name: &str, out: &mut String);
+        fn __attr(&self, name: &str, out: &mut String)
+        where
+            Self: AttrText;
     }
 
-    impl<T: Display + ?Sized> AttrViaDisplay for &Attr<'_, T> {
-        fn __attr(&self, name: &str, out: &mut String) {
+    impl<T: ?Sized> AttrViaDisplay for &Attr<'_, T> {
+        #[inline]
+        fn __attr(&self, name: &str, out: &mut String)
+        where
+            Self: AttrText,
+        {
+            self.__text(name, out)
+        }
+    }
+
+    #[diagnostic::on_unimplemented(
+        message = "this value cannot be written in an attribute",
+        label = "not text, a link, an id or an attribute value",
+        note = "an attribute takes text (a type that implements `Display`), a link (a typed route, `&dyn Href` or `Box<dyn Href>`), a `#[derive(Id)]` id, or a type that implements `AttrValue`"
+    )]
+    pub trait AttrText {
+        fn __text(&self, name: &str, out: &mut String);
+    }
+
+    impl<T: Display + ?Sized> AttrText for &Attr<'_, T> {
+        fn __text(&self, name: &str, out: &mut String) {
             out.push_str(name);
             out.push_str("=\"");
             escape_display(self.0, out);

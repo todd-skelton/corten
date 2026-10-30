@@ -971,8 +971,6 @@ Corten is pre-1.0, so any minor version may change the API.
     formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
     minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
     ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
-    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
 134. `#[derive(Href)]` on an enum whose variants each hold a route (an app's screens) makes it a
     link, `href={screen}`, and a component several pages draw takes where its links and forms go
     as `&dyn Href`, so each page passes its own typed route instead of a `String`; a unit variant
@@ -2023,6 +2021,14 @@ Corten is pre-1.0, so any minor version may change the API.
     closure and a second read was E0382. A view given by value, and the view at the top of an
     `html!`, still own what they use
     ([#414 A view in a prop (action={&html! {..}}) takes ownership of the locals it uses, so a local also read elsewhere in the page fails with E0382](https://github.com/todd-skelton/corten/issues/414)).
+76. A `Box<dyn Href>` (a link a shared component's function prop returns, when one enum of every
+    page's route would join separate feature modules) is written as `href={boxed}`, as the `dyn
+    Href` it holds; it was an `Href` but not an attribute value. A value that is neither text nor a
+    link nor an attribute value is now an error that says so ("this value cannot be written in an
+    attribute", naming what an attribute takes) instead of one about a private `__attr` method. The
+    item page's `render_cost` (release, callgrind, 3 runs) is 35,567,415,208 instructions against
+    35,548,560,642 on main (+0.05%; the page writes no boxed link, so this is layout)
+    ([#457 Box<dyn Href> is an Href but not an attribute value, so href={boxed} fails with an error naming a private method](https://github.com/todd-skelton/corten/issues/457)).
 
 ### Documentation
 
