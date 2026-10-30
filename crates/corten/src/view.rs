@@ -44,7 +44,9 @@
 //! - In a component with a script ([`crate::script`]), `ref={save}` names an element for its
 //!   handlers and `on:click={js::confirm(event, dialog)}` calls one of them.
 //! - A view owns what it uses and renders once, so it can be returned from a function and markup
-//!   can move or match the values it captured.
+//!   can move or match the values it captured. A view lent to a prop inside another view
+//!   (`action={&html! { .. }}`) renders inside it, so it borrows what it uses and the rest of the
+//!   markup can read the same locals.
 //! - `<Card title="x" compact>children</Card>` builds the struct `Card` (from [`component`] or
 //!   written by hand) with those fields, `compact` meaning `compact: true`, and the children in
 //!   its `children` field. A missing or misspelled prop is a compile error.
@@ -114,8 +116,9 @@ pub trait Render {
 }
 
 /// A view from `html!`: markup that renders when it is used, once. It owns what it captured
-/// (references are copied in), so markup can move and match those values freely; build the view
-/// again to render it again.
+/// (references are copied in), so markup can move and match those values freely, except a view
+/// lent to a prop inside another (`action={&html! { .. }}`), which borrows from the view around
+/// it; build the view again to render it again.
 pub struct Html<F> {
     render: Cell<Option<F>>,
     /// The size this `html!` call last rendered to on its own, so the next string it renders into
@@ -732,6 +735,30 @@ impl<T: Id, V: Render> Render for Append<T, V> {
 /// send(html! { for sku in taken { if sku > 4 { <Field sku={sku} /> } } });
 /// ```
 ///
+/// The same holds for a `match` inside a `for`, and a `for` inside a `for`:
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// #[component]
+/// fn Field(sku: u32) -> impl Render {
+///     html! { <label>{sku}</label> }
+/// }
+/// fn send(_: impl Patch) {}
+/// let taken = [4, 9];
+/// send(html! { for sku in taken { match sku { 4 => { <Field sku={sku} /> } _ => {} } } });
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// #[component]
+/// fn Field(sku: u32) -> impl Render {
+///     html! { <label>{sku}</label> }
+/// }
+/// fn send(_: impl Patch) {}
+/// let rows = [[4, 9], [1, 2]];
+/// send(html! { for row in rows { for sku in row { <Field sku={sku} /> } } });
+/// ```
+///
 /// ```compile_fail,E0277
 /// use corten::prelude::*;
 /// #[component]
@@ -1332,7 +1359,7 @@ pub mod __private {
     #[diagnostic::on_unimplemented(
         message = "this view is not a patch: one of its top-level parts is not an element with a #[derive(Id)] id",
         label = "a patch replaces elements by id",
-        note = "the type this says is not a PatchShape tells which part: `ComponentOrExpressionNotAPatch` (declare that component -> impl Patch; an expression must be a Patch), `IdNotADeriveIdType` (give the element an id={{..}} of a #[derive(Id)] type) or `TextOrElementWithoutId` (text and elements without an id cannot be a patch's top level); the `required for` shape lists the top-level parts in order, `Yes` for each that is a patch and an `Option` for the body of a for, if or match"
+        note = "the type this says is not a PatchShape tells which part: `ComponentOrExpressionNotAPatch` (declare that component -> impl Patch; an expression must be a Patch), `IdNotADeriveIdType` (give the element an id={{..}} of a #[derive(Id)] type) or `TextOrElementWithoutId` (text and elements without an id cannot be a patch's top level); it names the kind of part, not its place, so look for that kind among the view's top-level parts (rustc's `required for` line, when it prints it in full, lists them in order: `Yes` for each that is a patch, an `Option` for the body of a for, if or match)"
     )]
     pub trait PatchShape {}
     impl PatchShape for Yes {}

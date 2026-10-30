@@ -22,6 +22,10 @@ const KEYWORDS: &[&str] = &[
 ];
 
 pub fn expand(input: TokenStream) -> TokenStream {
+    let (inside, input) = inside_marker(input);
+    // A view written as another view's prop renders inside it, so it borrows what it uses (see
+    // `borrowing`); any other owns it, since it may be returned.
+    let capture = if inside { "" } else { "move " };
     let (scope, input) = scope_marker(input);
     match Cursor::new(input).nodes(None).and_then(|mut nodes| {
         if let Some(scope) = &scope {
@@ -37,17 +41,18 @@ pub fn expand(input: TokenStream) -> TokenStream {
             let mut gen = Gen::default();
             gen.doc_nodes(&nodes);
             q(
-                "::corten::view::DocHtml::new({
+                &"::corten::view::DocHtml::new({
                     static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
                     &SIZE
                 }, {
                     const SHELL: u64 = ::corten::view::__private::shell_id(file!(), line!(), column!());
                     SHELL
-                }, move |__OUT: &mut ::std::string::String, __PART: ::corten::view::Part| {
+                }, __CAPTURE__|__OUT: &mut ::std::string::String, __PART: ::corten::view::Part| {
                     #[allow(unused_imports)]
                     use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _};
                     __A0
-                })",
+                })"
+                .replace("__CAPTURE__", capture),
                 &[gen.finish()],
             )
         }
@@ -57,7 +62,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         Ok(nodes) if matches!(nodes.as_slice(), [Node::Component { .. }]) => {
             let [Node::Component { path, props, children }] = nodes.as_slice() else { unreachable!() };
             let gen = Gen::default();
-            let built = gen.component(path, props, children, true);
+            let built = gen.component(path, props, children, !inside);
             q(
                 "{
                     #[allow(unused_imports)]
@@ -77,14 +82,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
             let built = gen.component(path, props, children, false);
             gen.code(q("(&&&::corten::view::__private::OneOf(&__A0)).__one(__OUT, __PART)", &[built]));
             q(
-                "::corten::view::__private::One::new({
+                &"::corten::view::__private::One::new({
                     static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
                     &SIZE
-                }, move |__OUT: &mut ::std::string::String, __PART: ::std::option::Option<::corten::view::Part>| {
+                }, __CAPTURE__|__OUT: &mut ::std::string::String, __PART: ::std::option::Option<::corten::view::Part>| {
                     #[allow(unused_imports)]
                     use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _, ViaDocument as _, ViaPatch as _, ViaView as _};
                     __A0
-                })",
+                })".replace("__CAPTURE__", capture),
                 &[gen.finish()],
             )
         }
@@ -106,14 +111,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 body
             };
             q(
-                "::corten::view::Html::new({
+                &"::corten::view::Html::new({
                     static SIZE: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
                     &SIZE
-                }, move |__OUT: &mut ::std::string::String| {
+                }, __CAPTURE__|__OUT: &mut ::std::string::String| {
                     #[allow(unused_imports)]
                     use ::corten::view::__private::{AttrViaDisplay as _, AttrViaValue as _, ViaDisplay as _, ViaRender as _, ProofPatch as _, ProofOther as _, ProofId as _, ProofNotId as _};
                     __A0
-                })",
+                })".replace("__CAPTURE__", capture),
                 &[body],
             )
         }
@@ -128,6 +133,63 @@ fn lets_then_component(nodes: &[Node]) -> bool {
         _ => false,
     }
 }
+/// The `@__in;` that `borrowing` puts first in a view written as a prop.
+fn inside_marker(input: TokenStream) -> (bool, TokenStream) {
+    let tokens: Vec<TokenTree> = input.clone().into_iter().collect();
+    if is_punct(tokens.first(), '@') && is_ident(tokens.get(1), "__in") && is_punct(tokens.get(2), ';') {
+        return (true, stream(tokens.into_iter().skip(3)));
+    }
+    (false, input)
+}
+
+/// A prop whose whole value is a view lent to it (`action={&html! { .. }}`, or `corten::html!`),
+/// marked to borrow what it uses: it is built and rendered inside the enclosing view's closure,
+/// which already owns or borrows those locals, so the same local can be read again in the rest of
+/// the markup. Any other value is left as written: a view given by value may be kept, and one
+/// inside a closure of its own (`.map(|row| html! { .. })`) may outlive what it would borrow.
+fn borrowing(value: &TokenStream) -> TokenStream {
+    let tokens: Vec<TokenTree> = value.clone().into_iter().collect();
+    // A `{..}` value arrives in parentheses.
+    if let [TokenTree::Group(group)] = tokens.as_slice() {
+        if group.delimiter() == Delimiter::Parenthesis {
+            let mut inner = Group::new(Delimiter::Parenthesis, borrowing(&group.stream()));
+            inner.set_span(group.span());
+            return stream([TokenTree::Group(inner)]);
+        }
+    }
+    let [path @ .., TokenTree::Ident(name), TokenTree::Punct(bang), TokenTree::Group(body)] = tokens.as_slice() else {
+        return value.clone();
+    };
+    // Lent (`&html!`): a reference to the view cannot outlive the render, so borrowing loses
+    // nothing, where a view given by value may be kept (a prop that needs `'static`). And this
+    // macro, by its name or its path in `corten`, not another crate's `html!`.
+    let refs = path.iter().take_while(|t| is_punct(Some(t), '&')).count();
+    let segments: Vec<String> = path[refs..].iter().filter(|t| !is_punct(Some(t), ':')).map(ToString::to_string).collect();
+    let colons = path[refs..].iter().filter(|t| is_punct(Some(t), ':')).count();
+    let ours = match segments.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        [] => colons == 0,
+        ["corten"] | ["corten", "view"] => colons == 2 * segments.len() || colons == 2 * segments.len() + 2,
+        _ => false,
+    };
+    let idents_only = path[refs..].iter().all(|t| matches!(t, TokenTree::Ident(_) | TokenTree::Punct(_)));
+    if refs == 0
+        || !ours
+        || !idents_only
+        || name.to_string() != "html"
+        || bang.as_char() != '!'
+        || body.delimiter() == Delimiter::None
+    {
+        return value.clone();
+    }
+    let mut inner = q("@ __in ;", &[]);
+    inner.extend(body.stream());
+    let mut marked = Group::new(body.delimiter(), inner);
+    marked.set_span(body.span());
+    let mut out = stream(tokens[..tokens.len() - 1].iter().cloned());
+    out.extend([TokenTree::Group(marked)]);
+    out
+}
+
 /// `#[component]` starts the markup of a component with refs with `@scope "name";`.
 fn scope_marker(input: TokenStream) -> (Option<String>, TokenStream) {
     let tokens: Vec<TokenTree> = input.clone().into_iter().collect();
@@ -1220,7 +1282,10 @@ impl Gen {
     ) -> TokenStream {
         let mut fields = TokenStream::new();
         for (field, value) in props {
-            fields.extend(q("__A0: __A1,", &[field.clone(), value.clone()]));
+            // Only a view's own closure has something to borrow from: the props of the one
+            // component a view is (`moving`) are evaluated where the view is written.
+            let value = if moving { value.clone() } else { borrowing(value) };
+            fields.extend(q("__A0: __A1,", &[field.clone(), value]));
         }
         if let Some(children) = children {
             let body = stream([self.body(children, false)]);

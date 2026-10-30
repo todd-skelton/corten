@@ -297,7 +297,7 @@ req.patch(html! {
     for sku in &taken {
         let label = label_of(sku);
         if sku.counted {
-            <QuantityField label={&label} quantity={0} />
+            <QuantityField id={FieldId(sku.id)} label={&label} quantity={0} />
         } else {
             {Remove(FieldId(sku.id))}
         }
@@ -308,7 +308,8 @@ req.patch(html! {
 A component that says `-> impl Render` is not a patch, so one that is drawn by the page and sent
 by an action says `-> impl Patch`, as a layout says `-> impl Document`. When a view is refused,
 the error names the kind of part that is not a patch (`ComponentOrExpressionNotAPatch`,
-`IdNotADeriveIdType`, `TextOrElementWithoutId`) and lists the parts in order. A `corten::live`
+`IdNotADeriveIdType`, `TextOrElementWithoutId`), though not where it is: look for that kind among
+the view's top-level parts. A `corten::live`
 fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
 element).
 
