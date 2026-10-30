@@ -101,7 +101,8 @@ answer on every keystroke, keep the two small: the arithmetic in one pure functi
 the JavaScript one in a `script!` module that imports nothing (`refund.js`, which the
 component's script imports as `./refund.js`), and one table of cases a test runs through both.
 `corten check` runs the tests, so a change to one side that misses the other fails it; Corten
-checks its own formats against the server's the same way (`scripts/format.mjs`).
+checks its own formats against the server's the same way (`scripts/format.mjs`). The test runs
+`node`, so it needs Node on the `PATH` of every machine that runs `cargo test` (CI included).
 
 ```rust,ignore
 /// Paid and received, then the refund and what the seller nets, in cents.

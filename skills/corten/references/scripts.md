@@ -155,7 +155,9 @@ slow part sent once is a stream of one item. See the live-data guide.
 A job another process runs has only a read to repeat. Many pages following one job: an
 `App::task` reads it on an interval into a `watch` channel, and each stream is `live_watch`. One
 page's job: `corten::live` over an `unfold` loop that reads, sends only when the version moved, ends
-after the settled state and gives up after a few failed reads (the live-data guide has it).
+after the settled state and, after a few failed reads, draws that it could not read before it
+ends (the live-data guide has it). `App::task` starts with the app: jobs that start later share
+one task that sends to a `watch` channel per job.
 
 The element shows its connection as `status` (`connecting`, `live`, `reconnecting`, `closed`,
 `ended`) and `stale-since` (when a live stream dropped): style a stale part with
