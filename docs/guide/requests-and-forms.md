@@ -651,6 +651,36 @@ async fn report(req: Req, Params(at): Params<url::Report<'_>>) -> HtmlResult {
 }
 ```
 
+### Saying what a write did
+
+The page a write redirects to often says what it did ("Batch 3517 deleted."). That is not part of
+the page's address: written into a query value, a reload says it again, a copied link shares it
+and Back returns to it. `req.redirect_with_notice(&to, text)` carries it instead, and the page it
+lands on reads it once with `req.notice()`:
+
+```rust,ignore
+async fn delete(req: Req, Params(at): Params<url::Delete>) -> HtmlResult {
+    store::delete(at.id).await?;
+    req.redirect_with_notice(&url::Batches, format_args!("Batch {} deleted.", at.id))
+}
+
+// In the layout, where the app says what an action did:
+<Toaster close="Dismiss" seconds={5} toast={Toast { message: req.notice() }} />
+```
+
+The text rides in a cookie (`__Host-corten-notice`, `HttpOnly`, a minute) for the path it
+redirected to; another page neither shows nor removes it, and the answer of the page it was for
+removes it, so it is said once. That answer is private, as one for a signed-in caller is. A notice
+is text, escaped where it renders, cut at 500 bytes. It is for a page of the app: a route, a place
+on one or a checked `Local`; a URL of another site does not compile.
+
+A client navigation runs only the page inside `<main>`, not the layout around it, so a notice the
+layout holds is not drawn there. When the page did not render the notice, its answer hands it to
+the runtime, which dispatches `corten:notice` on the document (`detail.message`) once the page is
+swapped in; corten-ui's `Toaster` shows it. A page that renders it itself (a status line in the
+form it sent the user back to) is not sent it twice. Like any cookie set over HTTPS only, it does
+not reach a browser on plain `http://` that drops `Secure` cookies there.
+
 A page handler may redirect too (an old URL; a `Caller` sending someone to sign in does the
 same). A client
 navigation follows it: the page it was sent to is swapped in and replaces the requested URL

@@ -1488,6 +1488,17 @@ impl<R: Route + ?Sized> Href for R {
     }
 }
 
+/// A link to a page of this app: a typed route, a place on one (`route.at(id)`), or a [`Local`]
+/// return address. What [`crate::Req::redirect_with_notice`] takes, since a notice is for a page
+/// of the app's own; an `axum::http::Uri` or an [`Elsewhere`] is not one.
+pub trait OnSite: Href {}
+
+impl<R: Route + ?Sized> OnSite for R {}
+
+impl<R: Route + ?Sized, I: crate::view::Id> OnSite for At<'_, R, I> {}
+
+impl OnSite for Local {}
+
 /// For each byte, `SEGMENT` when it is written as it is in a path segment or query value
 /// (unreserved: letters, digits, `-._~`), `REST` when it is in a `{*rest}` value (those and
 /// `/`), and `FRAGMENT` when it is in another site's `#fragment` (those, `/`, `?`, `:`, `@` and

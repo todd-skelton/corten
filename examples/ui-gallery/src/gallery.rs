@@ -4,7 +4,7 @@ use corten::i18n::RelativeStyle;
 use corten::prelude::*;
 use corten_ui::{
     CheckboxGroup, Choice, ComboBox, Copied, CopyButton, MenuButton, Number, NumberField, Picker, PrintButton, RelativeTime,
-    RequiredWhen, Tab, TabGroup, Toast, Toaster, dialog,
+    RequiredWhen, Tab, TabGroup, dialog,
 };
 use serde::Deserialize;
 use std::time::SystemTime;
@@ -115,14 +115,7 @@ pub enum Sale {
 }
 
 #[component(css)]
-pub fn Gallery<'a>(
-    tab: MarketTab,
-    result: &'a str,
-    toast: Option<&'a str>,
-    sale: bool,
-    times: Times,
-    rename: RenameDialog<'a>,
-) -> impl Render {
+pub fn Gallery<'a>(tab: MarketTab, result: &'a str, sale: bool, times: Times, rename: RenameDialog<'a>) -> impl Render {
     let Times { t, now } = times;
     let f = SellForm::FIELDS;
     let qty = Number {
@@ -241,9 +234,6 @@ pub fn Gallery<'a>(
         if sale {
             <SaleSheet />
         }
-        <div class={Toasts}>
-            <Toaster close="Dismiss" seconds={2} toast={Toast { message: toast }} />
-        </div>
     }
 }
 

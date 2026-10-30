@@ -2672,6 +2672,96 @@ async fn with_cookie_sets_each_cookie_in_order() {
     assert_eq!(cookies, ["a=1; Path=/; SameSite=Lax; HttpOnly; Secure", "b=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure"]);
 }
 
+/// A redirect's notice rides in a cookie for the page it goes to: that page reads it once (the
+/// answer removes it, and is private), a navigation's page that did not draw it hands it to the
+/// runtime in `corten-notice`, and another page neither sees nor removes it.
+#[tokio::test]
+async fn a_redirect_notice_is_read_once_by_the_page_it_was_for() {
+    let routes = Router::new()
+        .route("/", get(|req: Req| async move { req.redirect_with_notice(&Done.at(MsgId), "Batch 3517 deleted; 2 left.") }))
+        .route("/long", get(|req: Req| async move { req.redirect_with_notice(&Done, "é".repeat(400)) }))
+        .route(
+            "/done",
+            get(|req: Req| async move {
+                let notice = req.notice();
+                req.test_page("Done", html! { <p>{notice}</p> })
+            }),
+        )
+        .route("/other", get(|req: Req| async move { req.test_page("Other", "nothing") }));
+    let router = app(routes, None);
+    let set = |res: &Response| {
+        res.headers().get_all(header::SET_COOKIE).iter().map(|c| c.to_str().unwrap().to_string()).collect::<Vec<_>>()
+    };
+    let res = router.clone().oneshot(Request::get("/").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers()[header::LOCATION], "/done#msg");
+    let cookie = "__Host-corten-notice=p=%2Fdone&m=Batch+3517+deleted%3B+2+left.";
+    assert_eq!(set(&res), [format!("{cookie}; Path=/; SameSite=Lax; Max-Age=60; HttpOnly; Secure")]);
+    let fetch = |uri: &str, mode: Option<&str>| {
+        let mut req = Request::get(uri).header(header::COOKIE, format!("a=1; {cookie}"));
+        if let Some(mode) = mode {
+            req = req.header("corten", mode);
+        }
+        router.clone().oneshot(req.body(Body::empty()).unwrap())
+    };
+    let gone = "__Host-corten-notice=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure";
+    for mode in [None, Some("nav")] {
+        let res = fetch("/done", mode).await.unwrap();
+        assert_eq!(set(&res), [gone], "{mode:?}");
+        assert_eq!(res.headers()[header::CACHE_CONTROL], "private, no-cache");
+        assert!(res.headers().get("corten-notice").is_none(), "the page drew it");
+        let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(body.contains("<p>Batch 3517 deleted; 2 left.</p>"), "{body}");
+    }
+    let res = fetch("/other", Some("nav")).await.unwrap();
+    assert!(set(&res).is_empty() && res.headers().get("corten-notice").is_none(), "another page leaves it");
+    // A navigation's page that does not draw it, or holds it in the layout around `<main>`, which
+    // a navigation does not run: the runtime gets it. A full load draws it in the layout.
+    let routes = Router::new().route("/done", get(|req: Req| async move { req.test_page("Done", "done") })).route(
+        "/done/in-layout",
+        get(|req: Req| async move {
+            let notice = req.notice();
+            req.page::<ForOne>(html! {
+                <html>
+                    <head>
+                        <title>"Done"</title>
+                        <Corten />
+                    </head>
+                    <body>
+                        <p id="toast">{notice}</p>
+                        <main>"done"</main>
+                    </body>
+                </html>
+            })
+        }),
+    );
+    let layouts = app(routes, None);
+    for (path, mode) in [("/done", Some("nav")), ("/done/in-layout", Some("nav")), ("/done/in-layout", None)] {
+        let cookie = cookie.replace("%2Fdone", &path.replace('/', "%2F"));
+        let mut req = Request::get(path).header(header::COOKIE, cookie);
+        if let Some(mode) = mode {
+            req = req.header("corten", mode);
+        }
+        let res = layouts.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(set(&res), [gone], "{path} {mode:?}");
+        let header = res.headers().get("corten-notice").map(|v| v.to_str().unwrap().to_string());
+        let body = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        if mode.is_some() {
+            assert_eq!(header.as_deref(), Some("Batch+3517+deleted%3B+2+left."), "{path}");
+            assert!(!body.contains("Batch 3517"), "{body}");
+        } else {
+            assert_eq!(header, None);
+            assert!(body.contains(r#"<p id="toast">Batch 3517 deleted; 2 left.</p>"#), "{body}");
+        }
+    }
+    // Cut at 500 bytes, at a character's end.
+    let res = router.clone().oneshot(Request::get("/long").body(Body::empty()).unwrap()).await.unwrap();
+    let value = set(&res)[0].clone();
+    let value = value.split_once('=').unwrap().1.split(';').next().unwrap();
+    let text: String = form_urlencoded::parse(value.as_bytes()).find(|(k, _)| k == "m").unwrap().1.into_owned();
+    assert_eq!(text, "é".repeat(250));
+}
+
 /// Bytes as the app names their type: private by default, and a year in any cache when the URL
 /// names the content (`Public::immutable`), cookies or not, unless a caller was read.
 #[tokio::test]

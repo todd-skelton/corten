@@ -3,7 +3,8 @@
 // file into dist/corten.js by `npm run build:js`, and imported as "corten".
 //
 // What it does, and nothing else:
-// 1. Same-origin navigations: fetch the next page with `corten: nav` and swap it into <main>.
+// 1. Same-origin navigations: fetch the next page with `corten: nav` and swap it into <main>; a
+//    redirect's notice the page did not draw is `corten:notice` on the document.
 // 2. <form data-patch>: submit with `corten: action` and apply the returned fragments by id (a
 //    `<template id data-remove>` removes its element, `<template id data-append>` adds to it). A newer
 //    submit of a form replaces a pending read and waits for a pending write; a navigation abandons
@@ -1094,6 +1095,17 @@ async function swapPage(html, signal, stay) {
 }
 
 /**
+ * After a page answer is drawn: the notice the write that redirected here left for it
+ * (`req.redirect_with_notice`) and the page did not draw, as `corten:notice` on the document
+ * (`detail.message`), for the app's toaster. The layout around `<main>` does not run for a swap.
+ * @param {Response} res
+ */
+function announce(res) {
+  const notice = res.headers.get("corten-notice");
+  if (notice !== null) document.dispatchEvent(new CustomEvent("corten:notice", { detail: { message: decodeURIComponent(notice.replaceAll("+", " ")) } }));
+}
+
+/**
  * The elements the user (or a script) scrolled since the page was swapped in: noted as they
  * scroll, so keeping a page's place does not read the scroll of every element in it.
  * @type {Set<Element>}
@@ -1364,6 +1376,7 @@ async function visit(url, signal, redirected, again, place, source) {
       return;
     }
     await swapPage(html, signal, again || place !== undefined);
+    announce(res);
   } finally {
     signal.removeEventListener("abort", idle);
     idle();
@@ -1696,7 +1709,11 @@ async function send(form, submitter, sends) {
       const body = await res.text();
       renew();
       signal.throwIfAborted();
-      await (res.headers.has("corten-patch") ? apply(body, signal, sent, res.ok) : swapPage(body, signal));
+      if (res.headers.has("corten-patch")) await apply(body, signal, sent, res.ok);
+      else {
+        await swapPage(body, signal);
+        announce(res);
+      }
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
       // Sent after an answer that took the write (2xx) or refused only its input (422). Not after a

@@ -34,6 +34,12 @@ const PAGE_HEADER: HeaderName = HeaderName::from_static("corten-page");
 const PATCH_HEADER: HeaderName = HeaderName::from_static("corten-patch");
 const LOCATION_HEADER: HeaderName = HeaderName::from_static("corten-location");
 const SHELL_HEADER: HeaderName = HeaderName::from_static("corten-shell");
+/// A navigation's page with a notice it did not draw: the text, form-encoded, for the runtime.
+const NOTICE_HEADER: HeaderName = HeaderName::from_static("corten-notice");
+/// The cookie a redirect's notice rides in: `__Host-`, so no other site on the domain can set it.
+pub(crate) const NOTICE_COOKIE: &str = "__Host-corten-notice";
+/// The longest notice kept, in bytes: a sentence, well inside a cookie's 4 KB once encoded.
+const NOTICE_MAX: usize = 500;
 
 /// Responses depend on the mode header and, for [`Mode::Data`], on `Accept`.
 const VARY: &str = "corten, accept";
@@ -698,8 +704,60 @@ pub struct Req {
     nonce: Option<NonceSlot>,
     uri: Uri,
     accept_language: Option<HeaderValue>,
+    notice: Option<Notice>,
     shared: Arc<Shared>,
     signal: crate::Signal,
+}
+
+/// What a write said on the page it redirected to ([`Req::redirect_with_notice`]): "Batch 3517
+/// deleted." Text, escaped where it renders, for the page's toaster or status line. Rendered in
+/// `html!` it counts as drawn: a navigation's page that rendered it does not also hand it to the
+/// runtime, and one whose layout (not run for a navigation) holds it does.
+#[derive(Clone)]
+pub struct Notice {
+    text: Box<str>,
+    signal: crate::Signal,
+}
+
+impl Notice {
+    /// The text, for something other than the page (a log line). Drawn from this, it does not
+    /// count as drawn: render the `Notice` itself.
+    pub fn as_str(&self) -> &str {
+        &self.text
+    }
+
+    /// The request's notice: the cookie's, when it was written for this path.
+    fn of(headers: &HeaderMap, path: &str, signal: &crate::Signal) -> Option<Notice> {
+        let value = crate::security::cookie::get(headers, NOTICE_COOKIE)?;
+        let (mut to, mut text) = (None, None);
+        for (key, value) in form_urlencoded::parse(value.as_bytes()) {
+            match &*key {
+                "p" => to = Some(value),
+                "m" => text = Some(value),
+                _ => {}
+            }
+        }
+        (to? == path).then(|| Notice { text: text.unwrap_or_default().into(), signal: signal.clone() })
+    }
+}
+
+impl Render for Notice {
+    fn render(&self, out: &mut String) {
+        self.signal.mark_notice_drawn();
+        crate::view::escape_into(&self.text, out)
+    }
+}
+
+impl std::fmt::Debug for Notice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Notice").field(&self.text).finish()
+    }
+}
+
+impl PartialEq for Notice {
+    fn eq(&self, other: &Self) -> bool {
+        self.text == other.text
+    }
 }
 
 impl<St: Send + Sync> FromRequestParts<St> for Req {
@@ -713,13 +771,15 @@ impl<St: Send + Sync> FromRequestParts<St> for Req {
 
 impl Req {
     pub(crate) fn new(headers: &HeaderMap, extensions: &Extensions, uri: &Uri, shared: Arc<Shared>) -> Self {
+        let signal: crate::Signal = extensions.get::<crate::Signal>().cloned().unwrap_or_default();
         Req {
             mode: mode_of(headers),
             nonce: extensions.get::<NonceSlot>().cloned(),
             uri: uri.clone(),
             accept_language: headers.get(header::ACCEPT_LANGUAGE).cloned(),
+            notice: Notice::of(headers, uri.path(), &signal),
             shared,
-            signal: extensions.get::<crate::Signal>().cloned().unwrap_or_default(),
+            signal,
         }
     }
 
@@ -1029,6 +1089,19 @@ impl Req {
     fn finish(&self, mut res: Response, key: u64) -> Response {
         res.headers_mut().insert(SHELL_HEADER, key_header(key));
         res.headers_mut().insert(header::VARY, self.vary());
+        if let Some(notice) = &self.notice {
+            // Shown once: this page is the one it was for, drawn here or by the runtime.
+            let gone = crate::security::cookie::SetCookie::remove(NOTICE_COOKIE).header();
+            res.headers_mut().append(header::SET_COOKIE, gone);
+            self.signal.mark_personal();
+            let swap = matches!(self.mode, Mode::Navigation | Mode::Action);
+            if swap && !self.signal.notice_drawn() {
+                let text: String = form_urlencoded::byte_serialize(notice.as_str().as_bytes()).collect();
+                if let Ok(value) = HeaderValue::from_str(&text) {
+                    res.headers_mut().insert(NOTICE_HEADER, value);
+                }
+            }
+        }
         res
     }
 
@@ -1309,6 +1382,53 @@ impl Req {
     pub fn redirect<For>(&self, to: &(impl crate::route::Href + ?Sized)) -> crate::Result<HtmlResponse<For>> {
         let value = crate::route::header_value(to).map_err(Error::new)?;
         Ok(HtmlResponse::new(redirect(self.mode, value)))
+    }
+
+    /// [`Req::redirect`] with what the write did, said once on the page it lands on ("Batch 3517
+    /// deleted."), where [`Req::notice`] reads it: no field on the route carries it, so a reload,
+    /// a copied link or Back does not say it again. It rides in a short-lived cookie for that
+    /// page's path (`__Host-corten-notice`, a minute), which the page's answer removes. A
+    /// navigation's page that did not draw it hands it to the runtime, which dispatches
+    /// `corten:notice` on the document for the app's toaster, since the layout around `<main>`
+    /// does not run there. Text past 500 bytes is cut at a character's end.
+    ///
+    /// Only for a page of the app (a route, a place on one, a checked [`crate::Local`]): a URL of
+    /// another site does not compile.
+    ///
+    /// ```compile_fail,E0277
+    /// use corten::prelude::*;
+    ///
+    /// async fn pay(req: Req) -> HtmlResult {
+    ///     let to: corten::axum::http::Uri = "https://pay.example/checkout".parse().unwrap();
+    ///     req.redirect_with_notice(&to, "Sent to payment.")
+    /// }
+    /// ```
+    pub fn redirect_with_notice(&self, to: &(impl crate::route::OnSite + ?Sized), notice: impl std::fmt::Display) -> HtmlResult {
+        let value = crate::route::header_value(to).map_err(Error::new)?;
+        let link = value.to_str().unwrap_or_default();
+        let path = link.split(['?', '#']).next().unwrap_or_default();
+        let mut text = notice.to_string();
+        if text.len() > NOTICE_MAX {
+            let mut end = NOTICE_MAX;
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+        }
+        let cookie = form_urlencoded::Serializer::new(String::new()).append_pair("p", path).append_pair("m", &text).finish();
+        // Form encoding writes only letters, digits, `*-._+%&=`: all a cookie can carry.
+        let cookie = crate::security::cookie::SetCookie::new(NOTICE_COOKIE, &cookie).max_age(60);
+        Ok(HtmlResponse::new(redirect(self.mode, value)).with_cookie(cookie))
+    }
+
+    /// The notice the write that redirected here left for this page ([`Req::redirect_with_notice`]),
+    /// once: the answer removes it. Draw it where the app says what an action did, the layout's
+    /// toaster (`Toast { message: req.notice() }`) or a status line. A page that has one is
+    /// private, as one for a signed-in caller is.
+    pub fn notice(&self) -> Option<&Notice> {
+        let notice = self.notice.as_ref()?;
+        self.signal.mark_personal();
+        Some(notice)
     }
 
     /// Whether a redirect to `to` lands on a route of the app's: the route given to
