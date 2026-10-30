@@ -73,7 +73,10 @@ pub struct DeckAnswered {
 #[component(js)]
 pub fn SaveNote<'a>(answer: &'a Answer) -> impl Patch {
     html! {
-        <span id={SaveNoteId} on:connect={js::answered(target, answer.outcome(), answer.version(), answer.draft(), answer.unsure())}>
+        <span
+            id={SaveNoteId}
+            on:connect={js::answered(target, answer.outcome(), answer.version(), answer.draft(), answer.unsure())}
+        >
             match answer {
                 Answer::None => {}
                 Answer::Saved { .. } => { "Saved." }
