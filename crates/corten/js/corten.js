@@ -1503,11 +1503,14 @@ function named(el, name) {
   return `${el.localName}[name="${CSS.escape(name)}"]${choice}`;
 }
 /**
- * The pending submit of each `data-patch` form. Like a browser's own form navigation, the latest
- * submit wins: a newer one aborts the older request, and a navigation aborts them all, so a late
- * reply never patches a page it was not meant for. The same submit again while it is pending (a
- * double click) is ignored rather than sent twice.
- * @type {Map<HTMLFormElement, { key: string, controller: AbortController }>}
+ * The pending submit of each `data-patch` form. The latest submit wins, and the same submit again
+ * while it is pending (a double click) is ignored rather than sent twice. A newer submit aborts a
+ * pending read (a GET, whose old answer is worth nothing). It does not abort a write: the server
+ * may have applied it, and its answer is the page's next state. The newer submit waits (`next`;
+ * several become the latest) and is sent once the write's answer is in, with the form's values as
+ * they are then, so a version or a count the answer wrote goes out with it. A navigation aborts
+ * them all, so a late reply never patches a page it was not meant for.
+ * @type {Map<HTMLFormElement, { key: string, controller: AbortController, write: boolean, next?: HTMLElement | null }>}
  */
 const submits = new Map();
 
@@ -1541,15 +1544,21 @@ async function patchSubmit(event) {
   const url = new URL(sends.action);
   const entries = sentEntries(data);
   const fields = new URLSearchParams(entries);
-  const sent = sentState(form);
   // A file by its size and time too: another file of the same name is a new submit.
   const key = `${method} ${url.href} ${fields} ${Array.from(data.values(), (v) => (typeof v === "string" ? "" : `${v.size}/${v.lastModified}`))}`;
   const previous = submits.get(form);
+  if (previous?.write) {
+    // Sent once the write's answer is in; the same values as the write's again send nothing.
+    previous.next = previous.key === key ? undefined : (submitter ?? null);
+    return;
+  }
   if (previous?.key === key) return;
   previous?.controller.abort();
+  const sent = sentState(form);
   const controller = new AbortController();
   const { signal } = controller;
-  submits.set(form, { key, controller });
+  const pending = { key, controller, write: method !== "GET", next: /** @type {HTMLElement | null | undefined} */ (undefined) };
+  submits.set(form, pending);
   /** @type {RequestInit} */
   const init = { method, headers: { corten: "action" }, signal };
   if (method === "GET") url.search = fields.toString();
@@ -1601,8 +1610,28 @@ async function patchSubmit(event) {
     if (submits.get(form)?.controller === controller) {
       submits.delete(form);
       formCall(form, "removeAttribute", "aria-busy");
+      if (pending.next !== undefined && !signal.aborted) submitAgain(form, pending.next);
     }
   }
+}
+
+/**
+ * Sends the submit that waited for a write's answer, from the form as it is now: the form the
+ * answer put in its place (the same id) when it replaced it, by the submit button that stands for
+ * the one pressed. A button the answer removed (its row is gone) sends nothing.
+ * @param {HTMLFormElement} form @param {HTMLElement | null} submitter
+ */
+function submitAgain(form, submitter) {
+  const id = idOf(form);
+  const now = form.isConnected ? form : id ? document.getElementById(id) : null;
+  if (!(now instanceof HTMLFormElement) || !formCall(now, "hasAttribute", "data-patch")) return;
+  // The pressed button, or the one in its place: same kind, name, value and target.
+  const by =
+    submitter &&
+    Array.from(/** @type {HTMLFormControlsCollection} */ (formProperty(now, "elements"))).find(
+      (el) => el === submitter || (el.localName === submitter.localName && ["type", "name", "value", "formaction", "formmethod"].every((a) => el.getAttribute(a) === submitter.getAttribute(a))),
+    );
+  if (!submitter || by) formCall(now, "requestSubmit", by);
 }
 
 /**

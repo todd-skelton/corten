@@ -477,18 +477,32 @@ async function run(browser) {
   );
   await page.evaluate(() => document.getElementById("shadowed")?.remove());
 
-  // The latest submit wins: a slow earlier reply never overwrites a later one.
+  // The latest submit wins, but a pending write is not abandoned (the server may have applied
+  // it): the newer submit waits for its answer and goes out after it, from the form as the answer
+  // left it.
   delayWatch = 1200;
+  /** @type {string[]} */
+  const writes = [];
+  /** @param {import("@playwright/test").Request} r */
+  const onWrite = (r) => r.method() === "POST" && r.url().endsWith("/watch") && writes.push(`sent ${new URLSearchParams(r.postData() ?? "").get("id")}`);
+  /** @param {import("@playwright/test").Response} r */
+  const onAnswer = (r) => r.request().method() === "POST" && r.url().endsWith("/watch") && writes.push(`answered ${new URLSearchParams(r.request().postData() ?? "").get("id")}`);
+  page.on("request", onWrite);
+  page.on("response", onAnswer);
   await page.selectOption("select[name=id]", "PNTR");
   await page.click("#watch-form button");
   await page.selectOption("select[name=id]", "VTGO");
   await page.click("#watch-form button");
-  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Vertigo Robotics"));
-  await page.waitForTimeout(1600);
+  await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Vertigo Robotics"), null, { timeout: 6000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  page.off("request", onWrite);
+  page.off("response", onAnswer);
   check(
-    "a newer submit replaces a pending one",
-    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Vertigo Robotics") && abandoned.length === 1,
-    `${await page.textContent("#watch-message")}; abandoned: ${abandoned.join()}`,
+    "a newer submit waits for a pending write, which is answered, and then goes out",
+    ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Vertigo Robotics") &&
+      abandoned.length === 0 &&
+      writes.join() === "sent PNTR,answered PNTR,sent VTGO,answered VTGO",
+    `${await page.textContent("#watch-message")}; ${writes.join()}; abandoned: ${abandoned.join()}`,
   );
   check("the form is not left busy", (await page.getAttribute("#watch-form", "aria-busy")) === null);
 
@@ -514,7 +528,7 @@ async function run(browser) {
   await page.click('header a[href="/news"]');
   await page.waitForFunction(() => document.title === "News | Watchlist");
   await page.waitForTimeout(1600);
-  check("navigating away abandons a pending submit", abandoned.length === 2, abandoned.join());
+  check("navigating away abandons a pending submit", abandoned.length === 1, abandoned.join());
   check("the feed stream closes when its component leaves the page (its signal aborts)", (await openFeeds()) === 0);
   check("the <corten-live> stream closes when it leaves the page", (await openStreams("/live/trades")) === 0);
   check("client navigation moves aria-current in the shell", (await current()) === "/news");
