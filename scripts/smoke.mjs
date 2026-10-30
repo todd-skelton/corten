@@ -1489,6 +1489,31 @@ async function run(browser) {
     );
     await page.evaluate(() => document.querySelectorAll("header a.hovered").forEach((a) => a.remove()));
 
+    // A prefetch pushed out while its answer is still coming is aborted, so the server sees the
+    // client go: the oldest of 9 hovered links is held until it is dropped.
+    /** @type {() => void} */
+    let release = () => {};
+    const held = new Promise((resolve) => (release = () => resolve(undefined)));
+    await page.route("**/news?q=0", async (route) => {
+      await held;
+      await route.continue().catch(() => {});
+    });
+    const aborted = page.waitForEvent("requestfailed", { predicate: (r) => r.url().endsWith("/news?q=0"), timeout: 5000 }).then(
+      () => true,
+      () => false,
+    );
+    await page.evaluate(() =>
+      document.querySelector("header nav")?.insertAdjacentHTML("beforeend", Array.from({ length: 9 }, (_, i) => `<a class="hovered" href="/news?q=${i}">${i}</a>`).join(" ")),
+    );
+    for (let i = 0; i < 9; i += 1) {
+      await page.hover(`header a.hovered[href="/news?q=${i}"]`);
+      await page.waitForTimeout(150);
+    }
+    check("a prefetch dropped before it answers is aborted", await aborted);
+    release();
+    await page.unroute("**/news?q=0");
+    await page.evaluate(() => document.querySelectorAll("header a.hovered").forEach((a) => a.remove()));
+
     // A section stylesheet that fails to load: the runtime loads the page in full instead of
     // showing it unstyled. A fresh document, so the stylesheet is not already in it.
     await page.goto(base);
@@ -1514,6 +1539,7 @@ async function run(browser) {
       'data-nav="section" marks the link on pages under it',
       "data-no-prefetch: hovering the link fetches nothing",
       "prefetch keeps the 8 newest pages",
+      "a prefetch dropped before it answers is aborted",
       "a section stylesheet that fails to load makes the page load in full",
     ])
       skip(name, noSwaps);
