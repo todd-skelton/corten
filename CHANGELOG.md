@@ -1470,13 +1470,15 @@ Corten is pre-1.0, so any minor version may change the API.
     fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
     or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
     ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
-81. A `data-patch` form's newer submit no longer aborts a pending write (any method but GET):
-    it waits for the write's answer and is then sent from the form as it is, so a version or
-    count the answer wrote goes with it, under the form's new `SubmitKey`. Several presses while
-    the write is out send one submit of where the form ended. An aborted write could have been
-    applied by the server while its answer, the page's next state, was dropped. A GET submit still
-    replaces an older one, and a navigation still aborts them all. The minified runtime grows by
-    497 bytes (25,133 to 25,630), 163 gzipped (9,165 to 9,328) and 138 with brotli (8,287 to 8,425)
+81. A `data-patch` form's newer submit no longer aborts a pending write (any method but GET): the
+    server may have applied it, and its answer, the page's next state, was dropped. A submit made
+    while a write is pending waits, and when the write ends it is sent from the form as it is then
+    (the one the answer put in its place, found by id), so a version or count the answer wrote
+    goes with it, under the key the form has then, without its `on:submit` handlers running a
+    second time. Several presses while the write is out send one submit of where the form ended;
+    a redirect, a reload or a navigation drops it. A GET submit still replaces an older one. The
+    minified runtime grows by 516 bytes (25,133 to 25,649), 201 gzipped (9,165 to 9,366) and 165
+    with brotli (8,287 to 8,452)
     ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
 
 ### Fixed

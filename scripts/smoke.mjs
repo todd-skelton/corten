@@ -491,8 +491,13 @@ async function run(browser) {
   page.on("response", onAnswer);
   await page.selectOption("select[name=id]", "PNTR");
   await page.click("#watch-form button");
+  // The same press again sends nothing, and two newer ones are one submit of where the form ended.
+  await page.click("#watch-form button");
+  await page.selectOption("select[name=id]", "NRTH");
+  await page.click("#watch-form button");
   await page.selectOption("select[name=id]", "VTGO");
   await page.click("#watch-form button");
+  const busyWhileWriting = await page.getAttribute("#watch-form", "aria-busy");
   await page.waitForFunction(() => document.getElementById("watch-message")?.textContent?.startsWith("Watching Vertigo Robotics"), null, { timeout: 6000 }).catch(() => {});
   await page.waitForTimeout(300);
   page.off("request", onWrite);
@@ -500,9 +505,10 @@ async function run(browser) {
   check(
     "a newer submit waits for a pending write, which is answered, and then goes out",
     ((await page.textContent("#watch-message")) ?? "").startsWith("Watching Vertigo Robotics") &&
+      busyWhileWriting === "true" &&
       abandoned.length === 0 &&
       writes.join() === "sent PNTR,answered PNTR,sent VTGO,answered VTGO",
-    `${await page.textContent("#watch-message")}; ${writes.join()}; abandoned: ${abandoned.join()}`,
+    `${await page.textContent("#watch-message")}; busy: ${busyWhileWriting}; ${writes.join()}; abandoned: ${abandoned.join()}`,
   );
   check("the form is not left busy", (await page.getAttribute("#watch-form", "aria-busy")) === null);
 
@@ -522,13 +528,21 @@ async function run(browser) {
   const noteBorder = () => page.$eval(".disclaimer__note", (note) => getComputedStyle(note).borderInlineStartWidth);
   const styleLinks = () => page.$$eval("link[data-corten-style]", (links) => links.length);
   check("a page outside the section does not link its stylesheet", (await styleLinks()) === 0);
-  // A navigation abandons a pending submit, whose reply was for the page being left.
+  // A navigation abandons a pending submit, whose reply was for the page being left, and the
+  // newer submit that waited for it.
   delayWatch = 1200;
+  let posted = 0;
+  /** @param {import("@playwright/test").Request} r */
+  const onPost = (r) => r.method() === "POST" && r.url().endsWith("/watch") && (posted += 1);
+  page.on("request", onPost);
+  await page.click("#watch-form button");
+  await page.selectOption("select[name=id]", "NRTH");
   await page.click("#watch-form button");
   await page.click('header a[href="/news"]');
   await page.waitForFunction(() => document.title === "News | Watchlist");
   await page.waitForTimeout(1600);
-  check("navigating away abandons a pending submit", abandoned.length === 1, abandoned.join());
+  page.off("request", onPost);
+  check("navigating away abandons a pending submit and the one that waited", abandoned.length === 1 && posted === 1, `${abandoned.join()}; posts: ${posted}`);
   check("the feed stream closes when its component leaves the page (its signal aborts)", (await openFeeds()) === 0);
   check("the <corten-live> stream closes when it leaves the page", (await openStreams("/live/trades")) === 0);
   check("client navigation moves aria-current in the shell", (await current()) === "/news");

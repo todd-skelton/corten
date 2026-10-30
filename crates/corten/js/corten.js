@@ -1034,7 +1034,7 @@ async function swapPage(html, signal, stay) {
   const [, styled] = await Promise.all([modulesOf(content), stylesOf(content)]);
   signal?.throwIfAborted();
   if (!styled) {
-    location.reload();
+    reload();
     return;
   }
   const title = content.querySelector("title");
@@ -1279,7 +1279,7 @@ async function visit(url, signal, redirected, again, place) {
     if (signal.aborted) throw error;
     // Offline or the server is unreachable: load the URL as a normal navigation, which the
     // service worker (if any) answers with the offline page, and the browser otherwise explains.
-    location.reload();
+    reload();
     return;
   } finally {
     main?.removeAttribute("aria-busy");
@@ -1293,7 +1293,7 @@ async function visit(url, signal, redirected, again, place) {
     return;
   }
   if (!res.headers.has("corten-page") || shellChanged(res)) {
-    location.reload();
+    reload();
     return;
   }
   // The server redirected (a `Caller` sending someone to sign in). Changing the address with
@@ -1339,7 +1339,7 @@ function readAgainLater() {
   readLater(
     seconds,
     () => page === readAgainPage && location.href === url,
-    () => (navigation ? navigation.navigate(url, { history: "replace", info: { [READ_AGAIN]: true } }) : location.reload()),
+    () => (navigation ? navigation.navigate(url, { history: "replace", info: { [READ_AGAIN]: true } }) : reload()),
   );
 }
 
@@ -1502,6 +1502,14 @@ function named(el, name) {
   const choice = /^(checkbox|radio)$/.test(el.getAttribute("type") ?? "") ? (value === null ? ":not([value])" : `[value="${CSS.escape(value)}"]`) : "";
   return `${el.localName}[name="${CSS.escape(name)}"]${choice}`;
 }
+/** Set once the runtime reloads the page: a submit that waited is not sent into it. */
+let leaving = false;
+/** Loads the page again from the server. */
+function reload() {
+  leaving = true;
+  location.reload();
+}
+
 /**
  * The pending submit of each `data-patch` form. The latest submit wins, and the same submit again
  * while it is pending (a double click) is ignored rather than sent twice. A newer submit aborts a
@@ -1531,7 +1539,7 @@ const sentEntries = (data) => {
 addEventListener("submit", patchSubmit);
 
 /** Sends a `data-patch` form's submit as a patch, unless a handler cancelled it. @param {Event} event */
-async function patchSubmit(event) {
+function patchSubmit(event) {
   const form = event.target;
   if (event.defaultPrevented || !(form instanceof HTMLFormElement) || !formCall(form, "hasAttribute", "data-patch")) return;
   const submitter = /** @type {SubmitEvent} */ (event).submitter;
@@ -1539,6 +1547,15 @@ async function patchSubmit(event) {
   // A dialog's form closes the dialog and sends nothing: the browser's to do.
   if (sends.method === "dialog") return;
   event.preventDefault();
+  send(form, submitter, sends);
+}
+
+/**
+ * Sends a `data-patch` form's submit, by `submitter`, as `sends` says (its method, action and
+ * encoding).
+ * @param {HTMLFormElement} form @param {HTMLElement | null | undefined} submitter @param {ReturnType<typeof sendsAs>} sends
+ */
+async function send(form, submitter, sends) {
   const data = new FormData(form, submitter);
   const method = sends.method.toUpperCase();
   const url = new URL(sends.action);
@@ -1589,10 +1606,10 @@ async function patchSubmit(event) {
         const to = new URL(location_, location.href);
         const same = pageKey(to) === pageKey(new URL(location.href));
         location.assign(to);
-        if (same) location.reload();
+        if (same) reload();
       }
     } else if (res.headers.has("corten-page") && shellChanged(res)) {
-      location.reload();
+      reload();
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
       const body = await res.text();
       signal.throwIfAborted();
@@ -1610,28 +1627,32 @@ async function patchSubmit(event) {
     if (submits.get(form)?.controller === controller) {
       submits.delete(form);
       formCall(form, "removeAttribute", "aria-busy");
-      if (pending.next !== undefined && !signal.aborted) submitAgain(form, pending.next);
+      if (pending.next !== undefined && !signal.aborted && !leaving) sendAgain(form, pending.next);
     }
   }
 }
 
 /**
- * Sends the submit that waited for a write's answer, from the form as it is now: the form the
- * answer put in its place (the same id) when it replaced it, by the submit button that stands for
- * the one pressed. A button the answer removed (its row is gone) sends nothing.
+ * Sends the submit that waited for a write's answer, from the form as it is now, without a
+ * second `submit` event (its handlers ran at the press). A form the answer replaced is found by
+ * its id; one it removed (its row is gone) sends nothing, and one without an id sends as it was.
+ * The button is the one pressed, or the one the answer put in its place.
  * @param {HTMLFormElement} form @param {HTMLElement | null} submitter
  */
-function submitAgain(form, submitter) {
+function sendAgain(form, submitter) {
   const id = idOf(form);
-  const now = form.isConnected ? form : id ? document.getElementById(id) : null;
+  const now = formProperty(form, "isConnected") || !id ? form : document.getElementById(id);
   if (!(now instanceof HTMLFormElement) || !formCall(now, "hasAttribute", "data-patch")) return;
-  // The pressed button, or the one in its place: same kind, name, value and target.
+  const all = /** @type {HTMLElement[]} */ (Array.from(/** @type {HTMLFormControlsCollection} */ (formProperty(now, "elements"))));
   const by =
-    submitter &&
-    Array.from(/** @type {HTMLFormControlsCollection} */ (formProperty(now, "elements"))).find(
-      (el) => el === submitter || (el.localName === submitter.localName && ["type", "name", "value", "formaction", "formmethod"].every((a) => el.getAttribute(a) === submitter.getAttribute(a))),
-    );
-  if (!submitter || by) formCall(now, "requestSubmit", by);
+    !submitter || all.includes(submitter)
+      ? submitter
+      : all.find(
+          (el) =>
+            el.localName === submitter.localName &&
+            ["type", "name", "value", "formaction", "formmethod", "formenctype", "formnovalidate"].every((a) => el.getAttribute(a) === submitter.getAttribute(a)),
+        );
+  if (by !== undefined) send(now, by, sendsAs(now, by));
 }
 
 /**
@@ -1708,7 +1729,7 @@ export const ready = Promise.all(loading.values()).then(() => undefined);
 const devStart = document.querySelector('meta[name="corten-dev"]')?.getAttribute("content");
 if (devStart) {
   new EventSource("/corten/dev").addEventListener("message", (event) => {
-    if (/** @type {MessageEvent} */ (event).data !== devStart) location.reload();
+    if (/** @type {MessageEvent} */ (event).data !== devStart) reload();
   });
 }
 
