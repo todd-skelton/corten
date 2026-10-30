@@ -204,6 +204,7 @@ async function run(browser) {
     delayWatch = 0;
     if (failWatch) {
       failWatch = false;
+      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
       offline.add(route.request());
       return route.abort("internetdisconnected");
     }
@@ -469,6 +470,22 @@ async function run(browser) {
     "a failed submit leaves the page and the form as they were",
     (await page.textContent("#watch-message")) === messageBefore && (await page.getAttribute("#watch-form", "aria-busy")) === null,
   );
+  // A newer submit that waited for a write the network failed is not sent: it would fail the
+  // same way, and the user sends it again.
+  let afterFailure = 0;
+  /** @param {import("@playwright/test").Request} r */
+  const onRetry = (r) => r.method() === "POST" && r.url().endsWith("/watch") && (afterFailure += 1);
+  const failedAgain = page.evaluate(() => new Promise((resolve) => document.addEventListener("corten:error", resolve, { once: true })));
+  page.on("request", onRetry);
+  delayWatch = 600;
+  failWatch = true;
+  await page.click("#watch-form button");
+  await page.selectOption("select[name=id]", "GLBX");
+  await page.click("#watch-form button");
+  await failedAgain;
+  await page.waitForTimeout(500);
+  page.off("request", onRetry);
+  check("a submit that waited for a write the network failed is not sent", afterFailure === 1, `posts: ${afterFailure}`);
 
   // A submit key (SubmitKey::field) is sent again until the submission has an answer, then renewed
   // as another UUID v4.

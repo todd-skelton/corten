@@ -1560,9 +1560,10 @@ Corten is pre-1.0, so any minor version may change the API.
     (the one the answer put in its place, found by id), so a version or count the answer wrote
     goes with it, under the key the form has then, without its `on:submit` handlers running a
     second time. Several presses while the write is out send one submit of where the form ended;
-    a redirect, a reload or a navigation drops it. A GET submit still replaces an older one. The
-    minified runtime grows by 613 bytes (25,884 to 26,497), 234 gzipped (9,402 to 9,636) and 216
-    with brotli (8,496 to 8,712)
+    a write that gets no answer (a network failure, a page being left), a redirect, a reload or a
+    navigation drops it. A GET submit still replaces an older one. The
+    minified runtime grows by 627 bytes (25,884 to 26,511), 239 gzipped (9,402 to 9,641) and 214
+    with brotli (8,496 to 8,710)
     ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
 
 ### Fixed

@@ -1689,15 +1689,16 @@ async function send(form, submitter, sends) {
     }
   } catch (error) {
     if (signal.aborted) return;
-    // Offline or the server is unreachable: the form stays as it is, and the page can say so.
+    // Offline, the server unreachable, or the browser leaving the page (a full navigation without
+    // the Navigation API cancels it): the form stays as it is, and the page can say so. A submit
+    // that waited goes with it, since it would fail the same way, and the user sends it again.
+    pending.next = undefined;
     formCall(form, "dispatchEvent", new CustomEvent("corten:error", { bubbles: true, detail: { status: 0, error } }));
   } finally {
     if (submits.get(form)?.controller === controller) {
       submits.delete(form);
       formCall(form, "removeAttribute", "aria-busy");
-      // In a task of its own: a write the browser cancelled because it is leaving the page (a full
-      // navigation, without the Navigation API) ends before `pagehide`, and a timer never runs in
-      // a page that is gone.
+      // In a task of its own, after the answer is drawn; not into a page the runtime is reloading.
       const next = pending.next;
       if (next !== undefined && !signal.aborted) setTimeout(() => leaving || sendAgain(form, next));
     }
