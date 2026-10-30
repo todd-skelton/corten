@@ -85,6 +85,10 @@ docker build -f examples/seller-desk/Dockerfile -t corten-seller-desk .
 docker run -d --name corten-seller-desk -p 18484:8080 corten-seller-desk
 node examples/seller-desk/smoke.mjs http://localhost:18484
 docker rm -f corten-seller-desk
+docker build -f examples/auction-room/Dockerfile -t corten-auction-room .
+docker run -d --name corten-auction-room -p 18486:8080 -e HOUSE_KEY=smoke-house corten-auction-room
+node examples/auction-room/smoke.mjs http://localhost:18486 smoke-house
+docker rm -f corten-auction-room
 docker network create feeds
 docker run -d --name feeds-pg --network feeds -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=feeds postgres:16-alpine
 docker run -d --name feeds-nats --network feeds nats:2-alpine -js

@@ -875,6 +875,11 @@ fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
 9. Test it the way a user meets it: a router test that sends each route signed out and signed
    in without the permission.
 
+[examples/auction-room](../../examples/auction-room) refuses each way: its `Identify` sends someone
+signed out to sign in, answers `Refused::unavailable` when its SQLite store cannot answer, and
+refuses a signed-in bidder the house's area with `Refused::forbidden`; its bid limit, the bidder
+area's middleware, reads the same `Caller` and refuses with `Refused::too_many`.
+
 A page and the form that posts back to it share one URL (`get = show, post = save`), and each
 method names its handler, so who may read and who may write are each handler's arguments:
 `show` takes `Option<Caller<Viewer>>`, `save` takes `Caller<Viewer>`.

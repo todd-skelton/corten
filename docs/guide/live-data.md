@@ -57,7 +57,10 @@ A cursor the app no longer knows (too old, another deploy's) is the handler's to
 the part as it is now is always correct. A cursor with a line break or NUL would end its event,
 so `cursor` refuses it (a panic in debug builds; in release the fragment goes without it).
 
-[examples/watchlist](../../examples/watchlist) has this running.
+[examples/watchlist](../../examples/watchlist) has this running for everyone.
+[examples/auction-room](../../examples/auction-room) also streams each bidder's own notices (you
+were outbid, you won): the route takes the `Caller`, so each stream is one person's `watch`
+channel.
 
 ### Connection
 
