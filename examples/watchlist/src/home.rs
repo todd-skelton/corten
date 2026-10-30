@@ -3,6 +3,7 @@
 use corten::{
     ClientZone, LiveResponse, LiveSince,
     feed::{FeedResponse, Since},
+    i18n::Minor,
     prelude::*,
 };
 use serde::Deserialize;
@@ -99,12 +100,13 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 pub(crate) fn LivePrices<'a>(stocks: &'a [Stock], t: Msg) -> impl Patch {
     let (pause, price, change, updates) = refs();
     let (updated, money, percent) = (t.js().prices_updates(), t.js().money(USD), t.js().change(2));
+    let moved = t.js().signed_money(USD);
     let f = UnwatchForm::FIELDS;
     html! {
         <div
             id={PricesId}
             class={stack(Space::_3)}
-            on:connect={js::watch(scope, pause, price, change, money, percent, url::Stocks, signal, updates, updated)}
+            on:connect={js::watch(scope, pause, price, change, money, moved, percent, url::Stocks, signal, updates, updated)}
         >
             <div class={(row(Space::_3), justify_between())}>
                 <h2>"Your stocks"</h2>
@@ -137,7 +139,11 @@ pub(crate) fn LivePrices<'a>(stocks: &'a [Stock], t: Msg) -> impl Patch {
                                 <span class={Ticker}>{stock.id}</span>
                             </td>
                             <td ref={price} class={Amount} key={stock.id}>{stock.price}</td>
-                            <td ref={change} class={Change} key={stock.id} data-trend={stock.trend()}>{&stock.change}</td>
+                            <td ref={change} class={Change} key={stock.id} data-trend={stock.trend()}>
+                                {t.signed_money(Minor(i64::from(stock.price_cents) - i64::from(stock.open_cents)), USD)}
+                                " "
+                                {&stock.change}
+                            </td>
                             <td>
                                 <button
                                     class={Remove}
@@ -322,7 +328,7 @@ mod tests {
         assert!(kind.starts_with("text/html"));
         assert!(body.contains("/scripts/live_prices.js\">"), "the script module is preloaded: {body}");
         assert!(
-            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,#change,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;\u0001%&quot;,&quot;-\u0001%&quot;,&quot;+\u0001%&quot;],&quot;p&quot;:2},&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
+            body.contains(r#"data-on="connect:live_prices.watch($c,@pause,#price,#change,%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;$\u0001&quot;,&quot;-$\u0001&quot;,&quot;+$\u0001&quot;],&quot;d&quot;:2},%{&quot;z&quot;:&quot;0&quot;,&quot;s&quot;:[&quot;.&quot;,&quot;,&quot;,3,3,1],&quot;t&quot;:[&quot;\u0001%&quot;,&quot;-\u0001%&quot;,&quot;+\u0001%&quot;],&quot;p&quot;:2},&quot;/feed/stocks&quot;,$s,@updates,%[&quot;Price updates: &quot;,&quot;count&quot;,&quot;&quot;])""#),
             "the script gets the money and change formats and the message it fills in, once: {body}"
         );
         assert!(
@@ -330,8 +336,10 @@ mod tests {
             "server renders prices first: {body}"
         );
         assert!(
-            body.contains(r#"<td data-ref="change" class="live-prices__change" data-key="ACME" data-trend="flat">0.00%</td>"#),
-            "and today's change, in the page's change format: {body}"
+            body.contains(
+                r#"<td data-ref="change" class="live-prices__change" data-key="ACME" data-trend="flat">$0.00 0.00%</td>"#
+            ),
+            "and today's change, in money and in the page's change format: {body}"
         );
         assert_eq!(rows(&body), ["ACME", "GLBX", "INIT"], "a first visit watches three");
         assert!(

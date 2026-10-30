@@ -528,6 +528,8 @@ pub struct Formatted {
 enum Kind {
     Number,
     Money(Currency),
+    /// With its sign, as Intl's `signDisplay: "exceptZero"` (`+$1.23`, `-$1.23`, `$0.00`).
+    SignedMoney(Currency),
     /// `value` is already Ã— 100 and rounded.
     Percent,
     /// `value` is already times 100 and rounded to its digits; a gain is written with its sign.
@@ -543,6 +545,11 @@ impl Formatted {
     #[doc(hidden)]
     pub fn money(data: &'static __private::LocaleData, amount: &impl Amount, currency: Currency) -> Self {
         Formatted { data, value: amount.in_digits(currency.digits()), kind: Kind::Money(currency) }
+    }
+
+    #[doc(hidden)]
+    pub fn signed_money(data: &'static __private::LocaleData, amount: &impl Amount, currency: Currency) -> Self {
+        Formatted { data, value: amount.in_digits(currency.digits()), kind: Kind::SignedMoney(currency) }
     }
 
     #[doc(hidden)]
@@ -570,6 +577,7 @@ impl Formatted {
                 };
                 return self.write_in(template, &data.percent_separators, None, out);
             }
+            Kind::SignedMoney(currency) => return self.write_signed(currency, out),
             Kind::Money(currency) => currency,
         };
         let key = currency.key();
@@ -581,6 +589,33 @@ impl Formatted {
             }
             // The locale writes this currency by its code.
             Err(_) => self.write_in(data.money[negative], &data.money_separators, Some(currency.code()), out),
+        }
+    }
+
+    /// An amount with its sign: none on what rounds to zero, either way, and on a gain the loss's
+    /// template with the plus sign in place of the minus, as Intl writes it
+    /// (`scripts/locale-data.mjs` checks every locale and currency).
+    fn write_signed<W: Write + ?Sized>(&self, currency: Currency, out: &mut W) -> fmt::Result {
+        let data = self.data;
+        let key = currency.key();
+        let ([plain, loss], code) = match data.currencies.binary_search_by(|(c, ..)| code_key(c).cmp(&key)) {
+            Ok(i) => ([data.currencies[i].1, data.currencies[i].2], None),
+            Err(_) => (data.money, Some(currency.code())),
+        };
+        if self.value.mantissa == 0 {
+            return self.write_in(plain, &data.money_separators, code, out);
+        }
+        if self.value.negative {
+            return self.write_in(loss, &data.money_separators, code, out);
+        }
+        let (minus, plus) = signs(data);
+        match loss.split_once(minus) {
+            Some((before, after)) => {
+                self.write_in(before, &data.money_separators, code, out)?;
+                out.write_str(plus)?;
+                self.write_in(after, &data.money_separators, code, out)
+            }
+            None => self.write_in(plain, &data.money_separators, code, out),
         }
     }
 
@@ -608,6 +643,18 @@ impl Formatted {
         }
         write_text(rest, code, out)
     }
+}
+
+/// The locale's minus and plus signs: where its percentage's loss and gain templates differ
+/// (`-5%` and `+5%`). `scripts/locale-data.mjs` checks they are Intl's in every locale.
+fn signs(data: &__private::LocaleData) -> (&'static str, &'static str) {
+    let (loss, gain) = (data.percent[1], data.percent[2]);
+    fn same(a: impl Iterator<Item = char>, b: impl Iterator<Item = char>) -> usize {
+        a.zip(b).take_while(|(a, b)| a == b).map(|(a, _)| a.len_utf8()).sum()
+    }
+    let start = same(loss.chars(), gain.chars());
+    let end = same(loss[start..].chars().rev(), gain[start..].chars().rev());
+    (&loss[start..loss.len() - end], &gain[start..gain.len() - end])
 }
 
 /// A template's text, with `code` at each `\u{2}` when there is one.
@@ -1183,6 +1230,8 @@ pub struct PercentFormat {
 pub struct MoneyFormat {
     data: &'static __private::LocaleData,
     currency: Currency,
+    /// With its sign: `t.js().signed_money(currency)`, as `t.signed_money` writes it.
+    signed: bool,
 }
 
 /// `t.js().date(style)` (or `time`, `date_time`): a date's format, for a handler whose JSDoc
@@ -1218,7 +1267,12 @@ impl PercentFormat {
 impl MoneyFormat {
     #[doc(hidden)]
     pub fn new(data: &'static __private::LocaleData, currency: Currency) -> Self {
-        MoneyFormat { data, currency }
+        MoneyFormat { data, currency, signed: false }
+    }
+
+    #[doc(hidden)]
+    pub fn signed(data: &'static __private::LocaleData, currency: Currency) -> Self {
+        MoneyFormat { data, currency, signed: true }
     }
 }
 
@@ -1362,7 +1416,14 @@ impl crate::script::Arg<crate::script::ts::MoneyFormat> for MoneyFormat {
             Err(_) => data.money.map(|t| t.replace('\u{2}', code)),
         };
         wire::open(data, out);
-        wire::separators(&data.money_separators, &[pos.as_str(), neg.as_str()], out);
+        // A signed amount's has a third template, a gain's, which tells the script it is one.
+        if self.signed {
+            let (minus, plus) = signs(data);
+            let gain = neg.replacen(minus, plus, 1);
+            wire::separators(&data.money_separators, &[pos.as_str(), neg.as_str(), gain.as_str()], out);
+        } else {
+            wire::separators(&data.money_separators, &[pos.as_str(), neg.as_str()], out);
+        }
         let _ = write!(out, ",&quot;d&quot;:{}}}", self.currency.digits());
     }
 }

@@ -9,7 +9,8 @@
 /**
  * A format as the server writes it. `z` is the locale's zero; `s` its decimal and group
  * separators and grouping (primary, secondary, fewest digits grouped); `t` templates, positive and
- * negative, with the digits at \u0001, and a change's third, a gain's (`+5%`); `d` an amount's
+ * negative, with the digits at \u0001, and a change's or signed amount's third, a gain's (`+5%`,
+ * `+$3.20`); `d` an amount's
  * fraction digits; `p` a percentage's most fraction digits (it takes a ratio), a change's exact
  * ones; `f` a date's fields; `o`
  * the zone's offset in seconds east, and for a pattern that shows the zone, `u` UTC's name and `g`
@@ -31,7 +32,10 @@ export function formatter(spec) {
     return (minor) => {
       // Rounded half away from zero, as the server rounds: 19.99 * 100 is 1998.9999999999998.
       const text = String(Math.round(Math.abs(minor))).padStart(d + 1, "0");
-      return number(spec, minor < 0 || Object.is(minor, -0) ? 1 : 0, text.slice(0, text.length - d), text.slice(text.length - d));
+      const negative = minor < 0 || Object.is(minor, -0);
+      // A signed amount: no sign on what rounds to zero, either way.
+      const at = spec.t?.length === 3 ? (/[1-9]/.test(text) ? (negative ? 1 : 2) : 0) : negative ? 1 : 0;
+      return number(spec, at, text.slice(0, text.length - d), text.slice(text.length - d));
     };
   }
   const p = spec.p;
