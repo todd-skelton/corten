@@ -1032,7 +1032,14 @@ Corten is pre-1.0, so any minor version may change the API.
     render against 1,636.5; the examples' `count == 1` choices are gone and card-market's French no longer
     writes "1 annonces"
     ([#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393)).
-141. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
+141. `corten dev`, `fmt` and `check` notice when the app's `Cargo.lock` pins another corten than the
+    one they were built from (a git revision or a release) and say so before running, with the
+    `cargo install` command for the matching one; they ran with the old behavior silently, and
+    `check` failed on `cargo fmt --check` with no reason. The command records the commit it is built
+    from (`corten --version` prints it), read from `.git` or a published package's
+    `.cargo_vcs_info.json`, standard library only. A path dependency is not compared
+    ([#458 The corten CLI does not notice it is older than the corten the app pins, so fmt and check silently use old behavior](https://github.com/todd-skelton/corten/issues/458)).
+142. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
     form, its fields posted as `ship_to.street` (`f.ship_to.street`), so a field group is defined
     once and a form can hold two of one type. `#[fields(rows)] #[serde(default)] domains:
     BTreeMap<Domain, DomainLimits>` is one group per row, each field named by the row's key,
@@ -1655,7 +1662,19 @@ Corten is pre-1.0, so any minor version may change the API.
     `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
     of the page and the patch builds the read in its body instead of failing with E0515 or E0597
     ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
-88. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
+88. A `data-patch` form's newer submit no longer aborts a pending write (any method but GET): the
+    server may have applied it, and its answer, the page's next state, was dropped. A submit made
+    while a write is pending waits, and once the runtime has drawn the write's answer and it took
+    the write (2xx) or refused only its input (422), it is sent from the form as it is then (the one
+    the answer put in its place, found by id), so a version or count the answer wrote goes with it,
+    under the form's new key, without its `on:submit` handlers or the browser's constraint checks
+    running a second time. Several presses while the write is out send one submit of where the form
+    ended; a refusal of the form's state (409, 410), a 5xx, a write that gets no answer, one the
+    runtime does not draw (`corten:error`), a redirect, a reload, a navigation, or a form that left
+    the page drops it. A GET submit still replaces an older one. The minified runtime grows by 656
+    bytes (25,884 to 26,540), 247 gzipped (9,402 to 9,649) and 219 with brotli (8,496 to 8,715)
+    ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
+89. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
     name alone (`FieldName`, with `as_str`), and a group's or a row's field is a
     `FieldName<Group>`, `FieldName<Row<'k>>` or `FieldName<RowGroup<'k>>`, written, not stored:
     compare it with text with `==` (`f.ship_to.street == "ship_to.street"`) and write it with
@@ -1666,12 +1685,13 @@ Corten is pre-1.0, so any minor version may change the API.
     flattened group cannot be told from another of its type, and serde reads a flattened field's
     value only as text
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366)).
-89. A key under a field's name sent without the field itself (`go.x` from an image button, `ids[0]`
-    from a PHP-style list) is read as that field's group or rows, in any struct `Form` reads: a
-    field that is not an `Option` is refused (422) with a message that says it was sent only that
-    way, where it was ignored and a `#[serde(default)] go: bool` read `false` though the button was
-    pressed, or a defaulted `Vec` read empty though values were sent. An `Option` reads as `None`,
-    and a key under a name the struct does not have is ignored as before
+90. A key under a field's name sent without the field itself (`go.x` from an image button, `ids[0]`
+    from a PHP-style list) is read as that field's group or rows wherever a form is read (`Form`, a
+    `GET` form's query, `Upload::fields`, `form::from_bytes`): a field that is not an `Option` is
+    refused (422) with a message that says it was sent only that way, where it was ignored and a
+    `#[serde(default)] go: bool` read `false` though the button was pressed, or a defaulted `Vec`
+    read empty though values were sent. An `Option` reads as `None`, and a key under a name the
+    struct does not have is ignored as before
     ([#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
 ### Fixed
@@ -2123,7 +2143,15 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and
     `corten__two_events_named__row_toggled` for the event's name in the page)
     ([#371 Two features' #[event] types or views with the same name still fail only when the server starts](https://github.com/todd-skelton/corten/issues/371)).
-78. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
+78. A `for`, `if` or `match` inside a `for` in `html!` compiles, in a patch and in any view: it
+    failed with "use of moved value" on the whole `html!`, since the marker that says whether each
+    part is a patch was moved on the loop's first pass. A patch can now redraw rows known from data
+    in one loop, with a branch per row. A view refused as a patch now names the kind of part that
+    is not one (`ComponentOrExpressionNotAPatch`: a component declared `-> impl Render`;
+    `IdNotADeriveIdType`; `TextOrElementWithoutId`), though not its place in the view. The markers are zero-sized and the macro's output is otherwise the same, so rendering
+    is unchanged
+    ([#383 An if or match inside a for in html! fails with E0382 (use of moved value), and a patch's E0277 does not name the part that is not a patch](https://github.com/todd-skelton/corten/issues/383)).
+79. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
     edited by hand) reads as missing, `None` or the field's `#[serde(default)]`, so `Params` shows
     the page with its filter, sort or tab at its default where it answered 400 with serde's text. A
     parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
@@ -2333,6 +2361,18 @@ Corten is pre-1.0, so any minor version may change the API.
 37. The requests guide says why the submit key is a form field and not the `Idempotency-Key`
     header: a browser without JavaScript cannot set one, and the header is still an IETF draft
     ([#395 An action takes its idempotency key only as a SubmitKey form field, not the Idempotency-Key header data clients send](https://github.com/todd-skelton/corten/issues/395)).
+38. The live-data guide follows a job another process runs (a worker writing to a shared database):
+    one `App::task` reading into a `watch` channel for `live_watch` when many pages follow it, or a
+    `corten::live` loop that sends only when the version moved, ends after the settled state and
+    gives up after a few failed reads. No `live_poll` helper is added: the interval, what to read
+    less often and when the job is done are the app's, and a helper would take a closure for each
+    ([#388 A live part that follows a job in another process writes its own poll loop, version cursor and end](https://github.com/todd-skelton/corten/issues/388)).
+39. The scripts guide says a value a handler computes that the server also draws is a second copy,
+    and how to keep the two in agreement: draw it on the server only when a round trip is fast
+    enough, or keep the arithmetic in a `script!` module that imports nothing and run one table of
+    cases through both in a test, which `corten check` runs. Corten does not compile Rust to the
+    script or add a runner of its own: a test already does it
+    ([#444 A value a script computes as the user types is also drawn by the server, so its arithmetic is written twice (Rust and JS) with nothing checking they agree](https://github.com/todd-skelton/corten/issues/444)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

@@ -374,7 +374,8 @@ impl<'de> MapAccess<'de> for Rows<'_, '_> {
         let pair: Pair<'_> = (Cow::Borrowed(""), key);
         seed.deserialize(RowKeyText(std::slice::from_ref(&pair)))
             .map(Some)
-            .map_err(|e| FormError::new(format!("{}: key: {e}", &prefix[..prefix.len() - 1])))
+            // The row's or the map value's whole name: `lines[x]`, not the `.` after a row's.
+            .map_err(|e| FormError::new(format!("{}: key: {e}", &first[..self.skip + close + 1])))
     }
 
     fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, FormError> {
@@ -783,5 +784,13 @@ mod tests {
         let form: Bulk = from_bytes(b"sort=new&utm_source=x&utm_source=y").expect("reads");
         assert_eq!(form.sort, Sort::New);
         let (): () = from_bytes(b"").expect("an empty form is unit");
+        // A map's value whose key does not read names the whole key, brackets and all.
+        #[derive(Debug, Deserialize)]
+        struct Counts {
+            #[allow(dead_code)]
+            counts: BTreeMap<u32, u32>,
+        }
+        let why = from_bytes::<Counts>(b"counts%5Bx%5D=1").unwrap_err().to_string();
+        assert!(why.starts_with("counts[x]: key: "), "{why}");
     }
 }

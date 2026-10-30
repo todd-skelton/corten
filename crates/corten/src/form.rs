@@ -1351,8 +1351,9 @@ impl<I: Id, P: Place> Render for FieldMessage<'_, I, P> {
 ///
 /// The browser sends the same key for as long as the submission has no answer: a page reloaded
 /// after a post sends it again, and so does the runtime when a `data-patch` form is sent again
-/// after a network error, a 5xx or an abort. Once an answer arrives (any status below 500) the
-/// runtime gives the form a new key, so the next submit is a new one. The app keeps the keys it
+/// after a network error, a 5xx or an abort (a navigation). Once an answer arrives (any status
+/// below 500) the runtime gives the form a new key, so the next submit is a new one; a submit made
+/// while a write is pending waits for it and goes out with the key the form has then. The app keeps the keys it
 /// has applied (next to the write, in the same transaction) and answers a repeat with what it did
 /// the first time; Corten keeps no store. [`corten_cluster`]'s `begin` takes one as its
 /// idempotency key.
