@@ -1039,6 +1039,13 @@ Corten is pre-1.0, so any minor version may change the API.
     from (`corten --version` prints it), read from `.git` or a published package's
     `.cargo_vcs_info.json`, standard library only. A path dependency is not compared
     ([#458 The corten CLI does not notice it is older than the corten the app pins, so fmt and check silently use old behavior](https://github.com/todd-skelton/corten/issues/458)).
+142. `DayStyle` for `t.date` and `t.js().date`: the month and day without the year, `Short` (`Mar
+    2`) and `Long` (`March 2`), written as Intl writes `{ month, day }` in each locale's order and
+    words (`2 mars`, `2. März`), for a chart's axis, a week's row or a timeline whose year the page
+    says once; like `MonthStyle`, `t.date_time` does not take it. The locale data gains two patterns
+    per locale (from Node's Intl, checked against it, and in the cases the browser's `format.js` is
+    checked with); no other format changes
+    ([#473 t.date has no month-and-day style without the year (Intl { month: 'short', day: 'numeric' }), so chart labels hand-build month names](https://github.com/todd-skelton/corten/issues/473)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
