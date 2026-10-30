@@ -817,6 +817,8 @@ async function run(browser) {
       // own: the link is not left busy waiting for the answer no one will use.
       let letPrefetch = () => {};
       const prefetchHeld = new Promise((resolve) => (letPrefetch = () => resolve(undefined)));
+      /** @param {URL} url */
+      const home = (url) => url.pathname === "/";
       await more.route(home, async (route) => {
         await prefetchHeld;
         await route.continue().catch(() => {});
