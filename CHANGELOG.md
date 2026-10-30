@@ -1106,6 +1106,18 @@ Corten is pre-1.0, so any minor version may change the API.
     route's address again and reads it back); nothing else renders differently
     ([#439 A GET form that changes some of a typed route's query fields must write every other field as a hidden input by hand, and a missed or doubled one compiles](https://github.com/todd-skelton/corten/issues/439)).
 
+147. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
+    answer (a carrier, a payment provider, another app), answered by `req.invalid` and
+    `req.invalid_with` with 502 in every mode: the form drawn again with the message, the page
+    without JavaScript, the Problem Details document for a data client, which got the HTML page
+    from a handler that set the status by hand. The retry is the same submission: the runtime now keeps a form's
+    `SubmitKey` over the key a patch draws (a 5xx patch used to swap in a fresh one, so a retry of a
+    write that did apply upstream applied twice), and `SubmitKey::again` draws the posted key into
+    the form a browser without JavaScript gets. The minified runtime grows by 172 bytes (26,619 to
+    26,791), 36 gzipped (9,671 to 9,707), 29 with brotli (8,742 to 8,771). An agent tool gets the message as `ToolError::Upstream` ("try again later"),
+    not as a refusal of a stale state. Still a closed set: no other 5xx, and no `StatusCode`. An
+    app's exhaustive `match` on `Refusal` or `ToolError` gains an arm
+    ([#480 A post refused because a service it calls failed has no Refusal (502/503), so it cannot use req.invalid_with and a JSON client gets the HTML page](https://github.com/todd-skelton/corten/issues/480)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are
