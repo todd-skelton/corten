@@ -161,6 +161,13 @@ framework's shape, and what it does not do yet.
 9. A layout's props are what most pages set: the title and the page's own head tags. A page that
    needs a different document (a print view, an embed) uses another layout component; a layout
    does not grow a flag per page.
+10. A header, wire format or file format that leaves Corten (read by another client, another
+    tool, or a person writing the file) follows the standard for it where one exists: Problem
+    Details for JSON failures, CLDR for number and date formats. Where Corten defines its own
+    instead, a Choice above names the standard it considered, why it does not fit, and what
+    would let Corten move to it (Choices 11 to 14). A format only Corten's own
+    server and runtime read (the `data-on` wire format) needs no standard, but stays internal:
+    nothing outside the framework may depend on it.
 
 ## Limits
 
