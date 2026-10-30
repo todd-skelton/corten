@@ -971,6 +971,18 @@ Corten is pre-1.0, so any minor version may change the API.
     formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
     minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
     ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
+134. `corten::Within` is exported beside `Errors`, so a field helper several forms share takes the
+    form's scoped errors without reaching into `corten::form` ([#451 form::Within is not re-exported
+    beside Errors, so a field helper shared by several forms must find
+    corten::form::Within](https://github.com/todd-skelton/corten/issues/451)).
+135. A submit refused for the state it was made against, not its input (a stale revision, a step
+    already taken), is `errors.refuse(Refusal::Conflict, message)`: `req.invalid` answers it with
+    409 (or 410 for `Refusal::Gone`) in every mode, the form drawn again with what the user typed
+    and the message at its top, and data clients get the same status in the Problem Details
+    document. `Refusal` is a closed set of 4xx refusals, so a 2xx or a 5xx does not compile ([#438 A
+    post refused for a reason that is not a field (a stale revision, a step out of order) has no
+    answer, so each screen draws its page and sets a 409 on the raw
+    response](https://github.com/todd-skelton/corten/issues/438)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

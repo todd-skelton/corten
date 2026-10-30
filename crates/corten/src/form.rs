@@ -246,6 +246,36 @@ impl AttrValue for FieldName {
 pub struct Errors {
     fields: Vec<(FieldName, String)>,
     form: Option<String>,
+    refusal: Refusal,
+}
+
+/// Why a submit was refused, which [`Req::invalid`](crate::Req::invalid) answers with its status.
+/// A closed set: a refusal is the client's to fix, so it is a 4xx, and a 2xx or a 5xx does not
+/// compile.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Refusal {
+    /// 422: the input breaks a rule ([`Errors::add`], [`Errors::add_form`]).
+    #[default]
+    Invalid,
+    /// 409: the submit was made against a state that has moved on (a stale revision, a step
+    /// already taken or out of order). Sending the same input again would be refused again; the
+    /// user needs the current state first.
+    Conflict,
+    /// 410: what the submit acts on is gone (deleted meanwhile).
+    Gone,
+}
+
+impl Refusal {
+    /// The status the refusal is answered with.
+    pub fn status(self) -> axum::http::StatusCode {
+        use axum::http::StatusCode;
+        match self {
+            Refusal::Invalid => StatusCode::UNPROCESSABLE_ENTITY,
+            Refusal::Conflict => StatusCode::CONFLICT,
+            Refusal::Gone => StatusCode::GONE,
+        }
+    }
 }
 
 impl Errors {
@@ -265,6 +295,36 @@ impl Errors {
     /// Prefer [`Errors::add`] when a field is at fault, so the message sits next to it.
     pub fn add_form(&mut self, message: impl Into<String>) {
         self.form.get_or_insert_with(|| message.into());
+    }
+
+    /// Refuses the submit for the state it was made against, not its input: the form's message,
+    /// as [`Errors::add_form`] records it, answered with the refusal's status (409 for
+    /// [`Refusal::Conflict`]) by [`Req::invalid`](crate::Req::invalid) in every mode. The form
+    /// is drawn again with what the user typed and the message at its top.
+    ///
+    /// ```
+    /// use corten::{Errors, Refusal};
+    ///
+    /// let mut errors = Errors::new();
+    /// errors.refuse(Refusal::Conflict, "Someone saved this sheet first. Reload to see their changes.");
+    /// assert_eq!(errors.refusal().status().as_u16(), 409);
+    /// assert_eq!(errors.form(), Some("Someone saved this sheet first. Reload to see their changes."));
+    /// ```
+    ///
+    /// A status that is not a refusal does not compile:
+    ///
+    /// ```compile_fail,E0308
+    /// let mut errors = corten::Errors::new();
+    /// errors.refuse(200, "Saved.");
+    /// ```
+    pub fn refuse(&mut self, why: Refusal, message: impl Into<String>) {
+        self.refusal = why;
+        self.add_form(message);
+    }
+
+    /// Why the submit was refused: [`Refusal::Invalid`] unless [`Errors::refuse`] said otherwise.
+    pub fn refusal(&self) -> Refusal {
+        self.refusal
     }
 
     pub fn get(&self, field: FieldName) -> Option<&str> {
@@ -307,7 +367,10 @@ impl Errors {
     /// The fields' marks and messages in the form whose id is `form`: the `#[derive(Id)]` of the
     /// element a refused submit replaces (the form, or the block around it). Each message's id is
     /// `{form}-{field}-error`, so two forms on a page with a field of the same name (a price in
-    /// every row) do not share one, and each field is described by its own message.
+    /// every row) do not share one, and each field is described by its own message. A field
+    /// several forms share is a helper that takes the form's errors, `e: &corten::Within<'_, I>`.
+    #[doc(alias = "aria")]
+    #[doc(alias = "message")]
     pub fn within<I: Id>(&self, form: I) -> Within<'_, I> {
         Within { errors: self, form }
     }
@@ -598,10 +661,10 @@ impl axum::response::IntoResponse for Errors {
 impl Errors {
     pub(crate) fn response(&self) -> axum::response::Response {
         use axum::{
-            http::{header, HeaderValue, StatusCode},
+            http::{header, HeaderValue},
             response::IntoResponse,
         };
-        let status = StatusCode::UNPROCESSABLE_ENTITY;
+        let status = self.refusal.status();
         let mut members = String::new();
         if let Some(form) = &self.form {
             members.push_str(r#","form":"#);

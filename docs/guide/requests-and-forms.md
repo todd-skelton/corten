@@ -209,6 +209,14 @@ saying no: "The policy was retired meanwhile.") is the form's own message:
 `role="alert"` paragraph that is announced when the patch arrives. JSON clients get it first in
 `message` and as `form`; an agent tool gets it first in its error.
 
+A submit refused for the state it was made against rather than its input (a stale revision, a
+step already taken or out of order, a record deleted meanwhile) is
+`errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
+message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
+drawn again with what the user typed, the page without JavaScript, the Problem Details document
+for a data client. A post that can be refused is a `data-patch` form: a plain post's refusal
+draws the whole page and leaves the address at the action's URL, whose GET may not exist.
+
 A write that must not apply twice (an order, a payment, a message sent) carries a `SubmitKey`.
 A 502 or a dropped connection can hide a write that committed, and the user, the browser or the
 runtime then sends it again. Add a `SubmitKey` field to the form struct and draw it with

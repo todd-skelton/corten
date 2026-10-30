@@ -237,7 +237,7 @@ pub use corten_macros::Fields;
 /// assert_eq!(<Arc<fn() -> u8>>::from_ref(&calls)(), 7);
 /// ```
 pub use corten_macros::FromRef;
-pub use form::{Errors, FieldName, Files, Form, SubmitKey, Upload, UploadError};
+pub use form::{Errors, FieldName, Files, Form, Refusal, SubmitKey, Upload, UploadError, Within};
 pub use html::escape;
 #[cfg(feature = "json")]
 pub use json::{FromJson, Json, ToJson};

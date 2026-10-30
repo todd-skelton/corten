@@ -1133,15 +1133,17 @@ impl Req {
         }
     }
 
-    /// Answers a submit whose input failed validation, with 422 Unprocessable Content:
+    /// Answers a refused submit: its input failed validation (422 Unprocessable Content), or it
+    /// was made against a state that has moved on ([`Errors::refuse`](crate::Errors::refuse), 409
+    /// for a stale revision), with the status of [`Errors::refusal`](crate::Errors::refusal):
     ///
     /// - [`Mode::Action`]: `form`, the form re-rendered with the errors, as a patch. The runtime
     ///   then moves focus to the first field marked `aria-invalid="true"`.
     /// - [`Mode::Data`] (feature `json`): the Problem Details document with the fields,
     ///   `{"title": "Unprocessable Entity", "status": 422, "detail": "email: ...", "fields": {"email": "..."}}`.
     /// - Otherwise (no JavaScript): `page()`, usually `req.page(..)` for the whole page with the
-    ///   form showing the errors; a success status becomes 422. It is only called here, so an
-    ///   action never loads data for a page it does not send.
+    ///   form showing the errors; a success status becomes the refusal's. It is only called here,
+    ///   so an action never loads data for a page it does not send.
     pub async fn invalid<For, F, Fut>(
         &self,
         errors: &crate::Errors,
@@ -1152,13 +1154,12 @@ impl Req {
         F: FnOnce() -> Fut,
         Fut: Future<Output = crate::Result<HtmlResponse<For>>>,
     {
-        let status = StatusCode::UNPROCESSABLE_ENTITY;
+        let status = errors.refusal().status();
         match self.mode {
             Mode::Action => self.patch_with_status(status, form),
             #[cfg(feature = "json")]
             Mode::Data => Ok(HtmlResponse::new(errors.response())),
             _ => {
-                let _ = errors;
                 let mut res = page().await?;
                 if res.status().is_success() {
                     *res.status_mut() = status;

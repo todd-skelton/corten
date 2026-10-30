@@ -1008,6 +1008,44 @@ fn invalid_routes() -> Router {
     )
 }
 
+fn sheet_form(errors: &Errors) -> impl crate::Patch + '_ {
+    html! { <form id={SignUpId}>{errors.form_message()}</form> }
+}
+
+fn refused_routes() -> Router {
+    Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            let mut errors = Errors::new();
+            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            let page = || async { req.test_page("Sheet", html! { <p>"page with the refusal"</p> }) };
+            req.invalid(&errors, sheet_form(&errors), page).await
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_stale_submit_answers_409_with_the_form_message_in_each_mode() {
+    let (status, headers, body) = call(app(refused_routes(), None), "GET", Some("action")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(headers["corten-patch"], "1");
+    assert_eq!(body, r#"<form id="sign-up"><p class="form-error" role="alert">Someone saved first.</p></form>"#);
+
+    let (status, _, body) = call(app(refused_routes(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("<p>page with the refusal</p>") && body.contains("<html"), "no JavaScript: the whole page");
+
+    #[cfg(feature = "json")]
+    {
+        let (status, _, body) = call_with(app(refused_routes(), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            body,
+            r#"{"title":"Conflict","status":409,"detail":"Someone saved first.","form":"Someone saved first.","fields":{}}"#
+        );
+    }
+}
+
 #[tokio::test]
 async fn invalid_input_answers_422_in_each_mode() {
     let (status, headers, body) = call(app(invalid_routes(), None), "GET", Some("action")).await;
