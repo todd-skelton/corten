@@ -1,5 +1,6 @@
 // Browser smoke test and timings for the seller desk.
 // Usage: node examples/seller-desk/smoke.mjs http://localhost:18484
+import { readFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import { stall } from "../../scripts/stall.mjs";
 
@@ -118,6 +119,23 @@ try {
   await page.fill(`${cell} input`, "abc");
   check("typing a price shows Save", await page.isVisible(`${cell} button`));
   check("the grid counts the unsaved price in the catalog's words", (await page.textContent("[role=group] + output")) === "1 price not saved", await page.textContent("[role=group] + output"));
+  // A second unsaved price: the plural message picks its other form in the browser.
+  const third = `#${await page.$eval("tbody tr:nth-child(4)", (r) => r.id)} td:last-child`;
+  const thirdBefore = await page.inputValue(`${third} input`);
+  await page.fill(`${third} input`, "abc");
+  check("two unsaved prices take the message's other form", (await page.textContent("[role=group] + output")) === "2 prices not saved", await page.textContent("[role=group] + output"));
+  // French in the browser too: the format module this page loaded picks one, other and many by
+  // the table the server writes for French (specs.tsv), and by a count's digits past 2^53.
+  const specs = readFileSync(new URL("../../crates/corten/src/i18n/specs.tsv", import.meta.url), "utf8");
+  const fr = specs.split("\n").map((line) => line.split("\t")).find(([tag, kind]) => tag === "fr" && kind === "plural")?.[2];
+  const picked = await page.evaluate(async (spec) => {
+    const src = /** @type {HTMLScriptElement} */ (document.querySelector('script[src$="/corten-format.js"]')).src;
+    const pick = (await import(src)).formatter(JSON.parse(spec));
+    return [1, 2, 2_000_000, 2_000_001, "1000000000000000000000"].map((count) => pick({ count }));
+  }, fr);
+  check("in French the page's format module picks one, other and many", picked.join(" ") === "one other many other many", picked.join(" "));
+  await page.press(`${third} input`, "Escape");
+  check("Escape there puts its price back and the count goes down", (await page.inputValue(`${third} input`)) === thirdBefore && (await page.textContent("[role=group] + output")) === "1 price not saved", await page.textContent("[role=group] + output"));
   await page.press(`${cell} input`, "Escape");
   check("Escape puts the saved price back", (await page.inputValue(`${cell} input`)) === before && !(await page.isVisible(`${cell} button`)));
   await page.fill(`${cell} input`, "abc");

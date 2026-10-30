@@ -132,7 +132,7 @@ pub fn DeckBuilder<'a>(
                     <p class={Counts}>
                         <output ref={shown} hidden></output>
                         <span>
-                            if cards.len() == 1 { {t.grid_cards_one(cards.len())} } else { {t.grid_cards_other(cards.len())} }
+                            {t.grid_cards(cards.len())}
                         </span>
                     </p>
                 </div>
