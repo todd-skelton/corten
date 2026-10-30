@@ -40,7 +40,10 @@ pub fn Layout(req: &Req, title: &str, children: impl Render) -> impl Document {
                 <Corten />
             </head>
             <body>
-                <header><strong>"Deck builder"</strong><span>"Build a deck of up to 40 cards from your collection."</span></header>
+                <header>
+                    <strong>"Deck builder"</strong>
+                    <span>"Build a deck of up to 40 cards from your collection."</span>
+                </header>
                 <main>{children}</main>
             </body>
         </html>

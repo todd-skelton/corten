@@ -136,8 +136,6 @@ export function start(parts, feed, signal) {
     },
     { signal },
   );
-  // Undo and redo wherever focus is on the page, except in a field, which has its own undo.
-  document.addEventListener("keydown", (event) => shortcut(s, parts, event), { signal });
   // Back online: a save that could not be sent goes now.
   addEventListener("online", () => parts.status.dataset.state === "offline" && save(s, parts), { signal });
   // The runtime could not send the form, or the server failed: nothing is lost, the deck stays
@@ -642,11 +640,12 @@ export function keys(event, parts, carry) {
 }
 
 /**
- * Ctrl+Z (Cmd+Z) undoes, Ctrl+Shift+Z or Ctrl+Y redoes, except in a field, which has its own undo,
- * or during a keyboard move.
- * @param {State} s @param {Parts} parts @param {KeyboardEvent} event
+ * Ctrl+Z (Cmd+Z) undoes, Ctrl+Shift+Z or Ctrl+Y redoes, wherever focus is on the page, except in
+ * a field, which has its own undo, or during a keyboard move.
+ * @param {KeyboardEvent} event @param {Parts} parts
  */
-function shortcut(s, parts, event) {
+export function shortcut(event, parts) {
+  const s = kept();
   const field = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
   if (event.defaultPrevented || field || s.moving || !(event.ctrlKey || event.metaKey) || event.altKey) return;
   const key = event.key.toLowerCase();

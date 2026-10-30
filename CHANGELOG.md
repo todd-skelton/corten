@@ -939,6 +939,16 @@ Corten is pre-1.0, so any minor version may change the API.
     A page without one checks one empty set per bubbling event it listens for.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
+130. `examples/deck-builder`: a rich client-side screen. A player builds a 40-card deck from a
+    collection of 240 by Add, Add selected, drag and drop or the keyboard (Space to pick up, the
+    arrows, Space to drop, Escape to put back, each said aloud), with the count, the cost curve and
+    the kinds drawn at once, undo and redo (buttons, Ctrl+Z and Ctrl+Shift+Z through
+    `on:document:keydown`), and filter and sort in the page. Every change is saved as it is made,
+    one save at a time, with the deck's version: a save the rules refuse is rolled back with the
+    reason, a stale one (another tab saved first, which its feed shows) lets the player keep both
+    changes or take the other tab's deck, and a save that could not be sent is kept and sent again.
+    Without JavaScript the same page posts the deck, and the filter and sort are links and a GET
+    form ([#336 No example shows a rich client-side screen: a deck builder](https://github.com/todd-skelton/corten/issues/336)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

@@ -9,9 +9,16 @@ pub struct SaveNoteId;
 pub enum Answer {
     /// Nothing yet: the page as loaded.
     None,
-    Saved { version: u64 },
-    Refused { version: u64, message: String },
-    Stale { version: u64 },
+    Saved {
+        version: u64,
+    },
+    Refused {
+        version: u64,
+        message: String,
+    },
+    Stale {
+        version: u64,
+    },
 }
 
 impl Answer {

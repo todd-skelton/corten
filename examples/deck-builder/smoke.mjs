@@ -52,6 +52,18 @@ const settled = (page, note = "Saved.") =>
     const s = /** @type {HTMLElement} */ (document.querySelector("[role=status][data-state]"));
     return s.dataset.state === "" && document.getElementById("save-note")?.textContent?.startsWith(note);
   }, note);
+/** Whether `page` comes to show `count` copies of `id` in its deck within five seconds. */
+const comesToShow = (page, id, count) =>
+  page
+    .waitForFunction(
+      ([id, count]) => /** @type {HTMLInputElement | null} */ (document.querySelector(`ul li[data-key="${id}"] input[type=number]`))?.value === String(count),
+      [id, count],
+      { timeout: 5000 },
+    )
+    .then(
+      () => true,
+      () => false,
+    );
 const row = (page, id) => page.locator(`tbody tr[data-key="${id}"]`);
 const version = (page) => page.inputValue("input[name=version]");
 
@@ -143,9 +155,15 @@ try {
   // A change the rules refuse is rolled back, with their words.
   await row(page, "ashen-drake").locator("button", { hasText: "Add" }).click();
   await settled(page);
+  await page.route("**/deck", async (route) => {
+    await new Promise((r) => (release = r));
+    await route.continue();
+  });
   await row(page, "ashen-drake").locator("button", { hasText: "Add" }).click();
   check("a third Ashen Drake shows at once", (await deck(page))["ashen-drake"] === 3, JSON.stringify(await deck(page)));
+  release();
   await settled(page, "Not saved:");
+  await page.unroute("**/deck");
   check("the server refuses it and the page rolls it back with the reason", (await deck(page))["ashen-drake"] === 2 && (await status(page)).note === "Not saved: You own 2 copies of Ashen Drake.", (await status(page)).note);
   await page.click("button:has-text('Undo')");
   check("the history is as it was at the last save", (await deck(page))["ashen-drake"] === 1);
@@ -201,7 +219,7 @@ try {
     await new Promise((r) => (release = r));
     await route.continue();
   });
-  await row(page, "cinder-cartographer").locator("button", { hasText: "Add" }).click();
+  await row(page, "kiln-colossus").locator("button", { hasText: "Add" }).click();
   await other.locator('tbody tr[data-key="undertow-serpent"] td:last-child button').click();
   await settled(other);
   const stale = page.waitForResponse("**/deck");
@@ -213,9 +231,8 @@ try {
   await page.click("button:has-text('Keep both changes')");
   await settled(page);
   const both = await deck(page);
-  check("keeping both saves the other tab's change with this one", both["undertow-serpent"] === 2 && both["cinder-cartographer"] === 3, JSON.stringify(both));
-  await other.waitForFunction(() => /** @type {HTMLInputElement | null} */ (document.querySelector('ul li[data-key="cinder-cartographer"] input[type=number]'))?.value === "3");
-  check("and the other tab takes the merged deck", true);
+  check("keeping both saves the other tab's change with this one", both["undertow-serpent"] === 2 && both["kiln-colossus"] === 1, JSON.stringify(both));
+  check("and the other tab takes the merged deck", await comesToShow(other, "kiln-colossus", 1));
 
   // Take theirs: this page's change is dropped.
   await page.route("**/deck", async (route) => {
@@ -235,15 +252,14 @@ try {
 
   // The server cannot be reached: nothing is lost, and Try again sends it.
   await page.route("**/deck", (route) => route.abort());
-  await row(page, "gravel-sprite").locator("button", { hasText: "Add" }).click();
+  await row(page, "pearl-diver").locator("button", { hasText: "Add" }).click();
   await page.waitForFunction(() => /** @type {HTMLElement} */ (document.querySelector("[role=status][data-state]")).dataset.state === "offline");
-  check("an unreachable server keeps the change and says it is not saved", (await deck(page))["gravel-sprite"] === 3 && (await page.isVisible("button:has-text('Try again')")));
+  check("an unreachable server keeps the change and says it is not saved", (await deck(page))["pearl-diver"] === 2 && (await page.isVisible("button:has-text('Try again')")));
   await page.unroute("**/deck");
   await page.click("button:has-text('Try again')");
   await settled(page);
-  check("Try again saves it", (await deck(other))["gravel-sprite"] === undefined || true);
-  await other.waitForFunction(() => /** @type {HTMLInputElement | null} */ (document.querySelector('ul li[data-key="gravel-sprite"] input[type=number]'))?.value === "3");
-  check("the other tab sees the retried save", true);
+  check("Try again saves it", (await status(page)).note.startsWith("Saved.") && (await deck(page))["pearl-diver"] === 2);
+  check("the other tab sees the retried save", await comesToShow(other, "pearl-diver", 2));
 
   check("the deck list follows the deck", (await page.inputValue("textarea")).split("\n").includes("3 Gravel Sprite"));
   await time(page, "undo (a change drawn and sent)", () => /** @type {HTMLElement} */ ([...document.querySelectorAll("button")].find((b) => b.textContent === "Undo")).click());
@@ -286,7 +302,9 @@ try {
   await plain.waitForLoadState("load");
   check("the filter is a GET form the server answers", plain.url().includes("q=oracle") && (await plain.locator("tbody tr:not([hidden])").count()) === 1);
 
-  check("no errors in the console", errors.length === 0, errors.join(" | "));
+  // The refused, stale and unreachable saves above are the browser's own lines for those answers.
+  const unexpected = errors.filter((e) => !/Failed to load resource: (the server responded with a status of (409|422)\b|net::ERR_FAILED)/.test(e));
+  check("no other errors in the console", unexpected.length === 0, unexpected.join(" | "));
 } finally {
   await browser.close();
 }

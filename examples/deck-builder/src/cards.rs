@@ -84,8 +84,8 @@ const KNOWN: [(&str, &str, u32, Kind, Rarity, u32); 11] = [
 /// The rest of the collection's names: a word and a figure or a spell. No word is a set's, so a
 /// filter for a set finds that set's cards.
 const WORDS: [&str; 16] = [
-    "Fallow", "Rime", "Sable", "Iron", "Glass", "Thorn", "Silt", "Brine", "Ivory", "Copper", "Lichen", "Storm", "Dusk",
-    "Marsh", "Quarry", "Gilded",
+    "Fallow", "Rime", "Sable", "Iron", "Glass", "Thorn", "Silt", "Brine", "Ivory", "Copper", "Lichen", "Storm", "Dusk", "Marsh",
+    "Quarry", "Gilded",
 ];
 const UNITS: [&str; 8] = ["Hound", "Witch", "Pilgrim", "Sentinel", "Weaver", "Scholar", "Courier", "Lancer"];
 const SPELLS: [&str; 5] = ["Bolt", "Tide", "Ward", "Hymn", "Rite"];

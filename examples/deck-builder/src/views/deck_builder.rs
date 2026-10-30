@@ -108,6 +108,7 @@ pub fn DeckBuilder<'a>(
             class={Builder}
             on:connect={js::start(parts, url::DeckFeed, signal)}
             on:keydown={js::keys(event, parts, carry)}
+            on:document:keydown={js::shortcut(event, parts)}
             on:dragend={js::dropped(carry)}
             on:DeckAnswered={js::answered(event, parts)}
         >
@@ -124,7 +125,9 @@ pub fn DeckBuilder<'a>(
                     <h2 id={CollectionHeadingId}>"Collection"</h2>
                     <p class={Counts}>
                         <output ref={shown} hidden></output>
-                        <span>if cards.len() == 1 { {t.grid_cards_one(cards.len())} } else { {t.grid_cards_other(cards.len())} }</span>
+                        <span>
+                            if cards.len() == 1 { {t.grid_cards_one(cards.len())} } else { {t.grid_cards_other(cards.len())} }
+                        </span>
                     </p>
                 </div>
                 <form class={Filter} method="get" action={url::Home::default()} role="search" on:submit={js::stay(event)}>
@@ -150,7 +153,14 @@ pub fn DeckBuilder<'a>(
                     <table class={Table}>
                         <thead>
                             <tr>
-                                <th><input ref={all} type="checkbox" aria-label="Select every card shown" on:change={js::pickAll(browse)}></th>
+                                <th>
+                                    <input
+                                        ref={all}
+                                        type="checkbox"
+                                        aria-label="Select every card shown"
+                                        on:change={js::pickAll(browse)}
+                                    >
+                                </th>
                                 <th><span class={Hidden}>"Move"</span></th>
                                 <th aria-sort={sorted(Sort::Name).then_some("ascending")}>
                                     <a
@@ -222,7 +232,9 @@ pub fn DeckBuilder<'a>(
                     <h2 id={DeckHeadingId}>"Deck"</h2>
                     <p class={Total}><output ref={total}>{t.number(size)}</output>" / "{DECK_SIZE}" cards"</p>
                     <div class={History}>
-                        <button ref={undo} type="button" disabled aria-keyshortcuts="Control+Z" on:click={js::undo(parts)}>"Undo"</button>
+                        <button ref={undo} type="button" disabled aria-keyshortcuts="Control+Z" on:click={js::undo(parts)}>
+                            "Undo"
+                        </button>
                         <button ref={redo} type="button" disabled aria-keyshortcuts="Control+Shift+Z" on:click={js::redo(parts)}>
                             "Redo"
                         </button>
@@ -235,7 +247,10 @@ pub fn DeckBuilder<'a>(
                     <SaveNote answer={answer} />
                     <span class={Saving}>"Saving…"</span>
                     <span class={Updated}>"Updated from another tab."</span>
-                    <span class={Offline}>"Not saved yet: the server could not be reached. "<button type="button" on:click={js::retry(parts)}>"Try again"</button></span>
+                    <span class={Offline}>
+                        "Not saved yet: the server could not be reached. "
+                        <button type="button" on:click={js::retry(parts)}>"Try again"</button>
+                    </span>
                 </div>
                 <div ref={conflict} class={Conflict} role="alert" hidden>
                     <p>"This deck was changed in another tab while you were changing it here."</p>
@@ -261,7 +276,10 @@ pub fn DeckBuilder<'a>(
                 </figure>
                 <dl class={Kinds}>
                     for (kind, n) in by_kind {
-                        <div data-kind={kind.as_str()}><dt>{kind.as_str()}"s"</dt><dd><output ref={kinds} key={kind.as_str()}>{t.number(n)}</output></dd></div>
+                        <div data-kind={kind.as_str()}>
+                            <dt>{kind.as_str()}"s"</dt>
+                            <dd><output ref={kinds} key={kind.as_str()}>{t.number(n)}</output></dd>
+                        </div>
                     }
                 </dl>
                 <form ref={form} id={DeckFormId} method="post" action={url::Save} data-patch novalidate>
@@ -301,7 +319,9 @@ pub fn DeckBuilder<'a>(
                     <CopyButton text={DeckListId} label="Copy" copied="Copied" />
                 </details>
             </section>
-            <p id={MoveHelpId} hidden>"Space picks the card up; the arrow keys move it between the collection and the deck; Space drops it; Escape puts it back."</p>
+            <p id={MoveHelpId} hidden>
+                "Space picks the card up; the arrow keys move it between the collection and the deck; Space drops it; Escape puts it back."
+            </p>
             <p ref={announce} class={Hidden} aria-live="assertive"></p>
         </div>
     }

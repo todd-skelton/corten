@@ -360,7 +360,8 @@ mod tests {
         assert!(note.contains("Not saved: You own 2 copies of Ashen Drake."), "{note}");
         assert!(note.contains("&quot;refused&quot;,0)"), "{note}");
         assert_eq!(builder.deck.seq(), 0);
-        let (status, _, note) = send(&router, post("version=0&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301&card=gravel-sprite&count=two", true)).await;
+        let (status, _, note) =
+            send(&router, post("version=0&submit=3f2504e0-4f89-41d3-9a0c-0305e82c3301&card=gravel-sprite&count=two", true)).await;
         assert!(status == StatusCode::UNPROCESSABLE_ENTITY && note.contains("Enter a number of copies"), "{note}");
     }
 
@@ -415,11 +416,16 @@ mod tests {
         let (status, _, page) = send(&router, get("/")).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(page.matches(r#"<tr data-key=""#).count(), 60, "every card is a CollectionRow");
-        assert_eq!(page.matches(r#"<li data-key=""#).count(), cards::STARTER.len() + 1, "every deck line is a DeckLine, and the template's");
+        assert_eq!(
+            page.matches(r#"<li data-key=""#).count(),
+            cards::STARTER.len() + 1,
+            "every deck line is a DeckLine, and the template's"
+        );
         assert!(page.contains("/scripts/deck_builder.js\">") && page.contains("/scripts/save_note.js\">"), "{page}");
         let (_, _, page) = send(&router, get("/?q=drake&sort=cost")).await;
         assert_eq!(page.matches(r#"<tr data-key=""#).count(), 60, "the filter hides rows; the script can show them again");
-        let shown: Vec<&str> = page.split(r#"<tr data-key=""#).skip(1).filter(|row| !row[..row.find('>').unwrap()].contains(" hidden")).collect();
+        let shown: Vec<&str> =
+            page.split(r#"<tr data-key=""#).skip(1).filter(|row| !row[..row.find('>').unwrap()].contains(" hidden")).collect();
         assert_eq!(shown.len(), 1, "one card matches: {shown:?}");
         assert!(shown[0].starts_with("ashen-drake"), "{}", shown[0]);
         // Sorted by cost, cheapest first.
