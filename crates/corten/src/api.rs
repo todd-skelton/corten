@@ -146,8 +146,8 @@ impl<P: Prefix> Api<P> {
     /// 4xx's message, a 5xx's reason (and its message under `corten dev`). A failure with a JSON
     /// body of the handler's own, and a [`crate::Relay`]'s, pass through as they are, and so
     /// does the 422 of the input's field errors (`?` on `Errors` in a `JsonResult` handler,
-    /// `req.invalid`), which keeps Corten's shape: a status and a message have no place for its
-    /// `fields`.
+    /// `req.invalid`), which stays a Problem Details document with its `fields` and `form`
+    /// members: a status and a message have no place for them.
     ///
     /// ```
     /// use corten::{axum::http::StatusCode, prelude::*};
@@ -398,7 +398,8 @@ pub(crate) async fn json_failure(res: Response, dev: bool, shape: Option<&ErrorS
     let shown = shown(status, detail.as_deref(), dev);
     let body = match shape {
         Some(ErrorShape(write)) => write(status, shown),
-        None => problem(status, shown, "").into_bytes(),
+        // Only a detail the client may see: a hidden 5xx's message is not replaced by a stand-in.
+        None => problem(status, detail.as_deref().filter(|_| dev || !status.is_server_error()).unwrap_or(""), "").into_bytes(),
     };
     parts.headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(if shape.is_some() { JSON } else { PROBLEM }));
     parts.headers.remove(header::CONTENT_LENGTH);
@@ -482,6 +483,11 @@ mod tests {
             "a message that is only the reason is not repeated as the detail"
         );
         let unnamed = StatusCode::from_u16(499).unwrap();
-        assert_eq!(problem(unnamed, "Error", r#","x":1"#), r#"{"status":499,"detail":"Error","x":1}"#, "no reason, no title");
+        assert_eq!(
+            problem(unnamed, "Gone fishing", r#","x":1"#),
+            r#"{"status":499,"detail":"Gone fishing","x":1}"#,
+            "no reason, no title"
+        );
+        assert_eq!(problem(StatusCode::from_u16(599).unwrap(), "", ""), r#"{"status":599}"#, "nothing to tell, no detail");
     }
 }

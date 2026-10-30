@@ -79,8 +79,9 @@ async fn alert_json(State(source): State<Source>, Json(input): Json<CreateAlert>
 
 On a page, `?` on `Errors` does not compile: `HtmlResult`'s error is an `Error`, and a
 page's form answers with `req.invalid`, which shows the form again. Under an API with its own
-error shape (`Api::errors`), the 422 keeps Corten's shape, since a status and a message have
-no place for the fields; every other failure is written in the API's.
+error shape (`Api::errors`), the 422 stays a Problem Details document with its `fields` and
+`form` members, since a status and a message have no place for them; every other failure is
+written in the API's.
 
 `Form` (a form's body, or a `GET` form's query string) and `Params` (a route's own parameters,
 below) read what a browser sends the way it sends it, a key once per value.
