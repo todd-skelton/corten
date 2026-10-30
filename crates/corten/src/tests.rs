@@ -1010,6 +1010,44 @@ fn invalid_routes() -> Router {
     )
 }
 
+fn sheet_form(errors: &Errors) -> impl crate::Patch + '_ {
+    html! { <form id={SignUpId}>{errors.form_message()}</form> }
+}
+
+fn refused_routes() -> Router {
+    Router::new().route(
+        "/",
+        get(|req: Req| async move {
+            let mut errors = Errors::new();
+            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            let page = || async { req.test_page("Sheet", html! { <p>"page with the refusal"</p> }) };
+            req.invalid(&errors, sheet_form(&errors), page).await
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_stale_submit_answers_409_with_the_form_message_in_each_mode() {
+    let (status, headers, body) = call(app(refused_routes(), None), "GET", Some("action")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(headers["corten-patch"], "1");
+    assert_eq!(body, r#"<form id="sign-up"><p class="form-error" role="alert">Someone saved first.</p></form>"#);
+
+    let (status, _, body) = call(app(refused_routes(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("<p>page with the refusal</p>") && body.contains("<html"), "no JavaScript: the whole page");
+
+    #[cfg(feature = "json")]
+    {
+        let (status, _, body) = call_with(app(refused_routes(), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            body,
+            r#"{"title":"Conflict","status":409,"detail":"Someone saved first.","form":"Someone saved first.","fields":{}}"#
+        );
+    }
+}
+
 #[tokio::test]
 async fn invalid_input_answers_422_in_each_mode() {
     let (status, headers, body) = call(app(invalid_routes(), None), "GET", Some("action")).await;
@@ -4035,4 +4073,47 @@ async fn an_area_or_an_answer_makes_the_referrer_policy_stricter_only() {
     let strict = App::new(referrer_url::router()).policy(Policy::new().referrer(Referrer::StrictOrigin)).router();
     let path = referrer_url::Relayed { policy: "same-origin" }.href();
     assert_eq!(referrer(&strict, &path).await, "no-referrer", "the least of the app's and the answer's");
+}
+
+#[crate::routes]
+mod page_or_url {
+    #[route("/runs/{id}", get = page_or_run)]
+    pub struct Run<'a> {
+        pub id: &'a str,
+        pub said: Option<&'a str>,
+    }
+
+    #[route("/runs/{id}/download", post = page_or_download)]
+    pub struct Download<'a> {
+        pub id: &'a str,
+    }
+}
+
+async fn page_or_run(_: Params<page_or_url::Run<'_>>) -> &'static str {
+    "run"
+}
+
+/// The file for run 7, the run's page saying why for any other.
+async fn page_or_download(req: Req, Params(at): Params<page_or_url::Download<'_>>) -> crate::Result<crate::PageOr<crate::Media>> {
+    if at.id != "7" {
+        return Ok(req.redirect(&page_or_url::Run { id: &at.id, said: Some("stale") })?.into());
+    }
+    Ok(crate::Media::new("text/csv", "sku,qty\n").into())
+}
+
+/// A route that sends a file answers a redirect or a page instead when it refuses, as a page is:
+/// private, with the app's headers.
+#[tokio::test]
+async fn a_file_route_answers_a_page_when_it_refuses() {
+    let router = App::new(page_or_url::router()).router();
+    let (status, headers, body) = call_with(router.clone(), "POST", "/runs/7/download", None, None).await;
+    assert_eq!(
+        (status, headers[header::CONTENT_TYPE].to_str().unwrap(), body.as_str()),
+        (StatusCode::OK, "text/csv", "sku,qty\n")
+    );
+    let (status, headers, _) = call_with(router, "POST", "/runs/8/download", None, None).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/runs/8?said=stale");
+    assert_eq!(headers[header::CACHE_CONTROL], "private, no-cache");
+    assert!(headers.contains_key(header::CONTENT_SECURITY_POLICY));
 }
