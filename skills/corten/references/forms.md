@@ -114,6 +114,20 @@ validation message (`errors.add(f.ids, ..)` when empty), not a missing field; wr
 `None` for an `Option`. A typed route's list field writes `?condition=nm&condition=lp`, which
 its `Params` reads back.
 
+## Groups and rows
+
+A group several forms share (an address) is its own `Fields` struct, put in a form with
+`#[fields(group)] ship_to: Address` (posted `ship_to.street`, named `f.ship_to.street`); never
+`#[serde(flatten)]`, which does not compile. Rows of the same fields (an editable table, line
+items) are `#[fields(rows)] #[serde(default)] lines: BTreeMap<Key, Line>`, and a row's field is
+`f.lines.at(&key).qty` (posted `lines[key].qty`), in markup and in `errors.add`. Never post
+rows as parallel `Vec` columns: the key joins a row's values and gives each row's field its own
+error. A key type is a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum without
+`alias` or `other`. A group is never an `Option`; one a form may leave out is `Option` fields
+and `#[serde(default)]`. One plain
+value per key (a count per SKU) is `#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>`,
+a field per key: `f.counts.at(&sku)`, posted `counts[sku]`.
+
 ## Validation
 
 Validate on the server into `Errors`, keyed by `FieldName`, never by string:
