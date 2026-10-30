@@ -44,7 +44,9 @@
 //! - The component gets a constant with its own name, `OfferList: corten::Component`; list it
 //!   once in [`crate::App::components`]. Corten joins every listed stylesheet, in order, into one
 //!   file at a content-versioned URL, `components.css`, linked from `<head>` after the shell's
-//!   own tags. In a debug build under `corten dev`, a page that renders a component the app did
+//!   own tags. The file starts with `[hidden] { display: none !important }` (except
+//!   `hidden="until-found"`, in any case), so an element hidden with the attribute stays hidden whatever
+//!   `display` a component's rule gives it. In a debug build under `corten dev`, a page that renders a component the app did
 //!   not list is an error that names it.
 //!
 //! [`tokens!`] reads a design-token file (JSON) into CSS custom properties, theme overrides,

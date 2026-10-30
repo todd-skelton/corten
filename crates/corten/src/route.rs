@@ -529,6 +529,16 @@ pub trait Route {
     }
 }
 
+/// A borrowed route is the same URL, so an API that takes a route by value
+/// (`ReadAgain::from(route)`) takes `&route` as well.
+impl<R: Route + ?Sized> Route for &R {
+    const PATH: &'static str = R::PATH;
+
+    fn write_href(&self, out: &mut String, html: bool) {
+        (**self).write_href(out, html);
+    }
+}
+
 /// The path an area or an API is under (`#[corten::routes(area = Docs)]`'s `Docs`): every
 /// [`Route`], for an area with a page at its prefix, and the prefix route of an area's module
 /// that names no handler, which is a prefix and nothing more. Nothing is served at such a prefix,
