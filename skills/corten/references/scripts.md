@@ -65,6 +65,10 @@ export function showAll(rows, rest, button) {
 8. A control that does nothing without the script renders `hidden`; an `on:connect` handler
    shows it.
 9. List the component in `App::components`.
+10. A value the script computes that the server also draws is a second copy: draw it on the server
+    only when a round trip is fast enough; otherwise keep the arithmetic in a `script!` module
+    that imports nothing and test both sides against one table of cases (scripts guide, A value
+    both sides compute).
 
 ## Lists and large components
 
@@ -147,6 +151,11 @@ Another source (a change stream, a queue) is `corten::live(stream)`: give each i
 `Fragment::new(html).cursor(v)`, and use the `LiveSince` argument (the page's `since`, or
 `Last-Event-ID` after a reconnect) to send nothing until the next change when it is current. A
 slow part sent once is a stream of one item. See the live-data guide.
+
+A job another process runs has only a read to repeat. Many pages following one job: an
+`App::task` reads it on an interval into a `watch` channel, and each stream is `live_watch`. One
+page's job: `corten::live` over an `unfold` loop that reads, sends only when the version moved, ends
+after the settled state and gives up after a few failed reads (the live-data guide has it).
 
 The element shows its connection as `status` (`connecting`, `live`, `reconnecting`, `closed`,
 `ended`) and `stale-since` (when a live stream dropped): style a stale part with

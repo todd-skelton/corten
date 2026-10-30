@@ -2233,6 +2233,18 @@ Corten is pre-1.0, so any minor version may change the API.
 37. The requests guide says why the submit key is a form field and not the `Idempotency-Key`
     header: a browser without JavaScript cannot set one, and the header is still an IETF draft
     ([#395 An action takes its idempotency key only as a SubmitKey form field, not the Idempotency-Key header data clients send](https://github.com/todd-skelton/corten/issues/395)).
+38. The live-data guide follows a job another process runs (a worker writing to a shared database):
+    one `App::task` reading into a `watch` channel for `live_watch` when many pages follow it, or a
+    `corten::live` loop that sends only when the version moved, ends after the settled state and
+    gives up after a few failed reads. No `live_poll` helper is added: the interval, what to read
+    less often and when the job is done are the app's, and a helper would take a closure for each
+    ([#388 A live part that follows a job in another process writes its own poll loop, version cursor and end](https://github.com/todd-skelton/corten/issues/388)).
+39. The scripts guide says a value a handler computes that the server also draws is a second copy,
+    and how to keep the two in agreement: draw it on the server only when a round trip is fast
+    enough, or keep the arithmetic in a `script!` module that imports nothing and run one table of
+    cases through both in a test, which `corten check` runs. Corten does not compile Rust to the
+    script or add a runner of its own: a test already does it
+    ([#444 A value a script computes as the user types is also drawn by the server, so its arithmetic is written twice (Rust and JS) with nothing checking they agree](https://github.com/todd-skelton/corten/issues/444)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
