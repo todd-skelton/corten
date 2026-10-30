@@ -944,10 +944,12 @@ Corten is pre-1.0, so any minor version may change the API.
     feed's `seq` from its own (`docs/guide/live-data.md`).
 131. A navigation marks the link or GET form that started it `aria-busy="true"` for as long as it
     marks `<main>`, as a `data-patch` form already was, so a page shows which control is working
-    with CSS alone (`docs/guide/requests-and-forms.md`)
+    with CSS alone (`docs/guide/requests-and-forms.md`). Both marks now last until the new page is
+    swapped in (`<main>`'s ended when the answer's headers came), stay through a redirect, and
+    are not cleared by a navigation another replaced
     ([#422 A navigation marks only main as busy, not the link or GET form that started it, so a page cannot show which action is on its way without a script](https://github.com/todd-skelton/corten/issues/422)).
-    The minified runtime grows by 170 bytes (25,510 to 25,680), 39 gzipped (9,278 to 9,317) and
-    54 with brotli (8,381 to 8,435).
+    The minified runtime grows by 295 bytes (25,510 to 25,805), 102 gzipped (9,278 to 9,380) and
+    92 with brotli (8,381 to 8,473).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

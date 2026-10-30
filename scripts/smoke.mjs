@@ -25,6 +25,35 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} [${engine}] ${name}${detail ? ` (${detail})` : ""}`);
   if (!ok) failures.push(`[${engine}] ${name}`);
 };
+/**
+ * Watches the element at `selector` for its busy mark: whether it was marked while `<main>` was,
+ * and what the page showed when the mark went (read by `busyEnded`). Observed on the element
+ * itself, so a mark cleared after a swap removed it is seen too.
+ * @param {import("@playwright/test").Page} page @param {string} selector
+ */
+const watchBusy = (page, selector) =>
+  page.evaluate((selector) => {
+    const el = /** @type {Element} */ (document.querySelector(selector));
+    /** @type {{ with: boolean, then: { path: string, stories: number } | null }} */
+    const seen = { with: false, then: null };
+    /** @type {any} */ (window).__busy = seen;
+    new MutationObserver((_, observer) => {
+      if (el.getAttribute("aria-busy") === "true") {
+        seen.with ||= !!document.querySelector("main[aria-busy]");
+        return;
+      }
+      seen.then = { path: location.pathname, stories: document.querySelectorAll("#stories > li").length };
+      observer.disconnect();
+    }).observe(el, { attributes: true, attributeFilter: ["aria-busy"] });
+  }, selector);
+/** What `watchBusy` saw, once the mark has gone. @param {import("@playwright/test").Page} page */
+const busyEnded = (page) =>
+  page
+    .waitForFunction(() => /** @type {any} */ (window).__busy.then && /** @type {any} */ (window).__busy, undefined, { timeout: 5000 })
+    .then(
+      (handle) => handle.jsonValue(),
+      () => page.evaluate(() => /** @type {any} */ (window).__busy),
+    );
 
 // A live stream is compressed for clients that accept it and flushed after each event: the
 // first event decodes while the stream is still open.
@@ -743,51 +772,48 @@ async function run(browser) {
     // A sector's box: the stories of that sector alone, three of the nine. (A navigation the
     // runtime intercepts stalls Playwright's WebKit, above.)
     if (swaps) {
-      // The box is in a closed group of the rail; clicked from the page. Its page is held, so the
-      // form that started the navigation is seen busy with main.
-      let letSector = () => {};
-      const sectorHeld = new Promise((resolve) => (letSector = () => resolve(undefined)));
-      await more.route("**/news?sector=energy", async (route) => {
-        await sectorHeld;
-        await route.continue();
-      });
+      // The box is in a closed group of the rail; clicked from the page. The form that starts the
+      // navigation is busy with main until the page is swapped in: when its mark goes, the
+      // sector's stories are already shown.
+      await watchBusy(more, "main form[data-keep-place]");
       await more.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("main input[name=sector][value=energy]")).click());
-      const formBusy = await more
-        .waitForFunction(() => document.querySelector("main[aria-busy] form[data-keep-place][aria-busy=true]"), undefined, { timeout: 5000 })
-        .then(
-          () => true,
-          () => false,
-        );
-      letSector();
       await more.waitForFunction(() => location.search === "?sector=energy" && !document.querySelector("main[aria-busy]"));
-      await more.unroute("**/news?sector=energy");
-      check("the GET form that starts a navigation is busy with main until its page arrives", formBusy && !(await more.$("[aria-busy]")));
+      const formBusy = await busyEnded(more);
+      check("the GET form that starts a navigation is busy with main until its page is in", formBusy.with && formBusy.then?.stories === 3, JSON.stringify(formBusy));
       const energy = await more.$$eval("#stories > li", (items) => items.map((li) => li.querySelector("p:last-child a")?.textContent));
       check("a sector's box lists only its stories", energy.join() === "Energy,Energy,Energy" && (await more.locator("#load-more button").isHidden()), energy.join());
       // The same for a link: the header's, which the swap keeps.
-      let letHome = () => {};
-      const homeHeld = new Promise((resolve) => (letHome = () => resolve(undefined)));
-      /** @param {URL} url */
-      const home = (url) => url.pathname === "/";
-      await more.route(home, async (route) => {
-        await homeHeld;
-        await route.continue();
-      });
+      await watchBusy(more, 'header a[href="/"]');
       await more.click('header a[href="/"]');
-      const linkBusy = await more
-        .waitForFunction(() => document.querySelector('header a[href="/"][aria-busy=true]') && document.querySelector("main[aria-busy]"), undefined, { timeout: 5000 })
+      await more.waitForFunction(() => location.pathname === "/" && !document.querySelector("main[aria-busy]"));
+      const linkBusy = await busyEnded(more);
+      check(
+        "the link that starts a navigation is busy with main until its page is in",
+        linkBusy.with && linkBusy.then?.path === "/" && linkBusy.then.stories === 0 && !(await more.$("[aria-busy]")),
+        JSON.stringify(linkBusy),
+      );
+      // A GET form whose controls are named like the methods that mark it still navigates.
+      await more.evaluate(() =>
+        document
+          .querySelector("main")
+          ?.insertAdjacentHTML(
+            "beforeend",
+            '<form method="get" action="/news"><input type="hidden" name="setAttribute" value="1"><input type="hidden" name="removeAttribute" value="1"><button id="clobbered">Go</button></form>',
+          ),
+      );
+      await more.click("#clobbered");
+      const clobbered = await more
+        .waitForFunction(() => location.pathname === "/news" && document.title === "News | Watchlist" && !document.querySelector("[aria-busy]"), undefined, { timeout: 5000 })
         .then(
           () => true,
           () => false,
         );
-      letHome();
-      await more.waitForFunction(() => location.pathname === "/" && !document.querySelector("main[aria-busy]"));
-      await more.unroute(home);
-      check("the link that starts a navigation is busy with main until its page arrives", linkBusy && !(await more.$("[aria-busy]")));
+      check("a GET form with a control named setAttribute navigates and is not left busy", clobbered);
     } else {
-      skip("the GET form that starts a navigation is busy with main until its page arrives", noSwaps);
+      skip("the GET form that starts a navigation is busy with main until its page is in", noSwaps);
       skip("a sector's box lists only its stories", noSwaps);
-      skip("the link that starts a navigation is busy with main until its page arrives", noSwaps);
+      skip("the link that starts a navigation is busy with main until its page is in", noSwaps);
+      skip("a GET form with a control named setAttribute navigates and is not left busy", noSwaps);
     }
     await more.close();
   }

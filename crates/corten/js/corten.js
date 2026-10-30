@@ -832,15 +832,16 @@ const idOf = (el) => el.getAttribute("id");
  * The form's own property `name`, past a control named like it: in the DOM `<button name="action">`
  * makes `form.action` that button, and `<input name="id">` makes `form.id` the input, so the
  * runtime never reads a form's properties or calls its methods directly.
- * @param {HTMLFormElement} form
+ * @param {Element} form
  * @param {string} name
  * @returns {any}
  */
 const formProperty = (form, name) => Reflect.get(HTMLFormElement.prototype, name, form);
 
 /**
- * Calls the form's own method `name` (see formProperty).
- * @param {HTMLFormElement} form
+ * Calls the form's own method `name` (see formProperty), or an element's: `setAttribute` on a
+ * link or form is Element's, whatever the form's controls are named.
+ * @param {Element} form
  * @param {string} name
  * @param {...any} args
  */
@@ -1290,56 +1291,64 @@ async function visit(url, signal, redirected, again, place, source) {
   prefetched.delete(key);
   const fresh = hit && performance.now() - hit.at < PREFETCH_FRESH_MS;
   if (!fresh) discard(hit);
-  /** @type {Response} */
-  let res;
+  // Marked busy as this visit's (past a form control named setAttribute): a newer visit's mark
+  // is not cleared when this one ends.
+  const mine = {};
   const busy = again ? [] : [document.querySelector("main"), source];
-  for (const el of busy) el?.setAttribute("aria-busy", "true");
+  for (const el of busy) if (el) busyBy.set(el, mine), formCall(el, "setAttribute", "aria-busy", "true");
   try {
-    res = redirected
-      ? redirected
-      : hit && fresh
-        ? await hit.response.catch(() => fetch(url, { headers: { corten: "nav" }, signal }))
-        : await fetch(url, { headers: { corten: "nav" }, signal });
-  } catch (error) {
-    if (signal.aborted) throw error;
-    // Offline or the server is unreachable: load the URL as a normal navigation, which the
-    // service worker (if any) answers with the offline page, and the browser otherwise explains.
-    location.reload();
-    return;
-  } finally {
-    for (const el of busy) el?.removeAttribute("aria-busy");
-  }
-  signal.throwIfAborted();
-  // Sent to a place on a page (`route.at(id)`): the server names it here, since `fetch` follows a
-  // redirect but drops its `#id`.
-  const to = res.headers.get("corten-location");
-  if (to) {
-    navigation.navigate(to, { history: "replace", info: { [LOAD]: true, [KEEP_PLACE]: place } });
-    return;
-  }
-  if (!res.headers.has("corten-page") || shellChanged(res)) {
-    location.reload();
-    return;
-  }
-  // The server redirected (a `Caller` sending someone to sign in). Changing the address with
-  // history.replaceState would abort this navigation and the body with it, so read the body,
-  // then navigate again to where it came from, in place of this entry, with the page in hand.
-  if (res.redirected && !redirected) {
-    const page = new Response(await res.text(), { headers: res.headers });
+    /** @type {Response} */
+    let res;
+    try {
+      res = redirected
+        ? redirected
+        : hit && fresh
+          ? await hit.response.catch(() => fetch(url, { headers: { corten: "nav" }, signal }))
+          : await fetch(url, { headers: { corten: "nav" }, signal });
+    } catch (error) {
+      if (signal.aborted) throw error;
+      // Offline or the server is unreachable: load the URL as a normal navigation, which the
+      // service worker (if any) answers with the offline page, and the browser otherwise explains.
+      location.reload();
+      return;
+    }
     signal.throwIfAborted();
-    navigation.navigate(res.url, { history: "replace", info: { [REDIRECTED]: page, [KEEP_PLACE]: place } });
-    return;
+    // Sent to a place on a page (`route.at(id)`): the server names it here, since `fetch` follows a
+    // redirect but drops its `#id`.
+    const to = res.headers.get("corten-location");
+    if (to) {
+      navigation.navigate(to, { history: "replace", info: { [LOAD]: true, [KEEP_PLACE]: place, [SOURCE]: source } });
+      return;
+    }
+    if (!res.headers.has("corten-page") || shellChanged(res)) {
+      location.reload();
+      return;
+    }
+    // The server redirected (a `Caller` sending someone to sign in). Changing the address with
+    // history.replaceState would abort this navigation and the body with it, so read the body,
+    // then navigate again to where it came from, in place of this entry, with the page in hand.
+    if (res.redirected && !redirected) {
+      const page = new Response(await res.text(), { headers: res.headers });
+      signal.throwIfAborted();
+      navigation.navigate(res.url, { history: "replace", info: { [REDIRECTED]: page, [KEEP_PLACE]: place, [SOURCE]: source } });
+      return;
+    }
+    const html = await res.text();
+    signal.throwIfAborted();
+    // Read again with nothing new (the write has not landed yet): the page stays as it is, with
+    // what the user typed and its live streams.
+    if (again && html === swapped) {
+      readAgainLater();
+      return;
+    }
+    await swapPage(html, signal, again || place !== undefined);
+  } finally {
+    for (const el of busy) if (el && busyBy.get(el) === mine) formCall(el, "removeAttribute", "aria-busy");
   }
-  const html = await res.text();
-  signal.throwIfAborted();
-  // Read again with nothing new (the write has not landed yet): the page stays as it is, with
-  // what the user typed and its live streams.
-  if (again && html === swapped) {
-    readAgainLater();
-    return;
-  }
-  await swapPage(html, signal, again || place !== undefined);
 }
+
+/** The visit that last marked each element busy. @type {WeakMap<Element, object>} */
+const busyBy = new WeakMap();
 
 /** The last page `visit` swapped in, as the server sent it. */
 let swapped = "";
@@ -1394,6 +1403,8 @@ const KEEP_PLACE = Symbol("corten.keepPlace");
  * when only the `#id` differs from the address, since the write may have changed the page.
  */
 const LOAD = Symbol("corten.load");
+/** The link or GET form that started a navigation the server redirected, still marked busy. */
+const SOURCE = Symbol("corten.source");
 
 /**
  * Whether the first document has fired `load`. Before it, a navigation is the browser's own (a
@@ -1426,7 +1437,7 @@ function sendsAs(form, submitter) {
  * @param {any} event
  */
 function startedBy(event) {
-  const el = event.sourceElement;
+  const el = event.info?.[SOURCE] ?? event.sourceElement;
   return el?.form instanceof HTMLFormElement ? el.form : el instanceof Element ? el : null;
 }
 
