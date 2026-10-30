@@ -52,8 +52,8 @@ fn git_head(dir: &Path) -> Option<String> {
     // packed: a commit on a packed branch writes a new loose ref there, and a `git pack-refs`
     // removes one, and neither changes `HEAD` or `packed-refs`.
     for base in [&git, &common] {
-        let loose = base.join(name);
-        if let Some(dir) = loose.parent().filter(|dir| dir.is_dir()) {
+        // Its nearest directory that exists: `pack-refs` removes one left empty.
+        if let Some(dir) = base.join(name).ancestors().skip(1).find(|dir| dir.is_dir()) {
             println!("cargo:rerun-if-changed={}", dir.display());
         }
     }
