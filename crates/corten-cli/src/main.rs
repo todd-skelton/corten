@@ -3,8 +3,8 @@
 //! - `corten new <dir>` writes a working app (page, form, handler script, test, Dockerfile).
 //! - `corten dev` builds and runs the app, rebuilds and restarts it when a file changes (a failed
 //!   build keeps the running server), and open pages reload by themselves.
-//! - `corten build` builds the release binary. `corten check` runs format, lint, a type check of
-//!   the app's scripts (with TypeScript's `tsc`, when it is installed) and tests.
+//! - `corten build` builds the release binary. `corten check` runs format, lint and
+//!   tests, then a type check of the app's scripts (with TypeScript's `tsc`, when it is installed).
 //! - `corten fmt` runs `cargo fmt` and lays out the markup in `html!`, which rustfmt leaves alone.
 
 mod dev;
@@ -29,10 +29,11 @@ Usage:
                    cargo fmt, then lay out the markup inside html! (rustfmt leaves macro
                    bodies alone), so it fixes what corten check reports. With paths, only
                    their markup. --check reports what needs it instead of writing it.
-  corten check     corten fmt --check, cargo clippy -D warnings, a type check
-                   of the scripts in src/ and static/ (TypeScript's tsc, from node_modules or
-                   the PATH; without it, a note says they were not checked), cargo test. At a
-                   workspace root it checks the scripts of each member that uses corten.
+  corten check     corten fmt --check, cargo clippy -D warnings, cargo test, then a type
+                   check of the scripts in src/ and static/ (TypeScript's tsc, from
+                   node_modules or the PATH; without it, a note says they were not checked)
+                   against the types/app.d.ts the tests wrote. At a workspace root it checks
+                   the scripts of each member that uses corten.
   corten help      This text.
   corten --version
 ";
@@ -58,8 +59,19 @@ fn main() -> ExitCode {
         Some("fmt") => fmt::run(&args[1..]),
         Some("check") => fmt::run(&["--check".to_string()])
             .and_then(|()| cargo(&["clippy", "--all-targets", "--", "-D", "warnings"]))
-            .and_then(|()| std::env::current_dir().map_err(|e| e.to_string()).and_then(|root| scripts::check(&root)))
-            .and_then(|()| cargo(&["test"])),
+            // The tests first: the one that writes `types/app.d.ts` brings it up to date (and fails,
+            // saying so, when it was stale) before `tsc` reads it, so a script that uses a new
+            // view or event is not refused for a declaration the check had not written yet. The
+            // scripts are checked whatever the tests did, so a failing test hides no script error.
+            .and_then(|()| {
+                let tests = cargo(&["test"]);
+                let scripts = std::env::current_dir().map_err(|e| e.to_string()).and_then(|root| scripts::check(&root));
+                match (tests, scripts) {
+                    (Ok(()), scripts) => scripts,
+                    (Err(tests), Ok(())) => Err(tests),
+                    (Err(tests), Err(scripts)) => Err(format!("{tests}, and {scripts}")),
+                }
+            }),
         Some(other) => Err(format!("unknown command {other:?}; run corten help")),
     };
     match result {
