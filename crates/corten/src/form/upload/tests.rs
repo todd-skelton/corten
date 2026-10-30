@@ -11,6 +11,20 @@ struct Listing {
     photos: Files,
 }
 
+/// A file input in a group: named `proof.scan`, and never a text field.
+#[derive(serde::Deserialize, corten_macros::Fields, Debug, PartialEq, Default)]
+struct Proof {
+    scan: Files,
+}
+
+#[derive(serde::Deserialize, corten_macros::Fields, Debug, PartialEq)]
+struct Claim {
+    title: String,
+    #[fields(group)]
+    #[serde(default)]
+    proof: Proof,
+}
+
 const BOUNDARY: &str = "----corten7MA4YWxkTrZu0gW";
 
 /// A part: its name, file name, content type and content.
@@ -130,6 +144,19 @@ async fn a_file_over_its_limit_is_none_and_the_form_still_reads() {
     let mut upload = Upload::<Listing>::from_request(request(&bytes, 512), &()).await.ok().unwrap();
     let mut file = upload.next_file().await.unwrap().unwrap();
     assert_eq!(file.bytes_up_to(5000).await.unwrap().map(|b| b.len()), Some(5000));
+}
+
+#[tokio::test]
+async fn a_file_input_in_a_group_is_named_under_the_group() {
+    let f = Claim::FIELDS;
+    assert_eq!(f.proof.scan.to_string(), "proof.scan");
+    let bytes = body(&[("title", None, None, b"Damaged"), ("proof.scan", Some("dent.jpg"), Some("image/jpeg"), b"jpg")]);
+    let mut upload = Upload::<Claim>::from_request(request(&bytes, 9), &()).await.ok().unwrap();
+    let mut file = upload.next_file().await.unwrap().unwrap();
+    assert!(file.is(f.proof.scan));
+    assert_eq!(file.bytes_up_to(16).await.unwrap().as_deref(), Some(&b"jpg"[..]));
+    assert!(upload.next_file().await.unwrap().is_none());
+    assert_eq!(upload.fields().await.unwrap(), Claim { title: "Damaged".into(), proof: Proof { scan: Files } });
 }
 
 #[tokio::test]
