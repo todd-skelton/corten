@@ -129,6 +129,8 @@ async fn error_page(failure: Failure, req: Req) -> HtmlResult {
 Handlers are async functions whose arguments are extractors (axum's, and Corten's `Req`,
 `Form`, `Caller`, ...) and whose return type says what the route answers: `HtmlResult` for a
 page, a patch or a redirect, `JsonResult<T>` for JSON. The routes module checks both when the
-app compiles, and `App` adds everything a production app needs around them.
+app compiles, and `App` adds everything a production app needs around them. A route names its
+handler from where the module is declared (`home` beside `mod url`), so a `use` that brings a
+handler in goes above the module; one inside it is a compile error that says so.
 
 Next: [the app's defaults](app.md), then [views](views.md).

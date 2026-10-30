@@ -1261,6 +1261,42 @@ impl fmt::Write for Encode<'_> {
 /// assert_eq!(url::Item { id: "a/b", tab: Some("offers") }.href(), "/items/a%2Fb?tab=offers");
 /// ```
 ///
+/// A route names its handler from where the module is declared, so a `use` inside the module
+/// that brings one in does not compile, and the error is at the `use`:
+///
+/// ```compile_fail
+/// mod page {
+///     pub async fn show() -> &'static str {
+///         "hi"
+///     }
+/// }
+///
+/// #[corten::routes]
+/// mod url {
+///     use super::page::{show as home};
+///
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+/// # fn main() {}
+/// ```
+///
+/// ```
+/// mod page {
+///     pub async fn show() -> &'static str {
+///         "hi"
+///     }
+/// }
+/// use page::show as home;
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/", get = home)]
+///     pub struct Home;
+/// }
+/// # let _ = url::router();
+/// ```
+///
 /// A handler that reads its parameters some other way, or another route's, does not compile:
 ///
 /// ```compile_fail,E0277

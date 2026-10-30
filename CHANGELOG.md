@@ -1895,6 +1895,10 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
     `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
     ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
+70. A `use` inside a `#[corten::routes]` module that brings in a handler is a compile error at the
+    `use` that says handlers are named from where the module is declared, not an unused import and
+    "cannot find value" at each handler
+    ([#359 A handler imported inside a #[corten::routes] module is not found, and the error does not say handlers are named from where the module is declared](https://github.com/todd-skelton/corten/issues/359)).
 
 ### Documentation
 

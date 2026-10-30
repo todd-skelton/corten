@@ -102,6 +102,20 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     let TokenTree::Ident(module) = tokens[tokens.len() - 2].clone() else { unreachable!("is_mod checked") };
     let area = matches!(within, Some((Kind::Area, _)));
     let (mut items, routed) = scan(body.stream(), prefix_name.as_deref(), area)?;
+    // Handlers are named from where the module is declared, so one a `use` inside it brings in is
+    // not found there: say so at the `use`, not as "cannot find value" at each handler.
+    let imported = used_names(body.stream());
+    for (_, handler) in routed.iter().flat_map(|r| &r.handlers) {
+        let Some(TokenTree::Ident(first)) = handler.clone().into_iter().next() else { continue };
+        if let Some(name) = imported.iter().find(|i| i.to_string() == first.to_string()) {
+            return err(
+                name.span(),
+                format!(
+                    "{first} is brought in inside the module, but a #[corten::routes] module names its handlers from where it is declared: move this use above mod {module}"
+                ),
+            );
+        }
+    }
     for (i, a) in routed.iter().enumerate() {
         if let Some(b) = routed[..i].iter().find(|b| same_pattern(&a.path, &b.path)) {
             return err(
@@ -338,6 +352,61 @@ fn expand_within(
         &[TokenTree::Ident(module.clone()).into(), calls, state, TokenTree::Ident(container).into()],
     ));
     out
+}
+
+/// The names the module's own `use` items bring in (`use super::page::{show, edit as change};`
+/// brings in `show` and `change`), each with the span to point at.
+fn used_names(body: TokenStream) -> Vec<Ident> {
+    let tokens: Vec<TokenTree> = body.into_iter().collect();
+    let mut names = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        if matches!(&tokens[i], TokenTree::Ident(id) if id.to_string() == "use") {
+            let end = tokens[i..]
+                .iter()
+                .position(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ';'))
+                .map_or(tokens.len(), |at| i + at);
+            use_tree(&tokens[i + 1..end], &mut names);
+            i = end;
+        }
+        i += 1;
+    }
+    names
+}
+
+/// The names one use tree brings in: its last segment, the name after `as`, or each of a
+/// `{..}` group's (`self` in one is the segment before it). A `*` brings in names it does not
+/// list, so none are counted.
+fn use_tree(tree: &[TokenTree], names: &mut Vec<Ident>) {
+    let mut last: Option<Ident> = None;
+    let mut i = 0;
+    while i < tree.len() {
+        match &tree[i] {
+            TokenTree::Ident(id) if id.to_string() == "as" => {
+                last = match tree.get(i + 1) {
+                    Some(TokenTree::Ident(alias)) if alias.to_string() != "_" => Some(alias.clone()),
+                    _ => None,
+                };
+                break;
+            }
+            TokenTree::Ident(id) => last = Some(id.clone()),
+            TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => {
+                let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                for part in inner.split(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ',')) {
+                    if matches!(part, [TokenTree::Ident(s)] if s.to_string() == "self") {
+                        names.extend(last.clone());
+                    } else {
+                        use_tree(part, names);
+                    }
+                }
+                return;
+            }
+            TokenTree::Punct(p) if p.as_char() == '*' => return,
+            _ => {}
+        }
+        i += 1;
+    }
+    names.extend(last.filter(|id| !matches!(id.to_string().as_str(), "self" | "super" | "crate")));
 }
 
 /// `path` is `prefix` or under it, a segment at a time (`/admin` holds `/admin/users`, not
