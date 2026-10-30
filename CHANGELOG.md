@@ -2180,6 +2180,14 @@ Corten is pre-1.0, so any minor version may change the API.
     the lock was written for, and says nothing for a tag or branch whose commit the lock does not
     know yet
     ([#475 During a pin bump, the CLI version note reads the stale Cargo.lock and tells you to install the older corten](https://github.com/todd-skelton/corten/issues/475)).
+80. A `Box<dyn Href>` (a link a shared component's function prop returns, when one enum of every
+    page's route would join separate feature modules) is written as `href={boxed}`, as the `dyn
+    Href` it holds; it was an `Href` but not an attribute value. A value that is neither text nor a
+    link nor an attribute value is now an error that says so ("this value cannot be written in an
+    attribute", naming what an attribute takes) instead of one about a private `__attr` method. The
+    item page's `render_cost` (release, callgrind, 3 runs) is 35,567,415,208 instructions against
+    35,548,560,642 on main (+0.05%; the page writes no boxed link, so this is layout)
+    ([#457 Box<dyn Href> is an Href but not an attribute value, so href={boxed} fails with an error naming a private method](https://github.com/todd-skelton/corten/issues/457)).
 
 ### Documentation
 
