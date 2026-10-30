@@ -1230,13 +1230,19 @@ pub trait Arg<P> {
 /// What a handler parameter needs when its JSDoc type is one no call can be checked against (a set
 /// of names written as string literals, a generated declaration inside another type): nothing
 /// has it, so a call does not compile, and the handler's deprecation note says why. The handler
-/// itself compiles, so an export only other scripts import is the script's to type.
+/// itself compiles, so an export only other scripts import is the script's to type. It is sealed:
+/// nothing outside Corten can implement it either.
 #[diagnostic::on_unimplemented(
     message = "the script types this handler parameter so that no call can be checked against it",
     label = "the warning on this handler says why",
     note = "a set of names is a Rust enum with a generated declaration, import(\"../types/app\").Name; a list or an optional one is a Rust type of its own"
 )]
-pub trait Refused {}
+pub trait Refused: refused::Sealed {}
+
+mod refused {
+    /// Implemented by nothing, so [`super::Refused`] is not either.
+    pub trait Sealed {}
+}
 
 /// DOM element interfaces, named as in TypeScript's lib.dom.
 #[allow(clippy::upper_case_acronyms)]

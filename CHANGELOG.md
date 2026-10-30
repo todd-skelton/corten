@@ -1048,8 +1048,8 @@ Corten is pre-1.0, so any minor version may change the API.
     warning on the call say to make it a Rust enum with a generated declaration, and so does a
     list or a generic of one (`Mode[]`, `Record<Mode, number>`, `[Mode, number]`, `{ m: Mode }`):
     any string literal in the parameter's type counts, outside `import("..")`, `Message<..>`, a key
-    (an object's, an indexed type's, the keys and members `Pick`, `Omit`, `Exclude` and `Extract`
-    take) and a callback's parameter names. The script still compiles, so an export only other
+    (an object's, an indexed type's, the keys and members `Pick`, `Omit` and `Exclude` take) and a
+    callback's parameter names; a set in a template literal's `${..}` counts. The script still compiles, so an export only other
     scripts import types its parameters as it needs. A `@typedef` of
     any type but an object or a generic one (`@template`) (`Tab | null`, `Tab[]`, `string`) is
     checked as the type it names where a handler takes it, through any number of typedefs, and a

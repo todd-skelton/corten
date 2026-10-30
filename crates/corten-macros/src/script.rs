@@ -704,19 +704,21 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         if holds_names_union(&fields) {
             bad.push((name.clone(), union_error(name, written.trim())));
         } else if mentions_generated(&fields) {
-            bad.push((name.clone(), format!("{name} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), a list of it, or a group typedef")));
+            bad.push((name.clone(), format!("{name} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), or declare a Rust type for the whole value (derive ToJson and JsonSchema, add it with Types::add) and take its declaration")));
         }
     }
     for (group, (_, why)) in &unions {
         bad.push((group.clone(), why.clone()));
     }
+    // Each typedef's names, read once.
+    let words: Vec<(&String, Vec<String>)> = plain.iter().map(|(name, fields)| (name, type_words(&expand(fields)))).collect();
     loop {
-        let found = plain.iter().find_map(|(name, fields)| {
-            if bad.iter().any(|(b, _)| b == name) {
+        let found = words.iter().find_map(|(name, words)| {
+            if bad.iter().any(|(b, _)| b == *name) {
                 return None;
             }
-            let held = type_words(&expand(fields)).into_iter().find_map(|w| bad.iter().find(|(b, _)| *b == w).cloned())?;
-            Some((name.clone(), format!("{name} holds {}: {}", held.0, held.1)))
+            let held = words.iter().find_map(|w| bad.iter().find(|(b, _)| b == w).cloned())?;
+            Some(((*name).clone(), format!("{name} holds {}: {}", held.0, held.1)))
         });
         match found {
             Some(entry) => bad.push(entry),
@@ -749,7 +751,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
                     // a list with `null`, a tuple, a typedef of plain values) rather than any value.
                     Param::Any => match type_words(&expanded).into_iter().find_map(|w| bad.iter().find(|(b, _)| *b == w)) {
                         Some((_, why)) => refused(why.clone()),
-                        None if mentions_generated(&expanded) => refused(format!("{ty} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), a list of it, or a group typedef")),
+                        None if mentions_generated(&expanded) => refused(format!("{ty} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), or declare a Rust type for the whole value (derive ToJson and JsonSchema, add it with Types::add) and take its declaration")),
                         None => Param::Any,
                     },
                     other => other,
@@ -870,8 +872,9 @@ fn stand_in(ty: &str) -> String {
     if mentions_generated(ty) {
         parts.push("import(\"../types/app\").Written".into());
     }
+    let mut seen = std::collections::HashSet::new();
     for word in type_words(ty) {
-        if !parts.contains(&word) {
+        if seen.insert(word.clone()) {
             parts.push(word);
         }
     }
@@ -892,9 +895,21 @@ fn substitute(ty: &str, to: &mut dyn FnMut(&str) -> Option<String>) -> String {
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
-        if matches!(c, '"' | '\'' | '`') {
+        if matches!(c, '"' | '\'') {
             let end = quote_end(&chars, i);
             out.extend(&chars[i..end]);
+            i = end;
+            continue;
+        }
+        // A template literal's text stays; the types in its `${..}` are written out.
+        if c == '`' {
+            let end = quote_end(&chars, i);
+            for (text, ty) in template_parts(&chars[i..end]) {
+                out.push_str(&text);
+                if let Some(ty) = ty {
+                    out.push_str(&substitute(&ty, to));
+                }
+            }
             i = end;
             continue;
         }
@@ -932,6 +947,49 @@ fn substitute(ty: &str, to: &mut dyn FnMut(&str) -> Option<String>) -> String {
         }
     }
     out
+}
+
+/// A template literal type (with its backticks) as its text, each followed by the type in the
+/// `${..}` after it: `\`item-${Mode}\`` is (`\`item-${`, `Mode`), (`}\``, none).
+fn template_parts(chars: &[char]) -> Vec<(String, Option<String>)> {
+    let mut parts = Vec::new();
+    let mut text = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '$' && chars.get(i + 1) == Some(&'{') {
+            text.push_str("${");
+            let mut depth = 1;
+            let start = i + 2;
+            let mut j = start;
+            while j < chars.len() {
+                match chars[j] {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            parts.push((std::mem::take(&mut text), Some(chars[start..j.min(chars.len())].iter().collect())));
+            i = j;
+            continue;
+        }
+        text.push(chars[i]);
+        i += 1;
+    }
+    parts.push((text, None));
+    parts
+}
+
+/// The word that ends before `at` (past spaces): `readonly` in `readonly [Mode]`.
+fn word_before(chars: &[char], at: usize) -> String {
+    let end = chars[..at].iter().rposition(|c| !c.is_whitespace()).map_or(0, |p| p + 1);
+    let start = chars[..end].iter().rposition(|&c| !word_char(c)).map_or(0, |p| p + 1);
+    chars[start..end].iter().collect()
 }
 
 /// A character of a name.
@@ -1007,27 +1065,25 @@ fn arrow_params(chars: &[char]) -> Vec<bool> {
     out
 }
 
-/// The names `<T, U extends X>` declares before an arrow function's parameters.
+/// The names `<T, U extends X>` declares before an arrow function's parameters. One pass to pair
+/// the brackets (`=>` closes none), then one over each pair followed by `(`.
 fn type_params(chars: &[char]) -> Vec<String> {
-    let mut names = Vec::new();
-    for i in (0..chars.len()).filter(|&i| chars[i] == '<') {
-        let mut depth = 0;
-        let mut end = None;
-        for j in i..chars.len() {
-            match chars[j] {
-                '<' => depth += 1,
-                '>' if j > 0 && chars[j - 1] == '=' => {}
-                '>' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        end = Some(j);
-                        break;
-                    }
+    let mut pairs = Vec::new();
+    let mut open = Vec::new();
+    for (j, &c) in chars.iter().enumerate() {
+        match c {
+            '<' => open.push(j),
+            '>' if j > 0 && chars[j - 1] == '=' => {}
+            '>' => {
+                if let Some(i) = open.pop() {
+                    pairs.push((i, j));
                 }
-                _ => {}
             }
+            _ => {}
         }
-        let Some(end) = end else { continue };
+    }
+    let mut names = Vec::new();
+    for (i, end) in pairs {
         if chars[end + 1..].iter().find(|c| !c.is_whitespace()) != Some(&'(') {
             continue;
         }
@@ -1123,9 +1179,10 @@ fn mentions_generated(ty: &str) -> bool {
 /// (`Message<"count">`), so `"a" | "b"`, `Mode[] | null`, `[Mode, number]`, `{ m: Mode }` and
 /// `Record<Mode, number>` are all refused, however they are written: such a value takes any text.
 /// A literal that names a key is not one: an object's (`{ "aria-label": string }`), an indexed
-/// type's (`HTMLElementTagNameMap["dialog" | "details"]`) and the keys or members `Pick`, `Omit`,
-/// `Exclude` and `Extract` take after the type (`Pick<Opts, "a">`). A template literal is a
-/// pattern of text, not a set of names, and is left to `tsc`. One pass over the type.
+/// type's (`HTMLElementTagNameMap["dialog" | "details"]`) and the keys or members `Pick`, `Omit`
+/// and `Exclude` take after the type (`Pick<Opts, "a">`; `Extract<string, "a" | "b">` is the set).
+/// A template literal is a pattern of text and is left to `tsc`, but a set in its `${..}`
+/// (`\`${Mode}\``) is one. One pass over the type.
 fn holds_names_union(ty: &str) -> bool {
     /// An open bracket: what closes it, and what a literal directly in it is.
     enum Frame {
@@ -1149,7 +1206,15 @@ fn holds_names_union(ty: &str) -> bool {
             continue;
         }
         let name = std::mem::take(&mut word);
-        // `import("..")` and `Message<..>` with what is in them.
+        // `import("..")` and `Message<..>` with what is in them, spaces before the bracket or not.
+        let mut c = c;
+        if c.is_whitespace() && matches!(name.as_str(), "import" | "Message") {
+            let next = chars[i..].iter().position(|c| !c.is_whitespace()).map_or(chars.len(), |p| i + p);
+            if matches!((name.as_str(), chars.get(next)), ("import", Some('(')) | ("Message", Some('<'))) {
+                i = next;
+                c = chars[i];
+            }
+        }
         let skip = match (name.as_str(), c) {
             ("import", '(') => Some(('(', ')')),
             ("Message", '<') => Some(('<', '>')),
@@ -1200,13 +1265,22 @@ fn holds_names_union(ty: &str) -> bool {
                 continue;
             }
             '`' => {
-                i = quote_end(&chars, i);
+                let end = quote_end(&chars, i);
+                if template_parts(&chars[i..end]).iter().any(|(_, ty)| ty.as_deref().is_some_and(holds_names_union)) {
+                    return true;
+                }
+                i = end;
                 continue;
             }
             '(' => stack.push(Frame::Paren),
             '[' => {
                 let before = chars[..i].iter().rev().find(|c| !c.is_whitespace());
-                let indexed = before.is_some_and(|&b| word_char(b) || matches!(b, ']' | ')' | '>'));
+                // After a type, an index; after a keyword (`readonly [..]`, `extends [..]`), a tuple.
+                let keyword = matches!(
+                    word_before(&chars, i).as_str(),
+                    "readonly" | "extends" | "keyof" | "typeof" | "infer" | "is" | "in" | "as" | "unique"
+                );
+                let indexed = !keyword && before.is_some_and(|&b| word_char(b) || matches!(b, ']' | ')' | '>'));
                 // `T[]` is a list of T, and `T[..]` one of its keys.
                 let empty = chars[i + 1..].iter().find(|c| !c.is_whitespace()) == Some(&']');
                 stack.push(if indexed && !empty { Frame::Index } else { Frame::Types(']') });
@@ -1215,7 +1289,7 @@ fn holds_names_union(ty: &str) -> bool {
             '<' => {
                 let generic = if chars[..i].last().is_some_and(|&b| word_char(b)) { name.as_str() } else { "" };
                 stack.push(match generic {
-                    "Pick" | "Omit" | "Exclude" | "Extract" => Frame::Keys(0),
+                    "Pick" | "Omit" | "Exclude" => Frame::Keys(0),
                     _ => Frame::Types('>'),
                 });
             }
@@ -1303,11 +1377,25 @@ fn tag_types(jsdoc: &str, tag: &str) -> Vec<(String, String)> {
             }
         }
         let Some(close) = close else { break };
-        let ty = rest[open + 1..close].trim().to_string();
+        let ty = tidy(rest[open + 1..close].trim());
         rest = &rest[close + 1..];
         let name: String =
             rest.trim_start().chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$').collect();
         out.push((name, ty));
+    }
+    out
+}
+
+/// A JSDoc type with `import ("..") .Name` and `Message <..>` written without the spaces, as the
+/// checks read them.
+fn tidy(ty: &str) -> String {
+    let mut out = ty.to_string();
+    for (spaced, plain) in
+        [("import (", "import("), ("import( ", "import("), (" ).", ")."), (") .", ")."), ("Message <", "Message<")]
+    {
+        while out.contains(spaced) {
+            out = out.replace(spaced, plain);
+        }
     }
     out
 }
@@ -1795,14 +1883,34 @@ export function f(a, b, c, d, e) {}"#;
             let (handlers, _) = parse(&format!("{mode}/** @param {{{ty}}} a */\nexport function f(a) {{}}")).unwrap();
             assert_eq!(handlers[0].params[0].1, Param::Any, "{ty}");
         }
-        for ty in
-            ["Exclude<\"a\" | \"b\", \"a\">", "boolean extends true ? Mode : number", "[number, ...Mode[]]", "(x: Mode) => void"]
-        {
+        for ty in [
+            "Exclude<\"a\" | \"b\", \"a\">",
+            "boolean extends true ? Mode : number",
+            "[number, ...Mode[]]",
+            "(x: Mode) => void",
+            "readonly [Mode, number]",
+            "readonly [\"a\" | \"b\", number]",
+            "T extends [\"a\"] ? 1 : 2",
+            "Extract<string, \"a\" | \"b\">",
+            "`${Mode}`",
+            "`item-${\"a\" | \"b\"}`",
+        ] {
             let why = refusal(&format!("{mode}/** @param {{{ty}}} a */\nexport function f(a) {{}}"));
             assert!(why.contains("one of several names"), "{ty}: {why}");
         }
         let why = refusal(&format!("{mode}/** @param {{[number, ...Tab[]]}} a */\nexport function f(a) {{}}"));
         assert!(why.contains("generated declaration"), "{why}");
+        // Spaces where tsc allows them read as without.
+        let (handlers, _) =
+            parse("/** @param {import ( \"../types/app\" ).Tab} a @param {Message <\"count\">} b @param {`item-${string}`} c */\nexport function f(a, b, c) {}")
+                .unwrap();
+        assert_eq!(handlers[0].params[0].1, Param::Generated("Tab".into()));
+        assert!(
+            matches!(&handlers[0].params[1].1, Param::Checked(p) if p.starts_with("ts::Message")),
+            "{:?}",
+            handlers[0].params
+        );
+        assert_eq!(handlers[0].params[2].1, Param::Any);
         // Aliases that refer to each other: what any of them holds is seen in each.
         for (leaf, what) in
             [("\"x\" | \"y\"", "one of several names"), ("import(\"../types/app\").Leaf", "generated declaration")]
@@ -1838,6 +1946,16 @@ export function f(a, b, c, d, e) {}"#;
             handlers[0].params
         );
         assert_eq!(handlers[0].params[1].1, Param::Checked("ts::Number".into()));
+        // Many names behind one long alias, and a generic arrow with many brackets, in about linear time.
+        let names = (0..20_000).map(|i| format!("N{i}")).collect::<Vec<_>>().join(" | ");
+        let source = format!("/** @typedef {{{names}}} Big */\n/** @typedef {{[Big, Big]}} Two */\n/** @param {{Two}} a */\nexport function f(a) {{}}");
+        let started = std::time::Instant::now();
+        parse(&source).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(3), "{:?}", started.elapsed());
+        let nested = format!("<T>(x: {}T{}) => T", "Array<".repeat(4000), ">".repeat(4000));
+        let started = std::time::Instant::now();
+        parse(&format!("/** @param {{{nested}}} a */\nexport function f(a) {{}}")).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(3), "{:?}", started.elapsed());
         // Many generated declarations in one type are read in one pass.
         let many = (0..20_000).map(|i| format!("{{ k{i}: import(\"../types/app\").T{i} }}")).collect::<Vec<_>>().join(" | ");
         let started = std::time::Instant::now();
