@@ -21,8 +21,9 @@
 //! compiles as it is; `by_key` and `Message<"updatedAt">` use the catalog's names.
 //!
 //! What fails the build: a key one catalog has and another lacks, a message whose arguments
-//! differ between locales, a misspelled key or a missing argument at the call site, a brace that
-//! is not an argument, and a value that is not a string. Changing a catalog file rebuilds the
+//! differ between locales, a plural message without a form its locale needs (below), a misspelled
+//! key or a missing argument at the call site, a brace that is not an argument, and a value that
+//! is not a string. Changing a catalog file rebuilds the
 //! crate. The messages are split into text and arguments at compile time: a message without
 //! arguments is a `&'static str`, and one with arguments writes its pieces straight into the page,
 //! escaped, with no lookup and no intermediate string.
@@ -47,7 +48,56 @@
 //! assert!(fr.by_key("item.image", &[("n", 1)]).is_none(), "no title");
 //! ```
 //!
-//! Plural rules are not built in: use a key per form.
+//! # Counts
+//!
+//! A message that depends on a count has a form per plural category, with the suffixes i18next
+//! uses: `"listing_count_one": "{count} listing"` and `"listing_count_other": "{count} listings"`
+//! are one message, `t.item_listing_count(count)`, which picks the form by the count's category
+//! in the locale (CLDR's rules: `zero`, `one`, `two`, `few`, `many`, `other`) and writes
+//! `{count}` as `t.number` does. The count is a [`Count`], a whole number of any integer type;
+//! other arguments come after it. A catalog has exactly the forms its language's whole numbers
+//! use, and `_other`: English needs `_one` and `_other`, French also `_many`
+//! (`1 000 000 d’annonces`), and Japanese `_other` alone. `by_key` finds the message by the key
+//! without a suffix and picks its form by the `count` argument.
+//!
+//! ```
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+//! use corten::i18n::Messages as _;
+//!
+//! let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+//! assert_eq!(en.item_listing_count(1).to_string(), "1 listing");
+//! assert_eq!(en.item_listing_count(1234).to_string(), "1,234 listings");
+//! assert_eq!(fr.item_listing_count(0).to_string(), "0 annonce");
+//! assert_eq!(fr.item_listing_count(2_000_000).to_string(), "2\u{202f}000\u{202f}000 d’annonces");
+//! assert_eq!(fr.by_key("item.listing_count", &[("count", 1)]).unwrap().to_string(), "1 annonce");
+//! ```
+//!
+//! A catalog without a form its language uses does not compile (French uses `_many` for a
+//! million):
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr-no-many.json" } }
+//! ```
+//!
+//! Nor one with a form its language never uses: English has no whole number in `zero`, so a text
+//! for no listings is a message of its own, chosen in the view:
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en-zero.json" } }
+//! ```
+//!
+//! Nor a plural message without `_other`:
+//!
+//! ```compile_fail
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en-no-other.json" } }
+//! ```
+//!
+//! Nor a count that is not a whole number:
+//!
+//! ```compile_fail,E0277
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
+//! let _ = Msg::default().item_listing_count(2.5);
+//! ```
 //!
 //! # Numbers, money and dates
 //!
@@ -73,8 +123,8 @@
 //! assert_eq!(en.date(at, MonthStyle::Long).to_string(), "March 2026");
 //! assert_eq!(fr.date(at, MonthStyle::Short).to_string(), "mars 2026");
 //! assert_eq!(en.time(at, TimeStyle::Short).zone(Offset::hours(-5)).to_string(), "7:00 AM GMT-5");
-//! // A message argument like any other ("{count} listings").
-//! assert_eq!(en.item_listing_count(en.number(1234)).to_string(), "1,234 listings");
+//! // A message argument like any other ("{title} image {n}").
+//! assert_eq!(en.item_image("Pika", en.number(1234)).to_string(), "Pika image 1,234");
 //! ```
 //!
 //! Each renders escaped in `html!`, as text or an attribute value. The data (separators, currency
@@ -176,12 +226,16 @@
 //! `label({ count: 3 })` with `textContent`. Only the messages a page passes are sent, in the
 //! request's locale, as their text and argument names, in the `data-on` attribute
 //! (`%["","count"," selected"]`), so the browser formats it with no catalog and no round trip.
+//! A plural message (`t.js().item_listing_count()`) is sent with its forms, the locale's plural
+//! table and its number format (`%{..}`, about 300 bytes more), so `label({ count: 1234 })` picks
+//! the form and writes `1,234` exactly as the server would; a `count` passed as text is written
+//! as given, and one that is not a whole number takes the `_other` form.
 //!
 //! ```
 //! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json" } }
 //! use corten::script::{message_id, ts::Message, Arg};
 //! fn wants_a_count(_: impl Arg<Message<{ message_id(&["count"]) }>>) {}
-//! wants_a_count(Msg::default().js().item_listing_count()); // "{count} listings"
+//! wants_a_count(Msg::default().js().item_listing_count()); // "{count} listing" | "{count} listings"
 //! ```
 //!
 //! A message whose arguments are not the ones the JSDoc names does not compile:
@@ -266,8 +320,9 @@ mod display_digits;
 mod format;
 
 pub use format::{
-    parse_timestamp, Amount, Currency, DateFormat, DateOnly, DateStyle, Datetime, Decimal, Formatted, InvalidDecimal, Minor,
-    MoneyFormat, MonthStyle, Number, NumberFormat, Offset, PercentFormat, Relative, RelativeStyle, TimeStyle, Utc, When, Zone,
+    parse_timestamp, Amount, Count, Currency, DateFormat, DateOnly, DateStyle, Datetime, Decimal, Formatted, InvalidDecimal,
+    Minor, MoneyFormat, MonthStyle, Number, NumberFormat, Offset, PercentFormat, Relative, RelativeStyle, TimeStyle, Utc, When,
+    Zone,
 };
 
 /// Compiles catalogs into a messages type. See the [module docs](self).
@@ -403,7 +458,7 @@ impl Sink<'_> {
 /// corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
 /// use corten::i18n::Messages as _;
 ///
-/// let _ = Msg::for_locale("fr").item_listing_count(2.5).to_string();
+/// let _ = Msg::for_locale("fr").item_image("Pika", 2.5).to_string();
 /// ```
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be a message argument",
@@ -552,18 +607,46 @@ impl Arg for i128 {
 /// A message with arguments, unfilled (`t.js().key()`): the argument a handler whose JSDoc says
 /// `Message<"a" | "b">` takes, when the message's arguments are exactly `a` and `b` (`ARGS` is
 /// [`crate::script::message_id`] of their names). Its text is made when the crate compiles.
-#[derive(Clone, Copy, Debug)]
-pub struct Template<const ARGS: u64>(&'static str);
+/// A plural message's (`t.js().cards()`) also carries the locale's plural table and number
+/// format, so the script picks the form and writes the count as the server does.
+#[derive(Clone, Copy)]
+pub struct Template<const ARGS: u64>(Wire);
+
+#[derive(Clone, Copy)]
+enum Wire {
+    Text(&'static str),
+    /// The locale, and the message's form per plural category (HTML-escaped JSON arrays), empty
+    /// for a category the locale does not use.
+    Plural(&'static __private::LocaleData, [&'static str; 6]),
+}
 
 impl<const ARGS: u64> Template<ARGS> {
     #[doc(hidden)]
     pub const fn new(wire: &'static str) -> Self {
-        Template(wire)
+        Template(Wire::Text(wire))
+    }
+
+    #[doc(hidden)]
+    pub const fn plural(data: &'static __private::LocaleData, forms: [&'static str; 6]) -> Self {
+        Template(Wire::Plural(data, forms))
     }
 
     /// The text `data-on` carries, HTML-escaped.
-    pub(crate) fn wire(self) -> &'static str {
-        self.0
+    pub(crate) fn write_wire(self, out: &mut String) {
+        match self.0 {
+            Wire::Text(wire) => out.push_str(wire),
+            Wire::Plural(data, forms) => format::plural_wire(data, &forms, out),
+        }
+    }
+}
+
+impl<const ARGS: u64> fmt::Debug for Template<ARGS> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Not `write_wire`, which marks the page as loading the format module.
+        match self.0 {
+            Wire::Text(wire) => f.debug_tuple("Template").field(&wire).finish(),
+            Wire::Plural(data, forms) => f.debug_tuple("Template").field(&data.tag).field(&forms).finish(),
+        }
     }
 }
 
@@ -690,8 +773,19 @@ impl<A: Args + ?Sized> Display for Found<'_, A> {
 /// Used by the code `messages!` generates. Not a public API.
 #[doc(hidden)]
 pub mod __private {
-    pub use super::format::__private::{Field, LocaleData, Separators};
+    pub use super::format::__private::{plural, Field, LocaleData, Separators};
     pub use super::format::parse_money;
+
+    /// The `count` argument of a plural message found by its key (`by_key`), without its sign:
+    /// `None` when there is none or it is not a whole number.
+    pub fn count<A: super::Args + ?Sized>(args: &A) -> Option<u64> {
+        let mut n = None;
+        args.arg("count", &mut |value| {
+            let text = value.to_string();
+            n = text.strip_prefix('-').unwrap_or(&text).parse::<u64>().ok();
+        });
+        n
+    }
 
     /// A run of a message: its text (plain and escaped) or an argument's name.
     pub enum Piece {
@@ -854,7 +948,7 @@ mod tests {
             <img alt={fr.item_image("A & B", 1)}>
             <p>{en.item_listing_count(1)}</p>
         };
-        assert_eq!(view.to_html(), r#"<img alt="Image 1 de A &amp; B"><p>1 listings</p>"#);
+        assert_eq!(view.to_html(), r#"<img alt="Image 1 de A &amp; B"><p>1 listing</p>"#);
         assert_eq!(Msg::for_locale("FR"), fr);
         assert_eq!(Msg::default().locale(), "en");
         // Arguments named like Rust keywords are raw parameters; the catalog keeps its names.
@@ -1153,6 +1247,22 @@ mod tests {
                 .replace("&amp;", "&");
             specs.insert((tag, key), json);
         }
+        // Each locale's plural table, as a plural message carries it, with every category's form
+        // its own name, so format.mjs sees which one the browser picks.
+        let names = [
+            "[&quot;zero&quot;]",
+            "[&quot;one&quot;]",
+            "[&quot;two&quot;]",
+            "[&quot;few&quot;]",
+            "[&quot;many&quot;]",
+            "[&quot;other&quot;]",
+        ];
+        for (tag, data) in locales {
+            let mut out = String::new();
+            format::plural_wire(data, &names, &mut out);
+            let json = out[1..].replace("&quot;", "\"").replace("&amp;", "&");
+            specs.insert((tag, "plural".to_string()), json);
+        }
         let mut file =
             String::from("# Written by i18n.rs (the_formats_scripts_get_are_the_ones_the_cases_check). Do not edit.\n");
         file.push_str("# locale\tcase\tthe format a script gets\n");
@@ -1224,7 +1334,7 @@ mod tests {
         let usd = Currency::new("USD");
         let at = parse_timestamp("2026-03-22T12:00:00Z").unwrap();
         let view = crate::html! {
-            <p title={fr.money(Minor(-123450), usd)}>{en.item_listing_count(en.number(1234))}</p>
+            <p title={fr.money(Minor(-123450), usd)}>{en.item_listing_count(1234)}</p>
             <time>{en.date_time(at, DateStyle::Medium, TimeStyle::Short)}</time>
         };
         assert_eq!(

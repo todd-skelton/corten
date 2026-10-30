@@ -5,5 +5,9 @@
     "items_one": "{count} item",
     "items_other": "{count} items",
     "shown": "{shown} of {total} shown"
+  },
+  "status": {
+    "archived_one": "Archived {count} item.",
+    "archived_other": "Archived {count} items."
   }
 }

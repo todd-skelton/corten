@@ -118,6 +118,13 @@ try {
   await page.fill(`${cell} input`, "abc");
   check("typing a price shows Save", await page.isVisible(`${cell} button`));
   check("the grid counts the unsaved price in the catalog's words", (await page.textContent("[role=group] + output")) === "1 price not saved", await page.textContent("[role=group] + output"));
+  // A second unsaved price: the plural message picks its other form in the browser.
+  const third = `#${await page.$eval("tbody tr:nth-child(4)", (r) => r.id)} td:last-child`;
+  const thirdBefore = await page.inputValue(`${third} input`);
+  await page.fill(`${third} input`, "abc");
+  check("two unsaved prices take the message's other form", (await page.textContent("[role=group] + output")) === "2 prices not saved", await page.textContent("[role=group] + output"));
+  await page.press(`${third} input`, "Escape");
+  check("Escape there puts its price back and the count goes down", (await page.inputValue(`${third} input`)) === thirdBefore && (await page.textContent("[role=group] + output")) === "1 price not saved", await page.textContent("[role=group] + output"));
   await page.press(`${cell} input`, "Escape");
   check("Escape puts the saved price back", (await page.inputValue(`${cell} input`)) === before && !(await page.isVisible(`${cell} button`)));
   await page.fill(`${cell} input`, "abc");

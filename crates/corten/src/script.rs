@@ -1838,7 +1838,7 @@ pub mod __private {
     /// A message for the script to fill in: its text and argument names, made when the crate compiled.
     impl<const ARGS: u64> Arg<ts::Message<ARGS>> for crate::i18n::Template<ARGS> {
         fn write_arg(&self, _: &Ctx, out: &mut String) {
-            out.push_str(self.wire());
+            self.write_wire(out);
         }
     }
 

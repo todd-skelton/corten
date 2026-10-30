@@ -230,13 +230,23 @@ Messages are split into text and arguments when the crate compiles: one
 without arguments is a `&'static str`, one with arguments writes its pieces into the page,
 escaped, with no lookup and no intermediate string. Editing a catalog rebuilds the crate.
 
+A count's text is a plural message: a form per plural category, with the suffixes i18next uses
+(`"items_one": "{count} item"`, `"items_other": "{count} items"`), and one method,
+`t.grid_items(count)`, which picks the form by CLDR's rules for the locale and writes the count
+as `t.number` does (`1,234 items`). Never pick a form with `count == 1`: French puts 0 in `one`
+and a million in `many`, Polish has `few` and `many`, Japanese has `other` alone. A catalog has
+exactly the forms its language's whole numbers use, and `_other`, or the build fails and names
+the missing one with a number that needs it (`fr` uses `_many` for 1000000). Text for none
+("No items yet") is a message of its own the view chooses, since `zero` is not a category in
+most languages.
+
 ### Text: literals or the catalog
 
 An app chooses once, by how many locales it has:
 
 1. **One locale.** Fixed text is a literal in the view (`<h1>"Statement"</h1>`). The catalog
-   holds only what a literal cannot be: a count with its plural (`grid.items_one`,
-   `grid.items_other`), text with arguments, and text a script fills in
+   holds only what a literal cannot be: a count with its plural (`grid.items_one` and
+   `grid.items_other`, one message, `t.grid_items(count)`), text with arguments, and text a script fills in
    (`t.js().prices_updates()`). Numbers, money and dates still go through `t`, which writes them
    for the locale.
 2. **More than one locale.** Every word a reader sees goes through the catalog, so a locale that

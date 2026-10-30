@@ -992,6 +992,17 @@ Corten is pre-1.0, so any minor version may change the API.
     of one the answer brought, costs a plain GET about 75 instructions (20,351-20,358 to
     20,427-20,432 under callgrind, 3 runs, about 0.4%)
     ([#390 A page or a relayed answer cannot choose a stricter Referrer-Policy: Corten replaces it on every answer](https://github.com/todd-skelton/corten/issues/390)).
+136. Plural messages: `"cards_one"` and `"cards_other"` (the suffixes i18next uses) are one
+    message, `t.cards(count)`, which picks the form by the count's CLDR plural category in the
+    locale and writes the count as `t.number` does; `t.js().cards()` picks it in the browser the
+    same way (`format.js`, checked against Intl for every locale). A catalog without a form its
+    language uses (French's `_many`), with one it never uses (English `_zero`), or without
+    `_other` does not compile. Breaking: a key ending in `_zero`, `_one`, `_two`, `_few`,
+    `_many` or `_other` is a plural form, so `t.cards_one(..)` and `t.cards_other(..)` become
+    `t.cards(count)`. Measured: `corten-format` grows from 2,535 to 2,885 bytes (1,260 to 1,429
+    gzipped); the examples' `count == 1` choices are gone and card-market's French no longer
+    writes "1 annonces"
+    ([#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

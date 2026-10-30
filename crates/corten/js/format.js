@@ -16,7 +16,11 @@
  * the zone's offset in seconds east, and for a pattern that shows the zone, `u` UTC's name and `g`
  * an offset's templates (hours at \u0001, minutes at \u0003: whole hours east, west, then with
  * minutes). A period (`P`) is runs of a name and the hour it ends before: ["P","AM",12,"PM",24].
- * @typedef {{ z: string, s?: [string, string, number, number, number], t?: [string, string] | [string, string, string], d?: number, p?: number, f?: Field[], o?: number, u?: string, g?: string[] }} Spec
+ * A plural message (`t.js().cards()`) is a number's format with `c`, the plural category (0 to 5:
+ * zero, one, two, few, many, other) of each whole number to 199 and then of a multiple of a
+ * million, and `m`, the message's form for each category (text and argument names alternating,
+ * as a message's), `null` for one the locale does not use.
+ * @typedef {{ z: string, s?: [string, string, number, number, number], t?: [string, string] | [string, string, string], d?: number, p?: number, f?: Field[], o?: number, u?: string, g?: string[], c?: string, m?: (string[] | null)[] }} Spec
  * @typedef {[string, ...(string | number)[]]} Field
  */
 
@@ -26,6 +30,7 @@
  * @returns {(value: any) => string}
  */
 export function formatter(spec) {
+  if (spec.m) return plural(spec, /** @type {string} */ (spec.c), spec.m);
   if (spec.f) return (at) => date(spec, at);
   if (spec.d !== undefined) {
     const d = spec.d;
@@ -101,6 +106,29 @@ function number(spec, at, int, frac) {
   body = digits(spec.z, body);
   if (frac) body += decimal + digits(spec.z, frac);
   return /** @type {NonNullable<Spec["t"]>} */ (spec.t)[at].replace("\u0001", () => body);
+}
+
+/**
+ * A plural message: the form for `count`'s category, picked as the server picks it (a whole
+ * number by the table; anything else, as a fraction, by `other`), with `count` written as
+ * `t.number` writes it when it is a number.
+ * @param {Spec} spec @param {string} table @param {(string[] | null)[]} forms
+ * @returns {(args: Record<string, string | number>) => string}
+ */
+function plural(spec, table, forms) {
+  const write = formatter({ z: spec.z, s: spec.s, t: spec.t });
+  return (args) => {
+    const n = Number(args.count);
+    const a = Math.abs(n);
+    const at = Number.isSafeInteger(a) ? Number(table[a < 200 ? a : a % 1_000_000 === 0 ? 200 : 100 + (a % 100)]) : 5;
+    const parts = forms[at] ?? /** @type {string[]} */ (forms[5]);
+    let text = parts[0];
+    for (let i = 1; i < parts.length; i += 2) {
+      const name = parts[i];
+      text += (name === "count" && Number.isFinite(n) && typeof args.count === "number" ? write(n) : String(args[name])) + parts[i + 1];
+    }
+    return text;
+  };
 }
 
 /** @param {Spec} spec @param {Date | number | string} at */

@@ -206,6 +206,40 @@ impl<T: Number + ?Sized> Number for &T {
     }
 }
 
+/// What a plural message takes as its count (`t.cards(count)`): an integer, whose plural
+/// category in the locale (CLDR's: `one`, `few`, `other`, ...) picks the message's form, and
+/// which the message writes as `t.number` does. A [`Decimal`] is not one, since a fraction's
+/// category depends on the digits it shows.
+#[diagnostic::on_unimplemented(
+    message = "a plural message's count is an integer, not {Self}",
+    note = "a count is a whole number (u8 to u64, i8 to i64, usize, isize)"
+)]
+pub trait Count: Number {
+    /// The count without its sign, which is what picks the form.
+    #[doc(hidden)]
+    fn magnitude(&self) -> u64;
+}
+
+macro_rules! count {
+    ($($t:ty),*) => {$(
+        impl Count for $t {
+            #[inline]
+            fn magnitude(&self) -> u64 {
+                // Every type here fits in an i128, and its magnitude in a u64.
+                (*self as i128).unsigned_abs() as u64
+            }
+        }
+    )*};
+}
+count!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
+
+impl<T: Count + ?Sized> Count for &T {
+    #[inline]
+    fn magnitude(&self) -> u64 {
+        (**self).magnitude()
+    }
+}
+
 /// An amount in a currency's minor unit: `Minor(123450)` in USD is $1,234.50, in JPY ¥123,450.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Minor<T>(pub T);
@@ -1097,11 +1131,7 @@ impl Relative {
         };
         let unit = RELATIVE_UNITS.iter().rposition(|&size| seconds >= size).unwrap_or(0);
         let n = seconds / RELATIVE_UNITS[unit];
-        let category = match n {
-            0..=199 => data.plurals[n as usize],
-            _ if n.is_multiple_of(1_000_000) => data.millions,
-            _ => data.plurals[100 + (n % 100) as usize],
-        };
+        let category = __private::plural(data, n);
         let template = data.relative[self.style as usize][unit][usize::from(future)][usize::from(category)];
         // Some forms have no number: ar's one second is `قبل ثانية واحدة`.
         let Some((before, after)) = template.split_once('\u{1}') else { return out.write_str(template) };
@@ -1388,6 +1418,26 @@ mod wire {
     }
 }
 
+/// A plural message for a script (`t.js().cards()`): the locale's number format, its plural
+/// table (the category of each number to 199, then a multiple of a million's) and the message's
+/// form for each category (`null` for one the locale does not use), as `format.js` reads them.
+pub(crate) fn plural_wire(data: &'static __private::LocaleData, forms: &[&str; 6], out: &mut String) {
+    wire::open(data, out);
+    wire::separators(&data.plain, &data.number, out);
+    out.push_str(",&quot;c&quot;:&quot;");
+    for category in data.plurals.iter().chain([&data.millions]) {
+        out.push(char::from(b'0' + category));
+    }
+    out.push_str("&quot;,&quot;m&quot;:[");
+    for (i, form) in forms.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(if form.is_empty() { "null" } else { form });
+    }
+    out.push_str("]}");
+}
+
 impl crate::script::Arg<crate::script::ts::NumberFormat> for NumberFormat {
     fn write_arg(&self, _: &crate::script::__private::Ctx, out: &mut String) {
         wire::open(self.data, out);
@@ -1455,6 +1505,17 @@ impl crate::script::Arg<crate::script::ts::DateFormat> for DateFormat {
 /// The data `messages!` writes for each locale. Not a public API.
 #[doc(hidden)]
 pub mod __private {
+    /// The plural category (zero, one, two, few, many, other: 0 to 5) of the whole number `n` in
+    /// a locale. `format.js` reads the same table the same way.
+    #[inline]
+    pub fn plural(data: &LocaleData, n: u64) -> u8 {
+        match n {
+            0..=199 => data.plurals[n as usize],
+            _ if n.is_multiple_of(1_000_000) => data.millions,
+            _ => data.plurals[100 + (n % 100) as usize],
+        }
+    }
+
     /// How a locale writes the digits of a number.
     pub struct Separators {
         pub decimal: &'static str,

@@ -53,6 +53,24 @@ for (const [tag, kind, input, expected] of rows("cases.tsv")) {
     check(`${tag} ${kind} ${input} (a Date)`, formatter(spec)(new Date(input)), expected);
   }
 }
+// A plural message picks its form by the count's category as Intl does (the server reads the same
+// table), and writes a count that is a number as t.number does.
+for (const [key, spec] of specs) {
+  const [tag, what] = key.split(" ");
+  if (what !== "plural") continue;
+  const pick = formatter(spec);
+  const rules = new Intl.PluralRules(tag);
+  for (const n of [...Array.from({ length: 1200 }, (_, i) => i), 1e6, 2e6, 1e6 + 1, 1e6 + 21, 1234567, 21e6, 1e9]) {
+    check(`${tag} plural ${n}`, pick({ count: n }), rules.select(n));
+    check(`${tag} plural ${-n}`, pick({ count: -n }), rules.select(n));
+  }
+  check(`${tag} plural 1.5`, pick({ count: 1.5 }), "other");
+}
+const en = formatter({ ...specs.get("en number"), c: specs.get("en plural").c, m: [null, ["", "count", " card"], null, null, null, ["", "count", " cards"]] });
+check("a plural count is written as t.number writes it", en({ count: 1234 }), "1,234 cards");
+check("a plural count of one", en({ count: 1 }), "1 card");
+check("a plural count given as text is written as given", en({ count: "1" }), "1 card");
+
 // A number a script works out may be one JavaScript prints with an exponent; it is written as its
 // digits. And a change keeps at most 38 digits in all, as the server's Decimal does.
 const change = formatter(specs.get("en change 2"));
