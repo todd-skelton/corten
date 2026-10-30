@@ -1585,7 +1585,12 @@ Corten is pre-1.0, so any minor version may change the API.
     a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
-86. Breaking: corten-ui's `MenuButton` takes its items as children, each the app's own element with
+86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
+    one fits is part of correctness in the conflict order: a header, wire format or file format
+    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
+    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
+    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
+87. Breaking: corten-ui's `MenuButton` takes its items as children, each the app's own element with
     `role="menuitem"` (a link, with `download` or `target` as it needs; a `<form method="post">`
     with the fields it sends around a `<button role="menuitem">`; a `<button command="show-modal">`
     that opens a confirm dialog), and `MenuItem` is gone: it was only a typed link or a field-less
@@ -1596,11 +1601,6 @@ Corten is pre-1.0, so any minor version may change the API.
     item
     ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
 
-86. Values 2 is "Standards first, extended rather than replaced", and following a standard where
-    one fits is part of correctness in the conflict order: a header, wire format or file format
-    of Corten's own where a standard exists needs a Choice in `docs/design.md` saying why
-    (design rule 10), and review looks for one without it (`CONTRIBUTING.md`, Review)
-    ([#402 The docs do not say Corten extends standards rather than replacing them, and the formats it defines record no reason](https://github.com/todd-skelton/corten/issues/402)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
