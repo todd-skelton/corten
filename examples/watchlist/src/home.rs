@@ -336,7 +336,9 @@ mod tests {
             "server renders prices first: {body}"
         );
         assert!(
-            body.contains(r#"<td data-ref="change" class="live-prices__change" data-key="ACME" data-trend="flat">$0.00 0.00%</td>"#),
+            body.contains(
+                r#"<td data-ref="change" class="live-prices__change" data-key="ACME" data-trend="flat">$0.00 0.00%</td>"#
+            ),
             "and today's change, in money and in the page's change format: {body}"
         );
         assert_eq!(rows(&body), ["ACME", "GLBX", "INIT"], "a first visit watches three");
