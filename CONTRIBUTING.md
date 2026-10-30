@@ -190,9 +190,12 @@ conflict, the order in the README decides. What to look for:
    the compiler could catch, a guarantee with no `compile_fail` doctest or `@ts-expect-error`
    line, a string at a seam (a URL, a ref, a class, a message key), or a second way to do
    something that already has one ([design rules](docs/design.md#rules)).
-- The other values: a dependency or concept a smaller change would avoid, something the
-   browser or HTTP already provides, a page that stops working without JavaScript, a default
-   that is not production-ready, a guide or changelog that no longer matches.
+- Standards: a header, wire format or file format of Corten's own where a standard exists,
+   with no Choice in `docs/design.md` saying why ([design rule 10](docs/design.md#rules)),
+   or something the browser or HTTP already provides built again.
+- The other values: a dependency or concept a smaller change would avoid, a page that stops
+   working without JavaScript, a default that is not production-ready, a guide or changelog
+   that no longer matches.
 
 Findings come first, the most severe first, each with its file and line and the value it
 breaks. The author fixes each one or answers on the pull request why it stands. The pull
