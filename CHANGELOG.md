@@ -2113,6 +2113,12 @@ Corten is pre-1.0, so any minor version may change the API.
     `IdNotADeriveIdType`; `TextOrElementWithoutId`), though not its place in the view. The markers are zero-sized and the macro's output is otherwise the same, so rendering
     is unchanged
     ([#383 An if or match inside a for in html! fails with E0382 (use of moved value), and a patch's E0277 does not name the part that is not a patch](https://github.com/todd-skelton/corten/issues/383)).
+79. During a pin bump (`Cargo.toml` moved to another corten revision, `Cargo.lock` not resolved
+    yet), `corten dev`, `fmt` and `check` told the user to install the corten the app was leaving:
+    the note now compares the command with the revision `Cargo.toml` asks for when it is not the one
+    the lock was written for, and says nothing for a tag or branch whose commit the lock does not
+    know yet
+    ([#475 During a pin bump, the CLI version note reads the stale Cargo.lock and tells you to install the older corten](https://github.com/todd-skelton/corten/issues/475)).
 
 ### Documentation
 
