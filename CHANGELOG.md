@@ -1542,6 +1542,18 @@ Corten is pre-1.0, so any minor version may change the API.
     is built with `Choice::new(value, label)` and its terms set with
     `Choice { terms: &["NM"], ..Choice::new(..) }`. examples/ui-gallery finds a condition by its
     grade (`mp`) ([#420 corten-ui ComboBox matches only a substring of the label, so a picker cannot search other terms (a card number) or rank the matches](https://github.com/todd-skelton/corten/issues/420)).
+83. **Breaking for JSON clients.** Every JSON failure (under `App::api`, a `JsonResult<T>` route, a
+    data client) is an RFC 9457 Problem Details document sent as `application/problem+json`, in
+    place of Corten's own `{"error":{"status","message"}}` as `application/json`:
+    `{"title":"Not Found","status":404,"detail":"No item 7."}`. `title` is the status's reason,
+    `detail` the message a client may be told (left out when it would repeat the title, as for
+    every 5xx outside `corten dev`), and `type` is left out, which means `about:blank`.
+    Validation errors keep `fields` and `form`, now as extension members beside `detail`. A client
+    reads `detail` where it read `error.message`, `status` where it read `error.status`, and
+    `fields` where it read `error.fields`. `Api::errors` still writes another protocol's shape,
+    sent as `application/json`. Gateways, API tools and clients read the failures without
+    knowing Corten (`docs/guide/app.md`, `docs/guide/requests-and-forms.md`)
+    ([#392 JSON failures use a shape of our own, {"error":{"status","message"}}, instead of RFC 9457 Problem Details (application/problem+json)](https://github.com/todd-skelton/corten/issues/392)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

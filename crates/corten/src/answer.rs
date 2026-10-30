@@ -72,7 +72,7 @@ pub enum Format {
     /// By the request's mode: the app's error page for a browser, JSON for a data client
     /// (`Accept: application/json`), the status line for anything else.
     Html,
-    /// JSON, `{"error":{"status","message"}}`, whatever the client accepts.
+    /// JSON, a Problem Details document (`application/problem+json`), whatever the client accepts.
     Json,
 }
 
@@ -358,8 +358,8 @@ pub type JsonResult<T> = std::result::Result<crate::Json<T>, JsonError>;
 /// JSON answer; it derefs to the response for any other header of the handler's own.
 ///
 /// A status here is the app's own answer, body and all: `503 {"error":"No forecast yet"}` reaches
-/// the client as written. A failure (`Err`) is answered as every failure of a JSON route is,
-/// `{"error":{"status","message"}}`.
+/// the client as written. A failure (`Err`) is answered as every failure of a JSON route is, a
+/// Problem Details document (`application/problem+json`, `{"title","status","detail"}`).
 ///
 /// ```
 /// use corten::{axum::http::StatusCode, json::Raw, prelude::*, security::cookie::SetCookie, JsonError, JsonResponse};
@@ -518,7 +518,7 @@ impl Answer for JsonResponse {
 pub enum JsonError {
     /// Any failure, answered as every failure of a JSON route is.
     Error(Error),
-    /// The input's field errors: 422, `{"error":{..,"fields":{..}}}`.
+    /// The input's field errors: 422, `{"title","status","detail","fields":{..}}`.
     Fields(crate::Errors),
 }
 

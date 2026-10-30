@@ -11,7 +11,7 @@
 | `POST` with `corten: action` | runtime, `<form data-patch>` | `req.patch_or(view, page)`, or `req.patch(view)` | replaces each element by `id`; `view::Remove(id)` removes one, `view::Append(id, rows)` adds rows at its end (ids are `#[derive(Id)]` types) |
 | `POST`, no header | a form without JavaScript | `req.page(..)` or `req.redirect(&route)` | renders the page |
 | any, `Accept: application/json` | native screen, agent, test | `req.screen(&data, doc)` (`data` a `ToJson`): `{"title", "data"}`, the title from the document's `<title>` | renders natively, or reasons over it |
-| any, under an `App::api` prefix | a webhook, a service, a partner's site | JSON (`corten::Json`), errors as `{"error": ...}` | reads the JSON |
+| any, under an `App::api` prefix | a webhook, a service, a partner's site | JSON (`corten::Json`), errors as Problem Details (`application/problem+json`) | reads the JSON |
 | SSE | `<corten-live src>` | `corten::live(stream_of_views)` | applies each like a patch |
 | `GET {feed}`, `{feed}/live` | a handler's `subscribe()`, or `Replica` | `feed.snapshot()`, `feed.live(since)` | snapshot, then ordered patches |
 
@@ -71,7 +71,7 @@ the 422 with `fields`, anything else is answered as any failure of a JSON route
 
 ```rust,ignore
 async fn alert_json(State(source): State<Source>, Json(input): Json<CreateAlert>) -> JsonResult<AlertSet> {
-    let price = check(&input)?; // 422, {"error":{..,"fields":{"email":".."}}}
+    let price = check(&input)?; // 422, {"title","status","detail","fields":{"email":".."}}
     let item = source.item(&input.id).await?.ok_or_else(Error::not_found)?; // 500 or 404
     Ok(Json(AlertSet::new(&item, price)))
 }
@@ -79,8 +79,9 @@ async fn alert_json(State(source): State<Source>, Json(input): Json<CreateAlert>
 
 On a page, `?` on `Errors` does not compile: `HtmlResult`'s error is an `Error`, and a
 page's form answers with `req.invalid`, which shows the form again. Under an API with its own
-error shape (`Api::errors`), the 422 keeps Corten's shape, since a status and a message have
-no place for the fields; every other failure is written in the API's.
+error shape (`Api::errors`), the 422 stays a Problem Details document with its `fields` and
+`form` members, since a status and a message have no place for them; every other failure is
+written in the API's.
 
 `Form` (a form's body, or a `GET` form's query string) and `Params` (a route's own parameters,
 below) read what a browser sends the way it sends it, a key once per value.
@@ -599,8 +600,11 @@ browser asked. The page is given a `Failure` that says which case it is
 ([error pages](app.md#error-pages)).
 
 A client that asked for JSON, every route whose handler returns `JsonResult<T>`, and every
-request under an [`App::api`](app.md#json-only-routes) prefix, gets every failure in one shape: `{"error":{"status":404,"message":"Not Found"}}`. A
-4xx carries the error's message or the rejection's text; a 5xx carries only the status's
-reason. Validation errors add the fields:
-`{"error":{"status":422,"message":"email: ...","fields":{"email":"..."}}}`, and a message about
-the whole form (`Errors::add_form`) is `form` too.
+request under an [`App::api`](app.md#json-only-routes) prefix, gets every failure in one shape,
+the standard one: an RFC 9457 Problem Details document, sent as `application/problem+json`,
+`{"title":"Not Found","status":404,"detail":"No item 7."}`. `title` is the status's reason. A
+4xx's `detail` is the error's message or the rejection's text; a 5xx has no `detail`, only the
+status (the message is logged, and shown under `corten dev`). Validation errors add the fields
+as an extension member:
+`{"title":"Unprocessable Entity","status":422,"detail":"email: ...","fields":{"email":"..."}}`,
+and a message about the whole form (`Errors::add_form`) is `form` too.
