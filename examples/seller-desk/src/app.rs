@@ -338,7 +338,7 @@ async fn archive(req: Req, State(desk): State<Desk>, Form(input): Form<ArchiveIn
     let removed = html! {
         for id in &done { {Remove(RowId(id))} }
         <ItemCount t={t} count={left} />
-        <StatusLine text={&format!("Archived {} item{}.", done.len(), if done.len() == 1 { "" } else { "s" })} />
+        <StatusLine text={&t.status_archived(done.len()).to_string()} />
     };
     req.patch_or(removed, || async { req.redirect(&url::Home) }).await
 }
@@ -525,10 +525,13 @@ mod tests {
         );
         assert!(html.contains(r#"<tr data-key="i00003" id="row-i00003"><td><input data-ref="select""#), "{html}");
         assert!(html.contains(r#"data-on="connect:inventory_grid.live(@body,"#), "{html}");
-        let unsent = r#"{note:@note,one:%[&quot;&quot;,&quot;count&quot;,&quot; price not saved&quot;],other:%[&quot;&quot;,&quot;count&quot;,&quot; prices not saved&quot;],number:"#;
+        let one = r#"[&quot;&quot;,&quot;count&quot;,&quot; price not saved&quot;]"#;
+        let other = r#"[&quot;&quot;,&quot;count&quot;,&quot; prices not saved&quot;]"#;
+        let forms = format!("&quot;m&quot;:[null,{one},null,null,null,{other}]}}}})");
         assert!(
-            html.contains(&format!("inventory_grid.priceEdited($e,@body,{unsent}")),
-            "a cell's typed event reaches the grid, with the catalog's words for the note: {html}"
+            html.contains("inventory_grid.priceEdited($e,@body,{note:@note,label:%{&quot;z&quot;:")
+                && html.matches(&forms).count() == 2,
+            "a cell's typed event reaches the grid, with the catalog's plural forms for the note: {html}"
         );
         assert!(
             html.contains(r#"commandfor="archive-dialog">Archive</button>"#) && html.contains(r#"<dialog id="archive-dialog">"#),

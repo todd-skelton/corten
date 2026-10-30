@@ -1549,6 +1549,42 @@ impl fmt::Write for Encode<'_> {
 /// # fn main() {}
 /// ```
 ///
+/// `any = relay` serves every method (a relay to another server behind a catch-all), so it is the
+/// route's only handler:
+///
+/// ```compile_fail
+/// use corten::{axum::extract::Request, prelude::*, route::FromUrl};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/{*rest}", get = relay, any = relay)]
+///     pub struct Elsewhere<'a> { pub rest: &'a str }
+/// }
+///
+/// async fn relay<R: FromUrl>(_: Params<R>, _: Request) -> &'static str {
+///     "upstream"
+/// }
+/// # fn main() {}
+/// ```
+///
+/// A generic handler is named without type arguments: each route picks it by the `Params` it
+/// takes, so `any = relay::<..>` does not compile:
+///
+/// ```compile_fail
+/// use corten::{axum::extract::Request, prelude::*, route::FromUrl};
+///
+/// #[corten::routes]
+/// mod url {
+///     #[route("/{*rest}", any = relay::<Elsewhere<'static>>)]
+///     pub struct Elsewhere<'a> { pub rest: &'a str }
+/// }
+///
+/// async fn relay<R: FromUrl>(_: Params<R>, _: Request) -> &'static str {
+///     "upstream"
+/// }
+/// # fn main() {}
+/// ```
+///
 /// A field `Params` has no owned form for (a borrowed `#[route(query)]` set) or a `#[serde(..)]`
 /// key it does not follow (`alias`, `with`, `flatten`, `skip`, a container `default`, ...),
 /// on the route or on a query set it includes, leaves the route's links as they are, and a handler that
@@ -1963,13 +1999,14 @@ pub mod __private {
                     T: 'static,
                     S: Clone + Send + Sync + 'static,
                 {
-                    Methods(axum::routing::$method(endpoint(handler)), stringify!($method) == "get")
+                    Methods(axum::routing::$method(endpoint(handler)), matches!(stringify!($method), "get" | "any"))
                 }
             )*
 
         };
     }
-    methods!(get, post, put, delete, patch, head, options, trace);
+    // `any`: every method, those the app never names included (a relay to another server).
+    methods!(get, post, put, delete, patch, head, options, trace, any);
 
     /// A handler's rows (`Self`, [`crate::answer::Answer::Rows`]) are the ones its route names
     /// (`D`).

@@ -19,7 +19,8 @@ pub struct ArchiveDialogId;
 /// event, and the grid counts those that are not), a confirm dialog for archiving, and live stock
 /// levels. The sort and the filter read the rows' fields by name (`row.name`, `row.qty`), so a
 /// column moved in the markup cannot sort the wrong one, and the count of unsaved prices is the
-/// catalog's text (`t.js()`).
+/// catalog's plural message (`t.js().grid_unsent()`), which picks its form in the browser as the
+/// server would.
 ///
 /// The rows are `InventoryRow` views with no handlers of their own: one handler on the `<tbody>`
 /// gets the checkbox that was clicked (`select.closest()`), so 500 rows cost one `data-on`, and
@@ -29,8 +30,8 @@ pub fn InventoryGrid<'a>(lines: &'a [Line<'a>], t: Msg) -> impl Render {
     let (body, select, all, count, bar, form, empty, note, shown) = refs();
     // What the selection handlers update, built once and passed as one argument.
     let sel = js::Selection { body, all, count, bar };
-    // The unsaved-prices note and its text, one message per plural form.
-    let unsent = js::Unsent { note, one: t.js().grid_unsent_one(), other: t.js().grid_unsent_other(), number: t.js().number() };
+    // The unsaved-prices note and its text, a plural message the script fills in with the count.
+    let unsent = js::Unsent { note, label: t.js().grid_unsent() };
     // How many rows the filter shows of how many there are, in place of the item count.
     let found = js::Found { empty, shown, text: t.js().grid_shown(), number: t.js().number() };
     html! {
