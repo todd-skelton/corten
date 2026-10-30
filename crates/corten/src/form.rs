@@ -189,6 +189,20 @@
 //! }
 //! ```
 //!
+//! A map's value may be an `Option`, so a count left blank reads as `None`:
+//!
+//! ```
+//! # use std::collections::BTreeMap;
+//! #[derive(serde::Deserialize, corten::Fields)]
+//! struct Counts {
+//!     #[fields(map)]
+//!     #[serde(default)]
+//!     counts: BTreeMap<u32, Option<u32>>,
+//! }
+//! let read: Counts = corten::form::from_bytes(b"counts%5B4%5D=2&counts%5B9%5D=").unwrap();
+//! assert_eq!(read.counts, BTreeMap::from([(4, Some(2)), (9, None)]));
+//! ```
+//!
 //! A field is `#[fields(group)]`, `#[fields(rows)]` or `#[fields(map)]`, and a name in the form
 //! has no `.`, `[` or `]` of its own (they name a group's or a row's fields):
 //!
@@ -737,7 +751,8 @@ fn encode_key(key: &str, out: &mut String) {
 
 /// A key of a [`Rows`] field, written in its fields' names as the form reads it back: text, an
 /// integer, or a `#[derive(UrlValue)]` enum (its word). A newtype key implements it as the value
-/// it wraps (`self.0.key_text(buf)`), and must read back from that text.
+/// it wraps (`self.0.key_text(buf)`), and its `Deserialize` must read it back from that text and
+/// from no other (not case-insensitively, say), or one row could be reached by two keys.
 ///
 /// An enum with a variant serde reads by more than its word (`#[serde(alias)]`, `#[serde(other)]`)
 /// is no row's key: two keys the form tells apart would be one row on the server, so naming its

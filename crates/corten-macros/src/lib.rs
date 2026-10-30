@@ -309,6 +309,7 @@ fn fields(input: TokenStream) -> Result<String, String> {
         let shape = match kind {
             Kind::Plain => Shape::Plain,
             Kind::Group => {
+                no_option(&ident, &ty, "group")?;
                 let group = nested_type(&ident, &ty, "group")?;
                 if !default {
                     bare_groups.push((ident.clone(), group.clone()));
@@ -522,16 +523,21 @@ fn nested_type(field: &str, ty: &[TokenTree], what: &str) -> Result<String, Stri
     if ty.iter().any(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == '\'')) {
         return Err(format!("Fields: `{field}` is a {what}, and a {what}'s type cannot borrow (`'a`); give it owned fields"));
     }
-    if is_option(ty) {
-        return Err(format!(
-            "Fields: `{field}` is a {what}, and a {what} is never an Option: a form sends its fields or leaves them out one by one; make the fields Options and give the {what} #[serde(default)]"
-        ));
-    }
     let text: String = ty.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(" ");
     if text.is_empty() {
         return Err(format!("Fields: `{field}` has no type"));
     }
     Ok(text)
+}
+
+/// A group is never an `Option`: a form sends its fields one by one.
+fn no_option(field: &str, ty: &[TokenTree], what: &str) -> Result<(), String> {
+    if is_option(ty) {
+        return Err(format!(
+            "Fields: `{field}` is a {what}, and a {what} is never an Option: a form sends its fields or leaves them out one by one; make the fields Options and give the {what} #[serde(default)]"
+        ));
+    }
+    Ok(())
 }
 
 /// The key and row types of a rows field: `BTreeMap<Domain, DomainLimits>`.

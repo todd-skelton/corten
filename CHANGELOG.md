@@ -1001,12 +1001,13 @@ Corten is pre-1.0, so any minor version may change the API.
     type (a `RowKey`: text, an integer, or a `#[derive(UrlValue)]` enum, by its word); a key's other
     characters are %-encoded. A group of groups, rows in a group or a row, rows without a default, a
     group that is an `Option`, and a row key an enum reads by more than its word (`alias`, `other`)
-    do not compile. `Form` and `corten::form::from_bytes` read both with Corten's own form reader.
-    `#[fields(map)] #[serde(default)] counts: BTreeMap<Sku, u32>` is one plain value per key,
-    `f.counts.at(&sku)`, posted as `counts[sku]`, with its own error. Plain forms pay for it:
-    reading a form of three plain fields costs 3,332 instructions where it took 3,110, and refusing
-    one whose number does not parse 5,401 where it took 5,176 (callgrind, release build, 3 runs
-    each); a row's error is found by its key, so many rows' errors do not cost each other
+    do not compile, and neither does a `UrlValue` enum with two variants written as one word. `Form`
+    and `corten::form::from_bytes` read both with Corten's own form reader. `#[fields(map)]
+    #[serde(default)] counts: BTreeMap<Sku, u32>` is one plain value per key, `f.counts.at(&sku)`,
+    posted as `counts[sku]`, with its own error. Plain forms pay for it: reading a form of three
+    plain fields costs 3,332 instructions where it took 3,110, and refusing one whose number does
+    not parse 5,401 where it took 5,176 (callgrind, release build, 3 runs each); a row's error is
+    found by its key, so many rows' errors do not cost each other
     ([#366 A form with the same fields on each row cannot name a row's field or give it its own error](https://github.com/todd-skelton/corten/issues/366), [#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
 
 ### Removed

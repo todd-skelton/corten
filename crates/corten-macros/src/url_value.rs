@@ -46,6 +46,8 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
     // Whether a variant reads more than its own word (`alias`, `other`): such a key reaches one
     // row by several words, so two rows would become one, and it is no row's key.
     let mut many_words = false;
+    // Each variant's word, and its name, so two that write the same word are refused.
+    let mut words: Vec<(String, String)> = Vec::new();
     for tokens in split(body.stream(), ',') {
         let mut j = 0;
         let mut attrs = Vec::new();
@@ -93,6 +95,13 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             let text = text.strip_prefix("r#").unwrap_or(&text).to_string();
             rule.as_deref().map_or(text.clone(), |rule| variant_rule(&text, rule))
         });
+        if let Some(other) = words.iter().find(|(w, _)| *w == word).map(|(_, v)| v) {
+            return err(
+                ident.span(),
+                format!("UrlValue: {other} and {ident} are both written {word:?}, so a link to one reads back as the other; rename one"),
+            );
+        }
+        words.push((word.clone(), ident.to_string()));
         arms.extend(q(
             "Self::__A0 => __A1,",
             &[TokenTree::Ident(ident.clone()).into(), TokenTree::Literal(Literal::string(&word)).into()],
