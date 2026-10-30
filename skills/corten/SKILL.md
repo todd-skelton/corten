@@ -79,8 +79,8 @@ Read only the recipe the task needs. For concepts, read the guides in the Corten
 
 1. List every component with a script or styles once in `App::components` (an unlisted one is an
    error under `corten dev`). A `#[event]` comes with the component script that imports it.
-2. Run `corten fmt`, then `corten check`: `cargo fmt --check`, `corten fmt --check` (the markup
-   in `html!`), clippy with warnings denied, `tsc` over the scripts in `src/` and `static/`, and the
+2. Run `corten fmt` (`cargo fmt`, then the markup in `html!`), then `corten check`: `corten fmt
+   --check` (both), clippy with warnings denied, `tsc` over the scripts in `src/` and `static/`, and the
    tests. The compiler checks each `js::` call against the script's JSDoc; `tsc` checks the
    function bodies (install TypeScript; without it `corten check` prints that they were not
    checked). At a workspace root it checks each member that depends on `corten`.
