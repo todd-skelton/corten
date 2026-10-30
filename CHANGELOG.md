@@ -971,8 +971,6 @@ Corten is pre-1.0, so any minor version may change the API.
     formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
     minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
     ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
-    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
 134. `#[derive(Href)]` on an enum whose variants each hold a route (an app's screens) makes it a
     link, `href={screen}`, and a component several pages draw takes where its links and forms go
     as `&dyn Href`, so each page passes its own typed route instead of a `String`; a unit variant
@@ -992,6 +990,13 @@ Corten is pre-1.0, so any minor version may change the API.
     of one the answer brought, costs a plain GET about 75 instructions (20,351-20,358 to
     20,427-20,432 under callgrind, 3 runs, about 0.4%)
     ([#390 A page or a relayed answer cannot choose a stricter Referrer-Policy: Corten replaces it on every answer](https://github.com/todd-skelton/corten/issues/390)).
+136. `corten dev`, `fmt` and `check` notice when the app's `Cargo.lock` pins another corten than the
+    one they were built from (a git revision or a release) and say so before running, with the
+    `cargo install` command for the matching one; they ran with the old behavior silently, and
+    `check` failed on `cargo fmt --check` with no reason. The command records the commit it is built
+    from (`corten --version` prints it), read from `.git` or a published package's
+    `.cargo_vcs_info.json`, standard library only. A path dependency is not compared
+    ([#458 The corten CLI does not notice it is older than the corten the app pins, so fmt and check silently use old behavior](https://github.com/todd-skelton/corten/issues/458)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
