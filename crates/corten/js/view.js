@@ -78,7 +78,7 @@ export function checked(el, on) {
  * }} Rows
  */
 
-const SERVER_MADE = "corten: the server makes these rows: their view's key is also shown outside its holes";
+const SERVER_MADE = "corten: the server makes these rows: a script makes only rows of a view whose key={..} is one of its holes";
 
 /** @type {WeakMap<Element, { View: unknown, list: unknown, use: (t: HTMLTemplateElement | undefined) => void }>} */
 const lists = new WeakMap();
