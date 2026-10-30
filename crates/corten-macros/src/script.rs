@@ -609,8 +609,53 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         }
         ty
     };
-    let plain_type = |ty: &str| {
+    // A type with each alias inside it written out (`Tab[]` as `import("../types/app").Tab[]`), so
+    // a generated declaration or a set of names is seen wherever it is.
+    let expand = |ty: &str| {
         let ty = resolve(ty);
+        let mut out = String::with_capacity(ty.len());
+        let (mut word, mut quote, mut after_dot) = (String::new(), None, false);
+        let flush = |word: &mut String, out: &mut String, after_dot: bool| {
+            match aliases.iter().find(|(local, _)| *local == *word).filter(|_| !after_dot) {
+                // A set of names in parentheses, so `Mode | null` stays one set and `null`.
+                Some(_) => {
+                    let target = resolve(word);
+                    if names_union(&target) {
+                        out.push('(');
+                        out.push_str(&target);
+                        out.push(')');
+                    } else {
+                        out.push_str(&target);
+                    }
+                }
+                None => out.push_str(word),
+            }
+            word.clear();
+        };
+        for c in ty.chars() {
+            match (c, quote) {
+                (c, Some(q)) => {
+                    out.push(c);
+                    if c == q {
+                        quote = None;
+                    }
+                }
+                (c, None) if c.is_ascii_alphanumeric() || c == '_' || c == '$' => word.push(c),
+                (c, None) => {
+                    flush(&mut word, &mut out, after_dot);
+                    if c == '"' || c == '\'' {
+                        quote = Some(c);
+                    }
+                    after_dot = c == '.';
+                    out.push(c);
+                }
+            }
+        }
+        flush(&mut word, &mut out, after_dot);
+        out
+    };
+    let plain_type = |ty: &str| {
+        let ty = expand(ty);
         match param_type(&ty) {
             Param::Any => event_of(&ty).map_or(Param::Any, Param::Event),
             other => other,
@@ -626,15 +671,23 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         } else if !matches!(ty.as_str(), "object" | "Object") {
             continue;
         }
-        if let Some((field, ty)) = props.iter().find(|(_, t)| names_union(&resolve(t))) {
+        let fields: Vec<(String, Param)> = props.iter().map(|(n, t)| (n.clone(), plain_type(t))).collect();
+        // Only a group is checked: a typedef of plain values (one the script keeps for itself, or
+        // a JSON value a handler takes) is the script's to type.
+        // (A generated declaration the call could not be checked against does not make one: an
+        // unreadable `FeedUrl` does, as any feed's URL.)
+        let group = fields
+            .iter()
+            .zip(&props)
+            .any(|((_, p), (_, t))| not_json(p) && !(matches!(p, Param::Unreadable(_)) && mentions_generated(&expand(t))));
+        if !group {
+            continue;
+        }
+        if let Some((field, ty)) = props.iter().find(|(_, t)| names_union(&expand(t))) {
             return Err((line, union_error(&format!("{name}: {field}"), ty)));
         }
-        let fields: Vec<(String, Param)> = props.iter().map(|(n, t)| (n.clone(), plain_type(t))).collect();
         if let Some((_, Param::Unreadable(why))) = fields.iter().find(|(_, p)| matches!(p, Param::Unreadable(_))) {
             return Err((line, why.clone()));
-        }
-        if !fields.iter().any(|(_, p)| not_json(p)) {
-            continue;
         }
         for (field, _) in &fields {
             if !field.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
@@ -654,7 +707,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             // `corten::types` generates: the call is then checked, and a renamed variant fails to
             // build. A string literal union would take any value.
             let named = resolve(&ty);
-            if names_union(&named) {
+            if names_union(&expand(&ty)) {
                 return Err((line, union_error(&format!("{name}: {param}"), &ty)));
             }
             let resolved = if groups.iter().any(|g| g.name == named) { Param::Group(named) } else { plain_type(&ty) };
@@ -730,14 +783,17 @@ fn alias_name(ty: &str) -> bool {
 /// them or optional (`=`). A `|` inside a literal is part of it.
 fn names_union(ty: &str) -> bool {
     let ty = ty.trim().trim_end_matches('=').trim();
-    let ty = ty.trim_start_matches('(').trim_end_matches(')');
+    let ty = ty.strip_prefix('?').unwrap_or(ty).trim();
     let mut parts = Vec::new();
-    let (mut start, mut quote) = (0, None);
+    let (mut start, mut quote, mut depth) = (0, None, 0i32);
     for (i, c) in ty.char_indices() {
         match (c, quote) {
             ('"' | '\'', None) => quote = Some(c),
             (c, Some(q)) if c == q => quote = None,
-            ('|', None) => {
+            (_, Some(_)) => {}
+            ('(' | '<' | '[' | '{', None) => depth += 1,
+            (')' | '>' | ']' | '}', None) => depth -= 1,
+            ('|', None) if depth == 0 => {
                 parts.push(&ty[start..i]);
                 start = i + 1;
             }
@@ -752,6 +808,8 @@ fn names_union(ty: &str) -> bool {
         match part {
             "null" | "undefined" => {}
             _ if literal => names += 1,
+            // A set written in parentheses, or an alias of one written out: `("a" | "b") | null`.
+            _ if part.starts_with('(') && part.ends_with(')') && names_union(&part[1..part.len() - 1]) => names += 1,
             _ => return false,
         }
     }
@@ -1133,6 +1191,29 @@ function helper() {}
             let err = parse(&format!("/** @param {{{ty}}} a */\nexport function f(a) {{}}")).unwrap_err();
             assert!(err.1.contains("types a value alone"), "{ty}: {}", err.1);
         }
+        for alias in ["Tab[]", "Tab | null", "Tab=", "Array<Tab>", "?Tab"] {
+            let source = format!(
+                "/** @typedef {{import(\"../types/app\").Tab}} Tab */\n/** @param {{{alias}}} a */\nexport function f(a) {{}}"
+            );
+            assert!(parse(&source).unwrap_err().1.contains("types a value alone"), "{alias}");
+        }
+        let (feed, _) = parse(
+            "/** @typedef {import(\"../types/app\").Level} Level */\n/** @param {FeedUrl<Level>} a */\nexport function f(a) {}",
+        )
+        .unwrap();
+        assert_eq!(feed[0].params[0].1, Param::Feed("Level".into()), "a feed of an alias");
+        // A script's own types of plain values are its own, whatever they hold.
+        for typedef in [
+            "/** @typedef {{ id: string, mode: \"a\" | \"b\" }} State */",
+            "/** @typedef {object} Saved\n * @property {\"a\" | \"b\"} mode */",
+            "/** @typedef {{ id: string, rows: import(\"./types/app\").Tab[] }} Payload */",
+        ] {
+            parse(&format!("{typedef}\n/** @param {{HTMLElement}} el */\nexport function f(el) {{}}")).unwrap();
+        }
+        let grouped = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {{ el: HTMLElement, tabs: Tab[] }} Sel */\n/** @param {Sel} s */\nexport function f(s) {}";
+        assert!(parse(grouped).unwrap_err().1.contains("types a value alone"), "a group's field");
+        let mode = "/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {Mode | null} m */\nexport function f(m) {}";
+        assert!(parse(mode).unwrap_err().1.contains("is a Rust enum the markup passes"), "an alias of a set, or null");
         let (fine, _) = parse("/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {string} s */\nexport function f(s) {}").unwrap();
         assert_eq!(fine[0].params[0].1, Param::Checked("ts::String".into()), "a typedef no handler takes is the script's");
     }
