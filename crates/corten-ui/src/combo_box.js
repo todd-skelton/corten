@@ -1,10 +1,13 @@
 // @ts-check
 // ComboBox (combo_box.rs): the ARIA 1.2 combobox with a listbox popup. The <select> keeps the
-// value; this shows a text input instead, filters the options as the user types, and writes
-// the pick back to the select. `connect` keeps the parts and the highlight by the component's
+// value; this shows a text input instead, filters and ranks the options as the user types, and
+// writes the pick back to the select. `connect` keeps the parts and the highlight by the component's
 // root, so each handler takes only the root (`scope`).
 
-/** @typedef {{ select: HTMLSelectElement, input: HTMLInputElement, popup: HTMLDivElement, list: HTMLDivElement, empty: HTMLParagraphElement }} Parts */
+/**
+ * `all` is every option in the select's order and `words` each one's label and terms, lowercased.
+ * @typedef {{ select: HTMLSelectElement, input: HTMLInputElement, popup: HTMLDivElement, list: HTMLDivElement, empty: HTMLParagraphElement, all: HTMLElement[], words: string[][] }} Parts
+ */
 /** @typedef {Parts & { shown: HTMLElement[], active: number }} Box */
 
 /** @type {WeakMap<HTMLElement, Box>} */
@@ -20,7 +23,7 @@ const box = (root) => boxes.get(root);
 export function connect(root, select, input, popup, list, empty) {
   if (boxes.has(root)) return; // back after a move: already built
   /** @type {Box} */
-  const b = { select, input, popup, list, empty, shown: [], active: -1 };
+  const b = { select, input, popup, list, empty, all: [], words: [], shown: [], active: -1 };
   boxes.set(root, b);
   // The app's <label for> follows the control that shows.
   const id = select.id;
@@ -37,6 +40,9 @@ export function connect(root, select, input, popup, list, empty) {
     el.textContent = option.text;
     if (option.disabled) el.setAttribute("aria-disabled", "true");
     list.append(el);
+    b.all.push(el);
+    const terms = option.dataset.terms ? option.dataset.terms.split("\n").filter((t) => t !== "") : [];
+    b.words.push([option.text, ...terms].map((w) => w.toLocaleLowerCase()));
   }
   mark(b);
   anchor(popup, input);
@@ -126,9 +132,9 @@ export function invalid(event, root) {
   b.input.reportValidity();
 }
 
-/** @param {Parts} parts */
+/** Every option, in the select's order. @param {Parts} parts */
 function options(parts) {
-  return /** @type {HTMLElement[]} */ (Array.from(parts.list.children));
+  return parts.all;
 }
 
 /** @param {Element} el */
@@ -143,17 +149,45 @@ function label(parts) {
 }
 
 /**
- * Shows the popup with every option (`typed` false) or those that contain the input's text.
+ * How well an option's words match the typed text: 0 one is the text, 1 one starts with it,
+ * 2 one holds it, -1 none does.
+ * @param {string[]} words
+ * @param {string} query
+ */
+function rank(words, query) {
+  let best = -1;
+  for (const w of words) {
+    const r = w === query ? 0 : w.startsWith(query) ? 1 : w.includes(query) ? 2 : -1;
+    if (r >= 0 && (best < 0 || r < best)) best = r;
+  }
+  return best;
+}
+
+/**
+ * Shows the popup with every option (`typed` false) or those whose label or terms hold the
+ * input's text, best matches first and each kind in the select's order.
  * @param {Box} parts
  * @param {boolean} typed
  */
 function open(parts, typed) {
-  const { input, popup, empty } = parts;
+  const { input, popup, empty, list } = parts;
   const query = typed ? input.value.trim().toLocaleLowerCase() : "";
-  parts.shown = [];
-  for (const el of options(parts)) {
-    el.hidden = query !== "" && !el.textContent?.toLocaleLowerCase().includes(query);
-    if (!el.hidden) parts.shown.push(el);
+  /** @type {HTMLElement[][]} */
+  const ranked = [[], [], []];
+  parts.all.forEach((el, i) => {
+    const r = query === "" ? 0 : rank(parts.words[i], query);
+    el.hidden = r < 0;
+    if (r >= 0) ranked[r].push(el);
+  });
+  parts.shown = ranked.flat();
+  // The list reads in the order the arrow keys move, so a reorder moves the elements, and only
+  // when the order changed.
+  let at = 0;
+  for (const el of /** @type {HTMLCollectionOf<HTMLElement>} */ (list.children)) {
+    if (!el.hidden && el !== parts.shown[at++]) {
+      list.append(...parts.shown);
+      break;
+    }
   }
   empty.hidden = parts.shown.length > 0;
   if (!popup.matches(":popover-open")) popup.showPopover();
