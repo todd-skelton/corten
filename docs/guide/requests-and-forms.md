@@ -565,6 +565,21 @@ patches the page it was sent from: a `target` or `formtarget` on it is not follo
 </form>
 ```
 
+A GET form sends only its own controls, and drops its `action`'s query. On a screen whose address
+holds more than one form changes (the seller and the page, and the research a second form sets),
+each form keeps the rest with `keep_query(&at, |f| [..])`, naming from the route's own fields
+(the struct derives `Route` and `Fields`) the ones its controls send: every other field the route
+writes becomes a hidden input, in the encoding its links use, and a field added to the route later
+is kept by every such form. List exactly the fields the form's controls name; one it sends that is
+not listed goes twice, and `Params` refuses that (400).
+
+```rust,ignore
+<form method="get" action={&at}>
+    {keep_query(&at, |f| [f.grade, f.from, f.to])}
+    <select name={f.grade}>..</select>
+</form>
+```
+
 A list that grows (Load more, the next page of results) answers with only the new rows:
 `view::Append(ResultsId, rows)` adds them at the end of the element with that id, and the rows
 the page has stay as they are. Load more is a GET form with `data-patch`, so without JavaScript

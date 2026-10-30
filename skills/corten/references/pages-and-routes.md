@@ -73,6 +73,11 @@ built by hand. A parameter whose URL name is not the field's (`?priceMin=`) is r
 (`#[serde(rename_all = "camelCase")]` or `#[serde(rename = "..")]`), which the link follows; never
 implement `QueryParams` by hand for it.
 
+A GET form that changes some of a route's query fields keeps the others with
+`{keep_query(&at, |f| [f.grade, f.from])}` (from `corten::form`; the route struct derives `Route`
+and `Fields`), listing exactly the fields its controls send. Never write the other fields as
+hidden inputs by hand.
+
 ## A component
 
 ```rust

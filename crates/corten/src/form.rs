@@ -498,6 +498,91 @@ impl<P: Place> AttrValue for FieldName<P> {
     }
 }
 
+/// The rest of a typed route's query as hidden inputs, for a GET form that changes some of its
+/// fields: a GET form sends only its own controls (and drops its `action`'s query), so a form
+/// that changes the research on a screen whose address also holds the seller and the page would
+/// lose them. `shown` names, from the route's own [`Fields`], the fields the form's controls send;
+/// every other field the route writes is kept, in the encoding its links use (an `Option` only when
+/// set, a list once per item, an enum by its word). A field added to the route is kept by every
+/// such form without a change to it, and a name from another struct does not compile.
+///
+/// ```
+/// use corten::prelude::*;
+/// use corten::form::keep_query;
+///
+/// #[derive(Clone, Default, serde::Deserialize, Route, Fields)]
+/// #[route("/slab-pricing")]
+/// struct Choice { cert: Option<String>, seller: Option<String>, #[serde(default)] trail: Vec<String>, grade: Option<u8> }
+///
+/// let at = Choice { cert: Some("a&b".into()), seller: None, trail: vec!["p1".into(), "p2".into()], grade: Some(9) };
+/// let f = Choice::FIELDS;
+/// let form = html! {
+///     <form method="get" action={&at}>
+///         {keep_query(&at, |f| [f.grade])}
+///         <input name={f.grade} value="10">
+///     </form>
+/// };
+/// assert_eq!(
+///     form.to_html(),
+///     concat!(
+///         r#"<form method="get" action="/slab-pricing?cert=a%26b&amp;trail=p1&amp;trail=p2&amp;grade=9">"#,
+///         r#"<input type="hidden" name="cert" value="a&amp;b">"#,
+///         r#"<input type="hidden" name="trail" value="p1"><input type="hidden" name="trail" value="p2">"#,
+///         r#"<input name="grade" value="10"></form>"#,
+///     )
+/// );
+/// ```
+///
+/// The names come from the route's own fields, so another form's do not compile:
+///
+/// ```compile_fail,E0609
+/// use corten::prelude::*;
+/// use corten::form::keep_query;
+///
+/// #[derive(Clone, Default, serde::Deserialize, Route, Fields)]
+/// #[route("/slab-pricing")]
+/// struct Choice { cert: Option<String>, grade: Option<u8> }
+///
+/// let at = Choice::default();
+/// let _ = html! { <form method="get" action={&at}>{keep_query(&at, |f| [f.seller])}</form> };
+/// ```
+///
+/// A field listed here that the form does not send is left out of the address; one the form sends
+/// that is not listed is sent twice, which the route's `Params` refuses (400): list exactly the
+/// fields the form's controls name.
+pub fn keep_query<'a, R: crate::route::Route + Fields, const N: usize>(
+    route: &'a R,
+    shown: impl FnOnce(R::Names) -> [FieldName; N],
+) -> KeepQuery<'a, R, N> {
+    KeepQuery { route, shown: shown(R::NAMES) }
+}
+
+/// What [`keep_query`] returns: hidden inputs for the route's query fields but `shown`.
+pub struct KeepQuery<'a, R, const N: usize> {
+    route: &'a R,
+    shown: [FieldName; N],
+}
+
+impl<R: crate::route::Route, const N: usize> Render for KeepQuery<'_, R, N> {
+    fn render(&self, out: &mut String) {
+        // The route's own encoding, read back: what its links send is what the form keeps.
+        let mut href = String::new();
+        self.route.write_href(&mut href, false);
+        let query = href.split_once('?').map_or("", |(_, q)| q);
+        let query = query.split_once('#').map_or(query, |(q, _)| q);
+        for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+            if self.shown.iter().any(|f| *f == key.as_ref()) {
+                continue;
+            }
+            out.push_str(r#"<input type="hidden" name=""#);
+            crate::view::escape_into(&key, out);
+            out.push_str(r#"" value=""#);
+            crate::view::escape_into(&value, out);
+            out.push_str(r#"">"#);
+        }
+    }
+}
+
 /// Where a form struct's fields are, written in front of each field's name: implemented by
 /// [`Root`], [`Group`], [`Row`] and [`RowGroup`]. Sealed.
 pub trait Place: Copy + PartialEq + std::hash::Hash + private::Sealed {
@@ -874,6 +959,10 @@ pub trait Fields {
     /// a group needs a default of its own.
     #[doc(hidden)]
     const LEAVE_OUT: bool;
+    /// Its names at the form's top, `Self::FIELDS`, for code generic over the struct
+    /// ([`KeepQuery`]).
+    #[doc(hidden)]
+    const NAMES: Self::Names;
     #[doc(hidden)]
     fn in_row<'k>(rows: &'static str, key: &'k (dyn RowKey + Sync)) -> Self::InRow<'k>;
 }
