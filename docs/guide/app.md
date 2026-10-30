@@ -779,7 +779,8 @@ An app moved onto Corten a slice at a time serves its own paths and relays the r
 old server behind a catch-all route. `any = relay` serves every method there, those the app never
 names included (`OPTIONS`, `PROPFIND`), so the upstream answers them, not Corten's 405. Corten
 still answers what it answers for every route first: a write from another site is a 403, and
-under an API that allows other origins a CORS preflight is Corten's. It is
+under an API that allows other origins a CORS preflight from one of them is Corten's (one from
+any other origin reaches the old server, and the write after it is still refused). It is
 the route's only handler, which the module checks when it compiles, so `any` is named in a
 `#[corten::routes]` module (an area's or an API's as well) and has no builder for routes added by
 hand. A path the app routes itself keeps only the methods it names: when the
