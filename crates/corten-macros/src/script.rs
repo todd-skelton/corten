@@ -44,6 +44,10 @@ pub enum Param {
     Generated(String),
     /// A type Corten would check but cannot read (`FeedUrl<Level[]>`): why, for the error.
     Unreadable(String),
+    /// A handler parameter whose type no call can be checked against (a set of names written as
+    /// string literals, a generated declaration inside another type): why. The handler compiles,
+    /// so an export only other scripts call is the script's to type, and a call to it does not.
+    Refused(String),
     /// Any other JSDoc type: a JSON value.
     Any,
 }
@@ -172,7 +176,12 @@ impl Module {
                 let ty: TokenStream = TokenTree::Ident(Ident::new(&format!("A{i}"), Span::call_site())).into();
                 let arg: TokenStream = TokenTree::Ident(rust_ident(name, i)).into();
                 let path = param_path(param);
-                generics.extend(q("__A0: ::corten::script::Arg<__A1>,", &[ty.clone(), path.clone()]));
+                generics.extend(q("__A0: ::corten::script::Arg<__A1>", &[ty.clone(), path.clone()]));
+                // A refused type: a call does not compile, and says why (`#[deprecated]` below).
+                if let Param::Refused(_) = param {
+                    generics.extend(q("+ ::corten::script::Refused", &[]));
+                }
+                generics.extend(q(",", &[]));
                 args.extend(q(
                     "::corten::script::__private::Typed::<__A0, __A1>::new(__A2),",
                     &[ty.clone(), path.clone(), arg.clone()],
@@ -181,6 +190,15 @@ impl Module {
                 params.extend(q("__A0: __A1,", &[arg, ty]));
             }
             let doc = if h.doc.is_empty() { format!(" `{}` in {}.", h.name, self.file) } else { format!(" {}", h.doc) };
+            let why: Vec<&str> = h
+                .params
+                .iter()
+                .filter_map(|(_, p)| if let Param::Refused(why) = p { Some(why.as_str()) } else { None })
+                .collect();
+            if !why.is_empty() {
+                let why = format!("{}: {}", self.file, why.join("; "));
+                fns.extend(q("#[deprecated(note = __A0)]", &[literal(&why)]));
+            }
             fns.extend(q(
                 "#[doc = __A0] #[allow(non_snake_case, clippy::too_many_arguments)] #[must_use]
                 pub fn __A1<__A2>(__A3) -> ::corten::script::__private::Call<(__A4)> {
@@ -219,8 +237,7 @@ fn param_path(param: &Param) -> TokenStream {
         Param::Event(class) => format!("super::{class}").parse().expect("a type path parses"),
         Param::Feed(rows) => format!("::corten::script::ts::FeedUrl<super::{rows}>").parse().expect("a type path parses"),
         Param::Generated(name) => format!("::corten::script::ts::Generated<super::{name}>").parse().expect("a type path parses"),
-        Param::Unreadable(_) => q("::corten::script::ts::Any", &[]),
-        Param::Any => q("::corten::script::ts::Any", &[]),
+        Param::Unreadable(_) | Param::Refused(_) | Param::Any => q("::corten::script::ts::Any", &[]),
     }
 }
 
@@ -441,7 +458,6 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         name: String,
         params: Vec<(String, String)>,
         doc: String,
-        line: usize,
     }
     /// A `@typedef`: its name, type, `@property` lines, description and line.
     struct Typedef {
@@ -592,7 +608,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
                 };
                 list.push((param.to_string(), ty.clone()));
             }
-            raw.push(Raw { name: name.to_string(), params: list, doc: description(&jsdoc), line: start + 1 });
+            raw.push(Raw { name: name.to_string(), params: list, doc: description(&jsdoc) });
             i += 1;
             continue;
         }
@@ -683,10 +699,10 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
     // typedef of plain values): one of plain values that holds a generated declaration or a set of
     // names, and a group with a set of names. Followed through typedefs that hold them.
     let mut bad: Vec<(String, String)> = Vec::new();
-    for (name, fields) in &plain {
-        let fields = expand(fields);
+    for (name, written) in &plain {
+        let fields = expand(written);
         if holds_names_union(&fields) {
-            bad.push((name.clone(), union_error(name, fields.trim())));
+            bad.push((name.clone(), union_error(name, written.trim())));
         } else if mentions_generated(&fields) {
             bad.push((name.clone(), format!("{name} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), a list of it, or a group typedef")));
         }
@@ -708,7 +724,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         }
     }
     let mut handlers = Vec::new();
-    for Raw { name, params, doc, line } in raw {
+    for Raw { name, params, doc } in raw {
         let mut list = Vec::new();
         for (param, ty) in params {
             let ty = ty.trim().to_string();
@@ -716,36 +732,29 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             // `corten::types` generates: the call is then checked, and a renamed variant fails to
             // build. A string literal union would take any value.
             let named = resolve(&ty);
-            if holds_names_union(&expand(&ty)) {
-                return Err((line, union_error(&format!("{name}: {param}"), &ty)));
-            }
-            let resolved = if groups.iter().any(|g| g.name == named) {
-                if let Some((_, (at, why))) = unions.iter().find(|(group, _)| *group == named) {
-                    return Err((*at, why.clone()));
+            let expanded = expand(&ty);
+            let refused = |why: String| Param::Refused(format!("{name}: {param}: {why}"));
+            let resolved = if holds_names_union(&expanded) {
+                Param::Refused(union_error(&format!("{name}: {param}"), &ty))
+            } else if groups.iter().any(|g| g.name == named) {
+                match unions.iter().find(|(group, _)| *group == named) {
+                    Some((_, (_, why))) => refused(why.clone()),
+                    None => Param::Group(named.clone()),
                 }
-                Param::Group(named.clone())
             } else {
-                plain_type(&ty)
-            };
-            if let Param::Unreadable(why) = resolved {
-                let expanded = expand(&ty);
-                let why = if expanded == ty { why } else { format!("{ty}, which is {why}") };
-                return Err((line, format!("{name}: {param}: {why}")));
-            }
-            // A generated declaration in a shape the call is not checked against (inside a list
-            // with `null`, a tuple, a typedef of plain values) is refused rather than taking any
-            // value.
-            if matches!(resolved, Param::Any) {
-                if let Some((_, why)) = type_words(&expand(&ty)).into_iter().find_map(|w| bad.iter().find(|(b, _)| *b == w)) {
-                    return Err((line, format!("{name}: {param}: {why}")));
+                match plain_type(&ty) {
+                    Param::Unreadable(why) if expanded != ty => refused(format!("{ty}, which is {why}")),
+                    Param::Unreadable(why) => refused(why),
+                    // A generated declaration in a shape the call is not checked against (inside
+                    // a list with `null`, a tuple, a typedef of plain values) rather than any value.
+                    Param::Any => match type_words(&expanded).into_iter().find_map(|w| bad.iter().find(|(b, _)| *b == w)) {
+                        Some((_, why)) => refused(why.clone()),
+                        None if mentions_generated(&expanded) => refused(format!("{ty} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), a list of it, or a group typedef")),
+                        None => Param::Any,
+                    },
+                    other => other,
                 }
-            }
-            if matches!(resolved, Param::Any) && mentions_generated(&expand(&ty)) {
-                return Err((
-                    line,
-                    format!("{name}: {param}: {ty} holds a generated declaration in a shape the call is not checked against; take the generated type itself (import(\"../types/app\").Name), a list of it, or a group typedef"),
-                ));
-            }
+            };
             list.push((param, resolved));
         }
         handlers.push(Handler { name, params: list, doc });
@@ -754,66 +763,165 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
 }
 
 /// Each alias written out, with the aliases inside it written out too: `Tabs = Tab[]` and
-/// `Maybe = Tabs | null` make `Maybe` `(import("../types/app").Tab[]) | null`. Each alias is
-/// written out once and kept; one met again while it is being written out (a cycle, a recursive
-/// `Json`) stays its name, and so does one that would write out past 64 KB, so the work is one
-/// pass over each alias however they refer to each other.
+/// `Maybe = Tabs | null` make `Maybe` `(import("../types/app").Tab[]) | null`. Aliases that refer
+/// to each other (a recursive `Json`, `Tree = Leaf | Forest` and `Forest = Tree[]`) cannot be
+/// written out; each is written with all of their types joined where one of them is named, so
+/// what any of them holds is seen in each. One past 64 KB written out goes into another as a
+/// short type that holds the same for the checks (`stand_in`), so the work is one pass over each
+/// alias however they refer to each other.
 fn expand_all(aliases: &[(String, String)]) -> Vec<(String, String)> {
-    fn go(i: usize, aliases: &[(String, String)], done: &mut [Option<String>], open: &mut [bool]) -> String {
-        if let Some(out) = &done[i] {
-            return out.clone();
-        }
-        open[i] = true;
-        let out = substitute(aliases[i].1.trim(), &mut |word| {
-            let j = aliases.iter().position(|(local, _)| local == word)?;
-            if open[j] {
-                return None;
+    const CAP: usize = 64 * 1024;
+    let index = |word: &str| aliases.iter().position(|(local, _)| local == word);
+    let refs: Vec<Vec<usize>> = aliases.iter().map(|(_, ty)| type_words(ty).iter().filter_map(|w| index(w)).collect()).collect();
+    // What another alias writes in for each one: its expansion, or a stand-in past the cap.
+    let mut inner: Vec<Option<String>> = vec![None; aliases.len()];
+    let mut done: Vec<Option<String>> = vec![None; aliases.len()];
+    // Each set of aliases that refer to each other comes after every set it refers to.
+    for set in cycles(&refs) {
+        let outs: Vec<String> = {
+            let mut outside = |word: &str| index(word).filter(|j| !set.contains(j)).and_then(|j| inner[j].clone());
+            let cyclic = set.len() > 1 || refs[set[0]].contains(&set[0]);
+            if cyclic {
+                let joined = set
+                    .iter()
+                    .map(|&i| format!("({})", substitute(aliases[i].1.trim(), &mut outside)))
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                set.iter()
+                    .map(|&i| {
+                        substitute(aliases[i].1.trim(), &mut |word| match index(word) {
+                            Some(j) if set.contains(&j) => Some(joined.clone()),
+                            _ => outside(word),
+                        })
+                    })
+                    .collect()
+            } else {
+                vec![substitute(aliases[set[0]].1.trim(), &mut outside)]
             }
-            Some(go(j, aliases, done, open)).filter(|to| to.len() <= 64 * 1024)
-        });
-        open[i] = false;
-        done[i] = Some(out.clone());
-        out
+        };
+        for (&i, out) in set.iter().zip(outs) {
+            inner[i] = Some(if out.len() > CAP { stand_in(&out) } else { out.clone() });
+            done[i] = Some(out);
+        }
     }
-    let mut done = vec![None; aliases.len()];
-    let mut open = vec![false; aliases.len()];
-    (0..aliases.len()).map(|i| (aliases[i].0.clone(), go(i, aliases, &mut done, &mut open))).collect()
+    aliases.iter().zip(done).map(|((name, _), out)| (name.clone(), out.unwrap_or_default())).collect()
+}
+
+/// The sets of aliases that refer to each other (Tarjan's algorithm), each after every set its
+/// aliases refer to: an alias that is in no cycle is a set of its own.
+fn cycles(refs: &[Vec<usize>]) -> Vec<Vec<usize>> {
+    struct Walk<'a> {
+        refs: &'a [Vec<usize>],
+        order: Vec<Option<usize>>,
+        low: Vec<usize>,
+        open: Vec<bool>,
+        stack: Vec<usize>,
+        next: usize,
+        sets: Vec<Vec<usize>>,
+    }
+    fn visit(w: &mut Walk, v: usize) {
+        w.order[v] = Some(w.next);
+        w.low[v] = w.next;
+        w.next += 1;
+        w.stack.push(v);
+        w.open[v] = true;
+        for k in 0..w.refs[v].len() {
+            let to = w.refs[v][k];
+            match w.order[to] {
+                None => {
+                    visit(w, to);
+                    w.low[v] = w.low[v].min(w.low[to]);
+                }
+                Some(at) if w.open[to] => w.low[v] = w.low[v].min(at),
+                Some(_) => {}
+            }
+        }
+        if w.order[v] == Some(w.low[v]) {
+            let mut set = Vec::new();
+            while let Some(to) = w.stack.pop() {
+                w.open[to] = false;
+                set.push(to);
+                if to == v {
+                    break;
+                }
+            }
+            w.sets.push(set);
+        }
+    }
+    let n = refs.len();
+    let mut w =
+        Walk { refs, order: vec![None; n], low: vec![0; n], open: vec![false; n], stack: Vec::new(), next: 0, sets: Vec::new() };
+    for v in 0..n {
+        if w.order[v].is_none() {
+            visit(&mut w, v);
+        }
+    }
+    w.sets
+}
+
+/// A short type that holds what a long one does for the checks that read it: a string literal
+/// when it holds a set of names, a generated declaration when it holds one, and each name it
+/// refers to (a typedef of plain values that is refused is refused inside it too).
+fn stand_in(ty: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if holds_names_union(ty) {
+        parts.push("\"...\"".into());
+    }
+    if mentions_generated(ty) {
+        parts.push("import(\"../types/app\").Written".into());
+    }
+    for word in type_words(ty) {
+        if !parts.contains(&word) {
+            parts.push(word);
+        }
+    }
+    format!("({})", parts.join(" | "))
 }
 
 /// `ty` with each name `to` gives a type for written as that type, in parentheses where it holds a
-/// `|`, `[` or `<`, so `Mode | null` stays one set and `null`, and `Tabs[]` a list of it. A name
-/// after a `.`, an object's key or a parameter's name (`{ Tab: string }`, `(Tab?: number) => void`)
-/// and text in quotes are left as they are.
+/// `|`, `[` or `<`, so `Mode | null` stays one set and `null`, and `Tabs[]` a list of it. Left as
+/// they are: a name after a `.` (not a spread's `...`), an object's key or a label
+/// (`{ Tab: string }`, `[first: Tab]`), an arrow function's parameter name and type parameter
+/// (`(Tab) => void`, `<T>(x: T) => T`), and text in quotes.
 fn substitute(ty: &str, to: &mut dyn FnMut(&str) -> Option<String>) -> String {
     let chars: Vec<char> = ty.chars().collect();
+    let arrow = ty.contains("=>");
+    let in_params = if arrow { arrow_params(&chars) } else { Vec::new() };
+    let declared = if arrow { type_params(&chars) } else { Vec::new() };
     let mut out = String::with_capacity(ty.len());
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
         if matches!(c, '"' | '\'' | '`') {
-            let end = chars[i + 1..].iter().position(|&d| d == c).map_or(chars.len(), |p| i + 2 + p);
+            let end = quote_end(&chars, i);
             out.extend(&chars[i..end]);
             i = end;
             continue;
         }
-        if !(c.is_ascii_alphanumeric() || c == '_' || c == '$') {
+        if !word_char(c) {
             out.push(c);
             i += 1;
             continue;
         }
         let start = i;
-        while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_' || chars[i] == '$') {
+        while i < chars.len() && word_char(chars[i]) {
             i += 1;
         }
         let word: String = chars[start..i].iter().collect();
-        let after_dot = chars[..start].iter().rev().find(|c| !c.is_whitespace()) == Some(&'.');
+        let (lead, after_dot) = lead(&chars, start);
         let mut next = chars[i..].iter().filter(|c| !c.is_whitespace());
-        let key = match next.next() {
+        let follow = next.next().copied();
+        let colon = match follow {
             Some(':') => true,
             Some('?') => next.next() == Some(&':'),
             _ => false,
         };
-        match (!after_dot && !key).then(|| to(&word)).flatten() {
+        let key = colon && matches!(lead, None | Some('{' | ',' | ';' | '(' | '['));
+        let param_name = in_params.get(start).copied().unwrap_or(false)
+            && matches!(lead, Some('(' | ','))
+            && matches!(follow, Some(')' | ',' | '?' | ':' | '='));
+        let skip = after_dot || key || param_name || declared.contains(&word);
+        match (!skip).then(|| to(&word)).flatten() {
             Some(target) if target.contains(['|', '[', '<']) => {
                 out.push('(');
                 out.push_str(&target);
@@ -824,6 +932,125 @@ fn substitute(ty: &str, to: &mut dyn FnMut(&str) -> Option<String>) -> String {
         }
     }
     out
+}
+
+/// A character of a name.
+fn word_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '$'
+}
+
+/// Where the quoted text starting at `i` ends (after its closing quote).
+fn quote_end(chars: &[char], i: usize) -> usize {
+    chars[i + 1..].iter().position(|&d| d == chars[i]).map_or(chars.len(), |p| i + 2 + p)
+}
+
+/// What comes before the text at `start`, past spaces and a spread's `...`, and whether it
+/// follows a `.` (a property's name, `import("..").Tab`).
+fn lead(chars: &[char], start: usize) -> (Option<char>, bool) {
+    let mut before = chars[..start].iter().rev().copied().filter(|c| !c.is_whitespace()).peekable();
+    let dots = before.clone().take(3).filter(|&c| c == '.').count();
+    match (before.peek().copied(), dots) {
+        (Some('.'), 3) => (before.nth(3), false),
+        (Some('.'), _) => (Some('.'), true),
+        (other, _) => (other, false),
+    }
+}
+
+/// For each character, whether the parentheses nearest around it are an arrow function's
+/// parameters: `(a: T) => U`.
+fn arrow_params(chars: &[char]) -> Vec<bool> {
+    let mut close = vec![usize::MAX; chars.len()];
+    let mut stack = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '"' | '\'' | '`' => {
+                i = quote_end(chars, i);
+                continue;
+            }
+            '(' => stack.push(i),
+            ')' => {
+                if let Some(open) = stack.pop() {
+                    close[open] = i;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    let mut out = vec![false; chars.len()];
+    let mut open: Vec<bool> = Vec::new();
+    i = 0;
+    while i < chars.len() {
+        if matches!(chars[i], '"' | '\'' | '`') {
+            let end = quote_end(chars, i);
+            let now = open.last() == Some(&true);
+            out[i..end].iter_mut().for_each(|o| *o = now);
+            i = end;
+            continue;
+        }
+        match chars[i] {
+            '(' => {
+                let end = close[i];
+                let arrow =
+                    end != usize::MAX && chars[end + 1..].iter().copied().filter(|c| !c.is_whitespace()).take(2).eq(['=', '>']);
+                open.push(arrow);
+            }
+            ')' => {
+                open.pop();
+            }
+            _ => {}
+        }
+        out[i] = open.last() == Some(&true);
+        i += 1;
+    }
+    out
+}
+
+/// The names `<T, U extends X>` declares before an arrow function's parameters.
+fn type_params(chars: &[char]) -> Vec<String> {
+    let mut names = Vec::new();
+    for i in (0..chars.len()).filter(|&i| chars[i] == '<') {
+        let mut depth = 0;
+        let mut end = None;
+        for j in i..chars.len() {
+            match chars[j] {
+                '<' => depth += 1,
+                '>' if j > 0 && chars[j - 1] == '=' => {}
+                '>' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(j);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(end) = end else { continue };
+        if chars[end + 1..].iter().find(|c| !c.is_whitespace()) != Some(&'(') {
+            continue;
+        }
+        let mut depth = 0;
+        let mut part = String::new();
+        for c in chars[i + 1..end].iter().copied().chain([',']) {
+            match c {
+                '<' | '(' | '[' | '{' => depth += 1,
+                '>' | ')' | ']' | '}' => depth -= 1,
+                ',' if depth == 0 => {
+                    let name: String = part.trim().chars().take_while(|&c| word_char(c)).collect();
+                    if !name.is_empty() {
+                        names.push(name);
+                    }
+                    part.clear();
+                    continue;
+                }
+                _ => {}
+            }
+            part.push(c);
+        }
+    }
+    names
 }
 
 /// The names a type refers to: not one after a `.`, an object's key or text in quotes.
@@ -856,7 +1083,7 @@ fn not_json(param: &Param) -> bool {
                 || path.starts_with("ts::Map")
                 || path == "ts::AbortSignal"
         }
-        Param::Event(_) | Param::Group(_) | Param::Feed(_) | Param::Unreadable(_) => true,
+        Param::Event(_) | Param::Group(_) | Param::Feed(_) | Param::Unreadable(_) | Param::Refused(_) => true,
         Param::Generated(_) | Param::Any => false,
     }
 }
@@ -895,60 +1122,125 @@ fn mentions_generated(ty: &str) -> bool {
 /// declaration's path (`import("../types/app")`) and a catalog message's argument names
 /// (`Message<"count">`), so `"a" | "b"`, `Mode[] | null`, `[Mode, number]`, `{ m: Mode }` and
 /// `Record<Mode, number>` are all refused, however they are written: such a value takes any text.
+/// A literal that names a key is not one: an object's (`{ "aria-label": string }`), an indexed
+/// type's (`HTMLElementTagNameMap["dialog" | "details"]`) and the keys or members `Pick`, `Omit`,
+/// `Exclude` and `Extract` take after the type (`Pick<Opts, "a">`). A template literal is a
+/// pattern of text, not a set of names, and is left to `tsc`. One pass over the type.
 fn holds_names_union(ty: &str) -> bool {
-    let mut rest = ty;
-    let mut kept = String::with_capacity(ty.len());
-    // Drop `import("..")` and `Message<..>` with their contents.
-    loop {
-        let next = [rest.find("import("), rest.find("Message<")].into_iter().flatten().min();
-        let Some(at) = next else {
-            kept.push_str(rest);
-            break;
-        };
-        kept.push_str(&rest[..at]);
-        let (open, close) = if rest[at..].starts_with("import(") { ('(', ')') } else { ('<', '>') };
-        let body = &rest[at..];
-        let start = body.find(open).map_or(body.len(), |i| i + 1);
-        let mut depth = 1;
-        let mut end = body.len();
-        for (i, c) in body[start..].char_indices() {
-            if c == open {
-                depth += 1;
-            } else if c == close {
-                depth -= 1;
-                if depth == 0 {
-                    end = start + i + 1;
-                    break;
-                }
-            }
-        }
-        rest = &body[end..];
+    /// An open bracket: what closes it, and what a literal directly in it is.
+    enum Frame {
+        Paren,
+        /// `T[..]`: its keys.
+        Index,
+        /// `[..]`, `{..}`, or a generic's `<..>` whose arguments are types.
+        Types(char),
+        /// `Pick<T, ..>` and its kind: the arguments after the first are keys or members.
+        Keys(usize),
     }
-    // A literal that is a type, not an object's key (`{ "aria-label": string }`) or an indexed
-    // access (`HTMLElementTagNameMap["dialog"]`). A template literal is a pattern of text, not a
-    // set of names, and is left to `tsc`.
-    let chars: Vec<char> = kept.chars().collect();
+    let chars: Vec<char> = ty.chars().collect();
+    let mut stack: Vec<Frame> = Vec::new();
+    let mut word = String::new();
     let mut i = 0;
     while i < chars.len() {
-        let q = chars[i];
-        if q != '"' && q != '\'' {
+        let c = chars[i];
+        if word_char(c) {
+            word.push(c);
             i += 1;
             continue;
         }
-        let end = chars[i + 1..].iter().position(|&c| c == q).map_or(chars.len(), |p| i + 1 + p);
-        let before: Vec<char> = chars[..i].iter().rev().filter(|c| !c.is_whitespace()).take(2).copied().collect();
-        let mut after = chars.get(end + 1..).unwrap_or(&[]).iter().filter(|c| !c.is_whitespace());
-        let key = match after.next() {
-            Some(':') => true,
-            Some('?') => after.next() == Some(&':'),
-            _ => false,
+        let name = std::mem::take(&mut word);
+        // `import("..")` and `Message<..>` with what is in them.
+        let skip = match (name.as_str(), c) {
+            ("import", '(') => Some(('(', ')')),
+            ("Message", '<') => Some(('<', '>')),
+            _ => None,
         };
-        let indexed = before.first() == Some(&'[')
-            && before.get(1).is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | ']' | '>'));
-        if !key && !indexed {
-            return true;
+        if let Some((open, close)) = skip {
+            let mut depth = 0;
+            while i < chars.len() {
+                match chars[i] {
+                    '"' | '\'' | '`' => {
+                        i = quote_end(&chars, i);
+                        continue;
+                    }
+                    d if d == open => depth += 1,
+                    d if d == close => {
+                        depth -= 1;
+                        if depth == 0 {
+                            i += 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            continue;
         }
-        i = end + 1;
+        match c {
+            '"' | '\'' => {
+                let end = quote_end(&chars, i);
+                let (lead, _) = lead(&chars, i);
+                let mut after = chars[end..].iter().filter(|c| !c.is_whitespace());
+                let colon = match after.next() {
+                    Some(':') => true,
+                    Some('?') => after.next() == Some(&':'),
+                    _ => false,
+                };
+                let key = colon && matches!(lead, None | Some('{' | ',' | ';'));
+                let in_keys = match stack.iter().rev().find(|f| !matches!(f, Frame::Paren)) {
+                    Some(Frame::Index) => true,
+                    Some(Frame::Keys(arg)) => *arg > 0,
+                    _ => false,
+                };
+                if !key && !in_keys {
+                    return true;
+                }
+                i = end;
+                continue;
+            }
+            '`' => {
+                i = quote_end(&chars, i);
+                continue;
+            }
+            '(' => stack.push(Frame::Paren),
+            '[' => {
+                let before = chars[..i].iter().rev().find(|c| !c.is_whitespace());
+                let indexed = before.is_some_and(|&b| word_char(b) || matches!(b, ']' | ')' | '>'));
+                // `T[]` is a list of T, and `T[..]` one of its keys.
+                let empty = chars[i + 1..].iter().find(|c| !c.is_whitespace()) == Some(&']');
+                stack.push(if indexed && !empty { Frame::Index } else { Frame::Types(']') });
+            }
+            '{' => stack.push(Frame::Types('}')),
+            '<' => {
+                let generic = if chars[..i].last().is_some_and(|&b| word_char(b)) { name.as_str() } else { "" };
+                stack.push(match generic {
+                    "Pick" | "Omit" | "Exclude" | "Extract" => Frame::Keys(0),
+                    _ => Frame::Types('>'),
+                });
+            }
+            ',' => {
+                if let Some(Frame::Keys(arg)) = stack.last_mut() {
+                    *arg += 1;
+                }
+            }
+            ')' | ']' | '}' | '>' => {
+                // `=>` closes nothing.
+                let arrow = c == '>' && i > 0 && chars[i - 1] == '=';
+                let closes = match stack.last() {
+                    Some(Frame::Paren) => c == ')',
+                    Some(Frame::Index) => c == ']',
+                    Some(Frame::Types(close)) => c == *close,
+                    Some(Frame::Keys(_)) => c == '>',
+                    None => false,
+                };
+                if closes && !arrow {
+                    stack.pop();
+                }
+            }
+            _ => {}
+        }
+        i += 1;
     }
     false
 }
@@ -1297,6 +1589,19 @@ function helper() {}
         );
     }
 
+    /// Why a call to the script's handler does not compile: its first refused parameter's reason,
+    /// or the script's own error.
+    fn refusal(source: &str) -> String {
+        match parse(source) {
+            Err((_, why)) => why,
+            Ok((handlers, _)) => handlers
+                .iter()
+                .flat_map(|h| &h.params)
+                .find_map(|(_, p)| if let Param::Refused(why) = p { Some(why.clone()) } else { None })
+                .unwrap_or_else(|| panic!("nothing refused: {handlers:?}")),
+        }
+    }
+
     #[test]
     fn a_feed_url_names_its_rows_by_the_rust_type_or_does_not_compile() {
         let (handlers, _) = parse(
@@ -1306,7 +1611,7 @@ function helper() {}
         assert_eq!(handlers[0].params[0].1, Param::Feed("Level".into()));
         assert_eq!(handlers[0].params[1].1, Param::Feed("Level".into()), "the generated declaration, imported where it is used");
         for ty in ["FeedUrl<Level[]>", "FeedUrl<Level | Stock>", "FeedUrl<>"] {
-            let err = parse(&format!("/** @param {{{ty}}} a */\nexport function f(a) {{}}")).unwrap_err();
+            let err = (0, refusal(&format!("/** @param {{{ty}}} a */\nexport function f(a) {{}}")));
             assert!(err.1.contains("one named type"), "{ty}: {}", err.1);
         }
     }
@@ -1330,7 +1635,7 @@ function helper() {}
             ("/** @typedef {\"a\" | \"b\"} Mode */\n/** @typedef {Mode} Shown */\n/** @param {Shown} by */\nexport function f(by) {}", "a typedef of a typedef"),
             ("/** @typedef {{ el: HTMLElement, mode: \"a\" | \"b\" }} Sel */\n/** @param {Sel} s */\nexport function f(s) {}", "a group's field"),
         ] {
-            let err = parse(source).unwrap_err();
+            let err = (0, refusal(source));
             assert!(err.1.contains("is a Rust enum the markup passes"), "{what}: {}", err.1);
         }
         let (deep, _) = parse(
@@ -1345,14 +1650,14 @@ function helper() {}
             "import(\"../types/app\").Tab=",
             "import(\"../types/app\").Page<Row>",
         ] {
-            let err = parse(&format!("/** @param {{{ty}}} a */\nexport function f(a) {{}}")).unwrap_err();
+            let err = (0, refusal(&format!("/** @param {{{ty}}} a */\nexport function f(a) {{}}")));
             assert!(err.1.contains("types a value alone"), "{ty}: {}", err.1);
         }
         for alias in ["Tab[]", "Tab | null", "Tab=", "Array<Tab>", "?Tab"] {
             let source = format!(
                 "/** @typedef {{import(\"../types/app\").Tab}} Tab */\n/** @param {{{alias}}} a */\nexport function f(a) {{}}"
             );
-            assert!(parse(&source).unwrap_err().1.contains("types a value alone"), "{alias}");
+            assert!(refusal(&source).contains("types a value alone"), "{alias}");
         }
         let (feed, _) = parse(
             "/** @typedef {import(\"../types/app\").Level} Level */\n/** @param {FeedUrl<Level>} a */\nexport function f(a) {}",
@@ -1368,7 +1673,7 @@ function helper() {}
             parse(&format!("{typedef}\n/** @param {{HTMLElement}} el */\nexport function f(el) {{}}")).unwrap();
         }
         let grouped = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {{ el: HTMLElement, tabs: Tab[] }} Sel */\n/** @param {Sel} s */\nexport function f(s) {}";
-        assert!(parse(grouped).unwrap_err().1.contains("types a value alone"), "a group's field");
+        assert!(refusal(grouped).contains("types a value alone"), "a group's field");
         // A group no handler takes is the script's own, whatever it holds.
         let own = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {{ el: HTMLElement, tabs: Tab[], tab: Tab | null }} Kept */\n/** @param {HTMLElement} el */\nexport function f(el) {}";
         parse(own).unwrap();
@@ -1379,12 +1684,12 @@ function helper() {}
             ("\"a\" | \"b\" | null", "is a Rust enum the markup passes"),
         ] {
             let source = format!("/** @typedef {{{typedef}}} Shown */\n/** @param {{Shown}} a */\nexport function f(a) {{}}");
-            assert!(parse(&source).unwrap_err().1.contains(what), "{typedef}");
+            assert!(refusal(&source).contains(what), "{typedef}");
         }
         // A list or a generic of a set of names is refused as the set is.
         for ty in ["(\"a\" | \"b\")[]", "Array<\"a\" | \"b\">", "Readonly<Mode>", "Record<Mode, number>"] {
             let source = format!("/** @typedef {{\"a\" | \"b\"}} Mode */\n/** @param {{{ty}}} a */\nexport function f(a) {{}}");
-            assert!(parse(&source).unwrap_err().1.contains("is a Rust enum the markup passes"), "{ty}");
+            assert!(refusal(&source).contains("is a Rust enum the markup passes"), "{ty}");
         }
         // However a set of names is wrapped.
         for ty in [
@@ -1399,7 +1704,7 @@ function helper() {}
             let source = format!(
                 "/** @typedef {{\"a\" | \"b\"}} Mode */\n/** @typedef {{Mode[]}} Modes */\n/** @param {{{ty}}} a */\nexport function f(a) {{}}"
             );
-            assert!(parse(&source).unwrap_err().1.contains("is a Rust enum the markup passes"), "{ty}");
+            assert!(refusal(&source).contains("is a Rust enum the markup passes"), "{ty}");
         }
         // A generated declaration through two typedefs, or in a typedef of plain values, is refused
         // as it is written in place.
@@ -1412,7 +1717,7 @@ function helper() {}
             let source = format!(
                 "/** @typedef {{import(\"../types/app\").Tab}} Tab */\n{typedefs}\n/** @param {{{ty}}} a */\nexport function f(a) {{}}"
             );
-            let err = parse(&source).unwrap_err().1;
+            let err = refusal(&source);
             assert!(err.contains("types a value alone") || err.contains("shape the call is not checked against"), "{ty}: {err}");
         }
         // A generic typedef of the script's own (`@template`) is a definition, not a name for
@@ -1421,14 +1726,14 @@ function helper() {}
         let (held, _) = parse(generic).unwrap();
         assert!(matches!(&held[0].params[0].1, Param::Checked(p) if p.starts_with("ts::Holds")), "{:?}", held[0].params[0].1);
         let mode = "/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {Mode | null} m */\nexport function f(m) {}";
-        assert!(parse(mode).unwrap_err().1.contains("is a Rust enum the markup passes"), "an alias of a set, or null");
+        assert!(refusal(mode).contains("is a Rust enum the markup passes"), "an alias of a set, or null");
         let (fine, _) = parse("/** @typedef {\"a\" | \"b\"} Mode */\n/** @param {string} s */\nexport function f(s) {}").unwrap();
         assert_eq!(fine[0].params[0].1, Param::Checked("ts::String".into()), "a typedef no handler takes is the script's");
         // A script's own state with an element in it is a group only when a handler takes it.
         let kept = "/** @typedef {{ from: \"a\" | \"b\", back: HTMLButtonElement }} Moving */\n/** @param {HTMLElement} el */\nexport function f(el) {}";
         parse(kept).unwrap();
         let taken = format!("{kept}\n/** @param {{Moving}} m */\nexport function g(m) {{}}");
-        assert!(parse(&taken).unwrap_err().1.contains("Moving: from"), "a group a handler takes");
+        assert!(refusal(&taken).contains("Moving: from"), "a group a handler takes");
     }
 
     #[test]
@@ -1460,20 +1765,87 @@ export function f(a, b, c, d, e) {}"#;
         let plain = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {{ id: string, tab: Tab }} P */\n/** @typedef {{ inner: P }} Outer */\n";
         for ty in ["P", "P=", "P | null", "P[]", "Outer", "Outer | null"] {
             let source = format!("{plain}/** @param {{{ty}}} a */\nexport function f(a) {{}}");
-            let why = parse(&source).map(|_| ()).unwrap_err().1;
+            let why = refusal(&source);
             assert!(why.contains("generated declaration"), "{ty}: {why}");
         }
         let modes = "/** @typedef {{ id: string, m: \"x\" | \"y\" }} P */\n/** @param {P | null} a */\nexport function f(a) {}";
-        assert!(parse(modes).map(|_| ()).unwrap_err().1.contains("one of several names"));
+        assert!(refusal(modes).contains("one of several names"));
         // A view's name, written through a typedef, is still that name.
         let rows = "/** @typedef {import(\"../types/app\").OrderRow} OrderRow */\n/** @param {Holds<OrderRow, HTMLTableSectionElement>} a */\nexport function f(a) {}";
         let (handlers, _) = parse(rows).unwrap();
         assert!(matches!(&handlers[0].params[0].1, Param::Checked(t) if t.starts_with("ts::Holds<")), "{:?}", handlers[0].params);
         // An error names the type as it was written.
         let tabs = "/** @typedef {import(\"../types/app\").Tab} Tab */\n/** @typedef {Tab[]} Tabs */\n/** @param {Tabs | null} a */\nexport function f(a) {}";
-        let why = parse(tabs).map(|_| ()).unwrap_err().1;
+        let why = refusal(tabs);
         assert!(why.starts_with("f: a: Tabs | null, which is (import(\"../types/app\").Tab[]) | null:"), "{why}");
     }
+    #[test]
+    fn keys_members_and_callback_names_are_not_names_and_cycles_and_long_aliases_are_seen_through() {
+        let mode = "/** @typedef {\"a\" | \"b\"} Mode */\n/** @typedef {import(\"../types/app\").Tab} Tab */\n";
+        for ty in [
+            "Pick<Opts, \"a\">",
+            "Omit<{ a: string, b: number }, \"b\">",
+            "Exclude<string, \"x\">",
+            "(HTMLElementTagNameMap)[\"dialog\"]",
+            "HTMLElementTagNameMap[\"dialog\" | \"details\"]",
+            "(Mode) => void",
+            "(Mode, Tab) => void",
+            "<Mode>(x: Mode) => Mode",
+        ] {
+            let (handlers, _) = parse(&format!("{mode}/** @param {{{ty}}} a */\nexport function f(a) {{}}")).unwrap();
+            assert_eq!(handlers[0].params[0].1, Param::Any, "{ty}");
+        }
+        for ty in
+            ["Exclude<\"a\" | \"b\", \"a\">", "boolean extends true ? Mode : number", "[number, ...Mode[]]", "(x: Mode) => void"]
+        {
+            let why = refusal(&format!("{mode}/** @param {{{ty}}} a */\nexport function f(a) {{}}"));
+            assert!(why.contains("one of several names"), "{ty}: {why}");
+        }
+        let why = refusal(&format!("{mode}/** @param {{[number, ...Tab[]]}} a */\nexport function f(a) {{}}"));
+        assert!(why.contains("generated declaration"), "{why}");
+        // Aliases that refer to each other: what any of them holds is seen in each.
+        for (leaf, what) in
+            [("\"x\" | \"y\"", "one of several names"), ("import(\"../types/app\").Leaf", "generated declaration")]
+        {
+            let trees = format!(
+                "/** @typedef {{{leaf}}} Leaf */\n/** @typedef {{Leaf | Forest}} Tree */\n/** @typedef {{Tree[]}} Forest */\n"
+            );
+            for ty in ["Tree", "Forest", "Forest | null", "[Forest, number]"] {
+                let why = refusal(&format!("{trees}/** @param {{{ty}}} a */\nexport function f(a) {{}}"));
+                assert!(why.contains(what), "{leaf} {ty}: {why}");
+            }
+        }
+        // An alias past 64 KB written out is still seen through.
+        for (base, what) in
+            [("\"x\" | \"y\"", "one of several names"), ("import(\"../types/app\").Leaf", "generated declaration")]
+        {
+            let mut source = format!("/** @typedef {{{base}}} L0 */\n");
+            for i in 1..=20 {
+                source += &format!("/** @typedef {{[L{0}, L{0}]}} L{i} */\n", i - 1);
+            }
+            for ty in ["L10", "L14", "L20 | null"] {
+                let why = refusal(&format!("{source}/** @param {{{ty}}} a */\nexport function f(a) {{}}"));
+                assert!(why.contains(what), "{base} {ty}: {why}");
+            }
+        }
+        // A refused parameter does not stop the script compiling: an export only other scripts
+        // import is the script's to type, and only a call to it does not compile.
+        let (handlers, _) =
+            parse("/** @param {\"a\" | \"b\"} mode @param {number} n */\nexport function refundOf(mode, n) {}").unwrap();
+        assert!(
+            matches!(&handlers[0].params[0].1, Param::Refused(why) if why.starts_with("refundOf: mode:")),
+            "{:?}",
+            handlers[0].params
+        );
+        assert_eq!(handlers[0].params[1].1, Param::Checked("ts::Number".into()));
+        // Many generated declarations in one type are read in one pass.
+        let many = (0..20_000).map(|i| format!("{{ k{i}: import(\"../types/app\").T{i} }}")).collect::<Vec<_>>().join(" | ");
+        let started = std::time::Instant::now();
+        let why = refusal(&format!("/** @param {{{many}}} a */\nexport function f(a) {{}}"));
+        assert!(why.contains("generated declaration"));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+    }
+
     #[test]
     fn a_message_parameter_is_checked_by_its_argument_names() {
         let (handlers, _) = parse(

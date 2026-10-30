@@ -540,13 +540,25 @@
 //! # fn main() {}
 //! ```
 //!
-//! A string literal union (`@param {"list" | "grid"} mode`) as a handler's parameter does not
-//! compile: it would take any value. Such a name is a Rust enum with a generated declaration, as
-//! above:
+//! A call to a handler whose parameter is a string literal union (`@param {"list" | "grid"} mode`)
+//! does not compile: the parameter would take any value. Such a name is a Rust enum with a
+//! generated declaration, as above. The script itself compiles, so an export that only other
+//! scripts import types its parameters as it needs:
 //!
-//! ```compile_fail
+//! ```compile_fail,E0277
 //! use corten::prelude::*;
 //!
+//! #[component(js)]
+//! fn ModeSwitch() -> impl Render {
+//!     html! { <nav on:click={js::show(target, "list")}></nav> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! // The same script, its handler not called: it compiles.
 //! #[component(js)]
 //! fn ModeSwitch() -> impl Render {
 //!     html! { <nav></nav> }
@@ -1214,6 +1226,17 @@ pub trait Arg<P> {
     #[doc(hidden)]
     fn write_arg(&self, ctx: &__private::Ctx, out: &mut String);
 }
+
+/// What a handler parameter needs when its JSDoc type is one no call can be checked against (a set
+/// of names written as string literals, a generated declaration inside another type): nothing
+/// has it, so a call does not compile, and the handler's deprecation note says why. The handler
+/// itself compiles, so an export only other scripts import is the script's to type.
+#[diagnostic::on_unimplemented(
+    message = "the script types this handler parameter so that no call can be checked against it",
+    label = "the warning on this handler says why",
+    note = "a set of names is a Rust enum with a generated declaration, import(\"../types/app\").Name; a list or an optional one is a Rust type of its own"
+)]
+pub trait Refused {}
 
 /// DOM element interfaces, named as in TypeScript's lib.dom.
 #[allow(clippy::upper_case_acronyms)]

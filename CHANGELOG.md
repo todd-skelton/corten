@@ -1036,18 +1036,22 @@ Corten is pre-1.0, so any minor version may change the API.
     (`@param {import("../types/app").SortBy} by`, or a `@typedef` of it) takes a value of the Rust
     type of that name in the component's module, so `js::sortBy(target, SortBy::Price)` compiles
     and `42` or `"prodcut"` do not: one handler serves every name of a fixed set, and a renamed
-    variant fails to build. A string literal union as a handler's parameter
-    (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error says to
-    make it a Rust enum with a generated declaration, and so does a list or a generic of one
-    (`Mode[]`, `Record<Mode, number>`, `[Mode, number]`, `{ m: Mode }`): any string literal in a
-    handler parameter's type is refused, outside `import("..")`, `Message<..>`, an object's key and
-    an indexed type. A `@typedef` of
+    variant fails to build. A call to a handler whose parameter is a string literal union
+    (`@param {"name" | "price"} by`) no longer compiles, since it took any value; the error and a
+    warning on the call say to make it a Rust enum with a generated declaration, and so does a
+    list or a generic of one (`Mode[]`, `Record<Mode, number>`, `[Mode, number]`, `{ m: Mode }`):
+    any string literal in the parameter's type counts, outside `import("..")`, `Message<..>`, a key
+    (an object's, an indexed type's, the keys and members `Pick`, `Omit`, `Exclude` and `Extract`
+    take) and a callback's parameter names. The script still compiles, so an export only other
+    scripts import types its parameters as it needs. A `@typedef` of
     any type but an object or a generic one (`@template`) (`Tab | null`, `Tab[]`, `string`) is
     checked as the type it names where a handler takes it, through any number of typedefs, and a
     generated declaration a handler's parameter holds in a shape the call is not checked against is
     refused rather than taking any value, in any shape of a typedef of plain values that holds one;
-    a typedef the script keeps for itself is not checked. Each typedef is written out once, so a
-    recursive one or a long chain costs the macro no more than another.
+    a typedef the script keeps for itself is not checked. Typedefs that refer to each other (a
+    recursive `Json`, a `Tree` and `Forest`) are seen through as one, and each typedef is
+    written out once, so a recursive one, a long chain or a type with thousands of declarations
+    costs the macro no more than another.
     What the page gets is unchanged
     ([#362 A handler argument typed by a generated enum union takes any JSON value at the call](https://github.com/todd-skelton/corten/issues/362)).
 
@@ -1654,9 +1658,10 @@ Corten is pre-1.0, so any minor version may change the API.
     `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
     of the page and the patch builds the read in its body instead of failing with E0515 or E0597
     ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
-88. Breaking: a script's set of names written as string literals (`@param {"name" | "price"} by`,
-    also with `null`, optional, through a `@typedef`, or as a group's field) no longer compiles,
-    and neither does a generated declaration inside another type (`import("../types/app").Tab[]`,
+88. Breaking: a call to a handler whose parameter is a set of names written as string literals
+    (`@param {"name" | "price"} by`, also with `null`, optional, through a `@typedef`, or as a
+    group's field) no longer compiles, and neither does one to a handler whose parameter holds a
+    generated declaration inside another type (`import("../types/app").Tab[]`,
     `.. | null`, a typedef of plain values holding one): each took any value at the call. A
     typedef of a plain type (`@typedef {string} Id`, `@typedef {HTMLElement} Root`) a handler
     takes is now checked as that type, where it took any value. Make the set a Rust enum with a
