@@ -293,7 +293,12 @@ step already taken or out of order, a record deleted meanwhile) is
 `errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
 message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
 drawn again with what the user typed, the page without JavaScript, the Problem Details document
-for a data client. A post that can be refused is a `data-patch` form: a plain post's refusal
+for a data client. A service the handler calls for the submit that failed or did not answer
+(a carrier, a payment provider, another app) is `errors.refuse(Refusal::Upstream, text)`: 502,
+the same three answers, with the form drawn again so the user can send it once more; the
+runtime keeps its `SubmitKey` (below), since the service may have applied it. A failure of the
+app itself (its database) is no refusal: it is `?`'d, and the error page answers it. A post
+that can be refused is a `data-patch` form: a plain post's refusal
 draws the whole page and leaves the address at the action's URL, whose GET may not exist. The
 one exception is a download, which must be a plain post ([below](#files)): its refusal redirects
 to the page that says why.

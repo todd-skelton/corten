@@ -1072,6 +1072,15 @@ Corten is pre-1.0, so any minor version may change the API.
     checked with); no other format changes
     ([#473 t.date has no month-and-day style without the year (Intl { month: 'short', day: 'numeric' }), so chart labels hand-build month names](https://github.com/todd-skelton/corten/issues/473)).
 
+145. `Refusal::Upstream`: a submit refused because a service the handler calls failed or did not
+    answer (a carrier, a payment provider, another app), answered by `req.invalid` and
+    `req.invalid_with` with 502 in every mode: the form drawn again with the message, the page
+    without JavaScript, the Problem Details document for a data client, which got the HTML page
+    from a handler that set the status by hand. The runtime keeps the form's `SubmitKey` for it,
+    as for any 5xx. An agent tool gets the message as `ToolError::Upstream` ("try again later"),
+    not as a refusal of a stale state. Still a closed set: no other 5xx, and no `StatusCode`. An
+    app's exhaustive `match` on `Refusal` or `ToolError` gains an arm
+    ([#480 A post refused because a service it calls failed has no Refusal (502/503), so it cannot use req.invalid_with and a JSON client gets the HTML page](https://github.com/todd-skelton/corten/issues/480)).
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
    script renders its own root element, marked `data-scope`; `corten-ui`'s components are

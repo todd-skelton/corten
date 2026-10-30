@@ -1015,11 +1015,15 @@ fn sheet_form(errors: &Errors) -> impl crate::Patch + '_ {
 }
 
 fn refused_routes() -> Router {
+    refused_by(crate::Refusal::Conflict, "Someone saved first.")
+}
+
+fn refused_by(why: crate::Refusal, message: &'static str) -> Router {
     Router::new().route(
         "/",
-        get(|req: Req| async move {
+        get(move |req: Req| async move {
             let mut errors = Errors::new();
-            errors.refuse(crate::Refusal::Conflict, "Someone saved first.");
+            errors.refuse(why, message);
             let page = || async { req.test_page("Sheet", html! { <p>"page with the refusal"</p> }) };
             req.invalid(&errors, sheet_form(&errors), page).await
         }),
@@ -1044,6 +1048,36 @@ async fn a_stale_submit_answers_409_with_the_form_message_in_each_mode() {
         assert_eq!(
             body,
             r#"{"title":"Conflict","status":409,"detail":"Someone saved first.","form":"Someone saved first.","fields":{}}"#
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_failed_service_answers_502_with_the_form_message_in_each_mode() {
+    let routes = || refused_by(crate::Refusal::Upstream, "The carrier did not answer. Try again.");
+    let (status, headers, body) = call(app(routes(), None), "GET", Some("action")).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert_eq!(headers["corten-patch"], "1", "the form, not the error page");
+    assert_eq!(
+        body,
+        r#"<form id="sign-up"><p class="form-error" role="alert">The carrier did not answer. Try again.</p></form>"#
+    );
+
+    let (status, _, body) = call(app(routes(), None), "GET", None).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(
+        body.contains("<p>page with the refusal</p>") && body.contains("<html"),
+        "no JavaScript: the whole page, not the error page: {body}"
+    );
+
+    #[cfg(feature = "json")]
+    {
+        let (status, headers, body) = call_with(app(routes(), None), "GET", "/", None, Some("application/json")).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(headers["content-type"], "application/problem+json");
+        assert_eq!(
+            body,
+            r#"{"title":"Bad Gateway","status":502,"detail":"The carrier did not answer. Try again.","form":"The carrier did not answer. Try again.","fields":{}}"#
         );
     }
 }

@@ -50,6 +50,9 @@ pub enum ToolError {
     /// deleted meanwhile: [`Errors::refuse`](crate::Errors::refuse)); the message goes back to the
     /// agent so it reads the current state before trying again.
     Refused(String),
+    /// A service the tool calls failed ([`Refusal::Upstream`](crate::Refusal::Upstream)); the
+    /// message goes back to the agent, which may try again later.
+    Upstream(String),
     /// No valid credentials: the response is HTTP 401 so the client can authenticate.
     Unauthorized,
     /// Authenticated but not allowed; the message goes back to the agent.
@@ -72,6 +75,7 @@ impl From<crate::Errors> for ToolError {
         match errors.refusal() {
             crate::Refusal::Invalid => ToolError::Invalid(errors.to_string()),
             crate::Refusal::Conflict | crate::Refusal::Gone => ToolError::Refused(errors.to_string()),
+            crate::Refusal::Upstream => ToolError::Upstream(errors.to_string()),
         }
     }
 }
@@ -299,6 +303,7 @@ impl<A: Send + 'static> Tools<A> {
             Err(ToolError::Unauthorized) => Err(CallError::Unauthorized),
             Err(ToolError::Invalid(message)) => Ok(failed(format!("invalid arguments: {message}"))),
             Err(ToolError::Refused(message)) => Ok(failed(format!("refused, read the current state first: {message}"))),
+            Err(ToolError::Upstream(message)) => Ok(failed(format!("a service it calls failed, try again later: {message}"))),
             Err(ToolError::Forbidden(message)) => Ok(failed(format!("not allowed: {message}"))),
             Err(ToolError::Internal(error)) => {
                 tracing::error!(tool = name, %error, "corten: agent tool failed");

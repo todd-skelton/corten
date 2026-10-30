@@ -1055,8 +1055,10 @@ impl fmt::Display for Kept {
 }
 
 /// Why a submit was refused, which [`Req::invalid`](crate::Req::invalid) answers with its status.
-/// A closed set: a refusal is the client's to fix, so it is a 4xx, and a 2xx or a 5xx (or any
-/// `StatusCode`) does not compile.
+/// A closed set: a refusal is the client's to fix (a 4xx), or a failure of a service the handler
+/// calls that the user can only retry (502); a 2xx, any other 5xx, or any `StatusCode`, does not
+/// compile. A failure of the app itself (a database error) is no refusal: it is `?`'d, and the
+/// error page answers it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Refusal {
     /// 422: the input breaks a rule ([`Errors::add`], [`Errors::add_form`]).
@@ -1068,6 +1070,11 @@ pub enum Refusal {
     Conflict,
     /// 410: what the submit acts on is gone (deleted meanwhile).
     Gone,
+    /// 502: a service the handler calls for the submit (a payment provider, a carrier, another
+    /// app) failed or did not answer. Nothing the user sent is at fault, and the same submit may
+    /// succeed later. Whether the service applied it is not known, so the runtime keeps the
+    /// form's [`SubmitKey`](crate::SubmitKey): a retry is the same submission.
+    Upstream,
 }
 
 impl Refusal {
@@ -1078,6 +1085,7 @@ impl Refusal {
             Refusal::Invalid => StatusCode::UNPROCESSABLE_ENTITY,
             Refusal::Conflict => StatusCode::CONFLICT,
             Refusal::Gone => StatusCode::GONE,
+            Refusal::Upstream => StatusCode::BAD_GATEWAY,
         }
     }
 }
@@ -1126,10 +1134,11 @@ impl Errors {
         self.form.get_or_insert_with(|| message.into());
     }
 
-    /// Refuses the submit for the state it was made against, not its input: the form's message
-    /// (in place of one [`Errors::add_form`] recorded, so the status and the message agree),
-    /// answered with the refusal's status (409 for
-    /// [`Refusal::Conflict`]) by [`Req::invalid`](crate::Req::invalid) in every mode. The form
+    /// Refuses the submit for something other than its input (the state it was made against, or a
+    /// service the handler calls that failed): the form's message (in place of one
+    /// [`Errors::add_form`] recorded, so the status and the message agree), answered with the
+    /// refusal's status (409 for [`Refusal::Conflict`], 502 for [`Refusal::Upstream`]) by
+    /// [`Req::invalid`](crate::Req::invalid) in every mode. The form
     /// is drawn again with what the user typed and the message at its top.
     ///
     /// ```
@@ -1537,6 +1546,8 @@ mod tests {
         assert_eq!((e.refusal().status().as_u16(), e.form()), (410, Some("The sheet was deleted.")));
         e.add_form("later");
         assert_eq!(e.form(), Some("The sheet was deleted."), "add_form keeps the first, as before");
+        e.refuse(Refusal::Upstream, "The carrier did not answer. Try again.");
+        assert_eq!((e.refusal().status().as_u16(), e.form()), (502, Some("The carrier did not answer. Try again.")));
     }
 
     #[test]
