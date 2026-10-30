@@ -2074,6 +2074,22 @@ Corten is pre-1.0, so any minor version may change the API.
     the alternative needs a second async step before full-page renders, with its own rules for a
     failed lookup, caching and the page key
     ([#209 Every page handler extracts the viewer only to pass it to the layout](https://github.com/todd-skelton/corten/issues/209)).
+33. `design.md` (Limits 14), `docs/architecture.md`, `docs/guide/app.md` and
+    `docs/guide/live-data.md` say that HTTP/2 or HTTP/3 to browsers comes from the proxy or CDN in
+    front of `corten::serve`, and that an app with live streams needs it: over HTTP/1.1 a browser's
+    six connections to a host run out
+    ([#400 architecture.md relies on HTTP/2 to share connections, but Corten serves only HTTP/1.1 and no guide says HTTP/2 must come from a proxy](https://github.com/todd-skelton/corten/issues/400)).
+34. `docs/architecture.md` lists number, money and date formatting as the framework's (`t` on
+    CLDR data, and `t.js()` in scripts), not as removed
+    ([#401 architecture.md says number, money and date formatting was removed from the framework, but t.money, t.number and t.date_time are built in](https://github.com/todd-skelton/corten/issues/401)).
+35. `design.md` Choices 11 to 14 say why a request's mode is a `corten` header and not `Accept` or
+    `Sec-Fetch-*`, why the runtime prefetches links itself and not with Speculation Rules, why
+    component CSS is scoped by prefix and not `@scope`, and why a feed patch is keyed `upsert` and
+    `remove` and not JSON Patch or Merge Patch, each with what would let Corten move
+    ([#396 The request mode is a corten header of our own, and no doc says why not Accept or Sec-Fetch-*](https://github.com/todd-skelton/corten/issues/396),
+    [#397 The runtime prefetches links its own way, and no doc says why not the Speculation Rules API](https://github.com/todd-skelton/corten/issues/397),
+    [#398 Component CSS is scoped by prefixing classes, and design.md does not say why not native @scope](https://github.com/todd-skelton/corten/issues/398),
+    [#399 A feed patch is an upsert/remove format of our own, and no doc says why not JSON Patch (RFC 6902) or Merge Patch (RFC 7396)](https://github.com/todd-skelton/corten/issues/399)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 

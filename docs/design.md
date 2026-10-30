@@ -68,6 +68,37 @@ framework's shape, and what it does not do yet.
    costs a navigation nothing: on the item page a full document got about 7% faster than with
    the shell and a navigation stayed within noise (`render_cost` medians of alternating runs,
    same bytes).
+11. **A request says what it is with a `corten` header, not `Accept` or `Sec-Fetch-*`.** A
+   navigation and an action both answer HTML, so no media type tells them apart: `Accept` would
+   need a parameter of Corten's own (a private convention in a standard header) and a parser for
+   the q-values every browser sends differently. `Sec-Fetch-Mode` and `Sec-Fetch-Dest` tell a
+   navigation from a `fetch` but not a navigation from an action, a script cannot set them, and
+   data clients do not send them. With a header of its own, its absence is the safe answer: a
+   request without it gets the whole document, as a browser without JavaScript needs. The mode
+   would move to a standard header that says "part of a page" and that a script may set.
+12. **The runtime prefetches links itself, not with Speculation Rules or `rel="prefetch"`.** A
+   navigation the runtime makes asks with `corten: nav` and gets the title, head tags and
+   `<main>`, a fraction of the document; a speculative prefetch fetches the whole document, and
+   the browser serves it only to a document navigation, not to the runtime's `fetch`. Using it
+   would download more and still leave the runtime's navigation without it. Speculation Rules
+   would fit where the browser navigates anyway (full page loads, browsers without the Navigation
+   API), and the runtime would drop its own once a speculative response can answer a `fetch`.
+13. **Component CSS is scoped by prefixing its classes, not with `@scope`.** A prefixed class
+   (`.offer-list__row`) matches nothing an app's global stylesheet or another component wrote, so
+   a component looks the same on every page; with `@scope`, the class stays `.row` and any
+   global `.row` rule still applies to it. A donut limit at nested components would also need every
+   component's root marked (`data-scope` marks only those with refs or kept state), and a scoped
+   selector competes on specificity and proximity where a prefixed class is one class. The typed
+   class constants do not depend on the prefix. The macro would emit `@scope` when it gives the
+   same isolation from global rules, at the same specificity.
+14. **A feed patch is keyed `upsert` and `remove` of whole rows, not JSON Patch or Merge Patch.**
+   A feed is a set of rows by id, and each write replaces rows or removes them. JSON Patch
+   (RFC 6902) addresses array items by index, which a client that missed or reordered a change
+   applies to the wrong row; Merge Patch (RFC 7396) merges a value into the old one field by field,
+   so a row cannot be replaced whole, and its `null` means "delete", so a field cannot be null.
+   Keyed whole rows are one encoding every subscriber applies the same way, in one pass, and
+   `corten-protocol` holds it so native and agent clients do not write their own diffing
+   ([architecture](architecture.md#rules), Rules 5).
 
 ## Rules
 
@@ -191,4 +222,7 @@ framework's shape, and what it does not do yet.
     begins and is not waited for.
 14. Connections are HTTP/1.1. A request's head must arrive within `App::header_timeout` (30
     seconds), which also closes an idle keep-alive connection; how many may be open is
-    `App::max_connections`, unbounded unless set.
+    `App::max_connections`, unbounded unless set. HTTP/2 and HTTP/3 to browsers come from a proxy
+    or CDN in front of `corten::serve`. An app with live streams needs one: over HTTP/1.1 a
+    browser opens about six connections to a host, each open stream holds one, and requests queue
+    behind them once a page with a few `<corten-live>` elements or feeds is open in a few tabs.
