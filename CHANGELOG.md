@@ -1895,8 +1895,8 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
     `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
     ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
-70. `#[component(css = path::Owner)]` shares a stylesheet from any module that can see the owner,
-    so a screen whose panels are in files of their own has one sheet; it worked only in the
+70. `#[component(css = path::Owner)]` shares a stylesheet from any module of the crate that can see
+    the owner, named by its path, so a screen whose panels are in files of their own has one sheet; it worked only in the
     owner's module, and the error named a hidden module with `cargo add` advice. An owner that
     cannot be found is reported at the path written. The owner's module hands its sheet's path to
     the helper at compile time; nothing changes at run time

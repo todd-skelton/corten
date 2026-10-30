@@ -37,10 +37,10 @@
 //!   a class, so a variant without a rule does not compile.
 //! - A helper component shares another's stylesheet: `#[component(css = OfferList)]` in the same
 //!   module, `#[component(css = super::offers::OfferList)]` from another (a screen's panels in
-//!   files of their own). Any module that can see the owner can share its sheet; its classes are in
-//!   scope in the helper as in the owner, and its uses count for the owner. Classes are in scope
-//!   only in a component: a plain `fn` that picks a class is a helper component, or a `match` in
-//!   the markup.
+//!   files of their own). Any module of the same crate that can see the owner shares its sheet,
+//!   naming it by its path (not through a `use` of it); its classes are in scope in the helper as
+//!   in the owner, and its uses count for the owner. Classes are in scope only in a component: a
+//!   plain `fn` that picks a class is a helper component, or a `match` in the markup.
 //! - The component gets a constant with its own name, `OfferList: corten::Component`; list it
 //!   once in [`crate::App::components`]. Corten joins every listed stylesheet, in order, into one
 //!   file at a content-versioned URL, `components.css`, linked from `<head>` after the shell's
@@ -113,6 +113,25 @@
 //! #[component(css = plain::Plain)]
 //! fn Helper() -> impl Render {
 //!     html! { <p></p> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! nor can a module that cannot see the owner share its sheet:
+//!
+//! ```compile_fail,E0603
+//! mod screen {
+//!     use corten::prelude::*;
+//!     #[component(css)]
+//!     fn BadgeList() -> impl Render {
+//!         html! { <ul class={(List, Badge, Hot)}></ul> }
+//!     }
+//! }
+//!
+//! use corten::prelude::*;
+//! #[component(css = screen::BadgeList)]
+//! fn Helper() -> impl Render {
+//!     html! { <p class={Badge}></p> }
 //! }
 //! # fn main() {}
 //! ```
