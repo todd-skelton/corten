@@ -939,7 +939,10 @@ Corten is pre-1.0, so any minor version may change the API.
     A page without one checks one empty set per bubbling event it listens for.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
-130. `Sources::referrer(Referrer::NoReferrer)` (also `StrictOrigin`, `SameOrigin`) makes an area's
+130. A feed's `snapshot` handler gets the feed's generation as a third argument,
+    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
+    reset feed's `seq` from its own (`docs/guide/live-data.md`).
+131. `Sources::referrer(Referrer::NoReferrer)` (also `StrictOrigin`, `SameOrigin`) makes an area's
     `Referrer-Policy` stricter, so a page whose address carries a secret (a consent token, a reset
     link) does not send it with the requests it makes; `Policy::referrer` does it for the app. There
     is no looser value; nested areas send the least any of them allows, and a changed policy gives
@@ -1502,6 +1505,15 @@ Corten is pre-1.0, so any minor version may change the API.
     fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
     or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
     ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
+81. `corten fmt` runs `cargo fmt` first, then lays out `html!` across the package, and again
+    until neither changes anything, so the one command fixes what `corten check` reports (a
+    check that failed on rustfmt was not fixed by it). It stops after four rounds and names the
+    files still changing (rustfmt's `hard_tabs` undoes the layout's spaces), runs `cargo fmt` in
+    the package it found from a subdirectory, keeps a CRLF file's line endings, prints each warning
+    once, and refuses a flag it does not know. `corten fmt --check` checks both, and
+    `corten check` runs it in place of its own `cargo fmt --check`. Given paths, or outside a
+    package, `corten fmt` still lays out only the markup
+    ([#379 corten fmt does not run cargo fmt, so a check that fails on rustfmt is not fixed by it](https://github.com/todd-skelton/corten/issues/379)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
@@ -1905,6 +1917,13 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
     `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
     ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
+70. A `data-patch` form's `SubmitKey` is renewed once the whole answer has arrived (a patch, a
+    page, or one the runtime does not draw), not when its headers do: an answer whose body was cut
+    off on the way dispatches `corten:error` with status 0 and keeps the key, so the retry is the
+    same submission and a committed write does not apply twice. An older submit that a newer one
+    of the same form aborted no longer renews the key the newer one was sent with. The minified
+    runtime grows by 97 bytes (25,413 to 25,510), 29 gzipped (9,249 to 9,278) and 33 with brotli
+    (8,348 to 8,381).
 
 ### Documentation
 
