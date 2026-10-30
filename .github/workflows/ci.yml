@@ -103,6 +103,13 @@ jobs:
           timeout 120 sh -c 'until curl -so /dev/null http://localhost:18484/; do sleep 1; done'
           $PLAYWRIGHT node examples/seller-desk/smoke.mjs http://localhost:18484
           docker rm -f corten-seller-desk
+      - name: auction-room
+        run: |
+          docker build -f examples/auction-room/Dockerfile -t corten-auction-room .
+          docker run -d --name corten-auction-room -p 18486:8080 -e HOUSE_KEY=smoke-house corten-auction-room
+          timeout 120 sh -c 'until curl -so /dev/null http://localhost:18486/; do sleep 1; done'
+          $PLAYWRIGHT node examples/auction-room/smoke.mjs http://localhost:18486 smoke-house
+          docker rm -f corten-auction-room
       - name: listings-feed
         run: |
           docker network create feeds

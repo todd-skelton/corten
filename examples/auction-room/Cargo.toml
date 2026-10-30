@@ -1,0 +1,18 @@
+[package]
+name = "auction-room"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "A live card auction: people signed in bid on the same lots at once, bids kept in SQLite and refused below the price, each outbid bidder told alone, and all of it working without JavaScript."
+
+[dependencies]
+corten = { path = "../../crates/corten", features = ["compress"] }
+corten-ui = { path = "../../crates/corten-ui" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+# SQLite, built in (sqlx's `sqlite` feature bundles it), so the example needs no database server.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

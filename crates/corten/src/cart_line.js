@@ -10,3 +10,8 @@ export function confirm(event, dialog, name) {
   dialog.dataset.name = name;
   dialog.showModal();
 }
+
+/** @param {KeyboardEvent} event @param {HTMLLIElement} line */
+export function shortcut(event, line) {
+  if (event.key === "Delete") line.remove();
+}

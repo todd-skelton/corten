@@ -1,0 +1,6 @@
+{
+  "lot": {
+    "bids_one": "{count} bid",
+    "bids_other": "{count} bids"
+  }
+}

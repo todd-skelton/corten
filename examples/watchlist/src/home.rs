@@ -91,6 +91,8 @@ fn home_view(home: &Home, t: Msg) -> impl Render {
 /// list is one form's submit, and the runtime keeps only the newest answer. A change replaces
 /// the component, whose new rows subscribe again (a snapshot, then the stream); it starts
 /// unpaused, and a removed row's button takes focus with it (the message says what changed).
+/// `p` pauses and resumes too, wherever focus is on the page (`on:document:keydown`), unless
+/// the reader is typing in a field.
 /// The cells print the text the market wrote when the price moved (`Stock::price`,
 /// `Stock::change`), in the app's one locale. Styled by `live_prices.css`.
 #[component(css, js)]
@@ -106,7 +108,15 @@ pub(crate) fn LivePrices<'a>(stocks: &'a [Stock], t: Msg) -> impl Patch {
         >
             <div class={(row(Space::_3), justify_between())}>
                 <h2>"Your stocks"</h2>
-                <button ref={pause} type="button" aria-pressed="false" hidden on:click={js::pause(target, price, change)}>
+                <button
+                    ref={pause}
+                    type="button"
+                    aria-pressed="false"
+                    aria-keyshortcuts="p"
+                    hidden
+                    on:click={js::pause(target, price, change)}
+                    on:document:keydown={js::pauseKey(event, target, price, change)}
+                >
                     "Pause updates"
                 </button>
             </div>

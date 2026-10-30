@@ -1,0 +1,62 @@
+/* Element defaults and the shell. Each component's rules are next to it (src/views/*.css). */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+:root {
+  color-scheme: light dark;
+  --ink: light-dark(#1d1a16, #ece8e1);
+  --muted: light-dark(#6b645a, #a39d93);
+  --line: light-dark(#e6e1d8, #34302a);
+  --bg: light-dark(#f7f4ee, #14120f);
+  --surface: light-dark(#fff, #1d1a16);
+  --accent: light-dark(#a3470f, #f59e5b);
+  --accent-ink: light-dark(#fff, #1d1006);
+  --tint: light-dark(#fbeee3, #3a2414);
+  --danger: light-dark(#b42318, #f87171);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+body { margin: 0; }
+header {
+  display: flex; align-items: center; gap: 24px;
+  padding: 0 24px; min-height: 56px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+header > strong { font-size: 17px; letter-spacing: -0.01em; }
+header nav { display: flex; gap: 4px; align-self: stretch; flex: 1; }
+header nav a {
+  display: flex; align-items: center; padding: 0 12px;
+  color: var(--muted); text-decoration: none; font-weight: 500;
+  border-bottom: 2px solid transparent;
+}
+header nav a:hover { color: var(--ink); }
+header nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+header form { display: flex; align-items: center; gap: 12px; margin: 0; }
+header > a { font-weight: 600; color: var(--accent); }
+header > strong, header button, header > a { white-space: nowrap; }
+header form span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 12rem; }
+@media (max-width: 520px) {
+  header { gap: 12px; padding: 0 12px; }
+  header nav a { padding: 0 8px; }
+  header form { gap: 8px; }
+  header form span { max-width: 6rem; }
+  main { padding: 16px 12px; }
+}
+main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 26px; margin: 0 0 16px; letter-spacing: -0.015em; }
+a { color: var(--accent); }
+table { border-collapse: collapse; width: 100%; background: var(--surface); }
+th { text-align: start; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+th, td { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+button, input { font: inherit; color: inherit; }
+button {
+  padding: 6px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface);
+}
+button:hover { border-color: var(--muted); }
+form[data-patch] > button { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+input[aria-invalid="true"] { border-color: var(--danger); }
+.field-error, .form-error { margin: 0; color: var(--danger); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+pre { white-space: pre-wrap; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
