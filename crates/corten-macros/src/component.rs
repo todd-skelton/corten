@@ -13,11 +13,17 @@ use crate::{
     tokens::{err, is_ident, is_punct, literal, q, stream, Error},
 };
 
-/// `css` (the component's own `{name}.css`) or `css = Owner` (another component's, in the
-/// same module).
+/// `css` (the component's own `{name}.css`) or `css = path::Owner` (another component's, from
+/// any module that can see it).
 pub enum CssArg {
     Own(Span),
-    Of(Ident),
+    /// `css = path::Owner`: the tokens before the owner (`super::screen::`, or none), the owner,
+    /// and its stylesheet's path once the owner's module has given it (see `Css::items`).
+    Of {
+        path: TokenStream,
+        owner: Ident,
+        sheet: Option<String>,
+    },
 }
 
 /// What `#[component(..)]` takes: `css` or `css = Owner`, and `js`.
@@ -33,15 +39,20 @@ pub struct Args {
 /// Parses `#[component]`, `#[component(css)]`, `#[component(css = Owner)]`, `#[component(js)]`,
 /// `#[component(view)]` or several, comma-separated.
 pub fn args(args: TokenStream) -> Result<Args, Error> {
-    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent, js (a script named after it) and view (a class scripts write its holes through)";
+    let usage = "#[component] takes css (a stylesheet named after the component, next to it), css = OtherComponent or css = path::to::OtherComponent (its stylesheet, from another module of the crate), js (a script named after it) and view (a class scripts write its holes through)";
     let mut out = Args::default();
-    for part in split(args, ',') {
+    let mut sheet = None;
+    for (i, part) in split(args, ',').into_iter().enumerate() {
         match part.as_slice() {
+            // `@ "/path/owner.css"`, first: put there by the owner's `__corten_sheet!`.
+            [TokenTree::Punct(at), TokenTree::Literal(path)] if at.as_char() == '@' && i == 0 => {
+                sheet = crate::tokens::string_value(path);
+            }
             [TokenTree::Ident(css)] if css.to_string() == "css" && out.css.is_none() => out.css = Some(CssArg::Own(css.span())),
-            [TokenTree::Ident(css), TokenTree::Punct(eq), TokenTree::Ident(owner)]
-                if css.to_string() == "css" && eq.as_char() == '=' && out.css.is_none() =>
+            [TokenTree::Ident(css), TokenTree::Punct(eq), path @ .., TokenTree::Ident(owner)]
+                if css.to_string() == "css" && eq.as_char() == '=' && out.css.is_none() && owner_path(path) =>
             {
-                out.css = Some(CssArg::Of(owner.clone()))
+                out.css = Some(CssArg::Of { path: stream(path.iter().cloned()), owner: owner.clone(), sheet: None })
             }
             [TokenTree::Ident(js)] if js.to_string() == "js" && out.js.is_none() => out.js = Some(js.span()),
             [TokenTree::Ident(view)] if view.to_string() == "view" && out.view.is_none() => out.view = Some(view.span()),
@@ -49,11 +60,40 @@ pub fn args(args: TokenStream) -> Result<Args, Error> {
             [] => {}
         }
     }
+    match (&mut out.css, sheet) {
+        (Some(CssArg::Of { sheet: given, .. }), Some(path)) => *given = Some(path),
+        (_, Some(_)) => return err(Span::call_site(), usage),
+        _ => {}
+    }
     Ok(out)
 }
 
+/// A path to a component, without the component: nothing, or `a::b::`, `super::`, `crate::`.
+fn owner_path(path: &[TokenTree]) -> bool {
+    path.chunks(3).all(|part| match part {
+        [TokenTree::Ident(_), TokenTree::Punct(a), TokenTree::Punct(b)] => a.as_char() == ':' && b.as_char() == ':',
+        _ => false,
+    })
+}
+
 pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
+    let tokens = args.clone();
     let args = self::args(args)?;
+    // `css = path::Owner`: the owner's module knows where its stylesheet is, so it is asked, and
+    // calls this attribute again with the path first. The module is the owner's, so Rust's own
+    // visibility decides which components can share the sheet.
+    if let Some(CssArg::Of { path, owner, sheet: None }) = &args.css {
+        // The owner itself, imported so its visibility decides who may share its sheet, and a
+        // missing one is reported by the name written. The module has the owner's span, so an
+        // owner without a stylesheet is reported at its name.
+        let mut owner_path = path.clone();
+        owner_path.extend([TokenTree::Ident(owner.clone())]);
+        let mut call = q("#[allow(unused_imports)] use __A0 as _;", &[owner_path]);
+        let module = crate::style::module(owner);
+        call.extend(path.clone());
+        call.extend(q("__A0::__corten_sheet! { [__A1] __A2 }", &[TokenTree::Ident(module).into(), tokens, item]));
+        return Ok(call);
+    }
     build(item, args)
 }
 
@@ -261,17 +301,18 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
 
     let css = args.css;
     let css_owner = match &css {
-        Some(CssArg::Of(owner)) => Some(owner.clone()),
+        Some(CssArg::Of { path, owner, .. }) => Some((path.clone(), owner.clone())),
         _ => None,
     };
     let (css, own_css) = match &css {
         None => (None, false),
         Some(CssArg::Own(span)) => (Some(Css::read(&name, *span)?), true),
-        Some(CssArg::Of(owner)) => {
+        Some(CssArg::Of { owner, sheet, .. }) => {
             if owner.to_string() == name.to_string() {
                 return err(owner.span(), "css = names another component; for this component's own stylesheet write css");
             }
-            (Some(Css::read(owner, owner.span())?), false)
+            let Some(sheet) = sheet else { unreachable!("expand asks the owner's module for its sheet first") };
+            (Some(Css::read_at(owner, std::path::PathBuf::from(sheet), owner.span())?), false)
         }
     };
     let mut used = Vec::new();
@@ -295,14 +336,14 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
     // The constant the app lists: the component's script and its own stylesheet.
     if let Some(css) = &css {
         // A helper (`css = Owner`) uses the owner's constants, so its uses count for the owner.
-        let style_owner = css_owner.clone().unwrap_or_else(|| name.clone());
+        let (path, style_owner) = css_owner.clone().unwrap_or_else(|| (TokenStream::new(), name.clone()));
         if own_css {
             items.extend(css.items(&name));
             // Two components that style `.{prefix}__*` fail to build, not the app when it starts.
             // A library's classes are not prefixed, so its `Card` and the app's clash at any version.
             items.extend(crate::id::one_per_program("two_components_style", &css.prefix, false));
         }
-        scope.extend(css.scope(&style_owner, &used));
+        scope.extend(css.scope(&path, &style_owner, &used));
     }
     let has_constant = own_css || script.is_some() || view.is_some();
     if let Some(module) = &script {
@@ -319,7 +360,15 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
             TokenStream::new(),
         ));
     }
-    let owner = if has_constant { Some(name.clone()) } else { css_owner };
+    let owner = if has_constant {
+        Some(TokenTree::Ident(name.clone()).into())
+    } else {
+        css_owner.map(|(path, owner)| {
+            let mut out = path;
+            out.extend([TokenTree::Ident(owner)]);
+            out
+        })
+    };
     if has_constant {
         let some = |t: Option<TokenStream>| match t {
             Some(t) => q("::core::option::Option::Some(__A0)", &[t]),
@@ -353,9 +402,7 @@ pub fn build(item: TokenStream, args: Args) -> Result<TokenStream, Error> {
         ));
     }
     let used = match owner {
-        Some(owner) => {
-            q("#[cfg(debug_assertions)] ::corten::style::__private::rendered(&__A0);", &[TokenTree::Ident(owner).into()])
-        }
+        Some(owner) => q("#[cfg(debug_assertions)] ::corten::style::__private::rendered(&__A0);", &[owner]),
         None => TokenStream::new(),
     };
     let doc_body = body.clone();

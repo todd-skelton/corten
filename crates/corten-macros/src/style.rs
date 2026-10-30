@@ -437,10 +437,15 @@ pub struct Css {
 
 impl Css {
     pub fn read(owner: &Ident, span: Span) -> Result<Css, Error> {
+        let file = format!("{}.css", crate::names::snake(&owner.to_string()));
+        Css::read_at(owner, locate(&file, span)?, span)
+    }
+
+    /// The stylesheet at `path`, which its owner's module gave (see `items`).
+    pub fn read_at(owner: &Ident, path: PathBuf, span: Span) -> Result<Css, Error> {
         let name = owner.to_string();
         let prefix = crate::names::kebab(&name);
         let file = format!("{}.css", crate::names::snake(&name));
-        let path = locate(&file, span)?;
         let text = std::fs::read_to_string(&path).map_err(|e| (span, format!("cannot read {}: {e}", path.display())))?;
         let sheet = scope(&text, &prefix).map_err(|e| (span, format!("{file}, {e}")))?;
         let mut idents: Vec<String> = Vec::with_capacity(sheet.classes.len());
@@ -481,16 +486,32 @@ impl Css {
                 owner.span(),
             ));
         }
+        // `css = path::Owner` in any module calls this macro, which calls `#[component]` again with
+        // the sheet's path first: only the owner knows where its stylesheet is. The module is
+        // `pub(crate)`, so Rust's visibility of the owner's module decides who shares the sheet.
+        consts.extend(q(
+            "#[allow(unused_macros)]
+            macro_rules! __corten_sheet {
+                ([$($corten_args:tt)*] $($corten_item:tt)*) => {
+                    #[::corten::component(@ __A0, $($corten_args)*)] $($corten_item)*
+                };
+            }
+            #[allow(unused_imports)]
+            pub(crate) use __corten_sheet;",
+            &[literal(&self.path.display().to_string())],
+        ));
         q(
-            "#[doc(hidden)] #[allow(non_snake_case, non_upper_case_globals)] mod __A0 { __A1 }",
+            "#[doc(hidden)] #[allow(non_snake_case, non_upper_case_globals)] pub(crate) mod __A0 { __A1 }",
             &[TokenTree::Ident(module(owner)).into(), consts],
         )
     }
 
     /// Statements at the start of `render`: the owner's constants in scope, and a use of each
     /// class the markup printed as static text (so they count as used).
-    pub fn scope(&self, owner: &Ident, used: &[Ident]) -> TokenStream {
-        let mut out = q("#[allow(unused_imports)] use __A0::*;", &[TokenTree::Ident(module(owner)).into()]);
+    pub fn scope(&self, path: &TokenStream, owner: &Ident, used: &[Ident]) -> TokenStream {
+        let mut module_path = path.clone();
+        module_path.extend([TokenTree::Ident(module(owner))]);
+        let mut out = q("#[allow(unused_imports)] use __A0::*;", &[module_path]);
         if !used.is_empty() {
             let mut list = TokenStream::new();
             for ident in used {
@@ -657,7 +678,7 @@ fn respan(tokens: TokenStream, span: Span) -> TokenStream {
 }
 
 /// `__corten_css_OfferList`: the class constants of `OfferList`'s stylesheet.
-fn module(owner: &Ident) -> Ident {
+pub fn module(owner: &Ident) -> Ident {
     Ident::new(&format!("__corten_css_{owner}"), owner.span())
 }
 
