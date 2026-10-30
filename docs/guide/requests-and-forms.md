@@ -299,7 +299,17 @@ step already taken or out of order, a record deleted meanwhile) is
 `errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
 message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
 drawn again with what the user typed, the page without JavaScript, the Problem Details document
-for a data client. A post that can be refused is a `data-patch` form: a plain post's refusal
+for a data client. A service the handler calls for the submit that failed or did not answer
+(a carrier, a payment provider, another app) is `errors.refuse(Refusal::Upstream, text)`: 502,
+the same three answers, with the form drawn again so the user can send it once more. The
+service may have applied it, so the retry must be the same submission: the runtime keeps the
+form's `SubmitKey` (below) over whatever key the patch drew, and the form drawn for the page
+without JavaScript writes the posted key again, `input.submit.again(f.submit)` where it would
+write `SubmitKey::field(f.submit)`. A proxy in front of the app that swaps 5xx bodies for a page
+of its own (nginx's `proxy_intercept_errors`, a CDN's error pages) hides the redrawn form; let
+the app's 502 through. A failure of the
+app itself (its database) is no refusal: it is `?`'d, and the error page answers it. A post
+that can be refused is a `data-patch` form: a plain post's refusal
 draws the whole page and leaves the address at the action's URL, whose GET may not exist. The
 one exception is a download, which must be a plain post ([below](#files)): its refusal redirects
 to the page that says why.
@@ -327,7 +337,8 @@ The same key is sent for as long as the submission has no answer: a page reloade
 posts it again, and the runtime sends a `data-patch` form again with it after a network error, a
 5xx, an abort (a navigation) or an answer whose body was cut off on the way. Once a whole answer
 arrives, any status below 500, the runtime gives the form a new key, so the next submit is a new
-one; a page or patch the server draws has a new key anyway. A form sent again before the first had an answer (a
+one. A patch never sets the key: the runtime keeps the form's own over the one the patch drew, so
+a 5xx patch (`Refusal::Upstream`) cannot swap in a fresh key before the retry. A form sent again before the first had an answer (a
 browser without JavaScript, a data client) is the same submission: the app answers it with what
 it did the first time, and the user sees that and can send the change. A `data-patch` form's
 change made while its write is out waits for the answer instead, and goes under the new key
