@@ -187,7 +187,9 @@ impl<P: Prefix> Area<P> {
     /// What the area's pages add to the app's [`Policy`] (its Content-Security-Policy, and a looser
     /// `Cross-Origin-Opener-Policy`): a payment provider's scripts and frames on the payment pages,
     /// style attributes on the pages that draw sizes from data, and not on every other page. Only adding is possible, so a page in the
-    /// area never allows less than the app; nested areas add up, outermost first.
+    /// area never allows less than the app; nested areas add up, outermost first. A stricter
+    /// `Referrer-Policy` ([`crate::security::Sources::referrer`]) is the one way an area sends
+    /// less, for every answer under it, an API's included.
     ///
     /// ```
     /// use corten::prelude::*;
@@ -219,7 +221,8 @@ impl<P: Prefix> Area<P> {
     /// differs); a patch from the area's routes is applied under the policy of the page it lands
     /// on, and a page that answers a form from a page under another policy reloads that page. A
     /// request finds its area's policy once, by path, and only when some area adds something the
-    /// app's policy lacks (a source, or a looser `Cross-Origin-Opener-Policy`). A policy for one route is an area of one page.
+    /// app's policy lacks (a source, a looser `Cross-Origin-Opener-Policy` or a stricter
+    /// `Referrer-Policy`). A policy for one route is an area of one page.
     ///
     /// What is the whole app's (the names it answers to, HSTS, other sites' writes) is not an
     /// area's to change:
@@ -1383,15 +1386,16 @@ impl<S: Steps> Layer<S> {
         // page, no caller lookup.
         if !self.policy.answers(&req) {
             let mut res = crate::security::misdirected();
-            self.policy.headers(&mut res, None);
+            self.policy.headers(&mut res, None, &self.policy.csp);
             res.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
             return res;
         }
         let path = req.uri().path();
         let own = self.own.contains(path);
         let mount = if own { None } else { self.mounts.iter().find(|mount| mount.contains(path)) };
-        // The CSP of pages here, and the deadline: an area's when it sets one.
-        let (csp, shell) = if own || mount.is_some() { (&self.policy.csp, 0) } else { self.policy.csp_for(path) };
+        // The policy here, and the deadline: an area's when it sets one. An API in an area keeps
+        // its own CSP but sends the area's referrer policy.
+        let (csp, shell) = if own { (&self.policy.csp, 0) } else { self.policy.csp_for(path) };
         let deadline = match mount {
             Some(mount) => mount.deadline.unwrap_or(self.deadline),
             None if own || self.area_deadlines.is_empty() => self.deadline,
@@ -1403,7 +1407,7 @@ impl<S: Steps> Layer<S> {
         let scope = self.steps.scope(mount, own, path);
         if let Some(mount) = mount {
             if let Some(mut res) = mount.preflight(req.method(), req.headers()) {
-                self.policy.headers(&mut res, None);
+                self.policy.headers(&mut res, None, csp);
                 res.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
                 return res;
             }
@@ -1422,7 +1426,7 @@ impl<S: Steps> Layer<S> {
                     None => refused,
                 },
             };
-            self.policy.headers(&mut refused, nonce.as_ref().map(|nonce| (nonce, csp)));
+            self.policy.headers(&mut refused, nonce.as_ref(), csp);
             refused.headers_mut().insert(header::CACHE_CONTROL, cache::PRIVATE);
             return refused;
         }
@@ -1431,7 +1435,7 @@ impl<S: Steps> Layer<S> {
         let path = self.shared.dev.then(|| req.uri().path().to_string());
         let (mut res, caller, mode) = self.run(req, route, mount, deadline, scope).await;
         // First: the security headers reserve room for `Cache-Control` and `Vary` too.
-        self.policy.headers(&mut res, nonce.as_ref().map(|nonce| (nonce, csp)));
+        self.policy.headers(&mut res, nonce.as_ref(), csp);
         let seen = Seen {
             credentials,
             caller,

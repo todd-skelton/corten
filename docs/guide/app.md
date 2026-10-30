@@ -777,7 +777,9 @@ the upstream request with it. What else to drop (`Set-Cookie`) is the route's to
 
 An app moved onto Corten a slice at a time serves its own paths and relays the rest to the
 old server behind a catch-all route. `any = relay` serves every method there, those the app never
-names included (`OPTIONS`, `PROPFIND`), so the upstream answers them, not Corten's 405; it is
+names included (`OPTIONS`, `PROPFIND`), so the upstream answers them, not Corten's 405. Corten
+still answers what it answers for every route first: a write from another site is a 403, and
+under an API that allows other origins a CORS preflight is Corten's. It is
 the route's only handler, which the module checks when it compiles, so `any` is named in a
 `#[corten::routes]` module (an area's or an API's as well) and has no builder for routes added by
 hand. A path the app routes itself keeps only the methods it names: when the
@@ -1030,7 +1032,8 @@ App::new(url::router())
 ```
 
 An area only adds (the closure gets `Sources`, which has no way to remove one), so no page allows
-less than the app; nested areas add up, outermost first. Each area's header is built once at
+less than the app; nested areas add up, outermost first. The referrer policy below is the one
+setting that goes the other way: an area can only make it send less. Each area's header is built once at
 startup, and a request looks up its area by path only when some area sets a policy. A document
 keeps the policy it loaded with, so a client navigation into or out of such an area loads the page
 in full (the page's shell key includes the area's policy); a patch is applied under the policy of
@@ -1055,6 +1058,26 @@ their own shell key:
 ```rust,ignore
 // With the script, frame, connect and image sources the provider's guide lists for its embed.
 .area(|area| settings::url::area(area).policy(|p| p.script_src("https://connect-js.stripe.com").allow_cross_origin_opener()))
+```
+
+Every answer is sent with `Referrer-Policy: strict-origin-when-cross-origin`: other sites get the
+origin only. A page whose address carries a secret (an OAuth consent's `?token=`, a password reset,
+an invitation, a magic link) should not send it even to the app's own logs with the stylesheet and
+font requests it makes, so its area makes the policy stricter with `referrer(Referrer::StrictOrigin)`
+(the origin only, to everyone), `Referrer::SameOrigin` (nothing to other sites) or
+`Referrer::NoReferrer` (nothing at all); `Policy::referrer` does it for the whole app. There is no
+looser value, so nothing sends more than the default; nested areas, the app and the area each send
+the least any of them allows, and like a CSP source a changed policy gives the area's pages their
+own shell key. An `App::api` under the area sends the area's policy too. An answer that brings a
+policy of its own (a relayed service's redirect, a handler's response) sends the least of its and
+the area's, read as the browser reads it (every line, the last token it knows): `no-referrer` is
+kept, `origin` becomes `strict-origin`, and `unsafe-url` gives the area's. A `<meta name="referrer">`
+in the page applies only from where the parser reaches it, after the layout's own requests, so use
+the area:
+
+```rust,ignore
+use corten::security::Referrer;
+.area(|area| consent::url::area(area).policy(|p| p.referrer(Referrer::NoReferrer)))
 ```
 
 ## Error pages
