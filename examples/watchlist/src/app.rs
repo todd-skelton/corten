@@ -132,10 +132,10 @@ pub mod url {
         pub id: &'a str,
     }
 
-    #[route("/feed/stocks", get = home::stocks)]
+    #[route("/feed/stocks", get = home::stocks, rows = market::Stock)]
     pub struct Stocks;
 
-    #[route("/feed/stocks/live", get = home::stocks_live)]
+    #[route("/feed/stocks/live", get = home::stocks_live, rows = market::Stock)]
     pub struct StocksLive;
 
     #[route("/live/trades", get = home::trades)]

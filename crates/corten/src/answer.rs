@@ -91,7 +91,14 @@ pub trait Answer: IntoResponse {
     /// What the handler may read: [`AnyInputs`], or [`AnonymousInputs`] for an answer that is
     /// the same for everyone.
     type Inputs;
+    /// The rows of a feed's answer (`FeedResponse<Level>`: `Level`), [`NotAFeed`] for any other.
+    /// The route a feed is at names them, `#[route("/feed/levels", get = levels, rows = Level)]`, so
+    /// a script handed its URL knows what rows it sends.
+    type Rows;
 }
+
+/// The rows ([`Answer::Rows`]) of an answer that is not a feed.
+pub enum NotAFeed {}
 
 /// A page, a patch or a redirect, as a whole response (status and headers too): what
 /// [`Req::page`], [`Req::patch`] and [`Req::redirect`] give. A cookie is
@@ -210,6 +217,7 @@ impl<For> DerefMut for HtmlResponse<For> {
 impl Answer for HtmlResponse {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 /// An answer that can be [`Public`], and what it is there: the same answer, made for everyone.
@@ -287,7 +295,18 @@ macro_rules! for_everyone {
 for_everyone!(&'static str, String, StatusCode, Relay, Media, LiveResponse);
 
 #[cfg(feature = "feed")]
-for_everyone!(corten_feed::FeedResponse);
+impl<T> ForEveryone for corten_feed::FeedResponse<T> {
+    type Named = Self;
+
+    fn for_all(self) -> Self {
+        self
+    }
+}
+
+#[cfg(feature = "feed")]
+impl<T> Shareable for corten_feed::FeedResponse<T> {
+    type ForAll = Self;
+}
 
 impl Shareable for HtmlResponse {
     type ForAll = HtmlResponse<ForAll>;
@@ -470,6 +489,7 @@ impl DerefMut for JsonResponse {
 impl Answer for JsonResponse {
     const FORMAT: Format = Format::Json;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 /// A JSON handler's error: an [`Error`] (`?` on any error, as in a page handler) or the
@@ -530,6 +550,7 @@ impl IntoResponse for JsonError {
 impl<A: Answer> Answer for std::result::Result<A, JsonError> {
     const FORMAT: Format = A::FORMAT;
     type Inputs = A::Inputs;
+    type Rows = A::Rows;
 }
 
 #[cfg(feature = "json")]
@@ -539,21 +560,25 @@ where
 {
     const FORMAT: Format = Format::Json;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 impl<A: Answer> Answer for Result<A, Error> {
     const FORMAT: Format = A::FORMAT;
     type Inputs = A::Inputs;
+    type Rows = A::Rows;
 }
 
 impl Answer for &'static str {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 impl Answer for String {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 /// A status and no body: `StatusCode::NO_CONTENT` for a write that has nothing to say. An error
@@ -561,6 +586,7 @@ impl Answer for String {
 impl Answer for StatusCode {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 /// Another server's answer, passed on as it came, for a route that relays an upstream (a gateway,
@@ -634,6 +660,7 @@ impl IntoResponse for Relay {
 impl Answer for Relay {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 /// Bytes the app holds, sent as their media type: a picture a user uploaded, a document the app
@@ -778,6 +805,7 @@ impl IntoResponse for Media {
 impl Answer for Media {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 /// On a [`Relay`]'s response: its failure status and its encoding are the upstream's, passed on
@@ -797,13 +825,15 @@ impl IntoResponse for LiveResponse {
 impl Answer for LiveResponse {
     const FORMAT: Format = Format::Html;
     type Inputs = AnyInputs;
+    type Rows = NotAFeed;
 }
 
 /// A feed's snapshot or live stream, read by the runtime.
 #[cfg(feature = "feed")]
-impl Answer for corten_feed::FeedResponse {
+impl<T> Answer for corten_feed::FeedResponse<T> {
     const FORMAT: Format = Format::Json;
     type Inputs = AnyInputs;
+    type Rows = T;
 }
 
 /// An answer that is the same for everyone, so any cache (a CDN, a proxy) may keep it:
@@ -1110,6 +1140,7 @@ impl<A: Shareable> IntoResponse for Public<A> {
 impl<A: Answer + Shareable> Answer for Public<A> {
     const FORMAT: Format = A::FORMAT;
     type Inputs = AnonymousInputs;
+    type Rows = A::Rows;
 }
 
 /// An answer nothing may keep, not even the browser's own cache (`Cache-Control: no-store`): a
@@ -1135,6 +1166,7 @@ impl<A: IntoResponse> IntoResponse for NoStore<A> {
 impl<A: Answer> Answer for NoStore<A> {
     const FORMAT: Format = A::FORMAT;
     type Inputs = A::Inputs;
+    type Rows = A::Rows;
 }
 
 /// Bytes a URL can name, which [`Public::immutable`] takes: [`Media`], or `corten::Result<Media>`.

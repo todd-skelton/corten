@@ -198,11 +198,11 @@ pub fn Gallery<'a>(
                 <section class={Card}>
                     <h2>"Activity"</h2>
                     <p>
-                        {t.offer_listed()}" "
+                        "Listed "
                         <RelativeTime when={t.relative(now - LISTED_AGO, now, RelativeStyle::Short)} />
                     </p>
                     <p>
-                        {t.offer_expires()}" "
+                        "The best offer expires "
                         <RelativeTime when={t.relative(now + EXPIRES_IN, now, RelativeStyle::Long)} />
                     </p>
                 </section>

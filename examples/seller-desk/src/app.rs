@@ -245,19 +245,19 @@ pub mod url {
     #[route("/statement", get = statement)]
     pub struct Statement;
 
-    #[route("/feed/levels", get = levels)]
+    #[route("/feed/levels", get = levels, rows = Level)]
     pub struct Levels;
 
-    #[route("/feed/levels/live", get = levels_live)]
+    #[route("/feed/levels/live", get = levels_live, rows = Level)]
     pub struct LevelsLive;
 }
 
 /// The stock levels feed: a snapshot, then live changes from a cursor.
-async fn levels(State(desk): State<Desk>) -> FeedResponse {
+async fn levels(State(desk): State<Desk>) -> FeedResponse<Level> {
     desk.levels.snapshot()
 }
 
-async fn levels_live(State(desk): State<Desk>, since: Since) -> FeedResponse {
+async fn levels_live(State(desk): State<Desk>, since: Since) -> FeedResponse<Level> {
     desk.levels.live(since)
 }
 
@@ -356,8 +356,8 @@ async fn statement(req: Req, State(desk): State<Desk>) -> NoStore<HtmlResult> {
     let t: Msg = req.t();
     let sets: Vec<(&str, usize, u64)> = sets.iter().map(|(name, (items, cents))| (name.as_str(), *items, *cents)).collect();
     NoStore(req.page(html! {
-        <views::Layout req={&req} title={t.statement_title()}>
-            <h1>{t.statement_title()}</h1>
+        <views::Layout req={&req} title="Statement">
+            <h1>"Statement"</h1>
             <StatementTable t={t} sets={&sets} />
         </views::Layout>
     }))

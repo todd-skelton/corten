@@ -5,7 +5,7 @@
 // formats (t.js().money(USD), t.js().change(2)), which write what the server rendered; they
 // are written into the page once, for watch, which keeps them for pause.
 import { keep, subscribe } from "corten";
-/** @import { Message, MoneyFormat, PercentFormat } from "corten" */
+/** @import { FeedUrl, Message, MoneyFormat, PercentFormat } from "corten" */
 
 /** @typedef {import("../types/app").Stock} Stock Generated from `Stock` in src/market.rs. */
 
@@ -22,7 +22,7 @@ const held = () =>
 /**
  * @param {HTMLElement} root @param {HTMLButtonElement} pause
  * @param {Map<string, HTMLTableCellElement>} prices @param {Map<string, HTMLTableCellElement>} changes
- * @param {MoneyFormat} money @param {PercentFormat} percent @param {string} feed @param {AbortSignal} signal
+ * @param {MoneyFormat} money @param {PercentFormat} percent @param {FeedUrl<Stock>} feed @param {AbortSignal} signal
  * @param {HTMLParagraphElement} updates @param {Message<"count">} updated the count's text, in the page's locale
  */
 export function watch(root, pause, prices, changes, money, percent, feed, signal, updates, updated) {
@@ -39,7 +39,6 @@ export function watch(root, pause, prices, changes, money, percent, feed, signal
   subscribe(
     feed,
     {
-      /** @param {Stock[]} rows */
       snapshot: (rows) => rows.forEach(show),
       patch: (changes) => {
         for (const change of changes) {

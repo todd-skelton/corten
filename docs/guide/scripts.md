@@ -480,5 +480,5 @@ through [views](#views):
 
 | Piece | Server | Browser |
 |---|---|---|
-| Live rows | `corten::feed::Feed<Row>`: `write(\|tx\| ...)`, `snapshot()`, `live(since)` (feature `feed`) | `subscribe(url, { snapshot, patch, status }, { signal })` in an `on:connect` handler |
+| Live rows | `corten::feed::Feed<Row>`: `write(\|tx\| ...)`, `snapshot()`, `live(since)` (feature `feed`), at a route with `rows = Row` | `subscribe(feed, { snapshot, patch, status }, { signal })` in an `on:connect` handler, `feed` a `FeedUrl<Row>` parameter |
 | Rendering | the rows, rendered with `html!` as `#[component(view)]`s | `rows(body, Row).get(row.id).price = row.price` for each changed row, in the same handler |

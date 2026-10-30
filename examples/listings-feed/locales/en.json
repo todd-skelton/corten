@@ -1,6 +1,5 @@
 {
   "listings": {
-    "shown": "{shown} of {total} listings",
-    "moved": "Market lows moved. The rows change when the feed brings the change, on every instance."
+    "shown": "{shown} of {total} listings"
   }
 }
