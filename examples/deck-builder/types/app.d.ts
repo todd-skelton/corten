@@ -21,10 +21,13 @@ declare module "corten/events" {
 
 /** The app's views (#[component(view)]): each one's holes, read from and written to the page. */
 declare module "corten/views" {
-  /** What #[component(view)] generates for a component whose root has key={..}. */
-  export interface ViewClass<D, V> {
+  /** What #[component(view)] generates for a component. */
+  export interface KeylessViewClass<D, V> {
     new (el: Element): V;
     fill(el: Element, data: D): void;
+  }
+  /** What #[component(view)] generates for a component whose root has key={..}. */
+  export interface ViewClass<D, V> extends KeylessViewClass<D, V> {
     key(el: Element): string;
     /** There when the key is one of the view's holes: then scripts can make its rows. */
     keyOf?(data: D): string;
@@ -37,13 +40,11 @@ declare module "corten/views" {
    * element the markup fills with `<Row .. />` only.
    */
   export type Holds<V, E extends Element = HTMLElement> = E & { readonly [holds]: V };
-  /** The views of every child of a parent element, all made from one component. */
-  export interface ServerRows<V extends { el: Element }> {
+  /** The views of every child of a parent element, all made from one component without a key. */
+  export interface RowList<V extends { el: Element }> {
     readonly length: number;
     /** The view of the i-th row. */
     at(i: number): V;
-    /** The view of the row with this key, if any. */
-    get(key: string): V | undefined;
     /** The view of the row that holds `target` (an event's target), if any. */
     of(target: EventTarget | null): V | undefined;
     /** Where the view's row is, or -1. */
@@ -55,6 +56,11 @@ declare module "corten/views" {
     clear(): void;
     [Symbol.iterator](): IterableIterator<V>;
   }
+  /** The rows of a view with a key: found by it too. */
+  export interface ServerRows<V extends { el: Element }> extends RowList<V> {
+    /** The view of the row with this key, if any. */
+    get(key: string): V | undefined;
+  }
   /** The rows of a view whose key is one of its holes: scripts make rows too. */
   export interface Rows<D, V extends { el: Element }> extends ServerRows<V> {
     /** Adds rows at the end. */
@@ -65,10 +71,12 @@ declare module "corten/views" {
   /**
    * The rows under `parent`, each a `View`: the same list every time for one parent, following
    * changes made elsewhere. New rows are clones of the one row in `template`. A view whose key is
-   * also shown outside its holes gets `ServerRows`: the server makes its rows.
+   * also shown outside its holes gets `ServerRows`, and one without a key `RowList`: the server
+   * makes their rows, and only a key finds one.
    */
   export function rows<D, V extends { el: Element }>(parent: Holds<V, Element>, View: ViewClass<D, V> & { keyOf(data: D): string }, template?: Holds<V, HTMLTemplateElement>): Rows<D, V>;
   export function rows<D, V extends { el: Element }>(parent: Holds<V, Element>, View: ViewClass<D, V>): ServerRows<V>;
+  export function rows<D, V extends { el: Element }>(parent: Holds<V, Element>, View: KeylessViewClass<D, V> & { key?: never }): RowList<V>;
   /** The view of #[component(view)] CollectionRow: its holes, read from and written to the page. */
   export class CollectionRow {
     constructor(el: Element);

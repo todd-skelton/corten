@@ -158,6 +158,17 @@ an `on:` for that type, a compile error otherwise; the `#[event]` type is in sco
 component's module (for `script!`, the module that invokes it), or the script does not compile. In `examples/seller-desk`, each price cell sends `PriceEdited` as its price
 is typed or put back, and the grid around the cells counts the prices not saved.
 
+A script that submits a `data-patch` form (`form.requestSubmit()`) and needs what the server
+decided learns it the same way: the patch the handler answers with carries an element whose
+`on:connect` dispatches a typed event with the values the handler read, and the screen listens
+for it. The outcome is then the handler's own data, typed by its Rust struct and checked at the
+call, which a status could not carry. `examples/deck-builder`'s `SaveNote` is this: each save's
+patch draws a note whose
+`on:connect={js::answered(target, answer.outcome(), answer.version(), answer.draft(), answer.unsure())}`
+dispatches `DeckAnswered`, and the deck builder takes the saved version, a refusal or a stale
+save from it. A submit with no answer to draw is `corten:error` on the form
+([Requests and forms](requests-and-forms.md)).
+
 ## Lists and larger components
 
 A grid of 500 rows with a handler on every checkbox prints 500 handler calls. Four tools keep a
@@ -361,7 +372,8 @@ export function total(rows, out, money, day) {
 
 `t.js().number()` is a `NumberFormat` (`format(1234)`, or a decimal as its text, `format("21.5")`),
 `t.js().money(USD)` a `MoneyFormat` (`format(minor)`: an integer of minor units, as
-`t.money(Minor(..), USD)` takes; a float is rounded to one), and `t.js().date(DateStyle)`,
+`t.money(Minor(..), USD)` takes; a float is rounded to one; `t.js().signed_money(USD)` is one
+that writes as `t.signed_money` does), and `t.js().date(DateStyle)`,
 `.time(TimeStyle)` and `.date_time(..)` a `DateFormat` (`format(at)`: a `Date`, milliseconds or
 ISO text), in UTC unless `.zone(Offset::hours(-5))`, and `t.js().percent(2)` a `PercentFormat`
 (`format(ratio)`, `format(0.029)` or `format("0.029")`, as `t.percent(ratio, 2)` writes it;
@@ -503,7 +515,7 @@ component that takes such a ref as a prop names its type
 | `{label}`, the only child of an element | `label`: reads and writes that element's text |
 | `data-selected={selected}`, an attribute's whole value | `selected`: the attribute (a `bool` adds or removes it) |
 | `value={qty}` or `checked={on}` on an `<input>` | `qty`, `on`: what the input shows now (the user's edit), and its default |
-| `key={id}` on the root | `Row.key(el)` and `Row.keyOf(data)`, what `rows()` keys by; when `id` is also used outside holes (a child's prop, an element id), only `Row.key(el)`: the server makes the rows, and `rows()` has no `push` or `replace` |
+| `key={id}` on the root | `Row.key(el)` and `Row.keyOf(data)`, what `rows()` keys by; when `id` is also used outside holes (a child's prop, an element id), only `Row.key(el)`: the server makes the rows, and `rows()` has no `push` or `replace`. Without a key, `rows()` has no `get` either: rows a script reads, removes or reorders need none |
 | a parameter used any other way (`"Label: "{label}`, inside a loop, in a `class`), or a `Ref` | nothing: a script could not write it alone |
 
 Holes are found when the crate compiles, on elements whose place is fixed (no loop, condition,
