@@ -374,8 +374,20 @@ async function run(browser) {
     return `${on},${button.getAttribute("aria-pressed")}`;
   });
   check("a page-wide handler does not run once its element has left the page", leaves === "true,true", leaves);
-  // A change's text is a percent whose sign is its trend's.
+  // A change's text is the move in money since the open, signed (t.js().signed_money(USD), as the
+  // server's t.signed_money), then a percent whose sign is its trend's.
   const changes = await page.$$eval('[data-ref="change"]', (cells) => cells.map((c) => [c.textContent ?? "", c.getAttribute("data-trend")]));
+  check(
+    "today's move in money is signed: a plus sign up, a minus down, none when flat",
+    changes.length > 0 &&
+      changes.every(([text, trend]) => {
+        const moved = text.split(" ")[0];
+        // The percent is rounded to basis points, so a cent's move may still be flat there.
+        const zero = !/[1-9]/.test(moved);
+        return /^[-+]?\$\d+\.\d{2}$/.test(moved) && (zero ? trend === "flat" && /^\$/.test(moved) : moved.startsWith("+") ? trend !== "down" : moved.startsWith("-") && trend !== "up");
+      }),
+    JSON.stringify(changes),
+  );
   check(
     "today's change is a percent with its trend",
     changes.length > 0 &&

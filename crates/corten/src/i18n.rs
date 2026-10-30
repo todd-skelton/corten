@@ -96,6 +96,21 @@
 //! let price = Msg::default().money(123450, corten::i18n::Currency::new("USD"));
 //! ```
 //!
+//! - `t.signed_money(amount, currency)`: the same, with its sign (a difference between two amounts),
+//!   as Intl's `signDisplay: "exceptZero"` writes it: a plus sign on a gain, none on what rounds
+//!   to zero, where the locale puts it:
+//!
+//! ```
+//! corten::i18n::messages! { struct Msg { "en" => "src/i18n/en.json", "fr" => "src/i18n/fr.json" } }
+//! use corten::i18n::{Currency, Messages as _, Minor};
+//! const USD: Currency = Currency::new("USD");
+//! let (en, fr) = (Msg::for_locale("en"), Msg::for_locale("fr"));
+//! assert_eq!(en.signed_money(Minor(320), USD).to_string(), "+$3.20");
+//! assert_eq!(en.signed_money(Minor(-123), USD).to_string(), "-$1.23");
+//! assert_eq!(en.signed_money(Minor(0), USD).to_string(), "$0.00");
+//! assert_eq!(fr.signed_money(Minor(320), USD).to_string(), "+3,20\u{a0}$US");
+//! ```
+//!
 //! - `t.parse_money(text, currency)`: what `t.money` writes, read back from what a person typed
 //!   into a form, in [`Minor`] units. The locale's own form, with or without the symbol, the code,
 //!   the group separators or the fraction; anything else is `None`:
@@ -178,7 +193,8 @@
 //! ```
 //!
 //! A number, an amount or a date a script works out is written with the page's format, so it is
-//! what the server would have rendered: `t.js().number()`, `t.js().money(USD)` and
+//! what the server would have rendered: `t.js().number()`, `t.js().money(USD)` (or
+//! `t.js().signed_money(USD)`) and
 //! `t.js().date(DateStyle::Short)` (or `.time(..)`, `.date_time(..)`, in UTC unless
 //! `.zone(Offset::hours(-5))`) and `t.js().percent(2)` (or `t.js().change(2)`) are passed to a
 //! handler whose JSDoc takes a `NumberFormat`, `MoneyFormat`, `DateFormat` or `PercentFormat`
@@ -1024,6 +1040,10 @@ mod tests {
                     let (amount, code) = input.split_once(' ').unwrap();
                     Formatted::money(data, &Decimal::parse(amount).unwrap(), Currency::parse(code).unwrap()).to_string()
                 }
+                ["signed_money"] => {
+                    let (amount, code) = input.split_once(' ').unwrap();
+                    Formatted::signed_money(data, &Decimal::parse(amount).unwrap(), Currency::parse(code).unwrap()).to_string()
+                }
                 ["date", style, ref offset @ ..] => {
                     let at = parse_timestamp(input).unwrap();
                     let style: u8 = style.parse().unwrap();
@@ -1103,6 +1123,11 @@ mod tests {
                     let code = input.split_once(' ').unwrap().1;
                     Arg::<ts::MoneyFormat>::write_arg(&MoneyFormat::new(data, Currency::parse(code).unwrap()), &ctx, &mut out);
                     format!("money {code}")
+                }
+                ["signed_money"] => {
+                    let code = input.split_once(' ').unwrap().1;
+                    Arg::<ts::MoneyFormat>::write_arg(&MoneyFormat::signed(data, Currency::parse(code).unwrap()), &ctx, &mut out);
+                    format!("signed_money {code}")
                 }
                 ["date", style, ..] => {
                     let style: usize = style.parse().unwrap();
