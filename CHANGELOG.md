@@ -1032,6 +1032,13 @@ Corten is pre-1.0, so any minor version may change the API.
     render against 1,636.5; the examples' `count == 1` choices are gone and card-market's French no longer
     writes "1 annonces"
     ([#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393)).
+141. `corten dev`, `fmt` and `check` notice when the app's `Cargo.lock` pins another corten than the
+    one they were built from (a git revision or a release) and say so before running, with the
+    `cargo install` command for the matching one; they ran with the old behavior silently, and
+    `check` failed on `cargo fmt --check` with no reason. The command records the commit it is built
+    from (`corten --version` prints it), read from `.git` or a published package's
+    `.cargo_vcs_info.json`, standard library only. A path dependency is not compared
+    ([#458 The corten CLI does not notice it is older than the corten the app pins, so fmt and check silently use old behavior](https://github.com/todd-skelton/corten/issues/458)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
