@@ -1,8 +1,10 @@
 {
   "item": {
     "listings": "Angebote",
-    "listing_count": "{count} Angebote"
+    "listing_count_one": "{count} Angebot",
+    "listing_count_other": "{count} Angebote"
   },
+  "selected": "{count} ausgewählt",
   "brace": "{{Wort}} & mehr",
   "attention": {
     "detail": "{provider} · {type} · Konfidenz {match}",
