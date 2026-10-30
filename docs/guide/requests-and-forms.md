@@ -26,6 +26,20 @@ caller its handler read (if any), the deploy and its layout, and when a navigati
 (sign-in, a new release, a page in another layout) the runtime loads the whole document instead, so the layout is
 never stale.
 
+While a request is on its way, the runtime marks what waits for it with `aria-busy="true"`: a
+`data-patch` form until its answer comes, and for a navigation `<main>` and the link or GET form
+that started it, until the page arrives. Showing which control is working is then CSS alone, in
+the component's stylesheet:
+
+```css
+.reports a[aria-busy]::after {
+  content: " …";
+}
+```
+
+Back and forward mark only `<main>`, since nothing on the page started them, and a page reading
+itself again marks nothing.
+
 ## Forms
 
 A form is for what the server has to answer: a write, or data the page does not have. Sorting,

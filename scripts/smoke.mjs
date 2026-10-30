@@ -743,12 +743,52 @@ async function run(browser) {
     // A sector's box: the stories of that sector alone, three of the nine. (A navigation the
     // runtime intercepts stalls Playwright's WebKit, above.)
     if (swaps) {
-      // The box is in a closed group of the rail; clicked from the page.
+      // The box is in a closed group of the rail; clicked from the page. Its page is held, so the
+      // form that started the navigation is seen busy with main.
+      let letSector = () => {};
+      const sectorHeld = new Promise((resolve) => (letSector = () => resolve(undefined)));
+      await more.route("**/news?sector=energy", async (route) => {
+        await sectorHeld;
+        await route.continue();
+      });
       await more.evaluate(() => /** @type {HTMLInputElement} */ (document.querySelector("main input[name=sector][value=energy]")).click());
+      const formBusy = await more
+        .waitForFunction(() => document.querySelector("main[aria-busy] form[data-keep-place][aria-busy=true]"), undefined, { timeout: 5000 })
+        .then(
+          () => true,
+          () => false,
+        );
+      letSector();
       await more.waitForFunction(() => location.search === "?sector=energy" && !document.querySelector("main[aria-busy]"));
+      await more.unroute("**/news?sector=energy");
+      check("the GET form that starts a navigation is busy with main until its page arrives", formBusy && !(await more.$("[aria-busy]")));
       const energy = await more.$$eval("#stories > li", (items) => items.map((li) => li.querySelector("p:last-child a")?.textContent));
       check("a sector's box lists only its stories", energy.join() === "Energy,Energy,Energy" && (await more.locator("#load-more button").isHidden()), energy.join());
-    } else skip("a sector's box lists only its stories", noSwaps);
+      // The same for a link: the header's, which the swap keeps.
+      let letHome = () => {};
+      const homeHeld = new Promise((resolve) => (letHome = () => resolve(undefined)));
+      /** @param {URL} url */
+      const home = (url) => url.pathname === "/";
+      await more.route(home, async (route) => {
+        await homeHeld;
+        await route.continue();
+      });
+      await more.click('header a[href="/"]');
+      const linkBusy = await more
+        .waitForFunction(() => document.querySelector('header a[href="/"][aria-busy=true]') && document.querySelector("main[aria-busy]"), undefined, { timeout: 5000 })
+        .then(
+          () => true,
+          () => false,
+        );
+      letHome();
+      await more.waitForFunction(() => location.pathname === "/" && !document.querySelector("main[aria-busy]"));
+      await more.unroute(home);
+      check("the link that starts a navigation is busy with main until its page arrives", linkBusy && !(await more.$("[aria-busy]")));
+    } else {
+      skip("the GET form that starts a navigation is busy with main until its page arrives", noSwaps);
+      skip("a sector's box lists only its stories", noSwaps);
+      skip("the link that starts a navigation is busy with main until its page arrives", noSwaps);
+    }
     await more.close();
   }
   // A story's link, a route that redirects to a place on another site (`/news/{id}/read`,

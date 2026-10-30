@@ -1282,8 +1282,9 @@ document.addEventListener("touchstart", (event) => prefetch(event.target), { pas
  *   answer, not marked busy, and not swapped when nothing changed
  * @param {ReturnType<typeof placeOf>} [place] where a `data-keep-place` navigation leaves the
  *   user, handed on when the server redirects
+ * @param {Element | null} [source] the link or GET form that started it, marked busy with `main`
  */
-async function visit(url, signal, redirected, again, place) {
+async function visit(url, signal, redirected, again, place, source) {
   const key = pageKey(url);
   const hit = again ? undefined : prefetched.get(key);
   prefetched.delete(key);
@@ -1291,8 +1292,8 @@ async function visit(url, signal, redirected, again, place) {
   if (!fresh) discard(hit);
   /** @type {Response} */
   let res;
-  const main = again ? null : document.querySelector("main");
-  main?.setAttribute("aria-busy", "true");
+  const busy = again ? [] : [document.querySelector("main"), source];
+  for (const el of busy) el?.setAttribute("aria-busy", "true");
   try {
     res = redirected
       ? redirected
@@ -1306,7 +1307,7 @@ async function visit(url, signal, redirected, again, place) {
     location.reload();
     return;
   } finally {
-    main?.removeAttribute("aria-busy");
+    for (const el of busy) el?.removeAttribute("aria-busy");
   }
   signal.throwIfAborted();
   // Sent to a place on a page (`route.at(id)`): the server names it here, since `fetch` follows a
@@ -1421,6 +1422,15 @@ function sendsAs(form, submitter) {
 }
 
 /**
+ * The link or GET form that started a navigation (a submit button's form), if any.
+ * @param {any} event
+ */
+function startedBy(event) {
+  const el = event.sourceElement;
+  return el?.form instanceof HTMLFormElement ? el.form : el instanceof Element ? el : null;
+}
+
+/**
  * Whether a navigation is a form sent by POST, which the browser sends itself. Chromium names
  * the submit button as the source but sets `formData` from the form's own method, so a POST
  * button in a GET form has none (#190); Firefox names the form there, and its `formData`
@@ -1468,7 +1478,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
     // Chromium leaves a swapped page where the last one was scrolled, and Firefox does not scroll
     // to an `#id` the address already had.
     const handler = async () => {
-      await visit(url, event.signal, redirected);
+      await visit(url, event.signal, redirected, false, undefined, startedBy(event));
       if (event.signal.aborted) return;
       let id = url.hash.slice(1);
       try {
@@ -1482,7 +1492,7 @@ navigation?.addEventListener("navigate", (/** @type {any} */ event) => {
     return;
   }
   const handler = async () => {
-    await visit(url, event.signal, redirected, again, place);
+    await visit(url, event.signal, redirected, again, place, startedBy(event));
     // Back to the control, unless the user has moved on meanwhile.
     const now = document.activeElement;
     const el = /** @type {HTMLInputElement | undefined} */ (place && (!now || now === document.body) ? document.querySelectorAll(place.at)[place.nth] : undefined);
