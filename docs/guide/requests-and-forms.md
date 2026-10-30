@@ -271,9 +271,9 @@ async fn order(req: Req, State(db): State<Db>, Form(input): Form<OrderInput>) ->
 
 The same key is sent for as long as the submission has no answer: a page reloaded after a post
 posts it again, and the runtime sends a `data-patch` form again with it after a network error, a
-5xx or an abort (a newer submit of the same form, a navigation). Once an answer arrives, any
-status below 500, the runtime gives the form a new key, so the next submit is a new one; a page or
-patch the server draws has a new key anyway. A form changed and sent again before the first had an
+5xx, an abort (a newer submit of the same form, a navigation) or an answer whose body was cut off
+on the way. Once a whole answer arrives, any status below 500, the runtime gives the form a new
+key, so the next submit is a new one; a page or patch the server draws has a new key anyway. A form changed and sent again before the first had an
 answer is the same submission: the app answers it with what it did the first time, and the user
 sees that and can send the change. The key is the app's to store, next to the write (Corten keeps
 no store); `corten_cluster::begin` takes it as its idempotency key. A field that is not a UUID v4

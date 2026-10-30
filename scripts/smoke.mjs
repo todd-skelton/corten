@@ -458,6 +458,52 @@ async function run(browser) {
   );
   await page.evaluate(() => document.querySelector("#keyed")?.remove());
 
+  // So is one whose answer's body is cut off on the way: its headers came, but the write it answers
+  // may be the one a retry must not repeat. A server of the smoke's own sends the headers and part
+  // of the body, then drops the connection (a route cannot stream a body to fail midway).
+  const cutName = "a submit key is kept when the answer's body is cut off";
+  // WebKit sends a request routed to another URL as a cross-origin one, which the CSP blocks.
+  if (engine === "webkit") skip(cutName, "a routed request is cross-origin there");
+  else {
+    // The answer is a patch, or one the runtime does not draw (a 200 with no Corten header): the
+    // write either way, and the key is kept until either has arrived whole.
+    const cutServer = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        const patch = req.url === "/watch-cut";
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", ...(patch ? { "corten-patch": "1" } : {}), "content-length": "500" });
+        res.write(patch ? '<p id="watch-message">' : "<p>Watching", () => res.socket?.destroy());
+      });
+    });
+    await new Promise((resolve) => cutServer.listen(0, "127.0.0.1", () => resolve(undefined)));
+    const cutPort = /** @type {import("node:net").AddressInfo} */ (cutServer.address()).port;
+    await page.route("**/watch-cut*", (route) => route.continue({ url: `http://127.0.0.1:${cutPort}${new URL(route.request().url()).pathname}` }));
+    const cutLogged = errors.length;
+    /** @type {string[]} */
+    const cutSeen = [];
+    for (const action of ["/watch-cut", "/watch-cut-plain"]) {
+      await page.evaluate(
+        ([zero, action]) =>
+          document.querySelector("main")?.insertAdjacentHTML(
+            "beforeend",
+            `<form id="cut" method="post" action="${action}" data-patch><input type="hidden" name="submit" data-submit value="${zero}"><button>Watch</button></form>`,
+          ),
+        [zero, action],
+      );
+      const cutFailed = page.evaluate(() => new Promise((resolve) => document.addEventListener("corten:error", (e) => resolve(/** @type {CustomEvent} */ (e).detail.status), { once: true })));
+      await page.click("#cut button");
+      const cutStatus = await cutFailed;
+      const cutKey = await page.inputValue("#cut [name=submit]");
+      cutSeen.push(`${action}: status ${cutStatus}, key ${cutKey === zero ? "kept" : cutKey}`);
+      await page.evaluate(() => document.querySelector("#cut")?.remove());
+    }
+    check(cutName, cutSeen.every((seen) => seen.endsWith("status 0, key kept")), cutSeen.join("; "));
+    await page.unroute("**/watch-cut*");
+    cutServer.close();
+    // The browser logs the answer it could not read.
+    errors.splice(cutLogged, errors.length, ...errors.slice(cutLogged).filter((e) => !/Failed to load resource|ERR_|NetworkError|network connection was lost/i.test(e)));
+  }
+
   // A submit button's formaction and formmethod win over the form's, as in a plain post.
   await page.evaluate(() =>
     document.querySelector("main")?.insertAdjacentHTML(
