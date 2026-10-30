@@ -158,6 +158,17 @@ an `on:` for that type, a compile error otherwise; the `#[event]` type is in sco
 component's module (for `script!`, the module that invokes it), or the script does not compile. In `examples/seller-desk`, each price cell sends `PriceEdited` as its price
 is typed or put back, and the grid around the cells counts the prices not saved.
 
+A script that submits a `data-patch` form (`form.requestSubmit()`) and needs what the server
+decided learns it the same way: the patch the handler answers with carries an element whose
+`on:connect` dispatches a typed event with the values the handler read, and the screen listens
+for it. The outcome is then the handler's own data, typed by its Rust struct and checked at the
+call, which a status could not carry. `examples/deck-builder`'s `SaveNote` is this: each save's
+patch draws a note whose
+`on:connect={js::answered(target, answer.outcome(), answer.version(), answer.draft(), answer.unsure())}`
+dispatches `DeckAnswered`, and the deck builder takes the saved version, a refusal or a stale
+save from it. A submit with no answer to draw is `corten:error` on the form
+([Requests and forms](requests-and-forms.md)).
+
 ## Lists and larger components
 
 A grid of 500 rows with a handler on every checkbox prints 500 handler calls. Four tools keep a

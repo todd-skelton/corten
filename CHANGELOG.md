@@ -2132,6 +2132,15 @@ Corten is pre-1.0, so any minor version may change the API.
     [#397 The runtime prefetches links its own way, and no doc says why not the Speculation Rules API](https://github.com/todd-skelton/corten/issues/397),
     [#398 Component CSS is scoped by prefixing classes, and design.md does not say why not native @scope](https://github.com/todd-skelton/corten/issues/398),
     [#399 A feed patch is an upsert/remove format of our own, and no doc says why not JSON Patch (RFC 6902) or Merge Patch (RFC 7396)](https://github.com/todd-skelton/corten/issues/399)).
+36. The requests guide documents `corten:error` (when a `data-patch` submit has no answer to draw,
+    with `detail.status`, 0 for none or a cut-off body), and the scripts guide the one way a script
+    learns what the server decided on a submit that did draw: the patch's element runs
+    `on:connect` with the handler's values and dispatches a typed event, as
+    `examples/deck-builder`'s `SaveNote` does. No second, status-only event is added
+    ([#432 A script that submits a data-patch form cannot learn the answer's outcome, so the deck builder carries it in an on:connect element](https://github.com/todd-skelton/corten/issues/432)).
+37. The requests guide says why the submit key is a form field and not the `Idempotency-Key`
+    header: a browser without JavaScript cannot set one, and the header is still an IETF draft
+    ([#395 An action takes its idempotency key only as a SubmitKey form field, not the Idempotency-Key header data clients send](https://github.com/todd-skelton/corten/issues/395)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
