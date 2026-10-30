@@ -604,8 +604,8 @@ pub(crate) fn write_fragment(id: &(impl crate::view::Id + ?Sized), out: &mut Str
 }
 
 impl<R: Route + ?Sized, I: crate::view::Id> Href for At<'_, R, I> {
-    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
-        f(&self.href())
+    fn write_link(&self, out: &mut String, html: bool) {
+        self.write_href(out, html)
     }
 }
 
@@ -797,9 +797,85 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 /// ([`Route::at`]), a return address checked to be on this site ([`Local`]), or an
 /// `axum::http::Uri` for a URL the app does not route (a payment page, a sign-in provider). Text is none of them, so a path typed as a string does not compile. Used by
 /// [`crate::Req::redirect`] and [`crate::Req::is_current`].
+///
+/// It is also a link a view writes, `href={..}`: a component several pages draw takes where its
+/// links and forms go as `&dyn Href`, so each page passes its own typed route, and an enum
+/// whose variants each hold a route (an app's screens) derives it:
+///
+/// ```
+/// use corten::{prelude::*, Href};
+///
+/// #[derive(Route)] #[route("/inventory")] struct Inventory;
+/// #[derive(Route)] #[route("/pull-sheet/{id}")] struct PullSheet<'a> { id: &'a str, sort: Option<&'a str> }
+///
+/// #[derive(Href)]
+/// enum Screen<'a> { Inventory(Inventory), PullSheet(PullSheet<'a>) }
+///
+/// #[component]
+/// fn Filter<'a>(action: &'a dyn Href) -> impl Render {
+///     html! { <form method="get" action={action}><input name="q"></form> }
+/// }
+///
+/// let to = Screen::PullSheet(PullSheet { id: "7", sort: Some("a&b") });
+/// assert_eq!(html! { <a href={to}>"Pull sheet"</a> }.to_html(), r#"<a href="/pull-sheet/7?sort=a%26b">Pull sheet</a>"#);
+/// let here = PullSheet { id: "7", sort: None };
+/// assert_eq!(Filter { action: &here }.to_html(), r#"<form method="get" action="/pull-sheet/7"><input name="q"></form>"#);
+/// assert_eq!(Screen::Inventory(Inventory).with_href(str::to_owned), "/inventory");
+/// ```
+///
+/// Each variant holds one link; a unit variant has no URL:
+///
+/// ```compile_fail
+/// use corten::{prelude::*, Href};
+///
+/// #[derive(Route)] #[route("/inventory")] struct Inventory;
+///
+/// #[derive(Href)]
+/// enum Screen { Inventory(Inventory), Settings }
+/// # fn main() {}
+/// ```
+///
+/// Text is not a link, so a `&str` is not a `&dyn Href`:
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, Href};
+///
+/// #[component]
+/// fn Filter<'a>(action: &'a dyn Href) -> impl Render {
+///     html! { <form action={action}></form> }
+/// }
+///
+/// let _ = Filter { action: &"/pull-sheet/7" };
+/// ```
 pub trait Href {
+    /// Writes the URL; with `html`, escaped for an attribute's value (`&` as `&amp;`).
+    fn write_link(&self, out: &mut String, html: bool);
+
     /// Calls `f` with the URL.
-    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T;
+    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T
+    where
+        Self: Sized,
+    {
+        f(&link(self))
+    }
+}
+
+pub use corten_macros::Href;
+
+/// The URL of any [`Href`], not escaped.
+pub(crate) fn link(to: &(impl Href + ?Sized)) -> String {
+    let mut out = String::with_capacity(32);
+    to.write_link(&mut out, false);
+    out
+}
+
+impl crate::view::AttrValue for dyn Href + '_ {
+    fn write_attr(&self, name: &str, out: &mut String) {
+        out.push_str(name);
+        out.push_str("=\"");
+        self.write_link(out, true);
+        out.push('"');
+    }
 }
 
 /// A path on this site taken from outside the code, a return address above all
@@ -861,8 +937,17 @@ impl std::fmt::Display for Local {
 }
 
 impl Href for Local {
-    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
-        f(&self.0)
+    fn write_link(&self, out: &mut String, html: bool) {
+        write_text(&self.0, out, html)
+    }
+}
+
+/// A URL that is already text, escaped for an attribute with `html`.
+fn write_text(url: &str, out: &mut String, html: bool) {
+    if html {
+        crate::view::escape_into(url, out)
+    } else {
+        out.push_str(url)
     }
 }
 
@@ -1099,11 +1184,29 @@ mod local_tests {
         assert_eq!(Local::parse("/a/b?c#d").unwrap().path(), "/a/b");
         assert_eq!(Local::parse("/a#d?x").unwrap().path(), "/a");
     }
+
+    /// A link written as `dyn Href` is escaped for the attribute, whatever it holds.
+    #[test]
+    fn a_dyn_href_is_escaped_for_its_attribute() {
+        use super::{link, Href};
+        use crate::view::AttrValue;
+        let local = Local::parse("/a?q=\"x\"&b='<y>'").unwrap();
+        let uri = axum::http::Uri::from_static("https://example.com/p?a=1&b=2");
+        for (to, want) in [
+            (&local as &dyn Href, r#" href="/a?q=&quot;x&quot;&amp;b=&#39;&lt;y&gt;&#39;""#),
+            (&uri as &dyn Href, r#" href="https://example.com/p?a=1&amp;b=2""#),
+        ] {
+            let mut out = String::new();
+            to.write_attr(" href", &mut out);
+            assert_eq!(out, want);
+            assert!(!link(to).contains("&amp;"), "plain for a redirect");
+        }
+    }
 }
 
 impl Href for axum::http::Uri {
-    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
-        f(&self.to_string())
+    fn write_link(&self, out: &mut String, html: bool) {
+        write_text(&self.to_string(), out, html)
     }
 }
 
@@ -1150,14 +1253,14 @@ impl<'a> Elsewhere<'a> {
 }
 
 impl Href for Elsewhere<'_> {
-    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
-        f(&self.href())
+    fn write_link(&self, out: &mut String, html: bool) {
+        write_text(&self.href(), out, html)
     }
 }
 
-impl<R: Route> Href for R {
-    fn with_href<T>(&self, f: impl FnOnce(&str) -> T) -> T {
-        f(&self.href())
+impl<R: Route + ?Sized> Href for R {
+    fn write_link(&self, out: &mut String, html: bool) {
+        self.write_href(out, html)
     }
 }
 

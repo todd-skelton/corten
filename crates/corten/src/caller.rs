@@ -163,7 +163,7 @@ impl Refused {
     /// [`crate::Local`] return address, or an `axum::http::Uri` on another site), the way [`crate::Req::redirect`] sends it. A data
     /// client and a JSON route get a 401.
     pub fn sign_in(to: &(impl Href + ?Sized)) -> Self {
-        match to.with_href(|href| HeaderValue::try_from(href)) {
+        match HeaderValue::try_from(crate::route::link(to)) {
             Ok(to) => Refused(Why::SignIn(to, None)),
             Err(error) => Refused(Why::Unavailable(error.to_string().into())),
         }

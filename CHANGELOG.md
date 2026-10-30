@@ -939,6 +939,13 @@ Corten is pre-1.0, so any minor version may change the API.
     A page without one checks one empty set per bubbling event it listens for.
     The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
     and 61 with brotli (8,287 to 8,348).
+130. `#[derive(Href)]` on an enum whose variants each hold a route (an app's screens) makes it a
+    link, `href={screen}`, and a component several pages draw takes where its links and forms go
+    as `&dyn Href`, so each page passes its own typed route instead of a `String`; a unit variant
+    and text where a `&dyn Href` goes do not compile. A `Local` or `Uri` written this way is
+    escaped for the attribute. The views guide says how a shared list takes its links and a
+    per-row part
+    ([#361 A value that is one of several routes (an enum of screens) implements Href but cannot be written as href={..}](https://github.com/todd-skelton/corten/issues/361), [#391 A component several pages render cannot take a route as a prop (Href is not dyn-compatible), so a shared list's form action and column links are Strings](https://github.com/todd-skelton/corten/issues/391)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1492,6 +1499,10 @@ Corten is pre-1.0, so any minor version may change the API.
     fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
     or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
     ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
+81. Breaking: `Href` is implemented with `write_link(&self, out, html)` instead of `with_href`, so
+    it can be a `dyn Href`; `with_href` is still there to call. An app's own `impl Href` becomes
+    `#[derive(Href)]` on its enum, or `write_link`
+    ([#391 A component several pages render cannot take a route as a prop (Href is not dyn-compatible), so a shared list's form action and column links are Strings](https://github.com/todd-skelton/corten/issues/391)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
