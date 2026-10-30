@@ -123,7 +123,12 @@ async fn search(req: Req, Params(search): Params<url::Search<'_>>) -> HtmlResult
 ```
 
 A missing parameter is `None` for an `Option`, empty for a list, and a field's
-`#[serde(default)]` for anything else, as a link leaves those out. In a `#[corten::routes]`
+`#[serde(default)]` for anything else, as a link leaves those out. A word an enum parameter
+does not have (`?state=due_now` after the app renamed it, or an address edited by hand) reads as
+missing too, so a filter, a sort or a tab falls back to its default and the page still shows: a
+bookmark outlives the words it was written with. A parameter with neither `Option` nor a default
+still refuses it (400), and so does a value that is not a word (`?page=two`), a list holding one,
+or a form's body, which the page that sent it just wrote. In a `#[corten::routes]`
 module a route with a parameter in its path holds each of its handlers to taking its own
 `Params`: one that reads the path another way (axum's `Path`), or reads another route's, does
 not compile.

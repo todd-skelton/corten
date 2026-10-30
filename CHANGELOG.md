@@ -2097,6 +2097,12 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and
     `corten__two_events_named__row_toggled` for the event's name in the page)
     ([#371 Two features' #[event] types or views with the same name still fail only when the server starts](https://github.com/todd-skelton/corten/issues/371)).
+78. A query word an enum parameter does not have (`?state=due_now`, an old bookmark or an address
+    edited by hand) reads as missing, `None` or the field's `#[serde(default)]`, so `Params` shows
+    the page with its filter, sort or tab at its default where it answered 400 with serde's text. A
+    parameter that must have a value, a value that is not a word (`?page=two`), a list holding one
+    and a form's body are still refused. Links write what they did
+    ([#447 A typed query filter whose address holds an unknown value refuses the whole page (400) where it should read as unset](https://github.com/todd-skelton/corten/issues/447)).
 
 ### Documentation
 
