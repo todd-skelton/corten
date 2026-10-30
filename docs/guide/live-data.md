@@ -153,6 +153,8 @@ export function watch(feed, signal) {
 ```
 
 A plain `string` is not a `FeedUrl`, so a script cannot follow a feed whose rows it guessed.
+`examples/deck-builder` follows its saved deck this way, so a save made in another tab reaches a
+page that is open.
 
 Feed guarantees: every `write` is one numbered patch carrying the final value of each row it
 touched, encoded once and sent as the same bytes to every subscriber. A snapshot is serialized
