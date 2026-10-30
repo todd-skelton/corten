@@ -282,13 +282,17 @@ try {
     fetch(`${base}/api/alerts`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
   const anonymous = await alertFrom({});
   const anonymousBody = await anonymous.json().catch(() => null);
-  check("a partner write without an API key is a JSON 401 that says what to send", anonymous.status === 401 && anonymousBody?.error?.message === "Send a valid partner API key in X-Api-Key.", JSON.stringify(anonymousBody));
+  check(
+    "a partner write without an API key is a Problem Details 401 that says what to send",
+    anonymous.status === 401 && anonymous.headers.get("content-type") === "application/problem+json" && anonymousBody?.status === 401 && anonymousBody?.detail === "Send a valid partner API key in X-Api-Key.",
+    `${anonymous.headers.get("content-type")} ${JSON.stringify(anonymousBody)}`,
+  );
   const keyed = await alertFrom({ "x-api-key": "dev-key" });
   const keyedBody = await keyed.json().catch(() => null);
   check("with its key the partner's alert is set", keyed.status === 200 && keyedBody?.partner === "dev" && /^Alert set: /.test(keyedBody?.message ?? ""), JSON.stringify(keyedBody));
   const refused = await alertFrom({ "x-api-key": "dev-key" }, { id: "item_5", email: "ada", target_price: "1.00" });
   const refusedBody = await refused.json().catch(() => null);
-  check("a field the rules refuse is a 422 with the field", refused.status === 422 && typeof refusedBody?.error?.fields?.email === "string", JSON.stringify(refusedBody));
+  check("a field the rules refuse is a 422 with the field", refused.status === 422 && typeof refusedBody?.fields?.email === "string", JSON.stringify(refusedBody));
 
   // Writes are limited per client address (20 a minute), a key no partner has included, so
   // guessing keys is limited too. The container trusts Docker's networks as its proxies

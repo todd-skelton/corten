@@ -647,8 +647,11 @@ range in parentheses), the item page's `/api/items/{id}` under an app with nothi
 
 Under the prefix:
 
-1. Every failure is one JSON shape, whatever the client accepts:
-   `{"error":{"status":404,"message":"Not Found"}}`. That covers a handler's `corten::Error`, an
+1. Every failure is one JSON shape, whatever the client accepts: a Problem Details document
+   (RFC 9457, `application/problem+json`), `{"title":"Not Found","status":404,"detail":"No item 7."}`,
+   which clients, gateways and API tools read without knowing Corten. `title` is the status's
+   reason, `detail` the message (left out when it would only repeat the title), and `type` is
+   left out, which means `about:blank`: the status says what went wrong. That covers a handler's `corten::Error`, an
    extractor's rejection (a body that does not parse), an unknown URL, a wrong method (with
    `Allow`) and the deadline's 503. A 4xx message is sent, so write it for the client
    (`Error::new("no item 7").with_status(StatusCode::NOT_FOUND)`); a 5xx message stays in the
@@ -1071,8 +1074,8 @@ out rather than not at all. Keeping the credentials for it is measured below.
 `failure.detail()` is what went wrong, under `corten dev` only; in production it is logged.
 The error page `corten new` writes names every case without `_`, so when Corten adds one the
 app stops compiling instead of showing the wrong text. A JSON route's failures, a data
-client's and every failure under `App::api` are JSON instead,
-`{"error":{"status","message"}}`.
+client's and every failure under `App::api` are a JSON Problem Details document instead
+(`application/problem+json`, `{"title","status","detail"}`).
 
 When the error page came to take extractors (callgrind, release build, in-process `oneshot`,
 the difference between 1,200 and 200 requests over 1,000, three runs each, a minimal app with
