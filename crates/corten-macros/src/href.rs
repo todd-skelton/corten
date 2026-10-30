@@ -26,14 +26,22 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             j += 2;
         }
         let Some(TokenTree::Ident(ident)) = tokens.get(j) else { return err(body.span(), "Href: expected a variant") };
-        let one = match tokens.get(j + 1) {
-            Some(TokenTree::Group(g)) if g.delimiter() == proc_macro::Delimiter::Parenthesis => split(g.stream(), ',').len() == 1,
-            _ => false,
+        let why = match tokens.get(j + 1) {
+            Some(TokenTree::Group(g)) if g.delimiter() == proc_macro::Delimiter::Parenthesis => {
+                match split(g.stream(), ',').iter().filter(|field| !field.is_empty()).count() {
+                    1 if tokens.len() == j + 2 => None,
+                    0 => Some("holds nothing, so it has no URL"),
+                    1 => Some("has a discriminant or more after its link"),
+                    _ => Some("holds more than one value; a link with its own data is a route struct of its own"),
+                }
+            }
+            Some(TokenTree::Group(_)) => Some("has named fields; a link with data is a route struct of its own"),
+            _ => Some("is a unit variant, so it has no URL"),
         };
-        if !one || tokens.len() > j + 2 {
+        if let Some(why) = why {
             return err(
                 ident.span(),
-                format!("Href: {ident} holds one link and nothing else, {ident}(url::{ident}), the route it goes to (a unit variant has no URL)"),
+                format!("Href: {ident} {why}: each variant holds one link and nothing else, {ident}(url::{ident}), the route it goes to"),
             );
         }
         arms.extend(q(

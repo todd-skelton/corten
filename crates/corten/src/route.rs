@@ -837,6 +837,18 @@ impl<T: Pairs + ?Sized> Pairs for &T {
 /// # fn main() {}
 /// ```
 ///
+/// Nor is a variant that holds a link and more (the data belongs in the route):
+///
+/// ```compile_fail
+/// use corten::{prelude::*, Href};
+///
+/// #[derive(Route)] #[route("/inventory")] struct Inventory;
+///
+/// #[derive(Href)]
+/// enum Screen { Inventory(Inventory, u32) }
+/// # fn main() {}
+/// ```
+///
 /// Text is not a link, so a `&str` is not a `&dyn Href`:
 ///
 /// ```compile_fail,E0277
