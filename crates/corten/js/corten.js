@@ -567,8 +567,8 @@ observer.observe(document.documentElement, { childList: true, subtree: true });
  * @template Row
  * @typedef {object} FeedHandlers
  * @property {(rows: Row[], seq: number, epoch: string) => void} snapshot Every row; replaces what the
- * script had. `seq` counts writes within `epoch`, the feed's generation: after a restart or a
- * reset to another log the epoch differs, and its `seq` is not comparable with the old one's.
+ * script had. `seq` counts writes within `epoch`, the feed's generation: after a restart the
+ * epoch differs, and its `seq` is not comparable with the old one's.
  * @property {(changes: FeedChange<Row>[], seq: number, receivedAt: number) => void} patch One write, in order, never twice.
  * @property {(status: "syncing" | "live" | "reconnecting") => void} [status]
  */
