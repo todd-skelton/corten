@@ -42,10 +42,10 @@ mod url {
     #[route("/", get = home)]
     pub struct Home;
 
-    #[route("/live/feed", get = snapshot)]
+    #[route("/live/feed", get = snapshot, rows = Tick)]
     pub struct Snapshot;
 
-    #[route("/live/feed/live", get = live)]
+    #[route("/live/feed/live", get = live, rows = Tick)]
     pub struct Live;
 }
 
@@ -60,11 +60,11 @@ async fn home() -> &'static str {
     "live"
 }
 
-async fn snapshot(State(feed): State<Feed<Tick>>) -> FeedResponse {
+async fn snapshot(State(feed): State<Feed<Tick>>) -> FeedResponse<Tick> {
     feed.snapshot()
 }
 
-async fn live(State(feed): State<Feed<Tick>>, since: Since) -> FeedResponse {
+async fn live(State(feed): State<Feed<Tick>>, since: Since) -> FeedResponse<Tick> {
     feed.live(since)
 }
 

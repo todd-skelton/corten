@@ -37,6 +37,10 @@ pub enum Param {
     /// A typed event imported from `corten/events`: the Rust `#[event]` type in the component's
     /// module.
     Event(String),
+    /// `FeedUrl<Level>`: the URL of a feed of the Rust type `Level` in the component's module.
+    Feed(String),
+    /// A type Corten would check but cannot read (`FeedUrl<Level[]>`): why, for the error.
+    Unreadable(String),
     /// Any other JSDoc type: a JSON value.
     Any,
 }
@@ -210,6 +214,8 @@ fn param_path(param: &Param) -> TokenStream {
         Param::Group(name) => TokenTree::Ident(Ident::new(&format!("__{name}Group"), Span::call_site())).into(),
         // The `#[event]` type, in the module of the component or `script!` that reads the script.
         Param::Event(class) => format!("super::{class}").parse().expect("a type path parses"),
+        Param::Feed(rows) => format!("::corten::script::ts::FeedUrl<super::{rows}>").parse().expect("a type path parses"),
+        Param::Unreadable(_) => q("::corten::script::ts::Any", &[]),
         Param::Any => q("::corten::script::ts::Any", &[]),
     }
 }
@@ -431,6 +437,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         name: String,
         params: Vec<(String, String)>,
         doc: String,
+        line: usize,
     }
     /// A `@typedef`: its name, type, `@property` lines, description and line.
     struct Typedef {
@@ -566,7 +573,7 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
                 };
                 list.push((param.to_string(), ty.clone()));
             }
-            raw.push(Raw { name: name.to_string(), params: list, doc: description(&jsdoc) });
+            raw.push(Raw { name: name.to_string(), params: list, doc: description(&jsdoc), line: start + 1 });
             i += 1;
             continue;
         }
@@ -592,6 +599,9 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
             continue;
         }
         let fields: Vec<(String, Param)> = props.iter().map(|(n, t)| (n.clone(), plain_type(t))).collect();
+        if let Some((_, Param::Unreadable(why))) = fields.iter().find(|(_, p)| matches!(p, Param::Unreadable(_))) {
+            return Err((line, why.clone()));
+        }
         if !fields.iter().any(|(_, p)| not_json(p)) {
             continue;
         }
@@ -605,11 +615,14 @@ fn parse_all(source: &str) -> Result<Parsed, (usize, String)> {
         groups.push(ArgGroup { name, fields, doc });
     }
     let mut handlers = Vec::new();
-    for Raw { name, params, doc } in raw {
+    for Raw { name, params, doc, line } in raw {
         let mut list = Vec::new();
         for (param, ty) in params {
             let ty = ty.trim().to_string();
             let resolved = if groups.iter().any(|g| g.name == ty) { Param::Group(ty) } else { plain_type(&ty) };
+            if let Param::Unreadable(why) = resolved {
+                return Err((line, format!("{name}: {param}: {why}")));
+            }
             list.push((param, resolved));
         }
         handlers.push(Handler { name, params: list, doc });
@@ -632,7 +645,7 @@ fn not_json(param: &Param) -> bool {
                 || path.starts_with("ts::Map")
                 || path == "ts::AbortSignal"
         }
-        Param::Event(_) | Param::Group(_) => true,
+        Param::Event(_) | Param::Group(_) | Param::Feed(_) | Param::Unreadable(_) => true,
         Param::Any => false,
     }
 }
@@ -730,6 +743,25 @@ fn param_type(ty: &str) -> Param {
         return match (plain, common(el, element)) {
             (true, Some(e)) => Param::Checked(format!("ts::Holds<::corten::script::el::{e}, {}u64>", view_id(view))),
             _ => Param::Any,
+        };
+    }
+    // `FeedUrl<Level>` (corten): the URL of a feed of `Level` rows, a route with `rows = Level`.
+    // The rows are the Rust type of that name in the component's module, written plain or as the
+    // generated declaration it is (`import("../types/app").Level`).
+    if let Some(inner) = ty.strip_prefix("FeedUrl<").and_then(|t| t.strip_suffix('>')) {
+        let inner = inner.trim();
+        let rows = match inner.strip_prefix("import(") {
+            Some(rest) => rest.split_once(").").map_or("", |(_, name)| name.trim()),
+            None => inner,
+        };
+        let plain = rows.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && rows.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        return if plain {
+            Param::Feed(rows.to_string())
+        } else {
+            Param::Unreadable(format!(
+                "FeedUrl<{inner}>: a feed's rows are one named type, FeedUrl<Level>, the Rust type Level in the component's module"
+            ))
         };
     }
     // `Message<"count">` (corten): a message of the app's catalog with exactly these arguments.
@@ -852,13 +884,15 @@ pub fn expand(input: TokenStream) -> Result<TokenStream, Error> {
             ),
         );
     }
-    let items = q(
+    let mut items = q(
         "#[doc = \" The module, for `App::components`.\"] pub const COMPONENT: ::corten::Component = ::corten::Component {
             name: __A0, script: ::core::option::Option::Some(__A1), style: ::core::option::Option::None, event: ::core::option::Option::None,
             view: ::core::option::Option::None,
         };",
         &[literal(&module.name), module.literal("super::")],
     );
+    // Served at `scripts/{name}.js`, as a component's script is: two with one name fail to build.
+    items.extend(crate::id::one_per_program("two_scripts_are", &module.name, true));
     Ok(module.module(vis, name.clone(), q("::core::option::Option::Some(&COMPONENT)", &[]), None, items))
 }
 
@@ -928,6 +962,20 @@ function helper() {}
                 "url:ts::String",
             ]
         );
+    }
+
+    #[test]
+    fn a_feed_url_names_its_rows_by_the_rust_type_or_does_not_compile() {
+        let (handlers, _) = parse(
+            "/** @param {FeedUrl<Level>} a @param {FeedUrl<import(\"../types/app\").Level>} b */\nexport function f(a, b) {}",
+        )
+        .unwrap();
+        assert_eq!(handlers[0].params[0].1, Param::Feed("Level".into()));
+        assert_eq!(handlers[0].params[1].1, Param::Feed("Level".into()), "the generated declaration, imported where it is used");
+        for ty in ["FeedUrl<Level[]>", "FeedUrl<Level | Stock>", "FeedUrl<>"] {
+            let err = parse(&format!("/** @param {{{ty}}} a */\nexport function f(a) {{}}")).unwrap_err();
+            assert!(err.1.contains("one named type"), "{ty}: {}", err.1);
+        }
     }
 
     #[test]

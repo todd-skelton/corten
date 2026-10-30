@@ -594,9 +594,9 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 static ASKED: LazyLock<tokio::sync::watch::Sender<bool>> = LazyLock::new(|| tokio::sync::watch::channel(false).0);
 
 /// Begins the graceful shutdown a signal begins ([`shutdown_signal`]): the app's
-/// [tasks](App::task) are told to stop, live streams end, the listeners close, requests in
-/// progress finish, and [`serve`] returns once the tasks have too (or [`App::shutdown_grace`] has
-/// passed). For a process with no signal to send it: a route a supervisor calls (whose answer is
+/// [tasks](App::task) and work handlers finish ([`Signal::finish`]) are told to stop, live streams
+/// end, the listeners close, requests in progress finish, and [`serve`] returns once the tasks and
+/// that work have too (or [`App::shutdown_grace`] has passed). For a process with no signal to send it: a route a supervisor calls (whose answer is
 /// sent, as a request in progress, before its connection closes), a task that decides the app is
 /// done, or a service on Windows started without a console. A second call, or a signal after it,
 /// changes nothing.
@@ -623,7 +623,8 @@ pub fn shutdown() {
 /// ([`shutdown`]), after ending every open [`live`] stream and live feed stream (feature `feed`)
 /// so a graceful shutdown is not held open by them. [`serve`] uses it; an app that serves its
 /// router another way passes it to `axum::serve(...).with_graceful_shutdown(corten::shutdown_signal())`,
-/// and then runs no [`App::task`].
+/// and then runs no [`App::task`], and work handlers finish ([`Signal::finish`]) is not told of
+/// shutdown or waited for.
 pub async fn shutdown_signal() {
     use futures_util::future::select;
     let interrupt = async {

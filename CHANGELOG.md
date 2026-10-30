@@ -907,7 +907,17 @@ Corten is pre-1.0, so any minor version may change the API.
     runtime does not fetch it on hover and again on click
     ([#364 A private download cannot name its file: Content-Disposition is only on Public answers](https://github.com/todd-skelton/corten/issues/364)).
     No existing answer changes; naming a file costs one header on that answer.
-127. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
+127. `Signal::finish(|signal| async move { .. })`: work a handler must finish (claim, call,
+    release) runs to its end even if the handler is dropped, with a signal of its own that aborts
+    when the request's does or shutdown begins, so a slow step stops early and the release after
+    it still runs; `serve` waits for it at shutdown within `App::shutdown_grace`. The cancellation
+    guide no longer says awaited work needs no thought: a drop cannot run async cleanup
+    ([#372 A handler dropped when its client leaves cannot release what it holds, and the guide says work it awaits needs no signal](https://github.com/todd-skelton/corten/issues/372)).
+    A request that does not call it runs no new code: the app's `Shared` gains one pointer, last,
+    read only by `finish`. A plain GET through the router took 16,673 to 17,022 instructions
+    before and 16,864 to 16,866 after (callgrind, release build, 5 runs each); the before runs
+    vary more than the two differ.
+128. Groups and rows of form fields. `#[fields(group)] ship_to: Address` puts a `Fields` struct in a
     form, its fields posted as `ship_to.street` (`f.ship_to.street`), so a field group is defined
     once and a form can hold two of one type. `#[fields(rows)] #[serde(default)] domains:
     BTreeMap<Domain, DomainLimits>` is one group per row, each field named by the row's key,
@@ -1466,7 +1476,18 @@ Corten is pre-1.0, so any minor version may change the API.
     `X-Robots-Tag: noindex` (`Public::header`), so search engines do not list an empty page; a
     category with cards is unchanged
     ([#335 Some framework features appear in no example: Area::policy, Public::header, Req::signal, Refused::too_many](https://github.com/todd-skelton/corten/issues/335)).
-80. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
+80. A feed's row type reaches the script that follows it. `FeedResponse` is `FeedResponse<Row>`
+    (`Feed<Level>::snapshot` answers `FeedResponse<Level>`), a feed's route names its rows
+    (`#[route("/feed/levels", get = levels, rows = Level)]`, checked against what its `get`
+    answers, through the new `Answer::Rows`), and a handler parameter declared
+    `@param {FeedUrl<Level>} feed` (from `corten`) takes only a route whose rows are the Rust
+    type `Level` in the component's module; a `FeedUrl` it cannot read is a compile error.
+    `subscribe()` takes a `FeedUrl<Row>` and its row type from it, so a script's `snapshot` and
+    `patch` are typed with no `@param` of their own, a `Stock` handler given a `Level` feed
+    fails `tsc`, and a plain string is not a feed's URL. Each mistake has a `compile_fail` doctest
+    or an `@ts-expect-error` line. The page's HTML and the runtime's bytes are unchanged
+    ([#326 A feed's row type does not reach subscribe(), so a script's row type is whatever its JSDoc says](https://github.com/todd-skelton/corten/issues/326)).
+81. `FieldName` names where its field is, `FieldName<P = Root>`: a form's own field is still its
     name alone (`FieldName`, with `as_str`), and a group's or a row's field is a
     `FieldName<Group>`, `FieldName<Row<'k>>` or `FieldName<RowGroup<'k>>`, written, not stored:
     compare it with text with `==` (`f.ship_to.street == "ship_to.street"`) and write it with
@@ -1868,6 +1889,18 @@ Corten is pre-1.0, so any minor version may change the API.
     checks a price, a rating and a condition in French
     ([#323 card-market in French translates its headings but not its prices, ratings or card details](https://github.com/todd-skelton/corten/issues/323),
     [#329 card-market sorts listings by a data-price string instead of through the rows' views](https://github.com/todd-skelton/corten/issues/329)).
+68. `messages!` with an empty catalog (`{}`, an app that uses `t` only for the locale's formats:
+    numbers, money, dates and relative times) failed to compile under `#![deny(warnings)]`: its `by_key` had a `match` whose only arm
+    returned, so the line after it was unreachable. A doctest compiles an empty catalog with
+    warnings denied.
+69. Two components with one name in different modules (each feature's `SettingsForm`)
+    with a stylesheet or a script fail to build, at the second one, instead of the app panicking
+    when it starts ("both style .settings-form__*", "two scripts named"), and so do two `script!`
+    modules with one name: like an id, each class prefix and script name is an exported symbol,
+    and the symbols now say what clashed
+    (`corten__two_components_style__settings_form`, `corten__two_scripts_are__settings_form`,
+    `corten__two_ids_are__settings_form`, which was `corten_id__settings_form`)
+    ([#368 Two features' components or ids with the same name pass cargo check and fail at link or at server start](https://github.com/todd-skelton/corten/issues/368)).
 
 ### Documentation
 
@@ -2028,6 +2061,25 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten-target-<folder>`, `corten-msrv-target-<folder>`) instead of one `corten-target` for
     every checkout, where cargo could take one checkout's build for another's and fail to compile
     code that was fine.
+30. The views guide (Text: literals or the catalog) and the design rules say when text is a
+    literal and when it goes through the catalog: an app with one locale writes fixed text as
+    literals and keeps in its catalog only counts, text with arguments and text a script fills;
+    an app with more than one locale writes all of it through the catalog. seller-desk's
+    statement, ui-gallery's activity card and listings-feed's move status, which were the only
+    fixed text those one-locale apps put in their catalogs, are literals now
+    ([#218 Examples write user-facing text two ways: watchlist has a catalog but writes most text as literals](https://github.com/todd-skelton/corten/issues/218)).
+31. Every prop is written where a component is used, an empty one too (`head=""`). The views guide
+    says why: stable Rust cannot leave a field to a default, and filling a left-out `impl Render`
+    prop would fix its type. It also shows how several answers share one component's props, with
+    a function for the common value and `..` for the rest. A `compile_fail` doctest on
+    `#[component]` covers a left-out prop. ui-gallery's five answers build their `Gallery` that
+    way, where each wrote all six props
+    ([#210 A component prop cannot be left out, so pages pass head="" and other empty values](https://github.com/todd-skelton/corten/issues/210)).
+32. The views guide says how a layout gets who is signed in: as a prop from the `Caller` its
+    handler took, not by reading the request. Rendering is synchronous and `Identify` is async, so
+    the alternative needs a second async step before full-page renders, with its own rules for a
+    failed lookup, caching and the page key
+    ([#209 Every page handler extracts the viewer only to pass it to the layout](https://github.com/todd-skelton/corten/issues/209)).
 
 ## 0.1.0 (not tagged; `main` as of 2026-10-21)
 
