@@ -370,22 +370,22 @@ export type Kind = "single" | "sealed_box";
         assert!(Types::new().add::<Card>().json_schema()["$defs"]["Kind"]["enum"].is_array());
     }
 
-    /// A row was picked.
+    /// A card was picked (named apart from the script tests' `RowToggled`: one event of a name per program).
     #[crate::script::event]
     #[allow(dead_code)]
-    struct RowToggled {
+    struct CardPicked {
         id: String,
         kind: Kind,
     }
 
     #[test]
     fn typed_events_declare_their_classes() {
-        let ts = Types::new().components(&[RowToggled]).typescript();
+        let ts = Types::new().components(&[CardPicked]).typescript();
         let expected = r#"
 /** The app's typed events (#[event]), dispatched by scripts and listened for with on:Name. */
 declare module "corten/events" {
-  /** The `row-toggled` event, from #[event] RowToggled. */
-  export class RowToggled extends Event {
+  /** The `card-picked` event, from #[event] CardPicked. */
+  export class CardPicked extends Event {
     constructor(init: { id: string; kind: Kind });
     readonly id: string;
     readonly kind: Kind;
