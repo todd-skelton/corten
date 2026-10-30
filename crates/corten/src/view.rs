@@ -689,6 +689,76 @@ impl<T: Id, V: Render> Render for Append<T, V> {
 /// assert_eq!(send(Counted { n: 3 }), r#"<p id="status" role="status">3</p>"#);
 /// ```
 ///
+/// A loop over rows known from data is written where the rest of the patch is, with its
+/// `let`s and branches:
+///
+/// ```
+/// use corten::{prelude::*, view::Patch};
+/// #[derive(Id)]
+/// struct FieldId(u32);
+/// #[component]
+/// fn Field<'a>(sku: u32, label: &'a str) -> impl Patch {
+///     html! { <label id={FieldId(sku)}>{label}</label> }
+/// }
+/// fn send(view: impl Patch) -> String { view.to_html() }
+/// let taken = [(4, 2), (9, 0)];
+/// let redrawn = html! {
+///     for (sku, count) in taken {
+///         let label = format!("SKU {sku}");
+///         if count == 0 {
+///             <Field sku={sku} label="none left" />
+///         } else {
+///             <Field sku={sku} label={&label} />
+///         }
+///         for again in 0..1 {
+///             match again {
+///                 0 => {}
+///                 _ => <Field sku={again} label="" />
+///             }
+///         }
+///     }
+/// };
+/// assert_eq!(send(redrawn), r#"<label id="field-4">SKU 4</label><label id="field-9">none left</label>"#);
+/// ```
+///
+/// A part that is not a patch is refused there too, however deep (the error names its kind,
+/// here `ComponentOrExpressionNotAPatch`):
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// #[component]
+/// fn Field(sku: u32) -> impl Render {
+///     html! { <label>{sku}</label> }
+/// }
+/// fn send(_: impl Patch) {}
+/// let taken = [4, 9];
+/// send(html! { for sku in taken { if sku > 4 { <Field sku={sku} /> } } });
+/// ```
+///
+/// The same holds for a `match` inside a `for`, and a `for` inside a `for`:
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// #[component]
+/// fn Field(sku: u32) -> impl Render {
+///     html! { <label>{sku}</label> }
+/// }
+/// fn send(_: impl Patch) {}
+/// let taken = [4, 9];
+/// send(html! { for sku in taken { match sku { 4 => { <Field sku={sku} /> } _ => {} } } });
+/// ```
+///
+/// ```compile_fail,E0277
+/// use corten::{prelude::*, view::Patch};
+/// #[component]
+/// fn Field(sku: u32) -> impl Render {
+///     html! { <label>{sku}</label> }
+/// }
+/// fn send(_: impl Patch) {}
+/// let rows = [[4, 9], [1, 2]];
+/// send(html! { for row in rows { for sku in row { <Field sku={sku} /> } } });
+/// ```
+///
 /// ```compile_fail,E0277
 /// use corten::prelude::*;
 /// #[component]
@@ -1267,17 +1337,29 @@ pub mod __private {
     pub trait PatchSealed {}
 
     // The shape of a view from `html!`, returned by its closure: one per top-level part, `Yes`
-    // when the part is a patch and `No` when it is not, a `for`, `if` or `match` body's as an
-    // `Option` (it may not run), in nested pairs that end in `End`. A view is a patch when all
-    // of its shape is. Each is a zero-sized type, so working it out costs nothing at run time.
+    // when the part is a patch and a type that says why when it is not (the error names it), a
+    // `for`, `if` or `match` body's as an `Option` (it may not run), in nested pairs that end in
+    // `End`. A view is a patch when all of its shape is. Each is a zero-sized type, so working it
+    // out costs nothing at run time, and `Copy`, so a block's shape is read on every pass of a
+    // `for` around it.
+    #[derive(Clone, Copy)]
     pub struct Yes;
-    pub struct No;
+    /// A component or expression that is not a patch: a component declared `-> impl Render`, text.
+    #[derive(Clone, Copy)]
+    pub struct ComponentOrExpressionNotAPatch;
+    /// An element whose `id={..}` is not a `#[derive(Id)]` type (text, a number).
+    #[derive(Clone, Copy)]
+    pub struct IdNotADeriveIdType;
+    /// Text, or an element with no `id={..}`, at the view's top level.
+    #[derive(Clone, Copy)]
+    pub struct TextOrElementWithoutId;
+    #[derive(Clone, Copy)]
     pub struct End;
 
     #[diagnostic::on_unimplemented(
         message = "this view is not a patch: one of its top-level parts is not an element with a #[derive(Id)] id",
         label = "a patch replaces elements by id",
-        note = "give each top-level element an id={{..}} with a #[derive(Id)] type; text, and an id written as text, cannot be a patch's top level"
+        note = "the type this says is not a PatchShape tells which part: `ComponentOrExpressionNotAPatch` (declare that component -> impl Patch; an expression must be a Patch), `IdNotADeriveIdType` (give the element an id={{..}} of a #[derive(Id)] type) or `TextOrElementWithoutId` (text and elements without an id cannot be a patch's top level); it names the kind of part, not its place, so look for that kind among the view's top-level parts (rustc's `required for` line, when it prints it in full, lists them in order: `Yes` for each that is a patch, an `Option` for the body of a for, if or match)"
     )]
     pub trait PatchShape {}
     impl PatchShape for Yes {}
@@ -1286,7 +1368,8 @@ pub mod __private {
     impl<A: PatchShape, B: PatchShape> PatchShape for (A, B) {}
 
     // `(&Proof(&value)).__shape()` is `Yes` when the value is a patch (`ProofPatch` matches
-    // without an extra reference) and `No` otherwise; `IdProof` likewise for an element id.
+    // without an extra reference) and `ComponentOrExpressionNotAPatch` otherwise; `IdProof`
+    // likewise for an element id (`IdNotADeriveIdType`).
     pub struct Proof<'a, T: ?Sized>(pub &'a T);
     pub trait ProofPatch {
         #[inline(always)]
@@ -1297,8 +1380,8 @@ pub mod __private {
     impl<T: super::Patch + ?Sized> ProofPatch for Proof<'_, T> {}
     pub trait ProofOther {
         #[inline(always)]
-        fn __shape(&self) -> No {
-            No
+        fn __shape(&self) -> ComponentOrExpressionNotAPatch {
+            ComponentOrExpressionNotAPatch
         }
     }
     impl<T: ?Sized> ProofOther for &Proof<'_, T> {}
@@ -1313,8 +1396,8 @@ pub mod __private {
     impl<T: super::Id + ?Sized> ProofId for IdProof<'_, T> {}
     pub trait ProofNotId {
         #[inline(always)]
-        fn __id_shape(&self) -> No {
-            No
+        fn __id_shape(&self) -> IdNotADeriveIdType {
+            IdNotADeriveIdType
         }
     }
     impl<T: ?Sized> ProofNotId for &IdProof<'_, T> {}

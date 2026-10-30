@@ -1032,6 +1032,13 @@ Corten is pre-1.0, so any minor version may change the API.
     render against 1,636.5; the examples' `count == 1` choices are gone and card-market's French no longer
     writes "1 annonces"
     ([#393 Catalogs have no plural rules, so apps pick a form with count == 1 and card-market shows "1 listings"](https://github.com/todd-skelton/corten/issues/393)).
+141. `corten dev`, `fmt` and `check` notice when the app's `Cargo.lock` pins another corten than the
+    one they were built from (a git revision or a release) and say so before running, with the
+    `cargo install` command for the matching one; they ran with the old behavior silently, and
+    `check` failed on `cargo fmt --check` with no reason. The command records the commit it is built
+    from (`corten --version` prints it), read from `.git` or a published package's
+    `.cargo_vcs_info.json`, standard library only. A path dependency is not compared
+    ([#458 The corten CLI does not notice it is older than the corten the app pins, so fmt and check silently use old behavior](https://github.com/todd-skelton/corten/issues/458)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
@@ -1636,7 +1643,19 @@ Corten is pre-1.0, so any minor version may change the API.
     `Route`, and `ReadAgainFrom<'a, R>` is now `ReadAgainFrom<R>`), so a component that is both part
     of the page and the patch builds the read in its body instead of failing with E0515 or E0597
     ([#440 ReadAgain::from borrows its route, so a component that is both part of the page and the patch cannot build the read in its body (E0515, E0597)](https://github.com/todd-skelton/corten/issues/440)).
-88. Breaking: corten-ui's `MenuButton` takes its items as children, each the app's own element with
+88. A `data-patch` form's newer submit no longer aborts a pending write (any method but GET): the
+    server may have applied it, and its answer, the page's next state, was dropped. A submit made
+    while a write is pending waits, and once the runtime has drawn the write's answer and it took
+    the write (2xx) or refused only its input (422), it is sent from the form as it is then (the one
+    the answer put in its place, found by id), so a version or count the answer wrote goes with it,
+    under the form's new key, without its `on:submit` handlers or the browser's constraint checks
+    running a second time. Several presses while the write is out send one submit of where the form
+    ended; a refusal of the form's state (409, 410), a 5xx, a write that gets no answer, one the
+    runtime does not draw (`corten:error`), a redirect, a reload, a navigation, or a form that left
+    the page drops it. A GET submit still replaces an older one. The minified runtime grows by 656
+    bytes (25,884 to 26,540), 247 gzipped (9,402 to 9,649) and 219 with brotli (8,496 to 8,715)
+    ([#381 A data-patch form's submits replace each other, so a screen where every step counts (a count's + and -) writes its own fetch queue](https://github.com/todd-skelton/corten/issues/381)).
+89. Breaking: corten-ui's `MenuButton` takes its items as children, each the app's own element with
     `role="menuitem"` (a link, with `download` or `target` as it needs; a `<form method="post">`
     with the fields it sends around a `<button role="menuitem">`; a `<button command="show-modal">`
     that opens a confirm dialog), and `MenuItem` is gone: it was only a typed link or a field-less
@@ -2096,6 +2115,14 @@ Corten is pre-1.0, so any minor version may change the API.
     (`corten__two_views_are__Row`, `corten__two_events_are__RowToggled`, and
     `corten__two_events_named__row_toggled` for the event's name in the page)
     ([#371 Two features' #[event] types or views with the same name still fail only when the server starts](https://github.com/todd-skelton/corten/issues/371)).
+78. A `for`, `if` or `match` inside a `for` in `html!` compiles, in a patch and in any view: it
+    failed with "use of moved value" on the whole `html!`, since the marker that says whether each
+    part is a patch was moved on the loop's first pass. A patch can now redraw rows known from data
+    in one loop, with a branch per row. A view refused as a patch now names the kind of part that
+    is not one (`ComponentOrExpressionNotAPatch`: a component declared `-> impl Render`;
+    `IdNotADeriveIdType`; `TextOrElementWithoutId`), though not its place in the view. The markers are zero-sized and the macro's output is otherwise the same, so rendering
+    is unchanged
+    ([#383 An if or match inside a for in html! fails with E0382 (use of moved value), and a patch's E0277 does not name the part that is not a patch](https://github.com/todd-skelton/corten/issues/383)).
 
 ### Documentation
 
