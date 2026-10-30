@@ -1064,6 +1064,13 @@ Corten is pre-1.0, so any minor version may change the API.
     Problem Details document with neither, as from `invalid` (feature `json`). An app no longer branches on
     `req.mode` for such a refusal and loses the JSON answer
     ([#468 req.invalid takes the refused form's patch already drawn, so a patch that needs a read is read for the no-JavaScript page too](https://github.com/todd-skelton/corten/issues/468)).
+144. `DayStyle` for `t.date` and `t.js().date`: the month and day without the year, `Short` (`Mar
+    2`) and `Long` (`March 2`), written as Intl writes `{ month, day }` in each locale's order and
+    words (`2 mars`, `2. März`), for a chart's axis, a week's row or a timeline whose year the page
+    says once; like `MonthStyle`, `t.date_time` does not take it. The locale data gains two patterns
+    per locale (from Node's Intl, checked against it, and in the cases the browser's `format.js` is
+    checked with); no other format changes
+    ([#473 t.date has no month-and-day style without the year (Intl { month: 'short', day: 'numeric' }), so chart labels hand-build month names](https://github.com/todd-skelton/corten/issues/473)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
