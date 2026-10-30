@@ -64,6 +64,11 @@ channel.
 
 ### Connection
 
+Each open stream holds one of the browser's connections to the host. Over HTTP/1.1 a browser opens
+about six, so a page with a few live parts open in a few tabs uses them up and its other requests
+wait; serve browsers HTTP/2 or HTTP/3 from the proxy or CDN in front of the app, which carries every
+stream on one connection (Corten itself speaks HTTP/1.1; design.md, Limits 14).
+
 A browser without JavaScript gets no stream: a page whose part is relayed while a job runs asks
 it alone to reload, with `ReadAgain { after }.without_javascript()` in its head
 ([read again](requests-and-forms.md)).
