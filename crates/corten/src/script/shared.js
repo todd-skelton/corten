@@ -9,6 +9,11 @@ export function named(el, names) {
   el.title = names.join(", ");
 }
 
+/** @param {KeyboardEvent} event @param {HTMLElement} el */
+export function key(event, el) {
+  el.title = event.key;
+}
+
 /** @param {AbortSignal} signal @param {{ id: string, tags: string[] }} options */
 export function watch(signal, options) {
   signal.addEventListener("abort", () => console.log("stopped", options.id));

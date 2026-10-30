@@ -1,0 +1,6 @@
+.note { color: var(--muted); margin: 0 0 16px; }
+.desk { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.desk td:nth-child(2), .desk td:nth-child(3) { font-variant-numeric: tabular-nums; }
+.desk td:last-child { text-align: end; }
+.desk form { margin: 0; }
+.hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
