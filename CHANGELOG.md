@@ -1693,6 +1693,16 @@ Corten is pre-1.0, so any minor version may change the API.
     read empty though values were sent. An `Option` reads as `None`, and a key under a name the
     struct does not have is ignored as before
     ([#363 #[derive(Fields)] refuses #[serde(flatten)], so a field group shared by forms (an address) is copied into each form](https://github.com/todd-skelton/corten/issues/363)).
+91. Breaking: corten-ui's `MenuButton` takes its items as children, each the app's own element with
+    `role="menuitem"` (a link, with `download` or `target` as it needs; a `<form method="post">`
+    with the fields it sends around a `<button role="menuitem">`; a `<button command="show-modal">`
+    that opens a confirm dialog), and `MenuItem` is gone: it was only a typed link or a field-less
+    post, so a row menu with a download, a post with a field or a confirm dialog was built by hand
+    without the menu's keys and focus. The script finds the items in the menu as it needs them (an
+    item a patch adds counts) and closes the menu on one click listener. `<MenuButton id="m"
+    label="Menu" items={&items} />` becomes `<MenuButton id="m" label="Menu">` with an element per
+    item
+    ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It
