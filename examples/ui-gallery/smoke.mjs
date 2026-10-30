@@ -203,6 +203,8 @@ async function run(browser) {
   await color.fill("light");
   const popup = page.locator("[data-scope=ui-combo-box] [popover]");
   check("typing opens the list", (await popup.evaluate((p) => p.matches(":popover-open"))) && (await color.getAttribute("aria-expanded")) === "true");
+  const matched = await page.locator('[data-scope=ui-combo-box] [role="status"]').evaluate((p) => [p.hidden, getComputedStyle(p).display].join(" "));
+  check("a part the component hides stays hidden under its design system's display (components.css)", matched === "true none", matched);
   const shown = await page.locator('[data-scope=ui-combo-box] [role="option"]:visible').allTextContents();
   check("the list filters by what was typed", shown.join() === "Lightly Played", shown.join());
   check("the first match is highlighted", (await color.getAttribute("aria-activedescendant")) !== null);

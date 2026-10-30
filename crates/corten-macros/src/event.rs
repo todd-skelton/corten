@@ -75,6 +75,10 @@ pub fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream, Error
     // The browser makes the event and reads its fields; Rust only describes them.
     let mut out = q("#[allow(dead_code)]", &[]);
     out.extend(item);
+    // `corten/events` exports one class of a name and the page dispatches one event of a name, so
+    // two of either fail to build, at any version (the class carries no prefix).
+    out.extend(crate::id::one_per_program("two_events_are", &name.to_string(), false));
+    out.extend(crate::id::one_per_program("two_events_named", &dom, false));
     out.extend(q(
         "impl ::corten::script::DomEvent for __A0 { const NAME: &'static str = __A1; }
         impl ::corten::script::ev::EventType for __A0 { const TS: &'static str = __A2; }
