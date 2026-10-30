@@ -4073,7 +4073,9 @@ async fn an_area_or_an_answer_makes_the_referrer_policy_stricter_only() {
     let strict = App::new(referrer_url::router()).policy(Policy::new().referrer(Referrer::StrictOrigin)).router();
     let path = referrer_url::Relayed { policy: "same-origin" }.href();
     assert_eq!(referrer(&strict, &path).await, "no-referrer", "the least of the app's and the answer's");
+}
 
+#[crate::routes]
 mod page_or_url {
     #[route("/runs/{id}", get = page_or_run)]
     pub struct Run<'a> {
