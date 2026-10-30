@@ -212,7 +212,7 @@ impl<T: Number + ?Sized> Number for &T {
 /// category depends on the digits it shows.
 #[diagnostic::on_unimplemented(
     message = "a plural message's count is an integer, not {Self}",
-    note = "a count is a whole number (u8 to u64, i8 to i64, usize, isize)"
+    note = "a count is a whole number (u8 to u128, i8 to i128, usize, isize)"
 )]
 pub trait Count: Number {
     /// The count without its sign, which is what picks the form.
