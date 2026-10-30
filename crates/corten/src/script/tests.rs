@@ -29,12 +29,12 @@ fn LineItem<'a>(name: &'a str, quantity: u32) -> impl Render {
     }
 }
 
-/// A count a script computes, shown with a message of the page's locale, alone and in a group
-/// with a plain value.
+/// A count a script computes, shown with a message of the page's locale: a plural one alone, and
+/// a plain one in a group with a plain value.
 #[component]
 fn Count(t: Msg) -> impl Render {
     let out = refs();
-    let counted = shared::Counted { entity: "Levels", label: t.js().item_listing_count() };
+    let counted = shared::Counted { entity: "Levels", label: t.js().selected() };
     html! {
         <p>
             <output ref={out} on:connect={shared::say(out, t.js().item_listing_count())}></output>

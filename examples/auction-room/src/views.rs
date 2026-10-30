@@ -86,12 +86,10 @@ pub fn Layout<'a>(req: &Req, title: &str, you: Option<&'a You>, head: impl Rende
     }
 }
 
-/// A count of bids, in its plural.
+/// A count of bids, in the form the count takes.
 #[component]
 pub fn BidCount(t: Msg, count: u64) -> impl Render {
-    html! {
-        if count == 1 { {t.lot_bids_one(t.number(count))} } else { {t.lot_bids_other(t.number(count))} }
-    }
+    html! { {t.lot_bids(count)} }
 }
 
 /// The page for a failed request (`App::error_page`), in the layout, with who is signed in; under

@@ -348,7 +348,12 @@ lookup in the browser. `Message<"count">` names the arguments, and a message who
 not exactly those does not compile at the call (`Message<"shown" | "total">` takes a message with
 both). Inside the script, `tsc` checks that `label` is given each of them. Write it with
 `textContent`, which does not read it as markup. A number in it is written with the page's
-format (below); plural forms are a key per form, as on the server.
+format (below). A plural message (`t.js().grid_items()`, from `grid.items_one` and `_other`) is
+the same `Message<"count">`: the script passes the count as a number, `label({ count: 3 })`, and
+the form is picked as the server picks it, with the count written in the page's format. It is sent
+with the locale's plural table and number format (about 300 bytes more in the attribute) and
+loads `corten-format` (2.9 kB, 1.4 kB gzipped). Never choose between two messages with
+`count === 1` in a script.
 
 ## Numbers, money and dates a script writes
 
