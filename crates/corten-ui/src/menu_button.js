@@ -10,10 +10,22 @@ import { keep } from "corten";
  */
 const opening = () => keep(() => ({ start: 0, focused: false }));
 
-/** @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu @param {HTMLElement[]} items */
-export function connect(trigger, menu, items) {
-  // Without this script Tab reaches each item; with it, the arrow keys do.
-  for (const item of items) item.tabIndex = -1;
+/**
+ * The menu's items, the app's own elements: read when they are needed, so one a patch adds or
+ * takes away counts too.
+ * @param {HTMLDivElement} menu
+ * @returns {HTMLElement[]}
+ */
+const itemsOf = (menu) => /** @type {HTMLElement[]} */ ([...menu.querySelectorAll("[role=menuitem]")]);
+
+/** Without this script Tab reaches each item; with it, the arrow keys do. @param {HTMLDivElement} menu */
+function outOfTabOrder(menu) {
+  for (const item of itemsOf(menu)) item.tabIndex = -1;
+}
+
+/** @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu */
+export function connect(trigger, menu) {
+  outOfTabOrder(menu);
   const name = `--${CSS.escape(trigger.id)}`;
   trigger.style.setProperty("anchor-name", name);
   menu.style.setProperty("position-anchor", name);
@@ -37,13 +49,14 @@ export function closing(event, menu) {
   if (event.newState === "closed") opening().focused = menu.contains(document.activeElement);
 }
 
-/** @param {ToggleEvent} event @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu @param {HTMLElement[]} items */
-export function toggled(event, trigger, menu, items) {
+/** @param {ToggleEvent} event @param {HTMLButtonElement} trigger @param {HTMLDivElement} menu */
+export function toggled(event, trigger, menu) {
   const open = event.newState === "open";
   trigger.setAttribute("aria-expanded", String(open));
   const s = opening();
   if (open) {
-    items.at(s.start)?.focus();
+    outOfTabOrder(menu);
+    itemsOf(menu).at(s.start)?.focus();
     s.start = 0;
     return;
   }
@@ -53,8 +66,9 @@ export function toggled(event, trigger, menu, items) {
   s.focused = false;
 }
 
-/** @param {KeyboardEvent} event @param {HTMLDivElement} menu @param {HTMLElement[]} items */
-export function step(event, menu, items) {
+/** @param {KeyboardEvent} event @param {HTMLDivElement} menu */
+export function step(event, menu) {
+  const items = itemsOf(menu);
   const at = items.indexOf(/** @type {any} */ (document.activeElement));
   /** @type {number} */
   let to;
@@ -69,8 +83,14 @@ export function step(event, menu, items) {
   items[to]?.focus();
 }
 
-/** After the click: a link still navigates and a form still submits. @param {HTMLDivElement} menu */
-export function used(menu) {
+/**
+ * A click on an item closes the menu, after the click: a link still navigates, a form still
+ * submits and a command still opens its dialog.
+ * @param {MouseEvent} event @param {HTMLDivElement} menu
+ */
+export function used(event, menu) {
+  const item = event.target instanceof Element && event.target.closest("[role=menuitem]");
+  if (!item || !menu.contains(item)) return;
   queueMicrotask(() => menu.matches(":popover-open") && menu.hidePopover());
 }
 

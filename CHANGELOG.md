@@ -971,8 +971,6 @@ Corten is pre-1.0, so any minor version may change the API.
     formats; 931.5 to 934.7 before, 933.8 to 933.9 after). `format.js` grows by 48 bytes
     minified (2,487 to 2,535) and 20 gzipped (1,240 to 1,260)
     ([#419 Money cannot be formatted with its sign (+$1.23), on the server or in scripts, so a difference between amounts hand-builds the sign twice](https://github.com/todd-skelton/corten/issues/419)).
-    `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
-    reset feed's `seq` from its own (`docs/guide/live-data.md`).
 134. `#[derive(Href)]` on an enum whose variants each hold a route (an app's screens) makes it a
     link, `href={screen}`, and a component several pages draw takes where its links and forms go
     as `&dyn Href`, so each page passes its own typed route instead of a `String`; a unit variant
@@ -1587,6 +1585,16 @@ Corten is pre-1.0, so any minor version may change the API.
     a third parameter, `&str` by default, so `Choice<Condition>` still names the same type.
     `Choice { terms: .., ..Choice::new(..) }` becomes `Choice::new(..).terms(..)`
     ([#448 corten-ui Choice::terms takes &[&str], so terms computed per row (Vec<String>) need a second Vec<Vec<&str>> before the options](https://github.com/todd-skelton/corten/issues/448)).
+86. Breaking: corten-ui's `MenuButton` takes its items as children, each the app's own element with
+    `role="menuitem"` (a link, with `download` or `target` as it needs; a `<form method="post">`
+    with the fields it sends around a `<button role="menuitem">`; a `<button command="show-modal">`
+    that opens a confirm dialog), and `MenuItem` is gone: it was only a typed link or a field-less
+    post, so a row menu with a download, a post with a field or a confirm dialog was built by hand
+    without the menu's keys and focus. The script finds the items in the menu as it needs them (an
+    item a patch adds counts) and closes the menu on one click listener. `<MenuButton id="m"
+    label="Menu" items={&items} />` becomes `<MenuButton id="m" label="Menu">` with an element per
+    item
+    ([#413 MenuButton items are only a link or a field-less post, so a row menu with a download, a new-tab link, a post with a field or a confirm dialog is hand-built](https://github.com/todd-skelton/corten/issues/413)).
 
 ### Fixed
 1. Hover prefetch kept every page a user hovered and never opened until the next form post. It

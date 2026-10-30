@@ -347,6 +347,15 @@ async function run(browser) {
   check("a form item posts and patches", true);
   await expanded("false");
   check("using an item closes the menu", (await trigger.getAttribute("aria-expanded")) === "false");
+  // An item is any element the app writes: here a command that opens a dialog.
+  await trigger.click();
+  await expanded("true");
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await page.waitForFunction(() => /** @type {HTMLDialogElement | null} */ (document.querySelector("dialog[aria-label='Rename the draft']"))?.open === true);
+  await expanded("false");
+  check("a command item opens its dialog and closes the menu", (await trigger.getAttribute("aria-expanded")) === "false");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => /** @type {HTMLDialogElement | null} */ (document.querySelector("dialog[aria-label='Rename the draft']"))?.open === false);
 
   // Toaster (2 seconds in the gallery)
   const toast = page.locator("#ui-toast");
