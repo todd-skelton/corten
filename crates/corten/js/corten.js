@@ -566,7 +566,9 @@ observer.observe(document.documentElement, { childList: true, subtree: true });
 /**
  * @template Row
  * @typedef {object} FeedHandlers
- * @property {(rows: Row[], seq: number) => void} snapshot Every row; replaces what the script had.
+ * @property {(rows: Row[], seq: number, epoch: string) => void} snapshot Every row; replaces what the
+ * script had. `seq` counts writes within `epoch`, the feed's generation: after a restart or a
+ * reset to another log the epoch differs, and its `seq` is not comparable with the old one's.
  * @property {(changes: FeedChange<Row>[], seq: number, receivedAt: number) => void} patch One write, in order, never twice.
  * @property {(status: "syncing" | "live" | "reconnecting") => void} [status]
  */
@@ -625,7 +627,7 @@ export function subscribe(url, handlers, { signal } = {}) {
       const snap = await res.json();
       failures = 0;
       seq = snap.seq;
-      handlers.snapshot(snap.rows, snap.seq);
+      handlers.snapshot(snap.rows, snap.seq, snap.epoch);
       listen(`${url}/live?since=${encodeURIComponent(`${snap.epoch}-${snap.seq}`)}`);
     } catch (error) {
       if (current.signal.aborted) return;
@@ -1590,11 +1592,13 @@ async function patchSubmit(event) {
   }
   try {
     const res = await fetch(url, init);
-    // An answer below 500 is definitive: the write applied or was refused. A 5xx (a 502 from a
-    // proxy can hide a committed write), a network error or an abort keeps the key for a retry.
-    if (res.status < 500) renewSubmitKeys(form);
+    // A whole answer below 500 is definitive: the write applied or was refused, and the form gets
+    // a new key. A 5xx (a 502 from a proxy can hide a committed write), a network error, an abort
+    // or a body cut off on the way keeps the key, so a retry is the same submission.
+    const answered = res.status < 500;
     const location_ = res.headers.get("corten-location");
     if (location_) {
+      if (answered) renewSubmitKeys(form);
       submits.delete(form);
       if (navigation) navigation.navigate(location_, { info: { [LOAD]: true } });
       else {
@@ -1605,14 +1609,17 @@ async function patchSubmit(event) {
         if (same) location.reload();
       }
     } else if (res.headers.has("corten-page") && shellChanged(res)) {
+      if (answered) renewSubmitKeys(form);
       location.reload();
     } else if (res.headers.has("corten-patch") || res.headers.has("corten-page")) {
       const body = await res.text();
+      if (answered) renewSubmitKeys(form);
       signal.throwIfAborted();
       await (res.headers.has("corten-patch") ? apply(body, signal, sent, res.ok) : swapPage(body, signal));
       signal.throwIfAborted();
       if (res.status === 422) focusInvalid(form);
     } else {
+      if (answered) renewSubmitKeys(form);
       formCall(form, "dispatchEvent", new CustomEvent("corten:error", { bubbles: true, detail: { status: res.status } }));
     }
   } catch (error) {
