@@ -153,6 +153,8 @@ export function watch(feed, signal) {
 ```
 
 A plain `string` is not a `FeedUrl`, so a script cannot follow a feed whose rows it guessed.
+`examples/deck-builder` follows its saved deck this way, so a save made in another tab reaches a
+page that is open.
 
 `snapshot` also gets the write's `seq` and the feed's generation, `epoch` (`Feed::generation`).
 A script that uses the feed's `seq` as a version (the deck builder sends it with a save, so a save

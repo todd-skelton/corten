@@ -942,6 +942,16 @@ Corten is pre-1.0, so any minor version may change the API.
 130. A feed's `snapshot` handler gets the feed's generation as a third argument,
     `snapshot(rows, seq, epoch)`, so a script that uses `seq` as a version can tell a restarted or
     reset feed's `seq` from its own (`docs/guide/live-data.md`).
+131. `examples/deck-builder`: a rich client-side screen. A player builds a 40-card deck from a
+    collection of 240 by Add, Add selected, drag and drop or the keyboard (Space to pick up, the
+    arrows, Space to drop, Escape to put back, each said aloud), with the count, the cost curve and
+    the kinds drawn at once, undo and redo (buttons, Ctrl+Z and Ctrl+Shift+Z through
+    `on:document:keydown`), and filter and sort in the page. Every change is saved as it is made,
+    one save at a time, with the deck's version (its feed's generation and number): a save the rules refuse is rolled back with the
+    reason, a stale one (another tab saved first, which its feed shows) lets the player keep both
+    changes or take the other tab's deck, and a save that could not be sent, or whose answer was lost, is sent again with its submit key.
+    Without JavaScript the same page posts the deck, and the filter and sort are links and a GET
+    form ([#336 No example shows a rich client-side screen: a deck builder](https://github.com/todd-skelton/corten/issues/336)).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a
