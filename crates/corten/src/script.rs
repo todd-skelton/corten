@@ -403,14 +403,52 @@
 //! # fn main() {}
 //! ```
 //!
-//! `on:document:` takes an event of the browser's, not `connect` (which is the element's own):
+//! `on:document:` takes an event of the browser's that bubbles to the document: not `connect`
+//! (the element's own), not `focus` (`focusin` is the one that bubbles), and not a typed event
+//! (heard on an element it bubbles through):
 //!
 //! ```compile_fail
 //! use corten::prelude::*;
 //!
 //! #[component(js)]
 //! fn CartLine() -> impl Render {
-//!     html! { <li on:document:connect={js::shortcut(event, target)}></li> }
+//!     let save = refs();
+//!     html! { <li on:document:connect={js::enable(save)}><button ref={save}></button></li> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     let save = refs();
+//!     html! { <li on:document:focus={js::enable(save)}><button ref={save}></button></li> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! ```compile_fail
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     let save = refs();
+//!     html! { <li on:document:RowToggled={js::enable(save)}><button ref={save}></button></li> }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! The same markup with an event that bubbles compiles, so each one above fails for its event:
+//!
+//! ```
+//! use corten::prelude::*;
+//!
+//! #[component(js)]
+//! fn CartLine() -> impl Render {
+//!     let save = refs();
+//!     html! { <li on:document:focusin={js::enable(save)}><button ref={save}></button></li> }
 //! }
 //! # fn main() {}
 //! ```

@@ -326,7 +326,8 @@ async function run(browser) {
     pressedByKey === "true" && (await page.getAttribute(`${live} button`, "aria-pressed")) === "false",
     String(pressedByKey),
   );
-  // An element with a page-wide handler stops getting events when it leaves the page.
+  // An element with a page-wide handler stops getting events when it leaves the page. The key is
+  // not cancelable, so the page's own button pausing first (preventDefault) does not hide it.
   const leaves = await page.evaluate(async () => {
     const host = document.createElement("div");
     host.hidden = true;
@@ -334,15 +335,16 @@ async function run(browser) {
     document.body.append(host);
     await new Promise((resolve) => setTimeout(resolve));
     const button = /** @type {HTMLButtonElement} */ (host.querySelector("button"));
-    const press = () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "p", bubbles: true, cancelable: true }));
+    const press = () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "p", bubbles: true, cancelable: false }));
     press();
     const on = button.getAttribute("aria-pressed");
     host.remove();
     await new Promise((resolve) => setTimeout(resolve));
     press();
+    // The page's own button hears both presses, so it is back where it was.
     return `${on},${button.getAttribute("aria-pressed")}`;
   });
-  check("a page-wide handler ends when its element leaves the page", leaves === "true,true", leaves);
+  check("a page-wide handler does not run once its element has left the page", leaves === "true,true", leaves);
   // A change's text is a percent whose sign is its trend's.
   const changes = await page.$$eval('[data-ref="change"]', (cells) => cells.map((c) => [c.textContent ?? "", c.getAttribute("data-trend")]));
   check(

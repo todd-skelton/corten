@@ -395,8 +395,8 @@ const PAGE = "document.";
 /**
  * Listens for `type` on the document, once: an event that bubbles runs the handlers of every
  * element on its path, innermost first, until one stops it, and then those of the elements on
- * the page with a handler for it anywhere (`on:document:keydown`), as a listener on the
- * document would; one that does not (`focus`, `mouseenter`) reaches the document only by
+ * the page with a handler for it anywhere (`on:document:keydown`), each as a listener of its own
+ * on the document would; one that does not (`focus`, `mouseenter`) reaches the document only by
  * capture and runs its target's handlers.
  * @param {string} type
  */
@@ -413,11 +413,15 @@ function listen(type) {
       // from the runtime: a data-patch form is still sent as a patch.
       if (event.cancelBubble) return type === "submit" && patchSubmit(event);
     }
-    for (const el of onPage) {
+    // Each element's page-wide handlers are a listener of their own on the document: stopping the
+    // event does not keep it from another's, and an element that joins during the event waits
+    // for the next one. A submit one of them stopped is still sent as a patch.
+    if (!onPage.size) return;
+    for (const el of [...onPage]) {
       if (!el.isConnected) continue;
       for (const b of bindings(el)) if (b.type === anywhere) run(el, b, event);
-      if (event.cancelBubble) return;
     }
+    if (event.cancelBubble && type === "submit") patchSubmit(event);
   });
   document.addEventListener(
     type,

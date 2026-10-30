@@ -277,11 +277,16 @@ default and no handler, as without JavaScript. `on:connect` waits for its module
 A screen's shortcuts act wherever focus is: on the page's background after a click, after a
 navigation, on a button. `on:keydown` hears only the keys pressed inside its element, so a
 component takes them with `on:document:keydown={..}`, for as long as it is on the page. Its
-handler runs after the handlers on the event's path (unless one stopped it), as a listener on
-the document would. Its arguments are read for each event, so refs are the component's current
-elements, `target` is the element with the `on:`, and `event` is typed by the event's name
-(`KeyboardEvent`). Nothing removes it: it ends when its element leaves the page. watchlist's
-prices pause on `p`:
+handler runs after the handlers on the event's path (unless one stopped it), as a listener of its
+own on the document would: one component stopping the event does not keep it from another's,
+and an element that joins the page during the event hears the next one. Its arguments are read
+for each event, so refs are the component's current elements, `target` is the element with the
+`on:`, and `event` is typed by the event's name (`KeyboardEvent`); a ref found from the event
+(`row.closest(..)`) is there only for events inside it. Nothing removes it: it ends when its
+element leaves the page. It takes the events that bubble to the document: `focus`,
+`mouseenter` and the media events stay on their element and do not compile there
+(`on:document:focusin` and `on:document:mouseover` are the ones that bubble). watchlist's prices
+pause on `p`:
 
 ```rust,ignore
 <button ref={pause} aria-keyshortcuts="p" on:click={js::pause(target, price, change)}
@@ -298,7 +303,9 @@ export function pauseKey(event, button, prices, changes) {
 ```
 
 Which keys count as typing (a field, an open dialog) is the screen's choice, so the runtime
-skips none: a shortcut checks it, as `typing` does there. Prefer this to
+skips none: a shortcut checks it, as `typing` does there. A shortcut of one character key, like
+this one, is one a speech user can set off by talking, so WCAG 2.1.4 asks that the reader can
+turn it off or remap it, or that it take a modifier (Ctrl, Alt) instead. Prefer this to
 `document.addEventListener` in an `on:connect` handler, whose arguments are read once, when the
 element joins, so refs a patch later replaces are stale.
 

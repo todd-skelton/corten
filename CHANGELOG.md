@@ -910,13 +910,16 @@ Corten is pre-1.0, so any minor version may change the API.
 127. `on:document:keydown={js::shortcut(event, ..)}`: a component's handler for an event anywhere
     on the page while the component is on it, so a screen's shortcuts work wherever focus is
     (the page's background, a button) without `document.addEventListener`. It runs after the
-    handlers on the event's path, its arguments are read for each event and typed by the event
-    (`KeyboardEvent`), and it ends when its element leaves the page. `on:document:connect` and a
-    typed event do not compile. watchlist pauses its prices on `p`
+    handlers on the event's path, each as its own listener on the document (one stopping the
+    event does not keep it from another's), its arguments are read for each event and typed by
+    the event (`KeyboardEvent`), and it ends when its element leaves the page. An event that
+    does not bubble to the document (`focus`, `mouseenter`), `connect` and a typed event do not
+    compile, so a page-wide handler that would never run is a build error. watchlist pauses its
+    prices on `p`
     ([#365 A component cannot take keys on the whole page, so work-screen shortcuts call document.addEventListener outside the handler model](https://github.com/todd-skelton/corten/issues/365)).
-    A page without one runs one more loop over an empty set per bubbling event it listens for.
-    The minified runtime grows by 255 bytes (25,133 to 25,388), 72 gzipped (9,165 to 9,237)
-    and 45 with brotli (8,287 to 8,332).
+    A page without one checks one empty set per bubbling event it listens for.
+    The minified runtime grows by 280 bytes (25,133 to 25,413), 84 gzipped (9,165 to 9,249)
+    and 61 with brotli (8,287 to 8,348).
 
 ### Removed
 1. `#[island]`, `#[prop]`, `island()` and the custom element each island was. A component with a

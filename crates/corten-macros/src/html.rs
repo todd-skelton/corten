@@ -732,6 +732,9 @@ impl Cursor {
                     let Some(TokenTree::Ident(event)) = self.next() else {
                         return err(span, "on: on a component names one of its Handler props: on:remove={..} sets on_remove");
                     };
+                    if event.to_string() == "document" && is_punct(self.peek(), ':') {
+                        return err(span, "on:document: goes on an element in the component's own markup, which hears the event anywhere on the page while it is there; on: on a component sets one of its Handler props");
+                    }
                     if !is_punct(self.peek(), '=') {
                         return err(span, format!("on:{event} takes a handler: on:{event}={{js::name(..)}}"));
                     }
@@ -785,12 +788,23 @@ impl Cursor {
                                 // `on:document:keydown`: the element's handler for an event anywhere on
                                 // the page, printed `document.keydown` (a `:` ends the type).
                                 if let Some(on_page) = event.strip_prefix("document:") {
-                                    if on_page.is_empty()
-                                        || on_page == "connect"
-                                        || !on_page.starts_with(|c: char| c.is_ascii_lowercase())
-                                        || on_page.contains(':')
-                                    {
-                                        return err(span, format!("{name}: on:document: takes an event of the browser's that reaches the document, like on:document:keydown={{js::shortcut(event)}}"));
+                                    if on_page.starts_with(|c: char| c.is_ascii_uppercase()) {
+                                        return err(span, format!("{name}: on:document: takes an event of the browser's (on:document:keydown); a typed event is heard on an element it bubbles through: on:{on_page}={{..}}"));
+                                    }
+                                    let bubbling = match on_page {
+                                        "focus" => Some("focusin"),
+                                        "blur" => Some("focusout"),
+                                        "mouseenter" => Some("mouseover"),
+                                        "mouseleave" => Some("mouseout"),
+                                        "pointerenter" => Some("pointerover"),
+                                        "pointerleave" => Some("pointerout"),
+                                        _ => None,
+                                    };
+                                    if let Some(bubbling) = bubbling {
+                                        return err(span, format!("{name}: {on_page} stays on its element, so the document never hears it; on:document:{bubbling} hears every element's"));
+                                    }
+                                    if !crate::dom::reaches_document(on_page) {
+                                        return err(span, format!("{name}: on:document: takes an event of the browser's that bubbles to the document (keydown, click, focusin, pointerover); {on_page} is not one, so a listener there would never hear it"));
                                     }
                                     Attr::On(format!("document.{on_page}"), span, expr)
                                 } else {
