@@ -1,0 +1,1004 @@
+2026-10-30T04:19:01.950Z node cold-start.mjs r8 10
+corten 0 first 200 36.2 ms after the server process started, 5.914MiB
+corten 1 first 200 6.1 ms after the server process started, 1.219MiB
+corten 2 first 200 6.9 ms after the server process started, 1.223MiB
+corten 3 first 200 7.7 ms after the server process started, 1.227MiB
+corten 4 first 200 6.7 ms after the server process started, 1.23MiB
+corten 5 first 200 5.9 ms after the server process started, 1.23MiB
+corten 6 first 200 6.2 ms after the server process started, 1.23MiB
+corten 7 first 200 12.2 ms after the server process started, 1.223MiB
+corten 8 first 200 6.6 ms after the server process started, 1.223MiB
+corten 9 first 200 6.4 ms after the server process started, 1.227MiB
+nextjs 0 first 200 721.3 ms after the server process started, 52MiB
+nextjs 1 first 200 691.7 ms after the server process started, 51.16MiB
+nextjs 2 first 200 706.4 ms after the server process started, 51.34MiB
+nextjs 3 first 200 1030.2 ms after the server process started, 51.4MiB
+nextjs 4 first 200 715.8 ms after the server process started, 51.9MiB
+nextjs 5 first 200 714.1 ms after the server process started, 51.55MiB
+nextjs 6 first 200 736.4 ms after the server process started, 51.43MiB
+nextjs 7 first 200 719.3 ms after the server process started, 52.27MiB
+nextjs 8 first 200 717.2 ms after the server process started, 51.7MiB
+nextjs 9 first 200 745.0 ms after the server process started, 51.02MiB
+tanstack-start 0 first 200 210.7 ms after the server process started, 26.37MiB
+tanstack-start 1 first 200 221.3 ms after the server process started, 26.36MiB
+tanstack-start 2 first 200 229.9 ms after the server process started, 26.37MiB
+tanstack-start 3 first 200 212.9 ms after the server process started, 26.36MiB
+tanstack-start 4 first 200 217.1 ms after the server process started, 26.35MiB
+tanstack-start 5 first 200 214.8 ms after the server process started, 26.38MiB
+tanstack-start 6 first 200 223.0 ms after the server process started, 26.24MiB
+tanstack-start 7 first 200 209.7 ms after the server process started, 26.54MiB
+tanstack-start 8 first 200 217.9 ms after the server process started, 26.41MiB
+tanstack-start 9 first 200 211.3 ms after the server process started, 26.38MiB
+sveltekit 0 first 200 195.2 ms after the server process started, 23.57MiB
+sveltekit 1 first 200 176.9 ms after the server process started, 23.79MiB
+sveltekit 2 first 200 183.3 ms after the server process started, 23.46MiB
+sveltekit 3 first 200 187.5 ms after the server process started, 23.82MiB
+sveltekit 4 first 200 180.0 ms after the server process started, 23.76MiB
+sveltekit 5 first 200 245.9 ms after the server process started, 23.73MiB
+sveltekit 6 first 200 182.7 ms after the server process started, 23.84MiB
+sveltekit 7 first 200 180.9 ms after the server process started, 23.6MiB
+sveltekit 8 first 200 210.9 ms after the server process started, 23.35MiB
+sveltekit 9 first 200 191.8 ms after the server process started, 24.06MiB
+react-router 0 first 200 334.2 ms after the server process started, 32.18MiB
+react-router 1 first 200 311.6 ms after the server process started, 32MiB
+react-router 2 first 200 315.2 ms after the server process started, 32.05MiB
+react-router 3 first 200 303.7 ms after the server process started, 32.02MiB
+react-router 4 first 200 312.3 ms after the server process started, 32.16MiB
+react-router 5 first 200 306.7 ms after the server process started, 31.79MiB
+react-router 6 first 200 308.6 ms after the server process started, 32.05MiB
+react-router 7 first 200 316.7 ms after the server process started, 31.81MiB
+react-router 8 first 200 315.2 ms after the server process started, 31.89MiB
+react-router 9 first 200 324.8 ms after the server process started, 32.18MiB
+leptos 0 first 200 10.2 ms after the server process started, 1.488MiB
+leptos 1 first 200 6.7 ms after the server process started, 1.477MiB
+leptos 2 first 200 7.8 ms after the server process started, 1.48MiB
+leptos 3 first 200 8.6 ms after the server process started, 1.48MiB
+leptos 4 first 200 7.8 ms after the server process started, 1.477MiB
+leptos 5 first 200 7.8 ms after the server process started, 1.473MiB
+leptos 6 first 200 7.9 ms after the server process started, 1.477MiB
+leptos 7 first 200 9.3 ms after the server process started, 1.488MiB
+leptos 8 first 200 7.7 ms after the server process started, 1.477MiB
+leptos 9 first 200 7.0 ms after the server process started, 1.484MiB
+django 0 first 200 1133.6 ms after the server process started, 63.17MiB
+django 1 first 200 1169.3 ms after the server process started, 63.38MiB
+django 2 first 200 1120.8 ms after the server process started, 63.04MiB
+django 3 first 200 1124.6 ms after the server process started, 62.99MiB
+django 4 first 200 1163.9 ms after the server process started, 63.13MiB
+django 5 first 200 1134.2 ms after the server process started, 63.1MiB
+django 6 first 200 1114.0 ms after the server process started, 63.27MiB
+django 7 first 200 1168.9 ms after the server process started, 63.15MiB
+django 8 first 200 1117.4 ms after the server process started, 63.14MiB
+django 9 first 200 1148.9 ms after the server process started, 63.01MiB
+rails 0 first 200 1193.9 ms after the server process started, 64.16MiB
+rails 1 first 200 1191.7 ms after the server process started, 63.9MiB
+rails 2 first 200 1227.4 ms after the server process started, 63.9MiB
+rails 3 first 200 1177.7 ms after the server process started, 63.94MiB
+rails 4 first 200 1196.7 ms after the server process started, 63.87MiB
+rails 5 first 200 1188.5 ms after the server process started, 63.9MiB
+rails 6 first 200 1284.0 ms after the server process started, 63.91MiB
+rails 7 first 200 1293.3 ms after the server process started, 63.88MiB
+rails 8 first 200 1213.8 ms after the server process started, 63.89MiB
+rails 9 first 200 1186.3 ms after the server process started, 63.91MiB
+laravel 0 first 200 993.2 ms after the server process started, 101.7MiB
+laravel 1 first 200 946.6 ms after the server process started, 96.43MiB
+laravel 2 first 200 910.4 ms after the server process started, 96.43MiB
+laravel 3 first 200 906.2 ms after the server process started, 96.34MiB
+laravel 4 first 200 869.9 ms after the server process started, 95.28MiB
+laravel 5 first 200 879.7 ms after the server process started, 95.47MiB
+laravel 6 first 200 908.1 ms after the server process started, 96.38MiB
+laravel 7 first 200 904.9 ms after the server process started, 96.41MiB
+laravel 8 first 200 947.2 ms after the server process started, 96.32MiB
+laravel 9 first 200 892.9 ms after the server process started, 95.49MiB
+aspnet 0 first 200 834.3 ms after the server process started, 30.84MiB
+aspnet 1 first 200 738.2 ms after the server process started, 30.62MiB
+aspnet 2 first 200 718.6 ms after the server process started, 30.55MiB
+aspnet 3 first 200 752.3 ms after the server process started, 30.57MiB
+aspnet 4 first 200 785.4 ms after the server process started, 30.56MiB
+aspnet 5 first 200 755.8 ms after the server process started, 30.56MiB
+aspnet 6 first 200 762.3 ms after the server process started, 30.57MiB
+aspnet 7 first 200 752.2 ms after the server process started, 30.87MiB
+aspnet 8 first 200 749.4 ms after the server process started, 30.66MiB
+aspnet 9 first 200 733.5 ms after the server process started, 30.55MiB
+spring 0 first 200 8128.1 ms after the server process started, 140MiB
+spring 1 first 200 8095.0 ms after the server process started, 143.4MiB
+spring 2 first 200 8012.7 ms after the server process started, 137.1MiB
+spring 3 first 200 8262.5 ms after the server process started, 143.3MiB
+spring 4 first 200 8282.0 ms after the server process started, 132.9MiB
+spring 5 first 200 8029.1 ms after the server process started, 142.2MiB
+spring 6 first 200 8257.4 ms after the server process started, 140.3MiB
+spring 7 first 200 8019.2 ms after the server process started, 140.2MiB
+spring 8 first 200 8333.4 ms after the server process started, 137.2MiB
+spring 9 first 200 8190.2 ms after the server process started, 145.3MiB
+phoenix 0 first 200 1426.9 ms after the server process started, 125.3MiB
+phoenix 1 first 200 1440.1 ms after the server process started, 125.1MiB
+phoenix 2 first 200 1434.8 ms after the server process started, 125.4MiB
+phoenix 3 first 200 1422.2 ms after the server process started, 125.3MiB
+phoenix 4 first 200 1510.1 ms after the server process started, 125.4MiB
+phoenix 5 first 200 1421.2 ms after the server process started, 125.6MiB
+phoenix 6 first 200 1408.0 ms after the server process started, 126.1MiB
+phoenix 7 first 200 1435.0 ms after the server process started, 125.3MiB
+phoenix 8 first 200 1462.9 ms after the server process started, 125.1MiB
+phoenix 9 first 200 1508.2 ms after the server process started, 124.8MiB
+astro 0 first 200 323.5 ms after the server process started, 35.84MiB
+astro 1 first 200 391.1 ms after the server process started, 36.82MiB
+astro 2 first 200 352.7 ms after the server process started, 36.12MiB
+astro 3 first 200 341.6 ms after the server process started, 36.29MiB
+astro 4 first 200 325.0 ms after the server process started, 36.14MiB
+astro 5 first 200 347.8 ms after the server process started, 36.11MiB
+astro 6 first 200 339.1 ms after the server process started, 36.46MiB
+astro 7 first 200 426.7 ms after the server process started, 36.34MiB
+astro 8 first 200 360.1 ms after the server process started, 36.11MiB
+astro 9 first 200 322.7 ms after the server process started, 36.49MiB
+nuxt 0 first 200 318.3 ms after the server process started, 35.5MiB
+nuxt 1 first 200 324.0 ms after the server process started, 36.32MiB
+nuxt 2 first 200 326.7 ms after the server process started, 35.54MiB
+nuxt 3 first 200 321.5 ms after the server process started, 35.14MiB
+nuxt 4 first 200 321.7 ms after the server process started, 35.91MiB
+nuxt 5 first 200 318.7 ms after the server process started, 35.55MiB
+nuxt 6 first 200 323.8 ms after the server process started, 35.15MiB
+nuxt 7 first 200 333.4 ms after the server process started, 35.27MiB
+nuxt 8 first 200 318.6 ms after the server process started, 35.58MiB
+nuxt 9 first 200 322.1 ms after the server process started, 35.29MiB
+{
+ "corten": {
+  "firstOkMs": {
+   "median": 6.7,
+   "min": 5.9,
+   "max": 36.2
+  },
+  "memAfterFirstRequest": "1.23MiB",
+  "imageMB": 123
+ },
+ "nextjs": {
+  "firstOkMs": {
+   "median": 719.3,
+   "min": 691.7,
+   "max": 1030.2
+  },
+  "memAfterFirstRequest": "51.55MiB",
+  "imageMB": 385
+ },
+ "tanstack-start": {
+  "firstOkMs": {
+   "median": 217.1,
+   "min": 209.7,
+   "max": 229.9
+  },
+  "memAfterFirstRequest": "26.38MiB",
+  "imageMB": 332
+ },
+ "sveltekit": {
+  "firstOkMs": {
+   "median": 187.5,
+   "min": 176.9,
+   "max": 245.9
+  },
+  "memAfterFirstRequest": "23.73MiB",
+  "imageMB": 333
+ },
+ "react-router": {
+  "firstOkMs": {
+   "median": 315.2,
+   "min": 303.7,
+   "max": 334.2
+  },
+  "memAfterFirstRequest": "31.79MiB",
+  "imageMB": 353
+ },
+ "leptos": {
+  "firstOkMs": {
+   "median": 7.8,
+   "min": 6.7,
+   "max": 10.2
+  },
+  "memAfterFirstRequest": "1.473MiB",
+  "imageMB": 127
+ },
+ "django": {
+  "firstOkMs": {
+   "median": 1134.2,
+   "min": 1114,
+   "max": 1169.3
+  },
+  "memAfterFirstRequest": "63.1MiB",
+  "imageMB": 276
+ },
+ "rails": {
+  "firstOkMs": {
+   "median": 1196.7,
+   "min": 1177.7,
+   "max": 1293.3
+  },
+  "memAfterFirstRequest": "63.9MiB",
+  "imageMB": 431
+ },
+ "laravel": {
+  "firstOkMs": {
+   "median": 908.1,
+   "min": 869.9,
+   "max": 993.2
+  },
+  "memAfterFirstRequest": "95.47MiB",
+  "imageMB": 947
+ },
+ "aspnet": {
+  "firstOkMs": {
+   "median": 752.3,
+   "min": 718.6,
+   "max": 834.3
+  },
+  "memAfterFirstRequest": "30.56MiB",
+  "imageMB": 342
+ },
+ "spring": {
+  "firstOkMs": {
+   "median": 8190.2,
+   "min": 8012.7,
+   "max": 8333.4
+  },
+  "memAfterFirstRequest": "142.2MiB",
+  "imageMB": 516
+ },
+ "phoenix": {
+  "firstOkMs": {
+   "median": 1435,
+   "min": 1408,
+   "max": 1510.1
+  },
+  "memAfterFirstRequest": "125.6MiB",
+  "imageMB": 262
+ },
+ "astro": {
+  "firstOkMs": {
+   "median": 347.8,
+   "min": 322.7,
+   "max": 426.7
+  },
+  "memAfterFirstRequest": "36.11MiB",
+  "imageMB": 528
+ },
+ "nuxt": {
+  "firstOkMs": {
+   "median": 322.1,
+   "min": 318.3,
+   "max": 333.4
+  },
+  "memAfterFirstRequest": "35.55MiB",
+  "imageMB": 335
+ }
+}
+2026-10-30T04:28:24.666Z node run-ssr.mjs r8 fixture 300 corten,nextjs,tanstack-start,sveltekit,react-router,leptos,django,rails,laravel,aspnet,spring,phoenix,astro,nuxt page
+2026-10-30T04:28:34.524Z corten fixture warmup
+2026-10-30T04:29:07.756Z corten fixture fixed
+2026-10-30T04:30:09.856Z corten fixture sat64
+2026-10-30T04:31:11.950Z corten fixture sat256
+2026-10-30T04:32:25.357Z nextjs fixture warmup
+2026-10-30T04:32:56.206Z nextjs fixture fixed
+2026-10-30T04:34:09.926Z nextjs fixture sat64
+2026-10-30T04:35:12.022Z nextjs fixture sat256
+2026-10-30T04:36:25.126Z tanstack-start fixture warmup
+2026-10-30T04:36:56.171Z tanstack-start fixture fixed
+2026-10-30T04:37:58.270Z tanstack-start fixture sat64
+2026-10-30T04:39:00.367Z tanstack-start fixture sat256
+2026-10-30T04:40:13.519Z sveltekit fixture warmup
+2026-10-30T04:40:44.419Z sveltekit fixture fixed
+2026-10-30T04:41:46.517Z sveltekit fixture sat64
+2026-10-30T04:42:48.616Z sveltekit fixture sat256
+2026-10-30T04:44:01.768Z react-router fixture warmup
+2026-10-30T04:44:32.712Z react-router fixture fixed
+2026-10-30T04:45:34.826Z react-router fixture sat64
+2026-10-30T04:46:36.916Z react-router fixture sat256
+2026-10-30T04:47:49.578Z leptos fixture warmup
+2026-10-30T04:48:20.481Z leptos fixture fixed
+2026-10-30T04:49:22.575Z leptos fixture sat64
+2026-10-30T04:50:24.667Z leptos fixture sat256
+2026-10-30T04:51:39.080Z django fixture warmup
+2026-10-30T04:52:10.098Z django fixture fixed
+2026-10-30T04:53:12.179Z django fixture sat64
+2026-10-30T04:54:14.280Z django fixture sat256
+2026-10-30T04:55:28.212Z rails fixture warmup
+2026-10-30T04:55:58.998Z rails fixture fixed
+2026-10-30T04:57:01.095Z rails fixture sat64
+2026-10-30T04:58:03.199Z rails fixture sat256
+2026-10-30T05:00:13.355Z laravel fixture failed: never answered /items/item_1 within a minute
+2026-10-30T05:00:24.448Z aspnet fixture warmup
+2026-10-30T05:00:55.196Z aspnet fixture fixed
+2026-10-30T05:01:57.295Z aspnet fixture sat64
+2026-10-30T05:02:59.381Z aspnet fixture sat256
+2026-10-30T05:04:21.336Z spring fixture warmup
+2026-10-30T05:04:52.417Z spring fixture fixed
+2026-10-30T05:05:54.519Z spring fixture sat64
+2026-10-30T05:06:56.624Z spring fixture sat256
+2026-10-30T05:08:11.751Z phoenix fixture warmup
+2026-10-30T05:08:42.739Z phoenix fixture fixed
+2026-10-30T05:09:44.832Z phoenix fixture sat64
+2026-10-30T05:10:46.926Z phoenix fixture sat256
+2026-10-30T05:11:59.923Z astro fixture warmup
+2026-10-30T05:12:30.543Z astro fixture fixed
+2026-10-30T05:13:32.649Z astro fixture sat64
+2026-10-30T05:14:34.742Z astro fixture sat256
+2026-10-30T05:15:47.962Z nuxt fixture warmup
+2026-10-30T05:16:19.011Z nuxt fixture fixed
+2026-10-30T05:17:21.117Z nuxt fixture sat64
+2026-10-30T05:18:23.214Z nuxt fixture sat256
+2026-10-30T05:19:25.790Z done
+2026-10-30T05:19:25.820Z node run-ssr.mjs r8 fixture 300 corten,nextjs,tanstack-start,sveltekit,react-router,leptos,django,rails,laravel,aspnet,spring,phoenix,astro,nuxt json
+2026-10-30T05:19:35.890Z corten-json fixture warmup
+2026-10-30T05:20:07.193Z corten-json fixture fixed
+2026-10-30T05:21:09.295Z corten-json fixture sat64
+2026-10-30T05:22:11.392Z corten-json fixture sat256
+2026-10-30T05:23:24.779Z nextjs-json fixture warmup
+2026-10-30T05:23:55.411Z nextjs-json fixture fixed
+2026-10-30T05:24:57.498Z nextjs-json fixture sat64
+2026-10-30T05:25:59.591Z nextjs-json fixture sat256
+2026-10-30T05:27:12.617Z tanstack-start-json fixture warmup
+2026-10-30T05:27:43.494Z tanstack-start-json fixture fixed
+2026-10-30T05:28:45.585Z tanstack-start-json fixture sat64
+2026-10-30T05:29:47.675Z tanstack-start-json fixture sat256
+2026-10-30T05:31:00.338Z sveltekit-json fixture warmup
+2026-10-30T05:31:31.253Z sveltekit-json fixture fixed
+2026-10-30T05:32:33.339Z sveltekit-json fixture sat64
+2026-10-30T05:33:35.433Z sveltekit-json fixture sat256
+2026-10-30T05:34:48.569Z react-router-json fixture warmup
+2026-10-30T05:35:19.581Z react-router-json fixture fixed
+2026-10-30T05:36:21.672Z react-router-json fixture sat64
+2026-10-30T05:37:23.760Z react-router-json fixture sat256
+2026-10-30T05:38:36.466Z leptos-json fixture warmup
+2026-10-30T05:39:07.521Z leptos-json fixture fixed
+2026-10-30T05:40:09.616Z leptos-json fixture sat64
+2026-10-30T05:41:11.711Z leptos-json fixture sat256
+2026-10-30T05:42:25.950Z django-json fixture warmup
+2026-10-30T05:42:56.969Z django-json fixture fixed
+2026-10-30T05:43:59.059Z django-json fixture sat64
+2026-10-30T05:45:01.165Z django-json fixture sat256
+2026-10-30T05:46:15.273Z rails-json fixture warmup
+2026-10-30T05:46:46.181Z rails-json fixture fixed
+2026-10-30T05:47:48.272Z rails-json fixture sat64
+2026-10-30T05:48:50.360Z rails-json fixture sat256
+2026-10-30T05:51:00.592Z laravel-json fixture failed: never answered /api/items/item_1 within a minute
+2026-10-30T05:51:11.681Z aspnet-json fixture warmup
+2026-10-30T05:51:42.659Z aspnet-json fixture fixed
+2026-10-30T05:52:44.743Z aspnet-json fixture sat64
+2026-10-30T05:53:46.842Z aspnet-json fixture sat256
+2026-10-30T05:55:08.109Z spring-json fixture warmup
+2026-10-30T05:55:39.054Z spring-json fixture fixed
+2026-10-30T05:56:41.161Z spring-json fixture sat64
+2026-10-30T05:57:43.262Z spring-json fixture sat256
+2026-10-30T05:58:58.431Z phoenix-json fixture warmup
+2026-10-30T05:59:29.355Z phoenix-json fixture fixed
+2026-10-30T06:00:31.458Z phoenix-json fixture sat64
+2026-10-30T06:01:33.549Z phoenix-json fixture sat256
+2026-10-30T06:02:46.769Z astro-json fixture warmup
+2026-10-30T06:03:17.753Z astro-json fixture fixed
+2026-10-30T06:04:19.848Z astro-json fixture sat64
+2026-10-30T06:05:21.939Z astro-json fixture sat256
+2026-10-30T06:06:34.986Z nuxt-json fixture warmup
+2026-10-30T06:07:05.961Z nuxt-json fixture fixed
+2026-10-30T06:08:08.052Z nuxt-json fixture sat64
+2026-10-30T06:09:10.169Z nuxt-json fixture sat256
+2026-10-30T06:10:12.622Z done
+2026-10-30T06:10:12.643Z node run-ssr.mjs r8 api 150 corten,nextjs,tanstack-start,sveltekit,react-router,leptos,django,rails,laravel,aspnet,spring,phoenix,astro,nuxt page
+2026-10-30T06:10:22.591Z corten api warmup
+2026-10-30T06:10:53.654Z corten api fixed
+2026-10-30T06:11:55.781Z corten api sat64
+2026-10-30T06:12:57.913Z corten api sat256
+2026-10-30T06:14:11.072Z nextjs api warmup
+2026-10-30T06:14:42.073Z nextjs api fixed
+2026-10-30T06:16:09.697Z nextjs api sat64
+2026-10-30T06:17:11.814Z nextjs api sat256
+2026-10-30T06:18:24.136Z tanstack-start api warmup
+2026-10-30T06:18:54.890Z tanstack-start api fixed
+2026-10-30T06:19:57.021Z tanstack-start api sat64
+2026-10-30T06:20:59.148Z tanstack-start api sat256
+2026-10-30T06:22:11.878Z sveltekit api warmup
+2026-10-30T06:22:42.856Z sveltekit api fixed
+2026-10-30T06:23:44.988Z sveltekit api sat64
+2026-10-30T06:24:47.117Z sveltekit api sat256
+2026-10-30T06:25:59.876Z react-router api warmup
+2026-10-30T06:26:30.856Z react-router api fixed
+2026-10-30T06:27:32.986Z react-router api sat64
+2026-10-30T06:28:35.109Z react-router api sat256
+2026-10-30T06:29:47.536Z leptos api warmup
+2026-10-30T06:30:18.284Z leptos api fixed
+2026-10-30T06:31:20.415Z leptos api sat64
+2026-10-30T06:32:22.540Z leptos api sat256
+2026-10-30T06:33:36.217Z django api warmup
+2026-10-30T06:34:07.312Z django api fixed
+2026-10-30T06:35:09.439Z django api sat64
+2026-10-30T06:36:11.574Z django api sat256
+2026-10-30T06:37:25.002Z rails api warmup
+2026-10-30T06:37:55.922Z rails api fixed
+2026-10-30T06:38:58.043Z rails api sat64
+2026-10-30T06:40:00.166Z rails api sat256
+2026-10-30T06:41:13.756Z laravel api warmup
+2026-10-30T06:41:44.814Z laravel api fixed
+2026-10-30T06:42:55.411Z laravel api sat64
+2026-10-30T06:43:57.529Z laravel api sat256
+2026-10-30T06:45:12.203Z aspnet api warmup
+2026-10-30T06:45:43.255Z aspnet api fixed
+2026-10-30T06:46:45.379Z aspnet api sat64
+2026-10-30T06:47:47.499Z aspnet api sat256
+2026-10-30T06:49:08.032Z spring api warmup
+2026-10-30T06:49:38.823Z spring api fixed
+2026-10-30T06:50:40.941Z spring api sat64
+2026-10-30T06:51:43.066Z spring api sat256
+2026-10-30T06:52:57.025Z phoenix api warmup
+2026-10-30T06:53:27.990Z phoenix api fixed
+2026-10-30T06:54:30.114Z phoenix api sat64
+2026-10-30T06:55:32.242Z phoenix api sat256
+2026-10-30T06:56:45.058Z astro api warmup
+2026-10-30T06:57:16.082Z astro api fixed
+2026-10-30T06:58:18.200Z astro api sat64
+2026-10-30T06:59:20.328Z astro api sat256
+2026-10-30T07:00:33.094Z nuxt api warmup
+2026-10-30T07:01:04.093Z nuxt api fixed
+2026-10-30T07:02:06.222Z nuxt api sat64
+2026-10-30T07:03:08.339Z nuxt api sat256
+2026-10-30T07:04:10.890Z done
+2026-10-30T07:04:10.903Z node run-ssr.mjs r8 api 150 corten,nextjs,tanstack-start,sveltekit,react-router,leptos,django,rails,laravel,aspnet,spring,phoenix,astro,nuxt json
+2026-10-30T07:04:20.924Z corten-json api warmup
+2026-10-30T07:04:51.848Z corten-json api fixed
+2026-10-30T07:05:53.979Z corten-json api sat64
+2026-10-30T07:06:56.098Z corten-json api sat256
+2026-10-30T07:08:08.763Z nextjs-json api warmup
+2026-10-30T07:08:39.361Z nextjs-json api fixed
+2026-10-30T07:09:41.489Z nextjs-json api sat64
+2026-10-30T07:10:43.624Z nextjs-json api sat256
+2026-10-30T07:11:56.274Z tanstack-start-json api warmup
+2026-10-30T07:12:27.262Z tanstack-start-json api fixed
+2026-10-30T07:13:29.391Z tanstack-start-json api sat64
+2026-10-30T07:14:31.511Z tanstack-start-json api sat256
+2026-10-30T07:15:44.053Z sveltekit-json api warmup
+2026-10-30T07:16:14.819Z sveltekit-json api fixed
+2026-10-30T07:17:16.939Z sveltekit-json api sat64
+2026-10-30T07:18:19.057Z sveltekit-json api sat256
+2026-10-30T07:19:31.741Z react-router-json api warmup
+2026-10-30T07:20:02.704Z react-router-json api fixed
+2026-10-30T07:21:04.830Z react-router-json api sat64
+2026-10-30T07:22:06.960Z react-router-json api sat256
+2026-10-30T07:23:19.436Z leptos-json api warmup
+2026-10-30T07:23:50.369Z leptos-json api fixed
+2026-10-30T07:24:52.501Z leptos-json api sat64
+2026-10-30T07:25:54.620Z leptos-json api sat256
+2026-10-30T07:27:07.851Z django-json api warmup
+2026-10-30T07:27:38.496Z django-json api fixed
+2026-10-30T07:28:40.620Z django-json api sat64
+2026-10-30T07:29:42.745Z django-json api sat256
+2026-10-30T07:30:56.370Z rails-json api warmup
+2026-10-30T07:31:27.393Z rails-json api fixed
+2026-10-30T07:32:29.509Z rails-json api sat64
+2026-10-30T07:33:31.631Z rails-json api sat256
+2026-10-30T07:34:44.980Z laravel-json api warmup
+2026-10-30T07:35:15.934Z laravel-json api fixed
+2026-10-30T07:36:18.051Z laravel-json api sat64
+2026-10-30T07:37:20.187Z laravel-json api sat256
+2026-10-30T07:38:33.192Z aspnet-json api warmup
+2026-10-30T07:39:04.098Z aspnet-json api fixed
+2026-10-30T07:40:06.231Z aspnet-json api sat64
+2026-10-30T07:41:08.351Z aspnet-json api sat256
+2026-10-30T07:42:28.759Z spring-json api warmup
+2026-10-30T07:42:59.739Z spring-json api fixed
+2026-10-30T07:44:01.863Z spring-json api sat64
+2026-10-30T07:45:03.990Z spring-json api sat256
+2026-10-30T07:46:17.876Z phoenix-json api warmup
+2026-10-30T07:46:48.801Z phoenix-json api fixed
+2026-10-30T07:47:50.918Z phoenix-json api sat64
+2026-10-30T07:48:53.040Z phoenix-json api sat256
+2026-10-30T07:50:05.814Z astro-json api warmup
+2026-10-30T07:50:36.718Z astro-json api fixed
+2026-10-30T07:51:38.843Z astro-json api sat64
+2026-10-30T07:52:40.969Z astro-json api sat256
+2026-10-30T07:53:53.609Z nuxt-json api warmup
+2026-10-30T07:54:24.499Z nuxt-json api fixed
+2026-10-30T07:55:26.625Z nuxt-json api sat64
+2026-10-30T07:56:28.744Z nuxt-json api sat256
+2026-10-30T07:57:31.119Z done
+2026-10-30T07:57:31.132Z node count.mjs r8 3
+2026-10-30T11:48:17.740Z node count.mjs r8 3
+file:///bench/bench/fullstack/count.mjs:31
+  if (r.status !== 0) throw new Error(r.stderr);
+                            ^
+
+Error: docker: Error response from daemon: Invalid value 4- BENCH_FIXTURE_LOAD_CPUS=2- setsid for cpuset cpus: invalid format: 4- BENCH_FIXTURE_LOAD_CPUS=2- setsid
+
+Run 'docker run --help' for more information
+
+    at k6 (file:///bench/bench/fullstack/count.mjs:31:29)
+    at file:///bench/bench/fullstack/count.mjs:75:5
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v24.22.2
+step failed with 1
+2026-10-30T11:48:43.190Z node parity.mjs
+{"reference":"corten","compared":["nextjs","tanstack-start","sveltekit","react-router","leptos","django","rails","laravel","aspnet","spring","phoenix","astro","nuxt"],"pages":16,"failures":0}
+2026-10-30T11:49:08.820Z node count.mjs r8 3
+2026-10-30T11:53:46.488Z node parity.mjs
+{"reference":"corten","compared":["nextjs","tanstack-start","sveltekit","react-router","leptos","django","rails","laravel","aspnet","spring","phoenix","astro","nuxt"],"pages":16,"failures":0}
+2026-10-30T11:53:50.306Z node bytes.mjs r8
+corten {"html":{"raw":11517,"gzip":2385},"js":{"raw":27321,"gzip":10394,"files":4},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":8626,"gzip":2609,"files":2}}
+nextjs {"html":{"raw":25906,"gzip":4890},"js":{"raw":467154,"gzip":139374,"files":7},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+tanstack-start {"html":{"raw":17836,"gzip":4392},"js":{"raw":350871,"gzip":113588,"files":5},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+sveltekit {"html":{"raw":16732,"gzip":3651},"js":{"raw":98609,"gzip":37882,"files":11},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+react-router {"html":{"raw":19962,"gzip":5005},"js":{"raw":317136,"gzip":100964,"files":4},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1974,"gzip":817,"files":1}}
+leptos {"html":{"raw":18237,"gzip":3552},"js":{"raw":25351,"gzip":7124,"files":1},"wasm":{"raw":737168,"gzip":293553,"files":1},"css":{"raw":2041,"gzip":869,"files":1}}
+django {"html":{"raw":7448,"gzip":1869},"js":{"raw":52985,"gzip":17377,"files":2},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+rails {"html":{"raw":8713,"gzip":2236},"js":{"raw":155818,"gzip":41613,"files":7},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+laravel {"html":{"raw":11036,"gzip":2905},"js":{"raw":261969,"gzip":86336,"files":1},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+aspnet {"html":{"raw":7494,"gzip":1958},"js":{"raw":52985,"gzip":17377,"files":2},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+spring {"html":{"raw":7365,"gzip":1822},"js":{"raw":52985,"gzip":17377,"files":2},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+phoenix {"html":{"raw":10190,"gzip":2494},"js":{"raw":152827,"gzip":47305,"files":1},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":2399,"gzip":946,"files":1}}
+astro {"html":{"raw":9479,"gzip":2658},"js":{"raw":25528,"gzip":9434,"files":3},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":0,"gzip":0,"files":0}}
+nuxt {"html":{"raw":17722,"gzip":4571},"js":{"raw":202058,"gzip":75513,"files":4},"wasm":{"raw":0,"gzip":0,"files":0},"css":{"raw":1963,"gzip":823,"files":1}}
+2026-10-30T11:54:01.326Z node browser.mjs corten=http://localhost:18410 nextjs=http://localhost:18411 tanstack-start=http://localhost:18412 sveltekit=http://localhost:18413 react-router=http://localhost:18414 leptos=http://localhost:18415 django=http://localhost:18416 rails=http://localhost:18417 laravel=http://localhost:18418 aspnet=http://localhost:18419 spring=http://localhost:18420 phoenix=http://localhost:18421 astro=http://localhost:18422 nuxt=http://localhost:18423 runs=10 out=r8/browser.json
+{"profile":"desktop","app":"corten","i":0,"id":"item_3","ttfb":5.69999999999709,"fcp":80,"lcp":80,"dcl":74.69999999999709,"load":75,"hydratedAt":74.60000000000582,"tbtToHydration":0,"bytes":{"html":2748,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.5733642578125,"sortWorked":true,"actionMs":93.80000000000291,"clientNavMs":14.80000000000291}
+{"profile":"desktop","app":"nextjs","i":0,"id":"item_3","ttfb":28.59999999999127,"fcp":80,"lcp":80,"dcl":46.5,"load":130,"hydratedAt":154.89999999999418,"tbtToHydration":0,"bytes":{"html":5437,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.3560791015625,"sortWorked":true,"actionMs":85.09999999999127,"clientNavMs":115}
+{"profile":"desktop","app":"tanstack-start","i":0,"id":"item_3","ttfb":13.89999999999418,"fcp":80,"lcp":80,"dcl":72.89999999999418,"load":109,"hydratedAt":131.79999999998836,"tbtToHydration":0,"bytes":{"html":18067,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.0785369873046875,"sortWorked":true,"actionMs":81.40000000000873,"clientNavMs":29.39999999999418}
+{"profile":"desktop","app":"sveltekit","i":0,"id":"item_3","ttfb":8,"fcp":80,"lcp":80,"dcl":70,"load":70.09999999999127,"hydratedAt":109,"tbtToHydration":0,"bytes":{"html":16965,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.3084182739257812,"sortWorked":true,"actionMs":83.5,"clientNavMs":35.59999999999127}
+{"profile":"desktop","app":"react-router","i":0,"id":"item_3","ttfb":16.80000000000291,"fcp":108,"lcp":108,"dcl":98.10000000000582,"load":110,"hydratedAt":170.60000000000582,"tbtToHydration":0,"bytes":{"html":5014,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.6819190979003906,"sortWorked":true,"actionMs":95.5,"clientNavMs":30.79999999998836}
+{"profile":"desktop","app":"leptos","i":0,"id":"item_3","ttfb":6,"fcp":76,"lcp":76,"dcl":62.60000000000582,"load":62.60000000000582,"hydratedAt":96.90000000000873,"tbtToHydration":0,"bytes":{"html":3602,"js":7495,"wasm":283025,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9364013671875,"sortWorked":true,"actionMs":83.80000000000291,"clientNavMs":23}
+{"profile":"desktop","app":"django","i":0,"id":"item_3","ttfb":12.900000000008731,"fcp":72,"lcp":72,"dcl":56.5,"load":59.5,"hydratedAt":52.10000000000582,"tbtToHydration":0,"bytes":{"html":7711,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7163124084472656,"sortWorked":true,"actionMs":70.89999999999418,"clientNavMs":24.40000000000873}
+{"profile":"desktop","app":"rails","i":0,"id":"item_3","ttfb":15.10000000000582,"fcp":68,"lcp":68,"dcl":63.40000000000873,"load":64,"hydratedAt":62.69999999999709,"tbtToHydration":0,"bytes":{"html":8977,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0566482543945312,"sortWorked":true,"actionMs":120.60000000000582,"clientNavMs":24.30000000000291}
+{"profile":"desktop","app":"laravel","i":0,"id":"item_3","ttfb":19.09999999999127,"fcp":76,"lcp":76,"dcl":81.5,"load":81.59999999999127,"hydratedAt":81.39999999999418,"tbtToHydration":0,"bytes":{"html":3328,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.2181739807128906,"sortWorked":true,"actionMs":103.90000000000873,"clientNavMs":26.89999999999418}
+{"profile":"desktop","app":"aspnet","i":0,"id":"item_3","ttfb":6.19999999999709,"fcp":72,"lcp":72,"dcl":54,"load":57,"hydratedAt":49.60000000000582,"tbtToHydration":0,"bytes":{"html":7758,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7152252197265625,"sortWorked":true,"actionMs":71.89999999999418,"clientNavMs":15.69999999999709}
+{"profile":"desktop","app":"spring","i":0,"id":"item_3","ttfb":57.10000000000582,"fcp":120,"lcp":120,"dcl":90.10000000000582,"load":93.30000000000291,"hydratedAt":86.10000000000582,"tbtToHydration":0,"bytes":{"html":7628,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7167625427246094,"sortWorked":true,"actionMs":103.60000000000582,"clientNavMs":69.19999999999709}
+{"profile":"desktop","app":"phoenix","i":0,"id":"item_3","ttfb":12.5,"fcp":108,"lcp":108,"dcl":67.79999999998836,"load":71.19999999999709,"hydratedAt":123.29999999998836,"tbtToHydration":0,"bytes":{"html":2840,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.3011093139648438,"sortWorked":true,"actionMs":79.39999999999418,"clientNavMs":16.80000000000291}
+{"profile":"desktop","app":"astro","i":0,"id":"item_3","ttfb":10.80000000000291,"fcp":64,"lcp":64,"dcl":55.19999999999709,"load":55.39999999999418,"hydratedAt":54.80000000000291,"tbtToHydration":0,"bytes":{"html":9744,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5615348815917969,"sortWorked":true,"actionMs":72.69999999999709,"clientNavMs":17.60000000000582}
+{"profile":"desktop","app":"nuxt","i":0,"id":"item_3","ttfb":13.900000000008731,"fcp":72,"lcp":72,"dcl":76.10000000000582,"load":76.10000000000582,"hydratedAt":98.90000000000873,"tbtToHydration":0,"bytes":{"html":17961,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9068260192871094,"sortWorked":true,"actionMs":69.39999999999418,"clientNavMs":21.79999999998836}
+{"profile":"desktop","app":"corten","i":1,"id":"item_17","ttfb":5.7999999999883585,"fcp":72,"lcp":72,"dcl":63.29999999998836,"load":63.69999999999709,"hydratedAt":63.09999999999127,"tbtToHydration":0,"bytes":{"html":2765,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.5751457214355469,"sortWorked":true,"actionMs":86.30000000000291,"clientNavMs":12.39999999999418}
+{"profile":"desktop","app":"nextjs","i":1,"id":"item_17","ttfb":33.5,"fcp":84,"lcp":84,"dcl":67.69999999999709,"load":132.5,"hydratedAt":157.8000000000029,"tbtToHydration":0,"bytes":{"html":5473,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.4193763732910156,"sortWorked":true,"actionMs":84.60000000000582,"clientNavMs":143.39999999999418}
+{"profile":"desktop","app":"tanstack-start","i":1,"id":"item_17","ttfb":14.30000000000291,"fcp":76,"lcp":76,"dcl":67.30000000000291,"load":101.69999999999709,"hydratedAt":126.30000000000291,"tbtToHydration":0,"bytes":{"html":18136,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.141754150390625,"sortWorked":true,"actionMs":81.30000000000291,"clientNavMs":29.20000000001164}
+{"profile":"desktop","app":"sveltekit","i":1,"id":"item_17","ttfb":11,"fcp":80,"lcp":80,"dcl":70.30000000000291,"load":70.5,"hydratedAt":109.80000000000291,"tbtToHydration":0,"bytes":{"html":17032,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.3714675903320312,"sortWorked":true,"actionMs":70.10000000000582,"clientNavMs":21.5}
+{"profile":"desktop","app":"react-router","i":1,"id":"item_17","ttfb":23.69999999999709,"fcp":128,"lcp":128,"dcl":106.40000000000873,"load":112.69999999999709,"hydratedAt":176.90000000000873,"tbtToHydration":0,"bytes":{"html":5023,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.7575111389160156,"sortWorked":true,"actionMs":79,"clientNavMs":30.80000000000291}
+{"profile":"desktop","app":"leptos","i":1,"id":"item_17","ttfb":5.600000000005821,"fcp":68,"lcp":68,"dcl":47.30000000000291,"load":47.40000000000873,"hydratedAt":90,"tbtToHydration":0,"bytes":{"html":3618,"js":7495,"wasm":283090,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9366111755371094,"sortWorked":true,"actionMs":70.20000000001164,"clientNavMs":24.19999999999709}
+{"profile":"desktop","app":"django","i":1,"id":"item_17","ttfb":11.10000000000582,"fcp":64,"lcp":64,"dcl":56.80000000000291,"load":57.30000000000291,"hydratedAt":52.30000000000291,"tbtToHydration":0,"bytes":{"html":7748,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7169151306152344,"sortWorked":true,"actionMs":71,"clientNavMs":21}
+{"profile":"desktop","app":"rails","i":1,"id":"item_17","ttfb":14.39999999999418,"fcp":72,"lcp":72,"dcl":66.19999999999709,"load":67,"hydratedAt":65.29999999998836,"tbtToHydration":0,"bytes":{"html":9013,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0566482543945312,"sortWorked":true,"actionMs":86.19999999999709,"clientNavMs":27.60000000000582}
+{"profile":"desktop","app":"laravel","i":1,"id":"item_17","ttfb":16.80000000000291,"fcp":64,"lcp":64,"dcl":76.89999999999418,"load":77.10000000000582,"hydratedAt":76.69999999999709,"tbtToHydration":0,"bytes":{"html":3332,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.234302520751953,"sortWorked":true,"actionMs":73.30000000000291,"clientNavMs":23.30000000000291}
+{"profile":"desktop","app":"aspnet","i":1,"id":"item_17","ttfb":8.799999999988358,"fcp":72,"lcp":72,"dcl":56.5,"load":59.5,"hydratedAt":52.19999999999709,"tbtToHydration":0,"bytes":{"html":7794,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7163124084472656,"sortWorked":true,"actionMs":73.10000000000582,"clientNavMs":23.19999999999709}
+{"profile":"desktop","app":"spring","i":1,"id":"item_17","ttfb":48.90000000000873,"fcp":96,"lcp":96,"dcl":93.60000000000582,"load":94.10000000000582,"hydratedAt":88,"tbtToHydration":0,"bytes":{"html":7665,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7165908813476562,"sortWorked":true,"actionMs":72.69999999999709,"clientNavMs":31.89999999999418}
+{"profile":"desktop","app":"phoenix","i":1,"id":"item_17","ttfb":23.5,"fcp":68,"lcp":68,"dcl":75.39999999999418,"load":75.39999999999418,"hydratedAt":113.09999999999127,"tbtToHydration":0,"bytes":{"html":2830,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.2989501953125,"sortWorked":true,"actionMs":78.20000000001164,"clientNavMs":16.19999999999709}
+{"profile":"desktop","app":"astro","i":1,"id":"item_17","ttfb":10.60000000000582,"fcp":64,"lcp":64,"dcl":56.69999999999709,"load":56.89999999999418,"hydratedAt":56.19999999999709,"tbtToHydration":0,"bytes":{"html":9779,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5615348815917969,"sortWorked":true,"actionMs":70.40000000000873,"clientNavMs":15.700000000011642}
+{"profile":"desktop","app":"nuxt","i":1,"id":"item_17","ttfb":13.30000000000291,"fcp":76,"lcp":76,"dcl":80.10000000000582,"load":80.19999999999709,"hydratedAt":109.60000000000582,"tbtToHydration":0,"bytes":{"html":18022,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9703750610351562,"sortWorked":true,"actionMs":83.10000000000582,"clientNavMs":22.5}
+{"profile":"desktop","app":"corten","i":2,"id":"item_250","ttfb":5.2000000000116415,"fcp":76,"lcp":76,"dcl":64.60000000000582,"load":65.20000000001164,"hydratedAt":64.5,"tbtToHydration":0,"bytes":{"html":2618,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.5737495422363281,"sortWorked":true,"actionMs":82.89999999999418,"clientNavMs":13.60000000000582}
+{"profile":"desktop","app":"nextjs","i":2,"id":"item_250","ttfb":24,"fcp":88,"lcp":88,"dcl":63.80000000000291,"load":133.6999999999971,"hydratedAt":159.10000000000582,"tbtToHydration":0,"bytes":{"html":5255,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.433544158935547,"sortWorked":true,"actionMs":67.30000000000291,"clientNavMs":155.3000000000029}
+{"profile":"desktop","app":"tanstack-start","i":2,"id":"item_250","ttfb":10,"fcp":72,"lcp":72,"dcl":55.29999999998836,"load":93.39999999999418,"hydratedAt":115.39999999999418,"tbtToHydration":0,"bytes":{"html":16543,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.137928009033203,"sortWorked":true,"actionMs":79.19999999999709,"clientNavMs":28.09999999999127}
+{"profile":"desktop","app":"sveltekit","i":2,"id":"item_250","ttfb":7.599999999991269,"fcp":84,"lcp":84,"dcl":70.69999999999709,"load":70.89999999999418,"hydratedAt":111.59999999999127,"tbtToHydration":0,"bytes":{"html":15558,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.309009552001953,"sortWorked":true,"actionMs":69,"clientNavMs":19}
+{"profile":"desktop","app":"react-router","i":2,"id":"item_250","ttfb":11.299999999988358,"fcp":120,"lcp":120,"dcl":76.5,"load":115.19999999999709,"hydratedAt":170.29999999998836,"tbtToHydration":0,"bytes":{"html":4726,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.719219207763672,"sortWorked":true,"actionMs":77,"clientNavMs":30.10000000000582}
+{"profile":"desktop","app":"leptos","i":2,"id":"item_250","ttfb":6,"fcp":76,"lcp":76,"dcl":65,"load":65.19999999999709,"hydratedAt":100.5,"tbtToHydration":0,"bytes":{"html":3449,"js":7495,"wasm":282836,"css":1124,"data":0},"requests":4,"jsHeapUsedMB":1.9344444274902344,"sortWorked":true,"actionMs":70.69999999999709,"clientNavMs":24.19999999999709}
+{"profile":"desktop","app":"django","i":2,"id":"item_250","ttfb":10.80000000000291,"fcp":68,"lcp":68,"dcl":51.69999999999709,"load":54.80000000000291,"hydratedAt":47.30000000000291,"tbtToHydration":0,"bytes":{"html":7844,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7214584350585938,"sortWorked":true,"actionMs":71.19999999999709,"clientNavMs":20.20000000001164}
+{"profile":"desktop","app":"rails","i":2,"id":"item_250","ttfb":17.39999999999418,"fcp":72,"lcp":72,"dcl":67.5,"load":67.89999999999418,"hydratedAt":66.69999999999709,"tbtToHydration":0,"bytes":{"html":9108,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0570335388183594,"sortWorked":true,"actionMs":85.60000000000582,"clientNavMs":46.30000000000291}
+{"profile":"desktop","app":"laravel","i":2,"id":"item_250","ttfb":17.19999999999709,"fcp":72,"lcp":72,"dcl":82.39999999999418,"load":82.5,"hydratedAt":82.19999999999709,"tbtToHydration":0,"bytes":{"html":3367,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.230876922607422,"sortWorked":true,"actionMs":74.5,"clientNavMs":23.69999999999709}
+{"profile":"desktop","app":"aspnet","i":2,"id":"item_250","ttfb":12.5,"fcp":64,"lcp":64,"dcl":60.20000000001164,"load":60.5,"hydratedAt":56,"tbtToHydration":0,"bytes":{"html":7889,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7204017639160156,"sortWorked":true,"actionMs":71.80000000000291,"clientNavMs":14.5}
+{"profile":"desktop","app":"spring","i":2,"id":"item_250","ttfb":34,"fcp":76,"lcp":76,"dcl":74.80000000000291,"load":75.69999999999709,"hydratedAt":67.19999999999709,"tbtToHydration":0,"bytes":{"html":7761,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7208709716796875,"sortWorked":true,"actionMs":86.89999999999418,"clientNavMs":41.10000000000582}
+{"profile":"desktop","app":"phoenix","i":2,"id":"item_250","ttfb":10.5,"fcp":108,"lcp":108,"dcl":68,"load":71.30000000000291,"hydratedAt":124.19999999999709,"tbtToHydration":0,"bytes":{"html":2883,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.299724578857422,"sortWorked":true,"actionMs":77.20000000001164,"clientNavMs":17.10000000000582}
+{"profile":"desktop","app":"astro","i":2,"id":"item_250","ttfb":8.60000000000582,"fcp":64,"lcp":64,"dcl":55.5,"load":55.80000000000291,"hydratedAt":55.10000000000582,"tbtToHydration":0,"bytes":{"html":9873,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5635147094726562,"sortWorked":true,"actionMs":84.59999999999127,"clientNavMs":15.900000000008731}
+{"profile":"desktop","app":"nuxt","i":2,"id":"item_250","ttfb":12.19999999999709,"fcp":72,"lcp":72,"dcl":70.69999999999709,"load":70.80000000000291,"hydratedAt":95.19999999999709,"tbtToHydration":0,"bytes":{"html":16377,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9142913818359375,"sortWorked":true,"actionMs":69.89999999999418,"clientNavMs":23.79999999998836}
+{"profile":"desktop","app":"corten","i":3,"id":"item_1999","ttfb":4.100000000005821,"fcp":68,"lcp":68,"dcl":53.60000000000582,"load":53.89999999999418,"hydratedAt":53.39999999999418,"tbtToHydration":0,"bytes":{"html":2138,"js":9937,"wasm":0,"css":2816,"data":0},"requests":6,"jsHeapUsedMB":1.5853691101074219,"sortWorked":true,"actionMs":72.09999999999127,"clientNavMs":13.19999999999709}
+{"profile":"desktop","app":"nextjs","i":3,"id":"item_1999","ttfb":17.30000000000291,"fcp":68,"lcp":68,"dcl":45,"load":114.80000000000291,"hydratedAt":137.5,"tbtToHydration":0,"bytes":{"html":4390,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.3618125915527344,"sortWorked":true,"actionMs":69.09999999999127,"clientNavMs":140.09999999999127}
+{"profile":"desktop","app":"tanstack-start","i":3,"id":"item_1999","ttfb":9.400000000008731,"fcp":76,"lcp":76,"dcl":53.80000000000291,"load":98.90000000000873,"hydratedAt":124.20000000001164,"tbtToHydration":0,"bytes":{"html":10709,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.0119400024414062,"sortWorked":true,"actionMs":67.89999999999418,"clientNavMs":25}
+{"profile":"desktop","app":"sveltekit","i":3,"id":"item_1999","ttfb":7.80000000000291,"fcp":76,"lcp":76,"dcl":65.09999999999127,"load":65.09999999999127,"hydratedAt":100.69999999999709,"tbtToHydration":0,"bytes":{"html":9878,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.2640838623046875,"sortWorked":true,"actionMs":72.30000000000291,"clientNavMs":21.19999999999709}
+{"profile":"desktop","app":"react-router","i":3,"id":"item_1999","ttfb":11.400000000008731,"fcp":84,"lcp":84,"dcl":71.5,"load":89.5,"hydratedAt":149,"tbtToHydration":0,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.5971031188964844,"sortWorked":true,"actionMs":85.5,"clientNavMs":28.90000000000873}
+{"profile":"desktop","app":"leptos","i":3,"id":"item_1999","ttfb":5,"fcp":108,"lcp":108,"dcl":65.20000000001164,"load":68.30000000000291,"hydratedAt":111.10000000000582,"tbtToHydration":0,"bytes":{"html":2587,"js":7495,"wasm":282908,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9012603759765625,"sortWorked":true,"actionMs":73.5,"clientNavMs":22.40000000000873}
+{"profile":"desktop","app":"django","i":3,"id":"item_1999","ttfb":11.400000000008731,"fcp":68,"lcp":68,"dcl":54.40000000000873,"load":57.30000000000291,"hydratedAt":50.60000000000582,"tbtToHydration":0,"bytes":{"html":5244,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7152595520019531,"sortWorked":true,"actionMs":71.60000000000582,"clientNavMs":21.09999999999127}
+{"profile":"desktop","app":"rails","i":3,"id":"item_1999","ttfb":9.69999999999709,"fcp":68,"lcp":68,"dcl":60.89999999999418,"load":61.59999999999127,"hydratedAt":59.89999999999418,"tbtToHydration":0,"bytes":{"html":6601,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0570335388183594,"sortWorked":true,"actionMs":119.89999999999418,"clientNavMs":45.5}
+{"profile":"desktop","app":"laravel","i":3,"id":"item_1999","ttfb":17.69999999999709,"fcp":68,"lcp":68,"dcl":73.59999999999127,"load":73.59999999999127,"hydratedAt":73.39999999999418,"tbtToHydration":0,"bytes":{"html":2990,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.137042999267578,"sortWorked":true,"actionMs":72.69999999999709,"clientNavMs":23.60000000000582}
+{"profile":"desktop","app":"aspnet","i":3,"id":"item_1999","ttfb":6.19999999999709,"fcp":84,"lcp":84,"dcl":64.39999999999418,"load":68.5,"hydratedAt":58.80000000000291,"tbtToHydration":0,"bytes":{"html":5288,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7146835327148438,"sortWorked":true,"actionMs":74.10000000000582,"clientNavMs":15.199999999982538}
+{"profile":"desktop","app":"spring","i":3,"id":"item_1999","ttfb":26.60000000000582,"fcp":68,"lcp":68,"dcl":64.39999999999418,"load":64.70000000001164,"hydratedAt":59.89999999999418,"tbtToHydration":0,"bytes":{"html":5161,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7150802612304688,"sortWorked":true,"actionMs":73.89999999999418,"clientNavMs":27.39999999999418}
+{"profile":"desktop","app":"phoenix","i":3,"id":"item_1999","ttfb":15.89999999999418,"fcp":124,"lcp":124,"dcl":90.29999999998836,"load":94.60000000000582,"hydratedAt":143.19999999998254,"tbtToHydration":0,"bytes":{"html":2432,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.2054176330566406,"sortWorked":true,"actionMs":78.89999999999418,"clientNavMs":16.5}
+{"profile":"desktop","app":"astro","i":3,"id":"item_1999","ttfb":10.299999999988358,"fcp":64,"lcp":64,"dcl":54.69999999998254,"load":55,"hydratedAt":54.19999999998254,"tbtToHydration":0,"bytes":{"html":7336,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5631294250488281,"sortWorked":true,"actionMs":73.5,"clientNavMs":15.700000000011642}
+{"profile":"desktop","app":"nuxt","i":3,"id":"item_1999","ttfb":14,"fcp":76,"lcp":76,"dcl":75.89999999999418,"load":76.10000000000582,"hydratedAt":102.29999999998836,"tbtToHydration":0,"bytes":{"html":10276,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.896495819091797,"sortWorked":true,"actionMs":70.80000000001746,"clientNavMs":22.599999999976717}
+{"profile":"desktop","app":"corten","i":4,"id":"item_12345","ttfb":3.1000000000058208,"fcp":60,"lcp":60,"dcl":49.89999999999418,"load":50.39999999999418,"hydratedAt":49.70000000001164,"tbtToHydration":0,"bytes":{"html":1734,"js":9937,"wasm":0,"css":2816,"data":0},"requests":6,"jsHeapUsedMB":1.5621757507324219,"sortWorked":null,"actionMs":null,"clientNavMs":13.799999999988358}
+{"profile":"desktop","app":"nextjs","i":4,"id":"item_12345","ttfb":16.300000000017462,"fcp":64,"lcp":64,"dcl":45.89999999999418,"load":119.10000000000582,"hydratedAt":142.5,"tbtToHydration":0,"bytes":{"html":3491,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.190357208251953,"sortWorked":null,"actionMs":null,"clientNavMs":136.40000000002328}
+{"profile":"desktop","app":"tanstack-start","i":4,"id":"item_12345","ttfb":10.300000000017462,"fcp":76,"lcp":76,"dcl":54.40000000002328,"load":97.60000000000582,"hydratedAt":124.20000000001164,"tbtToHydration":0,"bytes":{"html":6727,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.8723831176757812,"sortWorked":null,"actionMs":null,"clientNavMs":26.900000000023283}
+{"profile":"desktop","app":"sveltekit","i":4,"id":"item_12345","ttfb":6.900000000023283,"fcp":64,"lcp":64,"dcl":54.60000000000582,"load":54.60000000000582,"hydratedAt":89.60000000000582,"tbtToHydration":0,"bytes":{"html":6034,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.2021484375,"sortWorked":null,"actionMs":null,"clientNavMs":18.89999999999418}
+{"profile":"desktop","app":"react-router","i":4,"id":"item_12345","ttfb":14.10000000000582,"fcp":80,"lcp":80,"dcl":52.60000000000582,"load":76,"hydratedAt":129.40000000002328,"tbtToHydration":0,"bytes":{"html":2613,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.8079986572265625,"sortWorked":null,"actionMs":null,"clientNavMs":28.70000000001164}
+{"profile":"desktop","app":"leptos","i":4,"id":"item_12345","ttfb":4.2999999999883585,"fcp":60,"lcp":60,"dcl":45.39999999999418,"load":45.39999999999418,"hydratedAt":96.39999999999418,"tbtToHydration":0,"bytes":{"html":1873,"js":7497,"wasm":282889,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.8802413940429688,"sortWorked":null,"actionMs":null,"clientNavMs":21.5}
+{"profile":"desktop","app":"django","i":4,"id":"item_12345","ttfb":6.399999999994179,"fcp":68,"lcp":68,"dcl":55.19999999998254,"load":56.89999999999418,"hydratedAt":49.09999999997672,"tbtToHydration":0,"bytes":{"html":3481,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.6533203125,"sortWorked":null,"actionMs":null,"clientNavMs":21.10000000000582}
+{"profile":"desktop","app":"rails","i":4,"id":"item_12345","ttfb":16.39999999999418,"fcp":64,"lcp":64,"dcl":57.89999999999418,"load":58.20000000001164,"hydratedAt":57.10000000000582,"tbtToHydration":0,"bytes":{"html":4837,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0570335388183594,"sortWorked":null,"actionMs":null,"clientNavMs":21.70000000001164}
+{"profile":"desktop","app":"laravel","i":4,"id":"item_12345","ttfb":16.79999999998836,"fcp":64,"lcp":64,"dcl":75,"load":75.10000000000582,"hydratedAt":74.89999999999418,"tbtToHydration":0,"bytes":{"html":2613,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.4369583129882812,"sortWorked":null,"actionMs":null,"clientNavMs":25.39999999999418}
+{"profile":"desktop","app":"aspnet","i":4,"id":"item_12345","ttfb":12.10000000000582,"fcp":52,"lcp":52,"dcl":49.39999999999418,"load":49.70000000001164,"hydratedAt":45.70000000001164,"tbtToHydration":0,"bytes":{"html":3524,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.6525115966796875,"sortWorked":null,"actionMs":null,"clientNavMs":16}
+{"profile":"desktop","app":"spring","i":4,"id":"item_12345","ttfb":17.20000000001164,"fcp":72,"lcp":72,"dcl":56.39999999999418,"load":58.39999999999418,"hydratedAt":53.39999999999418,"tbtToHydration":0,"bytes":{"html":3398,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.6533432006835938,"sortWorked":null,"actionMs":null,"clientNavMs":40.30000000001746}
+{"profile":"desktop","app":"phoenix","i":4,"id":"item_12345","ttfb":5.899999999994179,"fcp":84,"lcp":84,"dcl":64.60000000000582,"load":64.60000000000582,"hydratedAt":83.5,"tbtToHydration":0,"bytes":{"html":2016,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.121417999267578,"sortWorked":null,"actionMs":null,"clientNavMs":16.70000000001164}
+{"profile":"desktop","app":"astro","i":4,"id":"item_12345","ttfb":7.600000000005821,"fcp":52,"lcp":52,"dcl":47.39999999999418,"load":47.5,"hydratedAt":47.10000000000582,"tbtToHydration":0,"bytes":{"html":5571,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5408935546875,"sortWorked":null,"actionMs":null,"clientNavMs":14.799999999988358}
+{"profile":"desktop","app":"nuxt","i":4,"id":"item_12345","ttfb":12.5,"fcp":64,"lcp":64,"dcl":61.5,"load":61.60000000000582,"hydratedAt":82.20000000001164,"tbtToHydration":0,"bytes":{"html":5877,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.91058349609375,"sortWorked":null,"actionMs":null,"clientNavMs":22}
+{"profile":"desktop","app":"corten","i":5,"id":"item_3","ttfb":3.7000000000116415,"fcp":72,"lcp":72,"dcl":56.60000000000582,"load":56.80000000001746,"hydratedAt":56.5,"tbtToHydration":0,"bytes":{"html":2748,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.59759521484375,"sortWorked":true,"actionMs":72.39999999999418,"clientNavMs":12.5}
+{"profile":"desktop","app":"nextjs","i":5,"id":"item_3","ttfb":22.70000000001164,"fcp":76,"lcp":76,"dcl":41.90000000002328,"load":127.10000000000582,"hydratedAt":152.60000000000582,"tbtToHydration":0,"bytes":{"html":5437,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.41845703125,"sortWorked":true,"actionMs":84,"clientNavMs":138.40000000002328}
+{"profile":"desktop","app":"tanstack-start","i":5,"id":"item_3","ttfb":11.39999999999418,"fcp":72,"lcp":72,"dcl":55.60000000000582,"load":96.5,"hydratedAt":121.69999999998254,"tbtToHydration":0,"bytes":{"html":18067,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.0695152282714844,"sortWorked":true,"actionMs":84.5,"clientNavMs":25.599999999976717}
+{"profile":"desktop","app":"sveltekit","i":5,"id":"item_3","ttfb":12,"fcp":80,"lcp":80,"dcl":69.80000000001746,"load":70,"hydratedAt":115.39999999999418,"tbtToHydration":0,"bytes":{"html":16965,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.3086166381835938,"sortWorked":true,"actionMs":70,"clientNavMs":18.79999999998836}
+{"profile":"desktop","app":"react-router","i":5,"id":"item_3","ttfb":14.39999999999418,"fcp":136,"lcp":136,"dcl":107,"load":110.5,"hydratedAt":171.29999999998836,"tbtToHydration":0,"bytes":{"html":5014,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.69244384765625,"sortWorked":true,"actionMs":77.39999999999418,"clientNavMs":29.199999999982538}
+{"profile":"desktop","app":"leptos","i":5,"id":"item_3","ttfb":5.399999999994179,"fcp":72,"lcp":72,"dcl":53.29999999998836,"load":53.29999999998836,"hydratedAt":116.79999999998836,"tbtToHydration":0,"bytes":{"html":3602,"js":7497,"wasm":282836,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9378013610839844,"sortWorked":true,"actionMs":70.19999999998254,"clientNavMs":22.60000000000582}
+{"profile":"desktop","app":"django","i":5,"id":"item_3","ttfb":12.199999999982538,"fcp":72,"lcp":72,"dcl":55.19999999998254,"load":58.79999999998836,"hydratedAt":50.69999999998254,"tbtToHydration":0,"bytes":{"html":7711,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7163124084472656,"sortWorked":true,"actionMs":71.39999999999418,"clientNavMs":19.39999999999418}
+{"profile":"desktop","app":"rails","i":5,"id":"item_3","ttfb":9.900000000023283,"fcp":68,"lcp":68,"dcl":63.30000000001746,"load":63.90000000002328,"hydratedAt":62.5,"tbtToHydration":0,"bytes":{"html":8977,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0570335388183594,"sortWorked":true,"actionMs":85.79999999998836,"clientNavMs":49.70000000001164}
+{"profile":"desktop","app":"laravel","i":5,"id":"item_3","ttfb":18.29999999998836,"fcp":68,"lcp":68,"dcl":77.29999999998836,"load":77.5,"hydratedAt":77.19999999998254,"tbtToHydration":0,"bytes":{"html":3324,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.2122726440429688,"sortWorked":true,"actionMs":88.60000000000582,"clientNavMs":25.20000000001164}
+{"profile":"desktop","app":"aspnet","i":5,"id":"item_3","ttfb":11.39999999999418,"fcp":68,"lcp":68,"dcl":55.20000000001164,"load":58.30000000001746,"hydratedAt":51.39999999999418,"tbtToHydration":0,"bytes":{"html":7758,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.716033935546875,"sortWorked":true,"actionMs":71.89999999999418,"clientNavMs":15.60000000000582}
+{"profile":"desktop","app":"spring","i":5,"id":"item_3","ttfb":26.79999999998836,"fcp":72,"lcp":72,"dcl":69.70000000001164,"load":70.70000000001164,"hydratedAt":64,"tbtToHydration":0,"bytes":{"html":7628,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7163505554199219,"sortWorked":true,"actionMs":71.70000000001164,"clientNavMs":29.89999999999418}
+{"profile":"desktop","app":"phoenix","i":5,"id":"item_3","ttfb":14.299999999988358,"fcp":92,"lcp":92,"dcl":64.89999999999418,"load":67.79999999998836,"hydratedAt":118,"tbtToHydration":0,"bytes":{"html":2846,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.298564910888672,"sortWorked":true,"actionMs":77.69999999998254,"clientNavMs":17}
+{"profile":"desktop","app":"astro","i":5,"id":"item_3","ttfb":7.199999999982538,"fcp":64,"lcp":64,"dcl":54.19999999998254,"load":54.39999999999418,"hydratedAt":53.69999999998254,"tbtToHydration":0,"bytes":{"html":9744,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5615348815917969,"sortWorked":true,"actionMs":72.29999999998836,"clientNavMs":16.599999999976717}
+{"profile":"desktop","app":"nuxt","i":5,"id":"item_3","ttfb":15.5,"fcp":76,"lcp":76,"dcl":77,"load":77,"hydratedAt":98.79999999998836,"tbtToHydration":0,"bytes":{"html":17961,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9046592712402344,"sortWorked":true,"actionMs":69,"clientNavMs":21.60000000000582}
+{"profile":"desktop","app":"corten","i":6,"id":"item_17","ttfb":4.100000000005821,"fcp":68,"lcp":68,"dcl":62,"load":62.5,"hydratedAt":61.89999999999418,"tbtToHydration":0,"bytes":{"html":2765,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.6083641052246094,"sortWorked":true,"actionMs":70,"clientNavMs":13.700000000011642}
+{"profile":"desktop","app":"nextjs","i":6,"id":"item_17","ttfb":18.099999999976717,"fcp":80,"lcp":80,"dcl":64.09999999997672,"load":122.69999999998254,"hydratedAt":148.09999999997672,"tbtToHydration":0,"bytes":{"html":5473,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.4290618896484375,"sortWorked":true,"actionMs":84,"clientNavMs":80.10000000000582}
+{"profile":"desktop","app":"tanstack-start","i":6,"id":"item_17","ttfb":8.299999999988358,"fcp":72,"lcp":72,"dcl":56.10000000000582,"load":97.70000000001164,"hydratedAt":124.70000000001164,"tbtToHydration":0,"bytes":{"html":18136,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.133251190185547,"sortWorked":true,"actionMs":80.70000000001164,"clientNavMs":25.39999999999418}
+{"profile":"desktop","app":"sveltekit","i":6,"id":"item_17","ttfb":8.299999999988358,"fcp":72,"lcp":72,"dcl":61.10000000000582,"load":61.19999999998254,"hydratedAt":99.39999999999418,"tbtToHydration":0,"bytes":{"html":17032,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.372089385986328,"sortWorked":true,"actionMs":71.5,"clientNavMs":21.89999999999418}
+{"profile":"desktop","app":"react-router","i":6,"id":"item_17","ttfb":16.39999999999418,"fcp":104,"lcp":104,"dcl":89.5,"load":91.89999999999418,"hydratedAt":158.79999999998836,"tbtToHydration":0,"bytes":{"html":5023,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.7807235717773438,"sortWorked":true,"actionMs":83,"clientNavMs":30.5}
+{"profile":"desktop","app":"leptos","i":6,"id":"item_17","ttfb":7.899999999994179,"fcp":80,"lcp":80,"dcl":63,"load":63,"hydratedAt":100.70000000001164,"tbtToHydration":0,"bytes":{"html":3634,"js":7495,"wasm":283003,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9398231506347656,"sortWorked":true,"actionMs":70.90000000002328,"clientNavMs":23.5}
+{"profile":"desktop","app":"django","i":6,"id":"item_17","ttfb":11,"fcp":72,"lcp":72,"dcl":56.30000000001746,"load":59.70000000001164,"hydratedAt":52.10000000000582,"tbtToHydration":0,"bytes":{"html":7748,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7163772583007812,"sortWorked":true,"actionMs":73.10000000000582,"clientNavMs":19.29999999998836}
+{"profile":"desktop","app":"rails","i":6,"id":"item_17","ttfb":8.299999999988358,"fcp":80,"lcp":80,"dcl":72.5,"load":73.39999999999418,"hydratedAt":71.39999999999418,"tbtToHydration":0,"bytes":{"html":9013,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0570335388183594,"sortWorked":true,"actionMs":87,"clientNavMs":24.300000000017462}
+{"profile":"desktop","app":"laravel","i":6,"id":"item_17","ttfb":17.70000000001164,"fcp":64,"lcp":64,"dcl":73.60000000000582,"load":73.79999999998836,"hydratedAt":73.5,"tbtToHydration":0,"bytes":{"html":3331,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.2220001220703125,"sortWorked":true,"actionMs":88.10000000000582,"clientNavMs":23.29999999998836}
+{"profile":"desktop","app":"aspnet","i":6,"id":"item_17","ttfb":6.899999999994179,"fcp":72,"lcp":72,"dcl":47.89999999999418,"load":59.39999999999418,"hydratedAt":44.20000000001164,"tbtToHydration":0,"bytes":{"html":7794,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7163124084472656,"sortWorked":true,"actionMs":72.79999999998836,"clientNavMs":15.89999999999418}
+{"profile":"desktop","app":"spring","i":6,"id":"item_17","ttfb":25.70000000001164,"fcp":88,"lcp":88,"dcl":62.60000000000582,"load":75.79999999998836,"hydratedAt":58.39999999999418,"tbtToHydration":0,"bytes":{"html":7665,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7169151306152344,"sortWorked":true,"actionMs":70.60000000000582,"clientNavMs":49.60000000000582}
+{"profile":"desktop","app":"phoenix","i":6,"id":"item_17","ttfb":11.800000000017462,"fcp":84,"lcp":84,"dcl":67.80000000001746,"load":67.89999999999418,"hydratedAt":108.70000000001164,"tbtToHydration":0,"bytes":{"html":2831,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.2990684509277344,"sortWorked":true,"actionMs":78.30000000001746,"clientNavMs":16}
+{"profile":"desktop","app":"astro","i":6,"id":"item_17","ttfb":13.10000000000582,"fcp":64,"lcp":64,"dcl":58.89999999999418,"load":59,"hydratedAt":58.60000000000582,"tbtToHydration":0,"bytes":{"html":9779,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5611495971679688,"sortWorked":true,"actionMs":72.69999999998254,"clientNavMs":14.60000000000582}
+{"profile":"desktop","app":"nuxt","i":6,"id":"item_17","ttfb":13.700000000011642,"fcp":64,"lcp":64,"dcl":67.70000000001164,"load":67.80000000001746,"hydratedAt":92.60000000000582,"tbtToHydration":0,"bytes":{"html":18022,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9752960205078125,"sortWorked":true,"actionMs":83.5,"clientNavMs":22.699999999982538}
+{"profile":"desktop","app":"corten","i":7,"id":"item_250","ttfb":4,"fcp":76,"lcp":76,"dcl":61.5,"load":61.69999999998254,"hydratedAt":61.29999999998836,"tbtToHydration":0,"bytes":{"html":2618,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.573211669921875,"sortWorked":true,"actionMs":70.29999999998836,"clientNavMs":13.300000000017462}
+{"profile":"desktop","app":"nextjs","i":7,"id":"item_250","ttfb":35.39999999999418,"fcp":88,"lcp":88,"dcl":53.79999999998836,"load":131.59999999997672,"hydratedAt":156.5,"tbtToHydration":0,"bytes":{"html":5255,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.4837417602539062,"sortWorked":true,"actionMs":70.29999999998836,"clientNavMs":77.5}
+{"profile":"desktop","app":"tanstack-start","i":7,"id":"item_250","ttfb":10.700000000011642,"fcp":68,"lcp":68,"dcl":54.80000000001746,"load":95.10000000000582,"hydratedAt":120,"tbtToHydration":0,"bytes":{"html":16543,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.128955841064453,"sortWorked":true,"actionMs":81,"clientNavMs":25.800000000017462}
+{"profile":"desktop","app":"sveltekit","i":7,"id":"item_250","ttfb":10,"fcp":80,"lcp":80,"dcl":69.29999999998836,"load":69.39999999999418,"hydratedAt":110.89999999999418,"tbtToHydration":0,"bytes":{"html":15558,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.308307647705078,"sortWorked":true,"actionMs":70.40000000002328,"clientNavMs":25.800000000017462}
+{"profile":"desktop","app":"react-router","i":7,"id":"item_250","ttfb":23.10000000000582,"fcp":144,"lcp":144,"dcl":117.60000000000582,"load":125.39999999999418,"hydratedAt":187.10000000000582,"tbtToHydration":0,"bytes":{"html":4726,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.7143287658691406,"sortWorked":true,"actionMs":100.5,"clientNavMs":30.60000000000582}
+{"profile":"desktop","app":"leptos","i":7,"id":"item_250","ttfb":6.199999999982538,"fcp":68,"lcp":68,"dcl":48.39999999999418,"load":48.5,"hydratedAt":102.19999999998254,"tbtToHydration":0,"bytes":{"html":3449,"js":7497,"wasm":283068,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9354286193847656,"sortWorked":true,"actionMs":70,"clientNavMs":24.39999999999418}
+{"profile":"desktop","app":"django","i":7,"id":"item_250","ttfb":11.200000000011642,"fcp":80,"lcp":80,"dcl":54.5,"load":66.89999999999418,"hydratedAt":49.80000000001746,"tbtToHydration":0,"bytes":{"html":7844,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7214584350585938,"sortWorked":true,"actionMs":71.5,"clientNavMs":27.89999999999418}
+{"profile":"desktop","app":"rails","i":7,"id":"item_250","ttfb":18,"fcp":68,"lcp":68,"dcl":64.39999999999418,"load":64.79999999998836,"hydratedAt":63.29999999998836,"tbtToHydration":0,"bytes":{"html":9108,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0564956665039062,"sortWorked":true,"actionMs":102,"clientNavMs":22.79999999998836}
+{"profile":"desktop","app":"laravel","i":7,"id":"item_250","ttfb":16,"fcp":72,"lcp":72,"dcl":79.89999999999418,"load":80.10000000000582,"hydratedAt":79.79999999998836,"tbtToHydration":0,"bytes":{"html":3369,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.2163963317871094,"sortWorked":true,"actionMs":88.29999999998836,"clientNavMs":23.60000000000582}
+{"profile":"desktop","app":"aspnet","i":7,"id":"item_250","ttfb":13.10000000000582,"fcp":76,"lcp":76,"dcl":56.10000000000582,"load":59.60000000000582,"hydratedAt":52,"tbtToHydration":0,"bytes":{"html":7889,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.720367431640625,"sortWorked":true,"actionMs":86.39999999999418,"clientNavMs":17.79999999998836}
+{"profile":"desktop","app":"spring","i":7,"id":"item_250","ttfb":20.20000000001164,"fcp":64,"lcp":64,"dcl":56.90000000002328,"load":57.40000000002328,"hydratedAt":52.80000000001746,"tbtToHydration":0,"bytes":{"html":7761,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7214088439941406,"sortWorked":true,"actionMs":69.29999999998836,"clientNavMs":34}
+{"profile":"desktop","app":"phoenix","i":7,"id":"item_250","ttfb":8.699999999982538,"fcp":84,"lcp":84,"dcl":64.59999999997672,"load":64.59999999997672,"hydratedAt":102.5,"tbtToHydration":0,"bytes":{"html":2888,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.300121307373047,"sortWorked":true,"actionMs":78.89999999999418,"clientNavMs":17.39999999999418}
+{"profile":"desktop","app":"astro","i":7,"id":"item_250","ttfb":9.89999999999418,"fcp":64,"lcp":64,"dcl":58.79999999998836,"load":58.89999999999418,"hydratedAt":58.39999999999418,"tbtToHydration":0,"bytes":{"html":9873,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5635147094726562,"sortWorked":true,"actionMs":71.5,"clientNavMs":15.5}
+{"profile":"desktop","app":"nuxt","i":7,"id":"item_250","ttfb":18.699999999982538,"fcp":76,"lcp":76,"dcl":75.69999999998254,"load":75.89999999999418,"hydratedAt":100.5,"tbtToHydration":0,"bytes":{"html":16377,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.913463592529297,"sortWorked":true,"actionMs":70.60000000000582,"clientNavMs":24.29999999998836}
+{"profile":"desktop","app":"corten","i":8,"id":"item_1999","ttfb":5,"fcp":72,"lcp":72,"dcl":59.60000000000582,"load":60,"hydratedAt":59.5,"tbtToHydration":0,"bytes":{"html":2138,"js":9937,"wasm":0,"css":2816,"data":0},"requests":6,"jsHeapUsedMB":1.5612525939941406,"sortWorked":true,"actionMs":87.69999999998254,"clientNavMs":14}
+{"profile":"desktop","app":"nextjs","i":8,"id":"item_1999","ttfb":22.10000000000582,"fcp":72,"lcp":72,"dcl":39.5,"load":117.89999999999418,"hydratedAt":141.20000000001164,"tbtToHydration":0,"bytes":{"html":4390,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.34783935546875,"sortWorked":true,"actionMs":69.10000000000582,"clientNavMs":132.5}
+{"profile":"desktop","app":"tanstack-start","i":8,"id":"item_1999","ttfb":7.199999999982538,"fcp":68,"lcp":68,"dcl":50.79999999998836,"load":89.5,"hydratedAt":101,"tbtToHydration":0,"bytes":{"html":10709,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.019306182861328,"sortWorked":true,"actionMs":67.89999999999418,"clientNavMs":24.800000000017462}
+{"profile":"desktop","app":"sveltekit","i":8,"id":"item_1999","ttfb":7.100000000005821,"fcp":76,"lcp":76,"dcl":65.89999999999418,"load":65.89999999999418,"hydratedAt":104,"tbtToHydration":0,"bytes":{"html":9878,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.2637481689453125,"sortWorked":true,"actionMs":71.60000000000582,"clientNavMs":18}
+{"profile":"desktop","app":"react-router","i":8,"id":"item_1999","ttfb":15.299999999988358,"fcp":112,"lcp":112,"dcl":93.69999999998254,"load":96.89999999999418,"hydratedAt":155.5,"tbtToHydration":0,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.620269775390625,"sortWorked":true,"actionMs":85.5,"clientNavMs":27.60000000000582}
+{"profile":"desktop","app":"leptos","i":8,"id":"item_1999","ttfb":5,"fcp":72,"lcp":72,"dcl":45.39999999999418,"load":47.60000000000582,"hydratedAt":102.30000000001746,"tbtToHydration":0,"bytes":{"html":2586,"js":7495,"wasm":282888,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9012832641601562,"sortWorked":true,"actionMs":70.69999999998254,"clientNavMs":21.5}
+{"profile":"desktop","app":"django","i":8,"id":"item_1999","ttfb":9.39999999999418,"fcp":76,"lcp":76,"dcl":51.5,"load":63.29999999998836,"hydratedAt":47.89999999999418,"tbtToHydration":0,"bytes":{"html":5244,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7152595520019531,"sortWorked":true,"actionMs":74.10000000000582,"clientNavMs":20.39999999999418}
+{"profile":"desktop","app":"rails","i":8,"id":"item_1999","ttfb":10.5,"fcp":76,"lcp":76,"dcl":72,"load":73,"hydratedAt":71.10000000000582,"tbtToHydration":0,"bytes":{"html":6601,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.056224822998047,"sortWorked":true,"actionMs":87.70000000001164,"clientNavMs":18.20000000001164}
+{"profile":"desktop","app":"laravel","i":8,"id":"item_1999","ttfb":18.79999999998836,"fcp":68,"lcp":68,"dcl":77.79999999998836,"load":77.89999999999418,"hydratedAt":77.59999999997672,"tbtToHydration":0,"bytes":{"html":2990,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.169483184814453,"sortWorked":true,"actionMs":75.19999999998254,"clientNavMs":22.70000000001164}
+{"profile":"desktop","app":"aspnet","i":8,"id":"item_1999","ttfb":6,"fcp":68,"lcp":68,"dcl":51.60000000000582,"load":54.19999999998254,"hydratedAt":47.10000000000582,"tbtToHydration":0,"bytes":{"html":5288,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7142066955566406,"sortWorked":true,"actionMs":74.60000000000582,"clientNavMs":14.900000000023283}
+{"profile":"desktop","app":"spring","i":8,"id":"item_1999","ttfb":25.89999999999418,"fcp":64,"lcp":64,"dcl":61.29999999998836,"load":61.5,"hydratedAt":56.29999999998836,"tbtToHydration":0,"bytes":{"html":5161,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7150802612304688,"sortWorked":true,"actionMs":72.60000000000582,"clientNavMs":25.60000000000582}
+{"profile":"desktop","app":"phoenix","i":8,"id":"item_1999","ttfb":7.2999999999883585,"fcp":104,"lcp":104,"dcl":64.69999999998254,"load":64.69999999998254,"hydratedAt":85.69999999998254,"tbtToHydration":0,"bytes":{"html":2436,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.2052650451660156,"sortWorked":true,"actionMs":79.20000000001164,"clientNavMs":15.199999999982538}
+{"profile":"desktop","app":"astro","i":8,"id":"item_1999","ttfb":8.60000000000582,"fcp":60,"lcp":60,"dcl":52,"load":52.20000000001164,"hydratedAt":51.60000000000582,"tbtToHydration":0,"bytes":{"html":7336,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5630912780761719,"sortWorked":true,"actionMs":71.29999999998836,"clientNavMs":15.900000000023283}
+{"profile":"desktop","app":"nuxt","i":8,"id":"item_1999","ttfb":13.699999999982538,"fcp":88,"lcp":88,"dcl":61.5,"load":63.89999999999418,"hydratedAt":102.89999999999418,"tbtToHydration":0,"bytes":{"html":10276,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.871868133544922,"sortWorked":true,"actionMs":70.69999999998254,"clientNavMs":25}
+{"profile":"desktop","app":"corten","i":9,"id":"item_12345","ttfb":5.7999999999883585,"fcp":72,"lcp":72,"dcl":55.20000000001164,"load":55.60000000000582,"hydratedAt":55.10000000000582,"tbtToHydration":0,"bytes":{"html":1734,"js":9937,"wasm":0,"css":2816,"data":0},"requests":6,"jsHeapUsedMB":1.5853691101074219,"sortWorked":null,"actionMs":null,"clientNavMs":13.299999999988358}
+{"profile":"desktop","app":"nextjs","i":9,"id":"item_12345","ttfb":15.400000000023283,"fcp":68,"lcp":68,"dcl":50.30000000001746,"load":119.70000000001164,"hydratedAt":145,"tbtToHydration":0,"bytes":{"html":3491,"js":141474,"wasm":0,"css":1117,"data":2073},"requests":11,"jsHeapUsedMB":3.189350128173828,"sortWorked":null,"actionMs":null,"clientNavMs":89.60000000000582}
+{"profile":"desktop","app":"tanstack-start","i":9,"id":"item_12345","ttfb":8.200000000011642,"fcp":68,"lcp":68,"dcl":52.30000000001746,"load":90.80000000001746,"hydratedAt":116,"tbtToHydration":0,"bytes":{"html":6727,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.880828857421875,"sortWorked":null,"actionMs":null,"clientNavMs":25.800000000017462}
+{"profile":"desktop","app":"sveltekit","i":9,"id":"item_12345","ttfb":7,"fcp":68,"lcp":68,"dcl":59.70000000001164,"load":59.89999999999418,"hydratedAt":100.10000000000582,"tbtToHydration":0,"bytes":{"html":6034,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.201416015625,"sortWorked":null,"actionMs":null,"clientNavMs":18.39999999999418}
+{"profile":"desktop","app":"react-router","i":9,"id":"item_12345","ttfb":16.5,"fcp":84,"lcp":84,"dcl":89.5,"load":89.70000000001164,"hydratedAt":148.40000000002328,"tbtToHydration":0,"bytes":{"html":2613,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.8083648681640625,"sortWorked":null,"actionMs":null,"clientNavMs":29.89999999999418}
+{"profile":"desktop","app":"leptos","i":9,"id":"item_12345","ttfb":4.600000000005821,"fcp":96,"lcp":96,"dcl":71.40000000002328,"load":73.5,"hydratedAt":109.20000000001164,"tbtToHydration":0,"bytes":{"html":1870,"js":7495,"wasm":282964,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.8800926208496094,"sortWorked":null,"actionMs":null,"clientNavMs":22.5}
+{"profile":"desktop","app":"django","i":9,"id":"item_12345","ttfb":7.399999999994179,"fcp":68,"lcp":68,"dcl":48.60000000000582,"load":57.19999999998254,"hydratedAt":45.29999999998836,"tbtToHydration":0,"bytes":{"html":3481,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.65313720703125,"sortWorked":null,"actionMs":null,"clientNavMs":28.29999999998836}
+{"profile":"desktop","app":"rails","i":9,"id":"item_12345","ttfb":11.200000000011642,"fcp":68,"lcp":68,"dcl":63.90000000002328,"load":65,"hydratedAt":63.10000000000582,"tbtToHydration":0,"bytes":{"html":4837,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.066783905029297,"sortWorked":null,"actionMs":null,"clientNavMs":18.10000000000582}
+{"profile":"desktop","app":"laravel","i":9,"id":"item_12345","ttfb":16.89999999999418,"fcp":64,"lcp":64,"dcl":73.79999999998836,"load":74.10000000000582,"hydratedAt":73.69999999998254,"tbtToHydration":0,"bytes":{"html":2612,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.4373817443847656,"sortWorked":null,"actionMs":null,"clientNavMs":23.20000000001164}
+{"profile":"desktop","app":"aspnet","i":9,"id":"item_12345","ttfb":8.799999999988358,"fcp":64,"lcp":64,"dcl":49.39999999999418,"load":51.5,"hydratedAt":46.39999999999418,"tbtToHydration":0,"bytes":{"html":3524,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.6525115966796875,"sortWorked":null,"actionMs":null,"clientNavMs":18.79999999998836}
+{"profile":"desktop","app":"spring","i":9,"id":"item_12345","ttfb":16,"fcp":64,"lcp":64,"dcl":59.10000000000582,"load":59.5,"hydratedAt":55,"tbtToHydration":0,"bytes":{"html":3398,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.6524467468261719,"sortWorked":null,"actionMs":null,"clientNavMs":26.400000000023283}
+{"profile":"desktop","app":"phoenix","i":9,"id":"item_12345","ttfb":5.899999999994179,"fcp":76,"lcp":76,"dcl":60.79999999998836,"load":60.79999999998836,"hydratedAt":84.39999999999418,"tbtToHydration":0,"bytes":{"html":2015,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.1213607788085938,"sortWorked":null,"actionMs":null,"clientNavMs":16.699999999982538}
+{"profile":"desktop","app":"astro","i":9,"id":"item_12345","ttfb":5.699999999982538,"fcp":56,"lcp":56,"dcl":49.29999999998836,"load":49.29999999998836,"hydratedAt":48.79999999998836,"tbtToHydration":0,"bytes":{"html":5571,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5408935546875,"sortWorked":null,"actionMs":null,"clientNavMs":16.5}
+{"profile":"desktop","app":"nuxt","i":9,"id":"item_12345","ttfb":9.39999999999418,"fcp":60,"lcp":60,"dcl":62.69999999998254,"load":62.69999999998254,"hydratedAt":85.69999999998254,"tbtToHydration":0,"bytes":{"html":5877,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.910388946533203,"sortWorked":null,"actionMs":null,"clientNavMs":22.699999999982538}
+{"profile":"mobile","app":"corten","i":0,"id":"item_3","ttfb":3.6000000000058208,"fcp":464,"lcp":464,"dcl":468.70000000001164,"load":470.20000000001164,"hydratedAt":468,"tbtToHydration":15,"bytes":{"html":2748,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.610382080078125,"sortWorked":true,"actionMs":285.5999999999767,"clientNavMs":197.60000000000582}
+{"profile":"mobile","app":"nextjs","i":0,"id":"item_3","ttfb":22.10000000000582,"fcp":412,"lcp":412,"dcl":408.5,"load":1257.7000000000116,"hydratedAt":1412.7999999999884,"tbtToHydration":159,"bytes":{"html":5437,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.2902870178222656,"sortWorked":true,"actionMs":321.29999999998836,"clientNavMs":428}
+{"profile":"mobile","app":"tanstack-start","i":0,"id":"item_3","ttfb":12.300000000017462,"fcp":436,"lcp":436,"dcl":429.30000000001746,"load":2168.5,"hydratedAt":2305.8000000000175,"tbtToHydration":68,"bytes":{"html":18067,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.0906715393066406,"sortWorked":true,"actionMs":285.5,"clientNavMs":347.70000000001164}
+{"profile":"mobile","app":"sveltekit","i":0,"id":"item_3","ttfb":8.700000000011642,"fcp":476,"lcp":476,"dcl":481.70000000001164,"load":482.80000000001746,"hydratedAt":846.5,"tbtToHydration":7,"bytes":{"html":16965,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.3146438598632812,"sortWorked":true,"actionMs":275,"clientNavMs":271.70000000001164}
+{"profile":"mobile","app":"react-router","i":0,"id":"item_3","ttfb":16.800000000017462,"fcp":432,"lcp":432,"dcl":426.4000000000233,"load":780.2000000000116,"hydratedAt":1105.7000000000116,"tbtToHydration":52,"bytes":{"html":5014,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.742321014404297,"sortWorked":true,"actionMs":336.1000000000058,"clientNavMs":273.1000000000058}
+{"profile":"mobile","app":"leptos","i":0,"id":"item_3","ttfb":6.099999999976717,"fcp":420,"lcp":420,"dcl":420.5,"load":421,"hydratedAt":1830.6999999999825,"tbtToHydration":72,"bytes":{"html":3600,"js":7495,"wasm":282823,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9441947937011719,"sortWorked":true,"actionMs":268.5,"clientNavMs":240.69999999998254}
+{"profile":"mobile","app":"django","i":0,"id":"item_3","ttfb":13,"fcp":408,"lcp":408,"dcl":458.3999999999942,"load":459.19999999998254,"hydratedAt":442.3999999999942,"tbtToHydration":3,"bytes":{"html":7711,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.718292236328125,"sortWorked":true,"actionMs":278.1000000000058,"clientNavMs":246}
+{"profile":"mobile","app":"rails","i":0,"id":"item_3","ttfb":8.700000000011642,"fcp":428,"lcp":428,"dcl":1144.7999999999884,"load":1149.6000000000058,"hydratedAt":1141.5,"tbtToHydration":4,"bytes":{"html":8977,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0694923400878906,"sortWorked":true,"actionMs":300,"clientNavMs":253.30000000001746}
+{"profile":"mobile","app":"laravel","i":0,"id":"item_3","ttfb":21.29999999998836,"fcp":424,"lcp":424,"dcl":875.7999999999884,"load":876.6000000000058,"hydratedAt":875.6000000000058,"tbtToHydration":20,"bytes":{"html":3325,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.1993179321289062,"sortWorked":true,"actionMs":309.5,"clientNavMs":214.10000000000582}
+{"profile":"mobile","app":"aspnet","i":0,"id":"item_3","ttfb":9,"fcp":396,"lcp":396,"dcl":438.70000000001164,"load":439.8999999999942,"hydratedAt":422.6000000000058,"tbtToHydration":6,"bytes":{"html":7758,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7180595397949219,"sortWorked":true,"actionMs":288.79999999998836,"clientNavMs":246.5}
+{"profile":"mobile","app":"spring","i":0,"id":"item_3","ttfb":19.5,"fcp":424,"lcp":424,"dcl":649.2000000000116,"load":652.0999999999767,"hydratedAt":618.8999999999651,"tbtToHydration":5,"bytes":{"html":7628,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.71929931640625,"sortWorked":true,"actionMs":269.5999999999767,"clientNavMs":242.20000000001164}
+{"profile":"mobile","app":"phoenix","i":0,"id":"item_3","ttfb":8.299999999988358,"fcp":396,"lcp":396,"dcl":645.5,"load":645.6999999999534,"hydratedAt":944.3999999999651,"tbtToHydration":49,"bytes":{"html":2845,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.343975067138672,"sortWorked":true,"actionMs":148.20000000001164,"clientNavMs":143.40000000002328}
+{"profile":"mobile","app":"astro","i":0,"id":"item_3","ttfb":8.5,"fcp":288,"lcp":288,"dcl":629.5,"load":630.9000000000233,"hydratedAt":628.4000000000233,"tbtToHydration":6,"bytes":{"html":9744,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5634651184082031,"sortWorked":true,"actionMs":292.8999999999651,"clientNavMs":248.79999999998836}
+{"profile":"mobile","app":"nuxt","i":0,"id":"item_3","ttfb":18.5,"fcp":448,"lcp":448,"dcl":1393.4000000000233,"load":1394.2999999999884,"hydratedAt":1522.2000000000116,"tbtToHydration":96,"bytes":{"html":17961,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9023284912109375,"sortWorked":true,"actionMs":270.9000000000233,"clientNavMs":272.79999999998836}
+{"profile":"mobile","app":"corten","i":1,"id":"item_17","ttfb":4.199999999953434,"fcp":468,"lcp":468,"dcl":460.79999999998836,"load":462.29999999998836,"hydratedAt":460.5999999999767,"tbtToHydration":16,"bytes":{"html":2765,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.6117439270019531,"sortWorked":true,"actionMs":271.3999999999651,"clientNavMs":201.89999999996508}
+{"profile":"mobile","app":"nextjs","i":1,"id":"item_17","ttfb":21.600000000034925,"fcp":412,"lcp":412,"dcl":403.79999999998836,"load":1248.9000000000233,"hydratedAt":1389.7999999999884,"tbtToHydration":153,"bytes":{"html":5473,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.3414955139160156,"sortWorked":true,"actionMs":308.4000000000233,"clientNavMs":441.5999999999767}
+{"profile":"mobile","app":"tanstack-start","i":1,"id":"item_17","ttfb":11.400000000023283,"fcp":412,"lcp":412,"dcl":421.5,"load":2171.4000000000233,"hydratedAt":2312.2000000000116,"tbtToHydration":67,"bytes":{"html":18136,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.1528587341308594,"sortWorked":true,"actionMs":278.5999999999767,"clientNavMs":342.9000000000233}
+{"profile":"mobile","app":"sveltekit","i":1,"id":"item_17","ttfb":16.29999999998836,"fcp":468,"lcp":468,"dcl":470.8999999999651,"load":471.0999999999767,"hydratedAt":844.2999999999884,"tbtToHydration":7,"bytes":{"html":17032,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.3770179748535156,"sortWorked":true,"actionMs":283.70000000001164,"clientNavMs":272.20000000001164}
+{"profile":"mobile","app":"react-router","i":1,"id":"item_17","ttfb":17.399999999965075,"fcp":440,"lcp":440,"dcl":431.69999999995343,"load":774.5,"hydratedAt":1044.5,"tbtToHydration":32,"bytes":{"html":5023,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.7999038696289062,"sortWorked":true,"actionMs":351.8999999999651,"clientNavMs":253}
+{"profile":"mobile","app":"leptos","i":1,"id":"item_17","ttfb":7.100000000034925,"fcp":416,"lcp":416,"dcl":413,"load":413.1000000000349,"hydratedAt":1835.7000000000116,"tbtToHydration":64,"bytes":{"html":3619,"js":7495,"wasm":282964,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9442367553710938,"sortWorked":true,"actionMs":287.3999999999651,"clientNavMs":249.5}
+{"profile":"mobile","app":"django","i":1,"id":"item_17","ttfb":15.399999999965075,"fcp":416,"lcp":416,"dcl":449,"load":450.79999999998836,"hydratedAt":432.5,"tbtToHydration":7,"bytes":{"html":7748,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7191123962402344,"sortWorked":true,"actionMs":281.70000000001164,"clientNavMs":244.40000000002328}
+{"profile":"mobile","app":"rails","i":1,"id":"item_17","ttfb":10.299999999988358,"fcp":404,"lcp":404,"dcl":1147.2999999999884,"load":1150.5,"hydratedAt":1144.6999999999534,"tbtToHydration":4,"bytes":{"html":9013,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.059356689453125,"sortWorked":true,"actionMs":328.1000000000349,"clientNavMs":258.70000000001164}
+{"profile":"mobile","app":"laravel","i":1,"id":"item_17","ttfb":18.899999999965075,"fcp":424,"lcp":424,"dcl":878.3999999999651,"load":878.8999999999651,"hydratedAt":877.5999999999767,"tbtToHydration":19,"bytes":{"html":3333,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.2227821350097656,"sortWorked":true,"actionMs":315.9000000000233,"clientNavMs":216.70000000001164}
+{"profile":"mobile","app":"aspnet","i":1,"id":"item_17","ttfb":8.800000000046566,"fcp":416,"lcp":416,"dcl":451.1000000000349,"load":453.20000000001164,"hydratedAt":435.9000000000233,"tbtToHydration":6,"bytes":{"html":7794,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7188949584960938,"sortWorked":true,"actionMs":276.5,"clientNavMs":241.89999999996508}
+{"profile":"mobile","app":"spring","i":1,"id":"item_17","ttfb":19.79999999998836,"fcp":424,"lcp":424,"dcl":633.8999999999651,"load":635.8999999999651,"hydratedAt":613.5,"tbtToHydration":7,"bytes":{"html":7665,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7195167541503906,"sortWorked":true,"actionMs":292.1000000000349,"clientNavMs":238.59999999997672}
+{"profile":"mobile","app":"phoenix","i":1,"id":"item_17","ttfb":9.899999999965075,"fcp":416,"lcp":416,"dcl":647.6999999999534,"load":647.7999999999884,"hydratedAt":932.7999999999884,"tbtToHydration":53,"bytes":{"html":2831,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.3048248291015625,"sortWorked":true,"actionMs":137.59999999997672,"clientNavMs":127}
+{"profile":"mobile","app":"astro","i":1,"id":"item_17","ttfb":11,"fcp":268,"lcp":268,"dcl":593.2000000000116,"load":593.2999999999884,"hydratedAt":592.2000000000116,"tbtToHydration":0,"bytes":{"html":9779,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5609970092773438,"sortWorked":true,"actionMs":301.79999999998836,"clientNavMs":245.59999999997672}
+{"profile":"mobile","app":"nuxt","i":1,"id":"item_17","ttfb":16.20000000001164,"fcp":432,"lcp":432,"dcl":1372.100000000035,"load":1372.2000000000116,"hydratedAt":1468.2999999999884,"tbtToHydration":48,"bytes":{"html":18022,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.959857940673828,"sortWorked":true,"actionMs":274.5999999999767,"clientNavMs":267.5}
+{"profile":"mobile","app":"corten","i":2,"id":"item_250","ttfb":3.3999999999650754,"fcp":460,"lcp":460,"dcl":456.79999999998836,"load":458.3999999999651,"hydratedAt":456.20000000001164,"tbtToHydration":11,"bytes":{"html":2618,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.6116981506347656,"sortWorked":true,"actionMs":290.70000000001164,"clientNavMs":200.59999999997672}
+{"profile":"mobile","app":"nextjs","i":2,"id":"item_250","ttfb":24.599999999976717,"fcp":408,"lcp":408,"dcl":401.29999999998836,"load":1249.0999999999767,"hydratedAt":1397.7999999999884,"tbtToHydration":155,"bytes":{"html":5255,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.3488006591796875,"sortWorked":true,"actionMs":300.4000000000233,"clientNavMs":434}
+{"profile":"mobile","app":"tanstack-start","i":2,"id":"item_250","ttfb":17,"fcp":428,"lcp":428,"dcl":418.6000000000349,"load":2167.9000000000233,"hydratedAt":2311.3000000000466,"tbtToHydration":69,"bytes":{"html":16543,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.1522140502929688,"sortWorked":true,"actionMs":298.70000000001164,"clientNavMs":342.80000000004657}
+{"profile":"mobile","app":"sveltekit","i":2,"id":"item_250","ttfb":7.900000000023283,"fcp":476,"lcp":476,"dcl":469.9000000000233,"load":471.70000000001164,"hydratedAt":844,"tbtToHydration":8,"bytes":{"html":15558,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.3136062622070312,"sortWorked":true,"actionMs":269.3999999999651,"clientNavMs":269.8999999999651}
+{"profile":"mobile","app":"react-router","i":2,"id":"item_250","ttfb":17.5,"fcp":440,"lcp":440,"dcl":437.6000000000349,"load":779.6000000000349,"hydratedAt":1050.600000000035,"tbtToHydration":40,"bytes":{"html":4726,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.758167266845703,"sortWorked":true,"actionMs":330.79999999998836,"clientNavMs":264.5999999999767}
+{"profile":"mobile","app":"leptos","i":2,"id":"item_250","ttfb":8.799999999988358,"fcp":424,"lcp":424,"dcl":419.79999999998836,"load":419.8999999999651,"hydratedAt":1835.399999999965,"tbtToHydration":68,"bytes":{"html":3450,"js":7497,"wasm":282836,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9431037902832031,"sortWorked":true,"actionMs":282.79999999998836,"clientNavMs":245.89999999996508}
+{"profile":"mobile","app":"django","i":2,"id":"item_250","ttfb":14.200000000011642,"fcp":420,"lcp":420,"dcl":455.29999999998836,"load":457,"hydratedAt":437.29999999998836,"tbtToHydration":9,"bytes":{"html":7844,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7237091064453125,"sortWorked":true,"actionMs":302.29999999998836,"clientNavMs":238.59999999997672}
+{"profile":"mobile","app":"rails","i":2,"id":"item_250","ttfb":16.099999999976717,"fcp":408,"lcp":408,"dcl":1148.5999999999767,"load":1153.5,"hydratedAt":1146,"tbtToHydration":5,"bytes":{"html":9108,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0691070556640625,"sortWorked":true,"actionMs":283.20000000001164,"clientNavMs":254.10000000003492}
+{"profile":"mobile","app":"laravel","i":2,"id":"item_250","ttfb":21.899999999965075,"fcp":420,"lcp":420,"dcl":898.7000000000116,"load":899.2000000000116,"hydratedAt":898.0999999999767,"tbtToHydration":42,"bytes":{"html":3364,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.1957855224609375,"sortWorked":true,"actionMs":302.70000000001164,"clientNavMs":215.09999999997672}
+{"profile":"mobile","app":"aspnet","i":2,"id":"item_250","ttfb":14.399999999965075,"fcp":408,"lcp":408,"dcl":447.3999999999651,"load":449.79999999998836,"hydratedAt":431.5,"tbtToHydration":5,"bytes":{"html":7889,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7232666015625,"sortWorked":true,"actionMs":288.6000000000349,"clientNavMs":239}
+{"profile":"mobile","app":"spring","i":2,"id":"item_250","ttfb":23.099999999976717,"fcp":412,"lcp":412,"dcl":622.9000000000233,"load":625,"hydratedAt":605.0999999999767,"tbtToHydration":4,"bytes":{"html":7761,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7235679626464844,"sortWorked":true,"actionMs":276.70000000001164,"clientNavMs":242.69999999995343}
+{"profile":"mobile","app":"phoenix","i":2,"id":"item_250","ttfb":11.399999999965075,"fcp":416,"lcp":416,"dcl":656.7999999999884,"load":656.8999999999651,"hydratedAt":952.7000000000116,"tbtToHydration":62,"bytes":{"html":2884,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.3060951232910156,"sortWorked":true,"actionMs":141.20000000001164,"clientNavMs":119}
+{"profile":"mobile","app":"astro","i":2,"id":"item_250","ttfb":7.7999999999883585,"fcp":260,"lcp":260,"dcl":582.7999999999884,"load":583.4000000000233,"hydratedAt":581,"tbtToHydration":0,"bytes":{"html":9873,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.563140869140625,"sortWorked":true,"actionMs":291.0999999999767,"clientNavMs":241.29999999998836}
+{"profile":"mobile","app":"nuxt","i":2,"id":"item_250","ttfb":20,"fcp":448,"lcp":448,"dcl":1387.2000000000116,"load":1387.399999999965,"hydratedAt":1505.2999999999884,"tbtToHydration":68,"bytes":{"html":16377,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9030838012695312,"sortWorked":true,"actionMs":263.1000000000349,"clientNavMs":287.19999999995343}
+{"profile":"mobile","app":"corten","i":3,"id":"item_1999","ttfb":3.2999999999883585,"fcp":448,"lcp":448,"dcl":453.70000000001164,"load":455.5,"hydratedAt":453.5999999999767,"tbtToHydration":10,"bytes":{"html":2138,"js":9937,"wasm":0,"css":2816,"data":0},"requests":6,"jsHeapUsedMB":1.5879783630371094,"sortWorked":true,"actionMs":282.79999999998836,"clientNavMs":199.59999999997672}
+{"profile":"mobile","app":"nextjs","i":3,"id":"item_1999","ttfb":18.099999999976717,"fcp":412,"lcp":412,"dcl":399.79999999998836,"load":1254.5999999999767,"hydratedAt":1386.5,"tbtToHydration":144,"bytes":{"html":4390,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.280193328857422,"sortWorked":true,"actionMs":307.4000000000233,"clientNavMs":428.29999999998836}
+{"profile":"mobile","app":"tanstack-start","i":3,"id":"item_1999","ttfb":9.800000000046566,"fcp":408,"lcp":408,"dcl":408.80000000004657,"load":2165.5,"hydratedAt":2314.5,"tbtToHydration":58,"bytes":{"html":10709,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.033367156982422,"sortWorked":true,"actionMs":274.80000000004657,"clientNavMs":339.19999999995343}
+{"profile":"mobile","app":"sveltekit","i":3,"id":"item_1999","ttfb":8,"fcp":440,"lcp":440,"dcl":433.9000000000233,"load":434.70000000001164,"hydratedAt":841.2000000000116,"tbtToHydration":1,"bytes":{"html":9878,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.2719459533691406,"sortWorked":true,"actionMs":263.79999999998836,"clientNavMs":267.70000000001164}
+{"profile":"mobile","app":"react-router","i":3,"id":"item_1999","ttfb":13.5,"fcp":436,"lcp":436,"dcl":423,"load":772.9000000000233,"hydratedAt":1034.600000000035,"tbtToHydration":30,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.6578903198242188,"sortWorked":true,"actionMs":347.3999999999651,"clientNavMs":250.70000000001164}
+{"profile":"mobile","app":"leptos","i":3,"id":"item_1999","ttfb":4.399999999965075,"fcp":416,"lcp":416,"dcl":409.29999999998836,"load":409.3999999999651,"hydratedAt":1838.0999999999767,"tbtToHydration":69,"bytes":{"html":2585,"js":7495,"wasm":282836,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9097366333007812,"sortWorked":true,"actionMs":284.70000000001164,"clientNavMs":248.60000000003492}
+{"profile":"mobile","app":"django","i":3,"id":"item_1999","ttfb":9.5,"fcp":400,"lcp":400,"dcl":453.5,"load":454.70000000001164,"hydratedAt":436.20000000001164,"tbtToHydration":2,"bytes":{"html":5244,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7178611755371094,"sortWorked":true,"actionMs":283.8999999999651,"clientNavMs":240.60000000003492}
+{"profile":"mobile","app":"rails","i":3,"id":"item_1999","ttfb":9.100000000034925,"fcp":448,"lcp":448,"dcl":1151.7000000000116,"load":1156.2000000000116,"hydratedAt":1149.100000000035,"tbtToHydration":0,"bytes":{"html":6601,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0669021606445312,"sortWorked":true,"actionMs":297.9000000000233,"clientNavMs":251.79999999998836}
+{"profile":"mobile","app":"laravel","i":3,"id":"item_1999","ttfb":22.20000000001164,"fcp":408,"lcp":408,"dcl":870,"load":870.9000000000233,"hydratedAt":869.7999999999884,"tbtToHydration":12,"bytes":{"html":2992,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.1573486328125,"sortWorked":true,"actionMs":318,"clientNavMs":211.60000000003492}
+{"profile":"mobile","app":"aspnet","i":3,"id":"item_1999","ttfb":13.699999999953434,"fcp":412,"lcp":412,"dcl":453.5,"load":455.3999999999651,"hydratedAt":437.29999999998836,"tbtToHydration":5,"bytes":{"html":5288,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7172355651855469,"sortWorked":true,"actionMs":264.5,"clientNavMs":239.10000000003492}
+{"profile":"mobile","app":"spring","i":3,"id":"item_1999","ttfb":19.5,"fcp":428,"lcp":428,"dcl":635.1000000000349,"load":638,"hydratedAt":618.8000000000466,"tbtToHydration":10,"bytes":{"html":5161,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7172317504882812,"sortWorked":true,"actionMs":288.20000000001164,"clientNavMs":242}
+{"profile":"mobile","app":"phoenix","i":3,"id":"item_1999","ttfb":8.100000000034925,"fcp":400,"lcp":400,"dcl":645.9000000000233,"load":645.9000000000233,"hydratedAt":912.4000000000233,"tbtToHydration":31,"bytes":{"html":2432,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.210742950439453,"sortWorked":true,"actionMs":140.5,"clientNavMs":121.79999999998836}
+{"profile":"mobile","app":"astro","i":3,"id":"item_1999","ttfb":9,"fcp":272,"lcp":272,"dcl":619.3999999999651,"load":620.3999999999651,"hydratedAt":617.8999999999651,"tbtToHydration":0,"bytes":{"html":7336,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5629768371582031,"sortWorked":true,"actionMs":327.5999999999767,"clientNavMs":238.70000000001164}
+{"profile":"mobile","app":"nuxt","i":3,"id":"item_1999","ttfb":16.699999999953434,"fcp":428,"lcp":428,"dcl":1388.7999999999884,"load":1389.399999999965,"hydratedAt":1514.7999999999884,"tbtToHydration":73,"bytes":{"html":10276,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.8672332763671875,"sortWorked":true,"actionMs":272.0999999999767,"clientNavMs":272.19999999995343}
+{"profile":"mobile","app":"corten","i":4,"id":"item_12345","ttfb":3.699999999953434,"fcp":436,"lcp":436,"dcl":438.5999999999767,"load":440.3999999999651,"hydratedAt":437.5999999999767,"tbtToHydration":3,"bytes":{"html":1734,"js":9937,"wasm":0,"css":2816,"data":0},"requests":6,"jsHeapUsedMB":1.5879631042480469,"sortWorked":null,"actionMs":null,"clientNavMs":195.89999999996508}
+{"profile":"mobile","app":"nextjs","i":4,"id":"item_12345","ttfb":16.900000000023283,"fcp":384,"lcp":384,"dcl":375,"load":1250.2000000000116,"hydratedAt":1377,"tbtToHydration":145,"bytes":{"html":3491,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.1685523986816406,"sortWorked":null,"actionMs":null,"clientNavMs":440.9000000000233}
+{"profile":"mobile","app":"tanstack-start","i":4,"id":"item_12345","ttfb":7.7999999999883585,"fcp":416,"lcp":416,"dcl":411.79999999998836,"load":2168.5,"hydratedAt":2300.5999999999767,"tbtToHydration":61,"bytes":{"html":6727,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.8973846435546875,"sortWorked":null,"actionMs":null,"clientNavMs":351.8999999999651}
+{"profile":"mobile","app":"sveltekit","i":4,"id":"item_12345","ttfb":8.099999999976717,"fcp":416,"lcp":416,"dcl":406.9000000000233,"load":407.9000000000233,"hydratedAt":837.0999999999767,"tbtToHydration":0,"bytes":{"html":6034,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.204498291015625,"sortWorked":null,"actionMs":null,"clientNavMs":273.4000000000233}
+{"profile":"mobile","app":"react-router","i":4,"id":"item_12345","ttfb":11.200000000011642,"fcp":412,"lcp":412,"dcl":406.9000000000233,"load":787.6000000000349,"hydratedAt":1048,"tbtToHydration":29,"bytes":{"html":2613,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.85406494140625,"sortWorked":null,"actionMs":null,"clientNavMs":251.89999999996508}
+{"profile":"mobile","app":"leptos","i":4,"id":"item_12345","ttfb":3.8999999999650754,"fcp":396,"lcp":396,"dcl":382.0999999999767,"load":382.20000000001164,"hydratedAt":1821,"tbtToHydration":54,"bytes":{"html":1873,"js":7495,"wasm":282964,"css":1124,"data":0},"requests":4,"jsHeapUsedMB":1.8876609802246094,"sortWorked":null,"actionMs":null,"clientNavMs":246.20000000001164}
+{"profile":"mobile","app":"django","i":4,"id":"item_12345","ttfb":7.5,"fcp":380,"lcp":380,"dcl":446,"load":447.0999999999767,"hydratedAt":432.3999999999651,"tbtToHydration":0,"bytes":{"html":3481,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.6528587341308594,"sortWorked":null,"actionMs":null,"clientNavMs":248.30000000004657}
+{"profile":"mobile","app":"rails","i":4,"id":"item_12345","ttfb":12.900000000023283,"fcp":444,"lcp":444,"dcl":1159.7999999999884,"load":1164.2999999999884,"hydratedAt":1156.2999999999884,"tbtToHydration":0,"bytes":{"html":4837,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0669021606445312,"sortWorked":null,"actionMs":null,"clientNavMs":250.79999999998836}
+{"profile":"mobile","app":"laravel","i":4,"id":"item_12345","ttfb":16.5,"fcp":408,"lcp":408,"dcl":862.4000000000233,"load":863.2000000000116,"hydratedAt":862.1000000000349,"tbtToHydration":1,"bytes":{"html":2613,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.4398956298828125,"sortWorked":null,"actionMs":null,"clientNavMs":216.30000000004657}
+{"profile":"mobile","app":"aspnet","i":4,"id":"item_12345","ttfb":5,"fcp":376,"lcp":376,"dcl":437.5999999999767,"load":437.79999999998836,"hydratedAt":425.0999999999767,"tbtToHydration":0,"bytes":{"html":3524,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.65191650390625,"sortWorked":null,"actionMs":null,"clientNavMs":246.40000000002328}
+{"profile":"mobile","app":"spring","i":4,"id":"item_12345","ttfb":17.900000000023283,"fcp":388,"lcp":388,"dcl":621.2000000000116,"load":623.0999999999767,"hydratedAt":608.7999999999884,"tbtToHydration":0,"bytes":{"html":3398,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.6533203125,"sortWorked":null,"actionMs":null,"clientNavMs":243.59999999997672}
+{"profile":"mobile","app":"phoenix","i":4,"id":"item_12345","ttfb":5.7000000000116415,"fcp":396,"lcp":396,"dcl":652.7000000000116,"load":652.7000000000116,"hydratedAt":886.4000000000233,"tbtToHydration":35,"bytes":{"html":2018,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.1266250610351562,"sortWorked":null,"actionMs":null,"clientNavMs":133.59999999997672}
+{"profile":"mobile","app":"astro","i":4,"id":"item_12345","ttfb":12.199999999953434,"fcp":260,"lcp":260,"dcl":630,"load":630.0999999999767,"hydratedAt":628.0999999999767,"tbtToHydration":0,"bytes":{"html":5571,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5404701232910156,"sortWorked":null,"actionMs":null,"clientNavMs":238.40000000002328}
+{"profile":"mobile","app":"nuxt","i":4,"id":"item_12345","ttfb":15.299999999988358,"fcp":400,"lcp":400,"dcl":1374,"load":1374.0999999999767,"hydratedAt":1467.0999999999767,"tbtToHydration":42,"bytes":{"html":5877,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9127120971679688,"sortWorked":null,"actionMs":null,"clientNavMs":267.0999999999767}
+{"profile":"mobile","app":"corten","i":5,"id":"item_3","ttfb":6.5,"fcp":460,"lcp":460,"dcl":464,"load":465.5,"hydratedAt":463.3999999999651,"tbtToHydration":14,"bytes":{"html":2748,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.5758705139160156,"sortWorked":true,"actionMs":303.19999999995343,"clientNavMs":202.20000000001164}
+{"profile":"mobile","app":"nextjs","i":5,"id":"item_3","ttfb":22.20000000001164,"fcp":400,"lcp":400,"dcl":402.5,"load":1247.5999999999767,"hydratedAt":1381.2999999999884,"tbtToHydration":153,"bytes":{"html":5437,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.2925491333007812,"sortWorked":true,"actionMs":292.4000000000233,"clientNavMs":417.29999999998836}
+{"profile":"mobile","app":"tanstack-start","i":5,"id":"item_3","ttfb":11.099999999976717,"fcp":424,"lcp":424,"dcl":423.79999999998836,"load":2171.2999999999884,"hydratedAt":2337.2999999999884,"tbtToHydration":72,"bytes":{"html":18067,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.0913009643554688,"sortWorked":true,"actionMs":290.5,"clientNavMs":361.5999999999767}
+{"profile":"mobile","app":"sveltekit","i":5,"id":"item_3","ttfb":9.5,"fcp":476,"lcp":476,"dcl":473.29999999998836,"load":474.5,"hydratedAt":835.1000000000349,"tbtToHydration":6,"bytes":{"html":16965,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.314624786376953,"sortWorked":true,"actionMs":278.19999999995343,"clientNavMs":268.30000000004657}
+{"profile":"mobile","app":"react-router","i":5,"id":"item_3","ttfb":19.29999999998836,"fcp":444,"lcp":444,"dcl":435.29999999998836,"load":786.7999999999884,"hydratedAt":1081.2000000000116,"tbtToHydration":32,"bytes":{"html":5014,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.7381324768066406,"sortWorked":true,"actionMs":323.3999999999651,"clientNavMs":251.39999999996508}
+{"profile":"mobile","app":"leptos","i":5,"id":"item_3","ttfb":9.5,"fcp":424,"lcp":424,"dcl":418,"load":418.0999999999767,"hydratedAt":1851.899999999965,"tbtToHydration":82,"bytes":{"html":3602,"js":7495,"wasm":282850,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9479560852050781,"sortWorked":true,"actionMs":301,"clientNavMs":241.79999999998836}
+{"profile":"mobile","app":"django","i":5,"id":"item_3","ttfb":12.299999999988358,"fcp":404,"lcp":404,"dcl":447.19999999995343,"load":448.29999999998836,"hydratedAt":431.29999999998836,"tbtToHydration":8,"bytes":{"html":7711,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.71881103515625,"sortWorked":true,"actionMs":294.69999999995343,"clientNavMs":240.70000000001164}
+{"profile":"mobile","app":"rails","i":5,"id":"item_3","ttfb":10.799999999988358,"fcp":432,"lcp":432,"dcl":1155.5,"load":1160.7000000000116,"hydratedAt":1152.7000000000116,"tbtToHydration":6,"bytes":{"html":8977,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0694923400878906,"sortWorked":true,"actionMs":313.29999999998836,"clientNavMs":249.40000000002328}
+{"profile":"mobile","app":"laravel","i":5,"id":"item_3","ttfb":20.400000000023283,"fcp":420,"lcp":420,"dcl":874.9000000000233,"load":875.5,"hydratedAt":874.6000000000349,"tbtToHydration":18,"bytes":{"html":3325,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.191143035888672,"sortWorked":true,"actionMs":335.70000000001164,"clientNavMs":213.20000000001164}
+{"profile":"mobile","app":"aspnet","i":5,"id":"item_3","ttfb":8.299999999988358,"fcp":412,"lcp":412,"dcl":459.0999999999767,"load":460.5,"hydratedAt":437.79999999998836,"tbtToHydration":7,"bytes":{"html":7758,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.718505859375,"sortWorked":true,"actionMs":279.4000000000233,"clientNavMs":251.40000000002328}
+{"profile":"mobile","app":"spring","i":5,"id":"item_3","ttfb":18.099999999976717,"fcp":416,"lcp":416,"dcl":627.5,"load":629.4000000000233,"hydratedAt":611.4000000000233,"tbtToHydration":4,"bytes":{"html":7628,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7193832397460938,"sortWorked":true,"actionMs":286.5999999999767,"clientNavMs":250.69999999995343}
+{"profile":"mobile","app":"phoenix","i":5,"id":"item_3","ttfb":10.29999999993015,"fcp":408,"lcp":408,"dcl":649.5999999999767,"load":650.1999999999534,"hydratedAt":951,"tbtToHydration":50,"bytes":{"html":2844,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.343669891357422,"sortWorked":true,"actionMs":167.5,"clientNavMs":127.20000000006985}
+{"profile":"mobile","app":"astro","i":5,"id":"item_3","ttfb":11.699999999953434,"fcp":272,"lcp":272,"dcl":601.7999999999302,"load":602.5999999999767,"hydratedAt":600.3999999999069,"tbtToHydration":0,"bytes":{"html":9744,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5615348815917969,"sortWorked":true,"actionMs":308.4000000000233,"clientNavMs":242.19999999995343}
+{"profile":"mobile","app":"nuxt","i":5,"id":"item_3","ttfb":15,"fcp":428,"lcp":428,"dcl":1383.5,"load":1383.5,"hydratedAt":1509.4000000000233,"tbtToHydration":81,"bytes":{"html":17961,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9067420959472656,"sortWorked":true,"actionMs":256.5,"clientNavMs":274.20000000006985}
+{"profile":"mobile","app":"corten","i":6,"id":"item_17","ttfb":5.200000000069849,"fcp":476,"lcp":476,"dcl":483.10000000009313,"load":484.60000000009313,"hydratedAt":482.4000000000233,"tbtToHydration":33,"bytes":{"html":2765,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.5762939453125,"sortWorked":true,"actionMs":292.5999999999767,"clientNavMs":193.09999999997672}
+{"profile":"mobile","app":"nextjs","i":6,"id":"item_17","ttfb":24.400000000023283,"fcp":400,"lcp":400,"dcl":401.19999999995343,"load":1316.3000000000466,"hydratedAt":1459.6999999999534,"tbtToHydration":216,"bytes":{"html":5473,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.362659454345703,"sortWorked":true,"actionMs":315.70000000006985,"clientNavMs":423}
+{"profile":"mobile","app":"tanstack-start","i":6,"id":"item_17","ttfb":13.20000000006985,"fcp":436,"lcp":436,"dcl":431.60000000009313,"load":2217.70000000007,"hydratedAt":2363.4000000000233,"tbtToHydration":101,"bytes":{"html":18136,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.1554183959960938,"sortWorked":true,"actionMs":282.69999999995343,"clientNavMs":344.0999999999767}
+{"profile":"mobile","app":"sveltekit","i":6,"id":"item_17","ttfb":14,"fcp":480,"lcp":480,"dcl":464.5999999999767,"load":465.4000000000233,"hydratedAt":853.0999999999767,"tbtToHydration":10,"bytes":{"html":17032,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.3769912719726562,"sortWorked":true,"actionMs":268.80000000004657,"clientNavMs":267}
+{"profile":"mobile","app":"react-router","i":6,"id":"item_17","ttfb":15.79999999993015,"fcp":416,"lcp":416,"dcl":412.5999999999767,"load":780.5,"hydratedAt":1101.5999999999767,"tbtToHydration":35,"bytes":{"html":5023,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.7947235107421875,"sortWorked":true,"actionMs":351.5,"clientNavMs":246.5}
+{"profile":"mobile","app":"leptos","i":6,"id":"item_17","ttfb":10,"fcp":424,"lcp":424,"dcl":422.20000000006985,"load":422.4000000000233,"hydratedAt":1846.2000000000698,"tbtToHydration":80,"bytes":{"html":3639,"js":7495,"wasm":282915,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9440345764160156,"sortWorked":true,"actionMs":288.9000000000233,"clientNavMs":246.59999999997672}
+{"profile":"mobile","app":"django","i":6,"id":"item_17","ttfb":13.199999999953434,"fcp":412,"lcp":412,"dcl":454.4000000000233,"load":455.5,"hydratedAt":437.30000000004657,"tbtToHydration":7,"bytes":{"html":7748,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7193641662597656,"sortWorked":true,"actionMs":277.19999999995343,"clientNavMs":241}
+{"profile":"mobile","app":"rails","i":6,"id":"item_17","ttfb":13.199999999953434,"fcp":420,"lcp":420,"dcl":1156.0999999999767,"load":1160.5999999999767,"hydratedAt":1152.5999999999767,"tbtToHydration":7,"bytes":{"html":9013,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0694923400878906,"sortWorked":true,"actionMs":287.5,"clientNavMs":245.5}
+{"profile":"mobile","app":"laravel","i":6,"id":"item_17","ttfb":22.599999999976717,"fcp":424,"lcp":424,"dcl":870.1999999999534,"load":871,"hydratedAt":870,"tbtToHydration":25,"bytes":{"html":3337,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.2254371643066406,"sortWorked":true,"actionMs":317.9000000000233,"clientNavMs":210.69999999995343}
+{"profile":"mobile","app":"aspnet","i":6,"id":"item_17","ttfb":6.599999999976717,"fcp":412,"lcp":412,"dcl":451.19999999995343,"load":452.69999999995343,"hydratedAt":434.9000000000233,"tbtToHydration":7,"bytes":{"html":7794,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7188949584960938,"sortWorked":true,"actionMs":292.80000000004657,"clientNavMs":241.90000000002328}
+{"profile":"mobile","app":"spring","i":6,"id":"item_17","ttfb":15,"fcp":420,"lcp":420,"dcl":632.0999999999767,"load":634.5,"hydratedAt":616.6999999999534,"tbtToHydration":5,"bytes":{"html":7665,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7189788818359375,"sortWorked":true,"actionMs":285.5999999999767,"clientNavMs":244.90000000002328}
+{"profile":"mobile","app":"phoenix","i":6,"id":"item_17","ttfb":12.099999999976717,"fcp":412,"lcp":412,"dcl":643.2000000000698,"load":643.3000000000466,"hydratedAt":931.9000000000233,"tbtToHydration":42,"bytes":{"html":2832,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.3047943115234375,"sortWorked":true,"actionMs":153.79999999993015,"clientNavMs":128.69999999995343}
+{"profile":"mobile","app":"astro","i":6,"id":"item_17","ttfb":10.900000000023283,"fcp":276,"lcp":276,"dcl":578.4000000000233,"load":579.3000000000466,"hydratedAt":577.2000000000698,"tbtToHydration":5,"bytes":{"html":9779,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5634651184082031,"sortWorked":true,"actionMs":291.80000000004657,"clientNavMs":246.10000000009313}
+{"profile":"mobile","app":"nuxt","i":6,"id":"item_17","ttfb":21.5,"fcp":444,"lcp":444,"dcl":1380.4000000000233,"load":1380.5999999999767,"hydratedAt":1481.5999999999767,"tbtToHydration":56,"bytes":{"html":18022,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.965991973876953,"sortWorked":true,"actionMs":268,"clientNavMs":269.39999999990687}
+{"profile":"mobile","app":"corten","i":7,"id":"item_250","ttfb":3.699999999953434,"fcp":468,"lcp":468,"dcl":474.4000000000233,"load":475.79999999993015,"hydratedAt":473.9000000000233,"tbtToHydration":22,"bytes":{"html":2618,"js":10855,"wasm":0,"css":2816,"data":0},"requests":7,"jsHeapUsedMB":1.6106796264648438,"sortWorked":true,"actionMs":302.19999999995343,"clientNavMs":203.90000000002328}
+{"profile":"mobile","app":"nextjs","i":7,"id":"item_250","ttfb":25.900000000023283,"fcp":400,"lcp":400,"dcl":399.69999999995343,"load":1236.7999999999302,"hydratedAt":1358.6999999999534,"tbtToHydration":143,"bytes":{"html":5255,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.3803787231445312,"sortWorked":true,"actionMs":302,"clientNavMs":421.5999999999767}
+{"profile":"mobile","app":"tanstack-start","i":7,"id":"item_250","ttfb":17.900000000023283,"fcp":420,"lcp":420,"dcl":415.9000000000233,"load":2172.3000000000466,"hydratedAt":2322.5,"tbtToHydration":72,"bytes":{"html":16543,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.1528778076171875,"sortWorked":true,"actionMs":279.30000000004657,"clientNavMs":344.19999999995343}
+{"profile":"mobile","app":"sveltekit","i":7,"id":"item_250","ttfb":6.599999999976717,"fcp":464,"lcp":464,"dcl":467.5,"load":468.39999999990687,"hydratedAt":837.5,"tbtToHydration":7,"bytes":{"html":15558,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.313892364501953,"sortWorked":true,"actionMs":273,"clientNavMs":265.29999999993015}
+{"profile":"mobile","app":"react-router","i":7,"id":"item_250","ttfb":22.599999999976717,"fcp":432,"lcp":432,"dcl":427.5,"load":781.5999999999767,"hydratedAt":1056.5,"tbtToHydration":33,"bytes":{"html":4726,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.7625694274902344,"sortWorked":true,"actionMs":331.4000000000233,"clientNavMs":267.30000000004657}
+{"profile":"mobile","app":"leptos","i":7,"id":"item_250","ttfb":5.099999999976717,"fcp":416,"lcp":416,"dcl":409.80000000004657,"load":410.5,"hydratedAt":1831,"tbtToHydration":69,"bytes":{"html":3453,"js":7495,"wasm":282888,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9426460266113281,"sortWorked":true,"actionMs":273.19999999995343,"clientNavMs":243.59999999997672}
+{"profile":"mobile","app":"django","i":7,"id":"item_250","ttfb":12.699999999953434,"fcp":424,"lcp":424,"dcl":458.5,"load":461.0999999999767,"hydratedAt":439.9000000000233,"tbtToHydration":6,"bytes":{"html":7844,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7240066528320312,"sortWorked":true,"actionMs":287.19999999995343,"clientNavMs":237.59999999997672}
+{"profile":"mobile","app":"rails","i":7,"id":"item_250","ttfb":8.5,"fcp":412,"lcp":412,"dcl":1150,"load":1154.8999999999069,"hydratedAt":1147.8999999999069,"tbtToHydration":3,"bytes":{"html":9108,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0690689086914062,"sortWorked":true,"actionMs":296.69999999995343,"clientNavMs":250}
+{"profile":"mobile","app":"laravel","i":7,"id":"item_250","ttfb":19.599999999976717,"fcp":424,"lcp":424,"dcl":880.2999999999302,"load":880.2999999999302,"hydratedAt":879.2999999999302,"tbtToHydration":23,"bytes":{"html":3365,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.1997833251953125,"sortWorked":true,"actionMs":305,"clientNavMs":210.79999999993015}
+{"profile":"mobile","app":"aspnet","i":7,"id":"item_250","ttfb":10.199999999953434,"fcp":420,"lcp":420,"dcl":448.0999999999767,"load":449.4000000000233,"hydratedAt":431.9000000000233,"tbtToHydration":19,"bytes":{"html":7889,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7233543395996094,"sortWorked":true,"actionMs":279.69999999995343,"clientNavMs":243.20000000006985}
+{"profile":"mobile","app":"spring","i":7,"id":"item_250","ttfb":22.300000000046566,"fcp":420,"lcp":420,"dcl":627.9000000000233,"load":629.7000000000698,"hydratedAt":611.6000000000931,"tbtToHydration":5,"bytes":{"html":7761,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7239532470703125,"sortWorked":true,"actionMs":267.9000000000233,"clientNavMs":245.09999999997672}
+{"profile":"mobile","app":"phoenix","i":7,"id":"item_250","ttfb":9.400000000023283,"fcp":408,"lcp":408,"dcl":645.4000000000233,"load":645.4000000000233,"hydratedAt":923.1999999999534,"tbtToHydration":44,"bytes":{"html":2887,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.3060951232910156,"sortWorked":true,"actionMs":136.5,"clientNavMs":144.90000000002328}
+{"profile":"mobile","app":"astro","i":7,"id":"item_250","ttfb":7.5,"fcp":252,"lcp":252,"dcl":595.5,"load":596.0999999999767,"hydratedAt":593.3000000000466,"tbtToHydration":0,"bytes":{"html":9873,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5634765625,"sortWorked":true,"actionMs":305.5999999999767,"clientNavMs":243.69999999995343}
+{"profile":"mobile","app":"nuxt","i":7,"id":"item_250","ttfb":13.5,"fcp":440,"lcp":440,"dcl":1379.3000000000466,"load":1379.8000000000466,"hydratedAt":1505.8000000000466,"tbtToHydration":82,"bytes":{"html":16377,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9078216552734375,"sortWorked":true,"actionMs":281.89999999990687,"clientNavMs":264}
+{"profile":"mobile","app":"corten","i":8,"id":"item_1999","ttfb":5.099999999976717,"fcp":444,"lcp":444,"dcl":438.69999999995343,"load":442.5999999999767,"hydratedAt":438.69999999995343,"tbtToHydration":6,"bytes":{"html":2138,"js":9937,"wasm":0,"css":2816,"data":0},"requests":6,"jsHeapUsedMB":1.5879135131835938,"sortWorked":true,"actionMs":289.4000000000233,"clientNavMs":202.59999999997672}
+{"profile":"mobile","app":"nextjs","i":8,"id":"item_1999","ttfb":21.20000000006985,"fcp":396,"lcp":396,"dcl":389.30000000004657,"load":1247.7000000000698,"hydratedAt":1379.4000000000233,"tbtToHydration":141,"bytes":{"html":4390,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.2784461975097656,"sortWorked":true,"actionMs":304.4000000000233,"clientNavMs":436.70000000006985}
+{"profile":"mobile","app":"tanstack-start","i":8,"id":"item_1999","ttfb":13.5,"fcp":420,"lcp":420,"dcl":414.5,"load":2174.79999999993,"hydratedAt":2317.1999999999534,"tbtToHydration":60,"bytes":{"html":10709,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":3.036579132080078,"sortWorked":true,"actionMs":284.4000000000233,"clientNavMs":341.5999999999767}
+{"profile":"mobile","app":"sveltekit","i":8,"id":"item_1999","ttfb":8,"fcp":424,"lcp":424,"dcl":425,"load":425.10000000009313,"hydratedAt":828.7000000000698,"tbtToHydration":0,"bytes":{"html":9878,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.265491485595703,"sortWorked":true,"actionMs":276.0999999999767,"clientNavMs":272.9000000000233}
+{"profile":"mobile","app":"react-router","i":8,"id":"item_1999","ttfb":18.099999999976717,"fcp":428,"lcp":428,"dcl":423.69999999995343,"load":777.6999999999534,"hydratedAt":1071.3999999999069,"tbtToHydration":44,"bytes":{"html":3606,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.631561279296875,"sortWorked":true,"actionMs":329.9000000000233,"clientNavMs":273.19999999995343}
+{"profile":"mobile","app":"leptos","i":8,"id":"item_1999","ttfb":4.599999999976717,"fcp":408,"lcp":408,"dcl":394.0999999999767,"load":394.0999999999767,"hydratedAt":1826.5999999999767,"tbtToHydration":60,"bytes":{"html":2588,"js":7497,"wasm":282836,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.9097366333007812,"sortWorked":true,"actionMs":261.69999999995343,"clientNavMs":241.89999999990687}
+{"profile":"mobile","app":"django","i":8,"id":"item_1999","ttfb":9.199999999953434,"fcp":412,"lcp":412,"dcl":456.69999999995343,"load":459,"hydratedAt":442,"tbtToHydration":0,"bytes":{"html":5244,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.7144966125488281,"sortWorked":true,"actionMs":271.0999999999767,"clientNavMs":239.80000000004657}
+{"profile":"mobile","app":"rails","i":8,"id":"item_1999","ttfb":8.099999999976717,"fcp":432,"lcp":432,"dcl":1162.3000000000466,"load":1166.8000000000466,"hydratedAt":1158.4000000000233,"tbtToHydration":2,"bytes":{"html":6601,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.0693626403808594,"sortWorked":true,"actionMs":289.80000000004657,"clientNavMs":248.79999999993015}
+{"profile":"mobile","app":"laravel","i":8,"id":"item_1999","ttfb":16.79999999993015,"fcp":412,"lcp":412,"dcl":889.5999999999767,"load":890.2999999999302,"hydratedAt":888.7999999999302,"tbtToHydration":27,"bytes":{"html":2987,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.174205780029297,"sortWorked":true,"actionMs":332.5999999999767,"clientNavMs":217}
+{"profile":"mobile","app":"aspnet","i":8,"id":"item_1999","ttfb":4.699999999953434,"fcp":404,"lcp":404,"dcl":440,"load":441,"hydratedAt":424.0999999999767,"tbtToHydration":1,"bytes":{"html":5288,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.7164268493652344,"sortWorked":true,"actionMs":270.69999999995343,"clientNavMs":244.5}
+{"profile":"mobile","app":"spring","i":8,"id":"item_1999","ttfb":14.79999999993015,"fcp":416,"lcp":416,"dcl":626.5999999999767,"load":628.2999999999302,"hydratedAt":611.4000000000233,"tbtToHydration":0,"bytes":{"html":5161,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.7151756286621094,"sortWorked":true,"actionMs":270.20000000006985,"clientNavMs":243.69999999995343}
+{"profile":"mobile","app":"phoenix","i":8,"id":"item_1999","ttfb":11.300000000046566,"fcp":392,"lcp":392,"dcl":642.4000000000233,"load":642.4000000000233,"hydratedAt":906.6000000000931,"tbtToHydration":32,"bytes":{"html":2431,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.2103843688964844,"sortWorked":true,"actionMs":149.29999999993015,"clientNavMs":130.19999999995343}
+{"profile":"mobile","app":"astro","i":8,"id":"item_1999","ttfb":7.5,"fcp":276,"lcp":276,"dcl":622.1999999999534,"load":623,"hydratedAt":620.6999999999534,"tbtToHydration":0,"bytes":{"html":7336,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5631294250488281,"sortWorked":true,"actionMs":292.4000000000233,"clientNavMs":234.20000000006985}
+{"profile":"mobile","app":"nuxt","i":8,"id":"item_1999","ttfb":10,"fcp":436,"lcp":436,"dcl":1370.9000000000233,"load":1371,"hydratedAt":1471.2999999999302,"tbtToHydration":50,"bytes":{"html":10276,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.8709335327148438,"sortWorked":true,"actionMs":273.19999999995343,"clientNavMs":267.69999999995343}
+{"profile":"mobile","app":"corten","i":9,"id":"item_12345","ttfb":3.599999999976717,"fcp":444,"lcp":444,"dcl":430.5,"load":430.80000000004657,"hydratedAt":430.4000000000233,"tbtToHydration":0,"bytes":{"html":1734,"js":9937,"wasm":0,"css":2816,"data":0},"requests":6,"jsHeapUsedMB":1.5867691040039062,"sortWorked":null,"actionMs":null,"clientNavMs":198.59999999997672}
+{"profile":"mobile","app":"nextjs","i":9,"id":"item_12345","ttfb":13.5,"fcp":388,"lcp":388,"dcl":376.70000000006985,"load":1307.4000000000233,"hydratedAt":1468.5999999999767,"tbtToHydration":193,"bytes":{"html":3491,"js":141474,"wasm":0,"css":1117,"data":463},"requests":10,"jsHeapUsedMB":3.1283493041992188,"sortWorked":null,"actionMs":null,"clientNavMs":433.29999999993015}
+{"profile":"mobile","app":"tanstack-start","i":9,"id":"item_12345","ttfb":11.900000000023283,"fcp":392,"lcp":392,"dcl":391.30000000004657,"load":2185.5,"hydratedAt":2332.600000000093,"tbtToHydration":78,"bytes":{"html":6727,"js":352371,"wasm":0,"css":2274,"data":0},"requests":7,"jsHeapUsedMB":2.8973007202148438,"sortWorked":null,"actionMs":null,"clientNavMs":335.29999999993015}
+{"profile":"mobile","app":"sveltekit","i":9,"id":"item_12345","ttfb":7.799999999930151,"fcp":556,"lcp":556,"dcl":551,"load":551.0999999999767,"hydratedAt":791.0999999999767,"tbtToHydration":0,"bytes":{"html":6034,"js":37488,"wasm":0,"css":972,"data":0},"requests":13,"jsHeapUsedMB":2.2038612365722656,"sortWorked":null,"actionMs":null,"clientNavMs":269}
+{"profile":"mobile","app":"react-router","i":9,"id":"item_12345","ttfb":9.5,"fcp":424,"lcp":424,"dcl":416.20000000006985,"load":785.5999999999767,"hydratedAt":1047.3000000000466,"tbtToHydration":29,"bytes":{"html":2613,"js":103467,"wasm":0,"css":1074,"data":567},"requests":7,"jsHeapUsedMB":2.8519554138183594,"sortWorked":null,"actionMs":null,"clientNavMs":256.5999999999767}
+{"profile":"mobile","app":"leptos","i":9,"id":"item_12345","ttfb":6.5,"fcp":400,"lcp":400,"dcl":395.19999999995343,"load":395.4000000000233,"hydratedAt":1821.1999999999534,"tbtToHydration":59,"bytes":{"html":1870,"js":7495,"wasm":282850,"css":1122,"data":0},"requests":4,"jsHeapUsedMB":1.8879318237304688,"sortWorked":null,"actionMs":null,"clientNavMs":253.90000000002328}
+{"profile":"mobile","app":"django","i":9,"id":"item_12345","ttfb":9.899999999906868,"fcp":380,"lcp":380,"dcl":446,"load":446.79999999993015,"hydratedAt":432.79999999993015,"tbtToHydration":0,"bytes":{"html":3481,"js":17956,"wasm":0,"css":1239,"data":0},"requests":4,"jsHeapUsedMB":1.6528778076171875,"sortWorked":null,"actionMs":null,"clientNavMs":236.69999999995343}
+{"profile":"mobile","app":"rails","i":9,"id":"item_12345","ttfb":7.099999999976717,"fcp":396,"lcp":396,"dcl":1151.5,"load":1155.3000000000466,"hydratedAt":1149.0999999999767,"tbtToHydration":0,"bytes":{"html":4837,"js":157918,"wasm":0,"css":2699,"data":0},"requests":9,"jsHeapUsedMB":2.066864013671875,"sortWorked":null,"actionMs":null,"clientNavMs":247.19999999995343}
+{"profile":"mobile","app":"laravel","i":9,"id":"item_12345","ttfb":22.100000000093132,"fcp":388,"lcp":388,"dcl":847,"load":847.6000000000931,"hydratedAt":846.2000000000698,"tbtToHydration":0,"bytes":{"html":2610,"js":90441,"wasm":0,"css":1331,"data":0},"requests":3,"jsHeapUsedMB":2.4369888305664062,"sortWorked":null,"actionMs":null,"clientNavMs":214.30000000004657}
+{"profile":"mobile","app":"aspnet","i":9,"id":"item_12345","ttfb":11.800000000046566,"fcp":396,"lcp":396,"dcl":444.4000000000233,"load":446.20000000006985,"hydratedAt":432.10000000009313,"tbtToHydration":0,"bytes":{"html":3524,"js":16239,"wasm":0,"css":1071,"data":0},"requests":4,"jsHeapUsedMB":1.6524543762207031,"sortWorked":null,"actionMs":null,"clientNavMs":238.19999999995343}
+{"profile":"mobile","app":"spring","i":9,"id":"item_12345","ttfb":12.70000000006985,"fcp":392,"lcp":392,"dcl":617,"load":618.5,"hydratedAt":604.2000000000698,"tbtToHydration":0,"bytes":{"html":3398,"js":53585,"wasm":0,"css":2699,"data":0},"requests":4,"jsHeapUsedMB":1.6528396606445312,"sortWorked":null,"actionMs":null,"clientNavMs":242.09999999997672}
+{"profile":"mobile","app":"phoenix","i":9,"id":"item_12345","ttfb":10.5,"fcp":412,"lcp":412,"dcl":657.4000000000233,"load":657.5,"hydratedAt":899.2999999999302,"tbtToHydration":38,"bytes":{"html":2015,"js":47542,"wasm":0,"css":1240,"data":0},"requests":3,"jsHeapUsedMB":2.126842498779297,"sortWorked":null,"actionMs":null,"clientNavMs":126.39999999990687}
+{"profile":"mobile","app":"astro","i":9,"id":"item_12345","ttfb":8.5,"fcp":256,"lcp":256,"dcl":625.3999999999069,"load":626.0999999999767,"hydratedAt":623.5,"tbtToHydration":0,"bytes":{"html":5571,"js":26428,"wasm":0,"css":0,"data":0},"requests":4,"jsHeapUsedMB":1.5408935546875,"sortWorked":null,"actionMs":null,"clientNavMs":240.60000000009313}
+{"profile":"mobile","app":"nuxt","i":9,"id":"item_12345","ttfb":9.099999999976717,"fcp":416,"lcp":416,"dcl":1389.3000000000466,"load":1389.5,"hydratedAt":1496.5999999999767,"tbtToHydration":56,"bytes":{"html":5877,"js":203258,"wasm":0,"css":2263,"data":0},"requests":6,"jsHeapUsedMB":2.9136428833007812,"sortWorked":null,"actionMs":null,"clientNavMs":279.29999999993015}
+done
+2026-10-30T12:05:09.479Z node summarize.mjs r8
+
+SSR fixture
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 300, 0.3/0.4, 4.7% | 15747, 4.4/8.2 | 14553, 32.9, 0% | 15.7-18.9 MiB |
+| nextjs | FAILED: served 158/s of the fixed rate, 36.06% never sent |  |  |  |
+| nextjs | 158, 1273.7/57175, 100.4% | 186, 358.1/410.4 | 188, 10534.1, 0% | 218.8-221.4 MiB |
+| tanstack-start | 300, 1.4/33.9, 49.3% | 683, 86.9/146.6 | 689, 456.8, 0% | 162.2-163.4 MiB |
+| sveltekit | 300, 1.1/20.7, 39.8% | 920, 60.9/131.7 | 809, 410.6, 0% | 143.2-148.9 MiB |
+| react-router | 300, 1.8/44.7, 61.6% | 542, 110.3/182.4 | 535, 566.7, 0% | 141.7-143 MiB |
+| leptos | 300, 0.9/1.2, 23.8% | 1408, 46.1/67.3 | 1233, 349.8, 0% | 15.4-32.5 MiB |
+| django | 300, 10.9/233.4, 93.4% | 335, 187.3/234.8 | 306, 982.5, 0% | 343.7-344.4 MiB |
+| rails | 300, 2.2/48.6, 72.3% | 457, 138.9/175.5 | 426, 703.1, 0% | 135.2-140 MiB |
+| laravel | FAILED: never answered /items/item_1 within a minute |  |  |  |
+| aspnet | 300, 0.6/2.4, 21.4% | 4182, 15.4/23.8 | 4092, 102.8, 0% | 84.8-89.5 MiB |
+| spring | 300, 1/4.6, 37.7% | 1136, 40.1/339.3 | 1099, 1199.3, 0% | 356.4-377 MiB |
+| phoenix | 300, 1/1.4, 36.2% | 1420, 44.9/58.6 | 1357, 5049, 0% | 280.6-297.7 MiB |
+| astro | 300, 0.9/31.4, 29.9% | 1222, 47.1/115.7 | 1166, 292.7, 0% | 137-141.1 MiB |
+| nuxt | 290, 707.6/25276.8, 100.4% | 329, 192.3/242.9 | 308, 870.4, 0% | 161-161.9 MiB |
+
+SSR api
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 150, 0.7/1.1, 6.3% | 3616, 17.8/24.3 | 3219, 121.7, 0% | 16.3-58.4 MiB |
+| nextjs | FAILED: served 80/s of the fixed rate, 22.85% never sent |  |  |  |
+| nextjs | 80, 2485.7/52135.5, 100.4% | 119, 513.9/812.3 | 110, 23790.2, 0% | 262.4-266 MiB |
+| tanstack-start | 150, 2.6/35.2, 49.7% | 327, 197.8/234.9 | 305, 973.4, 0% | 136.6-172.8 MiB |
+| sveltekit | 150, 2.2/23.1, 42.2% | 364, 175.3/214.4 | 357, 851.8, 0% | 146.8-158.6 MiB |
+| react-router | 150, 3.1/67.8, 57.8% | 290, 223/266.8 | 294, 2324.9, 0% | 137.1-149.4 MiB |
+| leptos | 150, 1.7/2.4, 21.2% | 773, 84.9/99.8 | 651, 520, 0% | 15.1-57.4 MiB |
+| django | 150, 5.1/24.5, 79.5% | 181, 350.6/394.7 | 179, 1503.7, 0% | 127.1-127.7 MiB |
+| rails | 150, 3.4/33.6, 55.6% | 334, 188.8/237.5 | 297, 1018.4, 0% | 106.8-113.2 MiB |
+| laravel | FAILED: served 92/s of the fixed rate, 28.27% never sent |  |  |  |
+| laravel | 92, 9738.3/10978.2, 99.5% | 97, 659.7/735.8 | 95, 2849.3, 0% | 116.6-125.8 MiB |
+| aspnet | 150, 1.8/8.4, 38.1% | 1065, 58.1/95.6 | 973, 344.1, 0% | 70.8-99.8 MiB |
+| spring | 150, 2.3/8.3, 50.9% | 515, 120.8/231.6 | 415, 1202.9, 0% | 432.7-462.7 MiB |
+| phoenix | 150, 3.1/5, 50.3% | 373, 171.2/224.6 | 380, 787, 0% | 230-344.7 MiB |
+| astro | 150, 2.1/36.9, 43.7% | 462, 142.1/176.8 | 426, 747.7, 0% | 125.3-146.7 MiB |
+| nuxt | 150, 4.6/274.6, 74.9% | 211, 301.3/383.1 | 204, 14505.1, 0% | 131.5-189.6 MiB |
+
+SSR fixture-json
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 300, 0.3/0.4, 3.9% | 24652, 2/8.1 | 23937, 32.8, 0% | 15.8-18.7 MiB |
+| nextjs | 300, 0.9/30.2, 30.8% | 1141, 50.5/117.7 | 1102, 306.6, 0% | 165.5-167.5 MiB |
+| tanstack-start | 300, 0.5/4.1, 12.9% | 3625, 14.7/46.8 | 3308, 122.4, 0% | 140.8-143.5 MiB |
+| sveltekit | 300, 0.5/3.7, 13.3% | 3223, 18.4/49.2 | 3184, 136.7, 0% | 123.1-126.1 MiB |
+| react-router | 300, 0.7/1.8, 18.7% | 2351, 24.4/76.4 | 2247, 189.1, 0% | 117.5-119.3 MiB |
+| leptos | 300, 0.3/0.4, 4.7% | 13758, 5.3/8.3 | 12843, 33.9, 0% | 14.6-18 MiB |
+| django | 300, 0.7/1.2, 28.3% | 1193, 50/73.7 | 1186, 275.9, 0% | 293.5-293.9 MiB |
+| rails | 300, 1.2/6.5, 38.6% | 934, 68.3/94.7 | 927, 354.2, 0% | 130-131.1 MiB |
+| laravel | FAILED: never answered /api/items/item_1 within a minute |  |  |  |
+| aspnet | 300, 0.3/0.5, 14.9% | 12347, 4.8/9.5 | 12024, 36.2, 0% | 77.7-82 MiB |
+| spring | 300, 0.3/1.2, 10.6% | 6620, 6.2/89.3 | 6348, 216.3, 0% | 343.2-367.2 MiB |
+| phoenix | 300, 0.7/1, 26.8% | 2127, 29.3/47 | 2019, 4018.4, 0% | 300.1-325.4 MiB |
+| astro | 300, 0.7/22.8, 21.8% | 1971, 27.9/77.7 | 1877, 189.9, 0% | 136.6-138 MiB |
+| nuxt | 300, 0.4/0.6, 9.8% | 6693, 8/32.8 | 6162, 87.4, 0% | 95.3-97 MiB |
+
+SSR api-json
+| App | fixed rate: achieved rps, p50/p99 ms, CPU | 64 VUs: rps, p50/p99 | 256 VUs: rps, p99, failed | memory under load |
+| corten | 150, 0.7/0.9, 5.8% | 3852, 17.6/22.9 | 3429, 109.7, 0% | 16-58.2 MiB |
+| nextjs | 150, 2.2/61.6, 43.1% | 354, 190.9/227.2 | 334, 1480.9, 0% | 156.1-195.2 MiB |
+| tanstack-start | 150, 1.5/17.6, 27.9% | 676, 98.2/125.8 | 589, 547.5, 0% | 121.7-145 MiB |
+| sveltekit | 150, 1.4/14.7, 26.2% | 716, 91.3/120.1 | 619, 500.3, 0% | 124.1-142.9 MiB |
+| react-router | 150, 1.7/26.9, 34.7% | 554, 116.8/143.1 | 519, 608.4, 0% | 120.9-138.1 MiB |
+| leptos | 150, 1.3/1.9, 15.2% | 1075, 58.3/79.3 | 1010, 481.7, 0% | 15-58.5 MiB |
+| django | 150, 2.9/4.5, 45% | 335, 189.6/224.3 | 336, 863.5, 0% | 76.8-77.4 MiB |
+| rails | 150, 2.4/23.1, 39.2% | 405, 157.2/214.6 | 390, 784.6, 0% | 82.9-85.8 MiB |
+| laravel | 150, 4.3/14.2, 61% | 242, 256.8/463.1 | 241, 1612.7, 0% | 100.3-117.2 MiB |
+| aspnet | 150, 1.4/6.6, 28.2% | 1483, 41/68.6 | 1421, 247.3, 0% | 59.7-87 MiB |
+| spring | 150, 1.5/5.6, 31.9% | 912, 65.1/147.3 | 723, 688.4, 0% | 416.7-445.1 MiB |
+| phoenix | 150, 2.8/4.7, 45.7% | 421, 150.5/202.5 | 421, 7154.3, 0% | 231.8-311.6 MiB |
+| astro | 150, 1.8/29.5, 36.6% | 547, 119.9/147.7 | 510, 628.8, 0% | 122.5-139.5 MiB |
+| nuxt | 150, 1.4/15.7, 25.9% | 772, 83.9/128.3 | 693, 535.1, 0% | 125.5-136.9 MiB |
+
+Efficiency (requests per CPU-second at 64 users, CPU at the fixed rate, 64-user requests a second per MiB)
+| fixture/corten | 15890/CPU-s | 4.7% at 300/s | 960.2/s per MiB |  |  |
+| fixture/nextjs | 186/CPU-s | 89.3% at 158/s | 0.8/s per MiB |  | FAILED |
+| fixture/tanstack-start | 683/CPU-s | 49.3% at 300/s | 4.2/s per MiB |  |  |
+| fixture/sveltekit | 920/CPU-s | 39.7% at 300/s | 6.4/s per MiB |  |  |
+| fixture/react-router | 542/CPU-s | 61.1% at 300/s | 3.8/s per MiB |  |  |
+| fixture/leptos | 1408/CPU-s | 23.7% at 300/s | 87.5/s per MiB |  |  |
+| fixture/django | 335/CPU-s | 92.9% at 300/s | 1/s per MiB |  |  |
+| fixture/rails | 457/CPU-s | 71.9% at 300/s | 3.2/s per MiB |  |  |
+| fixture/aspnet | 4184/CPU-s | 24.5% at 300/s | 48/s per MiB |  |  |
+| fixture/spring | 1137/CPU-s | 45.1% at 300/s | 3.2/s per MiB |  |  |
+| fixture/phoenix | 1420/CPU-s | 36% at 300/s | 4.9/s per MiB |  |  |
+| fixture/astro | 1222/CPU-s | 29.8% at 300/s | 8.7/s per MiB |  |  |
+| fixture/nuxt | 329/CPU-s | 100% at 290/s | 2/s per MiB |  |  |
+| api/corten | 3617/CPU-s | 6.4% at 150/s | 206.6/s per MiB | item API 46.2% |  |
+| api/nextjs | 119/CPU-s | 76.9% at 80/s | 0.5/s per MiB | item API 2.3% | FAILED |
+| api/tanstack-start | 327/CPU-s | 49.7% at 150/s | 2.4/s per MiB | item API 4% |  |
+| api/sveltekit | 364/CPU-s | 42.1% at 150/s | 2.4/s per MiB | item API 4.5% |  |
+| api/react-router | 290/CPU-s | 57.3% at 150/s | 2.1/s per MiB | item API 3.4% |  |
+| api/leptos | 773/CPU-s | 21.1% at 150/s | 45.7/s per MiB | item API 12.6% |  |
+| api/django | 181/CPU-s | 78.9% at 150/s | 1.4/s per MiB | item API 4.5% |  |
+| api/rails | 334/CPU-s | 55.6% at 150/s | 3.1/s per MiB | item API 6.7% |  |
+| api/laravel | 98/CPU-s | 97.9% at 92/s | 0.5/s per MiB | item API 8% | FAILED |
+| api/aspnet | 1065/CPU-s | 39.2% at 150/s | 14.2/s per MiB | item API 15.7% |  |
+| api/spring | 514/CPU-s | 57.3% at 150/s | 1.2/s per MiB | item API 8.2% |  |
+| api/phoenix | 373/CPU-s | 50.2% at 150/s | 1.5/s per MiB | item API 6.3% |  |
+| api/astro | 462/CPU-s | 43.6% at 150/s | 3.6/s per MiB | item API 5.9% |  |
+| api/nuxt | 211/CPU-s | 74.3% at 150/s | 1.6/s per MiB | item API 2.9% |  |
+| fixture-json/corten | 25527/CPU-s | 3.9% at 300/s | 1512.4/s per MiB |  |  |
+| fixture-json/nextjs | 1141/CPU-s | 30.6% at 300/s | 6.9/s per MiB |  |  |
+| fixture-json/tanstack-start | 3626/CPU-s | 12.9% at 300/s | 25.7/s per MiB |  |  |
+| fixture-json/sveltekit | 3223/CPU-s | 13.3% at 300/s | 26.1/s per MiB |  |  |
+| fixture-json/react-router | 2352/CPU-s | 18.4% at 300/s | 19.9/s per MiB |  |  |
+| fixture-json/leptos | 13844/CPU-s | 4.7% at 300/s | 905.1/s per MiB |  |  |
+| fixture-json/django | 1195/CPU-s | 27.9% at 300/s | 4.1/s per MiB |  |  |
+| fixture-json/rails | 934/CPU-s | 38.2% at 300/s | 7.1/s per MiB |  |  |
+| fixture-json/aspnet | 12359/CPU-s | 15% at 300/s | 155.5/s per MiB |  |  |
+| fixture-json/spring | 6629/CPU-s | 21.2% at 300/s | 19.3/s per MiB |  |  |
+| fixture-json/phoenix | 2137/CPU-s | 26.6% at 300/s | 6.9/s per MiB |  |  |
+| fixture-json/astro | 1971/CPU-s | 21.5% at 300/s | 14.3/s per MiB |  |  |
+| fixture-json/nuxt | 6694/CPU-s | 9.8% at 300/s | 69.6/s per MiB |  |  |
+| api-json/corten | 3853/CPU-s | 5.8% at 150/s | 209.4/s per MiB | item API 50.5% |  |
+| api-json/nextjs | 354/CPU-s | 44.4% at 150/s | 2.2/s per MiB | item API 4.4% |  |
+| api-json/tanstack-start | 676/CPU-s | 28% at 150/s | 5.4/s per MiB | item API 7.9% |  |
+| api-json/sveltekit | 716/CPU-s | 26.3% at 150/s | 5.7/s per MiB | item API 8.5% |  |
+| api-json/react-router | 554/CPU-s | 34.6% at 150/s | 4.5/s per MiB | item API 7% |  |
+| api-json/leptos | 1075/CPU-s | 15.2% at 150/s | 64.4/s per MiB | item API 15.4% |  |
+| api-json/django | 335/CPU-s | 44.8% at 150/s | 4.3/s per MiB | item API 6.5% |  |
+| api-json/rails | 405/CPU-s | 38.8% at 150/s | 4.8/s per MiB | item API 7.7% |  |
+| api-json/laravel | 244/CPU-s | 60.5% at 150/s | 2.4/s per MiB | item API 9.9% |  |
+| api-json/aspnet | 1484/CPU-s | 29.9% at 150/s | 23.8/s per MiB | item API 21% |  |
+| api-json/spring | 912/CPU-s | 40.5% at 150/s | 2.2/s per MiB | item API 13.4% |  |
+| api-json/phoenix | 421/CPU-s | 45.6% at 150/s | 1.8/s per MiB | item API 6.9% |  |
+| api-json/astro | 547/CPU-s | 36.4% at 150/s | 4.3/s per MiB | item API 6.9% |  |
+| api-json/nuxt | 772/CPU-s | 25.9% at 150/s | 6/s per MiB | item API 11.5% |  |
+
+Cold start
+| corten | 6.7 ms (min 5.9, max 36.2) | 1.23MiB | 123 MB image |
+| nextjs | 719.3 ms (min 691.7, max 1030.2) | 51.55MiB | 385 MB image |
+| tanstack-start | 217.1 ms (min 209.7, max 229.9) | 26.38MiB | 332 MB image |
+| sveltekit | 187.5 ms (min 176.9, max 245.9) | 23.73MiB | 333 MB image |
+| react-router | 315.2 ms (min 303.7, max 334.2) | 31.79MiB | 353 MB image |
+| leptos | 7.8 ms (min 6.7, max 10.2) | 1.473MiB | 127 MB image |
+| django | 1134.2 ms (min 1114, max 1169.3) | 63.1MiB | 276 MB image |
+| rails | 1196.7 ms (min 1177.7, max 1293.3) | 63.9MiB | 431 MB image |
+| laravel | 908.1 ms (min 869.9, max 993.2) | 95.47MiB | 947 MB image |
+| aspnet | 752.3 ms (min 718.6, max 834.3) | 30.56MiB | 342 MB image |
+| spring | 8190.2 ms (min 8012.7, max 8333.4) | 142.2MiB | 516 MB image |
+| phoenix | 1435 ms (min 1408, max 1510.1) | 125.6MiB | 262 MB image |
+| astro | 347.8 ms (min 322.7, max 426.7) | 36.11MiB | 528 MB image |
+| nuxt | 322.1 ms (min 318.3, max 333.4) | 35.55MiB | 335 MB image |
+
+Bytes (raw / gzip)
+| corten | html 11.2/2.3 | js 26.7/10.2 (4) | wasm 0.0/0.0 | css 8.4/2.5 |
+| nextjs | html 25.3/4.8 | js 456.2/136.1 (7) | wasm 0.0/0.0 | css 1.9/0.8 |
+| tanstack-start | html 17.4/4.3 | js 342.6/110.9 (5) | wasm 0.0/0.0 | css 1.9/0.8 |
+| sveltekit | html 16.3/3.6 | js 96.3/37.0 (11) | wasm 0.0/0.0 | css 1.9/0.8 |
+| react-router | html 19.5/4.9 | js 309.7/98.6 (4) | wasm 0.0/0.0 | css 1.9/0.8 |
+| leptos | html 17.8/3.5 | js 24.8/7.0 (1) | wasm 719.9/286.7 | css 2.0/0.8 |
+| django | html 7.3/1.8 | js 51.7/17.0 (2) | wasm 0.0/0.0 | css 2.3/0.9 |
+| rails | html 8.5/2.2 | js 152.2/40.6 (7) | wasm 0.0/0.0 | css 2.3/0.9 |
+| laravel | html 10.8/2.8 | js 255.8/84.3 (1) | wasm 0.0/0.0 | css 2.3/0.9 |
+| aspnet | html 7.3/1.9 | js 51.7/17.0 (2) | wasm 0.0/0.0 | css 2.3/0.9 |
+| spring | html 7.2/1.8 | js 51.7/17.0 (2) | wasm 0.0/0.0 | css 2.3/0.9 |
+| phoenix | html 10.0/2.4 | js 149.2/46.2 (1) | wasm 0.0/0.0 | css 2.3/0.9 |
+| astro | html 9.3/2.6 | js 24.9/9.2 (3) | wasm 0.0/0.0 | css 0.0/0.0 |
+| nuxt | html 17.3/4.5 | js 197.3/73.7 (4) | wasm 0.0/0.0 | css 1.9/0.8 |
+
+Browser (median / p90 ms)
+| desktop/corten | interactive 61/65 | LCP 72 | TBT 0 | action 83 | nav 14/14 | heap 1.6 MB | ok |
+| desktop/nextjs | interactive 153/158 | LCP 80 | TBT 0 | action 84 | nav 136/143 | heap 3.4 MB | ok |
+| desktop/tanstack-start | interactive 124/126 | LCP 72 | TBT 0 | action 81 | nav 26/29 | heap 3.1 MB | ok |
+| desktop/sveltekit | interactive 109/112 | LCP 80 | TBT 0 | action 72 | nav 21/26 | heap 2.3 MB | ok |
+| desktop/react-router | interactive 170/177 | LCP 112 | TBT 0 | action 86 | nav 30/31 | heap 2.7 MB | ok |
+| desktop/leptos | interactive 102/111 | LCP 76 | TBT 0 | action 71 | nav 23/24 | heap 1.9 MB | ok |
+| desktop/django | interactive 51/52 | LCP 72 | TBT 0 | action 72 | nav 21/28 | heap 1.7 MB | ok |
+| desktop/rails | interactive 63/71 | LCP 68 | TBT 0 | action 88 | nav 24/46 | heap 2.1 MB | ok |
+| desktop/laravel | interactive 77/81 | LCP 68 | TBT 0 | action 88 | nav 24/25 | heap 2.2 MB | ok |
+| desktop/aspnet | interactive 51/56 | LCP 72 | TBT 0 | action 73 | nav 16/19 | heap 1.7 MB | ok |
+| desktop/spring | interactive 60/86 | LCP 72 | TBT 0 | action 73 | nav 34/50 | heap 1.7 MB | ok |
+| desktop/phoenix | interactive 113/124 | LCP 92 | TBT 0 | action 79 | nav 17/17 | heap 2.3 MB | ok |
+| desktop/astro | interactive 55/58 | LCP 64 | TBT 0 | action 73 | nav 16/17 | heap 1.6 MB | ok |
+| desktop/nuxt | interactive 99/103 | LCP 76 | TBT 0 | action 71 | nav 23/24 | heap 2.9 MB | ok |
+| mobile/corten | interactive 461/474 | LCP 460 | TBT 14 | action 291 | nav 201/203 | heap 1.6 MB | ok |
+| mobile/nextjs | interactive 1390/1460 | LCP 400 | TBT 153 | action 307 | nav 433/441 | heap 3.3 MB | ok |
+| mobile/tanstack-start | interactive 2317/2337 | LCP 420 | TBT 69 | action 284 | nav 344/352 | heap 3.1 MB | ok |
+| mobile/sveltekit | interactive 841/847 | LCP 476 | TBT 7 | action 275 | nav 270/273 | heap 2.3 MB | ok |
+| mobile/react-router | interactive 1057/1102 | LCP 432 | TBT 33 | action 336 | nav 257/273 | heap 2.8 MB | ok |
+| mobile/leptos | interactive 1835/1846 | LCP 416 | TBT 69 | action 285 | nav 246/250 | heap 1.9 MB | ok |
+| mobile/django | interactive 437/442 | LCP 412 | TBT 6 | action 284 | nav 241/246 | heap 1.7 MB | ok |
+| mobile/rails | interactive 1149/1156 | LCP 428 | TBT 4 | action 298 | nav 251/254 | heap 2.1 MB | ok |
+| mobile/laravel | interactive 876/889 | LCP 420 | TBT 20 | action 318 | nav 214/217 | heap 2.2 MB | ok |
+| mobile/aspnet | interactive 432/437 | LCP 412 | TBT 6 | action 280 | nav 243/247 | heap 1.7 MB | ok |
+| mobile/spring | interactive 612/619 | LCP 420 | TBT 5 | action 286 | nav 244/245 | heap 1.7 MB | ok |
+| mobile/phoenix | interactive 932/951 | LCP 408 | TBT 44 | action 148 | nav 129/143 | heap 2.3 MB | ok |
+| mobile/astro | interactive 618/628 | LCP 272 | TBT 0 | action 302 | nav 242/246 | heap 1.6 MB | ok |
+| mobile/nuxt | interactive 1505/1515 | LCP 436 | TBT 68 | action 272 | nav 272/279 | heap 2.9 MB | ok |
+2026-10-30T12:05:15.531Z all done

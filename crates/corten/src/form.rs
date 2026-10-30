@@ -246,6 +246,35 @@ impl AttrValue for FieldName {
 pub struct Errors {
     fields: Vec<(FieldName, String)>,
     form: Option<String>,
+    refusal: Refusal,
+}
+
+/// Why a submit was refused, which [`Req::invalid`](crate::Req::invalid) answers with its status.
+/// A closed set: a refusal is the client's to fix, so it is a 4xx, and a 2xx or a 5xx (or any
+/// `StatusCode`) does not compile.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Refusal {
+    /// 422: the input breaks a rule ([`Errors::add`], [`Errors::add_form`]).
+    #[default]
+    Invalid,
+    /// 409: the submit was made against a state that has moved on (a stale revision, a step
+    /// already taken or out of order). Sending the same input again would be refused again; the
+    /// user needs the current state first.
+    Conflict,
+    /// 410: what the submit acts on is gone (deleted meanwhile).
+    Gone,
+}
+
+impl Refusal {
+    /// The status the refusal is answered with.
+    pub fn status(self) -> axum::http::StatusCode {
+        use axum::http::StatusCode;
+        match self {
+            Refusal::Invalid => StatusCode::UNPROCESSABLE_ENTITY,
+            Refusal::Conflict => StatusCode::CONFLICT,
+            Refusal::Gone => StatusCode::GONE,
+        }
+    }
 }
 
 impl Errors {
@@ -265,6 +294,37 @@ impl Errors {
     /// Prefer [`Errors::add`] when a field is at fault, so the message sits next to it.
     pub fn add_form(&mut self, message: impl Into<String>) {
         self.form.get_or_insert_with(|| message.into());
+    }
+
+    /// Refuses the submit for the state it was made against, not its input: the form's message
+    /// (in place of one [`Errors::add_form`] recorded, so the status and the message agree),
+    /// answered with the refusal's status (409 for
+    /// [`Refusal::Conflict`]) by [`Req::invalid`](crate::Req::invalid) in every mode. The form
+    /// is drawn again with what the user typed and the message at its top.
+    ///
+    /// ```
+    /// use corten::{Errors, Refusal};
+    ///
+    /// let mut errors = Errors::new();
+    /// errors.refuse(Refusal::Conflict, "Someone saved this sheet first. Reload to see their changes.");
+    /// assert_eq!(errors.refusal().status().as_u16(), 409);
+    /// assert_eq!(errors.form(), Some("Someone saved this sheet first. Reload to see their changes."));
+    /// ```
+    ///
+    /// A status that is not a refusal does not compile:
+    ///
+    /// ```compile_fail,E0308
+    /// let mut errors = corten::Errors::new();
+    /// errors.refuse(200, "Saved.");
+    /// ```
+    pub fn refuse(&mut self, why: Refusal, message: impl Into<String>) {
+        self.refusal = why;
+        self.form = Some(message.into());
+    }
+
+    /// Why the submit was refused: [`Refusal::Invalid`] unless [`Errors::refuse`] said otherwise.
+    pub fn refusal(&self) -> Refusal {
+        self.refusal
     }
 
     pub fn get(&self, field: FieldName) -> Option<&str> {
@@ -307,7 +367,10 @@ impl Errors {
     /// The fields' marks and messages in the form whose id is `form`: the `#[derive(Id)]` of the
     /// element a refused submit replaces (the form, or the block around it). Each message's id is
     /// `{form}-{field}-error`, so two forms on a page with a field of the same name (a price in
-    /// every row) do not share one, and each field is described by its own message.
+    /// every row) do not share one, and each field is described by its own message. A field
+    /// several forms share is a helper that takes the form's errors, `e: &corten::Within<'_, I>`.
+    #[doc(alias = "aria")]
+    #[doc(alias = "message")]
     pub fn within<I: Id>(&self, form: I) -> Within<'_, I> {
         Within { errors: self, form }
     }
@@ -458,8 +521,9 @@ impl<I: Id> Render for FieldMessage<'_, I> {
 ///
 /// The browser sends the same key for as long as the submission has no answer: a page reloaded
 /// after a post sends it again, and so does the runtime when a `data-patch` form is sent again
-/// after a network error, a 5xx or an abort. Once an answer arrives (any status below 500) the
-/// runtime gives the form a new key, so the next submit is a new one. The app keeps the keys it
+/// after a network error, a 5xx or an abort (a navigation). Once an answer arrives (any status
+/// below 500) the runtime gives the form a new key, so the next submit is a new one; a submit made
+/// while a write is pending waits for it and goes out with the key the form has then. The app keeps the keys it
 /// has applied (next to the write, in the same transaction) and answers a repeat with what it did
 /// the first time; Corten keeps no store. [`corten_cluster`]'s `begin` takes one as its
 /// idempotency key.
@@ -580,8 +644,9 @@ impl serde::Serialize for Errors {
     }
 }
 
-/// 422 Unprocessable Content with the Problem Details document (RFC 9457) every JSON failure
-/// has, plus the fields as an extension member:
+/// 422 Unprocessable Content (or the status of [`Errors::refuse`]'s refusal, 409 for a stale
+/// state) with the Problem Details document (RFC 9457) every JSON failure has, plus the fields
+/// as an extension member:
 /// `{"title":"Unprocessable Entity","status":422,"detail":"email: Enter an email address.","fields":{"email":"Enter an email address."}}`.
 /// A message about the whole form comes first in `detail` and is `form` too:
 /// `{"title":"Unprocessable Entity","status":422,"detail":"Sold out.","form":"Sold out.","fields":{}}`.
@@ -598,10 +663,10 @@ impl axum::response::IntoResponse for Errors {
 impl Errors {
     pub(crate) fn response(&self) -> axum::response::Response {
         use axum::{
-            http::{header, HeaderValue, StatusCode},
+            http::{header, HeaderValue},
             response::IntoResponse,
         };
-        let status = StatusCode::UNPROCESSABLE_ENTITY;
+        let status = self.refusal.status();
         let mut members = String::new();
         if let Some(form) = &self.form {
             members.push_str(r#","form":"#);
@@ -628,6 +693,18 @@ mod tests {
 
     #[derive(crate::view::Id)]
     struct SignupId;
+
+    #[test]
+    fn a_refusal_replaces_the_form_message_so_status_and_message_agree() {
+        let mut e = Errors::new();
+        e.add_form("Pick a date after today.");
+        e.refuse(Refusal::Conflict, "Someone saved first.");
+        assert_eq!((e.refusal(), e.form()), (Refusal::Conflict, Some("Someone saved first.")));
+        e.refuse(Refusal::Gone, "The sheet was deleted.");
+        assert_eq!((e.refusal().status().as_u16(), e.form()), (410, Some("The sheet was deleted.")));
+        e.add_form("later");
+        assert_eq!(e.form(), Some("The sheet was deleted."), "add_form keeps the first, as before");
+    }
 
     #[test]
     fn a_field_keeps_its_first_message_and_order_is_kept() {

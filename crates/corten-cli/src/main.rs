@@ -11,6 +11,7 @@ mod dev;
 mod fmt;
 mod json;
 mod new;
+mod pin;
 mod scripts;
 
 use std::process::{Command, ExitCode};
@@ -35,18 +36,28 @@ Usage:
                    against the types/app.d.ts the tests wrote. At a workspace root it checks
                    the scripts of each member that uses corten.
   corten help      This text.
-  corten --version
+  corten --version The version, and the commit the command was built from. dev, fmt and
+                   check say when the app's Cargo.lock pins another corten, and how to
+                   install the matching command.
 ";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if matches!(args.first().map(String::as_str), Some("dev" | "fmt" | "check"))
+        && let Ok(root) = std::env::current_dir()
+    {
+        pin::warn(&root);
+    }
     let result = match args.first().map(String::as_str) {
         None | Some("help" | "-h" | "--help") => {
             print!("{HELP}");
             Ok(())
         }
         Some("-V" | "--version" | "version") => {
-            println!("corten {}", env!("CARGO_PKG_VERSION"));
+            match pin::REV.get(..8) {
+                Some(rev) => println!("corten {} ({rev})", env!("CARGO_PKG_VERSION")),
+                None => println!("corten {}", env!("CARGO_PKG_VERSION")),
+            }
             Ok(())
         }
         Some("new") => new::run(&args[1..]),

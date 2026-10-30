@@ -539,7 +539,8 @@ never changes there. `Public::immutable(answer)` sends it as Corten's versioned 
 cookies do not make it private and no `Vary: cookie` is added. A cookie it sets or a caller
 something read still does. Its handler is held to the same rule as any `Public` handler. It takes
 `Media` or `corten::Result<Media>` only: a page, a redirect or JSON changes with the deploy, so
-`Public::immutable(req.page(..))` does not compile. A URL that does not name its content
+`Public::immutable(req.page(..))` does not compile, and neither does a `PageOr<Media>`, which
+may be a redirect. `Public::new` takes one, with the page inside made for everyone. A URL that does not name its content
 (`/me/picture`) takes `Public::new` with a lifetime.
 
 A header of the app's goes on a public answer with `Public::header`, named by a type: a file
@@ -774,6 +775,38 @@ be compressed forwards the client's `Accept-Encoding`, and the upstream's encode
 it is, as long as the HTTP client does not decode it (for reqwest, leave its `gzip`, `brotli` and
 `zstd` features off). When the client leaves, the body is dropped, and
 the upstream request with it. What else to drop (`Set-Cookie`) is the route's to decide.
+
+An app moved onto Corten a slice at a time serves its own paths and relays the rest to the
+old server behind a catch-all route. `any = relay` serves every method there, those the app never
+names included (`OPTIONS`, `PROPFIND`), so the upstream answers them, not Corten's 405. Corten
+still answers what it answers for every route first: a write from another site is a 403, and
+under an API that allows other origins a CORS preflight from one of them is Corten's (one from
+any other origin reaches the old server, and the write after it is still refused). It is
+the route's only handler, which the module checks when it compiles, so `any` is named in a
+`#[corten::routes]` module (an area's or an API's as well) and has no builder for routes added by
+hand. A path the app routes itself keeps only the methods it names: when the
+old server still takes a `POST` where the app now serves the `GET`, name a relay for it there
+too. A route with a parameter holds its handlers to taking its `Params`, so a handler cannot
+ignore what the path says by mistake; for a catch-all that means the relay sees the paths its
+`rest: &str` can read (one that is not UTF-8 once decoded is a 400). One relay for several
+catch-alls is generic over the route, and the compiler picks the route at each name. A route
+without a parameter has no `Params`, so it takes a handler without one, `any = relay_here`, that
+calls the same forwarding code:
+
+```rust,ignore
+async fn relay<R: FromUrl>(_: Params<R>, req: Request) -> corten::Result<Relay> {
+    legacy::forward(req).await // the old server's answer, as Relay::new(status, headers, body)
+}
+
+#[corten::routes]
+pub mod url {
+    #[route("/{*rest}", any = relay)]
+    pub struct Elsewhere<'a> { pub rest: &'a str }
+
+    #[route("/api/{*rest}", any = relay)]
+    pub struct OldApi<'a> { pub rest: &'a str }
+}
+```
 
 ## Who is asking
 

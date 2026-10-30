@@ -209,6 +209,16 @@ saying no: "The policy was retired meanwhile.") is the form's own message:
 `role="alert"` paragraph that is announced when the patch arrives. JSON clients get it first in
 `message` and as `form`; an agent tool gets it first in its error.
 
+A submit refused for the state it was made against rather than its input (a stale revision, a
+step already taken or out of order, a record deleted meanwhile) is
+`errors.refuse(Refusal::Conflict, text)` (`Refusal::Gone` for a deleted one). It is the form's
+message, and `req.invalid` answers it with 409 (410) in every mode instead of 422: the form
+drawn again with what the user typed, the page without JavaScript, the Problem Details document
+for a data client. A post that can be refused is a `data-patch` form: a plain post's refusal
+draws the whole page and leaves the address at the action's URL, whose GET may not exist. The
+one exception is a download, which must be a plain post ([below](#files)): its refusal redirects
+to the page that says why.
+
 A write that must not apply twice (an order, a payment, a message sent) carries a `SubmitKey`.
 A 502 or a dropped connection can hide a write that committed, and the user, the browser or the
 runtime then sends it again. Add a `SubmitKey` field to the form struct and draw it with
@@ -230,11 +240,13 @@ async fn order(req: Req, State(db): State<Db>, Form(input): Form<OrderInput>) ->
 
 The same key is sent for as long as the submission has no answer: a page reloaded after a post
 posts it again, and the runtime sends a `data-patch` form again with it after a network error, a
-5xx, an abort (a newer submit of the same form, a navigation) or an answer whose body was cut off
-on the way. Once a whole answer arrives, any status below 500, the runtime gives the form a new
-key, so the next submit is a new one; a page or patch the server draws has a new key anyway. A form changed and sent again before the first had an
-answer is the same submission: the app answers it with what it did the first time, and the user
-sees that and can send the change. The key is the app's to store, next to the write (Corten keeps
+5xx, an abort (a navigation) or an answer whose body was cut off on the way. Once a whole answer
+arrives, any status below 500, the runtime gives the form a new key, so the next submit is a new
+one; a page or patch the server draws has a new key anyway. A form sent again before the first had an answer (a
+browser without JavaScript, a data client) is the same submission: the app answers it with what
+it did the first time, and the user sees that and can send the change. A `data-patch` form's
+change made while its write is out waits for the answer instead, and goes under the new key
+(below). The key is the app's to store, next to the write (Corten keeps
 no store); `corten_cluster::begin` takes it as its idempotency key. A field that is not a UUID v4
 (in either case; it is kept lowercase) is a 422 that names it. Make the field
 `Option<SubmitKey>` when data clients post the same form without one.
@@ -244,6 +256,28 @@ without JavaScript cannot set a header, so a field is the one way that works for
 and a data client posts the same field. The header is still an IETF draft
 (`draft-ietf-httpapi-idempotency-key-header`); a second place for the key would wait for it to
 be a standard, with a rule for a request that sends both.
+
+A `data-patch` form has one submit in flight. Pressing the same button again with the same values
+while it is pending sends nothing (a double click). A newer submit of a read (a GET: a search, a
+filter) aborts the older one, whose answer is worth nothing now. While a write is pending, any
+newer submit of the form waits instead: the server may already have applied the write, and its
+answer is the page's next state. Once the runtime has drawn the write's answer (a patch or a
+page) and it took the write (2xx) or refused only its input (422), it sends the latest of the submits that waited, from the form as it is then,
+so the version or count the answer wrote goes out with it, under the form's new key. Its
+`on:submit` handlers ran at the press and do not run again, and the browser does not check the
+form's constraints again (the server checks what it gets). Several presses while the write is
+out are one submit of where the form ended. A form the answer replaced is found by its `id`, so
+give a form that a patch redraws, or that sits in an element a patch redraws, one: a form that
+left the page without an id is not sent, since its values are the ones from before the answer.
+The waiting submit is dropped, and the user sends it again, when the write gets no answer (the
+network failed, or the browser is leaving the page) or one the runtime does not draw (a proxy's
+502), which `corten:error` reports; when the write is refused for the state it was made against
+(`Errors::refuse`, a 409 or 410), which the user reads before anything else goes; or a 5xx,
+after which the server may or may not have applied the write; when the answer sends the browser elsewhere (a redirect,
+a reload), or removed the form or the pressed button; and a navigation aborts everything, so a
+late answer never patches a page it was not meant for. A screen whose every press is a step of
+its own (a count's + and -, each a delta the server adds) keeps its own ordered queue in its
+script: the form sends where the user ended up, not each step.
 
 When a `data-patch` submit gets no answer the runtime can draw, it dispatches `corten:error` on
 the form (it bubbles), with `detail.status`: the answer's status (a proxy's 502 page), or 0 when
@@ -288,8 +322,28 @@ pub fn Status(text: &str) -> impl Patch {
 }
 ```
 
+Rows known only from data (the fields of the items a write touched) are a `for` among the
+patch's parts, with its `let`s and branches, as in a page:
+
+```rust,ignore
+req.patch(html! {
+    <QueueTotals queue={&queue} />
+    for sku in &taken {
+        let label = label_of(sku);
+        if sku.counted {
+            <QuantityField id={FieldId(sku.id)} label={&label} quantity={0} />
+        } else {
+            {Remove(FieldId(sku.id))}
+        }
+    }
+})
+```
+
 A component that says `-> impl Render` is not a patch, so one that is drawn by the page and sent
-by an action says `-> impl Patch`, as a layout says `-> impl Document`. A `corten::live`
+by an action says `-> impl Patch`, as a layout says `-> impl Document`. When a view is refused,
+the error names the kind of part that is not a patch (`ComponentOrExpressionNotAPatch`,
+`IdNotADeriveIdType`, `TextOrElementWithoutId`), though not where it is: look for that kind among
+the view's top-level parts. A `corten::live`
 fragment is already text, so debug builds check it when it is sent instead (it panics, naming the
 element).
 
@@ -389,6 +443,26 @@ runtime fetches the link on hover and again on click, running the handler twice.
 async fn export(caller: Caller<Viewer>) -> corten::Result<Media> {
     let csv = shipments_csv(&caller).await?;
     Ok(Media::new("text/csv", csv).attachment("shipments.csv"))
+}
+```
+
+A download the handler may refuse (posted from a page, at the revision the page showed, when the
+run has moved on) answers `PageOr<Media>` (or `PageOr<Relay>` for another service's file): the
+file, or the page saying why, or a redirect to it, each `.into()` it. The user stays on the page
+with the reason instead of an error page, and the page is private like any other. The form is a
+plain `method="post"` form, not `data-patch`: the runtime draws a patch or a page, and a file
+answered to a `data-patch` submit is not saved (it dispatches `corten:error`). Inside `Public`,
+name the variant (`.map(PageOr::Page)`), since `.into()` cannot infer the type there. This is the
+one refusal that redirects: a plain post's page drawn at the action's URL would leave the user
+there, so a stale download answers a redirect to its page with the reason, where a `data-patch`
+form's refusal is a 409 drawn in place.
+
+```rust,ignore
+async fn download(req: Req, at: Params<url::Download<'_>>, Form(form): Form<At>) -> corten::Result<PageOr<Media>> {
+    match claim(&at.id, form.revision).await {
+        Ok(csv) => Ok(Media::new("text/csv", csv).attachment("run.csv").into()),
+        Err(Stale) => Ok(req.redirect(&url::Run { id: &at.id, said: Some(Said::Stale) })?.into()),
+    }
 }
 ```
 
@@ -513,8 +587,10 @@ Without JavaScript the browser reloads the page (`<meta http-equiv="refresh">` i
 
 A `data-patch` form's answer can be in the same state: the write is in, but the read that
 draws the part it replaces is behind. Rather than wait for the read, or redirect to a page only
-to show "saving", the patch says where to read it again: `ReadAgain { after }.from(&route)`, a
-patch instruction like `Remove` and `Append`. After the delay the runtime fetches the route as a
+to show "saving", the patch says where to read it again: `ReadAgain { after }.from(route)`, a
+patch instruction like `Remove` and `Append`. It takes the route by value (a borrowed one works where the route outlives the patch, as in a
+handler), so a component that is both part of the page and the patch builds it in its body and
+returns it. After the delay the runtime fetches the route as a
 GET `data-patch` form would (`corten: action`) and applies the patch it answers, which asks again
 while it is still behind. The route's URL carries what the read waits for (the write's receipt),
 since the page's address does not; its handler answers the part with `req.patch_or`, and so the

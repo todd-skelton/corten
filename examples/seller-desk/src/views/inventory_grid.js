@@ -23,14 +23,12 @@ import { InventoryRow, rows } from "corten/views";
  */
 
 /**
- * The note that counts prices typed and not saved, and its text in the page's locale: one
- * message per plural form, and its numbers in the page's format. The markup builds it once,
- * `js::Unsent { note, one, other, number }`.
+ * The note that counts prices typed and not saved, and its text in the page's locale: a plural
+ * message, which picks its form for the count and writes the count in the page's format. The
+ * markup builds it once, `js::Unsent { note, label }`.
  * @typedef {object} Unsent
  * @property {HTMLOutputElement} note
- * @property {Message<"count">} one
- * @property {Message<"count">} other
- * @property {NumberFormat} number
+ * @property {Message<"count">} label
  */
 
 /**
@@ -263,10 +261,10 @@ export function priceSent(event, body, note) {
 }
 
 /** @param {Set<HTMLTableRowElement>} unsent @param {Unsent} note */
-function showUnsent(unsent, { note, one, other, number }) {
+function showUnsent(unsent, { note, label }) {
   // An archived row has left the page, and its edit with it.
   for (const el of unsent) if (!el.isConnected) unsent.delete(el);
-  note.value = (unsent.size === 1 ? one : other)({ count: number(unsent.size) });
+  note.value = label({ count: unsent.size });
   note.hidden = unsent.size === 0;
 }
 
