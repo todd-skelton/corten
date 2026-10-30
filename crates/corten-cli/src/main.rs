@@ -26,9 +26,10 @@ Usage:
                    change, and reload open pages. Default port 3000.
   corten build     Build the release binary.
   corten fmt [--check] [path ..]
-                   Lay out the markup inside html! (rustfmt leaves macro bodies alone).
-                   --check reports files that need it instead of writing them.
-  corten check     cargo fmt --check, corten fmt --check, cargo clippy -D warnings, a type check
+                   cargo fmt, then lay out the markup inside html! (rustfmt leaves macro
+                   bodies alone), so it fixes what corten check reports. With paths, only
+                   their markup. --check reports what needs it instead of writing it.
+  corten check     corten fmt --check, cargo clippy -D warnings, a type check
                    of the scripts in src/ and static/ (TypeScript's tsc, from node_modules or
                    the PATH; without it, a note says they were not checked), cargo test. At a
                    workspace root it checks the scripts of each member that uses corten.
@@ -55,8 +56,7 @@ fn main() -> ExitCode {
             );
         }),
         Some("fmt") => fmt::run(&args[1..]),
-        Some("check") => cargo(&["fmt", "--check"])
-            .and_then(|()| fmt::run(&["--check".to_string()]))
+        Some("check") => fmt::run(&["--check".to_string()])
             .and_then(|()| cargo(&["clippy", "--all-targets", "--", "-D", "warnings"]))
             .and_then(|()| std::env::current_dir().map_err(|e| e.to_string()).and_then(|root| scripts::check(&root)))
             .and_then(|()| cargo(&["test"])),

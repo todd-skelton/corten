@@ -1,4 +1,5 @@
-//! `corten fmt`: lays out the markup inside `html! { .. }` (rustfmt leaves macro bodies alone).
+//! `corten fmt`: runs `cargo fmt`, then lays out the markup inside `html! { .. }` (rustfmt leaves
+//! macro bodies alone).
 //!
 //! Elements that fit on a line (rustfmt's `max_width`) stay on one; otherwise each child gets its
 //! own line, except text and expressions with the inline elements next to them (`<a>`, `<strong>`,
@@ -11,7 +12,7 @@
 //! inline siblings on one line stays, and so do blank lines between nodes (at most one). Rust inside
 //! braces is kept as written (continuation lines move with it).
 //!
-//! Only whitespace changes: the tokens of every rewritten body are compared with the original's,
+//! In markup only whitespace changes: the tokens of every rewritten body are compared with the original's,
 //! and a body that would differ (or that this parser does not understand) is left as it is, with
 //! a warning.
 
@@ -25,11 +26,22 @@ const INLINE: &[&str] = &[
 ];
 const VOID: &[&str] = &["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"];
 
-/// `corten fmt [--check] [path ..]`.
+/// `corten fmt [--check] [path ..]`: `cargo fmt` on the package (rustfmt's own settings and
+/// rules), then the markup, so one command fixes what `corten check` reports. Given paths, only
+/// their markup: `cargo fmt` formats a package, not a file.
 pub fn run(args: &[String]) -> Result<(), String> {
     let check = args.iter().any(|a| a == "--check");
     let mut paths: Vec<PathBuf> = args.iter().filter(|a| !a.starts_with("--")).map(PathBuf::from).collect();
     if paths.is_empty() {
+        // First, since it can move an html! body (its indentation), which the layout then follows.
+        let rustfmt: &[&str] = if check { &["fmt", "--check"] } else { &["fmt"] };
+        crate::cargo(rustfmt).map_err(|_| {
+            if check {
+                "Rust code is not formatted (cargo fmt --check printed where); run corten fmt".to_string()
+            } else {
+                "cargo fmt failed".to_string()
+            }
+        })?;
         paths.push(PathBuf::from("."));
     }
     let mut files = Vec::new();
