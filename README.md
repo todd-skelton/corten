@@ -285,7 +285,8 @@ Corten reads only the fields the page uses from that response, not a `serde_json
 serves 3.4x ASP.NET Core's pages there (3,616 a second against 1,065) at a sixth of its CPU
 ([details](bench/fullstack/README.md#cortens-item-api-path)). Corten's JSON route costs less than
 its HTML page (70,000 against 96,000 user-mode instructions a request in r7; Leptos's JSON 204,000).
-Its page from memory is 16% below r7's while the other apps moved 2%
+Its page from memory is 16% below r7's while the other apps fell a median of 2%, after a 20%
+fall from r6 to r7
 ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
 Requests a second compare only within a round, since droplets of one size differ; instruction
 counts compare across rounds. Pushing live updates
@@ -319,9 +320,10 @@ divide the 64-user rate by the app's peak memory under that load.
 Corten renders a page with 63 µs of CPU, ASP.NET Core with 239 µs and Leptos with 710 µs. Leptos
 peaks at less memory than Corten (16.1 MiB against 16.4) and serves an eleventh of the pages.
 From the item API, fetching and parsing the 55 KB item costs Corten about 210 µs a page, 3.4 times
-the page itself; that is the next thing to make cheaper
+the page itself
 ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
-A page from memory cost Corten 53 µs in r7
+Its pages per CPU-second from memory fell 16.5% from r7 (a Platinum 8280) while the other apps'
+median fell 2.0%
 ([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
 CPU time is counted from the container's cgroup, not sampled
 ([method](bench/fullstack/README.md#efficiency)).

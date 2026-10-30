@@ -197,15 +197,17 @@ lower (16.1 MiB against 16.4) but serves an eleventh of the pages, and 20x ASP.N
 the item API, fetching and parsing the 55 KB item costs Corten about 210 µs a page, 3.4 times the
 page itself
 ([#166 Corten's item-API path spends six times as long fetching and parsing the item as rendering it, and the single-process item API could soon cap it](https://github.com/todd-skelton/corten/issues/166)).
-A page from memory cost Corten 53 µs in r7 and 63 µs in r8
-([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)).
+Corten's pages per CPU-second from memory fell 16.5% from r7, on a Platinum 8280, to r8; the
+other apps' median fell 2.0% (from -13.6% to +2.2%), across the same change of CPU
+([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)
+tracks the fall from r6 to r7).
 
 In r8 Corten's core was 101% busy at 64 users for the page from memory and 99% for the JSON: the
 load generator, which from r7 also gets the item API's two cores (idle with items in memory), kept
 it busy. Every one of Corten's phases has its CPU time read from the container's cgroup counter
 rather than from once-a-second samples (`cpu-time.mjs`; `cpuCounted` in `summary.json`), and the
-item API used 46-51% of one core, of the 200% its two processes can use, in Corten's item-API
-phases.
+item API used 46-51% of one core at 64 users (45-48% at 256), of the 200% its two processes can
+use, in Corten's item-API phases.
 
 ### Bytes the item page loads (raw / gzip, KB)
 
@@ -296,16 +298,20 @@ other apps' 64-user requests a second moved by a median of -2.0% for the page fr
 for the JSON from memory, -0.6% for the item-API page and -8.3% for the item-API JSON. Corten's
 JSON from memory (-1.3%, 24,976 to 24,652), item-API page (+2.1%, 3,540 to 3,616) and item-API JSON
 (-8.2%, 4,196 to 3,852) moved with them. Its page from memory did not: it fell 16.1% (18,758 to
-15,747), after falling 19.9% from r6 to r7, and its pages per CPU-second fell as much (19,025 to
-15,890), so each page costs it more CPU (53 µs to 63 µs). Its core was busy in both rounds (101%),
-so the load generator is not the cause
-([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260));
-r8 has no instruction counts to show where the work went (caveat 11). The item page's JavaScript
-grew 8.9% (9,541 to 10,394 bytes gzip) and its CSS 7.4% (2,430 to 2,609). Corten's cold start (7.3
-to 6.7 ms) and peak memory at 64 users (18.3 to 16.4 MiB) went down. r7 has no browser numbers, so
-r8's compare with r6's: Corten's desktop interactive went from 58 to 61 ms and its phone from 449 to
-461 ms, while the other apps moved by a median of +7.8% and 0.0%. Counts compare across rounds,
-and requests a second only within one.
+15,747), after falling 19.9% from r6 to r7
+([#260 The item page from memory fell 19.9% between benchmark rounds r6 and r7 (23,416 to 18,758/s) while the unchanged apps fell 1.2% and its instructions held](https://github.com/todd-skelton/corten/issues/260)),
+and its pages per CPU-second fell as much (-16.5%, 19,025 to 15,890), against the other apps'
+median of -2.0%. Its core was busy in both rounds (101%), so the load generator is not the cause.
+The unchanged apps spread widely across this change of CPU (page from memory -13.6% to +2.2%, JSON
+-19.3% to +4.4%), so a single app's move of this size is not proof; r8 has no instruction counts
+to show where the work went (caveat 11). The item page's JavaScript grew 8.9% (9,541 to 10,394
+bytes gzip), its CSS 7.4% (2,430 to 2,609) and its HTML 1.1% (2,358 to 2,385), and Corten's memory
+after the first request rose from 1.211 to 1.23 MiB. Its cold start (7.3 to 6.7 ms, while the
+others' median rose 2.1%) and peak memory at 64 users (18.3 to 16.4 MiB) went down. r7 has no
+browser numbers, so r8's compare with r6's: Corten's desktop interactive went from 58 to 61 ms and
+its phone from 449 to 461 ms, while the other apps moved by a median of +7.8% and 0.0%, and its
+phone blocking time went from 0 to 14 ms. Counts compare across rounds, and requests a second only
+within one.
 
 ### Browser pass after the many-rows change (round browser-3, 2026-10-23)
 
@@ -508,9 +514,9 @@ on this page). Compressed responses are 9% larger for 2.4-3x the throughput.
 10. r6's efficiency numbers divide by CPU sampled once a second, which is coarse for an app using
     a few percent of its core (Corten's 4.1% at the fixed rate); from r7 they divide by the
     counted CPU time. Requests per CPU-second, like requests a second, compare only within a round.
-11. r8 has no instruction counts. Each time `count.mjs` started counting, r8's droplet locked up
-    (a kernel soft lockup the first time) and stopped answering, so the round finished without that
-    step
+11. r8 has no instruction counts. r8's droplet stopped answering both times the round reached
+    `count.mjs`, right after its warmup (the first time with a kernel soft lockup); the cause is not
+    known, and the round finished without that step
     ([#466 Benchmark round r8 has no instruction counts: its droplet locked up twice when count.mjs started counting](https://github.com/todd-skelton/corten/issues/466)).
     The instructions table and the counts quoted with it are r7's (the tree at `a9b1163`): counts
     do not depend on the droplet, but Corten changed between the two commits.

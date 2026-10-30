@@ -2075,8 +2075,8 @@ Corten is pre-1.0, so any minor version may change the API.
    `corten new` template's `AGENTS.md` points to it.
 6. The full-stack benchmark tables in the README and `bench/fullstack`, server and browser, are
    from round r8 (2026-10-30, one c-8 droplet, Xeon Platinum 8168, the tree at `2976f15`); its
-   instruction counts are r7's (2026-10-28, Xeon Platinum 8280, `a9b1163`), since counting locked
-   up r8's droplet; `bench/live` is still r3 (Xeon Platinum 8280). r7's results are kept without a
+   instruction counts are r7's (2026-10-28, Xeon Platinum 8280, `a9b1163`), since r8's droplet
+   locked up at the counting step; `bench/live` is still r3 (Xeon Platinum 8280). r7's results are kept without a
    browser pass. Corten serves 15,747 item pages and 24,652 JSON responses a second from memory at
    64 users (r7: 18,758 and 24,976), and 3,616 item-API pages against ASP.NET Core's 1,065 (r7:
    3,540 and 1,157). Its page from memory fell 16.1% while the other apps moved by a median of
