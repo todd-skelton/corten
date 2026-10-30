@@ -333,6 +333,8 @@ async function run(browser) {
   check("the menu is anchored to its button", !!menuBox && menuBox.gap >= 0 && menuBox.gap <= 8 && Math.abs(menuBox.left) <= 1, JSON.stringify(menuBox));
   await page.keyboard.press("ArrowDown");
   check("Arrow Down moves", (await page.evaluate(() => document.activeElement?.textContent)) === "Archive");
+  await page.keyboard.press("ArrowDown");
+  check("a disabled item is passed over", (await page.evaluate(() => document.activeElement?.textContent)) === "Rename…");
   await page.keyboard.press("w");
   check("typing a letter moves to the item", (await page.evaluate(() => document.activeElement?.textContent)) === "Watch");
   await page.keyboard.press("Escape");
@@ -349,6 +351,16 @@ async function run(browser) {
   check("a form item posts and patches", true);
   await expanded("false");
   check("using an item closes the menu", (await trigger.getAttribute("aria-expanded")) === "false");
+  // An item is any element the app writes: here a command that opens a dialog.
+  await trigger.click();
+  await expanded("true");
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await page.waitForFunction(() => /** @type {HTMLDialogElement | null} */ (document.querySelector("dialog[aria-label='Rename the draft']"))?.open === true);
+  await expanded("false");
+  check("a command item opens its dialog and closes the menu", (await trigger.getAttribute("aria-expanded")) === "false");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => /** @type {HTMLDialogElement | null} */ (document.querySelector("dialog[aria-label='Rename the draft']"))?.open === false);
+  check("closing the dialog an item opened returns focus to the button", (await page.evaluate(() => document.activeElement?.id)) === "actions-button", String(await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 80))));
 
   // Toaster (2 seconds in the gallery)
   const toast = page.locator("#ui-toast");
